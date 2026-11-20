@@ -10,7 +10,11 @@ class OnboardingWizardConflict(RuntimeError):
         )
 
 
+# The wizard's steps (frontend onboarding/store.ts), in its default order.
+# Experiments and the paywall can move them, so read an order from a draft's
+# completedSteps, never from this list.
 WizardStep = Literal[
+    "access",
     "team",
     "autopilot",
     "role",

@@ -14,6 +14,7 @@ vi.mock("@/lib/autogpt-server-api/context", () => ({
       capturedHandler = handler;
       return () => {};
     },
+    onWebSocketReconnect: () => () => {},
   }),
   BackendAPIProvider: ({ children }: { children: ReactNode }) => children,
 }));

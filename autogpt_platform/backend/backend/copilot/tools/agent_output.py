@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.library.model import LibraryAgent
@@ -19,7 +20,7 @@ from backend.data.execution import (
     GraphExecutionWithNodes,
 )
 
-from .base import BaseTool
+from .base import BaseTool, parameters_without
 from .execution_utils import (
     TERMINAL_STATUSES,
     NodeFailureSummary,
@@ -27,6 +28,7 @@ from .execution_utils import (
     summarize_node_failures,
     wait_for_execution,
 )
+from .external_scope import external_tenant, in_tenant
 from .models import (
     AgentOutputResponse,
     ErrorResponse,
@@ -113,9 +115,16 @@ def parse_time_expression(
         return None, None
 
 
-def _run_visible(execution: GraphExecutionMeta, expert_id: str | None) -> bool:
-    """Personal AutoPilot sees every run; an expert only runs it started."""
-    return expert_id is None or execution.expert_id == expert_id
+def _run_visible(
+    execution: GraphExecutionMeta, expert_id: str | None, tenant: str | None = None
+) -> bool:
+    """Personal AutoPilot sees every run; an expert only runs it started.
+
+    An External API call sees only runs in its organization.
+    """
+    return (expert_id is None or execution.expert_id == expert_id) and in_tenant(
+        execution.organization_id, tenant
+    )
 
 
 class AgentOutputTool(BaseTool):
@@ -126,6 +135,16 @@ class AgentOutputTool(BaseTool):
     @property
     def name(self) -> str:
         return "view_agent_output"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_RUN]
+
+    @property
+    def external_parameters(self) -> dict[str, Any]:
+        # An external caller polls instead: each wait holds the request and an
+        # event-bus connection open for as long as the run takes.
+        return parameters_without(self.parameters, "wait_if_running")
 
     @property
     def description(self) -> str:
@@ -189,10 +208,14 @@ class AgentOutputTool(BaseTool):
         agent_name: str | None,
         library_agent_id: str | None,
         store_slug: str | None,
+        tenant: str | None = None,
+        external_caller: bool = False,
     ) -> tuple[LibraryAgent | None, str | None]:
         """
         Resolve agent from provided identifiers.
         Returns (library_agent, error_message).
+
+        Agents outside ``tenant`` count as not found.
         """
         lib_db = library_db()
 
@@ -200,10 +223,12 @@ class AgentOutputTool(BaseTool):
         if library_agent_id:
             try:
                 agent = await lib_db.get_library_agent(library_agent_id, user_id)
-                return agent, None
             except Exception as e:
                 logger.warning(f"Failed to get library agent by ID: {e}")
+                agent = None
+            if agent is None or not in_tenant(agent.organization_id, tenant):
                 return None, f"Library workflow '{library_agent_id}' not found"
+            return agent, None
 
         # Priority 2: Store slug (username/agent-name)
         if store_slug and "/" in store_slug:
@@ -214,7 +239,7 @@ class AgentOutputTool(BaseTool):
 
             # Find in user's library by graph_id
             agent = await lib_db.get_library_agent_by_graph_id(user_id, graph.id)
-            if not agent:
+            if not agent or not in_tenant(agent.organization_id, tenant):
                 return (
                     None,
                     f"Workflow '{store_slug}' is not in your library. "
@@ -229,6 +254,7 @@ class AgentOutputTool(BaseTool):
                     user_id=user_id,
                     search_term=agent_name,
                     page_size=5,
+                    organization_id=tenant,
                 )
                 if not response.agents:
                     return (
@@ -240,7 +266,10 @@ class AgentOutputTool(BaseTool):
                 return response.agents[0], None
             except Exception as e:
                 logger.error(f"Error searching library agents: {e}")
-                return None, f"Error searching for workflow: {e}"
+                # AutoPilot's model reads the text to recover; an External
+                # API client gets none, as `error_detail` gives it none.
+                detail = "an internal error" if external_caller else str(e)
+                return None, f"Error searching for workflow: {detail}"
 
         return (
             None,
@@ -257,6 +286,7 @@ class AgentOutputTool(BaseTool):
         include_running: bool = False,
         include_node_executions: bool = False,
         expert_id: str | None = None,
+        tenant: str | None = None,
     ) -> tuple[
         GraphExecution | GraphExecutionWithNodes | None,
         list[GraphExecutionMeta],
@@ -270,6 +300,7 @@ class AgentOutputTool(BaseTool):
             include_running: If True, also look for running/queued executions (for waiting)
             include_node_executions: If True, include node-by-node execution details
             expert_id: Only runs this expert started; None sees every run.
+            tenant: Only runs in this organization; None sees every run.
         """
         exec_db = execution_db()
 
@@ -280,7 +311,7 @@ class AgentOutputTool(BaseTool):
                 execution_id=execution_id,
                 include_node_executions=include_node_executions,
             )
-            if not execution or not _run_visible(execution, expert_id):
+            if not execution or not _run_visible(execution, expert_id, tenant):
                 return None, [], f"Execution '{execution_id}' not found"
             return execution, [], None
 
@@ -308,6 +339,7 @@ class AgentOutputTool(BaseTool):
             limit=10,
             expert_id=expert_id,
         )
+        executions = [e for e in executions if in_tenant(e.organization_id, tenant)]
 
         if not executions:
             return None, [], None  # No error, just no executions
@@ -460,6 +492,7 @@ class AgentOutputTool(BaseTool):
         defined in the Pydantic model.
         """
         session_id = session.session_id
+        tenant = external_tenant(session)
 
         # Parse and validate input
         try:
@@ -509,7 +542,7 @@ class AgentOutputTool(BaseTool):
                 execution_id=input_data.execution_id,
                 include_node_executions=input_data.show_execution_details,
             )
-            if not execution or not _run_visible(execution, session.expert_id):
+            if not execution or not _run_visible(execution, session.expert_id, tenant):
                 return ErrorResponse(
                     message=f"Execution '{input_data.execution_id}' not found",
                     session_id=session_id,
@@ -519,7 +552,7 @@ class AgentOutputTool(BaseTool):
             agent = await library_db().get_library_agent_by_graph_id(
                 user_id, execution.graph_id
             )
-            if not agent:
+            if not agent or not in_tenant(agent.organization_id, tenant):
                 return NoResultsResponse(
                     message=(
                         f"Execution found but workflow not in your library. "
@@ -545,6 +578,8 @@ class AgentOutputTool(BaseTool):
             agent_name=input_data.agent_name or None,
             library_agent_id=input_data.library_agent_id or None,
             store_slug=input_data.store_slug or None,
+            tenant=tenant,
+            external_caller=session.external_caller,
         )
 
         if error or not agent:
@@ -566,6 +601,7 @@ class AgentOutputTool(BaseTool):
         # Fetch execution(s) - include running if we're going to wait
         execution, available_executions, exec_error = await self._get_execution(
             expert_id=session.expert_id,
+            tenant=tenant,
             user_id=user_id,
             graph_id=agent.graph_id,
             execution_id=input_data.execution_id or None,

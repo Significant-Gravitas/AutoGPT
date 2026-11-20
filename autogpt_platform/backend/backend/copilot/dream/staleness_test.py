@@ -39,56 +39,35 @@ def test_empty_fact_text_scores_zero():
     assert score_staleness(_fact("   \n"), now=_now()) == 0.0
 
 
-def test_user_birthday_old_but_stable_stays_below_threshold():
-    """The headline edge case from spec §P0.3a — birthdays must not
-    be demoted just because they're old."""
-    fact = _fact("user's birthday is March 5", created_days_ago=400)
-    score = score_staleness(fact, now=_now())
-    assert score < STALENESS_THRESHOLD
+@pytest.mark.parametrize(
+    "text, created_days_ago",
+    [
+        # spec §P0.3a's headline case: a birthday is old, not stale
+        ("user's birthday is March 5", 400),
+        ("user prefers dark mode in IDEs", 300),
+        # one signal alone ("latest", or age) is not enough
+        ("This is the latest config", 1),
+        ("user works on weekends", 400),
+    ],
+)
+def test_stable_fact_stays_below_threshold(text, created_days_ago):
+    fact = _fact(text, created_days_ago=created_days_ago)
+    assert score_staleness(fact, now=_now()) < STALENESS_THRESHOLD
 
 
-def test_old_preference_stays_below_threshold():
-    """'user prefers dark mode' — old and a preference — must survive."""
-    fact = _fact("user prefers dark mode in IDEs", created_days_ago=300)
-    score = score_staleness(fact, now=_now())
-    assert score < STALENESS_THRESHOLD
-
-
-def test_old_version_claim_crosses_threshold():
-    """Age + version regex hits both — the canonical "stale and wrong"
-    pattern: "GPT-4 is the best model" 18 months later."""
-    fact = _fact("GPT-4 is the best LLM available", created_days_ago=400)
-    score = score_staleness(fact, now=_now())
-    assert score >= STALENESS_THRESHOLD
-
-
-def test_current_pricing_claim_crosses_threshold():
-    """Pricing facts go stale fast even if the assertion is recent."""
-    fact = _fact("Claude Opus costs $15 per million input tokens")
-    score = score_staleness(fact, now=_now())
-    assert score >= STALENESS_THRESHOLD
-
-
-def test_leadership_claim_crosses_threshold():
-    """Company-leader facts are high churn."""
-    fact = _fact("Sundar Pichai is the CEO of Google")
-    score = score_staleness(fact, now=_now())
-    assert score >= STALENESS_THRESHOLD
-
-
-def test_recency_keyword_alone_does_not_cross_threshold():
-    """A single signal (just "latest") shouldn't trip — needs context."""
-    fact = _fact("This is the latest config", created_days_ago=1)
-    score = score_staleness(fact, now=_now())
-    # 0.4 < 0.6
-    assert score < STALENESS_THRESHOLD
-
-
-def test_age_signal_alone_does_not_cross_threshold():
-    """An old fact about nothing volatile shouldn't get demoted."""
-    fact = _fact("user works on weekends", created_days_ago=400)
-    score = score_staleness(fact, now=_now())
-    assert score < STALENESS_THRESHOLD
+@pytest.mark.parametrize(
+    "text, created_days_ago",
+    [
+        # age plus a version claim: "GPT-4 is the best model", 18 months on
+        ("GPT-4 is the best LLM available", 400),
+        # pricing and company leadership go stale fast even when recent
+        ("Claude Opus costs $15 per million input tokens", 1),
+        ("Sundar Pichai is the CEO of Google", 1),
+    ],
+)
+def test_volatile_fact_crosses_threshold(text, created_days_ago):
+    fact = _fact(text, created_days_ago=created_days_ago)
+    assert score_staleness(fact, now=_now()) >= STALENESS_THRESHOLD
 
 
 def test_missing_created_at_does_not_trip_age_signal():

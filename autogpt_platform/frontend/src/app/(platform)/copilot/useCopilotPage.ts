@@ -3,6 +3,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { isValidUUID } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   peekGreetingDone,
@@ -11,7 +12,13 @@ import {
 } from "@/services/onboarding/brain-dump-handoff";
 import type { UIMessage } from "ai";
 import { parseAsString, useQueryState } from "nuqs";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useInsertionEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import {
   buildKickoffMessage,
@@ -20,13 +27,17 @@ import {
   shouldClearKickoffParam,
   type ExpertKickoffMetadata,
 } from "./expertKickoff";
-import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
+import {
+  concatWithAssistantMerge,
+  type TurnStatsMap,
+} from "./helpers/convertChatSessionToUiMessages";
 import {
   forgetHeldFollowUp,
   rememberHeldFollowUp,
   takeHeldFollowUps,
 } from "./helpers/heldFollowUps";
 import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
+import { startReplyTiming } from "./helpers/replyTiming";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
 import { useCopilotUIStore } from "./store";
@@ -38,6 +49,7 @@ import { useCopilotStream } from "./useCopilotStream";
 import { useExpertKickoff } from "./useExpertKickoff";
 import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
+import { useReplyTiming } from "./useReplyTiming";
 import { recoverFailedDeferredSend, useSendMessage } from "./useSendMessage";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
 import { useSettleGate } from "./useSettleGate";
@@ -60,6 +72,21 @@ function hasAssistantTail(messages: UIMessage[]) {
   return lastUserIndex !== -1 && lastUserIndex < messages.length - 1;
 }
 
+function mergeTurnStats(
+  pagedTurnStats: TurnStatsMap,
+  currentTurnStats: TurnStatsMap | undefined,
+) {
+  const merged = new Map(pagedTurnStats);
+  currentTurnStats?.forEach((v, k) => merged.set(k, v));
+  return merged;
+}
+
+function readCachedSessionMessages(sessionId: string | null) {
+  return sessionId
+    ? useCopilotStreamStore.getState().getMessageSnapshot(sessionId)
+    : [];
+}
+
 function getLatestKickoffAttemptToken(messages: UIMessage[]) {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const attemptToken = getKickoffAttemptToken(messages[index]);
@@ -68,11 +95,9 @@ function getLatestKickoffAttemptToken(messages: UIMessage[]) {
   return null;
 }
 
-export function useCopilotPage({
-  isStreamRuntime = false,
-}: { isStreamRuntime?: boolean } = {}) {
+function useCopilotPageSession() {
   const { user, isUserLoading, isLoggedIn } = useAuth();
-
+  const isLocalPCEnabled = useGetFlag(Flag.LOCAL_PC_EXECUTOR);
   const [expertIdParam] = useQueryState("expertId", parseAsString);
   const [newThreadParam] = useQueryState("new", parseAsString);
   const expertId = expertIdParam;
@@ -111,6 +136,9 @@ export function useCopilotPage({
   const copilotLlmModel = useCopilotUIStore((s) => s.copilotLlmModel);
   const isDryRun = useCopilotUIStore((s) => s.isDryRun);
   const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
+  const newChatExecutionTarget = useCopilotUIStore(
+    (s) => s.newChatExecutionTarget,
+  );
   const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
 
   const {
@@ -133,15 +161,18 @@ export function useCopilotPage({
     isLoadingSession,
     isSessionError,
     isSessionNotFound,
+    removedChat,
     createSession,
     isCreatingSession,
     refetchSession,
     sessionDryRun,
+    sessionExecutionTarget,
     sessionChatStatus,
     sessionSentFrom,
     sessionAutopilotMode,
   } = useChatSession({
     dryRun: isDryRun,
+    executionTarget: isLocalPCEnabled ? newChatExecutionTarget : undefined,
     expertId,
     adoptLatestExpertThread: !newThreadParam,
   });
@@ -150,14 +181,10 @@ export function useCopilotPage({
   // NEXT session will address, and it is absent whenever a thread is reached
   // from global search, a bookmark or a shared link.
   const activeExpertId = sessionId ? sessionExpertId : expertId;
-  const expertIdentity = useMemo(
-    () =>
-      resolveExpertIdentity(activeExpertId, expertsById, {
-        settled: hasExpertsSettled,
-        errored: hasExpertsErrored,
-      }),
-    [activeExpertId, expertsById, hasExpertsErrored, hasExpertsSettled],
-  );
+  const expertIdentity = resolveExpertIdentity(activeExpertId, expertsById, {
+    settled: hasExpertsSettled,
+    errored: hasExpertsErrored,
+  });
   const isResolvingExpertIdentity = Boolean(
     activeExpertId && !hasExpertsSettled,
   );
@@ -182,11 +209,91 @@ export function useCopilotPage({
     // user had not chosen. Entitlement is the server's call, not the flag's.
     copilotModel: copilotLlmModel,
   };
-  // The host keys its mount by the flag, so this never changes within one.
-  const useStream = isStreamRuntime
-    ? useCopilotRuntimeStream
-    : useCopilotStream;
-  const stream = useStream(streamArgs);
+  return {
+    user,
+    isUserLoading,
+    isLoggedIn,
+    kickoffParam,
+    setKickoffParam,
+    kickoffExpertId,
+    isKickoffResolving,
+    setInitialPrompt,
+    completeGreeting,
+    sessionId,
+    setSessionId,
+    sessionExpertId,
+    activeExpertId,
+    isAdoptingExpertSession,
+    hydratedMessages,
+    rawSessionMessages,
+    historicalTurnStats,
+    activeStreamStartedAt,
+    hasMoreMessages,
+    oldestSequence,
+    isLoadingSession,
+    isSessionError,
+    isSessionNotFound,
+    removedChat,
+    createSession,
+    isCreatingSession,
+    sessionDryRun,
+    sessionExecutionTarget,
+    sessionChatStatus,
+    sessionSentFrom,
+    sessionAutopilotMode,
+    chatLlmAuthProvider,
+    expertIdentity,
+    isResolvingExpertIdentity,
+    isExpertSendLocked,
+    streamArgs,
+  };
+}
+
+type CopilotPageSession = ReturnType<typeof useCopilotPageSession>;
+type CopilotPageStream =
+  | ReturnType<typeof useCopilotStream>
+  | ReturnType<typeof useCopilotRuntimeStream>;
+
+function useCopilotPageChat(
+  session: CopilotPageSession,
+  stream: CopilotPageStream,
+) {
+  const {
+    user,
+    isUserLoading,
+    isLoggedIn,
+    kickoffParam,
+    setKickoffParam,
+    kickoffExpertId,
+    isKickoffResolving,
+    setInitialPrompt,
+    completeGreeting,
+    sessionId,
+    setSessionId,
+    sessionExpertId,
+    isAdoptingExpertSession,
+    hydratedMessages,
+    rawSessionMessages,
+    historicalTurnStats,
+    activeStreamStartedAt,
+    hasMoreMessages,
+    oldestSequence,
+    isLoadingSession,
+    isSessionError,
+    isSessionNotFound,
+    removedChat,
+    createSession,
+    isCreatingSession,
+    sessionDryRun,
+    sessionExecutionTarget,
+    sessionChatStatus,
+    sessionSentFrom,
+    sessionAutopilotMode,
+    chatLlmAuthProvider,
+    expertIdentity,
+    isResolvingExpertIdentity,
+    isExpertSendLocked,
+  } = session;
   const runtimeStream = "appendLocalUserRows" in stream ? stream : null;
   const {
     followBackendTurn,
@@ -223,22 +330,21 @@ export function useCopilotPage({
   const currentTurnStats = runtimeStream
     ? runtimeStream.turnStats
     : historicalTurnStats;
-  const turnStats = useMemo(() => {
-    const merged = new Map(pagedTurnStats);
-    currentTurnStats?.forEach((v, k) => merged.set(k, v));
-    return merged;
-  }, [pagedTurnStats, currentTurnStats]);
+  const turnStats = mergeTurnStats(pagedTurnStats, currentTurnStats);
 
   // Ref that mirrors whether a stream turn is currently in-flight.
-  // Updated synchronously on every render so it always reflects the latest
-  // status — unlike reading `status` inside onSend (which captures the
-  // closure's render-cycle value and can be stale for a frame).
+  // Updated on every commit, before any effect or handler runs, so it always
+  // reflects the latest status — unlike reading `status` inside onSend (which
+  // captures the closure's render-cycle value and can be stale for a frame).
   // Setting it to true *before* calling sendMessage prevents rapid
   // double-presses from both routing to /stream before React can re-render
   // with status="submitted".
-  const isInflightRef = useRef(false);
-  isInflightRef.current =
+  const isInflight =
     !isUserStopping && (status === "streaming" || status === "submitted");
+  const isInflightRef = useRef(isInflight);
+  useInsertionEffect(() => {
+    isInflightRef.current = isInflight;
+  });
 
   // Whether this tab has finished drawing the previous turn. The server's
   // turn can end well before the screen does: the smoothing transform paces
@@ -247,7 +353,7 @@ export function useCopilotPage({
   // to queue (409, no active turn) waits here before going out as a new
   // turn — see onSend.
   const isLocalStreamSettled =
-    !isInflightRef.current && !isFinishProbing && !isReconnecting;
+    !isInflight && !isFinishProbing && !isReconnecting;
   // A held follow-up learns whether the stream settled (send now) or the
   // hook went away first (the chat host unmounts on a chat switch and on
   // reload; the follow-up then stays in sessionStorage, see below).
@@ -288,16 +394,18 @@ export function useCopilotPage({
   // the current page.
   // Memoised on their inputs so the stripReplayPrefix memos below only re-run
   // when the messages actually change, not on every render once older pages
-  // are loaded.
+  // are loaded. The memos in this chain stay with the compiler on: effects
+  // here and in the chat (queued chips, voice mode, the stream snapshot)
+  // depend on the identity of the lists they produce.
   const rawMessages = useMemo(
     () => concatWithAssistantMerge(pagedMessages, currentMessages),
     [pagedMessages, currentMessages],
   );
+  // Kept as a memo: this reads the stream store outside React, which rewrites
+  // the snapshot as messages arrive; the restore view keeps the copy it read
+  // when the chat opened.
   const cachedSessionMessages = useMemo(
-    () =>
-      sessionId
-        ? useCopilotStreamStore.getState().getMessageSnapshot(sessionId)
-        : [],
+    () => readCachedSessionMessages(sessionId),
     [sessionId],
   );
   const cachedRawMessages = useMemo(
@@ -337,6 +445,17 @@ export function useCopilotPage({
 
   useCopilotNotifications(sessionId);
 
+  const { sendMessage: sendTimedMessage } = useReplyTiming({
+    sessionId,
+    messages: displayMessages,
+    status,
+    isSettled: isLocalStreamSettled,
+    isQueued: sessionChatStatus === "queued",
+    isUserStopping,
+    streamClient: runtimeStream ? "stream-runtime" : "ai-sdk",
+    sendMessage,
+  });
+
   const {
     onSend: sendNewMessage,
     isUploadingFiles,
@@ -344,7 +463,7 @@ export function useCopilotPage({
     setPendingFileParts,
   } = useSendMessage({
     sessionId,
-    sendMessage,
+    sendMessage: sendTimedMessage,
     createSession,
     isUserStoppingRef,
   });
@@ -363,6 +482,11 @@ export function useCopilotPage({
       (files?.length ?? 0) > 0 || (workspaceFiles?.length ?? 0) > 0;
     if (!trimmed && !hasAttachments) return;
     if (isExpertSendLocked) return;
+
+    const timing = startReplyTiming({
+      isNewChat: !sessionId,
+      isExpert: Boolean(session.activeExpertId),
+    });
 
     // Sending anything retires the greeting for good: flag it done on
     // the server (kept in the DB, just never shown again) and cache the
@@ -434,12 +558,22 @@ export function useCopilotPage({
       // Resolve once dispatched, not when the whole answer has streamed:
       // the composer's enqueue path is waiting on this, and holding it for
       // the entire turn would lock Enter and the queue button again.
-      void sendNewMessage(message, files, workspaceFiles, metadata).catch(
-        (err: unknown) => recoverFailedDeferredSend(trimmed, [], err),
-      );
+      void sendNewMessage(
+        message,
+        files,
+        workspaceFiles,
+        metadata,
+        timing,
+      ).catch((err: unknown) => recoverFailedDeferredSend(trimmed, [], err));
       return;
     }
-    return await sendNewMessage(message, files, workspaceFiles, metadata);
+    return await sendNewMessage(
+      message,
+      files,
+      workspaceFiles,
+      metadata,
+      timing,
+    );
   }
   // One function for the host's lifetime that runs the latest `sendOrQueue`,
   // so the chat actions and the composer keep their props across flushes.
@@ -453,9 +587,21 @@ export function useCopilotPage({
     sendOrQueue(message),
   );
 
+  // Only the runtime's sends go unconfirmed; one sent again starts a turn.
+  function resendUnconfirmed() {
+    if (!runtimeStream?.resendUnconfirmed()) {
+      toast({
+        title: "Message not sent again",
+        description:
+          "Another message is still sending, or this one arrived after all.",
+      });
+      return;
+    }
+    isInflightRef.current = true;
+    markUnsettled();
+  }
+
   useWorkflowImportAutoSubmit({
-    // This render's function on purpose: its effect lists `onSend` as a
-    // dependency and re-checks the URL for a prompt every time it changes.
     onSend: sendOrQueue,
     setPendingFileParts,
     isSendLocked: isExpertSendLocked,
@@ -476,6 +622,7 @@ export function useCopilotPage({
     onAdoptSession: setSessionId,
     async onKickoff(id, attemptToken) {
       const kickoffMessage = buildKickoffMessage(id, attemptToken);
+      // Untimed: nobody pressed send, the page opened an expert's first day.
       await sendNewMessage(
         kickoffMessage.text,
         undefined,
@@ -505,6 +652,7 @@ export function useCopilotPage({
     isLoadingSession,
     isSessionError,
     isSessionNotFound,
+    removedChat,
     isCreatingSession,
     isUploadingFiles,
     pendingSend,
@@ -513,6 +661,7 @@ export function useCopilotPage({
     createSession,
     onSend,
     onStartTask,
+    onResendUnconfirmed: runtimeStream ? resendUnconfirmed : undefined,
     // onEnqueue delegates to onSend, which internally routes to the queue
     // endpoint when isInflightRef.current is true.
     onEnqueue: onSend,
@@ -533,6 +682,7 @@ export function useCopilotPage({
     // used to render the banner. The global `isDryRun` preference (for new
     // sessions) lives in the store and is consumed by the toggle button.
     sessionDryRun,
+    sessionExecutionTarget,
     sessionChatStatus,
     sessionSentFrom,
     sessionAutopilotMode,
@@ -543,4 +693,18 @@ export function useCopilotPage({
     isKickoffStarting: isKickoffResolving || isKickoffStarting,
     followBackendTurn,
   };
+}
+
+// One entry point per stream hook: the compiler cannot memoise a hook picked
+// at runtime. The host mounts one or the other, keyed by the stream flag.
+export function useCopilotPage() {
+  const session = useCopilotPageSession();
+  const stream = useCopilotStream(session.streamArgs);
+  return useCopilotPageChat(session, stream);
+}
+
+export function useCopilotRuntimePage() {
+  const session = useCopilotPageSession();
+  const stream = useCopilotRuntimeStream(session.streamArgs);
+  return useCopilotPageChat(session, stream);
 }

@@ -58,29 +58,21 @@ class TestIsAvailable:
 class TestSettingsAvailable:
     """Pre-flight check used by the SSO-URL route before provisioning."""
 
-    def test_returns_true_when_both_secrets_set(self):
+    @pytest.mark.parametrize(
+        "api_key, jwt_key, available",
+        [
+            pytest.param("api-key", "jwt-key", True, id="both_secrets_set"),
+            pytest.param("", "jwt-key", False, id="api_key_missing"),
+            pytest.param("api-key", "", False, id="jwt_key_missing"),
+        ],
+    )
+    def test_needs_both_secrets(self, api_key, jwt_key, available):
         with patch(
             "backend.integrations.managed_providers.ayrshare.Settings"
         ) as mock_settings:
-            mock_settings.return_value.secrets.ayrshare_api_key = "api-key"
-            mock_settings.return_value.secrets.ayrshare_jwt_key = "jwt-key"
-            assert settings_available() is True
-
-    def test_returns_false_when_api_key_missing(self):
-        with patch(
-            "backend.integrations.managed_providers.ayrshare.Settings"
-        ) as mock_settings:
-            mock_settings.return_value.secrets.ayrshare_api_key = ""
-            mock_settings.return_value.secrets.ayrshare_jwt_key = "jwt-key"
-            assert settings_available() is False
-
-    def test_returns_false_when_jwt_key_missing(self):
-        with patch(
-            "backend.integrations.managed_providers.ayrshare.Settings"
-        ) as mock_settings:
-            mock_settings.return_value.secrets.ayrshare_api_key = "api-key"
-            mock_settings.return_value.secrets.ayrshare_jwt_key = ""
-            assert settings_available() is False
+            mock_settings.return_value.secrets.ayrshare_api_key = api_key
+            mock_settings.return_value.secrets.ayrshare_jwt_key = jwt_key
+            assert settings_available() is available
 
 
 class TestReadOrCreateProfileKey:

@@ -17,7 +17,7 @@ from backend.copilot.briefing.outcome import (
     compose_run_outcome,
     outcome_fallbacks,
 )
-from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+from backend.data.execution import ExecutionStatus, ExecutionTrigger, GraphExecutionMeta
 
 from .helpers import UNKNOWN_AGENT, AgentRef, to_home_expert
 from .models import (
@@ -191,9 +191,9 @@ def to_outcome(
 
 
 def _trigger(item: BriefingRunItem) -> Literal["schedule", "webhook", "manual"]:
-    if item.schedule_id:
+    if item.schedule_id or item.trigger_source == ExecutionTrigger.SCHEDULE:
         return "schedule"
-    if item.webhook_id:
+    if item.webhook_id or item.trigger_source == ExecutionTrigger.WEBHOOK:
         return "webhook"
     return "manual"
 

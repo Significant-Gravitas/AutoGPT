@@ -607,6 +607,44 @@ describe("ArtifactsPage - previews", () => {
     expect(await screen.findByText("body paragraph")).toBeDefined();
   });
 
+  test("markdown previews render lists, quotes, code and links", async () => {
+    useStorageHandler();
+    useFilesHandler([
+      makeFile({ id: "md3", name: "guide.md", mime_type: "text/markdown" }),
+    ]);
+    server.use(
+      http.get("/api/proxy/api/workspace/files/md3/preview", () =>
+        HttpResponse.text(
+          [
+            "## Section two",
+            "### Section three",
+            "- bullet item",
+            "1. numbered item",
+            "> quoted line",
+            "Run `inline code` now, see [the docs](https://example.com)",
+            "```\nblock code\n```",
+            "---",
+          ].join("\n\n"),
+        ),
+      ),
+    );
+
+    render(<ArtifactsPage />);
+
+    await openHoverPreview();
+
+    expect(await screen.findByText("Section two")).toBeDefined();
+    expect(screen.getByText("Section three")).toBeDefined();
+    expect(screen.getByText("bullet item").closest("ul")).not.toBeNull();
+    expect(screen.getByText("numbered item").closest("ol")).not.toBeNull();
+    expect(
+      screen.getByText("quoted line").closest("blockquote"),
+    ).not.toBeNull();
+    expect(screen.getByText("inline code").tagName).toBe("CODE");
+    expect(screen.getByText("block code").closest("pre")).not.toBeNull();
+    expect(screen.getByText("the docs").tagName).toBe("SPAN");
+  });
+
   test("grid cards request the card-sized preview", async () => {
     useStorageHandler();
     useFilesHandler([

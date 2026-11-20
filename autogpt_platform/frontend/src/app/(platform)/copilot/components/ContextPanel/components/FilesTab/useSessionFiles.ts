@@ -21,6 +21,9 @@ export function useSessionFiles(sessionId: string | null) {
   const messages = useCopilotStreamStore((s) =>
     sessionId ? s.messageSnapshots[sessionId] : undefined,
   );
+  // Kept as a memo: the map is read again after the query hook below, and the
+  // compiler cannot cache a value across a hook call, so without this it would
+  // be rebuilt, and the file lists with it, on every render.
   const { documentCount, fileIdToMessageId } = useMemo(() => {
     const documentIds = new Set<string>();
     const fileIdToMessageId = new Map<string, string>();
@@ -50,25 +53,20 @@ export function useSessionFiles(sessionId: string | null) {
     },
   });
 
-  // The chip and the artifacts button both read this on every render, so the
-  // file list is memoised and keeps its identity until the files change.
-  const { uploaded, generated, deliverables, files } = useMemo(() => {
-    const files: SessionFile[] = (query.data?.files ?? [])
-      .filter((item) => !isHiddenWorkspaceFile(item))
-      .map((item) => ({
-        item,
-        messageID: fileIdToMessageId.get(item.id) ?? null,
-      }));
-
-    return {
-      files,
-      uploaded: files.filter((f) => isUploadedFile(f.item)),
-      generated: files.filter((f) => !isUploadedFile(f.item)),
-      deliverables: files.filter(
-        (f) => !isUploadedFile(f.item) && !isInternalToolOutput(f.item),
-      ),
-    };
-  }, [fileIdToMessageId, query.data]);
+  // The chip and the artifacts button both read this on every render; the
+  // compiler caches the file lists, so they keep their identity until the
+  // files change.
+  const files: SessionFile[] = (query.data?.files ?? [])
+    .filter((item) => !isHiddenWorkspaceFile(item))
+    .map((item) => ({
+      item,
+      messageID: fileIdToMessageId.get(item.id) ?? null,
+    }));
+  const uploaded = files.filter((f) => isUploadedFile(f.item));
+  const generated = files.filter((f) => !isUploadedFile(f.item));
+  const deliverables = files.filter(
+    (f) => !isUploadedFile(f.item) && !isInternalToolOutput(f.item),
+  );
 
   return {
     documentCount,

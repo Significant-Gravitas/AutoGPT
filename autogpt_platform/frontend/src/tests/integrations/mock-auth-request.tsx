@@ -14,7 +14,14 @@ export function mockAuthRequest() {
       },
     },
   }));
-  vi.mock("@/lib/auth/server/getServerSession", () => ({
-    getServerSession: vi.fn().mockResolvedValue(null),
-  }));
+  vi.mock("@/lib/auth/server/getServerSession", async () => {
+    const { isAPIError } = await import("better-auth/api");
+    return {
+      getServerSession: vi.fn().mockResolvedValue(null),
+      readServerSession: vi.fn().mockResolvedValue(null),
+      isSessionRejection: vi.fn(
+        (error: unknown) => isAPIError(error) && error.statusCode === 401,
+      ),
+    };
+  });
 }

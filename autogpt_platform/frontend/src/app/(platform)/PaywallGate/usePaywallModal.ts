@@ -278,5 +278,6 @@ export function usePaywallModal() {
     handleClose: () => router.replace("/settings/billing"),
     trial,
     trialOffer,
+    pausedWorkflowSchedules: subscription?.paused_workflow_schedules ?? 0,
   };
 }

@@ -9,23 +9,29 @@ import { render } from "@/tests/integrations/test-utils";
 
 import { FormRenderer } from "../FormRenderer";
 
-interface DictionaryData {
-  prompt_values: Record<string, string>;
+type DictionaryData = Record<string, Record<string, string>>;
+
+function schemaFor(field: string): RJSFSchema {
+  return {
+    type: "object",
+    properties: {
+      [field]: {
+        title: "Dictionary",
+        type: "object",
+        additionalProperties: { type: "string" },
+      },
+    },
+  };
 }
 
-const schema: RJSFSchema = {
-  type: "object",
-  properties: {
-    prompt_values: {
-      title: "Prompt values",
-      type: "object",
-      additionalProperties: { type: "string" },
-    },
-  },
-};
-
-function DictionaryForm({ values }: { values: Record<string, string> }) {
-  const [data, setData] = useState<DictionaryData>({ prompt_values: values });
+function DictionaryForm({
+  values,
+  field = "prompt_values",
+}: {
+  values: Record<string, string>;
+  field?: string;
+}) {
+  const [data, setData] = useState<DictionaryData>({ [field]: values });
 
   function handleChange(event: IChangeEvent<DictionaryData>) {
     if (event.formData) setData(event.formData);
@@ -34,7 +40,7 @@ function DictionaryForm({ values }: { values: Record<string, string> }) {
   return (
     <>
       <FormRenderer
-        jsonSchema={schema}
+        jsonSchema={schemaFor(field)}
         handleChange={handleChange}
         uiSchema={{}}
         initialValues={data}
@@ -50,10 +56,10 @@ function DictionaryForm({ values }: { values: Record<string, string> }) {
   );
 }
 
-function readDictionary(): Record<string, string> {
+function readDictionary(field = "prompt_values"): Record<string, string> {
   return JSON.parse(
     screen.getByLabelText("Stored dictionary").textContent || "{}",
-  ).prompt_values;
+  )[field];
 }
 
 describe("Dictionary input preservation", () => {
@@ -101,6 +107,44 @@ describe("Dictionary input preservation", () => {
 
     await waitFor(() => {
       expect(readDictionary()).toEqual({ "new-title": "Keep this value" });
+    });
+  });
+
+  it("trims whitespace around a prompt-values key when it is blurred", async () => {
+    render(<DictionaryForm values={{ title: "Keep this value" }} />);
+
+    const key = screen.getByDisplayValue("title");
+    fireEvent.change(key, { target: { value: "  name \t" } });
+    fireEvent.blur(key);
+
+    await waitFor(() => {
+      expect(readDictionary()).toEqual({ name: "Keep this value" });
+      expect(screen.getByDisplayValue("name")).toBeDefined();
+    });
+  });
+
+  it("keeps whitespace in the keys of other dictionaries", async () => {
+    render(<DictionaryForm field="values" values={{ title: "Keep this" }} />);
+
+    const key = screen.getByDisplayValue("title");
+    fireEvent.change(key, { target: { value: " name " } });
+    fireEvent.blur(key);
+
+    await waitFor(() => {
+      expect(readDictionary("values")).toEqual({ " name ": "Keep this" });
+    });
+  });
+
+  it("keeps the old key when a key of only whitespace is blurred", async () => {
+    render(<DictionaryForm values={{ title: "Keep this value" }} />);
+
+    const key = screen.getByDisplayValue("title");
+    fireEvent.change(key, { target: { value: "   " } });
+    fireEvent.blur(key);
+
+    await waitFor(() => {
+      expect(readDictionary()).toEqual({ title: "Keep this value" });
+      expect(screen.getByDisplayValue("title")).toBeDefined();
     });
   });
 

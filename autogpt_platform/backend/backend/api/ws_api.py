@@ -1,70 +1,87 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import Protocol
 
 import pydantic
 import uvicorn
+from autogpt_libs.auth.closed_accounts import ACCOUNT_CLOSED_DETAIL
+from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 from autogpt_libs.auth.jwt_utils import parse_jwt_token_async
-from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
-from backend.api.conn_manager import ConnectionManager
+from backend.api.conn_manager import ConnectionManager, _is_ws_close_race
 from backend.api.model import (
     WSMessage,
     WSMethod,
+    WSRequestFailed,
+    WSRequestSent,
     WSSubscribeGraphExecutionRequest,
     WSSubscribeGraphExecutionsRequest,
 )
+from backend.api.session_auth import (
+    SESSION_TOKEN_RENEWAL_REQUIRED,
+    require_active_auth_session,
+)
 from backend.api.utils.cors import build_cors_params
-from backend.data import db, redis_client
-from backend.data.user import DEFAULT_USER_ID, is_user_banned
+from backend.api.utils.validation_errors import loggable_validation_errors
+from backend.data import redis_client
+from backend.data.db_accessors import auth_session_db, user_db
+from backend.data.user import is_user_account_closed, is_user_banned
 from backend.monitoring.instrumentation import (
     instrument_fastapi,
+    start_metrics_server,
     update_websocket_connections,
 )
+from backend.util.request_credentials import remember_request_credentials
 from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
+from backend.util.trusted_proxies import uvicorn_forwarded_allow_ips
 
 logger = logging.getLogger(__name__)
 settings = Settings()
 
 ACCOUNT_BANNED_CLOSE_CODE = 4004
+# Clients send only subscribe, unsubscribe and heartbeat messages of ~100 bytes.
+WS_MAX_MESSAGE_BYTES = 4096
+# The per-message account check reads the cache in milliseconds. A Redis shard
+# that stops answering costs each of its two cache reads the cache's own bound,
+# ``REDIS_OP_TIMEOUT_S``, before the database answers instead. This bounds the
+# whole check, database included, well inside the 10 s the client waits for a
+# pong.
+ACCOUNT_CHECK_TIMEOUT_S = 5.0
+# "Try again later": the client reconnects, and the connect-time checks, which
+# refuse a socket whose account can't be read, decide.
+ACCOUNT_CHECK_TIMED_OUT_CLOSE_CODE = 1013
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Prisma is needed to resolve graph_id from graph_exec_id on subscribe.
-    await db.connect()
-    # Eager connect to fail-fast if Redis is unreachable.
+    # No Prisma: reads go through the DatabaseManager (db_accessors), so this
+    # server needs no database URL. Eager Redis connect to fail fast.
     await redis_client.get_redis_async()
     try:
+        # Cold RPC-client imports must finish before request auth deadlines start.
+        auth_session_db()
         yield
     finally:
-        # Each cleanup is wrapped so one failure doesn't block the rest. The
-        # Redis close silences asyncio's "Unclosed ClusterNode" GC warning at
-        # interpreter shutdown.
+        # Silences asyncio's "Unclosed ClusterNode" GC warning at shutdown.
         try:
             await redis_client.disconnect_async()
         except Exception:
             logger.warning("redis_client.disconnect_async failed", exc_info=True)
-        try:
-            await db.disconnect()
-        except Exception:
-            logger.warning("db.disconnect failed", exc_info=True)
 
 
 docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
 app = FastAPI(lifespan=lifespan, docs_url=docs_url)
+# Keeps each connection's credentials for the error reports raised handling it.
+remember_request_credentials(app)
 _connection_manager = None
 
-# Add Prometheus instrumentation
-instrument_fastapi(
-    app,
-    service_name="websocket-server",
-    expose_endpoint=True,
-    endpoint="/metrics",
-    include_in_schema=settings.config.app_env == AppEnvironment.LOCAL,
-)
+# Add Prometheus instrumentation. The metrics are served by WebsocketServer.run
+# on their own port, never on this public app.
+instrument_fastapi(app, service_name="websocket-server", expose_endpoint=False)
 
 
 def get_connection_manager():
@@ -75,23 +92,66 @@ def get_connection_manager():
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
-    if not settings.config.enable_auth:
-        return DEFAULT_USER_ID
-
     token = websocket.query_params.get("token")
     if not token:
-        await websocket.close(code=4001, reason="Missing authentication token")
+        await _close_authentication_failure(
+            websocket, code=4001, reason="Missing authentication token"
+        )
         return ""
-
     try:
         payload = await parse_jwt_token_async(token)
+        user_id = payload.get("sub")
+        if not user_id:
+            await _close_authentication_failure(
+                websocket, code=4002, reason="Invalid token"
+            )
+            return ""
+        if not await _account_can_connect(websocket, user_id):
+            return ""
+        await require_active_auth_session(payload)
+        return user_id
     except ValueError:
-        await websocket.close(code=4003, reason="Invalid token")
+        await _close_authentication_failure(
+            websocket, code=4003, reason="Invalid token"
+        )
         return ""
-    user_id = payload.get("sub")
-    if not user_id:
-        await websocket.close(code=4002, reason="Invalid token")
+    except HTTPException as exc:
+        if (exc.headers or {}).get("X-Error-Code") == SESSION_TOKEN_RENEWAL_REQUIRED:
+            await _close_authentication_failure(
+                websocket, code=1013, reason="Session token requires renewal"
+            )
+        elif exc.status_code == 503:
+            await _close_authentication_failure(
+                websocket, code=1013, reason="Authentication service unavailable"
+            )
+        elif exc.status_code == 403 and exc.detail == ACCOUNT_BANNED_DETAIL:
+            await _close_authentication_failure(
+                websocket, code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned"
+            )
+        else:
+            await _close_authentication_failure(
+                websocket, code=4003, reason="Session expired or revoked"
+            )
         return ""
+
+
+async def _account_can_connect(websocket: WebSocket, user_id: str) -> bool:
+    # A token minted before the account closed still verifies. Refused when
+    # the closure can't be read, as the ban below is: closing an account does
+    # not ban it. 1011, so an outage never reads as a closed account.
+    try:
+        closed = await user_db().is_account_closed(user_id)
+    except Exception:
+        logger.warning(
+            f"Closed-account lookup failed for user #{user_id}; refusing the socket"
+        )
+        await _close_authentication_failure(websocket, code=1011, reason="Try again")
+        return False
+    if closed:
+        await _close_authentication_failure(
+            websocket, code=4003, reason=ACCOUNT_CLOSED_DETAIL
+        )
+        return False
 
     # Refused when the ban can't be read, as a request to a signed-in route is;
     # 1011 rather than the ban's code, so an outage never reads as a ban.
@@ -99,12 +159,25 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
         banned = await is_user_banned(user_id)
     except Exception:
         logger.warning(f"Ban lookup failed for user #{user_id}; refusing the socket")
-        await websocket.close(code=1011, reason="Try again")
-        return ""
+        await _close_authentication_failure(websocket, code=1011, reason="Try again")
+        return False
     if banned:
-        await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
-        return ""
-    return user_id
+        await _close_authentication_failure(
+            websocket, code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned"
+        )
+        return False
+    return True
+
+
+async def _close_authentication_failure(
+    websocket: WebSocket, *, code: int, reason: str
+) -> None:
+    """Complete the handshake so the client receives the close frame."""
+    try:
+        await websocket.accept()
+        await websocket.close(code=code, reason=reason)
+    except (WebSocketDisconnect, OSError):
+        logger.debug("WebSocket client disconnected during authentication rejection")
 
 
 # ===================== Message Handlers ===================== #
@@ -127,12 +200,8 @@ async def handle_subscribe(
     message: WSMessage,
 ):
     if not message.data:
-        await websocket.send_text(
-            WSMessage(
-                method=WSMethod.ERROR,
-                success=False,
-                error="Subscription data missing",
-            ).model_dump_json()
+        await _answer_failure(
+            websocket, message, "Subscription data missing", retryable=False
         )
         return
 
@@ -189,12 +258,8 @@ async def handle_unsubscribe(
     message: WSMessage,
 ):
     if not message.data:
-        await websocket.send_text(
-            WSMessage(
-                method=WSMethod.ERROR,
-                success=False,
-                error="Subscription data missing",
-            ).model_dump_json()
+        await _answer_failure(
+            websocket, message, "Subscription data missing", retryable=False
         )
         return
 
@@ -248,17 +313,20 @@ async def websocket_router(
     user_id = await authenticate_websocket(websocket)
     if not user_id:
         return
-    await manager.connect_socket(websocket, user_id=user_id)
+    if not await manager.connect_socket(websocket, user_id=user_id):
+        return
 
     # Track WebSocket connection
     update_websocket_connections(user_id, 1)
+    # Each kind of failure the client may retry, once this socket has hit it.
+    failed_before: set[type[Exception]] = set()
 
     try:
         while True:
             data = await websocket.receive_text()
-            # The socket outlives its token, so a ban ends it at the next message.
-            if await _banned_now(user_id):
-                await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
+            # The socket outlives its token, so a ban or a closed account ends
+            # it at the next message.
+            if await _closed_for_account(websocket, user_id):
                 break
             try:
                 message = WSMessage.model_validate_json(data)
@@ -266,7 +334,7 @@ async def websocket_router(
                 logger.error(
                     "Invalid WebSocket message from user #%s: %s",
                     user_id,
-                    e,
+                    loggable_validation_errors(e),
                 )
                 await websocket.send_text(
                     WSMessage(
@@ -277,50 +345,12 @@ async def websocket_router(
                 )
                 continue
 
-            try:
-                if message.method in _MSG_HANDLERS:
-                    await _MSG_HANDLERS[message.method](
-                        connection_manager=manager,
-                        websocket=websocket,
-                        user_id=user_id,
-                        message=message,
-                    )
-                    continue
-            except pydantic.ValidationError as e:
-                logger.error(
-                    "Validation error while handling '%s' for user #%s: %s",
-                    message.method.value,
-                    user_id,
-                    e,
+            if message.method in _MSG_HANDLERS:
+                handled = await _handle_request(
+                    manager, websocket, user_id, message, failed_before
                 )
-                await websocket.send_text(
-                    WSMessage(
-                        method=WSMethod.ERROR,
-                        success=False,
-                        error="Invalid message data. Refer to the API schema",
-                    ).model_dump_json()
-                )
-                continue
-            except ValueError as e:
-                logger.warning(
-                    "Subscription rejected for user #%s on '%s': %s",
-                    user_id,
-                    message.method.value,
-                    e,
-                )
-                await websocket.send_text(
-                    WSMessage(
-                        method=WSMethod.ERROR,
-                        success=False,
-                        error=str(e),
-                    ).model_dump_json()
-                )
-                continue
-            except Exception as e:
-                logger.error(
-                    f"Error while handling '{message.method.value}' message "
-                    f"for user #{user_id}: {e}"
-                )
+                if not handled:
+                    break
                 continue
 
             if message.method == WSMethod.ERROR:
@@ -331,12 +361,11 @@ async def websocket_router(
                     f"Unknown WebSocket message type {message.method} received: "
                     f"{message.data}"
                 )
-                await websocket.send_text(
-                    WSMessage(
-                        method=WSMethod.ERROR,
-                        success=False,
-                        error="Message type is not processed by the server",
-                    ).model_dump_json()
+                await _answer_failure(
+                    websocket,
+                    message,
+                    "Message type is not processed by the server",
+                    retryable=False,
                 )
 
     except WebSocketDisconnect:
@@ -350,6 +379,93 @@ async def websocket_router(
         update_websocket_connections(user_id, -1)
 
 
+async def _handle_request(
+    manager: ConnectionManager,
+    websocket: WebSocket,
+    user_id: str,
+    message: WSMessage,
+    failed_before: set[type[Exception]],
+) -> bool:
+    """Run the request's handler, answering a failure with an error that
+    names the request and whether it may succeed if sent again. False when
+    the client left meanwhile: there is no one to answer."""
+    try:
+        await _MSG_HANDLERS[message.method](
+            connection_manager=manager,
+            websocket=websocket,
+            user_id=user_id,
+            message=message,
+        )
+    except pydantic.ValidationError as e:
+        logger.error(
+            "Validation error while handling '%s' for user #%s: %s",
+            message.method.value,
+            user_id,
+            loggable_validation_errors(e),
+        )
+        await _answer_failure(
+            websocket,
+            message,
+            "Invalid message data. Refer to the API schema",
+            retryable=False,
+        )
+    except ValueError as e:
+        # Refused: a cap reached, or a run that isn't the user's. A full
+        # shard ("Server busy") is a cap too: retried on this socket, it only
+        # adds load to a full process; the next reconnect tries again.
+        logger.warning(
+            "Subscription rejected for user #%s on '%s': %s",
+            user_id,
+            message.method.value,
+            e,
+        )
+        await _answer_failure(websocket, message, str(e), retryable=False)
+    except Exception as e:
+        if _is_ws_close_race(e, websocket):
+            return False
+        # Redis didn't confirm in time, a stream was lost, a read failed. The
+        # client sends it again, so only the socket's first failure of each
+        # kind is an error, which Sentry files; its retries' are warnings.
+        logger.log(
+            logging.WARNING if type(e) in failed_before else logging.ERROR,
+            "Error while handling '%s' message for user #%s: %s",
+            message.method.value,
+            user_id,
+            e,
+        )
+        failed_before.add(type(e))
+        await _answer_failure(
+            websocket,
+            message,
+            f"Could not handle '{message.method.value}'; retry",
+            retryable=True,
+        )
+    return True
+
+
+async def _answer_failure(
+    websocket: WebSocket, message: WSMessage, error: str, *, retryable: bool
+) -> None:
+    await websocket.send_text(
+        WSRequestFailed(
+            error=error,
+            request=WSRequestSent(method=message.method, data=message.data),
+            retryable=retryable,
+        ).model_dump_json()
+    )
+
+
+async def _closed_now(user_id: str) -> bool:
+    """A lookup that fails keeps the socket; the next message asks again."""
+    try:
+        return await is_user_account_closed(user_id)
+    except Exception:
+        logger.warning(
+            f"Closed-account lookup failed for user #{user_id}; keeping the socket"
+        )
+        return False
+
+
 async def _banned_now(user_id: str) -> bool:
     """A lookup that fails keeps the socket; the next message asks again."""
     try:
@@ -357,6 +473,41 @@ async def _banned_now(user_id: str) -> bool:
     except Exception:
         logger.warning(f"Ban lookup failed for user #{user_id}; keeping the socket")
         return False
+
+
+async def _closed_for_account(websocket: WebSocket, user_id: str) -> bool:
+    """Close the socket if its account may no longer use it, and say whether
+    it did: banned, or closed by its owner. A check that doesn't finish in
+    time closes it too, with a code the client retries: it never counts as
+    allowed."""
+    banned = closed = False
+    deadline = asyncio.timeout(ACCOUNT_CHECK_TIMEOUT_S)
+    try:
+        async with deadline:
+            banned = await _banned_now(user_id)
+            # A ban lookup that swallowed the cancellation leaves no second
+            # one coming, so the deadline is checked before the next lookup.
+            if not banned and not deadline.expired():
+                closed = await _closed_now(user_id)
+    except TimeoutError:
+        pass
+    # Also when a lookup swallowed the cancellation and answered anyway.
+    if deadline.expired():
+        logger.warning(
+            f"Account check for user #{user_id} took over "
+            f"{ACCOUNT_CHECK_TIMEOUT_S}s; closing the socket for it to reconnect"
+        )
+        await websocket.close(
+            code=ACCOUNT_CHECK_TIMED_OUT_CLOSE_CODE, reason="Try again"
+        )
+        return True
+    if banned:
+        await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
+        return True
+    if closed:
+        await websocket.close(code=4003, reason=ACCOUNT_CLOSED_DETAIL)
+        return True
+    return False
 
 
 @app.get("/")
@@ -382,10 +533,15 @@ class WebsocketServer(AppProcess):
             allow_headers=["*"],
         )
 
+        start_metrics_server(Config().websocket_server_metrics_port)
         uvicorn.run(
             server_app,
             host=Config().websocket_server_host,
             port=Config().websocket_server_port,
             ws="websockets-sansio",
+            ws_max_size=WS_MAX_MESSAGE_BYTES,
             log_config=None,
+            forwarded_allow_ips=uvicorn_forwarded_allow_ips(
+                settings.config.trusted_proxies
+            ),
         )

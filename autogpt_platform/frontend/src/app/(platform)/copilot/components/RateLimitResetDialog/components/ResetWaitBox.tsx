@@ -14,7 +14,7 @@ interface Props {
 
 export function ResetWaitBox({ meters, onSendAtReset, isScheduling }: Props) {
   return (
-    <div className="mb-5 space-y-4 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+    <div className="mb-5 space-y-4 rounded-xl border border-border-base bg-surface-muted p-4">
       <UsageMeters daily={meters?.daily} weekly={meters?.weekly} />
       {onSendAtReset && (
         <Button

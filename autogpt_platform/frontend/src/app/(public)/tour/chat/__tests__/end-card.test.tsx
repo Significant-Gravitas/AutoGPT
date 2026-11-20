@@ -9,7 +9,7 @@ import {
 
 // DotDistortionShader paints a canvas/WebGL frame that happy-dom cannot run and
 // that is purely decorative — stub it so the real chat tree can render.
-vi.mock("@/components/ui/dot-distortion-shader", () => ({
+vi.mock("../components/DotDistortionShader/DotDistortionShader", () => ({
   DotDistortionShader: () => null,
 }));
 

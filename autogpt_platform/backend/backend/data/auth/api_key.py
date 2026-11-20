@@ -1,12 +1,15 @@
+import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
+from collections.abc import Awaitable, Callable
+from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
 from autogpt_libs.api_key.keysmith import APIKeySmith
+from prisma import Prisma
 from prisma.enums import APIKeyPermission, APIKeyStatus
 from prisma.models import APIKey as PrismaAPIKey
-from prisma.types import APIKeyWhereUniqueInput
+from prisma.types import APIKeyUpdateManyMutationInput, APIKeyWhereInput
 from pydantic import Field
 
 from backend.data.includes import MAX_USER_API_KEYS_FETCH
@@ -14,8 +17,16 @@ from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 from .base import APIAuthorizationInfo
 
+# Granted only through OAuth, to one client: an API key carrying one could not
+# use it, and listing it on a key would suggest it could.
+OAUTH_ONLY_PERMISSIONS = frozenset({APIKeyPermission.CONNECT_LOCAL_EXECUTOR})
+
 logger = logging.getLogger(__name__)
 keysmith = APIKeySmith()
+
+# How stale a key's recorded last use may get. Writing it on every request
+# would add a database write to every External API call.
+LAST_USED_RESOLUTION = timedelta(minutes=5)
 
 
 class APIKeyInfo(APIAuthorizationInfo):
@@ -111,29 +122,59 @@ async def create_api_key(
     return APIKeyInfo.from_db(saved_key_obj), generated_key.key
 
 
-async def get_active_api_keys_by_head(head: str) -> list[APIKeyInfoWithHash]:
-    results = await PrismaAPIKey.prisma().find_many(
-        where={"head": head, "status": APIKeyStatus.ACTIVE}
-    )
+async def get_active_api_keys_by_head(
+    head: str,
+    tail: str | None = None,
+) -> list[APIKeyInfoWithHash]:
+    where: APIKeyWhereInput = {"head": head, "status": APIKeyStatus.ACTIVE}
+    if tail is not None:
+        where["tail"] = tail
+    results = await PrismaAPIKey.prisma().find_many(where=where)
     return [APIKeyInfoWithHash.from_db(key) for key in results]
 
 
-async def validate_api_key(plaintext_key: str) -> Optional[APIKeyInfo]:
+async def validate_api_key(
+    plaintext_key: str,
+    *,
+    before_verify: Callable[[], Awaitable[None]] | None = None,
+) -> APIKeyInfo | None:
     """
     Validate an API key and return the API key object if valid and active.
     """
     try:
         if not plaintext_key.startswith(APIKeySmith.PREFIX):
-            logger.warning("Invalid API key format")
+            # Every OAuth bearer reaches this line.
+            logger.debug("Not an API key: wrong prefix")
             return None
 
         head = plaintext_key[: APIKeySmith.HEAD_LENGTH]
-        potential_matches = await get_active_api_keys_by_head(head)
+        # Generated and legacy keys store the final TAIL_LENGTH characters as tail.
+        # All head+tail matches, including legacy keys, remain eligible so a
+        # collision cannot make an otherwise valid key unauthenticatable.
+        tail = plaintext_key[-APIKeySmith.TAIL_LENGTH :]
+        potential_matches = await get_active_api_keys_by_head(head, tail=tail)
+    except Exception as e:
+        logger.error(f"Error while looking up API key: {e}")
+        raise RuntimeError("Failed to validate API key") from e
 
-        matched_api_key = next(
-            (pm for pm in potential_matches if pm.match(plaintext_key)),
-            None,
-        )
+    if not potential_matches:
+        return None
+    if before_verify is not None:
+        await before_verify()
+    return await _verify_api_key_candidates(plaintext_key, potential_matches)
+
+
+async def _verify_api_key_candidates(
+    plaintext_key: str, potential_matches: list[APIKeyInfoWithHash]
+) -> APIKeyInfo | None:
+    try:
+        # Scrypt costs tens of milliseconds of CPU, which on the event loop
+        # stalls every other request the worker is serving.
+        matched_api_key = None
+        for potential_match in potential_matches:
+            if await asyncio.to_thread(potential_match.match, plaintext_key):
+                matched_api_key = potential_match
+                break
         if not matched_api_key:
             # API key not found or invalid
             return None
@@ -144,10 +185,29 @@ async def validate_api_key(plaintext_key: str) -> Optional[APIKeyInfo]:
                 plaintext_key, matched_api_key
             )
 
+        await _record_use(matched_api_key)
         return matched_api_key.without_hash()
     except Exception as e:
         logger.error(f"Error while validating API key: {e}")
         raise RuntimeError("Failed to validate API key") from e
+
+
+async def _record_use(key_obj: APIKeyInfoWithHash) -> None:
+    """Stamp the key's last use, unless it was stamped within the resolution.
+
+    A failed write is logged and swallowed: it must never refuse a valid key.
+    """
+    now = datetime.now(timezone.utc)
+    if key_obj.last_used_at and now - key_obj.last_used_at < LAST_USED_RESOLUTION:
+        return
+    try:
+        await PrismaAPIKey.prisma().update(
+            where={"id": key_obj.id}, data={"lastUsedAt": now}
+        )
+    except Exception as e:
+        logger.warning(f"Failed to record use of API key #{key_obj.id}: {e}")
+        return
+    key_obj.last_used_at = now
 
 
 async def _migrate_key_to_secure_hash(
@@ -172,28 +232,51 @@ async def _migrate_key_to_secure_hash(
 async def revoke_api_key(
     key_id: str, user_id: str, organization_id: str | None = None
 ) -> APIKeyInfo:
-    api_key = await PrismaAPIKey.prisma().find_unique(where={"id": key_id})
+    await _get_owned_api_key(key_id, user_id, organization_id, "revoke")
 
-    if not api_key:
-        raise NotFoundError(f"API key with id {key_id} not found")
+    try:
+        updated_api_key = await _update_unless_revoked(
+            key_id,
+            user_id,
+            organization_id,
+            {"status": APIKeyStatus.REVOKED, "revokedAt": datetime.now(timezone.utc)},
+            "revoked",
+        )
+    except APIKeyRevokedError as e:
+        # Revoking is idempotent; keep the original revokedAt for the audit trail.
+        return APIKeyInfo.from_db(e.api_key)
 
-    if api_key.userId != user_id:
-        raise NotAuthorizedError("You do not have permission to revoke this API key.")
+    return APIKeyInfo.from_db(updated_api_key)
 
-    if organization_id and api_key.organizationId != organization_id:
-        raise NotAuthorizedError("You do not have permission to revoke this API key.")
 
-    updated_api_key = await PrismaAPIKey.prisma().update(
-        where={"id": key_id},
+async def revoke_api_keys(db: Prisma, where: APIKeyWhereInput) -> int:
+    """Revoke every key ``where`` matches, through ``db`` (the client or a
+    transaction), and return how many were revoked.
+
+    For keys whose scope is gone, such as the ones a member made in an
+    organization they were removed from. A key revoked earlier keeps its
+    ``revokedAt``.
+    """
+    return await db.apikey.update_many(
+        where={**where, "status": {"not": APIKeyStatus.REVOKED}},
+        data={"status": APIKeyStatus.REVOKED, "revokedAt": datetime.now(timezone.utc)},
+    )
+
+
+async def revoke_user_api_keys(user_id: str) -> int:
+    """Revoke every key of the user that isn't revoked yet; returns how many.
+
+    Suspended keys are revoked too, so nothing can bring them back. Keys the
+    user minted for an organization are included: they act as the user who
+    created them. Keys revoked earlier keep their original ``revokedAt``.
+    """
+    return await PrismaAPIKey.prisma().update_many(
+        where={"userId": user_id, "status": {"not": APIKeyStatus.REVOKED}},
         data={
             "status": APIKeyStatus.REVOKED,
             "revokedAt": datetime.now(timezone.utc),
         },
     )
-    if not updated_api_key:
-        raise NotFoundError(f"API key #{key_id} vanished while trying to revoke.")
-
-    return APIKeyInfo.from_db(updated_api_key)
 
 
 async def list_user_api_keys(
@@ -244,24 +327,14 @@ async def list_user_api_keys(
 async def suspend_api_key(
     key_id: str, user_id: str, organization_id: str | None = None
 ) -> APIKeyInfo:
-    selector: APIKeyWhereUniqueInput = {"id": key_id}
-    api_key = await PrismaAPIKey.prisma().find_unique(where=selector)
-
-    if not api_key:
-        raise NotFoundError(f"API key with id {key_id} not found")
-
-    if api_key.userId != user_id:
-        raise NotAuthorizedError("You do not have permission to suspend this API key.")
-
-    if organization_id and api_key.organizationId != organization_id:
-        raise NotAuthorizedError("You do not have permission to suspend this API key.")
-
-    updated_api_key = await PrismaAPIKey.prisma().update(
-        where=selector, data={"status": APIKeyStatus.SUSPENDED}
+    await _get_owned_api_key(key_id, user_id, organization_id, "suspend")
+    updated_api_key = await _update_unless_revoked(
+        key_id,
+        user_id,
+        organization_id,
+        {"status": APIKeyStatus.SUSPENDED},
+        "suspended",
     )
-    if not updated_api_key:
-        raise NotFoundError(f"API key #{key_id} vanished while trying to suspend.")
-
     return APIKeyInfo.from_db(updated_api_key)
 
 
@@ -293,22 +366,68 @@ async def update_api_key_permissions(
     """
     Update the permissions of an API key.
     """
+    await _get_owned_api_key(key_id, user_id, organization_id, "update")
+    updated_api_key = await _update_unless_revoked(
+        key_id,
+        user_id,
+        organization_id,
+        {"permissions": permissions},
+        "changed",
+    )
+    return APIKeyInfo.from_db(updated_api_key)
+
+
+class APIKeyRevokedError(ValueError):
+    """Raised when a write targets a REVOKED key. REVOKED is terminal."""
+
+    def __init__(self, api_key: PrismaAPIKey, action: str):
+        super().__init__(f"API key has been revoked and can't be {action}.")
+        self.api_key = api_key
+
+
+async def _get_owned_api_key(
+    key_id: str, user_id: str, organization_id: str | None, verb: str
+) -> PrismaAPIKey:
     api_key = await PrismaAPIKey.prisma().find_unique(where={"id": key_id})
 
-    if api_key is None:
-        raise NotFoundError("No such API key found.")
+    if not api_key:
+        raise NotFoundError(f"API key with id {key_id} not found")
 
     if api_key.userId != user_id:
-        raise NotAuthorizedError("You do not have permission to update this API key.")
+        raise NotAuthorizedError(f"You do not have permission to {verb} this API key.")
 
     if organization_id and api_key.organizationId != organization_id:
-        raise NotAuthorizedError("You do not have permission to update this API key.")
+        raise NotAuthorizedError(f"You do not have permission to {verb} this API key.")
 
-    updated_api_key = await PrismaAPIKey.prisma().update(
-        where={"id": key_id},
-        data={"permissions": permissions},
-    )
-    if not updated_api_key:
+    return api_key
+
+
+async def _update_unless_revoked(
+    key_id: str,
+    user_id: str,
+    organization_id: str | None,
+    data: APIKeyUpdateManyMutationInput,
+    action: str,
+) -> PrismaAPIKey:
+    """Apply ``data`` only while the key is not REVOKED.
+
+    The status check is part of the UPDATE's WHERE clause, so a revoke that
+    commits after the caller read the key can't be overwritten.
+    """
+    where: APIKeyWhereInput = {
+        "id": key_id,
+        "userId": user_id,
+        "status": {"not": APIKeyStatus.REVOKED},
+    }
+    if organization_id:
+        where["organizationId"] = organization_id
+
+    updated_count = await PrismaAPIKey.prisma().update_many(where=where, data=data)
+    api_key = await PrismaAPIKey.prisma().find_unique(where={"id": key_id})
+
+    if updated_count == 0 and api_key and api_key.status == APIKeyStatus.REVOKED:
+        raise APIKeyRevokedError(api_key, action)
+    if updated_count == 0 or not api_key:
         raise NotFoundError(f"API key #{key_id} vanished while trying to update.")
 
-    return APIKeyInfo.from_db(updated_api_key)
+    return api_key

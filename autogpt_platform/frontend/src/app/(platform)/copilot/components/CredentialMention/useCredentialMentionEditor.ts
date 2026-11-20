@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useInsertionEffect,
   useLayoutEffect,
   useReducer,
   useRef,
@@ -42,9 +43,12 @@ export function useCredentialMentionEditor(
   // would otherwise stay in the DOM; bumping this re-runs the comparison.
   const [resyncCount, resync] = useReducer((count: number) => count + 1, 0);
   const onMultilineRef = useRef(onMultilineChange);
-  onMultilineRef.current = onMultilineChange;
+  useInsertionEffect(() => {
+    onMultilineRef.current = onMultilineChange;
+  });
 
-  // Stable so React does not detach and re-attach it on every render. The
+  // Stable so React does not detach and re-attach it on every render (kept as
+  // a memo with the compiler on: a callback ref's identity is behaviour). The
   // textarea that replaces the editor only reports wrapping it measures, so
   // the stacked layout is released here, in the mutation phase before the
   // textarea's layout effect can claim it again.

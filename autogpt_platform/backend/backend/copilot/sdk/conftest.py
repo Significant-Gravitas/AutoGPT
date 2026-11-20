@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
 
+from backend.copilot import database_manager_fixtures
 from backend.copilot.sdk.cli_version import _VERSIONS, _cli_the_sdk_finds
 from backend.util import json
 
@@ -158,6 +160,17 @@ def build_structured_transcript(
         lines.append(json.dumps(entry, separators=(",", ":")))
         last_uuid = uid
     return "\n".join(lines) + "\n"
+
+
+# No database manager runs for these tests; nor for billing_e2e, dream and
+# graphiti, whose conftests turn the fake on too.
+fake_database_manager_clients = database_manager_fixtures.fake_database_manager_clients
+database_manager = database_manager_fixtures.database_manager
+
+
+def pytest_terminal_summary(terminalreporter: Any) -> None:
+    """Once per run (here only): the calls the fake answered in every folder."""
+    database_manager_fixtures.write_calls_summary(terminalreporter)
 
 
 @pytest.fixture(autouse=True)

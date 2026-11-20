@@ -30,6 +30,7 @@ export function StorageUsage() {
 
   const percent = Math.min(Math.max(data.used_percent, 0), 100);
   const usedLabel = `${Math.round(percent)}% of storage used`;
+  const internalBytes = data.internal_bytes ?? 0;
 
   return (
     <div
@@ -37,7 +38,7 @@ export function StorageUsage() {
       title={usedLabel}
       data-testid="storage-usage"
     >
-      <Text variant="small" as="span" className="text-zinc-500">
+      <Text variant="small" as="span" tone="secondary">
         Storage
       </Text>
       <Progress
@@ -48,16 +49,28 @@ export function StorageUsage() {
         aria-valuemax={100}
         aria-label={usedLabel}
         className={cn(
-          "h-1.5 w-32 bg-zinc-100",
-          percent > 95 ? "[&>div]:bg-red-400" : "[&>div]:bg-zinc-400",
+          // oxlint-disable-next-line design-system/no-restyle -- a slim grey meter; Progress has no size or tone variants
+          "h-1.5 w-32 bg-surface-hover",
+          // oxlint-disable-next-line design-system/no-restyle -- the meter turns red near the quota
+          percent > 95 ? "[&>div]:bg-error" : "[&>div]:bg-foreground-subtle",
         )}
       />
-      <Text variant="small" as="span" className="text-zinc-500">
-        <span className="font-medium text-zinc-700">
+      <Text variant="small" as="span" tone="secondary">
+        <span className="font-medium text-foreground-body">
           {formatFileSize(data.used_bytes)}
         </span>{" "}
         of {formatFileSize(data.limit_bytes)}
       </Text>
+      {internalBytes > 0 ? (
+        <Text
+          variant="small"
+          as="span"
+          tone="secondary"
+          className="hidden lg:inline"
+        >
+          {`${formatFileSize(internalBytes)} is your team's skills and working files`}
+        </Text>
+      ) : null}
     </div>
   );
 }

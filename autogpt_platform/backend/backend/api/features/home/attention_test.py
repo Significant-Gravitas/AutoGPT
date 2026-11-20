@@ -10,7 +10,7 @@ from backend.copilot.gate.references import Reference
 from backend.copilot.gate.review import node_id_for, review_payload
 from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata, PendingQuestion
 from backend.copilot.scheduled_chats.service import PausedScheduledChat
-from backend.executor.scheduler import GraphExecutionJobInfo
+from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
 from .attention import compose_attention_items
 
@@ -509,6 +509,28 @@ def test_a_direct_autopilot_review_is_not_called_a_workflow() -> None:
     assert item.description == "Otto is waiting for your approval."
 
 
+def test_an_experts_chat_review_names_the_expert() -> None:
+    review = _review(NOW).model_copy(
+        update={
+            "graph_exec_id": None,
+            "session_id": "abc",
+            "agent_name": None,
+            "action": "Gmail Send",
+            "expert_id": "issa",
+            "expert_name": "Issa",
+        }
+    )
+
+    [item] = compose_attention_items(
+        now=NOW, experts=[], reviews=[review], schedules=[], credits_balance=None
+    )
+
+    assert item.title == "Gmail Send"
+    assert item.description == "Issa is waiting for your approval."
+    assert item.expert is not None and item.expert.name == "Issa"
+    assert item.primary_action.href == "/copilot?sessionId=abc"
+
+
 def test_a_workflow_review_without_a_name_still_says_workflow() -> None:
     review = _review(NOW).model_copy(update={"agent_name": None})
 
@@ -666,3 +688,39 @@ def test_a_clipped_id_list_still_counts_every_id() -> None:
     assert _one(review).preview == (
         "Workflows: Agent 0, Agent 1, Agent 2, Agent 3, Agent 4 +695 more · Folder: f-9"
     )
+
+
+def test_chat_follow_ups_do_not_count_as_work_that_needs_credits() -> None:
+    follow_up = CopilotTurnJobInfo(
+        id="follow-up",
+        name="Check in tomorrow",
+        next_run_time="2026-08-10T09:00:00+00:00",
+        user_id="user",
+        message="How did the outreach go?",
+        run_at=NOW + timedelta(days=1),
+    )
+
+    only_chat = compose_attention_items(
+        now=NOW, experts=[], reviews=[], schedules=[follow_up], credits_balance=0
+    )
+    mixed = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[_schedule(), follow_up],
+        credits_balance=0,
+    )
+
+    assert only_chat == []
+    assert [item.description for item in mixed] == ["1 upcoming task may not run."]
+
+
+def test_an_experts_held_call_names_the_expert() -> None:
+    review = _gate_review().model_copy(
+        update={"expert_id": "issa", "expert_name": "Issa"}
+    )
+
+    item = _one(review)
+
+    assert item.description == "Issa is waiting for your approval."
+    assert item.expert is not None and item.expert.name == "Issa"

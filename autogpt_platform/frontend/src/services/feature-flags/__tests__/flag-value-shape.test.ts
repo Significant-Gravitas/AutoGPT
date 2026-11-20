@@ -38,18 +38,16 @@ describe("resolveFlagValue", () => {
   });
 
   it("keeps a boolean for a boolean flag, both ways", () => {
-    expect(resolveFlagValue(Flag.ENABLE_PLATFORM_PAYMENT, true)).toBe(true);
-    expect(resolveFlagValue(Flag.ENABLE_PLATFORM_PAYMENT, false)).toBe(false);
+    expect(resolveFlagValue(Flag.CHAT_PINNING, true)).toBe(true);
+    expect(resolveFlagValue(Flag.CHAT_PINNING, false)).toBe(false);
   });
 
   it("falls back when a boolean flag is answered with a string", () => {
-    expect(resolveFlagValue(Flag.ENABLE_PLATFORM_PAYMENT, "on")).toBe(false);
+    expect(resolveFlagValue(Flag.CHAT_PINNING, "on")).toBe(false);
   });
 
   it("falls back on null and undefined", () => {
-    expect(resolveFlagValue(Flag.ENABLE_PLATFORM_PAYMENT, null)).toBe(false);
-    expect(resolveFlagValue(Flag.ENABLE_PLATFORM_PAYMENT, undefined)).toBe(
-      false,
-    );
+    expect(resolveFlagValue(Flag.CHAT_PINNING, null)).toBe(false);
+    expect(resolveFlagValue(Flag.CHAT_PINNING, undefined)).toBe(false);
   });
 });

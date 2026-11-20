@@ -6,12 +6,24 @@ using one encrypts stored integration credentials with a key anybody can read,
 and signs Redis cache entries with a forgeable HMAC key (`util/cache.py`
 derives that key from `ENCRYPTION_KEY`).
 
+The .env.default files also gave the database, message broker and caches
+their passwords. Those are only warned about, since the stack keeps running on
+them and `make init-env` replaces them.
+
 The retired values are matched by SHA-256 digest, so detecting them does not
 require putting the literals back into a tracked file.
 """
 
+import base64
+import binascii
 import hashlib
 import logging
+import os
+from urllib.parse import unquote, urlsplit
+
+from cryptography.exceptions import UnsupportedAlgorithm
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 
 from backend.util.settings import Settings
 
@@ -33,6 +45,12 @@ RETIRED_HINT = (
     "Clear the value in autogpt_platform/backend/.env (leave `{name}=`) and run "
     "`make init-env` in autogpt_platform/ to generate a fresh one."
 )
+CREDENTIAL_HINT = (
+    "Follow 'Upgrading: service passwords are generated per install' in "
+    "docs/platform/getting-started.md to move to passwords generated for this "
+    "install: it empties RabbitMQ's queues before `make init-env` and "
+    "`docker compose up -d` restart it, which would lose what they hold."
+)
 
 # SHA-256 of each value published in backend/.env.default before SECRT-2611.
 # Treat all of them as permanently burned.
@@ -45,10 +63,100 @@ _RETIRED_DIGESTS: dict[str, set[str]] = {
     },
 }
 
+# SHA-256 of every password the public .env.default and .env.example files have
+# given the stack's own database, message broker and caches. Replacing one of
+# these loses nothing, unlike the keys above, so the backend only warns and
+# `make init-env` replaces them (single-container/runtime_config.py keeps the
+# same set for that).
+_PUBLISHED_CREDENTIAL_DIGESTS = {
+    "53d3eb3d9500cdcdbbe39c030eb2959438bcc459d5de9380db2a3c85b5de5360",  # pragma: allowlist secret
+    "9b8769a4a742959a2d0298c36fb70623f2dfacda8436237df08d8dfd5b37374c",  # pragma: allowlist secret
+    "e4b879cfddda5d56e0d4c5b1ec46e605159469234adbabc5c5bcf2ebce5755cd",  # pragma: allowlist secret
+    "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8",  # pragma: allowlist secret
+    "d417f13ced355a54a9444aed43c7ba4f47a81c0c07b8fedf3207cc876bcb8db3",  # pragma: allowlist secret
+}
+
+
+# SHA-256 of the Web Push (VAPID) private key backend/.env.default shipped from
+# #12723 (2026-04-29) until it was retired. Anyone holding it can sign push
+# notifications to this site's users, so `data/push_sender.py` refuses to send
+# with it; the backend still starts, since nothing stored depends on the pair,
+# and `make init-env` replaces a published pair with a generated one.
+_RETIRED_VAPID_PRIVATE_KEY_DIGESTS = {
+    "9c17b969b0d1d745c4fea96adce535472a5ce3c39dc1339905692c2177c950d5",  # pragma: allowlist secret
+}
+VAPID_HINT = (
+    "Run `make init-env` in autogpt_platform/ to replace the pair with one "
+    "generated for this install, then recreate the services so they read it "
+    "(`docker compose up -d`, with `--build` if the frontend image was built "
+    "from this checkout). Browsers subscribed under the old pair stop "
+    "receiving pushes until they turn notifications off and on again."
+)
+_URLSAFE_TO_STANDARD = str.maketrans("-_", "+/")
+
+
+def vapid_private_key_is_published(value: str) -> bool:
+    """Whether a Web Push private key is one this repository published, however
+    it is spelled: py-vapid drops newlines, restores Base64 padding and takes
+    the standard alphabet too, a decoder ignores the unused bits of the last
+    character, and a DER-encoded key is read as the scalar it holds, so every
+    spelling that comes down to the published bytes is the published key."""
+    canonical = _canonical_vapid_key(value)
+    if not canonical:
+        return False
+    scalar = _der_encoded_p256_scalar(canonical)
+    if scalar is not None:
+        canonical = base64.urlsafe_b64encode(scalar).rstrip(b"=").decode()
+    return (
+        hashlib.sha256(canonical.encode()).hexdigest()
+        in _RETIRED_VAPID_PRIVATE_KEY_DIGESTS
+    )
+
+
+def _der_encoded_p256_scalar(canonical: str) -> bytes | None:
+    """The 32-byte scalar of a DER-encoded P-256 private key, which py-vapid
+    reads too, or None for anything else: a raw key, or no key at all."""
+    try:
+        raw = base64.urlsafe_b64decode(canonical + "=" * (-len(canonical) % 4))
+    except (ValueError, binascii.Error):
+        return None
+    if len(raw) == 32:
+        return None
+    try:
+        key = serialization.load_der_private_key(raw, password=None)
+    except (ValueError, TypeError, UnsupportedAlgorithm):
+        return None
+    if not isinstance(key, ec.EllipticCurvePrivateKey) or not isinstance(
+        key.curve, ec.SECP256R1  # gitleaks:allow
+    ):
+        return None
+    return key.private_numbers().private_value.to_bytes(32, "big")
+
+
+def _canonical_vapid_key(value: str) -> str:
+    """The unpadded Base64url spelling of the bytes `value` decodes to, or
+    `value` without whitespace and padding when it does not decode. A copy
+    of `single-container/runtime_config.py`'s, which the package boundary
+    keeps apart; the pinned-spelling test in each suite holds the two in
+    step."""
+    compact = "".join(value.split()).rstrip("=")
+    try:
+        decoded = base64.b64decode(
+            compact.translate(_URLSAFE_TO_STANDARD) + "=" * (-len(compact) % 4),
+            validate=True,
+        )
+    except (ValueError, binascii.Error):
+        return compact
+    return base64.urlsafe_b64encode(decoded).rstrip(b"=").decode()
+
 
 def check_secrets(settings: Settings | None = None) -> None:
     """Raise if a required secret is missing or is a known-published value."""
-    secrets = (settings or Settings()).secrets
+    settings = settings or Settings()
+    _warn_on_published_credentials(settings)
+    _warn_on_missing_passwords(settings)
+    _warn_on_published_vapid_key(settings)
+    secrets = settings.secrets
     configured = {
         "ENCRYPTION_KEY": secrets.encryption_key,
         "UNSUBSCRIBE_SECRET_KEY": secrets.unsubscribe_secret_key,
@@ -79,3 +187,74 @@ def check_secrets(settings: Settings | None = None) -> None:
             "links cannot be signed. "
             + MISSING_HINT.replace("ENCRYPTION_KEY", "UNSUBSCRIBE_SECRET_KEY")
         )
+
+
+def _warn_on_published_vapid_key(settings: Settings) -> None:
+    if not vapid_private_key_is_published(settings.secrets.vapid_private_key):
+        return
+    logger.warning(
+        "[SECURITY] VAPID_PRIVATE_KEY is the Web Push key pair published in this "
+        "repository's public .env.default, so anyone can sign push notifications "
+        f"to this site's users. No push is sent until it is replaced. {VAPID_HINT}"
+    )
+
+
+def _warn_on_published_credentials(settings: Settings) -> None:
+    """Warn about each service password that is a published value. The service
+    keeps working on it; anyone who can reach that service can log in too."""
+    credentials = {
+        f"The database password in {name}": _url_password(os.environ.get(name, ""))
+        for name in ("DATABASE_URL", "DIRECT_URL")
+    }
+    credentials |= {
+        "RABBITMQ_DEFAULT_PASS": settings.secrets.rabbitmq_default_pass,
+        "REDIS_PASSWORD": settings.config.redis_password,
+        "GRAPHITI_FALKORDB_PASSWORD": os.environ.get("GRAPHITI_FALKORDB_PASSWORD", ""),
+    }
+    for name, value in credentials.items():
+        digest = hashlib.sha256(value.encode()).hexdigest()
+        if value and digest in _PUBLISHED_CREDENTIAL_DIGESTS:
+            logger.warning(
+                f"[SECURITY] {name} is a password published in this repository's "
+                f"public .env.default files, so anyone can know it. {CREDENTIAL_HINT}"
+            )
+
+
+def _warn_on_missing_passwords(settings: Settings) -> None:
+    """Warn about each Compose service the backend uses that has no password:
+    Redis then lets anyone on its networks in, and the others don't work."""
+    # `redis-0` is the Compose cluster, whose shards take REDIS_PASSWORD from
+    # backend/.env; one from before they had a password runs them without one.
+    if settings.config.redis_host == "redis-0" and not settings.config.redis_password:
+        logger.warning(
+            "[SECURITY] The Docker Compose Redis cluster has no password, so any "
+            f"container on its networks can read and change it. {CREDENTIAL_HINT}"
+        )
+    # A backend/.env from before these two had lines took them from
+    # .env.default, which now leaves them blank for `make init-env` to fill.
+    # Compose's FalkorDB stops without one, and RabbitMQ refuses a blank one.
+    if os.environ.get("GRAPHITI_FALKORDB_HOST") == "falkordb" and not os.environ.get(
+        "GRAPHITI_FALKORDB_PASSWORD"
+    ):
+        logger.warning(
+            "GRAPHITI_FALKORDB_PASSWORD is not set, so the Docker Compose FalkorDB "
+            f"doesn't start and memory is unavailable. {CREDENTIAL_HINT}"
+        )
+    if (
+        settings.config.rabbitmq_host == "rabbitmq"
+        and not settings.secrets.rabbitmq_default_pass
+    ):
+        logger.warning(
+            "RABBITMQ_DEFAULT_PASS is not set, so the backend can't log in to the "
+            f"Docker Compose RabbitMQ. {CREDENTIAL_HINT}"
+        )
+
+
+def _url_password(url: str) -> str:
+    """A connection string's password, decoded, or nothing for one urllib can't
+    take apart (a `[` or `]` it reads as part of an IPv6 address): the database
+    client reports that one, and a warning must not stop the process first."""
+    try:
+        return unquote(urlsplit(url).password or "")
+    except ValueError:
+        return ""

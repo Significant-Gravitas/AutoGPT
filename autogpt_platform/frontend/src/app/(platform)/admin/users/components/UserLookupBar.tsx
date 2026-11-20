@@ -64,7 +64,7 @@ export function UserLookupBar({
         </Button>
       </div>
       {showHint ? (
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" tone="muted">
           Exact match only: a full user ID or the complete email address.
         </Text>
       ) : null}

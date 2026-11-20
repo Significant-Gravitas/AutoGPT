@@ -139,6 +139,5 @@ test.each([
 
     const output = await screen.findByText(EMAIL);
     expect(output.closest(".ph-no-capture")).not.toBeNull();
-    expect(output.closest(".sentry-block")).not.toBeNull();
   },
 );

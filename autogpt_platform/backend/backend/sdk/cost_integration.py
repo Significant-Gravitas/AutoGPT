@@ -10,7 +10,11 @@ from typing import Iterable, List, Type, TypeVar
 
 from backend.blocks._base import Block, BlockCost
 from backend.data.block_cost_config import BLOCK_COSTS
-from backend.data.model import Credentials
+from backend.data.model import (
+    PLATFORM_FUNDED_COST_KEY,
+    PLATFORM_FUNDED_MANAGED_PROVIDERS,
+    Credentials,
+)
 from backend.integrations.credentials_store import DEFAULT_CREDENTIALS
 from backend.sdk.provider import Provider
 from backend.sdk.registry import AutoRegistry
@@ -29,7 +33,9 @@ def register_provider_costs_for_block(block_class: Type[Block]) -> None:
 
     Like the rest of BLOCK_COSTS, a priced base cost only applies when the run
     uses a platform-provided credential: each one is registered with a
-    ``cost_filter`` on that credential's id, so runs with the user's own key
+    ``cost_filter`` on that credential's id, or on the platform-funded marker
+    for a provider whose managed per-user key the platform pays for (see
+    ``PLATFORM_FUNDED_MANAGED_PROVIDERS``), so runs with the user's own key
     stay free. Free base costs (``BlockCost.is_free``) stay unfiltered.
 
     Args:
@@ -98,6 +104,9 @@ def _platform_priced_costs(provider: Provider, field_name: str) -> List[BlockCos
     """The provider's base costs, each gated on one of its platform credentials
     in ``field_name``. Free costs charge nothing, so they stay unfiltered."""
     platform_ids = _platform_credential_ids(provider.name, provider.default_credentials)
+    credential_filters: List[dict] = [{"id": cred_id} for cred_id in platform_ids]
+    if provider.name in PLATFORM_FUNDED_MANAGED_PROVIDERS:
+        credential_filters.append({PLATFORM_FUNDED_COST_KEY: True})
     costs: List[BlockCost] = []
     for base_cost in provider.base_costs:
         if base_cost.is_free:
@@ -108,11 +117,11 @@ def _platform_priced_costs(provider: Provider, field_name: str) -> List[BlockCos
                 update={
                     "cost_filter": {
                         **base_cost.cost_filter,
-                        field_name: {"id": cred_id},
+                        field_name: credential_filter,
                     }
                 }
             )
-            for cred_id in platform_ids
+            for credential_filter in credential_filters
         )
     return costs
 

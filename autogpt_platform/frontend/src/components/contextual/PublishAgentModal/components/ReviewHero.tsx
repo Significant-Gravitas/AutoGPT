@@ -89,13 +89,14 @@ export function ReviewHero({
               : { type: "spring", stiffness: 280, damping: 20, delay: 0.05 }
           }
           className={cn(
+            // oxlint-disable-next-line design-system/no-arbitrary-values -- brand-tinted glow, no shadow token for it
             "relative flex size-20 items-center justify-center rounded-full bg-gradient-to-br shadow-[0_8px_24px_-8px_rgba(119,51,245,0.45)]",
             hero.gradient,
           )}
         >
           <span
             aria-hidden
-            className="absolute inset-1 rounded-full bg-white/10"
+            className="absolute inset-1 rounded-full bg-surface/10"
           />
           <motion.span
             initial={
@@ -112,7 +113,7 @@ export function ReviewHero({
                     delay: 0.18,
                   }
             }
-            className="text-white"
+            className="text-action-foreground"
           >
             <Icon icon={hero.Icon} size={36} />
           </motion.span>
@@ -125,15 +126,10 @@ export function ReviewHero({
         transition={{ duration: 0.24, ease: "easeOut", delay: 0.12 }}
         className="mt-5 flex max-w-md flex-col items-center gap-2 px-2 text-center"
       >
-        <Text
-          variant="lead-medium"
-          as="h2"
-          className="text-textBlack"
-          data-testid="view-agent-name"
-        >
+        <Text variant="lead-medium" as="h2" data-testid="view-agent-name">
           {hero.title}
         </Text>
-        <Text variant="body" className="text-zinc-600">
+        <Text variant="body" tone="secondary">
           {hero.description}
         </Text>
       </motion.div>

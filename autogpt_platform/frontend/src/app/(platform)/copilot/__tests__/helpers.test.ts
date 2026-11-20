@@ -179,8 +179,8 @@ describe("shouldSuppressDuplicateSend", () => {
     ).toBe(false);
   });
 
-  it("suppresses when text matches last submitted AND last user message", () => {
-    const messages = [makeMsg("user", "hello"), makeMsg("assistant", "hi")];
+  it("suppresses when text matches an unanswered last user message", () => {
+    const messages = [makeMsg("user", "hello")];
     expect(
       shouldSuppressDuplicateSend({
         text: "hello",
@@ -339,7 +339,20 @@ describe("getSendSuppressionReason", () => {
     ).toBe("reconnecting");
   });
 
-  it("returns 'duplicate' when text matches last submitted AND last user message", () => {
+  it("returns 'duplicate' while the echoed send is still unanswered", () => {
+    const messages = [makeMsg("user", "hello")];
+    expect(
+      getSendSuppressionReason({
+        text: "hello",
+        isReconnectScheduled: false,
+        lastSubmittedText: "hello",
+        messages,
+        status: "ready",
+      }),
+    ).toBe("duplicate");
+  });
+
+  it("sends the same text again once it has been answered", () => {
     const messages = [makeMsg("user", "hello"), makeMsg("assistant", "hi")];
     expect(
       getSendSuppressionReason({
@@ -347,15 +360,29 @@ describe("getSendSuppressionReason", () => {
         isReconnectScheduled: false,
         lastSubmittedText: "hello",
         messages,
+        status: "ready",
       }),
-    ).toBe("duplicate");
+    ).toBeNull();
+  });
+
+  it("sends the same text again after the previous turn was stopped", () => {
+    const messages = [
+      makeMsg("user", "hello"),
+      makeMsg("assistant", "[__COPILOT_ERROR_f7a1__] Operation cancelled"),
+    ];
+    expect(
+      getSendSuppressionReason({
+        text: "hello",
+        isReconnectScheduled: false,
+        lastSubmittedText: "hello",
+        messages,
+        status: "ready",
+      }),
+    ).toBeNull();
   });
 
   it("lets the same caption through when it carries other attachments", () => {
-    const messages = [
-      makeMsg("user", "summarize this"),
-      makeMsg("assistant", "ok"),
-    ];
+    const messages = [makeMsg("user", "summarize this")];
     expect(
       getSendSuppressionReason({
         text: "summarize this",
@@ -918,6 +945,30 @@ describe("getCopilotAuthHeaders", () => {
       "Authentication failed — please sign in again.",
     );
   });
+
+  it.each([
+    ["no session", { token: null }, false],
+    [
+      "a refused session",
+      { token: null, error: "401", retryable: false },
+      false,
+    ],
+    [
+      "a token service outage",
+      { token: null, error: "Service unavailable", retryable: true },
+      true,
+    ],
+  ])(
+    "says whether a lookup after %s can still succeed",
+    async (_case, answer, retryable) => {
+      mockGetWebSocketToken.mockResolvedValue(answer);
+
+      await expect(getCopilotAuthHeaders()).rejects.toMatchObject({
+        name: "CopilotAuthError",
+        retryable,
+      });
+    },
+  );
 });
 
 describe("isEngineSwitchPart", () => {

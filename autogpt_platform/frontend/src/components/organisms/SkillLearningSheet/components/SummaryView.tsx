@@ -44,9 +44,18 @@ export function SummaryView({
   const badgeLabel =
     version && !isCurrent ? version.state_label : detail.state_label;
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center gap-2">
-        <span data-testid="version-state">
+    <div
+      data-slot="skill-learning-sheet-summary"
+      className="flex flex-col gap-5"
+    >
+      <div
+        data-slot="skill-learning-sheet-summary-header"
+        className="flex flex-wrap items-center gap-2"
+      >
+        <span
+          data-slot="skill-learning-sheet-summary-state"
+          data-testid="version-state"
+        >
           <Badge variant={stateVariant(badgeState)}>{badgeLabel}</Badge>
         </span>
         {version ? (
@@ -73,19 +82,28 @@ export function SummaryView({
           <Text variant="body" tone="primary">
             {version.summary || version.description}
           </Text>
-          <section aria-label="Evidence">
+          <section
+            data-slot="skill-learning-sheet-summary-evidence"
+            aria-label="Evidence"
+          >
             <Text variant="small-medium" tone="primary">
               Evidence
             </Text>
-            <ul className="mt-1 flex flex-col gap-1">
+            <ul
+              data-slot="skill-learning-sheet-summary-evidence-list"
+              className="mt-1 flex flex-col gap-1"
+            >
               {(version.evidence ?? []).map((item) => (
-                <li key={`${item.kind}-${item.ref}-${item.label}`}>
+                <li
+                  key={`${item.kind}-${item.ref}-${item.label}`}
+                  data-slot="skill-learning-sheet-summary-evidence-item"
+                >
                   <Text variant="small" tone="secondary">
                     {item.label}
                   </Text>
                 </li>
               ))}
-              <li>
+              <li data-slot="skill-learning-sheet-summary-evidence-reuse">
                 <Text
                   variant="small"
                   tone="secondary"
@@ -97,13 +115,22 @@ export function SummaryView({
             </ul>
           </section>
           {(version.limits ?? []).length > 0 ? (
-            <section aria-label="Limits">
+            <section
+              data-slot="skill-learning-sheet-summary-limits"
+              aria-label="Limits"
+            >
               <Text variant="small-medium" tone="primary">
                 Limits
               </Text>
-              <ul className="mt-1 list-disc pl-4">
+              <ul
+                data-slot="skill-learning-sheet-summary-limits-list"
+                className="mt-1 list-disc pl-4"
+              >
                 {(version.limits ?? []).map((limit) => (
-                  <li key={limit}>
+                  <li
+                    key={limit}
+                    data-slot="skill-learning-sheet-summary-limits-item"
+                  >
                     <Text variant="small" tone="secondary">
                       {limit}
                     </Text>
@@ -124,8 +151,15 @@ export function SummaryView({
           No version has been published yet.
         </Text>
       )}
-      <section aria-label="Learning controls" className="flex flex-col gap-3">
-        <label className="flex items-center justify-between gap-3">
+      <section
+        aria-label="Learning controls"
+        data-slot="skill-learning-sheet-summary-controls"
+        className="flex flex-col gap-3"
+      >
+        <label
+          data-slot="skill-learning-sheet-summary-auto-improve"
+          className="flex items-center justify-between gap-3"
+        >
           <Text variant="small" tone="primary">
             Automatic improvements
           </Text>
@@ -136,7 +170,10 @@ export function SummaryView({
             onCheckedChange={(checked) => onPolicy({ auto_improve: checked })}
           />
         </label>
-        <div className="flex flex-wrap gap-2">
+        <div
+          data-slot="skill-learning-sheet-summary-pause-actions"
+          className="flex flex-wrap gap-2"
+        >
           <Button
             variant="secondary"
             size="small"
@@ -164,7 +201,10 @@ export function SummaryView({
           Pause learning stops future automatic changes only; stop using removes
           the skill from retrieval. Each is separate.
         </Text>
-        <div className="flex flex-wrap gap-2">
+        <div
+          data-slot="skill-learning-sheet-summary-edit-actions"
+          className="flex flex-wrap gap-2"
+        >
           <Button
             variant="secondary"
             size="small"

@@ -1,0 +1,439 @@
+{
+  "advisories": [
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-24q6-6h89-f9p7",
+      "release_tags": [
+        "autogpt-platform-beta-v0.8.0"
+      ],
+      "researchers": [
+        "daeungdaeung",
+        "programsurf",
+        "REYu6",
+        "sfwani"
+      ]
+    },
+    {
+      "cve_id": "CVE-2025-32392",
+      "ghsa_id": "GHSA-267x-8jx3-gg6w",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.63"
+      ],
+      "researchers": [
+        "AgentSec"
+      ]
+    },
+    {
+      "cve_id": "CVE-2026-72922",
+      "ghsa_id": "GHSA-349p-3c3r-8mjr",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.70"
+      ],
+      "researchers": [
+        "DavidCarliez",
+        "long2809-exploi"
+      ]
+    },
+    {
+      "cve_id": "CVE-2026-33232",
+      "ghsa_id": "GHSA-374w-2pxq-c9jp",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.52"
+      ],
+      "researchers": [
+        "dxlerYT"
+      ]
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-3cwv-4w3r-xqff",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.66"
+      ],
+      "researchers": [
+        "YLChen-007"
+      ]
+    },
+    {
+      "cve_id": "CVE-2025-22603",
+      "ghsa_id": "GHSA-4c8v-hwxc-2356",
+      "release_tags": [
+        "autogpt-platform-beta-v0.4.2"
+      ],
+      "researchers": [
+        "AgentSec"
+      ]
+    },
+    {
+      "cve_id": "CVE-2026-26020",
+      "ghsa_id": "GHSA-4crw-9p35-9x54",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.48"
+      ],
+      "researchers": [
+        "222n5"
+      ]
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-4hqw-7f5j-5v66",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.66"
+      ],
+      "researchers": [
+        "Fried-Squid"
+      ]
+    },
+    {
+      "cve_id": "CVE-2026-33234",
+      "ghsa_id": "GHSA-4jwj-6mg5-wrwf",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.52"
+      ],
+      "researchers": [
+        "pavanchow"
+      ]
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-4m2w-qfr5-9f3v",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.68"
+      ],
+      "researchers": []
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-57mf-wqwq-6g6x",
+      "release_tags": [
+        "autogpt-platform-beta-v0.8.0"
+      ],
+      "researchers": [
+        "360AlphaLab",
+        "daeungdaeung",
+        "programsurf",
+        "sfwani",
+        "yoonsh"
+      ]
+    },
+    {
+      "cve_id": "CVE-2025-32393",
+      "ghsa_id": "GHSA-5cqw-g779-9f9x",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.32"
+      ],
+      "researchers": [
+        "AgentSec"
+      ]
+    },
+    {
+      "cve_id": "CVE-2023-37274",
+      "ghsa_id": "GHSA-5h38-mgp9-rj5f",
+      "release_tags": [
+        "v0.4.3"
+      ],
+      "researchers": [
+        "lukas-eu"
+      ]
+    },
+    {
+      "cve_id": "CVE-2025-32424",
+      "ghsa_id": "GHSA-7g34-7fvq-xxq6",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.63"
+      ],
+      "researchers": [
+        "AgentSec"
+      ]
+    },
+    {
+      "cve_id": "CVE-2026-45023",
+      "ghsa_id": "GHSA-8pjg-mfqm-vrhr",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.59"
+      ],
+      "researchers": [
+        "1024wlsdud",
+        "CYC4D",
+        "Greg-Kim",
+        "Mirr2",
+        "S4nso",
+        "ygboy777-alt"
+      ]
+    },
+    {
+      "cve_id": "CVE-2026-56663",
+      "ghsa_id": "GHSA-8qc5-rhmg-r6r6",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.52"
+      ],
+      "researchers": [
+        "222n5"
+      ]
+    },
+    {
+      "cve_id": "CVE-2025-32394",
+      "ghsa_id": "GHSA-955p-gpfx-r66j",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.32"
+      ],
+      "researchers": [
+        "AgentSec"
+      ]
+    },
+    {
+      "cve_id": "CVE-2025-31494",
+      "ghsa_id": "GHSA-958f-37vw-jx8f",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.1"
+      ],
+      "researchers": []
+    },
+    {
+      "cve_id": "CVE-2025-32422",
+      "ghsa_id": "GHSA-9fr4-9jj9-mhh6",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.63"
+      ],
+      "researchers": [
+        "AgentSec"
+      ]
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-c543-3829-f27q",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.66"
+      ],
+      "researchers": []
+    },
+    {
+      "cve_id": "CVE-2025-32436",
+      "ghsa_id": "GHSA-g26x-xwc5-7p44",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.63"
+      ],
+      "researchers": [
+        "AgentSec"
+      ]
+    },
+    {
+      "cve_id": "CVE-2025-62616",
+      "ghsa_id": "GHSA-ggc4-4fmm-9hmc",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.34"
+      ],
+      "researchers": [
+        "AgentSec"
+      ]
+    },
+    {
+      "cve_id": "CVE-2025-31491",
+      "ghsa_id": "GHSA-ggcm-93qg-gfhp",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.1"
+      ],
+      "researchers": [
+        "MegaManSec"
+      ]
+    },
+    {
+      "cve_id": "CVE-2026-55237",
+      "ghsa_id": "GHSA-j2cp-jg5q-38wj",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.62"
+      ],
+      "researchers": [
+        "sai-sh",
+        "TrebledJ"
+      ]
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-m2wr-7m3r-p52c",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.32"
+      ],
+      "researchers": [
+        "ltduc147"
+      ]
+    },
+    {
+      "cve_id": "CVE-2025-32423",
+      "ghsa_id": "GHSA-pppq-xx2w-7jpq",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.32"
+      ],
+      "researchers": [
+        "AgentSec"
+      ]
+    },
+    {
+      "cve_id": "CVE-2026-33235",
+      "ghsa_id": "GHSA-ppw9-h7rv-gwq9",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.52"
+      ],
+      "researchers": [
+        "Acce1erator-R"
+      ]
+    },
+    {
+      "cve_id": "CVE-2026-30950",
+      "ghsa_id": "GHSA-q58p-v9r9-7gqj",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.51"
+      ],
+      "researchers": [
+        "johnatzeropath",
+        "LeftenantZero"
+      ]
+    },
+    {
+      "cve_id": "CVE-2026-24780",
+      "ghsa_id": "GHSA-r277-3xc5-c79v",
+      "release_tags": [
+        "v0.6.44"
+      ],
+      "researchers": [
+        "rahulgovind"
+      ]
+    },
+    {
+      "cve_id": "CVE-2025-62615",
+      "ghsa_id": "GHSA-r55v-q5pc-j57f",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.34"
+      ],
+      "researchers": [
+        "AgentSec",
+        "daeungdaeung",
+        "lubroai",
+        "programsurf",
+        "yoonsh"
+      ]
+    },
+    {
+      "cve_id": "CVE-2023-37275",
+      "ghsa_id": "GHSA-r7f7-qrrv-3fjh",
+      "release_tags": [
+        "v0.4.3"
+      ],
+      "researchers": [
+        "lukas-eu"
+      ]
+    },
+    {
+      "cve_id": "CVE-2026-22038",
+      "ghsa_id": "GHSA-rc89-6g7g-v5v7",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.46"
+      ],
+      "researchers": [
+        "sivaadityacoder"
+      ]
+    },
+    {
+      "cve_id": "CVE-2026-33233",
+      "ghsa_id": "GHSA-rfg2-37xq-w4m9",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.52"
+      ],
+      "researchers": [
+        "222n5"
+      ]
+    },
+    {
+      "cve_id": "CVE-2025-32437",
+      "ghsa_id": "GHSA-rg6v-m9x9-7wf9",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.63"
+      ],
+      "researchers": [
+        "AgentSec"
+      ]
+    },
+    {
+      "cve_id": "CVE-2026-56823",
+      "ghsa_id": "GHSA-rq9m-xvc7-v9h6",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.64"
+      ],
+      "researchers": [
+        "daeungdaeung",
+        "lubroai",
+        "programsurf"
+      ]
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-vj3m-g4cv-8j93",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.66"
+      ],
+      "researchers": []
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-vm4v-5hgj-rq77",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.66"
+      ],
+      "researchers": []
+    },
+    {
+      "cve_id": "CVE-2025-32425",
+      "ghsa_id": "GHSA-vw3v-whvp-33v5",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.32"
+      ],
+      "researchers": [
+        "ljq-sec"
+      ]
+    },
+    {
+      "cve_id": "CVE-2025-31490",
+      "ghsa_id": "GHSA-wvjg-9879-3m7w",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.1"
+      ],
+      "researchers": [
+        "MegaManSec"
+      ]
+    },
+    {
+      "cve_id": "CVE-2023-37273",
+      "ghsa_id": "GHSA-x5gj-2chr-4ch6",
+      "release_tags": [
+        "v0.4.3"
+      ],
+      "researchers": [
+        "lukas-eu"
+      ]
+    },
+    {
+      "cve_id": "CVE-2025-53944",
+      "ghsa_id": "GHSA-x77j-qg2x-fgg6",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.16"
+      ],
+      "researchers": [
+        "geckosecurity",
+        "jjjutla",
+        "nkoorty"
+      ]
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-xxpr-ccx5-48mf",
+      "release_tags": [
+        "autogpt-platform-beta-v0.6.66"
+      ],
+      "researchers": [
+        "Fushuling",
+        "RacerZ-fighting"
+      ]
+    }
+  ],
+  "schema_version": 1
+}
