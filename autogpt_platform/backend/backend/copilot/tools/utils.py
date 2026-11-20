@@ -262,10 +262,12 @@ async def get_or_create_library_agent(
             raises LibraryAgentInAnotherOrganizationError.
 
     Returns:
-        LibraryAgent instance
+        LibraryAgent instance; an archived entry is reused as it is.
     """
     existing = await library_db().get_library_agent_by_graph_id(
         graph_id=graph.id, user_id=user_id
+    ) or await library_db().get_library_agent_by_graph_id(
+        graph_id=graph.id, user_id=user_id, include_archived=True
     )
     if existing:
         # Unique per user and graph, so another organization's entry can be

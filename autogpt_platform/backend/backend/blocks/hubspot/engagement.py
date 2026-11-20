@@ -9,6 +9,7 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.blocks.hubspot._auth import (
+    CONTACT_SCOPES,
     HubSpotCredentials,
     HubSpotCredentialsField,
     HubSpotCredentialsInput,
@@ -19,7 +20,7 @@ from backend.util.request import Requests
 
 class HubSpotEngagementBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: HubSpotCredentialsInput = HubSpotCredentialsField()
+        credentials: HubSpotCredentialsInput = HubSpotCredentialsField(CONTACT_SCOPES)
         operation: str = SchemaField(
             description="Operation to perform (send_email, track_engagement)",
             default="send_email",
@@ -56,7 +57,7 @@ class HubSpotEngagementBlock(Block):
     ) -> BlockOutput:
         base_url = "https://api.hubapi.com"
         headers = {
-            "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
+            "Authorization": credentials.auth_header(),
             "Content-Type": "application/json",
         }
 

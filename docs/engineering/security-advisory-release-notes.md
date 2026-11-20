@@ -9,11 +9,17 @@ publish its private advisories.
 
 1. Verify the fix in the release tag, not only on `dev`. Record the first release
    containing the fix. Distinguish a partial mitigation from a complete fix.
+   We don't ship partial mitigations. A release that carries only one, as an older
+   release may, is never an advisory's patched version.
 2. Add a link to that release in the advisory's description text, for example
    under a Fix or Release references heading. The helper searches the API's
-   `description` field; a link only in `references[].url` is insufficient.
+   `description` field, and the repository advisory API has no references field,
+   so the link goes in the description.
    Use numeric versions in package metadata; explain the corresponding Git tag
-   in the description. Do not replace the first fixed version with the latest
+   in the description. Code that never reached a release is the exception: its
+   range is `>= <introducing commit, 7 characters> (unreleased)`, a newline, then
+   `<= <fixing commit, 7 characters>`, and its patched version is the first
+   release whose tag carries the fix. Do not replace the first fixed version with the latest
    release used for validation.
 3. Preserve researcher names, consent and duplicate-report contributions. Use
    GitHub's Credits field and the researcher's chosen handle/profile link. Do not
@@ -48,10 +54,10 @@ diff; neither logs nor artifacts contain the raw response.
 The reader uses standard-library HTTPS with no authentication, credentials,
 proxy inheritance, redirects or authenticated retry. Pagination stays on this
 repository's public endpoint, with page, response-size and timeout limits.
-API failure, schema failure, incomplete pagination or ambiguous package
-attribution stops the run. There is no fallback to stale snapshots.
+API failure, schema failure or incomplete pagination stops the run. There is
+no fallback to stale snapshots.
 Known failures log only a fixed, enumerated reason, such as a changed public
-snapshot or an ambiguous release mapping. Exception text, chained errors and
+snapshot. Exception text, chained errors and
 response bodies are never printed; unexpected failures keep a generic message.
 
 The jobs have separate permissions and no shared report artifacts:
@@ -107,7 +113,7 @@ as the GitBook sync uses), and its CI runs like any other PR's. The job's own
 credential is used.
 
 Public release sections contain advisory links, CVEs and accepted credits, not
-arbitrary report text or titles. When a mapping or published advisory is removed,
+arbitrary report text or titles. When a release link or published advisory is removed,
 the next reconciliation removes its generated entry. If no entries remain, the
 managed section says none are currently linked. Historical snapshots and release
 history remain public history; withdrawal cannot erase previously published data.
@@ -176,15 +182,33 @@ closed record to its canonical advisory and preserve the original evidence and
 discussion. Closing a duplicate does not mean the vulnerability is fixed. Do
 not put private report IDs, attachments or discussion into a public advisory.
 
+## Name the packages
+
+Name the Platform source package `autogpt-platform-beta`. It matches the release
+tags, `autogpt-platform-beta-v<VERSION>`; the releases before 0.2.1 are tagged
+`agpt-platform-beta-v<VERSION>`, and 0.6.44 is tagged `v0.6.44`.
+
+Write each package row with the `other` ecosystem, the one value in the API's
+fixed list that fits. As the last step before publishing, a maintainer names the
+ecosystem in the web UI: Other, then "GitHub release" for the Platform row and
+"Docker" for an image row. GitHub stores its own form of the typed name, so read
+the rows back and use those strings. From then on nothing sends `vulnerabilities`
+through the API: a write that carries the renamed rows fails with 422, while one
+that leaves them out succeeds and keeps the names.
+
 ## Identify Docker distributions
 
 GitHub's [repository advisory API](https://docs.github.com/en/rest/security-advisories/repository-advisories#update-a-repository-security-advisory)
-has no Docker ecosystem option. Use `other` and the image's repository name:
+has no Docker ecosystem option. Write the row with `other` and the image's
+repository name, and name the ecosystem "Docker" before publishing, as above:
 
 | Distribution | Package name | Registry |
 | --- | --- | --- |
 | Platform single-container image | `significantgravitas/autogpt` | [Docker Hub](https://hub.docker.com/r/significantgravitas/autogpt) |
 | Classic image | `significantgravitas/auto-gpt` | [Docker Hub](https://hub.docker.com/r/significantgravitas/auto-gpt) |
+
+The first Platform release with a published image is 0.7.1 (Docker Hub tag
+`v0.7.1`), so an advisory whose affected range ends before 0.7.1 has no image row.
 
 Verify that the affected component ships in the image and that its runtime
 configuration exposes the reported path. Source-based Compose host mappings
@@ -205,24 +229,15 @@ in both the package metadata and the description.
 A published advisory is listed under a release when its description links that
 release's exact tag URL and one of its package rows gives that release's version
 as the patched version. Both are needed, so a release linked only for context,
-such as where a bug was introduced or validated, isn't credited with the fix.
+such as where a bug was introduced or validated, isn't credited with the fix. The
+link also names the product line, since Classic and Platform share version numbers.
 Withdrawn advisories are excluded, and a CVE is not required for a link.
 
-When an advisory's package rows agree on the fixed version, such as the Platform
-source and its Docker image both patched in 0.9.0, the release link and that
-version are enough. When the rows report different patched versions, for
-example a Classic row and a Platform row fixed in different releases, the
-description needs an explicit package-to-release mapping. Add one comment for
-each patched package, using the exact ecosystem and name from that row,
-alongside the human-readable release link:
-
-```html
-<!-- security-release: {"tag": "autogpt-platform-beta-v0.9.0", "package": {"ecosystem": "other", "name": "significantgravitas/autogpt"}} -->
-```
-
-The helper then requires the mapped row's patched version to match the release.
-Without a mapping, an advisory whose rows disagree stops generation so a
-maintainer can clarify it; it is not silently omitted.
+Each row pairs a package with its patched version, so a release is credited with
+the rows patched in it. When the rows report different patched versions, such as a
+Docker row patched one release after its Platform row because the first release has
+no image, link each release in the description, and each is listed with the rows it
+fixed. A row whose release isn't linked is credited to no release.
 
 `security_public_sync.public_release_notes` owns the `security-advisories` block
 in each release. Each reconciliation replaces that block with advisory links,

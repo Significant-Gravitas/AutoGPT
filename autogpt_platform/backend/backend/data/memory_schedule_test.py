@@ -25,8 +25,7 @@ def _row(**overrides) -> SimpleNamespace:
         "expertId": None,
         "timezone": "Europe/Paris",
         "state": ACTIVE,
-        "communityJobId": "community_rebuild_user-1",
-        "nightlyJobId": None,
+        "nightlyJobId": "dream_nightly_batch_user-1",
         "learningJobId": None,
         "lastNightlyRunAt": None,
         "lastCommunityRunAt": None,
@@ -60,9 +59,9 @@ async def test_get_matches_on_scope_and_owner(table):
         where={"scopeKey": "user-1", "userId": "user-1"}
     )
     assert row is not None
-    assert (row.scope_key, row.community_job_id) == (
+    assert (row.scope_key, row.nightly_job_id) == (
         "user-1",
-        "community_rebuild_user-1",
+        "dream_nightly_batch_user-1",
     )
 
 
@@ -148,7 +147,6 @@ async def test_record_jobs_only_writes_an_active_row(table):
         "user-1",
         "user-1",
         user_timezone="UTC",
-        community_job_id="c",
         nightly_job_id="n",
         learning_job_id="l",
     )
@@ -158,7 +156,6 @@ async def test_record_jobs_only_writes_an_active_row(table):
     assert where == {"scopeKey": "user-1", "userId": "user-1", "state": ACTIVE}
     assert table.update_many.await_args.kwargs["data"] == {
         "timezone": "UTC",
-        "communityJobId": "c",
         "nightlyJobId": "n",
         "learningJobId": "l",
     }
@@ -172,7 +169,6 @@ async def test_leaving_active_forgets_the_job_ids(table):
         "where": {"scopeKey": "user-1", "userId": "user-1"},
         "data": {
             "state": PAUSED,
-            "communityJobId": None,
             "nightlyJobId": None,
             "learningJobId": None,
         },
@@ -206,23 +202,21 @@ async def test_a_guarded_state_change_only_moves_those_states(table):
 
 @pytest.mark.asyncio
 async def test_forget_clears_whichever_column_holds_the_job(table):
-    table.update_many.side_effect = [0, 1, 0]
+    table.update_many.side_effect = [1, 0]
 
     assert await memory_schedule.forget_scope_job("user-1", "user-1", "job-1")
 
-    community, nightly, learning = table.update_many.await_args_list
-    assert community.kwargs["where"]["communityJobId"] == "job-1"
+    nightly, learning = table.update_many.await_args_list
+    assert nightly.kwargs["where"]["nightlyJobId"] == "job-1"
     assert nightly.kwargs["data"] == {"nightlyJobId": None}
     assert learning.kwargs["where"]["learningJobId"] == "job-1"
     assert learning.kwargs["data"] == {"learningJobId": None}
-    assert all(
-        c.kwargs["where"]["userId"] == "user-1" for c in (community, nightly, learning)
-    )
+    assert all(c.kwargs["where"]["userId"] == "user-1" for c in (nightly, learning))
 
 
 @pytest.mark.asyncio
 async def test_forget_finds_the_learning_job(table):
-    table.update_many.side_effect = [0, 0, 1]
+    table.update_many.side_effect = [0, 1]
 
     assert await memory_schedule.forget_scope_job(
         "user-1", "user-1", "skill_learning_nightly_user-1"

@@ -21,9 +21,10 @@ from .pass_run import DreamPassRun
 from .schemas import DreamOperations
 
 _DEADLINE = 0.2
-# Generous against a slow CI box, and far below one retry backoff (~1 s) or
-# the client's own 300 s request timeout.
-_BOUND = 2.0
+# Far longer than the deadline the tests set, as a CI runner can stall a test
+# for seconds, and still short of the store's own default, so a store that
+# ignored the set deadline still fails.
+_BOUND = 0.8 * store.RECORD_WRITE_TIMEOUT_SECONDS
 
 
 class _Hanging(httpx.AsyncBaseTransport):
@@ -91,13 +92,11 @@ async def test_a_stalled_update_costs_the_deadline_and_is_cancelled(
 ):
     hanging = _Hanging()
     rpc_over(hanging, retry)
-    loop = asyncio.get_running_loop()
 
-    started = loop.time()
-    with caplog.at_level(logging.WARNING, logger=store.logger.name):
-        await store.record_next_batch("p1", "recombine", "batch-1")
+    async with asyncio.timeout(_BOUND):
+        with caplog.at_level(logging.WARNING, logger=store.logger.name):
+            await store.record_next_batch("p1", "recombine", "batch-1")
 
-    assert loop.time() - started < _BOUND
     assert (hanging.requests, hanging.cancelled) == (1, 1)
     assert "could not record the next batch" in caplog.text
 
@@ -105,17 +104,15 @@ async def test_a_stalled_update_costs_the_deadline_and_is_cancelled(
 async def test_a_stalled_insert_costs_the_deadline(deadline, rpc_over, caplog):
     hanging = _Hanging()
     rpc_over(hanging, True)
-    loop = asyncio.get_running_loop()
 
-    started = loop.time()
-    with caplog.at_level(logging.WARNING, logger=store.logger.name):
-        confirmed = await store.start_pass(
-            DreamPassRun.begin("u1", "sync_baseline"),
-            MemoryScope.for_user("u1"),
-            trigger="cron",
-        )
+    async with asyncio.timeout(_BOUND):
+        with caplog.at_level(logging.WARNING, logger=store.logger.name):
+            confirmed = await store.start_pass(
+                DreamPassRun.begin("u1", "sync_baseline"),
+                MemoryScope.for_user("u1"),
+                trigger="cron",
+            )
 
-    assert loop.time() - started < _BOUND
     assert hanging.cancelled == 1
     assert confirmed is False, "an insert that may land later is not confirmed"
     assert "could not insert its record" in caplog.text
@@ -126,12 +123,10 @@ async def test_the_deadline_covers_the_clients_retries(deadline, rpc_over, caplo
     hundred of them; the write deadline cuts all of that short."""
     refusing = _Refusing()
     rpc_over(refusing, True)
-    loop = asyncio.get_running_loop()
 
-    started = loop.time()
-    with caplog.at_level(logging.WARNING, logger=store.logger.name):
-        await store.record_applying("p1", DreamOperations())
+    async with asyncio.timeout(_BOUND):
+        with caplog.at_level(logging.WARNING, logger=store.logger.name):
+            await store.record_applying("p1", DreamOperations())
 
-    assert loop.time() - started < _BOUND
     assert refusing.requests >= 1
     assert "could not record the start of apply" in caplog.text

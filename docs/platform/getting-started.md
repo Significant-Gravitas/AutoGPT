@@ -1,3 +1,9 @@
+---
+description: >-
+  Self-host the AutoGPT AI agent platform for free on your own servers or
+  on-premises: one Docker command, your own model API keys.
+---
+
 # Getting Started with AutoGPT: Self-Hosting Guide
 
 ## Introduction
@@ -11,6 +17,9 @@ to do it:
 - **[Manual Setup](#manual-setup)** clones the repository and builds every
   service with Docker Compose. Use it to develop AutoGPT, or to run each
   service in its own container.
+
+To use AutoGPT without hosting it yourself, see the
+[hosted plans and pricing](https://agpt.co/pricing/).
 
 {% hint style="warning" %}
 **DO NOT FOLLOW ANY OUTSIDE TUTORIALS AS THEY WILL LIKELY BE OUT OF DATE**
@@ -173,8 +182,9 @@ To run the platform, follow these steps:
   This copies each `.env.default` to `.env` (for `autogpt_platform`, `backend`
   and `frontend`) and fills in the secrets that `.env.default` deliberately
   leaves blank — `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY`,
-  `INTERNAL_API_KEY`, `BETTER_AUTH_SECRET`, and the passwords of the database,
-  RabbitMQ, Redis and FalkorDB — with values generated for your machine. Those
+  `INTERNAL_API_KEY`, `BAN_RECORD_HASH_KEY`, `BETTER_AUTH_SECRET`, and the
+  passwords of the database, RabbitMQ, Redis and FalkorDB — with values
+  generated for your machine. Those
   files are public, so shipping working values in them would mean every install
   in the world shared one publicly-readable key. It never overwrites an
   existing `.env` or a value you set yourself, and you can then edit the `.env`
@@ -193,6 +203,7 @@ To run the platform, follow these steps:
    docker compose up -d --build
   ```
   This command will start all the necessary backend services defined in the `docker-compose.yml` file in detached mode.
+  Building the frontend image needs more than 8 GiB of memory available to Docker: its build step alone peaks at about 7.5 GiB.
 
 ---
 

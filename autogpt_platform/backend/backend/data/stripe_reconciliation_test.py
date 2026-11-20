@@ -164,7 +164,9 @@ async def test_sweep_upgrades_downgrades_and_skips_unchanged(
     assert summary.downgrades == 1
     assert summary.unchanged == 1
     assert summary.errors == 0
-    set_tier.assert_awaited_once_with("u_down", SubscriptionTier.NO_TIER)
+    set_tier.assert_awaited_once_with(
+        "u_down", SubscriptionTier.NO_TIER, track_lifecycle=False
+    )
     assert reconcile_pro.await_count == 2
     reconcile_pro.assert_any_await(candidates[0], _sub("cus_keep", "price_pro"))
     reconcile_pro.assert_any_await(candidates[1], _sub("cus_up", "price_pro"))
@@ -608,7 +610,9 @@ async def test_failed_trial_resync_skips_only_its_customer(
 
     summary = await reconcile_all_stripe_tiers()
 
-    set_tier.assert_awaited_once_with("u_gone", SubscriptionTier.NO_TIER)
+    set_tier.assert_awaited_once_with(
+        "u_gone", SubscriptionTier.NO_TIER, track_lifecycle=False
+    )
     assert summary.pagination_capped is False
     assert summary.skipped_incomplete == 0
     assert summary.downgrades == 1
@@ -755,6 +759,8 @@ async def test_failed_trial_without_customer_is_alerted_but_skips_nobody(
 
     summary = await reconcile_all_stripe_tiers()
 
-    set_tier.assert_awaited_once_with("u_gone", SubscriptionTier.NO_TIER)
+    set_tier.assert_awaited_once_with(
+        "u_gone", SubscriptionTier.NO_TIER, track_lifecycle=False
+    )
     assert summary.errors == 0
     assert summary.failed_trial_subscriptions == ["sub_cus_x"]
