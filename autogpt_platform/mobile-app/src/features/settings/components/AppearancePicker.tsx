@@ -60,7 +60,7 @@ export function AppearancePicker() {
 }
 
 const useStyles = createStyles((colors) => ({
-  section: { gap: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
+  section: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   heading: { ...type.small, color: colors.textTertiary },
   track: {
     flexDirection: "row",
