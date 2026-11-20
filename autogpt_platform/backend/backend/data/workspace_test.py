@@ -218,3 +218,32 @@ async def test_a_rename_past_the_path_limit_is_refused(server: SpinTestServer):
         await rename_workspace_file(file_id, workspace, "n" * 200)
 
     assert await get_workspace_file_by_path(workspace, f"{folder}/a.txt") is not None
+
+
+@pytest.mark.asyncio
+async def test_list_workspace_files_name_and_path_filters_are_literal(mocker):
+    """`_`/`%` in the name filter and path prefixes match literally (#15660),
+    in the count as in the listing."""
+    files = mocker.patch("prisma.models.UserWorkspaceFile.prisma").return_value
+    files.find_many = mocker.AsyncMock(return_value=[])
+    files.count = mocker.AsyncMock(return_value=0)
+
+    await workspace_db.list_workspace_files(
+        "ws-1",
+        path_prefix="/my_dir/",
+        path_not_starts_with="/50%/",
+        name_contains="a_b",
+        allowed_path_prefixes=["/sessions/s_1/"],
+    )
+    await workspace_db.count_workspace_files(
+        "ws-1", path_prefix="/my_dir/", allowed_path_prefixes=["/sessions/s_1/"]
+    )
+
+    where = files.find_many.call_args.kwargs["where"]
+    assert where["name"] == {"contains": r"a\_b", "mode": "insensitive"}
+    assert where["path"] == {"startswith": r"/my\_dir/"}
+    assert where["NOT"] == [{"path": {"startswith": r"/50\%/"}}]
+    assert where["AND"] == [{"OR": [{"path": {"startswith": r"/sessions/s\_1/"}}]}]
+    counted = files.count.call_args.kwargs["where"]
+    assert counted["path"] == where["path"]
+    assert counted["AND"] == where["AND"]

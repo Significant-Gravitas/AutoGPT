@@ -27,7 +27,7 @@ from backend.copilot.model import (
 )
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.sdk import tool_adapter
-from backend.copilot.sdk.computer_use_approval import computer_subject
+from backend.copilot.sdk.computer_use_approval import _ASKS, _WRITES, computer_subject
 from backend.copilot.tools.local_pc_shim import ComputerUseDriver, LocalPCShim
 from backend.copilot.trial_cost_context import TrialCostContext
 from backend.util.json import sanitize_json
@@ -680,3 +680,61 @@ def test_an_empty_disk_argument_is_an_ordinary_call():
     )
 
     assert subject.key == "local_pc_computer"
+
+
+def test_a_click_that_saves_a_debug_screenshot_asks_as_a_screenshot_does():
+    """On a Mac a click can save a picture of the window before it clicks. Its
+    card read "Use a file on your computer" and did not warn that the file
+    could replace one."""
+    spec = {
+        "name": "click",
+        "approval_arguments": {
+            "debug_image_out": "writes a screenshot to this file before it clicks"
+        },
+    }
+
+    subject = computer_subject(
+        "click",
+        {"pid": 4, "x": 10, "y": 20, "debug_image_out": "/Users/me/a.png"},
+        spec,
+    )
+
+    assert subject.name == "Save a screenshot on your computer"
+    assert subject.irreversible is True
+    assert subject.preview is not None
+    assert subject.preview.ask == "Save a screenshot on your computer"
+    assert subject.preview.object == "/Users/me/a.png"
+
+
+# Every (tool, argument) the companion holds for the user's approval, and
+# which of those arguments write a file: `APPROVAL_ARGUMENTS` in its
+# `autogpt_local_executor/computer_use/catalog.py`, as of companion 0824def.
+# The companion is not in this repository yet, so the list is copied here.
+# An argument added there needs its card text and, if it writes a file, its
+# place in `_WRITES`; then add it to this list.
+_COMPANION_APPROVAL_ARGUMENTS = {
+    ("get_window_state", "screenshot_out_file"),
+    ("get_desktop_state", "screenshot_out_file"),
+    ("click", "debug_image_out"),
+    ("clipboard_write", "file_path"),
+    ("clipboard_write", "image_path"),
+    ("browser_set_input_files", "files"),
+    ("run_script", "script"),
+    ("launch_app", "launch_path"),
+    ("launch_app", "path"),
+    ("launch_app", "additional_arguments"),
+    ("launch_app", "urls"),
+    ("launch_app", "webkit_inspector_port"),
+}
+_COMPANION_FILE_WRITING_ARGUMENTS = {"screenshot_out_file", "debug_image_out"}
+
+
+def test_every_approval_argument_of_the_companion_has_its_own_card_text():
+    """An argument with no entry still asks, but as "Use a file on your
+    computer", which says nothing about what the call does."""
+    assert set(_ASKS) == _COMPANION_APPROVAL_ARGUMENTS
+
+
+def test_every_argument_that_writes_a_file_warns_it_can_replace_one():
+    assert _WRITES == _COMPANION_FILE_WRITING_ARGUMENTS
+    assert _WRITES <= {argument for _tool, argument in _ASKS}
