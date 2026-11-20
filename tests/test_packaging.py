@@ -125,13 +125,20 @@ _FORMER_LABEL_FILE = "autogpt_local_executor/install.py"
 _FORMER_LABEL_LINE = b"FORMER_LAUNCHD_LABEL = " + b'"net.' + b'autogpt.shim"'
 
 
+# The domain as whole labels, either way round. A label is letters, digits
+# and hyphens, so a longer name that only holds these letters (a host under
+# `.network`, a label that ends in `net`) is some other domain's.
+_OTHER_DOMAIN = re.compile(rb"(?<![a-z0-9-])autogpt\.net(?![a-z0-9-])")
+_OTHER_DOMAIN_REVERSED = re.compile(rb"(?<![a-z0-9-])net\.autogpt(?![a-z0-9-])")
+
+
 def _names_the_other_domain(path: Path, line: bytes) -> bool:
     """Whether `line` of `path` names the domain that isn't the project's,
     either way round, in any letter case."""
     lowered = line.lower()
-    if b"autogpt" + b".net" in lowered:
+    if _OTHER_DOMAIN.search(lowered):
         return True
-    if b"net." + b"autogpt" not in lowered:
+    if not _OTHER_DOMAIN_REVERSED.search(lowered):
         return False
     return (path.relative_to(ROOT).as_posix(), line.strip()) != (
         _FORMER_LABEL_FILE,
@@ -151,6 +158,11 @@ def test_the_check_for_the_other_domain_sees_it_either_way_round() -> None:
     assert _names_the_other_domain(docs, b"`launchctl kickstart -k gui/501/" + label + b"`")
     assert _names_the_other_domain(docs, b"~/Library/LaunchAgents/NET." + b"AutoGPT.shim.plist")
     assert not _names_the_other_domain(docs, b"`launchctl kickstart -k gui/501/co.agpt.shim`")
+    # Whole labels only: a name that merely holds those letters is another's.
+    assert not _names_the_other_domain(docs, b"https://pla" + b"net." + b"autogpt.example/")
+    assert not _names_the_other_domain(docs, b"the " + b"autogpt" + b".network folder")
+    assert not _names_the_other_domain(docs, b"see my" + b"autogpt" + b".net for more")
+    assert _names_the_other_domain(docs, b"wss://ws." + b"autogpt" + b".net:443/x")
     # Only the line that keeps the earlier label, and only as it stands.
     assert not _names_the_other_domain(install, b"    " + _FORMER_LABEL_LINE)
     assert _names_the_other_domain(install, b'LAUNCHD_LABEL = "' + label + b'"')
