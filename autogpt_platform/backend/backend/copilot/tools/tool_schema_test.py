@@ -316,6 +316,12 @@ from ._test_data import make_session
 #     dev 7ca3671f6a                              77,726 (89 tools)
 #     + #11220's two arguments        +178        77,904 (89 tools)
 #     + headroom                      +300        78,204
+# Raised 78_204 -> 78_693 for end_interview, the onboarding interview's end
+# signal. Every other kind of session hides it (``interview_disabled_tools``),
+# so the wire budget below does not move. Measured on this branch, which is
+# dev a8af1a85568 plus the interview:
+#     merged tree                                 78,393 (90 tools)
+#     + headroom                      +300        78,693
 # render_ui's block schema adds its whole size. Only sessions with
 # copilot-visual-answers on declare it:
 #     dev + render_ui                 +4,402      82,606
@@ -330,8 +336,12 @@ from ._test_data import make_session
 # Measured on PR #16677 merged with latest dev:
 #     merged tree                                 83,410
 #     + headroom                       +300       83,710
+# Re-measured on the onboarding interview merged with dev 93d5ab1abb, which
+# carries every line above: end_interview beside render_ui.
+#     merged tree                                 83,904
+#     + headroom                       +300       84,204
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_CHAR_BUDGET = 83_710
+_CHAR_BUDGET = 84_204
 
 
 @pytest.fixture(scope="module")
@@ -610,6 +620,7 @@ def _largest_session_wire_chars() -> int:
     )
     from backend.copilot.tools import (
         expert_tool_disabled_groups,
+        interview_disabled_tools,
         origin_disabled_tools,
         tool_names_in_groups,
     )
@@ -629,6 +640,7 @@ def _largest_session_wire_chars() -> int:
     )
     hidden |= set(BASELINE_ONLY_MCP_TOOLS) | {"get_agent_building_guide"}
     hidden |= origin_disabled_tools("interactive")
+    hidden |= interview_disabled_tools("normal")
 
     total = sum(
         wire(name, tool.description, _build_input_schema(tool))

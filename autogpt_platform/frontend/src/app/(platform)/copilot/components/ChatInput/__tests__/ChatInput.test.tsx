@@ -483,6 +483,19 @@ describe("ChatInput + menu entries", () => {
     expect(screen.queryByRole("menuitem", { name: "Voice mode" })).toBeNull();
   });
 
+  it("offers no + menu in a text-only composer, keeping its recipient picker", () => {
+    render(
+      <ChatInput
+        onSend={mockOnSend}
+        textOnly
+        recipientPicker={<span>To Max</span>}
+      />,
+    );
+
+    expect(screen.getByText("To Max")).toBeDefined();
+    expect(screen.queryByTestId("attachment-menu")).toBeNull();
+  });
+
   it("disables Voice mode while it cannot start", () => {
     render(
       <ChatInput

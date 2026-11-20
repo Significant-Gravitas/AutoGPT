@@ -41,6 +41,20 @@ export function whenSkipSettled() {
   return pendingSkip;
 }
 
+// A skip from a step with no take of its own (the interview): the skipped take
+// alone, which the plan step waits on like any other skip.
+export function recordSkippedTake() {
+  const skip = finalizeBrainDump({
+    recording_id: newRecordingId(),
+    input_mode: "skipped",
+  }).then(
+    () => undefined,
+    () => undefined,
+  );
+  pendingSkip = skip;
+  return skip;
+}
+
 const INSUFFICIENT_SOURCE = { from: "insufficient" } as const;
 
 export type ScreenState =

@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from openai.types.chat.chat_completion_chunk import ChoiceDelta
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -291,6 +291,32 @@ def anthropic_thinking_extra_body(
             "budget_tokens": max_thinking_tokens,
         }
     }
+
+
+# Models whose thinking a turn can switch off outright: Haiku 5 thinks
+# adaptively unless told not to, and accepts "off" at its default effort.
+# Other 5-family models refuse an explicit off switch (Sonnet 5.5 takes a
+# different shape, Opus 5.5 none at all), so they keep their default.
+_THINKING_OFF_PREFIXES: tuple[str, ...] = ("claude-haiku-5",)
+
+
+def thinking_off_extra_body(
+    model: str, provider: Literal["local", "openrouter", "anthropic"]
+) -> dict[str, Any]:
+    """The ``extra_body`` fragment that turns thinking off for *model*.
+
+    Empty where there is nothing to switch off, or no switch the model
+    accepts: a local backend, a model that only thinks when asked, or a
+    model with no off switch. OpenRouter takes its own ``reasoning``
+    wrapper; Anthropic's endpoint takes the native ``thinking`` field.
+    """
+    if provider == "local":
+        return {}
+    if not strip_anthropic_vendor_prefix(model).startswith(_THINKING_OFF_PREFIXES):
+        return {}
+    if provider == "openrouter":
+        return {"reasoning": {"enabled": False}}
+    return {"thinking": {"type": "disabled"}}
 
 
 class BaselineReasoningEmitter:

@@ -85,6 +85,42 @@ describe("PostHogProvider", () => {
     ]);
   });
 
+  it("records requests in session replays without their query strings", async () => {
+    const { PostHogProvider } = await import("../posthog-provider");
+
+    render(<PostHogProvider>app</PostHogProvider>);
+
+    const mask =
+      posthog.init.mock.calls[0][1].session_recording
+        .maskCapturedNetworkRequestFn;
+    expect(
+      mask({
+        name: "https://agpt.livekit.cloud/rtc/validate?access_token=abc",
+        method: "GET",
+      }),
+    ).toEqual({
+      name: "https://agpt.livekit.cloud/rtc/validate",
+      method: "GET",
+    });
+  });
+
+  it("records no request or response bodies in session replays", async () => {
+    const { PostHogProvider } = await import("../posthog-provider");
+
+    render(<PostHogProvider>app</PostHogProvider>);
+
+    const { session_recording } = posthog.init.mock.calls[0][1];
+    expect(session_recording.recordBody).toBe(false);
+    expect(
+      session_recording.maskCapturedNetworkRequestFn({
+        name: "https://example.com/api/auth/session",
+        method: "POST",
+        requestBody: '{"password":"hunter2"}',
+        responseBody: '{"token":"abc"}',
+      }),
+    ).toEqual({ name: "https://example.com/api/auth/session", method: "POST" });
+  });
+
   it("talks to a self-hosted PostHog directly", async () => {
     credentials.host = "https://posthog.example.com";
     const { PostHogProvider } = await import("../posthog-provider");

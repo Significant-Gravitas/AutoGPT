@@ -16,7 +16,10 @@ export interface StepLayout {
   team?: number;
   autopilot?: number;
   role: number;
-  painPoints: number;
+  /** The brain dump. Absent when the interview takes its place. */
+  painPoints?: number;
+  /** The typed interview with Otto, in the brain dump's place. */
+  interview?: number;
   /** Retired with the plan step. Never laid out; saved progress from before
    *  may still name it, and resuming skips over it. */
   hire?: number;
@@ -82,6 +85,7 @@ export function buildStepLayout({
   hasPlan = false,
   hasConnect = false,
   hasAccess = false,
+  hasInterview = false,
   order = DEFAULT_STEP_ORDER,
 }: {
   hasPaywall?: boolean;
@@ -90,15 +94,20 @@ export function buildStepLayout({
   hasConnect?: boolean;
   /** The account signed up with a provider whose data it can also connect. */
   hasAccess?: boolean;
+  /** The typed interview with Otto, in the brain dump's place. */
+  hasInterview?: boolean;
   order?: readonly WizardStepKey[];
 }): StepLayout {
-  const shown = order.filter((key) => {
-    if (key === "access") return hasAccess;
-    if (key === "hire") return false;
-    if (key === "subscription") return hasPaywall || hasPlan;
-    if (key === "connect") return !hasPaywall && hasConnect;
-    return true;
-  });
+  const shown = order
+    // The interview holds the brain dump's place, wherever the order puts it.
+    .map((key) => (hasInterview && key === "painPoints" ? "interview" : key))
+    .filter((key) => {
+      if (key === "access") return hasAccess;
+      if (key === "hire") return false;
+      if (key === "subscription") return hasPaywall || hasPlan;
+      if (key === "connect") return !hasPaywall && hasConnect;
+      return true;
+    });
   const layout: Partial<Record<keyof StepLayout, number>> = {};
   shown.forEach((key, index) => {
     layout[key] = index + 1;

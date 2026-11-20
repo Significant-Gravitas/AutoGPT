@@ -102,6 +102,7 @@
     "jszip": "3.10.2",
     "katex": "0.19.0",
     "kysely": "0.28.17",
+    "livekit-client": "2.23.0",
     "lodash": "4.18.1",
     "lucide-react": "1.59.0",
     "mdast-util-from-markdown": "2.0.2",

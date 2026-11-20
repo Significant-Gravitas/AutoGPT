@@ -16,6 +16,7 @@ from backend.copilot.baseline.reasoning import (
     _is_reasoning_route,
     anthropic_thinking_extra_body,
     reasoning_extra_body,
+    thinking_off_extra_body,
 )
 from backend.copilot.model import ChatMessage
 from backend.copilot.response_model import (
@@ -577,3 +578,45 @@ class TestClaude5FamilyThinking:
         assert anthropic_thinking_extra_body("claude-sonnet-4-6", 5000) == {
             "thinking": {"type": "enabled", "budget_tokens": 5000}
         }
+
+
+# ---------- turning thinking off ----------
+
+
+@pytest.mark.parametrize(
+    "model",
+    ["anthropic/claude-haiku-5.5", "claude-haiku-5-5", "anthropic/claude-haiku-5"],
+)
+def test_haiku_5_is_told_not_to_think_on_openrouter(model: str) -> None:
+    assert thinking_off_extra_body(model, "openrouter") == {
+        "reasoning": {"enabled": False}
+    }
+
+
+def test_haiku_5_is_told_not_to_think_on_anthropic_s_endpoint() -> None:
+    assert thinking_off_extra_body("claude-haiku-5-5", "anthropic") == {
+        "thinking": {"type": "disabled"}
+    }
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        # Refuse an explicit off switch: they keep their default.
+        "anthropic/claude-sonnet-5.5",
+        "anthropic/claude-opus-5.5",
+        "anthropic/claude-fable-5.1",
+        # Think only when asked, so there is nothing to switch off.
+        "anthropic/claude-haiku-4.5",
+        "anthropic/claude-sonnet-4.6",
+        "moonshotai/kimi-k2.6",
+        "openai/gpt-6-luna",
+    ],
+)
+@pytest.mark.parametrize("provider", ["openrouter", "anthropic"])
+def test_other_models_are_sent_no_off_switch(model: str, provider) -> None:
+    assert thinking_off_extra_body(model, provider) == {}
+
+
+def test_a_local_backend_is_sent_nothing() -> None:
+    assert thinking_off_extra_body("anthropic/claude-haiku-5.5", "local") == {}

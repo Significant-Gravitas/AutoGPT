@@ -122,6 +122,7 @@ ToolName = Literal[
     "describe_capability",
     "edit_agent",
     "edit_chat_platform_message",
+    "end_interview",
     "enter_agent_building_mode",
     "expert_onboarding",
     "find_agent",

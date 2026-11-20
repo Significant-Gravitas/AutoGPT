@@ -38,6 +38,11 @@ LD payload shape::
 
 Missing mode, missing tier-within-mode, non-string cell value, non-dict
 payload, or LD failure all fall through to the next layer.
+
+Otto's onboarding interview has a surface of its own
+(``copilot_onboarding_interview``), resolved catalog cell → env by
+:func:`resolve_onboarding_interview_model`: no LD layer and no tier, since
+the interview runs before anyone has picked either.
 """
 
 from __future__ import annotations
@@ -74,6 +79,9 @@ CodexRoutingSource = Literal[
 
 ROUTE_SURFACE_COPILOT = "copilot"
 ROUTE_SURFACE_CODEX = "copilot_codex"
+# Otto's onboarding interview: one cell, ``(fast, standard)``, since an
+# interview always runs on the baseline path and has no tier to pick.
+ROUTE_SURFACE_ONBOARDING_INTERVIEW = "copilot_onboarding_interview"
 
 
 class ResolvedModel(NamedTuple):
@@ -329,6 +337,41 @@ async def resolve_model_route(
         return ResolvedModel(cell_slug, "catalog")
 
     return await _env_floor(config, mode, tier)
+
+
+async def resolve_onboarding_interview_model(*, config: ChatConfig) -> ResolvedModel:
+    """The model an onboarding interview runs on: catalog cell → env.
+
+    Its own surface, so the interview's model can change in the catalog
+    without touching the copilot's cells, and the per-user
+    ``copilot-model-routing`` flag (the copilot's cells) never reaches it.
+    The same gating as :func:`resolve_model_route`: on our cloud's hosted
+    transports the cell is checked against the registry, and a refused or
+    unset cell falls through to ``ChatConfig.onboarding_interview_model``.
+    Self-hosted installs and local transports read the env value only.
+    """
+    gated = (
+        settings.config.behave_as == BehaveAs.CLOUD
+        and config.baseline_provider != "local"
+    )
+    env_slug = config.onboarding_interview_model.strip()
+    if not gated:
+        return ResolvedModel(env_slug, "env")
+
+    cell_slug = llm_registry.get_route(
+        ROUTE_SURFACE_ONBOARDING_INTERVIEW, "fast", "standard"
+    )
+    if cell_slug and await _registry_refuses(cell_slug, "catalog") is None:
+        return ResolvedModel(cell_slug, "catalog")
+
+    if await _registry_refuses(env_slug, "env") is not None:
+        logger.error(
+            "[model_router] onboarding interview env default %r is refused by "
+            "the catalog but served anyway (last-resort floor) — change "
+            "CHAT_ONBOARDING_INTERVIEW_MODEL or the routing cell",
+            env_slug,
+        )
+    return ResolvedModel(env_slug, "env")
 
 
 async def resolve_codex_model_route(

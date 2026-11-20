@@ -229,6 +229,72 @@ async def test_a_new_take_cannot_displace_one_still_being_processed(
     )
 
 
+@pytest.mark.parametrize(
+    "status", [BrainDumpStatus.transcribed, BrainDumpStatus.extracting]
+)
+async def test_a_retired_take_still_in_the_pipeline_gives_the_row_up_to_the_new_one(
+    user_id: str, status: BrainDumpStatus
+):
+    await service.finalize_typed_dump(
+        user_id, "interview-earlier", TYPED_TEXT, BackgroundTasks()
+    )
+    await db.update_dump(user_id, "interview-earlier", status=status)
+
+    assert await service.give_up_retired_take(
+        user_id, "interview-earlier", db.SUPERSEDED_TAKE
+    )
+    assert not await db.owns_dump(user_id, "interview-earlier")
+    tasks = BackgroundTasks()
+    response = await service.finalize_typed_dump(
+        user_id, "interview-new", "I run a flower shop.", tasks
+    )
+
+    assert response.status == BrainDumpStatus.transcribed
+    assert len(tasks.tasks) == 1
+    dump = await db.get_dump(user_id)
+    assert dump is not None
+    assert (dump.recordingId, dump.status) == (
+        "interview-new",
+        BrainDumpStatus.transcribed,
+    )
+
+
+async def test_a_finished_take_is_never_given_up_as_retired(user_id: str):
+    await _completed_typed_take(user_id, "interview-earlier")
+
+    assert not await service.give_up_retired_take(
+        user_id, "interview-earlier", db.SUPERSEDED_TAKE
+    )
+    dump = await db.get_dump(user_id)
+    assert dump is not None and dump.status == BrainDumpStatus.completed
+
+
+async def test_queued_jobs_of_a_take_given_up_do_not_claim_it(
+    user_id: str, mocker: MockerFixture
+):
+    await service.finalize_typed_dump(
+        user_id, "interview-earlier", TYPED_TEXT, BackgroundTasks()
+    )
+    assert await service.give_up_unrun_take(
+        user_id, "interview-earlier", db.SUPERSEDED_TAKE
+    )
+    understanding = mocker.patch.object(
+        service, "upsert_business_understanding", new=AsyncMock()
+    )
+
+    await service._run_background_jobs(
+        user_id, "interview-earlier", TYPED_TEXT, BrainDumpInputMode.typed
+    )
+
+    understanding.assert_not_awaited()
+    dump = await db.get_dump(user_id)
+    assert dump is not None
+    assert (dump.status, dump.errorCode) == (
+        BrainDumpStatus.failed,
+        db.SUPERSEDED_TAKE,
+    )
+
+
 async def _completed_typed_take(user_id: str, recording_id: str) -> None:
     await db.start_dump(user_id, recording_id, BrainDumpInputMode.typed)
     await db.update_dump(

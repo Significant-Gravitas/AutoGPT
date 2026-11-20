@@ -6,42 +6,65 @@ from typing import Annotated
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 from autogpt_libs.auth.dependencies import get_user_id
-from fastapi import APIRouter, Form, Security, UploadFile
+from fastapi import APIRouter, Form, Path, Security, UploadFile
 from fastapi.responses import RedirectResponse
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
+from pydantic import AfterValidator
 
 from backend.api.features.onboarding_dump import (
     db,
+    interview,
+    interview_details,
+    interview_endings,
     plan_hire,
     plan_service,
     service,
     storage,
     suggested_tasks,
+    voice,
 )
 from backend.api.features.onboarding_dump.models import (
     ALLOWED_AUDIO_MIME_TYPES,
     MAX_PART_BYTES,
     MAX_RECORDING_BYTES,
     RECORDING_ID_PATTERN,
+    VOICE_CALL_ID_PATTERN,
     DumpStatusResponse,
     FinalizeRequest,
     FinalizeResponse,
     GreetingDoneResponse,
+    InterviewDetailsResponse,
+    InterviewFinishRequest,
+    InterviewStartRequest,
+    InterviewStartResponse,
+    InterviewStateResponse,
     IntroCardResponse,
     RecommendedExpertsResponse,
     RecommendedProvidersResponse,
     SuggestedTasksResponse,
     SuggestedTasksUpdate,
     UploadPartResponse,
+    VoiceCallFinishRequest,
+    VoiceCallStartRequest,
+    VoiceCallStartResponse,
+    VoiceCallStatusResponse,
+    clients_recording_id,
+    start_over_of,
 )
 from backend.api.features.onboarding_dump.plan_models import (
     PlanHireResponse,
     PlanResponse,
 )
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.copilot.onboarding_interview import find_onboarding_interview_session
 from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
+
+
+def _clients_recording_id_or_none(recording_id: str | None) -> str | None:
+    return None if recording_id is None else clients_recording_id(recording_id)
 
 
 router = APIRouter(
@@ -57,7 +80,11 @@ router = APIRouter(
 async def upload_brain_dump_part(
     user_id: Annotated[str, Security(get_user_id)],
     file: UploadFile,
-    recording_id: Annotated[str, Form(pattern=RECORDING_ID_PATTERN)],
+    recording_id: Annotated[
+        str,
+        Form(pattern=RECORDING_ID_PATTERN),
+        AfterValidator(clients_recording_id),
+    ],
     part_index: Annotated[int, Form(ge=0)],
     resent: Annotated[bool, Form()] = False,
 ) -> UploadPartResponse:
@@ -150,9 +177,14 @@ async def finalize_brain_dump(
     ``greeting_ready``. Idempotent per ``recording_id`` — a client that
     retries after a timeout gets the stored result rather than a second
     transcription.
+
+    A skip is refused (409 ``onboarding_interview_closed``) while the
+    person's onboarding interview is closed with its take kept, which the
+    plan step reads.
     """
     try:
         if request.input_mode == BrainDumpInputMode.skipped:
+            await interview.refuse_a_skip_over_a_finished_take(user_id)
             return await service.finalize_skipped_dump(user_id, request.recording_id)
 
         if request.input_mode == BrainDumpInputMode.typed:
@@ -178,6 +210,345 @@ async def finalize_brain_dump(
     except VirusScanError as e:
         await db.mark_failed(user_id, request.recording_id, "virus_scan_failed")
         raise fastapi.HTTPException(status_code=500, detail=str(e)) from e
+
+
+async def _interview_enabled(user_id: Annotated[str, Security(get_user_id)]) -> None:
+    """404 while the onboarding interview is off for the person, or its flag
+    cannot be read: it starts nothing then. Finishing, and the routes of a
+    call, stay open."""
+    if not await interview.interview_enabled(user_id):
+        raise fastapi.HTTPException(status_code=404, detail="Feature not available")
+
+
+@router.post(
+    "/interview",
+    operation_id="start_onboarding_interview",
+    dependencies=[fastapi.Depends(_interview_enabled)],
+)
+async def start_onboarding_interview(
+    user_id: Annotated[str, Security(get_user_id)],
+    request: InterviewStartRequest | None = None,
+) -> InterviewStartResponse:
+    """Open the person's onboarding interview, with Otto speaking first.
+
+    The first call starts Otto's greeting; every later one adopts the same
+    interview, so Back, a reload and a second tab land in one conversation.
+    ``turn_id`` is set only when this call started the greeting. A greeting
+    already being written is answered without one, like an interview under
+    way: the client reads the session, which resumes the running turn. An
+    interview that is over is answered the same way, with its ``stage``, so
+    the client shows how it ended and the finish button.
+
+    404 while the interview is off for the person. A person has one
+    interview, typed or spoken: 409 ``call_in_progress`` while a voice call
+    of theirs is live, and 409 ``onboarding_interview_closed`` once a call
+    took the interview (its words accepted from a call that ran to its
+    close, or that the person finished), each naming the call
+    (``call_id``). A call that was cut off, or that the person hung up,
+    leaves the typed interview open. 429 at its turn budget, 503 while the
+    budget, the chat stream or the person's calls cannot be read. A 429 or
+    503 carries its wait in the body (``retry_after_seconds``) as well as in
+    ``Retry-After``: the browser's API client keeps a refusal's body, not its
+    headers.
+
+    ``ending_pick`` is a tester's pick of the ending, kept for the interview's
+    close while the ending picker is on for them, and ignored otherwise.
+
+    ``start_over`` asks for a fresh interview in place of the one that is
+    over and named by ``start_over_from`` (the typed interview's session or
+    the call that took it): it is set aside and a new typed interview opens,
+    once the turn budget and the cap on turns running at once would admit
+    its greeting. A live call still refuses it (409 ``call_in_progress``),
+    and so does a call whose words took the interview meanwhile (409
+    ``onboarding_interview_closed`` naming it). An interview that is not
+    over, or not the one named, opens as it would without it.
+    """
+    await interview_endings.keep_text_pick(
+        user_id, request.ending_pick if request is not None else None
+    )
+    try:
+        started = await interview.start_onboarding_interview(
+            user_id, start_over=start_over_of(request)
+        )
+    except fastapi.HTTPException as e:
+        if e.status_code in (429, 503):
+            raise _with_wait_in_body(e) from e
+        if e.status_code != 409 or e.detail != interview.TURN_IN_PROGRESS:
+            raise
+        # Only the greeting can be running before the person has said
+        # anything, and the interview cannot be over yet.
+        running = await find_onboarding_interview_session(user_id)
+        if running is None:
+            raise
+        return InterviewStartResponse(session_id=running.session_id)
+    return InterviewStartResponse(
+        session_id=started.session.session_id,
+        turn_id=started.turn_id,
+        stage=started.session.metadata.onboarding_interview_stage,
+    )
+
+
+@router.get(
+    "/interview",
+    operation_id="get_onboarding_interview",
+    dependencies=[fastapi.Depends(_interview_enabled)],
+)
+async def get_onboarding_interview(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> InterviewStateResponse:
+    """The person's onboarding interview as it stands, without starting it,
+    and whether the step may offer them a call.
+
+    For the step's talk-or-type choice, which must know whether the
+    interview is over before it offers Skip, and shows "Talk to Otto" only
+    where voice can be offered. Nothing is created, greeted, charged or
+    refused. An interview that is over but not yet handed off is handed off
+    in the background, as the start does. A person who has not opened their
+    interview reads with no session. 404 while the interview is off for the
+    person.
+    """
+    read = await interview.read_onboarding_interview(user_id)
+    voice_available = await voice.voice_available(user_id)
+    livekit_url = voice.livekit_url() if voice_available else None
+    if read is None:
+        return InterviewStateResponse(
+            session_id=None,
+            is_over=False,
+            voice_available=voice_available,
+            livekit_url=livekit_url,
+        )
+    return InterviewStateResponse(
+        session_id=read.session.session_id,
+        stage=read.session.metadata.onboarding_interview_stage,
+        is_over=read.is_over,
+        voice_available=voice_available,
+        livekit_url=livekit_url,
+    )
+
+
+@router.get(
+    "/interview/details",
+    operation_id="get_onboarding_interview_details",
+    dependencies=[fastapi.Depends(_interview_enabled)],
+)
+async def get_onboarding_interview_details(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> InterviewDetailsResponse:
+    """What the person's typed interview has heard so far, for its ending
+    screen: their business, team, where their week goes, their tools, facts
+    in their own words, the topics covered and the first task. Read once per
+    turn of theirs and kept; ``details`` is null before they have said
+    anything and while it cannot be read. 404 when they have no interview.
+    """
+    opened = await find_onboarding_interview_session(user_id)
+    if opened is None:
+        raise fastapi.HTTPException(status_code=404, detail="No onboarding interview")
+    return InterviewDetailsResponse(
+        details=await interview_details.read_interview_details(opened)
+    )
+
+
+def _with_wait_in_body(refusal: fastapi.HTTPException) -> fastapi.HTTPException:
+    """*refusal* with its message and its ``Retry-After`` wait in the body."""
+    retry_after = (refusal.headers or {}).get("Retry-After", "")
+    return fastapi.HTTPException(
+        status_code=refusal.status_code,
+        detail={
+            "message": refusal.detail,
+            "retry_after_seconds": int(retry_after) if retry_after.isdigit() else None,
+        },
+        headers=refusal.headers,
+    )
+
+
+@router.post("/interview/voice", operation_id="start_onboarding_voice_call")
+async def start_onboarding_voice_call(
+    user_id: Annotated[str, Security(get_user_id)],
+    request: VoiceCallStartRequest | None = None,
+) -> VoiceCallStartResponse:
+    """Start a voice call for the person's onboarding interview.
+
+    Answers with the call's room, which carries its audio, and the browser's
+    token for it, and with the relay's call socket and a start token good for
+    this one call within a minute. The browser joins the room and opens the
+    socket at the same time, and sends the token as the socket's first
+    message; a browser that cannot join the room ends the call (``/end``).
+    The call counts against the person's allowance once it is ready on the
+    relay.
+
+    404 while the interview or voice is off for the person, though a call
+    under way can still be read, ended and finished; 409 once their
+    interview is over, or while a call of theirs is live (``call_id`` names
+    it); 429 past their call allowance; 503 past the platform's voice budget
+    or live-call ceiling, or while voice cannot be served. A 429 or 503 carries its wait
+    in the body (``retry_after_seconds``) as well as in ``Retry-After``.
+
+    ``ending_pick`` is a tester's pick of the call's ending, honoured while
+    the ending picker is on for them and the arm fits a call, and ignored
+    otherwise.
+
+    ``start_over`` asks for the call to start a fresh interview in place of
+    the one that is over and named by ``start_over_from``: instead of the
+    409, it is set aside once every other check passes. A live call still
+    refuses it (409 ``call_in_progress``), and so does a call whose words
+    took the interview meanwhile (409 ``onboarding_interview_closed``).
+
+    ``language`` is the browser's language tag: the call starts in it when
+    the call offers it, and in English otherwise.
+    """
+    try:
+        return await voice.start_voice_call(
+            user_id,
+            request.ending_pick if request is not None else None,
+            start_over=start_over_of(request),
+            language=request.language if request is not None else None,
+        )
+    except fastapi.HTTPException as e:
+        if e.status_code in (429, 503):
+            raise _with_wait_in_body(e) from e
+        raise
+
+
+VoiceCallId = Annotated[str, Path(pattern=VOICE_CALL_ID_PATTERN)]
+
+
+@router.get("/interview/voice", operation_id="get_latest_onboarding_voice_call")
+async def get_latest_onboarding_voice_call(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> VoiceCallStatusResponse:
+    """The person's latest voice call as it stands, for a step that reloads:
+    live, wrapping up, handed off or failed. 404
+    when they have no call, or its record has expired."""
+    try:
+        return await voice.latest_call(user_id)
+    except fastapi.HTTPException as e:
+        if e.status_code == 503:
+            raise _with_wait_in_body(e) from e
+        raise
+
+
+@router.get(
+    "/interview/voice/{call_id}", operation_id="get_onboarding_voice_call_status"
+)
+async def get_onboarding_voice_call_status(
+    user_id: Annotated[str, Security(get_user_id)],
+    call_id: VoiceCallId,
+) -> VoiceCallStatusResponse:
+    """A voice call of the person's as it stands, polled once it ends until
+    its hand-off has answered. Its ``interview`` says whether the call's words
+    took the person's interview or what they typed after the call superseded
+    them, and is read before ``end_reason`` and ``status``. 404 for a call
+    that is not theirs, or has expired."""
+    try:
+        return await voice.call_status(user_id, call_id)
+    except fastapi.HTTPException as e:
+        if e.status_code == 503:
+            raise _with_wait_in_body(e) from e
+        raise
+
+
+@router.post(
+    "/interview/voice/{call_id}/finish", operation_id="finish_onboarding_voice_call"
+)
+async def finish_onboarding_voice_call(
+    user_id: Annotated[str, Security(get_user_id)],
+    call_id: VoiceCallId,
+    background_tasks: fastapi.BackgroundTasks,
+    request: VoiceCallFinishRequest | None = None,
+) -> FinalizeResponse:
+    """The person's finish of their voice call: "Meet your team", and the
+    profile card's "That's me" with edits.
+
+    Idempotent: a call that took the interview or that another take beat, or
+    whose words the pipeline ruled on, is answered as it stands, and a call
+    the person's typing superseded is answered ``superseded``. A call still
+    owed its hand-off, one whose hand-off the pipeline never ruled on, or one
+    cut off or hung up with its words accepted hands its words off now, with
+    any ``corrections`` after them, and its accepted take becomes the
+    interview's. ``corrections`` for a call whose take took the interview
+    correct that take once: the pipeline runs again on the words with them.
+    The client reads the answer as it reads the typed interview's finish. 404
+    for a call that is not theirs; 409 (``call_not_ready``) while the call's
+    words are not ready, and (``take_not_ready``) while the take a correction
+    corrects is still in the pipeline. A 429 or 503 carries its wait in the
+    body (``retry_after_seconds``).
+    """
+    try:
+        return await voice.finish_call(
+            user_id,
+            call_id,
+            background_tasks,
+            corrections=request.corrections if request is not None else None,
+        )
+    except fastapi.HTTPException as e:
+        if e.status_code in (429, 503):
+            raise _with_wait_in_body(e) from e
+        raise
+
+
+@router.post(
+    "/interview/voice/{call_id}/end",
+    operation_id="end_onboarding_voice_call",
+    status_code=202,
+)
+async def end_onboarding_voice_call(
+    user_id: Annotated[str, Security(get_user_id)],
+    call_id: VoiceCallId,
+) -> None:
+    """End a live voice call of the person's that they can no longer reach,
+    such as one on another device, or one whose start they gave up on. The
+    relay running it ends it within a second or so, and the person can call
+    again. 404 for a call that is not theirs."""
+    try:
+        await voice.end_call(user_id, call_id)
+    except fastapi.HTTPException as e:
+        if e.status_code == 503:
+            raise _with_wait_in_body(e) from e
+        raise
+
+
+@router.post("/interview/finish", operation_id="finish_onboarding_interview")
+async def finish_onboarding_interview(
+    user_id: Annotated[str, Security(get_user_id)],
+    background_tasks: fastapi.BackgroundTasks,
+    request: InterviewFinishRequest | None = None,
+) -> FinalizeResponse:
+    """The person ends the interview on screen: close it if it is still
+    open, and hand what they said to the onboarding pipeline.
+
+    Idempotent: an interview already handed off is not handed off again, and
+    the response describes its take as it stands. A take that failed without
+    a ruling on the words (``quality_check_unavailable``, or no code) leaves
+    the interview to be handed off again on the next call. The pipeline's
+    jobs run after the response, as a typed brain dump's do. 404 when the
+    person has no interview. As the start route does, 409 ``call_in_progress``
+    while a voice call of theirs is live and 409
+    ``onboarding_interview_closed`` once a call took the interview, each
+    naming the call (``call_id``). A 429 carries its wait in the body
+    (``retry_after_seconds``), as the start route's does. Any
+    ``corrections`` the person made on the ending screen are handed off after
+    the interview's words, as their own; for an interview already handed
+    off they correct its take once, and the pipeline runs again on the words
+    with them, 409 ``take_not_ready`` while the take is still in it.
+    """
+    opened = await find_onboarding_interview_session(user_id)
+    if opened is None:
+        raise fastapi.HTTPException(status_code=404, detail="No onboarding interview")
+    try:
+        return await interview.finalize_onboarding_interview(
+            user_id,
+            opened.session_id,
+            background_tasks,
+            corrections=request.corrections if request is not None else None,
+        )
+    except NotFoundError as e:
+        raise fastapi.HTTPException(
+            status_code=404, detail="No onboarding interview"
+        ) from e
+    except fastapi.HTTPException as e:
+        if e.status_code == 429:
+            raise _with_wait_in_body(e) from e
+        raise
 
 
 @router.get("/status", operation_id="get_brain_dump_status")
@@ -380,7 +751,9 @@ async def download_brain_dump_recording(
 async def discard_brain_dump(
     user_id: Annotated[str, Security(get_user_id)],
     recording_id: Annotated[
-        str | None, fastapi.Query(pattern=RECORDING_ID_PATTERN)
+        str | None,
+        fastapi.Query(pattern=RECORDING_ID_PATTERN),
+        AfterValidator(_clients_recording_id_or_none),
     ] = None,
 ) -> DumpStatusResponse:
     """Drop a half-uploaded take's server buffer when the user re-records.

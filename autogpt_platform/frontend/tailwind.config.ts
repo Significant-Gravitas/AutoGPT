@@ -1173,6 +1173,7 @@ const config = {
         "shimmer-text": "shimmer-text 2s linear infinite",
         "fade-up": "fade-up 320ms cubic-bezier(0.23, 1, 0.32, 1) both",
         "grow-line": "grow-line 500ms cubic-bezier(0.23, 1, 0.32, 1) both",
+        orbit: "spin 3.2s linear infinite",
       },
       transitionDuration: {
         "400": "400ms",
