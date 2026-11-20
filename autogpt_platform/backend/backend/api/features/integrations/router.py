@@ -60,6 +60,7 @@ from backend.integrations.codex.login import (
     CodexLoginFailedError,
     CodexLoginPendingError,
 )
+from backend.integrations.credential_input import normalize_user_supplied_credentials
 from backend.integrations.credentials_store import (
     is_system_credential,
     provider_matches,
@@ -1211,6 +1212,7 @@ async def create_credentials(
         error := scope_error(provider.value, credentials.scope)
     ):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
+    normalize_user_supplied_credentials(credentials)
     credentials.provider = provider
     try:
         await creds_manager.create(user_id, credentials)
