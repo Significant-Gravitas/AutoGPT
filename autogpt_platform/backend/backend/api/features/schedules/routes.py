@@ -1,8 +1,14 @@
 import logging
 from typing import Annotated, Any
 
-from autogpt_libs.auth import get_request_context, get_user_id, requires_user
+from autogpt_libs.auth import (
+    get_request_context,
+    get_user_id,
+    requires_resource_permission,
+    requires_user,
+)
 from autogpt_libs.auth.models import RequestContext
+from autogpt_libs.auth.permissions import OrgAction, TeamAction
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Security
 from starlette.status import (
     HTTP_400_BAD_REQUEST,
@@ -27,7 +33,7 @@ from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.data.tenancy import get_user_team_ids
 from backend.data.user import get_user_by_id
 from backend.executor import scheduler
-from backend.util.clients import get_scheduler_client
+from backend.util.clients import get_scheduler_client, read_schedules
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
@@ -49,7 +55,16 @@ router = APIRouter(dependencies=[Security(requires_user)])
 )
 async def create_graph_execution_schedule(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    # The schedule is tagged with the request's org and team, so the caller's
+    # role there must allow running workflows.
+    ctx: Annotated[
+        RequestContext,
+        Security(
+            requires_resource_permission(
+                OrgAction.EXECUTE_RESOURCES, TeamAction.EXECUTE_AGENTS
+            )
+        ),
+    ],
     graph_id: str = Path(..., description="ID of the graph to schedule"),
     schedule_params: ScheduleCreationRequest = Body(),
 ) -> scheduler.GraphExecutionJobInfo:
@@ -57,6 +72,7 @@ async def create_graph_execution_schedule(
         graph_id=graph_id,
         version=schedule_params.graph_version,
         user_id=user_id,
+        organization_id=ctx.org_id,
     )
     if not graph:
         raise HTTPException(
@@ -98,6 +114,9 @@ async def create_graph_execution_schedule(
         organization_id=ctx.org_id,
         team_id=ctx.team_id,
         expert_id=expert_id,
+        schedule_id=(
+            str(schedule_params.schedule_id) if schedule_params.schedule_id else None
+        ),
     )
 
     # Convert the next_run_time back to user timezone for display
@@ -121,12 +140,14 @@ async def list_graph_execution_schedules(
     graph_id: str = Path(),
 ) -> list[scheduler.GraphExecutionJobInfo]:
     team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
-    schedules = await get_scheduler_client().get_graph_execution_schedules(
-        user_id=user_id,
-        graph_id=graph_id,
-        organization_id=ctx.org_id,
-        team_ids=team_ids,
-        include_paused=True,
+    schedules = await read_schedules(
+        get_scheduler_client().get_graph_execution_schedules(
+            user_id=user_id,
+            graph_id=graph_id,
+            organization_id=ctx.org_id,
+            team_ids=team_ids,
+            include_paused=True,
+        )
     )
     return await visible_graph_schedules(schedules, user_id)
 
@@ -140,11 +161,13 @@ async def list_all_graphs_execution_schedules(
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[scheduler.GraphExecutionJobInfo]:
     team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
-    schedules = await get_scheduler_client().get_graph_execution_schedules(
-        user_id=user_id,
-        organization_id=ctx.org_id,
-        team_ids=team_ids,
-        include_paused=True,
+    schedules = await read_schedules(
+        get_scheduler_client().get_graph_execution_schedules(
+            user_id=user_id,
+            organization_id=ctx.org_id,
+            team_ids=team_ids,
+            include_paused=True,
+        )
     )
     return await visible_graph_schedules(schedules, user_id)
 
@@ -165,8 +188,10 @@ async def list_copilot_turn_schedules(
     keeps the generated frontend client typed to a single concrete return type
     instead of a discriminated union.
     """
-    schedules = await get_scheduler_client().get_execution_schedules(
-        user_id=user_id, kind="copilot_turn"
+    schedules = await read_schedules(
+        get_scheduler_client().get_execution_schedules(
+            user_id=user_id, kind="copilot_turn"
+        )
     )
     # Defensive isinstance filter mirrors ``get_graph_execution_schedules``
     # (executor.scheduler.Scheduler) — the scheduler is the source of truth

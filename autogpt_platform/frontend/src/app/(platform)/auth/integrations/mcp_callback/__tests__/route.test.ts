@@ -95,3 +95,40 @@ describe("MCP OAuth callback route", () => {
     );
   });
 });
+
+describe("MCP sign-in started by the mobile app", () => {
+  it("sends the code, state and issuer back to the app", async () => {
+    const response = await GET(
+      new Request(
+        `${origin}/auth/integrations/mcp_callback?code=abc&state=native.xyz&iss=${encodeURIComponent("https://auth.example.com")}`,
+      ),
+    );
+
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get("location") ?? "");
+    expect(`${location.protocol}//${location.host}${location.pathname}`).toBe(
+      "autogpt-app://integrations/oauth",
+    );
+    expect(Object.fromEntries(location.searchParams)).toEqual({
+      code: "abc",
+      state: "native.xyz",
+      iss: "https://auth.example.com",
+    });
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+  });
+
+  it("sends the provider's error back to the app", async () => {
+    const response = await GET(
+      new Request(
+        `${origin}/auth/integrations/mcp_callback?error=access_denied&state=native.xyz`,
+      ),
+    );
+
+    const location = new URL(response.headers.get("location") ?? "");
+    expect(Object.fromEntries(location.searchParams)).toEqual({
+      state: "native.xyz",
+      error: "access_denied",
+    });
+  });
+});

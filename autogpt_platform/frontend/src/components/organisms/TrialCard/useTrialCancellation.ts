@@ -2,6 +2,7 @@ import {
   usePostTrialsCancelTrial,
   usePostTrialsResumeTrial,
 } from "@/app/api/__generated__/endpoints/trials/trials";
+import type { CancelTrialRequest } from "@/app/api/__generated__/models/cancelTrialRequest";
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { TrialEvent } from "@/services/analytics/posthog-events";
@@ -34,11 +35,11 @@ export function useTrialCancellation({ userID, query, failure }: Args) {
   const { mutateAsync: resume, isPending: isResuming } =
     usePostTrialsResumeTrial();
 
-  async function cancelTrial() {
+  async function cancelTrial(request: CancelTrialRequest = {}) {
     if (!userID || isCanceling) return;
     failure.clearFailure();
     try {
-      const response = await cancel();
+      const response = await cancel({ data: request });
       if (useAuthStore.getState().user?.id !== userID) return;
       if (response.status !== 200) throw new Error(CANCEL_FAILED);
       const trial = response.data;

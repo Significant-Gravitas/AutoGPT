@@ -135,3 +135,49 @@ async def test_admission_failure_closes_the_stream_even_if_finalization_fails(
     message = str(error) or type(error).__name__
     finish.assert_awaited_once_with(entry, message)
     completed.assert_awaited_once_with("child", error_message=message, turn_id="turn")
+
+
+@pytest.mark.asyncio
+async def test_a_pickup_another_worker_claimed_says_so_before_its_cleanup(
+    monkeypatch,
+):
+    """The caller learns the turn is another worker's before the cleanup
+    runs, so a cleanup that raises can't pass for this worker's failure."""
+    entry = CoPilotExecutionEntry(
+        session_id="child",
+        user_id="owner",
+        turn_id="turn",
+        message="work",
+        message_metadata={
+            "background_task_id": "task",
+            "background_task_stage": "child",
+        },
+        envelope=TurnEnvelope(
+            tree_id="tree",
+            depth=1,
+            deadline_at=datetime.now(UTC) + timedelta(minutes=1),
+        ),
+    )
+    monkeypatch.setattr(
+        background_execution,
+        "background_task_db",
+        lambda: MagicMock(claim_background_turn=AsyncMock(return_value=False)),
+    )
+    told: list[str] = []
+    cleanup_error = ConnectionError("database unavailable")
+
+    async def cleanup(*_args):
+        told.append("cleanup")
+        raise cleanup_error
+
+    monkeypatch.setattr(
+        background_execution, "_close_unstarted_background_turn", cleanup
+    )
+
+    with pytest.raises(ConnectionError) as raised:
+        await background_execution.claim_background_execution(
+            entry, on_claimed_elsewhere=lambda: told.append("claimed elsewhere")
+        )
+
+    assert raised.value is cleanup_error
+    assert told == ["claimed elsewhere", "cleanup"]

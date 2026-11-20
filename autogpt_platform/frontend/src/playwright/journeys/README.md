@@ -171,7 +171,8 @@ The journeys leg runs as close to the hosted product as one compose stack
 allows. Flag values live in `hosted-flags.json`, read by both sides:
 
 - **Backend:** `.github/scripts/hosted_journeys_env.py` turns them into
-  `FORCE_FLAG_<NAME>` lines in `backend/.env`, plus `ENABLE_CREDIT=true`.
+  `FORCE_FLAG_<NAME>` lines in `backend/.env`, plus `ENABLE_CREDIT=true`
+  and `ENABLE_PLATFORM_PAYMENT=true`.
 - **Frontend:** the fixtures write them to local storage before the app
   loads, and a `NEXT_PUBLIC_PW_TEST=true` build serves them
   (`services/feature-flags/pw-flag-overrides.ts`). That lets both legs share

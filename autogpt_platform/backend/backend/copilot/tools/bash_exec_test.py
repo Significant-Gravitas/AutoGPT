@@ -11,12 +11,13 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from connectrpc.code import Code
 from connectrpc.errors import ConnectError
-from e2b import CommandExitException, CommandResult
+from e2b import AsyncSandbox, CommandExitException, CommandResult
 from e2b.envd.rpc import handle_rpc_exception
 from e2b.exceptions import NotFoundException, TimeoutException
 from pydantic import SecretStr
@@ -27,9 +28,10 @@ from backend.copilot.sdk.file_ref import text_outside_file_refs
 from backend.data.model import APIKeyCredentials
 
 from ._test_data import make_session
-from .bash_exec import _KILL_TREE_SCRIPT, BashExecTool
+from .bash_exec import _KILL_TREE_SCRIPT, _SHELL_KILLED_MESSAGE, BashExecTool
 from .e2b_sandbox import SandboxOwner
 from .models import BashExecResponse, ErrorResponse
+from .sandbox import MAX_OUTPUT_SIZE
 
 _USER = "user-bash-exec-test"
 _PICKED = {"github": "cred-picked"}
@@ -113,6 +115,204 @@ def _make_sandbox(exit_code: int = 0, stdout: str = "", stderr: str = "") -> Mag
     sandbox.set_timeout = AsyncMock()
     sandbox.commands.run = AsyncMock(side_effect=run)
     return sandbox
+
+
+def _make_local_pc_sandbox(
+    exit_code: int = 0,
+    stdout: str = "",
+    stderr: str = "",
+    *,
+    timed_out: bool = False,
+    output_truncated: bool = False,
+) -> MagicMock:
+    """A Local PC companion whose command answers in one wire round trip."""
+    result = MagicMock(
+        exit_code=exit_code,
+        stdout=stdout,
+        stderr=stderr,
+        timed_out=timed_out,
+        output_truncated=output_truncated,
+    )
+    sandbox = MagicMock(allowed_root="/workspace", platform="linux")
+    sandbox.commands.run = AsyncMock(return_value=result)
+    return sandbox
+
+
+def test_local_windows_description_does_not_claim_bash_or_confinement() -> None:
+    sandbox = MagicMock(platform="windows")
+    with (
+        patch(
+            "backend.copilot.tools.bash_exec.get_current_sandbox",
+            return_value=sandbox,
+        ),
+        patch(
+            "backend.copilot.tools.bash_exec.is_local_pc_executor",
+            return_value=True,
+        ),
+    ):
+        tool = _make_tool()
+
+        assert "Windows command shell" in tool.description
+        assert "does not confine shell commands" in tool.description
+        assert tool.parameters["properties"]["command"]["description"] == (
+            "Windows command-shell input."
+        )
+
+
+def test_local_pc_schema_states_the_companions_command_cap() -> None:
+    """The companion stops every command at its cap, so a longer timeout
+    the model asks for would never apply."""
+    sandbox = MagicMock(platform="linux")
+    with (
+        patch(
+            "backend.copilot.tools.bash_exec.get_current_sandbox",
+            return_value=sandbox,
+        ),
+        patch(
+            "backend.copilot.tools.bash_exec.is_local_pc_executor",
+            return_value=True,
+        ),
+    ):
+        tool = _make_tool()
+
+        assert "at most 30" in tool.description
+        assert tool.parameters["properties"]["timeout"]["description"] == (
+            "Timeout in seconds, at most 30."
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_local_pc_never_receives_platform_integration_secrets() -> None:
+    tool = _make_tool()
+    sandbox = _make_local_pc_sandbox(stdout="ok")
+    with (
+        patch(
+            "backend.copilot.tools.bash_exec.get_current_sandbox",
+            return_value=sandbox,
+        ),
+        patch(
+            "backend.copilot.tools.bash_exec.is_local_pc_executor",
+            return_value=True,
+        ),
+        patch(
+            "backend.copilot.tools.bash_exec.get_workdir",
+            return_value="/workspace",
+        ),
+        patch(
+            "backend.copilot.tools.bash_exec.get_integration_env_vars",
+            new=AsyncMock(return_value={"GH_TOKEN": "secret"}),
+        ) as get_integration_env,
+        patch(
+            "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+            new=AsyncMock(return_value={"GIT_AUTHOR_NAME": "User"}),
+        ) as get_git_identity,
+    ):
+        result = await tool._execute(
+            user_id=_USER,
+            session=make_session(_USER),
+            command="echo hi",
+            timeout=10,
+        )
+
+    assert isinstance(result, BashExecResponse)
+    assert result.stdout == "ok"
+    get_integration_env.assert_not_awaited()
+    get_git_identity.assert_not_awaited()
+    run_kwargs = sandbox.commands.run.await_args.kwargs
+    assert run_kwargs["envs"] == {}
+    assert run_kwargs["shell"] == "auto"
+    assert run_kwargs["cwd"] == "/workspace"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_local_pc_preserves_timeout_and_truncation_metadata() -> None:
+    tool = _make_tool()
+    sandbox = _make_local_pc_sandbox(
+        exit_code=-1,
+        stdout="partial output",
+        stderr="[command output truncated]",
+        timed_out=True,
+        output_truncated=True,
+    )
+
+    with patch(
+        "backend.copilot.tools.bash_exec.is_local_pc_executor",
+        return_value=True,
+    ):
+        result = await tool._execute_on_local_pc(
+            sandbox=sandbox,
+            command="slow command",
+            timeout=10,
+            session_id="session-1",
+        )
+
+    assert isinstance(result, BashExecResponse)
+    assert result.timed_out is True
+    assert result.output_truncated is True
+    assert result.message == (
+        "Execution timed out and output was truncated by the Local PC executor limit."
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("stream", ["stdout", "stderr"])
+async def test_local_pc_keeps_each_stream_to_the_output_limit(stream: str) -> None:
+    tool = _make_tool()
+    sandbox = _make_local_pc_sandbox(**{stream: "x" * (MAX_OUTPUT_SIZE + 5)})
+
+    result = await tool._execute_on_local_pc(
+        sandbox=sandbox,
+        command="cat big.log",
+        timeout=10,
+        session_id="session-1",
+    )
+
+    assert isinstance(result, BashExecResponse)
+    assert len(getattr(result, stream)) == MAX_OUTPUT_SIZE
+    assert result.output_truncated is True
+    assert "truncated" in result.message
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_local_pc_output_within_the_limit_is_whole() -> None:
+    tool = _make_tool()
+    sandbox = _make_local_pc_sandbox(stdout="x" * MAX_OUTPUT_SIZE, stderr="warn")
+
+    result = await tool._execute_on_local_pc(
+        sandbox=sandbox,
+        command="cat log",
+        timeout=10,
+        session_id="session-1",
+    )
+
+    assert isinstance(result, BashExecResponse)
+    assert len(result.stdout) == MAX_OUTPUT_SIZE
+    assert result.stderr == "warn"
+    assert result.output_truncated is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_local_pc_gate_probes_never_run_on_the_users_machine() -> None:
+    tool = _make_tool()
+    sandbox = _make_local_pc_sandbox()
+    with (
+        patch(
+            "backend.copilot.tools.bash_exec.get_current_sandbox",
+            return_value=sandbox,
+        ),
+        patch(
+            "backend.copilot.tools.bash_exec.is_local_pc_executor",
+            return_value=True,
+        ),
+    ):
+        context = await tool.gate_context({"command": "bash ./setup.sh"})
+        subject = await tool.gate_subject(
+            _USER, make_session(_USER), {"command": "echo hi > ~/workspace/a.txt"}
+        )
+
+    assert context is None
+    assert subject is None
+    sandbox.commands.run.assert_not_awaited()
 
 
 class TestBashExecE2BTokenInjection:
@@ -286,6 +486,90 @@ class TestBashExecE2BTokenInjection:
         assert "GH_TOKEN" not in call_kwargs["envs"]
         assert "GIT_AUTHOR_NAME" not in call_kwargs["envs"]
         assert isinstance(result, BashExecResponse)
+
+
+class TestBashExecShellKilledBySignal:
+    """A `pkill -f` matching the command's own `bash -c` argv kills that shell,
+    so nothing after it runs; the message has to say so."""
+
+    @pytest.mark.parametrize(
+        "exit_code, message",
+        [
+            (-1, _SHELL_KILLED_MESSAGE),
+            # 128+N is the shell reporting a step a signal killed; it lived on.
+            (143, "Command executed with status code 143"),
+        ],
+        ids=["signal", "128+N"],
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_on_e2b(self, exit_code: int, message: str):
+        result = await _make_tool()._execute_on_e2b(
+            sandbox=_make_sandbox(exit_code=exit_code),
+            command='pkill -f "npm install"; npm install',
+            timeout=10,
+            session_id="session-under-test",
+            user_id=None,
+        )
+
+        assert isinstance(result, BashExecResponse)
+        assert result.message == message
+        assert result.exit_code == exit_code
+        assert result.timed_out is False
+
+    @pytest.mark.parametrize(
+        "exit_code",
+        [
+            # In its own PID namespace the command cannot signal bwrap, so a
+            # negative code is a signal from outside the sandbox.
+            -15,
+            # bwrap reports the shell's signal as 128+N, as `exit 143` does.
+            143,
+        ],
+        ids=["bwrap-signalled", "self-kill"],
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_in_bubblewrap_keeps_the_status_code(self, tmp_path, exit_code: int):
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.get_current_sandbox",
+                return_value=None,
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.has_full_sandbox", return_value=True
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.get_workspace_dir",
+                return_value=str(tmp_path),
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.run_sandboxed",
+                new=AsyncMock(return_value=("", "", exit_code, False)),
+            ),
+        ):
+            result = await _make_tool()._execute(
+                user_id=_USER,
+                session=make_session(user_id=_USER),
+                command='pkill -f "npm install"; npm install',
+                timeout=10,
+            )
+
+        assert isinstance(result, BashExecResponse)
+        assert result.message == f"Command executed with status code {exit_code}"
+        assert result.exit_code == exit_code
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_on_local_pc_minus_one_is_not_envd_s_signal(self):
+        # The companion reports Python's returncode: -N for signal N, and -1
+        # for SIGHUP or no return code at all, never envd's "any signal".
+        result = await _make_tool()._execute_on_local_pc(
+            sandbox=_make_local_pc_sandbox(exit_code=-1),
+            command='pkill -f "npm install"; npm install',
+            timeout=10,
+            session_id="session-under-test",
+        )
+
+        assert isinstance(result, BashExecResponse)
+        assert result.message == "Command executed with status code -1"
 
 
 class TestBashExecSdkToolResultRedirect:
@@ -859,10 +1143,21 @@ class _FakeProcess:
 
 class _FakeHandle:
     """``AsyncCommandHandle``: streams one process until it ends, the stream's
-    own deadline (the command ``timeout``) passes, or the box stops answering."""
+    own deadline (the command ``timeout``) passes, or the box stops answering.
+    At the deadline of the stream that started it, envd kills the process and
+    forgets it; a reattached stream's deadline only ends the stream."""
 
-    def __init__(self, box: "_FakeBox", pid: int, timeout: float, on_stdout, on_stderr):
+    def __init__(
+        self,
+        box: "_FakeBox",
+        pid: int,
+        timeout: float,
+        on_stdout,
+        on_stderr,
+        started: bool = False,
+    ):
         self.pid = pid
+        self._started = started
         self._box = box
         self._proc = box.processes[pid]
         self._timeout = timeout
@@ -902,7 +1197,8 @@ class _FakeHandle:
                     error=None,
                 )
             if self._timeout and loop.time() - opened >= self._timeout:
-                # A connection deadline only: E2B leaves the process running.
+                if self._started:
+                    proc.killed = proc.ended = True
                 raise _sdk_error(Code.DEADLINE_EXCEEDED, "deadline exceeded")
 
     async def wait(self) -> CommandResult:
@@ -941,7 +1237,9 @@ class _FakeCommands:
         self._box.answer()
         pid = next(self._pids)
         self._box.processes[pid] = self._box.next_process
-        handle = _FakeHandle(self._box, pid, timeout, on_stdout, on_stderr)
+        handle = _FakeHandle(
+            self._box, pid, timeout, on_stdout, on_stderr, started=True
+        )
         return handle if background else await handle.wait()
 
     async def connect(
@@ -1257,7 +1555,6 @@ class TestBashExecE2BTimeouts:
             result.message
             == "Timed out after 1s; it was killed, with every process it started."
         )
-        # E2B's deadline only closes the stream; the tool kills the command.
         assert proc.killed is True
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -1321,26 +1618,6 @@ class TestBashExecE2BTimeouts:
         assert isinstance(result, BashExecResponse)
         assert (result.stdout, result.exit_code) == ("1234567890", 0)
         assert proc.killed is False
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_timeout_kills_the_children_before_the_shell(self, kill_tree):
-        # envd's kill reaches only the shell, so its children are killed first,
-        # while the shell is still there to find them under.
-        proc = _FakeProcess([], runtime=60, code=0)
-        box = _FakeBox(limit=30, process=proc)
-
-        def children_first(sandbox, script, **kwargs):
-            assert proc.killed is False
-            return SimpleNamespace(exit_code=0)
-
-        kill_tree.side_effect = children_first
-
-        await _run(box, timeout=1)
-
-        kill_tree.assert_awaited_once()
-        script = kill_tree.await_args.args[1]
-        assert "p=100\n" in script
-        assert proc.killed is True
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_children_that_could_not_be_killed_are_reported(self, kill_tree):
@@ -1507,3 +1784,201 @@ def _kill_tree_of_sleep_then_echo() -> None:
     finally:
         shell.kill()
         shell.wait(timeout=10)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="reads /proc")
+class TestBashExecTimeoutOnARealShell:
+    """The command runs as real processes, under what envd does at a command's
+    deadline (``_LocalCommands``)."""
+
+    @pytest.fixture(autouse=True)
+    def box_here(self):
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.keep_sandbox_running", new=AsyncMock()
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.run_internal", side_effect=_run_here
+            ),
+        ):
+            yield
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "cd /tmp && sleep {length} && echo done",
+            # The shell exits at once; sleep keeps its output open.
+            "sleep {length} & echo started",
+        ],
+        ids=["compound", "backgrounded"],
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_timeout_leaves_nothing_the_command_started(self, command: str):
+        length = f"30.{time.time_ns() % 10**9:09d}"
+        try:
+            result = await _make_tool()._execute_on_e2b(
+                sandbox=_local_box(),
+                command=command.format(length=length),
+                timeout=1,
+                session_id=None,
+                user_id=None,
+            )
+
+            assert isinstance(result, BashExecResponse)
+            assert result.timed_out is True
+            assert result.message == (
+                "Timed out after 1s; it was killed, with every process it started."
+            )
+            assert _sleeping(length) == []
+        finally:
+            for pid in _sleeping(length):
+                os.kill(pid, signal.SIGKILL)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_command_that_ends_keeps_its_output_and_exit_code(self):
+        result = await _make_tool()._execute_on_e2b(
+            sandbox=_local_box(),
+            command="echo out; echo err >&2; exit 3",
+            timeout=10,
+            session_id=None,
+            user_id=None,
+        )
+
+        assert isinstance(result, BashExecResponse)
+        assert (result.stdout, result.stderr) == ("out\n", "err\n")
+        assert (result.exit_code, result.timed_out) == (3, False)
+
+    @pytest.mark.parametrize(
+        "background, timed_out, message",
+        [
+            ("", False, _SHELL_KILLED_MESSAGE),
+            # sleep keeps the output open, so the call runs to its timeout,
+            # where no exit code arrives to tell of the self-kill.
+            (
+                "sleep {length} & ",
+                True,
+                "Timed out after 1s; it was killed, with every process it started.",
+            ),
+        ],
+        ids=["ends", "times-out"],
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_command_that_kills_its_own_shell(
+        self, tmp_path, background: str, timed_out: bool, message: str
+    ):
+        length = f"30.{time.time_ns() % 10**9:09d}"
+        after = tmp_path / "after"
+        start = background.format(length=length)
+        try:
+            result = await _make_tool()._execute_on_e2b(
+                sandbox=_local_box(),
+                command=f"{start}pkill -f 'zz_self_{length}'; echo > {after}",
+                timeout=1 if timed_out else 10,
+                session_id=None,
+                user_id=None,
+            )
+
+            assert isinstance(result, BashExecResponse)
+            assert (result.message, result.timed_out) == (message, timed_out)
+            assert result.exit_code == -1
+            assert not after.exists()
+            assert _sleeping(length) == []
+        finally:
+            for pid in _sleeping(length):
+                os.kill(pid, signal.SIGKILL)
+
+
+def _local_box() -> AsyncSandbox:
+    return cast(AsyncSandbox, SimpleNamespace(commands=_LocalCommands()))
+
+
+class _LocalCommands:
+    """``sandbox.commands`` on real local processes.  As on a live E2B box, a
+    command's stream ends once its shell has exited and both its pipes are at
+    EOF, and at the deadline envd SIGKILLs the shell alone, reaps it and
+    forgets its pid, leaving what the shell started running."""
+
+    def __init__(self):
+        self.running: dict[int, subprocess.Popen] = {}
+
+    async def run(self, cmd, timeout, on_stdout, on_stderr, **_):
+        shell = await asyncio.to_thread(
+            subprocess.Popen,
+            ["/bin/bash", "-c", cmd],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.running[shell.pid] = shell
+        return _LocalHandle(self, shell, timeout, on_stdout, on_stderr)
+
+    async def kill(self, pid, request_timeout=None) -> bool:
+        shell = self.running.pop(pid, None)
+        if shell is None:
+            return False
+        shell.kill()
+        shell.wait()
+        return True
+
+
+class _LocalHandle:
+    def __init__(self, commands: _LocalCommands, shell, timeout, on_stdout, on_stderr):
+        self.pid = shell.pid
+        self._commands = commands
+        self._shell = shell
+        self._timeout = timeout
+        self._callbacks = {shell.stdout: on_stdout, shell.stderr: on_stderr}
+
+    async def wait(self) -> CommandResult:
+        loop = asyncio.get_running_loop()
+        at_eof = loop.create_future()
+        open_pipes = set(self._callbacks)
+
+        def read(pipe) -> None:
+            if data := os.read(pipe.fileno(), 65536):
+                self._callbacks[pipe](data.decode())
+                return
+            loop.remove_reader(pipe.fileno())
+            open_pipes.discard(pipe)
+            if not open_pipes:
+                at_eof.set_result(None)
+
+        for pipe in open_pipes:
+            loop.add_reader(pipe.fileno(), read, pipe)
+        try:
+            await asyncio.wait_for(at_eof, self._timeout)
+        except TimeoutError:
+            self._shell.kill()
+            self._shell.wait()
+            raise _sdk_error(Code.DEADLINE_EXCEEDED, "deadline exceeded")
+        finally:
+            self._commands.running.pop(self.pid, None)
+            for pipe in open_pipes:
+                loop.remove_reader(pipe.fileno())
+            for pipe in self._callbacks:
+                pipe.close()
+        exit_code = await asyncio.to_thread(self._shell.wait)
+        if exit_code < 0:  # envd sends Go's ExitCode(): -1 for any signal.
+            exit_code = -1
+        if exit_code:
+            raise CommandExitException(
+                stdout="", stderr="", exit_code=exit_code, error=None
+            )
+        return CommandResult(stdout="", stderr="", exit_code=0, error=None)
+
+
+async def _run_here(sandbox, script: str, **_) -> SimpleNamespace:
+    done = await asyncio.to_thread(subprocess.run, ["bash", "-c", script], timeout=10)
+    return SimpleNamespace(exit_code=done.returncode)
+
+
+def _sleeping(length: str) -> list[int]:
+    found = []
+    for cmdline in Path("/proc").glob("[0-9]*/cmdline"):
+        try:
+            argv = cmdline.read_bytes().split(b"\0")
+        except OSError:
+            continue
+        pid = int(cmdline.parent.name)
+        if argv[:2] == [b"sleep", length.encode()] and _alive(pid):
+            found.append(pid)
+    return found

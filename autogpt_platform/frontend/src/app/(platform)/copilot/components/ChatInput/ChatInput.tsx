@@ -449,6 +449,7 @@ export const ChatInput = memo(function ChatInput({
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
       {mentions.isOpen && (
         <MentionDropdown
+          trigger={mentions.trigger}
           options={mentions.options}
           showFiles={mentions.showFiles}
           hasIntegrations={mentions.hasIntegrations}
