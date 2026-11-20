@@ -8,16 +8,19 @@ raised "... is bound to a different event loop", and the OpenAI SDK retried
 on a new connection. The provider received and billed the call twice while
 the platform saw one success and recorded one.
 
-This drives the real getters over real HTTP from several worker loops:
-session titles (``_get_aux_client``), baseline rounds (``_get_main_client``)
-and ``get_openai_client`` helpers, against a local OpenAI-compatible server
-that journals every request. Each seed interleaves the calls randomly across
-the workers, runs some concurrently, and shuts one worker down and replaces
-it mid-run, the two ways a worker loop ends: stopped as
-``CoPilotProcessor.cleanup`` does, or shut down as ``asyncio.run`` does.
+These tests drive the real getters over real HTTP from worker loops: session
+titles (``_get_aux_client``), baseline rounds (``_get_main_client``) and
+``get_openai_client`` helpers, against a local OpenAI-compatible server that
+journals every request.
 
-A client that still reaches a second loop must fail there before it sends:
-the last test puts the process-wide title client back and checks that.
+- The first test makes each call on one worker, then again on a second
+  worker, where it would find the first worker's idle connection.
+- The seeded test interleaves the calls randomly across the workers, runs
+  some concurrently, and shuts one worker down and replaces it mid-run, the
+  two ways a worker loop ends: stopped as ``CoPilotProcessor.cleanup`` does,
+  or shut down as ``asyncio.run`` does.
+- A client that still reaches a second loop must fail there before it sends:
+  the last test puts the process-wide title client back and checks that.
 """
 
 import asyncio
@@ -275,6 +278,27 @@ def cross_loop_signs() -> Iterator[_CrossLoopSigns]:
     root.removeHandler(handler)
     for logger, level in zip(noisy, levels):
         logger.setLevel(level)
+
+
+@pytest.mark.parametrize("call", CALLS, ids=lambda call: call.__name__.strip("_"))
+def test_a_call_on_a_second_worker_reaches_the_provider_once(
+    call: Callable[[int, int], Coroutine[Any, Any, str]],
+    provider: _Provider,
+    local_transport: None,
+) -> None:
+    """The first worker's call leaves an idle keep-alive connection behind. A
+    process-wide client sent the second worker's call on it, couldn't read the
+    reply on the second worker's loop, and sent the call again."""
+    first, second = _WorkerLoop([]), _WorkerLoop([])
+    try:
+        replies = [_run_on(first, call(0, 0)), _run_on(second, call(1, 0))]
+    finally:
+        first.shut_down()
+        second.shut_down()
+    with provider.lock:
+        journal = list(provider.journal)
+    assert journal == [0, 1], f"the provider received calls {journal}, not [0, 1]"
+    assert replies == [REPLY, REPLY]
 
 
 def test_every_call_reaches_the_provider_once(
