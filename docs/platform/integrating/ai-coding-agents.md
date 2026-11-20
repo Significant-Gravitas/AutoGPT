@@ -51,7 +51,7 @@ Rules the integration must follow:
   their own key (such as a job ID) and generate one only when they don't.
 - Build inputs from the agent's input_schema (properties and required). A run or
   schedule with an unknown input name, or a required input left out or null, is a 422
-  whose error.details.errors names each one.
+  whose error.details.errors names each one, up to 20.
 - A run is asynchronous. Poll GET /runs/{run_id} with backoff until status is COMPLETED,
   FAILED or TERMINATED, under one overall deadline that also bounds each request and each
   sleep. Treat REVIEW as waiting on a person, never as finished: by default, stop
@@ -145,7 +145,7 @@ Coding agents read standing instructions from `AGENTS.md` (Codex, Cursor, Copilo
   Idempotency-Key header. Get a graph's library agent with GET /graphs/{graph_id}/library-agent.
   GET /library/agents leaves input_schema empty: read it from GET /library/agents/{agent_id}.
 - Build inputs from input_schema (properties and required). An unknown input name, or a
-  required input left out or null, is a 422 naming each in error.details.errors.
+  required input left out or null, is a 422 naming each (up to 20) in error.details.errors.
 - Runs are asynchronous: poll GET /runs/{run_id} with backoff and a deadline until COMPLETED,
   FAILED or TERMINATED. REVIEW waits for a person. COMPLETED can still lack outputs: check
   them, and read `error` outputs from node_executions with status FAILED.
@@ -182,7 +182,7 @@ description: Integrate with the AutoGPT Platform API v2 - run AutoGPT agents, re
 
 ## Running an agent
 1. Find it: GET /library/agents (items[].id is the library agent ID). From a graph ID: GET /graphs/{graph_id}/library-agent.
-2. Inputs: keys of input_schema.properties from GET /library/agents/{agent_id} (the list leaves input_schema empty). An unknown name, or a required input left out or null, is a 422 whose error.details.errors names each. File inputs (format "file") take a file_uri from POST /files/upload.
+2. Inputs: keys of input_schema.properties from GET /library/agents/{agent_id} (the list leaves input_schema empty). An unknown name, or a required input left out or null, is a 422 whose error.details.errors names each, up to 20. File inputs (format "file") take a file_uri from POST /files/upload.
 3. Credentials: GET /library/agents/{agent_id}/credentials. Pass credentials_inputs {field_name: {id, provider, type}} from matching_credentials.
 4. Start: POST /library/agents/{agent_id}/runs with {"inputs": {...}, "credentials_inputs": {...}} and an Idempotency-Key header. Answers 202 with the run.
 5. Wait: GET /runs/{run_id} with backoff and one overall deadline until COMPLETED, FAILED or TERMINATED. REVIEW means a person must answer (GET /runs/reviews, POST /runs/{run_id}/reviews): by default stop polling and report the run ID; stop the run with POST /runs/{run_id}/stop if nobody will answer.

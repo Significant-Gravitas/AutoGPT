@@ -12,6 +12,10 @@ on:
       - ".github/scripts/test_frontend_cobertura_contract.py"
       - ".github/scripts/run_unittest_junit.py"
       - "autogpt_platform/frontend/**"
+      # The Better Auth tables are Prisma's; auth-schema.test.ts checks them.
+      - "autogpt_platform/backend/schema.prisma"
+      # The chat's prompt-row ids; turnTail.test.ts checks them.
+      - "autogpt_platform/backend/backend/copilot/expert_kickoff.py"
       - "autogpt_platform/backend/Dockerfile"
       - "autogpt_platform/docker-compose.yml"
       - "autogpt_platform/docker-compose.platform.yml"
@@ -25,6 +29,10 @@ on:
       - ".github/scripts/test_frontend_cobertura_contract.py"
       - ".github/scripts/run_unittest_junit.py"
       - "autogpt_platform/frontend/**"
+      # The Better Auth tables are Prisma's; auth-schema.test.ts checks them.
+      - "autogpt_platform/backend/schema.prisma"
+      # The chat's prompt-row ids; turnTail.test.ts checks them.
+      - "autogpt_platform/backend/backend/copilot/expert_kickoff.py"
       - "autogpt_platform/backend/Dockerfile"
       - "autogpt_platform/docker-compose.yml"
       - "autogpt_platform/docker-compose.platform.yml"
@@ -40,13 +48,19 @@ defaults:
     shell: bash
     working-directory: autogpt_platform/frontend
 
+permissions:
+  contents: read
+
 jobs:
   tooltip-browser:
-    runs-on: ubuntu-latest
+    # Pinned: Playwright has no Chromium build for ubuntu-latest's 26.04 image.
+    runs-on: ubuntu-24.04
     timeout-minutes: 11
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           package_json_file: autogpt_platform/frontend/package.json
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
@@ -77,6 +91,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.sha }}
+          persist-credentials: false
 
       - name: Test coverage report validator
         run: >-
@@ -95,7 +110,7 @@ jobs:
           if-no-files-found: error
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
@@ -124,7 +139,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
@@ -153,16 +168,17 @@ jobs:
     runs-on: ubuntu-latest
     # Disabled. Re-enable only for github.ref == 'refs/heads/dev' || github.base_ref == 'dev'
     # and a paths-filter match on autogpt_platform/frontend/src/components/**.
-    if: ${{ false }}
+    if: false
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
@@ -177,7 +193,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run Chromatic
-        uses: chromaui/action@882b4728513a3720bfcd27bd9ad1260c603c6090 # v18.13.2
+        uses: chromaui/action@5d18868345f53a8f61258ad393396c7e169100fd # v18.14.4
         with:
           projectToken: chpt_9e7c1a76478c9c8
           onlyChanged: true
@@ -199,9 +215,10 @@ jobs:
         with:
           ref: ${{ github.sha }}
           submodules: recursive
+          persist-credentials: false
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           package_json_file: autogpt_platform/frontend/package.json
 

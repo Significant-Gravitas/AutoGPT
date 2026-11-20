@@ -25,6 +25,7 @@ import {
   convertChatSessionMessagesToUiMessages,
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
+import { countAnswerTowardStarToast } from "./helpers/githubStarToast";
 import {
   latestProviderFailure,
   parseProviderFailure,
@@ -39,6 +40,7 @@ import {
 } from "./stream/renderTail";
 import {
   getTurnRuntime,
+  SendInFlightError,
   type RuntimePhase,
   type RuntimeSnapshot,
   type SendInput,
@@ -61,6 +63,7 @@ const EMPTY_SNAPSHOT: RuntimeSnapshot = {
   notice: null,
   error: null,
   stopped: false,
+  probing: false,
 };
 
 interface Args {
@@ -120,6 +123,8 @@ export function useCopilotRuntimeStream({
   useInsertionEffect(() => {
     isUserStoppingRef.current = snapshot.stopped;
   });
+  // The turn-end handler is bound before `messages` is built, below.
+  const messagesRef = useRef<UIMessage[]>([]);
 
   function handleError(error: Error, rawFailure: unknown) {
     if (!sessionId) return;
@@ -176,10 +181,16 @@ export function useCopilotRuntimeStream({
     return runtime.bind(
       {
         onError: handleError,
-        onTurnEnd: () =>
-          queryClient.invalidateQueries({
+        onTurnEnd: ({ expired }) => {
+          void queryClient.invalidateQueries({
             queryKey: getGetV2GetCopilotUsageQueryKey(),
-          }),
+          });
+          // Only a finish the stream delivered counts: a failed turn ends here
+          // too, and so does one whose stream went away first.
+          if (!expired && runtime.getSnapshot().phase === "finished") {
+            countAnswerTowardStarToast({ messages: messagesRef.current });
+          }
+        },
       },
       async () => viewOf((await refetchSession()).data),
     );
@@ -214,6 +225,9 @@ export function useCopilotRuntimeStream({
         : [],
     [sessionId, joinAssistantRuns, history.messages, tail.messages],
   );
+  useInsertionEffect(() => {
+    messagesRef.current = messages;
+  });
   const turnStats = withLatestUser(
     messages,
     statsOfAssistantRuns(
@@ -222,16 +236,36 @@ export function useCopilotRuntimeStream({
     ),
   );
 
-  async function sendMessage(input: SendInput) {
-    if (!runtime || !sessionId) return;
-    const metadata = input.metadata;
+  // What the duplicate-POST guard compares, and what a refused send restores.
+  function recordSubmitted(text: string, metadata: unknown) {
+    if (!sessionId) return;
     useCopilotStreamStore.getState().updateCoord(sessionId, {
-      lastSubmittedMessageText: "text" in input ? input.text : textOf(input),
+      lastSubmittedMessageText: text,
       lastSubmittedKickoffExpertId: getKickoffExpertIdFromMetadata(metadata),
       lastSubmittedKickoffAttemptToken:
         getKickoffAttemptTokenFromMetadata(metadata),
     });
+  }
+
+  async function sendMessage(input: SendInput) {
+    if (!runtime || !sessionId) return;
+    // Refused before the recovery text changes: it is still the text of the
+    // send in flight, which a 429 or 402 puts back in the composer.
+    if (runtime.isPostPending()) throw new SendInFlightError();
+    recordSubmitted(
+      "text" in input ? input.text : textOf(input),
+      input.metadata,
+    );
     await runtime.send(input, copilotModel);
+  }
+
+  // The message no check could confirm goes out again under its first id.
+  function resendUnconfirmed() {
+    if (!runtime || !sessionId) return false;
+    const message = runtime.resendUnconfirmed(copilotModel);
+    if (!message) return false;
+    recordSubmitted(textOf(message), message.metadata);
+    return true;
   }
 
   const stop = useCopilotStop({
@@ -300,12 +334,13 @@ export function useCopilotRuntimeStream({
     /** Follow-ups drained into the running turns, for the chip strip. */
     drainedCount: drainedRowCount(snapshot),
     sendMessage,
+    resendUnconfirmed,
     stop,
     status: chatStatus(snapshot.phase),
     error: snapshot.error ?? undefined,
     // The runtime never locks the composer: a send while it resumes is queued.
     isReconnecting: false,
-    isFinishProbing: false,
+    isFinishProbing: snapshot.probing,
     isRestoringActiveSession: notice !== null,
     restoreStatusMessage: notice ? NOTICE_TEXT[notice] : null,
     isSyncing: false,

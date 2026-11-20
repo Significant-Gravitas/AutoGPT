@@ -32,6 +32,7 @@ import { getClientIPToken } from "@/lib/auth/client-ip-token";
 import { getCountryToken } from "@/lib/auth/country-token";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { readServerSession } from "@/lib/auth/server/getServerSession";
+import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
 import { APIError } from "better-auth/api";
 import { encodeImpersonation } from "@/lib/impersonation";
 import { GET, POST } from "../route";
@@ -397,6 +398,23 @@ describe("proxy route — handler pass-through", () => {
     expect(sentHeaders.get("authorization")).toBeNull();
   });
 
+  it("answers a retryable 503 instead of forwarding a session it could not mint a token for", async () => {
+    // Forwarded without a token, the request got a 401 from the backend, which
+    // the browser reads as a logout (W51 N2: the auth database had run out of
+    // connections for the frontend role).
+    vi.mocked(getServerAuthToken).mockRejectedValueOnce(
+      new AuthTokenUnavailableError(),
+    );
+
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items");
+    const res = await GET(req, makeParams(["api", "v1", "items"]));
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(res.status).toBe(503);
+    expect(res.headers.get("retry-after")).toBe("2");
+    expect(await res.json()).toMatchObject({ code: "auth_token_unavailable" });
+  });
+
   it("returns 502 with error detail when backend fetch throws (network error)", async () => {
     vi.mocked(fetch).mockRejectedValue(new Error("ECONNRESET"));
     const consoleErr = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -654,6 +672,70 @@ describe("proxy route — handler pass-through", () => {
     );
     expect(res.headers.get("content-security-policy")).toBe("sandbox");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it.each([
+    "text/html; charset=utf-8",
+    "image/svg+xml",
+    "application/xhtml+xml",
+    "text/xml",
+  ])(
+    "relays a %s response from any other route as a download",
+    async (type) => {
+      vi.mocked(fetch).mockResolvedValue(
+        new Response("hello", {
+          status: 200,
+          headers: {
+            "Content-Type": type,
+            "Content-Disposition": 'inline; filename="page"',
+          },
+        }),
+      );
+
+      const path = ["api", "v1", "items"];
+      const req = new NextRequest(
+        `https://app.test/api/proxy/${path.join("/")}`,
+      );
+      const res = await GET(req, makeParams(path));
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-disposition")).toBe(
+        'attachment; filename="page"',
+      );
+      expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(await res.text()).toBe("hello");
+    },
+  );
+
+  it("leaves a JSON response renderable", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items");
+    const res = await GET(req, makeParams(["api", "v1", "items"]));
+
+    expect(res.headers.get("content-disposition")).toBeNull();
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("still renders the Codex device-login page", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("<p>sign in</p>", {
+        status: 200,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      }),
+    );
+
+    const path = ["api", "integrations", "codex", "device-login", "login-1"];
+    const req = new NextRequest(`https://app.test/api/proxy/${path.join("/")}`);
+    const res = await GET(req, makeParams(path));
+
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(res.headers.get("content-disposition")).toBeNull();
   });
 });
 

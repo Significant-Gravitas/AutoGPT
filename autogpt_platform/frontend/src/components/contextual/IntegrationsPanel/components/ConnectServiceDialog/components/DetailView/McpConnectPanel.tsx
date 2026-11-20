@@ -92,7 +92,7 @@ export function McpConnectPanel({
               onChange={state.selectScheme}
               disabled={state.isSubmitting}
               className="flex flex-col gap-1"
-              labelClassName="text-sm font-medium text-foreground-body"
+              labelClassName="text-body font-medium text-foreground-body"
               selectClassName="rounded-lg border border-border-strong bg-surface px-3 py-2 text-foreground-strong"
             />
           )}
@@ -114,7 +114,7 @@ export function McpConnectPanel({
         <div
           role="alert"
           aria-live="polite"
-          className="rounded-lg border border-error/20 bg-error-surface px-3 py-2 text-sm text-error-foreground"
+          className="rounded-lg border border-error/20 bg-error-surface px-3 py-2 text-body text-error-foreground"
         >
           {state.error}
         </div>

@@ -47,10 +47,18 @@ def mock_session_lookup():
     session.metadata.llm_auth_provider = "platform"
     session.metadata.llm_credential_id = None
     session.metadata.delegated_by_session_id = None
-    with patch(
-        "backend.copilot.sdk.session_waiter.get_chat_session",
-        new=AsyncMock(return_value=session),
-    ) as lookup:
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.get_chat_session",
+            new=AsyncMock(return_value=session),
+        ) as lookup,
+        patch(
+            "backend.copilot.executor.utils.chat_db",
+            return_value=MagicMock(
+                record_chat_session_turn=AsyncMock(return_value=True)
+            ),
+        ),
+    ):
         yield lookup
 
 
@@ -248,6 +256,60 @@ async def test_idle_session_enqueues_normally():
     enqueue.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("allow_queue, timeout", [(False, 1), (True, 0), (True, 1)])
+async def test_slot_race_uses_busy_fallback_without_overwriting_active_turn(
+    allow_queue: bool,
+    timeout: float,
+):
+    raced_db = MagicMock()
+    raced_db.admit_chat_session_turn = AsyncMock(return_value="not_idle")
+    raced_db.get_chat_session_status = AsyncMock(return_value="running")
+    queued = AsyncMock(return_value=_QR())
+    dispatch = AsyncMock()
+    observed = SessionResult(response_text="The active turn's answer")
+    wait = AsyncMock(return_value=("completed", observed))
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight", return_value=False
+        ),
+        patch("backend.copilot.turn_queue.count_inflight_turns", return_value=0),
+        patch.object(active_turns, "chat_db", return_value=raced_db),
+        patch("backend.copilot.sdk.session_waiter.chat_db", return_value=raced_db),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatch),
+        patch("backend.copilot.sdk.session_waiter.queue_user_message", new=queued),
+        patch("backend.copilot.sdk.session_waiter.wait_for_session_result", new=wait),
+    ):
+        outcome, result = await run_copilot_turn_via_queue(
+            session_id="raced-session",
+            user_id="u1",
+            message="Follow up",
+            timeout=timeout,
+            tool_call_id="call",
+            tool_name="run_sub_session",
+            allow_queue=allow_queue,
+            message_metadata={"from_session_id": "parent"},
+        )
+
+    dispatch.assert_not_awaited()
+    if not allow_queue:
+        assert outcome == "refused" and result.refusal
+        queued.assert_not_awaited()
+        wait.assert_not_awaited()
+    else:
+        queued.assert_awaited_once_with(
+            session_id="raced-session",
+            message="Follow up",
+            metadata={"from_session_id": "parent"},
+        )
+        assert result.queued and result.pending_buffer_length == 4
+        assert outcome == ("completed" if timeout else "queued")
+        if timeout:
+            assert result.response_text == "The active turn's answer"
+        else:
+            wait.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     "delegated_by, inflight, expected",
     [
@@ -310,7 +372,9 @@ async def test_a_delegated_turn_leaves_the_users_last_slot_free(
 
 
 @pytest.mark.asyncio
-async def test_idle_session_concurrent_turn_cap_returns_rejected_outcome():
+async def test_idle_session_concurrent_turn_cap_returns_rejected_outcome(
+    chat_blocked_events,
+):
     """Slot-cap rejection in ``schedule_turn`` surfaces as the dedicated
     ``rejected_concurrent_turn_cap`` outcome (not generic ``failed``) so
     callers can render an actionable message instead of pointing at an
@@ -361,6 +425,10 @@ async def test_idle_session_concurrent_turn_cap_returns_rejected_outcome():
     create_session.assert_not_awaited()
     enqueue.assert_not_awaited()
     wait_result.assert_not_awaited()
+    # The AutoPilot block's turn: a workflow block refused at the cap.
+    assert [(e["limit"], e["outcome"], e["surface"]) for e in chat_blocked_events] == [
+        ("concurrency", "refused", "block")
+    ]
 
 
 @pytest.mark.asyncio
@@ -660,7 +728,7 @@ async def test_a_dispatched_turn_with_no_wait_returns_without_reading_its_stream
 
 @pytest.mark.asyncio
 async def test_a_turn_queued_for_a_slot_with_no_wait_returns_without_reading_it(
-    mock_session_lookup,
+    mock_session_lookup, chat_blocked_events
 ):
     """Once queue_spawned_turn has stored the turn it will run when a slot
     frees, so with nothing to wait for a status read can only fail, and a
@@ -696,6 +764,10 @@ async def test_a_turn_queued_for_a_slot_with_no_wait_returns_without_reading_it(
     assert result.queued is True
     queued.assert_awaited_once()
     status_read.assert_not_awaited()
+    # A subtask waiting for a free slot, sent once it is stored.
+    assert [(e["limit"], e["outcome"], e["surface"]) for e in chat_blocked_events] == [
+        ("concurrency", "queued", "background")
+    ]
 
 
 @pytest.mark.asyncio

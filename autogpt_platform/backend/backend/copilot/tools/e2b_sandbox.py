@@ -92,6 +92,7 @@ from pydantic import BaseModel, ConfigDict
 from backend.blocks.desktop._api import DesktopSession, resolve_volume
 from backend.copilot.credential_selection import selected_credentials
 from backend.copilot.integration_creds import (
+    expert_allowed_ids,
     grant_to_box,
     placeholder_env,
     placeholder_grants,
@@ -116,6 +117,7 @@ from backend.util.e2b_template import (
     ensure_template,
     forget_template,
 )
+from backend.util.sandbox_limits import SandboxLimitError
 from backend.util.sandbox_login import run_internal, take_baseline
 from backend.util.sandbox_metadata import MountState, SandboxMetadata, owned_by_user
 
@@ -447,6 +449,7 @@ async def _connect_pinned(
         sandbox_id,
         owner.egress_owner(swap_user_id, ()),
         apply_network=pin_egress,
+        resumes=info.state != SandboxState.RUNNING,
         owner_at_pin=ceiling_at_pin,
         api_key=api_key,
         timeout=timeout,
@@ -858,7 +861,7 @@ async def _placeholder_grants(
     A chat's own box (*session_id*) starts with the chat's picks, so a chat
     that picked account B is not also granted the default A.  An expert's box
     is shared by its chats, so no one chat's pick applies: it starts with the
-    user's default for each connected provider.
+    user's default for each provider, among the credentials granted to it.
 
     Commands get their variables per call as well (``bash_exec``); these are
     for what does not start through a command, the desktop's browser and
@@ -870,8 +873,15 @@ async def _placeholder_grants(
     assert egress_owner.user_id is not None  # ``swaps`` requires one
     try:
         selected = await selected_credentials(session_id) if session_id else None
+        allowed_ids = await expert_allowed_ids(
+            egress_owner.user_id,
+            egress_owner.id if egress_owner.kind == "expert" else None,
+        )
         return await placeholder_grants(
-            egress_owner.user_id, providers=egress_owner.providers, selected=selected
+            egress_owner.user_id,
+            providers=egress_owner.providers,
+            selected=selected,
+            allowed_ids=allowed_ids,
         )
     except Exception as exc:
         # Commands still get theirs; a box without them is no less safe.
@@ -956,6 +966,8 @@ async def get_or_create_owner_sandbox(
                     template=template,
                     session_id=session_id,
                 )
+            except SandboxLimitError:
+                raise
             except Exception as exc:
                 if value in retried_ids:
                     raise
@@ -1054,6 +1066,8 @@ async def get_or_create_owner_sandbox(
                     )
                     last_exc = None
                     break
+                except SandboxLimitError:
+                    raise
                 except Exception as exc:
                     last_exc = exc
                     logger.warning(

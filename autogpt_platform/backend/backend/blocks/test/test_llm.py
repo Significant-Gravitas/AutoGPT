@@ -6,6 +6,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
+import groq
 import httpx
 import openai
 import pytest
@@ -53,6 +54,7 @@ class TestLLMStatsTracking:
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
+                on_abandoned=None,
             )
 
             assert isinstance(response, llm.LLMResponse)
@@ -101,6 +103,7 @@ class TestLLMStatsTracking:
                 llm_model=llm.LLMModel.CLAUDE_4_5_HAIKU,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
+                on_abandoned=None,
             )
 
             assert isinstance(response, llm.LLMResponse)
@@ -1500,6 +1503,7 @@ class TestAnthropicCacheControl:
                     {"role": "user", "content": "Hello"},
                 ],
                 max_tokens=100,
+                on_abandoned=None,
             )
 
         system_arg = captured_kwargs.get("system")
@@ -1556,6 +1560,7 @@ class TestAnthropicCacheControl:
                 ],
                 max_tokens=100,
                 tools=tools,
+                on_abandoned=None,
             )
 
         an_tools = captured_kwargs.get("tools")
@@ -1594,6 +1599,7 @@ class TestAnthropicCacheControl:
                 ],
                 max_tokens=100,
                 tools=None,
+                on_abandoned=None,
             )
 
         import anthropic
@@ -1631,6 +1637,7 @@ class TestAnthropicCacheControl:
                 llm_model=llm.LLMModel.CLAUDE_4_6_SONNET,
                 prompt=[{"role": "user", "content": "Hi"}],
                 max_tokens=50,
+                on_abandoned=None,
             )
 
         assert (
@@ -1669,6 +1676,7 @@ class TestAnthropicCacheControl:
                     {"role": "user", "content": "Hi"},
                 ],
                 max_tokens=50,
+                on_abandoned=None,
             )
 
         assert (
@@ -1765,6 +1773,7 @@ class TestLLMRequestTimeout:
                     llm_model=llm.DEFAULT_LLM_MODEL,
                     prompt=[{"role": "user", "content": "Hello"}],
                     max_tokens=100,
+                    on_abandoned=None,
                 )
 
             msg = str(exc_info.value)
@@ -1797,6 +1806,7 @@ class TestLLMRequestTimeout:
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
+                on_abandoned=None,
             )
 
         # The generation budget lands on the read phase; connect stays short so
@@ -1821,6 +1831,10 @@ class TestLLMRequestTimeout:
                     request=httpx.Request("POST", "http://x")
                 ),
                 id="anthropic-sdk",
+            ),
+            pytest.param(
+                lambda: groq.APITimeoutError(request=httpx.Request("POST", "http://x")),
+                id="groq-sdk",
             ),
         ],
     )
@@ -1917,10 +1931,10 @@ class TestLLMRequestTimeout:
     ):
         """The 0.9 threshold is the new business logic, so pin it either side.
         Both degenerate budgets (0 / 3600) leave it free to be any value."""
-        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", budget)
         with self._captured_logs() as records:
             llm._log_timeout_outcome(
                 elapsed=elapsed,
+                timeout_seconds=budget,
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 execution_context=None,
                 error=TimeoutError("x"),
@@ -1930,10 +1944,10 @@ class TestLLMRequestTimeout:
     def test_a_bare_timeout_still_names_its_cause(self, monkeypatch):
         """``str(asyncio.TimeoutError())`` is "", and ``error`` is the only field
         in the alert that says what went wrong."""
-        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 100)
         with self._captured_logs() as records:
             llm._log_timeout_outcome(
                 elapsed=99.0,
+                timeout_seconds=100,
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 execution_context=None,
                 error=asyncio.TimeoutError(),
@@ -2020,16 +2034,29 @@ class TestLLMRequestTimeout:
         assert alerts[0].json_fields["user_id"] == "u-2"
         assert alerts[0].json_fields["node_exec_id"] == "ne-2"
 
+    @pytest.mark.parametrize(
+        "sdk_timeout",
+        [
+            pytest.param(openai.APITimeoutError, id="openai-sdk"),
+            pytest.param(anthropic.APITimeoutError, id="anthropic-sdk"),
+            # Unrelated to openai's class; a shortened per-attempt slice lets it
+            # surface before the outer wait_for, so the seam must name it too.
+            pytest.param(groq.APITimeoutError, id="groq-sdk"),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_fast_failure_warns_instead_of_alerting(self, monkeypatch):
+    async def test_fast_failure_warns_instead_of_alerting(
+        self, monkeypatch, sdk_timeout
+    ):
         """A connect-phase failure burns no provider spend; paging on it during an
         outage would bury the cutoffs that cost money. Asserts the warning is
-        actually emitted — absence alone would pass against a no-op helper."""
+        actually emitted — absence alone would pass against a no-op helper, and
+        the warning proves each SDK's timeout was classified at the seam."""
         monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 3600)
 
         with self._captured_logs() as records:
             await self._run_block_expecting_failure(
-                openai.APITimeoutError(request=httpx.Request("POST", "http://x"))
+                sdk_timeout(request=httpx.Request("POST", "http://x"))
             )
 
         assert not self._alerts(records)
@@ -2221,6 +2248,7 @@ class TestClaude5ModelThreading:
                 prompt=[{"role": "user", "content": "hi"}],
                 max_tokens=100,
                 compress_prompt_to_fit=True,
+                on_abandoned=None,
             )
 
         expected_model = llm.DEFAULT_LLM_MODEL.value
@@ -2355,3 +2383,55 @@ def test_stagehand_keeps_remote_model_credentials_required(block_name):
         ]
         == []
     )
+
+
+@pytest.mark.parametrize(
+    "values, expected",
+    [
+        ({"name ": "Ada"}, {"name": "Ada"}),
+        ({" name\t": "Ada", "topic": "maths"}, {"name": "Ada", "topic": "maths"}),
+        ({"name ": "padded", "name": "clean"}, {"name": "clean"}),
+        ({"name": "clean", " name": "padded"}, {"name": "clean"}),
+        ({" name": "first", "name ": "second"}, {"name": "first"}),
+        ({"\ufeffname\u00a0": "Ada"}, {"name": "Ada"}),
+        ({"   ": "blank", "name": "Ada"}, {"name": "Ada"}),
+        ({}, {}),
+    ],
+)
+def test_strip_prompt_value_keys(values, expected):
+    assert llm.strip_prompt_value_keys(values) == expected
+
+
+@pytest.mark.asyncio
+async def test_a_prompt_value_key_with_whitespace_fills_its_variable():
+    block = llm.AIStructuredResponseGeneratorBlock()
+    sent: dict[str, Any] = {}
+
+    async def fake_llm_call(*, prompt, **_):
+        sent["prompt"] = prompt
+        return llm.LLMResponse(
+            raw_response="",
+            prompt=[],
+            response="Hello",
+            tool_calls=None,
+            prompt_tokens=1,
+            completion_tokens=1,
+            reasoning=None,
+        )
+
+    input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+        prompt="Greet {{name}}",
+        sys_prompt="You talk to {{name}}.",
+        prompt_values={"name ": "Ada"},
+        expected_format={},
+        model=llm.DEFAULT_LLM_MODEL,
+        credentials=_TEST_AI_CREDENTIALS,
+    )
+
+    with patch.object(block, "llm_call", new=AsyncMock(side_effect=fake_llm_call)):
+        async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+            pass
+
+    contents = [message["content"] for message in sent["prompt"]]
+    assert any("You talk to Ada." in content for content in contents)
+    assert any("Greet Ada" in content for content in contents)

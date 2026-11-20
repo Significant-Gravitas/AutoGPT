@@ -33,7 +33,7 @@ export function TourPlanCard({ plan }: { plan: TourPlan }) {
           {`Here's the plan (${plan.steps.length} steps):`}
         </ContentMessage>
 
-        <div className="mb-6 rounded-lg bg-card p-3">
+        <div className="mb-6 rounded-lg bg-surface p-3">
           <div className="space-y-0.5">
             {plan.steps.map((step, index) => (
               <TourPlanStepItem

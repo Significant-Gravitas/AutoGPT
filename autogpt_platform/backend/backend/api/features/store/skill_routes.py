@@ -7,6 +7,7 @@ from fastapi import Depends, Path, Query, Security
 from backend.api.features.experts import experts_db
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.tools.skills import SkillLimitError, SkillOwnedError
+from backend.util.models import MAX_PAGE
 
 from . import skill_db, skill_model, skill_submission_db
 
@@ -26,7 +27,7 @@ router = fastapi.APIRouter()
 async def list_marketplace_skills(
     category: str | None = Query(default=None),
     search_query: str | None = Query(default=None, alias="search_query"),
-    page: int = Query(default=1, ge=1),
+    page: int = Query(default=1, ge=1, le=MAX_PAGE),
     page_size: int = Query(default=20, ge=1, le=100),
 ) -> skill_model.MarketplaceSkillsResponse:
     """Approved skill listings, most recently updated first."""

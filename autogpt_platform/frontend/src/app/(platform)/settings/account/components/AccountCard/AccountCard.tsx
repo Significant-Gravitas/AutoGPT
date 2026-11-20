@@ -84,10 +84,10 @@ export function AccountCard({ user, index = 0 }: Props) {
               <Dialog.Trigger>
                 <Button
                   variant="secondary"
-                  size="small"
+                  size="icon-xs"
+                  shape="pill"
+                  withTooltip={false}
                   aria-label="Edit email"
-                  // oxlint-disable-next-line design-system/no-restyle -- a 28px pill edit button; Button has no pill size at 28px
-                  className="h-7 min-w-0 px-1.5 py-0.5"
                 >
                   <Icon icon={PencilIcon} size={14} />
                 </Button>

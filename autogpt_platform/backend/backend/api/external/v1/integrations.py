@@ -17,21 +17,28 @@ from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, SecretStr
 
 from backend.api.external.middleware import require_permission
+from backend.api.external.rate_limit import EXECUTION_LIMIT, READ_LIMIT
 from backend.api.features.integrations.models import get_all_provider_names
 from backend.api.features.integrations.router import (
     CredentialsMetaResponse,
     to_meta_response,
 )
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.data.credential_scope import scope_error
 from backend.data.model import (
     APIKeyCredentials,
     Credentials,
     CredentialsType,
     HostScopedCredentials,
     UserPasswordCredentials,
+    is_refused_sdk_default,
     is_sdk_default,
 )
 from backend.integrations.codex.access import has_codex_access_for_discovery
+from backend.integrations.credential_input import (
+    InvalidCredentialInputError,
+    normalize_user_supplied_credentials,
+)
 from backend.integrations.credentials_store import (
     is_system_credential,
     provider_matches,
@@ -40,6 +47,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.oauth.microsoft_identity import MICROSOFT_PROVIDERS
 from backend.integrations.providers import ProviderName
+from backend.util.exceptions import InvalidInputError
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
@@ -132,6 +140,12 @@ class CreateUserPasswordCredentialRequest(BaseModel):
     type: Literal["user_password"] = "user_password"
     username: str = Field(..., description="Username")
     password: str = Field(..., description="Password")
+    scope: str | None = Field(
+        None,
+        description="What this login may be used for, as a URI: "
+        "smtp://host[:port] for smtp, postgresql:// mysql:// or mssql:// "
+        "host[:port] for database; required for those providers",
+    )
     title: str = Field(..., description="A name for this credential")
 
 
@@ -259,7 +273,11 @@ def _get_oauth_handler_for_external(
 # ==================== Endpoints ==================== #
 
 
-@integrations_router.get("/providers", response_model=list[ProviderInfo])
+@integrations_router.get(
+    "/providers",
+    response_model=list[ProviderInfo],
+    dependencies=[READ_LIMIT],
+)
 async def list_providers(
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
@@ -324,6 +342,7 @@ async def list_providers(
     "/{provider}/oauth/initiate",
     response_model=OAuthInitiateResponse,
     summary="Initiate OAuth flow",
+    dependencies=[EXECUTION_LIMIT],
 )
 async def initiate_oauth(
     provider: Annotated[str, Path(title="The OAuth provider")],
@@ -403,6 +422,7 @@ async def initiate_oauth(
     "/{provider}/oauth/complete",
     response_model=OAuthCompleteResponse,
     summary="Complete OAuth flow",
+    dependencies=[EXECUTION_LIMIT],
 )
 async def complete_oauth(
     provider: Annotated[str, Path(title="The OAuth provider")],
@@ -482,7 +502,11 @@ async def complete_oauth(
     )
 
 
-@integrations_router.get("/credentials", response_model=list[CredentialsMetaResponse])
+@integrations_router.get(
+    "/credentials",
+    response_model=list[CredentialsMetaResponse],
+    dependencies=[READ_LIMIT],
+)
 async def list_credentials(
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
@@ -495,12 +519,16 @@ async def list_credentials(
     """
     credentials = await creds_manager.store.get_all_creds(auth.user_id)
     return [
-        to_meta_response(cred) for cred in credentials if not is_sdk_default(cred.id)
+        to_meta_response(cred)
+        for cred in credentials
+        if not is_refused_sdk_default(cred.id)
     ]
 
 
 @integrations_router.get(
-    "/{provider}/credentials", response_model=list[CredentialsMetaResponse]
+    "/{provider}/credentials",
+    response_model=list[CredentialsMetaResponse],
+    dependencies=[READ_LIMIT],
 )
 async def list_credentials_by_provider(
     provider: Annotated[str, Path(title="The provider to list credentials for")],
@@ -515,7 +543,9 @@ async def list_credentials_by_provider(
         auth.user_id, provider
     )
     return [
-        to_meta_response(cred) for cred in credentials if not is_sdk_default(cred.id)
+        to_meta_response(cred)
+        for cred in credentials
+        if not is_refused_sdk_default(cred.id)
     ]
 
 
@@ -524,6 +554,7 @@ async def list_credentials_by_provider(
     response_model=CreateCredentialResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create credentials",
+    dependencies=[EXECUTION_LIMIT],
 )
 async def create_credential(
     provider: Annotated[str, Path(title="The provider to create credentials for")],
@@ -569,10 +600,13 @@ async def create_credential(
             expires_at=request.expires_at,
         )
     elif request.type == "user_password":
+        if error := scope_error(provider, request.scope):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
         credentials = UserPasswordCredentials(
             provider=provider,
             username=SecretStr(request.username),
             password=SecretStr(request.password),
+            scope=request.scope,
             title=request.title,
         )
     elif request.type == "host_scoped":
@@ -590,9 +624,16 @@ async def create_credential(
             detail=f"Unsupported credential type: {request.type}",
         )
 
+    try:
+        normalize_user_supplied_credentials(credentials)
+    except InvalidCredentialInputError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
     # Store credentials
     try:
         await creds_manager.create(auth.user_id, credentials)
+    except InvalidInputError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception:
         logger.exception("Failed to store credentials")
         raise HTTPException(
@@ -620,6 +661,7 @@ class DeleteCredentialResponse(BaseModel):
 @integrations_router.delete(
     "/{provider}/credentials/{cred_id}",
     response_model=DeleteCredentialResponse,
+    dependencies=[EXECUTION_LIMIT],
 )
 async def delete_credential(
     provider: Annotated[str, Path(title="The provider")],
@@ -635,14 +677,14 @@ async def delete_credential(
     use the main API's delete endpoint which handles webhook cleanup and
     token revocation.
     """
-    if is_sdk_default(cred_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
-        )
     if is_system_credential(cred_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="System-managed credentials cannot be deleted",
+        )
+    if is_sdk_default(cred_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
         )
     creds = await creds_manager.store.get_creds_by_id(auth.user_id, cred_id)
     if not creds:

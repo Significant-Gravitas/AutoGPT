@@ -13,6 +13,7 @@ filesystem for self-hosted) — no DB column needed.
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import os
 import re
@@ -31,6 +32,7 @@ from backend.util.workspace_storage import GCSWorkspaceStorage, get_workspace_st
 
 from .cli_session_entry import rewrite_user_entry
 from .hidden_rows import visible_to_model
+from .host_fs import open_no_follow
 from .legacy_first_turn_memory import without_stored_first_turn_memory
 from .legacy_session_file import restore_session_file
 from .model import ChatMessage
@@ -524,7 +526,9 @@ def _sanitize_id(raw_id: str, max_len: int = 36) -> str:
     return cleaned or "unknown"
 
 
-_SAFE_CWD_PREFIX = os.path.realpath("/tmp/copilot-")
+_SAFE_CWD_PREFIX = os.path.realpath(
+    os.environ.get("COPILOT_WORKSPACE_PREFIX") or "/tmp/copilot-"
+)
 
 
 def projects_base() -> str:
@@ -549,8 +553,8 @@ def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
     When *encoded_cwd* is provided the sweep is scoped to that single
     directory, making the operation safe in multi-tenant environments where
     multiple copilot sessions share the same host.  Without it the function
-    falls back to sweeping all directories matching the copilot naming pattern
-    (``-tmp-copilot-``), which is only safe for single-tenant deployments.
+    falls back to sweeping directories matching the configured workspace prefix,
+    which is only safe for single-tenant deployments.
 
     Returns the number of directories removed.
     """
@@ -560,17 +564,17 @@ def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
 
     now = time.time()
     removed = 0
+    encoded_prefix = re.sub(r"[^a-zA-Z0-9]", "-", _SAFE_CWD_PREFIX)
 
     # Scoped mode: only clean up the one directory for the current session.
     if encoded_cwd:
+        if not re.fullmatch(
+            r"[a-zA-Z0-9-]+", encoded_cwd
+        ) or not encoded_cwd.startswith(encoded_prefix):
+            logger.warning("[Transcript] Refusing to sweep non-copilot dir")
+            return 0
         target = Path(_pbase) / encoded_cwd
         if not target.is_dir():
-            return 0
-        # Guard: only sweep copilot-generated dirs.
-        if "-tmp-copilot-" not in target.name:
-            logger.warning(
-                "[Transcript] Refusing to sweep non-copilot dir: %s", target.name
-            )
             return 0
         try:
             # st_mtime is used as a proxy for session activity. Claude CLI writes
@@ -609,9 +613,7 @@ def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
     for entry in entries:
         if removed >= _MAX_PROJECT_DIRS_TO_SWEEP:
             break
-        # Only sweep copilot-generated dirs (pattern: -tmp-copilot- or
-        # -private-tmp-copilot-).
-        if "-tmp-copilot-" not in entry.name:
+        if not entry.name.startswith(encoded_prefix):
             continue
         if not entry.is_dir():
             continue
@@ -722,7 +724,6 @@ def write_transcript_to_tempfile(
         return None
 
     try:
-        os.makedirs(real_cwd, exist_ok=True)
         safe_id = _sanitize_id(session_id, max_len=8)
         jsonl_path = os.path.realpath(
             os.path.join(real_cwd, f"transcript-{safe_id}.jsonl")
@@ -731,7 +732,9 @@ def write_transcript_to_tempfile(
             logger.warning("[Transcript] Path escaped cwd: %s", jsonl_path)
             return None
 
-        with open(jsonl_path, "w") as f:
+        with open(
+            jsonl_path, "w", opener=functools.partial(open_no_follow, make_parents=True)
+        ) as f:
             f.write(transcript_content)
 
         logger.info("[Transcript] Wrote resume file: %s", jsonl_path)

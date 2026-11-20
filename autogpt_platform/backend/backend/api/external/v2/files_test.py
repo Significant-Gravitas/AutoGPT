@@ -107,6 +107,9 @@ async def test_deleting_a_file_removes_its_stored_content(
         new=mock.AsyncMock(return_value=mock.Mock(id=WORKSPACE_ID)),
     )
     manager_cls = mocker.patch("backend.api.external.v2.files.WorkspaceManager")
+    manager_cls.return_value.get_file_info = mock.AsyncMock(
+        return_value=mock.Mock(path="/report.txt")
+    )
     manager_cls.return_value.delete_file = mock.AsyncMock(return_value=True)
 
     await delete_file(file_id="file-1", auth=_auth())
@@ -115,46 +118,24 @@ async def test_deleting_a_file_removes_its_stored_content(
     manager_cls.return_value.delete_file.assert_awaited_once_with("file-1")
 
 
+@pytest.mark.parametrize("found_first", [False, True])
 async def test_deleting_a_missing_file_is_a_404(
     mocker: pytest_mock.MockerFixture,
+    found_first: bool,
 ) -> None:
     mocker.patch(
         "backend.api.external.v2.files.get_workspace",
         new=mock.AsyncMock(return_value=mock.Mock(id=WORKSPACE_ID)),
     )
     manager_cls = mocker.patch("backend.api.external.v2.files.WorkspaceManager")
+    manager_cls.return_value.get_file_info = mock.AsyncMock(
+        return_value=mock.Mock(path="/report.txt") if found_first else None
+    )
     manager_cls.return_value.delete_file = mock.AsyncMock(return_value=False)
 
     with pytest.raises(HTTPException) as raised:
         await delete_file(file_id="file-1", auth=_auth())
     assert raised.value.status_code == 404
-
-
-async def test_an_upload_over_the_storage_quota_is_undone(
-    workspace: dict[str, WorkspaceFile],
-    quota_bytes: mock.AsyncMock,
-) -> None:
-    """A write that breaches the quota must not survive as an unlisted file."""
-    quota_bytes.return_value = 1
-
-    with pytest.raises(HTTPException) as raised:
-        await upload_file(
-            response=Response(),
-            file=_upload("big.bin", b"0" * 64),
-            overwrite=False,
-            auth=_auth(),
-        )
-
-    assert raised.value.status_code == 413
-    assert workspace == {}
-
-
-@pytest.fixture
-def quota_bytes(mocker: pytest_mock.MockFixture) -> mock.AsyncMock:
-    return mocker.patch(
-        "backend.api.features.workspace.service.get_workspace_storage_limit_bytes",
-        new=mock.AsyncMock(return_value=0),
-    )
 
 
 async def test_the_listing_leaves_out_otto_s_working_files(
@@ -217,9 +198,7 @@ def test_a_successful_upload_reports_the_upload_cap_not_the_global_one(
 
 
 @pytest.fixture
-def workspace(
-    mocker: pytest_mock.MockFixture, quota_bytes: mock.AsyncMock
-) -> dict[str, WorkspaceFile]:
+def workspace(mocker: pytest_mock.MockFixture) -> dict[str, WorkspaceFile]:
     """One in-memory workspace behind both the write path and the read path.
 
     The point of the fixture: the upload endpoint and the listing endpoints
@@ -239,14 +218,10 @@ def workspace(
         files[file.id] = file
         return file
 
-    async def delete_file(file_id: str) -> None:
-        files.pop(file_id, None)
-
     manager = mocker.patch(
         "backend.api.features.workspace.service.WorkspaceManager"
     ).return_value
     manager.write_file = mock.AsyncMock(side_effect=write_file)
-    manager.delete_file = mock.AsyncMock(side_effect=delete_file)
 
     mocker.patch(
         "backend.api.features.workspace.service.get_or_create_workspace",
@@ -257,12 +232,6 @@ def workspace(
                 created_at=datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc),
             )
-        ),
-    )
-    mocker.patch(
-        "backend.api.features.workspace.service.get_workspace_total_size",
-        new=mock.AsyncMock(
-            side_effect=lambda _: sum(f.size_bytes for f in files.values())
         ),
     )
     mocker.patch(

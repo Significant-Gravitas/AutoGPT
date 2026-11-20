@@ -80,6 +80,40 @@ def _draft(**fields) -> OnboardingWizardProgress:
         ({"completedSteps": ["team", "autopilot"]}, None),
         ({"role": ""}, None),
         ({"role": "Other", "otherRole": "  "}, None),
+        # The wizard's order can move steps: past the role step is wherever
+        # the person went after it, as completedSteps records.
+        # With payments on, the access step follows the paywall.
+        (
+            {
+                "currentStep": "access",
+                "completedSteps": [
+                    "team",
+                    "autopilot",
+                    "role",
+                    "painPoints",
+                    "hire",
+                    "subscription",
+                ],
+            },
+            OnboardingRole(choice="Marketing"),
+        ),
+        # An experiment that asks the role first.
+        (
+            {"currentStep": "team", "completedSteps": ["role"]},
+            OnboardingRole(choice="Marketing"),
+        ),
+        (
+            {"currentStep": "team", "completedSteps": ["autopilot", "role", "team"]},
+            OnboardingRole(choice="Marketing"),
+        ),
+        # Back to a step finished before the role step, in that order.
+        (
+            {
+                "currentStep": "autopilot",
+                "completedSteps": ["autopilot", "role", "team"],
+            },
+            None,
+        ),
     ],
 )
 def test_the_draft_gives_the_pick_once_the_role_step_is_left(fields, role):

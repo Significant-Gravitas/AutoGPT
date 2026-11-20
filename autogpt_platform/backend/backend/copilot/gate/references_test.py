@@ -247,17 +247,27 @@ async def test_a_pending_team_change_is_named_only_in_its_own_chat(
 
 
 @pytest.mark.parametrize(
-    "hand_off, name, kind",
+    "change, hand_off, name, kind",
     [
         (
+            "hire",
             True,
             "Ada to take on the Printify order pipeline",
             "New hire with a first task",
         ),
-        (False, "Ada", "New hire"),
+        ("hire", False, "Ada", "New hire"),
+        # SECRT-3401: a created expert takes its task the same way.
+        (
+            "raise",
+            True,
+            "Ada to take on the Printify order pipeline",
+            "New expert with a first task",
+        ),
     ],
 )
-async def test_a_held_hire_names_the_task_its_confirm_would_start(hand_off, name, kind):
+async def test_a_held_hire_names_the_task_its_confirm_would_start(
+    change, hand_off, name, kind
+):
     """Confirming a hire's hand-off id also starts the task, so a held confirm
     must say so; the hire-only id of the same hire reads as the plain hire
     (#16101 review)."""
@@ -268,7 +278,7 @@ async def test_a_held_hire_names_the_task_its_confirm_would_start(hand_off, name
     proposal = ExpertChangeProposal(
         user_id="user-1",
         session_id=session.session_id,
-        preview=ExpertChangePreview(kind="hire", name="Ada"),
+        preview=ExpertChangePreview(kind=change, name="Ada"),
         handoff=ExpertHandoffTask(
             title="the Printify order pipeline", brief="Move Etsy orders."
         ),

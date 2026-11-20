@@ -71,17 +71,18 @@ export const AnyOfFieldTitle = (props: customFieldProps) => {
         uiSchema={uiSchema}
       />
       {shoudlShowType && (
-        <Text
-          variant="small"
-          className={cn(
-            "text-foreground-body",
-            isInputBroken && "line-through",
-            colorClass,
-            inputMismatch && "rounded-md bg-error-surface px-1 !text-error",
-          )}
+        <div
+          className={cn(inputMismatch && "rounded-md bg-error-surface px-1")}
         >
-          {isOptional ? `(${inputMismatch || displayType})` : "(any)"}
-        </Text>
+          <Text
+            variant="small"
+            tone={inputMismatch ? "error" : "body"}
+            decoration={isInputBroken ? "line-through" : undefined}
+            className={cn(!inputMismatch && colorClass)}
+          >
+            {isOptional ? `(${inputMismatch || displayType})` : "(any)"}
+          </Text>
+        </div>
       )}
       {shouldShowSelector && selector}
       <DescriptionFieldTemplate

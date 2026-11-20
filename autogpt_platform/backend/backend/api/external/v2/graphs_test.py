@@ -665,6 +665,43 @@ async def test_a_library_agent_is_not_pointed_at_another_organizations_version(
     assert await _library_version(user_id, v1.id) == 3
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_saving_a_graph_id_that_belongs_to_somebody_else_is_refused(
+    server: SpinTestServer,
+) -> None:
+    """A graph ID belongs to its creator; the API refuses anyone else's save."""
+    creator, editor = str(uuid4()), str(uuid4())
+    for user_id in (creator, editor):
+        await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
+    created = await _untagged_version(creator, str(uuid4()), version=1)
+    await prisma.models.AgentGraph.prisma().create(
+        data={
+            "id": created.id,
+            "version": 2,
+            "name": "Agent",
+            "description": "",
+            "isActive": True,
+            "userId": editor,
+        }
+    )
+    [in_library] = await graph_db.get_graph_all_versions(created.id, editor)
+    await library_db.create_library_agent(in_library, user_id=editor)
+    personal_org, _ = await get_user_default_team(editor)
+    assert personal_org
+    auth = _AUTH.model_copy(update={"user_id": editor, "organization_id": personal_org})
+
+    with pytest.raises(NotAuthorizedError):
+        await update_graph(created.id, _REQUEST, auth=auth)
+
+    assert (
+        await prisma.models.LibraryAgent.prisma().count(where={"userId": editor}) == 1
+    )
+    rows = await prisma.models.AgentGraph.prisma().find_many(
+        where={"id": created.id}, order={"version": "asc"}
+    )
+    assert [(row.version, row.userId) for row in rows] == [(1, creator), (2, editor)]
+
+
 async def _untagged_version(
     user_id: str,
     graph_id: str,

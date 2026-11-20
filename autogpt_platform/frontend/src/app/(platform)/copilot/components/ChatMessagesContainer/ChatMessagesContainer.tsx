@@ -17,18 +17,16 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useInsertionEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
-import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
+import { isToolCallPending } from "../ToolChain/helpers";
+import { TurnEndAnnouncer } from "../JobStatsBar/TurnEndAnnouncer";
 import { useElapsedAnchor } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { hideKickoffMessages } from "../../expertKickoff";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  answeredLabel,
-  countHeldCalls,
-  getHeldCallRowKind,
-} from "./heldCallRows";
+import { answeredLabel, getHeldCallRowKind } from "./heldCallRows";
 import { extractReviewTargets, getLatestCompactionPhase } from "./helpers";
+import { reviewRefetchKey } from "./reviewRefetchKey";
 import {
   buildMessageIndexById,
   isMidTurnSegmentRow,
@@ -56,11 +54,13 @@ import {
   PendingUploadMessage,
 } from "./components/PendingUploadMessage";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
+import { getThinkerHex } from "./thinkerColor";
 import { isSessionOpeningMessage, type SentFrom } from "../../sentFrom";
 import type { PendingUploadSend } from "../../copilotStreamStore";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ChatErrorBanner } from "./components/ChatErrorBanner/ChatErrorBanner";
+import { UnconfirmedSendError } from "../../stream/turnRuntime";
 
 type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
 
@@ -70,6 +70,9 @@ interface Props {
   error: Error | undefined;
   isLoading: boolean;
   isRestoringActiveSession?: boolean;
+  /** The stream ended but the turn may not have: a reconnect is scheduled
+   *  or the follow-up turn check is still running. */
+  isTurnSettling?: boolean;
   restoreStatusMessage?: string | null;
   /** ISO start time of the active backend turn. Seeds the elapsed-time
    *  counter so restored turns show honest age instead of counting from
@@ -84,6 +87,8 @@ interface Props {
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
   onRetry?: () => void;
+  /** Sends again a message the chat couldn't confirm it sent. */
+  onResend?: () => void;
   turnStats?: TurnStatsMap;
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
@@ -271,6 +276,7 @@ export function ChatMessagesContainer({
   error,
   isLoading,
   isRestoringActiveSession,
+  isTurnSettling,
   restoreStatusMessage,
   activeStreamStartedAt,
   sessionID,
@@ -279,6 +285,7 @@ export function ChatMessagesContainer({
   isLoadingMore,
   onLoadMore,
   onRetry,
+  onResend,
   turnStats,
   queuedMessages,
   pendingSend,
@@ -351,8 +358,11 @@ export function ChatMessagesContainer({
   // the same error string — the marker becomes an in-line ErrorCard bubble,
   // the SSE event sets ``error`` on ``useChat``. Without dedup, the user sees
   // the same error twice. Suppress the trailing banner whenever the last
-  // assistant message already carries the marker.
-  const lastAssistantHasErrorMarker = hasTrailingErrorMarker(messages);
+  // assistant message already carries the marker. An unconfirmed send is the
+  // client's own finding, about a later prompt: no marker repeats it.
+  const isErrorShownInline =
+    !(error instanceof UnconfirmedSendError) &&
+    hasTrailingErrorMarker(messages);
 
   const hasInflight = (() => {
     if (lastMessage?.role !== "assistant") return false;
@@ -362,8 +372,17 @@ export function ChatMessagesContainer({
     // the follow-up just landed and nothing has been produced past it, so
     // the text or tool above it is settled and Thinking is the only sign
     // the assistant picked the follow-up up.
+    // A step-start is skipped too: the backend opens a step seconds before
+    // the model writes anything (at the start of a turn, and before each
+    // model call after a tool), so what decides is the part before it.
+    // Thinking stays up through that wait; after text or reasoning it stays
+    // hidden, so nothing flashes between steps.
     let lastIndex = lastMessage.parts.length - 1;
-    while (lastIndex >= 0 && isBookkeepingPart(lastMessage.parts[lastIndex])) {
+    while (
+      lastIndex >= 0 &&
+      (isBookkeepingPart(lastMessage.parts[lastIndex]) ||
+        lastMessage.parts[lastIndex].type === "step-start")
+    ) {
       if (lastMessage.parts[lastIndex].type === PENDING_DRAINED_PART_TYPE)
         return false;
       lastIndex--;
@@ -382,26 +401,23 @@ export function ChatMessagesContainer({
     if (lastPart.type === "reasoning" && lastPart.text.trim().length > 0)
       return true;
 
-    // step-start is a turn boundary emitted right before the next tool or
-    // text chunk. Treat it as inflight so the bubble transitions straight
-    // into the next part without flashing back to "Thinking...".
-    if (lastPart.type === "step-start") return true;
-
     // A pause is how the turn ends, so nothing more is coming to wait on.
     if (lastPart.type === TURN_PAUSED_PART_TYPE) return true;
 
-    if (
-      lastPart.type.startsWith(TOOL_PART_PREFIX) &&
-      "state" in lastPart &&
-      (lastPart.state === "input-streaming" ||
-        lastPart.state === "input-available")
-    )
-      return true;
+    // A running tool, or one paused on the user's approval, shows its own
+    // card, so Thinking must not sit beside it.
+    if (isToolCallPending(lastPart)) return true;
 
     return false;
   })();
 
   const isActivelyStreaming = status === "streaming" || status === "submitted";
+  const isTurnBusy =
+    isActivelyStreaming || !!isRestoringActiveSession || !!isTurnSettling;
+  // A host that doesn't report reconnects and finish probes can't tell a
+  // settled turn from a pause between them, so it never claims "Done".
+  const isTurnSettled =
+    isTurnSettling !== undefined && !isTurnBusy && status !== "error" && !error;
   useCostReplyMoment({
     messages,
     isStreaming: isActivelyStreaming,
@@ -435,6 +451,7 @@ export function ChatMessagesContainer({
     <ThinkingIndicator
       active={showThinking}
       startedAtMs={streamClock.startedAtMs}
+      color={getThinkerHex({ expertIdentity, isResolvingExpertIdentity })}
     />
   );
   // Public viewers of a shared chat never see a live turn, so the indicator
@@ -484,6 +501,9 @@ export function ChatMessagesContainer({
         isLastAssistant={isLastAssistant}
         isCurrentlyStreaming={isCurrentlyStreaming}
         isLastInTurn={isLastInTurn}
+        isLatestTurn={isLastRow}
+        isTurnSettled={!isLastRow || isTurnSettled}
+        isTurnSettling={isLastRow && isTurnBusy}
         turnStat={turnStats?.get(message.id)}
         turnMessages={
           showsTurnStats
@@ -504,6 +524,7 @@ export function ChatMessagesContainer({
         filePattern={filePattern}
         fileUrlBuilder={fileUrlBuilder}
         onRetry={isLastAssistant ? onRetry : undefined}
+        expert={isLastAssistant ? expertIdentity : undefined}
       />
     );
   }
@@ -591,18 +612,18 @@ export function ChatMessagesContainer({
             <Message from="assistant">
               <MessageContent className="text-body-lg leading-relaxed text-foreground-strong">
                 {showRestoreFallback ? (
-                  <div className="flex flex-col gap-1 text-sm text-foreground-tertiary">
+                  <div className="flex flex-col gap-1 text-body text-foreground-tertiary">
                     <ThinkingIndicator
                       active
                       startedAtMs={restoreClock.startedAtMs}
                       statusMessage={restoreStatusMessage ?? "Reconnecting…"}
                     />
-                    <span className="pl-6 text-xs text-foreground-subtle">
+                    <span className="pl-6 text-caption text-foreground-subtle">
                       Still syncing the latest progress.
                     </span>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 text-sm text-foreground-tertiary">
+                  <div className="flex items-center gap-2 text-body text-foreground-tertiary">
                     <LoadingSpinner className="h-4 w-4 text-foreground-tertiary" />
                     <span>Retrieving latest messages</span>
                   </div>
@@ -616,8 +637,8 @@ export function ChatMessagesContainer({
           {!readOnly && sessionID && (
             <CopilotPendingReviews
               chatSessionId={sessionID}
-              pollWhileEmpty={reviewTargets.chat}
-              refetchKey={countHeldCalls(messages)}
+              pollWhileEmpty={reviewTargets.chat || isTurnBusy}
+              refetchKey={reviewRefetchKey(messages)}
               expertName={expertIdentity?.name ?? null}
               expert={expertIdentity ?? null}
             />
@@ -629,7 +650,7 @@ export function ChatMessagesContainer({
                   className={cn(
                     "flex flex-col gap-1 border border-dashed border-border-strong bg-surface-hover px-4 py-2.5 text-foreground-strong opacity-60",
                     isCompact
-                      ? "rounded-xl text-sm leading-6"
+                      ? "rounded-xl text-body leading-6"
                       : "rounded-3xl text-body-lg leading-relaxed",
                   )}
                 >
@@ -648,8 +669,15 @@ export function ChatMessagesContainer({
                 </MessageContent>
               </Message>
             ))}
-          {!readOnly && error && !lastAssistantHasErrorMarker && (
-            <ChatErrorBanner error={error} />
+          {!readOnly && error && !isErrorShownInline && (
+            <ChatErrorBanner error={error} onResend={onResend} />
+          )}
+          {!readOnly && (
+            <TurnEndAnnouncer
+              isBusy={isTurnBusy}
+              isSettled={isTurnSettled}
+              messages={messages}
+            />
           )}
           <TailSpacer
             messageID={lastUserMessageID}

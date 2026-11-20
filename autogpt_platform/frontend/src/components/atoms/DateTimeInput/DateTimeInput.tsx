@@ -3,7 +3,6 @@
 import * as React from "react";
 import { Calendar03Icon, Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 
 import { Text } from "../Text/Text";
@@ -134,6 +133,8 @@ export const DateTimeInput = ({
   const isDisabled = disabled || readonly;
 
   const triggerStyles = cn(
+    // The box a ghost Button drew before this became a plain button.
+    "inline-flex h-[2.875rem] min-w-[7.7rem] items-center gap-2 py-2.5 font-sans whitespace-nowrap transition-colors hover:border-surface-muted hover:bg-surface-muted focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none disabled:pointer-events-none disabled:text-surface-active",
     // Base styles matching other form components
     "rounded-3xl border border-border-base bg-surface px-4 shadow-none",
     "font-normal text-foreground-base w-full text-body leading-5",
@@ -183,10 +184,9 @@ export const DateTimeInput = ({
     >
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button
+          <button
             data-slot="date-time-input-trigger"
             type="button"
-            variant="ghost"
             className={triggerStyles}
             disabled={isDisabled}
             autoFocus={autoFocus}
@@ -208,7 +208,7 @@ export const DateTimeInput = ({
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
             />
             {buttonText}
-          </Button>
+          </button>
         </PopoverTrigger>
         <PopoverContent
           data-slot="date-time-input-popup"
@@ -252,18 +252,22 @@ export const DateTimeInput = ({
         </PopoverContent>
       </Popover>
       {error && (
-        <Text
-          data-slot="date-time-input-error"
-          variant="small-medium"
-          as="span"
-          tone="error"
+        <span
           className={cn(
             "absolute top-full left-0 mt-1 transition-opacity duration-200",
             error ? "opacity-100" : "opacity-0",
           )}
         >
-          {error || " "}
-        </Text>
+          <Text
+            data-slot="date-time-input-error"
+            variant="small-medium"
+            as="span"
+            tone="error"
+            className="block"
+          >
+            {error || " "}
+          </Text>
+        </span>
       )}
     </div>
   );

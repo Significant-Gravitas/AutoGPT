@@ -43,8 +43,9 @@ export function LoadingSpinner({
     <Icon
       data-slot="loading-spinner"
       icon={iconMap[variant]}
+      spin
+      tone="inherit"
       className={cn(
-        "animate-spin text-inherit",
         size === "small" && "h-4 w-4",
         size === "medium" && "h-6 w-6",
         size === "large" && "h-10 w-10",

@@ -544,7 +544,7 @@
       "id": "04eab06b-dfa6-4ae3-bff3-dfd956537239",
       "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
       "input_default": {
-        "model": "claude-sonnet-4-5-20250929",
+        "model": "claude-sonnet-5-5",
         "retry": 3,
         "sys_prompt": "Output only the LinkedIn post with no additional commentary or parenthesis.",
         "ollama_host": "localhost:11434",

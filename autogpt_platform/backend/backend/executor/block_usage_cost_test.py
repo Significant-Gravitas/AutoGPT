@@ -1,11 +1,15 @@
 """Tests for the dynamic-pricing branches of block_usage_cost."""
 
+import ast
 import math
+from datetime import date
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from backend.blocks._base import BlockCost, BlockCostType
+from backend.blocks.ayrshare.post_to_youtube import PostToYouTubeBlock
 from backend.blocks.code_executor import (
     ExecuteCodeBlock,
     ExecuteCodeStepBlock,
@@ -14,13 +18,14 @@ from backend.blocks.code_executor import (
 from backend.blocks.exa.search import ExaSearchBlock
 from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
 from backend.blocks.jina.search import SearchTheWebBlock
-from backend.blocks.llm import AITextGeneratorBlock, LLMModel
+from backend.blocks.llm import DEFAULT_LLM_MODEL, AITextGeneratorBlock, LLMModel
 from backend.data.block_cost_config import (
     BLOCK_COSTS,
     MODEL_COST,
     TOKEN_COST,
     TokenRate,
 )
+from backend.data.llm_registry import llm_models
 from backend.data.model import NodeExecutionStats
 from backend.executor import utils as executor_utils
 from backend.executor.utils import block_usage_cost
@@ -296,7 +301,7 @@ def test_fal_video_block_bills_fifteen_credits_per_second():
 
 
 def test_exa_blocks_bill_cost_usd_via_sdk_config(registered_exa_costs):
-    """End-to-end: Exa's ProviderBuilder.with_base_cost(100, COST_USD) is live."""
+    """End-to-end: Exa's ProviderBuilder.with_base_cost(150, COST_USD) is live."""
     block = ExaSearchBlock()
     creds = {
         "credentials": {
@@ -305,10 +310,10 @@ def test_exa_blocks_bill_cost_usd_via_sdk_config(registered_exa_costs):
             "type": exa_credentials.type,
         }
     }
-    # $0.05 provider spend * 100 credits/USD = 5 credits.
+    # $0.05 provider spend * 150 credits/USD = 7.5, billed as 8 credits.
     stats = NodeExecutionStats(provider_cost=0.05, provider_cost_type="cost_usd")
     cost, _ = block_usage_cost(block, creds, stats=stats)
-    assert cost == 5
+    assert cost == 8
     # Pre-flight: unknown cost → 0.
     cost, _ = block_usage_cost(block, creds)
     assert cost == 0
@@ -345,7 +350,7 @@ def test_llm_block_pre_flight_falls_back_to_model_cost():
     cost, _ = block_usage_cost(
         block,
         {
-            "model": LLMModel.GPT5,
+            "model": LLMModel.GPT6_1_SOL,
             "credentials": {
                 "id": openai_credentials.id,
                 "provider": openai_credentials.provider,
@@ -353,7 +358,151 @@ def test_llm_block_pre_flight_falls_back_to_model_cost():
             },
         },
     )
-    assert cost == MODEL_COST[LLMModel.GPT5]
+    assert cost == MODEL_COST[LLMModel.GPT6_1_SOL]
+
+
+@pytest.mark.parametrize("schema_default_input", [{}, {"model": None}])
+def test_llm_block_price_includes_schema_defaults(schema_default_input: dict):
+    """Pricing fills schema defaults the way the block run does."""
+    block = AITextGeneratorBlock()
+    credentials = {
+        "id": openai_credentials.id,
+        "provider": openai_credentials.provider,
+        "type": openai_credentials.type,
+    }
+    explicit = {"model": DEFAULT_LLM_MODEL.value, "credentials": credentials}
+    implicit = {**schema_default_input, "credentials": credentials}
+    stats = NodeExecutionStats(input_token_count=200_000, output_token_count=50_000)
+
+    assert block_usage_cost(block, implicit)[0] == MODEL_COST[DEFAULT_LLM_MODEL] > 0
+    assert block_usage_cost(block, implicit) == block_usage_cost(block, explicit)
+    assert block_usage_cost(block, implicit, stats=stats) == block_usage_cost(
+        block, explicit, stats=stats
+    )
+
+
+@pytest.mark.parametrize(
+    ("day", "runs"),
+    [
+        # Still served the day before its shutdown date: its own price.
+        (date(2026, 12, 10), LLMModel.GPT5_PRO),
+        # From that day on it runs, and is priced as, its fallback.
+        (date(2026, 12, 11), LLMModel.GPT6_1_SOL),
+    ],
+    ids=["before-shutdown", "on-the-day"],
+)
+def test_a_switched_off_model_is_charged_as_the_model_it_runs(
+    day: date, runs: LLMModel, monkeypatch: pytest.MonkeyPatch
+):
+    """A block given a model the catalog has switched off runs the model's
+    catalog fallback from its shutdown date (`Block.with_retired_models_replaced`),
+    and is charged for the model it runs: gpt-5-pro, then gpt-6.1-sol."""
+    monkeypatch.setattr(llm_models, "_today", lambda: day)
+    block = AITextGeneratorBlock()
+    credentials = {
+        "id": openai_credentials.id,
+        "provider": openai_credentials.provider,
+        "type": openai_credentials.type,
+    }
+    stored = {"model": LLMModel.GPT5_PRO.value, "credentials": credentials}
+    priced_as = {"model": runs.value, "credentials": credentials}
+    stats = NodeExecutionStats(input_token_count=1_000_000, output_token_count=0)
+
+    cost, matched = block_usage_cost(block, stored, stats=stats)
+
+    assert matched["model"] == runs
+    assert cost == math.ceil(TOKEN_COST[runs].input)
+    assert block_usage_cost(block, stored) == block_usage_cost(block, priced_as)
+    assert executor_utils._with_schema_defaults(block, stored)["model"] == runs
+
+
+def test_ayrshare_price_tier_follows_the_is_video_default():
+    """YouTube's `is_video` default picks its price tier."""
+    block = PostToYouTubeBlock()
+    assert block_usage_cost(block, {}) == block_usage_cost(block, {"is_video": True})
+
+
+def test_every_cost_filter_match_uses_the_run_input():
+    """Each function that matches cost filters builds the input the block runs
+    on with `_with_schema_defaults`, including any added after these two."""
+    backend_root = Path(executor_utils.__file__).parents[1]
+    callers: dict[str, set[str | None]] = {}
+    for path in backend_root.rglob("*.py"):
+        source = path.read_text()
+        if path.name.endswith("_test.py") or "_is_cost_filter_match" not in source:
+            continue
+        for func in ast.walk(ast.parse(source)):
+            if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            called = {
+                _called_name(node)
+                for node in ast.walk(func)
+                if isinstance(node, ast.Call)
+            }
+            if (
+                "_is_cost_filter_match" in called
+                and func.name != "_is_cost_filter_match"
+            ):
+                callers[f"{path.relative_to(backend_root)}::{func.name}"] = called
+
+    assert {
+        "executor/utils.py::block_usage_cost",
+        "executor/billing.py::_block_has_paid_cost_entry",
+    } <= callers.keys()
+    assert [
+        name
+        for name, called in callers.items()
+        if "_with_schema_defaults" not in called
+    ] == []
+
+
+def test_every_executor_reader_of_an_input_model_reads_the_model_that_runs():
+    """A function in the executor that reads an input's `model` reads the model
+    the block runs: it goes through `_with_schema_defaults` or
+    `with_retired_models_replaced`. The cost log, the dry-run usage record and
+    the stop estimate read it today, as must any reader added after them."""
+    executor_root = Path(executor_utils.__file__).parent
+    readers: dict[str, set[str | None]] = {}
+    for path in executor_root.rglob("*.py"):
+        if path.name.endswith("_test.py"):
+            continue
+        for func in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            calls = [node for node in ast.walk(func) if isinstance(node, ast.Call)]
+            if any(_reads_model(call) for call in calls):
+                readers[f"{path.relative_to(executor_root)}::{func.name}"] = {
+                    _called_name(call) for call in calls
+                }
+
+    assert {
+        "cost_tracking.py::log_system_credential_cost",
+        "manager.py::execute_node",
+        "billing.py::_with_stop_estimate",
+    } <= readers.keys()
+    assert [
+        name
+        for name, called in readers.items()
+        if not called & {"_with_schema_defaults", "with_retired_models_replaced"}
+    ] == []
+
+
+def _reads_model(call: ast.Call) -> bool:
+    return (
+        isinstance(call.func, ast.Attribute)
+        and call.func.attr == "get"
+        and bool(call.args)
+        and isinstance(call.args[0], ast.Constant)
+        and call.args[0].value == "model"
+    )
+
+
+def _called_name(call: ast.Call) -> str | None:
+    if isinstance(call.func, ast.Name):
+        return call.func.id
+    if isinstance(call.func, ast.Attribute):
+        return call.func.attr
+    return None
 
 
 def test_run_cost_type_remains_unchanged(tmp_block_costs_override):

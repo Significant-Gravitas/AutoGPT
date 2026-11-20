@@ -17,7 +17,8 @@ export function HomeHeader({ dashboard }: Props) {
           variant="lead-semibold"
           as="h2"
           tone="primary"
-          className="tracking-title text-pretty"
+          tracking="title"
+          className="text-pretty"
         >
           Your recap
         </Text>

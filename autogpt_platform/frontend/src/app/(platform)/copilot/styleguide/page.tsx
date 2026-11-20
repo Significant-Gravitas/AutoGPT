@@ -28,11 +28,16 @@ import { FindBlocksTool } from "../tools/FindBlocks/FindBlocks";
 import { RunAgentTool } from "../tools/RunAgent/RunAgent";
 import { RunBlockTool } from "../tools/RunBlock/RunBlock";
 import { SearchDocsTool } from "../tools/SearchDocs/SearchDocs";
-import { DrawnLineLoader } from "../components/DrawnLineLoader/DrawnLineLoader";
+import { StoneStackLoader } from "../components/StoneStackLoader/StoneStackLoader";
+import {
+  AUTOPILOT_HEX,
+  getCategoryHex,
+} from "@/components/molecules/ExpertAvatar/colors";
 import { ThinkingIndicator } from "../components/ChatMessagesContainer/components/ThinkingIndicator";
 import { ReasoningCollapse } from "../components/ChatMessagesContainer/components/ReasoningCollapse";
 import { GenericTool } from "../tools/GenericTool/GenericTool";
 import { ViewAgentOutputTool } from "../tools/ViewAgentOutput/ViewAgentOutput";
+import { RenderUISamples } from "./RenderUISamples";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -57,6 +62,7 @@ const SECTIONS = [
   "Tool: Schedule Agent",
   "Tool: Create Agent",
   "Tool: Edit Agent",
+  "Tool: Visual answers",
   "Tool: View Agent Output",
   "Tool: Search Feature Requests",
   "Tool: Create Feature Request",
@@ -73,7 +79,7 @@ function Section({
 }) {
   return (
     <div id={slugify(title)} className="mb-10 scroll-mt-6">
-      <h2 className="mb-4 border-b border-border-base pb-2 font-mono text-xl font-semibold text-foreground-emphasis">
+      <h2 className="mb-4 border-b border-border-base pb-2 font-mono text-lead font-semibold text-foreground-emphasis">
         {title}
       </h2>
       <div className="space-y-4">{children}</div>
@@ -90,7 +96,7 @@ function SubSection({
 }) {
   return (
     <div className="rounded-lg border border-dashed border-info/30 p-3">
-      <p className="mb-2 text-xs font-medium tracking-wide text-foreground-tertiary uppercase">
+      <p className="mb-2 text-caption font-medium tracking-wide text-foreground-tertiary uppercase">
         {label}
       </p>
       {children}
@@ -198,7 +204,7 @@ export default function StyleguidePage() {
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-4 py-10">
             <Text variant="h1">Copilot Styleguide</Text>
-            <p className="mb-8 text-sm text-foreground-tertiary">
+            <p className="mb-8 text-body text-foreground-tertiary">
               Static showcase of all chat message types, tool states &amp;
               variants.
             </p>
@@ -255,10 +261,19 @@ export default function StyleguidePage() {
               <SubSection label="Thinking indicator">
                 <div className="flex flex-col gap-6">
                   <ThinkingIndicator active />
-                  <DrawnLineLoader
-                    size={64}
-                    className="text-foreground-secondary"
-                  />
+                  <ThinkingIndicator active color={AUTOPILOT_HEX} />
+                  <div className="flex gap-6 text-foreground-secondary">
+                    <StoneStackLoader size={64} />
+                    <StoneStackLoader size={64} color={AUTOPILOT_HEX} />
+                    <StoneStackLoader
+                      size={64}
+                      color={getCategoryHex("marketing")}
+                    />
+                    <StoneStackLoader
+                      size={64}
+                      color={getCategoryHex("operations")}
+                    />
+                  </div>
                 </div>
               </SubSection>
 
@@ -1350,6 +1365,12 @@ export default function StyleguidePage() {
             {/* VIEW AGENT OUTPUT                                              */}
             {/* ============================================================= */}
 
+            <Section title="Tool: Visual answers">
+              <SubSection label="Every block type">
+                <RenderUISamples />
+              </SubSection>
+            </Section>
+
             <Section title="Tool: View Agent Output">
               <SubSection label="Input streaming">
                 <ViewAgentOutputTool
@@ -1854,7 +1875,7 @@ export default function StyleguidePage() {
             {/* ============================================================= */}
 
             <Section title="Reasoning Collapse: Interactive Tool Pinning">
-              <p className="mb-4 text-sm text-foreground-secondary">
+              <p className="mb-4 text-body text-foreground-secondary">
                 When the stream finishes, intermediate tool calls are collapsed
                 behind a &quot;Show reasoning&quot; button. However, tools whose
                 output requires user interaction (credentials, inputs,

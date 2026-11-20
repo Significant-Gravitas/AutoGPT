@@ -36,6 +36,10 @@ from .pass_run import DreamPassRun, PassEnded
 from .schemas import PhaseUsage
 
 _NOW = datetime.now(timezone.utc)
+# Only stops a store that missed its deadline: a passing run ends at the
+# 0.05 s one the test sets. Short of the store's own default, so a store that
+# ignored the set deadline still fails.
+_BOUND = 0.8 * store.RECORD_WRITE_TIMEOUT_SECONDS
 _SCOPE = MemoryScope.for_user("u1")
 _BATCH_PASS = BatchPass(
     user_id="u1", expert_id=None, pass_id="p1", job_id="j1", phase_models={}
@@ -203,16 +207,12 @@ class TestCancelDreamPass:
     ):
         monkeypatch.setattr(store, "RECORD_WRITE_TIMEOUT_SECONDS", 0.05)
         stalled(db).side_effect = _hang
-        loop = asyncio.get_running_loop()
-        started = loop.time()
 
-        with pytest.raises(TimeoutError):
-            await asyncio.wait_for(
-                cancel_dream_pass("p1", user_id="u1", reason="testing"), 5
-            )
-
-        # The store's deadline, not this test's own guard, gave up.
-        assert loop.time() - started < 2
+        # The store's deadline raises inside; this test's own guard would
+        # raise out of the `async with` instead, past `pytest.raises`.
+        async with asyncio.timeout(_BOUND):
+            with pytest.raises(TimeoutError):
+                await cancel_dream_pass("p1", user_id="u1", reason="testing")
 
     async def test_a_failed_read_back_raises(self, db):
         db.get_dream_pass_for_user.side_effect = ConnectionError("db down")

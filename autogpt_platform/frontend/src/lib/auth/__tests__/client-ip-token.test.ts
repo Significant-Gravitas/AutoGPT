@@ -27,17 +27,36 @@ afterEach(() => {
 });
 
 describe("getClientIPToken", () => {
-  it("signs the visitor's address, the first forwarded one, under the client-ip scope", async () => {
+  it("signs the visitor's address under the client-ip scope", async () => {
     vi.setSystemTime(1_000_000);
 
-    const token = await getClientIPToken(
-      forwardedFor(" 203.0.113.7 , 10.0.0.1"),
-    );
+    const token = await getClientIPToken(forwardedFor(" 203.0.113.7 "));
 
     expect(token).toBe("signed-203.0.113.7-1000000");
     expect(mintServiceTokenMock).toHaveBeenCalledWith(CLIENT_IP_SCOPE, {
       ip: "203.0.113.7",
     });
+  });
+
+  it("signs the first hop TRUSTED_PROXIES leaves out, not the leftmost entry", async () => {
+    vi.setSystemTime(3_000_000);
+    vi.stubEnv("TRUSTED_PROXIES", "10.0.0.0/8");
+
+    expect(await getClientIPToken(forwardedFor("203.0.113.11, 10.0.0.1"))).toBe(
+      "signed-203.0.113.11-3000000",
+    );
+    expect(await getClientIPToken(forwardedFor("1.2.3.4, 198.51.100.9"))).toBe(
+      "signed-198.51.100.9-3000000",
+    );
+  });
+
+  it("signs nothing for a chain no listed proxy ends", async () => {
+    vi.stubEnv("TRUSTED_PROXIES", "");
+
+    expect(
+      await getClientIPToken(forwardedFor("203.0.113.12, 10.0.0.1")),
+    ).toBeNull();
+    expect(mintServiceTokenMock).not.toHaveBeenCalled();
   });
 
   it("reuses a visitor's token for 30 seconds, then mints a fresh one", async () => {
@@ -63,13 +82,25 @@ describe("getClientIPToken", () => {
   it("signs an address only where the proxy in front vouches for it", async () => {
     vi.stubEnv("VERCEL", "");
     vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "");
-    vi.stubEnv("TRUST_X_FORWARDED_FOR", "");
+    vi.stubEnv("TRUSTED_PROXIES", "");
 
     expect(await getClientIPToken(forwardedFor("198.51.100.8"))).toBeNull();
     expect(mintServiceTokenMock).not.toHaveBeenCalled();
 
+    vi.stubEnv("TRUSTED_PROXIES", "10.0.0.1");
+    expect(
+      await getClientIPToken(forwardedFor("203.0.113.21, 10.0.0.1")),
+    ).not.toBeNull();
+  });
+
+  it("signs nothing on TRUST_X_FORWARDED_FOR alone, which no longer vouches for the header", async () => {
+    vi.stubEnv("VERCEL", "");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "");
+    vi.stubEnv("TRUSTED_PROXIES", "");
     vi.stubEnv("TRUST_X_FORWARDED_FOR", "true");
-    expect(await getClientIPToken(forwardedFor("198.51.100.8"))).not.toBeNull();
+
+    expect(await getClientIPToken(forwardedFor("198.51.100.8"))).toBeNull();
+    expect(mintServiceTokenMock).not.toHaveBeenCalled();
   });
 
   it("answers null when signing fails", async () => {

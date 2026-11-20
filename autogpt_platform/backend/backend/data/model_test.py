@@ -4,7 +4,13 @@ import pytest
 from prisma.models import User as PrismaUser
 from pydantic import SecretStr
 
-from backend.data.model import HostScopedCredentials, NodeExecutionStats, User
+from backend.data.credential_scope import ServerTarget
+from backend.data.model import (
+    HostScopedCredentials,
+    NodeExecutionStats,
+    User,
+    UserPasswordCredentials,
+)
 
 
 class TestHostScopedCredentials:
@@ -169,6 +175,77 @@ class TestHostScopedCredentials:
         )
 
         assert creds.matches_url(test_url) == expected
+
+
+class TestUserPasswordCredentialsScope:
+    @pytest.mark.parametrize(
+        "provider,scope,target,expected",
+        [
+            (
+                "smtp",
+                "smtp://smtp.example.com",
+                ("smtp", "smtp.example.com", 587),
+                True,
+            ),
+            ("smtp", "smtp://smtp.example.com", ("smtp", "203.0.113.7", 587), False),
+            # The rule is the provider's: a database scope on an SMTP login,
+            # or an SMTP scope on a database login, matches nothing
+            (
+                "smtp",
+                "postgresql://db.example.com",
+                ("postgresql", "db.example.com", 5432),
+                False,
+            ),
+            (
+                "database",
+                "smtp://smtp.example.com",
+                ("smtp", "smtp.example.com", 587),
+                False,
+            ),
+            # A login with no scope, or a provider with no scope rule, matches nothing
+            ("smtp", None, ("smtp", "smtp.example.com", 587), False),
+            (
+                "webshare_proxy",
+                "smtp://smtp.example.com",
+                ("smtp", "smtp.example.com", 587),
+                False,
+            ),
+        ],
+    )
+    def test_matches_scope(
+        self,
+        provider: str,
+        scope: str | None,
+        target: tuple[str, str, int],
+        expected: bool,
+    ):
+        creds = UserPasswordCredentials(
+            provider=provider,
+            username=SecretStr("user"),
+            password=SecretStr("pass"),
+            scope=scope,
+        )
+        scheme, host, port = target
+        assert (
+            creds.matches_scope(ServerTarget(scheme=scheme, host=host, port=port))
+            is expected
+        )
+
+    def test_scope_survives_storage_round_trip(self):
+        creds = UserPasswordCredentials(
+            provider="database",
+            username=SecretStr("user"),
+            password=SecretStr("pass"),
+            scope="postgresql://db.example.com:5432",
+        )
+        restored = UserPasswordCredentials.model_validate(creds.model_dump())
+        assert restored.scope == "postgresql://db.example.com:5432"
+
+    def test_login_saved_before_scopes_loads_without_one(self):
+        restored = UserPasswordCredentials.model_validate(
+            {"provider": "smtp", "username": "user", "password": "pass"}
+        )
+        assert restored.scope is None
 
 
 class TestNodeExecutionStatsIadd:

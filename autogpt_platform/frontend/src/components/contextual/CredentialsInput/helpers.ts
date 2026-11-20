@@ -12,6 +12,7 @@ import {
   TwitterIcon,
 } from "@hugeicons/core-free-icons";
 import { createIconComponent } from "@/components/atoms/Icon/Icon";
+import { z } from "zod";
 
 export const fallbackIcon = createIconComponent(Key01Icon);
 const globeIcon = createIconComponent(Globe02Icon);
@@ -215,6 +216,23 @@ export function getRemovedCredentialMessage(
   return `${removedCredentialTitle} was removed — now using ${replacement}.`;
 }
 
+export function getMissingScopes(
+  requiredScopes: string[],
+  grantedScopes: string[] | null | undefined,
+): string[] {
+  const granted = new Set(grantedScopes ?? []);
+  return requiredScopes.filter((scope) => !granted.has(scope));
+}
+
+export function getScopeShortfallMessage(missingScopes: string[]): string {
+  const plural = missingScopes.length > 1;
+  return (
+    `The account connected, but the ${plural ? "permissions" : "permission"} ` +
+    `${missingScopes.join(", ")} ${plural ? "were" : "was"} not granted. ` +
+    `Reconnect and approve ${plural ? "them" : "it"} to use this account here.`
+  );
+}
+
 export const OAUTH_TIMEOUT_MS = 5 * 60 * 1000;
 export const MASKED_KEY_LENGTH = 15;
 
@@ -302,6 +320,57 @@ export function hasExistingHostCredential<
   );
 }
 
+// Mirrors SCOPE_RULES in backend/data/credential_scope.py: these providers'
+// blocks connect to a server the workflow names, so a login's scope says which
+// one, as <scheme>://host[:port].
+const SERVER_SCOPE_SCHEMES: Record<string, { value: string; label: string }[]> =
+  {
+    smtp: [{ value: "smtp", label: "SMTP" }],
+    database: [
+      { value: "postgresql", label: "PostgreSQL" },
+      { value: "mysql", label: "MySQL" },
+      { value: "mssql", label: "Microsoft SQL Server" },
+    ],
+  };
+
+export function getServerScopeSchemes(provider: string) {
+  return SERVER_SCOPE_SCHEMES[provider] ?? null;
+}
+
+// The examples in the server messages, as in SCOPE_RULES.
+const SERVER_EXAMPLES: Record<string, { host: string; port: number }> = {
+  smtp: { host: "smtp.example.com", port: 587 },
+  database: { host: "db.example.com", port: 5432 },
+};
+
+const SERVER_PATTERN =
+  /^(\[[0-9a-fA-F:.]+\]|[A-Za-z0-9._-]+)(?::([0-9]{1,5}))?$/;
+
+export function isValidServer(server: string) {
+  const match = SERVER_PATTERN.exec(server.trim());
+  if (!match) return false;
+  if (match[2] === undefined) return true;
+  const port = Number(match[2]);
+  return port >= 1 && port <= 65535;
+}
+
+export function getInvalidServerMessage(provider: string) {
+  const { host, port } = SERVER_EXAMPLES[provider] ?? SERVER_EXAMPLES.smtp;
+  return `Enter a valid server, like ${host} or ${host}:${port} (port 1-65535)`;
+}
+
+export function getServerFieldSchema(provider: string) {
+  return z
+    .string()
+    .trim()
+    .min(1, "Server is required")
+    .refine(isValidServer, getInvalidServerMessage(provider));
+}
+
+export function buildServerScope(scheme: string, server: string) {
+  return `${scheme}://${server.trim().toLowerCase()}`;
+}
+
 export type ActionTarget =
   | "type_selector"
   | "oauth"
@@ -330,18 +399,38 @@ export function resolveActionTarget(
 
 export type HeaderPair = { key: string; value: string };
 
+// Trims everything the backend's str.strip() trims. trim() keeps U+001C to
+// U+001F and U+0085, so a header of only those would pass here and then be
+// refused by the backend.
+const STRIPPED_BY_BACKEND = /[\s\u001c-\u001f\u0085]/;
+
+function trimLikeBackend(text: string) {
+  let start = 0;
+  let end = text.length;
+  while (start < end && STRIPPED_BY_BACKEND.test(text[start])) start++;
+  while (end > start && STRIPPED_BY_BACKEND.test(text[end - 1])) end--;
+  return text.slice(start, end);
+}
+
 export function headerPairsToRecord(
   pairs: HeaderPair[],
 ): Record<string, string> {
   return pairs.reduce(
     (acc, pair) => {
-      if (pair.key.trim() && pair.value.trim()) {
-        acc[pair.key.trim()] = pair.value.trim();
+      if (trimLikeBackend(pair.key) && trimLikeBackend(pair.value)) {
+        acc[trimLikeBackend(pair.key)] = trimLikeBackend(pair.value);
       }
       return acc;
     },
     {} as Record<string, string>,
   );
+}
+
+export function hasRepeatedHeaderName(pairs: HeaderPair[]) {
+  const names = pairs
+    .filter((pair) => trimLikeBackend(pair.key) && trimLikeBackend(pair.value))
+    .map((pair) => trimLikeBackend(pair.key).toLowerCase());
+  return new Set(names).size !== names.length;
 }
 
 export function addHeaderPairToList(pairs: HeaderPair[]): HeaderPair[] {

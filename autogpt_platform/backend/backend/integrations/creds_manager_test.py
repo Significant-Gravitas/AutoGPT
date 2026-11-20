@@ -304,6 +304,54 @@ async def test_acquire_releases_lock_if_credential_disappears_after_refresh(mock
 
 
 @pytest.mark.asyncio
+async def test_acquire_without_refresh_only_checks_existence(mocker):
+    manager = IntegrationCredentialsManager()
+    credentials = _provider_runtime_credentials().model_copy(
+        update={"refresh_strategy": "oauth_handler"}
+    )
+    lock = _owned_lock()
+    locked = mocker.patch.object(manager, "_locked", return_value=_noop_lock_context())
+    acquire_lock = mocker.patch.object(
+        manager, "_acquire_lock", AsyncMock(return_value=lock)
+    )
+    get = mocker.patch.object(manager, "get", AsyncMock())
+    refresh = mocker.patch.object(manager, "refresh_if_needed", AsyncMock())
+    stored = mocker.patch.object(
+        manager.store,
+        "get_creds_by_id",
+        AsyncMock(return_value=credentials),
+    )
+
+    lease = await manager.acquire_lease("user-a", "cred-id", refresh=False)
+    try:
+        assert lease.credentials is credentials
+    finally:
+        await lease.release()
+
+    get.assert_not_awaited()
+    refresh.assert_not_awaited()
+    # Existence check, then the reload under the lease lock.
+    assert stored.await_count == 2
+    locked.assert_called_once_with("user-a", "cred-id", "!time_sensitive")
+    acquire_lock.assert_awaited_once()
+    lock.release.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_acquire_without_refresh_raises_for_missing_row_before_locking(mocker):
+    manager = IntegrationCredentialsManager()
+    acquire_lock = mocker.patch.object(manager, "_acquire_lock", AsyncMock())
+    get = mocker.patch.object(manager, "get", AsyncMock())
+    mocker.patch.object(manager.store, "get_creds_by_id", AsyncMock(return_value=None))
+
+    with pytest.raises(ValueError):
+        await manager.acquire("user-a", "cred-id", refresh=False)
+
+    get.assert_not_awaited()
+    acquire_lock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_locked_refresh_reloads_after_waiting_for_rotating_provider(mocker):
     manager = IntegrationCredentialsManager()
     stale = _provider_runtime_credentials().model_copy(

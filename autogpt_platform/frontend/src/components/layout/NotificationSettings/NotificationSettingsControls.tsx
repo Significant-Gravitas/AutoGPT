@@ -55,7 +55,8 @@ export function NotificationSettingsControls() {
         >
           <Icon
             icon={Alert01Icon}
-            className="mt-0.5 size-4 shrink-0 text-foreground-tertiary"
+            tone="muted"
+            className="mt-0.5 size-4 shrink-0"
           />
           <Text variant="small" as="p" tone="secondary">
             Your browser is blocking notifications for AutoGPT. Allow them in

@@ -1,8 +1,8 @@
-"""Model selection for the copilot: LaunchDarkly → registry cell → env.
+"""Model selection for the copilot: feature flag → registry cell → env.
 
 Each cell of the ``(mode, tier)`` matrix resolves through three layers:
 
-1. The JSON-valued LaunchDarkly flag ``copilot-model-routing`` (per-user —
+1. The JSON-valued PostHog flag ``copilot-model-routing`` (per-user —
    cohort experiments and rollouts live here, and the flag returns model
    slugs directly).
 2. The catalog's routing cell (``catalog.py`` ``routing`` section, surface
@@ -110,7 +110,7 @@ def catalog_lookup(slug: str) -> llm_registry.RegistryModel | None:
     """Look up *slug* in the catalog, tolerating transport spellings.
 
     The catalog registers Claude models under bare canonical enum slugs
-    (``claude-opus-4-7``) while LaunchDarkly payloads and env defaults use
+    (``claude-opus-4-7``) while flag payloads and env defaults use
     OpenRouter forms (``anthropic/claude-opus-4.6``). Gate on the model,
     not the spelling: try the exact slug, then the ``anthropic/``-stripped
     tail, then its dots→dashes form.
