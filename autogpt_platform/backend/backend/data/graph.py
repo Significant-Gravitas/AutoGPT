@@ -2999,7 +2999,10 @@ _NODE_CATCH_ALL = """
     """
 # ``io."agentPresetId" IS NOT NULL`` bounds both preset statements to preset
 # rows. Without it the planner walks the whole execution-I/O table, every row
-# run outputs included, at every boot.
+# run outputs included, at every boot. Unlike the node statements, the preset
+# statements take the block ids as a JSON array: with ``= ANY($4::text[])``
+# the planner can compare every matching preset row with every LLM node,
+# where this form keeps the lookup through the preset's graph.
 _PRESET_MOVES = """
     WITH moved AS (
         UPDATE {schema_prefix}"AgentNodeExecutionInputOutput" AS io
@@ -3011,7 +3014,7 @@ _PRESET_MOVES = """
         AND n."agentGraphId" = p."agentGraphId"
         AND n."agentGraphVersion" = p."agentGraphVersion"
         AND io."name" = ($3)::text || split_part(n."id", '-', 1)
-        AND n."agentBlockId" = ANY(($4)::text[])
+        AND n."agentBlockId" IN (SELECT jsonb_array_elements_text(($4)::jsonb))
         AND io."data"::jsonb ? ($5)::text
         AND io."data"::jsonb->>($5)::text = m."stored"
         RETURNING m."stored", m."replacement"
@@ -3029,7 +3032,7 @@ _PRESET_CATCH_ALL = """
     AND n."agentGraphId" = p."agentGraphId"
     AND n."agentGraphVersion" = p."agentGraphVersion"
     AND io."name" = ($3)::text || split_part(n."id", '-', 1)
-    AND n."agentBlockId" = ANY(($4)::text[])
+    AND n."agentBlockId" IN (SELECT jsonb_array_elements_text(($4)::jsonb))
     AND io."data"::jsonb ? ($5)::text
     AND io."data"::jsonb->>($5)::text <> ALL(($6)::text[])
     """
@@ -3082,7 +3085,7 @@ async def migrate_llm_models(fallback: LLMModel):
                 _PRESETS,
                 _PRESET_MOVES,
                 _PRESET_CATCH_ALL,
-                (NODE_INPUT_MASK_PREFIX, block_ids, path),
+                (NODE_INPUT_MASK_PREFIX, dumps(block_ids), path),
             ),
         )
         for kind, moves, catch_all, scope in tables:
