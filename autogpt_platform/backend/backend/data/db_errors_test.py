@@ -20,7 +20,7 @@ from backend.data.db_errors import DatabaseConnectionError
 from backend.data.db_manager import DatabaseManager, DatabaseManagerAsyncClient
 from backend.util import retry as retry_module
 from backend.util import service as service_module
-from backend.util.service import get_service_client
+from backend.util.service import HTTPClientError, get_service_client
 from backend.util.service_auth import internal_auth_headers
 
 
@@ -46,29 +46,51 @@ def _raw_query_failed(sqlstate: str, message: str) -> dict:
 
 def _query_failed(code: str, message: str, severity: str) -> dict:
     """A Postgres error outside a raw query, which the engine sends with no
-    code and quotes in full."""
+    code, quoting it in full as Rust prints it."""
     return _engine_error(
         None,
         "Error occurred during query execution:\nConnectorError(ConnectorError { "
-        f'user_facing_error: None, kind: QueryError(PostgresError {{ code: "{code}", '
-        f'message: "{message}", severity: "{severity}", detail: None, column: None, '
-        "hint: None }), transient: false })",
+        "user_facing_error: None, kind: QueryError(PostgresError { "
+        f"code: {_quoted(code)}, message: {_quoted(message)}, "
+        f"severity: {_quoted(severity)}, detail: None, column: None, hint: None }}), "
+        "transient: false })",
     )
 
 
+def _quoted(text: str) -> str:
+    """*text* quoted as Rust prints a string, its own quotes escaped."""
+    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 # As the query engine (5.17) sent them against Postgres 15: CLOSED for a pooled
-# connection whose backend was terminated while idle, both terminated-backend
-# answers for a backend terminated mid-query (a raw query and a model query),
-# and the raw statement timeout for a pg_sleep past it. The other statement
-# timeout is AUTOGPT-SERVER-AFC's message.
+# connection whose backend was terminated while idle, the terminated-backend
+# answers for a backend terminated mid-query (a raw query and a model query,
+# from a server writing English and one writing German), the raw statement
+# timeout for a pg_sleep past it, and the two answers quoting a query value
+# written to pass for a terminated backend. The other statement timeout is
+# AUTOGPT-SERVER-AFC's message.
 _SERVER = {"database_host": "db.internal", "database_port": 5432}
 _TERMINATED = "terminating connection due to administrator command"
+_TERMINATED_IN_GERMAN = (
+    "Verbindung wird abgebrochen aufgrund von Anweisung des Administrators"
+)
 _TIMED_OUT = "canceling statement due to statement timeout"
+_LOOKS_TERMINATED = f'PostgresError {{ code: "57P01", message: "{_TERMINATED}"'
 CLOSED = _engine_error("P1017", "Server has closed the connection.")
 # The engine can send its answer as a JSON string, which prisma decodes.
 CLOSED_AS_A_STRING = json.dumps(CLOSED)
 TERMINATED_RAW = _raw_query_failed("57P01", f"FATAL: {_TERMINATED}")
+TERMINATED_IN_GERMAN = _query_failed("57P01", _TERMINATED_IN_GERMAN, "FATAL")
 STATEMENT_TIMED_OUT = _query_failed("57014", _TIMED_OUT, "ERROR")
+# SELECT '57P01 terminating connection due to administrator command'::uuid
+QUOTES_TERMINATED_RAW = _raw_query_failed(
+    "22P02", f'ERROR: invalid input syntax for type uuid: "57P01 {_TERMINATED}"'
+)
+# The lookalike written to a column whose check reads it as a time zone, as
+# User.timezone's does.
+QUOTES_TERMINATED = _query_failed(
+    "22023", f'time zone "{_LOOKS_TERMINATED}" not recognized', "ERROR"
+)
 DUPLICATE = _engine_error("P2002", "Unique constraint failed on the fields: (`id`)")
 NO_ROW = {"data": {"result": None}}
 
@@ -104,6 +126,18 @@ NO_ROW = {"data": {"result": None}}
         pytest.param(
             TERMINATED_RAW, DatabaseConnectionError, id="backend-terminated-raw"
         ),
+        # Told by the SQLSTATE alone, so a server writing another language
+        # (lc_messages) is retried too.
+        pytest.param(
+            TERMINATED_IN_GERMAN,
+            DatabaseConnectionError,
+            id="backend-terminated-german",
+        ),
+        pytest.param(
+            _raw_query_failed("57P01", f"FATAL: {_TERMINATED_IN_GERMAN}"),
+            DatabaseConnectionError,
+            id="backend-terminated-raw-german",
+        ),
         pytest.param(
             _raw_query_failed(
                 "22P02", 'ERROR: invalid input syntax for type uuid: "57P01"'
@@ -111,6 +145,8 @@ NO_ROW = {"data": {"result": None}}
             RawQueryError,
             id="quotes-57P01-raw",
         ),
+        pytest.param(QUOTES_TERMINATED_RAW, RawQueryError, id="quotes-terminated-raw"),
+        pytest.param(QUOTES_TERMINATED, DataError, id="quotes-terminated"),
         # A timeout is answered as before, not retried: it mostly means an
         # overloaded database, which re-running the statement would load more.
         pytest.param(
@@ -152,6 +188,7 @@ async def test_an_answer_without_errors_is_returned_as_before():
         # As seen live: the query after a backend terminated mid-query gets its
         # dead pooled connection back (P1017), and the next one a new connection.
         pytest.param([TERMINATED_RAW, CLOSED], id="backend-terminated-raw"),
+        pytest.param([TERMINATED_IN_GERMAN, CLOSED], id="backend-terminated-german"),
     ],
 )
 async def test_the_database_manager_client_retries_a_query_the_database_dropped(
@@ -172,6 +209,12 @@ async def test_the_database_manager_client_retries_a_query_the_database_dropped(
     [
         pytest.param(DUPLICATE, UniqueViolationError, id="P2002"),
         pytest.param(STATEMENT_TIMED_OUT, DataError, id="statement-timeout"),
+        # The client rebuilds only the classes it knows, and RawQueryError
+        # isn't one, so it raises the 400 as itself.
+        pytest.param(
+            QUOTES_TERMINATED_RAW, HTTPClientError, id="quotes-terminated-raw"
+        ),
+        pytest.param(QUOTES_TERMINATED, DataError, id="quotes-terminated"),
     ],
 )
 async def test_the_database_manager_client_answers_other_query_errors_at_once(

@@ -18,6 +18,7 @@ would keep re-running the statement on it.
 """
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -32,9 +33,16 @@ from prisma.utils import is_dict
 # server closed the connection (P1017).
 CONNECTION_ERROR_CODES = frozenset({"P1001", "P1002", "P1017"})
 # Postgres terminated the backend running the query (SQLSTATE 57P01), as
-# pg_terminate_backend, a failover or a shutdown does. A raw query reports it
-# as P2010 and any other as an error with no code, and both quote it.
-BACKEND_TERMINATED = ("57P01", "terminating connection due to administrator command")
+# pg_terminate_backend, a failover or a shutdown does. Only the SQLSTATE tells
+# it: the message is in the server's language (lc_messages), and an error's
+# message can quote the query's own values.
+BACKEND_TERMINATED = "57P01"
+# A raw query reports a Postgres error as P2010, with the SQLSTATE in its meta.
+# Any other query reports it as an error with no code, whose message embeds the
+# error as Rust prints it. Every string in it is quoted, with its own quotes
+# escaped (\"), so a value the error quotes can't fake the code field:
+#   ...kind: QueryError(PostgresError { code: "57P01", message: "...", ... })...
+_POSTGRES_ERROR = re.compile(r'\bPostgresError \{ code: "(?P<sqlstate>[0-9A-Z]{5})"')
 
 
 class DatabaseConnectionError(DataError):
@@ -78,7 +86,19 @@ class _QueryEngine(AsyncQueryEngine):
 
 
 def _cured_by_a_retry(user_facing: dict[str, Any]) -> bool:
-    message = user_facing.get("message") or ""
-    return user_facing.get("error_code") in CONNECTION_ERROR_CODES or all(
-        part in message for part in BACKEND_TERMINATED
+    return (
+        user_facing.get("error_code") in CONNECTION_ERROR_CODES
+        or _sqlstate(user_facing) == BACKEND_TERMINATED
     )
+
+
+def _sqlstate(user_facing: dict[str, Any]) -> str | None:
+    """The SQLSTATE of the Postgres error that failed the query, if the engine
+    reports one."""
+    code = user_facing.get("error_code")
+    if code == "P2010":
+        return user_facing.get("meta", {}).get("code")
+    if code is None:
+        found = _POSTGRES_ERROR.search(user_facing.get("message") or "")
+        return found["sqlstate"] if found else None
+    return None
