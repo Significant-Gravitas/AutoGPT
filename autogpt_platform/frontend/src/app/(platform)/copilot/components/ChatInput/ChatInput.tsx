@@ -324,6 +324,8 @@ export const ChatInput = memo(function ChatInput({
     inputId,
     isStreaming,
   });
+  // The mic button is also the Stop control, so Record again follows it.
+  const isMicDisabled = disabled || isTranscribing || isStreaming;
 
   const { isGlowing: isMicGlowing, dismissGlow } = useOnboardingMicGlow({
     isTranscribing,
@@ -489,6 +491,7 @@ export const ChatInput = memo(function ChatInput({
             isRetrying={isTranscribing}
             onRetry={isRecordingUnreadable ? undefined : retryTranscription}
             onRecordAgain={isRecordingUnreadable ? startRecording : undefined}
+            isRecordAgainDisabled={isMicDisabled}
             onDownload={downloadFailedRecording}
             onDismiss={dismissTranscriptionError}
             className={stacked ? undefined : "mt-1.5"}
@@ -613,7 +616,7 @@ export const ChatInput = memo(function ChatInput({
                 isRecording={isRecording}
                 isTranscribing={isTranscribing}
                 isStreaming={isStreaming}
-                disabled={disabled || isTranscribing || isStreaming}
+                disabled={isMicDisabled}
                 highlight={isMicGlowing}
                 className={iconButtonClass}
                 onClick={() => {

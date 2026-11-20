@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
 
 vi.mock("@/lib/auth/server/getServerAuthToken", () => ({
@@ -39,6 +39,10 @@ describe("transcribe route", () => {
     delete process.env.TRANSCRIPTION_API_KEY;
     delete process.env.TRANSCRIPTION_API_BASE_URL;
     delete process.env.TRANSCRIPTION_MODEL;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("sends audio to a configured OpenAI-compatible transcription endpoint", async () => {

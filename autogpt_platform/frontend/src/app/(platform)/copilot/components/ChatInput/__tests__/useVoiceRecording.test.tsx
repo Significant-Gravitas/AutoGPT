@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { UNREADABLE_RECORDING_CODE } from "@/app/api/transcribe/codes";
 import { useVoiceRecording } from "../useVoiceRecording";
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
@@ -347,7 +348,7 @@ describe("useVoiceRecording transcription failures", () => {
     // round trip and opens a second error.
     failTranscription(
       "We couldn't read that recording. Try recording again.",
-      "unreadable_recording",
+      UNREADABLE_RECORDING_CODE,
     );
     const result = await recordAndStop();
     await waitFor(() =>
@@ -376,9 +377,25 @@ describe("useVoiceRecording transcription failures", () => {
     expect(result.current.isRecordingUnreadable).toBe(false);
     expect(trackDictation).not.toHaveBeenCalled();
 
+    await act(async () => result.current.retryTranscription());
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
     await act(async () => result.current.startRecording());
 
     expect(trackDictation).not.toHaveBeenCalled();
+  });
+
+  it("starts no recording while a reply streams", async () => {
+    getUserMedia.mockResolvedValue({ getTracks: () => [] });
+    const { result } = renderHook(() =>
+      useVoiceRecording({ setValue, value: "", isStreaming: true }),
+    );
+
+    await act(async () => result.current.startRecording());
+
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(result.current.isRecording).toBe(false);
   });
 
   function failTranscription(error: string, code?: string) {

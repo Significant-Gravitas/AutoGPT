@@ -1,3 +1,4 @@
+import { UNREADABLE_RECORDING_CODE } from "@/app/api/transcribe/codes";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { isKey } from "@/lib/keyboard";
@@ -9,8 +10,6 @@ import { downloadRecording } from "../../voice/downloadRecording";
 import { focusComposer } from "./helpers";
 
 const MAX_RECORDING_DURATION = 2 * 60 * 1000; // 2 minutes in ms
-// Sent by /api/transcribe when the API could not decode the audio.
-const UNREADABLE_RECORDING_CODE = "unreadable_recording";
 
 interface Args {
   setValue: React.Dispatch<React.SetStateAction<string>>;
@@ -191,7 +190,11 @@ export function useVoiceRecording({
   }
 
   async function startRecording() {
-    if (disabled || isRecordingRef.current || isTranscribing) return;
+    // The mic button, which is also the Stop control, is disabled while a
+    // reply streams, so a recording started then could not be stopped.
+    if (disabled || isStreaming || isRecordingRef.current || isTranscribing) {
+      return;
+    }
 
     setError(null);
     chunksRef.current = [];

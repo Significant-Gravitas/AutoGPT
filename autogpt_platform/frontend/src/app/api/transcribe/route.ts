@@ -2,6 +2,7 @@ import { authTokenUnavailableResponse } from "@/lib/auth/server/authTokenUnavail
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
 import { NextRequest, NextResponse } from "next/server";
+import { UNREADABLE_RECORDING_CODE } from "./codes";
 
 const DEFAULT_TRANSCRIPTION_API_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_TRANSCRIPTION_MODEL = "whisper-1";
@@ -14,7 +15,6 @@ const MAX_CONTEXT_CHARS = 800;
 // The upstream answers 400 when it cannot decode the audio. The same bytes
 // fail the same way every time, so the client offers a new recording, not a
 // retry. Its own wording ("Invalid file format…") means nothing to the user.
-const UNREADABLE_RECORDING_CODE = "unreadable_recording";
 const UNREADABLE_RECORDING_MESSAGE =
   "We couldn't read that recording. Try recording again.";
 

@@ -18,6 +18,8 @@ interface Props {
   onRetry?: () => void;
   /** Offered in place of Retry: a new recording is the only way on. */
   onRecordAgain?: () => void;
+  /** When the mic is off too, such as while a reply streams. */
+  isRecordAgainDisabled?: boolean;
   onDownload: () => void;
   onDismiss: () => void;
   className?: string;
@@ -26,14 +28,14 @@ interface Props {
 /**
  * The recording behind this message is still in memory, so the row stays put
  * until the user acts on it — retried, recorded again, downloaded, or
- * dismissed. Anything
- * that expires on its own takes the audio with it.
+ * dismissed. Anything that expires on its own takes the audio with it.
  */
 export function TranscriptionErrorBar({
   message,
   isRetrying,
   onRetry,
   onRecordAgain,
+  isRecordAgainDisabled = false,
   onDownload,
   onDismiss,
   className,
@@ -67,6 +69,7 @@ export function TranscriptionErrorBar({
           variant="ghost"
           size="xs"
           leadingIcon={Mic01Icon}
+          disabled={isRecordAgainDisabled}
           onClick={onRecordAgain}
         >
           Record again
