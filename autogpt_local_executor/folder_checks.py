@@ -22,7 +22,8 @@ Here a look runs in a thread of its own and is waited for until a deadline:
   on let requests that came in together each start one, and leave more
   running than the limit when none of them answered. With every one of
   them given up on, a look is refused at once until one returns; while one
-  is still waited for, a new look waits for a thread, inside its own time.
+  is still waited for, a new look waits for a thread, inside its own time,
+  and goes on as soon as any of them returns.
 - The threads are daemon threads, not the event loop's worker threads:
   asyncio.run() waits for its workers before it returns, and the
   interpreter waits for them again as it exits, so one stuck in a worker
@@ -117,11 +118,15 @@ class FolderChecks:
             elif len(self._looks) >= self._max_stuck:
                 # Every thread is taken. One whose caller still waits may
                 # well return; with none of those, nothing frees one soon.
-                wait_for = [look for look in self._looks.values() if not look.abandoned]
-                if not wait_for:
+                if all(look.abandoned for look in self._looks.values()):
                     raise FolderCheckTimeout(
                         "Too many folders on this computer aren't answering; try again later."
                     )
+                # Whichever returns frees its thread, one that was given up
+                # on as well: watching only the looks still waited for left
+                # this request waiting for them, to its deadline, with a
+                # thread free.
+                wait_for = list(self._looks.values())
             else:
                 break
             remaining = deadline - loop.time()
