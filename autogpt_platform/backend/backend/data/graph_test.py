@@ -3778,6 +3778,55 @@ async def test_migrate_llm_models_maps_retired_claude_aliases_to_their_family(
     assert (True, replacement.value, stored_value) in rewrites
 
 
+@pytest.mark.parametrize(
+    "stored_value, replacement",
+    [
+        ("o3-mini", LLMModel.GPT6_1_TERRA),
+        ("openai/o3-mini", LLMModel.GPT6_1_TERRA),
+        ("o1", LLMModel.GPT5_6_SOL),
+        ("openai/o1", LLMModel.GPT5_6_SOL),
+        ("o1-mini", LLMModel.GPT6_1_TERRA),
+        ("openai/o1-mini", LLMModel.GPT6_1_TERRA),
+        ("o4-mini", LLMModel.GPT6_1_TERRA),
+        ("openai/o4-mini", LLMModel.GPT6_1_TERRA),
+        ("gpt-4.1-nano", LLMModel.GPT6_LUNA),
+        ("openai/gpt-4.1-nano", LLMModel.GPT6_LUNA),
+        ("gpt-5-chat-latest", LLMModel.GPT6_1_SOL),
+        ("openai/gpt-5-chat-latest", LLMModel.GPT6_1_SOL),
+        ("gpt-5.1-codex", LLMModel.GPT6_1_SOL),
+        ("openai/gpt-5.1-codex", LLMModel.GPT6_1_SOL),
+        ("gpt-5.3-chat-latest", LLMModel.GPT6_1_SOL),
+        ("openai/gpt-5.3-chat-latest", LLMModel.GPT6_1_SOL),
+    ],
+)
+@pytest.mark.asyncio
+async def test_migrate_llm_models_moves_shut_down_openai_models_to_their_replacement(
+    stored_value: str, replacement: LLMModel
+):
+    """OpenAI has shut these models down, so a node or preset still naming one
+    fails on every run. The boot pass moves it, in either stored spelling, to
+    the current model at its price (o1 to its listed gpt-5.6-sol)."""
+    with patch(
+        "backend.data.graph.execute_raw_with_schema",
+        new_callable=AsyncMock,
+    ) as mock_execute:
+        await migrate_llm_models(next(iter(LLMModel)))
+
+    # (is_preset_query, replacement, stored_value) for each targeted rewrite.
+    rewrites = {
+        ('"agentPresetId"' in call.args[0], call.args[2], call.args[-1])
+        for call in mock_execute.await_args_list
+        if "NOT IN" not in call.args[0]
+    }
+    assert (False, replacement.value, stored_value) in rewrites
+    assert (True, replacement.value, stored_value) in rewrites
+    assert not {
+        target
+        for _, target, value in rewrites
+        if value == stored_value and target != replacement.value
+    }
+
+
 @pytest.mark.asyncio
 async def test_migrate_llm_models_covers_preset_overrides():
     """Regression: migrate_llm_models must also rewrite legacy values stored
@@ -3793,12 +3842,17 @@ async def test_migrate_llm_models_covers_preset_overrides():
 
     queries = [call.args[0] for call in mock_execute.await_args_list]
     assert any(
-        '"AgentNodeExecutionInputOutput"' in q and '"agentPresetId" IS NOT NULL' in q
+        '"AgentNodeExecutionInputOutput"' in q and 'io."agentPresetId" = p."id"' in q
         for q in queries
     ), (
         "migrate_llm_models must run UPDATEs against AgentNodeExecutionInputOutput "
         "for preset rows, not just AgentNode.constantInput."
     )
+    # Both preset statements are bounded to preset rows: without the bound
+    # the planner walks the whole execution-I/O table at every boot.
+    preset_statements = {q for q in queries if '"AgentNodeExecutionInputOutput"' in q}
+    assert len(preset_statements) == 2
+    assert all('io."agentPresetId" IS NOT NULL' in q for q in preset_statements)
 
 
 def test_graph_meta_from_db_carries_org_team():

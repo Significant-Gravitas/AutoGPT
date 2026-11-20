@@ -4,9 +4,9 @@ It answers the Orchestrator's calls (they offer tools) by calling the first
 tool it was offered a set number of times, then finishing, and it answers the
 AI block the agent calls as a tool (its calls offer none) with text, or with
 an error when the run is scripted to fail its tool calls. It keeps an invoice
-of every reply, with the time each call came in, and each billed reply reports
-one million input tokens, so it costs the platform exactly the model's price
-per million input tokens.
+of every reply, with the time each call came in and the model it asked for,
+and each billed reply reports one million input tokens, so it costs the
+platform exactly the model's price per million input tokens.
 """
 
 import time
@@ -29,6 +29,7 @@ class FakeAnthropic:
         self.tool_calls = tool_calls
         self.tool_calls_fail = tool_calls_fail
         self.replies: list[Reply] = []
+        self.models: list[str] = []
         self.url = ""
         self._runner: web.AppRunner | None = None
 
@@ -63,6 +64,7 @@ class FakeAnthropic:
 
     async def _messages(self, request: web.Request) -> web.Response:
         body = await request.json()
+        self.models.append(body["model"])
         if body.get("tools"):
             return self._agent_turn(body)
         if self.tool_calls_fail:
