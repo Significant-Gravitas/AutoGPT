@@ -4,13 +4,13 @@ import { ArtifactContent } from "./ArtifactContent";
 import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
 import {
-  Code,
-  File,
-  FileHtml,
-  FileText,
-  Image,
-  Table,
-} from "@phosphor-icons/react";
+  CodeIcon,
+  File02Icon,
+  FileEmpty02Icon,
+  HtmlFile01Icon,
+  Image01Icon,
+  TableIcon,
+} from "@hugeicons/core-free-icons";
 
 const PROXY_BASE = "/api/proxy/api/workspace/files";
 
@@ -30,7 +30,7 @@ function makeClassification(
 ): ArtifactClassification {
   return {
     type: "text",
-    icon: FileText,
+    icon: File02Icon,
     label: "Text",
     openable: true,
     hasSourceToggle: false,
@@ -54,7 +54,7 @@ const meta: Meta<typeof ArtifactContent> = {
   decorators: [
     (Story) => (
       <div
-        className="flex h-[500px] w-[600px] flex-col overflow-hidden border border-zinc-200"
+        className="flex h-[500px] w-[600px] flex-col overflow-hidden border border-border-base"
         style={{ resize: "both" }}
       >
         <Story />
@@ -76,7 +76,7 @@ export const ImageArtifactPNG: Story = {
       sourceUrl: `${PROXY_BASE}/img-png/download`,
     }),
     isSourceView: false,
-    classification: makeClassification({ type: "image", icon: Image }),
+    classification: makeClassification({ type: "image", icon: Image01Icon }),
   },
   parameters: {
     msw: {
@@ -108,7 +108,7 @@ export const ImageArtifactSVG: Story = {
       sourceUrl: `${PROXY_BASE}/img-svg/download`,
     }),
     isSourceView: false,
-    classification: makeClassification({ type: "image", icon: Image }),
+    classification: makeClassification({ type: "image", icon: Image01Icon }),
   },
   parameters: {
     msw: {
@@ -136,7 +136,7 @@ export const HTMLArtifact: Story = {
     isSourceView: false,
     classification: makeClassification({
       type: "html",
-      icon: FileHtml,
+      icon: HtmlFile01Icon,
       label: "HTML",
       hasSourceToggle: true,
     }),
@@ -150,7 +150,7 @@ export const HTMLArtifact: Story = {
 <html>
 <head><title>Artifact Preview</title></head>
 <body class="p-8 font-sans">
-  <h1 class="text-2xl font-bold text-indigo-600 mb-4">HTML Artifact</h1>
+  <h1 class="text-heading-md font-bold text-indigo-600 mb-4">HTML Artifact</h1>
   <p class="text-gray-700">This is an HTML artifact rendered in a sandboxed iframe with Tailwind CSS injected.</p>
   <div class="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
     <p class="text-blue-800">Interactive content works via allow-scripts sandbox.</p>
@@ -177,7 +177,7 @@ export const CodeArtifact: Story = {
     isSourceView: false,
     classification: makeClassification({
       type: "code",
-      icon: Code,
+      icon: CodeIcon,
       label: "Code",
     }),
   },
@@ -219,7 +219,7 @@ export const CSVArtifact: Story = {
     isSourceView: false,
     classification: makeClassification({
       type: "csv",
-      icon: Table,
+      icon: TableIcon,
       label: "Spreadsheet",
       hasSourceToggle: true,
     }),
@@ -255,7 +255,7 @@ export const JSONArtifact: Story = {
     isSourceView: false,
     classification: makeClassification({
       type: "json",
-      icon: Code,
+      icon: CodeIcon,
       label: "Data",
       hasSourceToggle: true,
     }),
@@ -295,7 +295,7 @@ export const MarkdownArtifact: Story = {
     isSourceView: false,
     classification: makeClassification({
       type: "markdown",
-      icon: FileText,
+      icon: File02Icon,
       label: "Document",
       hasSourceToggle: true,
     }),
@@ -340,7 +340,7 @@ export const PDFArtifact: Story = {
     isSourceView: false,
     classification: makeClassification({
       type: "pdf",
-      icon: FileText,
+      icon: File02Icon,
       label: "PDF",
     }),
   },
@@ -375,7 +375,7 @@ export const ErrorState: Story = {
     isSourceView: false,
     classification: makeClassification({
       type: "html",
-      icon: FileHtml,
+      icon: HtmlFile01Icon,
       label: "HTML",
       hasSourceToggle: true,
     }),
@@ -409,7 +409,7 @@ export const LoadingSkeleton: Story = {
     isSourceView: false,
     classification: makeClassification({
       type: "html",
-      icon: FileHtml,
+      icon: HtmlFile01Icon,
       label: "HTML",
     }),
   },
@@ -444,7 +444,7 @@ export const DownloadOnly: Story = {
     isSourceView: false,
     classification: makeClassification({
       type: "download-only",
-      icon: File,
+      icon: FileEmpty02Icon,
       label: "File",
       openable: false,
     }),

@@ -1,0 +1,76 @@
+"use client";
+
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import {
+  buildTourPricingUrl,
+  TOUR_DEMO_CLAIM_SECONDS,
+  TOUR_GITHUB_URL,
+} from "../../constants";
+import { useTourEndCard } from "./useTourEndCard";
+import { PlayIcon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+
+export function TourEndCard() {
+  const { handlePricingClick, handleSelfHostClick, handleWatchAnother } =
+    useTourEndCard();
+
+  return (
+    <div className="mx-auto w-full max-w-md rounded-2xl border border-border-base/70 bg-surface p-5 shadow-sm duration-500 animate-in fade-in slide-in-from-bottom-2 sm:p-6">
+      <div className="flex flex-col items-center gap-2 text-center">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-success-surface px-3 py-1 text-success-foreground">
+          <Icon icon={Tick02Icon} className="size-3.5" />
+          <Text variant="small-medium" tone="inherit">
+            Workflow built &amp; first run complete — {TOUR_DEMO_CLAIM_SECONDS}{" "}
+            seconds
+          </Text>
+        </span>
+        <Text variant="h4" as="h3" tone="primary" className="mt-1">
+          That took {TOUR_DEMO_CLAIM_SECONDS} seconds.
+          <br />
+          Yours will too.
+        </Text>
+        <Text variant="body" tone="muted">
+          Same chat, your real tasks — hosted and running for you.
+        </Text>
+      </div>
+
+      <div className="mt-5 flex flex-col gap-3">
+        <Button
+          as="NextLink"
+          href={buildTourPricingUrl("end_card")}
+          target="_blank"
+          rel="noopener noreferrer"
+          variant="primary"
+          onClick={handlePricingClick}
+          // oxlint-disable-next-line design-system/no-restyle, design-system/no-arbitrary-values -- the end card CTA's violet glow, no shadow token or Button variant
+          className="h-auto w-full shadow-[0_0_20px_-6px_rgba(124,58,237,0.6)]"
+        >
+          <span className="flex flex-col items-center">
+            <span className="font-medium">Make this workflow yours</span>
+            <span className="text-caption font-normal opacity-80">
+              Start with Pro · $42.50/mo · cancel anytime
+            </span>
+          </span>
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={handleWatchAnother}
+          leftIcon={<Icon icon={PlayIcon} className="size-4" />}
+          className="w-full"
+        >
+          Watch another scenario
+        </Button>
+        <a
+          href={TOUR_GITHUB_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={handleSelfHostClick}
+          className="mt-1 text-center text-body text-foreground-tertiary underline underline-offset-2 hover:text-foreground-body"
+        >
+          or self-host free
+        </a>
+      </div>
+    </div>
+  );
+}

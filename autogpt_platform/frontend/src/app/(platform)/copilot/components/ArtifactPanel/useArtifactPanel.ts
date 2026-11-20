@@ -1,14 +1,15 @@
 "use client";
 
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCopilotUIStore } from "../../store";
 import { getCachedArtifactContent } from "./components/useArtifactContent";
 import { downloadArtifact } from "./downloadArtifact";
-import { classifyArtifact } from "./helpers";
+import { classifyArtifactRef } from "./helpers";
 
 export function useArtifactPanel() {
   const artifactPanel = useCopilotUIStore((s) => s.artifactPanel);
+  const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
   const clearArtifactPreview = useCopilotUIStore((s) => s.clearArtifactPreview);
   const goBackArtifact = useCopilotUIStore((s) => s.goBackArtifact);
   const showFilesTab = useCopilotUIStore((s) => s.showFilesTab);
@@ -16,23 +17,31 @@ export function useArtifactPanel() {
   const setArtifactPanelWidth = useCopilotUIStore(
     (s) => s.setArtifactPanelWidth,
   );
+  const setArtifactPanelMode = useCopilotUIStore((s) => s.setArtifactPanelMode);
 
   const [isSourceView, setIsSourceView] = useState(false);
 
   const { activeArtifact } = artifactPanel;
 
   const classification = activeArtifact
-    ? classifyArtifact(
-        activeArtifact.mimeType,
-        activeArtifact.title,
-        activeArtifact.sizeBytes,
-      )
+    ? classifyArtifactRef(activeArtifact)
     : null;
 
-  // Reset source view when switching artifacts
+  // Reset source view when switching artifacts. A new version of the same
+  // document, after Otto overwrites it, is not a switch.
+  const artifactId = activeArtifact?.id;
+  const documentId = activeArtifact?.documentId ?? artifactId;
+  const previousRef = useRef({ artifactId, documentId });
   useEffect(() => {
-    setIsSourceView(false);
-  }, [activeArtifact?.id]);
+    const previous = previousRef.current;
+    if (
+      artifactId !== previous.artifactId &&
+      documentId !== previous.documentId
+    ) {
+      setIsSourceView(false);
+    }
+    previousRef.current = { artifactId, documentId };
+  }, [artifactId, documentId]);
 
   // Escape-to-close is owned by the vaul Drawer.Root in ArtifactPanel — its
   // onOpenChange already routes to clearArtifactPreview. A manual document
@@ -43,7 +52,8 @@ export function useArtifactPanel() {
     classification.type !== "image" &&
     classification.type !== "video" &&
     classification.type !== "download-only" &&
-    classification.type !== "pdf";
+    classification.type !== "pdf" &&
+    classification.type !== "expert";
 
   function handleCopy() {
     if (!activeArtifact || !canCopy) return;
@@ -87,6 +97,7 @@ export function useArtifactPanel() {
     isSourceView,
     classification,
     setIsSourceView,
+    closeArtifactPanel,
     clearArtifactPreview,
     goBackArtifact,
     showFilesTab,
@@ -95,5 +106,8 @@ export function useArtifactPanel() {
     handleDownload,
     artifactPanelWidth,
     setArtifactPanelWidth,
+    mode: artifactPanel.mode,
+    isComputerOpen: artifactPanel.isComputerOpen,
+    setArtifactPanelMode,
   };
 }

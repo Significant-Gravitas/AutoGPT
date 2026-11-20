@@ -17,9 +17,8 @@ vi.mock("next/navigation", () => ({
 }));
 
 let mockIsLoggedIn = true;
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({
-    supabase: {},
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({
     user: { id: "u" },
     isUserLoading: false,
     isLoggedIn: mockIsLoggedIn,
@@ -67,4 +66,18 @@ describe("SignupPage auth-redirect useEffect", () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(routerReplace).not.toHaveBeenCalled();
   });
+
+  // SECRT-3384: a default landing is not a deep link. OnboardingProvider routes
+  // the user (to /onboarding when unfinished), so this page must not jump to
+  // Home first.
+  test.each(["/home", "/", "/copilot"])(
+    "a default landing (?next=%s) is left to OnboardingProvider",
+    async (next) => {
+      mockSearchParams = new URLSearchParams({ next });
+      render(<SignupPage />);
+      await new Promise((r) => setTimeout(r, 20));
+      expect(routerReplace).not.toHaveBeenCalled();
+      expect(routerPush).not.toHaveBeenCalled();
+    },
+  );
 });

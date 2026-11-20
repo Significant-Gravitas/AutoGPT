@@ -1,0 +1,259 @@
+import { createRequire } from "node:module";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const isClientSideMock = vi.fn(() => false);
+const getAllCookiesMock = vi.fn<() => { name: string; value: string }[]>(
+  () => [],
+);
+
+vi.mock("@/services/environment", () => ({
+  environment: {
+    isClientSide: () => isClientSideMock(),
+    isServerSide: () => !isClientSideMock(),
+    getAGPTServerApiUrl: () => "http://localhost:8006/api",
+  },
+}));
+
+// getServerAuthToken reads cookies through a lazy `require("next/headers")`,
+// which resolves via Node's CJS loader and therefore bypasses vi.mock. Spy on
+// the shared CJS module instance instead so the production require sees the
+// stubbed cookie store.
+const cjsRequire = createRequire(import.meta.url);
+const nextHeadersCjs = cjsRequire(
+  "next/headers",
+) as typeof import("next/headers");
+type CookieStore = Awaited<ReturnType<typeof nextHeadersCjs.cookies>>;
+
+const fetchMock = vi.fn();
+const captureExceptionMock = vi.fn();
+
+vi.mock("@sentry/nextjs", () => ({
+  captureException: (...args: unknown[]) => captureExceptionMock(...args),
+}));
+
+function makeJwt(expSecondsFromNow: number): string {
+  const payload = Buffer.from(
+    JSON.stringify({ exp: Math.floor(Date.now() / 1000) + expSecondsFromNow }),
+  ).toString("base64url");
+  return `header.${payload}.signature`;
+}
+
+// Each test imports a fresh copy of the module to stay isolated. React's
+// cache() wrapper is shimmed to identity in the global vitest setup, so
+// per-request memoization is inert here — every call really does re-mint.
+async function importGetServerAuthToken() {
+  vi.resetModules();
+  const helpers = await import("../helpers");
+  return helpers.getServerAuthToken;
+}
+
+beforeEach(() => {
+  isClientSideMock.mockReset().mockReturnValue(false);
+  getAllCookiesMock.mockReset().mockReturnValue([]);
+  fetchMock.mockReset();
+  captureExceptionMock.mockReset();
+  vi.spyOn(nextHeadersCjs, "cookies").mockImplementation(
+    async () => ({ getAll: () => getAllCookiesMock() }) as CookieStore,
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  vi.stubEnv("BETTER_AUTH_URL", "https://autogpt.example.com");
+  vi.stubEnv("BETTER_AUTH_INTERNAL_URL", "http://auth.internal:3000");
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
+
+describe("getServerAuthToken", () => {
+  it("returns null on the client side without reading cookies or fetching", async () => {
+    isClientSideMock.mockReturnValue(true);
+    const getServerAuthToken = await importGetServerAuthToken();
+
+    const token = await getServerAuthToken();
+
+    expect(token).toBeNull();
+    expect(getAllCookiesMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("returns null without fetching when there is no Better Auth session cookie", async () => {
+    getAllCookiesMock.mockReturnValue([
+      { name: "unrelated-cookie", value: "abc" },
+    ]);
+    const getServerAuthToken = await importGetServerAuthToken();
+
+    const token = await getServerAuthToken();
+
+    expect(token).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("re-mints on every call rather than caching across requests", async () => {
+    // A cross-request cache would return a token without re-checking the
+    // session, outliving logout / password-reset revocation. Going back to
+    // /api/auth/token each time is what re-validates it.
+    const jwt = makeJwt(3600);
+    getAllCookiesMock.mockReturnValue([
+      { name: "better-auth.session_token", value: "session-fresh" },
+      { name: "other", value: "with spaces" },
+    ]);
+    // A fresh Response per call — a body can only be consumed once, so a shared
+    // instance would make the second call look like a failure.
+    fetchMock.mockImplementation(
+      async () => new Response(JSON.stringify({ token: jwt }), { status: 200 }),
+    );
+    const getServerAuthToken = await importGetServerAuthToken();
+
+    const first = await getServerAuthToken();
+    const second = await getServerAuthToken();
+
+    expect(first).toBe(jwt);
+    expect(second).toBe(jwt);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://auth.internal:3000/api/auth/token",
+      {
+        headers: {
+          cookie:
+            "better-auth.session_token=session-fresh; other=with%20spaces",
+        },
+        cache: "no-store",
+        // Bounded on purpose: this is a request from the Next server to itself,
+        // so an unbounded wait can deadlock a worker instead of erroring.
+        signal: expect.any(AbortSignal),
+      },
+    );
+  });
+
+  it("falls back to the public Better Auth URL without an internal URL", async () => {
+    vi.stubEnv("BETTER_AUTH_INTERNAL_URL", "");
+    getAllCookiesMock.mockReturnValue([
+      { name: "better-auth.session_token", value: "session-fresh" },
+    ]);
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ token: makeJwt(3600) }), { status: 200 }),
+    );
+    const getServerAuthToken = await importGetServerAuthToken();
+
+    await getServerAuthToken();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://autogpt.example.com/api/auth/token",
+      expect.any(Object),
+    );
+  });
+
+  it("recognizes the __Secure-prefixed session cookie", async () => {
+    const jwt = makeJwt(3600);
+    getAllCookiesMock.mockReturnValue([
+      { name: "__Secure-better-auth.session_token", value: "session-secure" },
+    ]);
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ token: jwt }), { status: 200 }),
+    );
+    const getServerAuthToken = await importGetServerAuthToken();
+
+    const token = await getServerAuthToken();
+
+    expect(token).toBe(jwt);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null when Better Auth rejects the session", async () => {
+    getAllCookiesMock.mockReturnValue([
+      { name: "better-auth.session_token", value: "session-unauthorized" },
+    ]);
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 }),
+    );
+    const getServerAuthToken = await importGetServerAuthToken();
+
+    const token = await getServerAuthToken();
+
+    expect(token).toBeNull();
+    expect(captureExceptionMock).not.toHaveBeenCalled();
+  });
+
+  it("returns null without reporting when Better Auth rate-limits the mint", async () => {
+    getAllCookiesMock.mockReturnValue([
+      { name: "better-auth.session_token", value: "session-rate-limited" },
+    ]);
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ message: "Too many requests" }), {
+        status: 429,
+      }),
+    );
+    const getServerAuthToken = await importGetServerAuthToken();
+
+    const token = await getServerAuthToken();
+
+    expect(token).toBeNull();
+    expect(captureExceptionMock).not.toHaveBeenCalled();
+  });
+
+  it("throws a retryable 503 when the token endpoint fails for a live session", async () => {
+    // A 500 here is the auth database refusing a connection, not a signed-out
+    // user. Returning null sent the request on without a token, and the
+    // backend's 401 read as a logout.
+    getAllCookiesMock.mockReturnValue([
+      { name: "better-auth.session_token", value: "session-db-down" },
+    ]);
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ code: "INTERNAL_SERVER_ERROR" }), {
+        status: 500,
+      }),
+    );
+    const getServerAuthToken = await importGetServerAuthToken();
+
+    await expect(getServerAuthToken()).rejects.toMatchObject({
+      name: "AuthTokenUnavailableError",
+      status: 503,
+      response: { code: "auth_token_unavailable" },
+    });
+    expect(captureExceptionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null when the token endpoint responds without a token field", async () => {
+    getAllCookiesMock.mockReturnValue([
+      { name: "better-auth.session_token", value: "session-empty-body" },
+    ]);
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({}), { status: 200 }),
+    );
+    const getServerAuthToken = await importGetServerAuthToken();
+
+    const token = await getServerAuthToken();
+
+    expect(token).toBeNull();
+  });
+
+  it("throws a retryable 503 when the token fetch fails", async () => {
+    getAllCookiesMock.mockReturnValue([
+      { name: "better-auth.session_token", value: "session-network-error" },
+    ]);
+    fetchMock.mockRejectedValue(new TypeError("fetch failed"));
+    const getServerAuthToken = await importGetServerAuthToken();
+
+    await expect(getServerAuthToken()).rejects.toMatchObject({
+      name: "AuthTokenUnavailableError",
+      status: 503,
+    });
+    expect(captureExceptionMock).toHaveBeenCalledWith(expect.any(TypeError));
+  });
+
+  it("returns null when there are no request cookies to read", async () => {
+    // Prerendering runs outside a request, so it has no session to send.
+    vi.spyOn(nextHeadersCjs, "cookies").mockRejectedValue(
+      new Error("cookies() was called outside a request scope"),
+    );
+    const getServerAuthToken = await importGetServerAuthToken();
+
+    const token = await getServerAuthToken();
+
+    expect(token).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

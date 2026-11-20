@@ -6,7 +6,15 @@ import re
 from typing import Any
 
 from backend.blocks._base import BlockType
-from backend.data.dynamic_fields import DICT_SPLIT
+from backend.data.dynamic_fields import (
+    DICT_SPLIT,
+    LIST_SPLIT,
+    OBJC_SPLIT,
+    assert_safe_pin_name,
+    extract_base_field_name,
+    is_dynamic_field,
+    parse_dynamic_field,
+)
 
 from .helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
@@ -161,14 +169,26 @@ class AgentValidator:
                 continue
 
             required_inputs = block.get("inputSchema", {}).get("required", [])
+            # AgentExecutorBlock / MCPToolBlock carry their real input
+            # requirements in the node's dynamic schema (the sub-agent's /
+            # MCP tool's), not the static block schema — a required dynamic
+            # argument must not slip through validation.
+            dynamic_required = _dynamic_required_inputs(node)
+            if dynamic_required:
+                required_inputs = [
+                    *required_inputs,
+                    *[r for r in dynamic_required if r not in required_inputs],
+                ]
             input_defaults = node.get("input_default", {})
             node_id = node.get("id")
 
-            linked_inputs = set(
-                link.get("sink_name")
+            # A link into part of an input (files_$_0, config_#_key) provides it.
+            linked_inputs = {
+                extract_base_field_name(link["sink_name"])
                 for link in agent.get("links", [])
-                if link.get("sink_id") == node_id and link.get("sink_name")
-            )
+                if link.get("sink_id") == node_id
+                and isinstance(link.get("sink_name"), str)
+            }
 
             for req_input in required_inputs:
                 if (
@@ -330,7 +350,7 @@ class AgentValidator:
 
         Checks that for each link, the source_name field references a valid
         output property in the source block's outputSchema. Also handles nested
-        outputs with _#_ notation.
+        outputs with _#_, _$_ and _@_ notation.
 
         Args:
             agent: The agent dictionary to validate
@@ -388,73 +408,16 @@ class AgentValidator:
             else:
                 output_props = block_output_schemas.get(block_id, {})
 
-            # Handle nested source names (with _#_ notation)
-            if DICT_SPLIT in source_name:
-                parent, child = source_name.split(DICT_SPLIT, 1)
-
-                parent_schema = output_props.get(parent)
-                if not parent_schema:
+            if is_dynamic_field(source_name):
+                detail = _check_nested_chain(output_props, source_name)
+                if detail:
                     self.add_error(
-                        f"Invalid source output field '{source_name}' "
-                        f"in link '{link_id}' from node '{source_id}' "
-                        f"(block '{block_name}' - {block_id}): Parent "
-                        f"property '{parent}' does not exist in the "
-                        f"block's output schema."
+                        f"Invalid nested source output field "
+                        f"'{source_name}' in link '{link_id}' from "
+                        f"node '{source_id}' (block "
+                        f"'{block_name}' - {block_id}): {detail}"
                     )
                     valid = False
-                    continue
-
-                # Check if additionalProperties is allowed either directly
-                # or via anyOf
-                allows_additional_properties = parent_schema.get(
-                    "additionalProperties", False
-                )
-                if not allows_additional_properties and "anyOf" in parent_schema:
-                    any_of_schemas = parent_schema.get("anyOf", [])
-                    if isinstance(any_of_schemas, list):
-                        for schema_option in any_of_schemas:
-                            if isinstance(schema_option, dict) and schema_option.get(
-                                "additionalProperties"
-                            ):
-                                allows_additional_properties = True
-                                break
-                            # Also allow when items have
-                            # additionalProperties (array of objects)
-                            if (
-                                isinstance(schema_option, dict)
-                                and "items" in schema_option
-                            ):
-                                items_schema = schema_option.get("items")
-                                if isinstance(items_schema, dict) and items_schema.get(
-                                    "additionalProperties"
-                                ):
-                                    allows_additional_properties = True
-                                    break
-
-                # Only require child in properties when
-                # additionalProperties is not allowed
-                if not allows_additional_properties:
-                    if not (
-                        isinstance(parent_schema, dict)
-                        and "properties" in parent_schema
-                        and isinstance(parent_schema["properties"], dict)
-                        and child in parent_schema["properties"]
-                    ):
-                        available_props = (
-                            list(parent_schema.get("properties", {}).keys())
-                            if isinstance(parent_schema, dict)
-                            else []
-                        )
-                        self.add_error(
-                            f"Invalid nested source output field "
-                            f"'{source_name}' in link '{link_id}' from "
-                            f"node '{source_id}' (block "
-                            f"'{block_name}' - {block_id}): Child "
-                            f"property '{child}' does not exist in "
-                            f"parent '{parent}' output schema. "
-                            f"Available properties: {available_props}"
-                        )
-                        valid = False
             else:
                 # Check simple (non-nested) source name
                 if source_name not in output_props:
@@ -484,7 +447,7 @@ class AgentValidator:
         Checks that for each link the sink_name references a valid input
         property in the sink block's inputSchema, and that every key in a
         node's input_default is a recognised input property. Also handles
-        nested inputs with _#_ notation and dynamic schemas for
+        nested inputs with _#_, _$_ and _@_ notation and dynamic schemas for
         AgentExecutorBlock.
 
         Args:
@@ -509,9 +472,14 @@ class AgentValidator:
 
         def get_input_props(node: dict[str, Any]) -> dict[str, Any]:
             block_id = node.get("block_id", "")
-            if block_id == AGENT_EXECUTOR_BLOCK_ID:
+            if block_id in (AGENT_EXECUTOR_BLOCK_ID, MCP_TOOL_BLOCK_ID):
                 input_default = node.get("input_default", {})
-                dynamic_input_schema = input_default.get("input_schema", {})
+                dynamic_input_schema_field = (
+                    "input_schema"
+                    if block_id == AGENT_EXECUTOR_BLOCK_ID
+                    else "tool_input_schema"  # MCPToolBlock
+                )
+                dynamic_input_schema = input_default.get(dynamic_input_schema_field, {})
                 if not isinstance(dynamic_input_schema, dict):
                     dynamic_input_schema = {}
                 dynamic_props = dynamic_input_schema.get("properties", {})
@@ -528,54 +496,13 @@ class AgentValidator:
             block_name: str,
             block_id: str,
         ) -> bool:
-            parent, child = field_name.split(DICT_SPLIT, 1)
-            parent_schema = input_props.get(parent)
-            if not parent_schema:
+            detail = _check_nested_chain(input_props, field_name)
+            if detail:
                 self.add_error(
-                    f"{context}: Parent property '{parent}' does not "
-                    f"exist in block '{block_name}' ({block_id}) input "
-                    f"schema."
+                    f"{context}: {detail} "
+                    f"(block '{block_name}' - {block_id} input schema)"
                 )
                 return False
-
-            allows_additional = parent_schema.get("additionalProperties", False)
-            # Only anyOf is checked here because Pydantic's JSON schema
-            # emits optional/union fields via anyOf. allOf and oneOf are
-            # not currently used by any block's dict-typed inputs, so
-            # false positives from them are not a concern in practice.
-            if not allows_additional and "anyOf" in parent_schema:
-                for schema_option in parent_schema.get("anyOf", []):
-                    if not isinstance(schema_option, dict):
-                        continue
-                    if schema_option.get("additionalProperties"):
-                        allows_additional = True
-                        break
-                    items_schema = schema_option.get("items")
-                    if isinstance(items_schema, dict) and items_schema.get(
-                        "additionalProperties"
-                    ):
-                        allows_additional = True
-                        break
-
-            if not allows_additional:
-                if not (
-                    isinstance(parent_schema, dict)
-                    and "properties" in parent_schema
-                    and isinstance(parent_schema["properties"], dict)
-                    and child in parent_schema["properties"]
-                ):
-                    available = (
-                        list(parent_schema.get("properties", {}).keys())
-                        if isinstance(parent_schema, dict)
-                        else []
-                    )
-                    self.add_error(
-                        f"{context}: Child property '{child}' does not "
-                        f"exist in parent '{parent}' of block "
-                        f"'{block_name}' ({block_id}) input schema. "
-                        f"Available properties: {available}"
-                    )
-                    return False
             return True
 
         for link in agent.get("links", []):
@@ -601,7 +528,7 @@ class AgentValidator:
                 f"'{link_id}' to node '{sink_id}'"
             )
 
-            if DICT_SPLIT in sink_name:
+            if is_dynamic_field(sink_name):
                 if not check_nested_input(
                     input_props, sink_name, context, block_name, block_id
                 ):
@@ -643,7 +570,7 @@ class AgentValidator:
                     f"has unknown input_default key '{key}'"
                 )
 
-                if DICT_SPLIT in key:
+                if is_dynamic_field(key):
                     if not check_nested_input(
                         input_props, key, context, block_name, block_id
                     ):
@@ -707,8 +634,8 @@ class AgentValidator:
           ``AgentDropdownInputBlock``, ``AgentTableInputBlock``, etc.).
         - Any trigger block whose ``uiType`` is ``"Webhook"`` /
           ``"Webhook (manual)"``. A triggered agent is started by an external
-          event and needs no user-facing input block; forcing one alongside
-          the trigger produces an invalid graph.
+          event and needs no user-facing input block, but may carry input
+          blocks beside the trigger for values the payload does not supply.
 
         Output requirement — satisfied by at least one output block (any block
         whose ``uiType`` is ``"Output"``). This matches the runtime behavior,
@@ -737,8 +664,8 @@ class AgentValidator:
                 f"block subclass (e.g. AgentGoogleDriveFileInputBlock, "
                 f"AgentDropdownInputBlock, AgentShortTextInputBlock) and set "
                 f"input_default with 'name' and optionally 'title'. For a "
-                f"triggered agent, add a webhook trigger block instead — do not "
-                f"add a separate input block."
+                f"triggered agent, add a webhook trigger block; input blocks "
+                f"may sit beside it for values the event payload does not carry."
             )
             valid = False
 
@@ -839,11 +766,17 @@ class AgentValidator:
 
             # Get all linked inputs to this node
             linked_sub_agent_inputs: set[str] = set()
+            # A link into part of an input (items_$_0) provides it too.
+            provided_sub_agent_inputs: set[str] = set()
             for link in links:
                 if link.get("sink_id") == node_id:
                     sink_name = link.get("sink_name", "")
                     if sink_name in sub_agent_properties:
                         linked_sub_agent_inputs.add(sink_name)
+                    if isinstance(sink_name, str):
+                        provided_sub_agent_inputs.add(
+                            extract_base_field_name(sink_name)
+                        )
 
             # Check for hardcoded inputs that should be linked
             hardcoded_inputs = input_default.get("inputs", {})
@@ -891,7 +824,7 @@ class AgentValidator:
                 hardcoded_inputs if isinstance(hardcoded_inputs, dict) else {}
             )
             for req_input in sub_agent_required_inputs:
-                if req_input in linked_sub_agent_inputs:
+                if req_input in provided_sub_agent_inputs:
                     continue
                 # Check if fixer populated it with a schema default value
                 if req_input in hardcoded_inputs_dict:
@@ -1215,9 +1148,203 @@ class AgentValidator:
             logger.info("Agent validation successful.")
             return True, None
         else:
-            error_message = "Agent validation failed with the following errors:\n\n"
+            error_message = "Workflow validation failed with the following errors:\n\n"
             for i, error in enumerate(self.errors, 1):
                 error_message += f"{i}. {error}\n"
 
             logger.warning(f"Agent validation failed: {error_message}")
             return False, error_message
+
+
+def _check_nested_chain(props: dict[str, Any], field_name: str) -> str | None:
+    """Walk a dynamic field's ``_#_`` / ``_@_`` / ``_$_`` chain through declared
+    schema levels, parsed the way the executor parses it.
+
+    Returns an error detail string, or None when the chain is valid or can
+    only be resolved at runtime. Levels that declare ``properties`` or are
+    arrays are verified strictly; levels that allow additional properties, or
+    are untyped (``Any`` / object without declared properties), accept any
+    remaining chain — the executor's dynamic field delivery resolves those
+    at run time.
+    """
+    try:
+        # Graph save's own check, at every depth: size, attribute names, indices.
+        assert_safe_pin_name(field_name)
+        parsed = parse_dynamic_field(field_name)
+    except ValueError as e:
+        return f"'{field_name}' is not a valid field path: {e}"
+    if parsed is None:
+        return f"'{field_name}' is not a valid field path"
+    base, steps = parsed
+    schema = props.get(base)
+    if schema is None:
+        return (
+            f"Parent property '{base}' does not exist. "
+            f"Available properties: {list(props)}"
+        )
+
+    path = base
+    for delimiter, step in steps:
+        if not isinstance(schema, dict):
+            return None
+        # The run passes an object as a dict: _@_ reads None from it, and a write
+        # replaces it with a bare object.
+        if delimiter == OBJC_SPLIT and "object" in _schema_types(schema):
+            return (
+                f"'{path}' is an object, which the run passes as a dict, so "
+                f"'{OBJC_SPLIT}{step}' can't reach it; use '{path}{DICT_SPLIT}{step}'"
+            )
+        if delimiter == LIST_SPLIT:
+            schema, error = _list_item_schema(schema, path, step)
+        else:
+            schema, error = _child_schema(schema, path, step)
+        if schema is None:
+            return error
+        path = f"{path}{delimiter}{step}"
+    return None
+
+
+def _child_schema(
+    schema: dict[str, Any], path: str, child: str
+) -> tuple[dict[str, Any] | None, str | None]:
+    """One ``_#_`` / ``_@_`` step: the child's schema, or (None, why not);
+    (None, None) when only the run can tell."""
+    if _allows_additional_properties(schema):
+        return None, None
+    schema = _resolve_optional_union(schema) or schema
+    declared = schema.get("properties")
+    if isinstance(declared, dict) and declared:
+        if child not in declared:
+            return None, (
+                f"Child property '{child}' does not exist in parent "
+                f"'{path}'. Available properties: {list(declared)}"
+            )
+        return declared[child], None
+    if _is_scalar_schema(schema):
+        return None, (
+            f"Parent '{path}' has type '{_schema_display_type(schema)}' "
+            f"and has no extractable sub-fields"
+        )
+    return None, None
+
+
+def _list_item_schema(
+    schema: dict[str, Any], path: str, index: str
+) -> tuple[dict[str, Any] | None, str | None]:
+    """One ``_$_`` step: the list's item schema, or (None, why not);
+    (None, None) when only the run can tell."""
+    if not (index.isascii() and index.isdigit()):
+        return None, f"List index '{index}' after '{path}' is not a whole number"
+    # Optional[Any] resolves to an untyped {}, which is falsy but not "no branch".
+    resolved = _resolve_optional_union(schema)
+    schema = schema if resolved is None else resolved
+    if schema.get("type") == "array":
+        return schema.get("items", {}), None
+    types = _schema_types(schema)
+    if not types or "array" in types:
+        return None, None
+    return None, f"Parent '{path}' has type '{' | '.join(types)}' and is not a list"
+
+
+def _allows_additional_properties(schema: dict[str, Any]) -> bool:
+    """True when *schema* accepts arbitrary keys (directly or via anyOf).
+
+    Only anyOf is checked because Pydantic's JSON schema emits optional /
+    union fields via anyOf; allOf and oneOf are not used by any block's
+    dict-typed fields.
+    """
+    if schema.get("additionalProperties"):
+        return True
+    for option in schema.get("anyOf", []):
+        if not isinstance(option, dict):
+            continue
+        if option.get("additionalProperties"):
+            return True
+        items = option.get("items")
+        if isinstance(items, dict) and items.get("additionalProperties"):
+            return True
+    return False
+
+
+def _is_scalar_schema(schema: dict[str, Any]) -> bool:
+    """True when *schema* is a concrete non-object type (no sub-fields)."""
+    schema_type = schema.get("type")
+    if isinstance(schema_type, str) and schema_type in (
+        "string",
+        "integer",
+        "number",
+        "boolean",
+        "array",
+    ):
+        return True
+    if "anyOf" in schema:
+        options = [
+            option
+            for option in schema["anyOf"]
+            if isinstance(option, dict) and option.get("type") != "null"
+        ]
+        return bool(options) and all(_is_scalar_schema(o) for o in options)
+    return False
+
+
+def _resolve_optional_union(schema: dict[str, Any]) -> dict[str, Any] | None:
+    """Pick the single non-null branch of an optional-union schema.
+
+    Pydantic emits ``Optional[X]`` as ``anyOf: [X, {type: null}]``. Descending
+    into the X branch keeps declared object properties strictly validated
+    instead of the whole level being treated as untyped (which would accept
+    nonexistent children). Multi-branch unions keep the permissive fallback —
+    they cannot be verified statically.
+    """
+    options = [
+        o
+        for o in schema.get("anyOf", [])
+        if isinstance(o, dict) and o.get("type") != "null"
+    ]
+    if len(options) == 1:
+        return options[0]
+    return None
+
+
+def _dynamic_required_inputs(node: dict[str, Any]) -> list[str]:
+    """Required argument names from a node's dynamic input schema.
+
+    AgentExecutorBlock nodes carry the sub-agent's input schema in
+    ``input_default["input_schema"]``; MCPToolBlock nodes carry the MCP
+    tool's schema in ``input_default["tool_input_schema"]``. Their static
+    block schemas say nothing about these per-node requirements.
+    """
+    block_id = node.get("block_id", "")
+    if block_id not in (AGENT_EXECUTOR_BLOCK_ID, MCP_TOOL_BLOCK_ID):
+        return []
+    schema_field = (
+        "input_schema" if block_id == AGENT_EXECUTOR_BLOCK_ID else "tool_input_schema"
+    )
+    schema = node.get("input_default", {}).get(schema_field, {})
+    if not isinstance(schema, dict):
+        return []
+    required = schema.get("required")
+    if not isinstance(required, list):
+        return []
+    return [name for name in required if isinstance(name, str)]
+
+
+def _schema_display_type(schema: dict[str, Any]) -> str:
+    """Human-readable type label for error messages.
+
+    anyOf schemas have no direct ``type`` key — render the union of their
+    branch types (e.g. ``string | null``) instead of the literal ``None``.
+    """
+    return " | ".join(_schema_types(schema)) or "unknown"
+
+
+def _schema_types(schema: dict[str, Any]) -> list[str]:
+    """The type names a schema declares, directly or across its anyOf branches."""
+    schema_type = schema.get("type")
+    if isinstance(schema_type, str):
+        return [schema_type]
+    return [
+        o["type"]
+        for o in schema.get("anyOf", [])
+        if isinstance(o, dict) and isinstance(o.get("type"), str)
+    ]

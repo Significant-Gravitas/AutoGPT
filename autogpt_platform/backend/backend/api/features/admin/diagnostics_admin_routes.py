@@ -12,6 +12,7 @@ from backend.api.features.admin.model import (
     AgentDiagnosticsResponse,
     ExecutionDiagnosticsResponse,
 )
+from backend.api.features.experts import experts_db
 from backend.data.diagnostics import (
     FailedExecutionDetail,
     OrphanedScheduleDetail,
@@ -38,7 +39,11 @@ from backend.data.diagnostics import (
     stop_all_long_running_executions,
 )
 from backend.data.execution import get_graph_executions
-from backend.executor.utils import add_graph_execution, stop_graph_execution
+from backend.executor.utils import (
+    ExecutionNotRequeuedError,
+    add_graph_execution,
+    stop_graph_execution,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -415,13 +420,28 @@ async def requeue_single_execution(
     # Use add_graph_execution in requeue mode. ``bypass_paywall=True``
     # because admins are recovering stuck executions on behalf of users
     # who may now be on NO_TIER — the original run was already gated.
-    await add_graph_execution(
-        graph_id=execution.graph_id,
-        user_id=execution.user_id,
-        graph_version=execution.graph_version,
-        graph_exec_id=request.execution_id,  # Requeue existing execution
-        bypass_paywall=True,
-    )
+    try:
+        await add_graph_execution(
+            graph_id=execution.graph_id,
+            user_id=execution.user_id,
+            graph_version=execution.graph_version,
+            graph_exec_id=request.execution_id,  # Requeue existing execution
+            bypass_paywall=True,
+            admin_requeue=True,
+        )
+    except ExecutionNotRequeuedError as e:
+        return RequeueExecutionResponse(
+            success=False,
+            requeued_count=0,
+            message=str(e),
+        )
+    except experts_db.ExpertPrivateTenancyNotFoundError as e:
+        raise HTTPException(
+            status_code=503,
+            detail="The expert workspace is still being set up. Try again shortly.",
+        ) from e
+    except experts_db.ExpertNotFoundError as e:
+        raise HTTPException(status_code=404, detail="Expert not found") from e
 
     return RequeueExecutionResponse(
         success=True,
@@ -480,8 +500,12 @@ async def requeue_multiple_executions(
                 graph_version=exec.graph_version,
                 graph_exec_id=exec.id,  # Requeue existing
                 bypass_paywall=True,
+                admin_requeue=True,
             )
             return True
+        except ExecutionNotRequeuedError as e:
+            logger.info(f"Did not requeue {exec.id}: {e}")
+            return False
         except Exception as e:
             logger.error(f"Failed to requeue {exec.id}: {e}")
             return False
@@ -922,8 +946,12 @@ async def requeue_all_stuck_executions(
                 graph_version=exec.graph_version,
                 graph_exec_id=exec.id,  # Requeue existing
                 bypass_paywall=True,
+                admin_requeue=True,
             )
             return True
+        except ExecutionNotRequeuedError as e:
+            logger.info(f"Did not requeue {exec.id}: {e}")
+            return False
         except Exception as e:
             logger.error(f"Failed to requeue {exec.id}: {e}")
             return False

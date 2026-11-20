@@ -10,9 +10,11 @@ from backend.blocks.http import (
     HttpCredentials,
     HttpMethod,
     SendAuthenticatedWebRequestBlock,
+    SendWebRequestBlock,
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import HostScopedCredentials
+from backend.util.file import MediaFileType
 from backend.util.request import Response
 
 
@@ -25,6 +27,209 @@ def make_test_context(
         user_id=user_id,
         graph_exec_id=graph_exec_id,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "content_type",
+    [
+        "application/problem+json; charset=utf-8",
+        " APPLICATION/PROBLEM+JSON ; charset=utf-8",
+        "application/json; charset=utf-8",
+        "application/vnd.api+json",
+    ],
+)
+@patch("backend.blocks.http.Requests")
+async def test_http_block_parses_structured_json_response(
+    mock_requests_class,
+    content_type,
+):
+    response = MagicMock(spec=Response)
+    response.status = 400
+    response.headers = {"content-type": content_type}
+    response.json.return_value = {
+        "type": "https://example.com/problems/invalid-request",
+        "title": "Invalid request",
+    }
+    response.text.return_value = (
+        '{"type":"https://example.com/problems/invalid-request",'
+        '"title":"Invalid request"}'
+    )
+    mock_requests = AsyncMock()
+    mock_requests.request.return_value = response
+    mock_requests_class.return_value = mock_requests
+
+    outputs = [
+        output
+        async for output in SendWebRequestBlock().run(
+            SendWebRequestBlock.Input(
+                url="https://api.example.com/data",
+                method=HttpMethod.GET,
+            ),
+            execution_context=make_test_context(),
+        )
+    ]
+
+    assert outputs == [
+        (
+            "client_error",
+            {
+                "type": "https://example.com/problems/invalid-request",
+                "title": "Invalid request",
+            },
+        )
+    ]
+    response.json.assert_called_once_with()
+    response.text.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "content_type,status,method,body,expected,output_name",
+    [
+        ("application/problem+json", 502, HttpMethod.GET, b"", "", "server_error"),
+        (
+            "application/problem+json",
+            502,
+            HttpMethod.GET,
+            b"<html>Unavailable</html>",
+            "<html>Unavailable</html>",
+            "server_error",
+        ),
+        (
+            "application/json",
+            400,
+            HttpMethod.GET,
+            b"invalid",
+            "invalid",
+            "client_error",
+        ),
+        ("application/problem+json", 200, HttpMethod.HEAD, b"", None, "response"),
+        ("application/json", 204, HttpMethod.GET, b"", None, "response"),
+        ("text/plain", 204, HttpMethod.GET, b"", None, "response"),
+        ("application/json", 205, HttpMethod.GET, b"", None, "response"),
+        ("text/plain", 200, HttpMethod.GET, b'{"ok":true}', '{"ok":true}', "response"),
+        (
+            "text/html",
+            400,
+            HttpMethod.GET,
+            b"<html>Error</html>",
+            "<html>Error</html>",
+            "client_error",
+        ),
+        ("", 200, HttpMethod.GET, b'{"ok":true}', '{"ok":true}', "response"),
+        ("application/xml", 200, HttpMethod.GET, b"<ok/>", "<ok/>", "response"),
+        (
+            "application/jsonl",
+            200,
+            HttpMethod.GET,
+            b'{"ok":true}',
+            '{"ok":true}',
+            "response",
+        ),
+        (
+            "application/json-seq",
+            200,
+            HttpMethod.GET,
+            b'{"ok":true}',
+            '{"ok":true}',
+            "response",
+        ),
+        (
+            "application/x-ndjson",
+            200,
+            HttpMethod.GET,
+            b'{"ok":true}',
+            '{"ok":true}',
+            "response",
+        ),
+        (
+            "application/json5",
+            200,
+            HttpMethod.GET,
+            b'{"ok":true}',
+            '{"ok":true}',
+            "response",
+        ),
+        (
+            "problem+json",
+            200,
+            HttpMethod.GET,
+            b'{"ok":true}',
+            '{"ok":true}',
+            "response",
+        ),
+        (
+            " APPLICATION/VND.API+JSON ; charset=utf-8",
+            200,
+            HttpMethod.GET,
+            b'{"ok":true}',
+            {"ok": True},
+            "response",
+        ),
+        ("application/json", 200, HttpMethod.GET, b"null", None, "response"),
+        ("application/json", 200, HttpMethod.GET, b"[1,2]", [1, 2], "response"),
+    ],
+)
+@patch("backend.blocks.http.Requests")
+async def test_http_response_body_contract(
+    mock_requests_class,
+    content_type,
+    status,
+    method,
+    body,
+    expected,
+    output_name,
+):
+    raw_response = MagicMock()
+    raw_response.status = status
+    raw_response.headers = {"content-type": content_type}
+    response = Response(
+        response=raw_response,
+        url="https://api.example.com/data",
+        body=body,
+    )
+    mock_requests = AsyncMock()
+    mock_requests.request.return_value = response
+    mock_requests_class.return_value = mock_requests
+
+    outputs = [
+        output
+        async for output in SendWebRequestBlock().run(
+            SendWebRequestBlock.Input(url=response.url, method=method),
+            execution_context=make_test_context(),
+        )
+    ]
+
+    assert outputs == [(output_name, expected)]
+
+
+@pytest.mark.asyncio
+async def test_prepare_files_limits_total_size(tmp_path):
+    (tmp_path / "pad.bin").write_bytes(b"x" * 40)
+
+    with (
+        patch(
+            "backend.blocks.http.store_media_file",
+            new=AsyncMock(return_value="pad.bin"),
+        ) as mock_store,
+        patch(
+            "backend.blocks.http.get_exec_file_path",
+            side_effect=lambda _, path: str(tmp_path / path),
+        ),
+        patch("backend.util.file.MAX_TOTAL_FILE_SIZE_BYTES", 100),
+    ):
+        payload = await SendWebRequestBlock._prepare_files(
+            make_test_context(), "file", [MediaFileType("pad.bin")] * 2
+        )
+        assert [handle.getvalue() for _, (_, handle, _) in payload] == [b"x" * 40] * 2
+
+        mock_store.reset_mock()
+        with pytest.raises(ValueError, match="Files too large"):
+            await SendWebRequestBlock._prepare_files(
+                make_test_context(), "file", [MediaFileType("pad.bin")] * 50
+            )
+        assert mock_store.await_count == 3
 
 
 class TestHttpBlockWithHostScopedCredentials:
@@ -130,6 +335,10 @@ class TestHttpBlockWithHostScopedCredentials:
             "User-Agent": "test-agent",
         }
         assert call_args.kwargs["headers"] == expected_headers
+        # The credential's header names, so a cross-origin redirect drops them.
+        assert mock_requests_class.call_args.kwargs["sensitive_headers"] == set(
+            exact_match_credentials.headers
+        )
 
         # Verify response handling
         assert len(result) == 1

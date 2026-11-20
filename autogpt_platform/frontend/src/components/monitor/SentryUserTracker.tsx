@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import * as Sentry from "@sentry/nextjs";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 
 /**
  * SentryUserTracker component sets user context in Sentry for error tracking.
@@ -15,18 +15,17 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
  * - Updates context when user data changes
  */
 export function SentryUserTracker() {
-  const { user, isUserLoading } = useSupabase();
+  const { user, isUserLoading } = useAuth();
 
   useEffect(() => {
     if (user) {
       // Wait until user loading is complete before setting user context
       if (isUserLoading) return;
 
-      // Set user context for Sentry error tracking
+      // The id is enough to find a user's errors; their email stays out of
+      // Sentry. The role only tells admins apart.
       Sentry.setUser({
         id: user.id,
-        email: user.email ?? undefined,
-        // Add custom attributes
         ...(user.role && { role: user.role }),
       });
     } else {

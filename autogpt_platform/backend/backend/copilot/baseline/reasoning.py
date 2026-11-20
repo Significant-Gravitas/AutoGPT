@@ -39,6 +39,10 @@ from backend.copilot.response_model import (
     StreamReasoningEnd,
     StreamReasoningStart,
 )
+from backend.data.llm_registry.llm_models import (
+    CLAUDE_5_FAMILY_PREFIXES,
+    strip_anthropic_vendor_prefix,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -153,8 +157,8 @@ def _is_reasoning_route(model: str) -> bool:
 
     OpenRouter exposes reasoning tokens via a unified ``reasoning`` request
     param that works on any provider that supports extended thinking —
-    currently Anthropic (Claude Opus / Sonnet) and Moonshot (Kimi K2.6 +
-    kimi-k2-thinking) advertise it in their ``supported_parameters``.
+    currently Anthropic (Claude Opus / Sonnet) and Moonshot (Kimi K2.6,
+    kimi-k2-thinking, K3) advertise it in their ``supported_parameters``.
     Other providers silently drop the field, but we skip it anyway to keep
     the payload tight and avoid confusing cache diagnostics.
 
@@ -215,6 +219,14 @@ def reasoning_extra_body(model: str, max_thinking_tokens: int) -> dict[str, Any]
     """
     if not _is_reasoning_route(model) or max_thinking_tokens <= 0:
         return None
+    if _is_claude_5_family(model):
+        # Claude 5 removed ``budget_tokens`` (adaptive thinking only) and
+        # OpenRouter maps ``reasoning.max_tokens`` onto it — the request
+        # would 400. Send nothing: omitting the field runs the family's
+        # documented adaptive default. Before routing copilot traffic to a
+        # 5-family model, live-probe whether OpenRouter accepts the
+        # ``reasoning.effort`` shape and wire it here.
+        return None
     return {"reasoning": {"max_tokens": max_thinking_tokens}}
 
 
@@ -225,21 +237,26 @@ def reasoning_extra_body(model: str, max_thinking_tokens: int) -> dict[str, Any]
 # output cap (4096 on Haiku) also 400s — so we narrow to the families
 # that actually support extended thinking instead of broad-matching
 # ``"claude" in model``.
+# The Claude 5 family is deliberately NOT in this list: it runs ADAPTIVE
+# thinking by default and 400s on the ``budget_tokens`` fragment (removed
+# for the 5 family only — opus-4-7/4-8 share the 5-generation tokenizer
+# but still accept ``budget_tokens`` via the ``claude-opus-4`` prefix
+# below). ``anthropic_thinking_extra_body`` also guards this explicitly,
+# so adding a 5-family slug here cannot silently reintroduce the 400.
 _THINKING_CAPABLE_PREFIXES: tuple[str, ...] = (
-    "claude-opus-4",  # 4.0 / 4.1 / 4.5 / 4.7
+    "claude-opus-4",  # 4.0 / 4.1 / 4.5 / 4.7 / 4.8
     "claude-sonnet-4",  # 4.0 / 4.5 / 4.6
     "claude-haiku-4",  # 4.5
     "claude-3-7",  # 3.7 sonnet — only 3.x with thinking
 )
 
 
+def _is_claude_5_family(model: str) -> bool:
+    return strip_anthropic_vendor_prefix(model).startswith(CLAUDE_5_FAMILY_PREFIXES)
+
+
 def _is_thinking_capable_claude(model: str) -> bool:
-    lowered = model.lower()
-    for prefix in ("anthropic/", "anthropic."):
-        if lowered.startswith(prefix):
-            lowered = lowered[len(prefix) :]
-            break
-    return lowered.startswith(_THINKING_CAPABLE_PREFIXES)
+    return strip_anthropic_vendor_prefix(model).startswith(_THINKING_CAPABLE_PREFIXES)
 
 
 def anthropic_thinking_extra_body(
@@ -259,6 +276,12 @@ def anthropic_thinking_extra_body(
     variants 400 on the ``thinking`` field).
     """
     if not _is_reasoning_route(model) or max_thinking_tokens <= 0:
+        return None
+    if _is_claude_5_family(model):
+        # Symmetric with ``reasoning_extra_body``: Claude 5 removed
+        # ``budget_tokens`` (adaptive-only thinking) and 400s on the
+        # fragment. Guarded explicitly so adding a 5-family slug to
+        # ``_THINKING_CAPABLE_PREFIXES`` can't reintroduce the 400.
         return None
     if not _is_thinking_capable_claude(model):
         return None
@@ -294,12 +317,6 @@ class BaselineReasoningEmitter:
     fresh ``ChatMessage(role="reasoning")`` is appended and mutated
     in-place as further deltas arrive; :meth:`close` drops the reference
     but leaves the appended row intact.
-
-    ``render_in_ui=False`` suppresses only the live wire events
-    (``StreamReasoning*``); the ``role='reasoning'`` persistence row is
-    still appended so ``convertChatSessionToUiMessages.ts`` can hydrate
-    the reasoning bubble on reload.  The state machine advances
-    identically either way.
     """
 
     def __init__(
@@ -308,7 +325,6 @@ class BaselineReasoningEmitter:
         *,
         coalesce_min_chars: int = _COALESCE_MIN_CHARS,
         coalesce_max_interval_ms: float = _COALESCE_MAX_INTERVAL_MS,
-        render_in_ui: bool = True,
     ) -> None:
         self._block_id: str = str(uuid.uuid4())
         self._open: bool = False
@@ -320,7 +336,6 @@ class BaselineReasoningEmitter:
         self._coalesce_max_interval_ms = coalesce_max_interval_ms
         self._pending_delta: str = ""
         self._last_flush_monotonic: float = 0.0
-        self._render_in_ui = render_in_ui
 
     @property
     def is_open(self) -> bool:
@@ -352,9 +367,8 @@ class BaselineReasoningEmitter:
         # syscalls off the hot path without changing semantics.
         now = time.monotonic()
         if not self._open:
-            if self._render_in_ui:
-                events.append(StreamReasoningStart(id=self._block_id))
-                events.append(StreamReasoningDelta(id=self._block_id, delta=text))
+            events.append(StreamReasoningStart(id=self._block_id))
+            events.append(StreamReasoningDelta(id=self._block_id, delta=text))
             self._open = True
             self._last_flush_monotonic = now
             if self._session_messages is not None:
@@ -367,10 +381,9 @@ class BaselineReasoningEmitter:
 
         self._pending_delta += text
         if self._should_flush_pending(now):
-            if self._render_in_ui:
-                events.append(
-                    StreamReasoningDelta(id=self._block_id, delta=self._pending_delta)
-                )
+            events.append(
+                StreamReasoningDelta(id=self._block_id, delta=self._pending_delta)
+            )
             self._pending_delta = ""
             self._last_flush_monotonic = now
         return events
@@ -403,12 +416,11 @@ class BaselineReasoningEmitter:
         if not self._open:
             return []
         events: list[StreamBaseResponse] = []
-        if self._render_in_ui:
-            if self._pending_delta:
-                events.append(
-                    StreamReasoningDelta(id=self._block_id, delta=self._pending_delta)
-                )
-            events.append(StreamReasoningEnd(id=self._block_id))
+        if self._pending_delta:
+            events.append(
+                StreamReasoningDelta(id=self._block_id, delta=self._pending_delta)
+            )
+        events.append(StreamReasoningEnd(id=self._block_id))
         self._pending_delta = ""
         self._open = False
         self._block_id = str(uuid.uuid4())

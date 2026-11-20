@@ -1,0 +1,85 @@
+import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { cn } from "@/lib/utils";
+import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
+import { selectableCardClassName, type SelectableCardColors } from "../helpers";
+
+interface Props {
+  sample: VoiceSample;
+  choice: "a" | "b";
+  choiceGroupName: string;
+  isSelected: boolean;
+  labelClassName?: string;
+  colors?: SelectableCardColors;
+  compact?: boolean;
+  onSelect: () => void;
+}
+
+export function SampleCard({
+  sample,
+  choice,
+  choiceGroupName,
+  isSelected,
+  labelClassName,
+  colors,
+  compact = false,
+  onSelect,
+}: Props) {
+  return (
+    <label
+      data-slot="sample-card"
+      className={cn(
+        "block w-full text-left",
+        selectableCardClassName(isSelected, true, colors, compact),
+      )}
+    >
+      <input
+        type="radio"
+        name={choiceGroupName}
+        value={choice}
+        checked={isSelected}
+        onChange={onSelect}
+        aria-label={sample.label}
+        data-slot="sample-card-radio"
+        className="sr-only"
+      />
+      <div
+        data-slot="sample-card-header"
+        className={cn(
+          "flex items-center justify-between gap-3",
+          compact ? "mb-1" : "mb-2",
+        )}
+      >
+        <span
+          data-slot="sample-card-label"
+          className={cn(
+            "text-caption font-semibold tracking-caps uppercase",
+            labelClassName ?? "text-brand",
+          )}
+        >
+          {sample.label}
+        </span>
+        {isSelected ? (
+          <Icon
+            icon={CheckmarkCircle02Icon}
+            size={18}
+            tone={labelClassName ? undefined : "brand"}
+            // oxlint-disable-next-line design-system/require-static-classes -- the accent colour class comes from the caller (an expert's colour)
+            className={cn("shrink-0", labelClassName)}
+          />
+        ) : null}
+      </div>
+      <p
+        data-slot="sample-card-text"
+        className={cn(
+          "whitespace-pre-line text-foreground-tertiary",
+          compact
+            ? "line-clamp-3 text-body leading-normal"
+            : "text-body-md leading-relaxed",
+        )}
+      >
+        {sample.text}
+      </p>
+    </label>
+  );
+}

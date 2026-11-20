@@ -1,5 +1,5 @@
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../helpers";
 import { SelectedViewLayout } from "./SelectedViewLayout";
@@ -13,6 +13,10 @@ export function LoadingSelectedContent(props: Props) {
     <SelectedViewLayout agent={props.agent}>
       <div
         className={cn("flex flex-col gap-4", AGENT_LIBRARY_SECTION_PADDING_X)}
+        data-testid="loading-selected-content"
+        role="status"
+        aria-busy="true"
+        aria-label="Loading content"
       >
         <Skeleton className="h-8 w-full" />
         <Skeleton className="h-12 w-full" />

@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 
 class ImageGeneratorConfiguration(BaseModel):
     image_provider: Literal["dalle", "huggingface", "sdwebui"] = "dalle"
+    dalle_model: str = "gpt-image-1"
+    """OpenAI image model. dall-e-2/3 were removed from the API on 2026-05-12;
+    gpt-image-1 returns base64 PNGs and supports 1024x1024 square output."""
     huggingface_image_model: str = "CompVis/stable-diffusion-v1-4"
     huggingface_api_token: Optional[SecretStr] = UserConfigurable(
         None, from_env="HUGGINGFACE_API_TOKEN", exclude=True
@@ -72,7 +75,7 @@ class ImageGeneratorComponent(
             ),
             "size": JSONSchema(
                 type=JSONSchema.Type.INTEGER,
-                description="The size of the image [256, 512, 1024]",
+                description="The size of the image in pixels (square); 1024",
                 required=False,
             ),
         },
@@ -171,7 +174,7 @@ class ImageGeneratorComponent(
     def generate_image_with_dalle(
         self, prompt: str, output_file: Path, size: int
     ) -> str:
-        """Generate an image with DALL-E.
+        """Generate an image with OpenAI's image API (gpt-image-1).
 
         Args:
             prompt (str): The prompt to use
@@ -183,14 +186,14 @@ class ImageGeneratorComponent(
         """
         assert self.openai_credentials  # otherwise this tool is disabled
 
-        # Check for supported image sizes
-        if size not in [256, 512, 1024]:
-            closest = min([256, 512, 1024], key=lambda x: abs(x - size))
+        # gpt-image-1 only supports 1024x1024 for square output
+        # (plus 1536x1024 / 1024x1536, which this command does not use).
+        if size != 1024:
             logger.info(
-                "DALL-E only supports image sizes of 256x256, 512x512, or 1024x1024. "
-                f"Setting to {closest}, was {size}."
+                "gpt-image-1 only supports 1024x1024 square images. "
+                f"Setting size to 1024, was {size}."
             )
-            size = closest
+            size = 1024
 
         # TODO: integrate in `forge.llm.providers`(?)
         response = OpenAI(
@@ -201,19 +204,24 @@ class ImageGeneratorComponent(
                 else None
             ),
         ).images.generate(
+            model=self.config.dalle_model,
             prompt=prompt,
             n=1,
             # TODO: improve typing of size config item(s)
             size=f"{size}x{size}",  # type: ignore
-            response_format="b64_json",
         )
-        # response_format="b64_json" guarantees b64_json is present
-        image_b64 = response.data[0].b64_json  # type: ignore[index]
-        assert image_b64 is not None
+        # Depending on the model, the image is returned either as base64 JSON
+        # or as a temporary URL. (response_format is not accepted by all
+        # models, so we don't request a specific one and handle both.)
+        image = response.data[0]  # type: ignore[index]
+        if image.b64_json:
+            image_data = b64decode(image.b64_json)
+        elif image.url:
+            image_data = requests.get(image.url, timeout=30).content
+        else:
+            raise RuntimeError("DALL-E response contained no image data")
 
         logger.info(f"Image Generated for prompt: {prompt}")
-
-        image_data = b64decode(image_b64)
 
         with open(output_file, mode="wb") as png:
             png.write(image_data)

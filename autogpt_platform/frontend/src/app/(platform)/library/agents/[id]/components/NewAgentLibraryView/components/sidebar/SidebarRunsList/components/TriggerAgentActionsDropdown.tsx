@@ -8,9 +8,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
-import { DotsThreeVerticalIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useRemoveTriggerAgent } from "../../../../hooks/useRemoveTriggerAgent";
+import { MoreVerticalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   parentAgent: LibraryAgent;
@@ -40,7 +41,7 @@ export function TriggerAgentActionsDropdown({
             aria-label="More actions"
             className="ml-auto min-w-fit shrink-0"
           >
-            <DotsThreeVerticalIcon size={18} />
+            <Icon icon={MoreVerticalIcon} size={18} />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

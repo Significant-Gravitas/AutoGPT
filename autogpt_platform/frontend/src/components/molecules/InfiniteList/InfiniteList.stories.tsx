@@ -50,7 +50,7 @@ export const Basic: Story = {
         style={{
           height: 320,
           overflow: "auto",
-          border: "1px solid #eee",
+          border: "1px solid rgb(var(--color-separator))",
           padding: 8,
         }}
       >
@@ -64,8 +64,8 @@ export const Basic: Story = {
               style={{
                 padding: 8,
                 marginBottom: 8,
-                background: "#fff",
-                border: "1px solid #e5e5e5",
+                background: "rgb(var(--color-surface))",
+                border: "1px solid rgb(var(--color-border-base))",
                 borderRadius: 8,
               }}
             >
@@ -90,7 +90,7 @@ export const LongList: Story = {
         style={{
           height: 320,
           overflow: "auto",
-          border: "1px solid #eee",
+          border: "1px solid rgb(var(--color-separator))",
           padding: 8,
         }}
       >
@@ -104,8 +104,8 @@ export const LongList: Story = {
               style={{
                 padding: 8,
                 marginBottom: 8,
-                background: "#fff",
-                border: "1px solid #e5e5e5",
+                background: "rgb(var(--color-surface))",
+                border: "1px solid rgb(var(--color-border-base))",
                 borderRadius: 8,
               }}
             >
@@ -130,7 +130,7 @@ export const WithLoadingIndicator: Story = {
         style={{
           height: 320,
           overflow: "auto",
-          border: "1px solid #eee",
+          border: "1px solid rgb(var(--color-separator))",
           padding: 8,
         }}
       >
@@ -144,8 +144,8 @@ export const WithLoadingIndicator: Story = {
               style={{
                 padding: 8,
                 marginBottom: 8,
-                background: "#fff",
-                border: "1px solid #e5e5e5",
+                background: "rgb(var(--color-surface))",
+                border: "1px solid rgb(var(--color-border-base))",
                 borderRadius: 8,
               }}
             >
@@ -154,7 +154,14 @@ export const WithLoadingIndicator: Story = {
           )}
         />
         {isFetchingMore && (
-          <div style={{ padding: 8, color: "#666" }}>Loading more…</div>
+          <div
+            style={{
+              padding: 8,
+              color: "rgb(var(--color-foreground-secondary))",
+            }}
+          >
+            Loading more…
+          </div>
         )}
       </div>
     );

@@ -10,7 +10,6 @@ import {
   CredentialsType,
 } from "@/lib/autogpt-server-api/types";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import { SlidersHorizontalIcon } from "@phosphor-icons/react";
 import { useContext, useEffect, useMemo, useRef } from "react";
 import {
   areSystemCredentialProvidersLoading,
@@ -19,6 +18,8 @@ import {
   hasMissingRequiredSystemCredentials,
   splitCredentialFieldsBySystem,
 } from "./helpers";
+import { SlidersHorizontalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   credentialFields: CredentialField[];
@@ -145,12 +146,12 @@ export function CredentialsGroupedView({
           className={hasUserCredentials ? "mt-4" : ""}
         >
           <AccordionItem value="system-credentials" className="border-none">
-            <AccordionTrigger className="py-2 text-sm text-muted-foreground hover:no-underline">
+            <AccordionTrigger className="py-2 text-body text-foreground-tertiary hover:no-underline">
               <div className="flex items-center gap-1">
-                <SlidersHorizontalIcon size={16} weight="bold" /> System
+                <Icon icon={SlidersHorizontalIcon} size={16} /> System
                 credentials
                 {hasMissingSystemCredentials && (
-                  <span className="text-destructive">(missing)</span>
+                  <span className="text-error">(missing)</span>
                 )}
               </div>
             </AccordionTrigger>

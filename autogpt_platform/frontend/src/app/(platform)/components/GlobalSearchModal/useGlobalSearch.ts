@@ -1,5 +1,6 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import { useGetSearchGlobalSearch } from "@/app/api/__generated__/endpoints/search/search";
 import type { GlobalSearchResponse } from "@/app/api/__generated__/models/globalSearchResponse";
 import { buildActionsBucket } from "./actions";
@@ -11,6 +12,7 @@ const PER_TYPE_LIMIT = 4;
 
 export function useGlobalSearch(isOpen: boolean) {
   const pathname = usePathname();
+  const isBillingEnabled = useIsBillingEnabled();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
@@ -47,6 +49,15 @@ export function useGlobalSearch(isOpen: boolean) {
   const response =
     data?.status === 200 ? (data.data as GlobalSearchResponse) : undefined;
 
+  // First fetch after opening: no results have landed yet (``placeholderData``
+  // keeps the previous response on every later fetch, so ``response`` is only
+  // undefined here). Suppress the instant command buckets too while this is
+  // true — otherwise navigation/actions render immediately, the modal looks
+  // "done", and the async results pop in a second later and shove everything
+  // down. Returning no buckets lets the modal show its loading skeleton, then
+  // results + commands appear together with no re-layout.
+  const isInitialLoading = isFetching && !response;
+
   const { buckets: searchBuckets, itemsById } =
     buildBucketsFromResponse(response);
 
@@ -56,7 +67,7 @@ export function useGlobalSearch(isOpen: boolean) {
   // the search results; otherwise it trails them so search stays the
   // primary intent. Priority order on exact match: navigation, actions.
   const commandBuckets = [
-    buildNavigationBucket(query, pathname),
+    buildNavigationBucket(query, pathname, isBillingEnabled),
     buildActionsBucket(query),
   ];
   const topBuckets = commandBuckets.flatMap((entry) =>
@@ -66,7 +77,9 @@ export function useGlobalSearch(isOpen: boolean) {
     entry.bucket && !entry.isExactMatch ? [entry.bucket] : [],
   );
 
-  const buckets = [...topBuckets, ...searchBuckets, ...bottomBuckets];
+  const buckets = isInitialLoading
+    ? []
+    : [...topBuckets, ...searchBuckets, ...bottomBuckets];
 
   return {
     query,

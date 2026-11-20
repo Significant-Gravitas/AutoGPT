@@ -1,0 +1,76 @@
+import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
+import { Fragment } from "react";
+import type { TourAgent } from "../../script/types";
+import {
+  ArrowRight02Icon,
+  CheckmarkCircle02Icon,
+  Clock01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+
+interface Props {
+  agent: TourAgent;
+  /** Flips the badge from an animated "Running" to "Run completed". */
+  runCompleted: boolean;
+}
+
+export function TourAgentCard({ agent, runCompleted }: Props) {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-border-base/70 bg-surface p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <Text variant="large-medium" tone="primary">
+          {agent.name}
+        </Text>
+        <span
+          className={cn(
+            "relative isolate flex shrink-0 items-center gap-2 rounded-full bg-success-surface px-3 py-1.5 text-body font-semibold text-success-foreground",
+            !runCompleted &&
+              // oxlint-disable-next-line design-system/no-arbitrary-values -- the live run's emerald glow, no shadow token
+              "shadow-[0_0_14px_-2px_rgba(16,185,129,0.65),0_0_28px_-4px_rgba(16,185,129,0.5)] ring-1 ring-success/70",
+          )}
+        >
+          {runCompleted ? (
+            <>
+              <Icon icon={CheckmarkCircle02Icon} className="size-4 shrink-0" />
+              Run completed
+            </>
+          ) : (
+            <>
+              {/* Breathing halo behind the badge while the run is live. */}
+              <span
+                aria-hidden="true"
+                className="absolute -inset-1.5 -z-10 animate-pulse rounded-full bg-success/50 blur-md"
+              />
+              <span className="relative flex size-2 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
+                <span className="relative inline-flex size-2 rounded-full bg-success" />
+              </span>
+              Running
+            </>
+          )}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-1.5 text-body text-foreground-secondary">
+        <Icon icon={Clock01Icon} className="size-4 shrink-0" />
+        <span>{agent.schedule} · created from your sentence</span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {agent.blocks.map((block, index) => (
+          <Fragment key={`${block}-${index}`}>
+            {index > 0 && (
+              <span className="contents text-foreground-subtle">
+                <Icon icon={ArrowRight02Icon} className="size-3.5 shrink-0" />
+              </span>
+            )}
+            <span className="rounded-md bg-surface-hover px-2.5 py-1 font-mono text-caption text-foreground-body">
+              {block}
+            </span>
+          </Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}

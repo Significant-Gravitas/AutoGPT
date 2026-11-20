@@ -10,12 +10,24 @@ import {
 } from "@/app/api/helpers";
 import { useGetV1ListGraphExecutionsInfinite } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useGetV2ListTriggerAgents } from "@/app/api/__generated__/endpoints/library/library";
-import { useGetV2ListPresets } from "@/app/api/__generated__/endpoints/presets/presets";
+import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
-import { useExecutionEvents } from "@/hooks/useExecutionEvents";
+import {
+  activeItemParamFor,
+  isWebhookPreset,
+  retryUnlessClientError,
+} from "../../../helpers";
+import { useAgentPresetsQuery } from "../../../hooks/useAgentPresetsQuery";
+import {
+  EXECUTION_REFETCH_THROTTLE_MS,
+  useExecutionEvents,
+} from "@/hooks/useExecutionEvents";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { useSchedulerOutage } from "@/services/schedules/useSchedulerOutage";
+import { useSchedulerQueryOptions } from "@/services/schedules/useSchedulerQueryOptions";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
+import { useRunsReadAfterReconnect } from "./useRunsReadAfterReconnect";
 
 function parseTab(
   value: string | null,
@@ -32,8 +44,7 @@ function parseTab(
 }
 
 type Args = {
-  graphId: string;
-  libraryAgentID: string;
+  agent: LibraryAgent;
   onSelectRun: (
     runId: string,
     tab?: "runs" | "scheduled" | "templates" | "triggers",
@@ -44,15 +55,17 @@ type Args = {
     templatesCount: number;
     triggersCount: number;
     loading?: boolean;
+    hasError?: boolean;
   }) => void;
 };
 
 export function useSidebarRunsList({
-  graphId,
-  libraryAgentID,
+  agent,
   onSelectRun,
   onCountsChange,
 }: Args) {
+  const graphId = agent.graph_id;
+  const libraryAgentID = agent.id;
   const [{ activeItem, activeTab: activeTabRaw }] = useQueryStates({
     activeItem: parseAsString,
     activeTab: parseAsString,
@@ -73,28 +86,23 @@ export function useSidebarRunsList({
     },
   );
 
+  const schedulerQueryOptions = useSchedulerQueryOptions();
   const schedulesQuery = useGetV1ListExecutionSchedulesForAGraph(graphId, {
     query: {
       enabled: !!graphId,
       select: okData,
+      ...schedulerQueryOptions,
     },
   });
 
-  const presetsQuery = useGetV2ListPresets(
-    { graph_id: graphId, page: 1, page_size: 100 },
-    {
-      query: {
-        enabled: !!graphId,
-        select: (r) => okData(r)?.presets,
-      },
-    },
-  );
+  const presetsQuery = useAgentPresetsQuery(graphId || undefined);
 
   const triggerAgentsEnabled = useGetFlag(Flag.GENERIC_TRIGGER_AGENTS);
   const triggerAgentsQuery = useGetV2ListTriggerAgents(libraryAgentID, {
     query: {
       enabled: triggerAgentsEnabled && !!libraryAgentID,
       select: okData,
+      retry: retryUnlessClientError,
     },
   });
 
@@ -104,13 +112,16 @@ export function useSidebarRunsList({
   );
 
   const schedules = schedulesQuery.data || [];
-  const allPresets = presetsQuery.data || [];
+  const allPresets = useMemo(
+    () => presetsQuery.presets ?? [],
+    [presetsQuery.presets],
+  );
   const triggers = useMemo(
-    () => allPresets.filter((preset) => preset.webhook_id),
+    () => allPresets.filter(isWebhookPreset),
     [allPresets],
   );
   const templates = useMemo(
-    () => allPresets.filter((preset) => !preset.webhook_id),
+    () => allPresets.filter((preset) => !isWebhookPreset(preset)),
     [allPresets],
   );
   const triggerAgents = triggerAgentsEnabled
@@ -123,39 +134,63 @@ export function useSidebarRunsList({
   // Combined count: webhook triggers + trigger agents (both shown
   // under the "Triggers" tab as separate sections).
   const triggersCount = triggers.length + triggerAgents.length;
+  // While the scheduler restarts its schedules are unknown, and the runs,
+  // templates and triggers still list.
+  const schedulesUnavailable = useSchedulerOutage(schedulesQuery);
   const loading =
     !runsQuery.isSuccess ||
-    !schedulesQuery.isSuccess ||
-    !presetsQuery.isSuccess ||
+    (!schedulesQuery.isSuccess && !schedulesUnavailable) ||
+    !presetsQuery.presetsSettled ||
     (triggerAgentsEnabled && !triggerAgentsQuery.isSuccess);
-  const stale =
-    runsQuery.isStale ||
-    schedulesQuery.isStale ||
-    presetsQuery.isStale ||
-    (triggerAgentsEnabled && triggerAgentsQuery.isStale);
+  const error =
+    (schedulesUnavailable ? null : schedulesQuery.error) ||
+    runsQuery.error ||
+    presetsQuery.error ||
+    (triggerAgentsEnabled ? triggerAgentsQuery.error : null);
+
+  function retryFailedQueries() {
+    if (runsQuery.isError) void runsQuery.refetch();
+    if (schedulesQuery.isError) void schedulesQuery.refetch();
+    if (presetsQuery.isError) void presetsQuery.refetch();
+    if (triggerAgentsEnabled && triggerAgentsQuery.isError) {
+      void triggerAgentsQuery.refetch();
+    }
+  }
+
+  function retrySchedules() {
+    void schedulesQuery.refetch();
+  }
+
+  // The key includes the graph ID, so this refetches only this graph's runs.
+  function refetchRuns() {
+    queryClient.invalidateQueries({ queryKey: runsQuery.queryKey });
+  }
+
+  useRunsReadAfterReconnect({
+    queryKey: runsQuery.queryKey,
+    onTasks: tabValue === "runs",
+  });
 
   // Update query cache when execution events arrive via websocket
   useExecutionEvents({
     graphId: graphId || undefined,
     enabled: !!graphId && tabValue === "runs",
-    onExecutionUpdate: (_execution) => {
-      // Invalidate and refetch the query to ensure we have the latest data
-      // This is simpler and more reliable than manually updating the cache
-      // The queryKey is stable and includes the graphId, so this only invalidates
-      // queries for this specific graph's executions
-      queryClient.invalidateQueries({ queryKey: runsQuery.queryKey });
-    },
+    // Refetching the infinite query reloads every loaded page in turn, so a
+    // burst of events is folded into one refetch now and one at the end.
+    throttleMs: EXECUTION_REFETCH_THROTTLE_MS,
+    onExecutionUpdate: refetchRuns,
   });
 
   // Notify parent about counts and loading state
   useEffect(() => {
-    if (onCountsChange && !stale) {
+    if (onCountsChange) {
       onCountsChange({
         runsCount,
         schedulesCount,
         templatesCount,
         triggersCount,
         loading,
+        hasError: !!error,
       });
     }
   }, [
@@ -165,7 +200,7 @@ export function useSidebarRunsList({
     templatesCount,
     triggersCount,
     loading,
-    stale,
+    error,
   ]);
 
   useEffect(() => {
@@ -174,12 +209,17 @@ export function useSidebarRunsList({
     }
   }, [runs, activeItem, tabValue, onSelectRun]);
 
-  // If there are no runs but there are schedules, and nothing is selected, auto-select the first schedule
+  // Nothing selected and schedules to show, either because there are no runs
+  // or because the Scheduled tab is open: select the first schedule.
   useEffect(() => {
-    if (!activeItem && runs.length === 0 && schedules.length > 0) {
+    if (
+      !activeItem &&
+      schedules.length > 0 &&
+      (runs.length === 0 || tabValue === "scheduled")
+    ) {
       onSelectRun(schedules[0].id, "scheduled");
     }
-  }, [activeItem, runs.length, schedules, onSelectRun]);
+  }, [activeItem, runs.length, schedules, tabValue, onSelectRun]);
 
   useEffect(() => {
     if (templates.length > 0 && tabValue === "templates" && !activeItem) {
@@ -190,25 +230,31 @@ export function useSidebarRunsList({
   useEffect(() => {
     if (tabValue !== "triggers" || activeItem) return;
     if (triggers.length > 0) {
-      onSelectRun(triggers[0].id, "triggers");
+      onSelectRun(
+        activeItemParamFor("webhook-trigger", triggers[0].id),
+        "triggers",
+      );
     } else if (triggerAgents.length > 0) {
-      onSelectRun(triggerAgents[0].id, "triggers");
+      onSelectRun(
+        activeItemParamFor("trigger-agent", triggerAgents[0].id),
+        "triggers",
+      );
     }
   }, [triggers, triggerAgents, activeItem, tabValue, onSelectRun]);
 
   return {
     runs,
     schedules,
+    schedulesUnavailable,
+    retrySchedules,
+    retryingSchedules: schedulesQuery.isFetching,
     templates,
     triggers,
     triggerAgents,
-    error:
-      schedulesQuery.error ||
-      runsQuery.error ||
-      presetsQuery.error ||
-      (triggerAgentsEnabled ? triggerAgentsQuery.error : null),
+    error,
     loading,
     runsQuery,
+    retryFailedQueries,
     tabValue,
     runsCount,
     schedulesCount,

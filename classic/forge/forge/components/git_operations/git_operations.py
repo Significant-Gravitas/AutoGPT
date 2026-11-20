@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Iterator, Optional
+from urllib.parse import urlparse
 
 from git.exc import GitCommandError, InvalidGitRepositoryError
 from git.repo import Repo
@@ -93,6 +94,16 @@ class GitOperationsComponent(
         Returns:
             str: The result of the clone operation.
         """
+        # Only inject credentials when cloning from GitHub. The URL is
+        # attacker-controllable, so without this check the configured
+        # credentials would be sent to any host the URL points to.
+        hostname = (urlparse(url).hostname or "").lower()
+        if hostname not in ("github.com", "www.github.com"):
+            raise CommandExecutionError(
+                f"Refusing to clone from non-GitHub host '{hostname}': "
+                "credential injection is only allowed for github.com"
+            )
+
         split_url = url.split("//")
         api_key = (
             self.config.github_api_key.get_secret_value()

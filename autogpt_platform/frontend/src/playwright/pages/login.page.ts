@@ -1,9 +1,12 @@
-import { Page } from "@playwright/test";
+import { expect, Page } from "@playwright/test";
 import {
   getSeededTestUser,
   type SeededTestAccountKey,
 } from "../credentials/accounts";
-import { skipOnboardingIfPresent } from "../utils/onboarding";
+import {
+  dismissTabIntrosViaAPI,
+  skipOnboardingIfPresent,
+} from "../utils/onboarding";
 
 export class LoginPage {
   constructor(private page: Page) {}
@@ -19,13 +22,14 @@ export class LoginPage {
   }
 
   async login(email: string, password: string) {
-    console.log(`ℹ️ Attempting login on ${this.page.url()} with`, {
-      email,
-      password,
-    });
+    console.log(`ℹ️ Attempting login on ${this.page.url()} as ${email}`);
 
-    // Wait for the form to be ready
-    await this.page.waitForSelector("form", { state: "visible" });
+    // The form is in the server HTML; Log in is enabled once it's hydrated.
+    const loginButton = this.page.getByRole("button", {
+      name: "Log in",
+      exact: true,
+    });
+    await expect(loginButton).toBeEnabled({ timeout: 15_000 });
 
     // Fill email using input selector instead of label
     const emailInput = this.page.locator('input[type="email"]');
@@ -37,13 +41,6 @@ export class LoginPage {
     await passwordInput.waitFor({ state: "visible" });
     await passwordInput.fill(password);
 
-    // Wait for the button to be ready
-    const loginButton = this.page.getByRole("button", {
-      name: "Log in",
-      exact: true,
-    });
-    await loginButton.waitFor({ state: "visible" });
-
     // Attach navigation logger for debug purposes
     this.page.once("load", (page) =>
       console.log(`ℹ️ Now at URL: ${page.url()}`),
@@ -53,7 +50,7 @@ export class LoginPage {
       this.page.waitForFunction(
         () => {
           const pathname = window.location.pathname;
-          return /^\/(marketplace|onboarding(\/.*)?|library|copilot)$/.test(
+          return /^\/(marketplace|onboarding(\/.*)?|library|copilot|home)$/.test(
             pathname,
           );
         },
@@ -85,7 +82,10 @@ export class LoginPage {
     await this.page.waitForLoadState("load", { timeout: 10_000 });
 
     // If redirected to onboarding, complete it via API so tests can proceed
+    const wasOnOnboarding = this.page.url().includes("/onboarding");
     await skipOnboardingIfPresent(this.page, "/marketplace");
+    // Seeded users are past onboarding but have not seen the tab intros.
+    if (!wasOnOnboarding) await dismissTabIntrosViaAPI(this.page);
 
     console.log("➡️ Navigating to /marketplace ...");
     await this.page.goto("/marketplace", { timeout: 20_000 });

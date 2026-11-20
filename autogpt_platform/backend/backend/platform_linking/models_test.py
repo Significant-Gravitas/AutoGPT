@@ -3,6 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
+from backend.util.json import to_dict
+
 from .models import (
     BotChatRequest,
     ConfirmLinkResponse,
@@ -12,6 +14,8 @@ from .models import (
     Platform,
     ResolveResponse,
     ResolveServerRequest,
+    WorkspaceArtifact,
+    WorkspaceUploadRequest,
 )
 
 
@@ -141,6 +145,41 @@ class TestBotChatRequest:
                 message="hi",
             )
 
+    def test_expert_and_model_default_to_none(self):
+        req = BotChatRequest(
+            platform=Platform.DISCORD, platform_user_id="u", message="hi"
+        )
+        assert req.expert_id is None
+        assert req.model is None
+
+    def test_expert_and_model_round_trip(self):
+        req = BotChatRequest(
+            platform=Platform.TELEGRAM,
+            platform_user_id="u",
+            message="hi",
+            expert_id="expert-1",
+            model="advanced",
+        )
+        assert BotChatRequest.model_validate(to_dict(req)) == req
+
+    def test_unknown_model_tier_rejected(self):
+        with pytest.raises(ValidationError):
+            BotChatRequest(
+                platform=Platform.DISCORD,
+                platform_user_id="u",
+                message="hi",
+                model="smart",
+            )
+
+    def test_empty_expert_id_rejected(self):
+        with pytest.raises(ValidationError):
+            BotChatRequest(
+                platform=Platform.DISCORD,
+                platform_user_id="u",
+                message="hi",
+                expert_id="",
+            )
+
 
 class TestResponseModels:
     def test_link_token_status_pending(self):
@@ -176,3 +215,52 @@ class TestResponseModels:
     def test_delete_link_response(self):
         resp = DeleteLinkResponse(success=True)
         assert resp.success is True
+
+
+class TestBinaryContentOverJsonRpc:
+    """Binary file bytes must survive the JSON service RPC.
+
+    Plain ``bytes`` fields are strict-UTF-8-decoded by JSON serialization,
+    so a binary artifact (e.g. a JPEG starting 0xff) fails to serialize on
+    the ``fetch_workspace_artifact`` / ``upload_workspace_files`` hops.
+    """
+
+    # First bytes of a JPEG — not valid UTF-8.
+    _BINARY = b"\xff\xd8\xff\xe0" + bytes(range(256))
+
+    def _artifact(self) -> WorkspaceArtifact:
+        return WorkspaceArtifact(
+            file_id="f1",
+            filename="photo.jpg",
+            mime_type="image/jpeg",
+            size_bytes=len(self._BINARY),
+            content=self._BINARY,
+        )
+
+    def test_artifact_binary_content_survives_the_wire(self):
+        # Server response leg: FastAPI serializes via jsonable_encoder …
+        wire = to_dict(self._artifact())
+        assert isinstance(wire["content"], str)  # base64, JSON-safe
+        # … client leg: TypeAdapter validates the JSON back into the model.
+        restored = WorkspaceArtifact.model_validate(wire)
+        assert restored.content == self._BINARY
+
+    def test_upload_request_binary_content_survives_the_wire(self):
+        request = WorkspaceUploadRequest(
+            platform=Platform.TELEGRAM,
+            platform_user_id="u1",
+            filename="photo.jpg",
+            mime_type="image/jpeg",
+            content=self._BINARY,
+        )
+        wire = to_dict(request)
+        assert isinstance(wire["content"], str)
+        restored = WorkspaceUploadRequest.model_validate(wire)
+        assert restored.content == self._BINARY
+
+    def test_raw_bytes_stay_bytes_in_process(self):
+        # In-process consumers (adapters attach .content directly) must keep
+        # seeing raw bytes — only the JSON wire format is base64.
+        artifact = self._artifact()
+        assert artifact.content == self._BINARY
+        assert artifact.model_dump()["content"] == self._BINARY

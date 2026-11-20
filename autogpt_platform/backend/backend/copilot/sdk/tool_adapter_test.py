@@ -3,27 +3,50 @@
 import asyncio
 import json
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mcp.types import ListToolsRequest, ToolAnnotations
 
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
 from backend.copilot.context import get_sdk_cwd
+from backend.copilot.gate import Decision
+from backend.copilot.gate.mcp_seam import Verdict, approved_for
+from backend.copilot.gate.policy import PARKABLE, Effect, effect_for
+from backend.copilot.gate.subject import Subject
+from backend.copilot.google_data_redaction import (
+    REDACTED,
+    redact_google_data,
+    remember_google_output,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
-from backend.copilot.tools import TOOL_REGISTRY
+from backend.copilot.sdk.computer_use_policy import (
+    computer_use_scope,
+    local_pc_tool_names,
+)
+from backend.copilot.tools import DEFERRED_TOOL_NAMES, TOOL_REGISTRY
+from backend.copilot.tools.local_pc_shim import ComputerUseDriver, ShimHello
 from backend.util.truncate import truncate
 
+from .computer_use_tools import LOCAL_PC_COMPUTER_TOOL_NAMES
+from .env import config
+from .recording_tools import RECORDING_TOOLS
 from .tool_adapter import (
     _MCP_MAX_CHARS,
     _STRIP_FROM_LLM,
+    BASELINE_ONLY_MCP_TOOLS,
+    BLOCKED_TOOLS,
     SDK_DISALLOWED_TOOLS,
     _make_truncating_wrapper,
     _strip_llm_fields,
     _text_from_mcp_result,
+    cap_late_tool_result,
     create_copilot_mcp_server,
     create_tool_handler,
+    get_copilot_tool_names,
+    get_sdk_disallowed_tools,
+    held_call_handlers,
     pop_pending_tool_output,
     reset_pending_tool_outputs,
     reset_stash_event,
@@ -31,6 +54,67 @@ from .tool_adapter import (
     stash_pending_tool_output,
     wait_for_stash,
 )
+
+
+def _hello(**overrides) -> ShimHello:
+    values = {
+        "machine_id": "machine-1",
+        "capabilities": ["computer_use"],
+        "computer_use_driver": ComputerUseDriver(
+            name="cua-driver", version="0.38.0", runtime="direct"
+        ),
+        "computer_use_tools": ["click", "type_text"],
+    }
+    values.update(overrides)
+    return ShimHello(**values)
+
+
+def test_local_pc_tools_are_both_or_neither() -> None:
+    """Otto reaches every driver tool through the same two MCP tools."""
+    assert local_pc_tool_names(computer_use_scope(_hello())) == {
+        "local_pc_computer_tools",
+        "local_pc_computer",
+    }
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"capabilities": ["files"]},
+        {"computer_use_driver": None},
+        {"computer_use_tools": []},
+    ],
+    ids=["no-capability", "no-driver", "no-tools"],
+)
+def test_no_computer_use_scope_registers_no_local_pc_tools(overrides: dict) -> None:
+    scope = computer_use_scope(_hello(**overrides))
+    assert scope is None
+    assert local_pc_tool_names(scope) == frozenset()
+
+
+def test_the_scope_names_the_driver_release_and_its_tools() -> None:
+    scope = computer_use_scope(_hello())
+    assert scope is not None
+    assert (scope.machine_id, scope.driver, scope.tools) == (
+        "machine-1",
+        "cua-driver 0.38.0",
+        ("click", "type_text"),
+    )
+
+
+@pytest.mark.asyncio
+async def test_mcp_registration_registers_only_the_named_local_pc_tools() -> None:
+    server = create_copilot_mcp_server(
+        use_local_pc_computer=True,
+        local_pc_computer_tool_names={"local_pc_computer_tools"},
+    )
+    instance = server["instance"]
+    handler = instance.request_handlers[ListToolsRequest]
+    result = await handler(ListToolsRequest(method="tools/list"))
+    names = {tool.name for tool in result.root.tools}
+    assert "local_pc_computer_tools" in names
+    assert "local_pc_computer" not in names
+
 
 # ---------------------------------------------------------------------------
 # _text_from_mcp_result
@@ -714,7 +798,16 @@ class TestBug3CancelRace:
 
 
 class TestReadOnlyAnnotations:
-    """Tests that all tools get readOnlyHint=True for parallel dispatch."""
+    """Tools get readOnlyHint=True for parallel dispatch, except the ones
+    that write files, which the CLI must run in the model's order."""
+
+    @pytest.fixture(params=[False, True], ids=["no-sandbox", "full-sandbox"])
+    def bash_available(self, request, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(config, "use_e2b_sandbox", False)
+        monkeypatch.setattr(
+            "backend.copilot.tools.bash_exec.has_full_sandbox", lambda: request.param
+        )
+        return request.param
 
     def test_parallel_annotation_constant(self):
         """_PARALLEL_ANNOTATION is a ToolAnnotations with readOnlyHint=True."""
@@ -722,6 +815,40 @@ class TestReadOnlyAnnotations:
 
         assert isinstance(_PARALLEL_ANNOTATION, ToolAnnotations)
         assert _PARALLEL_ANNOTATION.readOnlyHint is True
+
+    @pytest.mark.asyncio
+    async def test_file_writers_are_not_read_only(self, bash_available: bool):
+        """SECRT-3178: ``write_workspace_file(source_path=...)`` in the same
+        message as the ``bash_exec`` building that file ran beside it and
+        stored half the file. Without the hint the CLI orders them."""
+        hints = await self._read_only_hints(create_copilot_mcp_server())
+
+        assert ("bash_exec" in hints) is bash_available
+        if bash_available:
+            assert hints["bash_exec"] is False
+        for name in ("write_workspace_file", "read_workspace_file"):
+            assert hints[name] is False, name
+        for name in ("run_capability", "list_workspace_files", "find_library_agent"):
+            assert hints[name] is True, name
+
+    @pytest.mark.asyncio
+    async def test_every_registered_tool_follows_writes_files(
+        self, bash_available: bool
+    ):
+        hints = await self._read_only_hints(create_copilot_mcp_server())
+
+        for name, base_tool in TOOL_REGISTRY.items():
+            if name in hints:
+                assert hints[name] is not base_tool.writes_files, name
+
+    @staticmethod
+    async def _read_only_hints(server) -> dict[str, bool | None]:
+        handler = server["instance"].request_handlers[ListToolsRequest]
+        result = await handler(ListToolsRequest(method="tools/list"))
+        return {
+            t.name: t.annotations.readOnlyHint if t.annotations else None
+            for t in result.root.tools
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -735,12 +862,55 @@ class TestSDKDisallowedTools:
     def test_bash_tool_is_disallowed(self):
         assert "Bash" in SDK_DISALLOWED_TOOLS
 
+    def test_powershell_tool_is_disallowed(self):
+        assert "PowerShell" in get_sdk_disallowed_tools()
+        assert "PowerShell" in BLOCKED_TOOLS
+
     def test_webfetch_tool_is_disallowed(self):
         """WebFetch is disallowed due to SSRF risk."""
         assert "WebFetch" in SDK_DISALLOWED_TOOLS
 
     def test_schedule_wakeup_tool_is_disallowed(self):
         assert "ScheduleWakeup" in SDK_DISALLOWED_TOOLS
+
+    def test_workflow_tool_is_disallowed(self):
+        assert "Workflow" in get_sdk_disallowed_tools()
+
+    @pytest.mark.parametrize("tool", ["CronCreate", "CronList", "CronDelete"])
+    def test_cli_cron_tools_are_disallowed(self, tool: str):
+        """The CLI's cron built-ins schedule nothing that outlives the turn.
+
+        CronCreate confirms success and claims it persisted to disk, so an
+        exposed cron tool lets the model promise unattended monitoring that
+        never fires. `schedule_followup` is the only durable primitive.
+        """
+        assert tool in SDK_DISALLOWED_TOOLS
+
+    @pytest.mark.parametrize("tool", ["CronCreate", "CronList", "CronDelete"])
+    def test_cron_tools_reach_sdk_options(self, tool: str):
+        """`disallowed_tools` is what removes a built-in from the model's context."""
+        assert tool in get_sdk_disallowed_tools()
+
+    @pytest.mark.parametrize("tool", ["CronCreate", "CronList", "CronDelete"])
+    def test_cron_tools_reach_security_hook_denylist(self, tool: str):
+        """Defence in depth: security_hooks denies on BLOCKED_TOOLS, which is
+        a denylist — an unlisted tool falls through and executes."""
+        assert tool in BLOCKED_TOOLS
+
+    @pytest.mark.parametrize("tool", ["ListAgents", "SendMessage"])
+    def test_cli_cross_session_tools_are_disallowed(self, tool: str):
+        assert tool in get_sdk_disallowed_tools()
+        assert tool in BLOCKED_TOOLS
+
+    def test_orchestrator_block_disallows_every_known_builtin(self):
+        # The orchestrator's model gets graph MCP tools only, so its blocklist
+        # must cover everything the copilot blocks *and* everything the
+        # copilot deliberately keeps (sub-agents, todo list, file search).
+        from backend.blocks.orchestrator import sdk_disallowed_tools
+
+        blocked = set(sdk_disallowed_tools())
+        assert set(get_sdk_disallowed_tools()) <= blocked
+        assert {"Task", "Agent", "TodoWrite", "Glob", "Grep"} <= blocked
 
 
 # ---------------------------------------------------------------------------
@@ -781,7 +951,9 @@ class TestReadFileHandlerBridge:
         try:
             bridge_calls: list[tuple] = []
 
-            async def fake_bridge_and_annotate(sandbox, file_path, offset, limit):
+            async def fake_bridge_and_annotate(
+                sandbox, file_path, offset, limit, content=None
+            ):
                 bridge_calls.append((sandbox, file_path, offset, limit))
                 return "\n[Sandbox copy available at /tmp/abc-data.json]"
 
@@ -802,24 +974,23 @@ class TestReadFileHandlerBridge:
             _current_sandbox.reset(token)
 
     @pytest.mark.asyncio
-    async def test_bridge_skipped_when_envelope_pretty_printed(
+    async def test_bridge_copies_the_unwrapped_payload_of_an_envelope(
         self, tmp_path, monkeypatch
     ):
-        """Pretty-printing the MCP envelope transforms the content the
-        model reads. The on-disk bytes are the raw envelope, so bridging
-        them to the sandbox would point the model at content that
-        doesn't match what ``read_tool_result`` just returned. Skip the
-        bridge in that case — the model can re-read or pipe via
-        ``@@agptfile:`` if it needs bash access."""
+        """The CLI saves every spilled result as an MCP envelope, and the
+        model reads it pretty-printed. The sandbox copy has to hold that
+        same text, not the raw envelope, so bash sees the lines the model
+        just read (SECRT-3181)."""
         from backend.copilot.context import _current_sandbox
 
         from .tool_adapter import _read_file_handler
 
-        # MCP envelope with JSON inner payload — _navigable_tool_result_text
-        # will pretty-print this, so navigable != raw.
         test_file = tmp_path / "tool-results" / "envelope.json"
         test_file.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"execution": {"node_executions": [{"status": "OK"}]}}
+        payload = {
+            "execution": {"node_executions": [{"status": "OK"}]},
+            "data": "x" * 60_000,
+        }
         envelope = json.dumps([{"type": "text", "text": json.dumps(payload)}])
         test_file.write_text(envelope)
 
@@ -831,10 +1002,12 @@ class TestReadFileHandlerBridge:
         fake_sandbox: Any = object()
         token = _current_sandbox.set(fake_sandbox)
         try:
-            bridge_calls: list[tuple] = []
+            bridged: list[str | None] = []
 
-            async def fake_bridge_and_annotate(sandbox, file_path, offset, limit):
-                bridge_calls.append((sandbox, file_path, offset, limit))
+            async def fake_bridge_and_annotate(
+                sandbox, file_path, offset, limit, content=None
+            ):
+                bridged.append(content)
                 return "\n[Sandbox copy available at /tmp/abc-envelope.json]"
 
             monkeypatch.setattr(
@@ -847,10 +1020,10 @@ class TestReadFileHandlerBridge:
             )
 
             assert result["isError"] is False
-            # The bridge MUST NOT be called: model sees pretty-printed
-            # JSON but the on-disk file holds the raw envelope.
-            assert bridge_calls == []
-            assert "Sandbox copy" not in result["content"][0]["text"]
+            assert bridged == [json.dumps(payload, indent=2)]
+            assert result["content"][0]["text"].startswith(
+                "[Sandbox copy available at /tmp/abc-envelope.json]"
+            )
             # And the returned text is the pretty-printed payload, not
             # the envelope wrapper, so the slicing is useful.
             assert '"status": "OK"' in result["content"][0]["text"]
@@ -885,7 +1058,9 @@ class TestReadFileHandlerBridge:
         try:
             bridge_calls: list[tuple] = []
 
-            async def fake_bridge_and_annotate(sandbox, file_path, offset, limit):
+            async def fake_bridge_and_annotate(
+                sandbox, file_path, offset, limit, content=None
+            ):
                 bridge_calls.append((sandbox, file_path, offset, limit))
                 return "\n[Sandbox copy available at /tmp/abc-plain.txt]"
 
@@ -924,7 +1099,9 @@ class TestReadFileHandlerBridge:
 
         bridge_calls: list[tuple] = []
 
-        async def fake_bridge_and_annotate(sandbox, file_path, offset, limit):
+        async def fake_bridge_and_annotate(
+            sandbox, file_path, offset, limit, content=None
+        ):
             bridge_calls.append((sandbox, file_path, offset, limit))
             return "\n[Sandbox copy available at /tmp/abc-data.json]"
 
@@ -940,6 +1117,55 @@ class TestReadFileHandlerBridge:
         assert result["isError"] is False
         assert len(bridge_calls) == 0
         assert "Sandbox copy" not in result["content"][0]["text"]
+
+
+class TestReadFileHandlerWorkspaceToolOutputs:
+    """A truncation notice's ``tool-outputs/`` path lives in the workspace,
+    so read_tool_result must point at read_workspace_file, not just reject it."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "file_path", ["tool-outputs/sdk-abc.json", "/tool-outputs/sdk-abc.json"]
+    )
+    async def test_redirects_to_read_workspace_file(self, file_path):
+        from .tool_adapter import _read_file_handler
+
+        result = await _read_file_handler({"file_path": file_path})
+
+        assert result["isError"] is True
+        text = result["content"][0]["text"]
+        assert (
+            'read_workspace_file(path="tool-outputs/sdk-abc.json", '
+            "offset=0, length=50000)" in text
+        )
+        assert "Path not allowed" not in text
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "range_args, expected",
+        [
+            ({"char_offset": 1200, "char_limit": 300}, "offset=1200, length=300"),
+            ({"char_offset": 1200}, "offset=1200, length=50000"),
+            ({"char_limit": 300}, "offset=0, length=300"),
+        ],
+    )
+    async def test_redirect_keeps_requested_char_range(self, range_args, expected):
+        from .tool_adapter import _read_file_handler
+
+        result = await _read_file_handler(
+            {"file_path": "tool-outputs/sdk-abc.json", **range_args}
+        )
+
+        assert expected in result["content"][0]["text"]
+
+    @pytest.mark.asyncio
+    async def test_other_paths_still_rejected(self):
+        from .tool_adapter import _read_file_handler
+
+        result = await _read_file_handler({"file_path": "/etc/passwd"})
+
+        assert result["isError"] is True
+        assert result["content"][0]["text"] == "Path not allowed: passwd"
 
 
 # ---------------------------------------------------------------------------
@@ -1219,23 +1445,36 @@ class TestCreateCopilotMcpServerHidden:
 
     @pytest.mark.asyncio
     async def test_hidden_tools_not_registered(self):
-        # Use a named tool (find_block is stable + load-bearing in the
-        # builder flow) so the test reads as a real scenario instead of
-        # "the first key in dict insertion order".
-        hidden_name = "find_block"
-        assert hidden_name in TOOL_REGISTRY, "fixture relies on find_block"
+        # Use a named eager tool so the test reads as a real scenario
+        # instead of "the first key in dict insertion order".
+        hidden_name = "find_capability"
+        assert hidden_name in TOOL_REGISTRY, "fixture relies on find_capability"
         server = create_copilot_mcp_server(hidden_tool_names=[hidden_name])
         registered = await self._registered_tool_names(server)
         assert hidden_name not in registered
         # Other tools still register.
-        assert len(registered) >= len(TOOL_REGISTRY) - 1
+        assert self._expected_registry_names() - {hidden_name} <= registered
 
     @pytest.mark.asyncio
-    async def test_no_hidden_tools_registers_all(self):
+    async def test_no_hidden_tools_registers_every_available_tool(self):
         server = create_copilot_mcp_server()
         registered = await self._registered_tool_names(server)
-        for short in TOOL_REGISTRY:
+        for short in self._expected_registry_names():
             assert short in registered
+
+    @pytest.mark.asyncio
+    async def test_baseline_only_tools_never_registered(self):
+        """Baseline-only MCP wrappers (TodoWrite) must not register on the
+        SDK server. They are excluded from ``allowed_tools`` (SDK mode uses
+        the CLI-native built-ins), so advertising them makes the model call
+        a tool the CLI can never approve — it answers "Claude requested
+        permissions to use mcp__copilot__TodoWrite, but you haven't granted
+        it yet" and the model silently abandons the checklist."""
+        assert "TodoWrite" in BASELINE_ONLY_MCP_TOOLS
+        for use_e2b in (False, True):
+            server = create_copilot_mcp_server(use_e2b=use_e2b)
+            registered = await self._registered_tool_names(server)
+            assert not BASELINE_ONLY_MCP_TOOLS & registered
 
     @pytest.mark.asyncio
     async def test_builder_blocked_tools_hidden(self):
@@ -1243,8 +1482,8 @@ class TestCreateCopilotMcpServerHidden:
         registered = await self._registered_tool_names(server)
         for blocked in BUILDER_BLOCKED_TOOLS:
             assert blocked not in registered
-        # edit_agent must remain so the model can populate the bound graph.
-        assert "edit_agent" in registered
+        # The registry tools must remain so the model can still act.
+        assert "run_capability" in registered
 
     @pytest.mark.asyncio
     async def test_unknown_hidden_name_is_silently_ignored(self):
@@ -1256,8 +1495,130 @@ class TestCreateCopilotMcpServerHidden:
         )
         registered = await self._registered_tool_names(server)
         # All real tools still register.
-        for short in TOOL_REGISTRY:
+        for short in self._expected_registry_names():
             assert short in registered
+
+    @pytest.mark.asyncio
+    async def test_hidden_local_pc_and_ui_owned_recording_start_not_registered(self):
+        server = create_copilot_mcp_server(
+            hidden_tool_names=["local_pc_computer"],
+            use_local_pc_computer=True,
+            use_recording=True,
+        )
+
+        registered = await self._registered_tool_names(server)
+
+        assert "local_pc_computer" not in registered
+        assert "record_workflow" not in registered
+        assert "local_pc_computer_tools" in registered
+        assert "list_recordings" in registered
+
+    @pytest.mark.asyncio
+    async def test_hidden_sdk_file_aliases_hide_e2b_tools(self):
+        server = create_copilot_mcp_server(
+            use_e2b=True,
+            hidden_tool_names=["Read", "Grep"],
+        )
+
+        registered = await self._registered_tool_names(server)
+
+        assert "read_file" not in registered
+        assert "grep" not in registered
+        assert "write_file" in registered
+
+    @pytest.mark.asyncio
+    async def test_hidden_read_alias_hides_unified_read_tool(self):
+        server = create_copilot_mcp_server(hidden_tool_names=["Read"])
+
+        registered = await self._registered_tool_names(server)
+
+        assert "read_file" not in registered
+        assert "Write" in registered
+
+    @pytest.mark.asyncio
+    async def test_automation_origin_tools_not_registered(self):
+        """The origin gate reaches the MCP server, not just the schema list.
+
+        ``origin_disabled_tools`` is what both engines feed in; on this one
+        hiding IS the enforcement, since an unregistered tool does not exist
+        for the CLI. A legacy ``origin=None`` counts as automation.
+        """
+        from backend.copilot.tools import (
+            INTERACTIVE_ORIGIN_TOOLS,
+            origin_disabled_tools,
+        )
+
+        for origin in ("automation", None):
+            server = create_copilot_mcp_server(
+                hidden_tool_names=origin_disabled_tools(origin)
+            )
+            registered = await self._registered_tool_names(server)
+            assert not (INTERACTIVE_ORIGIN_TOOLS & registered), (
+                f"origin={origin!r} registered "
+                f"{sorted(INTERACTIVE_ORIGIN_TOOLS & registered)}"
+            )
+            # Narrow by design: the work an automation exists to do stays.
+            # ``run_block`` is a permission gate rather than a registered
+            # tool now — blocks run through ``run_capability``.
+            assert {"run_agent", "run_capability", "run_sub_session"} <= registered
+
+        interactive = await self._registered_tool_names(
+            create_copilot_mcp_server(
+                hidden_tool_names=origin_disabled_tools("interactive")
+            )
+        )
+        # Every interactive-origin tool is deferred, so none is registered by
+        # name in either session; the model reaches them through
+        # ``run_capability``. What the origin gate still decides is whether
+        # the turn may run them at all, which the hidden set above enforces.
+        assert INTERACTIVE_ORIGIN_TOOLS <= DEFERRED_TOOL_NAMES
+        eager_interactive = INTERACTIVE_ORIGIN_TOOLS - DEFERRED_TOOL_NAMES
+        assert eager_interactive <= interactive, (
+            "an interactive session lost " f"{sorted(eager_interactive - interactive)}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_env_unavailable_tools_not_registered(self):
+        """``is_available`` is honoured here as it is on the baseline path.
+
+        Without it the model is offered browser tools on a box with no
+        ``agent-browser`` binary, and they fail on first use.
+        """
+        # The browser tools are deferred, so they are never registered by
+        # name; the model reaches them through ``run_capability``. Assert the
+        # env check on a tool that is registered when its binary is present.
+        browser_tools = {"browser_navigate", "browser_act", "browser_screenshot"}
+        assert browser_tools <= DEFERRED_TOOL_NAMES
+
+        for present in ("/x", None):
+            with patch(
+                "backend.copilot.tools.agent_browser.shutil.which",
+                return_value=present,
+            ):
+                registered = await self._registered_tool_names(
+                    create_copilot_mcp_server()
+                )
+                assert not (browser_tools & registered)
+                assert self._expected_registry_names() <= registered
+
+    @staticmethod
+    def _expected_registry_names() -> set[str]:
+        """Registry tools the SDK server should register in this environment.
+
+        ``is_available`` is read here rather than asserted over the whole
+        registry: the chat-platform, browser and E2B tools depend on env the
+        test box may not have, and registering one the environment cannot
+        serve is the bug, not the invariant. Deferred tools are excluded for
+        the same reason — they are reached through run_capability by id, not
+        registered by name.
+        """
+        return {
+            name
+            for name, tool in TOOL_REGISTRY.items()
+            if name not in BASELINE_ONLY_MCP_TOOLS
+            and name not in DEFERRED_TOOL_NAMES
+            and tool.is_available
+        }
 
     @staticmethod
     async def _registered_tool_names(server) -> set[str]:
@@ -1265,6 +1626,26 @@ class TestCreateCopilotMcpServerHidden:
         handler = instance.request_handlers[ListToolsRequest]
         result = await handler(ListToolsRequest(method="tools/list"))
         return {t.name for t in result.root.tools}
+
+
+@pytest.mark.parametrize(
+    ("use_e2b", "hidden", "expected_hidden", "expected_visible"),
+    [
+        (True, ["Read", "Grep"], {"read_file", "grep"}, "write_file"),
+        (True, ["grep"], {"grep"}, "write_file"),
+        (False, ["Read"], {"read_file"}, "Write"),
+    ],
+)
+def test_hidden_file_tools_are_omitted_from_allowed_tools(
+    use_e2b: bool,
+    hidden: list[str],
+    expected_hidden: set[str],
+    expected_visible: str,
+) -> None:
+    allowed = set(get_copilot_tool_names(use_e2b=use_e2b, hidden_tool_names=hidden))
+
+    assert not {f"mcp__copilot__{name}" for name in expected_hidden} & allowed
+    assert f"mcp__copilot__{expected_visible}" in allowed
 
 
 class TestNavigableToolResultText:
@@ -1312,3 +1693,242 @@ class TestNavigableToolResultText:
             ]
         )
         assert _navigable_tool_result_text(multi) == multi
+
+
+class TestEmptyArgsCircuitBreaker:
+    """Empty-args calls give file-reference guidance and eventually trip the
+    circuit breaker instead of looping forever."""
+
+    @pytest.fixture(autouse=True)
+    def _init_context(self):
+        set_execution_context(
+            user_id="test",
+            session=None,
+            sandbox=None,
+            sdk_cwd="/tmp/test",
+        )
+
+    def _wrapper(self):
+        async def handler(_args):
+            raise AssertionError("handler must not run on empty args")
+
+        return _make_truncating_wrapper(
+            handler,
+            "create_agent",
+            input_schema={"type": "object", "properties": {"agent_json": {}}},
+            required_args=["agent_json"],
+        )
+
+    @pytest.mark.asyncio
+    async def test_guidance_recommends_file_reference(self):
+        result = await self._wrapper()({})
+        text = _text_from_mcp_result(result)
+        assert result.get("isError") is True
+        assert "@@agptfile" in text
+        assert "truncated by the API" not in text
+
+    @pytest.mark.asyncio
+    async def test_repeated_empty_args_trip_circuit_breaker(self):
+        wrapper = self._wrapper()
+        for _ in range(3):
+            result = await wrapper({})
+            assert "empty arguments" in _text_from_mcp_result(result)
+        result = await wrapper({})
+        text = _text_from_mcp_result(result)
+        assert "STOP" in text
+        assert "Do NOT retry" in text
+
+
+class TestNonRegistryGateSeam:
+    """The file handlers never reach ``BaseTool.execute``; this seam is their gate."""
+
+    @pytest.mark.asyncio
+    async def test_a_refused_file_write_never_reaches_its_handler(self):
+        called = False
+
+        async def handler(_args):
+            nonlocal called
+            called = True
+            return {"content": [{"type": "text", "text": "wrote"}], "isError": False}
+
+        refusal = {"content": [{"type": "text", "text": "no"}], "isError": True}
+        _init_ctx(_make_test_session())
+        with patch(
+            "backend.copilot.sdk.tool_adapter.gate_non_registry_tool",
+            new=AsyncMock(return_value=(refusal, None)),
+        ) as gate:
+            wrapper = _make_truncating_wrapper(
+                handler, "write_file", required_args=["path"]
+            )
+            result = await wrapper({"path": "a.txt", "content": "x"})
+
+        gate.assert_awaited_once()
+        assert called is False
+        assert result.get("isError") is True
+
+    @pytest.mark.asyncio
+    async def test_the_handler_runs_under_the_verdict_on_its_own_subject(self):
+        disk = Subject(key="disk:a", name="Disk", effect=Effect.EXTERNAL)
+        seen: list[bool] = []
+        subjects: list[dict] = []
+
+        async def subject_of(args):
+            subjects.append(args)
+            return disk
+
+        async def handler(_args):
+            seen.append(approved_for("disk:a"))
+            return {"content": [{"type": "text", "text": "ok"}], "isError": False}
+
+        async def gate(_name, _args, _user, _session, subject_of=None):
+            assert subject_of is not None
+            return None, Verdict(
+                decision=Decision(allowed=True, decided=True),
+                subject=await subject_of(),
+            )
+
+        _init_ctx(_make_test_session())
+        with (
+            patch("backend.copilot.sdk.tool_adapter.gate_non_registry_tool", gate),
+            patch(
+                "backend.copilot.sdk.tool_adapter.release_non_registry_read",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "backend.copilot.sdk.tool_adapter.screen_non_registry_read",
+                new=AsyncMock(side_effect=lambda *a, **_k: a[4]),
+            ),
+        ):
+            wrapper = _make_truncating_wrapper(
+                handler, "local_pc_computer", gate_subject=subject_of
+            )
+            await wrapper({"tool": "clipboard_write", "arguments": {}})
+
+        assert subjects == [{"tool": "clipboard_write", "arguments": {}}]
+        assert seen == [True]
+        # Nothing outlives the call.
+        assert approved_for("disk:a") is False
+
+    def test_every_tool_the_gate_can_hold_outside_the_registry_can_replay(self):
+        """A held call the gate can't run after its approval would tell the
+        model the tool no longer exists."""
+        parkable = {
+            name
+            for name in (
+                *LOCAL_PC_COMPUTER_TOOL_NAMES,
+                *(t[0] for t in RECORDING_TOOLS),
+            )
+            if name not in TOOL_REGISTRY and effect_for(name) in PARKABLE
+        }
+        assert parkable
+        assert parkable <= set(
+            held_call_handlers(use_local_pc_computer=True, use_recording=True)
+        )
+
+    @pytest.mark.parametrize(
+        "turn",
+        [
+            {"use_local_pc_computer": False, "use_recording": False},
+            {"use_local_pc_computer": True, "use_recording": False},
+            {"use_local_pc_computer": False, "use_recording": True},
+            {
+                "use_local_pc_computer": True,
+                "use_recording": True,
+                "local_pc_computer_tool_names": ["local_pc_computer_tools"],
+            },
+            {
+                "use_local_pc_computer": True,
+                "use_recording": True,
+                "hidden_tool_names": ["local_pc_computer", "dry_run_skill"],
+            },
+        ],
+        ids=["off", "computer-use", "recording", "consented-subset", "hidden"],
+    )
+    async def test_a_held_call_replays_only_through_a_tool_this_turn_offers(
+        self, turn: dict[str, Any]
+    ):
+        """The replay table held every Local PC handler, so a call approved
+        before computer use was turned off, or before a permission was taken
+        away, still drove the computer on the next turn."""
+        local_pc = {*LOCAL_PC_COMPUTER_TOOL_NAMES, *(t[0] for t in RECORDING_TOOLS)}
+
+        replayable = set(held_call_handlers(**turn))
+        registered = await TestCreateCopilotMcpServerHidden._registered_tool_names(
+            create_copilot_mcp_server(**turn)
+        )
+
+        assert replayable == registered & local_pc
+        if not (turn["use_local_pc_computer"] or turn["use_recording"]):
+            assert replayable == set()
+
+
+def test_set_execution_context_carries_hidden_tools():
+    """The SDK engine hands its per-turn hidden tool set through this
+    adapter's ``set_execution_context`` (not ``context.set_execution_context``),
+    so the keyword must exist here too — run_capability reads it back."""
+    from backend.copilot.context import get_current_hidden_tools
+
+    session = MagicMock(spec=ChatSession)
+    set_execution_context("user", session, hidden_tools=frozenset({"list_schedules"}))
+    try:
+        assert get_current_hidden_tools() == frozenset({"list_schedules"})
+    finally:
+        set_execution_context(None, session)
+    assert get_current_hidden_tools() == frozenset()
+
+
+class TestLateToolResultCap:
+    """A held call's late result must read as the direct result would have."""
+
+    @pytest.mark.asyncio
+    async def test_a_late_result_is_cut_exactly_as_the_wrapper_cuts_a_direct_one(
+        self,
+    ):
+        text = "x" * (_MCP_MAX_CHARS + 20_000)
+
+        async def handler(_args):
+            return {"content": [{"type": "text", "text": text}], "isError": False}
+
+        _init_ctx(_make_test_session())
+        wrapper = _make_truncating_wrapper(handler, "read_workspace_file")
+        direct = _text_from_mcp_result(await wrapper({}))
+
+        assert len(direct) < len(text)
+        assert cap_late_tool_result(text) == direct
+
+
+class TestCutGoogleOutputIsRemembered:
+    """A Google output too large for the model is cut here, after
+    ``BaseTool`` remembered it whole; the cut text has to be redacted too."""
+
+    @staticmethod
+    async def _cut(text: str) -> str:
+        async def handler(_args):
+            return {"content": [{"type": "text", "text": text}], "isError": False}
+
+        wrapper = _make_truncating_wrapper(handler, "google_cut_tool")
+        with patch(
+            "backend.copilot.sdk.tool_adapter.get_execution_context",
+            return_value=(None, None),
+        ):
+            result = await wrapper({"q": "x"})
+        cut = _text_from_mcp_result(result)
+        assert cut != text
+        return cut
+
+    @pytest.mark.asyncio
+    async def test_a_remembered_google_output(self):
+        text = "Subject: payroll " + "x" * (_MCP_MAX_CHARS + 5_000)
+        remember_google_output(text)
+
+        cut = await self._cut(text)
+
+        assert redact_google_data({"output": cut}) == {"output": REDACTED}
+
+    @pytest.mark.asyncio
+    async def test_other_output_stays_readable(self):
+        text = "a harmless page " + "y" * (_MCP_MAX_CHARS + 5_000)
+
+        cut = await self._cut(text)
+
+        assert redact_google_data({"output": cut}) == {"output": cut}

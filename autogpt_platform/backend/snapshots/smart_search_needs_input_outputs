@@ -1,0 +1,23 @@
+{
+  "applied_filters": {},
+  "category": "people",
+  "questions": [
+    {
+      "id": "q1",
+      "text": "Which region?"
+    }
+  ],
+  "result": {
+    "questions": [
+      {
+        "id": "q1",
+        "text": "Which region?"
+      }
+    ],
+    "session_id": "sess-1",
+    "status": "needs_input"
+  },
+  "results": [],
+  "session_id": "sess-1",
+  "status": "needs_input"
+}

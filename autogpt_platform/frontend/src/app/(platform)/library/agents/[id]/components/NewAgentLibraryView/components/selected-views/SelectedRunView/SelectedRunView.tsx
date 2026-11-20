@@ -21,6 +21,7 @@ import { LoadingSelectedContent } from "../LoadingSelectedContent";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
 import { SelectedViewLayout } from "../SelectedViewLayout";
+import { RunFailures } from "./components/RunFailures/RunFailures";
 import { RunOutputs } from "./components/RunOutputs";
 import { RunSummary } from "./components/RunSummary";
 import { SelectedRunActions } from "./components/SelectedRunActions/SelectedRunActions";
@@ -103,11 +104,16 @@ export function SelectedRunView({
                 />
               )}
 
+            {run ? <RunFailures run={run} /> : null}
+
             <ScrollableTabs
               defaultValue={withReviews ? "reviews" : "output"}
               className="-mt-2 flex flex-col"
             >
-              <ScrollableTabsList className="px-4">
+              <ScrollableTabsList
+                // oxlint-disable-next-line design-system/no-restyle -- the tab underline (border-b) spans this padding; a margin would shorten it
+                className="px-4"
+              >
                 {withReviews && (
                   <ScrollableTabsTrigger value="reviews">
                     Reviews ({pendingReviews.length})
@@ -140,7 +146,7 @@ export function SelectedRunView({
                             emptyMessage="No pending reviews for this execution"
                           />
                         ) : (
-                          <Text variant="body" className="text-zinc-700">
+                          <Text variant="body" tone="body">
                             No pending reviews for this execution
                           </Text>
                         )}
@@ -159,7 +165,7 @@ export function SelectedRunView({
                             <Text variant="lead-semibold">Summary</Text>
                             <InformationTooltip
                               iconSize={20}
-                              description="This AI-generated summary describes how the agent handled your task. It's an experimental feature and may occasionally be inaccurate."
+                              description="This AI-generated summary describes how the workflow handled your task. It's an experimental feature and may occasionally be inaccurate."
                             />
                           </div>
                         }
@@ -175,13 +181,16 @@ export function SelectedRunView({
                   <div className="scroll-mt-4">
                     <RunDetailCard title="Output">
                       {isLoading ? (
-                        <div className="text-neutral-500">
+                        <div className="text-foreground-tertiary">
                           <LoadingSpinner />
                         </div>
                       ) : run && "outputs" in run ? (
-                        <RunOutputs outputs={run.outputs as any} />
+                        <RunOutputs
+                          outputs={run.outputs as any}
+                          hiddenFromReplay
+                        />
                       ) : (
-                        <Text variant="body" className="text-neutral-600">
+                        <Text variant="body" tone="secondary">
                           No output from this run.
                         </Text>
                       )}
@@ -198,7 +207,7 @@ export function SelectedRunView({
                           <Text variant="lead-semibold">Your input</Text>
                           <InformationTooltip
                             iconSize={20}
-                            description="This is the input that was provided to the agent for running this task."
+                            description="This is the input that was provided to the workflow for running this task."
                           />
                         </div>
                       }

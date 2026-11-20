@@ -127,7 +127,7 @@ class TranscriptBuilder:
         )
         self._last_uuid = msg_uuid
 
-    def append_tool_result(self, tool_use_id: str, content: str) -> None:
+    def append_tool_result(self, tool_use_id: str, content: str | list[dict]) -> None:
         """Append a tool result as a user entry (one per tool call)."""
         self.append_user(
             content=[
@@ -250,6 +250,16 @@ class TranscriptBuilder:
     def entry_count(self) -> int:
         """Total number of entries in the complete context."""
         return len(self._entries)
+
+    def entries_as_dicts(self) -> list[dict[str, Any]]:
+        """The active context in the CLI's own entry shape (``type`` + ``message``).
+
+        Shallow: ``message`` is shared with the builder, so callers must
+        only read it.  Lets the compaction sizing helpers measure our
+        mirror of the CLI context with the same code that measures the
+        CLI's session file.
+        """
+        return [{"type": e.type, "message": e.message} for e in self._entries]
 
     @property
     def is_empty(self) -> bool:

@@ -1,14 +1,35 @@
-import { Separator } from "@/components/__legacy__/ui/separator";
+import { Separator } from "@/components/atoms/Separator/Separator";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { ArrowUUpLeftIcon, ArrowUUpRightIcon } from "@phosphor-icons/react";
 import { useHistoryStore } from "../../stores/historyStore";
 import { ControlPanelButton } from "./ControlPanelButton";
 
 import { useEffect } from "react";
+import {
+  ArrowTurnBackwardIcon,
+  ArrowTurnForwardIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+
+const TEXT_INPUT_TYPES = new Set([
+  "text",
+  "search",
+  "email",
+  "url",
+  "tel",
+  "password",
+  "number",
+]);
+
+function hasOwnTextUndo(target: EventTarget | null): boolean {
+  if (target instanceof HTMLTextAreaElement) return !target.readOnly;
+  if (target instanceof HTMLInputElement)
+    return TEXT_INPUT_TYPES.has(target.type) && !target.readOnly;
+  return target instanceof HTMLElement && target.isContentEditable;
+}
 
 export const UndoRedoButtons = () => {
   const { undo, redo, canUndo, canRedo } = useHistoryStore();
@@ -16,6 +37,9 @@ export const UndoRedoButtons = () => {
   // Keyboard shortcuts for undo and redo
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // A text field keeps its own undo/redo, so the workflow history must not take the shortcut there.
+      if (hasOwnTextUndo(event.target)) return;
+
       const isMac = /Mac/i.test(navigator.userAgent);
       const isCtrlOrCmd = isMac ? event.metaKey : event.ctrlKey;
 
@@ -43,26 +67,26 @@ export const UndoRedoButtons = () => {
       <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
           <ControlPanelButton
-            as="button"
+            aria-label="Undo"
             data-id="undo-button"
             disabled={!canUndo()}
             onClick={undo}
           >
-            <ArrowUUpLeftIcon className="size-5" />
+            <Icon icon={ArrowTurnBackwardIcon} className="size-5" aria-hidden />
           </ControlPanelButton>
         </TooltipTrigger>
         <TooltipContent side="right">Undo</TooltipContent>
       </Tooltip>
-      <Separator className="text-[#E1E1E1]" />
+      <Separator />
       <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
           <ControlPanelButton
-            as="button"
+            aria-label="Redo"
             data-id="redo-button"
             disabled={!canRedo()}
             onClick={redo}
           >
-            <ArrowUUpRightIcon className="size-5" />
+            <Icon icon={ArrowTurnForwardIcon} className="size-5" aria-hidden />
           </ControlPanelButton>
         </TooltipTrigger>
         <TooltipContent side="right">Redo</TooltipContent>

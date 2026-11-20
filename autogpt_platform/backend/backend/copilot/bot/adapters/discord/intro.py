@@ -1,4 +1,4 @@
-"""Welcome message posted when AutoPilot is added to a Discord server."""
+"""Welcome message posted when the bot is added to a Discord server."""
 
 import discord
 
@@ -23,13 +23,15 @@ def pick_intro_channel(guild: discord.Guild) -> discord.TextChannel | None:
 
 def intro_message() -> str:
     return (
-        "**Hey, I'm AutoPilot — AutoGPT in your Discord.** Thanks for adding me!\n\n"
+        "**Hey, I'm AutoGPT.** Thanks for adding me!\n\n"
         "To get started, a server admin runs `/setup` and follows the link "
         "to connect this server to an AutoGPT account.\n\n"
         "Once linked, mention me anywhere I can read messages "
-        "(e.g. `@AutoPilot summarise this channel`) and I'll spin up a "
+        "(e.g. `@AutoGPT summarise this channel`) and I'll spin up a "
         "thread for our chat.\n\n"
         "You can also **DM me** to chat 1:1 — send any message and I'll "
         "walk you through linking your own DMs.\n\n"
-        "Commands: `/help` `/setup` `/new`"
+        "Commands: `/setup` — link this server • `/new` — start fresh • "
+        "`/resume` — pick up a past chat • `/leave` — dismiss me from a "
+        "thread • `/help` — everything else"
     )

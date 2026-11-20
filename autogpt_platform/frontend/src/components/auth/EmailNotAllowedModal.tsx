@@ -9,6 +9,7 @@ interface Props {
 export function EmailNotAllowedModal({ isOpen, onClose }: Props) {
   return (
     <Dialog
+      title="Email Not Allowed"
       controlled={{ isOpen, set: onClose }}
       styling={{ maxWidth: "35rem" }}
     >

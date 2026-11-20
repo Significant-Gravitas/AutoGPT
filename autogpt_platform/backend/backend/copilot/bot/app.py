@@ -5,7 +5,7 @@ other services to push messages into chat platforms.
 
 import asyncio
 import logging
-from concurrent.futures import Future
+from typing import Literal
 
 from backend.platform_linking.models import Platform
 from backend.util.service import (
@@ -18,22 +18,29 @@ from backend.util.service import (
 from backend.util.settings import Settings
 
 from . import outbound
-from .adapters.base import ChannelInfo, PlatformAdapter
+from .adapters.base import ChannelInfo, PlatformAdapter, SocketAdapter
 from .adapters.discord import config as discord_config
 from .adapters.discord.adapter import DiscordAdapter
 from .bot_backend import BotBackend
 from .handler import MessageHandler
-from .outbound import DeliveryResult
+from .outbound import DeliveryResult, EditResult
+from .webhook_routes import build_webhook_adapters
 
 logger = logging.getLogger(__name__)
 
 # Stay up for health-checks and runtime reconfiguration when no adapter is
 # configured (e.g. deployed without a Discord token).
 _NO_ADAPTER_SLEEP_SECONDS = 3600
+# Long enough for the Discord client to close its gateway connection, short
+# enough that a hung adapter cannot stall the shutdown.
+_ADAPTER_STOP_TIMEOUT_SECONDS = 10
 
 
 class CoPilotChatBridge(AppService):
-    """Bridges AutoPilot to external chat platforms via per-platform adapters."""
+    """Bridges Otto to external chat platforms via per-platform adapters."""
+
+    # Its chat turns are gated by PlatformLinkingManager, which reads the flags.
+    reads_feature_flags = False
 
     def __init__(self):
         super().__init__()
@@ -48,29 +55,35 @@ class CoPilotChatBridge(AppService):
         # they can await adapter methods directly.
         self._api: BotBackend | None = None
         self._adapters_by_platform: dict[str, PlatformAdapter] = {}
+        # Set by `run_service` so `cleanup` can cancel it while the loop runs.
+        self._adapters_task: asyncio.Task[None] | None = None
 
     @classmethod
     def get_port(cls) -> int:
         return Settings().config.copilot_chat_bridge_port
 
     def run_service(self) -> None:
-        future = asyncio.run_coroutine_threadsafe(
-            self._run_adapters(), self.shared_event_loop
-        )
-        future.add_done_callback(self._on_adapters_exit)
+        # Created before the loop runs, so a cleanup that lands first still finds it.
+        self._adapters_task = self.shared_event_loop.create_task(self._run_adapters())
+        self._adapters_task.add_done_callback(self._on_adapters_exit)
         super().run_service()
 
     async def _run_adapters(self) -> None:
         api = BotBackend()
         self._api = api
-        adapters = _build_adapters(api)
-        self._adapters_by_platform = {a.platform_name: a for a in adapters}
+        socket_adapters = _build_socket_adapters(api)
+        # Webhook adapters' outbound halves are stateless HTTP senders — build
+        # them here too (no routes, no handler) so proactive RPCs reach them.
+        outbound_only = build_webhook_adapters(api)
+        self._adapters_by_platform = {
+            a.platform_name: a for a in (*outbound_only, *socket_adapters)
+        }
 
-        if not adapters:
+        if not socket_adapters:
             logger.info(
-                "CoPilotChatBridge: no platform adapters configured — idling. "
-                "Set AUTOPILOT_BOT_DISCORD_TOKEN (or another platform token) to "
-                "enable an adapter."
+                "CoPilotChatBridge: no socket adapters configured — idling "
+                "(outbound-only webhook adapters stay reachable). Set "
+                "AUTOPILOT_BOT_DISCORD_TOKEN to enable one."
             )
             self._adapters_healthy = True
             try:
@@ -80,22 +93,23 @@ class CoPilotChatBridge(AppService):
                 await api.close()
 
         handler = MessageHandler(api)
-        for adapter in adapters:
+        for adapter in socket_adapters:
             adapter.on_message(handler.handle)
 
         self._adapters_healthy = True
         try:
-            await asyncio.gather(*(a.start() for a in adapters))
+            await asyncio.gather(*(a.start() for a in socket_adapters))
         finally:
-            await asyncio.gather(*(a.stop() for a in adapters), return_exceptions=True)
+            await asyncio.gather(
+                *(a.stop() for a in socket_adapters), return_exceptions=True
+            )
             await api.close()
 
-    def _on_adapters_exit(self, future: "Future[None]") -> None:
+    def _on_adapters_exit(self, future: "asyncio.Future[None]") -> None:
         """Surface exceptions from `_run_adapters` and flip the health flag.
 
-        `run_coroutine_threadsafe` would otherwise swallow the exception
-        into the returned future, leaving the FastAPI health endpoint
-        cheerfully reporting OK on a dead bridge.
+        A crash would otherwise stay inside the task, leaving the FastAPI
+        health endpoint cheerfully reporting OK on a dead bridge.
         """
         self._adapters_healthy = False
         # Drop the adapter/api handles so outbound RPCs raise UnhealthyService
@@ -103,11 +117,32 @@ class CoPilotChatBridge(AppService):
         # already torn down.
         self._adapters_by_platform = {}
         self._api = None
+        if future.cancelled():
+            logger.info("CoPilotChatBridge adapters stopped")
+            return
         exc = future.exception()
         if exc is not None:
             logger.error("CoPilotChatBridge adapters crashed: %r", exc, exc_info=exc)
         else:
             logger.warning("CoPilotChatBridge adapters exited without error")
+
+    def cleanup(self):
+        # Stopping the loop alone abandons the adapters task mid-await; cancel it
+        # first so its `finally` closes each adapter's connection.
+        task = self._adapters_task
+        try:
+            if task is not None and self.shared_event_loop.is_running():
+                self.shared_event_loop.call_soon_threadsafe(task.cancel)
+                self.run_and_wait(
+                    asyncio.wait([task]), timeout=_ADAPTER_STOP_TIMEOUT_SECONDS
+                )
+        except TimeoutError:
+            logger.warning(
+                "CoPilotChatBridge adapters did not stop within "
+                f"{_ADAPTER_STOP_TIMEOUT_SECONDS}s; continuing cleanup"
+            )
+        finally:
+            super().cleanup()
 
     async def health_check(self) -> str:
         if not self._adapters_healthy:
@@ -163,6 +198,21 @@ class CoPilotChatBridge(AppService):
         )
 
     @expose
+    async def send_dm_to_user(
+        self,
+        platform: Platform,
+        user_id: str,
+        content: str,
+    ) -> DeliveryResult:
+        """Send ``content`` to ``user_id``'s own DM with the bot.
+
+        The target is resolved from the user's DM link — never a
+        caller-supplied recipient — so a user can only DM themself.
+        """
+        adapter, api = self._require(platform)
+        return await outbound.deliver_dm(adapter, api, platform.value, user_id, content)
+
+    @expose
     async def create_thread_in_channel(
         self,
         platform: Platform,
@@ -177,6 +227,28 @@ class CoPilotChatBridge(AppService):
             adapter, api, platform.value, user_id, channel, thread_name, content
         )
 
+    @expose
+    async def edit_message_in_channel(
+        self,
+        platform: Platform,
+        user_id: str,
+        target: Literal["channel", "dm"],
+        channel_id: str,
+        ref_id: str,
+        content: str,
+    ) -> EditResult:
+        """Edit a message ``user_id`` previously posted via ``send_message_to_channel``
+        / ``send_dm_to_user`` / ``create_thread_in_channel``.
+
+        ``channel_id``/``ref_id`` must be exactly what that earlier call
+        returned — authorization re-derives the expected channel from the
+        user's links rather than trusting the caller's ``channel_id``.
+        """
+        adapter, api = self._require(platform)
+        return await outbound.edit_message(
+            adapter, api, platform.value, user_id, target, channel_id, ref_id, content
+        )
+
 
 class CoPilotChatBridgeClient(AppServiceClient):
     @classmethod
@@ -187,20 +259,24 @@ class CoPilotChatBridgeClient(AppServiceClient):
     send_message_to_channel = endpoint_to_async(
         CoPilotChatBridge.send_message_to_channel
     )
+    send_dm_to_user = endpoint_to_async(CoPilotChatBridge.send_dm_to_user)
     create_thread_in_channel = endpoint_to_async(
         CoPilotChatBridge.create_thread_in_channel
     )
+    edit_message_in_channel = endpoint_to_async(
+        CoPilotChatBridge.edit_message_in_channel
+    )
 
 
-def _build_adapters(api: BotBackend) -> list[PlatformAdapter]:
-    """Instantiate adapters based on which platform tokens are configured."""
-    adapters: list[PlatformAdapter] = []
+def _build_socket_adapters(api: BotBackend) -> list[SocketAdapter]:
+    """Instantiate socket adapters (start/stop-driven) whose tokens are set.
+
+    Webhook-driven adapters (Slack, Telegram, …) mount onto the main backend
+    API instead — see ``webhook_routes.register_webhook_adapters`` — so they
+    are not built here.
+    """
+    adapters: list[SocketAdapter] = []
     if discord_config.get_bot_token():
         adapters.append(DiscordAdapter(api))
         logger.info("Discord adapter enabled")
-    # Future:
-    # if telegram_config.get_bot_token():
-    #     adapters.append(TelegramAdapter(api))
-    # if slack_config.get_bot_token():
-    #     adapters.append(SlackAdapter(api))
     return adapters

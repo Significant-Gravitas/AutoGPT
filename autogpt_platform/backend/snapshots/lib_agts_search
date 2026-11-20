@@ -10,6 +10,7 @@
       "status": "COMPLETED",
       "created_at": "2023-01-01T00:00:00",
       "updated_at": "2023-01-01T00:00:00",
+      "last_run_at": null,
       "name": "Test Agent 1",
       "description": "Test Description 1",
       "instructions": null,
@@ -43,11 +44,14 @@
       "recommended_schedule_cron": null,
       "is_scheduled": false,
       "next_scheduled_run": null,
+      "schedule_info_unavailable": false,
       "settings": {
         "human_in_the_loop_safe_mode": true,
         "sensitive_action_safe_mode": false,
         "builder_chat_session_id": null
       },
+      "organization_id": null,
+      "team_id": null,
       "marketplace_listing": null
     },
     {
@@ -60,6 +64,7 @@
       "status": "COMPLETED",
       "created_at": "2023-01-01T00:00:00",
       "updated_at": "2023-01-01T00:00:00",
+      "last_run_at": null,
       "name": "Test Agent 2",
       "description": "Test Description 2",
       "instructions": null,
@@ -93,11 +98,14 @@
       "recommended_schedule_cron": null,
       "is_scheduled": false,
       "next_scheduled_run": null,
+      "schedule_info_unavailable": false,
       "settings": {
         "human_in_the_loop_safe_mode": true,
         "sensitive_action_safe_mode": false,
         "builder_chat_session_id": null
       },
+      "organization_id": null,
+      "team_id": null,
       "marketplace_listing": null
     }
   ],

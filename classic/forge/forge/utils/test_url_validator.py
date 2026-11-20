@@ -155,3 +155,22 @@ def test_internationalized_url():
     """
     url = "http://例子.测试"
     assert dummy_method(url) == url
+
+
+ssrf_internal_urls = (
+    ("http://127.0.0.1/"),
+    ("http://169.254.169.254/"),
+    ("http://10.0.0.1/"),
+    ("http://localhost/"),
+    ("http://2130706433/"),
+)
+
+
+@pytest.mark.parametrize("url", ssrf_internal_urls)
+def test_url_validation_blocks_internal_addresses(url):
+    """
+    Tests that the validator rejects URLs resolving to internal/private addresses
+    (SSRF protection), including the cloud metadata IP and alternate encodings.
+    """
+    with raises(ValueError):
+        dummy_method(url)

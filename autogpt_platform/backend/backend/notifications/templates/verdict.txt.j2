@@ -1,0 +1,59 @@
+{#- Plain-text part of the Verdict, built from the same context as the HTML. -#}
+{%- set approved = (outcome == 'approved') -%}
+{%- set has_note = comments and comments | trim | length > 0 -%}
+MARKETPLACE REVIEW · VERSION {{ version | default(1) }}{% if not approved %} · CHANGES NEEDED{% endif %}
+
+
+{{ subject }}
+
+Hi {{ first_name | default('there', true) }}, your workflow {{ 'passed review' if approved else 'needs changes before it can go live' }}. {{ preheader }}
+
+{% if approved %}
+{{ reviewer_name }} approved version {{ version | default(1) }} on {{ reviewed_at_label }}.
+{{ agent_name }} is live in the AutoGPT Marketplace: anyone can find it, install it
+and run it.
+{% else %}
+{{ reviewer_name }} reviewed version {{ version | default(1) }} on {{ reviewed_at_label }} and found
+something to fix before {{ agent_name }} can go live. Nothing is lost: your
+submission is saved and you can resubmit as soon as it is fixed.
+{% endif %}
+{% if not approved and changes %}
+
+{{ changes | length }} {{ 'THING' if changes | length == 1 else 'THINGS' }} TO CHANGE
+{% for c in changes %}
+{{ loop.index }}. {{ c }}
+{% endfor %}
+{% if closing_note %}
+
+{{ closing_note }}
+{% endif %}
+{% elif not approved %}
+
+WHAT NEEDS TO CHANGE
+{{ comments if has_note else 'The reviewer did not leave a written note. Reply to this email to ask for details.' }}
+{% elif has_note %}
+
+NOTE FROM {{ reviewer_name | upper }}
+{{ comments }}
+{% endif %}
+
+{% if approved %}
+View in the Marketplace: {{ store_url }}
+{% if share_url %}
+New versions go through review.
+Open the sharing link: {{ share_url }}
+{% endif %}
+{% else %}
+Edit and resubmit: {{ resubmit_url }}
+Your submission is saved. Make the requested changes, then submit it for review again. Reply to this email if anything is unclear.
+{% endif %}
+
+--
+You get this because you submitted a workflow to the AutoGPT Marketplace.
+Notification settings: {{ urls.settings }}
+
+This is a product notification for the AutoGPT account for {{ user_email }}.
+AutoGPT: https://agpt.co
+AutoGPT, 3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK
+Unsubscribe: {{ urls.unsubscribe }}
+Discord: {{ urls.discord }}

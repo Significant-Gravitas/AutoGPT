@@ -2,6 +2,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -70,6 +71,7 @@ class LinearCreateIssueBlock(Block):
                     "Test issue",
                 )
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -195,6 +197,7 @@ class LinearSearchIssuesBlock(Block):
                     )
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -306,6 +309,7 @@ class LinearGetProjectIssuesBlock(Block):
                     )
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

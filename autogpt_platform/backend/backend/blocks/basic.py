@@ -1,9 +1,11 @@
 import enum
+import inspect
 from typing import Any
 
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -45,6 +47,7 @@ class FileStoreBlock(Block):
             input_schema=FileStoreBlock.Input,
             output_schema=FileStoreBlock.Output,
             static_output=True,
+            effect=BlockEffect.WORKSPACE,
         )
 
     async def run(
@@ -68,9 +71,12 @@ class FileStoreBlock(Block):
 
 class StoreValueBlock(Block):
     """
-    This block allows you to provide a constant value as a block, in a stateless manner.
-    The common use-case is simply pass the `input` data, it will `output` the same data.
-    The block output will be static, the output can be consumed multiple times.
+    Holds or receives a value and outputs it statically so that it can be used multiple
+    times within the same agent run. Whenever consumed, the output value reflects the
+    last input value that was received.
+
+    NOTE: The value is NOT persisted across runs. To store data that survives between
+    runs, use PersistInformationBlock and RetrieveInformationBlock instead.
     """
 
     class Input(BlockSchemaInput):
@@ -90,7 +96,7 @@ class StoreValueBlock(Block):
     def __init__(self):
         super().__init__(
             id="1ff065e9-88e8-4358-9d82-8dc91f622ba9",
-            description="A basic block that stores and forwards a value throughout workflows, allowing it to be reused without changes across multiple blocks.",
+            description=inspect.cleandoc(StoreValueBlock.__doc__ or ""),
             categories={BlockCategory.BASIC},
             input_schema=StoreValueBlock.Input,
             output_schema=StoreValueBlock.Output,
@@ -103,6 +109,7 @@ class StoreValueBlock(Block):
                 ("output", "Existing Data"),  # Data is provided, so data is returned.
             ],
             static_output=True,
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -125,12 +132,12 @@ class PrintToConsoleBlock(Block):
             input_schema=PrintToConsoleBlock.Input,
             output_schema=PrintToConsoleBlock.Output,
             test_input={"text": "Hello, World!"},
-            is_sensitive_action=True,
             disabled=True,
             test_output=[
                 ("output", "Hello, World!"),
                 ("status", "printed"),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -188,6 +195,7 @@ class UniversalTypeConverterBlock(Block):
             categories={BlockCategory.BASIC},
             input_schema=UniversalTypeConverterBlock.Input,
             output_schema=UniversalTypeConverterBlock.Output,
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -227,6 +235,7 @@ class ReverseListOrderBlock(Block):
             output_schema=ReverseListOrderBlock.Output,
             test_input={"input_list": [1, 2, 3, 4, 5]},
             test_output=[("reversed_list", [5, 4, 3, 2, 1])],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:

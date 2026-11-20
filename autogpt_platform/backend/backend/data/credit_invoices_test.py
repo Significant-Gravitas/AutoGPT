@@ -64,7 +64,9 @@ class TestListInvoices:
                 "get_user_by_id",
                 AsyncMock(return_value=_make_user(None)),
             ),
-            patch.object(credit_module.stripe.Invoice, "list") as mock_list,
+            patch.object(
+                credit_module.stripe.Invoice, "list_async", new_callable=AsyncMock
+            ) as mock_list,
         ):
             result = await user_credit.list_invoices("user-1")
 
@@ -82,7 +84,8 @@ class TestListInvoices:
             ),
             patch.object(
                 credit_module.stripe.Invoice,
-                "list",
+                "list_async",
+                new_callable=AsyncMock,
                 side_effect=stripe.StripeError("boom"),
             ),
         ):
@@ -120,7 +123,8 @@ class TestListInvoices:
             ),
             patch.object(
                 credit_module.stripe.Invoice,
-                "list",
+                "list_async",
+                new_callable=AsyncMock,
                 return_value=stripe_response,
             ) as mock_list,
         ):
@@ -166,7 +170,8 @@ class TestListInvoices:
             ),
             patch.object(
                 credit_module.stripe.Invoice,
-                "list",
+                "list_async",
+                new_callable=AsyncMock,
                 return_value=stripe_response,
             ) as mock_list,
         ):

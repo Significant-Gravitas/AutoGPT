@@ -1,11 +1,13 @@
 """Unit tests for platform_linking DB operations."""
 
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.data.workspace_scope import WorkspaceAccessDeniedError, WorkspaceScope
 from backend.util.exceptions import (
     LinkAlreadyExistsError,
     LinkFlowMismatchError,
@@ -23,8 +25,12 @@ from .db import (
     create_user_link_token,
     delete_server_link,
     delete_user_link,
+    fetch_workspace_artifact,
+    find_server_link_owner,
+    find_user_link_owner,
     get_link_token_info,
     get_link_token_status,
+    mask_email,
     refresh_server_link_name,
     resolve_server_link,
     resolve_user_link,
@@ -41,6 +47,62 @@ from .models import (
 async def _fake_transaction():
     # Avoids Prisma's tx binding asyncio primitives to the wrong loop in tests.
     yield MagicMock()
+
+
+# ── Link owners ──────────────────────────────────────────────────────
+
+
+class TestLinkOwnerOfAClosedAccount:
+    """With open_only, a closed account's link counts as unlinked, checked in
+    the same DB-manager call so the bot path pays no extra round trip."""
+
+    @pytest.fixture
+    def links(self):
+        with (
+            patch("backend.platform_linking.db.PlatformLink") as server,
+            patch("backend.platform_linking.db.PlatformUserLink") as user,
+        ):
+            server.prisma.return_value.find_first = AsyncMock(
+                return_value=MagicMock(userId="u-closed")
+            )
+            user.prisma.return_value.find_unique = AsyncMock(
+                return_value=MagicMock(userId="u-closed")
+            )
+            yield
+
+    @pytest.mark.asyncio
+    async def test_open_only_hides_a_closed_owner(self, links):
+        with patch(
+            "backend.platform_linking.db.is_account_closed",
+            new=AsyncMock(return_value=True),
+        ) as closed:
+            server = await find_server_link_owner("DISCORD", "g1", open_only=True)
+            user = await find_user_link_owner("DISCORD", "pu1", open_only=True)
+
+        assert server is None and user is None
+        assert closed.await_args_list == [(("u-closed",),), (("u-closed",),)]
+
+    @pytest.mark.asyncio
+    async def test_open_only_keeps_an_open_owner(self, links):
+        with patch(
+            "backend.platform_linking.db.is_account_closed",
+            new=AsyncMock(return_value=False),
+        ):
+            server = await find_server_link_owner("DISCORD", "g1", open_only=True)
+            user = await find_user_link_owner("DISCORD", "pu1", open_only=True)
+
+        assert server == "u-closed" and user == "u-closed"
+
+    @pytest.mark.asyncio
+    async def test_without_open_only_the_closed_check_is_skipped(self, links):
+        with patch(
+            "backend.platform_linking.db.is_account_closed", new=AsyncMock()
+        ) as closed:
+            server = await find_server_link_owner("DISCORD", "g1")
+            user = await find_user_link_owner("DISCORD", "pu1")
+
+        assert server == "u-closed" and user == "u-closed"
+        closed.assert_not_awaited()
 
 
 # ── Resolve ──────────────────────────────────────────────────────────
@@ -73,6 +135,39 @@ class TestResolve:
         assert result.linked is True
 
     @pytest.mark.asyncio
+    async def test_user_linked_with_account_hint_masks_the_email(self):
+        with patch("backend.platform_linking.db.PlatformUserLink") as mock_user_link:
+            find = AsyncMock(
+                return_value=MagicMock(
+                    userId="u-xyz", User=MagicMock(email="bently@agpt.co")
+                )
+            )
+            mock_user_link.prisma.return_value.find_unique = find
+            result = await resolve_user_link("TELEGRAM", "pu1", include_account=True)
+        assert result.linked is True
+        assert result.account_hint == "b***@agpt.co"
+        assert find.await_args.kwargs["include"] == {"User": True}
+
+    @pytest.mark.asyncio
+    async def test_user_linked_without_include_skips_the_account(self):
+        with patch("backend.platform_linking.db.PlatformUserLink") as mock_user_link:
+            mock_user_link.prisma.return_value.find_unique = AsyncMock(
+                return_value=MagicMock(userId="u-xyz")
+            )
+            result = await resolve_user_link("TELEGRAM", "pu1")
+        assert result.account_hint is None
+
+    @pytest.mark.asyncio
+    async def test_user_unlinked_with_account_hint(self):
+        with patch("backend.platform_linking.db.PlatformUserLink") as mock_user_link:
+            mock_user_link.prisma.return_value.find_unique = AsyncMock(
+                return_value=None
+            )
+            result = await resolve_user_link("TELEGRAM", "pu1", include_account=True)
+        assert result.linked is False
+        assert result.account_hint is None
+
+    @pytest.mark.asyncio
     async def test_user_unlinked(self):
         with patch("backend.platform_linking.db.PlatformUserLink") as mock_user_link:
             mock_user_link.prisma.return_value.find_unique = AsyncMock(
@@ -80,6 +175,23 @@ class TestResolve:
             )
             result = await resolve_user_link("DISCORD", "pu1")
         assert result.linked is False
+
+
+@pytest.mark.parametrize(
+    "email, expected",
+    [
+        ("bently@agpt.co", "b***@agpt.co"),
+        ("a@x.io", "a***@x.io"),
+        ("first.last@sub.example.com", "f***@sub.example.com"),
+        (None, None),
+        ("", None),
+        ("no-at-sign", None),
+        ("@agpt.co", None),
+        ("user@", None),
+    ],
+)
+def test_mask_email(email, expected):
+    assert mask_email(email) == expected
 
 
 # ── Token creation ───────────────────────────────────────────────────
@@ -393,6 +505,77 @@ class TestConfirmServerLink:
                 await confirm_server_link("abc", "u1")
         assert "another" in str(exc_info.value)
 
+    # A Telegram group's link is posted in the group, so it confirms only for
+    # the Telegram identity of the admin who ran /setup ("42" here).
+
+    @pytest.mark.asyncio
+    async def test_telegram_group_link_needs_a_telegram_identity(self):
+        with (
+            _pending_server_token("TELEGRAM") as (tokens, links),
+            pytest.raises(NotAuthorizedError) as exc_info,
+        ):
+            await confirm_server_link("abc", "u1")
+        assert "Telegram can confirm it's you" in str(exc_info.value)
+        tokens.update_many.assert_not_awaited()
+        links.create.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_telegram_group_link_refuses_another_members_identity(self):
+        with (
+            _pending_server_token("TELEGRAM") as (tokens, links),
+            pytest.raises(NotAuthorizedError),
+        ):
+            await confirm_server_link("abc", "u1", verified_platform_user_id="77")
+        tokens.update_many.assert_not_awaited()
+        links.create.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_telegram_group_link_confirms_for_the_admin_who_ran_setup(self):
+        with _pending_server_token("TELEGRAM") as (_tokens, links):
+            result = await confirm_server_link(
+                "abc", "u1", verified_platform_user_id="42"
+            )
+        assert result.success
+        data = links.create.await_args.kwargs["data"]
+        assert (data["userId"], data["ownerPlatformUserId"]) == ("u1", "42")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("platform", ["DISCORD", "SLACK", "TEAMS"])
+    async def test_other_platforms_confirm_without_a_platform_identity(self, platform):
+        # Their links reach only the admin who ran /setup (an ephemeral reply,
+        # or a private chat), and they have no signed identity to offer.
+        with _pending_server_token(platform) as (_tokens, links):
+            result = await confirm_server_link("abc", "u1")
+        assert result.success
+        assert links.create.await_args.kwargs["data"]["userId"] == "u1"
+
+
+@contextmanager
+def _pending_server_token(platform: str):
+    """A live SERVER token minted for platform user "42", whose server isn't
+    linked yet. Yields the token and link tables' prisma mocks."""
+    token = MagicMock(
+        linkType=LinkType.SERVER.value,
+        usedAt=None,
+        expiresAt=datetime.now(timezone.utc) + timedelta(minutes=10),
+        platform=platform,
+        platformServerId="g1",
+        platformUserId="42",
+        serverName="Builders",
+    )
+    with (
+        patch("backend.platform_linking.db.PlatformLinkToken") as mock_token,
+        patch("backend.platform_linking.db.PlatformLink") as mock_link,
+        patch("backend.platform_linking.db.transaction", _fake_transaction),
+    ):
+        tokens = mock_token.prisma.return_value
+        tokens.find_unique = AsyncMock(return_value=token)
+        tokens.update_many = AsyncMock(return_value=1)
+        links = mock_link.prisma.return_value
+        links.find_first = AsyncMock(return_value=None)
+        links.create = AsyncMock()
+        yield tokens, links
+
 
 class TestConfirmUserLink:
     @pytest.mark.asyncio
@@ -447,6 +630,35 @@ class TestConfirmUserLink:
             )
             with pytest.raises(LinkAlreadyExistsError):
                 await confirm_user_link("abc", "u1")
+
+    @pytest.mark.asyncio
+    async def test_telegram_dm_link_still_confirms_without_a_telegram_identity(self):
+        # DM links are unchanged: only group links need the signed identity.
+        fake_token = MagicMock(
+            linkType=LinkType.USER.value,
+            usedAt=None,
+            expiresAt=datetime.now(timezone.utc) + timedelta(minutes=10),
+            platform="TELEGRAM",
+            platformUserId="42",
+            platformUsername="bently",
+        )
+        with (
+            patch("backend.platform_linking.db.PlatformLinkToken") as mock_token,
+            patch("backend.platform_linking.db.PlatformUserLink") as mock_user_link,
+            patch("backend.platform_linking.db.transaction", _fake_transaction),
+        ):
+            mock_token.prisma.return_value.find_unique = AsyncMock(
+                return_value=fake_token
+            )
+            mock_token.prisma.return_value.update_many = AsyncMock(return_value=1)
+            mock_user_link.prisma.return_value.find_unique = AsyncMock(
+                return_value=None
+            )
+            mock_user_link.prisma.return_value.create = AsyncMock()
+            result = await confirm_user_link("abc", "u1")
+        assert result.success
+        data = mock_user_link.prisma.return_value.create.await_args.kwargs["data"]
+        assert (data["userId"], data["platformUserId"]) == ("u1", "42")
 
 
 # ── Delete (authz checks) ────────────────────────────────────────────
@@ -554,3 +766,85 @@ class TestRefreshServerLinkName:
             )
             # Must not raise.
             await refresh_server_link_name("DISCORD", "g1", "x")
+
+
+# ── Fetch workspace artifact: expert file scope ─────────────────────
+
+
+def _artifact_patches(*, expert_id: str | None, manager: MagicMock):
+    session = SimpleNamespace(user_id="user-1", expert_id=expert_id)
+    file = SimpleNamespace(name="report.txt", mime_type="text/plain", size_bytes=10)
+    return (
+        patch(
+            "backend.platform_linking.db.get_chat_session_metadata",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "backend.platform_linking.db.get_workspace",
+            new=AsyncMock(return_value=SimpleNamespace(id="ws-1")),
+        ),
+        patch(
+            "backend.platform_linking.db.get_workspace_file",
+            new=AsyncMock(return_value=file),
+        ),
+        patch("backend.platform_linking.db.WorkspaceManager", return_value=manager),
+    )
+
+
+class TestFetchWorkspaceArtifactExpertScope:
+    @pytest.mark.asyncio
+    async def test_expert_session_cannot_fetch_a_file_outside_its_scope(self):
+        scope = WorkspaceScope(expert_id="expert-a", session_ids=["older"])
+        manager = MagicMock()
+        manager.read_file_by_id = AsyncMock(
+            side_effect=WorkspaceAccessDeniedError("denied")
+        )
+        session_p, workspace_p, file_p, manager_p = _artifact_patches(
+            expert_id="expert-a", manager=manager
+        )
+        with (
+            session_p,
+            workspace_p,
+            file_p,
+            manager_p as manager_cls,
+            patch(
+                "backend.platform_linking.db.resolve_expert_workspace_scope",
+                new=AsyncMock(return_value=scope),
+            ) as resolve_mock,
+        ):
+            result = await fetch_workspace_artifact("sess-1", "file-1", max_bytes=100)
+
+        assert result is None
+        resolve_mock.assert_awaited_once_with("user-1", "expert-a")
+        manager_cls.assert_called_once_with(
+            user_id="user-1",
+            workspace_id="ws-1",
+            session_id="sess-1",
+            scope=scope.with_session("sess-1"),
+        )
+
+    @pytest.mark.asyncio
+    async def test_personal_session_keeps_owner_access(self):
+        manager = MagicMock()
+        manager.read_file_by_id = AsyncMock(return_value=b"data")
+        session_p, workspace_p, file_p, manager_p = _artifact_patches(
+            expert_id=None, manager=manager
+        )
+        with (
+            session_p,
+            workspace_p,
+            file_p,
+            manager_p as manager_cls,
+            patch(
+                "backend.platform_linking.db.resolve_expert_workspace_scope",
+                new=AsyncMock(),
+            ) as resolve_mock,
+        ):
+            result = await fetch_workspace_artifact("sess-1", "file-1", max_bytes=100)
+
+        assert result is not None
+        assert result.content == b"data"
+        resolve_mock.assert_not_awaited()
+        manager_cls.assert_called_once_with(
+            user_id="user-1", workspace_id="ws-1", session_id="sess-1", scope=None
+        )

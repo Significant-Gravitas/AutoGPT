@@ -193,7 +193,11 @@ Before outputting, the block validates JSON-serializability. If an unsupported t
 ## Persist Information
 
 ### What it is
-Persist key-value information for the current user
+Persists a key-value pair for use across multiple runs of an agent. Use this when
+you need memory that persists between executions, e.g. last-seen state, counters,
+accumulated data.
+
+Beware of read->write race conditions for parallel use of the same key.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -208,7 +212,7 @@ The stored data remains available until explicitly overwritten, enabling state m
 |-------|-------------|------|----------|
 | key | Key to store the information under | str | Yes |
 | value | Value to store | Value | Yes |
-| scope | Scope of persistence: within_agent (shared across all runs of this agent) or across_agents (shared across all agents for this user) | "within_agent" \| "across_agents" | No |
+| scope | Scope of persistence: 'within_agent' — shared across all runs of this agent; 'across_agents' — shared across all agents for this user | "within_agent" \| "across_agents" | No |
 
 ### Outputs
 
@@ -235,9 +239,9 @@ Reads CSV and Excel files and outputs the data as a list of dictionaries and ind
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block parses CSV and Excel files, converting each row into a dictionary with column headers as keys. Excel files are automatically converted to CSV format before processing.
+This block parses CSV and Excel files, converting each row into a dictionary with column headers as keys. Excel files are automatically converted to CSV format before processing, and follow the same header rules. Every value keeps its own key, so no column overwrites another: a blank header cell becomes `column_<n>` for its position (counting from 1), a repeated header gets `_2`, `_3` and so on (`a,a` gives `a` and `a_2`) while skipping any name another header already has, and a value past the end of the header row is kept under `column_<n>` in every row that has one. Blank lines are not rows, but a row of empty fields (`,`) is kept. A header row whose cells are all empty is still the header, so the first data row stays data.
 
-Configure delimiter, quote character, and escape character for proper CSV parsing. Use skip_rows to ignore headers or initial rows, and skip_columns to exclude unwanted columns from the output.
+Configure delimiter, quote character, and escape character for proper CSV parsing. Use skip_rows to ignore headers or initial rows, and skip_columns to exclude unwanted columns from the output. A file without data rows, or skip_rows past its end, gives an empty list.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -246,6 +250,7 @@ Configure delimiter, quote character, and escape character for proper CSV parsin
 |-------|-------------|------|----------|
 | contents | The contents of the CSV/spreadsheet data to read | str | No |
 | file_input | CSV or Excel file to read from (URL, data URI, or local path). Excel files are automatically converted to CSV | str (file) | No |
+| sheet_name | Name of the worksheet to read from an Excel file. Defaults to the first sheet. | str | No |
 | delimiter | The delimiter used in the CSV/spreadsheet data | str | No |
 | quotechar | The character used to quote fields | str | No |
 | escapechar | The character used to escape the delimiter | str | No |
@@ -277,7 +282,7 @@ Configure delimiter, quote character, and escape character for proper CSV parsin
 ## Retrieve Information
 
 ### What it is
-Retrieve key-value information for the current user
+Reads back a key-value pair previously saved by PersistInformationBlock.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -291,7 +296,7 @@ Use within_agent scope for agent-specific data or across_agents for data shared 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | key | Key to retrieve the information for | str | Yes |
-| scope | Scope of persistence: within_agent (shared across all runs of this agent) or across_agents (shared across all agents for this user) | "within_agent" \| "across_agents" | No |
+| scope | Scope of persistence: 'within_agent' — shared across all runs of this agent; 'across_agents' — shared across all agents for this user | "within_agent" \| "across_agents" | No |
 | default_value | Default value to return if key is not found | Default Value | No |
 
 ### Outputs

@@ -1,20 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
 
 /**
- * Tool types whose JSON output can surface interactive cards in chat
- * (setup_requirements sign-in cards, pickers, review prompts). When their
- * output arrives corrupted the user loses a card they cannot recover —
- * unlike read-only tools where a broken payload only degrades a summary.
- */
-export const CARD_CAPABLE_TOOL_TYPES: ReadonlySet<string> = new Set([
-  "tool-run_block",
-  "tool-continue_run_block",
-  "tool-connect_integration",
-  "tool-run_agent",
-  "tool-run_mcp_tool",
-]);
-
-/**
  * True when `output` looks like a JSON document but doesn't parse — the
  * signature of a payload truncated or mangled in transit. Plain-text
  * outputs (error strings, file-reference notes) are not flagged: only
@@ -30,16 +16,6 @@ export function isUnparseableJsonOutput(output: unknown): boolean {
   } catch {
     return true;
   }
-}
-
-export function isCorruptedCardToolPart(part: {
-  type: string;
-  state?: unknown;
-  output?: unknown;
-}): boolean {
-  if (!CARD_CAPABLE_TOOL_TYPES.has(part.type)) return false;
-  if (part.state !== "output-available") return false;
-  return isUnparseableJsonOutput(part.output);
 }
 
 /**

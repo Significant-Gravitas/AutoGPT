@@ -2,6 +2,27 @@ import type { AnchorHTMLAttributes, ReactNode } from "react";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+let mockIsBillingEnabled = true;
+let mockSkillLearningEnabled = false;
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return {
+    ...actual,
+    useGetFlag: (flag: string) =>
+      flag === "dream-skill-learning-enabled" && mockSkillLearningEnabled,
+  };
+});
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => mockIsBillingEnabled,
+  useBillingStatus: () => ({
+    isBillingEnabled: mockIsBillingEnabled,
+    isResolved: true,
+  }),
+}));
+
 type MockLinkProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
   children: ReactNode;
   href: string;
@@ -51,12 +72,31 @@ const expectedItems = [
 describe("SettingsSidebar", () => {
   beforeEach(() => {
     usePathnameMock.mockReturnValue("/settings/profile");
+    mockIsBillingEnabled = true;
+    mockSkillLearningEnabled = false;
   });
 
-  it("renders SETTINGS header and all 6 nav items with correct hrefs", () => {
+  it("shows personal learning settings when Graphiti is disabled", () => {
+    mockSkillLearningEnabled = true;
+    render(<SettingsSidebar />);
+    expect(
+      screen.getByRole("link", { name: "Memory" }).getAttribute("href"),
+    ).toBe("/settings/memory");
+  });
+
+  it("leaves Billing out on a self-hosted install without payments", () => {
+    mockIsBillingEnabled = false;
     render(<SettingsSidebar />);
 
-    expect(screen.getByText("SETTINGS")).toBeDefined();
+    expect(screen.queryByRole("link", { name: /billing/i })).toBeNull();
+    expect(screen.getByRole("link", { name: /integrations/i })).toBeDefined();
+  });
+
+  it("renders a Back link to /copilot and all 6 nav items with correct hrefs", () => {
+    render(<SettingsSidebar />);
+
+    const back = screen.getByRole("link", { name: /back/i });
+    expect(back.getAttribute("href")).toBe("/copilot");
 
     for (const { label, href } of expectedItems) {
       const link = screen.getByRole("link", { name: new RegExp(label, "i") });

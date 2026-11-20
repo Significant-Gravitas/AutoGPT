@@ -1,0 +1,164 @@
+import {
+  expertPastel,
+  getCategoryHex,
+  getExpertTopicHex,
+} from "@/components/molecules/ExpertAvatar/colors";
+import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipPortal,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
+import { ExpertTagline } from "@/components/molecules/ExpertIdentityDetails/components/ExpertTagline";
+import { cn } from "@/lib/utils";
+import { ArrowRight02Icon, Book04Icon } from "@hugeicons/core-free-icons";
+import Link from "next/link";
+import { CHIP_SHAPE, CHIP_SIZE } from "../../CategoryChip/CategoryChip";
+import { CategoryTag } from "../../CategoryChip/CategoryTag";
+import { getCategoryAccent } from "../helpers";
+import { ExpertHireControl } from "./ExpertHireControl";
+
+/** Three named, then a count for the rest — enough to place the expert
+ *  without turning the card into a list. */
+const NAMED_SKILLS = 3;
+
+interface Props {
+  expert: ExpertTemplate;
+  isHired: boolean;
+  category?: string | null;
+}
+
+/** The whole card opens the expert's own page, through a link stretched
+ *  behind its contents: a card that is itself a link cannot hold the hire
+ *  button, since an anchor may not contain one. */
+export function ExpertCard({ expert, isHired, category }: Props) {
+  const selectedCategory =
+    category && expert.categories?.includes(category) ? category : undefined;
+  // The expert's own visual family, whatever filter the shelf is under: the
+  // same Maria under Marketing and under Content.
+  const topicColor = getExpertTopicHex({
+    avatarUrl: expert.avatar_url,
+    categories: expert.categories,
+    role: expert.role,
+  });
+  const skills = expert.bundled_skills ?? [];
+  const named = skills.slice(0, NAMED_SKILLS);
+  const restSkills = skills.slice(NAMED_SKILLS);
+  // The area an expert works in, in the same chip the filters use — the row
+  // above the shelf and the card below it name the same thing.
+  const area = selectedCategory ?? expert.categories?.[0];
+  const areaAccent = getCategoryAccent(area);
+
+  return (
+    <div
+      // oxlint-disable-next-line design-system/no-arbitrary-values -- the card's hover lift shadow has no shadow token
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border-base/80 bg-surface text-left shadow-message-table transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
+    >
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-[4.5rem]"
+        // oxlint-disable-next-line design-system/no-inline-styles -- the card band is tinted at runtime with the expert's own colour
+        style={{ backgroundColor: expertPastel(topicColor) }}
+      />
+      <Link
+        href={`/marketplace/experts/${expert.id}`}
+        className="relative flex flex-1 flex-col gap-4 rounded-2xl p-6 outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle"
+      >
+        <ExpertAvatar
+          name={expert.name}
+          avatarUrl={expert.avatar_url}
+          size={88}
+          backgroundColor={topicColor}
+          // oxlint-disable-next-line design-system/no-restyle -- the card portrait's frame; ExpertAvatar has no framed size
+          className="rounded-full border border-border-base ring-4 ring-surface"
+        />
+
+        <div>
+          <ExpertIdentityDetails
+            name={expert.name}
+            role={expert.role}
+            jobTitle={expert.job_title}
+            nameAlign="baseline"
+            areaColor={getCategoryHex(area)}
+          />
+          {area ? <CategoryTag category={area} className="mt-2" /> : null}
+          <ExpertTagline tagline={expert.tagline} compact />
+        </div>
+
+        {skills.length > 0 ? (
+          <div>
+            <div className="mb-1 text-body text-foreground-tertiary">
+              Skills:
+            </div>
+            <div className="flex flex-col items-start">
+              {named.map((skill) => (
+                <span
+                  key={skill.id}
+                  className={cn(
+                    CHIP_SHAPE,
+                    CHIP_SIZE.small,
+                    "h-6 max-w-full border-transparent px-0",
+                  )}
+                >
+                  <Icon
+                    icon={areaAccent.icon ?? Book04Icon}
+                    size={12}
+                    className="shrink-0"
+                    // oxlint-disable-next-line design-system/no-inline-styles -- the skill glyph wears the expert's own colour, known only at runtime
+                    style={{ color: topicColor }}
+                    aria-hidden
+                  />
+                  <span className="truncate">{skill.title}</span>
+                </span>
+              ))}
+              {restSkills.length > 0 ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      tabIndex={0}
+                      className={cn(
+                        CHIP_SHAPE,
+                        CHIP_SIZE.small,
+                        "h-6 cursor-default border-transparent px-0 text-foreground-tertiary outline-none focus-visible:ring-2 focus-visible:ring-brand",
+                      )}
+                    >
+                      +{restSkills.length} skills
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipPortal>
+                    <TooltipContent side="top">
+                      <ul className="space-y-0.5">
+                        {restSkills.map((rest) => (
+                          <li key={rest.id}>{rest.title}</li>
+                        ))}
+                      </ul>
+                    </TooltipContent>
+                  </TooltipPortal>
+                </Tooltip>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="mt-auto flex items-center justify-end pt-2">
+          <span className="flex items-center gap-1.5 text-body-lg font-medium text-foreground-subtle transition-colors duration-200 group-hover:text-foreground-strong">
+            View
+            <Icon
+              icon={ArrowRight02Icon}
+              size={16}
+              aria-hidden
+              motion="transform"
+              className="group-hover:translate-x-0.5"
+            />
+          </span>
+        </div>
+      </Link>
+      <div className="absolute top-5 right-5 z-10">
+        <ExpertHireControl expert={expert} isHired={isHired} />
+      </div>
+    </div>
+  );
+}

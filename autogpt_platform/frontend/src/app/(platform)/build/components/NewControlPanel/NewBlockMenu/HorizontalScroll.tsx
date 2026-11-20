@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ArrowLeftIcon, ArrowRightIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { ArrowLeft02Icon, ArrowRight02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface HorizontalScrollAreaProps {
   children: React.ReactNode;
@@ -70,37 +71,33 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
           {children}
         </div>
         {canScrollLeft && (
-          <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-background via-background/80 to-background/0" />
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-canvas via-canvas/80 to-canvas/0" />
         )}
         {canScrollRight && (
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background via-background/80 to-background/0" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-canvas via-canvas/80 to-canvas/0" />
         )}
         {canScrollLeft && (
           <button
             type="button"
             aria-label="Scroll left"
-            className="pointer-events-none absolute left-2 top-5 -translate-y-1/2 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
+            className="pointer-events-none absolute top-5 left-2 -translate-y-1/2 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
             onClick={() => scrollByDelta(-scrollAmount)}
           >
-            <ArrowLeftIcon
-              size={28}
-              className="rounded-full bg-zinc-700 p-1 text-white drop-shadow"
-              weight="light"
-            />
+            <span className="block rounded-full bg-foreground-body p-1 drop-shadow">
+              <Icon icon={ArrowLeft02Icon} size={20} tone="inverse" />
+            </span>
           </button>
         )}
         {canScrollRight && (
           <button
             type="button"
             aria-label="Scroll right"
-            className="pointer-events-none absolute right-2 top-5 -translate-y-1/2 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
+            className="pointer-events-none absolute top-5 right-2 -translate-y-1/2 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
             onClick={() => scrollByDelta(scrollAmount)}
           >
-            <ArrowRightIcon
-              size={28}
-              className="rounded-full bg-zinc-700 p-1 text-white drop-shadow"
-              weight="light"
-            />
+            <span className="block rounded-full bg-foreground-body p-1 drop-shadow">
+              <Icon icon={ArrowRight02Icon} size={20} tone="inverse" />
+            </span>
           </button>
         )}
       </div>

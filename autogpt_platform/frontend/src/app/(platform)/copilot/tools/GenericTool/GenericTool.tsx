@@ -2,24 +2,6 @@
 
 import React from "react";
 import { ToolUIPart } from "ai";
-import {
-  ArrowsClockwiseIcon,
-  CheckCircleIcon,
-  CircleDashedIcon,
-  CircleIcon,
-  FileIcon,
-  FilesIcon,
-  GearIcon,
-  GlobeIcon,
-  ListChecksIcon,
-  MagnifyingGlassIcon,
-  MonitorIcon,
-  PencilSimpleIcon,
-  RobotIcon,
-  TerminalIcon,
-  TrashIcon,
-  WarningDiamondIcon,
-} from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
@@ -28,6 +10,11 @@ import {
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
+import {
+  isBlankOutput,
+  isEmptyResult,
+  NOTHING_FOUND,
+} from "../../components/ToolChain/resultHelpers";
 import {
   globalRegistry,
   OutputItem,
@@ -41,6 +28,26 @@ import {
   getToolCategory,
   truncate,
 } from "./helpers";
+import {
+  AlertDiamondIcon,
+  CheckListIcon,
+  CheckmarkCircle02Icon,
+  CircleDashedIcon,
+  CircleIcon,
+  ComputerIcon,
+  Delete02Icon,
+  FileEmpty02Icon,
+  Files01Icon,
+  Globe02Icon,
+  PencilIcon,
+  ReloadIcon,
+  Robot01Icon,
+  Search01Icon,
+  Settings01Icon,
+  TerminalIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   part: ToolUIPart;
@@ -72,50 +79,39 @@ function ToolIcon({
   isError: boolean;
 }) {
   if (isError) {
-    return (
-      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
-    );
+    return <Icon icon={AlertDiamondIcon} size={14} tone="error" />;
   }
   if (isStreaming) {
     return <OrbitLoader size={14} />;
   }
 
-  const iconClass = "text-green-500";
   switch (category) {
     case "bash":
-      return <TerminalIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={TerminalIcon} size={14} tone="success" />;
     case "web":
-      return <GlobeIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={Globe02Icon} size={14} tone="success" />;
     case "browser":
-      return <MonitorIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={ComputerIcon} size={14} tone="success" />;
     case "file-read":
-      return <FileIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={FileEmpty02Icon} size={14} tone="success" />;
     case "file-write":
-      return <FileIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={FileEmpty02Icon} size={14} tone="success" />;
     case "file-delete":
-      return <TrashIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={Delete02Icon} size={14} tone="success" />;
     case "file-list":
-      return <FilesIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={Files01Icon} size={14} tone="success" />;
     case "search":
-      return (
-        <MagnifyingGlassIcon size={14} weight="regular" className={iconClass} />
-      );
+      return <Icon icon={Search01Icon} size={14} tone="success" />;
     case "edit":
-      return (
-        <PencilSimpleIcon size={14} weight="regular" className={iconClass} />
-      );
+      return <Icon icon={PencilIcon} size={14} tone="success" />;
     case "todo":
-      return (
-        <ListChecksIcon size={14} weight="regular" className={iconClass} />
-      );
+      return <Icon icon={CheckListIcon} size={14} tone="success" />;
     case "compaction":
-      return (
-        <ArrowsClockwiseIcon size={14} weight="regular" className={iconClass} />
-      );
+      return <Icon icon={ReloadIcon} size={14} tone="success" />;
     case "agent":
-      return <RobotIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={Robot01Icon} size={14} tone="success" />;
     default:
-      return <GearIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={Settings01Icon} size={14} tone="success" />;
   }
 }
 
@@ -126,30 +122,30 @@ function ToolIcon({
 function AccordionIcon({ category }: { category: ToolCategory }) {
   switch (category) {
     case "bash":
-      return <TerminalIcon size={32} weight="light" />;
+      return <Icon icon={TerminalIcon} size={32} />;
     case "web":
-      return <GlobeIcon size={32} weight="light" />;
+      return <Icon icon={Globe02Icon} size={32} />;
     case "browser":
-      return <MonitorIcon size={32} weight="light" />;
+      return <Icon icon={ComputerIcon} size={32} />;
     case "file-read":
     case "file-write":
-      return <FileIcon size={32} weight="light" />;
+      return <Icon icon={FileEmpty02Icon} size={32} />;
     case "file-delete":
-      return <TrashIcon size={32} weight="light" />;
+      return <Icon icon={Delete02Icon} size={32} />;
     case "file-list":
-      return <FilesIcon size={32} weight="light" />;
+      return <Icon icon={Files01Icon} size={32} />;
     case "search":
-      return <MagnifyingGlassIcon size={32} weight="light" />;
+      return <Icon icon={Search01Icon} size={32} />;
     case "edit":
-      return <PencilSimpleIcon size={32} weight="light" />;
+      return <Icon icon={PencilIcon} size={32} />;
     case "todo":
-      return <ListChecksIcon size={32} weight="light" />;
+      return <Icon icon={CheckListIcon} size={32} />;
     case "compaction":
-      return <ArrowsClockwiseIcon size={32} weight="light" />;
+      return <Icon icon={ReloadIcon} size={32} />;
     case "agent":
-      return <RobotIcon size={32} weight="light" />;
+      return <Icon icon={Robot01Icon} size={32} />;
     default:
-      return <GearIcon size={32} weight="light" />;
+      return <Icon icon={Settings01Icon} size={32} />;
   }
 }
 
@@ -274,19 +270,25 @@ function getBashAccordionData(
       <div className="space-y-2">
         {command && (
           <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">command</p>
+            <Text variant="small-medium-tight" tone="muted" className="mb-1">
+              command
+            </Text>
             <ContentCodeBlock>{command}</ContentCodeBlock>
           </div>
         )}
         {stdout && (
           <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">stdout</p>
+            <Text variant="small-medium-tight" tone="muted" className="mb-1">
+              stdout
+            </Text>
             <ContentCodeBlock>{stdout}</ContentCodeBlock>
           </div>
         )}
         {stderr && (
           <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">stderr</p>
+            <Text variant="small-medium-tight" tone="muted" className="mb-1">
+              stderr
+            </Text>
             <ContentCodeBlock>{stderr}</ContentCodeBlock>
           </div>
         )}
@@ -323,7 +325,7 @@ function getWebAccordionData(
       content: (
         <div className="space-y-3">
           {answer && (
-            <div className="whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-800">
+            <div className="rounded-md bg-surface-muted p-3 text-body whitespace-pre-wrap text-foreground-body">
               {answer}
             </div>
           )}
@@ -332,14 +334,20 @@ function getWebAccordionData(
             const href = getStringField(r, "url") ?? "";
             const snippet = getStringField(r, "snippet");
             const pageAge = getStringField(r, "page_age");
+            const citation = typeof r.n === "number" ? r.n : null;
             return (
-              <div key={i} className="text-sm">
+              <div key={i} className="text-body">
+                {citation !== null && (
+                  <span className="mr-1.5 text-caption text-foreground-tertiary tabular-nums">
+                    [{citation}]
+                  </span>
+                )}
                 {href ? (
                   <a
                     href={href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-medium text-blue-600 hover:underline"
+                    className="font-medium text-info-foreground hover:underline"
                   >
                     {title}
                   </a>
@@ -347,13 +355,17 @@ function getWebAccordionData(
                   <span className="font-medium">{title}</span>
                 )}
                 {href && (
-                  <div className="text-xs text-slate-500">
+                  <div className="text-caption text-foreground-tertiary">
                     {truncate(href, 100)}
                   </div>
                 )}
-                {snippet && <p className="mt-0.5 text-slate-700">{snippet}</p>}
+                {snippet && (
+                  <p className="mt-0.5 text-foreground-body">{snippet}</p>
+                )}
                 {pageAge && (
-                  <div className="mt-0.5 text-xs text-slate-400">{pageAge}</div>
+                  <div className="mt-0.5 text-caption text-foreground-subtle">
+                    {pageAge}
+                  </div>
                 )}
               </div>
             );
@@ -479,6 +491,15 @@ function getFileAccordionData(
   if (!displayContent) {
     displayContent = extractMcpText(output);
   }
+  // A search or listing that found nothing answers "[]"; a file read keeps
+  // its text, even when the file itself holds "[]".
+  if (
+    (category === "file-list" || category === "search") &&
+    displayContent &&
+    isBlankOutput(displayContent)
+  ) {
+    displayContent = NOTHING_FOUND;
+  }
 
   // For edit: show old/new diff; for write: show written content if output is just a status
   const oldString =
@@ -539,11 +560,19 @@ function getFileAccordionData(
         {oldString && newString != null ? (
           <>
             <div>
-              <p className="mb-1 text-xs font-medium text-red-400">removed</p>
+              <Text variant="small-medium-tight" tone="error" className="mb-1">
+                removed
+              </Text>
               <ContentCodeBlock>{oldString}</ContentCodeBlock>
             </div>
             <div>
-              <p className="mb-1 text-xs font-medium text-green-400">added</p>
+              <Text
+                variant="small-medium-tight"
+                tone="success"
+                className="mb-1"
+              >
+                added
+              </Text>
               <ContentCodeBlock>{newString}</ContentCodeBlock>
             </div>
           </>
@@ -601,35 +630,23 @@ function getTodoAccordionData(input: unknown): AccordionData {
     content: (
       <div className="space-y-1 py-1">
         {todos.map((todo, i) => (
-          <div key={i} className="flex items-start gap-2 text-xs">
+          <div key={i} className="flex items-start gap-2 text-caption">
             <span className="mt-0.5 flex-shrink-0">
               {todo.status === "completed" ? (
-                <CheckCircleIcon
-                  size={14}
-                  weight="fill"
-                  className="text-green-500"
-                />
+                <Icon icon={CheckmarkCircle02Icon} size={14} tone="success" />
               ) : todo.status === "in_progress" ? (
-                <CircleDashedIcon
-                  size={14}
-                  weight="bold"
-                  className="text-blue-500"
-                />
+                <Icon icon={CircleDashedIcon} size={14} tone="info" />
               ) : (
-                <CircleIcon
-                  size={14}
-                  weight="regular"
-                  className="text-neutral-400"
-                />
+                <Icon icon={CircleIcon} size={14} tone="subtle" />
               )}
             </span>
             <span
               className={
                 todo.status === "completed"
-                  ? "text-muted-foreground line-through"
+                  ? "text-foreground-tertiary line-through"
                   : todo.status === "in_progress"
-                    ? "font-medium text-foreground"
-                    : "text-muted-foreground"
+                    ? "font-medium text-foreground-base"
+                    : "text-foreground-tertiary"
               }
             >
               {todo.content}
@@ -656,15 +673,15 @@ function getAgentAccordionData(
     const status = getStringField(output, "retrieval_status");
     const task = output.task;
     return {
-      title: status === "timeout" ? "Agent still running" : "Agent result",
+      title: status === "timeout" ? "Subtask still running" : "Subtask result",
       description:
-        typeof inp.agentId === "string" ? `Agent: ${inp.agentId}` : undefined,
+        typeof inp.agentId === "string" ? `Subtask: ${inp.agentId}` : undefined,
       content: task ? (
         <ContentCodeBlock>{JSON.stringify(task, null, 2)}</ContentCodeBlock>
       ) : (
         <ContentMessage>
           {status === "timeout"
-            ? "The agent hasn't finished yet. Results will appear automatically when it's done."
+            ? "The subtask hasn't finished yet. Results will appear automatically when it's done."
             : "No result available."}
         </ContentMessage>
       ),
@@ -676,7 +693,7 @@ function getAgentAccordionData(
   const agentId = getStringField(output, "agentId");
 
   return {
-    title: isAsync ? "Agent started (background)" : "Agent completed",
+    title: isAsync ? "Subtask started (background)" : "Subtask completed",
     description: description ?? agentId ?? undefined,
     content: isAsync ? (
       <ContentMessage>
@@ -699,9 +716,11 @@ function getDefaultAccordionData(
   if (typeof raw === "string") {
     displayContent = raw;
   } else if (mcpText) {
-    displayContent = mcpText;
+    displayContent = isBlankOutput(mcpText) ? NOTHING_FOUND : mcpText;
   } else if (message) {
     displayContent = message;
+  } else if (isEmptyResult(output)) {
+    displayContent = NOTHING_FOUND;
   } else {
     try {
       displayContent = JSON.stringify(output, null, 2);
@@ -781,7 +800,7 @@ export function GenericTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex min-w-0 items-center gap-2 overflow-hidden text-xs text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden text-caption text-foreground-tertiary">
         <ToolIcon
           category={category}
           isStreaming={isStreaming}
@@ -790,7 +809,7 @@ export function GenericTool({ part }: Props) {
         <MorphingTextAnimation
           text={text}
           animate={isStreaming}
-          className={cn("min-w-0 flex-1", isError ? "text-red-500" : undefined)}
+          className={cn("min-w-0 flex-1", isError ? "text-error" : undefined)}
         />
       </div>
 
@@ -799,7 +818,7 @@ export function GenericTool({ part }: Props) {
           icon={<AccordionIcon category={category} />}
           title={accordionData.title}
           description={accordionData.description}
-          titleClassName={isError ? "text-red-500" : undefined}
+          titleClassName={isError ? "text-error" : undefined}
           defaultExpanded={category === "todo"}
         >
           {accordionData.content}
