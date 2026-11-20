@@ -19,12 +19,14 @@ export function formatRunDuration(
     return formatDistanceStrict(0, run.stats.duration * 1000);
   }
 
-  // Live: started_at → now. Finished without stats: started_at → ended_at.
   if (!run.started_at) return null;
   const start = new Date(run.started_at).getTime();
   if (Number.isNaN(start)) return null;
-  const endedMs = run.ended_at ? new Date(run.ended_at).getTime() : null;
-  const end = isLive ? nowMs : endedMs;
-  if (end === null || Number.isNaN(end) || end < start) return null;
+
+  // The clock is floored to the second, so it can lag a run that has just started.
+  if (isLive) return formatDistanceStrict(0, Math.max(0, nowMs - start));
+
+  const end = run.ended_at ? new Date(run.ended_at).getTime() : Number.NaN;
+  if (Number.isNaN(end) || end < start) return null;
   return formatDistanceStrict(0, end - start);
 }

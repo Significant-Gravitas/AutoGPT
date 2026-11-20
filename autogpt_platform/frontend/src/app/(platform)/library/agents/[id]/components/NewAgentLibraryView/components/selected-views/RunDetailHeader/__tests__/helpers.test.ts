@@ -34,6 +34,12 @@ describe("formatRunDuration", () => {
     expect(formatRunDuration(run, NOW)).toBe("16 seconds");
   });
 
+  it("shows 0 seconds, not nothing, while the floored clock lags a run that just started", () => {
+    const run = makeRun({ started_at: "2026-07-21T12:00:16.400Z" });
+
+    expect(formatRunDuration(run, NOW)).toBe("0 seconds");
+  });
+
   it("uses stats.duration once the run has finished", () => {
     const run = makeRun({
       status: AgentExecutionStatus.COMPLETED,
