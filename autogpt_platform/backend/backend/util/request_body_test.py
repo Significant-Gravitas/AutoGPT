@@ -710,28 +710,41 @@ async def test_a_request_without_a_timeout_reads_its_body_within_the_sessions():
         assert session.timeout is request_module.DEFAULT_TIMEOUT
 
 
+class _StalledStream(io.RawIOBase):
+    """A file whose read waits, as a pipe's does while its writer writes
+    nothing, until the test lets it go. After ``ENDS_WITHIN_SECONDS`` it ends
+    by itself, so a read made on the event loop fails the test instead of
+    blocking it for good."""
+
+    def __init__(self):
+        self.let_go = threading.Event()
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer) -> int:
+        self.let_go.wait(ENDS_WITHIN_SECONDS)
+        return 0
+
+
 @pytest.mark.asyncio
 async def test_a_file_that_stalls_fails_within_the_requests_timeout():
-    """A pipe whose writer never writes: its read, in a worker thread, would
-    wait for good."""
-    read_end, write_end = os.pipe()
+    """A file whose read, in a worker thread, would wait for good."""
+    stream = _StalledStream()
     app, served = scripted(200)
     runner, base = await serve(app)
 
     try:
-        with open(read_end, "rb") as stream:
-            try:
-                with pytest.raises(RequestBodyTimeoutError):
-                    await asyncio.wait_for(
-                        local_requests().post(
-                            base, data=stream, timeout=ClientTimeout(total=0.05)
-                        ),
-                        ENDS_WITHIN_SECONDS,
-                    )
-            finally:
-                # Ends the pipe, so the worker thread's read returns.
-                os.close(write_end)
+        with pytest.raises(RequestBodyTimeoutError):
+            await asyncio.wait_for(
+                local_requests().post(
+                    base, data=stream, timeout=ClientTimeout(total=0.05)
+                ),
+                ENDS_WITHIN_SECONDS,
+            )
     finally:
+        # Lets the worker thread's read return.
+        stream.let_go.set()
         await runner.cleanup()
 
     assert served == []
