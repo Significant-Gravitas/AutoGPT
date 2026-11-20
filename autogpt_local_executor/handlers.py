@@ -1371,7 +1371,9 @@ class FileHandler:
             response_limit = min(response_limit, MAX_WIRE_BASE64_CONTENT_BYTES)
 
         def read_chunk() -> tuple[bytes | None, int]:
-            with open_jail_file(path, self.config.allowed_root) as file:
+            # Checked again as it is opened, by the resolved path; a refusal
+            # there names the path as the request did.
+            with open_jail_file(path, self.config.allowed_root, asked=payload.path) as file:
                 size = os.fstat(file.fileno()).st_size
                 remaining = max(size - payload.offset, 0)
                 requested_size = payload.length if payload.length is not None else remaining
@@ -1493,7 +1495,7 @@ class FileHandler:
         def write_content() -> None:
             if payload.create_parents:
                 path.parent.mkdir(parents=True, exist_ok=True)
-            write_jail_file(path, self.config.allowed_root, raw)
+            write_jail_file(path, self.config.allowed_root, raw, asked=payload.path)
 
         try:
             await _run_to_completion(write_content)

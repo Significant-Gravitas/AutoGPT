@@ -351,6 +351,49 @@ async def test_a_reply_built_from_the_systems_error_leaves_its_file_name_out(
     assert ELSEWHERE in caplog.text
 
 
+@pytest.mark.parametrize("operation", ["read", "write"])
+async def test_a_refusal_at_the_second_check_of_a_files_content_names_the_path_as_asked(
+    tmp_path: Path,
+    linked_root: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    operation: str,
+) -> None:
+    """A read and a write check the path twice: once to place it, and again
+    as the content is opened, by the resolved path the first check gave. A
+    refusal at that second check named the path it had been given, the
+    resolved one, under the root's real place. It takes a change between
+    the two checks to be refused there: here the link the root is named by
+    is pointed somewhere else."""
+    alias, real = linked_root
+    asked = alias / "file.txt"
+    another = tmp_path / "another-place"
+    another.mkdir()
+
+    def after_the_link_moved(checked_again: Any) -> Any:
+        def moved_first(*args: Any, **kwargs: Any) -> Any:
+            alias.unlink()
+            alias.symlink_to(another, target_is_directory=True)
+            return checked_again(*args, **kwargs)
+
+        return moved_first
+
+    for name in ("open_jail_file", "write_jail_file"):
+        monkeypatch.setattr(
+            handlers_module, name, after_the_link_moved(getattr(handlers_module, name))
+        )
+
+    with caplog.at_level(logging.INFO, logger="autogpt_local_executor"):
+        reply = await _ask(_config(alias, tmp_path), operation, asked)
+
+    _named_as_asked(reply, asked)
+    assert reply.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
+    # Where it had resolved to stays on this computer.
+    assert ELSEWHERE in caplog.text
+    assert (real / "file.txt").read_text(encoding="utf-8") == "x"
+    assert list(another.iterdir()) == []
+
+
 class _Socket:
     def __init__(self) -> None:
         self.sent: list[str] = []
