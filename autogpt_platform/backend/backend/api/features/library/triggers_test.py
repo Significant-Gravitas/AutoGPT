@@ -1456,7 +1456,7 @@ def _real_execution_input_validator(graph: GraphModel):
 def _refusal(refused: bool):
     if not refused:
         return contextlib.nullcontext()
-    return pytest.raises(InvalidInputError, match="'yes' is not of type 'boolean'")
+    return pytest.raises(InvalidInputError, match="expected boolean, got string")
 
 
 def _example_trigger_config(block) -> dict:

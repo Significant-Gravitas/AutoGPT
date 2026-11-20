@@ -39,6 +39,7 @@ vi.mock("better-auth/next-js", () => ({
 }));
 vi.mock("better-auth/plugins", () => ({
   admin: vi.fn(() => ({ id: "admin" })),
+  bearer: vi.fn(() => ({ id: "bearer", hooks: { before: [], after: [] } })),
   jwt: vi.fn(() => ({ id: "jwt" })),
 }));
 vi.mock("../supabase-bridge", () => ({
@@ -67,10 +68,13 @@ vi.mock("../provision-platform-user", () => ({
 }));
 
 const sentEmails = vi.hoisted(
-  () => [] as Array<{ to: string; type: string; url: string }>,
+  () =>
+    [] as Array<{ to: string; type: string; url: string; newEmail?: string }>,
 );
 // Addresses the mail provider refuses at send time, as sendAuthEmail reports it.
 const refusedAtSend = vi.hoisted(() => new Set<string>());
+// Its own lookup is tested in ban-record.test.ts and access-blocks-flow.test.ts.
+vi.mock("../ban-record", () => ({ assertNotBannedAddress: vi.fn() }));
 vi.mock("../email", () => ({
   sendAuthEmail: vi.fn(async (email: (typeof sentEmails)[number]) => {
     if (refusedAtSend.has(email.to)) {
@@ -1342,9 +1346,15 @@ describe("change-email verification emails", () => {
     await handler(new Request(confirm?.url ?? ""));
     await emailsSent();
 
-    expect(sentEmails.map(({ to, type }) => ({ to, type }))).toEqual([
-      { to: "old@example.com", type: "change_email" },
-      { to: "new@example.com", type: "verify_new_email" },
+    expect(
+      sentEmails.map(({ to, type, newEmail }) => ({ to, type, newEmail })),
+    ).toEqual([
+      {
+        to: "old@example.com",
+        type: "change_email",
+        newEmail: "new@example.com",
+      },
+      { to: "new@example.com", type: "verify_new_email", newEmail: undefined },
     ]);
   });
 

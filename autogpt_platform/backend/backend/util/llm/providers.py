@@ -185,10 +185,17 @@ def _is_temperature_deprecation_error(exc: anthropic.BadRequestError) -> bool:
 # Opus 5 still honour one. Hence exact native slugs rather than family
 # prefixes (``claude-opus-5`` is a prefix of ``claude-opus-5-5``), compared
 # after the vendor prefix and any ``-YYYYMMDD`` snapshot suffix are stripped.
-# Anthropic documents the restriction for Opus/Sonnet 5.5 and the Fable 5.1 /
-# Mythos 5.1 line; add a model here when it documents the same for another.
+# Anthropic documents the restriction for Opus/Sonnet 5.5, the Fable 5.1 /
+# Mythos 5.1 line and Fable 5.2; add a model here when it documents the same
+# for another.
 _ANTHROPIC_FORCED_TOOL_CHOICE_UNSUPPORTED: frozenset[str] = frozenset(
-    {"claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-mythos-5-1"}
+    {
+        "claude-opus-5-5",
+        "claude-sonnet-5-5",
+        "claude-fable-5-1",
+        "claude-fable-5-2",
+        "claude-mythos-5-1",
+    }
 )
 
 
@@ -606,7 +613,7 @@ async def _call_anthropic_messages(
     # Cache tool definitions alongside the system prompt — placing
     # cache_control on the last tool caches all tool schemas as a
     # single prefix. Cache reads bill at a fraction of the input rate:
-    # 10% on most Claude models, 5% on Opus 5.5, 2.5% on Fable 5.1 (the
+    # 10% on most Claude models, 5% on Opus 5.5, 2.5% on Fable 5.1/5.2 (the
     # catalog's provider cache-read prices carry each model's figure).
     if isinstance(an_tools, list) and an_tools:
         an_tools[-1] = {**an_tools[-1], "cache_control": {"type": "ephemeral"}}

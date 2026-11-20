@@ -1,9 +1,7 @@
 "use client";
 
-import {
-  COPILOT_GATE_NODE_PREFIX,
-  PendingReviewsList,
-} from "@/components/organisms/PendingReviewsList/PendingReviewsList";
+import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
+import { COPILOT_GATE_NODE_PREFIX } from "@/components/organisms/PendingReviewsList/helpers";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import type { ExpertIdentity } from "../../useExpertMap";

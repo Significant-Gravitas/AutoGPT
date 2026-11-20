@@ -7,6 +7,10 @@ import { ProActivationProvider } from "../ProActivationProvider";
 import { useProActivation } from "../useProActivation";
 import { quote } from "./fixtures";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(window.location.search),
+}));
 vi.mock("@/lib/auth/hooks/useAuthStore", () => ({
   useAuthStore: Object.assign(
     (select: (state: { user: { id: string } }) => unknown) =>

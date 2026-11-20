@@ -211,7 +211,7 @@ async def finish_step_cards(
             finished.failed.append(card.node_exec_id)
             await _reopen(user_id, card.node_exec_id)
             continue
-        await review_store.consume(card.node_exec_id, user_id)
+        await review_store.close(card.node_exec_id, user_id)
         if not approved and card.session_id:
             await _ask_from_now_on(user_id, card)
     return finished
@@ -220,7 +220,7 @@ async def finish_step_cards(
 async def close_step_cards(user_id: str, node_exec_ids: Iterable[str]) -> None:
     """The steps were answered on the run page, so their cards leave the chat."""
     for node_exec_id in node_exec_ids:
-        await review_store.consume(step_card_id(user_id, node_exec_id), user_id)
+        await review_store.close(step_card_id(user_id, node_exec_id), user_id)
 
 
 async def card_chat_for_run(user_id: str, graph_exec_id: str) -> str | None:

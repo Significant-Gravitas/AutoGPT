@@ -87,6 +87,15 @@ class Journal:
             self._entries.append(entry)
             return entry
 
+    def add_check(
+        self, entry: dict[str, Any], what: str, ok: bool, detail: str
+    ) -> None:
+        """Log something the reply itself checked, e.g. that its hold was
+        released; a journey fails on any check that isn't ok."""
+        with self._lock:
+            check = {"what": what, "ok": ok, "detail": detail}
+            entry["checks"] = [*entry.get("checks", []), check]
+
     def finish(self, entry: dict[str, Any], completed: bool) -> None:
         """Mark whether the whole reply reached the platform."""
         with self._lock:

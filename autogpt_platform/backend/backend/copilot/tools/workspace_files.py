@@ -18,6 +18,7 @@ from backend.copilot.context import (
     get_sdk_cwd,
     get_workspace_manager,
     is_allowed_local_path,
+    is_local_pc_executor,
     looks_like_sdk_tool_result_path,
     resolve_allowed_local_path,
     sdk_tool_result_redirect_hint,
@@ -133,6 +134,8 @@ async def _read_source_path(source_path: str, session_id: str) -> bytes | ErrorR
         if isinstance(remote, ErrorResponse):
             return remote
         try:
+            if is_local_pc_executor(sandbox):
+                return await sandbox.files.read_capped(remote, max_size)
             return await read_sandbox_file(sandbox, remote, max_size)
         except Exception as exc:
             return ErrorResponse(
@@ -370,6 +373,9 @@ class WorkspaceWriteResponse(ToolResponseBase):
     download_url: str
     source: str | None = None  # "content", "base64", or "copied from <path>"
     content_preview: str | None = None  # First 200 chars for text files
+    # The file this overwrite replaced, whose id is now dead. A client showing
+    # that file follows it to file_id.
+    replaced_file_id: str | None = None
     # Otto's own working file (e.g. build_state.json), as the write marked it.
     # For the activity log only; neither the model nor the client sees it.
     is_internal: bool = Field(default=False, exclude=True)
@@ -1246,6 +1252,7 @@ class WriteWorkspaceFileTool(BaseTool):
                 download_url=download_url,
                 source=source,
                 content_preview=preview,
+                replaced_file_id=rec.replaced_file_id,
                 message=msg,
                 session_id=session_id,
                 is_internal=rec.is_internal,

@@ -217,3 +217,10 @@ class HomeDashboardResponse(BaseModel):
     # Optional with a default so pre-existing clients (and their fixtures)
     # keep validating; the backend always populates it.
     recent_work: HomeRecentWork = Field(default_factory=HomeRecentWork)
+    schedules_unavailable: bool = Field(
+        default=False,
+        description=(
+            "The scheduler didn't answer, so upcoming_tasks is unknown rather "
+            "than empty"
+        ),
+    )
