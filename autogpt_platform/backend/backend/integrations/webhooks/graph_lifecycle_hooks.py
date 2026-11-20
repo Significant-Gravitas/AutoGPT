@@ -186,9 +186,9 @@ def _apply_credential_result(
         or creds_field_name not in block_input_schema.get_required_fields()
     )
     if creds_field_optional and not unavailable:
-        # Drop the key rather than writing `{}`: an id-less object fails the
-        # field's nested credentials schema in `validate_exec`, so the node
-        # would never be queued. An absent key means "not configured".
+        # A stored node says "not configured" by leaving the key out, as the
+        # builder does; an id-less object fails the field's credentials
+        # schema anywhere it isn't cleared first.
         _preserve_legacy_autopilot_transport(new_node, creds_field_name)
         new_node.input_default.pop(creds_field_name, None)
         logger.warning(
