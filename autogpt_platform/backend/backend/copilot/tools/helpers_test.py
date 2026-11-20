@@ -2429,6 +2429,42 @@ async def test_output_keys_starting_with_sa_are_kept(dry_run: bool):
     assert response.outputs == {"result": [value]}
 
 
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("dry_run", [False, True])
+async def test_unset_output_fields_are_left_out(dry_run: bool):
+    """The response dump leaves out unset model fields, but not unset fields
+    inside the encoded outputs, so the encoder must: a Drive file with no
+    credential would otherwise carry `_credentials_id: null`, which the next
+    block reads as a chained file instead of showing the picker."""
+    file = GoogleDriveFile.model_validate({"id": "file-1", "name": "Q3 report"})
+
+    async def _yield_file(*args: Any, **kwargs: Any):
+        yield "file", file
+
+    block = _make_block()
+    block.execute = _yield_file
+    credit_patch, _ = _patch_credit_db()
+    with (
+        _patch_workspace(),
+        patch("backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})),
+        credit_patch,
+        patch("backend.copilot.tools.helpers.simulate_block", _yield_file),
+    ):
+        response = await execute_block(
+            block=block,
+            block_id="block-1",
+            input_data={},
+            user_id=_USER,
+            session_id=_SESSION,
+            node_exec_id="exec-1",
+            matched_credentials={},
+            dry_run=dry_run,
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    assert response.outputs == {"file": [{"id": "file-1", "name": "Q3 report"}]}
+
+
 # ---------------------------------------------------------------------------
 # Credential choice on unattended turns (SECRT-2804)
 # ---------------------------------------------------------------------------
