@@ -1,7 +1,8 @@
-"""The WordPress blocks against a WordPress that is down (#17130).
+"""The WordPress blocks against a WordPress that is down.
 
-They call ``Requests(raise_for_status=False)`` with no attempt cap, which used
-to retry a 5xx forever: a block run against a site that was down never ended.
+Their client checks statuses itself (``raise_for_status=False``) and sets no
+attempt cap, so a 5xx gets the default number of attempts: a block run against
+a site that is down fails with the site's error instead of waiting for it.
 """
 
 import asyncio

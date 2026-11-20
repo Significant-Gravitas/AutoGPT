@@ -7,7 +7,7 @@ import socket
 import ssl
 from collections.abc import AsyncIterable, Iterable, Sequence
 from io import BytesIO
-from typing import Any, Callable, Optional
+from typing import IO, Any, Callable, Optional
 from urllib.parse import ParseResult as URL
 from urllib.parse import quote, urljoin, urlparse
 
@@ -56,6 +56,18 @@ class ResponseTooLargeError(ValueError):
         self.limit = limit
 
 
+class RequestBodyTooLargeError(ValueError):
+    """A request body that has to be held in memory is over the limit."""
+
+    def __init__(self, limit: int):
+        super().__init__(
+            f"Request body is larger than {limit} bytes. It can't be read twice, "
+            "so it would have to be held in memory to send it again; pass a "
+            "seekable stream, such as a file or a BytesIO."
+        )
+        self.limit = limit
+
+
 DEFAULT_USER_AGENT = "AutoGPT-Platform/1.0 (https://github.com/Significant-Gravitas/AutoGPT; info@agpt.co) aiohttp"
 
 # A response is read in chunks and dropped once it passes the limit, so a
@@ -63,6 +75,11 @@ DEFAULT_USER_AGENT = "AutoGPT-Platform/1.0 (https://github.com/Significant-Gravi
 # its size. Downloads share the file-size setting.
 DEFAULT_MAX_RESPONSE_BYTES = Config().max_file_size_mb * 1024 * 1024
 RESPONSE_READ_CHUNK_SIZE = 64 * 1024
+
+# A request body that can't be read twice, a stream that can't seek or an
+# async iterable, is held in memory so that a retry or a redirect hop can send
+# it again: up to the file-size setting, as a download is.
+MAX_BUFFERED_BODY_BYTES = DEFAULT_MAX_RESPONSE_BYTES
 
 # Retry status codes for which we will automatically retry the request
 THROTTLE_RETRY_STATUS_CODES: set[int] = {429, 500, 502, 503, 504, 408}
@@ -616,23 +633,28 @@ def _is_throttle_error(error: BaseException) -> bool:
     )
 
 
-_Uploads = list[tuple[str, tuple[str, BytesIO, str]]]
+_Uploads = list[tuple[str, tuple[str, IO[bytes], str]]]
+# A stream in a request's body: an upload's handle, or a stream in ``data``.
+_Stream = IO[Any] | io.IOBase
 # Each stream in a request's body, and the position its bytes start at.
-_BodyStarts = Sequence[tuple[io.IOBase, int]]
+_BodyStarts = Sequence[tuple[_Stream, int]]
 
 
-def _replayable_uploads(files: _Uploads | None) -> _Uploads | None:
+async def _replayable_uploads(files: _Uploads | None) -> _Uploads | None:
     """The uploads, each on a handle that every send can seek back.
 
-    A stream that can't seek is read into memory once, here: a retry has to
+    A handle that can't seek is read into memory once, here: a retry has to
     send the file again, and a stream can't be read twice. Every caller passes
     a ``BytesIO``, which is used as it is.
     """
     if files is None:
         return None
     return [
-        (field, (name, fh if fh.seekable() else BytesIO(fh.read()), content_type))
-        for field, (name, fh, content_type) in files
+        (
+            field,
+            (name, fh if fh.seekable() else BytesIO(await _read_once(fh)), mime),
+        )
+        for field, (name, fh, mime) in files
     ]
 
 
@@ -646,15 +668,43 @@ async def _replayable_data(data: Any) -> Any:
     seekable file.
     """
     if isinstance(data, io.IOBase) and not data.seekable():
-        return data.read()
+        return await _read_once(data)
     if isinstance(data, AsyncIterable):
-        return b"".join([chunk async for chunk in data])
+        return await _gather_once(data)
     return data
 
 
-def _body_starts(files: _Uploads | None, data: Any) -> list[tuple[io.IOBase, int]]:
+async def _read_once(stream: _Stream) -> Any:
+    """Read *stream* to its end in a worker thread, so that a slow one holds a
+    thread instead of the event loop."""
+    return await asyncio.to_thread(_read_up_to_the_limit, stream)
+
+
+def _read_up_to_the_limit(stream: _Stream) -> Any:
+    chunks = []
+    size = 0
+    while chunk := stream.read(RESPONSE_READ_CHUNK_SIZE):
+        size += len(chunk)
+        if size > MAX_BUFFERED_BODY_BYTES:
+            raise RequestBodyTooLargeError(MAX_BUFFERED_BODY_BYTES)
+        chunks.append(chunk)
+    # The read that ended the loop is empty, b"" or "", so it joins the chunks
+    # into the stream's own type.
+    return chunk.join(chunks)
+
+
+async def _gather_once(chunks: AsyncIterable[bytes]) -> bytes:
+    body = bytearray()
+    async for chunk in chunks:
+        body += chunk
+        if len(body) > MAX_BUFFERED_BODY_BYTES:
+            raise RequestBodyTooLargeError(MAX_BUFFERED_BODY_BYTES)
+    return bytes(body)
+
+
+def _body_starts(files: _Uploads | None, data: Any) -> list[tuple[_Stream, int]]:
     """Each stream in the body, and the position its bytes start at."""
-    streams: list[io.IOBase] = [fh for _, (_, fh, _) in files or []]
+    streams: list[_Stream] = [fh for _, (_, fh, _) in files or []]
     if isinstance(data, io.IOBase):
         streams.append(data)
     return [(stream, stream.tell()) for stream in streams]
@@ -736,7 +786,7 @@ class Requests:
         url: str,
         *,
         headers: Optional[dict] = None,
-        files: list[tuple[str, tuple[str, BytesIO, str]]] | None = None,
+        files: _Uploads | None = None,
         data: Any | None = None,
         json: Any | None = None,
         allow_redirects: bool = True,
@@ -753,9 +803,9 @@ class Requests:
 
         A throttle status is retried as the class docstring sets out.
         """
-        files = _replayable_uploads(files)
-        data = await _replayable_data(data)
-        body_starts = _body_starts(files, data)
+        uploads = await _replayable_uploads(files)
+        body = await _replayable_data(data)
+        body_starts = _body_starts(uploads, body)
 
         @retry(
             stop=stop_after_attempt(self._max_attempts()),
@@ -769,8 +819,8 @@ class Requests:
                 method=method,
                 url=url,
                 headers=headers,
-                files=files,
-                data=data,
+                files=uploads,
+                data=body,
                 json=json,
                 allow_redirects=allow_redirects,
                 max_redirects=max_redirects,
@@ -788,7 +838,7 @@ class Requests:
         url: str,
         *,
         headers: Optional[dict] = None,
-        files: list[tuple[str, tuple[str, BytesIO, str]]] | None = None,
+        files: _Uploads | None = None,
         data: Any | None = None,
         json: Any | None = None,
         allow_redirects: bool = True,

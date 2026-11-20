@@ -244,7 +244,7 @@ class TestAnalyze:
     async def test_a_throttled_upload_sends_the_whole_step_file_again(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        """#16954: the retry after a 429 used to upload an empty file part."""
+        """A retry after a 429 uploads the whole STEP file again (#16954)."""
         step = (
             b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n"
             + b"#1=CARTESIAN_POINT('',(0.,0.,0.));\n" * 400
