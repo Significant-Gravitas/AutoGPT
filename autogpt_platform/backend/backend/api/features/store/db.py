@@ -32,6 +32,7 @@ from backend.util.exceptions import (
     PreconditionFailed,
 )
 from backend.util.settings import Settings
+from backend.util.sql import escape_like
 
 from . import exceptions as store_exceptions
 from . import model as store_model
@@ -93,6 +94,10 @@ async def get_store_agents(
     agents: list[dict[str, Any]] = []
     total = 0
     total_pages = 0
+
+    # Before the try below, which would turn this 400 into a DatabaseError.
+    if search_query and "\x00" in search_query:
+        raise ValueError("Search text must not contain NUL characters")
 
     try:
         # If search_query is provided, use hybrid search (embeddings + tsvector)
@@ -548,23 +553,10 @@ async def get_store_creators(
         where["is_featured"] = featured
 
     # Add search filter if provided, using parameterized queries
-    sanitized_query = (search_query or "").strip()[:MAX_CREATOR_SEARCH_QUERY_LENGTH]
+    sanitized_query = escape_like(
+        (search_query or "").strip()[:MAX_CREATOR_SEARCH_QUERY_LENGTH]
+    )
     if sanitized_query:
-        # Escape special SQL characters
-        sanitized_query = (
-            sanitized_query.replace("\\", "\\\\")
-            .replace("%", "\\%")
-            .replace("_", "\\_")
-            .replace("[", "\\[")
-            .replace("]", "\\]")
-            .replace("'", "\\'")
-            .replace('"', '\\"')
-            .replace(";", "\\;")
-            .replace("--", "\\--")
-            .replace("/*", "\\/*")
-            .replace("*/", "\\*/")
-        )
-
         where["OR"] = [
             {"username": {"contains": sanitized_query, "mode": "insensitive"}},
             {"name": {"contains": sanitized_query, "mode": "insensitive"}},
@@ -767,7 +759,7 @@ async def get_store_submissions(
         else:
             where["user_id"] = user_id
 
-        normalized_query = (search_query or "").strip()
+        normalized_query = escape_like((search_query or "").strip())
         if normalized_query:
             where["OR"] = [
                 {"name": {"contains": normalized_query, "mode": "insensitive"}},
@@ -1440,6 +1432,8 @@ async def get_my_agents(
         search_query,
     )
 
+    # Outside the try below, so a NUL in the query is a 400, not a DatabaseError.
+    normalized_query = escape_like((search_query or "").strip())
     try:
         agent_graph_filter: prisma.types.AgentGraphWhereInput = {
             "StoreListingVersions": {
@@ -1451,7 +1445,6 @@ async def get_my_agents(
             }
         }
 
-        normalized_query = (search_query or "").strip()
         if normalized_query:
             agent_graph_filter["OR"] = [
                 {"name": {"contains": normalized_query, "mode": "insensitive"}},
@@ -2113,14 +2106,7 @@ async def get_admin_listings_with_versions(
         store_listing_filter["Versions"] = {"some": {"submissionStatus": status}}
 
     if search_query:
-        # Find users with matching email
-        matching_users = await prisma.models.User.prisma().find_many(
-            where={"email": {"contains": search_query, "mode": "insensitive"}},
-        )
-
-        user_ids = [user.id for user in matching_users]
-
-        # Set up OR conditions
+        search_query = escape_like(search_query)
         store_listing_filter["OR"] = [
             {"slug": {"contains": search_query, "mode": "insensitive"}},
             {
@@ -2148,11 +2134,14 @@ async def get_admin_listings_with_versions(
                     }
                 }
             },
+            # A join, not a prefetch of matching user IDs: every owner whose
+            # email matches counts, however many there are.
+            {
+                "OwningUser": {
+                    "is": {"email": {"contains": search_query, "mode": "insensitive"}}
+                }
+            },
         ]
-
-        # Add user_id condition if any users matched
-        if user_ids:
-            store_listing_filter["OR"].append({"owningUserId": {"in": user_ids}})
 
     # Calculate pagination
     skip = (page - 1) * page_size
