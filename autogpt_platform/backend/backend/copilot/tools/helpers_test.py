@@ -2465,6 +2465,40 @@ async def test_unset_output_fields_are_left_out(dry_run: bool):
     assert response.outputs == {"file": [{"id": "file-1", "name": "Q3 report"}]}
 
 
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("dry_run", [False, True])
+async def test_an_explicit_none_in_an_output_is_kept(dry_run: bool):
+    """Only a model's unset fields are left out: a None a block puts in a
+    plain dict is data, and a consumer may treat it apart from a missing key."""
+    value = {"status": None, "nested": {"reason": None}}
+
+    async def _yield_value(*args: Any, **kwargs: Any):
+        yield "result", value
+
+    block = _make_block()
+    block.execute = _yield_value
+    credit_patch, _ = _patch_credit_db()
+    with (
+        _patch_workspace(),
+        patch("backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})),
+        credit_patch,
+        patch("backend.copilot.tools.helpers.simulate_block", _yield_value),
+    ):
+        response = await execute_block(
+            block=block,
+            block_id="block-1",
+            input_data={},
+            user_id=_USER,
+            session_id=_SESSION,
+            node_exec_id="exec-1",
+            matched_credentials={},
+            dry_run=dry_run,
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    assert response.outputs == {"result": [value]}
+
+
 # ---------------------------------------------------------------------------
 # Credential choice on unattended turns (SECRT-2804)
 # ---------------------------------------------------------------------------

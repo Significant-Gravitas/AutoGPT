@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from time import perf_counter
 from typing import Any
 
+from pydantic import BaseModel
 from pydantic_core import PydanticUndefined
 
 from backend.blocks import BlockType, get_block
@@ -376,7 +377,7 @@ async def execute_block(
                 ).from_outside(sim_error[0])
 
             # Encoded like the real run's outputs below.
-            encoded = to_dict(dict(outputs), sqlalchemy_safe=False, exclude_none=True)
+            encoded = _encode_outputs(outputs)
             return BlockOutputResponse(
                 message=f"Block '{block.name}' executed successfully",
                 block_id=block_id,
@@ -614,14 +615,8 @@ async def execute_block(
                         _collect_block_outputs(block, input_data, exec_kwargs, outputs),
                         timeout=MAX_TOOL_WAIT_SECONDS,
                     )
-                # Encoded by alias like stored graph outputs, so a Drive file keeps
-                # the `_credentials_id` the next block's picker field reads. The
-                # judge locates the outside parts as placed, so declare these.
-                # sqlalchemy_safe=False keeps keys starting with `_sa`, which
-                # the encoder drops by default.
-                encoded = to_dict(
-                    dict(outputs), sqlalchemy_safe=False, exclude_none=True
-                )
+                # The judge locates the outside parts as placed, so declare these.
+                encoded = _encode_outputs(outputs)
                 return BlockOutputResponse(
                     message=f"Block '{block.name}' executed successfully",
                     block_id=block_id,
@@ -752,6 +747,27 @@ async def execute_block(
             error=str(e),
             session_id=session_id,
         ).from_outside(str(e))
+
+
+def _encode_outputs(outputs: dict[str, list[Any]]) -> dict[str, list[Any]]:
+    """Encode block outputs by alias, as stored graph outputs are, so a Drive
+    file keeps the `_credentials_id` the next block's picker field reads.
+
+    A model leaves out its unset fields, as the response dump did for model
+    fields; an explicit None in a plain dict is data, so it stays. The encoder
+    can't tell the two apart, so models are dumped on their own first.
+    sqlalchemy_safe=False keeps keys starting with `_sa`, which the encoder
+    drops by default.
+    """
+    return to_dict(
+        dict(outputs), sqlalchemy_safe=False, custom_encoder={BaseModel: _encode_model}
+    )
+
+
+def _encode_model(model: BaseModel) -> Any:
+    return to_dict(
+        model.model_dump(by_alias=True, exclude_none=True), sqlalchemy_safe=False
+    )
 
 
 async def _debit_block_run(
