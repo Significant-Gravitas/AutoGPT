@@ -27,6 +27,7 @@ from backend.data.model import (
 )
 from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.oauth.refresh_failure import reconnect_required
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
 from backend.util.request import CREDENTIAL_REJECTED_STATUS_CODES
@@ -261,10 +262,12 @@ async def get_or_create_library_agent(
             raises LibraryAgentInAnotherOrganizationError.
 
     Returns:
-        LibraryAgent instance
+        LibraryAgent instance; an archived entry is reused as it is.
     """
     existing = await library_db().get_library_agent_by_graph_id(
         graph_id=graph.id, user_id=user_id
+    ) or await library_db().get_library_agent_by_graph_id(
+        graph_id=graph.id, user_id=user_id, include_archived=True
     )
     if existing:
         # Unique per user and graph, so another organization's entry can be
@@ -464,6 +467,9 @@ def find_matching_credential(
     """
     fits = [c for c in available_creds if _credential_fits(c, field_info)]
     if selected:
+        # A pick wins even after the provider refused its refresh: the run
+        # then asks for that account to be reconnected instead of quietly
+        # switching to another one.
         for cred in fits:
             provider = _provider_slug(cred)
             key = (
@@ -473,6 +479,11 @@ def find_matching_credential(
             )
             if selected.get(key, selected.get(provider)) == cred.id:
                 return cred
+    # A credential whose refresh the provider refused for good only yields a
+    # reconnect card; while any other fits, it must not be picked or counted
+    # as a choice. With nothing else, keep it so the card can say why.
+    healthy = [c for c in fits if reconnect_required(c) is None]
+    fits = healthy or fits
     if field_info.supported_types == {"host_scoped"} and _pinned_for(field_info):
         return None
     own = [c for c in fits if not is_system_credential(c.id)]

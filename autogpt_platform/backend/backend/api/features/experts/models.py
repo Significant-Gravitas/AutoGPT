@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from pydantic import (
     BaseModel,
     Field,
+    PrivateAttr,
     TypeAdapter,
     ValidationError,
     field_validator,
@@ -152,6 +153,10 @@ class ExpertIdentity(BaseModel):
     is_archived: bool
     # The approval mode a new web chat with this expert starts on.
     autopilot_mode: AutopilotMode | None = None
+    # When the expert joined the team: the sidebar lists a new expert before
+    # their first chat. ``None`` only where a caller builds the identity by
+    # hand without it.
+    created_at: datetime | None = None
 
     @field_validator("avatar_url")
     @classmethod
@@ -431,10 +436,26 @@ class ExpertDetachPreview(BaseModel):
 
 class HireResult(BaseModel):
     expert: Expert
+    # False when the expert was already on the team and nothing changed. Kept
+    # out of the response, which stays the expert.
+    _joined: bool = PrivateAttr(default=True)
+
+    @classmethod
+    def of(cls, expert: Expert, joined: bool) -> "HireResult":
+        result = cls(expert=expert)
+        result._joined = joined
+        return result
+
+    @property
+    def joined(self) -> bool:
+        return self._joined
 
 
 # Where a hire was made, for the ``expert_hired`` analytics event.
 HireSurface = Literal["onboarding", "expert_page", "copilot"]
+# What made it, when that is more than a person picking one expert: "plan" is
+# the onboarding plan's team hired once the trial starts.
+HireVia = Literal["plan"]
 
 
 RaiseAttachmentKind = Literal["workflow", "skill"]

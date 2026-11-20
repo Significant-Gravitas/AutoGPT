@@ -26,9 +26,11 @@ from backend.api.external.v2.mcp_server import (
     TenantedAccessToken,
     _ambiguous_credentials,
     _create_tool_handler,
+    acts_on_resources,
     create_mcp_server,
     protected_resource_metadata,
 )
+from backend.api.external.v2.mcp_tenancy import TENANTED_ARGS
 from backend.api.external.v2.rate_limit import file_upload_limiter
 from backend.copilot import usage_activation_fixtures
 from backend.copilot.gate import gate_active
@@ -38,6 +40,7 @@ from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import CARD_HINTS
 from backend.copilot.tools.models import ErrorResponse, FolderDeletedResponse
+from backend.data.tenancy import BILLING_ONLY_ORG_ROLE
 from backend.util.exceptions import GraphValidationError
 from backend.util.workspace_test import _make_workspace_file
 
@@ -257,6 +260,85 @@ def test_no_tool_that_spends_platform_money_is_unscoped():
         allowed, perms = tool.allow_external_use
         if allowed and tool.spends_platform_money:
             assert perms, f"{name} spends platform money but needs no permission"
+
+
+# The tools on the organization's workflows, runs, library and schedules: a
+# role that covers only billing may call none of them, as on REST.
+ROLE_CHECKED_TOOLS = {
+    "create_agent",
+    "customize_agent",
+    "edit_agent",
+    "find_library_agent",
+    "list_agent_triggers",
+    "create_folder",
+    "list_folders",
+    "update_folder",
+    "move_folder",
+    "delete_folder",
+    "move_agents_to_folder",
+    "list_presets",
+    "update_preset",
+    "delete_preset",
+    "list_schedules",
+    "delete_schedule",
+    "run_agent",
+    "setup_agent_webhook_trigger",
+    "view_agent_output",
+}
+
+
+def test_the_tools_on_workflows_runs_library_and_schedules_check_the_role():
+    checked = {
+        name
+        for name, tool in TOOL_REGISTRY.items()
+        if tool.allow_external_use[0]
+        and acts_on_resources([p.value for p in tool.allow_external_use[1] or []])
+    }
+
+    assert checked == ROLE_CHECKED_TOOLS
+    # Every tool that names one of the organization's rows is among them.
+    assert set(TENANTED_ARGS) <= checked
+
+
+async def test_a_role_that_covers_only_billing_cannot_call_a_tool_on_workflows(
+    mocker: pytest_mock.MockerFixture, no_tenancy_lookups: mock.AsyncMock
+):
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.get_access_token",
+        return_value=_token(*_tool_scopes("delete_folder")).model_copy(
+            update={"role_refusal": BILLING_ONLY_ORG_ROLE}
+        ),
+    )
+    run = mocker.patch.object(type(TOOL_REGISTRY["delete_folder"]), "_execute")
+
+    result = await _call("delete_folder", {"folder_id": "folder-1"})
+
+    run.assert_not_called()
+    assert result.isError
+    assert BILLING_ONLY_ORG_ROLE in result.content[0].text
+    no_tenancy_lookups.assert_not_awaited()
+
+
+async def test_a_role_that_covers_only_billing_keeps_the_other_tools(
+    mocker: pytest_mock.MockerFixture, no_tenancy_lookups: mock.AsyncMock
+):
+    tool = TOOL_REGISTRY["validate_agent_graph"]
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.get_access_token",
+        return_value=_token().model_copy(
+            update={"role_refusal": BILLING_ONLY_ORG_ROLE}
+        ),
+    )
+    run = mocker.patch.object(
+        type(tool),
+        "_execute",
+        new_callable=mock.AsyncMock,
+        return_value=ErrorResponse(message="stub", session_id=None),
+    )
+
+    await _call("validate_agent_graph", {"agent_json": {"nodes": [], "links": []}})
+
+    run.assert_awaited_once()
 
 
 @pytest.mark.parametrize(

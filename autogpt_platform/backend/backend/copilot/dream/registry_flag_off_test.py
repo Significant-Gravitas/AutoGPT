@@ -43,7 +43,7 @@ def env(monkeypatch: pytest.MonkeyPatch) -> RegistryEnv:
 
 @pytest.mark.asyncio
 async def test_turning_learning_off_leaves_its_cron_recorded(env):
-    """Community maintenance does not erase the recorded learning cron."""
+    """An ensure with learning off does not erase its recorded cron."""
     await registry.ensure_scope_scheduled(ACCOUNT)
     env.flags[LEARN] = False
 
@@ -55,7 +55,7 @@ async def test_turning_learning_off_leaves_its_cron_recorded(env):
     }
     assert env.db.rows[USER].learning_job_id == LEARNING
     reports = [await env.reconcile() for _ in range(3)]
-    assert env.scheduler.jobs == {f"community_rebuild_{USER}": PARIS, LEARNING: PARIS}
+    assert env.scheduler.jobs == {LEARNING: PARIS}
     assert all(
         not (report.dropped or report.removed or report.restored) for report in reports
     )
@@ -71,11 +71,7 @@ async def test_turning_learning_off_with_the_dream_on_leaves_both_recorded(env):
 
     row = env.db.rows[USER]
     assert (row.nightly_job_id, row.learning_job_id) == (NIGHTLY, LEARNING)
-    assert env.scheduler.jobs == {
-        f"community_rebuild_{USER}": PARIS,
-        NIGHTLY: PARIS,
-        LEARNING: PARIS,
-    }
+    assert env.scheduler.jobs == {NIGHTLY: PARIS, LEARNING: PARIS}
 
 
 @pytest.mark.asyncio
@@ -87,7 +83,7 @@ async def test_turning_the_dream_off_leaves_an_experts_crons_recorded(env):
     await registry.ensure_scope_scheduled(EXPERT)
 
     row = env.db.rows[EXPERT.scope_key]
-    assert {row.community_job_id, row.nightly_job_id} == job_ids(EXPERT)
+    assert {row.nightly_job_id} == job_ids(EXPERT)
     assert set(env.scheduler.jobs) == job_ids(EXPERT)
 
 
