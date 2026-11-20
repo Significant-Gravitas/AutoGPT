@@ -20,7 +20,7 @@ from backend.api.features.search.hybrid_search import (
 from .models import MarketplaceSearchResult, SearchContentType
 from .pagination import Page, PageRequest, page_request
 from .rate_limit import enforce, search_limiter
-from .tenancy import TenantContext, require_paid_permission
+from .tenancy import TenantContext, assert_resource_role, require_paid_permission
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,10 @@ async def search(
                 detail=f"Searching {content_type.value} requires the "
                 f"{scope.value} permission",
             )
+    # As /library/agents: the library is the organization's, so the caller's
+    # role there must cover it.
+    if SearchContentType.LIBRARY_AGENT in requested:
+        await assert_resource_role(auth)
 
     results, total_count = await unified_hybrid_search(
         query=query,

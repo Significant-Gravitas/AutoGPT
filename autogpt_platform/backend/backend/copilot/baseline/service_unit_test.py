@@ -8,12 +8,15 @@ import asyncio
 import contextlib
 import copy
 import logging
+import threading
 from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
+import httpx
 import pytest
 from graphiti_core.edges import EntityEdge
+from openai import APIError
 from openai.types.chat import ChatCompletionToolParam
 
 from backend.copilot.baseline.service import (
@@ -80,7 +83,7 @@ from backend.copilot.response_model import (
 from backend.copilot.token_tracking import _extract_cache_creation_tokens
 from backend.copilot.transcript import TranscriptDownload
 from backend.copilot.transcript_builder import TranscriptBuilder
-from backend.util.prompt import CompressResult
+from backend.util.prompt import CompressResult, estimate_token_count_str
 from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallResult
 
 
@@ -952,6 +955,52 @@ class TestBaselineCostExtraction:
         # Token accumulators are still populated so the caller can log them.
         assert state.turn_prompt_tokens == 1000
         assert state.turn_completion_tokens == 500
+
+    @pytest.mark.asyncio
+    async def test_direct_haiku_cost_uses_each_requests_full_prompt(self):
+        state = _BaselineStreamState(model="claude-haiku-5-5")
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            side_effect=[
+                _make_stream_mock(
+                    _make_usage_chunk(
+                        prompt_tokens=150_000,
+                        completion_tokens=2_000,
+                        cached_tokens=120_000,
+                        cache_creation_input_tokens=10_000,
+                    )
+                ),
+                _make_stream_mock(
+                    _make_usage_chunk(
+                        prompt_tokens=50_000,
+                        completion_tokens=1_000,
+                        cached_tokens=20_000,
+                        cache_creation_input_tokens=10_000,
+                    )
+                ),
+            ]
+        )
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_main_client",
+                return_value=mock_client,
+            ),
+            patch("backend.copilot.baseline.service.config.use_openrouter", False),
+            patch("backend.copilot.baseline.service.config.use_local", False),
+            patch(
+                "backend.copilot.baseline.service.config.baseline_prompt_cache_ttl",
+                "1h",
+            ),
+        ):
+            for expected in (0.031, 0.0357):
+                await _baseline_llm_caller(
+                    messages=[{"role": "user", "content": "hi"}],
+                    tools=[],
+                    state=state,
+                )
+                assert state.cost_usd == pytest.approx(expected)
+        assert state.turn_prompt_tokens == 200_000
+        assert state.turn_completion_tokens == 3_000
 
     @pytest.mark.asyncio
     async def test_invalid_cost_string_leaves_cost_none(self):
@@ -2807,13 +2856,10 @@ class TestDirectModeCostRecoveryOnMissingUsageChunk:
                 state=state,
             )
 
-        # With no usage chunk, _baseline_llm_caller leaves cost_usd = None.
-        # The final-fallback at stream_chat_completion_baseline level picks it
-        # up from tiktoken. At _baseline_llm_caller level cost stays None — the
-        # recovery is confirmed in TestBaselineCostExtraction (line ~749).
-        # This test specifically confirms tokens are estimated (not zero) so
-        # the outer fallback has something to work with.
-        assert state.turn_prompt_tokens > 0 or state.turn_completion_tokens >= 0
+        # With no usage chunk the request is priced from estimates of what it
+        # sent as soon as it ends, at the rate card's price for its prompt.
+        assert state.turn_prompt_tokens > 0
+        assert state.cost_usd is not None and state.cost_usd > 0
 
     @pytest.mark.asyncio
     async def test_or_mode_leaves_cost_none_when_no_usage_chunk(self):
@@ -2845,6 +2891,235 @@ class TestDirectModeCostRecoveryOnMissingUsageChunk:
 
         # OR mode: no usage.cost in chunk → cost_usd stays None (expected).
         assert state.cost_usd is None
+
+
+@contextlib.contextmanager
+def _direct_anthropic(*streams: MagicMock):
+    """Send ``_baseline_llm_caller`` to direct Anthropic, which answers each
+    request with the next of *streams* and reports no usage."""
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(side_effect=list(streams))
+    with (
+        patch("backend.copilot.baseline.service._get_main_client", return_value=client),
+        patch("backend.copilot.baseline.service.config.use_openrouter", False),
+        patch("backend.copilot.baseline.service.config.use_local", False),
+    ):
+        yield
+
+
+def _stream_answering_then(end: str) -> MagicMock:
+    """Streams some text, then the request ``completes``, fails with a
+    ``transport`` or ``provider`` error, or waits until it is ``stopped``."""
+    stream = MagicMock()
+    stream.close = AsyncMock()
+
+    async def chunks():
+        yield _make_delta_chunk(content="Partial answer")
+        if end == "transport":
+            raise httpx.RemoteProtocolError("peer closed connection")
+        if end == "provider":
+            raise APIError(
+                "Overloaded",
+                httpx.Request("POST", "https://api.anthropic.com"),
+                body=None,
+            )
+        if end == "stopped":
+            await asyncio.Event().wait()
+
+    stream.__aiter__ = lambda self: chunks()
+    return stream
+
+
+class TestUnreportedRequestPricing:
+    """A direct-Anthropic request without usage is priced when it ends."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "broken", ["estimate_token_count", "compute_anthropic_cost_usd"]
+    )
+    @pytest.mark.parametrize(
+        "end,outcome",
+        [
+            ("completes", None),
+            ("transport", httpx.RemoteProtocolError),
+            ("provider", APIError),
+            ("stopped", asyncio.CancelledError),
+        ],
+    )
+    async def test_a_pricing_failure_leaves_the_request_as_it_ended(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        broken: str,
+        end: str,
+        outcome: type[BaseException] | None,
+    ):
+        state = _BaselineStreamState(model="claude-haiku-5-5")
+        with (
+            _direct_anthropic(_stream_answering_then(end)),
+            patch(
+                f"backend.copilot.baseline.service.{broken}",
+                side_effect=RuntimeError("pricing failed"),
+            ),
+            caplog.at_level(logging.ERROR, logger="backend.copilot.baseline.service"),
+        ):
+            request = asyncio.create_task(
+                _baseline_llm_caller(
+                    messages=[{"role": "user", "content": "hi"}],
+                    tools=[],
+                    state=state,
+                )
+            )
+            if end == "stopped":
+                async with asyncio.timeout(30):
+                    while not isinstance(
+                        await state.pending_events.get(), StreamTextDelta
+                    ):
+                        pass
+                request.cancel()
+            if outcome is None:
+                assert (await request).response_text == "Partial answer"
+            else:
+                with pytest.raises(outcome):
+                    await request
+
+        # Not billed, and said so.
+        assert state.cost_usd is None
+        assert (state.turn_prompt_tokens, state.turn_completion_tokens) == (0, 0)
+        failures = [
+            record.exc_info[0]
+            for record in caplog.records
+            if record.exc_info and "Could not price" in record.getMessage()
+        ]
+        assert failures == [RuntimeError]
+
+    @pytest.mark.asyncio
+    async def test_the_tokens_are_counted_off_the_event_loop(self):
+        state = _BaselineStreamState(model="claude-haiku-5-5")
+        threads: list[int] = []
+
+        def count(messages: list[dict[str, Any]], *, model: str) -> int:
+            threads.append(threading.get_ident())
+            return 1_000
+
+        with (
+            _direct_anthropic(_make_stream_mock()),
+            patch(
+                "backend.copilot.baseline.service.estimate_token_count",
+                side_effect=count,
+            ),
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}], tools=[], state=state
+            )
+
+        assert len(threads) == 1 and threads[0] != threading.get_ident()
+        assert state.turn_prompt_tokens == 1_000
+
+    @pytest.mark.asyncio
+    async def test_the_tools_are_counted_once_and_billed_on_every_request(self):
+        state = _BaselineStreamState(model="claude-haiku-5-5")
+        tools = [_make_tool("search"), _make_tool("fetch")]
+        count_text = MagicMock(
+            side_effect=lambda value, **_: 300 if isinstance(value, list) else 7
+        )
+        with (
+            _direct_anthropic(*(_make_stream_mock() for _ in range(4))),
+            patch(
+                "backend.copilot.baseline.service.estimate_token_count",
+                return_value=1_000,
+            ),
+            patch(
+                "backend.copilot.baseline.service.estimate_token_count_str",
+                count_text,
+            ),
+        ):
+            # A turn's last round sends no tools.
+            for round_tools in (tools, tools, tools, []):
+                await _baseline_llm_caller(
+                    messages=[{"role": "user", "content": "hi"}],
+                    tools=round_tools,
+                    state=state,
+                )
+
+        assert [call.args[0] for call in count_text.call_args_list] == [tools]
+        assert state.turn_prompt_tokens == 3 * 1_300 + 1_000
+
+    @pytest.mark.asyncio
+    async def test_a_stop_while_counting_still_bills_the_request_once(self):
+        state = _BaselineStreamState(model="claude-haiku-5-5")
+        loop_thread = threading.get_ident()
+        counting, release, counted = (threading.Event() for _ in range(3))
+
+        def count(messages: list[dict[str, Any]], *, model: str) -> int:
+            if threading.get_ident() != loop_thread:
+                counting.set()
+                release.wait(timeout=30)
+                counted.set()
+            return 1_000
+
+        with (
+            _direct_anthropic(_make_stream_mock()),
+            patch(
+                "backend.copilot.baseline.service.estimate_token_count",
+                side_effect=count,
+            ),
+        ):
+            request = asyncio.create_task(
+                _baseline_llm_caller(
+                    messages=[{"role": "user", "content": "hi"}], tools=[], state=state
+                )
+            )
+            try:
+                assert await asyncio.to_thread(counting.wait, 30)
+                request.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await request
+            finally:
+                release.set()
+            assert await asyncio.to_thread(counted.wait, 30)
+
+        assert state.turn_prompt_tokens == 1_000
+        assert state.cost_usd is not None and state.cost_usd > 0
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "content",
+        [
+            # Stripped from the answer as reasoning.
+            "<thinking>Add the rows first.</thinking>The total is 42.",
+            "<thinking>Add the rows first.</thinking>",
+            # Held back as a possible tag until the stream ends.
+            "The total is 42 <thin",
+        ],
+    )
+    @pytest.mark.parametrize("dropped", [False, True])
+    async def test_text_kept_out_of_the_answer_is_billed_as_output(
+        self, content: str, dropped: bool
+    ):
+        state = _BaselineStreamState(model="claude-haiku-5-5")
+        stream = MagicMock()
+        stream.close = AsyncMock()
+
+        async def chunks():
+            yield _make_delta_chunk(content=content)
+            if dropped:
+                raise httpx.RemoteProtocolError("peer closed connection")
+
+        stream.__aiter__ = lambda self: chunks()
+        with _direct_anthropic(stream):
+            request = _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}], tools=[], state=state
+            )
+            if dropped:
+                with pytest.raises(httpx.RemoteProtocolError):
+                    await request
+            else:
+                await request
+
+        assert state.turn_completion_tokens == estimate_token_count_str(
+            content, model="claude-haiku-5-5"
+        )
+        assert state.cost_usd is not None and state.cost_usd > 0
 
 
 class TestSplitUserMessageAfterSkillsBlock:

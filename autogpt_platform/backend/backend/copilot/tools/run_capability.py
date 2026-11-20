@@ -296,7 +296,7 @@ async def _run_block(
     refs_resolved: bool = False,
 ) -> ToolResponseBase:
     if gate_denied(BLOCK_GATE):
-        return gate_denied_error("blocks", session.session_id)
+        return gate_denied_error("blocks", session.session_id, describing=validate_only)
     block_id = next(
         (impl.ref for impl in entry.implementations if impl.kind == "block"), ""
     )
@@ -393,7 +393,7 @@ async def _describe_tool(
             message=UNKNOWN_ID_HINT, session_id=session.session_id
         ).from_outside()
     if gate_denied(name):
-        return gate_denied_error(name, session.session_id)
+        return gate_denied_error(name, session.session_id, describing=True)
     return CapabilityDetailsResponse(
         message=f"{tool.description} Call again without validate_only to run.",
         capability=entry.listing(),
@@ -412,7 +412,9 @@ async def _run_skill(
     so this answers ``validate_only`` and any engine that did not.
     """
     if gate_denied(SKILL_TOOL):
-        return gate_denied_error(SKILL_TOOL, session.session_id)
+        return gate_denied_error(
+            SKILL_TOOL, session.session_id, describing=validate_only
+        )
     if validate_only:
         return describe_skill(entry, session.session_id)
     return await ReadSkillTool()._execute(
@@ -429,7 +431,9 @@ async def _run_mcp(
     validate_only: bool,
 ) -> ToolResponseBase:
     if gate_denied(MCP_GATE):
-        return gate_denied_error("MCP servers", session.session_id)
+        return gate_denied_error(
+            "MCP servers", session.session_id, describing=validate_only
+        )
     tool_name = str(payload.get("tool") or "").strip()
     arguments = payload.get("arguments")
     if arguments is not None and not isinstance(arguments, dict):
@@ -450,12 +454,16 @@ async def _run_mcp(
             session_id=session.session_id,
         ).from_outside()
     host = urlsplit(server_url).hostname or server_url
+    # Session-bound catalog options do not inherit trust from their preset.
+    catalog_server = (
+        entry is not None and resolve_entry(get_registry(), server_url) is not None
+    )
     # With the gate on it has already decided this call on the server's
     # effect map; the verb heuristic is the flag-off path only.
     if (
         tool_name
         and not session.dry_run
-        and needs_review(tool_name, catalog_server=entry is not None)
+        and needs_review(tool_name, catalog_server=catalog_server)
         and not await gate_active(user_id, session)
     ):
         review = MCPReviewPayload(
@@ -471,8 +479,8 @@ async def _run_mcp(
         )
         return ReviewRequiredResponse(
             message=(
-                f"'{tool_name}' on {host} looks like a write to a server outside the "
-                "official catalog, so it needs the user's approval. Tell the user; "
+                f"'{tool_name}' on {host} looks like a write and needs the user's "
+                "approval. Tell the user; "
                 f"after they approve, call resume_capability(review_id='{review_id}'). "
                 f"{review_card_location(session.metadata)}"
             ),

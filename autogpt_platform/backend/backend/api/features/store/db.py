@@ -8,12 +8,14 @@ import prisma.enums
 import prisma.errors
 import prisma.models
 import prisma.types
+from autogpt_libs.auth.permissions import OrgAction, TeamAction
 
 from backend.data.account_deletion import is_account_closed
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.graph import (
     GraphModel,
     GraphModelWithoutNodes,
+    foreign_sub_graph_refs,
     get_graph,
     get_graph_as_admin,
     get_sub_graphs,
@@ -21,6 +23,7 @@ from backend.data.graph import (
 from backend.data.includes import AGENT_GRAPH_INCLUDE
 from backend.data.notifications import NotificationEventModel, VerdictData
 from backend.data.profile import ensure_user_profile
+from backend.data.tenancy import require_role_where_resource_lives
 from backend.notifications.queue import queue_notification_async
 from backend.util.exceptions import (
     ConflictError,
@@ -29,6 +32,7 @@ from backend.util.exceptions import (
     PreconditionFailed,
 )
 from backend.util.settings import Settings
+from backend.util.sql import escape_like
 
 from . import exceptions as store_exceptions
 from . import model as store_model
@@ -90,6 +94,10 @@ async def get_store_agents(
     agents: list[dict[str, Any]] = []
     total = 0
     total_pages = 0
+
+    # Before the try below, which would turn this 400 into a DatabaseError.
+    if search_query and "\x00" in search_query:
+        raise ValueError("Search text must not contain NUL characters")
 
     try:
         # If search_query is provided, use hybrid search (embeddings + tsvector)
@@ -545,23 +553,10 @@ async def get_store_creators(
         where["is_featured"] = featured
 
     # Add search filter if provided, using parameterized queries
-    sanitized_query = (search_query or "").strip()[:MAX_CREATOR_SEARCH_QUERY_LENGTH]
+    sanitized_query = escape_like(
+        (search_query or "").strip()[:MAX_CREATOR_SEARCH_QUERY_LENGTH]
+    )
     if sanitized_query:
-        # Escape special SQL characters
-        sanitized_query = (
-            sanitized_query.replace("\\", "\\\\")
-            .replace("%", "\\%")
-            .replace("_", "\\_")
-            .replace("[", "\\[")
-            .replace("]", "\\]")
-            .replace("'", "\\'")
-            .replace('"', '\\"')
-            .replace(";", "\\;")
-            .replace("--", "\\--")
-            .replace("/*", "\\/*")
-            .replace("*/", "\\*/")
-        )
-
         where["OR"] = [
             {"username": {"contains": sanitized_query, "mode": "insensitive"}},
             {"name": {"contains": sanitized_query, "mode": "insensitive"}},
@@ -764,7 +759,7 @@ async def get_store_submissions(
         else:
             where["user_id"] = user_id
 
-        normalized_query = (search_query or "").strip()
+        normalized_query = escape_like((search_query or "").strip())
         if normalized_query:
             where["OR"] = [
                 {"name": {"contains": normalized_query, "mode": "insensitive"}},
@@ -820,22 +815,6 @@ async def get_store_submissions(
     except Exception:
         logger.exception("Error fetching store submissions")
         raise
-
-
-async def delete_store_submission(
-    user_id: str,
-    store_listing_version_id: str,
-    organization_id: str | None = None,
-) -> bool:
-    """`delete_store_submission_or_raise`, answering False for any failure."""
-    try:
-        await delete_store_submission_or_raise(
-            user_id, store_listing_version_id, organization_id
-        )
-        return True
-    except Exception as e:
-        logger.error(f"Error deleting store submission: {e}")
-        return False
 
 
 async def delete_store_submission_or_raise(
@@ -962,7 +941,7 @@ async def create_store_submission(
             ]
         graph = await prisma.models.AgentGraph.prisma().find_first(
             where=graph_where,
-            include={"User": {"include": {"Profile": True}}},
+            include={"User": {"include": {"Profile": True}}, "Nodes": True},
         )
 
         if not graph:
@@ -980,11 +959,26 @@ async def create_store_submission(
                     f"Workflow #{graph_id} v{graph_version} not found "
                     f"for this user (#{user_id})"
                 )
+        # The workflow can live in a team the request doesn't name.
+        await require_role_where_resource_lives(
+            user_id,
+            graph.organizationId,
+            graph.teamId,
+            OrgAction.PUBLISH_TO_STORE,
+            TeamAction.PUBLISH_AGENTS,
+        )
 
         if not graph.User or not graph.User.Profile:
             logger.warning(f"User #{user_id} does not have a Profile")
             raise PreconditionFailed(
                 "User must create a Marketplace Profile before submitting a workflow"
+            )
+
+        if foreign_refs := await foreign_sub_graph_refs(graph):
+            raise PreconditionFailed(
+                "This workflow runs sub-workflows that are neither yours nor "
+                f"published in the Marketplace: {_format_graph_refs(foreign_refs)}. "
+                "Remove them before submitting it."
             )
 
         async with transaction() as tx:
@@ -1438,6 +1432,8 @@ async def get_my_agents(
         search_query,
     )
 
+    # Outside the try below, so a NUL in the query is a 400, not a DatabaseError.
+    normalized_query = escape_like((search_query or "").strip())
     try:
         agent_graph_filter: prisma.types.AgentGraphWhereInput = {
             "StoreListingVersions": {
@@ -1449,7 +1445,6 @@ async def get_my_agents(
             }
         }
 
-        normalized_query = (search_query or "").strip()
         if normalized_query:
             agent_graph_filter["OR"] = [
                 {"name": {"contains": normalized_query, "mode": "insensitive"}},
@@ -1589,6 +1584,12 @@ async def review_store_submission(
 
         # If approving, update the listing to indicate it has an approved version
         if is_approved:
+            if foreign_refs := await foreign_sub_graph_refs(submission.AgentGraph):
+                raise PreconditionFailed(
+                    "This workflow runs sub-workflows that are neither its "
+                    "creator's nor published in the Marketplace: "
+                    f"{_format_graph_refs(foreign_refs)}, so it can't be approved."
+                )
             sub_graphs = await get_sub_graphs(submission.AgentGraph)
             async with transaction() as tx:
                 # Handle sub-agent approvals in transaction
@@ -1986,6 +1987,10 @@ def _owns_listing(
     return listing.owningUserId == user_id
 
 
+def _format_graph_refs(refs: list[tuple[str, int]]) -> str:
+    return ", ".join(f"#{graph_id} v{version}" for graph_id, version in refs)
+
+
 def _create_sub_agent_version_data(
     sub_graph: prisma.models.AgentGraph, heading: str, main_agent_name: str
 ) -> prisma.types.StoreListingVersionCreateInput:
@@ -2101,14 +2106,7 @@ async def get_admin_listings_with_versions(
         store_listing_filter["Versions"] = {"some": {"submissionStatus": status}}
 
     if search_query:
-        # Find users with matching email
-        matching_users = await prisma.models.User.prisma().find_many(
-            where={"email": {"contains": search_query, "mode": "insensitive"}},
-        )
-
-        user_ids = [user.id for user in matching_users]
-
-        # Set up OR conditions
+        search_query = escape_like(search_query)
         store_listing_filter["OR"] = [
             {"slug": {"contains": search_query, "mode": "insensitive"}},
             {
@@ -2136,11 +2134,14 @@ async def get_admin_listings_with_versions(
                     }
                 }
             },
+            # A join, not a prefetch of matching user IDs: every owner whose
+            # email matches counts, however many there are.
+            {
+                "OwningUser": {
+                    "is": {"email": {"contains": search_query, "mode": "insensitive"}}
+                }
+            },
         ]
-
-        # Add user_id condition if any users matched
-        if user_ids:
-            store_listing_filter["OR"].append({"owningUserId": {"in": user_ids}})
 
     # Calculate pagination
     skip = (page - 1) * page_size

@@ -39,7 +39,7 @@ See `backend/.env.default` for the full list with documentation. Minimum setup:
 |----------|---------|
 | `AUTOPILOT_BOT_DISCORD_TOKEN` | Discord bot token — enables the Discord (socket) adapter |
 | `AUTOPILOT_BOT_SLACK_TOKEN` + `AUTOPILOT_BOT_SLACK_SIGNING_SECRET` | Slack bot token + signing secret — set **both** to mount the Slack (webhook / Events API) adapter on the main backend API |
-| `AUTOPILOT_BOT_TELEGRAM_TOKEN` + `AUTOPILOT_BOT_TELEGRAM_WEBHOOK_SECRET` | Telegram BotFather token + webhook secret — set **both** to mount the Telegram (webhook / Bot API) adapter, then register the webhook once with `setWebhook` (see `.env.default`). Also disable group privacy mode via BotFather `/setprivacy` or the bot can't see @mentions in groups |
+| `AUTOPILOT_BOT_TELEGRAM_TOKEN` + `AUTOPILOT_BOT_TELEGRAM_WEBHOOK_SECRET` | Telegram BotFather token + webhook secret — set **both** to mount the Telegram (webhook / Bot API) adapter, then register the webhook once with `setWebhook` (see `.env.default`). Also disable group privacy mode via BotFather `/setprivacy` or the bot can't see @mentions in groups, and register the domain of `PLATFORM_LINK_BASE_URL` with BotFather `/setdomain`: a group's setup link is a Telegram sign-in button, which needs it |
 | `MICROSOFT_CLIENT_ID` + `MICROSOFT_CLIENT_SECRET` + `MICROSOFT_TENANT_ID` | Azure Bot registration — set **all three** to mount the Teams (webhook / Bot Connector) adapter, and point the bot's messaging endpoint at `/api/copilot-webhooks/teams/messages`. The tenant id is mandatory: new registrations are single-tenant only since 2025-07-31 |
 | `FRONTEND_BASE_URL` | Frontend base URL for link confirmation pages (shared with the rest of the backend) |
 | `REDIS_HOST` / `REDIS_PORT` | Session + thread subscription state + copilot stream subscription (inherited from the shared backend config) |
@@ -72,6 +72,7 @@ bot/
     │   ├── adapter.py       # Inbound event/command routes, sends, mrkdwn, attachments
     │   ├── commands.py      # Slash commands (/setup, /help, /unlink)
     │   ├── config.py        # Slack token + signing secret + platform limits
+    │   ├── file_download.py # Inbound file downloads, from Slack's file host only
     │   ├── history.py       # Thread-history fetch (paginated tail + char budget)
     │   ├── oauth.py         # Multi-workspace "Add to Slack" install flow
     │   ├── pending.py       # Pending-install flags for the Bots settings page
@@ -128,6 +129,13 @@ Teams differs from the other platforms in ways worth knowing before debugging:
 - **Mention matching is prefix-insensitive.** Teams spells a participant id
   `28:<app-id>` in some places and bare in others; `_bot_identities` accepts
   either, and also matches the activity's own `recipient.id`.
+- **Only a team owner can link a team.** The Connector doesn't say who owns a
+  team, so `/setup` asks Microsoft Graph (`graph.py`) with the app's own
+  credentials. That needs `TeamMember.Read.Group`, which the manifest requests
+  so each team grants it on install, or `TeamMember.Read.All` granted
+  tenant-wide. Without either, `/setup` is refused. The setup link then goes
+  to the owner in a private chat, never into the channel. In the Playground
+  there are no credentials to call Graph with, so `/setup` is refused there.
 
 #### Local testing without a tenant
 
@@ -146,8 +154,8 @@ rewritten to `host.docker.internal` so replies can reach it on the host
 
 `adapters/teams/` holds the sideloadable app package: `manifest.json` plus
 `color.png` (192×192) and `outline.png` (32×32, transparent, monochrome).
-Replace both `<AZURE_BOT_APP_ID>` placeholders with the Azure Bot's app id,
-then zip the three files **flat** (no containing folder):
+Replace every `<AZURE_BOT_APP_ID>` placeholder (there are three) with the Azure
+Bot's app id, then zip the three files **flat** (no containing folder):
 
 ```bash
 cd backend/copilot/bot/adapters/teams

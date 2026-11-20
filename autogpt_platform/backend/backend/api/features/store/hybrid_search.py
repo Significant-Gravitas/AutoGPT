@@ -26,6 +26,7 @@ from backend.api.features.search.hybrid_search import (
     bm25_rerank,
 )
 from backend.data.db import query_raw_with_schema
+from backend.util.sql import escape_like
 
 from .categories import category_filter_values
 
@@ -147,7 +148,8 @@ async def hybrid_search(
     query_param = f"${param_idx}"
     param_idx += 1
 
-    params.append(query.lower())
+    # The category LIKE pattern, where `%` and `_` would be wildcards.
+    params.append(escape_like(query.lower()))
     query_lower_param = f"${param_idx}"
     param_idx += 1
 

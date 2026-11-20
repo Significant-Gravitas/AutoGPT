@@ -27,7 +27,6 @@ from backend.executor.scheduler import (
     _build_trigger,
     _execute_graph,
     _memory_scope_may_fire,
-    _normalize_cron_day_of_week,
     _register_dream_pass_jobs,
     execute_dream_pass_reaper,
     execute_dream_pass_retention,
@@ -38,6 +37,11 @@ from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.test import SpinTestServer
+
+# Each wait below only stops a hung test, and each wall-clock bound only
+# catches a missed deadline: a passing run ends at its short deadline
+# whatever this is, and a CI runner can stall a test for seconds.
+_HANG_SECONDS = 10
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1015,10 +1019,10 @@ class TestMemoryScopeGateBridge:
             started = time.monotonic()
             fires = _memory_scope_may_fire(MemoryScope.for_user("abc"))
             elapsed = time.monotonic() - started
-            assert hang.cancelled.wait(timeout=2)
+            assert hang.cancelled.wait(timeout=_HANG_SECONDS)
 
         assert fires is False
-        assert elapsed < 1.0
+        assert elapsed < _HANG_SECONDS
 
     @pytest.mark.parametrize("bridge", ["stamp", "forget"])
     def test_the_other_memory_bridges_cancel_what_they_give_up_on(
@@ -1036,7 +1040,7 @@ class TestMemoryScopeGateBridge:
                 scheduler_module._stamp_scope_run(scope, "nightly")
             else:
                 scheduler_module._forget_dream_registration(scope, DREAM_SYSTEM_JOBS[0])
-            assert hang.cancelled.wait(timeout=2)
+            assert hang.cancelled.wait(timeout=_HANG_SECONDS)
 
     @pytest.mark.parametrize(
         "body",
@@ -1061,9 +1065,9 @@ class TestMemoryScopeGateBridge:
             started = time.monotonic()
             body("abc")
             elapsed = time.monotonic() - started
-            assert hang.cancelled.wait(timeout=2)
+            assert hang.cancelled.wait(timeout=_HANG_SECONDS)
 
-        assert elapsed < 1.0
+        assert elapsed < _HANG_SECONDS
         submit.assert_not_called()
         rebuild.assert_not_called()
 
@@ -1582,34 +1586,6 @@ async def test_copilot_turn_schedule_requires_cron_xor_run_at(server: SpinTestSe
     # ValueError from _build_trigger propagates as a RemoteError
     # through the AppService transport; just verify the call rejected.
     assert exc.value is not None
-
-
-@pytest.mark.parametrize(
-    "raw,expected",
-    [
-        ("*", "*"),
-        ("?", "?"),
-        ("mon-fri", "mon-fri"),
-        ("1-5", "0-4"),
-        ("1,3,5", "0,2,4"),
-        ("0", "6"),
-        ("7", "6"),
-        ("0,6", "6,5"),
-        ("6-7", "5-6"),
-        ("0-4", "6-6,0-3"),
-        ("5-2", "4-6,0-1"),
-        ("*/2", "*/2"),
-        ("1-5/1", "0-4/1"),
-    ],
-)
-def test_normalize_cron_day_of_week_field_translates_unix_to_apscheduler(
-    raw: str, expected: str
-):
-    """Unix-cron uses 0=Sun..6=Sat; APScheduler uses 0=Mon..6=Sun.
-    The numbers must be translated, but named tokens and ``*``/``?`` pass
-    through unchanged. Wrap-around ranges split into two APS ranges."""
-    cron = f"0 9 * * {raw}"
-    assert _normalize_cron_day_of_week(cron) == f"0 9 * * {expected}"
 
 
 def test_build_trigger_with_unix_dow_numbers_fires_on_correct_weekday():

@@ -39,7 +39,7 @@
     "defaults"
   ],
   "dependencies": {
-    "@ai-sdk/react": "4.0.166",
+    "@ai-sdk/react": "4.0.170",
     "@better-auth/core": "1.7.16",
     "@faker-js/faker": "10.6.0",
     "@ferrucc-io/emoji-picker": "0.1.2",
@@ -205,6 +205,7 @@
     "//shell-quote": "SECURITY PIN (dev-only): forces shell-quote exactly 1.9.0 to clear GHSA-395f-4hp3-45gv and GHSA-w7jw-789q-3m8p in the vulnerable 1.8.x line. Consumed transitively via concurrently (used by the test-storybook:ci script). Kept global rather than scoped to concurrently so any future transitive consumer also gets a patched version. Safe to remove once every consumer resolves shell-quote >=1.9.0 on its own.",
     "//katex": "SECURITY PIN: forces katex 0.18.2 to clear GHSA-238p-pmpm-9mq7 and to keep rehype-katex and @streamdown/math (both ^0.16) rendering with the same version as the katex/dist/katex.min.css stylesheet we import. 0.18 renamed layout classes (.base -> .katex-base), so a 0.16 renderer under 0.18 CSS breaks math layout. Safe to remove once both consumers depend on katex ^0.18.",
     "//ws": "SECURITY PIN (dev-only): forces ws exactly 8.21.1 to clear GHSA-58qx-3vcg-4xpx and GHSA-96hv-2xvq-fx4p in 8.19.0 pulled by happy-dom, jsdom, Storybook, and Vitest. Safe to remove once every consumer resolves ws >=8.21.0 on its own.",
+    "//next": "PATCH (#16965, #16987): patches/next@15.5.28.patch backports two upstream fixes. (1) Both halves of vercel/next.js#95391's router queue fix: in 15.5.x a server action sent while a navigation replaces a pending one is dropped and its promise never settles, which stalled the auth store's session check; and a replaced action that fails starts the next one while the navigation is still running. (2) vercel/next.js#98168: the image optimizer's internal fetch of a local image held the requester's socket, so a browser that left during a cold transform left that /_next/image URL unanswered for every later request until the server restarted. Every 15.5 release still has both bugs (15.5.29's copies of the files are identical), so the key ~15.5.28 keeps the patch on 15.5 patch releases. Delete it when upgrading to next >=16.4, which has both fixes (16.3 has only the first); pnpm then fails the install on the unused patch. src/tests/integrations/next-router-queue.ts, its next-router-queue.test.ts, next-image-optimizer.test.ts and onboarding's signup-handoff.test.tsx read Next's private dist internals, so rework or remove them along with the patch. The Dockerfiles copy patches/ before pnpm install.",
     "overrides": {
       "@opentelemetry/instrumentation": "0.209.0",
       "lodash-es": "4.17.23",
@@ -214,6 +215,9 @@
       "shell-quote": "1.9.0",
       "ws": "8.21.1",
       "eslint-plugin-react-hooks": "7.0.1"
+    },
+    "patchedDependencies": {
+      "next@~15.5.28": "patches/next@15.5.28.patch"
     }
   },
   "packageManager": "pnpm@10.20.0+sha512.cf9998222162dd85864d0a8102e7892e7ba4ceadebbf5a31f9c2fce48dfce317a9c53b9f6464d1ef9042cba2e02ae02a9f7c143a2b438cd93c91840f0192b9dd"

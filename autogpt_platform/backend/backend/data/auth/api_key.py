@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
 from autogpt_libs.api_key.keysmith import APIKeySmith
+from prisma import Prisma
 from prisma.enums import APIKeyPermission, APIKeyStatus
 from prisma.models import APIKey as PrismaAPIKey
 from prisma.types import APIKeyUpdateManyMutationInput, APIKeyWhereInput
@@ -246,6 +247,20 @@ async def revoke_api_key(
         return APIKeyInfo.from_db(e.api_key)
 
     return APIKeyInfo.from_db(updated_api_key)
+
+
+async def revoke_api_keys(db: Prisma, where: APIKeyWhereInput) -> int:
+    """Revoke every key ``where`` matches, through ``db`` (the client or a
+    transaction), and return how many were revoked.
+
+    For keys whose scope is gone, such as the ones a member made in an
+    organization they were removed from. A key revoked earlier keeps its
+    ``revokedAt``.
+    """
+    return await db.apikey.update_many(
+        where={**where, "status": {"not": APIKeyStatus.REVOKED}},
+        data={"status": APIKeyStatus.REVOKED, "revokedAt": datetime.now(timezone.utc)},
+    )
 
 
 async def revoke_user_api_keys(user_id: str) -> int:

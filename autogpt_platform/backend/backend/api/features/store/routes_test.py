@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import json
 import uuid
+from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import fastapi.testclient
@@ -10,12 +11,15 @@ import prisma.models
 import pytest
 import pytest_mock
 from autogpt_libs.auth import get_optional_user_id
+from autogpt_libs.auth.dependencies import get_request_context
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from autogpt_libs.auth.models import RequestContext
 from pydantic import BaseModel
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.store.db import StoreAgentsSortOptions
 from backend.api.utils.exceptions import add_exception_handlers
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.graph import GraphModelWithoutNodes
 
 from . import cache as store_cache
@@ -28,6 +32,7 @@ FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0)
 
 app = fastapi.FastAPI()
 app.include_router(store_routes.router)
+add_exception_handlers(app)
 
 client = fastapi.testclient.TestClient(app)
 
@@ -1094,6 +1099,94 @@ def test_post_review_rejects_out_of_range_score(
     mock_create.assert_not_called()
 
 
+def _delete_submission_version(
+    owning_org_id: str | None,
+    owning_user_id: str,
+    status: prisma.enums.SubmissionStatus,
+):
+    version = MagicMock()
+    version.id = "slv-1"
+    version.storeListingId = "sl-1"
+    version.submissionStatus = status
+    version.StoreListing = MagicMock()
+    version.StoreListing.owningOrgId = owning_org_id
+    version.StoreListing.owningUserId = owning_user_id
+    return version
+
+
+def _patch_store_listing_version(mocker: pytest_mock.MockFixture, version):
+    mock_client = AsyncMock()
+    mock_client.find_unique.return_value = version
+    mock_client.count.return_value = 1
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=mock_client
+    )
+    return mock_client
+
+
+def test_delete_submission_missing_is_404(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_client = _patch_store_listing_version(mocker, None)
+
+    response = client.delete("/submissions/missing-id")
+
+    assert response.status_code == 404
+    mock_client.delete.assert_not_called()
+
+
+def test_delete_submission_another_users_is_404(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    version = _delete_submission_version(
+        owning_org_id="other-org",
+        owning_user_id="other-user",
+        status=prisma.enums.SubmissionStatus.PENDING,
+    )
+    mock_client = _patch_store_listing_version(mocker, version)
+
+    response = client.delete("/submissions/slv-1")
+
+    assert response.status_code == 404
+    mock_client.delete.assert_not_called()
+
+
+def test_delete_submission_approved_is_400(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    version = _delete_submission_version(
+        owning_org_id=TEST_ORG_ID,
+        owning_user_id=test_user_id,
+        status=prisma.enums.SubmissionStatus.APPROVED,
+    )
+    mock_client = _patch_store_listing_version(mocker, version)
+
+    response = client.delete("/submissions/slv-1")
+
+    assert response.status_code == 400
+    assert "approved" in response.json()["detail"].lower()
+    mock_client.delete.assert_not_called()
+
+
+def test_delete_submission_pending_own_is_true(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    version = _delete_submission_version(
+        owning_org_id=TEST_ORG_ID,
+        owning_user_id=test_user_id,
+        status=prisma.enums.SubmissionStatus.PENDING,
+    )
+    mock_client = _patch_store_listing_version(mocker, version)
+
+    response = client.delete("/submissions/slv-1")
+
+    assert response.status_code == 200
+    assert response.json() is True
+    mock_client.delete.assert_called_once()
+
+
 def test_post_review_accepts_in_range_score(mocker: pytest_mock.MockFixture) -> None:
     mock_create = mocker.patch(
         "backend.api.features.store.db.create_store_review",
@@ -1161,3 +1254,73 @@ def _record_cache_info_calls(mocker: pytest_mock.MockFixture) -> list[str]:
     ):
         mocker.patch.object(cached_function, "cache_info", cache_info)
     return scans
+
+
+SUBMISSION_ROUTE_CALLS = [
+    ("get", "/submissions", None),
+    (
+        "post",
+        "/submissions",
+        {
+            "graph_id": "graph-1",
+            "graph_version": 1,
+            "slug": "a-listing",
+            "name": "A listing",
+            "sub_heading": "Does a thing",
+            "categories": ["research"],
+        },
+    ),
+    (
+        "put",
+        "/submissions/version-1",
+        {"name": "A listing", "sub_heading": "x", "categories": ["research"]},
+    ),
+    ("delete", "/submissions/version-1", None),
+]
+
+
+@pytest.mark.parametrize(
+    "billing_role",
+    ["org", "team"],
+)
+@pytest.mark.parametrize(
+    "method,path,body",
+    SUBMISSION_ROUTE_CALLS,
+    ids=[f"{m} {p}" for m, p, _ in SUBMISSION_ROUTE_CALLS],
+)
+def test_a_billing_manager_role_is_refused_marketplace_submissions(
+    mocker: pytest_mock.MockFixture,
+    method: str,
+    path: str,
+    body: dict | None,
+    billing_role: str,
+) -> None:
+    """Submitting, editing, withdrawing and listing an org's submissions need
+    a role that covers its workflows; managing billing doesn't."""
+    app.dependency_overrides[enforce_payment_paywall] = lambda: None
+    app.dependency_overrides[get_request_context] = lambda: RequestContext(
+        user_id="test-user-id",
+        org_id=TEST_ORG_ID,
+        team_id="team-1" if billing_role == "team" else None,
+        is_org_owner=False,
+        is_org_admin=False,
+        is_org_billing_manager=billing_role == "org",
+        is_team_admin=False,
+        is_team_billing_manager=billing_role == "team",
+        seat_status="ACTIVE",
+    )
+    db_calls = [
+        mocker.patch(f"backend.api.features.store.db.{name}")
+        for name in (
+            "get_store_submissions",
+            "create_store_submission",
+            "edit_store_submission",
+            "delete_store_submission_or_raise",
+        )
+    ]
+
+    response = client.request(method, path, json=body)
+
+    assert response.status_code == 403, response.text
+    for db_call in db_calls:
+        db_call.assert_not_called()

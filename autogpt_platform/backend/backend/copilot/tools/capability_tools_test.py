@@ -579,6 +579,50 @@ async def test_describe_block_collapses_large_enums_unless_expanded():
     assert len(full.block.inputs["properties"]["model"]["enum"]) == 40
 
 
+async def test_describe_block_lists_nested_output_fields_by_name_unless_expanded():
+    """A block's nested output models were most of its schema: one RMFG quote
+    cost ~23k tokens per describe (SECRT-2682). Inputs stay whole."""
+    line = {"type": "object", "properties": {"sku": {"type": "string"}}}
+    quote = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "lines": {"type": "array", "items": line},
+        },
+    }
+    details = BlockDetailsResponse(
+        message="Block 'X' details.",
+        block=BlockDetails(
+            id="b",
+            name="X",
+            description="",
+            inputs={"properties": {"config": quote}},
+            outputs={"properties": {"quote": quote}},
+        ),
+    )
+    with patch(
+        "backend.copilot.tools.describe_capability.RunBlockTool._execute",
+        AsyncMock(return_value=details.model_copy(deep=True)),
+    ):
+        collapsed = await DescribeCapabilityTool()._execute(
+            USER, make_session(USER), id="SendWebRequestBlock"
+        )
+    assert isinstance(collapsed, BlockDetailsResponse)
+    out = collapsed.block.outputs["properties"]["quote"]["properties"]
+    assert out["lines"]["items"] == {"type": "object", "field_names": ["sku"]}
+    assert collapsed.block.inputs == details.block.inputs
+    assert "expand=true" in collapsed.message
+    with patch(
+        "backend.copilot.tools.describe_capability.RunBlockTool._execute",
+        AsyncMock(return_value=details.model_copy(deep=True)),
+    ):
+        full = await DescribeCapabilityTool()._execute(
+            USER, make_session(USER), id="SendWebRequestBlock", expand=True
+        )
+    assert isinstance(full, BlockDetailsResponse)
+    assert full.block.outputs == details.block.outputs
+
+
 async def test_describe_block_honours_the_run_block_gate():
     """A withheld block's schema is part of what was withheld.
 
