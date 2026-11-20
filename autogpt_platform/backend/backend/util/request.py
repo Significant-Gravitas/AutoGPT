@@ -718,14 +718,17 @@ def _next_hop(
     redirect_url = parse_url(urljoin(url.geturl(), location))
     # Decided once, for every carrier of the credential below.
     cross_origin = _is_cross_origin(url, redirect_url)
-    drops_body = _drops_body(method, status) and not (
-        keep_post_on_same_origin and not cross_origin and status != 303
-    )
+    # The caller's opt-in: a 301 or 302 that stays on the origin keeps a POST.
+    keeps_post = keep_post_on_same_origin and not cross_origin and status in (301, 302)
+    drops_body = _drops_body(method, status) and not keeps_post
     if drops_body and method.upper() != "GET":
         # The origins only: a URL's path or query may hold a credential.
         logger.info(
-            f"A {status} redirect sent a {method.upper()} on as a GET without "
-            f"its body, from {_origin(url)} to {_origin(redirect_url)}"
+            "A %s redirect sent a %s on as a GET without its body, from %s to %s",
+            status,
+            method.upper(),
+            _origin(url),
+            _origin(redirect_url),
         )
     new_headers = _next_hop_headers(
         headers, sensitive_headers, cross_origin=cross_origin, drops_body=drops_body
@@ -863,10 +866,11 @@ class Requests:
     for a JSON-RPC endpoint, such as an MCP server's, that its server moves
     within its own origin, as nginx does to add a trailing slash.
 
-    Every hop goes to the URL its ``Location`` names, without ``params=``
-    again, through the same URL checks as the first. A hop to another origin
-    goes without the ``auth=`` and ``cookies=`` it was given, its ``Host``,
-    and any header that may carry a credential: those in
+    Every hop goes to the URL its ``Location`` names, resolved against the URL
+    the last hop requested, its ``params=`` included, and is sent without
+    ``params=`` again, through the same URL checks as the first. A hop to
+    another origin goes without the ``auth=`` and ``cookies=`` it was given,
+    its ``Host``, and any header that may carry a credential: those in
     ``SENSITIVE_HEADERS`` or ``sensitive_headers``, and any whose name
     ``is_credential_header`` reads as a credential's. A hop that stays on the
     origin keeps them all.
@@ -1137,7 +1141,11 @@ class Requests:
                     return _next_hop(
                         method,
                         response.status,
-                        parsed_url,
+                        # Resolved against the URL as requested, with the
+                        # query this send's ``params=`` added to it: a
+                        # reference without a path, such as ``#result``,
+                        # keeps that query.
+                        parsed_url._replace(query=response.url.raw_query_string),
                         location,
                         headers=req_headers,
                         drop_headers=drop_headers,

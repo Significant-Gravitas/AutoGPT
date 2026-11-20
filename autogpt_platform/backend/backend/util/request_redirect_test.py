@@ -539,6 +539,53 @@ async def test_a_hop_goes_to_exactly_the_url_its_location_names(
     assert (following.path, following.query) == (path, query)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "location, path, query",
+    [
+        # RFC 3986 §5.2: a reference without a path keeps the base's path, and
+        # its query too unless it has one of its own; a reference with a path
+        # takes only its own query.
+        ("#result", "/dir/action", "id=1"),
+        ("?page=2", "/dir/action", "page=2"),
+        ("result", "/dir/result", ""),
+        ("../other?x=1", "/other", "x=1"),
+        ("/elsewhere", "/elsewhere", ""),
+    ],
+    ids=[
+        "fragment-only",
+        "query-only",
+        "path-relative",
+        "dot-segments",
+        "path-absolute",
+    ],
+)
+async def test_a_location_is_resolved_against_the_url_as_requested(
+    location: str, path: str, query: str
+):
+    """The URL a request went to carries the query its ``params=`` added. A
+    ``Location`` is resolved against that URL, though the params are never
+    added to the next hop again."""
+    async with origins() as (first, _, received):
+        first.routes["/dir/action"] = answers(redirect(303, location), done)
+        if path != "/dir/action":
+            first.routes[path] = done
+        response = await bounded(
+            local_requests().post(
+                f"{first.base}/dir/action", params={"id": "1"}, json={"order": 1}
+            )
+        )
+
+    assert response.status == 200
+    initial, following = received
+    assert (initial.method, initial.path, initial.query) == (
+        "POST",
+        "/dir/action",
+        "id=1",
+    )
+    assert (following.method, following.path, following.query) == ("GET", path, query)
+
+
 @pytest.fixture
 def pinned_names_vetted(monkeypatch: pytest.MonkeyPatch):
     """``.invalid`` names never resolve; this vets them as 127.0.0.1, so a
