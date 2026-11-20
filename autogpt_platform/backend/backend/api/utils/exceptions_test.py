@@ -8,7 +8,7 @@ from backend.api.utils.exceptions import add_exception_handlers
 from backend.util.exceptions import MissingConfigError
 
 
-def _client(*, server_error_detail: bool) -> fastapi.testclient.TestClient:
+def _client(**handler_options: bool) -> fastapi.testclient.TestClient:
     app = fastapi.FastAPI()
 
     @app.get("/boom")
@@ -19,7 +19,11 @@ def _client(*, server_error_detail: bool) -> fastapi.testclient.TestClient:
     async def bad() -> None:
         raise ValueError("limit must be positive")
 
-    add_exception_handlers(app, server_error_detail=server_error_detail)
+    @app.get("/unconfigured")
+    async def unconfigured() -> None:
+        raise MissingConfigError("AYRSHARE_API_KEY is not configured")
+
+    add_exception_handlers(app, **handler_options)
     return fastapi.testclient.TestClient(app, raise_server_exceptions=False)
 
 
@@ -41,31 +45,23 @@ def test_a_client_error_still_says_what_was_wrong() -> None:
     assert response.json()["detail"] == "limit must be positive"
 
 
-def test_missing_config_stays_redacted_unless_rest_opts_in() -> None:
-    app = fastapi.FastAPI()
+@pytest.mark.parametrize(
+    ("handler_options", "detail"),
+    [
+        ({"server_error_detail": True}, "AYRSHARE_API_KEY is not configured"),
+        # The external APIs: hidden like any other server error.
+        ({"server_error_detail": False}, "Internal server error"),
+        # REST: other server errors hidden, the missing setting still named.
+        (
+            {"server_error_detail": False, "expose_missing_config_detail": True},
+            "AYRSHARE_API_KEY is not configured",
+        ),
+    ],
+)
+def test_a_missing_setting_is_named_unless_the_app_hides_it(
+    handler_options: dict[str, bool], detail: str
+) -> None:
+    response = _client(**handler_options).get("/unconfigured")
 
-    @app.get("/cfg")
-    async def cfg() -> None:
-        raise MissingConfigError("AYRSHARE_API_KEY is not configured")
-
-    add_exception_handlers(app, server_error_detail=False)
-    hidden = fastapi.testclient.TestClient(app, raise_server_exceptions=False).get(
-        "/cfg"
-    )
-    assert hidden.status_code == 503
-    assert hidden.json()["detail"] == "Internal server error"
-
-    rest = fastapi.FastAPI()
-
-    @rest.get("/cfg")
-    async def rest_cfg() -> None:
-        raise MissingConfigError("AYRSHARE_API_KEY is not configured")
-
-    add_exception_handlers(
-        rest, server_error_detail=False, expose_missing_config_detail=True
-    )
-    shown = fastapi.testclient.TestClient(rest, raise_server_exceptions=False).get(
-        "/cfg"
-    )
-    assert shown.status_code == 503
-    assert shown.json()["detail"] == "AYRSHARE_API_KEY is not configured"
+    assert response.status_code == 503
+    assert response.json()["detail"] == detail

@@ -61,12 +61,13 @@ def add_exception_handlers(
     Mounted sub-apps do NOT inherit exception handlers from the parent app,
     so each app instance must register its own handlers.
 
-    ``server_error_detail=False`` keeps the exception text out of 5xx bodies,
-    for an app third parties call: it can name internal services and queries.
-    4xx mappings still return ``str(exc)``. ``MissingConfigError`` (503) follows
-    ``server_error_detail`` unless ``expose_missing_config_detail`` is set:
-    REST opts in so operators still see the missing-setting message; the
-    external apps leave it unset and stay fully redacted.
+    ``server_error_detail=False`` keeps the exception text out of 5xx bodies:
+    it can name internal services, queries and file paths. 4xx bodies still say
+    what was wrong. A ``MissingConfigError`` (503) follows
+    ``server_error_detail`` unless ``expose_missing_config_detail`` says
+    otherwise. Its messages are written to be read (a setting a self-hoster
+    hasn't filled in, or "Your expert workspace is still being set up"), so the
+    REST app shows them; the external APIs keep them hidden.
     """
 
     if expose_missing_config_detail is None:
