@@ -478,31 +478,39 @@ def is_llm_model_field(field: "FieldInfo") -> bool:
 
 
 def _today() -> date:
-    """Today in UTC, against which a model's shutdown date is read."""
+    """Today in UTC, against which a model's shutdown date is read: when a
+    run starts (``Block._execute``), and by a charge or an estimate made
+    before one does. A run that has started settles on the model it recorded
+    then (``NodeExecutionStats.resolved_model``), whatever the date."""
     return datetime.now(timezone.utc).date()
 
 
-def scheduled_model_fallback(value: object) -> "tuple[LLMModel, date | None] | None":
-    """*value*'s catalog fallback and the day blocks start running it (None:
-    at once), whether or not that day has come; None when it has none. Takes
-    any spelling the enum takes (``openai/gpt-5-2025-08-07`` too)."""
+def llm_model_named(value: object) -> "LLMModel | None":
+    """The ``LLMModel`` *value* names, in any spelling the enum takes
+    (``openai/gpt-5-2025-08-07`` too); None when it names none."""
     if not isinstance(value, str):
         return None
     try:
-        return RETIRED_MODEL_FALLBACKS.get(LLMModel(value))
+        return LLMModel(value)
     except (ValueError, RecursionError):
         # Hundreds of provider prefixes recurse through ``_missing_``. Such a
         # value is unknown, and the block's input check refuses it as before.
         return None
 
 
+def scheduled_model_fallback(value: object) -> "tuple[LLMModel, date | None] | None":
+    """*value*'s catalog fallback and the day blocks start running it (None:
+    at once), whether or not that day has come; None when it has none. Takes
+    any spelling the enum takes (``openai/gpt-5-2025-08-07`` too)."""
+    model = llm_model_named(value)
+    return None if model is None else RETIRED_MODEL_FALLBACKS.get(model)
+
+
 def resolved_model_value(value: object) -> str:
     """The ``LLMModel`` value *value* resolves to, as a log names it: the
     enum's spelling, not the stored one. Its text when it resolves to none."""
-    try:
-        return LLMModel(value).value
-    except (ValueError, RecursionError):
-        return str(value)
+    model = llm_model_named(value)
+    return str(value) if model is None else model.value
 
 
 def retired_model_fallback(value: object) -> "LLMModel | None":
