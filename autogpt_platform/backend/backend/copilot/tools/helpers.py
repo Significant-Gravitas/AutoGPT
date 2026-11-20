@@ -46,7 +46,11 @@ from backend.data.db_accessors import (
 )
 from backend.data.execution import ExecutionContext
 from backend.data.expert_spend import add_weekly_spend
-from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
+from backend.data.model import (
+    USER_TIMEZONE_NOT_SET,
+    CredentialsFieldInfo,
+    CredentialsMetaInput,
+)
 from backend.executor.auto_credentials import (
     MissingAutoCredentialsError,
     acquire_auto_credentials,
@@ -401,9 +405,9 @@ async def execute_block(
         # get_user_by_id raises ValueError on missing user; fall back to UTC
         # so an orphaned-session block call still runs instead of crashing.
         try:
-            user_timezone = get_user_timezone_or_utc(
-                (await user_db().get_user_by_id(user_id)).timezone
-            )
+            user_timezone = (await user_db().get_user_by_id(user_id)).timezone
+            if user_timezone != USER_TIMEZONE_NOT_SET:
+                user_timezone = get_user_timezone_or_utc(user_timezone)
         except ValueError:
             user_timezone = "UTC"
 

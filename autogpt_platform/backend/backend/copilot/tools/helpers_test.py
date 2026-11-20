@@ -13,6 +13,7 @@ from backend.blocks._base import BlockType
 from backend.blocks.apollo.models import Contact
 from backend.blocks.exa.search import ExaSearchBlock
 from backend.blocks.google._drive import GoogleDriveFile
+from backend.blocks.time_blocks import GetCurrentTimeBlock
 from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
 from backend.copilot.context import set_turn_unattended
 from backend.copilot.credential_selection import CredentialPin, set_turn_credential_pins
@@ -39,6 +40,7 @@ from backend.copilot.tools.models import (
     SetupRequirementsResponse,
 )
 from backend.data.model import (
+    USER_TIMEZONE_NOT_SET,
     APIKeyCredentials,
     CredentialsFieldInfo,
     CredentialsMetaInput,
@@ -175,6 +177,59 @@ def _patch_credit_db(
         ),
         mock_credit,
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    ("profile_timezone", "use_user_timezone", "expected_offset"),
+    [
+        (USER_TIMEZONE_NOT_SET, True, "+0900"),
+        ("Asia/Kolkata", True, "+0530"),
+        ("UTC", True, "+0000"),
+        ("Invalid/Timezone", True, "+0000"),
+        (None, True, "+0000"),
+        ("UTC", False, "+0900"),
+    ],
+)
+async def test_execute_time_block_uses_profile_or_configured_timezone(
+    profile_timezone: str | None,
+    use_user_timezone: bool,
+    expected_offset: str,
+) -> None:
+    block = GetCurrentTimeBlock()
+    with (
+        _patch_workspace(),
+        _patch_user_db() as user_accessor,
+        patch(
+            "backend.copilot.tools.helpers.block_usage_cost",
+            return_value=(0, {}),
+        ),
+    ):
+        user_accessor.return_value.get_user_by_id.return_value.timezone = (
+            profile_timezone
+        )
+        result = await execute_block(
+            block=block,
+            block_id=block.id,
+            input_data={
+                "trigger": "timezone regression",
+                "format_type": {
+                    "discriminator": "strftime",
+                    "format": "%z",
+                    "timezone": "Asia/Tokyo",
+                    "use_user_timezone": use_user_timezone,
+                },
+            },
+            user_id=_USER,
+            session_id=_SESSION,
+            node_exec_id="exec-timezone",
+            matched_credentials={},
+            dry_run=False,
+        )
+
+    assert isinstance(result, BlockOutputResponse), result
+    assert result.success is True
+    assert result.outputs == {"time": [expected_offset]}
 
 
 # ---------------------------------------------------------------------------
