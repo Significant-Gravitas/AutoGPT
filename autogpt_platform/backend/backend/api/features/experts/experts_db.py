@@ -31,6 +31,9 @@ from backend.api.features.experts.credentials import (
     revoke_expert_credential as revoke_expert_credential,
 )
 from backend.api.features.experts.credentials import (
+    seeded_expert_credential_ids as seeded_expert_credential_ids,
+)
+from backend.api.features.experts.credentials import (
     settle_credential_seed as settle_credential_seed,
 )
 from backend.api.features.experts.errors import (
