@@ -92,4 +92,22 @@ describe("useIsReadOnlyGraph", () => {
 
     expect(result.current.isReadOnly).toBe(true);
   });
+
+  it("stays editable for the owner when fetching a loaded graph again fails", () => {
+    mockGraph = { id: "graph-1", user_id: "user-1" };
+    mockIsGraphError = true;
+
+    const { result } = renderHook(() => useIsReadOnlyGraph());
+
+    expect(result.current.isReadOnly).toBe(false);
+  });
+
+  it("stays read-only for another user when fetching the graph again fails", () => {
+    mockGraph = { id: "graph-1", user_id: "other-user" };
+    mockIsGraphError = true;
+
+    const { result } = renderHook(() => useIsReadOnlyGraph());
+
+    expect(result.current.isReadOnly).toBe(true);
+  });
 });

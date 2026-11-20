@@ -926,6 +926,27 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="google/gemini-4-neon",
+                display_name="Gemini 4 Neon",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=3,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Live OpenRouter listing 2026-11-19: $3/$15 per Mtok,
+                # cache read $0.15/1M, cache write $0.0833/1M.
+                cost=CatalogModelCost(
+                    run_credits=8,
+                    input_credits_per_1m=450.0,
+                    output_credits_per_1m=2250.0,
+                    cache_read_credits_per_1m=22.5,
+                    cache_creation_credits_per_1m=12.5,
+                ),
+            ),
+            CatalogModel(
                 slug="google/gemma-4-31b-it",
                 display_name="Gemma 4 31B",
                 provider="open_router",
