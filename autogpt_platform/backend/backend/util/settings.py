@@ -250,7 +250,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=1500,
         description=(
             "Wall-clock cap on a single LLM provider request, covering the whole "
-            "generation (the block path is non-streaming). Raising it lengthens how "
+            "generation (the block path is non-streaming). An LLM block's retries "
+            "share it, each getting what is left. Raising it lengthens how "
             "long a stalled provider holds one of `num_graph_workers` slots. "
             "AgentExecutor and expert blocks opt out of the per-node cap, so for those "
             "this is the only per-call wall-clock bound."

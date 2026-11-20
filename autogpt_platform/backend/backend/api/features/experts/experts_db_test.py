@@ -6294,6 +6294,23 @@ async def test_list_templates_filters_by_category(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_search_matches_underscores_literally(
+    server: SpinTestServer,
+):
+    """A roster search is a literal substring match: `_` is the character,
+    not a one-character wildcard (#15660)."""
+    suffix = uuid.uuid4().hex[:8]
+    named = await _template(f"first_last {suffix}")
+    lookalike = await _template(f"firstxlast {suffix}")
+
+    found = await experts_db.list_templates(search_query=f"first_last {suffix}")
+
+    listed = {t.id for t in found}
+    assert named.id in listed
+    assert lookalike.id not in listed
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_list_templates_category_filter_accepts_a_legacy_alias(
     server: SpinTestServer,
 ):
