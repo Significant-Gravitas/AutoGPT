@@ -7,8 +7,8 @@ function BotsDashboard() {
     <div className="mx-auto p-6">
       <div className="flex flex-col gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Bot Analytics</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-heading font-bold">Bot Analytics</h1>
+          <p className="text-foreground-tertiary">
             Usage, reach and reliability across every live expert bot. No
             message content or user identity is collected — only aggregate
             counts and metrics.

@@ -16,7 +16,7 @@ interface Props {
 
 export function QueueFooter({ rejectAll, onContinue, busy }: Props) {
   return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-separator bg-surface-muted/60 px-4 py-2 text-sm">
+    <div className="flex flex-wrap items-center gap-2 border-t border-separator bg-surface-muted/60 px-4 py-2 text-body">
       {rejectAll?.confirming ? (
         <>
           <span role="alert" className="text-foreground-body">
@@ -26,7 +26,7 @@ export function QueueFooter({ rejectAll, onContinue, busy }: Props) {
           <Button
             size="xs"
             variant="primary"
-            className="rounded-full"
+            shape="pill"
             disabled={busy}
             onClick={rejectAll.onConfirm}
           >
@@ -35,7 +35,7 @@ export function QueueFooter({ rejectAll, onContinue, busy }: Props) {
           <Button
             size="xs"
             variant="ghost"
-            className="rounded-full"
+            shape="pill"
             onClick={rejectAll.onCancel}
           >
             Cancel
@@ -44,8 +44,7 @@ export function QueueFooter({ rejectAll, onContinue, busy }: Props) {
       ) : rejectAll ? (
         <Button
           variant="link"
-          size="small"
-          className="h-auto min-w-0 px-0 py-0 text-sm"
+          size="inline"
           disabled={busy}
           onClick={rejectAll.onAsk}
         >

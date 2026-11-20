@@ -24,14 +24,14 @@ export async function signupTestUser(
   const userEmail = email || faker.internet.email();
   const userPassword = password || faker.internet.password({ length: 12 });
 
-  const { getText, getField, getButton, getId } = getSelectors(page);
+  const { getField, getButton, getId } = getSelectors(page);
 
   try {
     // Navigate to signup page
     await page.goto("/signup");
 
-    // Wait for the hydrated form, not the server-rendered loading shell.
-    await getText("Create your account").waitFor({ state: "visible" });
+    // The form is in the server HTML; Sign up is enabled once it's hydrated.
+    await expect(getButton("Sign up")).toBeEnabled({ timeout: 15_000 });
 
     // Fill form
     const emailInput = getField("Email");
@@ -39,8 +39,6 @@ export async function signupTestUser(
     await expect(emailInput).toHaveValue(userEmail);
     const passwordInput = page.locator("#password");
     await passwordInput.fill(userPassword);
-    const confirmPasswordInput = page.locator("#confirmPassword");
-    await confirmPasswordInput.fill(userPassword);
 
     const signupButton = getButton("Sign up");
     await signupButton.click();

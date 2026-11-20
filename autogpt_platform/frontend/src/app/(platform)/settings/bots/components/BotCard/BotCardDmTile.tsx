@@ -61,7 +61,7 @@ export function BotCardDmTile({
           Unlink
         </Button>
       ) : (
-        <span className="inline-flex items-center gap-1 text-xs text-foreground-tertiary">
+        <span className="inline-flex items-center gap-1 text-caption text-foreground-tertiary">
           <Icon icon={Link01Icon} size={14} /> Not linked
         </span>
       )}

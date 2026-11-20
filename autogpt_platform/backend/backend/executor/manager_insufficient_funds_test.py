@@ -86,7 +86,10 @@ async def test_handle_insufficient_funds_sends_discord_alert_first_time(
         mock_client.discord_system_alert.assert_called_once()
         discord_message = mock_client.discord_system_alert.call_args[0][0]
         assert "Insufficient Funds Alert" in discord_message
-        assert "test@example.com" in discord_message
+        assert "test@example.com" not in discord_message
+        assert f"`{user_id}`" in discord_message
+        assert f"https://test.com/admin/spending?search={user_id}" in discord_message
+        mock_db_client.get_user_email_by_id.assert_not_called()
         assert "Test Agent" in discord_message
 
 
@@ -180,7 +183,6 @@ async def test_handle_insufficient_funds_different_agents_get_separate_alerts(
         mock_graph_metadata = MagicMock()
         mock_graph_metadata.name = "Test Agent"
         mock_db_client.get_graph_metadata.return_value = mock_graph_metadata
-        mock_db_client.get_user_email_by_id.return_value = "test@example.com"
 
         # First agent notification
         billing.handle_insufficient_funds_notif(
@@ -337,7 +339,6 @@ async def test_handle_insufficient_funds_continues_on_redis_error(
         mock_graph_metadata = MagicMock()
         mock_graph_metadata.name = "Test Agent"
         mock_db_client.get_graph_metadata.return_value = mock_graph_metadata
-        mock_db_client.get_user_email_by_id.return_value = "test@example.com"
 
         # Test the insufficient funds handler
         billing.handle_insufficient_funds_notif(

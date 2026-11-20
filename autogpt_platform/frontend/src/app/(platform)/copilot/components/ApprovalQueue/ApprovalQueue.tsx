@@ -110,7 +110,7 @@ export function ApprovalQueue({
         onShow={null}
       />
       {showModeLine && pending.length > 0 && (
-        <p className="border-b border-separator px-4 py-2 text-sm text-foreground-tertiary">
+        <p className="border-b border-separator px-4 py-2 text-body text-foreground-tertiary">
           {modeLine(mode)}
         </p>
       )}

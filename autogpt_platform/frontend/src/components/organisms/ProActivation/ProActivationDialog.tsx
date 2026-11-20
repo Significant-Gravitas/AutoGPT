@@ -73,7 +73,7 @@ export function ProActivationDialog({ activation }: Props) {
             <div
               role="alert"
               data-slot="pro-activation-dialog-error"
-              className="rounded-large border border-warning-border bg-warning-surface p-4 text-sm text-foreground-body"
+              className="rounded-large border border-warning-border bg-warning-surface p-4 text-body text-foreground-body"
             >
               {error}
             </div>
@@ -83,16 +83,12 @@ export function ProActivationDialog({ activation }: Props) {
               <ActivationTerms terms={review} />
               <ActivationPaymentMethod />
               {expiry.expiringSoon && !retryConsent && (
-                <Text variant="small" className="text-warning-foreground">
+                <Text variant="small" tone="warning">
                   This price is held for a few more minutes.
                 </Text>
               )}
               {expiry.expired && !retryConsent && (
-                <Text
-                  variant="small"
-                  className="text-warning-foreground"
-                  role="status"
-                >
+                <Text variant="small" tone="warning" role="status">
                   This quote has expired. Review the current terms before
                   paying.
                 </Text>
@@ -134,7 +130,8 @@ export function ProActivationDialog({ activation }: Props) {
               )}
               <Button
                 variant="link"
-                className="w-full text-foreground-secondary"
+                tone="secondary"
+                className="w-full"
                 onClick={() => setOpen(false)}
               >
                 Not now

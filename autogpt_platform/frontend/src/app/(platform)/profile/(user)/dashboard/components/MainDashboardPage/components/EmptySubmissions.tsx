@@ -4,7 +4,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function EmptySubmissions() {
   return (
-    <div className="flex min-h-[400px] flex-col items-center justify-center rounded-lg border border-border-base bg-background">
+    <div className="flex min-h-[400px] flex-col items-center justify-center rounded-lg border border-border-base bg-canvas">
       <div className="flex flex-col items-center gap-4 text-center">
         <div className="rounded-full bg-surface-hover p-3 text-foreground-tertiary">
           <Icon icon={InboxIcon} className="h-8 w-8" />

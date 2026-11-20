@@ -31,7 +31,6 @@ export interface ExpertAccent {
 }
 
 /* oxlint-disable design-system/no-arbitrary-values -- the accent washes and glossy chip glows are gradients and shadows with no token */
-/* oxlint-disable design-system/no-raw-colors -- the sky accent has no role; info would turn it blue (deferred) */
 const ACCENTS: Record<string, ExpertAccent> = {
   violet: {
     wash: "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(139,92,246,0.10),transparent_70%)]",
@@ -57,10 +56,10 @@ const ACCENTS: Record<string, ExpertAccent> = {
     wash: "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(14,165,233,0.10),transparent_70%)]",
     washWide:
       "bg-[linear-gradient(180deg,rgba(14,165,233,0.10),rgba(14,165,233,0.03)_60%,transparent)]",
-    pill: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-600/10",
-    band: "bg-sky-50/60",
-    chip: "bg-gradient-to-b from-surface to-sky-50 text-sky-800 ring-1 ring-inset ring-sky-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(14,165,233,0.12),0_0_18px_-4px_rgba(14,165,233,0.45)]",
-    icon: "text-sky-500",
+    pill: "bg-info-surface text-sky-foreground ring-1 ring-inset ring-sky-foreground/10",
+    band: "bg-info-surface/60",
+    chip: "bg-gradient-to-b from-surface to-info-surface text-sky-foreground ring-1 ring-inset ring-sky/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(14,165,233,0.12),0_0_18px_-4px_rgba(14,165,233,0.45)]",
+    icon: "text-sky",
     roleIcon: Settings01Icon,
   },
   zinc: {
@@ -74,7 +73,6 @@ const ACCENTS: Record<string, ExpertAccent> = {
     roleIcon: Briefcase01Icon,
   },
 };
-/* oxlint-enable design-system/no-raw-colors */
 /* oxlint-enable design-system/no-arbitrary-values */
 
 const ROLE_ACCENTS: Array<[RegExp, string]> = [

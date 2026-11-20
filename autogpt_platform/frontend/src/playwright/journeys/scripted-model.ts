@@ -59,6 +59,18 @@ export async function requireScriptedModel() {
   }
 }
 
+/**
+ * Lets the run's held reply (a turn with `stream.hold_after_words`) finish
+ * streaming, once the journey has done what it held the reply open for.
+ */
+export async function releaseHeldReply(nonce: string) {
+  const response = await fetch(
+    `${SCRIPTED_MODEL_URL}/__scripted__/release?nonce=${encodeURIComponent(nonce)}`,
+    { method: "POST" },
+  );
+  expect(response.ok, `POST release: ${response.status}`).toBe(true);
+}
+
 /** Every model request a run made, oldest first. */
 export async function readJournal(nonce: string) {
   const response = await fetch(
@@ -99,35 +111,46 @@ export function expectEachTurnOnce(
 
 /**
  * Checks the copilot's cost ledger charged the user exactly what the model
- * billed for its turns: every turn once, none missed, none twice. Each ledger
- * row may be off by rounding, as the backend's billing audit allows.
+ * billed the runs (`nonces`) for their turns and side calls (the chat's
+ * title): every request once, none missed, none twice. Each ledger row may be
+ * off by rounding, as the backend's billing audit allows. The journal and the
+ * ledger are re-read until they agree, and only once every run has asked for
+ * its title, which happens in the background.
  *
- * Side calls (the chat's title) are left out. The platform shares one OpenAI
- * client across the copilot executor's worker event loops
- * (`_get_aux_client` in backend/copilot/service.py), so a title request that
- * lands on another loop's pooled connection is sent twice: the provider
- * answers and bills both, the platform records one. Include them once that's
- * fixed.
+ * The ledger is the user's whole copilot ledger, so it needs a brand-new user;
+ * an existing account (PLAYWRIGHT_JOURNEY_EMAIL) carries earlier chats'
+ * charges, and the check is skipped there.
  */
 export async function expectChargedWhatWasBilled(
   userID: string,
-  journal: JournalEntry[],
+  nonces: string[],
 ) {
-  const billed = journal
-    .filter((entry) => entry.kind === "turn")
-    .reduce(
-      (sum, entry) => sum + Math.round((entry.cost_usd ?? 0) * 1_000_000),
-      0,
-    );
-  expect(billed, "the model should bill the run").toBeGreaterThan(0);
+  test.skip(
+    Boolean(process.env.PLAYWRIGHT_JOURNEY_EMAIL),
+    "the charge check reads the user's whole cost ledger, so it needs a brand-new user",
+  );
   await expect(async () => {
-    const rows = (await copilotCostRows(userID)).filter(
-      (row) => row.blockName !== "copilot:title",
-    );
+    const journals = await Promise.all(nonces.map(readJournal));
+    // Compared before a title went out, the totals would agree without it.
+    expect(
+      nonces.filter(
+        (_, run) => !journals[run].some((entry) => entry.kind === "side_call"),
+      ),
+      "every chat should have asked for its title",
+    ).toEqual([]);
+    const billed = journals
+      .flat()
+      .filter((entry) => entry.kind === "turn" || entry.kind === "side_call")
+      .reduce(
+        (sum, entry) => sum + Math.round((entry.cost_usd ?? 0) * 1_000_000),
+        0,
+      );
+    expect(billed, "the model should bill the run").toBeGreaterThan(0);
+    const rows = await copilotCostRows(userID);
     const charged = rows.reduce((sum, row) => sum + row.costMicrodollars, 0);
     expect(
       Math.abs(charged - billed),
-      `charged ${charged} microdollars for turns billed ${billed}: ` +
+      `charged ${charged} microdollars for requests billed ${billed}: ` +
         JSON.stringify(rows),
     ).toBeLessThanOrEqual(2 * Math.max(rows.length, 1));
   }, "the chat should be charged exactly what the model billed").toPass({

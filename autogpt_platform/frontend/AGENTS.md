@@ -53,12 +53,13 @@ Do NOT skip these steps. If any command reports errors, fix them and re-run unti
 - **React Compiler folders** — the compiler builds the folders in `reactCompilerSources` (`next.config.mjs`: the copilot and the chat organisms `Conversation`, `Message` and `PromptInput`). There the `react-hooks` compiler rules and `exhaustive-deps` are errors (warnings everywhere else), oxlint's `autogpt/no-manual-memo` rejects new `useMemo`/`useCallback`, `"use memo"`/`"use no memo"` and any `memo()` without a `// memo-boundary: <why>` comment above it, and `autogpt/no-hookless-use-function` rejects a `use*` function that calls no hook. `src/reactCompilerCoverage.test.ts` fails on any compiler bailout missing from its `KNOWN_BAILOUTS`. Code written before these rules is grandfathered (`.eslintrc.json` overrides, `scripts/eslint-rules/manual-memo-baseline.json`); those lists can only shrink, and the tests fail when an entry is fixed but not removed
 - **File length** — keep files under ~200 lines; extract sub-components or hooks into their own files when a file grows beyond this
 - **Function/component length** — keep render functions and hooks under ~50 lines; extract named helpers or sub-components when they grow longer
+- **Rate limits are documented** — a PR that adds, removes or changes a sign-in, email or other rate limit updates `docs/platform/rate-limits.md`, and one that changes how the visitor's IP address is found updates `docs/platform/client-ip.md`, in the same PR
 
 ### Taste (design system)
 
 The full rules are in `docs/engineering/design-system.md`; `pnpm lint` enforces them as `design-system/*` rules, and each error names the token or component to use instead.
 
-- **Colour** comes from role tokens (`bg-surface`, `text-foreground-secondary`, `border-border-base`, `bg-error-surface`), never raw palette classes (`bg-zinc-200`), hex or `rgb()` values (`bg-[#fff]`). Migrating a class keeps its value: same value, new name; if no role has it, leave it with `// TODO(tokens)` rather than picking the nearest role.
+- **Colour** comes from the role tokens in `src/app/tokens/theme.css` (`bg-surface`, `text-foreground-secondary`, `border-border-base`, `bg-error-surface`, `bg-orange/10`), never shadcn names (`bg-background`, `text-muted-foreground`), raw palette classes (`bg-zinc-200`), hex or `rgb()` values (`bg-[#fff]`); in a string, `rgb(var(--color-<role>))`. Tailwind's palette is reset, so a palette class renders nothing. `design-system/no-shadcn-alias-colours`, `no-raw-palette-classes`, `no-hex-colours` and `no-arbitrary-colour` fail them; artwork, logos, chart series and user-picked palettes go in `ds-colour-exempt.json` with a reason, never a suppression comment. `scripts/ds/palette-map.json` names the role for each palette class.
 - **No `dark:` or `light:` classes.** They never render; the tokens carry the theme.
 - **Primitives own their look.** Pick a `variant`, `size` or `tone`; `className` is for layout (on `Text` also truncation, line clamping, wrapping, breaking, `text-balance`/`text-pretty` and alignment). Text goes through the `Text` atom, icons through the `Icon` atom with Hugeicons.
 - **No legacy UI:** nothing from `src/components/__legacy__`, `legacy/` paths, `@/components/ui`, `LegacyButton` or `legacy-*` Button variants.
@@ -76,7 +77,7 @@ The full rules are in `docs/engineering/design-system.md`; `pnpm lint` enforces 
 - **Workflow Builder**: Visual graph editor using @xyflow/react
 - **UI Components**: shadcn/ui (Radix UI primitives) with Tailwind CSS styling
 - **Icons**: Hugeicons (stroke-rounded) only, rendered through the `Icon` atom
-- **Feature Flags**: read from the backend's `/api/feature-flags` by default, which answers from PostHog
+- **Feature Flags**: read from the backend's `/api/feature-flags`, which answers from PostHog
 - **Error Handling**: ErrorCard for render errors, toast for mutations, Sentry for exceptions
 - **Testing**: Vitest + React Testing Library + MSW for integration tests (primary), Playwright for E2E, Storybook for visual
 

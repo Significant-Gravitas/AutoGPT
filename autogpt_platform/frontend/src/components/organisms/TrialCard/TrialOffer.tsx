@@ -38,7 +38,7 @@ export function TrialOffer({ trial, isStarting, isBlocked, onStart }: Props) {
             No charge today
           </span>
         </div>
-        <Text variant="body" className="!text-foreground-emphasis">
+        <Text variant="body" tone="emphasis">
           Card required. No subscription charge today. Then{" "}
           {formatTrialPrice(offer)}, plus applicable tax, unless you cancel
           before the trial ends.

@@ -18,13 +18,15 @@ import {
 import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
-import { SuggestedTaskCards } from "../SuggestedTasks/SuggestedTaskCards";
+import { SuggestedTasksBlock } from "../SuggestedTasks/SuggestedTasksBlock";
+import type { useCollapsedSuggestions } from "../SuggestedTasks/useCollapsedSuggestions";
 import type { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
 
 interface Props {
   name: string | null;
   greeting: string;
   suggestions: ReturnType<typeof useSuggestedTasks>;
+  collapse: ReturnType<typeof useCollapsedSuggestions>;
   transcript?: string;
   disabled?: boolean;
 }
@@ -55,11 +57,14 @@ export function OnboardingIntroCard({
   name,
   greeting,
   suggestions,
+  collapse,
   transcript = "",
   disabled = false,
 }: Props) {
   const prefersReducedMotion = useReducedMotion();
   const [isCopied, setIsCopied] = useState(false);
+  const hasTasks = suggestions.tasks.length > 0;
+  const isListHeld = hasTasks && !suggestions.isRosterLoaded;
   const { toast } = useToast();
 
   async function handleCopyTranscript() {
@@ -137,11 +142,7 @@ export function OnboardingIntroCard({
                   className="rounded-full p-2 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
                 >
                   {isCopied ? (
-                    <Icon
-                      icon={Tick02Icon}
-                      size={16}
-                      className="text-success"
-                    />
+                    <Icon icon={Tick02Icon} size={16} tone="success" />
                   ) : (
                     <Icon icon={Copy01Icon} size={16} />
                   )}
@@ -163,25 +164,28 @@ export function OnboardingIntroCard({
         </Text>
       </motion.div>
 
-      {suggestions.tasks.length > 0 && (
+      {hasTasks && (
         <motion.div {...reveal(promptsStart)} className="mt-5">
-          <SuggestedTaskCards
-            tasks={suggestions.tasks}
-            sendingId={suggestions.sendingId}
+          <SuggestedTasksBlock
+            suggestions={suggestions}
+            collapse={collapse}
             disabled={disabled}
-            onSend={suggestions.sendTask}
-            onHide={suggestions.hideTask}
+            showTeam
           />
         </motion.div>
       )}
 
-      <motion.div {...reveal(footerStart)}>
-        <Text variant="body" tone="muted" className="mt-5">
-          {suggestions.tasks.length > 0
-            ? "Want to do something else? Just write it in the textbox below."
-            : "Tell me what you'd like to start with in the textbox below."}
-        </Text>
-      </motion.div>
+      {/* Folded away with the list, and held back with it while the team
+          can't be read: it would point at a list that isn't there. */}
+      {(hasTasks && collapse.isCollapsed) || isListHeld ? null : (
+        <motion.div {...reveal(footerStart)}>
+          <Text variant="body" tone="muted" className="mt-5">
+            {hasTasks
+              ? "Want to do something else? Just write it in the textbox below."
+              : "Tell me what you'd like to start with in the textbox below."}
+          </Text>
+        </motion.div>
+      )}
     </div>
   );
 }

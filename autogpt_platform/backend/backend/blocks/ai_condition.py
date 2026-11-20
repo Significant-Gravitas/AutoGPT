@@ -26,7 +26,11 @@ from backend.blocks.llm import (
 from backend.data.model import APIKeyCredentials, NodeExecutionStats, SchemaField
 
 # Minimum max_output_tokens accepted by OpenAI-compatible APIs.
-# A true/false answer fits comfortably within this budget.
+# A true/false answer fits comfortably within this budget. A model that reasons
+# or thinks before answering would spend it on that, so on a call this small
+# the provider layer asks it for its least reasoning, and raises the cap for a
+# model that still reasons (``small_call_openai_reasoning``,
+# ``small_call_anthropic_thinking``, ``small_call_reasoning``).
 MIN_LLM_OUTPUT_TOKENS = 16
 
 
@@ -153,6 +157,7 @@ class AIConditionBlock(AIBlockBase):
             force_json_output=False,
             max_tokens=max_tokens,
             execution_context=execution_context,
+            on_abandoned=self.merge_stats,
         )
 
     async def run(
@@ -210,12 +215,8 @@ class AIConditionBlock(AIBlockBase):
             execution_context=kwargs.get("execution_context"),
         )
 
-        # Extract the boolean result from the response
-        result, error = _parse_boolean_response(response.response)
-        if error:
-            yield "error", error
-
-        # Update internal stats
+        # Record the call's usage before any output: an error output ends the
+        # run, and nothing after it would be reached.
         self.merge_stats(
             NodeExecutionStats(
                 input_token_count=response.prompt_tokens,
@@ -226,6 +227,11 @@ class AIConditionBlock(AIBlockBase):
             )
         )
         self.prompt = response.prompt
+
+        # Extract the boolean result from the response
+        result, error = _parse_boolean_response(response.response)
+        if error:
+            yield "error", error
 
         # Yield results
         yield "result", result

@@ -184,6 +184,33 @@ async def test_frontend_service_claims_returns_a_vouched_claim(jwks_config):
 
 
 @pytest.mark.asyncio
+async def test_optional_claims_are_absent_during_key_outage(jwks_config, monkeypatch):
+    token = create_es256_token(CLAIM_PAYLOAD, jwks_config)
+
+    def unavailable(_client):
+        raise jwt.PyJWKClientConnectionError("JWKS unavailable")
+
+    with monkeypatch.context() as outage:
+        outage.setattr(jwt.PyJWKClient, "fetch_data", unavailable)
+        assert await frontend_service_claims(token, "client-country") is None
+
+    claims = await frontend_service_claims(token, "client-country")
+    assert claims is not None and claims["country"] == "US"
+
+
+def test_required_service_auth_still_refuses_key_outages(jwks_config, monkeypatch):
+    token = create_es256_token(SERVICE_PAYLOAD, jwks_config)
+
+    def unavailable(_client):
+        raise jwt.PyJWKClientConnectionError("JWKS unavailable")
+
+    monkeypatch.setattr(jwt.PyJWKClient, "fetch_data", unavailable)
+    response = _post(token)
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "5"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "payload",
     [

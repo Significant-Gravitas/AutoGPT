@@ -22,7 +22,7 @@ from backend.data.skill_capacity import (
     skill_origin,
     skill_owner_folder,
 )
-from backend.data.workspace import WorkspaceFile
+from backend.data.workspace import WorkspaceFile, require_storage_room
 from backend.data.workspace_internal import is_internal_workspace_file
 from backend.util.json import SafeJson
 
@@ -55,6 +55,8 @@ class WorkspaceSkillWrite(BaseModel):
     # and paths the package no longer has.
     files: list[WorkspaceSkillFile] = Field(default_factory=list)
     removed_paths: list[str] = Field(default_factory=list)
+    # The owner's storage quota the whole package must fit; 0 for none.
+    storage_limit_bytes: int = 0
 
 
 class RetiredSkillFile(BaseModel):
@@ -134,6 +136,17 @@ async def publish_workspace_skill_file(
             >= MAX_SKILLS_PER_EXPERT
         ):
             return WorkspaceSkillPublication(status="capacity")
+        await require_storage_room(
+            tx,
+            write.workspace_id,
+            write.size_bytes + sum(f.size_bytes for f in write.files),
+            write.storage_limit_bytes,
+            replacing=[
+                write.path,
+                *(f.path for f in write.files),
+                *write.removed_paths,
+            ],
+        )
         retired = await _swap_package_files(tx, write)
         record = (
             await _replace_root(tx, existing.id, write)

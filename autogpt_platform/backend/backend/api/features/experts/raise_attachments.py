@@ -15,6 +15,7 @@ from backend.api.features.experts.models import (
     RaiseAttachmentSource,
 )
 from backend.api.features.library import db as library_db
+from backend.api.features.orgs.db import resolve_default_tenancy
 from backend.api.features.store import skill_db
 from backend.copilot.tools.skills import (
     get_default_skill_with_body,
@@ -183,6 +184,7 @@ async def _install_marketplace_workflow_once(
     expert_id: str,
     store_listing_version_id: str,
 ) -> None:
+    organization_id, team_id = await resolve_default_tenancy(user_id)
     async with transaction() as tx:
         is_installable = (
             await library_db.is_store_listing_version_available_for_install(
@@ -206,7 +208,11 @@ async def _install_marketplace_workflow_once(
         if expert is None:
             raise ExpertNotFoundError(expert_id)
         library_agent = await library_db.add_store_agent_to_library_in_transaction(
-            store_listing_version_id, user_id, tx
+            store_listing_version_id,
+            user_id,
+            tx,
+            organization_id=organization_id,
+            team_id=team_id,
         )
         await tx.expertworkflow.create(
             data={

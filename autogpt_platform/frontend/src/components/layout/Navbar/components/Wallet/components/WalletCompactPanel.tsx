@@ -3,7 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { usePlatformPayment } from "@/hooks/usePlatformPayment";
 import {
   ArrowRight01Icon,
   CreditCardIcon,
@@ -35,7 +35,7 @@ export function WalletCompactPanel({
   onOpenExplainer,
   onNavigate,
 }: Props) {
-  const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const { isPaymentEnabled } = usePlatformPayment();
   const creditsHeadingID = useId();
   const { data: trial } = useTrialStatus();
 
@@ -58,11 +58,7 @@ export function WalletCompactPanel({
           >
             Automation credits
           </Text>
-          <Text
-            variant="large-semibold"
-            tone="primary"
-            className="tabular-nums"
-          >
+          <Text variant="large-semibold" tone="primary" tabular>
             {formattedCredits}
           </Text>
         </div>

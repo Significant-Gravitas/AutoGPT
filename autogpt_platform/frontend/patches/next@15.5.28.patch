@@ -1,0 +1,139 @@
+diff --git a/dist/client/components/app-router-instance.js b/dist/client/components/app-router-instance.js
+index 9742dfaec8d4a4250b0634e2c7683cd04b59b281..24dcceb0e6d906bb21287e9c046701309ef501e6 100644
+--- a/dist/client/components/app-router-instance.js
++++ b/dist/client/components/app-router-instance.js
+@@ -82,7 +82,12 @@ async function runAction(param) {
+     // if the action is a promise, set up a callback to resolve it
+     if ((0, _isthenable.isThenable)(actionResult)) {
+         actionResult.then(handleResult, (err)=>{
+-            runRemainingActions(actionQueue, setState);
++            // Backported from vercel/next.js#95391 (AutoGPT #16965): a discarded
++            // action no longer heads the queue, so its failure must not start the
++            // next action while the navigation that replaced it is still running.
++            if (!action.discarded) {
++                runRemainingActions(actionQueue, setState);
++            }
+             action.reject(err);
+         });
+     } else {
+@@ -135,6 +140,12 @@ function dispatchAction(actionQueue, payload, setState) {
+         // The rest of the current queue should still execute after this navigation.
+         // (Note that it can't contain any earlier navigations, because we always put those into `actionQueue.pending` by calling `runAction`)
+         newAction.next = actionQueue.pending.next;
++        // Backported from vercel/next.js#95391 (AutoGPT #16965): an action queued
++        // while this navigation runs must follow it, not the action it discards,
++        // or it never runs and its caller waits forever.
++        if (actionQueue.last === actionQueue.pending) {
++            actionQueue.last = newAction;
++        }
+         // if the pending action was a server action, mark the queue as needing a refresh once events are processed
+         if (actionQueue.pending.payload.type === _routerreducertypes.ACTION_SERVER_ACTION) {
+             actionQueue.needsRefresh = true;
+diff --git a/dist/esm/client/components/app-router-instance.js b/dist/esm/client/components/app-router-instance.js
+index c6e1ee7ffcbea1a31215929ad56917849791c196..39c6524098b36c5ac1d39f71520bcaddc79c5d83 100644
+--- a/dist/esm/client/components/app-router-instance.js
++++ b/dist/esm/client/components/app-router-instance.js
+@@ -48,7 +48,12 @@ async function runAction(param) {
+     // if the action is a promise, set up a callback to resolve it
+     if (isThenable(actionResult)) {
+         actionResult.then(handleResult, (err)=>{
+-            runRemainingActions(actionQueue, setState);
++            // Backported from vercel/next.js#95391 (AutoGPT #16965): a discarded
++            // action no longer heads the queue, so its failure must not start the
++            // next action while the navigation that replaced it is still running.
++            if (!action.discarded) {
++                runRemainingActions(actionQueue, setState);
++            }
+             action.reject(err);
+         });
+     } else {
+@@ -101,6 +106,12 @@ function dispatchAction(actionQueue, payload, setState) {
+         // The rest of the current queue should still execute after this navigation.
+         // (Note that it can't contain any earlier navigations, because we always put those into `actionQueue.pending` by calling `runAction`)
+         newAction.next = actionQueue.pending.next;
++        // Backported from vercel/next.js#95391 (AutoGPT #16965): an action queued
++        // while this navigation runs must follow it, not the action it discards,
++        // or it never runs and its caller waits forever.
++        if (actionQueue.last === actionQueue.pending) {
++            actionQueue.last = newAction;
++        }
+         // if the pending action was a server action, mark the queue as needing a refresh once events are processed
+         if (actionQueue.pending.payload.type === ACTION_SERVER_ACTION) {
+             actionQueue.needsRefresh = true;
+diff --git a/dist/esm/server/image-optimizer.js b/dist/esm/server/image-optimizer.js
+index d828196198dab100f86155e90357d80fc88f6328..ac52a083404da5158710c642726d534a902f24e7 100644
+--- a/dist/esm/server/image-optimizer.js
++++ b/dist/esm/server/image-optimizer.js
+@@ -10,7 +10,7 @@ import nodeUrl from 'url';
+ import { getImageBlurSvg } from '../shared/lib/image-blur-svg';
+ import { hasLocalMatch } from '../shared/lib/match-local-pattern';
+ import { hasRemoteMatch } from '../shared/lib/match-remote-pattern';
+-import { createRequestResponseMocks } from './lib/mock-request';
++import { MockedRequest, MockedResponse } from './lib/mock-request';
+ import { CachedRouteKind } from './response-cache';
+ import { sendEtagResponse } from './send-payload';
+ import { getContentType, getExtension } from './serve-static';
+@@ -834,12 +834,23 @@ export async function fetchExternalImage(href, maximumResponseBody) {
+ }
+ export async function fetchInternalImage(href, _req, _res, maximumResponseBody, handleRequest) {
+     try {
+-        const mocked = createRequestResponseMocks({
+-            url: href,
+-            method: _req.method || 'GET',
+-            socket: _req.socket,
+-            maximumResponseBody
+-        });
++        // Backported from vercel/next.js#98168 (AutoGPT #16987): the mocked
++        // response must not hold the requester's socket. `send` watches it
++        // through `on-finished`, so a requester that disconnected mid-transfer
++        // tore down the file stream without ever ending the mocked response,
++        // and the response cache then kept that image URL pending for every
++        // later requester until the server restarted.
++        const mocked = {
++            req: new MockedRequest({
++                url: href,
++                method: _req.method || 'GET',
++                headers: {},
++                socket: _req.socket
++            }),
++            res: new MockedResponse({
++                maximumResponseBody
++            })
++        };
+         await handleRequest(mocked.req, mocked.res, nodeUrl.parse(href, true));
+         await mocked.res.hasStreamed;
+         if (!mocked.res.statusCode) {
+diff --git a/dist/server/image-optimizer.js b/dist/server/image-optimizer.js
+index 75b9c44f5fa2dbe0664444108528d1577c966f55..e275fe03b4bad88e641ae0f568cd491ceae37e3e 100644
+--- a/dist/server/image-optimizer.js
++++ b/dist/server/image-optimizer.js
+@@ -952,12 +952,23 @@ async function fetchExternalImage(href, maximumResponseBody) {
+ }
+ async function fetchInternalImage(href, _req, _res, maximumResponseBody, handleRequest) {
+     try {
+-        const mocked = (0, _mockrequest.createRequestResponseMocks)({
+-            url: href,
+-            method: _req.method || 'GET',
+-            socket: _req.socket,
+-            maximumResponseBody
+-        });
++        // Backported from vercel/next.js#98168 (AutoGPT #16987): the mocked
++        // response must not hold the requester's socket. `send` watches it
++        // through `on-finished`, so a requester that disconnected mid-transfer
++        // tore down the file stream without ever ending the mocked response,
++        // and the response cache then kept that image URL pending for every
++        // later requester until the server restarted.
++        const mocked = {
++            req: new _mockrequest.MockedRequest({
++                url: href,
++                method: _req.method || 'GET',
++                headers: {},
++                socket: _req.socket
++            }),
++            res: new _mockrequest.MockedResponse({
++                maximumResponseBody
++            })
++        };
+         await handleRequest(mocked.req, mocked.res, _url.default.parse(href, true));
+         await mocked.res.hasStreamed;
+         if (!mocked.res.statusCode) {

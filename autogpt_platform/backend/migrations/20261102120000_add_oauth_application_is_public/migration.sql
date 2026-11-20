@@ -1,0 +1,12 @@
+-- Add `isPublic` flag to OAuthApplication.
+--
+-- Public clients (native desktop apps, mobile apps, SPAs) cannot safely
+-- hold a clientSecret. For these, PKCE is the only credential — the
+-- secret check in `validate_client_credentials` is skipped when
+-- `isPublic && grant uses PKCE`.
+--
+-- Default false: all existing applications stay confidential (no
+-- behavior change). Operators flip the flag explicitly via the
+-- `oauth-tool` CLI or a direct UPDATE for first-party public clients
+-- like `autogpt-local-executor`.
+ALTER TABLE "OAuthApplication" ADD COLUMN "isPublic" BOOLEAN NOT NULL DEFAULT false;

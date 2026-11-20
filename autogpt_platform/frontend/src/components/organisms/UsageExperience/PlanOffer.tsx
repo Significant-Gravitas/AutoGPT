@@ -77,7 +77,7 @@ export function PlanOffer({
             <Icon icon={SparklesIcon} size={20} />
           </span>
           <div data-slot="plan-offer-heading">
-            <Text variant="h4" className="!text-xl">
+            <Text variant="h4" className="!text-lead">
               {name}
             </Text>
             <Text variant="small" tone="muted">
@@ -87,7 +87,7 @@ export function PlanOffer({
         </div>
         {amount && (
           <div data-slot="plan-offer-price" className="shrink-0 text-right">
-            <Text variant="h4" className="!text-2xl">
+            <Text variant="h4" className="!text-heading-md">
               {amount}
             </Text>
             <Text variant="small" tone="muted">
@@ -101,12 +101,13 @@ export function PlanOffer({
           <li
             key={feature}
             data-slot="plan-offer-feature"
-            className="flex gap-2.5 text-sm leading-5 text-foreground-body"
+            className="flex gap-2.5 text-body leading-5 text-foreground-body"
           >
             <Icon
               icon={Tick02Icon}
               size={16}
-              className="mt-0.5 shrink-0 text-brand"
+              tone="brand"
+              className="mt-0.5 shrink-0"
             />
             {feature}
           </li>
@@ -125,7 +126,7 @@ export function PlanOffer({
               ? `Start Pro now${amount ? ` · ${amount}` : ""}`
               : "Start Pro")}
       </Button>
-      <Text variant="small" tone="muted" className="mt-3 text-center !text-xs">
+      <Text variant="small-tight" tone="muted" align="center" className="mt-3">
         {freshUsage
           ? "You’ll see the full charge before you pay."
           : tier === "MAX"

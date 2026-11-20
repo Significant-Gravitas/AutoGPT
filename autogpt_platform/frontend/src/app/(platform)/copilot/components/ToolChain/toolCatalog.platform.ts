@@ -284,6 +284,21 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     running: "Checking platform info",
     done: "Checked platform info",
   },
+  render_ui: {
+    category: "info",
+    running: "Preparing your answer",
+    done: "Showed your answer",
+  },
+  request_work_check: {
+    category: "question",
+    running: "Asking how the task went",
+    done: "Asked how the task went",
+  },
+  flag_mistake: {
+    category: "info",
+    running: "Flagging a mistake",
+    done: "Flagged a mistake",
+  },
   ask_question: {
     category: "question",
     running: "Asking you a question",

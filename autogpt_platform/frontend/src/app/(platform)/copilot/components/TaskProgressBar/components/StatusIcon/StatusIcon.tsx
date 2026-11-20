@@ -14,12 +14,7 @@ interface Props {
 export function StatusIcon({ status }: Props) {
   if (status === "completed") {
     return (
-      <Icon
-        icon={Tick02Icon}
-        size={14}
-        className="text-success"
-        aria-label="completed"
-      />
+      <Icon icon={Tick02Icon} size={14} tone="success" aria-label="completed" />
     );
   }
   if (status === "in_progress") {
@@ -36,17 +31,12 @@ export function StatusIcon({ status }: Props) {
       <Icon
         icon={PauseCircleIcon}
         size={15}
-        className="text-warning"
+        tone="warning-bright"
         aria-label="stopped"
       />
     );
   }
   return (
-    <Icon
-      icon={CircleIcon}
-      size={14}
-      className="text-foreground-subtle"
-      aria-label="pending"
-    />
+    <Icon icon={CircleIcon} size={14} tone="subtle" aria-label="pending" />
   );
 }

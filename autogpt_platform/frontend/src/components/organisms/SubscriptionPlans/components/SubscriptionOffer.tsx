@@ -55,17 +55,13 @@ function OfferHeading({
       data-slot="offer-heading"
       className="mb-3 flex flex-wrap items-center gap-2"
     >
-      <Text
-        variant="h5"
-        as="h2"
-        className="font-semibold text-foreground-emphasis"
-      >
+      <Text variant="h5" as="h2" weight="semibold" tone="emphasis">
         {plan.name}
       </Text>
       {plan.usage && (
         <span
           data-slot="offer-heading-usage"
-          className="rounded-full bg-accent-surface px-2 py-0.5 text-xs text-accent-strong"
+          className="rounded-full bg-accent-surface px-2 py-0.5 text-caption text-accent-strong"
         >
           {plan.usage} usage
         </span>
@@ -74,7 +70,7 @@ function OfferHeading({
         <span
           data-slot="offer-heading-badge"
           className={cn(
-            "rounded-full px-2 py-0.5 text-xs",
+            "rounded-full px-2 py-0.5 text-caption",
             plan.highlighted
               ? "bg-accent-surface text-accent-strong"
               : "bg-surface-hover text-foreground-tertiary",
@@ -86,7 +82,7 @@ function OfferHeading({
       {trial && (
         <span
           data-slot="offer-heading-trial"
-          className="ml-auto rounded-full bg-accent-surface px-2 py-0.5 text-xs font-medium text-accent-strong"
+          className="ml-auto rounded-full bg-accent-surface px-2 py-0.5 text-caption font-medium text-accent-strong"
         >
           {trial.duration_days} days free
         </span>
@@ -110,7 +106,8 @@ function OfferPrice({
           variant="h3"
           as="span"
           aria-label={presentation.price}
-          className="leading-9 text-foreground-emphasis"
+          tone="emphasis"
+          className="leading-9"
         >
           {presentation.price}
         </Text>
@@ -122,11 +119,8 @@ function OfferPrice({
       </div>
       <Text
         variant="small"
-        tone={presentation.trial ? undefined : "muted"}
-        className={cn(
-          "mb-2 min-h-4",
-          presentation.trial && "text-accent-strong",
-        )}
+        tone={presentation.trial ? "accent" : "muted"}
+        className="mb-2 min-h-4"
       >
         {presentation.caption || "\u00a0"}
       </Text>
@@ -163,7 +157,7 @@ function OfferFeatures({
               icon={Tick02Icon}
               size={10}
               aria-hidden
-              className={isTeam ? "text-foreground-tertiary" : "text-brand"}
+              tone={isTeam ? "muted" : "brand"}
             />
           </span>
           <Text

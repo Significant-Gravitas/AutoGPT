@@ -18,6 +18,7 @@ import {
   ToolIcon,
 } from "./helpers";
 import { ExecutionStartedCard } from "./components/ExecutionStartedCard/ExecutionStartedCard";
+import { useLiveRunStatus } from "./components/ExecutionStartedCard/useLiveRunStatus";
 import { AgentDetailsCard } from "./components/AgentDetailsCard/AgentDetailsCard";
 import { SetupRequirementsCard } from "../../components/SetupRequirementsCard/SetupRequirementsCard";
 import { ErrorCard } from "./components/ErrorCard/ErrorCard";
@@ -70,6 +71,20 @@ export function RunAgentTool({ part }: Props) {
   const agentOutputResponse =
     isOutputAvailable && isRunAgentAgentOutputResponse(output) ? output : null;
 
+  const startedOutput =
+    isOutputAvailable && isRunAgentExecutionStartedOutput(output)
+      ? output
+      : null;
+  const liveRun = useLiveRunStatus(startedOutput);
+  const liveStartedOutput = startedOutput
+    ? {
+        ...startedOutput,
+        status: liveRun.status,
+        // "Started successfully" reads wrong once the card says it failed.
+        message: liveRun.endedAfterStart ? "" : startedOutput.message,
+      }
+    : null;
+
   const hasExpandableContent =
     isOutputAvailable &&
     !setupRequirementsOutput &&
@@ -87,7 +102,7 @@ export function RunAgentTool({ part }: Props) {
         !agentDetailsOutput &&
         !needLoginOutput &&
         !hasExpandableContent && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 text-body text-foreground-tertiary">
             <ToolIcon isStreaming={isStreaming} isError={isError} />
             <MorphingTextAnimation
               text={
@@ -106,7 +121,7 @@ export function RunAgentTool({ part }: Props) {
       )}
 
       {isStreaming && !output && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 text-body text-foreground-tertiary">
           <ToolIcon isStreaming isError={isError} />
           <MorphingTextAnimation text={getStreamingLoadingText(part)} />
         </div>
@@ -134,9 +149,12 @@ export function RunAgentTool({ part }: Props) {
       )}
 
       {hasExpandableContent && output && (
-        <ToolAccordion {...getAccordionMeta(output)}>
-          {isRunAgentExecutionStartedOutput(output) && (
-            <ExecutionStartedCard output={output} />
+        <ToolAccordion {...getAccordionMeta(liveStartedOutput ?? output)}>
+          {liveStartedOutput && (
+            <ExecutionStartedCard
+              output={liveStartedOutput}
+              error={liveRun.error}
+            />
           )}
 
           {agentOutputResponse && (

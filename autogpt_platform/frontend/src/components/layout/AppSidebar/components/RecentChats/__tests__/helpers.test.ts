@@ -1,6 +1,31 @@
-import { describe, expect, it } from "vitest";
+import { Key, storage } from "@/services/storage/local-storage";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { getNewChatHref } from "../helpers";
+import {
+  getNewChatHref,
+  isGroupCollapsed,
+  mergeGroupSessions,
+  olderPagesMatchGroup,
+  setGroupCollapsed,
+  withoutDeletingSessions,
+} from "../helpers";
+import { toSummary } from "./sidebarBackend";
+
+function summaries(...ids: string[]) {
+  return ids.map((id, index) => toSummary({ id, title: id }, index));
+}
+
+function page(total: number, ...ids: string[]) {
+  return {
+    status: 200 as const,
+    headers: new Headers(),
+    data: { sessions: summaries(...ids), total },
+  };
+}
+
+function pages(total: number, ...ids: string[]) {
+  return { pages: [page(total, ...ids)], pageParams: [0] };
+}
 
 describe("getNewChatHref", () => {
   const active = new Set(["expert-maria", "expert/slash"]);
@@ -23,5 +48,118 @@ describe("getNewChatHref", () => {
 
   it("gives fired experts no link at all", () => {
     expect(getNewChatHref("expert-max", active)).toBeNull();
+  });
+});
+
+describe("mergeGroupSessions", () => {
+  it("keeps the preview's copy of a chat that both reads hold", () => {
+    const [fresh, second, third] = summaries("a", "b", "c");
+    const stale = { ...fresh, title: "old title" };
+
+    const merged = mergeGroupSessions([fresh], [stale, second, third]);
+
+    expect(merged.map((session) => session.id)).toEqual(["a", "b", "c"]);
+    expect(merged[0]).toBe(fresh);
+  });
+
+  it("moves a chat that got newer since the older pages were read to the top", () => {
+    const [first, second] = summaries("a", "b");
+    const bumped = {
+      ...second,
+      updated_at: new Date(Date.parse(first.updated_at) + 60_000).toISOString(),
+    };
+
+    expect(
+      mergeGroupSessions([bumped], [first, second]).map((s) => s.id),
+    ).toEqual(["b", "a"]);
+  });
+
+  it("hands back the preview itself before any older page is read", () => {
+    const preview = summaries("a", "b");
+    expect(mergeGroupSessions(preview, [])).toBe(preview);
+  });
+
+  it("lists a chat once when two older pages overlap", () => {
+    const [a, b, c] = summaries("a", "b", "c");
+
+    expect(
+      mergeGroupSessions([a], [a, b, c, c]).map((session) => session.id),
+    ).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("olderPagesMatchGroup", () => {
+  const preview = summaries("a", "b");
+
+  it("matches pages that start with the preview and share its total", () => {
+    expect(olderPagesMatchGroup(pages(5, "a", "b", "c"), preview, 5)).toBe(
+      true,
+    );
+  });
+
+  it("stops matching once the group's total moves", () => {
+    expect(olderPagesMatchGroup(pages(5, "a", "b", "c"), preview, 4)).toBe(
+      false,
+    );
+  });
+
+  it("stops matching once a newer chat tops the group", () => {
+    expect(
+      olderPagesMatchGroup(pages(5, "a", "b", "c"), summaries("new", "a"), 5),
+    ).toBe(false);
+  });
+
+  it("stops matching when a chat was deleted between two page reads", () => {
+    // c went after the first page was read and before the second: d moved
+    // into the first page's offsets and was never read, and c is still there.
+    const split = {
+      pages: [page(5, "a", "b", "c"), page(4, "e")],
+      pageParams: [0, 3],
+    };
+    expect(olderPagesMatchGroup(split, preview, 4)).toBe(false);
+  });
+});
+
+describe("withoutDeletingSessions", () => {
+  const otto = { expert_id: null, total: 5, sessions: summaries("a", "b") };
+  const maria = { expert_id: "maria", total: 1, sessions: summaries("m") };
+
+  it("leaves every group's object alone when nothing is being deleted", () => {
+    const groups = [otto, maria];
+    expect(withoutDeletingSessions(groups, [])).toBe(groups);
+  });
+
+  it("lowers the total of the group losing a chat and drops an emptied one", () => {
+    const [ottoAfter, ...rest] = withoutDeletingSessions(
+      [otto, maria],
+      ["a", "m"],
+    );
+
+    expect(ottoAfter.total).toBe(4);
+    expect(ottoAfter.sessions.map((session) => session.id)).toEqual(["b"]);
+    expect(rest).toEqual([]);
+  });
+});
+
+describe("collapsed groups", () => {
+  afterEach(() => {
+    storage.clean(Key.RECENT_CHATS_COLLAPSED_GROUPS);
+  });
+
+  it("starts every group open and remembers each collapse on its own", () => {
+    expect(isGroupCollapsed(null)).toBe(false);
+    expect(isGroupCollapsed("maria")).toBe(false);
+
+    setGroupCollapsed("maria", true);
+    expect(isGroupCollapsed("maria")).toBe(true);
+    expect(isGroupCollapsed(null)).toBe(false);
+
+    setGroupCollapsed("maria", false);
+    expect(isGroupCollapsed("maria")).toBe(false);
+  });
+
+  it("treats unreadable stored state as nothing collapsed", () => {
+    storage.set(Key.RECENT_CHATS_COLLAPSED_GROUPS, "{not json");
+    expect(isGroupCollapsed("maria")).toBe(false);
   });
 });
