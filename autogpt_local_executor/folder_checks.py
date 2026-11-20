@@ -14,16 +14,18 @@ Here a look runs in a thread of its own and is waited for until a deadline:
 - Past the deadline the caller gets FolderCheckTimeout, and the look goes on
   in its thread. Whatever it returns later is dropped.
 - While a look nobody waits for any more is still running, another look at
-  the same folder fails at once: a dead share holds one thread for each
-  folder asked about, however many requests come in. Other folders are
-  looked at as usual.
+  the same folder fails at once, and so does a request that was waiting its
+  turn behind that look when it was given up on: a dead share holds one
+  thread for each folder asked about, however many requests come in. Other
+  folders are looked at as usual.
 - At most MAX_STUCK_FOLDER_CHECKS looks run at once, whatever their
   folders, those still waited for included: counting only the ones given up
   on let requests that came in together each start one, and leave more
   running than the limit when none of them answered. With every one of
-  them given up on, a look is refused at once until one returns; while one
-  is still waited for, a new look waits for a thread, inside its own time,
-  and goes on as soon as any of them returns.
+  them given up on, a look is refused at once until one returns, a request
+  that was waiting for a thread included; while one is still waited for, a
+  new look waits for a thread, inside its own time, and goes on as soon as
+  any of them returns.
 - The threads are daemon threads, not the event loop's worker threads:
   asyncio.run() waits for its workers before it returns, and the
   interpreter waits for them again as it exits, so one stuck in a worker
@@ -58,6 +60,9 @@ class FolderCheckTimeout(TimeoutError):
 @dataclass
 class _Look:
     done: concurrent.futures.Future[Any]
+    # Done once the look is given up on (abandoned), for the requests
+    # waiting behind it, which are answered then and not at their deadlines.
+    given_up: asyncio.Future[None]
     # Nobody waits for it any more: its caller's time ran out, or its caller
     # was cancelled.
     abandoned: bool = False
@@ -90,8 +95,9 @@ class FolderChecks:
         `folder` is what `look` looks at. While an earlier look at it is
         still inside its own caller's wait, this one waits its turn, no
         later than `deadline`; once that look has been given up on, this
-        one fails at once. It waits the same way for a thread, while the
-        most that may run are running and one of them is still waited for.
+        one fails at once, whether it comes then or was already waiting.
+        It waits the same way for a thread, while the most that may run
+        are running and one of them is still waited for.
         `on_abandoned` is called when this call leaves its own look
         running, by its deadline or by being cancelled."""
         loop = asyncio.get_running_loop()
@@ -132,8 +138,12 @@ class FolderChecks:
             remaining = deadline - loop.time()
             if remaining <= 0:
                 raise FolderCheckTimeout("The folder didn't answer in time; try again later.")
+            # Until one of them returns, or one still waited for is given
+            # up on: what this request is told then (a look given up on at
+            # its folder, every thread held by one) it is told at once.
             await asyncio.wait(
-                {asyncio.wrap_future(look.done) for look in wait_for},
+                {asyncio.wrap_future(look.done) for look in wait_for}
+                | {look.given_up for look in wait_for if not look.abandoned},
                 timeout=remaining,
                 return_when=asyncio.FIRST_COMPLETED,
             )
@@ -141,7 +151,7 @@ class FolderChecks:
         if remaining <= 0:
             raise FolderCheckTimeout("The folder didn't answer in time; try again later.")
 
-        mine = _Look(concurrent.futures.Future())
+        mine = _Look(concurrent.futures.Future(), loop.create_future())
         # Running from here on, so that a caller that stops waiting can't
         # cancel it under another's feet.
         mine.done.set_running_or_notify_cancel()
@@ -179,6 +189,8 @@ class FolderChecks:
     @staticmethod
     def _abandon(look: _Look, on_abandoned: Callable[[], None] | None) -> None:
         look.abandoned = True
+        if not look.given_up.done():
+            look.given_up.set_result(None)
         if on_abandoned is not None:
             on_abandoned()
 
