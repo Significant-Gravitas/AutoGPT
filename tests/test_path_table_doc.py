@@ -19,6 +19,7 @@ import pytest
 
 from autogpt_local_executor import path_jail
 from autogpt_local_executor.path_jail import PathJailError, assert_inside_jail
+from tests.test_path_jail_names import _Looks
 
 ROOT = Path(__file__).resolve().parent.parent
 _PIPE = "\x00pipe\x00"
@@ -112,12 +113,17 @@ def test_a_long_path_prefix_is_refused_on_windows(tmp_path: Path) -> None:
 
 
 def test_a_path_past_the_limit_is_refused_before_anything_looks_at_it(tmp_path: Path) -> None:
+    """Its length alone refuses it: not the root, nor the path, is looked
+    at. The code by itself would be the same from a jail that resolved the
+    path first and then refused it."""
     limit = path_jail._PATH_MAX[path_jail.detect_platform()]
 
-    with pytest.raises(PathJailError) as refused:
-        assert_inside_jail("a" * (limit + 1), tmp_path)
+    with _Looks() as looks:
+        with pytest.raises(PathJailError) as refused:
+            assert_inside_jail("a" * (limit + 1), tmp_path)
 
     assert refused.value.code == "PATH_INVALID_CHARS"
+    assert looks.seen == []
 
 
 def test_the_table_says_reserved_names_are_refused_for_every_request(
