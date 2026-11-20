@@ -105,10 +105,23 @@ class _Rows:
         self.held: list[held.HeldCall] = []
 
     async def find_review(self, review_id, user_id, session_id):
-        return self.rows.get(review_id)
+        row = self.rows.get(review_id)
+        # A copy, as a read is: answering the card later leaves it as read.
+        return SimpleNamespace(**vars(row)) if row else None
 
-    async def consume(self, review_id, user_id):
-        return self.rows.pop(review_id, None) is not None
+    async def consume(self, review, user_id):
+        # The row as read: answered differently or replaced since, it stays.
+        stored = self.rows.get(review.node_exec_id)
+        if stored is None or (stored.status, stored.created_at) != (
+            review.status,
+            review.created_at,
+        ):
+            return False
+        del self.rows[review.node_exec_id]
+        return True
+
+    async def discard(self, review, user_id):
+        await self.consume(review, user_id)
 
     async def remember(self, session_id, call):
         self.held.append(call)
@@ -117,8 +130,8 @@ class _Rows:
     async def held_calls(self, session_id):
         return {call.review_id: call for call in self.held}
 
-    async def claim(self, session_id, review_id):
-        kept = [call for call in self.held if call.review_id != review_id]
+    async def claim(self, session_id, call):
+        kept = [held for held in self.held if held is not call]
         claimed, self.held = len(kept) < len(self.held), kept
         return claimed
 
@@ -171,6 +184,7 @@ def rows(supervisor: AsyncMock):
         patch(f"{_GATE}.chat_rules.set_ask", AsyncMock()),
         patch.object(review_store, "find_review", fake.find_review),
         patch.object(review_store, "consume", fake.consume),
+        patch.object(review_store, "discard", fake.discard),
         patch.object(review_store, "open_review_row", fake.open_review_row),
         patch.object(held, "remember", fake.remember),
         patch.object(held, "_held", fake.held_calls),

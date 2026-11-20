@@ -1,5 +1,6 @@
 """The public store search cache, against the real Redis."""
 
+import asyncio
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -7,6 +8,7 @@ import pytest
 
 from backend.api.features.search import embeddings, rate_limit
 from backend.util import cache as cache_util
+from backend.util.cache_test_helpers import callers_in_flight
 
 from . import cache as store_cache
 from . import hybrid_search as store_hybrid_search
@@ -66,10 +68,92 @@ async def test_a_search_ranked_by_text_alone_answers_while_the_cache_is_unreacha
         patch.object(
             cache_util, "_get_redis", MagicMock(side_effect=ConnectionError("down"))
         ),
+        patch.object(
+            cache_util,
+            "_get_async_redis",
+            AsyncMock(side_effect=ConnectionError("down")),
+        ),
     ):
         response = await _search(f"sheets {uuid.uuid4().hex}")
 
     assert [agent.slug for agent in response.agents] == ["sheets-agent"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_burst_of_distinct_searches_runs_a_capped_number_of_queries_at_once(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The public store search runs a database query for each search it
+    hasn't cached, and anyone can send distinct ones. The cache computes
+    misses of different searches side by side, but at most
+    ``MAX_CONCURRENT_MISSES`` at once per process.
+
+    Redis here answers at once and keeps nothing, so no read suspends: every
+    search has reached its query or its turn before the test looks."""
+    monkeypatch.setattr(cache_util, "_get_async_redis", _a_redis_that_keeps_nothing)
+    cap = cache_util.MAX_CONCURRENT_MISSES
+    searches = 3 * cap
+    everyone_in = callers_in_flight(monkeypatch, searches)
+    at_the_cap, finish = asyncio.Event(), asyncio.Event()
+    running = peak = 0
+
+    async def slow_query(**kwargs):
+        nonlocal running, peak
+        running += 1
+        peak = max(peak, running)
+        if running == cap:
+            at_the_cap.set()
+        await finish.wait()
+        running -= 1
+        return {"agents": [], "search_query": kwargs["search_query"]}
+
+    queries = [f"sheets {uuid.uuid4().hex}" for _ in range(searches)]
+    with patch.object(store_cache.store_db, "get_store_agents", slow_query):
+        calls = [
+            asyncio.create_task(
+                store_cache.get_cached_store_agents(
+                    featured=False,
+                    creator=None,
+                    sorted_by=None,
+                    search_query=query,
+                    category=None,
+                    page=1,
+                    page_size=20,
+                    public_search=True,
+                )
+            )
+            for query in queries
+        ]
+        try:
+            async with asyncio.timeout(10):
+                await everyone_in.wait()
+                await at_the_cap.wait()
+                # Every search has missed: the cap's worth query, the rest wait.
+                assert running == cap
+                finish.set()
+                results = await asyncio.gather(*calls)
+        finally:
+            finish.set()
+            async with asyncio.timeout(10):
+                await asyncio.gather(*calls, return_exceptions=True)
+
+    assert [result["search_query"] for result in results] == queries
+    assert peak == cap
+
+
+class _RedisThatKeepsNothing:
+    async def get(self, key: str) -> None:
+        return None
+
+    async def getex(self, key: str, ex: int | None = None) -> None:
+        return None
+
+    async def set(self, key: str, value: bytes, ex: int | None = None) -> bool:
+        return True
+
+
+async def _a_redis_that_keeps_nothing() -> _RedisThatKeepsNothing:
+    return _RedisThatKeepsNothing()
 
 
 async def _search(query: str):

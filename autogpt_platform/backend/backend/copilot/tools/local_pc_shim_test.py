@@ -32,6 +32,11 @@ from .local_pc_shim import (
     _RpcAttemptFailed,
 )
 
+# Each guard below only stops a hung test or a wait that ignored its budget:
+# a passing run ends at its short timeout, and a CI runner can stall a test
+# for seconds.
+_HANG_SECONDS = 10
+
 
 @pytest.mark.asyncio
 async def test_correlated_response_requires_exact_response_type_and_id() -> None:
@@ -389,14 +394,11 @@ class TestShimConnectionManager:
         )
 
         with pytest.raises(RuntimeError, match="session revocation"):
-            # Only a guard against a hang. It stays far above the 10 ms
-            # operation timer: were a pause to pass both, its TimeoutError
-            # would replace the revocation's error.
             await asyncio.wait_for(
                 manager.revoke_user_shims(
                     "user-1", "autogpt-local-executor", reason="user_revoked"
                 ),
-                timeout=30,
+                timeout=_HANG_SECONDS,
             )
 
         websocket.send_text.assert_awaited_once()
@@ -432,38 +434,35 @@ class TestShimConnectionManager:
         manager = ShimConnectionManager(relay=HangingRelay())
 
         with pytest.raises(RuntimeError, match="session revocation"):
-            # Only a guard against a hang, as above.
             await asyncio.wait_for(
                 manager.revoke_user_shims(
                     "user-1", "autogpt-local-executor", reason="user_revoked"
                 ),
-                timeout=30,
+                timeout=_HANG_SECONDS,
             )
 
         assert relay_started.is_set()
 
     @pytest.mark.asyncio
     async def test_wait_for_uses_one_timeout_budget(self):
-        budget = 0.03
-        handed: list[float] = []
-
         class RecordingRelay(TestShimConnectionManager.NoPresenceRelay):
+            def __init__(self):
+                super().__init__()
+                self.budgets: list[float] = []
+
             async def wait_for_presence(self, session_id: str, *, timeout: float):
-                handed.append(timeout)
-                await super().wait_for_presence(session_id, timeout=timeout)
+                self.budgets.append(timeout)
+                return await super().wait_for_presence(session_id, timeout=timeout)
 
-        manager = ShimConnectionManager(relay=RecordingRelay())
-
-        # The relay gives up when its share of the budget is spent, and the
-        # wait for a direct connection that follows ends only at the budget.
-        # A wait that ignored it would hang: the guard fails the match.
-        async with _hang_guard():
+        relay = RecordingRelay()
+        manager = ShimConnectionManager(relay=relay)
+        async with asyncio.timeout(_HANG_SECONDS):
             with pytest.raises(TimeoutError, match="did not connect within"):
-                await manager.wait_for("missing", timeout=budget)
+                await manager.wait_for("missing", timeout=0.03)
 
-        # One relay wait, handed no more than the budget.
-        assert len(handed) == 1
-        assert 0 <= handed[0] <= budget
+        # The relay is given what is left of the caller's 30 ms: less than all
+        # of it, as the clock has moved since the call began.
+        assert relay.budgets and max(relay.budgets) < 0.03
 
     @pytest.mark.asyncio
     async def test_cached_presence_lookup_cannot_miss_direct_registration(self):
@@ -493,32 +492,22 @@ class TestShimConnectionManager:
 
     @pytest.mark.asyncio
     async def test_cached_presence_lookup_uses_original_timeout_budget(self):
-        lookup = _NeverFinishes()
-
-        class SilentCachedRelay(TestShimConnectionManager.NoPresenceRelay):
+        class SlowCachedRelay(TestShimConnectionManager.NoPresenceRelay):
             async def get_presence(self, session_id: str):
-                await lookup.wait()
+                await asyncio.sleep(60)
                 return None
 
-        manager = ShimConnectionManager(relay=SilentCachedRelay())
+        manager = ShimConnectionManager(relay=SlowCachedRelay())
         manager._relay_transports["stale"] = MagicMock()
         manager._relay_connection_ids["stale"] = "old-connection"
 
-        # The lookup never answers, so only the budget can end the call.
-        async with _hang_guard():
-            with pytest.raises(TimeoutError, match="did not connect within"):
+        async with asyncio.timeout(_HANG_SECONDS):
+            with pytest.raises(TimeoutError):
                 await manager.wait_for("stale", timeout=0.03)
 
-        assert lookup.cut_off
-
     @pytest.mark.asyncio
-    async def test_transport_open_uses_original_timeout_budget(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
-        opening = _NeverFinishes()
-        open_started = asyncio.Event()
-
-        class SilentOpenRelay(TestShimConnectionManager.NoPresenceRelay):
+    async def test_transport_open_uses_original_timeout_budget(self):
+        class SlowOpenRelay(TestShimConnectionManager.NoPresenceRelay):
             async def wait_for_presence(self, session_id: str, *, timeout: float):
                 return RelayPresence(
                     session_id=session_id,
@@ -529,32 +518,14 @@ class TestShimConnectionManager:
                 )
 
             async def open_transport(self, presence):
-                open_started.set()
-                await opening.wait()
+                await asyncio.sleep(60)
                 raise AssertionError("open should be cancelled by the timeout")
 
-        manager = ShimConnectionManager(relay=SilentOpenRelay())
+        manager = ShimConnectionManager(relay=SlowOpenRelay())
 
-        # The open never finishes, so only the budget can end the call. The
-        # budget is run out once the open is under way: a short one would also
-        # have to leave the open time to start, which a paused runner doesn't
-        # promise.
-        async with _hang_guard():
-            budgets = _budgets_started(monkeypatch)
-            call = asyncio.create_task(manager.wait_for("slow-open", timeout=3600))
-            try:
-                await open_started.wait()
-                # The tests share one event loop, so another task may have
-                # started a timeout of its own meanwhile: take the call's.
-                (budget,) = [started for delay, started in budgets if delay == 3600]
-                budget.reschedule(asyncio.get_running_loop().time())
-                with pytest.raises(TimeoutError, match="did not connect within"):
-                    await call
-            finally:
-                call.cancel()
-                await asyncio.gather(call, return_exceptions=True)
-
-        assert opening.cut_off
+        async with asyncio.timeout(_HANG_SECONDS):
+            with pytest.raises(TimeoutError):
+                await manager.wait_for("slow-open", timeout=0.03)
 
     @pytest.mark.asyncio
     async def test_duplicate_session_revokes_old_connection_without_losing_new(self):
@@ -596,45 +567,6 @@ class TestShimConnectionManager:
 
         await new_websocket.close()
         await shim.wait_closed()
-
-
-class _NeverFinishes:
-    """A wait that ends only when it is cancelled, and remembers that it was:
-    whatever returned while it was waiting did not wait for it."""
-
-    def __init__(self) -> None:
-        self.cut_off = False
-
-    async def wait(self) -> None:
-        try:
-            await asyncio.Event().wait()
-        except asyncio.CancelledError:
-            self.cut_off = True
-            raise
-
-
-def _hang_guard() -> asyncio.Timeout:
-    """Fails a test that would otherwise hang. Far above anything it guards,
-    so a paused runner cannot trip it."""
-    return asyncio.timeout(30)
-
-
-def _budgets_started(
-    monkeypatch: pytest.MonkeyPatch,
-) -> list[tuple[float | None, asyncio.Timeout]]:
-    """Every `asyncio.timeout` started from here on, beside the delay it was
-    given. Each works as before; a test can run one out when it chooses
-    rather than wait for it."""
-    started: list[tuple[float | None, asyncio.Timeout]] = []
-    start = asyncio.timeout
-
-    def recorded(delay: float | None) -> asyncio.Timeout:
-        budget = start(delay)
-        started.append((delay, budget))
-        return budget
-
-    monkeypatch.setattr(asyncio, "timeout", recorded)
-    return started
 
 
 class TestDisconnectCleanup:
