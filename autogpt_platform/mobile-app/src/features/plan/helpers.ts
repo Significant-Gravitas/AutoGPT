@@ -42,6 +42,9 @@ export function planSummary(
   trial: TrialStatus | undefined,
 ): PlanSummary {
   const name = planName(subscription.tier);
+  if (subscription.tier === "NO_TIER") {
+    return { name, badge: { label: "Inactive", tone: "ending" }, headline: null, detail: null };
+  }
   if (subscription.tier === "TRIAL") return trialSummary(name, trial);
   const cost = costLine(subscription);
   const endsAt = subscription.pending_tier_effective_at;
@@ -84,8 +87,11 @@ function trialSummary(name: string, trial: TrialStatus | undefined): PlanSummary
 
 function changeLine(subscription: Subscription) {
   const { pending_tier: next, pending_tier_effective_at: at } = subscription;
-  if (!next || !at || next === subscription.tier) return null;
-  return `Changes to ${planName(next)} on ${longDate(at)}`;
+  if (!next || !at) return null;
+  if (next !== subscription.tier) return `Changes to ${planName(next)} on ${longDate(at)}`;
+  const cycle = subscription.pending_billing_cycle;
+  if (!cycle || cycle === subscription.billing_cycle) return null;
+  return `Switches to ${cycle} billing on ${longDate(at)}`;
 }
 
 function costLine({ monthly_cost: cents, billing_cycle: cycle }: Subscription) {

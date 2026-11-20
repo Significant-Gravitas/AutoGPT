@@ -1,7 +1,7 @@
 import type { Subscription, TrialStatus } from "../../../lib/api/billing";
 import { formatMoney, planSummary, usageMeters } from "../helpers";
 
-// Midday UTC, so the day is the same in every time zone a runner uses.
+// Midday UTC; `pnpm test` runs in UTC, so the day is fixed.
 const DEC_19 = "2026-12-19T12:00:00Z";
 
 function subscription(overrides: Partial<Subscription> = {}): Subscription {
@@ -12,6 +12,7 @@ function subscription(overrides: Partial<Subscription> = {}): Subscription {
     current_period_end: Date.parse(DEC_19) / 1000,
     pending_tier: null,
     pending_tier_effective_at: null,
+    pending_billing_cycle: null,
     ...overrides,
   };
 }
@@ -64,6 +65,28 @@ describe("planSummary", () => {
     expect(planSummary(changing, undefined).headline).toBe(
       "Changes to Pro on Sat, Dec 19",
     );
+  });
+
+  it("says when a yearly plan switches to monthly billing", () => {
+    const switching = subscription({
+      billing_cycle: "yearly",
+      pending_tier: "PRO",
+      pending_tier_effective_at: DEC_19,
+      pending_billing_cycle: "monthly",
+    });
+
+    expect(planSummary(switching, undefined).headline).toBe(
+      "Switches to monthly billing on Sat, Dec 19",
+    );
+  });
+
+  it("never calls an account with no plan active", () => {
+    expect(planSummary(subscription({ tier: "NO_TIER" }), undefined)).toEqual({
+      name: "No plan",
+      badge: { label: "Inactive", tone: "ending" },
+      headline: null,
+      detail: null,
+    });
   });
 
   it("shows a hand-set plan with no price or date", () => {

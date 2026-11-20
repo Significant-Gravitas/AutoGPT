@@ -20,11 +20,13 @@ describe("deleteErrorCopy", () => {
 describe("closedCopy", () => {
   it("names the last day to change your mind", () => {
     expect(closedCopy("2026-12-04T12:00:00Z")).toBe(
-      "Sign in before Dec 4 if you change your mind.",
+      "Changed your mind? Sign in on the web before Dec 4 and choose Keep my account.",
     );
   });
 
   it("falls back to the 14 days when the server gives no date", () => {
-    expect(closedCopy(null)).toBe("Sign in within 14 days if you change your mind.");
+    expect(closedCopy(null)).toBe(
+      "Changed your mind? Sign in on the web within 14 days and choose Keep my account.",
+    );
   });
 });

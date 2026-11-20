@@ -28,8 +28,8 @@ export function DeleteAccountSheet({ email, isOpen, onClose }: Props) {
         </Text>
         <Text style={styles.text}>
           This closes your AutoGPT account now and erases it after 14 days. Your
-          plan ends and your connected apps are disconnected. Sign in again
-          before then to keep it.
+          plan ends and your connected apps are disconnected. To keep it, sign
+          in on the web before then and choose Keep my account.
         </Text>
         {error ? (
           <Text accessibilityLiveRegion="polite" style={styles.error}>

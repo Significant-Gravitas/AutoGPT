@@ -20,10 +20,12 @@ export function deleteErrorCopy(error: unknown) {
 
 /** The line shown once the account is closed, as the web words it. */
 export function closedCopy(eraseAfter: string | null) {
-  if (!eraseAfter) return "Sign in within 14 days if you change your mind.";
+  if (!eraseAfter) {
+    return "Changed your mind? Sign in on the web within 14 days and choose Keep my account.";
+  }
   const day = new Date(eraseAfter).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
   });
-  return `Sign in before ${day} if you change your mind.`;
+  return `Changed your mind? Sign in on the web before ${day} and choose Keep my account.`;
 }

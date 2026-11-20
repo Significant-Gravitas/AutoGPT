@@ -2,11 +2,11 @@ import { apiRequest } from "./client";
 
 export interface AccountDeletion {
   status: "open" | "scheduled" | "too_late";
-  /** Until then, signing in again on the web keeps the account. */
+  /** Until then, signing in on the web and choosing Keep my account restores it. */
   erase_after: string | null;
 }
 
-/** Closes the account, as the web's Settings does; the web keeps the restore step. */
+/** Closes the account, as the web's Settings does; restoring it happens only on the web. */
 export function closeAccount(email: string) {
   return apiRequest<AccountDeletion>("/api/account/deletion", {
     method: "POST",

@@ -20,6 +20,8 @@ export interface Subscription {
   current_period_end: number | null;
   pending_tier: PlanTier | null;
   pending_tier_effective_at: string | null;
+  /** Set with `pending_tier` for a cycle change, even on the same tier. */
+  pending_billing_cycle: "monthly" | "yearly" | null;
 }
 
 export interface TrialStatus {
@@ -45,6 +47,7 @@ interface Options {
 
 export const billingKeys = {
   all: ["billing"] as const,
+  checks: ["billing", "check"] as const,
   check: (userID: string) => ["billing", "check", userID] as const,
   subscription: ["billing", "subscription"] as const,
   trial: ["billing", "trial"] as const,

@@ -1,4 +1,5 @@
-import { skipToken, useQuery } from "@tanstack/react-query";
+import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AppState } from "react-native";
 
 import {
   billingKeys,
@@ -6,6 +7,7 @@ import {
   getSubscription,
 } from "@/lib/api/billing";
 import { requestWithin } from "@/lib/deadline";
+import { useMountEffect } from "@/lib/useMountEffect";
 
 import {
   PLAN_CHECK_TIMEOUT_MS,
@@ -19,7 +21,20 @@ const ACTIVATION_RETRY_DELAY_MS = 3_000;
 
 /** Asks the server whether this account has a plan, after sign-in and at every launch. */
 export function usePlanGate(userID: string | undefined) {
+  const queryClient = useQueryClient();
   const query = usePlanCheck(userID);
+
+  useMountEffect(() => {
+    // Back from the browser, or after a plan ended in the background: ask
+    // again. The last answer holds meanwhile, so nothing flashes.
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        void queryClient.invalidateQueries({ queryKey: billingKeys.checks });
+      }
+    });
+    return () => subscription.remove();
+  });
+
   return planGate({ check: query.data, status: query.status });
 }
 

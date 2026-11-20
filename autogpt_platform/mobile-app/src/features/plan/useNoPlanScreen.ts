@@ -1,12 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { AppState, Linking } from "react-native";
+import { Linking } from "react-native";
 
 import { billingKeys } from "@/lib/api/billing";
 import { useSession } from "@/lib/auth/nativeSession";
 import { FRONTEND_URL } from "@/lib/env";
 import { signOut } from "@/lib/session";
-import { useMountEffect } from "@/lib/useMountEffect";
 
 const STILL_NO_PLAN = "Still no active plan on this account.";
 const OFFLINE = "Can't reach AutoGPT. Check your connection and try again.";
@@ -19,16 +18,6 @@ export function useNoPlanScreen() {
   const [notice, setNotice] = useState<string | null>(null);
   // The root layout mounts this screen afresh for each account.
   const checkKey = billingKeys.check(session?.user.id ?? "");
-
-  useMountEffect(() => {
-    // Back from the browser: ask again, so Home opens without a tap.
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") {
-        void queryClient.invalidateQueries({ queryKey: checkKey });
-      }
-    });
-    return () => subscription.remove();
-  });
 
   async function openSignup() {
     setNotice(null);
