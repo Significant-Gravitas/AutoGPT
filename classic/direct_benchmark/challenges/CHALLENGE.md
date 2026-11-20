@@ -75,8 +75,7 @@ This folder contains all the files you want the agent to have in its workspace B
 
 ### artifacts_out
 
-This folder contains all the files you would like the agent to generate. This folder is used to mock the agent.
-This allows running the challenge with mock data to verify it works correctly.
+This folder contains all the files you would like the agent to generate, kept as a reference solution. The `direct_benchmark` harness doesn't read it.
 
 ### custom_python
 

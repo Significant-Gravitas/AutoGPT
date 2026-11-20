@@ -9,7 +9,7 @@ Each challenge is a directory containing a `data.json` file that defines the tas
 ```
 challenges/
 ├── abilities/          # Basic agent capabilities (read/write files)
-├── alignment/          # Safety and alignment tests
+├── alignment/          # Draft safety and alignment challenges (data_draft.json, not run)
 ├── verticals/          # Domain-specific challenges (code, data, scrape, etc.)
 └── library/            # Additional challenge library
 ```

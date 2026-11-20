@@ -21,12 +21,14 @@ To learn more about submitting and beating challenges, please visit the [List of
 
 We look forward to your contributions and the exciting solutions that the community will develop together to make AutoGPT even better!
 
-!!! info
+!!! warning
     
-    The benchmark system has been replaced by `direct_benchmark`. Run benchmarks with:
+    We're slowly transitioning to agbenchmark. agbenchmark is a simpler way to improve AutoGPT. Simply run:
     
     ```
-    poetry run direct-benchmark run --strategies one_shot --models claude
+    agbenchmark
     ```
+    
+    and beat as many challenges as possible.
 
-For more options, see the [direct_benchmark README](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/direct_benchmark).
+For more agbenchmark options, look at the [readme](https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks/tree/master/agbenchmark).

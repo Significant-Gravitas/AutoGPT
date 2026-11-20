@@ -112,8 +112,8 @@ The `forge` package is the foundation that other components depend on:
 ### Direct Benchmark
 Benchmark harness for testing agent performance:
 - `direct_benchmark/direct_benchmark/` - CLI and harness code
-- `direct_benchmark/challenges/` - Test cases organized by category (code, retrieval, data, etc.)
-- Reports generated in `direct_benchmark/reports/`
+- `direct_benchmark/challenges/` - Test cases in `abilities/`, `alignment/`, `library/` and `verticals/` (code, data, scrape, synthesize)
+- Reports written to `reports/` in the directory it runs from (`classic/reports/` for the commands above)
 
 ### Package Structure
 All three packages are included in a single Poetry project. Imports are fully qualified:
