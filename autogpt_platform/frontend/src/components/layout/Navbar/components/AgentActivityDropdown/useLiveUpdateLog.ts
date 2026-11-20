@@ -70,8 +70,13 @@ export function createLiveUpdateLog() {
   // dataUpdatedAt of a list -> sequence when the fetch behind it started
   const listSequences = new Map<number, number>();
   // run id -> its read by ID under way: when it started, and whether newer
-  // news of the run has come since (a live update, or a list fetched later)
-  const reads = new Map<string, { started: number; superseded: boolean }>();
+  // news of the run has come since (a live update, or a list fetched later),
+  // with that news's place in the sequence, so a queued fresh read can tell
+  // whether the news also covers it.
+  const reads = new Map<
+    string,
+    { started: number; superseded: boolean; supersededAt?: number }
+  >();
 
   return {
     /** Drop everything: for tests that share the log across renders. */
@@ -82,12 +87,19 @@ export function createLiveUpdateLog() {
       listSequences.clear();
       reads.clear();
     },
+    /** The log's current ordering number, for dating a queued check. */
+    currentSequence() {
+      return sequence;
+    },
     recordUpdate(execution: GraphExecution) {
       sequence += 1;
       updates.delete(execution.id);
       updates.set(execution.id, { execution, sequence });
       const read = reads.get(execution.id);
-      if (read) read.superseded = true;
+      if (read) {
+        read.superseded = true;
+        read.supersededAt = sequence;
+      }
     },
     /** A read of one run by ID starts now. */
     startRead(runID: string) {
@@ -97,17 +109,22 @@ export function createLiveUpdateLog() {
     /**
      * A read by ID has settled. True if nothing newer about the run came
      * meanwhile. Its answer then stands for the moment the read started, so
-     * a list fetched before that moment replays it.
+     * a list fetched before that moment replays it. When newer news did
+     * come, `supersededAt` says where in the sequence it sits, so the
+     * caller can tell whether it also covers a check queued after the read
+     * started; unknown when the read is gone (a reset dropped it).
      */
     finishRead(runID: string, read?: RunStatus) {
       const pending = reads.get(runID);
       reads.delete(runID);
-      if (!pending || pending.superseded) return false;
+      if (!pending || pending.superseded) {
+        return { accepted: false, supersededAt: pending?.supersededAt };
+      }
       if (read) {
         updates.delete(runID);
         updates.set(runID, { execution: read, sequence: pending.started });
       }
-      return true;
+      return { accepted: true };
     },
     recordFetchStart() {
       sequence += 1;
@@ -140,6 +157,9 @@ export function createLiveUpdateLog() {
       reads.forEach((read, id) => {
         if (since > read.started && (complete || listedIDs.has(id))) {
           read.superseded = true;
+          // The list's fetch started here: that is where its observation
+          // sits in the sequence.
+          read.supersededAt = since;
         }
       });
       const newer: RunStatus[] = [];
