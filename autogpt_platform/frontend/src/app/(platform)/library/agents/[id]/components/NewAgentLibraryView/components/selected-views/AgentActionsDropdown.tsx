@@ -189,10 +189,7 @@ export function AgentActionsDropdown({
         <DropdownMenuContent align="end">
           {run ? (
             <>
-              <DropdownMenuItem
-                onClick={() => setShowDeleteRunDialog(true)}
-                className="flex items-center gap-2"
-              >
+              <DropdownMenuItem onClick={() => setShowDeleteRunDialog(true)}>
                 Delete this task
               </DropdownMenuItem>
               <DropdownMenuSeparator />
@@ -207,16 +204,10 @@ export function AgentActionsDropdown({
               Edit workflow
             </Link>
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={handleExport}
-            className="flex items-center gap-2"
-          >
+          <DropdownMenuItem onClick={handleExport}>
             Export workflow to file
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => setShowDeleteDialog(true)}
-            className="flex items-center gap-2"
-          >
+          <DropdownMenuItem onClick={() => setShowDeleteDialog(true)}>
             Delete workflow
           </DropdownMenuItem>
         </DropdownMenuContent>

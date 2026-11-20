@@ -1,7 +1,7 @@
 import {
   parseSidebarCookie,
   SIDEBAR_COOKIE_NAME,
-} from "@/components/ui/sidebar-cookie";
+} from "@/components/molecules/Sidebar/sidebar-cookie";
 import { NetworkStatusMonitor } from "@/services/network-status/NetworkStatusMonitor";
 import { cookies } from "next/headers";
 import { PushNotificationProvider } from "@/services/push-notifications/PushNotificationProvider";

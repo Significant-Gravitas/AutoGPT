@@ -30,7 +30,7 @@ export const ScrollableTabsContent = React.forwardRef<HTMLDivElement, Props>(
         ref={(node) => {
           if (typeof ref === "function") ref(node);
           else if (ref) ref.current = node;
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment -- contentRef is a read-only RefObject; the callback ref fills it
           // @ts-ignore
           contentRef.current = node;
         }}

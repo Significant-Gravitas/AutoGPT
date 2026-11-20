@@ -44,6 +44,12 @@ export const SEEDED_TEST_ACCOUNTS = {
     email: "e2e.qa.parallel.b@example.com",
     password: SEEDED_TEST_PASSWORD,
   },
+  // Signed up with Microsoft (MICROSOFT_SIGN_IN_EMAIL in e2e_test_data.py).
+  microsoftSignIn: {
+    key: "microsoftSignIn",
+    email: "e2e.qa.microsoft@example.com",
+    password: SEEDED_TEST_PASSWORD,
+  },
 } as const;
 
 export type SeededTestAccountKey = keyof typeof SEEDED_TEST_ACCOUNTS;

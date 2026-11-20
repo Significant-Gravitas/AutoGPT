@@ -56,7 +56,7 @@ function OutputKeySection({
   return (
     <ContentCard>
       <div className="flex items-center justify-between gap-2">
-        <ContentCardTitle className="text-xs">{outputKey}</ContentCardTitle>
+        <ContentCardTitle size="small">{outputKey}</ContentCardTitle>
         <ContentBadge>
           {items.length} item{items.length === 1 ? "" : "s"}
         </ContentBadge>
@@ -68,9 +68,9 @@ function OutputKeySection({
       </div>
       {hasMoreItems && (
         <Button
-          variant="ghost"
+          variant="ghost-muted"
           size="small"
-          className="mt-1 h-auto px-0 py-0.5 text-caption-sm leading-inherit text-muted-foreground"
+          className="mt-1 h-auto px-0 py-0.5 text-caption-sm leading-inherit"
           onClick={() => setExpanded((prev) => !prev)}
         >
           {expanded ? "Show less" : `Show all ${items.length} items`}
@@ -84,7 +84,7 @@ export function BlockOutputCard({ output }: Props) {
   return (
     <ContentGrid>
       {output.is_dry_run && (
-        <div className="flex items-center gap-1.5 rounded-md border border-warning-border bg-warning-surface px-2.5 py-1.5 text-xs font-medium text-warning-foreground">
+        <div className="flex items-center gap-1.5 rounded-md border border-warning-border bg-warning-surface px-2.5 py-1.5 text-caption font-medium text-warning-foreground">
           <span>⚡</span>
           <span>Simulated — no real execution occurred</span>
         </div>

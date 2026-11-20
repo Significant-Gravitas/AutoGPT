@@ -113,7 +113,6 @@ test("a Soul edit is put to the user on its own card, whose Approve the gate tak
   expect(screen.getByText("Was: Short and factual.")).toBeDefined();
 
   await user.click(screen.getByRole("button", { name: "Approve" }));
-  await user.click(screen.getByRole("button", { name: "Send decisions" }));
 
   // The line gate/card_approval.py takes for confirm_expert_soul_update.
   expect(onSend).toHaveBeenCalledWith(

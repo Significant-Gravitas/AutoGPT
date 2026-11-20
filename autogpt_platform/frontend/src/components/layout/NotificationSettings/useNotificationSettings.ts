@@ -2,7 +2,10 @@
 
 import { useEffect, useReducer, useSyncExternalStore } from "react";
 
-import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
+import {
+  hasStoredNotificationsOn,
+  useCopilotUIStore,
+} from "@/app/(platform)/copilot/store";
 import { toast } from "@/components/molecules/Toast/use-toast";
 
 import {
@@ -16,15 +19,22 @@ import {
  * our single app-level switch.
  *
  * We can never revoke a granted permission — "off" only ever means our own
- * flag. Once the user has denied at the browser level, the switch is inert
+ * flag, which also drops this browser's push subscription (see
+ * `usePushNotifications`). Once the user has denied at the browser level, the switch is inert
  * and the surface has to send them to their browser's site settings.
  */
 export function useNotificationSettings() {
   const isNotificationsEnabled = useCopilotUIStore(
     (s) => s.isNotificationsEnabled,
   );
+  const forgetNotificationsEnabled = useCopilotUIStore(
+    (s) => s.forgetNotificationsEnabled,
+  );
   const setNotificationsEnabled = useCopilotUIStore(
     (s) => s.setNotificationsEnabled,
+  );
+  const dismissNotificationBanner = useCopilotUIStore(
+    (s) => s.dismissNotificationBanner,
   );
   const isSoundEnabled = useCopilotUIStore((s) => s.isSoundEnabled);
   const toggleSound = useCopilotUIStore((s) => s.toggleSound);
@@ -44,10 +54,13 @@ export function useNotificationSettings() {
   // delivered. This reads the browser directly because the hydration render
   // still sees the server's "default".
   useEffect(() => {
-    if (isNotificationsEnabled && readPermission() !== "granted") {
-      setNotificationsEnabled(false);
+    // A revoke while the app was closed leaves the stored "on" behind with
+    // the store already off; forget it too, as a revoke seen live does.
+    const isOn = isNotificationsEnabled || hasStoredNotificationsOn();
+    if (isOn && readPermission() !== "granted") {
+      forgetNotificationsEnabled();
     }
-  }, [permission, isNotificationsEnabled, setNotificationsEnabled]);
+  }, [permission, isNotificationsEnabled, forgetNotificationsEnabled]);
 
   const isSupported = permission !== "unsupported";
   const isBlocked = permission === "denied";
@@ -55,6 +68,8 @@ export function useNotificationSettings() {
   async function toggleNotifications() {
     if (isNotificationsEnabled) {
       setNotificationsEnabled(false);
+      // A deliberate "off" must not bring the chat's turn-on banner back.
+      dismissNotificationBanner();
       return;
     }
 

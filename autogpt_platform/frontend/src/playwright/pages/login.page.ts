@@ -1,4 +1,4 @@
-import { Page } from "@playwright/test";
+import { expect, Page } from "@playwright/test";
 import {
   getSeededTestUser,
   type SeededTestAccountKey,
@@ -24,8 +24,12 @@ export class LoginPage {
   async login(email: string, password: string) {
     console.log(`ℹ️ Attempting login on ${this.page.url()} as ${email}`);
 
-    // Wait for the form to be ready
-    await this.page.waitForSelector("form", { state: "visible" });
+    // The form is in the server HTML; Log in is enabled once it's hydrated.
+    const loginButton = this.page.getByRole("button", {
+      name: "Log in",
+      exact: true,
+    });
+    await expect(loginButton).toBeEnabled({ timeout: 15_000 });
 
     // Fill email using input selector instead of label
     const emailInput = this.page.locator('input[type="email"]');
@@ -36,13 +40,6 @@ export class LoginPage {
     const passwordInput = this.page.locator('input[type="password"]');
     await passwordInput.waitFor({ state: "visible" });
     await passwordInput.fill(password);
-
-    // Wait for the button to be ready
-    const loginButton = this.page.getByRole("button", {
-      name: "Log in",
-      exact: true,
-    });
-    await loginButton.waitFor({ state: "visible" });
 
     // Attach navigation logger for debug purposes
     this.page.once("load", (page) =>

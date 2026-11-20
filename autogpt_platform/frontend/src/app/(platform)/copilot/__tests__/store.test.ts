@@ -96,6 +96,94 @@ describe("artifactPanel store actions", () => {
     expect(s.history).toEqual([]);
   });
 
+  describe("followArtifactOverwrite", () => {
+    it("swaps the open file without opening a history entry", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+      const next = makeArtifact("v2", "report.md");
+
+      useCopilotUIStore.getState().followArtifactOverwrite("v1", next);
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact).toEqual({ ...next, documentId: "v1" });
+      expect(s.history).toEqual([]);
+    });
+
+    it("keeps one document id across a chain of overwrites", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+
+      const { followArtifactOverwrite } = useCopilotUIStore.getState();
+      followArtifactOverwrite("v1", makeArtifact("v2"));
+      followArtifactOverwrite("v2", makeArtifact("v3"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact?.id).toBe("v3");
+      expect(s.activeArtifact?.documentId).toBe("v1");
+    });
+
+    it("keeps the document id when the open version's card is clicked", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+      const { followArtifactOverwrite, openArtifact } =
+        useCopilotUIStore.getState();
+      followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      openArtifact(makeArtifact("v2"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact?.documentId).toBe("v1");
+    });
+
+    it("leaves no back entry to itself after an old card is clicked mid-turn", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v2"));
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+
+      useCopilotUIStore
+        .getState()
+        .followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact?.id).toBe("v2");
+      expect(s.history).toEqual([]);
+    });
+
+    it("swaps a file waiting in the back stack and leaves the open one", () => {
+      const other = makeArtifact("other");
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+      useCopilotUIStore.getState().openArtifact(other);
+
+      useCopilotUIStore
+        .getState()
+        .followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact).toBe(other);
+      expect(s.history.map((ref) => ref.id)).toEqual(["v2"]);
+    });
+
+    it("keeps the computer face showing", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+      useCopilotUIStore.getState().openComputer();
+
+      useCopilotUIStore
+        .getState()
+        .followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact?.id).toBe("v2");
+      expect(s.mode).toBe("computer");
+    });
+
+    it("changes nothing when the panel holds no ref to the file", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("a"));
+      const before = useCopilotUIStore.getState().artifactPanel;
+
+      useCopilotUIStore
+        .getState()
+        .followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      expect(useCopilotUIStore.getState().artifactPanel).toBe(before);
+    });
+  });
+
   it("goBackArtifact is a no-op when history is empty", () => {
     const a = makeArtifact("a");
     useCopilotUIStore.getState().openArtifact(a);
@@ -249,6 +337,59 @@ describe("useCopilotUIStore", () => {
       isNotificationsEnabled: false,
       isSoundEnabled: true,
       copilotLlmModel: "standard",
+      newChatExecutionTarget: { kind: "cloud" },
+      isExecutionTargetPickerOpen: false,
+      executionTargetError: null,
+    });
+  });
+
+  describe("new chat execution target", () => {
+    it("defaults to Cloud", () => {
+      expect(useCopilotUIStore.getState().newChatExecutionTarget).toEqual({
+        kind: "cloud",
+      });
+    });
+
+    it("keeps Local PC folder references in memory only", () => {
+      useCopilotUIStore.getState().setNewChatExecutionTarget({
+        kind: "local",
+        machineID: "machine-1",
+        machineLabel: "Workstation",
+        connectionID: "connection-1",
+        browseID: "browse-1",
+        directoryRef: "directory-1",
+        displayPath: "C:\\Users\\Ada\\Projects",
+      });
+
+      expect(window.localStorage.length).toBe(0);
+      expect(useCopilotUIStore.getState().newChatExecutionTarget).toMatchObject(
+        {
+          kind: "local",
+          directoryRef: "directory-1",
+        },
+      );
+    });
+
+    it("resets each new chat to Cloud and closes the folder picker", () => {
+      useCopilotUIStore.getState().setNewChatExecutionTarget({
+        kind: "local",
+        machineID: "machine-1",
+        machineLabel: "Workstation",
+        connectionID: "connection-1",
+        browseID: "browse-1",
+        directoryRef: "directory-1",
+        displayPath: "C:\\Users\\Ada\\Projects",
+      });
+      useCopilotUIStore.getState().setExecutionTargetPickerOpen(true);
+      useCopilotUIStore.getState().setExecutionTargetError("Stale folder");
+
+      useCopilotUIStore.getState().resetNewChatExecutionTarget();
+
+      expect(useCopilotUIStore.getState()).toMatchObject({
+        newChatExecutionTarget: { kind: "cloud" },
+        isExecutionTargetPickerOpen: false,
+        executionTargetError: null,
+      });
     });
   });
 
@@ -441,6 +582,7 @@ describe("useCopilotUIStore", () => {
       useCopilotUIStore.getState().setNotificationsEnabled(true);
       useCopilotUIStore.getState().toggleSound();
       useCopilotUIStore.getState().addCompletedSession("s1");
+      window.localStorage.setItem("copilot-local-pc-warning-acked", "true");
 
       useCopilotUIStore.getState().clearCopilotLocalData();
 
@@ -459,6 +601,9 @@ describe("useCopilotUIStore", () => {
       expect(window.localStorage.getItem("copilot-model")).toBeNull();
       expect(
         window.localStorage.getItem("copilot-completed-sessions"),
+      ).toBeNull();
+      expect(
+        window.localStorage.getItem("copilot-local-pc-warning-acked"),
       ).toBeNull();
     });
   });

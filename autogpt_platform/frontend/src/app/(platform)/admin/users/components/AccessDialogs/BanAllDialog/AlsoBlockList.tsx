@@ -2,7 +2,7 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
+import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import type { AlsoBlockOption } from "./helpers";
 
 interface Props {
@@ -31,7 +31,7 @@ export function AlsoBlockList({
 
   return (
     <div className="flex flex-col gap-2">
-      <Text variant="small-medium" className="text-foreground-body">
+      <Text variant="small-medium" tone="body">
         Also block
       </Text>
       {options.map((option) => (
@@ -47,7 +47,7 @@ export function AlsoBlockList({
             disabled={option.isDisabled || done.has(option.key)}
             onCheckedChange={() => onToggle(option.key)}
           />
-          <Text variant="body" as="span" className="text-foreground-body">
+          <Text variant="body" as="span" tone="body">
             Block{" "}
             <span className="font-medium" translate="no">
               {option.label}
@@ -57,7 +57,7 @@ export function AlsoBlockList({
         </label>
       ))}
       {alreadyBlockedDomain ? (
-        <Text variant="body" className="text-foreground-tertiary">
+        <Text variant="body" tone="muted">
           <span className="font-medium">{alreadyBlockedDomain}</span> · already
           blocked
         </Text>

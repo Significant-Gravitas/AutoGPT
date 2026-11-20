@@ -93,7 +93,7 @@ export function AgentDetailsCard({ output }: Props) {
         Review the inputs below and press Proceed to run.
       </ContentMessage>
 
-      <div className="mt-2 rounded-2xl border bg-background p-3 pt-4">
+      <div className="mt-2 rounded-2xl border bg-canvas p-3 pt-4">
         <FormRenderer
           jsonSchema={schema}
           handleChange={handleChange}

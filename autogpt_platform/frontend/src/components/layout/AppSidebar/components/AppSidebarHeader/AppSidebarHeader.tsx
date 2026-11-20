@@ -1,12 +1,16 @@
 "use client";
 
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
-import { SidebarHeader, useSidebar } from "@/components/ui/sidebar";
+import {
+  SidebarHeader,
+  useSidebar,
+} from "@/components/molecules/Sidebar/Sidebar";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
@@ -18,7 +22,7 @@ export function AppSidebarHeader() {
   const isCollapsed = state === "collapsed";
 
   const toggleButton = (
-    <Tooltip>
+    <Tooltip inheritDelay>
       <TooltipTrigger asChild>
         <button
           type="button"
@@ -33,18 +37,21 @@ export function AppSidebarHeader() {
         >
           <Icon
             icon={SidebarLeftIcon}
-            className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5 max-md:size-5"
+            tone="emphasis-soft"
+            className="size-4 group-data-[collapsible=icon]:size-4.5 max-md:size-5"
           />
         </button>
       </TooltipTrigger>
-      <TooltipContent side="right">
-        {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-      </TooltipContent>
+      <TooltipPortal>
+        <TooltipContent side="right">
+          {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        </TooltipContent>
+      </TooltipPortal>
     </Tooltip>
   );
 
   return (
-    <SidebarHeader className="sticky top-0 z-10 mb-1 flex shrink-0 animate-fade-in flex-row items-center justify-between gap-2 bg-sidebar p-2 group-data-[collapsible=icon]:flex-col">
+    <SidebarHeader className="sticky top-0 z-10 mb-1 flex shrink-0 animate-fade-in flex-row items-center justify-between gap-2 bg-surface-muted p-2 group-data-[collapsible=icon]:flex-col">
       <div
         className={cn(
           "relative flex items-center",

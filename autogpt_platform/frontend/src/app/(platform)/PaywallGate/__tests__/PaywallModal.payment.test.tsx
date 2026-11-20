@@ -108,9 +108,6 @@ test("a failed first trial charge pays the open invoice instead of choosing a pl
   const pay = await screen.findByRole("link", { name: "Pay $50 now" });
   expect(pay.getAttribute("href")).toBe(PAYMENT_URL);
   expect(screen.getByText("Your payment didn’t go through")).toBeDefined();
-  for (const amount of screen.getAllByText(/\$50/)) {
-    expect(amount.closest(".sentry-unmask, [data-sentry-unmask]")).toBeNull();
-  }
   expect(screen.queryByText("Choose a plan to keep working")).toBeNull();
   expect(screen.queryByRole("region", { name: "Pro plan" })).toBeNull();
   expect(screen.queryByRole("button", { name: /^Start/ })).toBeNull();

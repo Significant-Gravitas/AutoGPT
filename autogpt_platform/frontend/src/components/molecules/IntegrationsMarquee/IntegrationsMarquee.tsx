@@ -28,7 +28,7 @@ export function IntegrationsMarquee({ variant = "light", className }: Props) {
       aria-hidden
       data-slot="integrations-marquee"
       className={cn(
-        "relative flex h-[200px] w-[340px] flex-col justify-center gap-3 overflow-hidden [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_18%,black_82%,transparent_100%)] [mask-image:linear-gradient(to_right,transparent_0%,black_18%,black_82%,transparent_100%)]",
+        "relative flex h-[200px] w-[340px] flex-col justify-center gap-3 overflow-hidden [mask-image:linear-gradient(to_right,transparent_0%,black_18%,black_82%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_18%,black_82%,transparent_100%)]",
         className,
       )}
     >
@@ -89,10 +89,9 @@ function GhostIntegrationCard({
   const isDark = variant === "dark";
   return (
     <div
-      // TODO(tokens): no shadow token for 0 1px 2px rgba(0,0,0,0.03).
       data-slot="integrations-marquee-card"
       className={cn(
-        "flex h-[58px] w-[180px] shrink-0 items-center gap-3 rounded-xl border px-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)]",
+        "flex h-[58px] w-[180px] shrink-0 items-center gap-3 rounded-xl border px-3 shadow-sm",
         isDark
           ? "border-surface/10 bg-surface/[0.04]"
           : "border-border-base/50 bg-surface/50 opacity-70",

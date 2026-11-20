@@ -95,19 +95,23 @@ export const TimeInput: React.FC<TimeInputProps> = ({
       className={cn("relative mb-6", wrapperClassName)}
     >
       {input}
-      <Text
-        data-slot="time-input-error"
-        variant="small-medium"
-        as="span"
-        tone="error"
+      <span
         className={cn(
-          "absolute left-0 top-full mt-1 transition-opacity duration-200",
+          "absolute top-full left-0 mt-1 transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >
-        {error || " "}{" "}
-        {/* Always render with space to maintain consistent height calculation */}
-      </Text>
+        <Text
+          data-slot="time-input-error"
+          variant="small-medium"
+          as="span"
+          tone="error"
+          className="block"
+        >
+          {error || " "}{" "}
+          {/* Always render with space to maintain consistent height calculation */}
+        </Text>
+      </span>
     </div>
   );
 

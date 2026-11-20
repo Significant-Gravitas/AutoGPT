@@ -7,6 +7,7 @@ import Link from "next/link";
 import { ConnectionPickerPanel } from "./ConnectionPickerPanel";
 import { listedConnections } from "./helpers";
 import { useConnectionPicker } from "./useConnectionPicker";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   /** See `ConnectionPicker`: the connection is fixed, only the tier is open. */
@@ -52,20 +53,20 @@ function DialogBody({ picker, connectionLocked }: BodyProps) {
 
   if (isError) {
     return (
-      <p className="text-sm text-foreground-secondary">
+      <Text variant="body-tight" tone="secondary">
         AI connections are unavailable right now. Try again in a moment.
-      </p>
+      </Text>
     );
   }
 
   if (offers.length === 0) {
     return (
-      <p className="text-sm text-foreground-secondary">
+      <Text variant="body-tight" tone="secondary">
         No AI connection is set up yet.{" "}
         <Link href="/settings/integrations" className="underline">
           Set one up
         </Link>
-      </p>
+      </Text>
     );
   }
 

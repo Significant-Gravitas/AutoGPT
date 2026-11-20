@@ -26,6 +26,7 @@
  * Prints `old class | new class | resolved value` and exits 1 on any
  * difference. DS2 and DS5 tickets run this script; they do not edit it.
  */
+import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
@@ -39,12 +40,13 @@ import {
   SIZE_TOKENS,
   TOKEN_GROUPS,
 } from "./codemod-tokens";
+import { buildAliasMap } from "./ds/alias-to-role";
 import { comparePngs } from "./screenshot-pages";
+
+const ALIASES = buildAliasMap();
 
 const localRequire = createRequire(join(process.cwd(), "package.json"));
 const postcss = localRequire("postcss");
-const tailwindcss = localRequire("tailwindcss");
-const loadConfig = localRequire("tailwindcss/loadConfig");
 
 interface Pair {
   group: string;
@@ -52,9 +54,10 @@ interface Pair {
   newClass: string;
 }
 
-// shadcn names keep their names; only their variables moved from HSL to RGB.
-// Against a base checkout these prove the values did not move.
-const UNCHANGED_NAMES = [
+// The shadcn names, renamed to the role each aliased (scripts/ds/alias-to-role.ts).
+// Against a base checkout that still has the names, these prove the rename
+// moved no pixel.
+const ALIAS_CLASSES = [
   "bg-background",
   "text-foreground",
   "bg-card",
@@ -82,23 +85,23 @@ const UNCHANGED_NAMES = [
   "text-sidebar-accent-foreground",
   "border-sidebar-border",
   "ring-sidebar-ring",
-  "agpt-card",
-  "agpt-border-input",
 ];
+
+const UNCHANGED_NAMES = ["agpt-card", "agpt-border-input"];
 
 // The body background, and the colour every bordered element gets from
 // `* { @apply border-border }` without a colour class of its own.
 const SPECIAL_PAIRS: Pair[] = [
-  // sidebar.tsx's `outline` variant read the deleted HSL variables.
+  // The Sidebar's `outline` variant read the shadcn variables directly.
   {
     group: "Sidebar",
-    oldClass: "shadow-[0_0_0_1px_hsl(var(--sidebar-border))]",
-    newClass: "shadow-[0_0_0_1px_rgb(var(--color-sidebar-border))]",
+    oldClass: "shadow-[0_0_0_1px_rgb(var(--color-sidebar-border))]",
+    newClass: "shadow-[0_0_0_1px_rgb(var(--color-border-base))]",
   },
   {
     group: "Sidebar",
-    oldClass: "shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]",
-    newClass: "shadow-[0_0_0_1px_rgb(var(--color-sidebar-accent))]",
+    oldClass: "shadow-[0_0_0_1px_rgb(var(--color-sidebar-accent))]",
+    newClass: "shadow-[0_0_0_1px_rgb(var(--color-surface-hover))]",
   },
   { group: "Page", oldClass: "bg-[#F6F7F8]", newClass: "bg-canvas" },
   { group: "Page", oldClass: "border", newClass: "border" },
@@ -109,13 +112,18 @@ const SPECIAL_PAIRS: Pair[] = [
     oldClass: "bg-violet-50/50",
     newClass: "bg-accent-surface/50",
   },
-  { group: "Opacity", oldClass: "bg-accent/5", newClass: "bg-accent/5" },
-  { group: "Opacity", oldClass: "bg-muted/50", newClass: "bg-muted/50" },
+  { group: "Opacity", oldClass: "bg-accent/5", newClass: "bg-brand/5" },
+  {
+    group: "Opacity",
+    oldClass: "bg-muted/50",
+    newClass: "bg-surface-hover/50",
+  },
   {
     group: "Opacity",
     oldClass: "text-muted-foreground/70",
-    newClass: "text-muted-foreground/70",
+    newClass: "text-foreground-tertiary/70",
   },
+  { group: "Opacity", oldClass: "bg-black/80", newClass: "bg-scrim/80" },
 ];
 
 function allPairs(): Pair[] {
@@ -130,8 +138,13 @@ function allPairs(): Pair[] {
   );
   return [
     ...oneForOne,
-    ...UNCHANGED_NAMES.map((name) => ({
+    ...ALIAS_CLASSES.map((oldClass) => ({
       group: "shadcn names",
+      oldClass,
+      newClass: ALIASES.get(oldClass) ?? oldClass,
+    })),
+    ...UNCHANGED_NAMES.map((name) => ({
+      group: "Design components",
       oldClass: name,
       newClass: name,
     })),
@@ -160,14 +173,49 @@ function companions(cls: string) {
   return "";
 }
 
+// Each checkout compiles with its own Tailwind, so a base checkout from
+// before the Tailwind 4 upgrade still builds the way it did.
 async function compileCss(dir: string, classes: string[]) {
-  const config = loadConfig(join(dir, "tailwind.config.ts"));
-  const globals = readFileSync(join(dir, "src/app/globals.css"), "utf8");
+  const dirRequire = createRequire(join(dir, "package.json"));
+  const from = join(dir, "src/app/globals.css");
+  const globals = readFileSync(from, "utf8");
   const raw = classes.flatMap((c) => [c, companions(c)]).join(" ");
-  const result = await postcss([
-    tailwindcss({ ...config, content: [{ raw, extension: "html" }] }),
-  ]).process(globals, { from: join(dir, "src/app/globals.css") });
-  return result.css as string;
+  const major = Number(
+    dirRequire("tailwindcss/package.json").version.split(".")[0],
+  );
+  if (major < 4) {
+    const loadConfig = dirRequire("tailwindcss/loadConfig");
+    const config = loadConfig(join(dir, "tailwind.config.ts"));
+    const result = await postcss([
+      dirRequire("tailwindcss")({
+        ...config,
+        content: [{ raw, extension: "html" }],
+      }),
+    ]).process(globals, { from });
+    return result.css as string;
+  }
+  // Tailwind 4 takes the classes from `@source inline()` and runs the
+  // checkout's own postcss.config.mjs. It runs in a plain Node process: under
+  // tsx, Tailwind 4 reads tailwind.config.ts's default export as
+  // `{ default: config }` and finds no theme.
+  const css = `${globals}\n@source inline(${JSON.stringify(raw)});\n`;
+  const script = `
+    import postcss from "postcss";
+    import { createRequire } from "node:module";
+    const require = createRequire(${JSON.stringify(join(dir, "package.json"))});
+    const { default: config } = await import(${JSON.stringify(join(dir, "postcss.config.mjs"))});
+    const plugins = Object.entries(config.plugins).map(([name, options]) => require(name)(options));
+    let input = "";
+    for await (const chunk of process.stdin) input += chunk;
+    const result = await postcss(plugins).process(input, { from: ${JSON.stringify(from)} });
+    process.stdout.write(result.css);
+  `;
+  return execFileSync(process.execPath, ["--input-type=module", "-e", script], {
+    cwd: dir,
+    input: css,
+    maxBuffer: 256 * 1024 * 1024,
+    encoding: "utf8",
+  });
 }
 
 function escapeClass(cls: string) {

@@ -1,5 +1,6 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 import type { MutableRefObject } from "react";
 import { highlightMatch, type SearchCommandItem } from "./helpers";
@@ -34,16 +35,15 @@ export function SearchCommandResultItem({
       ref={isHighlighted ? highlightedRef : undefined}
       id={`${idPrefix}-${item.id}`}
       type="button"
-      variant="ghost"
+      variant="compact-ghost"
+      size="compact"
       role="option"
       aria-selected={isHighlighted}
       onMouseEnter={onHighlight}
       onClick={onSelect}
       className={cn(
-        "relative h-auto w-full justify-start rounded-md px-3 py-2 text-left transition-colors duration-150",
-        isHighlighted
-          ? "bg-surface-hover hover:bg-surface-hover"
-          : "hover:bg-surface-muted",
+        "relative h-auto w-full justify-start px-3 text-left",
+        isHighlighted ? "bg-surface-hover" : "hover:bg-surface-muted",
       )}
     >
       <span
@@ -78,12 +78,13 @@ export function SearchCommandResultItem({
           data-slot="search-command-result-item-content"
           className="min-w-0 flex-1"
         >
-          <div
+          <Text
+            variant="body-tight"
+            as="div"
             data-slot="search-command-result-item-title"
-            className={cn(
-              "truncate text-sm font-normal transition-colors duration-150",
-              isHighlighted ? "text-foreground" : "text-foreground-emphasis",
-            )}
+            tone={isHighlighted ? "base" : "emphasis"}
+            motion="colors"
+            className="truncate"
           >
             {highlightMatch(item.title, query).map((part, partIndex) => (
               <span
@@ -94,14 +95,17 @@ export function SearchCommandResultItem({
                 {part.text}
               </span>
             ))}
-          </div>
+          </Text>
           {item.subtitle ? (
-            <div
+            <Text
+              variant="small-medium-tight"
+              as="div"
+              tone="muted"
               data-slot="search-command-result-item-subtitle"
-              className="mt-0.5 truncate text-xs text-foreground-tertiary"
+              className="mt-0.5 truncate"
             >
               {item.subtitle}
-            </div>
+            </Text>
           ) : null}
         </div>
         {isLoading ? (
@@ -115,7 +119,7 @@ export function SearchCommandResultItem({
             aria-hidden="true"
             data-slot="search-command-result-item-key"
             className={cn(
-              // TODO(tokens): no shadow token for the key-cap shadow.
+              // oxlint-disable-next-line design-system/no-arbitrary-values -- key-cap shadow, no shadow token holds it
               "inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md border border-border-base bg-surface px-1 font-sans text-caption-sm leading-inherit text-foreground-secondary shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)] transition-opacity duration-150",
               isHighlighted ? "opacity-100" : "opacity-0",
             )}

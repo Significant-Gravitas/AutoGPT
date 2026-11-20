@@ -20,7 +20,7 @@ const reactCompiler = require("babel-plugin-react-compiler");
 
 const FRONTEND_ROOT = path.resolve(__dirname, "../../../../..");
 const COPILOT = "src/app/(platform)/copilot";
-const AI_ELEMENTS = "src/components/ai-elements";
+const ORGANISMS = "src/components/organisms";
 
 /** File → source snippets of the compiled output that must be cached. Most
  *  were hand-memoised before the compiler; a few still are (see the comment
@@ -49,7 +49,7 @@ const CACHED: Record<string, string[]> = {
   ],
   [`${COPILOT}/components/ChatMessagesContainer/ChatMessagesContainer.tsx`]: [
     "buildMessageIndexById(",
-    "extractReviewTarget(",
+    "extractReviewTargets(",
     "hasTrailingErrorMarker(",
     "<TailSpacer",
   ],
@@ -81,8 +81,10 @@ const CACHED: Record<string, string[]> = {
   [`${COPILOT}/components/WorkspaceFileCards/useSessionActivity.ts`]: [
     "getSessionActivity(",
   ],
-  [`${AI_ELEMENTS}/conversation.tsx`]: ["function handleScrollToBottom("],
-  [`${AI_ELEMENTS}/prompt-input.tsx`]: [
+  [`${ORGANISMS}/Conversation/Conversation.tsx`]: [
+    "function handleScrollToBottom(",
+  ],
+  [`${ORGANISMS}/PromptInput/PromptInput.tsx`]: [
     "function handleSubmit(",
     "function handleChange(",
     "function handleKeyDown(",

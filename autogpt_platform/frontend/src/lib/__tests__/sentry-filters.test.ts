@@ -24,6 +24,7 @@ import {
   stripSpanDataPII,
   stripSpanPII,
   stripUserPII,
+  tagDeploySkew,
 } from "../sentry-filters";
 
 // Drives a real Sentry client with the same console capture as
@@ -163,6 +164,39 @@ describe("Sentry filter for crawler noise", () => {
   });
 });
 
+describe("Sentry deploy skew tag", () => {
+  it("tags a failed chunk load and still sends it", () => {
+    const event = tagDeploySkew<Sentry.Event>({
+      exception: {
+        values: [
+          { type: "ChunkLoadError", value: "Loading chunk 34006 failed." },
+        ],
+      },
+      tags: { context: "application" },
+    });
+
+    expect(event.tags).toEqual({ context: "application", deploy_skew: true });
+  });
+
+  it("tags a failed CSS chunk load", () => {
+    const event = tagDeploySkew<Sentry.Event>({
+      exception: {
+        values: [{ type: "Error", value: "Loading CSS chunk 123 failed." }],
+      },
+    });
+
+    expect(event.tags).toEqual({ deploy_skew: true });
+  });
+
+  it("leaves other errors untagged", () => {
+    const event = tagDeploySkew<Sentry.Event>({
+      exception: { values: [{ type: "TypeError", value: "Failed to fetch" }] },
+    });
+
+    expect(event).not.toHaveProperty("tags");
+  });
+});
+
 describe("Sentry user privacy filters", () => {
   it("drops a user left with no id or role instead of sending an empty one", () => {
     const event = stripUserPII({
@@ -236,7 +270,7 @@ describe("Sentry user privacy filters", () => {
 
   it("drops every IP attribute from logs, transactions and spans", () => {
     const trace = { trace_id: "a".repeat(32), span_id: "b".repeat(16) };
-    const span = { ...trace, start_timestamp: 1 };
+    const span = { ...trace, start_timestamp: 1, status: "ok" };
 
     const log = stripLogUserPII({
       level: "info",

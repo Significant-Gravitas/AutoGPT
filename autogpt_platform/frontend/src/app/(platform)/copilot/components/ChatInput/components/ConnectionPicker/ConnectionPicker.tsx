@@ -9,7 +9,8 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import {
   AlertCircleIcon,
   ArrowDown01Icon,
@@ -19,6 +20,7 @@ import {
 import Link from "next/link";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 
@@ -76,12 +78,19 @@ export function ConnectionPicker({
       <span
         aria-label="AI connections unavailable"
         className={cn(
-          "inline-flex h-9 items-center gap-1.5 rounded-full border border-destructive/20 bg-destructive/10 px-2.5 text-xs font-medium text-destructive",
+          "inline-flex h-9 items-center rounded-full border border-error/20 bg-error/10 px-2.5",
           className,
         )}
       >
-        <Icon icon={AlertCircleIcon} size={14} />
-        <span className="hidden sm:inline">Connections unavailable</span>
+        <Text
+          variant="small-medium-tight"
+          as="span"
+          tone="error"
+          className="inline-flex items-center gap-1.5"
+        >
+          <Icon icon={AlertCircleIcon} size={14} />
+          <span className="hidden sm:inline">Connections unavailable</span>
+        </Text>
       </span>
     );
   }
@@ -92,12 +101,19 @@ export function ConnectionPicker({
         href="/settings/integrations"
         aria-label="Set up an AI connection"
         className={cn(
-          "inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/80",
+          "inline-flex h-9 items-center gap-1.5 rounded-full border border-border-base bg-surface-hover px-2.5 text-foreground-base transition-colors hover:bg-surface-hover/80",
           className,
         )}
       >
         <Icon icon={AlertCircleIcon} size={14} />
-        <span className="hidden sm:inline">Set up AI connection</span>
+        <Text
+          variant="small-medium-tight"
+          as="span"
+          tone="inherit"
+          className="hidden sm:inline"
+        >
+          Set up AI connection
+        </Text>
       </Link>
     );
   }
@@ -144,19 +160,16 @@ export function ConnectionPicker({
     <PopoverTrigger asChild>
       <Button
         type="button"
-        variant="ghost"
-        size={showsTier ? "icon" : "small"}
+        variant={showsTier ? "ghost-muted" : "ghost"}
+        size={showsTier ? "icon-sm" : "small"}
+        shape={showsTier ? "pill" : undefined}
+        withTooltip={false}
         aria-label={
           showsTier
             ? `Model tier ${label} — change`
             : `Runs on ${triggerLabel} — change`
         }
-        className={cn(
-          showsTier
-            ? "size-8 p-0 text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-body"
-            : "h-9 min-w-0 gap-1.5 px-2.5 py-1 text-sm",
-          className,
-        )}
+        className={cn(!showsTier && "min-w-0", className)}
       >
         {/* The tier the next turn runs at, whichever half of the setting
             the label happens to be naming. It swaps on the same beat as the
@@ -172,11 +185,7 @@ export function ConnectionPicker({
             <span className="hidden sm:inline">
               <Swap>{triggerLabel}</Swap>
             </span>
-            <Icon
-              icon={ArrowDown01Icon}
-              size={14}
-              className="text-muted-foreground"
-            />
+            <Icon icon={ArrowDown01Icon} size={14} tone="muted" />
           </>
         )}
       </Button>
@@ -186,9 +195,13 @@ export function ConnectionPicker({
   return (
     <Popover>
       {showsTier ? (
-        <Tooltip>
+        <Tooltip inheritDelay>
           <TooltipTrigger asChild>{trigger}</TooltipTrigger>
-          <TooltipContent side="top">{tierLabel(active, tier)}</TooltipContent>
+          <TooltipPortal>
+            <TooltipContent side="top">
+              {tierLabel(active, tier)}
+            </TooltipContent>
+          </TooltipPortal>
         </Tooltip>
       ) : (
         trigger

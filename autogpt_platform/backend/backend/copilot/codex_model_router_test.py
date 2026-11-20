@@ -70,9 +70,9 @@ def _transport(monkeypatch, models: list[CodexModelInfo]):
     "mode,tier,expected_model,expected_effort",
     [
         ("fast", "standard", "gpt-6-luna", "low"),
-        ("fast", "advanced", "gpt-6-astra", "medium"),
+        ("fast", "advanced", "gpt-6.2-astra", "medium"),
         ("thinking", "standard", "gpt-5.6-terra", "high"),
-        ("thinking", "advanced", "gpt-6-astra", "xhigh"),
+        ("thinking", "advanced", "gpt-6.2-astra", "xhigh"),
     ],
 )
 async def test_catalog_cells_select_latest_advertised_model(
@@ -88,6 +88,7 @@ async def test_catalog_cells_select_latest_advertised_model(
         _model("gpt-5.6-terra"),
         _model("gpt-5.6-sol", default=True),
         _model("gpt-6-astra"),
+        _model("gpt-6.2-astra"),
     ]
     transport = _transport(monkeypatch, models)
     lease = _lease()
@@ -100,6 +101,34 @@ async def test_catalog_cells_select_latest_advertised_model(
 
     assert resolved == (expected_model, expected_effort, "catalog")
     transport.models.assert_awaited_once_with(lease)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mode,expected_effort",
+    [("fast", "medium"), ("thinking", "xhigh")],
+)
+async def test_advanced_falls_back_to_preferred_gpt_6_astra(
+    monkeypatch,
+    catalog_state,
+    mode,
+    expected_effort,
+):
+    _transport(
+        monkeypatch,
+        [
+            _model("gpt-5.6-sol", default=True),
+            _model("gpt-6-astra"),
+        ],
+    )
+
+    resolved = await resolve_codex_model_route(
+        mode,
+        "advanced",
+        _lease(),
+    )
+
+    assert resolved == ("gpt-6-astra", expected_effort, "preferred")
 
 
 @pytest.mark.asyncio

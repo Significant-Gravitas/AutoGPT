@@ -5,8 +5,6 @@ interface Props extends React.SVGProps<SVGSVGElement> {
   wordmarkColor?: string;
 }
 
-// TODO(tokens): brand artwork. The logo's own colours (#669CF6, the gradient
-// stops #000030, #9900FF, #4285F4, and the clip-path fill) are not UI roles.
 export function AutoGPTLogo({
   hideText = false,
   wordmarkColor = "#000030",
@@ -120,7 +118,7 @@ export function AutoGPTLogo({
           <stop offset="1" stopColor="#9900FF" />
         </linearGradient>
         <clipPath id={clipId}>
-          <rect width="88.8696" height="40" fill="white" />
+          <rect width="88.8696" height="40" />
         </clipPath>
       </defs>
     </svg>

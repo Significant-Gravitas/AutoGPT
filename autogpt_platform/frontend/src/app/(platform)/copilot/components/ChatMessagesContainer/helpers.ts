@@ -9,8 +9,12 @@ import {
   type CompactionStats,
 } from "../CompactionCard/helpers";
 import { COMPACTION_PART_TYPE, isExpertChangePart } from "../ToolChain/helpers";
+import { parseTruncatedOutput } from "../ToolChain/resultHelpers";
 import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
+import { RENDER_UI_PART_TYPE } from "../../tools/RenderUI/helpers";
 import { CHAT_IMAGE_TOKEN_PREFIXES } from "../../helpers/chatImageTokens";
+import { extractDbSequence } from "../../helpers/convertChatSessionToUiMessages";
+import { isFeedbackCardPart } from "../../tools/FeedbackPrompts/helpers";
 
 export type MessagePart = UIMessage<
   unknown,
@@ -21,18 +25,30 @@ export type MessagePart = UIMessage<
 // Every assistant tool renders inside the ToolChain. ToolResult supplies a
 // compact result view for known backend tools and a structured fallback for
 // SDK or future tools, so no tool ever renders as a bare top-level part.
-// Compaction, expert changes and the hire's onboarding card are the
-// exceptions: each owns a card that must stay on screen, so they render as
-// parts of their own.
+// Compaction, expert changes, the hire's onboarding card and the feedback
+// cards are the exceptions: each owns a card that must stay on screen, so
+// they render as parts of their own.
 export function isChainableToolPart(part: MessagePart): boolean {
   if (
     part.type === COMPACTION_PART_TYPE ||
     part.type === EXPERT_ONBOARDING_PART_TYPE ||
+    part.type === RENDER_UI_PART_TYPE ||
+    isFeedbackCardPart(part) ||
     isExpertChangePart(part)
   ) {
     return false;
   }
   return part.type === "reasoning" || part.type.startsWith("tool-");
+}
+
+// Only a saved reply can be rated: a reply that just streamed is keyed by the
+// stream until the chat swaps in its saved id or learns it.
+export function getRatedMessageId(
+  message: UIMessage<unknown, UIDataTypes, UITools>,
+  savedMessageId?: string | null,
+) {
+  if (savedMessageId !== undefined) return savedMessageId;
+  return extractDbSequence(message) !== null ? message.id : null;
 }
 
 const COMPACTION_PHASES = new Set(["summarizing", "rebuilding"]);
@@ -376,54 +392,89 @@ export function resolveWorkspaceUrls(
   return resolved;
 }
 
-export type ReviewTarget =
-  | { kind: "chat" }
-  /** graphId is set for a run_agent run, so its status can say when to stop polling. */
-  | { kind: "graph"; graphExecId: string; graphId?: string };
+export interface RunReviewTarget {
+  graphExecId: string;
+  /** Set for a run_agent run, so its status can say when to stop polling. */
+  graphId?: string;
+}
+
+export interface ReviewTargets {
+  /** The newest output that can have reviews is the chat's own. */
+  chat: boolean;
+  runs: RunReviewTarget[];
+}
 
 /**
- * The newest tool output that can have pending reviews for the chat to show:
- * a run_block ReviewRequiredResponse, or a run_agent ExecutionStartedResponse
- * that paused or had not finished when the tool returned (a run AutoPilot
- * starts can pause at an irreversible block after it started).
+ * The runs whose pending reviews the chat shows: every run that was paused
+ * when its tool returned (several can each wait on a spend approval), and the
+ * newest output's run while it is in flight, since a run AutoPilot starts can
+ * pause at an irreversible block after it started.
  */
-export function extractReviewTarget(
+export function extractReviewTargets(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
-): ReviewTarget | null {
+): ReviewTargets {
+  const runs = new Map<string, RunReviewTarget>();
+  let newest: "chat" | "run" | null = null;
   for (let i = messages.length - 1; i >= 0; i--) {
     const parts = messages[i].parts;
     for (let j = parts.length - 1; j >= 0; j--) {
-      const part = parts[j];
-      if (!("output" in part) || !part.output) continue;
-      const out =
-        typeof part.output === "string"
-          ? (() => {
-              try {
-                return JSON.parse(part.output);
-              } catch {
-                return null;
-              }
-            })()
-          : part.output;
-      if (!out || typeof out !== "object") continue;
-      if (isChatReview(out)) return { kind: "chat" };
-      if ("execution_id" in out && "status" in out) {
-        const { execution_id, status, graph_id } = out as {
-          execution_id: string;
-          status: string;
-          graph_id?: string;
-        };
-        if (REVIEWABLE_STATUSES.has(status)) {
-          return {
-            kind: "graph",
-            graphExecId: execution_id,
-            graphId: graph_id,
-          };
-        }
+      const out = readToolOutput(parts[j]);
+      if (!out) continue;
+      if (isChatReview(out)) {
+        newest ??= "chat";
+        continue;
       }
+      if (!("execution_id" in out && "status" in out)) continue;
+      const { execution_id, status, graph_id } = out as {
+        execution_id: string;
+        status: string;
+        graph_id?: string;
+      };
+      if (!REVIEWABLE_STATUSES.has(status)) continue;
+      if ((status === "REVIEW" || newest === null) && !runs.has(execution_id)) {
+        runs.set(execution_id, {
+          graphExecId: execution_id,
+          graphId: graph_id,
+        });
+      }
+      newest ??= "run";
     }
   }
-  return null;
+  return { chat: newest === "chat", runs: [...runs.values()] };
+}
+
+function readToolOutput(part: MessagePart): object | null {
+  if (!("output" in part) || !part.output) return null;
+  if (typeof part.output !== "string") {
+    return typeof part.output === "object" ? part.output : null;
+  }
+  const truncated = parseTruncatedOutput(part.output);
+  if (!truncated) return parseObject(part.output);
+  return parseObject(truncated.preview) ?? reviewInPreview(truncated.preview);
+}
+
+function parseObject(text: string): object | null {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+// A digest's outline (`$: {type="review_required", …}`) or a preview cut in
+// the middle (`{"type":"review_required", …`) still opens with the output's
+// own top-level fields, which is enough to tell a review from anything else.
+const PREVIEW_TYPE_RE =
+  /^(?:\$: \{type=|\{"type": ?)"(review_required|approval_required)"/;
+const PREVIEW_REVIEW_ID_RE = /[{ ,]"?review_id"?(?:=|: ?)"([^"]+)"/;
+
+function reviewInPreview(preview: string): object | null {
+  const head = preview.split("\n", 1)[0];
+  const type = PREVIEW_TYPE_RE.exec(head)?.[1];
+  if (!type) return null;
+  const reviewID = PREVIEW_REVIEW_ID_RE.exec(head)?.[1];
+  return reviewID ? { type, review_id: reviewID } : { type };
 }
 
 // A block review, or an action the auto-mode gate parked for approval.

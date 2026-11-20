@@ -98,6 +98,18 @@ def test_build_message_failure_states_reason():
     assert "> missing Gmail credentials" in message
 
 
+def test_build_message_names_failed_steps_and_quotes_the_summary():
+    message = build_expert_run_message(
+        agent_name="Morning Brief",
+        succeeded=False,
+        summary="The search step could not reach Jina: invalid API key.",
+        failed_steps=1,
+    )
+    assert "but 1 step failed." in message
+    assert "> The search step could not reach Jina: invalid API key." in message
+    assert "Here's the summary it generated" not in message
+
+
 def test_build_message_truncates_oversized_error():
     message = build_expert_run_message(
         agent_name="Morning Brief",
@@ -296,6 +308,29 @@ def test_failed_post_skips_output_fetch():
     assert metadata["status"] == "failed"
     assert metadata["output_type"] == "unknown"
     assert metadata["output_key"] is None
+    db_client.get_node_executions.assert_not_called()
+
+
+def test_completed_run_with_a_failed_step_posts_as_failed():
+    db_client = MagicMock()
+    db_client.get_graph_metadata.return_value = SimpleNamespace(name="Lead Finder")
+    db_client.get_library_agent_id_by_graph_id.return_value = "lib-1"
+    with patch(f"{_MODULE}.get_redis", return_value=_redis_allowing_posts()):
+        handle_expert_run_post(
+            db_client,
+            _entry(expert_id="expert-1"),
+            ExecutionStatus.COMPLETED,
+            GraphExecutionStats(
+                node_error_count=1,
+                activity_status="The search step failed: invalid API key.",
+            ),
+        )
+    kwargs = db_client.append_expert_run_message.call_args.kwargs
+    assert kwargs["metadata"]["status"] == "failed"
+    assert kwargs["metadata"]["output_type"] == "unknown"
+    assert "but 1 step failed." in kwargs["content"]
+    assert "> The search step failed: invalid API key." in kwargs["content"]
+    assert "finished without any problems" not in kwargs["content"]
     db_client.get_node_executions.assert_not_called()
 
 
