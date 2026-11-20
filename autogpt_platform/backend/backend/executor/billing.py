@@ -3,6 +3,7 @@ import logging
 import math
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 from prisma.enums import AlertCause
 
@@ -575,16 +576,14 @@ def handle_insufficient_funds_notif(
 
     # Send Discord system alert
     try:
-        user_email = db_client.get_user_email_by_id(user_id)
-
         alert_message = (
             f"❌ **Insufficient Funds Alert**\n"
-            f"User: {user_email or user_id}\n"
+            f"User: `{user_id}`\n"
             f"Agent: {metadata.name if metadata else 'Unknown Agent'}\n"
             f"Current balance: ${e.balance / 100:.2f}\n"
             f"Attempted cost: ${abs(e.amount) / 100:.2f}\n"
             f"Shortfall: ${abs(shortfall) / 100:.2f}\n"
-            f"[View User Details]({base_url}/admin/spending?search={user_email})"
+            f"[View User Details]({base_url}/admin/spending?search={quote(user_id, safe='')})"
         )
 
         get_notification_manager_client().discord_system_alert(
@@ -622,14 +621,13 @@ def handle_low_balance(
         )
 
         try:
-            user_email = db_client.get_user_email_by_id(user_id)
             alert_message = (
                 f"⚠️ **Low Balance Alert**\n"
-                f"User: {user_email or user_id}\n"
+                f"User: `{user_id}`\n"
                 f"Balance dropped below ${LOW_BALANCE_THRESHOLD / 100:.2f}\n"
                 f"Current balance: ${current_balance / 100:.2f}\n"
                 f"Transaction cost: ${transaction_cost / 100:.2f}\n"
-                f"[View User Details]({base_url}/admin/spending?search={user_email})"
+                f"[View User Details]({base_url}/admin/spending?search={quote(user_id, safe='')})"
             )
             get_notification_manager_client().discord_system_alert(
                 alert_message, DiscordChannel.PRODUCT

@@ -48,9 +48,8 @@ def _graph(block: Block, creds: APIKeyCredentials) -> MagicMock:
 
 @pytest.fixture(autouse=True)
 def store(mocker: MockerFixture) -> MagicMock:
-    by_id = {c.id: c for c in (REFUSED, RUNNABLE)}
     store = MagicMock()
-    store.get_creds_by_id = AsyncMock(side_effect=lambda _user, cid: by_id.get(cid))
+    store.get_all_creds = AsyncMock(return_value=[REFUSED, RUNNABLE])
     mocker.patch(
         "backend.executor.utils.get_integration_credentials_store",
         return_value=store,

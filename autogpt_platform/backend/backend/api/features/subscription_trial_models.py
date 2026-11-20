@@ -1,8 +1,9 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from backend.data.feedback_prompts import TrialCancelReason
 from backend.data.subscription_trial_config import AcceptedTrialOffer
 from backend.data.subscription_trial_invoice import TrialPaymentDue
 from backend.data.subscription_trial_rejection import TrialRejectionReason
@@ -45,3 +46,15 @@ class TrialCheckoutRequest(BaseModel):
 
 class TrialCheckoutResponse(BaseModel):
     url: str
+
+
+class CancelTrialRequest(BaseModel):
+    reason: TrialCancelReason | None = Field(
+        default=None, description="The reason picked in the cancel dialog, if any."
+    )
+    comment: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("comment")
+    @classmethod
+    def blank_comment_is_none(cls, comment: str | None) -> str | None:
+        return (comment or "").strip() or None

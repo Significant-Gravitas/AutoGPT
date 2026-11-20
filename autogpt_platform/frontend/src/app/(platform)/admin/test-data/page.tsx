@@ -63,7 +63,7 @@ function TestDataDashboard() {
           <Text variant="body-medium" className="mb-2" tone="body">
             What data is created?
           </Text>
-          <div className="grid gap-4 text-sm text-foreground-secondary md:grid-cols-2">
+          <div className="grid gap-4 text-body text-foreground-secondary md:grid-cols-2">
             <div>
               <Text variant="body-medium">E2E Script:</Text>
               <ul className="mt-1 list-inside list-disc">

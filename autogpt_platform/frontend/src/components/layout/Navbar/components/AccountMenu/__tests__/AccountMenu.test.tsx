@@ -20,7 +20,8 @@ vi.mock("next/link", () => ({
   useLinkStatus: () => ({ pending: false }),
 }));
 
-vi.mock("@/lib/auth/actions", () => ({
+vi.mock("@/lib/auth/actions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/actions")>()),
   getCurrentUser: vi.fn().mockResolvedValue({ user: null }),
 }));
 

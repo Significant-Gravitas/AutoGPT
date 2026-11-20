@@ -38,20 +38,16 @@ export function PaywallPlanChoices({
           {(["monthly", "yearly"] as const).map((value) => (
             <Button
               key={value}
-              variant="ghost"
+              variant={cycle === value ? "ghost" : "ghost-muted"}
               size="small"
               aria-pressed={cycle === value}
               onClick={() => onCycle(value)}
               disabled={pending}
-              className={
-                cycle === value
-                  ? "bg-surface shadow-sm"
-                  : "text-foreground-tertiary"
-              }
+              className={cycle === value ? "bg-surface shadow-sm" : undefined}
             >
               {value === "monthly" ? "Monthly" : "Yearly"}
               {value === "yearly" && (
-                <span className="text-xs text-success">
+                <span className="text-caption text-success">
                   Save {Math.round((1 - YEARLY_PRICE_FACTOR) * 100)}%
                 </span>
               )}
@@ -90,7 +86,7 @@ export function PaywallPlanChoices({
           </Button>
         </div>
       )}
-      <Text variant="small" tone="secondary" className="text-center text-xs">
+      <Text variant="small-tight" tone="secondary" className="text-center">
         Your conversations and workflows stay saved. Cancel anytime.
       </Text>
     </section>
@@ -134,7 +130,7 @@ function PlanChoice({
         <Icon
           icon={SparklesIcon}
           size={18}
-          className={isPro ? "text-brand-hover" : "text-foreground-secondary"}
+          tone={isPro ? "brand-strong" : "secondary"}
         />
         <Text variant="large-semibold" as="h2">
           {plan.name}
@@ -146,7 +142,7 @@ function PlanChoice({
           : "For bigger ideas and heavier work."}
       </Text>
       <div className="mb-5">
-        <Text variant="h3" as="span" className="tracking-tight">
+        <Text variant="h3-tracking-tight" as="span">
           {formatted ?? "Unavailable"}
         </Text>
         {formatted && (
@@ -162,7 +158,8 @@ function PlanChoice({
             <Icon
               icon={Tick02Icon}
               size={15}
-              className="mt-0.5 shrink-0 text-brand-hover"
+              tone="brand-strong"
+              className="mt-0.5 shrink-0"
             />
             <Text variant="small" tone="body">
               {feature}

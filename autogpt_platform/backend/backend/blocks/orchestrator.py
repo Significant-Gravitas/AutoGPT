@@ -45,6 +45,7 @@ from backend.util import json
 from backend.util.clients import get_database_manager_async_client
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.llm.prompt_refusal import PromptRefusedError
+from backend.util.llm.request_too_large import RequestTooLargeError
 from backend.util.prompt import MAIN_OBJECTIVE_PREFIX, estimate_token_count
 from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.tool_call_loop import (
@@ -1854,11 +1855,8 @@ class OrchestratorBlock(Block):
             # We must NOT cancel __anext__() mid-flight — doing so corrupts
             # the SDK's internal anyio memory stream (same pattern as
             # copilot/sdk/service.py:_iter_sdk_messages).  Every fetch task
-            # runs in one shared context: once configure_claude_agent_sdk()
-            # has wrapped the client, langsmith's tracing wrapper keeps the
-            # conversation run in a ContextVar set during the first fetch,
-            # and a fresh context per task would drop every later reply's
-            # span from the trace.
+            # runs in one shared context, so a ContextVar set while fetching
+            # one message is still set for the next.
 
             _HEARTBEAT_INTERVAL = 10.0  # seconds
             options.cli_path = await asyncio.to_thread(
@@ -2112,8 +2110,8 @@ class OrchestratorBlock(Block):
             )
             prompt.extend(tool_output)
 
-        values = input_data.prompt_values
-        if values:
+        if input_data.prompt_values:
+            values = llm.strip_prompt_value_keys(input_data.prompt_values)
             input_data.prompt = await llm.fmt.format_string(input_data.prompt, values)
             input_data.sys_prompt = await llm.fmt.format_string(
                 input_data.sys_prompt, values
@@ -2224,7 +2222,7 @@ class OrchestratorBlock(Block):
                 )
                 break
 
-            except PromptRefusedError:
+            except (PromptRefusedError, RequestTooLargeError):
                 # Not a tool-call mistake the model can fix on a retry.
                 raise
             except ValueError as e:

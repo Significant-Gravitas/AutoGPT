@@ -100,7 +100,7 @@ export function UsagePopover({ trigger, align = "start" }: Props) {
           {isBillingEnabled && (
             <Link
               href="/settings/billing"
-              className="text-sm text-info-foreground hover:underline"
+              className="text-body text-info-foreground hover:underline"
             >
               Manage billing
             </Link>

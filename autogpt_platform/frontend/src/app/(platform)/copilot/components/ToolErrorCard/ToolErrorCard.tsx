@@ -30,14 +30,15 @@ export function ToolErrorCard({
         <Icon
           icon={AlertDiamondIcon}
           size={20}
-          className="mt-0.5 shrink-0 text-error"
+          tone="error"
+          className="mt-0.5 shrink-0"
         />
         <div className="flex-1 space-y-2">
-          <Text variant="body-medium" className="text-error-foreground">
+          <Text variant="body-medium" tone="error-strong">
             {message || fallbackMessage}
           </Text>
           {(error || details) && (
-            <details className="text-xs text-error-foreground">
+            <details className="text-caption text-error-foreground">
               <summary className="cursor-pointer font-medium">
                 Technical details
               </summary>

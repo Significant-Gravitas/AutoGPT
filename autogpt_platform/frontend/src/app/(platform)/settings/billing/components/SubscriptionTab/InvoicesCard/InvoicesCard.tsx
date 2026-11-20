@@ -127,10 +127,10 @@ export function InvoicesCard({ index = 0 }: Props) {
                     <td className="px-2 py-4 text-right sm:px-4">
                       <Button
                         variant="secondary"
-                        size="small"
+                        size="icon-xs"
+                        shape="pill"
+                        withTooltip={false}
                         aria-label={`Download invoice ${invoice.number}`}
-                        // oxlint-disable-next-line design-system/no-restyle -- a 28px pill download button; Button has no pill size at 28px
-                        className="h-7 min-w-0 px-1.5 py-0.5"
                         disabled={!invoice.pdfUrl}
                         onClick={() => {
                           if (invoice.pdfUrl) {

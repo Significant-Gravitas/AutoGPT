@@ -190,7 +190,7 @@ def _try_convert(value: Any, target_type: Any, raise_on_mismatch: bool) -> Any:
                 return [convert(v, args[0]) for v in value]
             elif origin is tuple:
                 # Tuples can have multiple types
-                if len(args) == 1:
+                if len(args) == 1 or (len(args) == 2 and args[1] is Ellipsis):
                     return tuple(convert(v, args[0]) for v in value)
                 else:
                     return tuple(convert(v, t) for v, t in zip(value, args))
@@ -224,7 +224,7 @@ def _try_convert(value: Any, target_type: Any, raise_on_mismatch: bool) -> Any:
         elif _is_type_or_subclass(origin, tuple):
             converted_tuple = __convert_tuple(value)
             if args:
-                if len(args) == 1:
+                if len(args) == 1 or (len(args) == 2 and args[1] is Ellipsis):
                     converted_tuple = tuple(
                         convert(v, args[0]) for v in converted_tuple
                     )
@@ -352,7 +352,11 @@ def coerce_inputs_to_schema(data: dict[str, Any], schema: type) -> None:
 
     This is the single authoritative coercion step shared by the executor
     (``validate_exec``) and the CoPilot (``execute_block``).
+
+    A value that can't be converted is left as it is, and the first such
+    error is raised once every other field has been coerced.
     """
+    first_error: ConversionError | None = None
     for name, field_info in schema.model_fields.items():
         value = data.get(name)
         if value is None:
@@ -362,7 +366,21 @@ def coerce_inputs_to_schema(data: dict[str, Any], schema: type) -> None:
             continue
         if _value_satisfies_type(value, target):
             continue
-        data[name] = convert(value, target)
+        try:
+            data[name] = convert(value, target)
+        except ConversionError as e:
+            shown = repr(value)
+            if len(shown) > 100:
+                shown = shown[:100] + "..."
+            target_name = getattr(target, "__name__", str(target))
+            if first_error is None:
+                first_error = ConversionError(
+                    f"Input `{name}` can't take the value {shown}: "
+                    f"it can't be converted to {target_name}"
+                )
+                first_error.__cause__ = e
+    if first_error is not None:
+        raise first_error
 
 
 class FormattedStringType(str):

@@ -33,18 +33,16 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from backend.copilot.anthropic_rate_tiers import (
+    CACHE_READ_MULTIPLIER,
+    CACHE_WRITE_1H_MULTIPLIER,
+    CACHE_WRITE_5M_MULTIPLIER,
+    apply_prompt_tier,
+)
+
 logger = logging.getLogger(__name__)
 
 _RATES_PATH = Path(__file__).parent / "anthropic_rates.json"
-
-# Default cache-read multiplier when the source omits the field — Anthropic's
-# documented rate is 10% of the input rate (0.1×).
-_DEFAULT_CACHE_READ_MULTIPLIER = 0.1
-# Default 1h cache-write multiplier when the source omits the field —
-# Anthropic's documented rate is 2.0× input.
-_DEFAULT_CACHE_WRITE_1H_MULTIPLIER = 2.0
-# Default 5m cache-write multiplier — Anthropic's documented 1.25× input.
-_DEFAULT_CACHE_WRITE_5M_MULTIPLIER = 1.25
 
 # Conservative fallback rates used when the rate-card has no entry for the
 # configured model (a fresh Claude release before a vendor refresh, a
@@ -170,6 +168,11 @@ def compute_anthropic_cost_usd(
     the breakdown (cached + write > total), the fresh-input bucket is
     clamped to zero to avoid flipping the sign.
 
+    Pass one request's usage, never a turn/session aggregate. A prompt
+    strictly above a vendored token threshold uses that tier for every
+    bucket, including output. Cache reads and writes count toward the
+    threshold even when their reported sum exceeds ``prompt_tokens``.
+
     *cache_ttl* selects which cache-write field to read from the rate
     entry: ``5m`` → ``cache_creation_input_token_cost``, ``1h`` →
     ``cache_creation_input_token_cost_above_1hr``. Unknown TTLs fall
@@ -189,7 +192,14 @@ def compute_anthropic_cost_usd(
     """
     if not _is_anthropic_slug(model):
         return None
-    info: dict[str, Any] = _resolve_info(model) or {}
+    prompt_tokens = max(0, prompt_tokens)
+    completion_tokens = max(0, completion_tokens)
+    cache_read_tokens = max(0, cache_read_tokens)
+    cache_creation_tokens = max(0, cache_creation_tokens)
+    info = apply_prompt_tier(
+        _resolve_info(model) or {},
+        max(prompt_tokens, cache_read_tokens + cache_creation_tokens),
+    )
     raw_input = info.get("input_cost_per_token")
     raw_output = info.get("output_cost_per_token")
     if isinstance(raw_input, (int, float)) and isinstance(raw_output, (int, float)):
@@ -207,10 +217,6 @@ def compute_anthropic_cost_usd(
         output_per_tok = _FALLBACK_OUTPUT_PER_TOKEN
         info = {}  # cache fields fall through to default multipliers
 
-    prompt_tokens = max(0, prompt_tokens)
-    completion_tokens = max(0, completion_tokens)
-    cache_read_tokens = max(0, cache_read_tokens)
-    cache_creation_tokens = max(0, cache_creation_tokens)
     fresh_input_tokens = max(
         0, prompt_tokens - cache_read_tokens - cache_creation_tokens
     )
@@ -219,7 +225,7 @@ def compute_anthropic_cost_usd(
     cache_read_per_tok = (
         float(raw_cache_read)
         if isinstance(raw_cache_read, (int, float))
-        else input_per_tok * _DEFAULT_CACHE_READ_MULTIPLIER
+        else input_per_tok * CACHE_READ_MULTIPLIER
     )
 
     if cache_ttl == "5m":
@@ -227,7 +233,7 @@ def compute_anthropic_cost_usd(
         cache_write_per_tok = (
             float(raw_cache_write)
             if isinstance(raw_cache_write, (int, float))
-            else input_per_tok * _DEFAULT_CACHE_WRITE_5M_MULTIPLIER
+            else input_per_tok * CACHE_WRITE_5M_MULTIPLIER
         )
     else:
         # 1h is the documented default TTL for our deployments. Unknown
@@ -237,7 +243,7 @@ def compute_anthropic_cost_usd(
         cache_write_per_tok = (
             float(raw_cache_write)
             if isinstance(raw_cache_write, (int, float))
-            else input_per_tok * _DEFAULT_CACHE_WRITE_1H_MULTIPLIER
+            else input_per_tok * CACHE_WRITE_1H_MULTIPLIER
         )
 
     return (

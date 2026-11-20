@@ -2,8 +2,8 @@ import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Flag, useFlagStatus, useGetFlag } from "../use-get-flag";
 
-// Phase 2 replaces 75 `vi.mock("launchdarkly-react-client-sdk")` blocks with
-// this one, vendor-independent, seam. This test is what keeps it a seam.
+// Component tests control flags through this one, vendor-independent, seam.
+// This test is what keeps it a seam.
 const source = vi.hoisted(() => ({
   results: {} as Record<string, { value: unknown; resolved: boolean }>,
 }));
@@ -15,10 +15,6 @@ vi.mock("../flag-source", () => ({
 
 vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
   DEFAULT_SEARCH_TERMS: [],
-}));
-
-vi.mock("@/services/environment", () => ({
-  environment: { areFeatureFlagsEnabled: () => true },
 }));
 
 describe("mocking the flag source controls every flag hook", () => {

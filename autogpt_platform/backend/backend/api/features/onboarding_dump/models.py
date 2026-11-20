@@ -18,6 +18,25 @@ RecordingId = Annotated[str, StringConstraints(pattern=RECORDING_ID_PATTERN)]
 # client that tries to stream a movie through the endpoint.
 MAX_PART_BYTES = 2 * 1024 * 1024
 
+# The kinds of too-short take Otto has a fixed first line for on the
+# not-enough screen (``otto_reply`` picks one; the lines are in the
+# frontend's ``insufficient-copy.ts``).
+OttoReplyKind = Literal[
+    "mic_check",
+    "greeting",
+    "unsure",
+    "reluctant",
+    "what_to_say",
+    "wants_to_skip",
+    "about_otto",
+    "busy",
+    "annoyed",
+    "some_work",
+    "garbled",
+    "test",
+    "other",
+]
+
 # ~30 min of webm/opus voice is ~6 MB. 50 MB is the cumulative ceiling for
 # one recording — generous enough that no honest dump ever hits it.
 MAX_RECORDING_BYTES = 50 * 1024 * 1024
@@ -85,11 +104,16 @@ class FinalizeResponse(BaseModel):
     status: BrainDumpStatus
     input_mode: BrainDumpInputMode
     transcript_preview: str | None = None
+    """The transcript's start, on success and on an ``insufficient_content``
+    reject; never on ``no_usable_speech``."""
+    otto_reply_kind: OttoReplyKind | None = None
+    """Which of Otto's fixed first lines fits what was said, on an
+    ``insufficient_content`` reject. ``None`` and ``"other"`` get the default."""
     error_code: str | None = None
     error_reason: str | None = None
     """What decided a quality-gate rejection (``quality.QualityRejection``)."""
     transcript_words: int | None = None
-    """A rejected transcript's length as the gate counts words; the text is not sent."""
+    """A rejected transcript's length as the gate counts words."""
 
 
 class DumpStatusResponse(BaseModel):
@@ -115,7 +139,18 @@ class SuggestedPrompt(BaseModel):
     title: str
     prompt: str
     icon: str = "sparkle"
+    expert_template_id: str | None = None
+    """The roster template whose expert takes this task; null means Otto
+    does it himself. Always a member of the plan's team (``plan.cap_team``)."""
+    why: str | None = None
+    """One short clause naming what the user said this task fixes, at most
+    ``MAX_WHY_CHARS``; null when they said nothing it ties to."""
+    expert_name: str | None = None
+    """The owner's name when the plan was written, so a task whose expert has
+    since left the team can still say whose it was; null for Otto's."""
 
+
+MAX_WHY_CHARS = 60
 
 SuggestedTaskState = Literal["open", "sent", "dismissed"]
 
@@ -124,7 +159,8 @@ class SuggestedTask(SuggestedPrompt):
     """One row of the Home checklist: a suggested prompt and what became of it.
 
     Stored inside ``OnboardingBrainDump.suggestedPrompts``; a row written
-    before states existed reads as ``open``, with its list index as ``id``.
+    before states existed reads as ``open``, with its list index as ``id``,
+    and one written before owners existed reads as Otto's.
     """
 
     id: str
@@ -132,6 +168,10 @@ class SuggestedTask(SuggestedPrompt):
     session_id: str | None = None
     """The chat a ``sent`` row started."""
     updated_at: datetime | None = None
+    expert_id: str | None = None
+    """The user's active hire of ``expert_template_id``, filled at read time
+    and never stored: null while that expert is not hired, once it is
+    archived, and for Otto's tasks."""
 
 
 class SuggestedTasksResponse(BaseModel):

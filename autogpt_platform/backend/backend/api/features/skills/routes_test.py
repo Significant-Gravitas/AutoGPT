@@ -1,5 +1,6 @@
 """Tests for the copilot-skills routes."""
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -129,6 +130,38 @@ def test_list_copilot_skills_returns_user_skills(
     assert [s["name"] for s in body] == ["oauth_flow", "zzz_cleanup"]
     assert body[0]["triggers"] == ["auth", "oauth"]
     assert body[1]["triggers"] == []
+
+
+def test_list_copilot_skills_reports_slash_command_settings(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """GET /skills carries what the chat's "/" picker lists: the argument
+    hint, and whether the skill can be run as a command at all."""
+    mocker.patch(
+        "backend.api.features.skills.routes.list_user_skills",
+        AsyncMock(
+            return_value=[
+                ParsedSkill(
+                    name="fix_issue",
+                    description="Fix a GitHub issue",
+                    body="",
+                    extra={"argument-hint": "[issue-number]"},
+                ),
+                ParsedSkill(
+                    name="house_style",
+                    description="Background knowledge",
+                    body="",
+                    extra={"user-invocable": False},
+                ),
+            ]
+        ),
+    )
+
+    body = client.get("/skills").json()
+    assert body[0]["argument_hint"] == "[issue-number]"
+    assert body[0]["user_invocable"] is True
+    assert body[1]["argument_hint"] is None
+    assert body[1]["user_invocable"] is False
 
 
 def test_delete_copilot_skill_returns_name_on_success(
@@ -310,6 +343,65 @@ def test_upload_copilot_skill_rejects_malformed_markdown() -> None:
         "/skills", json={"content": "just some text, no frontmatter"}
     )
     assert response.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "frontmatter,reason",
+    [
+        ("name: &n oauth_flow\ndescription: d", "cannot use YAML anchors"),
+        (f"name: oauth_flow\ndescription: {'x' * 20_000}", "larger than 16 KiB"),
+    ],
+    ids=["anchor", "oversized"],
+)
+def test_upload_copilot_skill_says_which_frontmatter_limit_it_broke(
+    mocker: pytest_mock.MockFixture, frontmatter: str, reason: str
+) -> None:
+    store_mock = AsyncMock()
+    mocker.patch("backend.api.features.skills.routes.store_user_skill", store_mock)
+
+    response = client.post(
+        "/skills", json={"content": f"---\n{frontmatter}\n---\n\n# Body\n"}
+    )
+
+    assert response.status_code == 400
+    assert reason in response.json()["detail"]
+    store_mock.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "upload",
+    [
+        lambda: client.post("/skills", json={"content": _CANONICAL_SKILL_MD}),
+        lambda: client.post(
+            "/skills/package",
+            files={"file": ("pkg.zip", _package_zip(), "application/zip")},
+        ),
+    ],
+    ids=["skill_md", "package"],
+)
+def test_an_uploaded_skill_md_is_parsed_on_a_worker_thread(
+    mocker: pytest_mock.MockFixture, upload
+) -> None:
+    on_event_loop: list[bool] = []
+
+    def parse(text: str) -> ParsedSkill | None:
+        try:
+            asyncio.get_running_loop()
+            on_event_loop.append(True)
+        except RuntimeError:
+            on_event_loop.append(False)
+        return parse_skill_markdown(text)
+
+    mocker.patch("backend.api.features.skills.routes.parse_skill_markdown", parse)
+    mocker.patch(
+        "backend.api.features.skills.routes.store_user_skill",
+        AsyncMock(return_value=_PARSED_VALID_SKILL),
+    )
+
+    response = upload()
+
+    assert response.status_code == 201
+    assert on_event_loop == [False]
 
 
 def test_upload_copilot_skill_returns_409_when_at_cap(
@@ -725,3 +817,27 @@ def test_download_package_returns_404_for_a_missing_skill(
         AsyncMock(return_value=None),
     )
     assert client.get("/skills/missing/package").status_code == 404
+
+
+@pytest.mark.parametrize("package", [False, True])
+@pytest.mark.parametrize("hint", ['"[issue-number]"', "[issue-number]"])
+def test_upload_returns_parsed_command_settings(package, hint):
+    content = (
+        "---\nname: command-settings\ndescription: Command settings\n"
+        f"argument-hint: {hint}\nuser-invocable: false\n---\n\nInstructions\n"
+    )
+    with _patch_skills_path(_FakeWorkspaceManager()):
+        if package:
+            archive = zip_from_package(SkillPackage(skill_md=content))
+            response = client.post(
+                "/skills/package",
+                files={"file": ("skill.zip", archive, "application/zip")},
+            )
+        else:
+            response = client.post("/skills", json={"content": content})
+        assert response.status_code == 201, response.text
+        assert response.json()["argument_hint"] == "[issue-number]"
+        assert response.json()["user_invocable"] is False
+        listed = client.get("/skills").json()
+        assert listed[0]["argument_hint"] == response.json()["argument_hint"]
+        assert listed[0]["user_invocable"] == response.json()["user_invocable"]

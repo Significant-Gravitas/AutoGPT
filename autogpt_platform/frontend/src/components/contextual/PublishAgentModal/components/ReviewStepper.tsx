@@ -94,21 +94,13 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
                 <Text
                   variant="small-medium"
                   as="span"
-                  className={
-                    step.state === "upcoming"
-                      ? "text-foreground-subtle"
-                      : "text-foreground-base"
-                  }
+                  tone={step.state === "upcoming" ? "subtle" : "base"}
                 >
                   {step.title}
                 </Text>
                 <Text
                   variant="small"
-                  className={
-                    step.state === "upcoming"
-                      ? "text-foreground-subtle"
-                      : "text-foreground-tertiary"
-                  }
+                  tone={step.state === "upcoming" ? "subtle" : "muted"}
                 >
                   {step.description}
                 </Text>

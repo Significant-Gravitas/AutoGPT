@@ -12,6 +12,7 @@ from backend.blocks.llm import (
     ModelMetadata,
 )
 from backend.blocks.stagehand._config import stagehand as stagehand_provider
+from backend.data.block import BlockInput
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -33,12 +34,17 @@ class StagehandRecommendedLLMModel(str, Enum):
     ``blocks/llm.py``) containing only the models recommended by Stagehand.
     """
 
+    @classmethod
+    def _missing_(cls, value: object) -> "StagehandRecommendedLLMModel | None":
+        """A node saved on a model this list no longer offers runs on its
+        replacement (``_RETIRED_MODELS``)."""
+        return _replacement_for(value)
+
     # OpenAI
     GPT41 = "gpt-4.1-2025-04-14"
     GPT41_MINI = "gpt-4.1-mini-2025-04-14"
 
     # Anthropic
-    CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"  # Keep for backwards compat
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
 
     @property
@@ -78,8 +84,38 @@ class StagehandRecommendedLLMModel(str, Enum):
         return MODEL_METADATA[LLMModel(self.value)].max_output_tokens
 
 
+# Models this block offered that their provider has retired, and what a node
+# saved on one runs on. Anthropic retires Claude Sonnet 4.5 on 2026-11-30;
+# Sonnet 4.6, this block's default, costs the same.
+_RETIRED_MODELS: dict[str, StagehandRecommendedLLMModel] = {
+    LLMModel.CLAUDE_4_5_SONNET.value: StagehandRecommendedLLMModel.CLAUDE_4_6_SONNET,
+}
+
+
+def _replacement_for(value: object) -> StagehandRecommendedLLMModel | None:
+    """The current model a saved retired value runs as; None for any other."""
+    return _RETIRED_MODELS.get(value) if isinstance(value, str) else None
+
+
+class _StagehandInput(BlockSchemaInput):
+    @classmethod
+    def validate_data(
+        cls,
+        data: BlockInput,
+        exclude_fields: set[str] | None = None,
+    ) -> str | None:
+        """Check a node saved on a retired model as its replacement: the JSON
+        schema lists only the current models, so it would refuse the saved
+        value before the ``model`` field resolves it. Works on a copy, so the
+        caller's data keeps the saved value."""
+        replacement = _replacement_for(data.get("model"))
+        if replacement is not None:
+            data = {**data, "model": replacement.value}
+        return super().validate_data(data, exclude_fields=exclude_fields)
+
+
 class StagehandObserveBlock(Block):
-    class Input(BlockSchemaInput):
+    class Input(_StagehandInput):
         # Browserbase credentials (Stagehand provider) or raw API key
         stagehand_credentials: CredentialsMetaInput = (
             stagehand_provider.credentials_field(
@@ -165,7 +201,7 @@ class StagehandObserveBlock(Block):
 
 
 class StagehandActBlock(Block):
-    class Input(BlockSchemaInput):
+    class Input(_StagehandInput):
         # Browserbase credentials (Stagehand provider) or raw API key
         stagehand_credentials: CredentialsMetaInput = (
             stagehand_provider.credentials_field(
@@ -264,7 +300,7 @@ class StagehandActBlock(Block):
 
 
 class StagehandExtractBlock(Block):
-    class Input(BlockSchemaInput):
+    class Input(_StagehandInput):
         # Browserbase credentials (Stagehand provider) or raw API key
         stagehand_credentials: CredentialsMetaInput = (
             stagehand_provider.credentials_field(

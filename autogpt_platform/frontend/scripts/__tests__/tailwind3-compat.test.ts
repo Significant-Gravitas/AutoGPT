@@ -26,7 +26,7 @@ const CLASSES = [
   "-space-x-1.5",
   "sm:space-x-4",
   "divide-y",
-  "divide-zinc-100",
+  "divide-separator",
   "outline-none",
   "focus-visible:outline-none",
   "outline",
@@ -37,7 +37,7 @@ const CLASSES = [
   "transform",
   "bg-gradient-to-r",
   "to-transparent",
-  "from-rose-100",
+  "from-surface",
   "shadow-sm",
   "shadow",
   "rounded",
@@ -45,11 +45,11 @@ const CLASSES = [
   "blur-sm",
   "ring",
   "md:flex",
-  "bg-gray-400",
+  "bg-[#9ca3af]",
   "w-(--sidebar-width)",
   "bg-surface/50",
-  "bg-zinc-500/50",
-  "shadow-black/10",
+  "bg-[#83838C]/50",
+  "shadow-scrim/10",
   "transition",
   "transition-none",
   "justify-self-start",
@@ -59,13 +59,14 @@ const CLASSES = [
   "active:scale-[0.92]",
   "scrollbar-thin",
   "scrollbar-thumb-border-base",
-  "hover:scrollbar-thumb-zinc-300",
-  "hover:bg-primary/90",
-  "hover:text-zinc-800",
-  "aria-pressed:text-zinc-900",
+  "hover:scrollbar-thumb-border-strong",
+  "scrollbar-track-transparent",
+  "hover:bg-action/90",
+  "hover:text-foreground-emphasis",
+  "aria-pressed:text-foreground-strong",
   "focus-visible:outline-none",
   "focus-visible:-outline-offset-2",
-  "text-lg",
+  "text-lead",
   "leading-relaxed",
   "[&>svg]:size-4",
   "max-md:[&>svg]:size-5",
@@ -77,6 +78,12 @@ const CLASSES = [
   "shadow-xs",
   "z-12",
   "disabled:opacity-1",
+  // The palette is reset: only the colour roles generate a class.
+  "bg-red-500",
+  "text-zinc-600",
+  "border-gray-200",
+  "bg-white",
+  "text-black",
 ];
 
 // One compile for the file: every test reads the same result, and the
@@ -137,8 +144,8 @@ describe("Tailwind 4 renders the app's classes as Tailwind 3 did", () => {
       "border-bottom-width": "calc(1px * var(--tw-divide-y-reverse))",
     });
     expect(
-      declarations(root, ".divide-zinc-100 > :not([hidden]) ~ :not([hidden])"),
-    ).toEqual({ "border-color": "#EFEFF0" });
+      declarations(root, ".divide-separator > :not([hidden]) ~ :not([hidden])"),
+    ).toEqual({ "border-color": "rgb(var(--color-separator) / 1)" });
     expect(
       rulesFor(root, ".sm\\:space-x-4 > :not([hidden]) ~ :not([hidden])"),
     ).toHaveLength(1);
@@ -190,7 +197,7 @@ describe("Tailwind 4 renders the app's classes as Tailwind 3 did", () => {
     expect(declarations(root, ".to-transparent")).toEqual({
       "--tw-gradient-to": "transparent",
     });
-    expect(declarations(root, ".from-rose-100")).toHaveProperty(
+    expect(declarations(root, ".from-surface")).toHaveProperty(
       "--tw-gradient-stops",
     );
   });
@@ -207,7 +214,7 @@ describe("Tailwind 4 renders the app's classes as Tailwind 3 did", () => {
       "border-radius": "calc(var(--radius) - 4px)",
     });
     expect(declarations(root, ".blur-sm")["--tw-blur"]).toBe("blur(4px)");
-    expect(declarations(root, ".bg-gray-400")).toEqual({
+    expect(declarations(root, ".bg-\\[\\#9ca3af\\]")).toEqual({
       "background-color": "#9ca3af",
     });
     expect(declarations(root, ".ring")).toMatchObject({
@@ -220,7 +227,7 @@ describe("Tailwind 4 renders the app's classes as Tailwind 3 did", () => {
       "var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow)",
     );
     expect(declarations(root, ".ring")["--tw-ring-shadow"]).toContain(
-      "calc(3px + var(--tw-ring-offset-width)) var(--tw-ring-color, rgb(59 130 246 / 0.5))",
+      "calc(3px + var(--tw-ring-offset-width)) var(--tw-ring-color, rgb(var(--color-info) / 0.5))",
     );
     expect(declarations(root, ".w-\\(--sidebar-width\\)")).toEqual({
       width: "var(--sidebar-width)",
@@ -237,11 +244,11 @@ describe("Tailwind 4 renders the app's classes as Tailwind 3 did", () => {
     expect(declarations(root, ".bg-surface\\/50")).toEqual({
       "background-color": "rgb(var(--color-surface) / 0.5)",
     });
-    expect(declarations(root, ".bg-zinc-500\\/50")).toEqual({
+    expect(declarations(root, ".bg-\\[\\#83838C\\]\\/50")).toEqual({
       "background-color": "rgb(131 131 140 / 0.5)",
     });
-    expect(declarations(root, ".shadow-black\\/10")).toEqual({
-      "--tw-shadow-color": "rgb(20 20 20 / 0.1)",
+    expect(declarations(root, ".shadow-scrim\\/10")).toEqual({
+      "--tw-shadow-color": "rgb(var(--color-scrim) / 0.1)",
     });
     expect(root.toString()).not.toContain("in oklab");
   });
@@ -280,8 +287,14 @@ describe("Tailwind 4 renders the app's classes as Tailwind 3 did", () => {
     expect(declarations(root, ".scrollbar-thumb-border-base")).toEqual({
       "--scrollbar-thumb": "rgb(var(--color-border-base) / 1) !important",
     });
-    expect(declarations(root, ".hover\\:scrollbar-thumb-zinc-300")).toEqual({
-      "--scrollbar-thumb-hover": "#C5C5C9 !important",
+    expect(
+      declarations(root, ".hover\\:scrollbar-thumb-border-strong"),
+    ).toEqual({
+      "--scrollbar-thumb-hover":
+        "rgb(var(--color-border-strong) / 1) !important",
+    });
+    expect(declarations(root, ".scrollbar-track-transparent")).toEqual({
+      "--scrollbar-track": "transparent !important",
     });
     expect(
       rulesFor(root, ".scrollbar-thin::-webkit-scrollbar-thumb:hover"),
@@ -296,13 +309,15 @@ describe("Tailwind 4 renders the app's classes as Tailwind 3 did", () => {
       order.push(rule.selector);
     });
     const at = (selector: string) => order.indexOf(selector);
-    expect(at(".hover\\:text-zinc-800:hover")).toBeGreaterThan(
-      at('.aria-pressed\\:text-zinc-900[aria-pressed="true"]'),
+    expect(at(".hover\\:text-foreground-emphasis:hover")).toBeGreaterThan(
+      at('.aria-pressed\\:text-foreground-strong[aria-pressed="true"]'),
     );
     expect(at(".focus-visible\\:outline-none:focus-visible")).toBeLessThan(
       at(".focus-visible\\:-outline-offset-2:focus-visible"),
     );
-    expect(declarations(root, ".text-lg")["line-height"]).toBe("1.75rem");
+    expect(declarations(root, ".text-lead")["line-height"]).toBe(
+      "var(--text-lead--line-height)",
+    );
     // Arbitrary properties come after the other utilities of the same
     // variants, so they beat tailwindcss-animate's `ease-*` timing.
     const easeRules: number[] = [];
@@ -355,6 +370,11 @@ describe("Tailwind 4 renders the app's classes as Tailwind 3 did", () => {
       ".shadow-xs",
       ".z-12",
       ".disabled\\:opacity-1:disabled",
+      ".bg-red-500",
+      ".text-zinc-600",
+      ".border-gray-200",
+      ".bg-white",
+      ".text-black",
     ]) {
       expect(rulesFor(root, selector)).toEqual([]);
     }

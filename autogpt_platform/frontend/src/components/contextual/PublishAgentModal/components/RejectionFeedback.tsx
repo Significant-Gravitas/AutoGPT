@@ -12,11 +12,11 @@ export function RejectionFeedback({ comments }: Props) {
     <div className="mt-4 w-full max-w-md rounded-xl border border-error/20 bg-error-surface p-3">
       <div className="mb-1 flex items-center gap-2 text-error-foreground">
         <Icon icon={AlertCircleIcon} size={16} />
-        <Text variant="small-medium" as="span" className="!text-current">
+        <Text variant="small-medium" as="span" tone="inherit">
           Review feedback
         </Text>
       </div>
-      <Text variant="small" className="text-error-foreground">
+      <Text variant="small" tone="error-strong">
         {comments}
       </Text>
     </div>

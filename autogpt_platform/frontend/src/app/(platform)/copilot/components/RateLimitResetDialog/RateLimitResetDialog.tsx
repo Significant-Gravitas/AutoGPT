@@ -135,12 +135,12 @@ export function RateLimitResetDialog({
     >
       <Dialog.Content>
         {checking ? (
-          <Text tone="muted" variant="body" role="status" className="!text-sm">
+          <Text tone="muted" variant="body-tight" role="status">
             Refreshing your plan and usage…
           </Text>
         ) : unavailable ? (
           <div className="space-y-5">
-            <Text tone="muted" variant="body" className="!text-sm !leading-6">
+            <Text tone="muted" variant="body" className="!text-body !leading-6">
               Your work is saved. Try again to check your allowance before
               continuing.
             </Text>
@@ -151,7 +151,7 @@ export function RateLimitResetDialog({
             <Text
               tone="muted"
               variant="body"
-              className="mb-5 !text-sm !leading-6"
+              className="mb-5 !text-body !leading-6"
             >
               {waitTitle && wait ? resetSentence : copy.description}
             </Text>

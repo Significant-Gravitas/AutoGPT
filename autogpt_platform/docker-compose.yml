@@ -126,9 +126,22 @@ services:
       - clamav-data:/var/lib/clamav
     environment:
       - CLAMAV_NO_FRESHCLAMD=false
-      - CLAMD_CONF_StreamMaxLength=50M
-      - CLAMD_CONF_MaxFileSize=100M
-      - CLAMD_CONF_MaxScanSize=100M
+      # The backend scans each upload whole and refuses one clamd won't take,
+      # so StreamMaxLength and MaxFileSize must cover the larger of
+      # UPLOAD_FILE_SIZE_LIMIT_MB and MAX_FILE_SIZE_MB: 256 MB by default.
+      # PCREMaxFileSize must too, or clamd skips its signatures' regular
+      # expressions in larger files. MaxScanSize counts an archive plus all it
+      # unpacks, so it is four times that. Raise them with the upload limits.
+      - CLAMD_CONF_StreamMaxLength=256M
+      - CLAMD_CONF_MaxFileSize=256M
+      - CLAMD_CONF_MaxScanSize=1024M
+      - CLAMD_CONF_PCREMaxFileSize=256M
+      # A file clamd stops scanning at a limit (time, size, files, nesting) is
+      # flagged, so the backend refuses it instead of taking it as clean.
+      # MaxScanTime (ms) stays under the backend's deadline for the largest
+      # upload (60 s plus 1 s per MiB).
+      - CLAMD_CONF_AlertExceedsMax=yes
+      - CLAMD_CONF_MaxScanTime=300000
       - CLAMD_CONF_MaxThreads=12
       - CLAMD_CONF_ReadTimeout=300
       - CLAMD_CONF_TCPAddr=0.0.0.0

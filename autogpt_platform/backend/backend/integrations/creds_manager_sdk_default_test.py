@@ -58,9 +58,12 @@ async def test_get_refuses_sdk_default(manager: IntegrationCredentialsManager):
 
 
 @pytest.mark.asyncio
-async def test_acquire_refuses_sdk_default(manager: IntegrationCredentialsManager):
+@pytest.mark.parametrize("refresh", [True, False])
+async def test_acquire_refuses_sdk_default(
+    manager: IntegrationCredentialsManager, refresh: bool
+):
     with pytest.raises(ValueError, match=REFUSAL):
-        await manager.acquire("user-a", REFUSED.id)
+        await manager.acquire("user-a", REFUSED.id, refresh=refresh)
 
 
 @pytest.mark.asyncio
