@@ -369,16 +369,45 @@ async def match_credentials_to_requirements(
 async def get_user_credentials(
     user_id: str, expert_id: str | None = None
 ) -> list[Credentials]:
-    """Get the credentials available for a user, scoped to an expert if given.
+    """Get the credentials available for a user, scoped to an expert if given."""
+    credentials, granted = await credentials_with_grants(user_id, expert_id)
+    if granted is None:
+        return credentials
 
-    The expert's grants are read beside the credentials, not after them:
-    neither read needs the other.
+    from backend.api.features.experts.credentials import filter_credentials_for_expert
+
+    return filter_credentials_for_expert(credentials, granted)
+
+
+async def credentials_with_grants(
+    user_id: str, expert_id: str | None
+) -> tuple[list[Credentials], set[str] | None]:
+    """The account's credentials, and the ids *expert_id* was granted (``None``
+    for a plain session, which keeps everything).
+
+    The two are read side by side, and a failure is raised in the order they
+    ran one after the other. An expert's first grants read seeds its grants,
+    a write, so that read still waits until the credentials have been read.
     """
+    store = IntegrationCredentialsManager().store
+    if expert_id is None:
+        return await store.get_all_creds(user_id), None
+
+    from backend.data.db_accessors import experts_db
+
+    experts = experts_db()
     credentials, granted = await asyncio.gather(
-        IntegrationCredentialsManager().store.get_all_creds(user_id),
-        _granted_credential_ids(user_id, expert_id),
+        store.get_all_creds(user_id),
+        experts.seeded_expert_credential_ids(user_id, expert_id),
+        return_exceptions=True,
     )
-    return _keep_granted(credentials, granted)
+    if isinstance(credentials, BaseException):
+        raise credentials
+    if isinstance(granted, BaseException):
+        raise granted
+    if granted is None:
+        granted = await experts.expert_allowed_credential_ids(user_id, expert_id)
+    return credentials, set(granted)
 
 
 async def scope_credentials_to_expert(
@@ -393,31 +422,14 @@ async def scope_credentials_to_expert(
     what makes an ungranted integration surface as "missing credentials", so the
     user is offered the connect/grant step instead of a run that fails later.
     """
-    return _keep_granted(credentials, await _granted_credential_ids(user_id, expert_id))
-
-
-async def _granted_credential_ids(
-    user_id: str, expert_id: str | None
-) -> set[str] | None:
-    """The credential ids *expert_id* has been granted, or ``None`` for a plain
-    session, which keeps everything."""
     if expert_id is None:
-        return None
-
-    from backend.data.db_accessors import experts_db
-
-    return set(await experts_db().expert_allowed_credential_ids(user_id, expert_id))
-
-
-def _keep_granted(
-    credentials: list[Credentials], granted: set[str] | None
-) -> list[Credentials]:
-    if granted is None:
         return credentials
 
     from backend.api.features.experts.credentials import filter_credentials_for_expert
+    from backend.data.db_accessors import experts_db
 
-    return filter_credentials_for_expert(credentials, granted)
+    allowed = set(await experts_db().expert_allowed_credential_ids(user_id, expert_id))
+    return filter_credentials_for_expert(credentials, allowed)
 
 
 def keep_to_pins(available: list[Credentials]) -> list[Credentials]:
