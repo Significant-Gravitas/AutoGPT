@@ -1,10 +1,15 @@
 """Exercise scheduled-chat pause and resume races at the storage boundaries."""
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from inspect import unwrap
+from secrets import token_hex
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 from fakeredis import FakeAsyncRedis
 from prisma.models import ExpertRoutine, ScheduledChatStreak
@@ -29,6 +34,10 @@ from backend.copilot.scheduled_chats.service_fixtures import (
 from backend.copilot.scheduled_chats.service_fixtures import (
     watch_scheduler_lock_fixture as watch_scheduler_lock_fixture,
 )
+from backend.data.db_manager import DatabaseManager
+from backend.util import service as rpc_service
+from backend.util import service_auth
+from backend.util.clients import get_database_manager_async_client
 
 
 @pytest.mark.asyncio
@@ -163,6 +172,51 @@ async def test_concurrent_pause_writes_while_the_lease_is_held_or_expired(
             assert await resume_scheduled_chat("owner", "routine-1") is True
             assert row is None
             assert active == {"job-a", "job-b"}
+
+
+@pytest.mark.asyncio
+async def test_record_rpc_retries_lock_contention_and_saves_one_run(
+    mocker: MockerFixture,
+) -> None:
+    lock_results = iter([False, True])
+
+    @asynccontextmanager
+    async def acquire(_key: str) -> AsyncIterator[bool]:
+        yield next(lock_results)
+
+    lock = mocker.patch.object(service, "scheduler_write_lock", side_effect=acquire)
+    rows = MagicMock(
+        find_unique=AsyncMock(return_value=None),
+        delete_many=AsyncMock(),
+        create=AsyncMock(
+            return_value=ScheduledChatStreak.model_construct(id="streak-1")
+        ),
+    )
+    mocker.patch.object(ScheduledChatStreak, "prisma", return_value=rows)
+    mocker.patch.object(service_auth, "internal_api_key", return_value=token_hex(32))
+    mocker.patch.object(rpc_service, "api_comm_retry", 2)
+    mocker.patch.object(rpc_service, "api_comm_max_wait", 0)
+
+    app = DatabaseManager().build_fastapi_app()
+    # Use the executor's defaults with a fresh client confined to this test.
+    client = cast(Any, unwrap(get_database_manager_async_client)())
+    client._async_clients[asyncio.get_running_loop()] = httpx.AsyncClient(
+        base_url=client.base_url,
+        headers=client._headers,
+        transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+    )
+    run = scheduled_run(
+        "owner", "session-1", RunOutcome(failure=DISCORD_FAILURE, whole_run=True)
+    )
+    try:
+        await client.record_scheduled_run(run)
+    finally:
+        await client.aclose()
+
+    assert lock.call_count == 2
+    rows.find_unique.assert_awaited_once()
+    rows.create.assert_awaited_once()
+    assert rows.create.await_args.kwargs["data"]["failures"] == 1
 
 
 @pytest.mark.asyncio
