@@ -2,12 +2,9 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  RefreshIcon,
-  CheckmarkCircle02Icon,
-  ComputerIcon,
-} from "@hugeicons/core-free-icons";
+import { RefreshIcon, ComputerIcon } from "@hugeicons/core-free-icons";
 import { useLocalExecutorSetup } from "./useLocalExecutorSetup";
 
 interface Props {
@@ -139,9 +136,11 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border-base pt-4">
         <div className="flex items-center gap-2 text-caption text-foreground-secondary">
-          <span className="flex text-success">
-            <Icon icon={CheckmarkCircle02Icon} size={16} aria-hidden="true" />
-          </span>
+          <LoadingSpinner
+            size="small"
+            className="shrink-0"
+            aria-hidden="true"
+          />
           Waiting for a signed-in executor…
         </div>
         <Button

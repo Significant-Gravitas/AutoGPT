@@ -713,6 +713,7 @@ class DatabaseManager(AppService):
     parked_spend_decision = _(experts_spend_approval.parked_spend_decision)
     open_chat_spend_review = _(experts_spend_approval.open_chat_spend_review)
     expert_allowed_credential_ids = _(expert_credentials.expert_allowed_credential_ids)
+    seeded_expert_credential_ids = _(expert_credentials.seeded_expert_credential_ids)
     settle_credential_seed = _(expert_credentials.settle_credential_seed)
     update_soul = _(experts_db.update_soul)
     update_soul_if_current = _(experts_db.update_soul_if_current)
@@ -1315,6 +1316,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     parked_spend_decision = d.parked_spend_decision
     open_chat_spend_review = d.open_chat_spend_review
     expert_allowed_credential_ids = d.expert_allowed_credential_ids
+    seeded_expert_credential_ids = d.seeded_expert_credential_ids
     settle_credential_seed = d.settle_credential_seed
     update_soul = d.update_soul
     update_soul_if_current = d.update_soul_if_current

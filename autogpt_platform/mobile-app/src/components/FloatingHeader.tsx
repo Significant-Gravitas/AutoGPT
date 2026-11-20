@@ -17,8 +17,12 @@ export const FLOATING_HEADER_HEIGHT = 52;
 const FADE_TAIL = 20;
 
 interface Props {
+  /** In place of the menu button, e.g. a back button. */
+  left?: ReactNode;
   center?: ReactNode;
   right?: ReactNode;
+  /** The colour the fade starts from; the page's background by default. */
+  fadeColor?: string;
 }
 
 /**
@@ -27,12 +31,13 @@ interface Props {
  * out under it rather than meeting a hard edge. The page pads its own content
  * by `insets.top + FLOATING_HEADER_HEIGHT`.
  */
-export function FloatingHeader({ center, right }: Props) {
+export function FloatingHeader({ left, center, right, fadeColor }: Props) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const styles = useStyles();
   const colors = useColors();
   const fadeHeight = insets.top + FLOATING_HEADER_HEIGHT + FADE_TAIL;
+  const fade = fadeColor ?? colors.background;
 
   function openMenu() {
     navigation.dispatch(DrawerActions.openDrawer());
@@ -44,10 +49,10 @@ export function FloatingHeader({ center, right }: Props) {
         <Svg width="100%" height="100%" preserveAspectRatio="none">
           <Defs>
             <LinearGradient id="headerFade" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor={colors.background} stopOpacity={1} />
-              <Stop offset="0.6" stopColor={colors.background} stopOpacity={1} />
-              <Stop offset="0.8" stopColor={colors.background} stopOpacity={0.5} />
-              <Stop offset="1" stopColor={colors.background} stopOpacity={0} />
+              <Stop offset="0" stopColor={fade} stopOpacity={1} />
+              <Stop offset="0.6" stopColor={fade} stopOpacity={1} />
+              <Stop offset="0.8" stopColor={fade} stopOpacity={0.5} />
+              <Stop offset="1" stopColor={fade} stopOpacity={0} />
             </LinearGradient>
           </Defs>
           <Rect width="100%" height="100%" fill="url(#headerFade)" />
@@ -55,12 +60,14 @@ export function FloatingHeader({ center, right }: Props) {
       </View>
       <View style={[styles.row, { marginTop: insets.top }]}>
         <View style={styles.side}>
-          <IconButton
-            icon={Menu01Icon}
-            label="Open menu"
-            onPress={openMenu}
-            variant="floating"
-          />
+          {left ?? (
+            <IconButton
+              icon={Menu01Icon}
+              label="Open menu"
+              onPress={openMenu}
+              variant="floating"
+            />
+          )}
         </View>
         <View style={styles.center}>{center}</View>
         <View style={[styles.side, styles.right]}>{right}</View>

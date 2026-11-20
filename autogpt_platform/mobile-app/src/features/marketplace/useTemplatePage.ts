@@ -26,15 +26,18 @@ export function useTemplatePage(templateID: string) {
   // the old one must not push its chat over the new page.
   const isMounted = useRef(true);
   const navigation = useNavigation();
-  const { hire, isHiring, justHired } = useHireExpert({
+  const { hire, isHiring, justHired, newerHires } = useHireExpert({
     onHired: () => setError(null),
     onError: (message) => setError(message),
   });
   const template = templates.data?.find((item) => item.id === templateID) ?? null;
   const hiredNow = justHired(templateID);
+  // As on the list: once the team list has loaded after the hire, it decides,
+  // so an expert removed on the web offers Hire again.
   const hiredExpert =
     experts.data?.find((expert) => expert.source_template_id === templateID) ??
-    hiredNow;
+    newerHires(experts.dataUpdatedAt).get(templateID) ??
+    null;
 
   // While this page is in front, Android's back button returns to the list
   // (the drawer's own back goes to its first screen). Leaving drops any error,

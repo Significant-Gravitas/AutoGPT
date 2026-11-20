@@ -53,5 +53,6 @@ describe("serverTarget", () => {
     expect(serverTarget("mcp.example.com")).toBeNull();
     expect(serverTarget("ftp://mcp.example.com")).toBeNull();
     expect(serverTarget("https://mcp example.com")).toBeNull();
+    expect(serverTarget("https://:8080")).toBeNull();
   });
 });

@@ -1,4 +1,6 @@
+import { getGetFeatureFlagsMockHandler } from "@/app/api/__generated__/endpoints/feature-flags/feature-flags.msw";
 import { server } from "@/mocks/mock-server";
+import { Flag } from "@/services/feature-flags/use-get-flag";
 import {
   fireEvent,
   render,
@@ -6,7 +8,7 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { http, HttpResponse } from "msw";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { RecordingStartRequestInterpretationRoute } from "@/app/api/__generated__/models/recordingStartRequestInterpretationRoute";
 import type { LocalPCExecutorStatus } from "../../../hooks/useLocalPCExecutor";
 import { RecordWorkflow } from "../RecordWorkflow";
@@ -75,6 +77,15 @@ function recordingResponse(
 }
 
 describe("RecordWorkflow", () => {
+  beforeEach(() => {
+    server.use(
+      getGetFeatureFlagsMockHandler({
+        flags: { [Flag.LOCAL_PC_EXECUTOR]: true },
+        configured: true,
+      }),
+    );
+  });
+
   test("starts recording through the owner-scoped backend API", async () => {
     useRecordingExecutor();
     const received = vi.fn();

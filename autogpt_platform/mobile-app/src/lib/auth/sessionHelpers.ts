@@ -24,15 +24,52 @@ export const NO_APP_SESSION_CODE = "NO_APP_SESSION";
 
 const SESSION_COOKIE = "better-auth.session_token";
 
-/** One saved session per server, so switching servers never sends one's credential to another. */
-export function storageKey(serverURL: string) {
+/** The server's origin in characters a SecureStore key takes. */
+export function serverSlug(serverURL: string) {
   // SecureStore keys take letters, digits, ".", "-" and "_" only. Hex keeps
   // every origin apart: replacing ":" with "_" would make http://dev:3000 and
   // http://dev_3000 share one key.
-  const server = Array.from(new URL(serverURL).origin, (char) =>
+  return Array.from(new URL(serverURL).origin, (char) =>
     char.charCodeAt(0).toString(16).padStart(2, "0"),
   ).join("");
-  return `autogpt.session.${server}`;
+}
+
+/** One saved session per server, so switching servers never sends one's credential to another. */
+export function storageKey(serverURL: string) {
+  return `autogpt.session.${serverSlug(serverURL)}`;
+}
+
+// The verification link opens the web, which creates the platform user and
+// records consent, then lands on the page that sends the person back here.
+const VERIFIED_PATH = "/app-verified";
+
+/** Where the verification link leads, as the web builds it (lib/auth/email-verification.ts). */
+export function verificationCallbackURL(marketingOptOut: boolean) {
+  const params = new URLSearchParams({ method: "email", next: VERIFIED_PATH });
+  if (marketingOptOut) params.set("marketing_opt_out", "1");
+  return `/auth/callback?${params.toString()}`;
+}
+
+/** The name a new account starts with, as the web names it. */
+export function nameFromEmail(email: string) {
+  return email.split("@")[0] ?? email;
+}
+
+export type SignUpOutcome = "signedIn" | "verify" | "noAppSession";
+
+/**
+ * What a 2xx sign-up answer means. `signedToken` is the `set-auth-token`
+ * header: the credential a server with the installed-app contract hands over.
+ */
+export function readSignUpOutcome(
+  body: unknown,
+  signedToken: string | null,
+): SignUpOutcome {
+  if (signedToken && readUser(body)) return "signedIn";
+  // With verification on there is no session until the link is opened.
+  const token = (body as { token?: unknown } | null)?.token;
+  if (token === null && !signedToken) return "verify";
+  return "noAppSession";
 }
 
 export function parseStoredSession(raw: string | null): StoredSession | null {

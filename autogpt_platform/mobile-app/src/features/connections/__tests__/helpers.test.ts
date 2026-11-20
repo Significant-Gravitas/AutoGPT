@@ -152,6 +152,13 @@ describe("requestHost", () => {
     expect(requestHost(http)).toBe("api.example.com");
     expect(requestHost(request({ discriminatorValues: ["https://a.com"] }))).toBeNull();
   });
+
+  it("keeps a port the scheme doesn't use by default, as the backend keys it", () => {
+    const at = (url: string) => requestHost(request({ types: ["host_scoped"], discriminatorValues: [url] }));
+    expect(at("https://api.example.com:8443/data")).toBe("api.example.com:8443");
+    expect(at("https://api.example.com:443/data")).toBe("api.example.com");
+    expect(at("http://api.example.com:443/data")).toBe("api.example.com:443");
+  });
 });
 
 describe("tileLetters", () => {
