@@ -50,11 +50,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
     >
       <div className="flex min-w-0 flex-1 items-start gap-3">
         <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-separator bg-accent-surface">
-          <Icon
-            icon={BookOpen01Icon}
-            size={18}
-            className="text-accent-strong"
-          />
+          <Icon icon={BookOpen01Icon} size={18} tone="accent" />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-2">
@@ -80,7 +76,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
               {triggers.map((trigger) => (
                 <span
                   key={trigger}
-                  className="rounded-full bg-surface-hover px-2 py-0.5 text-xs text-foreground-secondary"
+                  className="rounded-full bg-surface-hover px-2 py-0.5 text-caption text-foreground-secondary"
                 >
                   {trigger}
                 </span>
@@ -137,7 +133,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
                 {triggers.map((trigger) => (
                   <span
                     key={trigger}
-                    className="rounded-full bg-surface-hover px-2 py-0.5 text-xs text-foreground-secondary"
+                    className="rounded-full bg-surface-hover px-2 py-0.5 text-caption text-foreground-secondary"
                   >
                     {trigger}
                   </span>
@@ -158,7 +154,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
             ) : (
               <>
                 <pre
-                  className="max-h-[60vh] overflow-auto rounded-medium bg-surface-muted p-3 text-sm whitespace-pre-wrap text-foreground-emphasis"
+                  className="max-h-[60vh] overflow-auto rounded-medium bg-surface-muted p-3 text-body whitespace-pre-wrap text-foreground-emphasis"
                   data-testid="skill-view-body"
                 >
                   {detail?.body || "(no body)"}
@@ -171,7 +167,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
                     <Text variant="small" tone="muted">
                       Package files ({detail?.files?.length ?? 0}):
                     </Text>
-                    <ul className="flex flex-col gap-0.5 text-xs text-foreground-secondary">
+                    <ul className="flex flex-col gap-0.5 text-caption text-foreground-secondary">
                       {fileRows.map((row) => (
                         <li
                           key={row.path}

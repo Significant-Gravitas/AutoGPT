@@ -2,7 +2,6 @@ import asyncio
 import base64
 import io
 import math
-import threading
 import time
 import zipfile
 from datetime import datetime, timezone
@@ -15,6 +14,14 @@ from fpdf import FPDF
 from PIL import Image
 
 from backend.api.features.workspace import preview as preview_module
+from backend.api.features.workspace import preview_render
+from backend.api.features.workspace.preview_render_test import (
+    allocating_renderer,
+    hanging_renderer,
+    interval_renderer,
+    memory_cap_above_child_baseline,
+    requires_proc_status,
+)
 from backend.api.features.workspace.routes import router
 from backend.data.workspace import Workspace, WorkspaceFile
 
@@ -89,7 +96,7 @@ def _zip_bytes(*, with_thumbnail: bool, thumbnail: bytes | None = None) -> bytes
 def _oversized_png() -> bytes:
     # A source well above the render budget (~50 MP), kept cheap on disk and in
     # memory by using a single-channel solid image.
-    side = int((preview_module.MAX_RENDER_PIXELS * 1.1) ** 0.5)
+    side = int((preview_render.MAX_RENDER_PIXELS * 1.1) ** 0.5)
     out = io.BytesIO()
     Image.new("L", (side, side)).save(out, format="PNG")
     return out.getvalue()
@@ -98,7 +105,7 @@ def _oversized_png() -> bytes:
 def _decompression_bomb_png() -> bytes:
     # Above 2x the budget, where Pillow raises its own error at open, before the
     # explicit size check runs.
-    side = int((2 * preview_module.MAX_RENDER_PIXELS) ** 0.5) + 100
+    side = int((2 * preview_render.MAX_RENDER_PIXELS) ** 0.5) + 100
     out = io.BytesIO()
     Image.new("L", (side, side)).save(out, format="PNG")
     return out.getvalue()
@@ -358,15 +365,15 @@ def test_image_preview_cache_hit_skips_retrieve(mocker):
 def test_render_scale_keeps_a_large_page_within_budget():
     # A ~3000 mm page is ~8503 pt on a side.
     page_pt = 3000 / 25.4 * 72
-    scale = preview_module._render_scale(page_pt, page_pt, 400)
+    scale = preview_render._render_scale(page_pt, page_pt, 400)
 
     rendered_pixels = (page_pt * scale) ** 2
-    assert rendered_pixels <= preview_module.MAX_RENDER_PIXELS
+    assert rendered_pixels <= preview_render.MAX_RENDER_PIXELS
 
     # Without the budget, a fixed render scale rasterises the whole page and
     # blows past it — this is what the budget exists to prevent.
     fixed_scale = max(1, min(3, round(400 / page_pt)))
-    assert (page_pt * fixed_scale) ** 2 > preview_module.MAX_RENDER_PIXELS
+    assert (page_pt * fixed_scale) ** 2 > preview_render.MAX_RENDER_PIXELS
 
 
 def test_render_scale_caps_a_sliver_page():
@@ -374,11 +381,11 @@ def test_render_scale_caps_a_sliver_page():
     # the continuous-area budget alone underestimates the bitmap. The scale
     # ceiling keeps the rounded bitmap within the budget.
     page_width, page_height = 0.000025, 10_000.0
-    scale = preview_module._render_scale(page_width, page_height, 400)
+    scale = preview_render._render_scale(page_width, page_height, 400)
 
-    assert scale <= preview_module.MAX_RENDER_SCALE
+    assert scale <= preview_render.MAX_RENDER_SCALE
     rounded_pixels = math.ceil(page_width * scale) * math.ceil(page_height * scale)
-    assert rounded_pixels <= preview_module.MAX_RENDER_PIXELS
+    assert rounded_pixels <= preview_render.MAX_RENDER_PIXELS
 
 
 def test_pdf_preview_renders_a_large_page_as_a_thumbnail(mocker):
@@ -436,27 +443,56 @@ def test_office_preview_declines_an_oversized_thumbnail(mocker):
     assert response.status_code == 413
 
 
-async def test_preview_render_concurrency_is_bounded(mocker):
-    # Instrument the rasteriser (it runs in a worker thread) to record the peak
-    # number of simultaneous renders, then fire more previews than the cap.
-    peak = 0
-    in_flight = 0
-    lock = threading.Lock()
+# The embedded thumbnail cap: 10 MB, the same as an image preview.
+_THUMBNAIL_CAP = 10_000_000
 
-    def instrumented(_content: bytes, _width: int) -> bytes:
-        nonlocal peak, in_flight
-        with lock:
-            in_flight += 1
-            peak = max(peak, in_flight)
-        time.sleep(0.1)
-        with lock:
-            in_flight -= 1
-        return b"RIFFfake-webp"
 
-    mocker.patch.object(preview_module, "_resize_webp", instrumented)
+def _office_with_thumbnail(thumbnail_bytes: int, method: int) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", method) as archive:
+        with archive.open("docProps/thumbnail.jpeg", "w") as member:
+            # Written in pieces so the test never holds the whole member.
+            for start in range(0, thumbnail_bytes, 1_000_000):
+                member.write(b"\0" * min(1_000_000, thumbnail_bytes - start))
+        archive.writestr("word/document.xml", "<w/>")
+    return buf.getvalue()
 
+
+def test_office_thumbnail_unpacking_past_the_cap_is_refused():
+    content = _office_with_thumbnail(_THUMBNAIL_CAP + 1, zipfile.ZIP_DEFLATED)
+    assert len(content) < 100_000
+
+    with pytest.raises(preview_render.PreviewTooLarge):
+        preview_render._extract_zip_thumbnail(content)
+
+
+def test_office_thumbnail_at_the_cap_is_read():
+    content = _office_with_thumbnail(_THUMBNAIL_CAP, zipfile.ZIP_DEFLATED)
+
+    thumbnail = preview_render._extract_zip_thumbnail(content)
+    assert thumbnail is not None and len(thumbnail) == _THUMBNAIL_CAP
+
+
+@pytest.mark.parametrize(
+    "method, status", [(zipfile.ZIP_DEFLATED, 413), (zipfile.ZIP_BZIP2, 415)]
+)
+def test_office_preview_declines_a_thumbnail_that_unpacks_past_the_cap(
+    mocker, method, status
+):
+    # Rendered in the child: an unbounded read would hand 10 MB of zeros to the
+    # image decoder and fail as a 415, so a 413 means the cap stopped the read.
+    _mock_lookups(mocker, _make_file(name="report.docx", path="/report.docx"))
+    _mock_storage(mocker, _office_with_thumbnail(_THUMBNAIL_CAP + 1, method))
+    _mock_redis(mocker)
+
+    response = client.get("/files/file-001/preview")
+
+    assert response.status_code == status
+
+
+def _mock_render_io(mocker, content: bytes) -> None:
     storage = mocker.MagicMock()
-    storage.retrieve = AsyncMock(return_value=b"image-bytes")
+    storage.retrieve = AsyncMock(return_value=content)
     mocker.patch.object(
         preview_module, "get_workspace_storage", AsyncMock(return_value=storage)
     )
@@ -467,17 +503,96 @@ async def test_preview_render_concurrency_is_bounded(mocker):
         preview_module, "get_redis_async", AsyncMock(return_value=redis)
     )
 
+
+async def test_preview_render_concurrency_is_bounded(mocker):
+    # Each render reports when it ran in its child; count the peak overlap
+    # after firing more previews than the cap.
+    mocker.patch.object(preview_render, "image_thumbnail", interval_renderer)
+    _mock_render_io(mocker, b"image-bytes")
+
     files = [
         _make_file(id=f"file-{i}", mime_type="image/png", checksum=f"sum-{i}")
         for i in range(10)
     ]
 
-    await asyncio.gather(
+    responses = await asyncio.gather(
         *(
             preview_module.build_preview_response(f, width=100, max_bytes=4096)
             for f in files
         )
     )
 
+    events = []
+    for response in responses:
+        start, end = (float(t) for t in bytes(response.body).split(b","))
+        events += [(start, 1), (end, -1)]
+    peak = in_flight = 0
+    for _, step in sorted(events):
+        in_flight += step
+        peak = max(peak, in_flight)
     assert peak > 1  # the renders really did overlap
     assert peak <= preview_module.MAX_CONCURRENT_RENDERS
+
+
+# ---------------------------------------------------------------------------
+# Render isolation: every render runs in a child process with a time and
+# memory limit, so a slow or oversized render ends as "not available".
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "renderer, mime_type, content",
+    [
+        ("image_thumbnail", "image/png", _png_bytes),
+        ("pdf_thumbnail", "application/pdf", _pdf_bytes),
+        ("office_thumbnail", PPTX_MIME, lambda: _zip_bytes(with_thumbnail=True)),
+    ],
+)
+def test_preview_past_the_render_timeout_is_not_available(
+    mocker, renderer, mime_type, content
+):
+    mocker.patch.object(preview_render, "RENDER_TIMEOUT_SECONDS", 1)
+    mocker.patch.object(preview_render, renderer, hanging_renderer)
+    _mock_lookups(mocker, _make_file(mime_type=mime_type))
+    _mock_storage(mocker, content())
+    redis = _mock_redis(mocker)
+    started = time.monotonic()
+
+    response = client.get("/files/file-001/preview?w=100")
+
+    assert response.status_code == 415
+    assert response.json()["detail"] == "Cannot render preview"
+    assert time.monotonic() - started < 30  # at the timeout, not the render's end
+    redis.set.assert_not_called()
+
+
+@requires_proc_status
+async def test_image_preview_over_the_render_memory_cap_is_too_large(mocker):
+    cap = await memory_cap_above_child_baseline()
+    mocker.patch.object(preview_render, "RENDER_MAX_MEMORY_BYTES", cap)
+    mocker.patch.object(preview_render, "image_thumbnail", allocating_renderer)
+    _mock_lookups(mocker, _make_file(mime_type="image/png"))
+    _mock_storage(mocker, str(2 * cap).encode())
+    _mock_redis(mocker)
+
+    response = client.get("/files/file-001/preview?w=100")
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "File too large to preview"
+
+
+async def test_two_concurrent_pdf_previews_both_complete(mocker):
+    _mock_render_io(mocker, _pdf_bytes())
+
+    for pair in range(10):
+        files = [
+            _make_file(id=f"pdf-{pair}-{i}", mime_type="application/pdf")
+            for i in range(2)
+        ]
+        responses = await asyncio.gather(
+            *(
+                preview_module.build_preview_response(f, width=200, max_bytes=4096)
+                for f in files
+            )
+        )
+        assert all(bytes(r.body)[:4] == b"RIFF" for r in responses)

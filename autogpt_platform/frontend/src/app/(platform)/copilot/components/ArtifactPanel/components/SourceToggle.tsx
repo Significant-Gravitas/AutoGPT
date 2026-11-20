@@ -9,7 +9,7 @@ interface Props {
 
 export function SourceToggle({ isSourceView, onToggle }: Props) {
   return (
-    <div className="flex items-center rounded-md border border-border-base bg-surface-muted p-0.5 text-xs font-medium">
+    <div className="flex items-center rounded-md border border-border-base bg-surface-muted p-0.5 text-caption font-medium">
       <button
         type="button"
         aria-pressed={!isSourceView}

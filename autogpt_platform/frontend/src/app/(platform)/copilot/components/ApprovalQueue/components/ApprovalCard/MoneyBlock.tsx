@@ -18,7 +18,7 @@ export function MoneyBlock({ spend }: Props) {
   const share =
     spend.ceiling > 0 ? Math.min(1, spend.spent / spend.ceiling) : 1;
   return (
-    <div className="flex flex-col gap-1.5 rounded-lg border border-border-base px-3 py-2.5 text-sm tabular-nums">
+    <div className="flex flex-col gap-1.5 rounded-lg border border-border-base px-3 py-2.5 text-body tabular-nums">
       <div className="flex justify-between gap-3 text-foreground-tertiary">
         <span>This step</span>
         <span className="text-foreground-strong">

@@ -1,5 +1,5 @@
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
-import { COPILOT_GATE_NODE_PREFIX } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
+import { COPILOT_GATE_NODE_PREFIX } from "@/components/organisms/PendingReviewsList/helpers";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import {
   type Fact,

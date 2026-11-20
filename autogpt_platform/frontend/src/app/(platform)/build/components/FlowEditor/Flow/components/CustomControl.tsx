@@ -72,11 +72,7 @@ export const CustomControls = memo(
       {
         id: "tutorial-button",
         icon: isTutorialLoading ? (
-          <Icon
-            aria-hidden
-            icon={Loading03Icon}
-            className="size-3.5 animate-spin"
-          />
+          <Icon aria-hidden icon={Loading03Icon} spin className="size-3.5" />
         ) : (
           <Icon aria-hidden icon={Presentation01Icon} className="size-3.5" />
         ),

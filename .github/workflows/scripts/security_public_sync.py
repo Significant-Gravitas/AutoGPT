@@ -105,10 +105,7 @@ def public_snapshot(advisories):
             )
         )
         cve = advisory.get("cve_id")
-        try:
-            release_tags = sorted(tag for tag in tags if fixed_in(advisory, tag))
-        except ValueError:
-            raise PublicDataError(PublicErrorCode.RELEASE_MAPPING) from None
+        release_tags = sorted(tag for tag in tags if fixed_in(advisory, tag))
         records.append(
             {
                 "ghsa_id": advisory["ghsa_id"],

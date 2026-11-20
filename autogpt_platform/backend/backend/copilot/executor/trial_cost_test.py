@@ -71,7 +71,7 @@ async def test_delayed_trial_cost_and_later_paid_turn_are_separate(use_sdk):
         ),
         patch(
             "backend.copilot.executor.processor.ChatConfig",
-            return_value=MagicMock(test_mode=False),
+            return_value=MagicMock(test_mode=False, load_test_email_domain=""),
         ),
         patch(
             "backend.copilot.executor.processor.resolve_use_sdk",

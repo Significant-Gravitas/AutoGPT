@@ -32,10 +32,13 @@ interface Args {
  */
 export async function sendVerificationLink(args: Args) {
   const { user, url, request, getAuthContext } = args;
+  // Read from Better Auth's endpoint context: the login page calls auth.api
+  // directly, with no request.
+  const { path } = await currentAuthEndpoint();
   if (isResendRequest(request)) {
     if (args.requireEmailVerification && (await sendsSetPasswordLink(args)))
       return;
-  } else if (args.requireEmailVerification && (await isSignUpOrSignIn())) {
+  } else if (args.requireEmailVerification && isSignUpOrSignIn(path)) {
     const claimed = await getAuthContext()
       .then((context) => claimEmailSlot(context, "verify-email", user.email))
       .catch((error: unknown) => {
@@ -46,7 +49,8 @@ export async function sendVerificationLink(args: Args) {
       });
     if (!claimed) return;
   }
-  await sendAuthEmail({ to: user.email, type: "verify_email", url });
+  const type = isEmailChange(path) ? "verify_new_email" : "verify_email";
+  await sendAuthEmail({ to: user.email, type, url });
 }
 
 async function sendsSetPasswordLink(args: Args) {
@@ -65,11 +69,15 @@ async function sendsSetPasswordLink(args: Args) {
   return true;
 }
 
-// Read from Better Auth's endpoint context: the login page calls auth.api
-// directly, with no request.
-async function isSignUpOrSignIn() {
-  const { path } = await currentAuthEndpoint();
+function isSignUpOrSignIn(path: string | undefined) {
   return path === "/sign-up/email" || path === "/sign-in/email";
+}
+
+// A change of address sends the new address its link from /change-email for
+// an unverified account, and from /verify-email, once the current address has
+// approved the change, for a verified one. Sign-up wording would be wrong there.
+function isEmailChange(path: string | undefined) {
+  return path === "/change-email" || path === "/verify-email";
 }
 
 function isResendRequest(request: Request | undefined) {

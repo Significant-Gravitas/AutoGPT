@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from claude_agent_sdk import AssistantMessage, StreamEvent, TextBlock
 
+from backend.copilot.limit_tracking import LimitReading
 from backend.copilot.turn_budget import TurnBudget
 from backend.copilot.turn_pause import TurnPause
 
@@ -121,6 +122,15 @@ def test_a_landed_turn_pauses_with_its_window_and_reset():
     pause = governor.pause("success", wrote_checkpoint=True)
     assert pause == TurnPause(reason="daily", resets_at=RESETS)
     assert governor.paused is True
+
+
+def test_a_landed_turn_carries_its_tier_for_analytics():
+    budget = TurnBudget(usd=1.0, limiting="daily", resets_at=RESETS, tier="PRO")
+    governor = _governor(budget, meter=_Meter(spent=1.0))
+    governor.refusal()
+    pause = governor.pause("success", wrote_checkpoint=True)
+    assert pause is not None and pause.reading == LimitReading(tier="PRO")
+    assert "reading" not in pause.as_part()
 
 
 @pytest.mark.parametrize("subtype", ["error", "error_during_execution"])

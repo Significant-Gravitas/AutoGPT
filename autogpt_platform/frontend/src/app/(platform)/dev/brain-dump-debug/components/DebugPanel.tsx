@@ -25,7 +25,8 @@ export function DebugPanel({
           <Icon
             icon={icon}
             size={22}
-            className="mt-0.5 shrink-0 text-foreground-tertiary"
+            tone="muted"
+            className="mt-0.5 shrink-0"
           />
           <div className="flex flex-col gap-1">
             <Text variant="h5">{title}</Text>
@@ -54,7 +55,7 @@ export function DebugField({ label, value }: FieldProps) {
       <Text variant="label" tone="muted">
         {label}
       </Text>
-      <Text variant="body" className="font-mono break-all">
+      <Text variant="body" mono className="break-all">
         {value}
       </Text>
     </div>

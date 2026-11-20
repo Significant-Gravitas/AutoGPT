@@ -20,9 +20,11 @@ export const FieldError = ({
   return (
     <div id={id} aria-live="polite" aria-atomic="true">
       {fieldError && (
-        <Text variant="small" tone="danger" className="mt-1 pl-4">
-          {fieldError}
-        </Text>
+        <div className="mt-1 pl-4">
+          <Text variant="small" tone="danger">
+            {fieldError}
+          </Text>
+        </div>
       )}
     </div>
   );

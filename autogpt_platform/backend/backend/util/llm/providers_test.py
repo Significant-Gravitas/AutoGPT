@@ -2720,8 +2720,8 @@ class TestCallProviderStream:
     @pytest.mark.asyncio
     async def test_uses_provided_client_directly(self):
         """When a ``client`` is passed, the helper does NOT construct a
-        new one — preserves the chat layer's module-cached
-        Langfuse-wrapped client + its pooled HTTP connections."""
+        new one — preserves the chat layer's module-cached client + its
+        pooled HTTP connections."""
         from backend.util.llm.providers import call_provider_stream
 
         sentinel_stream = MagicMock(name="async_stream")
@@ -2747,8 +2747,7 @@ class TestCallProviderStream:
     @pytest.mark.asyncio
     async def test_builds_client_via_factory_when_not_provided(self):
         """When no ``client`` is passed, the helper instantiates one
-        via ``client_factory(base_url, api_key)``. The chat layer uses
-        this branch to inject ``LangfuseAsyncOpenAI`` as the factory."""
+        via ``client_factory(base_url, api_key)``."""
         from backend.util.llm.providers import call_provider_stream
 
         captured: dict[str, object] = {}
@@ -3150,6 +3149,7 @@ class TestForcedToolChoiceCapability:
             "anthropic.claude-sonnet-5-5",
             "claude-sonnet-5-5-20260928",
             "claude-fable-5-1",
+            "claude-fable-5-2",
             "claude-mythos-5-1",
         ],
     )

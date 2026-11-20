@@ -8,6 +8,7 @@ import pytest
 from prisma.enums import ReviewStatus
 
 from backend.blocks.airtable.schema import AirtableCreateTableBlock
+from backend.blocks.github.repo import GithubCreateRepositoryBlock
 from backend.blocks.google.gmail import GmailSendBlock
 from backend.copilot.gate.headline import gated_tools, headline_for
 from backend.copilot.gate.policy import (
@@ -21,6 +22,7 @@ from backend.copilot.gate.policy import (
 from backend.copilot.gate.review import (
     find_decision,
     node_id_for,
+    payload_headline,
     review_id_for,
     review_payload,
 )
@@ -80,6 +82,17 @@ def test_secrets_are_redacted_before_a_human_reads_them():
     )
     assert "sk-live-abc" not in str(payload)
     assert payload["arguments"]["url"] == "https://x"
+
+
+def test_a_card_shows_a_string_argument_as_the_call_will_send_it():
+    """The card's copy of the arguments must hash back to the review id for a
+    call rebuilt from its card to run, so a string is never rewritten."""
+    content = '{\n  "name": "settings",\n  "token": "t-1"\n}'
+    args = {"filename": "settings.json", "content": content}
+
+    payload = review_payload("write_workspace_file", args)
+
+    assert payload["arguments"] == args
 
 
 def test_oversized_arguments_are_truncated():
@@ -210,6 +223,24 @@ def test_a_parked_card_offers_both_rules(tool, subject, kind):
     assert payload["chat_rules_allowed"] == ["allow", "judge"]
 
 
+@pytest.mark.parametrize(
+    "tool, verdict",
+    [
+        # Billed to the user's AI/ML API balance: asks in Auto and Ask First.
+        ("tools_run", Verdict.ASK),
+        ("image_generate", Verdict.ASK),
+        ("jev_tool_search", Verdict.ASK),
+        # Free lookups run without a card.
+        ("models_search", Verdict.RUN),
+        ("ping", Verdict.RUN),
+    ],
+)
+def test_a_billed_aimlapi_tool_asks_before_it_runs(tool, verdict):
+    subject = mcp_subject("https://mcp.aimlapi.com/mcp", tool)
+    for mode in ("auto", "ask_first"):
+        assert verdict_for_effect(mode, subject.effect) is verdict
+
+
 def test_a_schedule_card_offers_no_judge_rule():
     """The gate ignores a judge rule on a schedule, so its card must not offer one."""
     schedule = Subject(
@@ -245,10 +276,10 @@ async def test_an_approval_nobody_came_back_for_expires(status, age, expected):
     )
     db = MagicMock()
     db.get_reviews_by_node_exec_ids = AsyncMock(return_value={"rid": stored})
-    db.delete_review_by_node_exec_id = AsyncMock(return_value=1)
+    db.delete_review_as_read = AsyncMock(return_value=1)
     with patch("backend.copilot.gate.review.review_db", return_value=db):
         assert await find_decision("rid", "u1", "s1") == expected
-    assert db.delete_review_by_node_exec_id.await_count == (expected is None)
+    assert db.delete_review_as_read.await_count == (expected is None)
 
 
 def test_a_block_subject_names_the_card_marks_it_and_labels_its_fields():
@@ -335,6 +366,27 @@ def test_the_preview_shows_what_the_defaults_will_create():
             "fields": [{"name": "Name", "kind": "Text", "detail": ""}],
         }
     ]
+
+
+@pytest.mark.parametrize(
+    "inputs, headline",
+    [
+        ({"name": "otter-notes"}, "Create a public GitHub repository: “otter-notes”"),
+        (
+            {"name": "otter-notes", "private": True},
+            "Create a private GitHub repository: “otter-notes”",
+        ),
+    ],
+    ids=["private left out", "private"],
+)
+def test_the_card_says_whether_a_new_repository_is_public(inputs, headline):
+    block = GithubCreateRepositoryBlock()
+    payload = review_payload(
+        "run_capability",
+        {"id": block.id, "input": inputs},
+        block_subject(block, inputs, priced=False),
+    )
+    assert payload_headline(payload) == headline
 
 
 def test_a_block_with_nothing_to_preview_keeps_its_run_headline():

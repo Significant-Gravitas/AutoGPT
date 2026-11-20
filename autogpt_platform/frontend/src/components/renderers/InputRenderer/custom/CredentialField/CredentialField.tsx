@@ -195,7 +195,7 @@ export const CredentialsField = (props: FieldProps) => {
             />
             <label
               htmlFor={optionalToggleId}
-              className="cursor-pointer text-xs text-foreground-tertiary"
+              className="cursor-pointer text-caption text-foreground-tertiary"
             >
               Optional - skip block if not configured
             </label>

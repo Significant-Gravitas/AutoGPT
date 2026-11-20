@@ -178,13 +178,7 @@ export function ConnectionPickerPanel({ picker, rows }: Props) {
  */
 function OfferMark({ offer }: { offer: AIConnectionOffer }) {
   if (offer.auth_method === "deployment") {
-    return (
-      <Icon
-        icon={CloudServerIcon}
-        size={20}
-        className="text-foreground-tertiary"
-      />
-    );
+    return <Icon icon={CloudServerIcon} size={20} tone="muted" />;
   }
   return <IntegrationLogo provider={offer.provider_family} size={20} />;
 }

@@ -91,7 +91,7 @@ export function RunBlockTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 text-body text-foreground-tertiary">
         <ToolIcon isStreaming={isStreaming} isError={isError} />
         <MorphingTextAnimation
           text={isCorrupted ? "Block result could not be displayed" : text}

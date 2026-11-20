@@ -90,16 +90,16 @@ export function RecordingStatePanel({ snapshot, onRefresh }: Props) {
             <tbody>
               {parts.map((part) => (
                 <tr key={part.partIndex} className="border-t border-separator">
-                  <td className="px-4 py-2 font-mono text-sm">
+                  <td className="px-4 py-2 font-mono text-body">
                     {part.partIndex}
                   </td>
-                  <td className="px-4 py-2 font-mono text-sm">
+                  <td className="px-4 py-2 font-mono text-body">
                     {formatBytes(part.bytes)}
                   </td>
-                  <td className="px-4 py-2 font-mono text-sm">
+                  <td className="px-4 py-2 font-mono text-body">
                     {formatClock(part.savedAt)}
                   </td>
-                  <td className="px-4 py-2 font-mono text-sm">
+                  <td className="px-4 py-2 font-mono text-body">
                     {formatValue(part.uploaded)}
                   </td>
                 </tr>

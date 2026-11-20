@@ -1,7 +1,7 @@
 """Tool for continuing block execution after human review approval."""
 
 import logging
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from prisma.enums import ReviewStatus
 
@@ -12,7 +12,7 @@ from backend.copilot.tool_display import emit_tool_display_name
 from backend.data.db_accessors import review_db
 
 from .base import BaseTool
-from .helpers import execute_block, resolve_block_credentials
+from .helpers import block_run_refusal, execute_block, resolve_block_credentials
 from .models import ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -111,6 +111,10 @@ class ContinueRunBlockTool(BaseTool):
             return ErrorResponse(
                 message=f"Block '{block_id}' not found", session_id=session_id
             ).from_outside()
+        if block.disabled:
+            return await refuse_disabled_block(block_id, review_id, user_id, session_id)
+        if refusal := block_run_refusal(block, block_id, session_id):
+            return refusal
 
         emit_tool_display_name(block.name)
 
@@ -138,22 +142,63 @@ class ContinueRunBlockTool(BaseTool):
         # dry_run=False is safe here: run_capability's dry-run fast-path skips
         # HITL entirely, so resume_capability is never called during a
         # dry run — only real executions reach the human review gate.
-        result = await execute_block(
-            block=block,
-            block_id=block_id,
-            input_data=input_data,
-            user_id=user_id,
-            session_id=session_id,
-            node_exec_id=review_id,
-            matched_credentials=matched_creds,
-            dry_run=False,
-            organization_id=session.organization_id,
-            team_id=session.team_id,
-            expert_id=session.expert_id,
+        return await run_claimed(
+            review_id,
+            user_id,
+            session,
+            lambda: execute_block(
+                block=block,
+                block_id=block_id,
+                input_data=input_data,
+                user_id=user_id,
+                session_id=session_id,
+                node_exec_id=review_id,
+                matched_credentials=matched_creds,
+                dry_run=False,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+                expert_id=session.expert_id,
+            ),
         )
 
-        # Delete review record after successful execution (one-time use)
-        if result.type != "error":
-            await review_db().delete_review_by_node_exec_id(review_id, user_id)
 
-        return result
+async def run_claimed(
+    review_id: str,
+    user_id: str,
+    session: ChatSession,
+    run: Callable[[], Awaitable[ToolResponseBase]],
+) -> ToolResponseBase:
+    """Run an approved call once. Calls resuming the same review can arrive
+    together, so the approval is claimed before the call runs; it is spent
+    once the call has run, and given back when it did not (an error, a
+    sign-in card or a fresh review), for the retry that follows."""
+    if not await review_db().claim_approved_review(review_id, user_id):
+        return ErrorResponse(
+            message=(
+                f"Review '{review_id}' not found or already executed. It may have "
+                "been consumed by an earlier resume_capability call."
+            ),
+            session_id=session.session_id,
+        ).from_outside()
+    try:
+        result = await run()
+    except Exception:
+        await review_db().release_review_claim(review_id, user_id)
+        raise
+    if result.type in ("error", "setup_requirements", "review_required"):
+        await review_db().release_review_claim(review_id, user_id)
+    else:
+        await review_db().delete_review_by_node_exec_id(review_id, user_id)
+    return result
+
+
+async def refuse_disabled_block(
+    block_id: str, review_id: str, user_id: str, session_id: str
+) -> ErrorResponse:
+    """Refuse an approved review whose block has since been disabled, and use
+    the approval up: it outlives the turn that asked for it, and must not run
+    the block once the block is enabled again."""
+    await review_db().delete_review_by_node_exec_id(review_id, user_id)
+    return ErrorResponse(
+        message=f"Block '{block_id}' is disabled", session_id=session_id
+    ).from_outside()

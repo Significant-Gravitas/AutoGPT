@@ -54,7 +54,7 @@ export function WalletTrigger({
               data-state={open ? "open" : "closed"}
               onClick={onClick}
               className={cn(
-                "group relative flex flex-nowrap items-center gap-2 rounded-md px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-action-hover focus-visible:ring-offset-2",
+                "group relative flex flex-nowrap items-center gap-2 rounded-md px-3 py-2 text-body outline-none focus-visible:ring-2 focus-visible:ring-action-hover focus-visible:ring-offset-2",
                 compact
                   ? "size-8 justify-center rounded-lg p-0 text-foreground-body transition-colors hover:bg-surface-hover data-[state=open]:bg-surface-hover data-[state=open]:text-foreground-strong"
                   : "bg-surface-muted",
@@ -70,7 +70,7 @@ export function WalletTrigger({
                 <span
                   aria-hidden
                   data-testid="wallet-unseen-dot"
-                  className="absolute top-0.5 right-0.5 size-2 rounded-full bg-brand ring-2 ring-sidebar"
+                  className="absolute top-0.5 right-0.5 size-2 rounded-full bg-brand ring-2 ring-surface-muted"
                 />
               )}
               {!compact && (

@@ -60,7 +60,7 @@ export function OnboardingFooter({
           aria-keyshortcuts="Escape"
           onClick={onSkip}
           disabled={isSending}
-          className="flex h-8 items-center gap-2 rounded-md border border-border-base bg-surface px-3.5 text-sm font-medium whitespace-nowrap text-foreground-body transition-colors outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle enabled:hover:border-border-strong enabled:hover:bg-surface-muted disabled:opacity-50 [@media(hover:none)]:h-11"
+          className="flex h-8 items-center gap-2 rounded-md border border-border-base bg-surface px-3.5 text-body font-medium whitespace-nowrap text-foreground-body transition-colors outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle enabled:hover:border-border-strong enabled:hover:bg-surface-muted disabled:opacity-50 [@media(hover:none)]:h-11"
         >
           Skip questions
           <kbd aria-hidden="true" className={KEY_HINT}>
@@ -78,7 +78,7 @@ export function OnboardingFooter({
           autoFocus={isReview}
           onClick={onNext}
           className={cn(
-            "flex h-8 items-center gap-1.5 rounded-md px-4 text-sm font-medium whitespace-nowrap transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:ring-offset-1 enabled:active:scale-95 [@media(hover:none)]:h-11",
+            "flex h-8 items-center gap-1.5 rounded-md px-4 text-body font-medium whitespace-nowrap transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:ring-offset-1 enabled:active:scale-95 [@media(hover:none)]:h-11",
             isEnabled
               ? "bg-action-hover text-action-foreground hover:bg-action"
               : "bg-surface-hover text-foreground-subtle",

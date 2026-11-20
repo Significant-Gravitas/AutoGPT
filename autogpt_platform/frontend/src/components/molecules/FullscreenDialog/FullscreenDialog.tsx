@@ -20,11 +20,11 @@ export function FullscreenDialog({ title, onClose, children }: Props) {
       <Dialog.Portal>
         <Dialog.Overlay
           data-slot="fullscreen-dialog-overlay"
-          className="fixed inset-0 z-50 bg-background"
+          className="fixed inset-0 z-50 bg-canvas"
         />
         <Dialog.Content
           data-slot="fullscreen-dialog-popup"
-          className="fixed inset-0 z-50 flex flex-col bg-background"
+          className="fixed inset-0 z-50 flex flex-col bg-canvas"
           aria-describedby={undefined}
           onOpenAutoFocus={() => {
             previousFocus.current =

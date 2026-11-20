@@ -23,8 +23,8 @@ export const Default: Story = {
   render: () => (
     <FadeIn>
       <div className="rounded-lg border border-border-base bg-surface p-8 text-center">
-        <p className="text-lg font-medium">This content fades in</p>
-        <p className="text-sm text-foreground-tertiary">
+        <p className="text-lead font-medium">This content fades in</p>
+        <p className="text-body text-foreground-tertiary">
           With a subtle upward slide animation
         </p>
       </div>

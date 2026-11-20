@@ -9,6 +9,7 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import {
   postOauthAuthorize,
+  postOauthDenyAuthorization,
   useGetOauthGetOauthAppInfo,
 } from "@/app/api/__generated__/endpoints/oauth/oauth";
 import type { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
@@ -98,15 +99,32 @@ export default function AuthorizePage() {
     }
   }
 
-  function handleDeny() {
+  async function handleDeny() {
     // appInfo loads only once the backend accepts redirectURI for this client
     if (!appInfo) return;
-    const params = new URLSearchParams({
-      error: "access_denied",
-      error_description: "User denied access",
-      state: state || "",
-    });
-    window.location.href = `${redirectURI}?${params.toString()}`;
+    setIsAuthorizing(true);
+    setAuthorizeError(null);
+
+    try {
+      const response = await postOauthDenyAuthorization({
+        client_id: clientID!,
+        redirect_uri: redirectURI!,
+        state: state!,
+      });
+
+      if (response.status === 200 && response.data.redirect_url) {
+        window.location.href = response.data.redirect_url;
+      } else {
+        setAuthorizeError("Authorization denial failed");
+        setIsAuthorizing(false);
+      }
+    } catch (err) {
+      console.error("Authorization denial error:", err);
+      setAuthorizeError(
+        err instanceof Error ? err.message : "Authorization denial failed",
+      );
+      setIsAuthorizing(false);
+    }
   }
 
   // Show error if missing required parameters
@@ -185,9 +203,16 @@ export default function AuthorizePage() {
             hint="Please contact the administrator of the app that sent you here."
             isOurProblem={false}
           />
+          {authorizeError && (
+            <ErrorCard
+              context="authorization"
+              responseError={{ message: authorizeError }}
+            />
+          )}
           <Button
             variant="secondary"
             onClick={handleDeny}
+            disabled={isAuthorizing}
             className="mt-4 w-full"
           >
             Return to Application
@@ -213,10 +238,7 @@ export default function AuthorizePage() {
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <Icon
-                  icon={Image01Icon}
-                  className="h-8 w-8 text-foreground-subtle"
-                />
+                <Icon icon={Image01Icon} tone="subtle" className="h-8 w-8" />
               )}
             </div>
             <Text variant="h4" className="mb-2">
@@ -239,7 +261,8 @@ export default function AuthorizePage() {
                 <li key={scopeKey} className="flex items-start gap-3">
                   <Icon
                     icon={CheckmarkBadge01Icon}
-                    className="mt-0.5 text-success"
+                    tone="success"
+                    className="mt-0.5"
                   />
                   <Text variant="body">
                     {SCOPE_DESCRIPTIONS[scopeKey as APIKeyPermission] ||
@@ -264,7 +287,8 @@ export default function AuthorizePage() {
               variant="primary"
               onClick={handleApprove}
               disabled={isAuthorizing}
-              className="w-full text-lg"
+              textSize="body-md"
+              className="w-full"
             >
               {isAuthorizing ? "Authorizing..." : "Authorize"}
             </Button>
@@ -272,7 +296,8 @@ export default function AuthorizePage() {
               variant="secondary"
               onClick={handleDeny}
               disabled={isAuthorizing}
-              className="w-full text-lg"
+              textSize="body-md"
+              className="w-full"
             >
               Deny
             </Button>

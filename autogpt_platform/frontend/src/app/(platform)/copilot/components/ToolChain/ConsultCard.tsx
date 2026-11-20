@@ -89,9 +89,11 @@ export function ConsultVerdictCard({ output }: Props) {
         </span>
       </div>
       {reason ? (
-        <Text tone="secondary" variant="small" className="mt-2 px-0.5">
-          {reason}
-        </Text>
+        <div className="mt-2 px-0.5">
+          <Text tone="secondary" variant="small">
+            {reason}
+          </Text>
+        </div>
       ) : null}
       {quotes.length > 0 ? (
         <ul className="mt-2 space-y-1">
