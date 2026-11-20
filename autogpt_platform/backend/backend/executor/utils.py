@@ -178,7 +178,7 @@ def block_usage_cost(
     run_time: float = 0,
     stats: NodeExecutionStats | None = None,
     use_preflight_estimate: bool = True,
-    resolved_model: str | None = None,
+    pre_flight_resolved_model: str | None = None,
 ) -> tuple[int, BlockInput]:
     """Calculate the credit charge for a block invocation.
 
@@ -189,9 +189,14 @@ def block_usage_cost(
       - Post-flight (stats populated): dynamic types consume the captured
         stats to compute the actual charge.
 
-    The price is for the model the block runs (`_with_schema_defaults`). A
-    run that has started is priced on the model it recorded when it started:
-    ``stats.resolved_model``, or ``resolved_model`` for its pre-flight price.
+    Which model is priced (`_with_schema_defaults`): a run that has started
+    is priced on the model it recorded when it started, never on today's
+    date. A caller after a run passes the run's ``stats``, whose
+    ``resolved_model`` is that record; only the pre-flight price of a run
+    that has started (settlement's baseline when none was pinned) passes the
+    record as ``pre_flight_resolved_model`` instead. A caller passing neither
+    prices the model a run starting now would run: right before a run, wrong
+    after one. ``block_usage_cost_test`` names the callers that may.
 
     For SECOND/ITEMS/TOKENS cost entries, ``cost_amount`` is interpreted as
     "credits per ``cost_divisor`` units" — e.g. ``cost_amount=1,
@@ -210,7 +215,9 @@ def block_usage_cost(
         return 0, {}
 
     input_data = _with_schema_defaults(
-        block, input_data, resolved_model or (stats.resolved_model if stats else None)
+        block,
+        input_data,
+        pre_flight_resolved_model or (stats.resolved_model if stats else None),
     )
     is_preflight = stats is None and run_time == 0 and use_preflight_estimate
 

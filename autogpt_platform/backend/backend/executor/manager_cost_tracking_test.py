@@ -608,6 +608,14 @@ class TestMergeStats:
         assert stats.execution_path == "codex_app_server"
         assert stats.resolved_model == "gpt-live"
 
+    def test_a_merge_keeps_the_model_the_run_started_on(self):
+        """A run is billed for the model it recorded first: merging in stats
+        that name another model, an inner run's say, doesn't change it."""
+        stats = NodeExecutionStats()
+        stats += NodeExecutionStats(resolved_model="gpt-5-mini-2025-08-07")
+        stats += NodeExecutionStats(resolved_model="gpt-6.1-terra")
+        assert stats.resolved_model == "gpt-5-mini-2025-08-07"
+
 
 # ---------------------------------------------------------------------------
 # on_node_execution -> log_system_credential_cost integration

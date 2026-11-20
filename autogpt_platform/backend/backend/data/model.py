@@ -1115,7 +1115,7 @@ class NodeExecutionStats(BaseModel):
     # the run started (Block._execute: a switched-off model's fallback from
     # its shutdown date), and billing and the cost log price and name that
     # model, whatever the date when they read it. Codex records the model its
-    # provider reports.
+    # provider reports. A merge keeps the first one (__iadd__).
     resolved_model: Optional[str] = None
     # Moderation fields
     cleared_inputs: Optional[dict[str, list[str]]] = None
@@ -1139,6 +1139,10 @@ class NodeExecutionStats(BaseModel):
             if current is None:
                 # Field doesn't exist yet or is None, just set it
                 setattr(self, key, value)
+            elif key == "resolved_model":
+                # The run is billed for the model it started on: merging in
+                # stats that name another model can't change it.
+                continue
             elif isinstance(value, dict) and isinstance(current, dict):
                 current.update(value)
             elif isinstance(value, (int, float)) and isinstance(current, (int, float)):

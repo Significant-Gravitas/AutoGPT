@@ -6,11 +6,14 @@ as itself until that day."""
 
 import logging
 from datetime import date, datetime, timedelta, timezone
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import create_model
 
 from backend.blocks import get_blocks
+from backend.blocks._base import RECORDED_MODEL_INPUT, Block
 from backend.blocks.llm import AITextGeneratorBlock, LLMModel, LLMResponse
 from backend.data.execution import ExecutionContext
 from backend.data.graph import Link, Node
@@ -198,9 +201,11 @@ async def test_a_run_records_the_model_it_runs_as_it_starts(
     assert input_data.get("model") == saved
 
 
-def test_a_block_has_at_most_one_llm_model_input():
-    """A run records one model (``NodeExecutionStats.resolved_model``), and
-    every ``LLMModel`` input of the block is priced as that model."""
+def test_a_blocks_only_llm_model_input_is_the_one_its_run_records():
+    """A run records the model of its ``model`` input (``RECORDED_MODEL_INPUT``),
+    which billing prices and the cost log names. Any other ``LLMModel`` input
+    would be neither recorded nor priced: a block that adds one needs its own
+    pricing first."""
     llm_model_inputs = {
         block.name: [
             name
@@ -210,8 +215,87 @@ def test_a_block_has_at_most_one_llm_model_input():
         for block in (block_cls() for block_cls in get_blocks().values())
     }
     assert {
-        name: inputs for name, inputs in llm_model_inputs.items() if len(inputs) > 1
+        name: inputs
+        for name, inputs in llm_model_inputs.items()
+        if inputs not in ([], [RECORDED_MODEL_INPUT])
     } == {}
+
+
+def test_the_record_is_the_model_of_the_input_it_was_read_from(on_day):
+    """A block with a second ``LLMModel`` input (none has one, above) records
+    its ``model`` input's model, and the record prices that input alone: the
+    other input keeps its own model. Here a run that started on 10 Dec on
+    gpt-5 settles on the 11th, beside a gpt-5-mini judge."""
+    on_day(GPT_5_SHUTDOWN)
+    block = SimpleNamespace(
+        input_schema=create_model(
+            "TwoModels", model=(LLMModel, ...), judge_model=(LLMModel, ...)
+        ),
+        execution_stats=NodeExecutionStats(),
+    )
+    stored = {
+        "model": LLMModel.GPT5.value,
+        "judge_model": LLMModel.GPT5_MINI.value,
+    }
+
+    Block._record_resolved_model(block, stored)
+    assert block.execution_stats.resolved_model == LLMModel.GPT5.value
+    assert Block.with_retired_models_replaced(
+        block, stored, block.execution_stats.resolved_model
+    ) == {"model": LLMModel.GPT5.value, "judge_model": LLMModel.GPT6_1_TERRA.value}
+
+
+@pytest.mark.asyncio
+async def test_a_run_parked_for_review_records_no_model_and_the_resume_resolves_afresh(
+    on_day,
+):
+    """Parked before midnight, a run calls no provider and records no model.
+    Resumed after midnight, the run that resumes makes the swap: it calls the
+    fallback and records it, never the model the parked run would have run."""
+    asked: list[str] = []
+
+    async def provider_call(*, llm_model: LLMModel, prompt: list, **kwargs):
+        asked.append(llm_model.value)
+        return LLMResponse(
+            raw_response=None,
+            prompt=prompt,
+            response="Hello.",
+            tool_calls=None,
+            prompt_tokens=1,
+            completion_tokens=1,
+        )
+
+    data = {
+        "prompt": "hi",
+        "model": LLMModel.GPT5_MINI.value,
+        "credentials": PLATFORM_OPENAI,
+    }
+    context = ExecutionContext(
+        user_id="user", graph_exec_id="g1", node_exec_id="n1", node_id="x"
+    )
+
+    async def run(block: AITextGeneratorBlock, *, parks: bool) -> list:
+        block.is_block_exec_need_review = AsyncMock(return_value=(parks, data))
+        return [
+            output
+            async for output in block.execute(
+                data, credentials=openai_credentials, execution_context=context
+            )
+        ]
+
+    with patch("backend.blocks.llm.llm_call", provider_call):
+        on_day(GPT_5_SHUTDOWN - timedelta(days=1))
+        parked = AITextGeneratorBlock()
+        assert await run(parked, parks=True) == []
+        assert asked == []
+        assert parked.execution_stats.resolved_model is None
+
+        on_day(GPT_5_SHUTDOWN)
+        resumed = AITextGeneratorBlock()
+        await run(resumed, parks=False)
+
+    assert asked == [LLMModel.GPT6_1_TERRA.value]
+    assert resumed.execution_stats.resolved_model == LLMModel.GPT6_1_TERRA.value
 
 
 @pytest.mark.asyncio

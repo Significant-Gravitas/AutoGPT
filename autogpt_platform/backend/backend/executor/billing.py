@@ -372,7 +372,7 @@ async def charge_reconciled_usage(
             pre_flight, _ = block_usage_cost(
                 block=block,
                 input_data=node_exec.inputs,
-                resolved_model=stats.resolved_model,
+                pre_flight_resolved_model=stats.resolved_model,
             )
         else:
             pre_flight = pre_flight_charge

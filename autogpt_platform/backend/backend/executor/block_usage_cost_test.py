@@ -487,6 +487,94 @@ def test_every_executor_reader_of_an_input_model_reads_the_model_that_runs():
     ] == []
 
 
+# The lookups made before any run has started, which may price or name the
+# model by today's date: the model a run starting now would run.
+BEFORE_A_RUN = {
+    "blocks/_base.py::_execute": "the swap itself: the run starts now",
+    "executor/billing.py::resolve_block_cost": "the pre-flight charge",
+    "executor/billing.py::_block_has_paid_cost_entry": "the pre-flight balance check",
+    "executor/billing.py::redispatch_reconcile_baseline": (
+        "a run parked for review, which ran no model"
+    ),
+    "executor/utils.py::charge_for_direct_block_execution": (
+        "charged just before the block starts"
+    ),
+    "copilot/tools/helpers.py::_pre_run_charge": "AutoPilot's debit before a run",
+    "copilot/gate/subject.py::block_subject": "an approval card's price",
+    "copilot/gate/subject.py::graph_cost_credits": "an approval card's price",
+}
+
+
+def test_a_lookup_after_a_run_reads_the_model_the_run_recorded():
+    """Once a run has started, its price and its model's name come from the
+    model it recorded (`NodeExecutionStats.resolved_model`), never from
+    today's date: a node still running at midnight on its model's shutdown
+    date is billed for the model it ran. So every call of
+    `block_usage_cost` (`stats=` or `pre_flight_resolved_model=`),
+    `_with_schema_defaults` and `with_retired_models_replaced` (their
+    `resolved_model`) passes that record, never a literal None or an empty
+    `NodeExecutionStats()`, except the calls in `BEFORE_A_RUN`."""
+    backend_root = Path(executor_utils.__file__).parents[1]
+    callers: set[str] = set()
+    unrecorded: list[str] = []
+    for path in backend_root.rglob("*.py"):
+        source = path.read_text()
+        if path.name.endswith("_test.py") or not any(
+            lookup in source for lookup in _MODEL_LOOKUPS
+        ):
+            continue
+        for func in ast.walk(ast.parse(source)):
+            if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            where = f"{path.relative_to(backend_root)}::{func.name}"
+            for call in (node for node in ast.walk(func) if isinstance(node, ast.Call)):
+                is_lookup, record = _record_passed(call)
+                if not is_lookup:
+                    continue
+                callers.add(where)
+                if where not in BEFORE_A_RUN and not _names_a_record(record):
+                    unrecorded.append(f"{where}:{call.lineno}")
+
+    assert BEFORE_A_RUN.keys() <= callers
+    assert unrecorded == []
+
+
+# Each lookup that takes a run's record, with the position of its
+# `resolved_model` argument (`block_usage_cost` takes it by keyword).
+_MODEL_LOOKUPS = {
+    "block_usage_cost": None,
+    "_with_schema_defaults": 2,
+    "with_retired_models_replaced": 1,
+}
+
+
+def _record_passed(call: ast.Call) -> tuple[bool, ast.expr | None]:
+    """Whether *call* is one of the model lookups, and the argument by which
+    it passes a run's record (None when it passes none)."""
+    name = _called_name(call) or ""
+    keywords = {keyword.arg: keyword.value for keyword in call.keywords}
+    if name == "block_usage_cost":
+        return True, keywords.get("stats") or keywords.get("pre_flight_resolved_model")
+    position = _MODEL_LOOKUPS.get(name)
+    if position is None:
+        return False, None
+    if len(call.args) > position:
+        return True, call.args[position]
+    return True, keywords.get("resolved_model")
+
+
+def _names_a_record(argument: ast.expr | None) -> bool:
+    if argument is None:
+        return False
+    if isinstance(argument, ast.Constant) and argument.value is None:
+        return False
+    return not (
+        isinstance(argument, ast.Call)
+        and _called_name(argument) == "NodeExecutionStats"
+        and all(keyword.arg != "resolved_model" for keyword in argument.keywords)
+    )
+
+
 def _reads_model(call: ast.Call) -> bool:
     return (
         isinstance(call.func, ast.Attribute)

@@ -60,6 +60,12 @@ logger = logging.getLogger(__name__)
 # and its ``_credentials_id`` alias, either of which it accepts.
 _PICKER_ACCOUNT_KEYS = frozenset({"_credentials_id", "credentials_id"})
 
+# The LLM model input billing prices: every LLM block names it ``model``, the
+# block costs match on it and the cost log names it. A run records the model
+# this input runs (``NodeExecutionStats.resolved_model``); the record belongs
+# to this input alone.
+RECORDED_MODEL_INPUT = "model"
+
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
     from backend.data.model import ContributorDetails
@@ -1036,38 +1042,51 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
 
         A run keeps the model it started on. *resolved_model* is the model a
         run recorded when it started (``NodeExecutionStats.resolved_model``,
-        see ``_execute``): given it, this is that run's model, so the run's
+        see ``_record_resolved_model``): given it, it is the run's model for
+        the input it was read from, ``RECORDED_MODEL_INPUT``, so the run's
         settlement, cost log and usage record price and name the model it
         ran, on whatever date they read it. Given None, for a run that hasn't
-        started or recorded none, a model the catalog has switched off, and
-        names a fallback for, is replaced by that fallback once the model's
-        shutdown date, if it has one, has come: the model a run starting now
-        runs. Returns *input_data* itself when no value changes."""
+        started or recorded none, and for any other ``LLMModel`` input, a
+        model the catalog has switched off, and names a fallback for, is
+        replaced by that fallback once the model's shutdown date, if it has
+        one, has come: the model a run starting now runs. Returns
+        *input_data* itself when no value changes."""
         started_on = llm_model_named(resolved_model)
         replaced = {
             name: runs.value
             for name, field in self.input_schema.model_fields.items()
             if is_llm_model_field(field)
-            and (runs := started_on or retired_model_fallback(input_data.get(name)))
+            and (
+                runs := (
+                    started_on
+                    if started_on is not None and name == RECORDED_MODEL_INPUT
+                    else retired_model_fallback(input_data.get(name))
+                )
+            )
             is not None
             and runs.value != input_data.get(name)
         }
         return {**input_data, **replaced} if replaced else input_data
 
     def _record_resolved_model(self, input_data: BlockInput) -> None:
-        """Record the LLM model this run runs, resolved as it starts, in its
-        stats (``resolved_model``): the run's settlement, cost log and usage
-        record price and name it, whatever the date when they read it, and
-        the run's record shows it, while its recorded inputs keep the stored
-        model. A block has at most one ``LLMModel`` input."""
-        for name, field in self.input_schema.model_fields.items():
-            if not is_llm_model_field(field):
-                continue
-            value = input_data.get(name)
-            if value is None and not field.is_required():
-                value = field.get_default(call_default_factory=True)
-            if (model := llm_model_named(value)) is not None:
-                self.execution_stats.resolved_model = model.value
+        """Record the model this run's ``RECORDED_MODEL_INPUT`` input runs,
+        resolved as it starts, in its stats (``resolved_model``): the run's
+        settlement, cost log and usage record price and name it, whatever the
+        date when they read it, and the node's stats show it, while its
+        recorded inputs keep the stored model.
+
+        The record belongs to that one input, and is applied to it alone, so
+        a block with a second ``LLMModel`` input can't have that input's model
+        priced as this one. No block has one:
+        ``test_a_blocks_only_llm_model_input_is_the_one_its_run_records``."""
+        field = self.input_schema.model_fields.get(RECORDED_MODEL_INPUT)
+        if field is None or not is_llm_model_field(field):
+            return
+        value = input_data.get(RECORDED_MODEL_INPUT)
+        if value is None and not field.is_required():
+            value = field.get_default(call_default_factory=True)
+        if (model := llm_model_named(value)) is not None:
+            self.execution_stats.resolved_model = model.value
 
     async def _execute(
         self,
