@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import functools
 import json
 import logging
 import sys
@@ -120,8 +121,11 @@ def _validate_replacement(slug: str) -> None:
         )
 
 
+@functools.cache
 def _llm_model_block_ids_json() -> str:
-    """JSON array of the blocks whose ``model`` input is an ``LLMModel``."""
+    """JSON array of the blocks whose ``model`` input is an ``LLMModel``.
+    Built once per process: it instantiates every block, and blocks don't
+    change while a process runs."""
     return json.dumps(
         sorted(
             block_id
@@ -263,7 +267,7 @@ async def retire_model(
             slug,
         )
 
-    # Built before the transaction opens: it instantiates every block.
+    # Built before the transaction opens, so the first build holds no locks.
     llm_block_ids_json = _llm_model_block_ids_json()
     try:
         async with transaction() as tx:

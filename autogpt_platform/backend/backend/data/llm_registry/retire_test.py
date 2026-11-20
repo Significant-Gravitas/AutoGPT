@@ -314,9 +314,9 @@ async def test_boot_pass_moves_shut_down_models_once_and_nothing_else(
     retirement_env,
 ):
     """The next boot moves an LLM node off a model its provider has shut down,
-    in either stored spelling and from o1-mini's old target. It leaves a model
-    still being served (the retire CLI moves those), a live model and another
-    block's value alone, and a second boot changes nothing."""
+    in either stored spelling, o1-mini included. It leaves a model still being
+    served (the retire CLI moves those), a live model and another block's
+    value alone, and a second boot changes nothing."""
     nodes = {
         "o3-mini": await _seed_node(retirement_env, "o3-mini"),
         "openai/o3-mini": await _seed_node(retirement_env, "openai/o3-mini"),
@@ -328,14 +328,16 @@ async def test_boot_pass_moves_shut_down_models_once_and_nothing_else(
         ),
     }
     expected = {
-        "o3-mini": "gpt-5.6-sol",
-        "openai/o3-mini": "gpt-5.6-sol",
-        "o1-mini": "gpt-5.6-terra",
+        "o3-mini": "gpt-6.1-terra",
+        "openai/o3-mini": "gpt-6.1-terra",
+        "o1-mini": "gpt-6.1-terra",
         "still served": "gpt-5-2025-08-07",
         "live": "gpt-6.1-sol",
         "stagehand": "claude-sonnet-4-5-20250929",
     }
 
+    # The real boot pass, over every row in the test database as at app
+    # start; only this test's rows are asserted.
     for _ in range(2):
         await migrate_llm_models(DEFAULT_LLM_MODEL)
         assert {
@@ -371,13 +373,15 @@ async def test_boot_pass_rewrites_only_llm_block_preset_overrides(retirement_env
         image_graph, {_override_key(image_node): {"model": "Flux 1.1 Pro"}}
     )
     expected = {
-        llm_rows[_override_key(llm_node)]: {"model": "gpt-5.6-sol", "prompt": "hi"},
+        llm_rows[_override_key(llm_node)]: {"model": "gpt-6.1-sol", "prompt": "hi"},
         llm_rows["settings"]: {"model": "gpt-5.1-codex"},
         llm_rows["image_settings"]: {"model": "Flux 1.1 Pro"},
         codex_rows[_override_key(codex_node)]: {"model": "gpt-5.1-codex"},
         image_rows[_override_key(image_node)]: {"model": "Flux 1.1 Pro"},
     }
 
+    # The real boot pass, over every row in the test database as at app
+    # start; only this test's rows are asserted.
     for _ in range(2):
         await migrate_llm_models(DEFAULT_LLM_MODEL)
         assert {row: await _preset_input(row) for row in expected} == expected

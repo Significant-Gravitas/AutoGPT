@@ -2805,7 +2805,7 @@
       "id": "47679fdf-d4fd-42b8-9d28-548ddddc496e",
       "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
       "input_default": {
-        "model": "claude-sonnet-5-5",
+        "model": "claude-sonnet-4-6",
         "retry": 3,
         "prompt": "Format this object in nice, human readable markdown, without changing any of the content at all.\n\n```\n{{data | safe}}\n```\n\nRules:\n- Do not include the \"## Basic Information\" section.\n- Convert all timestamps to human readable formats\n- Rename the \"Processing information\" Timestamp to \"Reply Sent:\"\n- Rename \"Email ID\" to \"Airtable Email ID\"\n\nMost importantly:\nRespond with just the markdown, with no additional commentary, formatting or decoration.",
         "sys_prompt": "",

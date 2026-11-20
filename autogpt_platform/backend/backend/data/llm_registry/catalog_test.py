@@ -62,21 +62,22 @@ def test_fallback_references_resolve():
             ].is_enabled, f"{m.slug}: fallback {m.fallback_model_slug} is disabled"
 
 
-# Models their provider has shut down, or shuts down by 2026-12-11, and the
-# replacement it lists. Read 2026-11-19 from OpenAI's
+# Models their provider has shut down, or shuts down by 2026-12-11, and where
+# their graphs go. Dates read 2026-11-19 from OpenAI's
 # https://developers.openai.com/api/docs/deprecations and Anthropic's
-# https://platform.claude.com/docs/en/about-claude/model-deprecations.
-# o1-mini's listed replacement, o4-mini, is itself shut down, so o1-mini
-# follows o4-mini.
+# https://platform.claude.com/docs/en/about-claude/model-deprecations. A model
+# still served goes to the replacement its provider lists. One already shut
+# down moves unasked at boot, so it goes to the current model at its price
+# instead (o1's listed gpt-5.6-sol costs less than o1 did).
 PROVIDER_SHUTDOWNS: dict[str, tuple[str, str]] = {
-    "gpt-5-chat-latest": ("2026-07-23", "gpt-5.6-sol"),
-    "gpt-5.1-codex": ("2026-07-23", "gpt-5.6-sol"),
-    "gpt-5.3-chat-latest": ("2026-08-10", "gpt-5.6-sol"),
+    "gpt-5-chat-latest": ("2026-07-23", "gpt-6.1-sol"),
+    "gpt-5.1-codex": ("2026-07-23", "gpt-6.1-sol"),
+    "gpt-5.3-chat-latest": ("2026-08-10", "gpt-6.1-sol"),
     "o1": ("2026-10-23", "gpt-5.6-sol"),
-    "o1-mini": ("2025-10-27", "gpt-5.6-terra"),
-    "o3-mini": ("2026-10-23", "gpt-5.6-sol"),
-    "o4-mini": ("2026-10-23", "gpt-5.6-terra"),
-    "gpt-4.1-nano": ("2026-10-23", "gpt-5.6-luna"),
+    "o1-mini": ("2025-10-27", "gpt-6.1-terra"),
+    "o3-mini": ("2026-10-23", "gpt-6.1-terra"),
+    "o4-mini": ("2026-10-23", "gpt-6.1-terra"),
+    "gpt-4.1-nano": ("2026-10-23", "gpt-6-luna"),
     "claude-sonnet-4-5-20250929": ("2026-11-30", "claude-sonnet-5-5"),
     "gpt-5-2025-08-07": ("2026-12-11", "gpt-6.1-sol"),
     "gpt-5-pro": ("2026-12-11", "gpt-6.1-sol"),
@@ -89,8 +90,8 @@ PROVIDER_SHUTDOWNS: dict[str, tuple[str, str]] = {
 
 @pytest.mark.parametrize("slug", sorted(PROVIDER_SHUTDOWNS))
 def test_models_their_provider_shuts_down_are_switched_off(slug: str):
-    """Off in the block picker and refused by the copilot, with the
-    provider's listed replacement as the retire CLI's default target."""
+    """Off in the block picker and refused by the copilot, with the model its
+    graphs go to as the retire CLI's default target."""
     by_slug = {m.slug: m for m in CATALOG.models}
     _, replacement = PROVIDER_SHUTDOWNS[slug]
 
@@ -103,7 +104,7 @@ def test_models_their_provider_shuts_down_are_switched_off(slug: str):
 def test_legacy_mappings_never_move_graphs_onto_a_shut_down_model():
     """The boot pass rewrites each LEGACY_MODEL_MAPPINGS key to its target, so
     a target that is off, or that its provider shuts down, strands the graph
-    again (o1-mini used to land on o3-mini)."""
+    again."""
     by_slug = {m.slug: m for m in CATALOG.models}
     stranded = {
         legacy: target.value

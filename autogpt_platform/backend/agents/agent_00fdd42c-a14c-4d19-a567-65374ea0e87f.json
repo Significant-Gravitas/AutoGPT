@@ -2123,7 +2123,7 @@
           "id": "87e23432-e584-4418-ad9a-a42dafd72f28",
           "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
           "input_default": {
-            "model": "claude-sonnet-5-5",
+            "model": "claude-sonnet-4-6",
             "retry": 3,
             "prompt": "Make this into a high-quality html email report. \n\nThe user made the following design style request:\n```\n{{design | safe}}\n```\nDo not mention or reference this style design request in the rendered html report.\n\n\nHere is the report. do not change any of it's written content, your job is just to present it exactly as written:\n```\n{{report | safe}}\n```\n\nDo not include any functional buttons, animations, or any elements that would be non functional or out of place in a static offline report.\n\nRespond with just the html, no additional commentary or decoration. No code blocks, just the html.\n",
             "sys_prompt": "",

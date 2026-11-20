@@ -3780,22 +3780,22 @@ async def test_migrate_llm_models_maps_retired_claude_aliases_to_their_family(
 @pytest.mark.parametrize(
     "stored_value, replacement",
     [
-        ("o3-mini", LLMModel.GPT5_6_SOL),
-        ("openai/o3-mini", LLMModel.GPT5_6_SOL),
+        ("o3-mini", LLMModel.GPT6_1_TERRA),
+        ("openai/o3-mini", LLMModel.GPT6_1_TERRA),
         ("o1", LLMModel.GPT5_6_SOL),
         ("openai/o1", LLMModel.GPT5_6_SOL),
-        ("o1-mini", LLMModel.GPT5_6_TERRA),
-        ("openai/o1-mini", LLMModel.GPT5_6_TERRA),
-        ("o4-mini", LLMModel.GPT5_6_TERRA),
-        ("openai/o4-mini", LLMModel.GPT5_6_TERRA),
-        ("gpt-4.1-nano", LLMModel.GPT5_6_LUNA),
-        ("openai/gpt-4.1-nano", LLMModel.GPT5_6_LUNA),
-        ("gpt-5-chat-latest", LLMModel.GPT5_6_SOL),
-        ("openai/gpt-5-chat-latest", LLMModel.GPT5_6_SOL),
-        ("gpt-5.1-codex", LLMModel.GPT5_6_SOL),
-        ("openai/gpt-5.1-codex", LLMModel.GPT5_6_SOL),
-        ("gpt-5.3-chat-latest", LLMModel.GPT5_6_SOL),
-        ("openai/gpt-5.3-chat-latest", LLMModel.GPT5_6_SOL),
+        ("o1-mini", LLMModel.GPT6_1_TERRA),
+        ("openai/o1-mini", LLMModel.GPT6_1_TERRA),
+        ("o4-mini", LLMModel.GPT6_1_TERRA),
+        ("openai/o4-mini", LLMModel.GPT6_1_TERRA),
+        ("gpt-4.1-nano", LLMModel.GPT6_LUNA),
+        ("openai/gpt-4.1-nano", LLMModel.GPT6_LUNA),
+        ("gpt-5-chat-latest", LLMModel.GPT6_1_SOL),
+        ("openai/gpt-5-chat-latest", LLMModel.GPT6_1_SOL),
+        ("gpt-5.1-codex", LLMModel.GPT6_1_SOL),
+        ("openai/gpt-5.1-codex", LLMModel.GPT6_1_SOL),
+        ("gpt-5.3-chat-latest", LLMModel.GPT6_1_SOL),
+        ("openai/gpt-5.3-chat-latest", LLMModel.GPT6_1_SOL),
     ],
 )
 @pytest.mark.asyncio
@@ -3803,8 +3803,8 @@ async def test_migrate_llm_models_moves_shut_down_openai_models_to_their_replace
     stored_value: str, replacement: LLMModel
 ):
     """OpenAI has shut these models down, so a node or preset still naming one
-    fails on every run. The boot pass moves it to OpenAI's listed replacement,
-    in either stored spelling."""
+    fails on every run. The boot pass moves it, in either stored spelling, to
+    the current model at its price (o1 to its listed gpt-5.6-sol)."""
     with patch(
         "backend.data.graph.execute_raw_with_schema",
         new_callable=AsyncMock,
