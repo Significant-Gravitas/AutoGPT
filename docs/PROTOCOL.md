@@ -448,11 +448,18 @@ goes away. A file request (`FILE_READ`, `FILE_WRITE`, `FILE_STAT`,
 run in a worker thread, and a thread that waits on a share that has stopped
 answering can't be stopped. While it waits, the request holds:
 
-- one of its chat's request slots (`max_concurrent`, 4);
+- one of its chat's request slots (`max_concurrent`, 4 by default);
 - one of the machine's request slots, which every chat on the computer
-  shares, and of which there are 4 as well ([Concurrency](#concurrency));
+  shares, and of which there are 4 by default as well
+  ([Concurrency](#concurrency));
 - one of the event loop's worker threads. There are four more of those than
-  the computer has CPU cores, up to 32: 6 on two cores, 12 on eight.
+  the CPU cores Python counts, up to 32: 6 with two cores, 12 with eight.
+  (From Python 3.13 it counts the cores the shim's process may use, which
+  can be fewer than the computer has.)
+
+Each connection's `max_concurrent` is the smaller of the shim's own setting
+and the `HELLO_ACK.max_concurrent` the platform answered with, and the
+machine's slots are the control connection's.
 
 It holds them until the share answers or the shim's process ends. The 30
 seconds the platform waits for the reply free none of them, and neither does
@@ -461,8 +468,9 @@ and their threads and machine slots stay held. The platform sends a read
 again, once, when its 30 seconds run out, so one read the model asks for
 becomes two requests.
 
-Four requests waiting on such a share therefore hold every machine slot, on
-a computer of any size, and one chat can send all four. From then on:
+As many requests waiting on such a share as the machine has slots, four by
+default, therefore hold every one of them, on a computer of any size, and
+one chat can send them all. From then on:
 
 - that chat's further requests are refused at once with `SHIM_OVERLOADED`
   (`details.max_concurrent`);
@@ -471,8 +479,9 @@ a computer of any size, and one chat can send all four. From then on:
   long as the share stays away;
 - what takes no machine slot is served as usual: the control connection (the
   folder picker, attaching and starting chats), `COMPUTER_TOOL_CALL`s and the
-  keepalive. The four held threads leave two of a two-core computer's six
-  free, and the machine's slots keep file and shell work from taking more.
+  keepalive. With the default four slots, the held threads leave two of a
+  two-core computer's six free, and the machine's slots keep file and shell
+  work from taking more.
 
 The shim can't stop by itself in that state either. Its process waits for
 the worker thread to return, and an interrupt doesn't end it. A service
@@ -1497,7 +1506,8 @@ slots. A request waits up to ten seconds for one, then gets
 `SHIM_OVERLOADED` with `details.reason: "machine_busy"`. A slot stays taken
 until its work ends, including work still running in a thread after its
 session ended. Work that waits on a share that has stopped answering never
-ends, and four such requests hold every slot: see
+ends, and as many such requests as there are slots (four by default) hold
+every one: see
 [On a chat's own connection](#on-a-chats-own-connection).
 `COMPUTER_TOOL_CALL`s take no machine slot: those from every session on a
 machine take turns, since they share one screen, so calls waiting their turn

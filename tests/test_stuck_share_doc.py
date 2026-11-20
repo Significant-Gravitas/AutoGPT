@@ -76,17 +76,25 @@ def test_the_section_gives_the_codes_numbers() -> None:
     section = _section()
     slots = ShimConfig.model_fields["max_concurrent"].default
 
-    assert f"(`max_concurrent`, {slots})" in section
-    assert f"of which there are {slots} as well" in section
-    assert f"{_WORDS[slots].capitalize()} requests waiting on such a share" in section
+    assert f"(`max_concurrent`, {slots} by default)" in section
+    assert f"of which there are {slots} by default as well" in section
+    # By the limit the connection settled on, with the default as its example.
+    assert "the smaller of the shim's own setting and the `HELLO_ACK.max_concurrent`" in section
+    assert (
+        "As many requests waiting on such a share as the machine has slots, "
+        f"{_WORDS[slots]} by default, therefore hold every one of them" in section
+    )
     assert (
         f"wait {_WORDS[int(daemon_module.MACHINE_WORK_WAIT_SECONDS)]} seconds for a slot" in section
     )
     assert f"let go after {_WORDS[int(daemon_module.DISPATCH_DRAIN_SECONDS)]} seconds" in section
-    # The event loop's pool: min(32, cores + 4).
-    assert "up to 32: 6 on two cores, 12 on eight" in section
+    # The event loop's pool: min(32, cores + 4), by the cores Python counts,
+    # which from 3.13 are the ones the process may use.
+    assert "the CPU cores Python counts, up to 32: 6 with two cores, 12 with eight" in section
+    assert "From Python 3.13 it counts the cores the shim's process may use" in section
     assert (min(32, 2 + 4), min(32, 8 + 4)) == (6, 12)
-    assert "leave two of a two-core computer's six free" in section
+    assert f"With the default {_WORDS[slots]} slots, the held threads leave two" in section
+    assert "of a two-core computer's six free" in section
     assert min(32, 2 + 4) - slots == 2
 
 
@@ -120,4 +128,7 @@ def test_the_bounded_looks_no_longer_read_as_covering_a_chats_requests() -> None
     assert re.search(r"A chat's own file requests are another matter", protocol)
     # The Concurrency section points at it from where the slots are described.
     concurrency = protocol[protocol.index("## Concurrency") :]
-    assert "four such requests hold every slot" in concurrency[:1500]
+    assert (
+        "as many such requests as there are slots (four by default) hold every one"
+        in (concurrency[:1500])
+    )
