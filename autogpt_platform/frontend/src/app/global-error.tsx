@@ -12,7 +12,9 @@ interface Props {
 
 export default function GlobalError({ error, reset }: Props) {
   useEffect(() => {
-    Sentry.captureException(error);
+    Sentry.captureException(error, {
+      tags: { errorBoundary: "true", context: "global-error" },
+    });
     reloadForChunkLoadError(error, "error_boundary");
   }, [error]);
 

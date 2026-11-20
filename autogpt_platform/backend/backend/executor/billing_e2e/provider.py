@@ -10,6 +10,7 @@ platform exactly the model's price per million input tokens.
 """
 
 import time
+from collections.abc import Callable
 from typing import Literal
 
 from aiohttp import web
@@ -25,9 +26,17 @@ class Reply(BaseModel):
 
 
 class FakeAnthropic:
-    def __init__(self, *, tool_calls: int, tool_calls_fail: bool) -> None:
+    def __init__(
+        self,
+        *,
+        tool_calls: int,
+        tool_calls_fail: bool,
+        on_request: Callable[[], None] | None = None,
+    ) -> None:
+        """``on_request`` runs as each request comes in, before its reply."""
         self.tool_calls = tool_calls
         self.tool_calls_fail = tool_calls_fail
+        self.on_request = on_request
         self.replies: list[Reply] = []
         self.models: list[str] = []
         self.url = ""
@@ -65,6 +74,8 @@ class FakeAnthropic:
     async def _messages(self, request: web.Request) -> web.Response:
         body = await request.json()
         self.models.append(body["model"])
+        if self.on_request is not None:
+            self.on_request()
         if body.get("tools"):
             return self._agent_turn(body)
         if self.tool_calls_fail:

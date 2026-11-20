@@ -1,4 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
+import { render } from "@testing-library/react";
+import { createElement } from "react";
 import {
   afterAll,
   afterEach,
@@ -19,6 +21,7 @@ import { CLIENT_IP_TOKEN_HEADER_NAME } from "@/lib/constants";
 import {
   CLIENT_IGNORE_ERRORS,
   isFromBot,
+  isHandledTransientFailure,
   isNextRSCNavigationFallback,
   stripLogUserPII,
   stripSpanDataPII,
@@ -30,6 +33,7 @@ import {
 // Drives a real Sentry client with the same console capture as
 // instrumentation-client.ts, so the events are built exactly as in production.
 const sent: Sentry.ErrorEvent[] = [];
+const hints: Sentry.EventHint[] = [];
 
 beforeAll(() => {
   // Spy before init so the console patch wraps the spy.
@@ -46,8 +50,10 @@ beforeAll(() => {
     integrations: [
       Sentry.captureConsoleIntegration({ levels: ["fatal", "error", "warn"] }),
     ],
-    beforeSend(event) {
-      if (!isNextRSCNavigationFallback(event)) sent.push(event);
+    beforeSend(event, hint) {
+      if (isNextRSCNavigationFallback(event)) return null;
+      sent.push(event);
+      hints.push(hint);
       return null;
     },
   });
@@ -55,6 +61,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   sent.length = 0;
+  hints.length = 0;
 });
 
 afterEach(() => {
@@ -77,7 +84,7 @@ describe("Sentry filter for Next's RSC navigation fallback", () => {
     expect(sent).toHaveLength(0);
   });
 
-  it("still reports a fetch failure captured from our own code", async () => {
+  it("leaves a fetch failure captured from our own code to the other filters", async () => {
     Sentry.captureException(new TypeError("Failed to fetch"));
     await Sentry.flush(2000);
 
@@ -161,6 +168,109 @@ describe("Sentry filter for crawler noise", () => {
     "Mozilla/5.0 (Linux; Android 10; Cubot P40) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36",
   ])("treats %j as a person", (userAgent) => {
     expect(isFromBot(userAgent)).toBe(false);
+  });
+});
+
+describe("Sentry filter for handled network failures", () => {
+  async function sentAndKept() {
+    await Sentry.flush(2000);
+    expect(sent).toHaveLength(1);
+    return !isHandledTransientFailure(sent[0], hints[0]);
+  }
+
+  it.each([
+    "Failed to fetch",
+    "Load failed",
+    "network error",
+    "NetworkError when attempting to fetch resource.",
+  ])("drops a caught fetch failure logged as %j", async (message) => {
+    console.error("Get user error:", new TypeError(message));
+
+    expect(await sentAndKept()).toBe(false);
+  });
+
+  it("drops a caught fetch failure reported with captureException", async () => {
+    Sentry.captureException(new TypeError("Failed to fetch"));
+
+    expect(await sentAndKept()).toBe(false);
+  });
+
+  it("drops a cancelled request logged as a warning", async () => {
+    console.warn(
+      "Onboarding initialization deferred:",
+      new DOMException("signal is aborted without reason", "AbortError"),
+    );
+
+    expect(await sentAndKept()).toBe(false);
+  });
+
+  it("still reports an uncaught fetch failure", async () => {
+    Sentry.captureException(new TypeError("Load failed"), {
+      mechanism: {
+        type: "auto.browser.global_handlers.onunhandledrejection",
+        handled: false,
+      },
+    });
+
+    expect(await sentAndKept()).toBe(true);
+  });
+
+  it("still reports a fetch failure an error boundary reports", async () => {
+    Sentry.captureException(new TypeError("Failed to fetch"), {
+      tags: { errorBoundary: "true", context: "application" },
+    });
+
+    expect(await sentAndKept()).toBe(true);
+  });
+
+  it("still reports a fetch failure Next logs for an error boundary", async () => {
+    const error = new TypeError("Failed to fetch");
+    // Next's production onCaughtError logs the bare error first, so Sentry
+    // then skips the boundary's own report of the same error.
+    console.error(error);
+    Sentry.captureException(error, {
+      tags: { errorBoundary: "true", context: "error-page" },
+    });
+
+    expect(await sentAndKept()).toBe(true);
+  });
+
+  it("still reports a fetch failure that reaches the error page", async () => {
+    const { default: ErrorPage } = await import("@/app/error");
+    render(
+      createElement(ErrorPage, {
+        error: new TypeError("Failed to fetch"),
+        reset: () => {},
+      }),
+    );
+
+    expect(await sentAndKept()).toBe(true);
+  });
+
+  it("still reports an AbortError reported on purpose", async () => {
+    Sentry.captureException(
+      new DOMException(
+        "The transaction was aborted, so the request cannot be fulfilled.",
+        "AbortError",
+      ),
+    );
+
+    expect(await sentAndKept()).toBe(true);
+  });
+
+  it("still reports other TypeErrors", async () => {
+    console.error(
+      "Failed to render:",
+      new TypeError("Cannot read properties of undefined"),
+    );
+
+    expect(await sentAndKept()).toBe(true);
+  });
+
+  it("still reports a console error that only names a fetch failure", async () => {
+    console.error("Failed to fetch agents");
+
+    expect(await sentAndKept()).toBe(true);
   });
 });
 

@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import logging
 import os
 import threading
@@ -324,7 +325,8 @@ def execute_graph(
     cluster_lock: ClusterLock,
 ):
     """Execute graph using thread-local ExecutionProcessor instance"""
-    processor: ExecutionProcessor = _tls.processor
+    # Each run keeps its state on a copy of its own, sharing the thread's loops.
+    processor: ExecutionProcessor = copy.copy(_tls.processor)
     try:
         return processor.on_graph_execution(
             graph_exec_entry, cancel_event, cluster_lock
@@ -575,8 +577,9 @@ async def execute_node(
     if isinstance(node_block, AgentExecutorBlock):
         _input_data = AgentExecutorBlock.Input(**node.input_default)
         _input_data.inputs = input_data
-        if nodes_input_masks:
-            _input_data.nodes_input_masks = nodes_input_masks
+        # Like user_id, the masks are the run's own: a mask saved on the node
+        # would rewrite the sub-graph's inputs behind every check that reads it.
+        _input_data.nodes_input_masks = nodes_input_masks
         _input_data.user_id = user_id
         input_data = _input_data.model_dump()
     elif isinstance(node_block, MCPToolBlock):
@@ -849,7 +852,9 @@ async def execute_node(
             await track_dry_run_block_cost(
                 node_block.execution_stats,
                 user_id=user_id,
-                model=node_block.with_retired_models_replaced(input_data).get("model"),
+                model=node_block.with_retired_models_replaced(
+                    input_data, node_block.execution_stats.resolved_model
+                ).get("model"),
             )
 
 

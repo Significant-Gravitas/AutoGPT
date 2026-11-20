@@ -897,6 +897,32 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect(signedIn.status).toBe(200);
   });
 
+  it("sends every reset link back to the reset page", async () => {
+    const { handler } = await createAuthHandler(true);
+    await signUp(handler, "verified@example.com");
+    await emailsSent();
+    await handler(new Request(lastVerifyLink("verified@example.com") ?? ""));
+    await post(handler, "/request-password-reset", {
+      email: "verified@example.com",
+      redirectTo: `${baseURL}/library`,
+    });
+    await emailsSent();
+
+    const link = sentEmails
+      .filter(
+        (sent) =>
+          sent.to === "verified@example.com" && sent.type === "reset_password",
+      )
+      .at(-1)?.url;
+    expect(new URL(link ?? "").searchParams.get("callbackURL")).toBe(
+      `${baseURL}/reset-password`,
+    );
+    const opened = await handler(new Request(link ?? ""));
+    const landing = new URL(opened.headers.get("location") ?? "", baseURL);
+    expect(landing.pathname).toBe("/reset-password");
+    expect(landing.searchParams.get("token")).toBeTruthy();
+  });
+
   it("re-sends the link through the resend endpoint", async () => {
     const { handler } = await createAuthHandler(true);
     await signUp(handler, "new@example.com");

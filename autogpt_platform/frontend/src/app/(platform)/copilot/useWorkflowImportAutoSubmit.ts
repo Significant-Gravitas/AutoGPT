@@ -1,12 +1,13 @@
+import { COPILOT_PROMPT_KEYS } from "@/services/copilot/prompt-handoff";
 import type { FileUIPart } from "ai";
 import { useEffect, useRef } from "react";
 import { useCopilotUIStore } from "./store";
 
 /**
- * Extract a prompt from the URL hash fragment.
- * Supports: /copilot#prompt=URL-encoded-text
- * Optionally auto-submits if ?autosubmit=true is in the query string.
- * Returns null if no prompt is present.
+ * Take the prompt the app stashed for this page, or the one in the URL hash
+ * (/copilot#prompt=URL-encoded-text). Only a stashed prompt can ask to be
+ * sent, through `stashCopilotPrompt`; a prompt from the URL is prefilled, so
+ * sending it stays the user's own action. Returns null if there is none.
  */
 function extractPromptFromUrl(): {
   prompt: string;
@@ -15,27 +16,21 @@ function extractPromptFromUrl(): {
 } | null {
   if (typeof window === "undefined") return null;
 
-  const searchParams = new URLSearchParams(window.location.search);
-  const autosubmitFromUrl = searchParams.get("autosubmit") === "true";
-
   // Check sessionStorage first (used by workflow import for large prompts
   // and by the marketing-site CTA handoff via useCaptureMarketingPrompt).
-  const storedPrompt = sessionStorage.getItem("importWorkflowPrompt");
+  const storedPrompt = sessionStorage.getItem(COPILOT_PROMPT_KEYS.prompt);
   if (storedPrompt) {
-    sessionStorage.removeItem("importWorkflowPrompt");
+    sessionStorage.removeItem(COPILOT_PROMPT_KEYS.prompt);
 
-    // Onboarding wipes URL params before we reach /copilot, so the
-    // marketing handoff stashes its autosubmit intent alongside the prompt.
-    const autosubmitFromStorage =
-      sessionStorage.getItem("importWorkflowAutosubmit") === "true";
-    sessionStorage.removeItem("importWorkflowAutosubmit");
-    const autosubmit = autosubmitFromUrl || autosubmitFromStorage;
+    const autosubmit =
+      sessionStorage.getItem(COPILOT_PROMPT_KEYS.autosubmit) === "true";
+    sessionStorage.removeItem(COPILOT_PROMPT_KEYS.autosubmit);
 
     // Check for a pre-uploaded workflow file attached to this import
     let filePart: FileUIPart | undefined;
-    const storedFile = sessionStorage.getItem("importWorkflowFile");
+    const storedFile = sessionStorage.getItem(COPILOT_PROMPT_KEYS.file);
     if (storedFile) {
-      sessionStorage.removeItem("importWorkflowFile");
+      sessionStorage.removeItem(COPILOT_PROMPT_KEYS.file);
       try {
         const { fileId, fileName, mimeType } = JSON.parse(storedFile);
         // Validate fileId is a UUID to prevent path traversal
@@ -85,12 +80,12 @@ function extractPromptFromUrl(): {
     `${cleanURL.pathname}${cleanURL.search}`,
   );
 
-  return { prompt: prompt.trim(), autosubmit: autosubmitFromUrl };
+  return { prompt: prompt.trim(), autosubmit: false };
 }
 
 /**
  * Hook that checks for workflow import data in sessionStorage / URL on mount,
- * and auto-submits a new CoPilot session when `autosubmit=true`.
+ * and submits it when the app stashed it with an autosubmit intent.
  *
  * Extracted from useCopilotPage to keep that hook focused on page-level concerns.
  */

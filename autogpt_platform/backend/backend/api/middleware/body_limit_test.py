@@ -49,6 +49,21 @@ async def test_a_signed_in_body_over_the_limit_is_refused_unparsed():
     assert sent.received <= limit + 1
 
 
+async def test_the_refusal_names_the_limit_as_a_size_a_person_reads():
+    """The upload toast shows this detail."""
+    sent = await _post(
+        "/external-api/v1/blocks/0/execute",
+        [b"{}"],
+        {"content-type": JSON, "content-length": str(_default_limit() + 1)},
+    )
+
+    assert sent.status == 413
+    assert json.loads(sent.content) == {
+        "detail": "The request is too large. The limit is "
+        f"{settings.config.max_request_body_mb} MB."
+    }
+
+
 async def test_a_declared_length_over_the_limit_is_refused_before_any_byte_is_read():
     """On the mounted external API, as on the app's own routes."""
     sent = await _post(

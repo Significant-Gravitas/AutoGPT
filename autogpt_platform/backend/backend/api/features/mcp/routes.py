@@ -47,6 +47,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.mcp_catalog import get_mcp_catalog_entry_for_url
 from backend.integrations.providers import ProviderName
 from backend.util.request import (
+    ALLOWED_SCHEMES,
     AUTH_STATUS_CODES,
     CREDENTIAL_REJECTED_STATUS_CODES,
     HTTPClientError,
@@ -347,6 +348,18 @@ async def mcp_oauth_login(
         )
 
     authorize_url = metadata["authorization_endpoint"]
+    # The only endpoint here we hand to the browser instead of fetching
+    # ourselves, so nothing downstream vets its scheme.
+    if not _is_http_url(authorize_url):
+        logger.warning(
+            f"Rejecting metadata from {server_host(request.server_url)}: its "
+            "authorization endpoint is not an http(s) URL"
+        )
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail="This MCP server's authorization server metadata names a "
+            "sign-in page that is not an http(s) URL. Sign-in was stopped.",
+        )
     token_url = metadata["token_endpoint"]
     registration_endpoint = metadata.get("registration_endpoint")
     revoke_url = metadata.get("revocation_endpoint")
@@ -892,6 +905,22 @@ def _canonical_issuer(url: str) -> str:
     """
     scheme, host = _origin(url)
     return f"{scheme}://{host}{urlparse(url).path.rstrip('/')}"
+
+
+def _is_http_url(url: Any) -> bool:
+    """Whether *url* is an absolute http(s) URL with a host.
+
+    Endpoints we fetch ourselves go through ``Requests``, which refuses other
+    schemes; this is for the one we only hand on.
+    """
+    if not isinstance(url, str):
+        return False
+    try:
+        parsed = urlparse(url)
+        return parsed.scheme in ALLOWED_SCHEMES and bool(parsed.hostname)
+    except ValueError:
+        # A malformed authority, e.g. an unclosed IPv6 bracket.
+        return False
 
 
 def _validated_issuer(metadata: dict[str, Any], expected_issuer: str) -> str:

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { GET } from "../route";
 
 describe("Microsoft callback recovery", () => {
@@ -70,7 +70,7 @@ describe("Sign-in started by the mobile app", () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe(
-      "autogpt-app://integrations/oauth?code=abc&state=native.xyz",
+      "autogpt-app-dev://integrations/oauth?code=abc&state=native.xyz",
     );
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
@@ -82,7 +82,7 @@ describe("Sign-in started by the mobile app", () => {
     );
 
     expect(response.headers.get("location")).toBe(
-      "autogpt-app://integrations/oauth?state=native.xyz&error=access_denied&error_description=User+said+no",
+      "autogpt-app-dev://integrations/oauth?state=native.xyz&error=access_denied&error_description=User+said+no",
     );
   });
 
@@ -90,8 +90,47 @@ describe("Sign-in started by the mobile app", () => {
     const response = await callback("state=native.xyz");
 
     expect(response.headers.get("location")).toBe(
-      "autogpt-app://integrations/oauth?state=native.xyz&error=missing_code",
+      "autogpt-app-dev://integrations/oauth?state=native.xyz&error=missing_code",
     );
+  });
+
+  describe("on a hosted deployment", () => {
+    afterEach(() => vi.unstubAllEnvs());
+
+    it("answers the store app from production", async () => {
+      vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+      vi.stubEnv("NEXT_PUBLIC_APP_ENV", "prod");
+
+      const response = await callback("code=abc&state=native.xyz");
+
+      expect(response.headers.get("location")).toBe(
+        "autogpt-app://integrations/oauth?code=abc&state=native.xyz",
+      );
+    });
+
+    it("answers AutoGPT Dev from the dev deployment", async () => {
+      vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+      vi.stubEnv("NEXT_PUBLIC_APP_ENV", "dev");
+
+      const response = await callback("code=abc&state=native.xyz");
+
+      expect(response.headers.get("location")).toBe(
+        "autogpt-app-dev://integrations/oauth?code=abc&state=native.xyz",
+      );
+    });
+
+    it("answers AutoGPT Dev from a branch preview, which carries production's settings", async () => {
+      vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+      vi.stubEnv("NEXT_PUBLIC_APP_ENV", "prod");
+      vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "preview");
+      vi.stubEnv("NEXT_PUBLIC_VERCEL_TARGET_ENV", "preview");
+
+      const response = await callback("code=abc&state=native.xyz");
+
+      expect(response.headers.get("location")).toBe(
+        "autogpt-app-dev://integrations/oauth?code=abc&state=native.xyz",
+      );
+    });
   });
 
   it("keeps the popup page for a web sign-in", async () => {

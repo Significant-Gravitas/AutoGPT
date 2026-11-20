@@ -474,16 +474,27 @@ async def _find_subscriber(email: str, client: Requests | None = None) -> dict |
     return (response.json() or {}).get("data") or {}
 
 
+# MailerLite answers 429 until its minute is up (120 calls a minute; see
+# mailerlite_backfill). With the transport's backoff the seventh attempt comes
+# 63-69 s after the first, so the shared client waits a rate limit out, and an
+# outage answering 5xx still fails the call inside the consumer's 300 s limit.
+RATE_LIMIT_RETRY_ATTEMPTS = 7
+
+
 def _client() -> Requests:
     # Statuses are inspected rather than raised on, because "already gone" is a
     # success for a removal.
-    return Requests(trusted_origins=[API_BASE], raise_for_status=False)
+    return Requests(
+        trusted_origins=[API_BASE],
+        raise_for_status=False,
+        retry_max_attempts=RATE_LIMIT_RETRY_ATTEMPTS,
+    )
 
 
 def _erasure_client() -> Requests:
-    # Account erasure bounds its retries so an outage answering 5xx fails the
-    # step instead of holding the erasure. Everything else keeps the shared
-    # client, which waits out rate limits.
+    # Account erasure gives up after three attempts, so an outage answering 5xx
+    # fails the step in seconds instead of holding the erasure. Everything else
+    # keeps the shared client, which waits out rate limits.
     return Requests(
         trusted_origins=[API_BASE], raise_for_status=False, retry_max_attempts=3
     )
