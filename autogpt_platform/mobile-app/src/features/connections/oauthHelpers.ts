@@ -31,7 +31,7 @@ export interface PendingFlow extends FlowOrigin {
   savedAt: number;
 }
 
-/** What the web's callback page sends back to `autogpt-app://integrations/oauth`. */
+/** What the web's callback page sends back to `OAUTH_RETURN_URL`. */
 export interface OAuthReturn {
   state: string;
   code: string | null;
