@@ -3,6 +3,7 @@ import {
   getGetV2ListUserOrganizationsMockHandler401,
 } from "@/app/api/__generated__/endpoints/orgs/orgs.msw";
 import type { OrgResponse } from "@/app/api/__generated__/models/orgResponse";
+import { resetClientRequestFailureLog } from "@/app/api/mutators/request-failure-log";
 import { SESSION_CHECK_DEADLINE_MS } from "@/lib/auth/hooks/session-check-deadline";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
@@ -13,7 +14,15 @@ import { useOrgTeamStore } from "@/services/org-team/store";
 import { Key, storage } from "@/services/storage/local-storage";
 import { act, cleanup, render } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import OrgTeamProvider from "../OrgTeamProvider";
 
 // Only the server actions are faked: the auth store, its session checks and
@@ -57,6 +66,12 @@ const OTHER_PERSONAL_ORG: OrgResponse = {
   id: "org-sam",
   name: "Sam's org",
   slug: "sam",
+};
+const OTHER_TEAM_ORG: OrgResponse = {
+  ...TEAM_ORG,
+  id: "org-globex",
+  name: "Globex",
+  slug: "globex",
 };
 const TEAM_ID = "team-design";
 
@@ -144,6 +159,15 @@ function signOutInAnotherTab() {
   window.dispatchEvent(new StorageEvent("storage", { key: Key.LOGOUT }));
 }
 
+// Records each org the provider switches to, and still switches.
+function recordOrgSwitches() {
+  const { setActiveOrg } = useOrgTeamStore.getState();
+  const switches = vi.fn(setActiveOrg);
+  useOrgTeamStore.setState({ setActiveOrg: switches });
+  onTestFinished(() => useOrgTeamStore.setState({ setActiveOrg }));
+  return switches;
+}
+
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -166,6 +190,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetClientRequestFailureLog();
   useAuthStore.getState().cleanup();
   useAuthStore.setState({
     user: null,
@@ -348,12 +373,18 @@ describe("the active org and team when a signed-in session ends", () => {
 });
 
 describe("a stored active org the signed-in user isn't in", () => {
-  it("gives way to their own org when someone else signs in after a session nobody could check", async () => {
+  it("gives way to their personal org when someone else signs in after a session nobody could check", async () => {
     actions.getCurrentUser.mockRejectedValue(networkError);
     actions.validateSession
       .mockRejectedValueOnce(networkError)
       .mockResolvedValue({ user: otherUser, isValid: true });
-    server.use(getGetV2ListUserOrganizationsMockHandler([OTHER_PERSONAL_ORG]));
+    // Their first membership is a team org; the personal org comes second.
+    server.use(
+      getGetV2ListUserOrganizationsMockHandler([
+        OTHER_TEAM_ORG,
+        OTHER_PERSONAL_ORG,
+      ]),
+    );
 
     await run(renderApp);
     expectTeamContext();
@@ -388,10 +419,12 @@ describe("a stored active org the signed-in user isn't in", () => {
     },
   ])("is kept when their org list $list", async ({ handler }) => {
     server.use(handler());
+    const switches = recordOrgSwitches();
 
     await signIn(otherUser);
 
     expectTeamContext();
+    expect(switches).not.toHaveBeenCalled();
   });
 });
 
