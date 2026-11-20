@@ -83,7 +83,7 @@ class GithubReadFileBlock(Block):
             canonical_repo_url(repo_url) + f"/contents/{quote(file_path, safe='')}"
         )
         if branch.strip():
-            content_url += f"?ref={quote(branch, safe='')}"
+            content_url += f"?ref={quote(branch.strip(), safe='')}"
         response = await api.get(content_url)
         data = response.json()
 
@@ -201,7 +201,7 @@ class GithubReadFolderBlock(Block):
             canonical_repo_url(repo_url) + f"/contents/{quote(folder_path, safe='/')}"
         )
         if branch.strip():
-            contents_url += f"?ref={quote(branch, safe='')}"
+            contents_url += f"?ref={quote(branch.strip(), safe='')}"
         response = await api.get(contents_url)
         data = response.json()
 

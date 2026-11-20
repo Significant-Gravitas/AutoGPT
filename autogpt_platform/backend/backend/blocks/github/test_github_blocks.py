@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import inspect
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from unittest import mock
 from urllib.parse import urlparse
@@ -62,6 +63,7 @@ from backend.blocks.github.reviews import GithubListPRReviewsBlock
 from backend.blocks.github.users import GithubGetUserInfoBlock
 from backend.data.execution import ExecutionContext
 from backend.util.exceptions import BlockExecutionError
+from backend.util.request import Requests
 
 # ── prepare_pr_api_url tests ──
 
@@ -650,7 +652,7 @@ class TestPrSummary:
 class _PagedApi:
     """Serves canned pages and records the query params of each request."""
 
-    def __init__(self, pages: list[list[dict]]):
+    def __init__(self, pages: Sequence[list[dict] | dict]):
         self.pages = pages
         self.requests: list[dict] = []
 
@@ -662,7 +664,9 @@ class _PagedApi:
         return mock.Mock(json=lambda: page)
 
 
-def _paginate(pages: list[list[dict]], **kwargs) -> tuple[list[dict], _PagedApi]:
+def _paginate(
+    pages: Sequence[list[dict] | dict], **kwargs
+) -> tuple[list[dict], _PagedApi]:
     api = _PagedApi(pages)
     items = asyncio.run(get_paginated(api, LIST_URL, **kwargs))  # type: ignore[arg-type]
     return items, api
@@ -719,7 +723,7 @@ class TestGetPaginated:
     def test_non_list_response_raises_a_clear_error(self):
         # e.g. a repo object returned because the list path was lost
         with pytest.raises(ValueError, match="Expected a list"):
-            _paginate([{"id": 1, "name": "repo"}], limit=10)  # type: ignore[list-item]
+            _paginate([{"id": 1, "name": "repo"}], limit=10)
 
 
 # ── convert_comment_url_to_api_endpoint tests ──
@@ -797,6 +801,7 @@ _READ_BRANCH_CASES = [
     ("dev", "?ref=dev"),
     ("release/v0.8", "?ref=release%2Fv0.8"),
     ("feature/zoë", "?ref=feature%2Fzo%C3%AB"),
+    (" dev ", "?ref=dev"),
     ("", ""),
     ("  ", ""),
 ]
@@ -1706,12 +1711,14 @@ class TestRepoUrlRequests:
             "https://api.github.com/repos/owner/repo/contents/a.md"
         ]
 
-    def test_read_file_rejects_deep_links(self):
-        with pytest.raises(ValueError, match="Invalid repository"):
-            asyncio.run(
-                GithubReadFileBlock.read_file(
-                    TEST_CREDENTIALS, REPO_URL + "/tree/main", "a.md", "dev"
-                )
+    async def test_read_file_rejects_deep_links(self):
+        sent = AssertionError("a request was sent")
+        with (
+            mock.patch.object(Requests, "request", side_effect=sent),
+            pytest.raises(ValueError, match="Invalid repository"),
+        ):
+            await GithubReadFileBlock.read_file(
+                TEST_CREDENTIALS, REPO_URL + "/tree/main", "a.md", "dev"
             )
 
 
