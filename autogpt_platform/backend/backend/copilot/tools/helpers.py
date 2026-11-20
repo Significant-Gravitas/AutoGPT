@@ -1018,8 +1018,6 @@ def _credential_rejected_response(
     )
     # An expired key's error names the date and what to do about it.
     expiry = f" {exc}" if expired else ""
-    # Both carry the credential's stored title, which comes from outside
-    # AutoGPT, so the content judge reads them; the rest of the message is ours.
     return ErrorResponse(
         message=(
             f"{refused}, so block '{block.name}' did not run.{expiry} Nobody is "
