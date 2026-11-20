@@ -10,6 +10,7 @@ import pytest
 from pydantic import SecretStr
 
 from backend.blocks._base import BlockType
+from backend.blocks.apollo.models import Contact
 from backend.blocks.exa.search import ExaSearchBlock
 from backend.blocks.google._drive import GoogleDriveFile
 from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
@@ -2497,6 +2498,40 @@ async def test_an_explicit_none_in_an_output_is_kept(dry_run: bool):
 
     assert isinstance(response, BlockOutputResponse)
     assert response.outputs == {"result": [value]}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("dry_run", [False, True])
+async def test_a_field_left_at_its_default_is_kept(dry_run: bool):
+    """Apollo's models override ``model_dump`` to drop fields equal to their
+    defaults; the outputs are dumped as the response dump did, without it."""
+    contact = Contact.model_validate({"id": "c-1", "free_domain": True})
+
+    async def _yield_contact(*args: Any, **kwargs: Any):
+        yield "contact", contact
+
+    block = _make_block()
+    block.execute = _yield_contact
+    credit_patch, _ = _patch_credit_db()
+    with (
+        _patch_workspace(),
+        patch("backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})),
+        credit_patch,
+        patch("backend.copilot.tools.helpers.simulate_block", _yield_contact),
+    ):
+        response = await execute_block(
+            block=block,
+            block_id="block-1",
+            input_data={},
+            user_id=_USER,
+            session_id=_SESSION,
+            node_exec_id="exec-1",
+            matched_credentials={},
+            dry_run=dry_run,
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    assert response.outputs["contact"][0]["free_domain"] is True
 
 
 # ---------------------------------------------------------------------------

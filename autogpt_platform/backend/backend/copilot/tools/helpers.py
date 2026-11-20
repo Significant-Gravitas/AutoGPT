@@ -755,7 +755,9 @@ def _encode_outputs(outputs: dict[str, list[Any]]) -> dict[str, list[Any]]:
 
     A model leaves out its unset fields, as the response dump did for model
     fields; an explicit None in a plain dict is data, so it stays. The encoder
-    can't tell the two apart, so models are dumped on their own first.
+    can't tell the two apart, so models are dumped on their own first, through
+    pydantic-core like the response dump: some block models override
+    ``model_dump`` to drop fields left at their defaults.
     sqlalchemy_safe=False keeps keys starting with `_sa`, which the encoder
     drops by default.
     """
@@ -765,9 +767,7 @@ def _encode_outputs(outputs: dict[str, list[Any]]) -> dict[str, list[Any]]:
 
 
 def _encode_model(model: BaseModel) -> Any:
-    return to_dict(
-        model.model_dump(by_alias=True, exclude_none=True), sqlalchemy_safe=False
-    )
+    return json.loads(model.model_dump_json(by_alias=True, exclude_none=True))
 
 
 async def _debit_block_run(
