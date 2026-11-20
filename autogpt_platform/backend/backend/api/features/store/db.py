@@ -1946,25 +1946,25 @@ async def _approve_sub_agent(
         )
         return
 
-    # Find version matching this sub-graph
-    matching_version = next(
-        (
-            v
-            for v in listing.Versions or []
-            if not v.isDeleted
-            and v.agentGraphId == sub_graph.id
-            and v.agentGraphVersion == sub_graph.version
-        ),
-        None,
-    )
+    matching_versions = [
+        v
+        for v in listing.Versions or []
+        if not v.isDeleted
+        and v.agentGraphId == sub_graph.id
+        and v.agentGraphVersion == sub_graph.version
+    ]
+    # Several submissions can refer to the same workflow version. Any existing
+    # approval satisfies the dependency, including one for a hidden listing.
+    if any(
+        v.submissionStatus == prisma.enums.SubmissionStatus.APPROVED
+        for v in matching_versions
+    ):
+        return
 
-    if matching_version:
-        # A parent review approves its dependencies, including previously rejected
-        # versions. Reusing an existing approval leaves later withdrawals effective.
-        if matching_version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
-            return
-
-        # Take the listing lock before writing its version, just as withdrawal does.
+    if matching_versions:
+        matching_version = matching_versions[0]
+        # Parent approval can also approve a previously rejected dependency.
+        # Take the listing lock before its version, just as withdrawal does.
         await prisma.models.StoreListing.prisma(tx).update(
             where={"id": listing.id}, data={"hasApprovedVersion": True}
         )

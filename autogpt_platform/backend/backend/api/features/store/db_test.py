@@ -1913,6 +1913,37 @@ async def test_an_approval_versions_its_creators_sub_agent_listing(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_parent_approval_reuses_an_approved_child_graph_version(
+    mocker, review_mocks
+):
+    _sub_agent_listed_by(mocker, review_mocks, "owner-id")
+    child = review_mocks.listing.find_first.return_value
+    pending = _pending_version().model_copy(
+        update={
+            "id": "new-child-submission",
+            "storeListingId": child.id,
+            "agentGraphId": child.agentGraphId,
+            "version": 2,
+        }
+    )
+    approved = pending.model_copy(
+        update={
+            "id": "approved-child",
+            "version": 1,
+            "isAvailable": False,
+            "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+        }
+    )
+    child.Versions = [pending, approved]
+
+    result = await _review(is_approved=True)
+
+    assert result.status == prisma.enums.SubmissionStatus.APPROVED
+    review_mocks.slv.update_many.assert_not_awaited()
+    review_mocks.listing.update.assert_awaited_once()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_an_approval_of_a_workflow_running_another_users_unpublished_workflow_is_refused(
     mocker, review_mocks
 ):

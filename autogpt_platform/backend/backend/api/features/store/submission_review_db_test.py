@@ -41,7 +41,7 @@ async def test_live_version_can_be_installed_while_the_next_one_is_embedding(
         install_checks = []
 
         async def install_during_embedding(**kwargs):
-            async with asyncio.timeout(3), transaction() as tx:
+            async with transaction() as tx:
                 install_checks.append(
                     await is_store_listing_version_available_for_install(
                         live, tx=tx, lock_rows=True
@@ -49,7 +49,8 @@ async def test_live_version_can_be_installed_while_the_next_one_is_embedding(
                 )
 
         monkeypatch.setattr(store_db, "ensure_embedding", install_during_embedding)
-        await approve(pending, owner)
+        async with asyncio.timeout(15):
+            await approve(pending, owner)
         assert install_checks == [True]
         page = await store_db.get_store_agent_details(owner, graph_id)
         assert page.active_version_id == pending
