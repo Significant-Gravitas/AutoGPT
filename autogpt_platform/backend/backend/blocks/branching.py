@@ -38,20 +38,23 @@ def _normalize_operand(value: Any) -> Any:
         number = float(text)
     except ValueError:
         return text
-    if not math.isfinite(number):
-        return number
-    # float() has no fractional bits at |x| >= 2**53, so is_integer() is
-    # always True there. Use Decimal to keep whole values exact and to
-    # keep fractions distinct from their integer part.
     try:
         decimal = Decimal(text)
     except InvalidOperation:
         return number
+    if not math.isfinite(number):
+        # inf and nan stay floats. A finite number too big for a float, such
+        # as an integer past int()'s 4300-digit limit, stays an exact Decimal,
+        # never an int: comparing Decimals costs no more than reading them.
+        return decimal if decimal.is_finite() else number
+    # A float steps by 1 from 2**52 and by 2 from 2**53, so it can't hold a
+    # fraction from 2**52 or every whole value from 2**53. Decimal keeps both
+    # exact; a whole value becomes an int, of at most 309 digits here.
     if decimal == decimal.to_integral_value():
         if abs(decimal) >= 2**53:
             return int(decimal)
         return number
-    if abs(number) >= 2**53:
+    if abs(number) >= 2**52:
         return decimal
     return number
 
@@ -151,7 +154,7 @@ class ConditionBlock(Block):
         try:
             result = comparison_funcs[operator](value1, value2)
         except InvalidOperation:
-            # A fraction at or above 2**53 is kept as a Decimal, and ordering
+            # A number a float can't hold is kept as a Decimal, and ordering
             # a Decimal against NaN raises where a float compares False.
             result = False
         except Exception as e:

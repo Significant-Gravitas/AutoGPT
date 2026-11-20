@@ -164,6 +164,8 @@ async def test_incomparable_values_raise_block_execution_error():
 
 B0 = 9007199254740992  # 2**53
 B1 = 9007199254740993  # 2**53 + 1, not representable as a float
+C0 = 4503599627370496  # 2**52, where a float stops holding fractions
+LONG = "1" * 4301  # past int()'s 4300-digit limit; float() makes it inf
 
 
 @pytest.mark.parametrize(
@@ -179,9 +181,26 @@ B1 = 9007199254740993  # 2**53 + 1, not representable as a float
         (" 3 ", "==", "3.0", True),
         (str(B1), "==", f"{B1}.0", True),
         (f"{B1}.0", ">", str(B0), True),
+        # Exact from 2**53 in any notation, so "1e23" is 10**23, not the float
+        # 1e23 (99999999999999991611392); 1e22 is a float exactly.
+        ("1e23", "==", "100000000000000000000000", True),
+        ("1e23", "==", 10**23, True),
+        ("1e23", "==", 1e23, False),
+        ("1e22", "==", 1e22, True),
         (f"{B1}.5", "==", str(B1), False),
         (f"{B1}.5", ">", str(B1), True),
         (f"{B0}.5", "==", str(B0), False),
+        (f"{C0}.5", "==", str(C0), False),
+        (f"{C0}.5", ">", str(C0), True),
+        (f"-{C0}.5", "<", f"-{C0}", True),
+        (f"{C0 - 1}.9", "<", str(C0), True),
+        (f"{C0 - 1}.5", "==", str(C0 - 1), False),
+        pytest.param(LONG, "<", "2" * 4301, True, id="long-ints-order"),
+        pytest.param(LONG, "==", "1" * 4300 + "2", False, id="long-ints-differ"),
+        ("1e400", "<", "1e401", True),
+        pytest.param("1e10000000", ">", "9" * 4301, True, id="huge-exponent"),
+        pytest.param("inf", ">", LONG, True, id="inf-above-long-int"),
+        pytest.param(f"-{LONG}", ">", "-inf", True, id="minus-inf-below"),
         (f"{B0}.5", ">", "nan", False),
         ("nan", "<=", f"{B0}.5", False),
         ("3", "<", "3.5", True),
@@ -213,7 +232,15 @@ async def test_condition_passthrough_keeps_parsed_value1(value1: str, expected: 
     assert type(outputs["yes_output"]) is type(expected)
 
 
-@pytest.mark.parametrize("value1", [str(2**64), str(-(2**63) - 1), "1" * 400])
+@pytest.mark.parametrize(
+    "value1",
+    [
+        str(2**64),
+        str(-(2**63) - 1),
+        "1" * 400,
+        pytest.param(LONG, id="past-int-digit-limit"),
+    ],
+)
 async def test_condition_passthrough_of_out_of_range_int_is_serializable(
     value1: str,
 ):
