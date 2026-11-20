@@ -61,6 +61,13 @@ WEBSOCKET_CONNECTIONS = Gauge(
     # Removed user_id label - track total only to prevent cardinality explosion
 )
 
+# What slow WebSocket clients hold in this process, waiting to be sent to them;
+# bounded by ws_outbox.MAX_QUEUED_BYTES_PER_PROCESS.
+WEBSOCKET_QUEUED_BYTES = Gauge(
+    "autogpt_websocket_queued_bytes",
+    "Bytes of events waiting for WebSocket clients that read slower than they come",
+)
+
 SCHEDULER_JOBS = Gauge(
     "autogpt_scheduler_jobs",
     "Current number of scheduled jobs",
@@ -308,6 +315,11 @@ def update_websocket_connections(user_id: str, delta: int):
         WEBSOCKET_CONNECTIONS.inc(delta)
     else:
         WEBSOCKET_CONNECTIONS.dec(abs(delta))
+
+
+def update_websocket_queued_bytes(delta: int) -> None:
+    """Change the bytes waiting for WebSocket clients by ``delta``."""
+    WEBSOCKET_QUEUED_BYTES.inc(delta)
 
 
 def record_stripe_request(resource: str, method: str, outcome: str, duration: float):

@@ -7,6 +7,7 @@ type MessageHandler = (execution: GraphExecution) => void;
 const messageHandlers = new Set<MessageHandler>();
 const connectHandlers = new Set<() => void>();
 const disconnectHandlers = new Set<() => void>();
+const reconnectHandlers = new Set<() => void>();
 const subscribeToGraphExecutions = vi.fn(() => Promise.resolve());
 const onWebSocketConnect = vi.fn((handler: () => void) => {
   connectHandlers.add(handler);
@@ -18,6 +19,10 @@ const fakeAPI = {
   onWebSocketDisconnect: (handler: () => void) => {
     disconnectHandlers.add(handler);
     return () => disconnectHandlers.delete(handler);
+  },
+  onWebSocketReconnect: (handler: () => void) => {
+    reconnectHandlers.add(handler);
+    return () => reconnectHandlers.delete(handler);
   },
   subscribeToGraphExecutions,
   connectWebSocket: vi.fn(() => Promise.resolve()),
@@ -50,6 +55,7 @@ beforeEach(() => {
   messageHandlers.clear();
   connectHandlers.clear();
   disconnectHandlers.clear();
+  reconnectHandlers.clear();
   subscribeToGraphExecutions.mockClear();
   onWebSocketConnect.mockClear();
 });
@@ -116,6 +122,41 @@ describe("useExecutionEvents subscriptions", () => {
       ["graph-a"],
       ["graph-b"],
     ]);
+  });
+
+  test("onReconnect runs once per reconnect, not when the subscription is set up again", () => {
+    const onReconnect = vi.fn();
+    const { rerender } = renderHook(
+      ({ graphIds }) => useExecutionEvents({ graphIds, onReconnect }),
+      { initialProps: { graphIds: ["graph-a"] } },
+    );
+    rerender({ graphIds: ["graph-a", "graph-b"] });
+    expect(onReconnect).not.toHaveBeenCalled();
+
+    act(() => {
+      disconnectHandlers.forEach((handler) => handler());
+      connectHandlers.forEach((handler) => handler());
+      reconnectHandlers.forEach((handler) => handler());
+    });
+
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+  });
+
+  test("a disabled subscription does not ask for a refetch on reconnect", () => {
+    const onReconnect = vi.fn();
+    renderHook(() =>
+      useExecutionEvents({
+        graphIds: ["graph-a"],
+        enabled: false,
+        onReconnect,
+      }),
+    );
+
+    act(() => {
+      reconnectHandlers.forEach((handler) => handler());
+    });
+
+    expect(onReconnect).not.toHaveBeenCalled();
   });
 
   test("a second connect on the same connection does not subscribe twice", () => {
