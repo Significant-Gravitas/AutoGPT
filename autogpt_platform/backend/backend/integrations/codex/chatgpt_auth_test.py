@@ -295,7 +295,11 @@ async def test_refresh_uses_oauth_form_encoding() -> None:
 
 
 @pytest.mark.asyncio
-async def test_refresh_failure_raises() -> None:
-    with _patch_post(_FakeResponse(400, _error("invalid_grant"))):
-        with pytest.raises(CodexAuthError):
+@pytest.mark.parametrize("status", [400, 429, 503])
+async def test_refresh_failure_raises(status: int) -> None:
+    with _patch_post(_FakeResponse(status, _error("invalid_grant"))):
+        with pytest.raises(CodexAuthError) as raised:
             await refresh_access_token(SecretStr("old-refresh"))
+
+    # Callers tell a refused grant from a busy or down ChatGPT by this.
+    assert raised.value.status == status

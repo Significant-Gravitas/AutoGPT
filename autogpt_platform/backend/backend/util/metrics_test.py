@@ -35,6 +35,8 @@ from backend.util.metrics import (
     _PIKA_RECONNECT_SIGNATURES,
     _before_send,
 )
+from backend.util.request import http_status_error
+from backend.util.service import HTTPClientError as ServiceHTTPClientError
 from backend.util.settings import AppEnvironment, BehaveAs, Config
 from backend.util.url_redaction import REDACTED
 
@@ -722,6 +724,44 @@ def test_before_send_keeps_wrapper_around_insufficient_balance_error() -> None:
         exc_info = sys.exc_info()
 
     assert _before_send({"level": "error"}, hint={"exc_info": exc_info}) is not None
+
+
+# ---------- 401s: our own services kept, a user's credentials dropped ----------
+
+_INTERNAL_401 = (
+    "Client error '401 Unauthorized' for url 'http://autogpt-database-manager"
+    ".prod-agpt.svc.cluster.local:8005/get_or_create_workspace'"
+)
+
+
+def _exc_info_of(error: Exception):
+    try:
+        raise error
+    except Exception:
+        return sys.exc_info()
+
+
+def test_before_send_keeps_a_401_between_our_own_services() -> None:
+    """SECRT-3186: a service refusing our internal key is a misconfigured
+    deployment, though its message says "Unauthorized"."""
+    exc_info = _exc_info_of(ServiceHTTPClientError(401, _INTERNAL_401))
+    logged = _log_event(
+        "backend.copilot.tools.workspace_files",
+        f"Error listing workspace files: {exc_info[1]}",
+    )
+
+    assert _before_send({"level": "error"}, hint={"exc_info": exc_info}) is not None
+    assert _before_send(logged, hint={"exc_info": exc_info}) is not None
+
+
+def test_before_send_drops_a_providers_401_for_a_users_credentials() -> None:
+    exc_info = _exc_info_of(
+        http_status_error(401, "Unauthorized", b'{"error": "invalid api key"}')
+    )
+    logged = _log_event("backend.blocks.github", f"Block failed: {exc_info[1]}")
+
+    assert _before_send({"level": "error"}, hint={"exc_info": exc_info}) is None
+    assert _before_send(logged, hint={"exc_info": exc_info}) is None
 
 
 # ---------- FalkorDB connection-teardown noise → dropped ----------

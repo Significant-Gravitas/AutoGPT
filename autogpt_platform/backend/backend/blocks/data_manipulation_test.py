@@ -7,11 +7,27 @@ import pytest
 
 from backend.blocks.data_manipulation import (
     FindInDictionaryBlock,
+    RemoveFromListBlock,
     ZipListsBlock,
     _zipped_added_bytes,
 )
+from backend.data.execution import ExecutionContext
 from backend.util.json import dumps
 from backend.util.mock import MockObject
+
+
+async def test_remove_from_list_returns_the_first_matching_item() -> None:
+    block = RemoveFromListBlock()
+    outputs = {
+        name: value
+        async for name, value in block.execute(
+            {"list": [True, 1, "next"], "value": 1, "return_item": True},
+            execution_context=ExecutionContext(),
+        )
+    }
+
+    assert dumps(outputs["updated_list"]) == '[1,"next"]'
+    assert dumps(outputs["removed_item"]) == "true"
 
 
 async def _find(obj: Any, key: Any) -> list[tuple[str, Any]]:
