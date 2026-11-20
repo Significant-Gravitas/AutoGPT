@@ -180,7 +180,7 @@ async def _call_llm_for_simulation(
             is used up.
         ValueError: If all retry attempts are exhausted without parseable JSON.
     """
-    if refusal := await platform_spend_refusal(user_id):
+    if refusal := await platform_spend_refusal(user_id, surface="block"):
         raise RuntimeError(f"[SIMULATOR ERROR — NOT A BLOCK FAILURE] {refusal}")
     client = get_openai_client(prefer_openrouter=True)
     if client is None:

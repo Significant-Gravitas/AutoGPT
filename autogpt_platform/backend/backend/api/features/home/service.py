@@ -54,6 +54,7 @@ class HomeSourceData(BaseModel):
     reviews: list[PendingHumanReviewModel]
     cost_summary: UserExecutionCostSummary
     schedules: list[GraphExecutionJobInfo | CopilotTurnJobInfo]
+    schedules_unavailable: bool = False
     credits_balance: int | None
     questions: list[ChatSessionInfo]
     work_events: list[activity_db.ActivityEvent]
@@ -107,6 +108,7 @@ async def build_home_dashboard(
         work_events=data.work_events,
         session_titles=session_titles,
         paused_chats=data.paused_chats,
+        schedules_unavailable=data.schedules_unavailable,
     )
 
 
@@ -205,12 +207,14 @@ async def _load_home_source_data(
     ]
     await asyncio.gather(*started)
     user = user_task.result()
+    schedules = schedules_task.result()
     return HomeSourceData(
         experts=experts_task.result(),
         executions=executions_task.result(),
         reviews=reviews_task.result(),
         cost_summary=cost_summary_task.result(),
-        schedules=schedules_task.result(),
+        schedules=schedules or [],
+        schedules_unavailable=schedules is None,
         credits_balance=credits_task.result(),
         questions=questions_task.result(),
         work_events=work_events_task.result(),
@@ -222,12 +226,13 @@ async def _load_home_source_data(
 async def _get_schedules(
     *,
     user_id: str,
-) -> list[GraphExecutionJobInfo | CopilotTurnJobInfo]:
+) -> list[GraphExecutionJobInfo | CopilotTurnJobInfo] | None:
     # Deliberately owner-scoped: executions, reviews and cost totals on this page
     # are all personal, so org/team schedules would surface upcoming runs whose
     # outcomes and approvals could never appear anywhere else on the dashboard.
     # Bounded like the library's schedule badges: a slow scheduler costs the
-    # upcoming-runs rows, not the whole dashboard.
+    # upcoming-runs rows, not the whole dashboard. None means it didn't answer:
+    # the rows are unknown, not absent.
     try:
         return await asyncio.wait_for(
             get_scheduler_client().get_execution_schedules(user_id=user_id),
@@ -237,7 +242,7 @@ async def _get_schedules(
         logger.warning(
             "Home could not load schedules for user %s", user_id[:_LOG_ID_CHARS]
         )
-        return []
+        return None
 
 
 async def _get_paused_chats(*, user_id: str) -> list[PausedScheduledChat]:

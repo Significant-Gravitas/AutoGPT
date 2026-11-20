@@ -522,6 +522,24 @@ describe("useBrainDumpRecorder", () => {
     expect(result.current.isSavedLocally).toBe(true);
   });
 
+  // Chrome before 92 has no crypto.randomUUID; it threw right after the
+  // microphone opened, so no take ever started there.
+  it("starts a take where crypto.randomUUID is missing", async () => {
+    const originalCrypto = globalThis.crypto;
+    vi.stubGlobal("crypto", {
+      getRandomValues: originalCrypto.getRandomValues.bind(originalCrypto),
+    });
+    vi.stubGlobal("MediaRecorder", ChunkingMediaRecorder);
+    const { result } = renderHook(() => useBrainDumpRecorder());
+
+    await act(async () => {
+      await result.current.start();
+    });
+
+    expect(result.current.recordingId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(ChunkingMediaRecorder.latest?.state).toBe("recording");
+  });
+
   it("ignores an empty chunk", async () => {
     vi.stubGlobal("MediaRecorder", ChunkingMediaRecorder);
     const { result } = renderHook(() => useBrainDumpRecorder());

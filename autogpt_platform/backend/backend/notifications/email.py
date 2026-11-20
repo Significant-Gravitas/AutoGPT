@@ -120,7 +120,12 @@ class EmailSender:
         )
 
     def send_email_or_raise(
-        self, user_email: str, subject: str, body: str, text_body: str | None = None
+        self,
+        user_email: str,
+        subject: str,
+        body: str,
+        text_body: str | None = None,
+        reply_to: str | None = None,
     ) -> None:
         """Send a one-off transactional email (e.g. Better Auth password-reset
         and verification links) with no notification templating or preference
@@ -133,6 +138,7 @@ class EmailSender:
             raise RuntimeError("Postmark is not configured; cannot send email")
         self.postmark.emails.send(
             From=settings.config.postmark_sender_email,
+            ReplyTo=reply_to,
             To=user_email,
             Subject=subject,
             HtmlBody=body,

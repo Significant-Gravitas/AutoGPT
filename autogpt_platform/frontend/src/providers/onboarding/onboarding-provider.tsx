@@ -314,6 +314,10 @@ export default function OnboardingProvider({
           return;
         }
 
+        // The wizard reads its own state and leaves once it finds it complete,
+        // so a second read here would only repeat that request.
+        if (!isCompleted && current.isOnOnboardingRoute) return;
+
         onboarding ??= await retryTransient(fetchOnboarding);
         if (isOutdated()) return;
 

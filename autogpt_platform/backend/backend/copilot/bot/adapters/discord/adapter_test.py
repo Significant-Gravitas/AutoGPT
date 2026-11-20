@@ -898,6 +898,29 @@ class TestThreadHistory:
         ]
 
     @pytest.mark.asyncio
+    async def test_a_message_that_is_only_an_image_is_named_in_history(self):
+        # "^" under a screenshot used to point at nothing: a message with no
+        # text was left out of the history entirely.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        shot = _message("", [])
+        shot.author = MagicMock(bot=False, id=2000, display_name="Alice")
+        shot.attachments = [_discord_attachment("error.png", "image/png", 10)]
+        captioned = _message("this one too", [])
+        captioned.author = MagicMock(bot=False, id=3000, display_name="Bob")
+        captioned.attachments = [_discord_attachment("log.txt", "text/plain", 10)]
+        channel = MagicMock(spec=discord.Thread)
+        channel.history.return_value = _AsyncHistory([captioned, shot])
+        message = _message("<@1000> ^", [_mention(1000, "AutoGPT")])
+        message.channel = channel
+
+        history = await adapter._thread_history(message)
+
+        assert [entry.text for entry in history] == [
+            "[Attached file: error.png]",
+            "this one too\n[Attached file: log.txt]",
+        ]
+
+    @pytest.mark.asyncio
     async def test_drops_oldest_messages_past_the_size_budget(self):
         # A very long thread can't all fit in one copilot request. Keep the most
         # recent messages (newest-first scan, budget cut) and drop the oldest.
@@ -1638,6 +1661,15 @@ class TestReplyContext:
         assert "fact about space" in out
         assert out.endswith("can you tell me?")
 
+    def test_with_reply_context_names_the_replied_to_files(self):
+        adapter, _ = _bare_adapter()
+        replied = self._replied("", author_name="Toran")
+        replied.attachments = [_discord_attachment("error.png", "image/png", 10)]
+        out = adapter._with_reply_context(replied, "what does this say?")
+        assert out == (
+            "[Replying to Toran]\n[Attached file: error.png]\n\nwhat does this say?"
+        )
+
     def test_with_reply_context_noop_without_reply(self):
         adapter, _ = _bare_adapter()
         assert adapter._with_reply_context(None, "hi") == "hi"
@@ -1668,6 +1700,34 @@ class TestReplyContext:
         ctx = callback.await_args.args[0]
         assert "fact about space" in ctx.text
         assert "can you tell me?" in ctx.text
+
+    @pytest.mark.asyncio
+    async def test_on_message_attaches_the_replied_to_image(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        replied = self._replied("", author_name="Toran")
+        replied.attachments = [_discord_attachment("error.png", "image/png", 3)]
+        guild = MagicMock(id=111)
+        guild.get_member = MagicMock(return_value=MagicMock(spec=discord.Member))
+        msg = MagicMock()
+        msg.id = 999
+        msg.author = MagicMock(id=2000, bot=False, display_name="Bently")
+        msg.guild = guild
+        msg.channel = MagicMock(id=555)
+        msg.content = "<@1000> what does this say?"
+        msg.mentions = [_mention(1000, "AutoGPT")]
+        msg.message_snapshots = []
+        msg.attachments = []
+        msg.reference = MagicMock(resolved=replied)
+
+        await handlers["on_message"](msg)
+
+        ctx = callback.await_args.args[0]
+        assert [a.filename for a in ctx.attachments] == ["error.png"]
+        assert "[Attached file: error.png]" in ctx.text
 
     @pytest.mark.asyncio
     async def test_options_in_a_reply_are_read_before_the_reply_context(self):
@@ -2353,6 +2413,51 @@ class TestExtractAttachments:
         # The 3 over the cap are reported as skipped.
         assert len(skipped) == 3
         assert all(reason == "too many files attached" for _, reason in skipped)
+
+    @pytest.mark.asyncio
+    async def test_downloads_a_forwarded_file(self):
+        # A forward used to reach the model as "[Attached file: name]" only.
+        adapter, _ = _bare_adapter()
+        msg = MagicMock()
+        msg.attachments = []
+        msg.message_snapshots = [
+            MagicMock(attachments=[_discord_attachment("shot.png", "image/png", 3)])
+        ]
+
+        downloaded, skipped = await adapter._extract_attachments(msg)
+
+        assert [a.filename for a in downloaded] == ["shot.png"]
+        assert skipped == ()
+
+    @pytest.mark.asyncio
+    async def test_downloads_the_replied_to_files_after_the_users_own(self):
+        adapter, _ = _bare_adapter()
+        msg = MagicMock()
+        msg.attachments = [_discord_attachment("mine.txt", "text/plain", 3)]
+        msg.message_snapshots = []
+        replied = MagicMock(spec=discord.Message)
+        replied.attachments = [_discord_attachment("theirs.png", "image/png", 3)]
+
+        downloaded, _ = await adapter._extract_attachments(msg, replied)
+
+        assert [a.filename for a in downloaded] == ["mine.txt", "theirs.png"]
+
+    @pytest.mark.asyncio
+    async def test_the_count_cap_covers_replied_to_files_too(self):
+        adapter, _ = _bare_adapter()
+        msg = MagicMock()
+        msg.attachments = [
+            _discord_attachment(f"f{i}.txt", "text/plain", 5)
+            for i in range(MAX_INBOUND_ATTACHMENTS)
+        ]
+        msg.message_snapshots = []
+        replied = MagicMock(spec=discord.Message)
+        replied.attachments = [_discord_attachment("theirs.png", "image/png", 3)]
+
+        downloaded, skipped = await adapter._extract_attachments(msg, replied)
+
+        assert len(downloaded) == MAX_INBOUND_ATTACHMENTS
+        assert skipped == (("theirs.png", "too many files attached"),)
 
     @pytest.mark.asyncio
     async def test_skips_attachment_that_fails_to_download(self):

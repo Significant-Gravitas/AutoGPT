@@ -32,11 +32,14 @@ jobs:
     permissions:
       contents: read
     timeout-minutes: 30
-    runs-on: ubuntu-latest
+    # Pinned: Playwright has no Chromium build for ubuntu-latest's 26.04 image.
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Start MinIO service
         uses: ./.github/actions/start-minio

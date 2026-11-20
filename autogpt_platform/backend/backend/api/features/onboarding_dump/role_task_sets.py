@@ -37,7 +37,7 @@ ROLE_FALLBACK_TASKS: dict[str, list[RoleTask]] = {
         RoleTask(
             title="Set up a Monday summary of your numbers, pulled from your tools",
             owner_skills=("data", "finance", "ops"),
-            why="Until you hire someone for it.",
+            why="So you don't have to pull the numbers yourself.",
             prompt="Set up a Monday summary of the numbers I care about. Ask me which tools they live in and build the first one so I can see the format.",
             icon="chart-bar",
         ),
