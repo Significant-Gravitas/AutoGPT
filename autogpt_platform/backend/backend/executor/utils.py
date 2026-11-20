@@ -178,6 +178,7 @@ def block_usage_cost(
     run_time: float = 0,
     stats: NodeExecutionStats | None = None,
     use_preflight_estimate: bool = True,
+    pre_flight_resolved_model: str | None = None,
 ) -> tuple[int, BlockInput]:
     """Calculate the credit charge for a block invocation.
 
@@ -187,6 +188,15 @@ def block_usage_cost(
         estimate is registered for the block in `block_preflight_estimates.json`.
       - Post-flight (stats populated): dynamic types consume the captured
         stats to compute the actual charge.
+
+    Which model is priced (`_with_schema_defaults`): a run that has started
+    is priced on the model it recorded when it started, never on today's
+    date. A caller after a run passes the run's ``stats``, whose
+    ``resolved_model`` is that record; only the pre-flight price of a run
+    that has started (settlement's baseline when none was pinned) passes the
+    record as ``pre_flight_resolved_model`` instead. A caller passing neither
+    prices the model a run starting now would run: right before a run, wrong
+    after one. ``block_usage_cost_test`` names the callers that may.
 
     For SECOND/ITEMS/TOKENS cost entries, ``cost_amount`` is interpreted as
     "credits per ``cost_divisor`` units" — e.g. ``cost_amount=1,
@@ -204,7 +214,11 @@ def block_usage_cost(
     if not block_costs:
         return 0, {}
 
-    input_data = _with_schema_defaults(block, input_data)
+    input_data = _with_schema_defaults(
+        block,
+        input_data,
+        pre_flight_resolved_model or (stats.resolved_model if stats else None),
+    )
     is_preflight = stats is None and run_time == 0 and use_preflight_estimate
 
     for block_cost in block_costs:
@@ -335,16 +349,30 @@ def _coerce_usd(stats: NodeExecutionStats | None) -> float:
     return max(0.0, float(stats.provider_cost))
 
 
-def _with_schema_defaults(block: Block, input_data: BlockInput) -> BlockInput:
+def _with_schema_defaults(
+    block: Block, input_data: BlockInput, resolved_model: str | None
+) -> BlockInput:
     """The input `Block._execute` runs on: `None` values dropped, schema defaults
-    filled in. Cost filters are matched against this, with each credentials
-    input marked by whether the platform pays for its key."""
+    filled in, and each LLM model as the block runs it
+    (`Block.with_retired_models_replaced`). Cost filters are matched against
+    this, with each credentials input marked by whether the platform pays for
+    its key.
+
+    ``resolved_model`` is the model a run recorded when it started
+    (`NodeExecutionStats.resolved_model`), and a run that has started is
+    priced on it: a node still running at 00:00 UTC on its model's shutdown
+    date ran the model itself, and settles at that model's rates. Given None,
+    before a run starts, the model a run starting now runs: a switched-off
+    model's fallback from its shutdown date."""
     defaults = {
         name: field.get_default(call_default_factory=True)
         for name, field in block.input_schema.model_fields.items()
         if not field.is_required()
     }
-    merged = {**defaults, **{k: v for k, v in input_data.items() if v is not None}}
+    merged = block.with_retired_models_replaced(
+        {**defaults, **{k: v for k, v in input_data.items() if v is not None}},
+        resolved_model,
+    )
     for field_name in block.input_schema.get_credentials_fields():
         if isinstance(credentials := merged.get(field_name), dict):
             merged[field_name] = {

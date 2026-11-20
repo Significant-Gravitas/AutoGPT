@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server";
+import { environment } from "@/services/environment";
 
 // Matches NATIVE_STATE_PREFIX in backend/integrations/credentials_store.py.
 const NATIVE_STATE_PREFIX = "native.";
-// Fixed: the app registers this scheme and waits for exactly this address
-// (OAUTH_RETURN_URL in mobile-app/src/lib/api/integrations.ts).
-const NATIVE_RETURN_URL = "autogpt-app://integrations/oauth";
+
+// The app registers one scheme and waits for exactly this address
+// (OAUTH_RETURN_URL in mobile-app/src/lib/api/integrations.ts). Production
+// answers the store app; every other deployment answers AutoGPT Dev
+// (mobile-app/app.config.ts). The scheme comes from this deployment's own
+// environment and never from the request, so a code can't be sent elsewhere.
+function getNativeReturnUrl() {
+  const isProduction = environment.isProd() && !environment.isVercelPreview();
+  const scheme = isProduction ? "autogpt-app" : "autogpt-app-dev";
+  return `${scheme}://integrations/oauth`;
+}
 
 interface NativeCallback {
   state: string;
@@ -25,7 +34,7 @@ export function redirectToNativeApp({
   error,
   errorDescription,
 }: NativeCallback) {
-  const url = new URL(NATIVE_RETURN_URL);
+  const url = new URL(getNativeReturnUrl());
   const params = code
     ? { code, state, iss }
     : {
