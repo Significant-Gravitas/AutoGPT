@@ -145,6 +145,7 @@ from backend.data.execution import (
     get_node_execution,
     get_node_executions,
     get_unfinished_child_graph_execution_ids,
+    mark_node_executions_moderated,
     set_execution_kv_data,
     update_graph_execution_start_time,
     update_graph_execution_stats,
@@ -415,6 +416,7 @@ class DatabaseManager(AppService):
     get_latest_node_execution = _(get_latest_node_execution)
     update_node_execution_status = _(update_node_execution_status)
     update_node_execution_status_batch = _(update_node_execution_status_batch)
+    mark_node_executions_moderated = _(mark_node_executions_moderated)
     update_graph_execution_start_time = _(update_graph_execution_start_time)
     update_graph_execution_stats = _(update_graph_execution_stats)
     upsert_execution_input = _(upsert_execution_input)
@@ -717,6 +719,7 @@ class DatabaseManager(AppService):
     parked_spend_decision = _(experts_spend_approval.parked_spend_decision)
     open_chat_spend_review = _(experts_spend_approval.open_chat_spend_review)
     expert_allowed_credential_ids = _(expert_credentials.expert_allowed_credential_ids)
+    seeded_expert_credential_ids = _(expert_credentials.seeded_expert_credential_ids)
     settle_credential_seed = _(expert_credentials.settle_credential_seed)
     update_soul = _(experts_db.update_soul)
     update_soul_if_current = _(experts_db.update_soul_if_current)
@@ -1041,6 +1044,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_graph_execution_stats = d.update_graph_execution_stats
     update_node_execution_status = d.update_node_execution_status
     update_node_execution_status_batch = d.update_node_execution_status_batch
+    mark_node_executions_moderated = d.mark_node_executions_moderated
     upsert_execution_input = d.upsert_execution_input
     upsert_execution_output = d.upsert_execution_output
     get_execution_outputs_by_node_exec_id = d.get_execution_outputs_by_node_exec_id
@@ -1322,6 +1326,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     parked_spend_decision = d.parked_spend_decision
     open_chat_spend_review = d.open_chat_spend_review
     expert_allowed_credential_ids = d.expert_allowed_credential_ids
+    seeded_expert_credential_ids = d.seeded_expert_credential_ids
     settle_credential_seed = d.settle_credential_seed
     update_soul = d.update_soul
     update_soul_if_current = d.update_soul_if_current

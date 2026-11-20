@@ -311,6 +311,21 @@ async def expert_allowed_credential_ids(user_id: str, expert_id: str) -> list[st
     return [grant.credentialId for grant in await _grants(expert_id)]
 
 
+async def seeded_expert_credential_ids(
+    user_id: str, expert_id: str
+) -> list[str] | None:
+    """``expert_allowed_credential_ids`` without its seed: ``None`` while the
+    allow-list is unseeded, so the read never writes and can run beside other
+    reads. A caller then seeds with ``expert_allowed_credential_ids``.
+
+    Raises ``ExpertNotFoundError`` for an expert the user does not own.
+    """
+    expert = await _owned_expert(user_id, expert_id)
+    if expert.credentialsSeededAt is None:
+        return None
+    return [grant.credentialId for grant in await _grants(expert_id)]
+
+
 def filter_credentials_for_expert(
     credentials: list[Credentials], allowed_ids: set[str]
 ) -> list[Credentials]:

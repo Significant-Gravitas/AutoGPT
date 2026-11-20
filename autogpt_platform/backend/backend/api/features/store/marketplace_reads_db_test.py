@@ -1,4 +1,5 @@
-"""Public marketplace reads against a real Postgres.
+"""Marketplace reads against a real Postgres: the public views, and the admin
+listing search.
 
 The creator views are SQL and the listing-version filter is a Prisma query,
 so ``db_test.py``'s mocks cannot run either; ``server`` starts the test stack.
@@ -78,6 +79,31 @@ async def test_a_listing_graph_is_served_only_for_a_listed_version(server):
             await store_db.get_available_graph(approved)
     finally:
         await _clean_up(owner, [graph_id])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_admin_listing_search_finds_owners_by_email_literally(server):
+    """An admin search matches the owner's email in the listings query itself,
+    with `_` as the character: `x_y` finds its owner's listing and not that of
+    an `xzy` lookalike. The slugs don't hold the term, so only the email can
+    match."""
+    tag = uuid4().hex[:12]
+    owner = await _seed_creator(f"x_y{tag}", avatar_url="")
+    lookalike = await _seed_creator(f"xzy{tag}", avatar_url="")
+    graph_ids = [f"graph-{uuid4().hex[:12]}", f"graph-{uuid4().hex[:12]}"]
+    try:
+        await _seed_listing(graph_ids[0], owner, [PENDING])
+        await _seed_listing(graph_ids[1], lookalike, [PENDING])
+
+        found = await store_db.get_admin_listings_with_versions(
+            search_query=f"x_y{tag}"
+        )
+
+        assert [listing.graph_id for listing in found.listings] == [graph_ids[0]]
+        assert found.pagination.total_items == 1
+    finally:
+        await _clean_up(owner, graph_ids[:1])
+        await _clean_up(lookalike, graph_ids[1:])
 
 
 async def _seed_creator(tag: str, avatar_url: str | None) -> str:
