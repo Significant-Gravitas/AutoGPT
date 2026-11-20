@@ -413,8 +413,10 @@ export function headerPairsToRecord(
   );
 }
 
-export function hasRepeatedHeaderName(headers: Record<string, string>) {
-  const names = Object.keys(headers).map((name) => name.toLowerCase());
+export function hasRepeatedHeaderName(pairs: HeaderPair[]) {
+  const names = pairs
+    .filter((pair) => pair.key.trim() && pair.value.trim())
+    .map((pair) => pair.key.trim().toLowerCase());
   return new Set(names).size !== names.length;
 }
 

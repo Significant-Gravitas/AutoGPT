@@ -154,7 +154,7 @@ export function HostScopedCredentialsModal({
       });
       return;
     }
-    if (hasRepeatedHeaderName(headers)) {
+    if (hasRepeatedHeaderName(headerPairs)) {
       toast({
         title: "Use each header name once",
         description:

@@ -1,5 +1,4 @@
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -75,12 +74,16 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-// The dialogs' inputs don't render zod messages here, so let react-hook-form
-// finish validating and then check that nothing was sent.
-async function settle() {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  });
+// The API key and host fields show no message when refused, but once
+// validation fails react-hook-form moves the cursor into the refused field.
+// The button is focused first, so only the refusal can move the cursor there.
+async function submitAndWaitForRefusal(
+  button: HTMLElement,
+  refusedField: HTMLElement,
+) {
+  button.focus();
+  fireEvent.click(button);
+  await waitFor(() => expect(document.activeElement).toBe(refusedField));
 }
 
 function type(placeholder: string, value: string) {
@@ -108,9 +111,10 @@ describe("APIKeyCredentialsModal", () => {
     type("Enter a name for this API Key...", "My key");
     type("Enter API Key...", "    ");
 
-    fireEvent.click(screen.getByRole("button", { name: "Add API Key" }));
-
-    await settle();
+    await submitAndWaitForRefusal(
+      screen.getByRole("button", { name: "Add API Key" }),
+      screen.getByPlaceholderText("Enter API Key..."),
+    );
     expect(createAPIKeyCredentials).not.toHaveBeenCalled();
   });
 
@@ -119,9 +123,10 @@ describe("APIKeyCredentialsModal", () => {
     type("Enter a name for this API Key...", "   ");
     type("Enter API Key...", "sk-abc");
 
-    fireEvent.click(screen.getByRole("button", { name: "Add API Key" }));
-
-    await settle();
+    await submitAndWaitForRefusal(
+      screen.getByRole("button", { name: "Add API Key" }),
+      screen.getByPlaceholderText("Enter a name for this API Key..."),
+    );
     expect(createAPIKeyCredentials).not.toHaveBeenCalled();
   });
 
@@ -164,7 +169,7 @@ describe("PasswordCredentialsModal", () => {
       screen.getByRole("button", { name: "Save & use this user login" }),
     );
 
-    await settle();
+    expect(await screen.findByText("Username is required")).toBeDefined();
     expect(createUserPasswordCredentials).not.toHaveBeenCalled();
   });
 
@@ -178,7 +183,7 @@ describe("PasswordCredentialsModal", () => {
       screen.getByRole("button", { name: "Save & use this user login" }),
     );
 
-    await settle();
+    expect(await screen.findByText("Name is required")).toBeDefined();
     expect(createUserPasswordCredentials).not.toHaveBeenCalled();
   });
 
@@ -242,7 +247,7 @@ describe("HostScopedCredentialsModal", () => {
 
   function submitButton() {
     return screen.getByRole("button", {
-      name: /use these credentials/,
+      name: /^(Save|Update) & use these credentials$/,
     }) as HTMLButtonElement;
   }
 
@@ -264,31 +269,40 @@ describe("HostScopedCredentialsModal", () => {
     expect(createHostScopedCredentials).not.toHaveBeenCalled();
   });
 
-  it("does not delete the existing credential when a header name repeats in another case", async () => {
-    renderModal();
-    type("Enter host (e.g., api.example.com)", "api.example.com");
-    fireEvent.click(screen.getByRole("button", { name: /Add Another Header/ }));
-    const names = screen.getAllByPlaceholderText(
-      "Header name (e.g., Authorization)",
-    );
-    const values = screen.getAllByPlaceholderText(
-      "Header value (e.g., Bearer token123)",
-    );
-    fireEvent.change(names[0], { target: { value: "Authorization" } });
-    fireEvent.change(values[0], { target: { value: "Bearer x" } });
-    fireEvent.change(names[1], { target: { value: "authorization" } });
-    fireEvent.change(values[1], { target: { value: "Bearer y" } });
+  it.each([
+    ["exactly", "Authorization"],
+    ["with padding", " Authorization "],
+    ["in another case", "authorization"],
+  ])(
+    "does not delete the existing credential when a header name repeats %s",
+    async (_, repeatedName) => {
+      renderModal();
+      type("Enter host (e.g., api.example.com)", "api.example.com");
+      fireEvent.click(
+        screen.getByRole("button", { name: "Add Another Header" }),
+      );
+      const names = screen.getAllByPlaceholderText(
+        "Header name (e.g., Authorization)",
+      );
+      const values = screen.getAllByPlaceholderText(
+        "Header value (e.g., Bearer token123)",
+      );
+      fireEvent.change(names[0], { target: { value: "Authorization" } });
+      fireEvent.change(values[0], { target: { value: "Bearer x" } });
+      fireEvent.change(names[1], { target: { value: repeatedName } });
+      fireEvent.change(values[1], { target: { value: "Bearer y" } });
 
-    fireEvent.click(submitButton());
+      fireEvent.click(submitButton());
 
-    await waitFor(() =>
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "Use each header name once" }),
-      ),
-    );
-    expect(deleteCredentials).not.toHaveBeenCalled();
-    expect(createHostScopedCredentials).not.toHaveBeenCalled();
-  });
+      await waitFor(() =>
+        expect(mockToast).toHaveBeenCalledWith(
+          expect.objectContaining({ title: "Use each header name once" }),
+        ),
+      );
+      expect(deleteCredentials).not.toHaveBeenCalled();
+      expect(createHostScopedCredentials).not.toHaveBeenCalled();
+    },
+  );
 
   it("trims the host before replacing the existing credential", async () => {
     renderModal();
@@ -314,9 +328,10 @@ describe("HostScopedCredentialsModal", () => {
     type("Header name (e.g., Authorization)", "Authorization");
     type("Header value (e.g., Bearer token123)", "Bearer x");
 
-    fireEvent.click(submitButton());
-
-    await settle();
+    await submitAndWaitForRefusal(
+      submitButton(),
+      screen.getByPlaceholderText("Enter host (e.g., api.example.com)"),
+    );
     expect(deleteCredentials).not.toHaveBeenCalled();
     expect(createHostScopedCredentials).not.toHaveBeenCalled();
   });
