@@ -988,29 +988,25 @@ class TestSmallCallWireRequest:
                 },
             )
 
-        transport = httpx.MockTransport(reply)
         real_openai, real_anthropic = openai.AsyncOpenAI, anthropic.AsyncAnthropic
-        with (
-            patch(
-                "backend.util.llm.providers.openai.AsyncOpenAI",
-                lambda **kw: real_openai(
-                    **kw, http_client=httpx.AsyncClient(transport=transport)
+        async with httpx.AsyncClient(transport=httpx.MockTransport(reply)) as client:
+            with (
+                patch(
+                    "backend.util.llm.providers.openai.AsyncOpenAI",
+                    lambda **kw: real_openai(**kw, http_client=client),
                 ),
-            ),
-            patch(
-                "backend.util.llm.providers.anthropic.AsyncAnthropic",
-                lambda **kw: real_anthropic(
-                    **kw, http_client=httpx.AsyncClient(transport=transport)
+                patch(
+                    "backend.util.llm.providers.anthropic.AsyncAnthropic",
+                    lambda **kw: real_anthropic(**kw, http_client=client),
                 ),
-            ),
-        ):
-            await call_provider(
-                provider=provider,
-                model=model,
-                api_key="sk-test",
-                messages=[_msg("user", "true or false?")],
-                max_tokens=16,
-            )
+            ):
+                await call_provider(
+                    provider=provider,
+                    model=model,
+                    api_key="sk-test",
+                    messages=[_msg("user", "true or false?")],
+                    max_tokens=16,
+                )
 
         assert sent == [_wire_body(model, dict(controls))]
 
