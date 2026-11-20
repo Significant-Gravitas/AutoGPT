@@ -26,7 +26,7 @@ Each `CatalogModel` entry:
 | `price_tier` | 1 (cheapest) to 3 (most expensive); used for display. |
 | `is_enabled` | **The kill switch.** A disabled model is refused at serve time — even when the routing flag routes to it. |
 | `visibility` | Who may *see* the model: `GA` (everyone), `EMPLOYEES`, `ADMINS`, or `HIDDEN`. `HIDDEN` models still **serve when explicitly routed** — that is the pre-launch testing state. Informational until the catalog-driven picker lands (today a model stays out of block pickers by not having an enum line); the field is the picker's contract. Visibility never overrides `is_enabled`. |
-| `fallback_model_slug` | Standing replacement pointer: the retirement CLI defaults `--replacement` to it, and it is reserved for future automatic failover. |
+| `fallback_model_slug` | Standing replacement pointer. A block given a switched-off model runs, and is billed for, its fallback instead, when the fallback is enabled and from the same provider; the retirement CLI also defaults `--replacement` to it. |
 | `supports_*` | Capability flags (tools, JSON output, reasoning, parallel tool calls). Informational and authored opportunistically — `False` means *not asserted*, not "unsupported"; nothing consumes them at runtime yet, so only rely on authored `True` values. |
 | `cost` | What users pay: flat `run_credits` and/or per-1M token **credit** rates (billing reads these). Optionally `provider_*_usd_per_1m`: what the provider charges us — the USD list price, used for in-turn cost estimates when a model is priced off its family default (e.g. Kimi K3's $3/$15). |
 
@@ -105,8 +105,8 @@ On the managed cloud, the catalog is the serve-time gate for layers 1–2: a slu
 
 Retirement has two halves:
 
-1. **Stop it serving**: a catalog PR setting `is_enabled: False`. On the managed cloud this is the kill switch: it beats the routing flag and hides the model from block pickers. Two caveats: if the model is also a `CHAT_*_MODEL` env default, the env floor still serves it (loudly — log + Sentry) until you change that default; and existing agent graphs referencing it keep executing and billing — the kill switch stops NEW serving, step 2 is what stops stored graphs. Self-hosted installs and local transports skip the catalog gate, so there it only hides the model from pickers: to stop AutoPilot serving it, remove its route from the `copilot-model-routing` flag and change any `CHAT_*_MODEL` default that still selects it.
-2. **Migrate existing graph nodes** onto a replacement so users' agents keep working:
+1. **Stop it serving**: a catalog PR setting `is_enabled: False`. On the managed cloud this is the kill switch: it beats the routing flag and hides the model from block pickers. Two caveats: if the model is also a `CHAT_*_MODEL` env default, the env floor still serves it (loudly — log + Sentry) until you change that default; and existing agent graphs referencing it keep running: on its `fallback_model_slug` when that is an enabled model of the same provider (billed as the fallback, with an info log line per run), otherwise on the model itself until step 2 moves them. This covers values no stored-data pass reaches: a workflow input wired into a block's `model`, a preset, a schedule or an API call. Self-hosted installs and local transports skip the catalog gate, so there it doesn't stop AutoPilot serving the model: to stop that, remove its route from the `copilot-model-routing` flag and change any `CHAT_*_MODEL` default that still selects it.
+2. **Migrate existing graph nodes** onto a replacement, so stored workflows name the model they run (the builder shows a switched-off model as unavailable) and a model without a fallback stops running:
 
 ```bash
 # dry run — prints affected node count and exits 1
@@ -125,7 +125,7 @@ The replacement must exist in the catalog and be enabled. Every executed retirem
 
 The CLI rewrites only nodes of blocks whose `model` input is an `LLMModel`. Other blocks name an input `model` too, with lists of their own (Stagehand offers a few Claude and GPT models, Codex its own GPT models), and a catalog replacement can be a value their schema refuses, so the dry run counts their nodes and the command leaves them alone. Moving those is the block's own change: Stagehand, for example, runs a node saved on Claude Sonnet 4.5 on Sonnet 4.6.
 
-Once the provider has shut a model down, its graphs fail on every run and there is nothing left to revert to. Then add it to `LEGACY_MODEL_MAPPINGS` (`llm_registry/llm_models.py`) as well: `migrate_llm_models` moves every LLM-block node and every preset that names it, in each install, self-hosted ones included, the next time the app starts.
+Once the provider has shut a model down, there is nothing left to revert to. Then add it to `LEGACY_MODEL_MAPPINGS` (`llm_registry/llm_models.py`) as well: `migrate_llm_models` rewrites every LLM-block node, and every preset override of one, that names it, in each install, self-hosted ones included, the next time the app starts. It logs, at INFO, how many nodes and preset overrides it moved from each stored value to its replacement, and keeps no record to revert, so map a model only once nothing can run on it. Use its catalog fallback as the target: a test checks the two agree.
 
 ## Reading the catalog from clients
 

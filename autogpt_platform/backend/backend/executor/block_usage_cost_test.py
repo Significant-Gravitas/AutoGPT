@@ -348,7 +348,7 @@ def test_llm_block_pre_flight_falls_back_to_model_cost():
     cost, _ = block_usage_cost(
         block,
         {
-            "model": LLMModel.GPT5,
+            "model": LLMModel.GPT6_1_SOL,
             "credentials": {
                 "id": openai_credentials.id,
                 "provider": openai_credentials.provider,
@@ -356,7 +356,7 @@ def test_llm_block_pre_flight_falls_back_to_model_cost():
             },
         },
     )
-    assert cost == MODEL_COST[LLMModel.GPT5]
+    assert cost == MODEL_COST[LLMModel.GPT6_1_SOL]
 
 
 @pytest.mark.parametrize("schema_default_input", [{}, {"model": None}])
@@ -376,6 +376,31 @@ def test_llm_block_price_includes_schema_defaults(schema_default_input: dict):
     assert block_usage_cost(block, implicit) == block_usage_cost(block, explicit)
     assert block_usage_cost(block, implicit, stats=stats) == block_usage_cost(
         block, explicit, stats=stats
+    )
+
+
+def test_a_switched_off_model_is_charged_as_the_fallback_it_runs():
+    """A block given a model the catalog has switched off runs the model's
+    catalog fallback (`Block.with_retired_models_replaced`), and is charged
+    for it: gpt-5-pro runs, and is priced, as gpt-6.1-sol."""
+    block = AITextGeneratorBlock()
+    credentials = {
+        "id": openai_credentials.id,
+        "provider": openai_credentials.provider,
+        "type": openai_credentials.type,
+    }
+    stored = {"model": LLMModel.GPT5_PRO.value, "credentials": credentials}
+    runs = {"model": LLMModel.GPT6_1_SOL.value, "credentials": credentials}
+    stats = NodeExecutionStats(input_token_count=1_000_000, output_token_count=0)
+
+    cost, matched = block_usage_cost(block, stored, stats=stats)
+
+    assert matched["model"] == LLMModel.GPT6_1_SOL
+    assert cost == math.ceil(TOKEN_COST[LLMModel.GPT6_1_SOL].input)
+    assert cost < math.ceil(TOKEN_COST[LLMModel.GPT5_PRO].input)
+    assert block_usage_cost(block, stored) == block_usage_cost(block, runs)
+    assert executor_utils._with_schema_defaults(block, stored)["model"] == (
+        LLMModel.GPT6_1_SOL
     )
 
 

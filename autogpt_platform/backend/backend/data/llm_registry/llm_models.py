@@ -422,8 +422,10 @@ def _picker_hidden_slugs(payload: "CatalogPayload") -> frozenset[str]:
     safety control. A hand-crafted graph node can still select a
     kill-switched slug; execution of stored graphs must keep working after
     a kill (and keep billing), so the block layer deliberately does not
-    veto. The hard-stop for an incident is the retirement CLI, which
-    rewrites the nodes; copilot serving IS vetoed at resolution time.
+    veto. A block given a kill-switched slug with a fallback runs, and is
+    billed for, the fallback (``RETIRED_MODEL_FALLBACKS``); one without a
+    fallback runs as stored. The retirement CLI rewrites the stored nodes;
+    copilot serving IS vetoed at resolution time.
     """
     return frozenset(
         m.slug for m in payload.models if not m.is_enabled or m.visibility != "GA"
@@ -431,6 +433,49 @@ def _picker_hidden_slugs(payload: "CatalogPayload") -> frozenset[str]:
 
 
 _PICKER_HIDDEN_SLUGS = _picker_hidden_slugs(get_catalog())
+
+
+def _retired_model_fallbacks(
+    payload: "CatalogPayload",
+) -> Mapping["LLMModel", "LLMModel"]:
+    """Kill-switched models whose catalog fallback is an enabled block model
+    of the same provider, so the node's credentials still fit it. A block
+    given one of these runs the fallback instead: a workflow input or preset
+    value, a schedule or an API call can name a model no stored-data pass
+    reaches, and once its provider shuts it down every such run would fail.
+    """
+    members = {member.value: member for member in LLMModel}
+    by_slug = {model.slug: model for model in payload.models}
+    fallbacks: dict[LLMModel, LLMModel] = {}
+    for model in payload.models:
+        target = by_slug.get(model.fallback_model_slug or "")
+        if (
+            model.is_enabled
+            or model.slug not in members
+            or target is None
+            or not target.is_enabled
+            or target.slug not in members
+            or target.provider != model.provider
+        ):
+            continue
+        fallbacks[members[model.slug]] = members[target.slug]
+    return fallbacks
+
+
+RETIRED_MODEL_FALLBACKS = _retired_model_fallbacks(get_catalog())
+
+
+def retired_model_fallback(value: object) -> "LLMModel | None":
+    """The model a block runs in place of *value*, when the catalog has
+    switched *value* off; None when *value* runs as it is. Takes any spelling
+    the enum takes (``openai/gpt-5-2025-08-07`` too). An unknown value gets
+    None, and the block's input check refuses it as before."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return RETIRED_MODEL_FALLBACKS.get(LLMModel(value))
+    except ValueError:
+        return None
 
 
 def _default_model_from_catalog() -> LLMModel:

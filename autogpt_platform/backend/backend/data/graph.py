@@ -2961,6 +2961,9 @@ async def migrate_llm_models(fallback: LLMModel):
         node is a block with that LLMModel field: other blocks' own ``model``
         lists (Codex, Stagehand) share values with ``LLMModel``.
 
+    Logs, at INFO, how many nodes and preset overrides moved from each stored
+    value to its replacement, so an install's log shows what changed.
+
     Note: Only updates top level LLMModel SchemaFields of blocks (won't update nested fields).
     """
     logger.info("Migrating LLM models")
@@ -3010,11 +3013,18 @@ async def migrate_llm_models(fallback: LLMModel):
         AND io."data"::jsonb->>($5)::text NOT IN {escaped_enum_values}
         """
 
+    # (stored value, replacement) -> [nodes moved, preset overrides moved]
+    moved: dict[tuple[str, str], list[int]] = {}
+    outside_enum = "a value outside LLMModel"
+
+    def count(source: str, target: str, kind: int, rows: int) -> None:
+        moved.setdefault((source, target), [0, 0])[kind] += rows
+
     # AgentNode pass — per (block_id, field_name).
     for block_id, path in llm_model_fields.items():
         for legacy_value, replacement in LEGACY_MODEL_MAPPINGS.items():
             for stored_value in _legacy_value_aliases(legacy_value, replacement):
-                await execute_raw_with_schema(
+                rows = await execute_raw_with_schema(
                     node_targeted_query,
                     [path],
                     replacement.value,
@@ -3022,13 +3032,15 @@ async def migrate_llm_models(fallback: LLMModel):
                     path,
                     stored_value,
                 )
-        await execute_raw_with_schema(
+                count(repr(stored_value), replacement.value, 0, rows)
+        rows = await execute_raw_with_schema(
             node_fallback_query,
             [path],
             fallback.value,
             block_id,
             path,
         )
+        count(outside_enum, fallback.value, 0, rows)
 
     # AgentPreset pass — per unique field name, over the node overrides whose
     # node is a block with that field.
@@ -3038,7 +3050,7 @@ async def migrate_llm_models(fallback: LLMModel):
         )
         for legacy_value, replacement in LEGACY_MODEL_MAPPINGS.items():
             for stored_value in _legacy_value_aliases(legacy_value, replacement):
-                await execute_raw_with_schema(
+                rows = await execute_raw_with_schema(
                     preset_targeted_query,
                     [path],
                     replacement.value,
@@ -3047,7 +3059,8 @@ async def migrate_llm_models(fallback: LLMModel):
                     path,
                     stored_value,
                 )
-        await execute_raw_with_schema(
+                count(repr(stored_value), replacement.value, 1, rows)
+        rows = await execute_raw_with_schema(
             preset_fallback_query,
             [path],
             fallback.value,
@@ -3055,6 +3068,14 @@ async def migrate_llm_models(fallback: LLMModel):
             block_ids,
             path,
         )
+        count(outside_enum, fallback.value, 1, rows)
+
+    for (source, target), (nodes, presets) in sorted(moved.items()):
+        if nodes or presets:
+            logger.info(
+                f"LLM model migration moved {nodes} node(s) and {presets} "
+                f"preset override(s) from {source} to '{target}'"
+            )
 
 
 def find_llm_model_fields() -> dict[str, str]:

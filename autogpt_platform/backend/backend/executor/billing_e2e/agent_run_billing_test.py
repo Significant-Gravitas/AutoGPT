@@ -176,7 +176,10 @@ def _agent_with_an_ai_tool() -> graph_model.Graph:
 
 
 async def _start_run(
-    graph: graph_model.GraphModel, user_id: str, monkeypatch: pytest.MonkeyPatch
+    graph: graph_model.GraphModel,
+    user_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+    inputs: dict | None = None,
 ) -> str:
     """Start the run and return the queued message the executor would receive.
 
@@ -193,7 +196,7 @@ async def _start_run(
 
     monkeypatch.setattr(executor_utils, "get_async_execution_queue", _execution_queue)
     await executor_utils.add_graph_execution(
-        graph_id=graph.id, user_id=user_id, graph_version=graph.version
+        graph_id=graph.id, user_id=user_id, graph_version=graph.version, inputs=inputs
     )
     (message,) = queued
     return message

@@ -21,6 +21,7 @@ from backend.blocks.llm import (
 from backend.data.block_cost_config import BLOCK_COSTS, MODEL_COST, TOKEN_COST
 from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.catalog_model import CATALOG_SCHEMA_VERSION
+from backend.data.llm_registry.llm_models import retired_model_fallback
 
 CATALOG = get_catalog()
 
@@ -90,8 +91,9 @@ PROVIDER_SHUTDOWNS: dict[str, tuple[str, str]] = {
 
 @pytest.mark.parametrize("slug", sorted(PROVIDER_SHUTDOWNS))
 def test_models_their_provider_shuts_down_are_switched_off(slug: str):
-    """Off in the block picker and refused by the copilot, with the model its
-    graphs go to as the retire CLI's default target."""
+    """Off in the block picker and refused by the copilot, with the model a
+    block given it runs instead, and its graphs go to as the retire CLI's
+    default target."""
     by_slug = {m.slug: m for m in CATALOG.models}
     _, replacement = PROVIDER_SHUTDOWNS[slug]
 
@@ -99,6 +101,20 @@ def test_models_their_provider_shuts_down_are_switched_off(slug: str):
     assert by_slug[slug].fallback_model_slug == replacement
     assert by_slug[replacement].is_enabled
     assert replacement not in PROVIDER_SHUTDOWNS
+    assert retired_model_fallback(slug) == LLMModel(replacement)
+
+
+def test_legacy_mappings_agree_with_the_catalog_fallback():
+    """A model both in ``LEGACY_MODEL_MAPPINGS`` and in the catalog moves at
+    boot to the model a block given it runs: its catalog fallback. Two
+    sources for one target would let them drift apart."""
+    by_slug = {m.slug: m for m in CATALOG.models}
+    disagree = {
+        legacy: (target.value, by_slug[legacy].fallback_model_slug)
+        for legacy, target in LEGACY_MODEL_MAPPINGS.items()
+        if legacy in by_slug and by_slug[legacy].fallback_model_slug != target.value
+    }
+    assert not disagree
 
 
 def test_legacy_mappings_never_move_graphs_onto_a_shut_down_model():

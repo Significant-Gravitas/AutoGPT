@@ -132,8 +132,10 @@ class CatalogModel(BaseModel):
     # picker hides); visibility="HIDDEN" still SERVES when explicitly
     # routed — the pre-launch testing state.
     visibility: ModelVisibility = "GA"
-    # Standing replacement pointer: pre-fills the retirement CLI's
-    # replacement and is the hook for future runtime failover.
+    # Standing replacement pointer. A block given this model while it is
+    # switched off runs, and is billed for, the fallback instead, when the
+    # fallback is enabled and from the same provider; it also pre-fills the
+    # retirement CLI's replacement.
     fallback_model_slug: str | None = Field(default=None, pattern=_SLUG_PATTERN)
     supports_tools: bool = False
     supports_json_output: bool = False

@@ -3973,11 +3973,8 @@ model LlmModelMigration {
   reason          String?
 
   // JSON array of rewritten AgentNode ids, for revert
-  migratedNodeIds        Json @default("[]")
-  nodeCount              Int // DB constraint: >= 0
-  // JSON array of rewritten preset input rows (AgentNodeExecutionInputOutput
-  // ids): presets' overrides of an LLM-block node, for revert
-  migratedPresetInputIds Json @default("[]")
+  migratedNodeIds Json @default("[]")
+  nodeCount       Int // DB constraint: >= 0
 
   isReverted Boolean   @default(false)
   revertedAt DateTime?

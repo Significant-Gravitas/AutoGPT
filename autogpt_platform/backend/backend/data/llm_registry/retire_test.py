@@ -7,6 +7,7 @@ validation and the active-migration partial unique index.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any
 from unittest.mock import AsyncMock
@@ -300,7 +301,7 @@ async def test_retire_leaves_other_blocks_model_inputs_alone(
     args = _build_parser().parse_args([source, "--replacement", replacement])
     assert await _run_cli(args) == 1
     dry_run = capsys.readouterr().out
-    assert "would migrate 1 node(s) and 0 preset input(s)" in dry_run
+    assert "would migrate 1 node(s) from" in dry_run
     assert "1 node(s) of other blocks also name" in dry_run
 
     result = await retire_model(source, replacement)
@@ -311,12 +312,14 @@ async def test_retire_leaves_other_blocks_model_inputs_alone(
 
 
 async def test_boot_pass_moves_shut_down_models_once_and_nothing_else(
-    retirement_env,
+    retirement_env, caplog
 ):
     """The next boot moves an LLM node off a model its provider has shut down,
-    in either stored spelling, o1-mini included. It leaves a model still being
-    served (the retire CLI moves those), a live model and another block's
-    value alone, and a second boot changes nothing."""
+    in either stored spelling, o1-mini included, and logs what it moved. It
+    leaves a model still being served (the retire CLI moves those), a live
+    model and other blocks' values alone: the Codex node's ``gpt-5.1-codex``
+    (a legacy key in Codex's own list) and an image node's model outside
+    ``LLMModel`` too. A second boot changes nothing and logs no move."""
     nodes = {
         "o3-mini": await _seed_node(retirement_env, "o3-mini"),
         "openai/o3-mini": await _seed_node(retirement_env, "openai/o3-mini"),
@@ -326,6 +329,9 @@ async def test_boot_pass_moves_shut_down_models_once_and_nothing_else(
         "stagehand": await _seed_node(
             retirement_env, "claude-sonnet-4-5-20250929", _STAGEHAND_BLOCK_ID
         ),
+        "codex": await _seed_node(retirement_env, "gpt-5.1-codex", _CODEX_BLOCK_ID),
+        # Outside LLMModel, so only the catch-all's block scope keeps it.
+        "image": await _seed_node(retirement_env, "Flux 1.1 Pro", _IMAGE_BLOCK_ID),
     }
     expected = {
         "o3-mini": "gpt-6.1-terra",
@@ -334,15 +340,34 @@ async def test_boot_pass_moves_shut_down_models_once_and_nothing_else(
         "still served": "gpt-5-2025-08-07",
         "live": "gpt-6.1-sol",
         "stagehand": "claude-sonnet-4-5-20250929",
+        "codex": "gpt-5.1-codex",
+        "image": "Flux 1.1 Pro",
+    }
+    first_boot_moves = {
+        f"LLM model migration moved 1 node(s) and 0 preset override(s) from "
+        f"'{stored}' to 'gpt-6.1-terra'"
+        for stored in ("o3-mini", "openai/o3-mini", "o1-mini")
     }
 
     # The real boot pass, over every row in the test database as at app
     # start; only this test's rows are asserted.
-    for _ in range(2):
-        await migrate_llm_models(DEFAULT_LLM_MODEL)
+    for boot in range(2):
+        caplog.clear()
+        with caplog.at_level(logging.INFO, logger="backend.data.graph"):
+            await migrate_llm_models(DEFAULT_LLM_MODEL)
         assert {
             name: await _node_model(node_id) for name, node_id in nodes.items()
         } == expected
+        moves = {
+            record.getMessage()
+            for record in caplog.records
+            if record.getMessage().startswith("LLM model migration moved")
+        }
+        if boot == 0:
+            assert first_boot_moves <= moves
+        else:
+            # The first boot moved every row; nothing is left to move or log.
+            assert moves == set()
 
 
 async def test_boot_pass_rewrites_only_llm_block_preset_overrides(retirement_env):
@@ -388,16 +413,16 @@ async def test_boot_pass_rewrites_only_llm_block_preset_overrides(retirement_env
         assert await _node_model(codex_node) == "gpt-5.1-codex"
 
 
-async def test_retire_moves_llm_preset_overrides_and_reverts_them(
+async def test_retire_counts_preset_values_and_leaves_them_alone(
     retirement_env, mocker, capsys
 ):
-    """The CLI moves the LLM node and the preset's override of it, records
-    both, reports the Codex override and a workflow input's value that it
-    leaves alone, does nothing on a second run, and a revert restores
-    exactly the rows it moved."""
+    """The CLI moves the LLM node and leaves every preset row as it is: a
+    preset's override of that node, a Codex node's override and a workflow
+    input's value. The dry run counts each kind; an LLM block given one runs
+    the model's catalog fallback instead (``Block._execute``)."""
     from backend.data.llm_registry.retire import _build_parser, _run_cli
 
-    source, replacement = "gpt-5.1-codex", "gpt-5.6-sol"
+    source, replacement = "gpt-5.1-codex", "gpt-6.1-sol"
     llm_graph, llm_node = await _seed_graph(retirement_env, source)
     codex_graph, codex_node = await _seed_graph(retirement_env, source, _CODEX_BLOCK_ID)
     llm_rows = await _seed_preset(
@@ -410,8 +435,8 @@ async def test_retire_moves_llm_preset_overrides_and_reverts_them(
     codex_rows = await _seed_preset(
         codex_graph, {_override_key(codex_node): {"model": source}}
     )
-    override = llm_rows[_override_key(llm_node)]
     untouched = {
+        llm_rows[_override_key(llm_node)]: {"model": source, "sys_prompt": "be brief"},
         llm_rows["model_choice"]: source,
         codex_rows[_override_key(codex_node)]: {"model": source},
     }
@@ -419,65 +444,33 @@ async def test_retire_moves_llm_preset_overrides_and_reverts_them(
     usage = await model_usage(source)
     assert usage.model_dump() == {
         "nodes": 1,
-        "preset_inputs": 1,
         "other_block_nodes": 1,
+        "preset_overrides": 1,
         "other_preset_inputs": 2,
     }
     mocker.patch("backend.data.db.connect", new=AsyncMock())
     args = _build_parser().parse_args([source, "--replacement", replacement])
     assert await _run_cli(args) == 1
     dry_run = capsys.readouterr().out
-    assert "would migrate 1 node(s) and 1 preset input(s)" in dry_run
-    assert "2 preset input(s) name 'gpt-5.1-codex'" in dry_run
-
-    result = await retire_model(source, replacement)
-
-    assert (result.nodes_migrated, result.preset_inputs_migrated) == (1, 1)
-    assert await _node_model(llm_node) == replacement
-    assert await _preset_input(override) == {
-        "model": replacement,
-        "sys_prompt": "be brief",
-    }
-    assert await _node_model(codex_node) == source
-    assert {row: await _preset_input(row) for row in untouched} == untouched
-    [row] = await list_model_migrations()
-    assert row.preset_input_count == 1
-
-    again = await retire_model(source, replacement)
-    assert (again.nodes_migrated, again.preset_inputs_migrated) == (0, 0)
-    assert again.migration_id is None
-
-    assert result.migration_id is not None
-    reverted = await revert_model_migration(result.migration_id)
-
-    assert (reverted.nodes_reverted, reverted.preset_inputs_reverted) == (1, 1)
-    assert reverted.preset_inputs_already_changed == 0
-    assert await _node_model(llm_node) == source
-    assert await _preset_input(override) == {"model": source, "sys_prompt": "be brief"}
-    assert {row: await _preset_input(row) for row in untouched} == untouched
-
-
-async def test_revert_leaves_a_repointed_preset_override_alone(retirement_env):
-    """Like nodes, a preset override someone moved to a third model since the
-    retirement keeps that model when the retirement is reverted."""
-    source, replacement = _two_catalog_slugs()
-    graph_id, node_id = await _seed_graph(retirement_env, source)
-    rows = await _seed_preset(graph_id, {_override_key(node_id): {"model": source}})
-    override = rows[_override_key(node_id)]
-    result = await retire_model(source, replacement)
-    assert result.migration_id is not None
-    await prisma.models.AgentNodeExecutionInputOutput.prisma().update(
-        where={"id": override}, data={"data": prisma.Json({"model": "user/picked"})}
+    assert "would migrate 1 node(s)" in dry_run
+    assert "1 preset override(s) of an LLM node name 'gpt-5.1-codex'" in dry_run
+    assert "2 other preset input(s) name 'gpt-5.1-codex'" in dry_run
+    assert (
+        "An LLM block given 'gpt-5.1-codex' runs 'gpt-6.1-sol', its catalog "
+        "fallback, instead." in dry_run
     )
 
-    reverted = await revert_model_migration(result.migration_id)
+    args = _build_parser().parse_args([source, "--replacement", replacement, "--yes"])
+    assert await _run_cli(args) == 0
+    applied = capsys.readouterr().out
 
-    assert (
-        reverted.preset_inputs_reverted,
-        reverted.preset_inputs_already_changed,
-    ) == (0, 1)
-    assert await _preset_input(override) == {"model": "user/picked"}
-    assert await _node_model(node_id) == source
+    assert '"nodes_migrated": 1' in applied
+    assert "1 preset override(s) of an LLM node name 'gpt-5.1-codex'" in applied
+    # The catalog has switched it off already, so there is nothing to remind.
+    assert "Reminder" not in applied
+    assert await _node_model(llm_node) == replacement
+    assert await _node_model(codex_node) == source
+    assert {row: await _preset_input(row) for row in untouched} == untouched
 
 
 @pytest.mark.asyncio(loop_scope="session")

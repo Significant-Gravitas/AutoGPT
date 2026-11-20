@@ -11,11 +11,12 @@ offers a few Claude and GPT models, Codex its own GPT models), and a catalog
 replacement can be a value their schema refuses. Those nodes are counted and
 left alone.
 
-A preset can override one node's inputs, in a row named with that node's mask
-key (``graph.NODE_INPUT_MASK_PREFIX``). Such a row is rewritten too when its
-node is one of those LLM blocks, and recorded for revert. Other preset rows
-that name the model, most often a workflow input's value, are counted and left
-alone.
+Preset rows that name the model are counted and left alone. A preset stores
+a node override (the row named with the node's ``graph.NODE_INPUT_MASK_PREFIX``
+key) only for its trigger node, and no trigger block has a ``model`` input, so
+today none overrides an LLM block; the rest are workflow input values. An LLM
+block given a switched-off model runs its catalog fallback instead
+(``Block._execute``), so those values keep working.
 
 CLI::
 
@@ -49,6 +50,7 @@ import backend.data.db
 from backend.data.db import get_database_schema, query_raw_with_schema, transaction
 from backend.data.graph import NODE_INPUT_MASK_PREFIX, find_llm_model_fields
 from backend.data.llm_registry.catalog import get_catalog
+from backend.data.llm_registry.llm_models import retired_model_fallback
 from backend.data.llm_registry.registry import get_model, load_catalog
 
 logger = logging.getLogger(__name__)
@@ -58,8 +60,7 @@ class MigrationResult(BaseModel):
     source_model_slug: str
     target_model_slug: str
     nodes_migrated: int
-    preset_inputs_migrated: int
-    migration_id: str | None  # None when nothing referenced the model
+    migration_id: str | None  # None when no nodes referenced the model
 
 
 class RevertResult(BaseModel):
@@ -70,19 +71,17 @@ class RevertResult(BaseModel):
     # Nodes that were manually changed to a third model after the migration
     # are left alone (the revert UPDATE is guarded on the migrated value).
     nodes_already_changed: int
-    preset_inputs_reverted: int
-    preset_inputs_already_changed: int
 
 
 class ModelUsage(BaseModel):
     """What a retirement of one model rewrites, and what it leaves alone."""
 
     nodes: int
-    preset_inputs: int
     # Nodes of other blocks whose own ``model`` list holds the same value.
     other_block_nodes: int
-    # Preset rows naming the model that are not an LLM node's override, most
-    # often a workflow input's value.
+    # Presets' overrides of an LLM-block node holding the model.
+    preset_overrides: int
+    # Other preset rows naming the model, most often a workflow input's value.
     other_preset_inputs: int
 
 
@@ -161,7 +160,7 @@ async def model_usage(slug: str) -> ModelUsage:
              WHERE "constantInput"::jsonb->>'model' = $1
              AND "agentBlockId" IN (SELECT jsonb_array_elements_text($2::jsonb))
             ) AS nodes,
-            (SELECT COUNT(*) FROM llm_presets) AS preset_inputs,
+            (SELECT COUNT(*) FROM llm_presets) AS preset_overrides,
             (SELECT COUNT(*) FROM {schema_prefix}"AgentNode"
              WHERE "constantInput"::jsonb->>'model' = $1
              AND "agentBlockId" NOT IN (SELECT jsonb_array_elements_text($2::jsonb))
@@ -218,40 +217,12 @@ async def _migrate_nodes_in_tx(
     return migrated_node_ids
 
 
-async def _migrate_preset_inputs_in_tx(
-    tx, source_value: str, target_value: str, llm_block_ids_json: str
-) -> list[str]:
-    """Lock + rewrite the presets' overrides of LLM-block nodes. Returns the
-    rewritten row ids."""
-    rows = await tx.query_raw(
-        _schema_format('SELECT io."id"' + _LLM_PRESET_INPUTS + "FOR UPDATE OF io"),
-        source_value,
-        llm_block_ids_json,
-        NODE_INPUT_MASK_PREFIX,
-    )
-    row_ids = [row["id"] for row in rows or []]
-    if row_ids:
-        await tx.execute_raw(
-            _schema_format(
-                """
-                UPDATE {schema_prefix}"AgentNodeExecutionInputOutput"
-                SET "data" = JSONB_SET("data"::jsonb, '{{model}}', to_jsonb($1::text))
-                WHERE "id" IN (SELECT jsonb_array_elements_text($2::jsonb))
-                """
-            ),
-            target_value,
-            json.dumps(row_ids),
-        )
-    return row_ids
-
-
 async def retire_model(
     slug: str, replacement_slug: str, reason: str | None = None
 ) -> MigrationResult:
-    """Rewrite every LLM-block node referencing *slug*, and every preset
-    override of such a node, to *replacement_slug*.
+    """Rewrite every LLM-block node referencing *slug* to *replacement_slug*.
 
-    Records an ``LlmModelMigration`` row when anything was touched; the
+    Records an ``LlmModelMigration`` row when any nodes were touched; the
     partial unique index rejects a second active migration for the same
     source (revert the first one before retrying).
     """
@@ -274,11 +245,8 @@ async def retire_model(
             migrated_node_ids = await _migrate_nodes_in_tx(
                 tx, slug, replacement_slug, llm_block_ids_json
             )
-            migrated_preset_input_ids = await _migrate_preset_inputs_in_tx(
-                tx, slug, replacement_slug, llm_block_ids_json
-            )
             migration_id: str | None = None
-            if migrated_node_ids or migrated_preset_input_ids:
+            if migrated_node_ids:
                 record = await tx.llmmodelmigration.create(
                     data={
                         "sourceModelSlug": slug,
@@ -286,7 +254,6 @@ async def retire_model(
                         "reason": reason,
                         "migratedNodeIds": json.dumps(migrated_node_ids),
                         "nodeCount": len(migrated_node_ids),
-                        "migratedPresetInputIds": json.dumps(migrated_preset_input_ids),
                     }
                 )
                 migration_id = record.id
@@ -300,14 +267,12 @@ async def retire_model(
         source_model_slug=slug,
         target_model_slug=replacement_slug,
         nodes_migrated=len(migrated_node_ids),
-        preset_inputs_migrated=len(migrated_preset_input_ids),
         migration_id=migration_id,
     )
 
 
 async def revert_model_migration(migration_id: str) -> RevertResult:
-    """Restore the nodes and preset inputs a migration touched to the
-    original model."""
+    """Restore nodes touched by a migration to the original model."""
     migration = await prisma.models.LlmModelMigration.prisma().find_unique(
         where={"id": migration_id}
     )
@@ -316,10 +281,13 @@ async def revert_model_migration(migration_id: str) -> RevertResult:
     if migration.isReverted:
         raise ValueError(f"Migration '{migration_id}' has already been reverted")
 
-    migrated_node_ids = _recorded_ids(migration.migratedNodeIds)
-    migrated_preset_input_ids = _recorded_ids(migration.migratedPresetInputIds)
-    if not migrated_node_ids and not migrated_preset_input_ids:
-        raise ValueError("Nothing to revert in this migration")
+    migrated_node_ids: list[str] = (
+        migration.migratedNodeIds
+        if isinstance(migration.migratedNodeIds, list)
+        else json.loads(str(migration.migratedNodeIds))
+    )
+    if not migrated_node_ids:
+        raise ValueError("No nodes to revert in this migration")
 
     async with transaction() as tx:
         # Atomic claim: the guarded update IS the lock — a concurrent revert
@@ -353,20 +321,6 @@ async def revert_model_migration(migration_id: str) -> RevertResult:
             migration.targetModelSlug,
         )
         nodes_reverted = result if isinstance(result, int) else 0
-        result = await tx.execute_raw(
-            _schema_format(
-                """
-                UPDATE {schema_prefix}"AgentNodeExecutionInputOutput"
-                SET "data" = JSONB_SET("data"::jsonb, '{{model}}', to_jsonb($1::text))
-                WHERE "id" IN (SELECT jsonb_array_elements_text($2::jsonb))
-                AND "data"::jsonb->>'model' = $3
-                """
-            ),
-            migration.sourceModelSlug,
-            json.dumps(migrated_preset_input_ids),
-            migration.targetModelSlug,
-        )
-        preset_inputs_reverted = result if isinstance(result, int) else 0
 
     if get_model(migration.sourceModelSlug) is None:
         logger.warning(
@@ -381,17 +335,7 @@ async def revert_model_migration(migration_id: str) -> RevertResult:
         target_model_slug=migration.targetModelSlug,
         nodes_reverted=nodes_reverted,
         nodes_already_changed=len(migrated_node_ids) - nodes_reverted,
-        preset_inputs_reverted=preset_inputs_reverted,
-        preset_inputs_already_changed=(
-            len(migrated_preset_input_ids) - preset_inputs_reverted
-        ),
     )
-
-
-def _recorded_ids(value: object) -> list[str]:
-    """An id list from a migration record's JSON column, which Prisma returns
-    parsed or as text."""
-    return value if isinstance(value, list) else json.loads(str(value))
 
 
 class MigrationRow(BaseModel):
@@ -402,7 +346,6 @@ class MigrationRow(BaseModel):
     target_model_slug: str
     reason: str | None
     node_count: int
-    preset_input_count: int
     is_reverted: bool
     reverted_at: str | None
     created_at: str
@@ -421,7 +364,6 @@ async def list_model_migrations(include_reverted: bool = False) -> list[Migratio
             target_model_slug=r.targetModelSlug,
             reason=r.reason,
             node_count=r.nodeCount,
-            preset_input_count=len(_recorded_ids(r.migratedPresetInputIds)),
             is_reverted=r.isReverted,
             reverted_at=r.revertedAt.isoformat() if r.revertedAt else None,
             created_at=r.createdAt.isoformat(),
@@ -470,10 +412,7 @@ async def _run_cli(args: argparse.Namespace) -> int:
 
     if args.usage:
         usage = await model_usage(args.usage)
-        print(
-            f"{args.usage}: {usage.nodes} node(s), "
-            f"{usage.preset_inputs} preset input(s)"
-        )
+        print(f"{args.usage}: {usage.nodes} node(s)")
         _print_left_alone(args.usage, usage)
         return 0
     if args.revert:
@@ -507,8 +446,7 @@ async def _run_cli(args: argparse.Namespace) -> int:
     if not args.yes:
         _validate_replacement(args.replacement)
         print(
-            f"DRY RUN: would migrate {usage.nodes} node(s) and "
-            f"{usage.preset_inputs} preset input(s) from '{args.slug}' to "
+            f"DRY RUN: would migrate {usage.nodes} node(s) from '{args.slug}' to "
             f"'{args.replacement}'. Re-run with --yes to execute."
         )
         _print_left_alone(args.slug, usage)
@@ -516,10 +454,11 @@ async def _run_cli(args: argparse.Namespace) -> int:
     result = await retire_model(args.slug, args.replacement, reason=args.reason)
     print(result.model_dump_json(indent=2))
     _print_left_alone(args.slug, usage)
-    print(
-        "Reminder: retirement only rewrites graph nodes — flip "
-        f"'{args.slug}' to enabled=False in a catalog PR to stop new use."
-    )
+    if (source := get_model(args.slug)) is not None and source.is_enabled:
+        print(
+            "Reminder: retirement only rewrites graph nodes — flip "
+            f"'{args.slug}' to enabled=False in a catalog PR to stop new use."
+        )
     return 0
 
 
@@ -529,11 +468,24 @@ def _print_left_alone(slug: str, usage: ModelUsage) -> None:
             f"{usage.other_block_nodes} node(s) of other blocks also name "
             f"'{slug}' in their own model list and are left alone."
         )
+    if usage.preset_overrides:
+        print(
+            f"{usage.preset_overrides} preset override(s) of an LLM node name "
+            f"'{slug}' and are left alone."
+        )
     if usage.other_preset_inputs:
         print(
-            f"{usage.other_preset_inputs} preset input(s) name '{slug}' "
-            "without overriding an LLM block's model (most often a workflow "
-            "input's value) and are left alone."
+            f"{usage.other_preset_inputs} other preset input(s) name '{slug}' "
+            "(most often a workflow input's value) and are left alone."
+        )
+    if usage.preset_overrides or usage.other_preset_inputs:
+        fallback = retired_model_fallback(slug)
+        print(
+            f"An LLM block given '{slug}' runs '{fallback.value}', its catalog "
+            "fallback, instead."
+            if fallback
+            else f"An LLM block given '{slug}' runs it as it is: the catalog "
+            "names no enabled fallback of the same provider for it."
         )
 
 
