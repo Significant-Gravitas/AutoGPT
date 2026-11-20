@@ -97,6 +97,7 @@ def _completed_run(owner: str) -> AgentGraphExecution:
         agentGraphId=GRAPH_ID,
         agentGraphVersion=1,
         userId=owner,
+        organizationId="org-1",
         isShared=False,
         visibility=ResourceVisibility.PRIVATE,
         NodeExecutions=[

@@ -50,10 +50,24 @@ async def user_id() -> AsyncIterator[str]:
             await prisma.integrationwebhook.delete_many(where={"userId": uid})
             await prisma.storelisting.delete_many(where={"owningUserId": uid})
             await prisma.user.delete_many(where={"id": uid})
-            await prisma.organization.delete_many(where={"bootstrapUserId": uid})
+            await prisma.organization.delete_many(
+                where={"OR": [{"bootstrapUserId": uid}, {"slug": f"team-{uid}"}]}
+            )
         finally:
             if connected_here and prisma.is_connected():
                 await prisma.disconnect()
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def reviewer_id(user_id: str) -> AsyncIterator[str]:
+    """A second user to review with, so the creator's org can't stand in for it."""
+    uid = f"reviewer-{uuid.uuid4().hex[:12]}"
+    await prisma.user.create(data={"id": uid, "email": f"{uid}@example.com"})
+    try:
+        yield uid
+    finally:
+        await prisma.user.delete_many(where={"id": uid})
+        await prisma.organization.delete_many(where={"bootstrapUserId": uid})
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -165,8 +179,90 @@ async def test_a_store_submission_tags_its_listing_and_version(user_id):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_an_approved_sub_workflow_is_listed_in_its_workflows_org(user_id):
-    """The sub-workflow's listing and version go to the workflow's org."""
+@pytest.mark.parametrize("submitted_in", ["personal", "team"])
+async def test_an_approved_sub_workflow_is_listed_in_its_workflows_org(
+    user_id, reviewer_id, submitted_in
+):
+    """The sub-workflow of an approved submission is listed in the submission's
+    org, personal or team. Never the reviewer's."""
+    await _creator_profile(user_id)
+    team_org_id = await _team_org(user_id) if submitted_in == "team" else None
+    sub = await _graph(user_id, team_org_id)
+    submission = await _submit(
+        user_id, await _workflow_using(user_id, sub, team_org_id), team_org_id
+    )
+
+    await _approve(submission, reviewer_id)
+
+    expected = team_org_id or (await _personal_tenancy(user_id))[0]
+    sub_listing = await prisma.storelisting.find_first_or_raise(
+        where={"agentGraphId": sub.id}, include={"Versions": True}
+    )
+    assert sub_listing.owningOrgId == expected
+    assert [v.organizationId for v in sub_listing.Versions or []] == [expected]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_sub_workflows_new_version_joins_its_listings_org(user_id, reviewer_id):
+    """A sub-workflow listed from a team org keeps its later versions there, even
+    when the workflow that brings a new one was submitted from the personal org."""
+    await _creator_profile(user_id)
+    team_org_id = await _team_org(user_id)
+    sub = await _graph(user_id, team_org_id)
+    await _approve(
+        await _submit(
+            user_id, await _workflow_using(user_id, sub, team_org_id), team_org_id
+        ),
+        reviewer_id,
+    )
+    sub_v2 = await graph_db.create_graph(
+        graph_db.make_graph_model(
+            graph_db.Graph(
+                id=sub.id, version=2, name="Briefing", description="Summarises it"
+            ),
+            user_id,
+        ),
+        user_id,
+        organization_id=team_org_id,
+    )
+
+    await _approve(
+        await _submit(user_id, await _workflow_using(user_id, sub_v2, None), None),
+        reviewer_id,
+    )
+
+    sub_listing = await prisma.storelisting.find_first_or_raise(
+        where={"agentGraphId": sub.id}, include={"Versions": True}
+    )
+    assert sorted(
+        (v.agentGraphVersion, v.organizationId) for v in sub_listing.Versions or []
+    ) == [(1, team_org_id), (2, team_org_id)]
+
+
+async def _personal_tenancy(user_id: str) -> tuple[str, str]:
+    member = await prisma.orgmember.find_first_or_raise(
+        where={"userId": user_id, "isOwner": True, "Org": {"is": {"isPersonal": True}}}
+    )
+    team = await prisma.team.find_first_or_raise(
+        where={"orgId": member.orgId, "isDefault": True}
+    )
+    return member.orgId, team.id
+
+
+async def _graph(
+    user_id: str, organization_id: str | None = None
+) -> graph_db.GraphModel:
+    return await graph_db.create_graph(
+        graph_db.make_graph_model(
+            graph_db.Graph(name="Briefing", description="Summarises the week"),
+            user_id,
+        ),
+        user_id,
+        organization_id=organization_id,
+    )
+
+
+async def _creator_profile(user_id: str) -> None:
     await prisma.profile.create(
         data={
             "userId": user_id,
@@ -176,8 +272,30 @@ async def test_an_approved_sub_workflow_is_listed_in_its_workflows_org(user_id):
             "links": [],
         }
     )
-    sub = await _graph(user_id)
-    main = await graph_db.create_graph(
+
+
+async def _team_org(user_id: str) -> str:
+    """A team org *user_id* owns besides their personal one."""
+    org = await prisma.organization.create(
+        data={"name": "Creator's team", "slug": f"team-{user_id}"}
+    )
+    await prisma.orgmember.create(
+        data={
+            "orgId": org.id,
+            "userId": user_id,
+            "status": "ACTIVE",
+            "isOwner": True,
+            "isAdmin": True,
+        }
+    )
+    return org.id
+
+
+async def _workflow_using(
+    user_id: str, sub: graph_db.GraphModel, organization_id: str | None
+) -> graph_db.GraphModel:
+    """A workflow whose one node runs *sub*."""
+    return await graph_db.create_graph(
         graph_db.make_graph_model(
             graph_db.Graph(
                 name="Briefing with a helper",
@@ -199,51 +317,33 @@ async def test_an_approved_sub_workflow_is_listed_in_its_workflows_org(user_id):
             user_id,
         ),
         user_id,
+        organization_id=organization_id,
     )
-    submission = await store_db.create_store_submission(
+
+
+async def _submit(
+    user_id: str, graph: graph_db.GraphModel, organization_id: str | None
+):
+    return await store_db.create_store_submission(
         user_id=user_id,
-        graph_id=main.id,
-        graph_version=main.version,
+        graph_id=graph.id,
+        graph_version=graph.version,
         slug=f"briefing-{uuid.uuid4().hex[:8]}",
         name="Briefing",
         sub_heading="Summarises the week",
         description="Summarises the week",
+        organization_id=organization_id,
     )
 
+
+async def _approve(submission, reviewer_id: str) -> None:
     await store_db.review_store_submission(
         submission.listing_version_id,
         is_approved=True,
         external_comments="",
         internal_comments="",
-        reviewer_id=user_id,
+        reviewer_id=reviewer_id,
         notify_creator=False,
-    )
-
-    personal_org_id, _ = await _personal_tenancy(user_id)
-    sub_listing = await prisma.storelisting.find_first_or_raise(
-        where={"agentGraphId": sub.id}, include={"Versions": True}
-    )
-    assert sub_listing.owningOrgId == personal_org_id
-    assert [v.organizationId for v in sub_listing.Versions or []] == [personal_org_id]
-
-
-async def _personal_tenancy(user_id: str) -> tuple[str, str]:
-    member = await prisma.orgmember.find_first_or_raise(
-        where={"userId": user_id, "isOwner": True, "Org": {"is": {"isPersonal": True}}}
-    )
-    team = await prisma.team.find_first_or_raise(
-        where={"orgId": member.orgId, "isDefault": True}
-    )
-    return member.orgId, team.id
-
-
-async def _graph(user_id: str) -> graph_db.GraphModel:
-    return await graph_db.create_graph(
-        graph_db.make_graph_model(
-            graph_db.Graph(name="Briefing", description="Summarises the week"),
-            user_id,
-        ),
-        user_id,
     )
 
 
