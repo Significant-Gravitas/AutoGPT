@@ -96,6 +96,7 @@ import backend.util.settings
 from backend.api.session_auth import require_active_auth_session
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.blocks.llm import DEFAULT_LLM_MODEL
+from backend.copilot.bot.adapters.base import WebhookAdapter
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.webhook_routes import (
     register_webhook_adapters,
@@ -138,6 +139,8 @@ logging.getLogger("autogpt_libs").setLevel(logging.INFO)
 # mount on this API. Owned at module level so `lifespan_context` can close it on
 # shutdown; the routes themselves are mounted further down once `app` exists.
 _webhook_bot_backend = BotBackend()
+# Filled once the routes are mounted below; the lifespan runs their startup hooks.
+_webhook_adapters: list[WebhookAdapter] = []
 
 
 @contextlib.asynccontextmanager
