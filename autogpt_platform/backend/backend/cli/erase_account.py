@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import click
 
 from backend.util.logging import configure_logging
+from backend.util.sql import escape_like
 
 if TYPE_CHECKING:
     from backend.data.account_erasure.models import ErasureReport
@@ -351,7 +352,9 @@ async def _resolve(account: str) -> tuple[str, str | None]:
 
     if "@" not in account:
         return account, None
-    by_email = {"email": {"equals": account, "mode": "insensitive"}}
+    # A case-insensitive `equals` is an ILIKE: unescaped, `sam_lee@x.com` would
+    # also find `sam.lee@x.com`, and the run would erase that account.
+    by_email = {"email": {"equals": escape_like(account), "mode": "insensitive"}}
     user = await User.prisma().find_first(where=by_email)
     if user:
         return user.id, account

@@ -726,6 +726,24 @@ async def test_get_user_profile(mocker):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_agents_rejects_nul_before_querying():
+    """A NUL must raise ValueError (a 400), not reach the lexical fallback,
+    whose database error would surface as a DatabaseError (a 500)."""
+    with patch(
+        "backend.api.features.store.hybrid_search.query_raw_with_schema",
+        AsyncMock(return_value=[]),
+    ) as hybrid_query_raw, patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(return_value=[]),
+    ) as fallback_query_raw:
+        with pytest.raises(ValueError):
+            await db.get_store_agents(search_query="a\x00b")
+
+        hybrid_query_raw.assert_not_awaited()
+        fallback_query_raw.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_agents_with_search_parameterized():
     """Malicious search input is passed as a parameter, not concatenated into SQL."""
     with patch(
@@ -852,6 +870,18 @@ async def test_get_store_creators_accepts_long_and_blank_queries(
     assert {
         match["contains"] for field in where.get("OR", []) for match in field.values()
     } == searched_for
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_creators_rejects_nul_before_querying(mocker):
+    creators = mocker.patch("prisma.models.Creator.prisma")
+    creators.return_value.find_many = AsyncMock(return_value=[])
+    creators.return_value.count = AsyncMock(return_value=0)
+
+    with pytest.raises(ValueError):
+        await db.get_store_creators(search_query="a\x00b")
+
+    creators.return_value.find_many.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1285,6 +1315,34 @@ async def test_get_my_agents_search_filters_agent_name_and_description(mocker):
         mock_library.return_value.find_many.call_args.kwargs["where"] == expected_where
     )
     mock_library.return_value.count.assert_called_once_with(where=expected_where)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_my_agents_search_matches_wildcards_literally(mocker):
+    library = mocker.patch("prisma.models.LibraryAgent.prisma")
+    library.return_value.find_many = AsyncMock(return_value=[])
+    library.return_value.count = AsyncMock(return_value=0)
+
+    await db.get_my_agents(user_id="user-id", search_query="web_scraper 100%")
+
+    where = library.return_value.find_many.call_args.kwargs["where"]
+    pattern = {"contains": r"web\_scraper 100\%", "mode": "insensitive"}
+    assert where["AgentGraph"]["is"]["OR"] == [
+        {"name": pattern},
+        {"description": pattern},
+    ]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_my_agents_rejects_nul_before_querying(mocker):
+    library = mocker.patch("prisma.models.LibraryAgent.prisma")
+    library.return_value.find_many = AsyncMock(return_value=[])
+    library.return_value.count = AsyncMock(return_value=0)
+
+    with pytest.raises(ValueError):
+        await db.get_my_agents(user_id="user-id", search_query="a\x00b")
+
+    library.return_value.find_many.assert_not_awaited()
 
 
 def _submission_version(
@@ -2291,3 +2349,49 @@ async def test_a_submission_in_an_organization_needs_a_graph_from_it(mocker):
         {"organizationId": "org-a"},
         {"organizationId": None},
     ]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_submissions_search_escapes_like_wildcards(mocker):
+    mock_store_sub = mocker.patch("prisma.models.StoreSubmission.prisma")
+    mock_store_sub.return_value.find_many = AsyncMock(return_value=[])
+    mock_store_sub.return_value.count = AsyncMock(return_value=0)
+    mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(
+            return_value=[
+                SubmissionStats(
+                    total=0, approved=0, pending=0, total_runs=0, average_rating=0
+                )
+            ]
+        ),
+    )
+
+    await db.get_store_submissions(
+        user_id="user-id", page=1, page_size=20, search_query="my_agent%"
+    )
+
+    where = mock_store_sub.return_value.find_many.call_args.kwargs["where"]
+    assert where["OR"][0] == {
+        "name": {"contains": r"my\_agent\%", "mode": "insensitive"}
+    }
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_admin_listings_match_owner_emails_in_the_listings_query(mocker):
+    """The owner-email match is a join in the listings query itself, so no
+    capped lookup of matching users can drop owners from the page or the
+    total, and the term is escaped there too."""
+    users = mocker.patch("prisma.models.User.prisma")
+    listings = mocker.patch("prisma.models.StoreListing.prisma")
+    listings.return_value.find_many = AsyncMock(return_value=[])
+    listings.return_value.count = AsyncMock(return_value=0)
+
+    await db.get_admin_listings_with_versions(search_query="first_last")
+
+    users.assert_not_called()
+    where = listings.return_value.find_many.call_args.kwargs["where"]
+    pattern = {"contains": r"first\_last", "mode": "insensitive"}
+    assert where["OR"][0] == {"slug": pattern}
+    assert {"OwningUser": {"is": {"email": pattern}}} in where["OR"]
+    assert listings.return_value.count.call_args.kwargs["where"] == where
