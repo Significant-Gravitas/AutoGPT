@@ -77,11 +77,11 @@ async def _turn_that_auto_continues(
             stack.enter_context(
                 patch(f"{_SVC}.{name}", new=AsyncMock(return_value=value))
             )
-        stack.enter_context(patch(f"{_SVC}.push_pending_message", new=requeue))
+        stack.enter_context(patch(f"{_SVC}.restore_pending_messages", new=requeue))
         stack.enter_context(
             patch(
                 f"{_SVC}.drain_pending_safe",
-                new=AsyncMock(side_effect=lambda *_: next(drains, [])),
+                new=AsyncMock(side_effect=lambda *_, **__: next(drains, [])),
             )
         )
         remember_expert_check(session.user_id, "expert-1", CHECK)
@@ -117,7 +117,7 @@ async def test_an_auto_continue_rechecks_its_expert_and_requeues_on_refusal():
 
     assert seen == [CHECK, None]
     assert client_calls == ["called"]
-    requeue.assert_awaited_once_with(session.session_id, pending)
+    requeue.assert_awaited_once_with(session.session_id, [pending])
 
 
 @pytest.mark.asyncio

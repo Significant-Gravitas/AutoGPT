@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import type { ActivationResponse } from "@/app/api/__generated__/models/activationResponse";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { refreshActivation } from "./refreshActivation";
-import { safeReturnTo } from "./helpers";
+import { isCheckoutReturn, safeReturnTo } from "./helpers";
 import { storeConsent } from "./storage";
 
 export function useActivationReadiness(
@@ -43,9 +43,14 @@ export function useActivationReadiness(
         const returnTo = safeReturnTo(
           response.return_to ?? "/settings/billing",
         );
+        // A Checkout's success URL is where Stripe returns the user; opening it
+        // again re-runs that page's checkout-return handling.
         if (
+          !isCheckoutReturn(
+            new URL(returnTo, window.location.origin).searchParams,
+          ) &&
           returnTo !==
-          `${window.location.pathname}${window.location.search}${window.location.hash}`
+            `${window.location.pathname}${window.location.search}${window.location.hash}`
         )
           router.replace(returnTo);
       }

@@ -108,10 +108,22 @@ def queued_turn_message() -> str:
 
 
 class ConcurrentTurnLimitError(Exception):
-    """User has reached the configured running Otto turn cap."""
+    """User has reached the configured running Otto turn cap.
 
-    def __init__(self, message: str | None = None) -> None:
+    ``cap`` is the cap that refused the turn and ``used`` the user's count
+    against it, when the raiser counted; both are for analytics.
+    """
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        cap: int | None = None,
+        used: int | None = None,
+    ) -> None:
         super().__init__(message or running_turn_limit_message())
+        self.cap = cap
+        self.used = used
 
 
 class SessionNotIdle(Exception):
@@ -218,7 +230,9 @@ async def acquire_turn_slot(
         capacity=resolved_capacity,
     )
     if admit == "full":
-        raise ConcurrentTurnLimitError(running_turn_limit_message(resolved_capacity))
+        raise ConcurrentTurnLimitError(
+            running_turn_limit_message(resolved_capacity), cap=resolved_capacity
+        )
     if admit == "admitted":
         handle.admitted = True
     else:
@@ -230,7 +244,7 @@ async def acquire_turn_slot(
         current = await db.get_chat_session_status(session_id)
         if current == CHAT_STATUS_QUEUED:
             raise ConcurrentTurnLimitError(
-                running_turn_limit_message(resolved_capacity)
+                running_turn_limit_message(resolved_capacity), cap=resolved_capacity
             )
         # Any other state (running, or unexpectedly idle from a
         # parallel transition) is treated as refresh: no admit, no

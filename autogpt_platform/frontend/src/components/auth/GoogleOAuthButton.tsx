@@ -21,8 +21,8 @@ export function GoogleOAuthButton({
       disabled={disabled}
       loading={isLoading}
     >
-      <Image src="/google-logo.svg" alt="Google" width={20} height={20} />
-      {isLoading ? "Connecting..." : "Continue with Google"}
+      <Image src="/google-logo.svg" alt="" width={20} height={20} />
+      {isLoading ? "Connecting…" : "Continue with Google"}
     </Button>
   );
 }

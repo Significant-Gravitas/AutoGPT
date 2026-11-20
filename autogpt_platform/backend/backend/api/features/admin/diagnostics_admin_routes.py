@@ -39,7 +39,11 @@ from backend.data.diagnostics import (
     stop_all_long_running_executions,
 )
 from backend.data.execution import get_graph_executions
-from backend.executor.utils import add_graph_execution, stop_graph_execution
+from backend.executor.utils import (
+    ExecutionNotRequeuedError,
+    add_graph_execution,
+    stop_graph_execution,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -423,6 +427,13 @@ async def requeue_single_execution(
             graph_version=execution.graph_version,
             graph_exec_id=request.execution_id,  # Requeue existing execution
             bypass_paywall=True,
+            admin_requeue=True,
+        )
+    except ExecutionNotRequeuedError as e:
+        return RequeueExecutionResponse(
+            success=False,
+            requeued_count=0,
+            message=str(e),
         )
     except experts_db.ExpertPrivateTenancyNotFoundError as e:
         raise HTTPException(
@@ -489,8 +500,12 @@ async def requeue_multiple_executions(
                 graph_version=exec.graph_version,
                 graph_exec_id=exec.id,  # Requeue existing
                 bypass_paywall=True,
+                admin_requeue=True,
             )
             return True
+        except ExecutionNotRequeuedError as e:
+            logger.info(f"Did not requeue {exec.id}: {e}")
+            return False
         except Exception as e:
             logger.error(f"Failed to requeue {exec.id}: {e}")
             return False
@@ -931,8 +946,12 @@ async def requeue_all_stuck_executions(
                 graph_version=exec.graph_version,
                 graph_exec_id=exec.id,  # Requeue existing
                 bypass_paywall=True,
+                admin_requeue=True,
             )
             return True
+        except ExecutionNotRequeuedError as e:
+            logger.info(f"Did not requeue {exec.id}: {e}")
+            return False
         except Exception as e:
             logger.error(f"Failed to requeue {exec.id}: {e}")
             return False

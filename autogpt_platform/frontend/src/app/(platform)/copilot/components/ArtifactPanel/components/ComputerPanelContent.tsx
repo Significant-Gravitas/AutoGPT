@@ -13,6 +13,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCopilotUIStore } from "../../../store";
+import { desktopStartFailure } from "./desktopStartFailure";
 
 interface Props {
   sessionId: string;
@@ -71,10 +72,10 @@ export function ComputerPanelContent({ sessionId }: Props) {
           queryKey: getGetV2GetSessionComputerQueryKey(sessionId),
         });
       },
-      onError: () => {
+      onError: (error) => {
         toast({
           title: "Could not open the desktop",
-          description: "The sandbox did not come up. Try again in a moment.",
+          description: desktopStartFailure(error),
           variant: "destructive",
         });
       },

@@ -65,7 +65,7 @@ The endpoints, requests and responses are the same. What differs is the account 
 
 ### Behind a reverse proxy
 
-Authenticated requests are rate-limited per user, so a proxy doesn't affect them. Unauthenticated requests are limited to 5 per minute **per client IP**, and behind a proxy every client can appear to come from the proxy's address and share that one allowance. If you rely on unauthenticated traffic, set `TRUSTED_PROXY_COUNT` in the backend's environment to the number of proxies in front of it, so the API reads the client address from `X-Forwarded-For`.
+Authenticated requests are rate-limited per user, so a proxy doesn't affect them. Unauthenticated requests are limited to 5 per minute **per client IP**, and behind a proxy every client can appear to come from the proxy's address and share that one allowance. If you rely on unauthenticated traffic, set `TRUSTED_PROXIES` in the backend's environment to the proxies in front of it, as comma-separated IP addresses or CIDR ranges, so the API reads the client address from `X-Forwarded-For` past them; [Client IP Addresses](../client-ip.md#limits-on-the-external-api) explains the setting and the deprecated `TRUSTED_PROXY_COUNT` it replaces.
 
 Serve the API over HTTPS whenever it is reachable from another machine. API keys travel in a request header and are as sensitive as a password.
 
