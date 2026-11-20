@@ -17,7 +17,7 @@ the model database (data-as-code); splitting it would scatter the one
 place model facts live.
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from backend.data.llm_registry.catalog_model import (
     CATALOG_SCHEMA_VERSION,
@@ -287,6 +287,11 @@ def _build_catalog() -> CatalogPayload:
                 context_window=200000,
                 max_output_tokens=64000,
                 price_tier=3,
+                # Anthropic retires it 2026-11-30; its listed replacement is
+                # claude-sonnet-5-5.
+                is_enabled=False,
+                fallback_model_slug="claude-sonnet-5-5",
+                shutdown_at=date(2026, 11, 30),
                 cost=CatalogModelCost(
                     run_credits=9,
                     input_credits_per_1m=450.0,
@@ -923,6 +928,27 @@ def _build_catalog() -> CatalogPayload:
                     output_credits_per_1m=1500.0,
                     cache_read_credits_per_1m=15.0,
                     cache_creation_credits_per_1m=28.125,
+                ),
+            ),
+            CatalogModel(
+                slug="google/gemini-4-neon",
+                display_name="Gemini 4 Neon",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=3,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Live OpenRouter listing 2026-11-19: $3/$15 per Mtok,
+                # cache read $0.15/1M, cache write $0.0833/1M.
+                cost=CatalogModelCost(
+                    run_credits=8,
+                    input_credits_per_1m=450.0,
+                    output_credits_per_1m=2250.0,
+                    cache_read_credits_per_1m=22.5,
+                    cache_creation_credits_per_1m=12.5,
                 ),
             ),
             CatalogModel(
@@ -1857,6 +1883,10 @@ def _build_catalog() -> CatalogPayload:
                 context_window=400000,
                 max_output_tokens=128000,
                 price_tier=1,
+                # OpenAI shuts it down 2026-12-11; listed replacement gpt-6.1-sol.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-sol",
+                shutdown_at=date(2026, 12, 11),
                 # OpenAI list price $1.25/$10 per Mtok, cached input $0.125;
                 # GPT-5 bills nothing for writing the cache.
                 cost=CatalogModelCost(
@@ -1877,6 +1907,11 @@ def _build_catalog() -> CatalogPayload:
                 context_window=400000,
                 max_output_tokens=16384,
                 price_tier=2,
+                # Shut down by OpenAI 2026-07-23 (listed replacement gpt-5.6-sol).
+                # Graphs move unasked at boot, so to the current model at its
+                # price instead.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-sol",
                 cost=CatalogModelCost(
                     run_credits=5,
                     input_credits_per_1m=188.0,
@@ -1891,6 +1926,10 @@ def _build_catalog() -> CatalogPayload:
                 context_window=400000,
                 max_output_tokens=128000,
                 price_tier=1,
+                # OpenAI shuts it down 2026-12-11; listed replacement gpt-6.1-terra.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-terra",
+                shutdown_at=date(2026, 12, 11),
                 cost=CatalogModelCost(
                     run_credits=1,
                     input_credits_per_1m=38.0,
@@ -1905,6 +1944,10 @@ def _build_catalog() -> CatalogPayload:
                 context_window=400000,
                 max_output_tokens=128000,
                 price_tier=1,
+                # OpenAI shuts it down 2026-12-11; listed replacement gpt-6-luna.
+                is_enabled=False,
+                fallback_model_slug="gpt-6-luna",
+                shutdown_at=date(2026, 12, 11),
                 cost=CatalogModelCost(
                     run_credits=1, input_credits_per_1m=8.0, output_credits_per_1m=60.0
                 ),
@@ -1945,6 +1988,11 @@ def _build_catalog() -> CatalogPayload:
                 context_window=200000,
                 max_output_tokens=100000,
                 price_tier=2,
+                # Shut down by OpenAI 2026-10-23 (listed replacement gpt-5.6-terra).
+                # Graphs move unasked at boot, so to the current model at its
+                # price instead.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-terra",
                 cost=CatalogModelCost(
                     run_credits=2,
                     input_credits_per_1m=165.0,
@@ -1959,6 +2007,11 @@ def _build_catalog() -> CatalogPayload:
                 context_window=200000,
                 max_output_tokens=100000,
                 price_tier=3,
+                # OpenAI shuts it down 2026-12-11; listed replacement gpt-6.1-sol
+                # in pro reasoning mode, which no block requests.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-sol",
+                shutdown_at=date(2026, 12, 11),
                 cost=CatalogModelCost(
                     run_credits=30,
                     input_credits_per_1m=3000.0,
@@ -1973,6 +2026,9 @@ def _build_catalog() -> CatalogPayload:
                 context_window=200000,
                 max_output_tokens=100000,
                 price_tier=3,
+                # Shut down by OpenAI 2026-10-23; listed replacement gpt-5.6-sol.
+                is_enabled=False,
+                fallback_model_slug="gpt-5.6-sol",
                 cost=CatalogModelCost(
                     run_credits=16,
                     input_credits_per_1m=2250.0,
@@ -1987,6 +2043,10 @@ def _build_catalog() -> CatalogPayload:
                 context_window=128000,
                 max_output_tokens=65536,
                 price_tier=2,
+                # Shut down by OpenAI 2025-10-27. Its listed replacement, o4-mini,
+                # shut down 2026-10-23, so this follows o4-mini to gpt-6.1-terra.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-terra",
                 cost=CatalogModelCost(
                     run_credits=2,
                     input_credits_per_1m=165.0,
@@ -2051,6 +2111,28 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="gpt-6.2-sol",
+                display_name="GPT-6.2 Sol",
+                provider="openai",
+                creator="openai",
+                # Capped at the 272K base-price tier: OpenAI bills prompts
+                # above 272K at $4/$15 and the catalog has no tiered
+                # billing, so a larger window would under-bill.
+                context_window=272000,
+                max_output_tokens=128000,
+                # $2/1M in, $10/1M out, $0.10/1M cache read -- live
+                # OpenRouter rate as of 2026-11-18, same list price as
+                # gpt-6.1-sol (which stays listed and remains the default
+                # until Codex advertises this model). Tier 2 like gpt-6.1-sol.
+                price_tier=2,
+                cost=CatalogModelCost(
+                    run_credits=4,
+                    input_credits_per_1m=300.0,
+                    output_credits_per_1m=1500.0,
+                    cache_read_credits_per_1m=15.0,
+                ),
+            ),
+            CatalogModel(
                 slug="gpt-6.1-terra",
                 display_name="GPT-6.1 Terra",
                 provider="openai",
@@ -2080,9 +2162,7 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=128000,
                 # $8/1M in, $40/1M out, $0.40/1M cache read -- live
                 # OpenRouter rate as of 2026-11-17. Cheaper successor to
-                # gpt-6-astra (which stays listed and remains the Codex
-                # advanced default until Codex advertises this model).
-                # Tier 3 like gpt-6-astra.
+                # gpt-6-astra (which stays listed). Tier 3 like gpt-6-astra.
                 price_tier=3,
                 cost=CatalogModelCost(
                     run_credits=16,
@@ -2246,6 +2326,11 @@ def _build_catalog() -> CatalogPayload:
                 context_window=128000,
                 max_output_tokens=16384,
                 price_tier=2,
+                # Shut down by OpenAI 2026-08-10 (listed replacement gpt-5.6-sol).
+                # Graphs move unasked at boot, so to the current model at its
+                # price instead.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-sol",
                 cost=CatalogModelCost(
                     run_credits=5,
                     input_credits_per_1m=263.0,
@@ -2288,6 +2373,11 @@ def _build_catalog() -> CatalogPayload:
                 context_window=400000,
                 max_output_tokens=128000,
                 price_tier=2,
+                # Shut down by OpenAI 2026-07-23 (listed replacement gpt-5.6-sol).
+                # Graphs move unasked at boot, so to the current model at its
+                # price instead.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-sol",
                 cost=CatalogModelCost(
                     run_credits=5,
                     input_credits_per_1m=188.0,
@@ -2302,6 +2392,11 @@ def _build_catalog() -> CatalogPayload:
                 context_window=400000,
                 max_output_tokens=128000,
                 price_tier=3,
+                # OpenAI shuts it down 2026-12-11; listed replacement gpt-6.1-sol
+                # in pro reasoning mode, which no block requests.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-sol",
+                shutdown_at=date(2026, 12, 11),
                 cost=CatalogModelCost(
                     run_credits=60,
                     input_credits_per_1m=2250.0,
@@ -2316,6 +2411,11 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1047576,
                 max_output_tokens=32768,
                 price_tier=1,
+                # Shut down by OpenAI 2026-10-23 (listed replacement gpt-5.6-luna).
+                # Graphs move unasked at boot, so to the current model at its
+                # price instead.
+                is_enabled=False,
+                fallback_model_slug="gpt-6-luna",
                 cost=CatalogModelCost(
                     run_credits=1,
                     input_credits_per_1m=15.0,
@@ -2330,6 +2430,10 @@ def _build_catalog() -> CatalogPayload:
                 context_window=200000,
                 max_output_tokens=100000,
                 price_tier=2,
+                # OpenAI shuts it down 2026-12-11; listed replacement gpt-6.1-sol.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-sol",
+                shutdown_at=date(2026, 12, 11),
                 cost=CatalogModelCost(
                     run_credits=4,
                     input_credits_per_1m=300.0,
@@ -2344,6 +2448,11 @@ def _build_catalog() -> CatalogPayload:
                 context_window=200000,
                 max_output_tokens=100000,
                 price_tier=1,
+                # Shut down by OpenAI 2026-10-23 (listed replacement gpt-5.6-sol).
+                # Graphs move unasked at boot, so to the current model at its
+                # price instead.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-terra",
                 cost=CatalogModelCost(
                     run_credits=2,
                     input_credits_per_1m=165.0,
@@ -2494,11 +2603,13 @@ def _build_catalog() -> CatalogPayload:
                     # (still selectable, still billed) -- only the default
                     # moved.
                     "standard": "gpt-6-luna",
-                    "advanced": "gpt-6-astra",
+                    # gpt-6-astra stays in the catalog (selectable, billed);
+                    # only the advanced default points at gpt-6.2-astra.
+                    "advanced": "gpt-6.2-astra",
                 },
                 "thinking": {
                     "standard": "gpt-5.6-terra",
-                    "advanced": "gpt-6-astra",
+                    "advanced": "gpt-6.2-astra",
                 },
             }
         },

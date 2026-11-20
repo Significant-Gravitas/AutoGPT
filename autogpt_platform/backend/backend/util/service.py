@@ -31,12 +31,13 @@ import httpx
 import uvicorn
 from fastapi import FastAPI, Request, responses
 from prisma.errors import DataError, UniqueViolationError
-from pydantic import BaseModel, TypeAdapter, create_model
+from pydantic import BaseModel, TypeAdapter, ValidationError, create_model
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
 from tenacity import RetryCallState
 from tenacity.stop import stop_base
 
 import backend.util.exceptions as exceptions
+from backend.api.utils.validation_errors import describe_validation_error
 from backend.data import redis_client
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util import tracing
@@ -44,6 +45,7 @@ from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess, freeze_startup_heap
 from backend.util.request import HTTPServerError as RequestHTTPServerError
+from backend.util.request_credentials import remember_request_credentials
 from backend.util.retry import conn_retry, create_retry_decorator, stop_retry_loops
 from backend.util.service_auth import internal_auth_headers, require_internal_key
 from backend.util.settings import Config, get_service_name
@@ -254,6 +256,18 @@ class RemoteCallError(BaseModel):
     extras: Optional[RemoteCallExtras] = None
 
 
+class ValidationFailure(Exception):
+    """Stands in for a pydantic ``ValidationError`` in a service's log, with its
+    traceback: its message says where and why validation failed, but not what
+    failed it, which pydantic's own message quotes. The traceback's frames still
+    go to Sentry with their variables, which its scrubber masks as in any
+    event."""
+
+    @classmethod
+    def of(cls, exc: ValidationError) -> "ValidationFailure":
+        return cls(describe_validation_error(exc)).with_traceback(exc.__traceback__)
+
+
 class UnhealthyServiceError(ValueError):
     def __init__(
         self, message: str = "Service is unhealthy or not ready", log: bool = True
@@ -335,15 +349,20 @@ class AppService(BaseAppService, ABC):
     def _handle_internal_http_error(status_code: int = 500, log_error: bool = True):
         def handler(request: Request, exc: Exception):
             if log_error:
+                logged = (
+                    ValidationFailure.of(exc)
+                    if isinstance(exc, ValidationError)
+                    else exc
+                )
                 if status_code >= 500:
                     logger.error(
-                        f"{request.method} {request.url.path} failed: {exc}",
-                        exc_info=exc,
+                        f"{request.method} {request.url.path} failed: {logged}",
+                        exc_info=logged,
                     )
                 else:
                     logger.warning(
-                        f"{request.method} {request.url.path} failed: {exc}",
-                        exc_info=exc,
+                        f"{request.method} {request.url.path} failed: {logged}",
+                        exc_info=logged,
                     )
             extras: Optional[RemoteCallExtras] = None
             if isinstance(exc, exceptions.GraphValidationError):
@@ -441,6 +460,11 @@ class AppService(BaseAppService, ABC):
         app.add_exception_handler(ValueError, cls._handle_internal_http_error(400))
         app.add_exception_handler(
             exceptions.NotFoundError, cls._handle_internal_http_error(404)
+        )
+        # Not the catch-all: its 500 logs an error, and the server then drops
+        # the connection, failing the caller's next call on it.
+        app.add_exception_handler(
+            exceptions.ConflictError, cls._handle_internal_http_error(409)
         )
         app.add_exception_handler(DataError, cls._handle_internal_http_error(400))
         app.add_exception_handler(
@@ -601,6 +625,7 @@ class AppService(BaseAppService, ABC):
             "/health_check_async", self.health_check, methods=["POST", "GET"]
         )
         self._register_exception_handlers(app)
+        remember_request_credentials(app)
         # Last, so it is the outermost middleware: every request but the health
         # checks and /metrics needs the internal key before anything reads it.
         require_internal_key(app, self.service_name)

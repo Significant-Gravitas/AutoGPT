@@ -15,6 +15,7 @@ from typing_extensions import TypedDict  # Needed for Python <3.12 compatibility
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockInput,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -321,6 +322,19 @@ class AutoPilotBlock(Block):
             if not isinstance(tools, list):
                 return tools
             return [tool for tool in tools if tool not in DISABLED_LEGACY_TOOL_NAMES]
+
+        @classmethod
+        def get_input_defaults(cls, data: BlockInput) -> BlockInput:
+            """Keep a legacy node on the ChatGPT subscription it chose.
+
+            Deleting the connection of a node saved without a `transport`
+            used to store `codex_credentials: {}`, which now reads as "not
+            configured" and would move the node onto platform credits. Pin
+            the transport so the run reports the missing connection instead.
+            """
+            if data.get("transport") is None and data.get("codex_credentials") == {}:
+                return {**data, "transport": AutoPilotTransport.CODEX_APP_SERVER.value}
+            return data
 
     class Output(BlockSchemaOutput):
         """Output schema for the AutoPilot block."""

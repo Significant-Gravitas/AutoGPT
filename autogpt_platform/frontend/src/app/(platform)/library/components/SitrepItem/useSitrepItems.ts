@@ -95,6 +95,11 @@ function buildSitrepFromExecutions(
 ): SitrepItemData | null {
   const active = executions.find((e) => isActive(e.status));
   if (active) {
+    const activityStatus = active.stats?.activity_status ?? null;
+    const countsUp =
+      activityStatus === null &&
+      active.status === AgentExecutionStatus.RUNNING &&
+      Boolean(active.started_at);
     return {
       id: `${agent.id}-${active.id}`,
       agentID: agent.id,
@@ -102,8 +107,8 @@ function buildSitrepFromExecutions(
       executionID: active.id,
       priority: "running",
       message:
-        active.stats?.activity_status ??
-        runningMessage(active.status, active.started_at),
+        activityStatus ?? runningMessage(active.status, active.started_at),
+      runningSince: countsUp ? (active.started_at ?? undefined) : undefined,
       status: "running",
     };
   }
