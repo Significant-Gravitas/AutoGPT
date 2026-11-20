@@ -1,5 +1,6 @@
 "use client";
 
+import { resetSharedLiveUpdateLog } from "@/components/layout/Navbar/components/AgentActivityDropdown/useLiveUpdateLog";
 import { onAccountChange } from "@/lib/auth/on-account-change";
 import type { QueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
@@ -13,13 +14,17 @@ import { useEffect } from "react";
 // good, while a reset refetches what is on screen for the new account (as
 // OrgTeamProvider does on an organization switch). The last account's
 // mutations go too: useMutationState and useIsMutating read them, and one
-// paused while offline would otherwise resume under the next account.
+// paused while offline would otherwise resume under the next account. The
+// shared live-update log goes too: it is a module singleton, so the previous
+// account's retained run updates would otherwise replay into the next
+// account's Activity state.
 export function useClearOnAccountChange(queryClient: QueryClient) {
   useEffect(
     () =>
       onAccountChange(() => {
         queryClient.getMutationCache().clear();
         void queryClient.resetQueries();
+        resetSharedLiveUpdateLog();
       }),
     [queryClient],
   );

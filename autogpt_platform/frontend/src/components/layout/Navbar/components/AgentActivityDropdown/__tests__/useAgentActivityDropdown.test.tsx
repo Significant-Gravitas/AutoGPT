@@ -14,7 +14,10 @@ import { getGetV2ListLibraryAgentsResponseMock } from "@/app/api/__generated__/e
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import type { GraphExecution } from "@/lib/autogpt-server-api/types";
 import { server } from "@/mocks/mock-server";
-import { resetSharedLiveUpdateLog } from "../useLiveUpdateLog";
+import {
+  resetSharedLiveUpdateLog,
+  useLiveUpdateLog,
+} from "../useLiveUpdateLog";
 import { useAgentActivityDropdown } from "../useAgentActivityDropdown";
 
 const executionHandlers = new Set<(execution: GraphExecution) => void>();
@@ -202,59 +205,91 @@ describe("useAgentActivityDropdown", () => {
     const detailsHeld = new Promise<void>((resolve) => {
       releaseDetails = resolve;
     });
+    // The detail request itself: resolves once the held response is
+    // produced, so awaiting it waits for MSW and response parsing rather
+    // than for a timer.
+    let detailRequest: Promise<unknown> | undefined;
     let detailReads = 0;
     server.use(
       getGetV1GetExecutionDetailsMockHandler(async () => {
         detailReads += 1;
-        if (detailReads === 1) await detailsHeld;
-        return {
-          ...getGetV1GetExecutionDetailsResponseMock(),
-          ...run1,
-          inputs: {},
-          outputs: {},
-          node_executions: [],
-        };
+        const request = (async () => {
+          if (detailReads === 1) await detailsHeld;
+          return {
+            ...getGetV1GetExecutionDetailsResponseMock(),
+            ...run1,
+            inputs: {},
+            outputs: {},
+            node_executions: [],
+          };
+        })();
+        if (detailReads === 1) detailRequest = request;
+        return request;
       }),
     );
+    // The shared log the hook reads through: finishRead runs once the held
+    // read's answer is in, right before the hook's detail callback, so
+    // waiting for it proves the answer was consumed rather than still in
+    // flight when the final assertions run.
+    const { result: logResult } = renderHook(() => useLiveUpdateLog(), {
+      wrapper: makeWrapper(),
+    });
+    const finishRead = vi.spyOn(logResult.current, "finishRead");
 
     const { result } = renderHook(() => useAgentActivityDropdown(), {
       wrapper: makeWrapper(),
     });
-    await waitFor(() =>
-      expect(result.current.activeExecutions).toHaveLength(1),
-    );
-    releasePage2();
+    try {
+      await waitFor(() =>
+        expect(result.current.activeExecutions).toHaveLength(1),
+      );
+      releasePage2();
 
-    // First reconnect: the capped list leaves run-1 out, so the check reads
-    // it by ID — and the read is held open.
-    act(() => {
-      reconnectHandlers.forEach((handler) => handler());
-    });
-    await waitFor(() => expect(detailReads).toBe(1));
-    await waitFor(() =>
-      expect(result.current.activeExecutions.map((run) => run.id)).toContain(
-        "run-1",
-      ),
-    );
+      // First reconnect: the capped list leaves run-1 out, so the check reads
+      // it by ID — and the read is held open.
+      act(() => {
+        reconnectHandlers.forEach((handler) => handler());
+      });
+      await waitFor(() => expect(detailReads).toBe(1));
+      await waitFor(() =>
+        expect(result.current.activeExecutions.map((run) => run.id)).toContain(
+          "run-1",
+        ),
+      );
 
-    // Second reconnect: a list of fewer than 250 runs drops run-1, because
-    // a short list covers every run.
-    act(() => {
-      reconnectHandlers.forEach((handler) => handler());
-    });
-    await waitFor(() =>
-      expect(result.current.activeExecutions).toHaveLength(0),
-    );
+      // Second reconnect: a list of fewer than 250 runs drops run-1, because
+      // a short list covers every run.
+      act(() => {
+        reconnectHandlers.forEach((handler) => handler());
+      });
+      await waitFor(() =>
+        expect(result.current.activeExecutions).toHaveLength(0),
+      );
 
-    // Now the held read answers, still showing run-1 going. The complete
-    // list already settled it, so the run stays gone.
-    act(() => releaseDetails());
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    expect(result.current.activeExecutions).toHaveLength(0);
-    expect(result.current.activeExecutions.map((run) => run.id)).not.toContain(
-      "run-1",
-    );
+      // Now the held read answers, still showing run-1 going. The complete
+      // list already settled it, so the run stays gone.
+      act(() => releaseDetails());
+      await act(async () => {
+        await detailRequest;
+      });
+      await waitFor(() =>
+        expect(finishRead).toHaveBeenCalledWith("run-1", expect.anything()),
+      );
+      expect(result.current.activeExecutions).toHaveLength(0);
+      expect(
+        result.current.activeExecutions.map((run) => run.id),
+      ).not.toContain("run-1");
+    } finally {
+      // A failure above must not leave the held detail response pending.
+      if (detailReads > 0) {
+        act(() => releaseDetails());
+        const request = detailRequest;
+        if (request) await request;
+        await waitFor(() =>
+          expect(finishRead).toHaveBeenCalledWith("run-1", expect.anything()),
+        ).catch(() => {});
+      }
+      finishRead.mockRestore();
+    }
   });
 });

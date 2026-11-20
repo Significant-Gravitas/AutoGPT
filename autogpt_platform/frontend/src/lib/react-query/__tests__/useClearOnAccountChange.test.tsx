@@ -1,5 +1,11 @@
+import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import {
+  resetSharedLiveUpdateLog,
+  useLiveUpdateLog,
+} from "@/components/layout/Navbar/components/AgentActivityDropdown/useLiveUpdateLog";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import type { User } from "@/lib/auth/types";
+import type { GraphExecution } from "@/lib/autogpt-server-api/types";
 import {
   MutationObserver,
   QueryClient,
@@ -14,6 +20,7 @@ import { useClearOnAccountChange } from "../useClearOnAccountChange";
 
 afterEach(() => {
   act(() => useAuthStore.setState({ user: null }));
+  resetSharedLiveUpdateLog();
 });
 
 function signIn(id: string | null) {
@@ -134,5 +141,36 @@ describe("useClearOnAccountChange", () => {
     signIn("user-2");
     expect(chatDeletions()).toHaveLength(0);
     await waitFor(() => expect(result.current).toEqual([]));
+  });
+
+  it("drops the shared live-update log when another account signs in on the tab", () => {
+    // The log is a module singleton, so the previous account's retained run
+    // updates would otherwise replay into the next account's Activity state.
+    const queryClient = new QueryClient();
+    signIn("user-1");
+    const { result } = renderHook(
+      () => {
+        useClearOnAccountChange(queryClient);
+        return useLiveUpdateLog();
+      },
+      {
+        wrapper: ({ children }: { children: ReactNode }) => (
+          <QueryClientProvider client={queryClient}>
+            {children}
+          </QueryClientProvider>
+        ),
+      },
+    );
+    const log = result.current;
+    log.recordUpdate({
+      id: "run-1",
+      status: AgentExecutionStatus.COMPLETED,
+    } as GraphExecution);
+    // A list fetched before the update replays it over the list.
+    expect(log.updatesNewerThan(0, [], false)).toHaveLength(1);
+
+    signIn("user-2");
+
+    expect(log.updatesNewerThan(0, [], false)).toHaveLength(0);
   });
 });

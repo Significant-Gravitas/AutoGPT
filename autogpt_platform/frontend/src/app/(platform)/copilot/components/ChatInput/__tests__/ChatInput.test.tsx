@@ -13,6 +13,7 @@ import {
 import type { UIMessage } from "ai";
 import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { create } from "zustand";
 import { ChatInput } from "../ChatInput";
 import { sdkStopStream, useCopilotStop } from "../../../useCopilotStop";
 import { toast } from "@/components/molecules/Toast/use-toast";
@@ -67,35 +68,50 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
   }),
 }));
 
-let mockCopilotLlmModel = "standard";
-const mockSetCopilotLlmModel = vi.fn((model: string) => {
-  mockCopilotLlmModel = model;
-});
+interface MockCopilotUIState {
+  copilotLlmModel: string;
+  setCopilotLlmModel: (model: string) => void;
+  copilotLlmAuth: { authProvider: string; credentialId: null };
+  setCopilotLlmAuth: () => void;
+  isDryRun: boolean;
+  setIsDryRun: () => void;
+  initialPrompt: string | null;
+  setInitialPrompt: (value: string | null) => void;
+  sentMessageCount: number;
+  notifyMessageSent: () => void;
+}
 
-let mockCopilotLlmAuthProvider = "platform";
+// A real store, not a plain object: the real useCopilotUIStore notifies
+// subscribers when a guided prompt arrives, so the memoised ChatInput
+// re-renders and consumes it. The plain-object mock never notified, and the
+// composer then only re-rendered when some other context changed — which the
+// shared test query client no longer does on every rerender, so a second
+// prompt arriving after mount was never consumed.
+const useMockCopilotUIStore = create<MockCopilotUIState>((set) => ({
+  copilotLlmModel: "standard",
+  setCopilotLlmModel: (model) => set({ copilotLlmModel: model }),
+  copilotLlmAuth: { authProvider: "platform", credentialId: null },
+  setCopilotLlmAuth: () => {},
+  isDryRun: false,
+  setIsDryRun: () => {},
+  initialPrompt: null,
+  setInitialPrompt: vi.fn((value: string | null) => {
+    set({ initialPrompt: value });
+  }),
+  sentMessageCount: 0,
+  notifyMessageSent: () => {},
+}));
 
-let mockInitialPrompt: string | null = null;
-const mockSetInitialPrompt = vi.fn((value: string | null) => {
-  mockInitialPrompt = value;
-});
+const mockSetInitialPrompt = useMockCopilotUIStore.getState().setInitialPrompt;
 
 vi.mock("@/app/(platform)/copilot/store", () => ({
-  useCopilotUIStore: (selector: (state: Record<string, unknown>) => unknown) =>
-    selector({
-      copilotLlmModel: mockCopilotLlmModel,
-      setCopilotLlmModel: mockSetCopilotLlmModel,
-      copilotLlmAuth: {
-        authProvider: mockCopilotLlmAuthProvider,
-        credentialId: null,
-      },
-      setCopilotLlmAuth: vi.fn(),
-      isDryRun: false,
-      setIsDryRun: vi.fn(),
-      initialPrompt: mockInitialPrompt,
-      setInitialPrompt: mockSetInitialPrompt,
-      sentMessageCount: 0,
-      notifyMessageSent: vi.fn(),
-    }),
+  // The store itself is read at call time, not factory time: the factory
+  // runs during import, before this file's top level has run, so returning
+  // the store directly would throw "Cannot access before initialization".
+  // Calling the hook here keeps the subscription, so a prompt arriving
+  // re-renders the composer.
+  useCopilotUIStore: (selector: (state: MockCopilotUIState) => unknown) =>
+    useMockCopilotUIStore(selector),
 }));
 
 let mockFlagValue = false;
@@ -276,11 +292,13 @@ const mockOnSend = vi.fn();
 afterEach(() => {
   vi.clearAllMocks();
   mockCancel.mockReset();
-  mockCopilotLlmModel = "standard";
-  mockCopilotLlmAuthProvider = "platform";
+  useMockCopilotUIStore.setState({
+    copilotLlmModel: "standard",
+    copilotLlmAuth: { authProvider: "platform", credentialId: null },
+  });
   mockFlagValue = false;
   mockTokenDevtoolEnabled = false;
-  mockInitialPrompt = null;
+  useMockCopilotUIStore.setState({ initialPrompt: null });
   mockTranscriptionError = null;
   mockHasFailedRecording = false;
   mockIsRecordingUnreadable = false;
@@ -333,7 +351,7 @@ describe("ChatInput composer row", () => {
     ({ initialPrompt }) => {
       // Home mounts its composer only once the greeting has loaded.
       mockRealVoiceRecording = true;
-      mockInitialPrompt = initialPrompt;
+      useMockCopilotUIStore.setState({ initialPrompt });
       const { rerender } = render(
         <>
           <div role="dialog" aria-label="Profile menu">
@@ -559,14 +577,18 @@ describe("ChatInput + menu entries", () => {
 
 describe("ChatInput Codex route", () => {
   it("keeps Claude SDK file attachments available for the Codex route", () => {
-    mockCopilotLlmAuthProvider = "codex";
+    useMockCopilotUIStore.setState({
+      copilotLlmAuth: { authProvider: "codex", credentialId: null },
+    });
     render(<ChatInput onSend={mockOnSend} />);
 
     expect(screen.getByTestId("attachment-menu")).toBeTruthy();
   });
 
   it("does not report empty dropped files as consumed for the Codex route", () => {
-    mockCopilotLlmAuthProvider = "codex";
+    useMockCopilotUIStore.setState({
+      copilotLlmAuth: { authProvider: "codex", credentialId: null },
+    });
     const onDroppedFilesConsumed = vi.fn();
     render(
       <ChatInput
@@ -861,7 +883,7 @@ describe("ChatInput guided prompt prefill", () => {
       removeEventListener: vi.fn(),
     } as unknown as MediaQueryList);
     try {
-      mockInitialPrompt = NEW_SKILL_PROMPT;
+      useMockCopilotUIStore.setState({ initialPrompt: NEW_SKILL_PROMPT });
       render(<ChatInput onSend={mockOnSend} />);
       const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
       await waitFor(() => expect(textarea.value).toBe(NEW_SKILL_PROMPT));
@@ -877,7 +899,7 @@ describe("ChatInput guided prompt prefill", () => {
     textarea.blur();
     expect(document.activeElement).not.toBe(textarea);
 
-    mockInitialPrompt = "Teach me a new skill";
+    useMockCopilotUIStore.setState({ initialPrompt: "Teach me a new skill" });
     rerender(<ChatInput onSend={mockOnSend} />);
 
     await waitFor(() => {
@@ -891,13 +913,15 @@ describe("ChatInput guided prompt prefill", () => {
     const { rerender } = render(<ChatInput onSend={mockOnSend} />);
     const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
 
-    mockInitialPrompt = NEW_SKILL_PROMPT;
+    useMockCopilotUIStore.setState({ initialPrompt: NEW_SKILL_PROMPT });
     rerender(<ChatInput onSend={mockOnSend} />);
     await waitFor(() => {
       expect(textarea.value).toBe(NEW_SKILL_PROMPT);
     });
 
-    mockInitialPrompt = NEW_SCHEDULED_TASK_PROMPT;
+    useMockCopilotUIStore.setState({
+      initialPrompt: NEW_SCHEDULED_TASK_PROMPT,
+    });
     rerender(<ChatInput onSend={mockOnSend} />);
     await waitFor(() => {
       expect(textarea.value).toBe(NEW_SCHEDULED_TASK_PROMPT);
@@ -908,7 +932,7 @@ describe("ChatInput guided prompt prefill", () => {
     const { rerender } = render(<ChatInput onSend={mockOnSend} />);
     const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
 
-    mockInitialPrompt = NEW_SKILL_PROMPT;
+    useMockCopilotUIStore.setState({ initialPrompt: NEW_SKILL_PROMPT });
     rerender(<ChatInput onSend={mockOnSend} />);
     await waitFor(() => {
       expect(textarea.value).toBe(NEW_SKILL_PROMPT);
@@ -925,7 +949,7 @@ describe("ChatInput guided prompt prefill", () => {
     const { rerender } = render(<ChatInput onSend={mockOnSend} />);
     const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
 
-    mockInitialPrompt = NEW_SKILL_PROMPT;
+    useMockCopilotUIStore.setState({ initialPrompt: NEW_SKILL_PROMPT });
     rerender(<ChatInput onSend={mockOnSend} />);
     await waitFor(() => {
       expect(textarea.value).toBe(NEW_SKILL_PROMPT);

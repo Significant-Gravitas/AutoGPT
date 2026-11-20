@@ -241,26 +241,39 @@ export class BackendWebSocket {
         // subscriptions still unconfirmed, rather than holding it back
         // while a view keeps subscribing.
       }
-      this.caughtUp();
+      if (this.caughtUp() && this.retries.awaitingConfirmation) {
+        // A subscribe retry sent after the answered ping is still
+        // unconfirmed: the notice above went out before the server handled
+        // it, so ask again — the pong to this ping vouches for it, and the
+        // views re-read once it lands. The notice stays bounded to three
+        // rounds; this check runs after it, not instead of it.
+        this.rereadAfterRetries = true;
+        this.checkResubscribed(socket, generation);
+      }
     }
   }
 
   // The server has handled everything sent before the last ping. After a
   // reconnect the views re-read at once: the subscriptions that went through
   // are live. A subscribe still being retried makes them re-read once more
-  // when it settles, so the last read follows it.
-  private caughtUp() {
+  // when it settles, so the last read follows it. True when the views were
+  // told to re-read.
+  private caughtUp(): boolean {
     this.retries.settle();
     const retrying = this.retries.waiting;
     if (this.rereadAfterReconnect) {
       // A reconnect only counts as healthy once it has caught up.
       this.startHealthyTimer();
     } else if (!this.rereadAfterRetries || retrying) {
-      return;
+      return false;
     }
     this.rereadAfterReconnect = false;
     this.rereadAfterRetries = retrying;
+    // A notice ends this round of ordering checks: the next one, if any,
+    // gets its own three rounds.
+    this.resubscribeRounds = 0;
     this.handlers.onReconnect();
+    return true;
   }
 
   // A pong follows backend authentication; transport open alone does not.
@@ -292,6 +305,9 @@ export class BackendWebSocket {
     if (!this.current(socket, generation) || !this.connected) return;
     this.sentDuringResubscribeCheck = false;
     this.resubscribeRounds += 1;
+    // The pong to this ping vouches for the retries already sent, and for
+    // nothing sent after it.
+    this.retries.markPingCovered();
     this.ping(socket, generation, RESUBSCRIBED_TIMEOUT_MS);
     this.pongsUntilResubscribed = this.pongsOwed;
   }
