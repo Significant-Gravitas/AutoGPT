@@ -9,6 +9,8 @@ import warnings
 import zipfile
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -261,6 +263,11 @@ def test_the_scoop_manifest_installs_into_an_environment_its_command_runs_from()
     assert manifest["bin"] == [["venv\\Scripts\\autogpt-shim.exe", "autogpt-shim"]]
 
 
+# The line after a step that runs a program: stop, with an error that ends
+# the script, when the program's exit status wasn't 0.
+_STOPS_WHEN_IT_FAILED = re.compile(r"if \(\$LASTEXITCODE -ne 0\) \{ throw '[^']+' \}")
+
+
 def test_the_scoop_installer_stops_at_a_step_that_failed() -> None:
     """PowerShell goes on after a program that failed. Scoop would then
     report an install with no `autogpt-shim` in it."""
@@ -269,7 +276,22 @@ def test_the_scoop_installer_stops_at_a_step_that_failed() -> None:
 
     assert len(steps) == 2
     for index in steps:
-        assert "$LASTEXITCODE" in script[index + 1], script[index]
+        assert _STOPS_WHEN_IT_FAILED.fullmatch(script[index + 1].strip()), script[index + 1]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        # Each names the exit status, which is all the check used to ask.
+        "Write-Host $LASTEXITCODE",
+        "if ($LASTEXITCODE -ne 0) { Write-Warning 'Could not install the wheel.' }",
+        "if ($LASTEXITCODE -eq 0) { throw 'Could not install the wheel.' }",
+        "# if ($LASTEXITCODE -ne 0) { throw 'Could not install the wheel.' }",
+    ],
+)
+def test_a_line_that_only_names_the_exit_status_is_no_stop(line: str) -> None:
+    assert "$LASTEXITCODE" in line
+    assert not _STOPS_WHEN_IT_FAILED.fullmatch(line)
 
 
 def test_the_scoop_manifest_is_still_a_stub_and_says_so() -> None:
