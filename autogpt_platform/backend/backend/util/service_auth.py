@@ -21,6 +21,7 @@ import hashlib
 import hmac
 import logging
 import re
+from time import monotonic
 
 from fastapi import FastAPI
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -35,6 +36,7 @@ OPEN_PATHS = frozenset({"/health_check", "/health_check_async", "/metrics"})
 _VALID_KEY = re.compile(r"[A-Za-z0-9._~-]{32,}={0,2}")
 _DERIVATION_LABEL = b"autogpt internal service key v1"
 _REFUSAL = b'{"detail":"Invalid internal service key"}'
+REFUSAL_ERROR_INTERVAL = 60.0
 
 
 def internal_api_key(settings: Settings | None = None) -> str:
@@ -97,6 +99,20 @@ class InternalKeyMiddleware:
         self.app = app
         self.service_name = service_name
         self.expected = key.encode()
+        self._last_error_at: float | None = None
+
+    def _refusal_log_level(self) -> int:
+        """``ERROR``, which reaches Sentry, for the first refusal in each
+        ``REFUSAL_ERROR_INTERVAL`` seconds, and ``WARNING`` for the rest: a
+        caller with the wrong key repeats on every call."""
+        now = monotonic()
+        if (
+            self._last_error_at is not None
+            and now - self._last_error_at < REFUSAL_ERROR_INTERVAL
+        ):
+            return logging.WARNING
+        self._last_error_at = now
+        return logging.ERROR
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] not in ("http", "websocket") or scope["path"] in OPEN_PATHS:
@@ -110,9 +126,10 @@ class InternalKeyMiddleware:
 
     async def _refuse(self, scope: Scope, send: Send) -> None:
         caller = (scope.get("client") or ("unknown",))[0]
-        logger.warning(
+        logger.log(
+            self._refusal_log_level(),
             f"[{self.service_name}] Refused {scope['path']!r} from {caller}: "
-            "missing or wrong internal service key"
+            "missing or wrong internal service key",
         )
         if scope["type"] == "websocket":
             await send({"type": "websocket.close", "code": 1008})

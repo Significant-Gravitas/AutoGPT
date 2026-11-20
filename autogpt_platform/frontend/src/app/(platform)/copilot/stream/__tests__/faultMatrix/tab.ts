@@ -27,7 +27,8 @@ export interface Screen {
  * runtime: the runtime's session reads are the page's refetches, and the
  * page observes each view it gets on the next macrotask, as React Query
  * notifies. The chat is the view's history above the runtime's tail, both
- * through the renderers the page uses.
+ * through the renderers the page uses. With `echoes` off, the page observes
+ * none of the runtime's reads, as a chat that is not on screen.
  */
 export class Tab {
   readonly runtime: TurnRuntime;
@@ -39,6 +40,7 @@ export class Tab {
   constructor(
     private readonly server: FaultServer,
     private readonly viewLatencyMs = 0,
+    private readonly echoes = true,
   ) {
     this.runtime = new TurnRuntime(SESSION, {
       baseUrl: () => "http://backend.test",
@@ -53,8 +55,8 @@ export class Tab {
     this.runtime.observe(this.lastView);
   }
 
-  send(text: string) {
-    void this.runtime.send({ text }, undefined);
+  send(text: string, metadata?: unknown) {
+    void this.runtime.send({ text, metadata }, undefined);
   }
 
   screen(): Screen {
@@ -92,7 +94,7 @@ export class Tab {
       return null;
     }
     this.lastView = view;
-    setTimeout(() => this.runtime.observe(view), 0);
+    if (this.echoes) setTimeout(() => this.runtime.observe(view), 0);
     return view;
   }
 }

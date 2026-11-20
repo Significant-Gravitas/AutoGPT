@@ -1,6 +1,7 @@
 import { OAuthPopupResultMessage } from "./types";
 import { NextResponse } from "next/server";
 import { microsoftCallbackMessage } from "@/lib/microsoft-setup";
+import { isNativeState, redirectToNativeApp } from "../native-return";
 
 /**
  * Safely encode a value as JSON for embedding in a script tag.
@@ -58,6 +59,14 @@ export async function GET(request: Request) {
   }
   const code = searchParams.get("code");
   const state = searchParams.get("state");
+  if (isNativeState(state)) {
+    return redirectToNativeApp({
+      state,
+      code,
+      error: providerError,
+      errorDescription: providerDescription,
+    });
+  }
 
   const message: OAuthPopupResultMessage =
     code && state

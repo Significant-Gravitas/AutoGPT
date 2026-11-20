@@ -10,6 +10,8 @@ import { hireErrorMessage, withHiredExpert } from "./helpers";
 import {
   claimHire,
   hireStateFor,
+  hiresSince,
+  readHireState,
   recordHire,
   releaseHire,
   useHireStore,
@@ -36,7 +38,12 @@ export function useHireExpert({ onHired, onError }: Args) {
       queryClient.setQueryData<Expert[]>(expertKeys.list, (old) =>
         old ? withHiredExpert(old, expert) : old,
       );
-      void queryClient.invalidateQueries({ queryKey: expertKeys.list });
+      // A list request that started before the hire mustn't be the load that
+      // decides it (`hiresSince`). Invalidating alone reuses a first load still
+      // in flight, so cancel whatever is running, then load afresh.
+      void queryClient
+        .cancelQueries({ queryKey: expertKeys.list })
+        .then(() => queryClient.invalidateQueries({ queryKey: expertKeys.list }));
       onHired(expert, template);
     } catch (caught) {
       // A refusal for an account already signed out must not end the next one.
@@ -55,10 +62,18 @@ export function useHireExpert({ onHired, onError }: Args) {
     return store.inFlight.has(templateID);
   }
 
-  /** The expert this sign-in just hired from the template, if any. */
+  /**
+   * The expert this sign-in just hired from the template, if any. Read when
+   * called, so the hire toast's Chat button sees the hire it announces.
+   */
   function justHired(templateID: string) {
-    return store.hired.get(templateID) ?? null;
+    return hireStateFor(readHireState(), sessionGeneration()).hired.get(templateID) ?? null;
   }
 
-  return { hire, isHiring, justHired };
+  /** Hires the team list, last loaded at `listUpdatedAt`, can't have yet. */
+  function newerHires(listUpdatedAt: number) {
+    return hiresSince(store, listUpdatedAt);
+  }
+
+  return { hire, isHiring, justHired, newerHires };
 }
