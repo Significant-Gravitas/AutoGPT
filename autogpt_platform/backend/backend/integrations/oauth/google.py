@@ -155,10 +155,8 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         # body, rate limit, etc.) flows back as response.ok=False instead of
         # raising — the caller uses the bool to set the UI `revoked` flag
         # and does not need to distinguish failure modes.
-        # retry_max_attempts bounds tenacity retries on 429/5xx — without
-        # it `Requests` retries indefinitely with exponential backoff up
-        # to 5 minutes per wait, and a transient Google failure would
-        # hang the credential deletion API call forever.
+        # retry_max_attempts bounds the retries on 429/5xx, so a transient
+        # Google failure can't hold up the credential deletion API call.
         response = await Requests(
             raise_for_status=False,
             retry_max_attempts=3,

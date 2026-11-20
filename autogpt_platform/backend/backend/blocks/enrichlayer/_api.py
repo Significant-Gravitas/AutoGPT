@@ -233,11 +233,11 @@ class EnrichlayerClient:
                 error_data = response.json()
                 error_message = error_data.get("message", "")
             except JSONDecodeError:
-                error_message = response.text
+                error_message = response.text()
 
             raise EnrichlayerAPIException(
-                f"Enrichlayer API request failed ({response.status_code}): {error_message}",
-                response.status_code,
+                f"Enrichlayer API request failed ({response.status}): {error_message}",
+                response.status,
             )
 
         return response.json()

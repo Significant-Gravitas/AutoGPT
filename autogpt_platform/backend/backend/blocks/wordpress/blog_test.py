@@ -2,7 +2,8 @@
 
 Their client checks statuses itself (``raise_for_status=False``) and sets no
 attempt cap, so a 5xx gets the default number of attempts: a block run against
-a site that is down fails with the site's error instead of waiting for it.
+a site that is down fails with the site's error instead of waiting for it,
+whatever shape that error's body has.
 """
 
 import asyncio
@@ -46,6 +47,30 @@ SITE = "example.wordpress.com"
 # when they never stop.
 ENDS_WITHIN_SECONDS = 10
 
+# What a WordPress that is down answers: JSON with a message, or what a proxy
+# or a CDN in front of it sends instead. Each maps to the text the block's
+# error must carry.
+DOWN = {
+    "json-message": (
+        {
+            "status": 503,
+            "text": '{"error": "unavailable", "message": "Down for maintenance"}',
+            "content_type": "application/json",
+        },
+        "503 - Down for maintenance",
+    ),
+    "html": (
+        {
+            "status": 503,
+            "text": "<html>503 Service Unavailable</html>",
+            "content_type": "text/html",
+        },
+        "503 - <html>503 Service Unavailable</html>",
+    ),
+    "plain-text": ({"status": 429, "text": "rate limited"}, "429 - rate limited"),
+    "empty": ({"status": 502}, "502 - "),
+}
+
 
 class LocalRequests(Requests):
     """The real client, as each block builds it, let through to the local
@@ -56,24 +81,27 @@ class LocalRequests(Requests):
 
 
 @pytest_asyncio.fixture
-async def wordpress_down(monkeypatch: pytest.MonkeyPatch):
-    """A WordPress answering 503 to everything; yields the requests it got."""
+async def wordpress_down(
+    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+):
+    """A WordPress giving every request one of ``DOWN``'s answers; yields the
+    requests it got, and the text the block's error must carry."""
+    answer, said = DOWN[request.param]
     received: list[str] = []
 
-    async def unavailable(request: web.Request) -> web.Response:
-        received.append(f"{request.method} {request.path}")
-        return web.json_response(
-            {"error": "unavailable", "message": "Down for maintenance"}, status=503
-        )
+    async def unavailable(http_request: web.Request) -> web.Response:
+        received.append(f"{http_request.method} {http_request.path}")
+        return web.Response(**answer)
 
     app = web.Application()
     app.router.add_route("*", "/{path:.*}", unavailable)
     async with TestServer(app, host="127.0.0.1") as server:
         monkeypatch.setattr(_api, "WORDPRESS_BASE_URL", str(server.make_url("/")))
         monkeypatch.setattr(_api, "Requests", LocalRequests)
-        yield received
+        yield received, said
 
 
+@pytest.mark.parametrize("wordpress_down", list(DOWN), indirect=True)
 @pytest.mark.parametrize(
     "block_class, input_data, request_line",
     [
@@ -91,11 +119,12 @@ async def wordpress_down(monkeypatch: pytest.MonkeyPatch):
     ids=["get-all-posts", "create-post"],
 )
 async def test_a_block_against_a_wordpress_that_is_down_fails_instead_of_hanging(
-    wordpress_down: list[str],
+    wordpress_down: tuple[list[str], str],
     block_class: type[Block],
     input_data: dict,
     request_line: str,
 ):
+    received, said = wordpress_down
     block = block_class()
 
     async def run() -> list:
@@ -108,7 +137,9 @@ async def test_a_block_against_a_wordpress_that_is_down_fails_instead_of_hanging
             )
         ]
 
-    with pytest.raises(BlockExecutionError, match="503 - Down for maintenance"):
+    with pytest.raises(BlockExecutionError) as raised:
         await asyncio.wait_for(run(), ENDS_WITHIN_SECONDS)
 
-    assert wordpress_down == [request_line] * DEFAULT_RETRY_MAX_ATTEMPTS
+    assert said in str(raised.value)
+    assert "bound method" not in str(raised.value)
+    assert received == [request_line] * DEFAULT_RETRY_MAX_ATTEMPTS

@@ -2,6 +2,7 @@ import asyncio
 import codecs
 import io
 import ipaddress
+import random
 import re
 import socket
 import ssl
@@ -14,14 +15,7 @@ from urllib.parse import quote, urljoin, urlparse
 import aiohttp
 import idna
 from aiohttp import FormData, abc
-from tenacity import (
-    RetryCallState,
-    retry,
-    retry_if_exception,
-    retry_if_result,
-    stop_after_attempt,
-    wait_exponential_jitter,
-)
+from pydantic import BaseModel
 
 from backend.util.json import loads
 from backend.util.settings import Config
@@ -607,44 +601,58 @@ def http_status_error(status: int, reason: str | None, body: bytes) -> Exception
     return Exception(message)
 
 
-def _return_last_result(retry_state: RetryCallState) -> "Response":
-    """
-    Ensure the final attempt's response is returned when retrying stops.
-    """
-    if retry_state.outcome is None:
-        raise RuntimeError("Retry state is missing an outcome.")
-
-    exception = retry_state.outcome.exception()
-    if exception is not None:
-        raise exception
-
-    return retry_state.outcome.result()
-
-
 def _is_throttled(response: Response) -> bool:
     return response.status in THROTTLE_RETRY_STATUS_CODES
 
 
-def _is_throttle_error(error: BaseException) -> bool:
-    """Whether *error* is ``raise_for_status``'s error for a throttle status."""
-    return (
-        isinstance(error, (HTTPClientError, HTTPServerError))
-        and error.status_code in THROTTLE_RETRY_STATUS_CODES
-    )
+class _RetryBudget:
+    """The throttled sends one request may make, across its redirect chain.
+
+    A send that meets a throttle status counts against it. Until the count
+    reaches ``attempts``, that send is made again after a jittered
+    exponential backoff (1 s, then 2 s, 4 s and so on, each plus up to 1 s,
+    and at most ``max_wait``); the last one is returned or raised. So a lone
+    URL gets ``attempts`` sends, and a redirect chain makes at most that many
+    throttled sends in all, however many hops it has.
+    """
+
+    def __init__(self, attempts: int, max_wait: float):
+        self._attempts = attempts
+        self._max_wait = max_wait
+        self._spent = 0
+
+    async def send_again(self) -> bool:
+        """Count a throttled send; if another is allowed, wait out its backoff."""
+        self._spent += 1
+        if self._spent >= self._attempts:
+            return False
+        backoff = 2 ** (self._spent - 1) + random.uniform(0, 1)
+        await asyncio.sleep(max(0.0, min(backoff, self._max_wait)))
+        return True
 
 
+class _Redirect(BaseModel):
+    """Where a hop's redirect leads, and what the next hop sends with it."""
+
+    url: str
+    headers: dict[str, Any]
+    drop_headers: frozenset[str]
+    kwargs: dict[str, Any]
+
+
+_Upload = IO[bytes] | bytes | bytearray
 # A Sequence, not a list: callers build a list of BytesIO uploads, which a
 # list of IO[bytes] would not accept, since a list's item type is invariant.
-_Uploads = Sequence[tuple[str, tuple[str, IO[bytes], str]]]
-# A stream in a request's body: an upload's handle, or a stream in ``data``.
+_Uploads = Sequence[tuple[str, tuple[str, _Upload, str]]]
+# A stream that is read into memory once: an upload's file, or ``data``'s.
 _Stream = IO[Any] | io.IOBase
-# Each stream in a request's body, and the position its bytes start at.
-_BodyStarts = Sequence[tuple[_Stream, int]]
+# Each ``BytesIO`` in a request's body, and the position its bytes start at.
+_BodyStarts = Sequence[tuple[BytesIO, int]]
 
-
+_BYTES = (bytes, bytearray, memoryview)
 # ``data`` that aiohttp encodes afresh for each send, so that every send can
 # repeat it as it is: bytes, text and form data.
-_REPLAYABLE_DATA = (bytes, bytearray, memoryview, str, Mapping, list, tuple, FormData)
+_REPLAYABLE_DATA = (*_BYTES, str, Mapping, list, tuple, FormData)
 
 
 async def _replayable_body(
@@ -652,46 +660,62 @@ async def _replayable_body(
 ) -> tuple[_Uploads | None, Any]:
     """The uploads and ``data`` of a request that may send them more than once.
 
-    aiohttp reads a stream or an async iterable from wherever the send before
-    left it. A seekable stream is rewound before each send (``_body_starts``).
-    One that can't seek, as an upload or as ``data``, and an async iterable
-    are read into memory once, here, off the event loop and up to
-    ``MAX_BUFFERED_BODY_BYTES``, and only once the URL has passed the SSRF
-    checks, so a refused request reads nothing. Any other ``data`` has no way
-    to be sent again, so it is refused before the first send.
+    aiohttp closes every file it has sent but a ``BytesIO``, so a ``BytesIO``
+    is the one stream a later send can rewind (``_body_starts``). An upload's
+    ``bytes`` are wrapped in one. Any other file, as an upload or as
+    ``data``, and an async iterable are read into memory once, here, off the
+    event loop and up to ``MAX_BUFFERED_BODY_BYTES``, and only once the URL
+    has passed the SSRF checks, so a refused request reads nothing. Any other
+    body has no way to be sent again, so it is refused before the first send.
     """
+    handles = [fh for _, (_, fh, _) in files or []]
+    for part in handles:
+        if not isinstance(part, (*_BYTES, io.IOBase)):
+            raise _cannot_resend(part, "upload")
     if not (
         data is None
         or isinstance(data, _REPLAYABLE_DATA)
         or isinstance(data, (io.IOBase, AsyncIterable))
     ):
-        raise TypeError(
-            f"A {type(data).__name__} body can't be sent again on a retry or a "
-            "redirect. Pass bytes, str, form data, a file or a BytesIO, or an "
-            "async iterable; or send it once, with retry_max_attempts=1 and "
-            "allow_redirects=False."
-        )
-    one_shot_data = isinstance(data, AsyncIterable) or (
-        isinstance(data, io.IOBase) and not data.seekable()
-    )
-    if not one_shot_data and all(fh.seekable() for _, (_, fh, _) in files or []):
-        return files, data
-    # A request to a blocked URL must not read a large body first.
-    await validate_url_host(url, trusted_origins)
+        raise _cannot_resend(data, "body")
+    if any(_read_to_replay(part) for part in (*handles, data)):
+        # A request to a blocked URL must not read a large body first.
+        await validate_url_host(url, trusted_origins)
     uploads: _Uploads | None = None
     if files is not None:
         uploads = [
-            (
-                field,
-                (name, fh if fh.seekable() else BytesIO(await _read_once(fh)), mime),
-            )
+            (field, (name, await _replayable_upload(fh), mime))
             for field, (name, fh, mime) in files
         ]
     if isinstance(data, AsyncIterable):
         return uploads, await _gather_once(data)
-    if isinstance(data, io.IOBase) and not data.seekable():
+    if isinstance(data, io.IOBase) and not isinstance(data, BytesIO):
         return uploads, await _read_once(data)
     return uploads, data
+
+
+def _cannot_resend(part: object, what: str) -> TypeError:
+    return TypeError(
+        f"A {type(part).__name__} {what} can't be sent again on a retry or a "
+        "redirect. Pass bytes, str, form data, a file or a BytesIO, or an async "
+        "iterable; or send it once, with retry_max_attempts=1 and "
+        "allow_redirects=False."
+    )
+
+
+def _read_to_replay(part: object) -> bool:
+    """Whether a body part has to be read into memory for a later send."""
+    return isinstance(part, AsyncIterable) or (
+        isinstance(part, io.IOBase) and not isinstance(part, BytesIO)
+    )
+
+
+async def _replayable_upload(fh: _Upload) -> BytesIO:
+    if isinstance(fh, BytesIO):
+        return fh
+    if isinstance(fh, (bytes, bytearray)):
+        return BytesIO(fh)
+    return BytesIO(await _read_once(fh))
 
 
 async def _read_once(stream: _Stream) -> Any:
@@ -722,10 +746,10 @@ async def _gather_once(chunks: AsyncIterable[bytes]) -> bytes:
     return bytes(body)
 
 
-def _body_starts(files: _Uploads | None, data: Any) -> list[tuple[_Stream, int]]:
-    """Each seekable stream in the body, and the position its bytes start at."""
-    streams: list[_Stream] = [fh for _, (_, fh, _) in files or [] if fh.seekable()]
-    if isinstance(data, io.IOBase) and data.seekable():
+def _body_starts(files: _Uploads | None, data: Any) -> list[tuple[BytesIO, int]]:
+    """Each ``BytesIO`` in the body, and the position its bytes start at."""
+    streams = [fh for _, (_, fh, _) in files or [] if isinstance(fh, BytesIO)]
+    if isinstance(data, BytesIO):
         streams.append(data)
     return [(stream, stream.tell()) for stream in streams]
 
@@ -756,17 +780,20 @@ class Requests:
 
     Any other status ends the request at once: it is raised with
     ``raise_for_status`` and returned without it. A connection error or a
-    timeout is never retried. Each attempt follows the redirects afresh.
+    timeout is never retried. Only the hop that meets a throttle status is
+    sent again, never the hops that redirected to it, and a redirect chain
+    shares the attempts: it makes at most that many throttled sends in all.
 
     A request that may send its body more than once, because it retries or
     follows redirects, sends it whole every time. ``bytes``, ``str`` and form
-    data go as they are. An upload or a ``data`` stream that can seek is
-    rewound to where it stood when the request began. A stream that can't
-    seek, and an async iterable, are read into memory once, off the event loop
-    and up to ``MAX_BUFFERED_BODY_BYTES``, after the URL has passed the SSRF
-    checks. Any other ``data`` is refused with a ``TypeError`` before the first
-    send. A request that sends once, with one attempt and
-    ``allow_redirects=False``, streams any body as it is.
+    data go as they are. A ``BytesIO`` is rewound to where it stood when the
+    request began. aiohttp closes any other file once it has sent it, so an
+    upload's ``bytes`` are wrapped in a ``BytesIO``, and any other file, as an
+    upload or as ``data``, is read into memory once, as is an async iterable:
+    off the event loop, up to ``MAX_BUFFERED_BODY_BYTES``, and after the URL
+    has passed the SSRF checks. Any other body is refused with a
+    ``TypeError`` before the first send. A request that sends once, with one
+    attempt and ``allow_redirects=False``, streams any body as it is.
     """
 
     def __init__(
@@ -834,49 +861,104 @@ class Requests:
             if sends_again
             else (files, data)
         )
-        body_starts = _body_starts(uploads, body)
-
-        @retry(
-            stop=stop_after_attempt(self._max_attempts()),
-            wait=wait_exponential_jitter(max=self.retry_max_wait),
-            retry=retry_if_result(_is_throttled)
-            | retry_if_exception(_is_throttle_error),
-            retry_error_callback=_return_last_result,
+        return await self._hop(
+            method,
+            url,
+            headers=headers,
+            files=uploads,
+            data=body,
+            json=json,
+            allow_redirects=allow_redirects,
+            max_redirects=max_redirects,
+            drop_headers=drop_headers,
+            max_body_bytes=max_body_bytes,
+            body_starts=_body_starts(uploads, body) if sends_again else [],
+            budget=_RetryBudget(self._max_attempts(), self.retry_max_wait),
+            **kwargs,
         )
-        async def _make_request() -> Response:
-            return await self._request(
-                method=method,
-                url=url,
-                headers=headers,
-                files=uploads,
-                data=body,
-                json=json,
-                allow_redirects=allow_redirects,
-                max_redirects=max_redirects,
-                drop_headers=drop_headers,
-                max_body_bytes=max_body_bytes,
-                body_starts=body_starts,
-                **kwargs,
-            )
 
-        return await _make_request()
+    async def _hop(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers: Optional[dict],
+        files: _Uploads | None,
+        data: Any | None,
+        json: Any | None,
+        allow_redirects: bool,
+        max_redirects: int,
+        drop_headers: frozenset[str],
+        max_body_bytes: int | None,
+        body_starts: _BodyStarts,
+        budget: _RetryBudget,
+        **kwargs,
+    ) -> Response:
+        """One hop: sent, and sent again on its own while it meets a throttle
+        status and the budget lasts, then the hop its redirect names. A hop
+        is never sent twice for a later hop's sake."""
+        while True:
+            try:
+                hop = await self._request(
+                    method,
+                    url,
+                    headers=headers,
+                    files=files,
+                    data=data,
+                    json=json,
+                    allow_redirects=allow_redirects,
+                    max_redirects=max_redirects,
+                    drop_headers=drop_headers,
+                    max_body_bytes=max_body_bytes,
+                    body_starts=body_starts,
+                    **kwargs,
+                )
+            except (HTTPClientError, HTTPServerError) as error:
+                if (
+                    error.status_code in THROTTLE_RETRY_STATUS_CODES
+                    and await budget.send_again()
+                ):
+                    continue
+                raise
+            if not isinstance(hop, _Redirect) and _is_throttled(hop):
+                if await budget.send_again():
+                    continue
+            break
+        if not isinstance(hop, _Redirect):
+            return hop
+        return await self._hop(
+            method,
+            hop.url,
+            headers=hop.headers,
+            files=files,
+            data=data,
+            json=json,
+            allow_redirects=allow_redirects,
+            max_redirects=max_redirects - 1,
+            drop_headers=hop.drop_headers,
+            max_body_bytes=max_body_bytes,
+            body_starts=body_starts,
+            budget=budget,
+            **hop.kwargs,
+        )
 
     async def _request(
         self,
         method: str,
         url: str,
         *,
-        headers: Optional[dict] = None,
-        files: _Uploads | None = None,
-        data: Any | None = None,
-        json: Any | None = None,
-        allow_redirects: bool = True,
-        max_redirects: int = 10,
-        drop_headers: frozenset[str] = frozenset(),
-        max_body_bytes: int | None = None,
-        body_starts: _BodyStarts = (),
+        headers: Optional[dict],
+        files: _Uploads | None,
+        data: Any | None,
+        json: Any | None,
+        allow_redirects: bool,
+        max_redirects: int,
+        drop_headers: frozenset[str],
+        max_body_bytes: int | None,
+        body_starts: _BodyStarts,
         **kwargs,
-    ) -> Response:
+    ) -> Response | _Redirect:
+        """One send of one hop: its response, or the redirect it names."""
         # The send before this one, an attempt or the hop that redirected
         # here, read the body's streams to their end.
         for stream, start in body_starts:
@@ -1028,23 +1110,12 @@ class Requests:
                         redirect_kwargs.pop("auth", None)
                         redirect_kwargs.pop("cookies", None)
 
-                    # Part of this attempt: ``request`` retries the whole
-                    # chain, so retrying each hop as well would multiply the
-                    # attempts by every hop.
-                    return await self._request(
-                        method,
-                        redirect_url.geturl(),
+                    return _Redirect(
+                        url=redirect_url.geturl(),
                         headers=new_headers,
-                        allow_redirects=allow_redirects,
-                        max_redirects=max_redirects - 1,
-                        files=files,
-                        data=data,
-                        json=json,
                         drop_headers=drop_headers
                         | {k.lower() for k in req_headers.keys() - new_headers.keys()},
-                        max_body_bytes=max_body_bytes,
-                        body_starts=body_starts,
-                        **redirect_kwargs,
+                        kwargs=redirect_kwargs,
                     )
 
                 # Reset response URL to original host for clarity

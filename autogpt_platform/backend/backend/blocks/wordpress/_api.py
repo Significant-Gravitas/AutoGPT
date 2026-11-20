@@ -170,7 +170,7 @@ async def oauth_exchange_code_for_tokens(
     if response.ok:
         return OAuthTokenResponse.model_validate(response.json())
     raise ValueError(
-        f"Failed to exchange code for tokens: {response.status} {response.text}"
+        f"Failed to exchange code for tokens: {response.status} {response.text()}"
     )
 
 
@@ -213,7 +213,7 @@ async def oauth_refresh_tokens(
 
     if response.ok:
         return OAuthTokenResponse.model_validate(response.json())
-    raise ValueError(f"Failed to refresh tokens: {response.status} {response.text}")
+    raise ValueError(f"Failed to refresh tokens: {response.status} {response.text()}")
 
 
 class TokenInfoResponse(BaseModel):
@@ -259,7 +259,7 @@ async def validate_token(
 
     if response.ok:
         return TokenInfoResponse.model_validate(response.json())
-    raise ValueError(f"Invalid token: {response.status} {response.text}")
+    raise ValueError(f"Invalid token: {response.status} {response.text()}")
 
 
 async def make_api_request(
@@ -306,7 +306,7 @@ async def make_api_request(
 
     if response.ok:
         return response.json()
-    raise ValueError(f"API request failed: {response.status} {response.text}")
+    raise ValueError(f"API request failed: {response.status} {response.text()}")
 
 
 # Post-related models and functions
@@ -498,7 +498,7 @@ async def create_post(
         if response.headers.get("content-type", "").startswith("application/json")
         else {}
     )
-    error_message = error_data.get("message", response.text)
+    error_message = error_data.get("message", response.text())
     raise ValueError(f"Failed to create post: {response.status} - {error_message}")
 
 
@@ -627,5 +627,5 @@ async def get_posts(
         if response.headers.get("content-type", "").startswith("application/json")
         else {}
     )
-    error_message = error_data.get("message", response.text)
+    error_message = error_data.get("message", response.text())
     raise ValueError(f"Failed to get posts: {response.status} - {error_message}")

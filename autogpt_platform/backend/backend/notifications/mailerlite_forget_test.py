@@ -110,3 +110,10 @@ async def test_the_erasure_lookup_uses_the_bounded_client():
     shared.post.assert_not_awaited()
     assert bounded.get.await_count == 2
     bounded.post.assert_awaited_once()
+
+
+def test_the_shared_client_outlasts_mailerlites_one_minute_window():
+    """Its attempts carry the backoff past a minute: waits of 1, 2, 4, ...
+    seconds, before jitter."""
+    waits = [2**n for n in range(mailerlite.RATE_LIMIT_RETRY_ATTEMPTS - 1)]
+    assert sum(waits) >= 60
