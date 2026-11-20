@@ -383,7 +383,11 @@ async def llm_call(
             groq.APITimeoutError,
         ) as e:
             _log_timeout_outcome(
-                elapsed=_now() - started,
+                started=started,
+                # The deadline, not when wait_for raises: it waits for the
+                # cancelled call to unwind and close its HTTP client first, and
+                # that cleanup was not time in flight.
+                cut_off=min(_now(), started + timeout),
                 attempts=attempts,
                 timeout_seconds=timeout,
                 llm_model=llm_model,
@@ -1140,7 +1144,8 @@ def trim_prompt(s: str) -> str:
 
 def _log_timeout_outcome(
     *,
-    elapsed: float,
+    started: float,
+    cut_off: float,
     attempts: HttpAttemptLog,
     timeout_seconds: float,
     llm_model: LLMModel,
@@ -1155,7 +1160,8 @@ def _log_timeout_outcome(
     is the only surface — see #14292 for the paging decision.
     """
     budget = timeout_seconds
-    in_flight, in_flight_source = _in_flight_at_cut_off(elapsed, attempts)
+    elapsed = cut_off - started
+    in_flight, in_flight_source = _in_flight_at_cut_off(started, cut_off, attempts)
     threshold = budget * _SPEND_BURNED_ELAPSED_FRACTION
     if attempts.starts:
         threshold = min(threshold, _SPEND_BURNED_MIN_IN_FLIGHT_SECONDS)
@@ -1198,10 +1204,10 @@ def _log_timeout_outcome(
 
 
 def _in_flight_at_cut_off(
-    elapsed: float, attempts: HttpAttemptLog
+    started: float, cut_off: float, attempts: HttpAttemptLog
 ) -> tuple[float, str]:
-    """How long the request the timeout cut off had been open, and how that
-    was measured.
+    """How long the request the timeout cut off had been open at ``cut_off``,
+    and how that was measured.
 
     Only the last request can have been cut off: every earlier one had already
     ended. An error response bills nothing, so if the last request has one, the
@@ -1209,12 +1215,12 @@ def _in_flight_at_cut_off(
     """
     if not attempts.starts:
         # A provider path without the hooks: the whole call is all there is.
-        return elapsed, "elapsed_fallback"
+        return cut_off - started, "elapsed_fallback"
     status = attempts.statuses[-1]
     if status is not None and status >= 400:
         return 0.0, "retry_backoff"
     # No response yet, or a 2xx whose body was still arriving.
-    return attempts.clock() - attempts.starts[-1], "last_request"
+    return cut_off - attempts.starts[-1], "last_request"
 
 
 def _block_timeout_error(

@@ -72,11 +72,13 @@ async def _cut_off_through_sdk(
     sdk_name: str,
     replies: list[tuple[float, int]],
     in_backoff: bool = False,
+    close_takes: float = 0,
 ) -> None:
     """``llm_call`` through the real SDK. ``replies`` are (seconds, status) for
     the requests it answers; the request after them hangs until the deadline
     cancels it. With ``in_backoff`` the deadline lands instead while the SDK
-    waits out the last reply's retry-after."""
+    waits out the last reply's retry-after. Closing the HTTP client takes
+    ``close_takes`` seconds."""
     sdk, model = _SDKS[sdk_name]
     cut = asyncio.Event()
     pending = list(replies)
@@ -103,8 +105,16 @@ async def _cut_off_through_sdk(
     real_factory = sdk.DefaultAsyncHttpxClient
 
     def hooked_factory(**kwargs: Any) -> httpx.AsyncClient:
-        clients.append(real_factory(**kwargs, transport=httpx.MockTransport(provider)))
-        return clients[-1]
+        client = real_factory(**kwargs, transport=httpx.MockTransport(provider))
+        real_aclose = client.aclose
+
+        async def slow_aclose() -> None:
+            clock.now += close_takes
+            await real_aclose()
+
+        monkeypatch.setattr(client, "aclose", slow_aclose)
+        clients.append(client)
+        return client
 
     monkeypatch.setattr(sdk, "DefaultAsyncHttpxClient", hooked_factory)
     monkeypatch.setattr(llm, "asyncio", _DeadlineWhenCut(cut))
@@ -174,3 +184,19 @@ async def test_each_sdk_long_open_request_still_alerts(
     assert fields["http_attempts"] == len(replies) + 1
     assert fields["response_statuses"] == statuses
     assert fields["in_flight_source"] == "last_request"
+
+
+@pytest.mark.parametrize("sdk_name", list(_SDKS))
+@pytest.mark.asyncio
+async def test_each_sdk_closing_its_client_is_not_time_in_flight(
+    monkeypatch, clock, logs, sdk_name
+):
+    """``wait_for`` raises only after the cancelled SDK call has closed its
+    HTTP client. A retry open 25 s at the cut-off stays under the 27 s alert
+    threshold however long that close takes."""
+    await _cut_off_through_sdk(monkeypatch, clock, sdk_name, [(5, 500)], close_takes=10)
+
+    assert alert_fields(logs) == []
+    warning = timeout_warning(logs)
+    assert "timed out after 30.0s and 2 HTTP attempt(s)" in warning
+    assert "final request open 25.0s (last_request)" in warning

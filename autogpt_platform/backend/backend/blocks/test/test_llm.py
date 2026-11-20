@@ -1934,7 +1934,8 @@ class TestLLMRequestTimeout:
         Both degenerate budgets (0 / 3600) leave it free to be any value."""
         with self._captured_logs() as records:
             llm._log_timeout_outcome(
-                elapsed=elapsed,
+                started=0.0,
+                cut_off=elapsed,
                 attempts=HttpAttemptLog(clock=llm._now),
                 timeout_seconds=budget,
                 llm_model=llm.DEFAULT_LLM_MODEL,
@@ -1948,7 +1949,8 @@ class TestLLMRequestTimeout:
         in the alert that says what went wrong."""
         with self._captured_logs() as records:
             llm._log_timeout_outcome(
-                elapsed=99.0,
+                started=0.0,
+                cut_off=99.0,
                 attempts=HttpAttemptLog(clock=llm._now),
                 timeout_seconds=100,
                 llm_model=llm.DEFAULT_LLM_MODEL,
