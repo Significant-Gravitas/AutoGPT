@@ -10,6 +10,7 @@ from pydantic import SecretStr
 from backend.blocks._base import BlockType
 from backend.copilot.context import _current_permissions
 from backend.copilot.permissions import CopilotPermissions
+from backend.data.model import APIKeyCredentials
 from backend.integrations.providers import ProviderName
 
 from ._test_data import make_session
@@ -1616,22 +1617,23 @@ class TestExecuteBlockCredentialRejection:
         assert "Work Ayrshare key" in response.message
         assert "credentials" in response.setup_info.user_readiness.missing_credentials
 
+    @staticmethod
+    def _expired_key() -> APIKeyCredentials:
+        return APIKeyCredentials(
+            id="cred-1",
+            provider="ayrshare",
+            api_key=SecretStr("sk-expired"),
+            title="Work Ayrshare key",
+            expires_at=int(time.time()) - 60,
+        )
+
     @pytest.mark.asyncio(loop_scope="session")
     async def test_an_expired_api_key_returns_the_card(self):
         # #16234: the block never runs on a key past its expiry.
-        from backend.data.model import APIKeyCredentials
-
         from .models import SetupRequirementsResponse
 
         response = await self._run(
-            RuntimeError("the block must not run"),
-            stored=APIKeyCredentials(
-                id="cred-1",
-                provider="ayrshare",
-                api_key=SecretStr("sk-expired"),
-                title="Work Ayrshare key",
-                expires_at=int(time.time()) - 60,
-            ),
+            RuntimeError("the block must not run"), stored=self._expired_key()
         )
 
         assert isinstance(response, SetupRequirementsResponse)
@@ -1639,7 +1641,24 @@ class TestExecuteBlockCredentialRejection:
         assert response.rejection.credential_id == "cred-1"
         assert "expired on" in response.rejection.detail
         assert "sk-expired" not in response.rejection.detail
+        assert "'Work Ayrshare key' has expired. Add a new key" in response.message
         assert "credentials" in response.setup_info.user_readiness.missing_credentials
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_scheduled_turn_is_told_the_key_expired(self):
+        with patch(
+            "backend.copilot.tools.helpers.is_unattended_turn", return_value=True
+        ):
+            response = await self._run(
+                RuntimeError("the block must not run"), stored=self._expired_key()
+            )
+
+        assert isinstance(response, ErrorResponse)
+        assert response.error == "credential_rejected"
+        assert "'Work Ayrshare key' has expired, so block" in response.message
+        assert "Work Ayrshare key' expired on " in response.message
+        assert "could not be refreshed" not in response.message
+        assert "sk-expired" not in response.message
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_a_failure_that_is_not_the_providers_is_not_a_reconnect_card(self):

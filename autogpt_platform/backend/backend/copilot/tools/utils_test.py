@@ -360,6 +360,19 @@ def test_a_runnable_sdk_default_still_counts_as_a_usable_credential(ask):
     assert _find([tavily_default], ask=ask, field=field) is tavily_default
 
 
+@pytest.mark.parametrize("ask", [True, False], ids=["watched", "unattended"])
+def test_an_expired_key_never_shadows_a_valid_one(ask):
+    # #16234: stored first, an expired key used to be picked by a scheduled
+    # turn (then refused) or offered as a second account to choose from.
+    expired = _key_cred("expired")
+    expired.expires_at = 1_000_000_000  # 2001
+    valid = _key_cred("valid")
+
+    assert _find([expired, valid], ask=ask) is valid
+    # Alone it fits nothing, so the user is asked to connect a key.
+    assert _find([expired], ask=ask) is None
+
+
 # ---------------------------------------------------------------------------
 # A scheduled turn keeps to the account its schedule pinned (SECRT-2804)
 # ---------------------------------------------------------------------------

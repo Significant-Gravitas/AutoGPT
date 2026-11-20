@@ -34,6 +34,7 @@ from backend.executor.utils import (
     CRED_ERR_UNKNOWN_PREFIX,
     ExecutionNotRequeuedError,
     _is_optional_picker,
+    _validate_node_input_credentials,
     add_graph_execution,
     is_credential_validation_error_message,
     validate_exec,
@@ -4576,8 +4577,6 @@ async def test_validate_node_input_credentials_rejects_expired_api_key(
 ):
     """#16234: a key past its expiry fails the pre-run check with a marker
     Copilot reads as "reconnect"."""
-    from backend.executor.utils import _validate_node_input_credentials
-
     now = int(time.time())
     key = APIKeyCredentials(
         id="cred-1",

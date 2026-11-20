@@ -36,7 +36,11 @@ function expiryError(expiresAt: string) {
 }
 
 afterEach(() => {
-  process.env.TZ = originalTZ;
+  if (originalTZ === undefined) {
+    delete process.env.TZ;
+  } else {
+    process.env.TZ = originalTZ;
+  }
   vi.useRealTimers();
 });
 
@@ -82,6 +86,18 @@ describe("expiryInputToUnix", () => {
       expect(expiryInputToUnix(value)).toBeUndefined();
     },
   );
+
+  it("refuses a time the clocks skip, rather than an hour later", () => {
+    inZone("America/Chicago");
+    // At 02:00 on 2027-03-14 the clocks go to 03:00; Date makes 02:30 03:30.
+    expect(expiryInputToUnix("2027-03-14T02:30")).toBeUndefined();
+  });
+
+  it("keeps a time the clocks repeat", () => {
+    inZone("America/Chicago");
+    // 01:30 on 2026-11-01 happens twice; the first is 06:30 UTC.
+    expect(expiryInputToUnix("2026-11-01T01:30")).toBe(1793514600);
+  });
 });
 
 describe("toDateTimeLocalValue", () => {

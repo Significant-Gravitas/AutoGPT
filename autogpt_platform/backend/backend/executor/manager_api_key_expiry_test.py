@@ -1,68 +1,114 @@
-"""#16234: a node whose API key has expired fails instead of running."""
+"""#16234: a node whose API key has expired fails as the user's error instead of
+running, and a dry run, which never uses the key, still simulates it."""
 
 import time
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
 
 from backend.blocks.github.issues import GithubCommentBlock
-from backend.data.execution import NodeExecutionEntry
+from backend.data.execution import ExecutionContext, ExecutionStatus, NodeExecutionEntry
 from backend.data.graph import Node
-from backend.data.model import APIKeyCredentials
-from backend.executor.manager import execute_node
+from backend.data.model import APIKeyCredentials, NodeExecutionStats
+from backend.executor.manager import ExecutionProcessor, execute_node
+from backend.executor.utils import NodeExecutionProgress
 from backend.util.exceptions import CredentialsExpiredError
 
-META = {"id": "cred-1", "provider": "github", "type": "api_key", "title": "GH"}
+INPUTS = {
+    "credentials": {"id": "cred-1", "provider": "github", "type": "api_key"},
+    "issue_url": "https://github.com/o/r/issues/1",
+    "comment": "hi",
+}
 
 
-@pytest.mark.asyncio
-async def test_expired_api_key_fails_the_node():
-    """The field is required (its default is not None), so the `except
-    ValueError` fallback in execute_node would run it without credentials
-    if the expiry were raised as a ValueError."""
-    block = GithubCommentBlock()
-    assert block.input_schema.model_fields["credentials"].default is not None
-    inputs = {
-        "credentials": META,
-        "issue_url": "https://github.com/o/r/issues/1",
-        "comment": "hi",
-    }
-    node = Node(id="node-1", block_id=block.id, input_default=inputs)
-    entry = NodeExecutionEntry(
+def _processor() -> ExecutionProcessor:
+    processor = ExecutionProcessor()
+    expired = APIKeyCredentials(
+        id="cred-1",
+        provider="github",
+        api_key=SecretStr("k"),
+        title="GH",
+        expires_at=int(time.time()) - 60,
+    )
+    processor.creds_manager = MagicMock(get=AsyncMock(return_value=expired))
+    return processor
+
+
+def _node() -> Node:
+    return Node(id="node-1", block_id=GithubCommentBlock().id, input_default=INPUTS)
+
+
+def _node_exec(dry_run: bool = False) -> NodeExecutionEntry:
+    return NodeExecutionEntry(
         user_id="user-1",
         graph_exec_id="graph-exec-1",
         graph_id="graph-1",
         graph_version=1,
         node_exec_id="node-exec-1",
-        node_id=node.id,
-        block_id=block.id,
-        inputs=inputs,
+        node_id="node-1",
+        block_id=GithubCommentBlock().id,
+        inputs=dict(INPUTS),
+        execution_context=ExecutionContext(
+            root_execution_id="graph-exec-1", dry_run=dry_run
+        ),
     )
-    creds_manager = MagicMock()
-    creds_manager.get = AsyncMock(
-        return_value=APIKeyCredentials(
-            id="cred-1",
-            provider="github",
-            api_key=SecretStr("k"),
-            title="GH",
-            expires_at=int(time.time()) - 60,
-        )
-    )
+
+
+@pytest.mark.asyncio
+async def test_an_expired_api_key_fails_the_node_as_the_users_error():
     run = AsyncMock()
-    scope = MagicMock(_user=None, _tags={})
+    stats = NodeExecutionStats()
+    log_metadata = MagicMock()
+    db_client = MagicMock(
+        upsert_execution_output=AsyncMock(),
+        get_node_execution=AsyncMock(return_value=None),
+    )
     with (
         patch.object(GithubCommentBlock, "run", run),
-        patch("backend.executor.manager._sentry_get_current_scope", return_value=scope),
-        patch("backend.executor.manager._sentry_capture_exception") as capture,
-        pytest.raises(CredentialsExpiredError, match="API key 'GH' expired on"),
+        patch(
+            "backend.executor.manager.async_update_node_execution_status",
+            new=AsyncMock(),
+        ),
     ):
-        async for _ in execute_node(
-            node, entry, SimpleNamespace(creds_manager=creds_manager)
-        ):
-            pass
+        _, status = await _processor()._on_node_execution(
+            node=_node(),
+            node_exec=_node_exec(),
+            node_exec_progress=NodeExecutionProgress(),
+            stats=stats,
+            db_client=db_client,
+            log_metadata=log_metadata,
+        )
 
+    assert status == ExecutionStatus.FAILED
+    assert isinstance(stats.error, CredentialsExpiredError)
+    assert "API key 'GH' expired on" in str(stats.error)
     run.assert_not_called()
-    # A user's own expired key is not a platform error.
-    capture.assert_not_called()
+    # An expected failure: logged as an error, it would reach Sentry on every
+    # scheduled run until the user adds a new key.
+    log_metadata.exception.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_dry_run_still_simulates_a_node_whose_key_expired():
+    async def simulate(block, input_data, user_id):
+        yield "comment_id", "simulated"
+
+    run = AsyncMock()
+    with (
+        patch.object(GithubCommentBlock, "run", run),
+        patch("backend.executor.manager.simulate_block", new=simulate),
+        patch(
+            "backend.executor.manager._sentry_get_current_scope",
+            return_value=MagicMock(_user=None, _tags={}),
+        ),
+    ):
+        outputs = [
+            output
+            async for output in execute_node(
+                _node(), _node_exec(dry_run=True), _processor()
+            )
+        ]
+
+    assert outputs == [("comment_id", "simulated")]
+    run.assert_not_called()

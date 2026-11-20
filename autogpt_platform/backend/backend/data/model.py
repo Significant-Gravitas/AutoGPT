@@ -473,7 +473,8 @@ class APIKeyCredentials(_BaseCredentials):
         return self.expires_at <= (int(time.time()) if now is None else now)
 
     def expired_error(self) -> CredentialsExpiredError:
-        expired_on = datetime.fromtimestamp(self.expires_at or 0, timezone.utc)
+        # Clamped: a key stored with a far-past expiry still gets this message.
+        expired_on = datetime.fromtimestamp(max(self.expires_at or 0, 0), timezone.utc)
         name = f" '{self.title}'" if self.title else ""
         return CredentialsExpiredError(
             f"API key{name} expired on {expired_on:%Y-%m-%d %H:%M} UTC. "

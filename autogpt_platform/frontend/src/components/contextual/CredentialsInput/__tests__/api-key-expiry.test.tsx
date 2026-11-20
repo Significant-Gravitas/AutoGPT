@@ -59,7 +59,11 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.clearAllMocks();
-  process.env.TZ = originalTZ;
+  if (originalTZ === undefined) {
+    delete process.env.TZ;
+  } else {
+    process.env.TZ = originalTZ;
+  }
 });
 
 function fill(expiresAt: string) {

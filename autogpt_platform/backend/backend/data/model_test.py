@@ -393,17 +393,25 @@ def test_api_key_is_expired(expires_at: int | None, expired: bool):
     assert creds.is_expired(now=1_000) is expired
 
 
-def test_api_key_expired_error_names_key_and_date():
+@pytest.mark.parametrize(
+    "expires_at, expired_on",
+    [
+        (1798675200, "2026-12-31 00:00"),
+        # Out of datetime's range; the v1 API once stored any integer.
+        (-(10**15), "1970-01-01 00:00"),
+    ],
+    ids=["date", "out-of-range"],
+)
+def test_api_key_expired_error_names_key_and_date(expires_at: int, expired_on: str):
     creds = APIKeyCredentials(
         provider="openai",
         api_key=SecretStr("sk-secret"),
         title="Work key",
-        expires_at=1798675200,  # 2026-12-31T00:00Z
+        expires_at=expires_at,
     )
     error = creds.expired_error()
     assert isinstance(error, CredentialsExpiredError)
-    assert not isinstance(error, ValueError)
     assert str(error) == (
-        "API key 'Work key' expired on 2026-12-31 00:00 UTC. Add a new key."
+        f"API key 'Work key' expired on {expired_on} UTC. Add a new key."
     )
     assert "sk-secret" not in str(error)

@@ -10,10 +10,7 @@ export function dateInputToEndOfLocalDayUnix(
 ): number | undefined {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value?.trim() ?? "");
   if (!match) return undefined;
-  const [year, month, day] = match.slice(1).map(Number);
-  const date = new Date(year, month - 1, day, 23, 59, 59);
-  if (date.getMonth() !== month - 1 || date.getDate() !== day) return undefined;
-  return Math.floor(date.getTime() / 1000);
+  return localTimeToUnix([...match.slice(1).map(Number), 23, 59, 59]);
 }
 
 /**
@@ -29,13 +26,27 @@ export function expiryInputToUnix(
     trimmed,
   );
   if (!match) return dateInputToEndOfLocalDayUnix(trimmed);
-  const [year, month, day, hours, minutes, seconds] = match
-    .slice(1)
-    .map((part) => Number(part ?? 0));
-  if (hours > 23 || minutes > 59 || seconds > 59) return undefined;
+  return localTimeToUnix(match.slice(1).map((part) => Number(part ?? 0)));
+}
+
+/**
+ * Unix seconds for a local `[year, month, day, hours, minutes, seconds]`, or
+ * undefined when that time doesn't exist there. `Date` rolls it over instead:
+ * Feb 31 becomes Mar 3, and a time the clocks skip when they spring forward
+ * moves an hour on.
+ */
+function localTimeToUnix(parts: number[]): number | undefined {
+  const [year, month, day, hours, minutes, seconds] = parts;
   const date = new Date(year, month - 1, day, hours, minutes, seconds);
-  if (date.getMonth() !== month - 1 || date.getDate() !== day) return undefined;
-  return Math.floor(date.getTime() / 1000);
+  const kept = [
+    date.getFullYear(),
+    date.getMonth() + 1,
+    date.getDate(),
+    date.getHours(),
+    date.getMinutes(),
+    date.getSeconds(),
+  ].every((part, i) => part === parts[i]);
+  return kept ? Math.floor(date.getTime() / 1000) : undefined;
 }
 
 /** Local `YYYY-MM-DDTHH:MM`, for a datetime-local input's `min`. */

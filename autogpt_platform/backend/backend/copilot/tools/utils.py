@@ -554,6 +554,8 @@ def _selection_key(provider: str, field_info: CredentialsFieldInfo) -> str:
 
 
 def _credential_fits(cred: Credentials, field_info: CredentialsFieldInfo) -> bool:
+    if cred.type == "api_key" and cred.is_expired():
+        return False
     if cred.provider not in field_info.provider:
         return False
     if is_refused_sdk_default(cred.id):
