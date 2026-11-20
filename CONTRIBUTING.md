@@ -21,7 +21,10 @@ All contributions to [the autogpt_platform folder](https://github.com/Significan
    reporting bugs, reviewing PRs and helping others on Discord all count.
 
 ## Pull requests
-- Branch from `dev` and open your PR against `dev`. `master` is the release branch.
+- Branch from `dev` and open your PR against `dev`. `master` is the release branch. The one
+  exception is a maintainer's incident hotfix, such as switching off an LLM model, which goes
+  to `master` from a `hotfix/*` branch (see
+  [Managing LLM Models](docs/platform/contributing/managing-llm-models.md)).
 - Give the PR a [Conventional Commits](https://www.conventionalcommits.org/) title with a
   scope, such as `fix(backend): handle empty block input`.
 - Fill in the [pull request template](.github/PULL_REQUEST_TEMPLATE.md).
