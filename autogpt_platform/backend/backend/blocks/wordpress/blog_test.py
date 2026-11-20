@@ -24,6 +24,7 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import OAuth2Credentials
 from backend.util.exceptions import BlockExecutionError
 from backend.util.request import DEFAULT_RETRY_MAX_ATTEMPTS, Requests
+from backend.util.truncate import truncate
 
 CREDENTIALS = OAuth2Credentials(
     id="3f2b8a4e-6c1d-4e7f-9a0b-1c2d3e4f5a6b",
@@ -47,9 +48,12 @@ SITE = "example.wordpress.com"
 # when they never stop.
 ENDS_WITHIN_SECONDS = 10
 
+# A proxy's or a CDN's error page, far longer than a block's error should be.
+_ERROR_PAGE = "<html><body>" + "Service Unavailable. " * 400 + "</body></html>"
+
 # What a WordPress that is down answers: JSON with a message, or what a proxy
 # or a CDN in front of it sends instead. Each maps to the text the block's
-# error must carry.
+# error must carry: all of a short answer, and the start and end of a long one.
 DOWN = {
     "json-message": (
         {
@@ -69,6 +73,10 @@ DOWN = {
     ),
     "plain-text": ({"status": 429, "text": "rate limited"}, "429 - rate limited"),
     "empty": ({"status": 502}, "502 - "),
+    "html-page": (
+        {"status": 503, "text": _ERROR_PAGE, "content_type": "text/html"},
+        f"503 - {truncate(_ERROR_PAGE, _api.ERROR_BODY_LIMIT)}",
+    ),
 }
 
 
@@ -140,6 +148,28 @@ async def test_a_block_against_a_wordpress_that_is_down_fails_instead_of_hanging
     with pytest.raises(BlockExecutionError) as raised:
         await asyncio.wait_for(run(), ENDS_WITHIN_SECONDS)
 
-    assert said in str(raised.value)
-    assert "bound method" not in str(raised.value)
+    message = str(raised.value)
+    assert said in message
+    assert "bound method" not in message
+    # The error stays short whatever the answer's size.
+    assert len(message) <= _api.ERROR_BODY_LIMIT + 100
     assert received == [request_line] * DEFAULT_RETRY_MAX_ATTEMPTS
+
+
+@pytest.mark.parametrize("wordpress_down", ["html-page"], indirect=True)
+async def test_an_api_request_to_a_wordpress_that_is_down_raises_a_short_error(
+    wordpress_down: tuple[list[str], str],
+):
+    """The API helper's error carries the start and end of a long error page,
+    not all of it."""
+    with pytest.raises(ValueError) as raised:
+        await asyncio.wait_for(
+            _api.make_api_request(f"/rest/v1.1/sites/{SITE}/posts", "token"),
+            ENDS_WITHIN_SECONDS,
+        )
+
+    message = str(raised.value)
+    assert message == (
+        f"API request failed: 503 {truncate(_ERROR_PAGE, _api.ERROR_BODY_LIMIT)}"
+    )
+    assert len(message) <= _api.ERROR_BODY_LIMIT + 100
