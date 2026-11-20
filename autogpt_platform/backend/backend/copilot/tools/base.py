@@ -5,8 +5,10 @@ import logging
 from collections import deque
 from typing import TYPE_CHECKING, Any, Literal, Sequence
 
+import sentry_sdk
 from openai.types.chat import ChatCompletionToolParam
 from prisma.enums import APIKeyPermission
+from prisma.errors import ClientNotConnectedError
 
 from backend.copilot.ai_spans import mark_tool_failed, mark_tool_raised, tool_span
 from backend.copilot.context import args_already_bound, get_current_envelope
@@ -19,6 +21,7 @@ from backend.copilot.google_data_redaction import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.tool_call_context import tool_call_context
 from backend.copilot.tool_image import HeldImage, parse_held_image
 from backend.copilot.trial_reads import trial_reads_fresh
 from backend.copilot.turn_tracing import tool_transaction
@@ -46,22 +49,31 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Outputs that stop a call to wait on the user (an approval card, a sign-in),
-# which is not the tool failing.
+# which is not the tool failing.  The chat mounts the card from the output's
+# own JSON, so these are never digested or previewed, however long.
 _AWAITING_THE_USER = frozenset(
-    {ResponseType.APPROVAL_REQUIRED.value, ResponseType.NEED_LOGIN.value}
+    {
+        ResponseType.APPROVAL_REQUIRED.value,
+        ResponseType.NEED_LOGIN.value,
+        ResponseType.REVIEW_REQUIRED.value,
+    }
 )
 
-# Persist full tool output to workspace when it exceeds this threshold.
-# Must be below _MAX_TOOL_OUTPUT_SIZE (100K) in response_model.py so we
-# capture the data before model_post_init middle-out truncation discards it.
-_LARGE_OUTPUT_THRESHOLD = 80_000
+# The Claude CLI saves any tool result longer than 50,000 characters (it
+# counts characters, not tokens) to a ``tool-results/`` folder on the executor
+# host and shows the model a 2 KB preview.  bash_exec runs in the sandbox and
+# can't open that folder, so anything that long has to reach the workspace
+# first, where ``read_workspace_file(save_to_path=...)`` can copy it over.
+_CLI_SPILL_CHARS = 50_000
 
-# Character budget for the middle-out preview.  The total preview + wrapper
-# must stay below BOTH:
-#   - _MAX_TOOL_OUTPUT_SIZE (100K) in response_model.py (our own truncation)
-#   - Claude SDK's ~100 KB tool-result spill-to-disk threshold
-# to avoid double truncation/spilling.  95K + ~300 wrapper = ~95.3K, under both.
-_PREVIEW_CHARS = 95_000
+# Persist full tool output to workspace when it exceeds this threshold.
+# Must be below _CLI_SPILL_CHARS (see above) and _MAX_TOOL_OUTPUT_SIZE (100K)
+# in response_model.py, so we keep the data before either discards it.
+_LARGE_OUTPUT_THRESHOLD = 45_000
+
+# Character budget for the middle-out preview.  Preview + wrapper (under 1K)
+# must stay below _CLI_SPILL_CHARS, or the CLI spills the preview itself.
+_PREVIEW_CHARS = 40_000
 
 # Threshold and budget for the digest, which fires when the tool opts in.  The
 # budget is derived from the trigger so a digest can never be larger than the
@@ -162,10 +174,14 @@ async def _persist_and_summarize(
         # everything back, which is how a digest ends up costing more.
         retrieval = (
             f"\nThe preview above is a structural outline of the {total:,}-char "
-            f"output, not a literal prefix of it. Each `@offset+length` is that "
-            f"node's exact window in the file: "
+            f"output, not a literal prefix of it. Each `@offset+length` is a "
+            f"window in the file: "
             f'read_workspace_file(path="{file_path}", offset=<offset>, '
-            f"length=<length>) returns it and nothing else."
+            f"length=<length>) starts that window. Reads may return less than "
+            f"requested; continue from the returned end offset with the "
+            f"remaining length until the node's window is complete. On a node "
+            f"too large to quote whole the window is its first chunk — "
+            f"continue from offset+length."
             f"\n{sandbox}"
         )
     else:
@@ -174,7 +190,8 @@ async def _persist_and_summarize(
             f"\nFull output ({total:,} chars) saved to workspace. "
             f"Use read_workspace_file("
             f'path="{file_path}", offset=<char_offset>, length=50000) '
-            f"to read any section. "
+            f"to read any section. If a read returns less than requested, "
+            f"continue from the returned end offset with the remaining length. "
             f"{sandbox}"
         )
     return (
@@ -265,6 +282,7 @@ def _render_outline(
     used = 0
     # read_workspace_file base64-encodes its slice, so a window past three
     # quarters of the file costs more to read back than the whole output did.
+    # A node over that gets its first chunk rather than no window at all.
     widest = offsets.get("$", (0, 0))[1] * 3 // 4
     queue: deque[tuple[str, Any]] = deque([("$", root)])
     while queue:
@@ -277,7 +295,7 @@ def _render_outline(
                 braces = "{}" if isinstance(value, dict) else "[]"
                 unit = "keys" if isinstance(value, dict) else "items"
                 start, length = offsets.get(child, (0, 0))
-                window = f" @{start}+{length}" if length < widest else ""
+                window = f" @{start}+{min(length, widest)}" if widest else ""
                 parts.append(
                     f"{key}={braces[0]}…{len(value)} {unit}{window}{braces[1]}"
                 )
@@ -381,6 +399,11 @@ class BaseTool:
     # True where ``gate_subject`` is implemented; ``_execute`` then accepts
     # GATE_APPROVED.
     has_gate_subject: bool = False
+    # True where a call can create, change or delete a file another call in
+    # the same message may read (the sandbox or the workspace).  Both engines
+    # run such a call on its own, in the order the model wrote it, so a copy
+    # made beside the command building the file never stores half of it.
+    writes_files: bool = False
 
     @property
     def name(self) -> str:
@@ -542,6 +565,7 @@ class BaseTool:
         """
         with (
             tool_transaction(self.name, tool_call_id, session.session_id) as span,
+            tool_call_context(tool_call_id),
             trial_reads_fresh(),
             tool_span(
                 self.name,
@@ -598,8 +622,10 @@ class BaseTool:
                 toolName=self.name,
                 output=ErrorResponse(
                     message=(
-                        f"{self.name} is not available in this delegated turn. "
-                        "If the task needs it, say so in your report instead."
+                        f"{self.name} is not available in this delegated turn, "
+                        "so the call did not run and nothing was created or "
+                        "changed. Say so in your report, and never report that "
+                        "it happened."
                     ),
                     session_id=session.session_id,
                 ).model_dump_json(),
@@ -661,8 +687,12 @@ class BaseTool:
         # whether it was dispatched rather than whether it succeeded.
         session.announce_inflight_tool_call(self.name, kwargs)
 
+        # Returned or raised, the result is screened once, below. A raise after
+        # the tool returned Google data still redacts what the judge traces.
+        google_data = False
         try:
             result = await self._execute(user_id, session, **run_kwargs)
+            google_data, outside = result.holds_google_data, result.outside
             if result.type == ResponseType.ERROR:
                 mark_tool_failed()
             if user_id:
@@ -683,6 +713,7 @@ class BaseTool:
                 and user_id
                 and session.session_id
                 and not session.external_caller
+                and result.type.value not in _AWAITING_THE_USER
             ):
                 raw_output = await _persist_and_summarize(
                     raw_output,
@@ -696,6 +727,11 @@ class BaseTool:
                 toolCallId=tool_call_id,
                 toolName=self.name,
                 output=raw_output,
+                # An MCP client reads a refusal from the call's status; chat's
+                # engines hand it to the model as the tool's result.
+                success=not (
+                    session.external_caller and result.type == ResponseType.ERROR
+                ),
             ).with_image(result.image)
             # Remembered as the model gets it, previews and caps included, so
             # the traces can redact it even where it no longer parses.
@@ -703,23 +739,41 @@ class BaseTool:
                 remember_google_output(output.output)
         except Exception as e:
             logger.warning("Error in %s", self.name, exc_info=True)
+            # A tool that queried Prisma directly instead of over RPC is a bug
+            # in the tool, not a failed call, so it is reported as an error. A
+            # message, not the exception: its frames hold the tool's arguments.
+            if isinstance(e, ClientNotConnectedError):
+                sentry_sdk.capture_message(
+                    f"{self.name} queried Prisma without a connection",
+                    level="error",
+                )
             tracing.set_status("internal_error")
             mark_tool_raised(e)
-            return StreamToolOutputAvailable(
+            full = ErrorResponse(
+                message=f"An error occurred while executing {self.name}",
+                # AutoPilot's model reads the detail to recover; an
+                # External API client gets no internal detail.
+                error=None if session.external_caller else str(e),
+                session_id=session.session_id,
+            ).model_dump_json()
+            output = StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
-                output=ErrorResponse(
-                    message=f"An error occurred while executing {self.name}",
-                    # AutoPilot's model reads the detail to recover; an
-                    # External API client gets no internal detail.
-                    error=None if session.external_caller else str(e),
-                    session_id=session.session_id,
-                ).model_dump_json(),
+                output=full,
                 success=False,
             )
-        with tracing_google_data(google_call or result.holds_google_data):
+            # The detail can quote what the tool was reading, so it is judged
+            # like an output that declares nothing: whole.
+            outside = None
+        with tracing_google_data(google_call or google_data):
             return await self._screen_read(
-                user_id, session, tool_call_id, kwargs, output, result.outside, full
+                user_id,
+                session,
+                tool_call_id,
+                kwargs,
+                output,
+                outside=outside,
+                full=full,
             )
 
     async def _gate(

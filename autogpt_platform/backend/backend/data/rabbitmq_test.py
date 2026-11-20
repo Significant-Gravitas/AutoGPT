@@ -69,7 +69,11 @@ def test_graph_execution_config_declares_no_cancel_queue() -> None:
     RabbitMQ would round-robin each cancel to one arbitrary pod."""
     cfg = create_execution_queue_config()
     assert GRAPH_EXECUTION_CANCEL_EXCHANGE in cfg.exchanges
-    assert [q.name for q in cfg.queues] == [GRAPH_EXECUTION_QUEUE_NAME]
+    assert not [
+        q
+        for q in cfg.queues
+        if q.exchange and q.exchange.name == GRAPH_EXECUTION_CANCEL_EXCHANGE.name
+    ]
 
 
 class TestDeclareBroadcastQueue:

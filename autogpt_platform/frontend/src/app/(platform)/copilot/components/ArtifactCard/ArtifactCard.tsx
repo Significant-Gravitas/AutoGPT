@@ -10,6 +10,7 @@ import { downloadArtifact } from "../ArtifactPanel/downloadArtifact";
 import { classifyArtifact } from "../ArtifactPanel/helpers";
 import { ArrowRight01Icon, Download01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   artifact: ArtifactRef;
@@ -76,28 +77,31 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
       <button
         type="button"
         onClick={handleDownloadOnly}
-        className="my-1 flex w-full min-w-0 items-center gap-3 rounded-2xl border border-border-base bg-surface px-3 py-2.5 text-left transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:500ms] hover:bg-surface-muted"
+        // oxlint-disable-next-line design-system/no-arbitrary-values -- duration-500 would also slow the hover colour transition
+        className="my-1 flex w-full min-w-0 items-center gap-3 rounded-2xl border border-border-base bg-surface px-3 py-2.5 text-left transition-colors animate-in [animation-duration:500ms] fade-in fill-mode-both slide-in-from-bottom-2 hover:bg-surface-muted"
       >
         <Icon
           icon={classification.icon}
           size={20}
-          className="shrink-0 text-foreground-subtle"
+          tone="subtle"
+          className="shrink-0"
         />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-foreground-strong">
+          <Text variant="body-medium-tight" tone="primary" className="truncate">
             {artifact.title}
-          </p>
-          <p className="text-xs text-foreground-subtle">
+          </Text>
+          <Text variant="small-tight" tone="subtle">
             {classification.label}
             {artifact.sizeBytes
               ? ` \u2022 ${formatSize(artifact.sizeBytes)}`
               : ""}
-          </p>
+          </Text>
         </div>
         <Icon
           icon={Download01Icon}
           size={16}
-          className="shrink-0 text-foreground-subtle"
+          tone="subtle"
+          className="shrink-0"
         />
       </button>
     );
@@ -108,34 +112,30 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
       type="button"
       onClick={() => openArtifact(artifact)}
       className={cn(
-        "my-1 flex w-full min-w-0 items-center gap-3 rounded-2xl border bg-surface px-3 py-2.5 text-left transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:500ms] hover:bg-surface-muted",
-        // TODO(tokens): no exact role for border-violet-300
+        // oxlint-disable-next-line design-system/no-arbitrary-values -- duration-500 would also slow the hover colour transition
+        "my-1 flex w-full min-w-0 items-center gap-3 rounded-2xl border bg-surface px-3 py-2.5 text-left transition-colors animate-in [animation-duration:500ms] fade-in fill-mode-both slide-in-from-bottom-2 hover:bg-surface-muted",
         isActive
-          ? "border-violet-300 bg-accent-surface/50"
+          ? "border-brand/40 bg-accent-surface/50"
           : "border-border-base",
       )}
     >
       <Icon
         icon={classification.icon}
         size={20}
-        className={cn(
-          "shrink-0",
-          // TODO(tokens): no exact role for text-violet-500
-          isActive ? "text-violet-500" : "text-foreground-subtle",
-        )}
+        tone={isActive ? "brand" : "subtle"}
+        className="shrink-0"
       />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground-strong">
+        <Text variant="body-medium-tight" tone="primary" className="truncate">
           {artifact.title}
-        </p>
-        <p className="text-xs text-foreground-subtle">
+        </Text>
+        <Text variant="small-tight" tone="subtle">
           <span
             className={cn(
-              "inline-block rounded-full px-1.5 py-0.5 text-xs font-medium",
+              "inline-block rounded-full px-1.5 py-0.5 text-caption font-medium",
               artifact.origin === "user-upload"
                 ? "bg-info-surface text-info"
-                : // TODO(tokens): no exact role for text-violet-500
-                  "bg-accent-surface text-violet-500",
+                : "bg-accent-surface text-brand",
             )}
           >
             {classification.label}
@@ -143,15 +143,14 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
           {artifact.sizeBytes
             ? ` \u2022 ${formatSize(artifact.sizeBytes)}`
             : ""}
-        </p>
+        </Text>
       </div>
       <Icon
         icon={ArrowRight01Icon}
         size={16}
         className={cn(
           "shrink-0",
-          // TODO(tokens): no exact role for text-violet-400
-          isActive ? "text-violet-400" : "text-foreground-disabled",
+          isActive ? "text-brand/60" : "text-foreground-disabled",
         )}
       />
     </button>

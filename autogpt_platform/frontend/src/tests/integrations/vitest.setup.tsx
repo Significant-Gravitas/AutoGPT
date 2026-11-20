@@ -7,9 +7,9 @@ import { toast } from "sonner";
 import { resetCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import { seedFaker } from "./faker-seed";
 
-// Auth tests send the client IP in X-Forwarded-For, as a trusted proxy would
+// Auth tests send the client IP in X-Forwarded-For, as a listed proxy would
 // (lib/auth/client-ip.ts).
-process.env.TRUST_X_FORWARDED_FOR ??= "true";
+process.env.TRUSTED_PROXIES ??= "127.0.0.1";
 
 // Sign-ups and auth emails look up their domain's mail server
 // (lib/auth/email-deliverability.ts); no test does that on the network. Every
@@ -86,15 +86,22 @@ afterAll(() => server.close());
 
 function trackOpenRequests() {
   const fetch = globalThis.fetch;
-  globalThis.fetch = (...args: Parameters<typeof fetch>) => {
-    const request = fetch(...args);
-    openRequests.add(request);
-    request.then(
-      () => openRequests.delete(request),
-      () => openRequests.delete(request),
-    );
-    return request;
-  };
+  // MSW installs its fetch as a non-writable property, so redefine it rather
+  // than assign; not vi.stubGlobal, which tests' vi.unstubAllGlobals() undoes.
+  Object.defineProperty(globalThis, "fetch", {
+    value: (...args: Parameters<typeof fetch>) => {
+      const request = fetch(...args);
+      openRequests.add(request);
+      request.then(
+        () => openRequests.delete(request),
+        () => openRequests.delete(request),
+      );
+      return request;
+    },
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
 }
 
 // cleanup() runs pending mount effects whose requests start a few ticks later,

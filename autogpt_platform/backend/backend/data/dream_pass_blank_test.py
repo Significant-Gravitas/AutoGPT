@@ -496,6 +496,8 @@ async def test_the_erase_over_3000_passes_and_1000_reached_uuids_is_in_time(
     all_marked = time.monotonic() - started
 
     assert len(marked) == 3000
+    # wall-clock: Postgres enforces the statement timeout in wall time, and
+    # the cost review asked for this erase to fit in half of it.
     assert selection < budget and all_marked < budget, (selection, all_marked)
     blanked = await DreamPass.prisma().count(
         where={"userId": owner, "erasedAt": {"not": None}}

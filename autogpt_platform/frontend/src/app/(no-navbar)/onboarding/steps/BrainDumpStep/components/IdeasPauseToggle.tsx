@@ -22,7 +22,7 @@ export function IdeasPauseToggle({ screen, isPaused, onToggle }: Props) {
       size="xs"
       aria-pressed={isPaused}
       onClick={onToggle}
-      className="sr-only focus-visible:not-sr-only focus-visible:absolute focus-visible:left-1/2 focus-visible:top-0 focus-visible:z-20 focus-visible:-translate-x-1/2"
+      className="sr-only focus-visible:not-sr-only focus-visible:absolute focus-visible:top-0 focus-visible:left-1/2 focus-visible:z-20 focus-visible:-translate-x-1/2"
     >
       Pause changing ideas
     </Button>

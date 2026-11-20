@@ -7,7 +7,7 @@ frontend can list available tools on an MCP server before placing a block.
 
 import asyncio
 import logging
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
 
 import fastapi
@@ -228,6 +228,10 @@ class MCPOAuthLoginRequest(BaseModel):
         default=None,
         description="OAuth scopes to request. Omit or use null to use catalogue or discovered defaults; "
         "an empty list requests no scopes.",
+    )
+    client: Literal["native"] | None = Field(
+        default=None,
+        description="Set to native when the mobile app starts the sign-in",
     )
 
     @field_validator("scopes")
@@ -496,6 +500,7 @@ async def mcp_oauth_login(
             "issuer": issuer,
             "iss_required": iss_required,
         },
+        native=request.client == "native",
     )
 
     # Step 5: Build and return the login URL
@@ -703,7 +708,7 @@ async def mcp_store_token(
     Used by the Copilot MCPSetupCard when the server doesn't support the MCP
     OAuth discovery flow (returns 400 from /oauth/login).  Subsequent
     ``run_capability`` MCP calls will automatically pick up the credential via
-    ``_auto_lookup_credential``.
+    ``auto_lookup_mcp_credential``.
     """
     try:
         authorization = normalize_mcp_authorization(request.token.get_secret_value())

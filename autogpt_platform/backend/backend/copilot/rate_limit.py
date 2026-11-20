@@ -64,6 +64,15 @@ from prisma.models import User as PrismaUser
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisClusterException, RedisError
 
+from backend.copilot.config import ChatConfig
+from backend.copilot.limit_tracking import (
+    BlockedSurface,
+    LimitReading,
+    refills_at,
+    track_chat_blocked,
+    track_limit_exceeded,
+    usd,
+)
 from backend.copilot.trial_cost_context import capture_cost_context
 from backend.copilot.trial_reads import forget_usage_state, shared_trial_read
 from backend.copilot.usage_activation import (
@@ -78,12 +87,14 @@ from backend.copilot.usage_state import (
     usage_verdict,
 )
 from backend.data.db_accessors import credit_db, user_db
+from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.subscription_trial import TrialState
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
 from backend.util.exceptions import UserPaywalledError
-from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
+from backend.util.feature_flag import Flag, get_feature_flag_value
+from backend.util.platform_payment import is_platform_payment_enabled
 
 if TYPE_CHECKING:
     import stripe
@@ -91,6 +102,8 @@ if TYPE_CHECKING:
     from backend.data.subscription_trial import TrialState
 
 logger = logging.getLogger(__name__)
+
+_chat_config = ChatConfig()
 
 # "copilot:cost" (not the legacy "copilot:usage") so stale token-based
 # counters are not misread as microdollars.
@@ -154,7 +167,7 @@ DEFAULT_TIER = SubscriptionTier.NO_TIER
 
 # Per-tier workspace storage caps in MB. NO_TIER keeps the same baseline as
 # BASIC so users who cancel retain a small quota and see a real overage cap,
-# while LaunchDarkly can still tune tiers without a deploy.
+# while PostHog can still tune tiers without a deploy.
 _DEFAULT_TIER_WORKSPACE_STORAGE_MB: dict[SubscriptionTier, int] = {
     SubscriptionTier.NO_TIER: 250,  # 250 MB
     SubscriptionTier.TRIAL: 250,
@@ -522,11 +535,24 @@ def _reading(
 
 
 class RateLimitExceeded(Exception):
-    """Raised when a user exceeds their CoPilot usage limit."""
+    """Raised when a user exceeds their CoPilot usage limit.
 
-    def __init__(self, window: LimitWindow, resets_at: datetime):
+    ``reading`` is where the account stood against the limit (tier, and spend
+    and cap in dollars), for analytics; ``refills_at`` is ``resets_at`` when
+    the window refills, and None for a trial or a window that allows nothing.
+    """
+
+    def __init__(
+        self,
+        window: LimitWindow,
+        resets_at: datetime,
+        *,
+        reading: LimitReading | None = None,
+    ):
         self.window: LimitWindow = window
         self.resets_at = resets_at
+        self.reading = reading or LimitReading()
+        self.refills_at = refills_at(window, resets_at, self.reading)
         delta = resets_at - datetime.now(UTC)
         total_secs = delta.total_seconds()
         if total_secs <= 0:
@@ -805,6 +831,76 @@ async def build_budget_ctx(
     )
 
 
+async def no_allowance_reading(
+    user_id: str, tier: SubscriptionTier
+) -> tuple[Literal["trial", "weekly"], LimitReading]:
+    """The limit that stops an account whose windows allow nothing, and the
+    reading to report with it.
+
+    An ended trial (its usage state still reads ``TRIAL``) is the trial's
+    allowance, used up; anything else is no plan, which reads as a weekly
+    window of nothing. Neither refills.
+    """
+    state = await get_ready_usage_state(user_id)
+    if state.tier == SubscriptionTier.TRIAL:
+        return "trial", LimitReading(tier=state.tier.value, cap=0.0)
+    return "weekly", LimitReading(tier=tier.value, cap=0.0)
+
+
+async def platform_spend_refusal(
+    user_id: str | None, *, surface: BlockedSurface
+) -> str | None:
+    """Why a call billed to the platform's own key may not run for *user_id* now.
+
+    Turn admission checks the allowance once per turn; a tool call or a dry run
+    that pays a provider itself asks again right before each call. Fails closed
+    when the allowance can't be read. ``None`` means the call may run. A
+    refusal sends ``chat_blocked`` for *surface*.
+    """
+    if not user_id:
+        return None
+    daily, weekly, tier = await get_global_rate_limits(
+        user_id,
+        _chat_config.daily_cost_limit_microdollars,
+        _chat_config.weekly_cost_limit_microdollars,
+    )
+    if daily == 0 and weekly == 0:
+        await _track_no_allowance(user_id, tier, surface)
+        return "Your plan has no usage allowance for this right now."
+    try:
+        await check_rate_limit(
+            user_id=user_id,
+            daily_cost_limit=daily,
+            weekly_cost_limit=weekly,
+            expected_tier=tier,
+        )
+    except RateLimitExceeded as e:
+        track_limit_exceeded(user_id, e, surface=surface)
+        return str(e)
+    except RateLimitUnavailable:
+        logger.warning(
+            f"Usage limits unreadable for user {user_id}; refusing platform spend",
+            exc_info=True,
+        )
+        return "Usage limits can't be checked right now. Retry shortly."
+    return None
+
+
+async def _track_no_allowance(
+    user_id: str, tier: SubscriptionTier, surface: BlockedSurface
+) -> None:
+    """``chat_blocked`` for a call refused because nothing is allowed, as the
+    turn gate names it. Never raises: the refusal stands either way."""
+    try:
+        limit, reading = await no_allowance_reading(user_id, tier)
+    except Exception:
+        logger.warning("Could not read the usage state for chat_blocked", exc_info=True)
+        limit, reading = "weekly", LimitReading(tier=tier.value, cap=0.0)
+    track_chat_blocked(
+        user_id, limit=limit, outcome="refused", surface=surface, reading=reading
+    )
+
+
 async def check_rate_limit(
     user_id: str,
     daily_cost_limit: int,
@@ -852,12 +948,21 @@ async def check_rate_limit(
     ):
         raise RateLimitUnavailable("Subscription changed while resolving usage limits")
     d_key, w_key = usage_keys(user_id, state.generation, now)
+    tier = state.tier.value
     if state.tier == SubscriptionTier.TRIAL:
         trial = await _subscription_trial(user_id)
         if trial is None or not trial.active:
-            raise RateLimitExceeded("trial", now)
+            raise RateLimitExceeded("trial", now, reading=LimitReading(tier=tier))
         if trial.cost_microdollars >= trial.offer.total_cost_limit:
-            raise RateLimitExceeded("trial", trial.ends_at or now)
+            raise RateLimitExceeded(
+                "trial",
+                trial.ends_at or now,
+                reading=LimitReading(
+                    tier=tier,
+                    used=usd(trial.cost_microdollars),
+                    cap=usd(trial.offer.total_cost_limit),
+                ),
+            )
         if _trial_uses_total_budget(trial, daily_cost_limit, weekly_cost_limit):
             return
     if (skip_daily or daily_cost_limit < 0) and weekly_cost_limit < 0:
@@ -898,10 +1003,22 @@ async def check_rate_limit(
     # one that refills last, and the weekly window never refills before the
     # daily one (on Sundays they refill together).
     if weekly_cost_limit >= 0 and weekly_used >= weekly_cost_limit:
-        raise RateLimitExceeded("weekly", _weekly_reset_time(now=now))
+        raise RateLimitExceeded(
+            "weekly",
+            _weekly_reset_time(now=now),
+            reading=LimitReading(
+                tier=tier, used=usd(weekly_used), cap=usd(weekly_cost_limit)
+            ),
+        )
 
     if not skip_daily and daily_cost_limit >= 0 and daily_used >= daily_cost_limit:
-        raise RateLimitExceeded("daily", _daily_reset_time(now=now))
+        raise RateLimitExceeded(
+            "daily",
+            _daily_reset_time(now=now),
+            reading=LimitReading(
+                tier=tier, used=usd(daily_used), cap=usd(daily_cost_limit)
+            ),
+        )
 
 
 def _trial_uses_total_budget(
@@ -1238,7 +1355,8 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
     """Persist the user's rate-limit tier to the database.
 
     Invalidates the caches that expose ``subscription_tier`` so the change
-    takes effect immediately. If the user has an active Stripe subscription
+    takes effect immediately, and syncs the PostHog person, which carries the
+    tier, in the background. If the user has an active Stripe subscription
     on a mismatched price, emits a WARNING; Stripe remains the billing
     source of truth and the next webhook will reconcile the DB tier.
 
@@ -1251,6 +1369,7 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
     )
     get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
     get_user_by_id.cache_delete(user_id)  # type: ignore[attr-defined]
+    schedule_posthog_lifecycle_sync(user_id)
 
     # Fire-and-forget drift check so admin bulk ops don't wait on Stripe.
     asyncio.ensure_future(_drift_check_background(user_id, tier))
@@ -1427,9 +1546,9 @@ async def get_global_rate_limits(
     config_daily: int,
     config_weekly: int,
 ) -> tuple[int, int, SubscriptionTier]:
-    """Resolve global rate limits from LaunchDarkly, falling back to config.
+    """Resolve global rate limits from PostHog, falling back to config.
 
-    Values are microdollars. The base limits (from LD or config) are
+    Values are microdollars. The base limits (from the flag or config) are
     multiplied by the user's tier multiplier so that higher tiers receive
     proportionally larger allowances.
 
@@ -1454,8 +1573,8 @@ async def get_global_rate_limits(
     # so multipliers can be tuned without a deploy. Falls back to the defaults
     # when LD is unavailable. NO_TIER+paywall is gated upstream by
     # ``enforce_payment_paywall`` (HTTP 402 before this is reached); the
-    # only NO_TIER path that gets here is the beta cohort (flag off), which
-    # falls back to BASIC limits so testers retain access.
+    # only NO_TIER path that gets here is a deployment with payment off, which
+    # falls back to BASIC limits.
     tier = await get_user_tier(user_id)
     if tier == SubscriptionTier.TRIAL:
         trial = await _subscription_trial(user_id)
@@ -1464,9 +1583,7 @@ async def get_global_rate_limits(
         return trial.offer.daily_cost_limit, trial.offer.weekly_cost_limit, tier
     multipliers = await get_tier_multipliers()
     multiplier = multipliers.get(tier.value, 1.0)
-    if tier == SubscriptionTier.NO_TIER and not await is_feature_enabled(
-        Flag.ENABLE_PLATFORM_PAYMENT, user_id
-    ):
+    if tier == SubscriptionTier.NO_TIER and not is_platform_payment_enabled():
         multiplier = multipliers.get(SubscriptionTier.BASIC.value, 1.0)
     if multiplier != 1.0:
         # Cast back to int to preserve the microdollar integer contract
@@ -1575,7 +1692,7 @@ async def is_user_paywalled(user_id: str) -> bool:
         return trial is None or not trial.active
     if tier != SubscriptionTier.NO_TIER:
         return False
-    return await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, user_id)
+    return is_platform_payment_enabled()
 
 
 async def enforce_payment_paywall(

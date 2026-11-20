@@ -9,15 +9,35 @@ import {
 } from "@/tests/integrations/test-utils";
 import type { User } from "@/lib/auth/types";
 import type { OnboardingWizardProgress } from "@/app/api/__generated__/models/onboardingWizardProgress";
+import { getGetBrainDumpPlanMockHandler200 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
+import { server } from "@/mocks/mock-server";
+import { http, HttpResponse } from "msw";
+import * as Sentry from "@sentry/nextjs";
 import {
   installGtagShim,
   removeGtagShim,
 } from "@/tests/integrations/gtag-shim";
+import { SETUP_LOAD_DEADLINE_MS } from "../components/LoadingSetup/useLoadingSetup";
 import OnboardingPage from "../page";
 import { useOnboardingWizardStore } from "../store";
 import { progressStorageKey } from "../progress";
 import { makeProgress as makeBaseProgress } from "./progress-fixture";
 
+// Only the slow-setup report is checked; the rest of Sentry runs as shipped.
+vi.mock("@sentry/nextjs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@sentry/nextjs")>()),
+  captureMessage: vi.fn(),
+}));
+vi.mock("../steps/AccessStep/AccessStep", () => ({
+  AccessStep: () => (
+    <button
+      data-testid="step-access"
+      onClick={() => useOnboardingWizardStore.getState().nextStep()}
+    >
+      Continue
+    </button>
+  ),
+}));
 vi.mock("../steps/RoleStep", () => ({
   RoleStep: () => (
     <button
@@ -41,8 +61,20 @@ vi.mock("../steps/BrainDumpStep/BrainDumpStep", () => ({
 vi.mock("../steps/ConnectStep/ConnectStep", () => ({
   ConnectStep: () => <div data-testid="step-connect" />,
 }));
-vi.mock("../steps/SubscriptionStep/SubscriptionStep", () => ({
-  SubscriptionStep: () => <div data-testid="step-subscription" />,
+// Stands in for the plan step: Continue moves on only when there is no
+// paywall, as the real step does; with one, Stripe moves the wizard.
+vi.mock("../steps/SubscriptionStep/PlanTrialStep", () => ({
+  PlanTrialStep: ({ hasPaywall }: { hasPaywall: boolean }) => (
+    <button
+      data-testid="step-subscription"
+      data-paywall={String(hasPaywall)}
+      onClick={() => {
+        if (!hasPaywall) useOnboardingWizardStore.getState().nextStep();
+      }}
+    >
+      Continue
+    </button>
+  ),
 }));
 vi.mock("../steps/IntroStep/IntroStep", () => ({
   IntroStep: ({ slide }: { slide: string }) => (
@@ -54,23 +86,31 @@ vi.mock("../steps/IntroStep/IntroStep", () => ({
     </button>
   ),
 }));
-vi.mock("../steps/HireStep/HireStep", () => ({
-  HireStep: () => (
-    <button
-      data-testid="step-hire"
-      onClick={() => useOnboardingWizardStore.getState().nextStep()}
-    >
-      Continue
-    </button>
-  ),
-}));
-vi.mock("../steps/PreparingStep", () => ({
-  PreparingStep: ({ onComplete }: { onComplete: () => void }) => (
-    <button data-testid="step-preparing" onClick={onComplete}>
-      Finish
-    </button>
-  ),
-}));
+// Finish stands in for the bar filling. With `realPreparing`, the real
+// screen runs beside it, so a test sees whether the plan's team is hired.
+let realPreparing = false;
+vi.mock("../steps/PreparingStep", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../steps/PreparingStep")>();
+  return {
+    PreparingStep: ({
+      onComplete,
+      canHire,
+    }: {
+      onComplete: () => void;
+      canHire?: boolean;
+    }) => (
+      <>
+        {realPreparing && (
+          <actual.PreparingStep onComplete={() => {}} canHire={canHire} />
+        )}
+        <button data-testid="step-preparing" onClick={onComplete}>
+          Finish
+        </button>
+      </>
+    ),
+  };
+});
 
 let params = new URLSearchParams();
 const routerReplace = vi.fn();
@@ -139,11 +179,15 @@ vi.mock("@/services/trials/useTrialCheckoutReturn", () => ({
 }));
 let flags: Record<string, boolean> = {};
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    ENABLE_PLATFORM_PAYMENT: "payment",
-  },
+  Flag: {},
   useGetFlag: (flag: string) => !!flags[flag],
   useFlagStatus: (flag: string) => ({ enabled: !!flags[flag], ready: true }),
+}));
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({
+    isPaymentEnabled: !!flags.payment,
+    isResolved: true,
+  }),
 }));
 let local = false;
 vi.mock("@/services/environment", async (importOriginal) => {
@@ -154,9 +198,6 @@ vi.mock("@/services/environment", async (importOriginal) => {
     environment: { ...actual.environment, isLocal: () => local },
   };
 });
-vi.mock("launchdarkly-react-client-sdk", () => ({
-  useLDClient: () => ({ waitForInitialization: () => Promise.resolve() }),
-}));
 
 beforeEach(() => {
   user = {
@@ -173,6 +214,7 @@ beforeEach(() => {
   revision = 0;
   serverDraft = null;
   trial = { ready: true, active: false, error: undefined, retry: vi.fn() };
+  realPreparing = false;
   localStorage.clear();
   sessionStorage.clear();
   useOnboardingWizardStore.getState().reset();
@@ -226,7 +268,7 @@ function makeProgress(overrides: Partial<OnboardingWizardProgress> = {}) {
   } as OnboardingWizardProgress;
 }
 async function completePersonalization() {
-  for (const key of ["team", "autopilot", "role", "braindump", "hire"]) {
+  for (const key of ["team", "autopilot", "role", "braindump"]) {
     fireEvent.click(await screen.findByTestId(`step-${key}`));
   }
 }
@@ -238,6 +280,32 @@ function atPaywall() {
 }
 
 describe("onboarding before payment", () => {
+  it("starts a Microsoft sign-up on its Microsoft 365 connection", async () => {
+    // Paywall off, so the connection comes first. With it on, the connection
+    // waits until after the plan (store.test.ts).
+    flags = {};
+    server.use(
+      http.get("*/api/auth/sign-in-providers", () =>
+        HttpResponse.json({ providers: ["microsoft"] }),
+      ),
+    );
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-access"));
+    expect(await screen.findByTestId("step-team")).toBeDefined();
+  });
+
+  it("starts a Google sign-up on its Gmail, Drive and Calendar connection", async () => {
+    flags = {};
+    server.use(
+      http.get("*/api/auth/sign-in-providers", () =>
+        HttpResponse.json({ providers: ["google"] }),
+      ),
+    );
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-access"));
+    expect(await screen.findByTestId("step-team")).toBeDefined();
+  });
+
   it("collects role and pain points before showing the card requirement", async () => {
     render(<OnboardingPage />);
     await completePersonalization();
@@ -245,19 +313,34 @@ describe("onboarding before payment", () => {
     expect(completeStep).not.toHaveBeenCalled();
     expect(submitProfile).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    expect(await screen.findByTestId("step-hire")).toBeDefined();
+    expect(await screen.findByTestId("step-braindump")).toBeDefined();
   });
 
-  it("keeps the brain dump and real hire step before the paywall", async () => {
+  it("goes from the brain dump straight to the plan and trial, with no hire step", async () => {
     flags = { payment: true };
     render(<OnboardingPage />);
-    for (const key of ["team", "autopilot", "role", "braindump", "hire"]) {
+    for (const key of ["team", "autopilot", "role", "braindump"]) {
       fireEvent.click(await screen.findByTestId(`step-${key}`));
     }
-    expect(await screen.findByTestId("step-subscription")).toBeDefined();
-    expect(useOnboardingWizardStore.getState().completedSteps).toContain(
+    const step = await screen.findByTestId("step-subscription");
+    expect(step.dataset.paywall).toBe("true");
+    expect(screen.queryByTestId("step-hire")).toBeNull();
+    expect(useOnboardingWizardStore.getState().completedSteps).not.toContain(
       "hire",
     );
+  });
+
+  it("resumes a draft saved on the retired hire step at the plan step", async () => {
+    serverDraft = makeBaseProgress({
+      currentStep: "hire",
+      completedSteps: ["team", "autopilot", "role", "painPoints", "hire"],
+      hiredTemplateIds: ["maria"],
+    });
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-subscription")).toBeDefined();
+    expect(useOnboardingWizardStore.getState().hiredTemplateIds).toEqual([
+      "maria",
+    ]);
   });
 
   it("restores answers, hires and semantic progress in a fresh session", async () => {
@@ -381,7 +464,18 @@ describe("onboarding before payment", () => {
     },
   );
 
-  it("keeps self-host connection after personalization", async () => {
+  it("keeps self-host connection after the plan", async () => {
+    flags.payment = false;
+    local = true;
+    serverDraft = makeProgress({
+      currentStep: "connect",
+      completedSteps: ["role", "painPoints", "subscription"],
+    });
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-connect")).toBeDefined();
+  });
+
+  it("shows a self-hosted user the plan before the connection", async () => {
     flags.payment = false;
     local = true;
     serverDraft = makeProgress({
@@ -389,6 +483,9 @@ describe("onboarding before payment", () => {
       completedSteps: ["role", "painPoints"],
     });
     render(<OnboardingPage />);
+    const plan = await screen.findByTestId("step-subscription");
+    expect(plan.dataset.paywall).toBe("false");
+    fireEvent.click(plan);
     expect(await screen.findByTestId("step-connect")).toBeDefined();
   });
 
@@ -397,6 +494,13 @@ describe("onboarding before payment", () => {
     render(<OnboardingPage />);
     expect(screen.queryByTestId("step-role")).toBeNull();
     expect(screen.getByRole("status").textContent).toBe("Loading your setup…");
+    const placeholder = screen.getByTestId("onboarding-placeholder");
+    const bones = placeholder.querySelectorAll('[data-slot="skeleton"]');
+    expect(bones.length).toBeGreaterThan(0);
+    // The page's own background is bg-surface-hover, which would hide them.
+    bones.forEach((bone) =>
+      expect(bone.className).not.toContain("bg-surface-hover"),
+    );
     expect(getState).not.toHaveBeenCalled();
   });
 
@@ -425,7 +529,93 @@ describe("onboarding before payment", () => {
   });
 });
 
+describe("hiring the plan's team", () => {
+  function serveHire() {
+    const hires = { count: 0 };
+    server.use(
+      getGetBrainDumpPlanMockHandler200({
+        ready: true,
+        source: "llm",
+        skipped_dump: false,
+        heard: "You run a bakery.",
+        team: [{ template_id: "tpl-maria", name: "Maria", role: "Sales" }],
+        tasks: [],
+      }),
+      http.post("*/api/onboarding/brain-dump/plan/hire", () => {
+        hires.count += 1;
+        return HttpResponse.json({
+          hired: [
+            { template_id: "tpl-maria", expert_id: "e-1", name: "Maria" },
+          ],
+          failed: [],
+        });
+      }),
+    );
+    return hires;
+  }
+
+  beforeEach(() => {
+    realPreparing = true;
+  });
+
+  it("hires the team once the trial is confirmed", async () => {
+    const hires = serveHire();
+    atPaywall();
+    params = new URLSearchParams("trial=success&step=preparing");
+    trial.active = true;
+    render(<OnboardingPage />);
+
+    expect(await screen.findByText("Hiring Maria")).toBeDefined();
+    await waitFor(() => expect(hires.count).toBe(1));
+  });
+
+  it("hires nobody for a user who has not paid, even with a draft at preparing", async () => {
+    const hires = serveHire();
+    serverDraft = makeProgress({
+      currentStep: "preparing",
+      completedSteps: ["role", "painPoints", "subscription"],
+    });
+    params = new URLSearchParams("step=preparing");
+    render(<OnboardingPage />);
+
+    expect(await screen.findByTestId("step-subscription")).toBeDefined();
+    expect(screen.queryByTestId("step-preparing")).toBeNull();
+    expect(hires.count).toBe(0);
+  });
+});
+
 describe("draft recovery", () => {
+  it("saves the role to the account once its step is left, and keeps it at the paywall", async () => {
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-team"));
+    fireEvent.click(await screen.findByTestId("step-autopilot"));
+    await screen.findByTestId("step-role");
+    act(() => useOnboardingWizardStore.getState().setRole("Other"));
+    act(() => useOnboardingWizardStore.getState().setOtherRole("Dentist"));
+    fireEvent.click(screen.getByTestId("step-role"));
+    await screen.findByTestId("step-braindump");
+    await waitFor(() =>
+      expect(serverDraft).toMatchObject({
+        currentStep: "painPoints",
+        completedSteps: expect.arrayContaining(["role"]),
+        role: "Other",
+        otherRole: "Dentist",
+      }),
+    );
+    fireEvent.click(screen.getByTestId("step-braindump"));
+    expect(await screen.findByTestId("step-subscription")).toBeDefined();
+    await waitFor(() =>
+      expect(serverDraft).toMatchObject({
+        currentStep: "subscription",
+        completedSteps: expect.arrayContaining(["role", "painPoints"]),
+        role: "Other",
+        otherRole: "Dentist",
+      }),
+    );
+    expect(submitProfile).not.toHaveBeenCalled();
+    expect(completeStep).not.toHaveBeenCalled();
+  });
+
   it("saves each step in the background without holding navigation", async () => {
     patchState.mockImplementation(() => new Promise(() => {}));
     render(<OnboardingPage />);
@@ -482,7 +672,6 @@ describe("draft recovery", () => {
       await screen.findByText(/couldn't save your progress/),
     ).toBeDefined();
     fireEvent.click(screen.getByTestId("step-braindump"));
-    fireEvent.click(await screen.findByTestId("step-hire"));
     expect(await screen.findByTestId("step-subscription")).toBeDefined();
   });
 
@@ -670,7 +859,6 @@ it.each(["", "Other"])(
     act(() => useOnboardingWizardStore.getState().setRole("Design"));
     fireEvent.click(screen.getByTestId("step-role"));
     fireEvent.click(await screen.findByTestId("step-braindump"));
-    fireEvent.click(await screen.findByTestId("step-hire"));
     fireEvent.click(await screen.findByTestId("step-preparing"));
     await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
     expect(submitProfile).toHaveBeenCalledWith(
@@ -806,4 +994,98 @@ it("lets a new account finish while the previous account's profile save is outst
   await act(async () => release?.({ status: 200 }));
   expect(completeStep).toHaveBeenCalledOnce();
   expect(screen.queryByText(/couldn't save your profile/i)).toBeNull();
+});
+
+describe("a setup that is slow to load (#16965)", () => {
+  const SLOW = "Your setup is taking longer than usual";
+  const REPORT = "Onboarding setup did not load in time";
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("says so, offers a reload and reports it once when the account never arrives", async () => {
+    // The page's sign-in check never reports the account.
+    user = null;
+    render(<OnboardingPage />);
+    expect(screen.getByRole("status").textContent).toBe("Loading your setup…");
+
+    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS - 1));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTimeAsync(1));
+
+    const notice = screen.getByRole("alert");
+    expect(notice.textContent).toContain(SLOW);
+    // Focus moves to the notice that replaced the placeholder.
+    expect(document.activeElement).toBe(notice.parentElement);
+    expect(Sentry.captureMessage).toHaveBeenCalledOnce();
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      REPORT,
+      expect.objectContaining({
+        level: "warning",
+        tags: expect.objectContaining({
+          waiting_for: expect.stringContaining("account"),
+        }),
+      }),
+    );
+    const reload = vi
+      .spyOn(window.location, "reload")
+      .mockImplementation(() => {});
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it("reports one slow setup once, even when the placeholder remounts", async () => {
+    user = null;
+    const view = render(<OnboardingPage />);
+    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS));
+    expect(screen.getByRole("alert")).toBeDefined();
+
+    // The page moves to another loading state and back.
+    trial = { ...trial, ready: false };
+    view.rerender(<OnboardingPage />);
+    expect(screen.queryByRole("alert")).toBeNull();
+    trial = { ...trial, ready: true };
+    view.rerender(<OnboardingPage />);
+    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS));
+
+    expect(screen.getByRole("alert")).toBeDefined();
+    expect(Sentry.captureMessage).toHaveBeenCalledOnce();
+  });
+
+  it("still opens the wizard when the account arrives after the notice", async () => {
+    user = null;
+    const view = render(<OnboardingPage />);
+    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS));
+    expect(screen.getByRole("alert").textContent).toContain(SLOW);
+
+    user = {
+      id: "u1",
+      email: "reinier@example.com",
+      user_metadata: { name: "Reinier Bot" },
+    };
+    view.rerender(<OnboardingPage />);
+
+    await vi.waitFor(() =>
+      expect(screen.getByTestId("step-team")).toBeDefined(),
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("neither shows the notice nor reports while the account is known", async () => {
+    // A slow but healthy load: the account is there, the progress read isn't.
+    getState.mockImplementation(() => new Promise(() => {}));
+    render(<OnboardingPage />);
+
+    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS * 2));
+
+    expect(screen.getByTestId("onboarding-placeholder")).toBeDefined();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
 });

@@ -102,6 +102,10 @@ describe("a message sent right after Stop", () => {
             store("assistant", STORED_PARTIAL);
             store("assistant", CANCELLED_MARKER);
             return streamSseResponse(followUpQueuedChunks(), {
+              // Arrives over time as on a network, so the chat renders the
+              // turn running before it ends; read in one go, the whole turn
+              // would land in a single render.
+              delayMsBetweenChunks: 10,
               abortSignal: request.signal,
             });
           }

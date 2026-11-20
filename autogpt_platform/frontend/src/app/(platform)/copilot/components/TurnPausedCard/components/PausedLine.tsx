@@ -19,13 +19,14 @@ export function PausedLine({ title, note }: Props) {
       <Icon
         icon={PauseCircleIcon}
         size={14}
-        className="shrink-0 text-foreground-subtle"
+        tone="subtle"
+        className="shrink-0"
       />
-      <Text variant="small" className="!text-foreground-secondary">
+      <Text tone="secondary" variant="small">
         {title}
       </Text>
       {note && (
-        <Text variant="small" className="!text-foreground-subtle">
+        <Text tone="subtle" variant="small">
           {note}
         </Text>
       )}

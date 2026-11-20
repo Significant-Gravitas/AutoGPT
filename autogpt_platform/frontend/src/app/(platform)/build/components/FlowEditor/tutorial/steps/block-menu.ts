@@ -141,13 +141,12 @@ export const createBlockMenuSteps = (tour: any): StepOptions[] => [
   {
     id: "select-calculator",
     title: "Add the Calculator Block",
-    // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41); no fitting role for ring-zinc-200 #DADADC; #DADADC is border-base (a border colour) and surface-active (an active-state fill), and this is a ring (QUALITY 41(b))
     text: `
       <div class="text-body text-foreground-emphasis">
         <p class="text-body font-normal text-foreground-emphasis m-0">You should see the <strong>Calculator</strong> block in the results.</p>
         ${banner(ICONS.ClickIcon, "Click on the Calculator block to add it", "action")}
         
-        <div class="bg-zinc-100 ring-1 ring-zinc-200 rounded-2xl p-2 px-4 mt-2 flex items-start gap-2 text-body leading-5 font-medium text-foreground-secondary">  
+        <div class="bg-surface-hover ring-1 ring-border-base rounded-2xl p-2 px-4 mt-2 flex items-start gap-2 text-body leading-5 font-medium text-foreground-secondary">  
           <span class="flex-shrink-0">${ICONS.Drag}</span>
           <span>You can also drag blocks onto the canvas</span>
         </div>

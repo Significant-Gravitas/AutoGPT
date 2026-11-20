@@ -19,8 +19,8 @@ interface Props {
 function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
-        <thead className="border-b text-xs uppercase text-muted-foreground">
+      <table className="w-full text-left text-body">
+        <thead className="border-b text-caption text-foreground-tertiary uppercase">
           <tr>
             <th scope="col" className="px-4 py-3">
               Provider
@@ -63,7 +63,7 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
               title="Per-session only"
             >
               {"Rate "}
-              <span className="text-tiny font-normal leading-inherit">
+              <span className="text-tiny leading-inherit font-normal">
                 (unsaved)
               </span>
             </th>
@@ -82,10 +82,10 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
             return (
               <tr
                 key={`${row.provider}:${tt}:${row.model ?? ""}`}
-                className="border-b hover:bg-muted"
+                className="border-b hover:bg-surface-hover"
               >
                 <td className="px-4 py-3 font-medium">{row.provider}</td>
-                <td className="px-4 py-3 text-muted-foreground">
+                <td className="px-4 py-3 text-foreground-tertiary">
                   {row.model || "—"}
                 </td>
                 <td className="px-4 py-3">
@@ -114,7 +114,7 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
                   {est !== null ? (
                     formatMicrodollars(est)
                   ) : (
-                    <span className="text-muted-foreground">-</span>
+                    <span className="text-foreground-tertiary">-</span>
                   )}
                 </td>
                 <td className="px-4 py-2 text-right">
@@ -125,7 +125,7 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
                         step="0.0001"
                         min="0"
                         aria-label={`Rate for ${row.provider} (${tt})`}
-                        className="w-24 rounded border px-2 py-1 text-right text-xs"
+                        className="w-24 rounded border px-2 py-1 text-right text-caption"
                         placeholder={fallback !== null ? String(fallback) : "0"}
                         value={currentRate ?? ""}
                         onChange={(e) => {
@@ -136,14 +136,16 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
                         }}
                       />
                       <span
-                        className="text-tiny leading-inherit text-muted-foreground"
+                        className="text-tiny leading-inherit text-foreground-tertiary"
                         title={rateUnitLabel(tt)}
                       >
                         {rateUnitLabel(tt)}
                       </span>
                     </div>
                   ) : (
-                    <span className="text-xs text-muted-foreground">auto</span>
+                    <span className="text-caption text-foreground-tertiary">
+                      auto
+                    </span>
                   )}
                 </td>
               </tr>
@@ -153,7 +155,7 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
             <tr>
               <td
                 colSpan={10}
-                className="px-4 py-8 text-center text-muted-foreground"
+                className="px-4 py-8 text-center text-foreground-tertiary"
               >
                 No cost data yet
               </td>

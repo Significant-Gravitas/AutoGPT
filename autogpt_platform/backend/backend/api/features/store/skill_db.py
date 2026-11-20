@@ -9,6 +9,7 @@ owner (personal library or expert): a re-install overwrites that copy and is
 not counted again.
 """
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -30,6 +31,7 @@ from backend.data.db import query_raw_with_schema
 from backend.data.redis_client import get_redis_async
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
+from backend.util.sql import escape_like
 
 from . import skill_model
 from .categories import category_filter_values
@@ -284,15 +286,17 @@ async def get_marketplace_skills(
     page_size: int = 20,
 ) -> skill_model.MarketplaceSkillsResponse:
     where = _live_version_where(category, search_query)
-    total = await prisma.models.SkillListingVersion.prisma().count(where=where)
-    versions = await prisma.models.SkillListingVersion.prisma().find_many(
-        where=where,
-        include={"ActiveFor": {"include": _LISTING_INCLUDE}},
-        # Seeded versions share a timestamp, and an undefined order between
-        # pages then drops or repeats a row; `id` is the uuid primary key.
-        order=[{"updatedAt": "desc"}, {"id": "desc"}],
-        skip=(page - 1) * page_size,
-        take=page_size,
+    total, versions = await asyncio.gather(
+        prisma.models.SkillListingVersion.prisma().count(where=where),
+        prisma.models.SkillListingVersion.prisma().find_many(
+            where=where,
+            include={"ActiveFor": {"include": _LISTING_INCLUDE}},
+            # Seeded versions share a timestamp, and an undefined order between
+            # pages then drops or repeats a row; `id` is the uuid primary key.
+            order=[{"updatedAt": "desc"}, {"id": "desc"}],
+            skip=(page - 1) * page_size,
+            take=page_size,
+        ),
     )
     listings = [v.ActiveFor for v in versions if v.ActiveFor is not None]
     return skill_model.MarketplaceSkillsResponse(
@@ -640,7 +644,7 @@ def _live_version_where(
     if category_values := category_filter_values(category):
         where["categories"] = {"has_some": category_values}
     if search_query and search_query.strip():
-        needle = search_query.strip()
+        needle = escape_like(search_query.strip())
         where["OR"] = [
             {"name": {"contains": needle, "mode": "insensitive"}},
             {"description": {"contains": needle, "mode": "insensitive"}},

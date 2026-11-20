@@ -10,6 +10,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { useId } from "react";
 import { AUTOPILOT_BLURB, AUTOPILOT_ROLE } from "../helpers";
 import {
   CHIP_SHAPE,
@@ -36,14 +37,20 @@ export function AutopilotCard({
   workflowCount,
   onChat,
 }: Props) {
+  const totalsID = useId();
+  const hasTotals = skillCount + scheduleCount + workflowCount > 0;
+
   return (
     <section
       aria-label={AUTOPILOT_NAME}
       className="flex flex-col overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm"
     >
+      {/* The aria-label replaces the link's content, so the totals and
+          their label reach a screen reader as its description. */}
       <Link
         href="/team/autopilot"
         aria-label={`View ${AUTOPILOT_NAME}`}
+        aria-describedby={hasTotals ? totalsID : undefined}
         className="flex flex-1 flex-col items-start p-2 pb-4"
       >
         <ExpertCover color={AUTOPILOT_COVER_COLOR} status="built-in" />
@@ -52,8 +59,8 @@ export function AutopilotCard({
           <AutopilotAvatar
             size={88}
             backgroundColor={AUTOPILOT_COVER_COLOR}
-            // TODO(tokens): no exact role: border-[#e3e3e3] #E3E3E3
-            className="relative z-10 -mt-12 ml-1 rounded-full border border-[#e3e3e3] ring-4 ring-background"
+            // oxlint-disable-next-line design-system/no-restyle -- AutopilotAvatar has no bordered variant (src/components is P9's)
+            className="relative z-10 -mt-12 ml-1 rounded-full border border-border-base ring-4 ring-surface"
           />
         </div>
 
@@ -61,7 +68,7 @@ export function AutopilotCard({
           <Text
             variant="lead-medium"
             tone="primary"
-            className="w-full truncate pb-1"
+            className="mb-1 w-full truncate"
           >
             {AUTOPILOT_NAME}
           </Text>
@@ -69,6 +76,7 @@ export function AutopilotCard({
               topic tags and should not read as a different kind of thing. */}
           <span
             className={cn(CHIP_SHAPE, CHIP_SIZE.small, "h-[22px] max-w-full")}
+            // oxlint-disable-next-line design-system/no-inline-styles -- the tag colour is per-topic data from marketplace's categoryTagStyle (P7)
             style={categoryTagStyle(AUTOPILOT_COVER_COLOR)}
           >
             <Icon icon={SparklesIcon} size={12} className="shrink-0" />
@@ -83,7 +91,7 @@ export function AutopilotCard({
           </Text>
         </div>
 
-        <div className="w-full px-2 pl-5">
+        <div id={totalsID} className="w-full px-2 pl-5">
           <CardStats className="mt-3 w-full">
             <CardStat
               icon={Calendar03Icon}
@@ -104,6 +112,11 @@ export function AutopilotCard({
               count={workflowCount}
             />
           </CardStats>
+          {hasTotals ? (
+            <Text variant="small" tone="muted" className="mt-1">
+              Across your team
+            </Text>
+          ) : null}
         </div>
       </Link>
 

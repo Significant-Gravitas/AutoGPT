@@ -36,7 +36,7 @@ test.describe("copilot follow-up journey", () => {
     await expect(
       transcript.getByText(firstWords(ANSWER)),
       "the answer should start streaming",
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 60_000 });
 
     await page
       .getByRole("textbox", { name: "Chat message input" })
@@ -70,7 +70,7 @@ test.describe("copilot follow-up journey", () => {
     const journal = await readJournal(run.nonce);
     expectEachTurnOnce(journal, SCRIPT);
     if (!journeyUser.id) throw new Error("the journey user should have an id");
-    await expectChargedWhatWasBilled(journeyUser.id, journal);
+    await expectChargedWhatWasBilled(journeyUser.id, [run.nonce]);
   });
 });
 

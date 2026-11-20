@@ -1,12 +1,8 @@
 """The dream-system cron table and the owner-timezone lookup.
 
-Two APScheduler cron jobs serve every memory scope (the account, or one
-hired expert), and a third the account alone:
+One APScheduler cron job serves every memory scope (the account, or one
+hired expert), and a second the account alone:
 
-  * ``community_rebuild_{scope_key}``    — weekly, owner-local 04:00 on
-    Mondays (P-1.7): its crontab ``0 4 * * 0`` means Monday to APScheduler,
-    whose weekdays start at 0 = Monday. Direct LLM (not batch),
-    activity-gated inside the function.
   * ``dream_nightly_batch_{scope_key}``  — daily 03:00 owner-local,
     submits all nightly-batch-family work (dream pass, ratification
     supersession sweep, plus future P2 / P3 / P4 / P11 stages).
@@ -20,8 +16,9 @@ is ``registry.py``'s job; this module only says what the crons are. Adding a
 future cron (P8 cross-scope insight, ...) is a row in
 :data:`DREAM_SYSTEM_JOBS` plus a job-id column on ``MemoryScopeSchedule``.
 
-Community rebuilds are part of memory maintenance. Dream passes and skill
-learning retain their independent flags, checked by the registry, scheduler
+The weekly community rebuild has no cron per scope: one hourly job rebuilds
+every scope that is due (``community_sweep.py``). Dream passes and skill
+learning keep their independent flags, checked by the registry, scheduler
 registration methods and job bodies. Every cron still checks scope lifecycle
 and owner restrictions before running.
 """
@@ -44,7 +41,8 @@ logger = logging.getLogger(__name__)
 
 
 # Job-id prefixes, shared with the scheduler's ``@expose`` methods so the two
-# can never disagree on a job id.
+# can never disagree on a job id. Community rebuild crons are no longer
+# registered; the scheduler removes the ones still in its jobstore.
 COMMUNITY_REBUILD_JOB_PREFIX = "community_rebuild"
 NIGHTLY_BATCH_JOB_PREFIX = "dream_nightly_batch"
 SKILL_LEARNING_JOB_PREFIX = "skill_learning_nightly"
@@ -74,7 +72,7 @@ class DreamSystemJob:
     """The ``reason`` recorded when the flag is off, so "why does this scope
     have no schedule" is grep-able."""
 
-    row_field: Literal["community_job_id", "nightly_job_id", "learning_job_id"]
+    row_field: Literal["nightly_job_id", "learning_job_id"]
     """The ``MemoryScopeSchedule`` field holding this cron's job id."""
 
     register: Callable[[SchedulerLike, MemoryScope, str], Awaitable[dict]]
@@ -93,14 +91,6 @@ class DreamSystemJob:
         return not (self.account_only and scope.is_expert)
 
 
-def _register_community_rebuild(
-    client: SchedulerLike, scope: MemoryScope, user_timezone: str
-) -> Awaitable[dict]:
-    return client.add_scope_community_rebuild_schedule(
-        scope=scope, user_timezone=user_timezone
-    )
-
-
 def _register_nightly_batch(
     client: SchedulerLike, scope: MemoryScope, user_timezone: str
 ) -> Awaitable[dict]:
@@ -117,18 +107,9 @@ def _register_skill_learning(
     )
 
 
-# Listed in cron-frequency order (rarest first) so a new scope's log trail
-# reads "weekly → daily". The future P8 cross-scope cron (weekly, batch)
-# lands between the first two.
+# Listed in cron-frequency order (rarest first). The future P8 cross-scope
+# cron (weekly, batch) lands first.
 DREAM_SYSTEM_JOBS: list[DreamSystemJob] = [
-    DreamSystemJob(
-        name="Community rebuild",
-        job_id_prefix=COMMUNITY_REBUILD_JOB_PREFIX,
-        flag=None,
-        skip_reason="",
-        row_field="community_job_id",
-        register=_register_community_rebuild,
-    ),
     DreamSystemJob(
         name="Dream nightly batch",
         job_id_prefix=NIGHTLY_BATCH_JOB_PREFIX,

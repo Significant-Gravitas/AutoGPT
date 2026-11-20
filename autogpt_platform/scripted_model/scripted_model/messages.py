@@ -6,7 +6,7 @@ from typing import Any
 
 from .invoice import requested_cache_ttl
 from .planner import Conversation, Reply, ToolResult, bare_name
-from .streaming import Event, json_chunks, text_chunks
+from .streaming import Event, held_chunk, json_chunks, text_chunks
 
 
 def conversation(body: dict[str, Any]) -> Conversation:
@@ -53,12 +53,15 @@ def events(reply: Reply, model: str) -> Iterator[Event]:
     index = 0
     if reply.text:
         yield _block_start(index, {"type": "text", "text": ""})
-        for piece in text_chunks(reply.text, reply.chunk_words):
+        hold_at = held_chunk(reply.chunk_words, reply.hold_after_words)
+        pieces = text_chunks(reply.text, reply.chunk_words)
+        for chunk_index, piece in enumerate(pieces):
             delta = {"type": "text_delta", "text": piece}
             yield Event(
                 "content_block_delta",
                 {"type": "content_block_delta", "index": index, "delta": delta},
                 reply.delay_ms,
+                hold=chunk_index == hold_at,
             )
         yield _block_stop(index)
         index += 1

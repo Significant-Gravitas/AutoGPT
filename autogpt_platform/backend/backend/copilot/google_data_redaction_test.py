@@ -1,17 +1,10 @@
-"""What reaches Langfuse must not carry what a Google block returned."""
+"""A traced payload must not carry what a Google block returned."""
 
 import json
-from collections.abc import Iterator
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import langsmith
 import pytest
-from langfuse import Langfuse, get_client
-from langfuse._client.resource_manager import LangfuseResourceManager
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from backend.blocks.google.gmail import GmailReadBlock
 from backend.blocks.text import MatchTextPatternBlock
@@ -21,10 +14,7 @@ from backend.copilot.tools.models import BlockOutputResponse
 from . import google_data_redaction
 from .google_data_redaction import (
     REDACTED,
-    install_langfuse_mask,
-    install_trace_redaction,
     is_google_output,
-    mask_langfuse_data,
     redact_google_data,
     remember_google_output,
     tracing_google_data,
@@ -50,7 +40,7 @@ TEXT_OUTPUT = _output(TEXT_BLOCK_ID, None, "a harmless match")
 
 
 def _sdk_history(call: dict[str, Any], result: str) -> dict[str, Any]:
-    """An SDK turn's model input, as LangSmith records it."""
+    """An SDK turn's model input, in the Anthropic shape."""
     return {
         "messages": [
             {"role": "user", "content": "what did finance send me?"},
@@ -71,7 +61,7 @@ def _sdk_history(call: dict[str, Any], result: str) -> dict[str, Any]:
 
 
 def _baseline_history(call: dict[str, Any], result: str) -> list[dict[str, Any]]:
-    """A baseline turn's model input, as the Langfuse OpenAI wrapper records it."""
+    """A baseline turn's model input, in the OpenAI shape."""
     return [
         {"role": "user", "content": "what did finance send me?"},
         {
@@ -158,7 +148,7 @@ def test_google_call_without_its_result_redacts_the_result():
 
 
 def test_tool_run_output_redacted_by_what_the_tool_produced():
-    """LangSmith records a tool run's output without its call."""
+    """A tool run's output traced without its call."""
     preview = f"<tool-output-truncated total_chars=90000>\n{EMAIL[:20]}"
     remember_google_output(preview)
 
@@ -193,8 +183,8 @@ def test_tool_run_input_redacted():
     ],
 )
 def test_resumed_google_tool_run_input_redacted(call: dict[str, Any]):
-    """A LangSmith tool run records the call without its result; the review
-    id names the block it resumes."""
+    """A tool run's call traced without its result; the review id names the
+    block it resumes."""
     redacted = redact_google_data({"input": call})
 
     assert "the new email" not in json.dumps(redacted)
@@ -220,142 +210,17 @@ def test_google_block_output_response_is_remembered():
     assert response.model_copy(update={"provider": "google"}).holds_google_data
 
 
-@pytest.fixture
-def langfuse_spans() -> Iterator[InMemorySpanExporter]:
-    """A Langfuse client built the way production builds it, exporting to
-    memory instead of to Langfuse."""
-    exporter = InMemorySpanExporter()
-    provider = TracerProvider()
-    provider.add_span_processor(SimpleSpanProcessor(exporter))
-    LangfuseResourceManager.reset()
-    Langfuse(
-        public_key="pk-lf-test",
-        secret_key="sk-lf-test",
-        base_url="http://127.0.0.1:9",
-        tracer_provider=provider,
-        mask=mask_langfuse_data,
-    )
-    try:
-        yield exporter
-    finally:
-        LangfuseResourceManager.reset()
-
-
-def test_langfuse_generation_input_is_masked(langfuse_spans: InMemorySpanExporter):
-    call = {"block_id": GMAIL_BLOCK_ID, "input_data": {"query": "from:finance"}}
-    history = _baseline_history(call, GMAIL_OUTPUT)
-    client = get_client()
-
-    generation = client.start_observation(
-        name="OpenAI-generation", as_type="generation", input=history
-    )
-    generation.update(output={"role": "assistant", "content": "Done."})
-    generation.end()
-
-    sent = json.dumps(
-        [dict(span.attributes or {}) for span in langfuse_spans.get_finished_spans()]
-    )
-    assert EMAIL not in sent
-    assert "from:finance" not in sent
-    assert REDACTED in sent
-    assert "run_block" in sent
-
-
-def _build_langfuse(monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> None:
-    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
-    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-    monkeypatch.setenv("LANGFUSE_BASE_URL", "http://127.0.0.1:9")
-    Langfuse(tracer_provider=TracerProvider(), **kwargs)
-
-
-def test_install_langfuse_mask_refuses_a_client_built_without_it(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """The SDK hands out the first client built; a mask passed later is
-    dropped, so installing it must fail rather than trace unmasked."""
-    LangfuseResourceManager.reset()
-    try:
-        _build_langfuse(monkeypatch)
-
-        with pytest.raises(RuntimeError):
-            install_langfuse_mask()
-    finally:
-        LangfuseResourceManager.reset()
-
-
-def test_install_langfuse_mask_accepts_a_client_built_with_it(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    LangfuseResourceManager.reset()
-    try:
-        _build_langfuse(monkeypatch, mask=mask_langfuse_data)
-
-        install_langfuse_mask()
-    finally:
-        LangfuseResourceManager.reset()
-
-
-def test_install_langfuse_mask_uses_the_configured_credentials():
-    """Credentials read from ``.env`` reach ``Settings`` but not the process
-    environment the SDK falls back to; without them the first client, which
-    every later ``get_client()`` reuses, would be disabled."""
-    secrets = MagicMock(
-        langfuse_public_key="pk-from-settings",
-        langfuse_secret_key="sk-from-settings",
-        langfuse_host="https://langfuse.example.com",
-    )
-    with (
-        patch.object(google_data_redaction, "Settings") as settings,
-        patch.object(google_data_redaction, "Langfuse") as langfuse,
-    ):
-        settings.return_value.secrets = secrets
-        langfuse.return_value._resources.mask = mask_langfuse_data
-        install_langfuse_mask()
-
-    langfuse.assert_called_once_with(
-        public_key="pk-from-settings",
-        secret_key="sk-from-settings",
-        host="https://langfuse.example.com",
-        mask=mask_langfuse_data,
-    )
-
-
-def test_install_trace_redaction_masks_both_tracers():
-    with (
-        patch.object(google_data_redaction, "Langfuse") as langfuse,
-        patch.object(google_data_redaction.langsmith, "configure") as configure,
-    ):
-        langfuse.return_value._resources.mask = mask_langfuse_data
-        install_trace_redaction()
-
-    langfuse.assert_called_once()
-    assert langfuse.call_args.kwargs["mask"] is mask_langfuse_data
-    client = configure.call_args.kwargs["client"]
-    assert isinstance(client, langsmith.Client)
-    inputs = {"input": {"block_id": GMAIL_BLOCK_ID, "input_data": {"q": "x"}}}
-    assert client._hide_run_inputs(inputs)["input"]["input_data"] == REDACTED
-    assert client._hide_run_outputs({"output": GMAIL_OUTPUT}) == {"output": REDACTED}
-
-
-def test_tracing_google_data_redacts_every_text(langfuse_spans: InMemorySpanExporter):
+def test_tracing_google_data_redacts_every_text():
     """A gate prompt quoting a Google result has no structure to find it by."""
     prompt = [{"role": "user", "content": f"Judge this read:\n{EMAIL}"}]
-    client = get_client()
 
     # An inner scope that is not a Google call keeps the outer one's redaction.
     with tracing_google_data(), tracing_google_data(False):
-        generation = client.start_observation(
-            name="OpenAI-generation", as_type="generation", input=prompt
-        )
-        generation.update(output={"role": "assistant", "content": EMAIL})
-        generation.end()
+        traced = json.dumps(redact_google_data(prompt))
     assert redact_google_data(prompt) == prompt
 
-    sent = json.dumps(
-        [dict(span.attributes or {}) for span in langfuse_spans.get_finished_spans()]
-    )
-    assert "quarterly numbers" not in sent
-    assert REDACTED in sent
+    assert "quarterly numbers" not in traced
+    assert REDACTED in traced
 
 
 def test_a_non_string_id_is_left_alone():

@@ -14,6 +14,7 @@ vi.mock("@sentry/nextjs", async (importOriginal) => {
   return {
     init: initMock,
     requestDataIntegration: actual.requestDataIntegration,
+    withStaticSpan: actual.withStaticSpan,
     anrIntegration: stubIntegration("Anr"),
     captureConsoleIntegration: stubIntegration("CaptureConsole"),
     extraErrorDataIntegration: stubIntegration("ExtraErrorData"),
@@ -28,6 +29,14 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllEnvs();
 });
+
+// The client an integration reads the config's data collection from.
+function clientFor(options: { dataCollection: unknown }) {
+  return {
+    getOptions: () => options,
+    getDataCollectionOptions: () => options.dataCollection,
+  };
+}
 
 describe.each([
   ["edge", () => import("../../sentry.edge.config")],
@@ -45,6 +54,10 @@ describe.each([
       transaction: "middleware POST",
       contexts: { trace: { data: { "http.target": "/relay/snentry" } } },
     };
+    const sentryMiddlewareRelay = {
+      transaction: "middleware POST",
+      contexts: { trace: { data: { "url.path": "/relay/snentry" } } },
+    };
     const page = {
       transaction: "middleware POST",
       request: { url: "https://platform.agpt.co/marketplace" },
@@ -54,6 +67,7 @@ describe.each([
 
     expect(beforeSendTransaction(serverRelay)).toBeNull();
     expect(beforeSendTransaction(middlewareRelay)).toBeNull();
+    expect(beforeSendTransaction(sentryMiddlewareRelay)).toBeNull();
     expect(beforeSendTransaction(page)).toBe(page);
     expect(beforeSendTransaction(malformed)).toBe(malformed);
   });
@@ -77,7 +91,7 @@ describe.each([
         },
       },
       {},
-      { getOptions: () => ({}) },
+      clientFor(initMock.mock.calls[0][0]),
     );
 
     expect(event.request.url).toBe("https://platform.agpt.co/library");
@@ -104,7 +118,7 @@ describe.each([
         },
       },
       {},
-      { getOptions: () => ({}) },
+      clientFor(initMock.mock.calls[0][0]),
     );
 
     expect(event.request.url).toBe(
@@ -287,10 +301,15 @@ describe.each([
       trace_id: "a".repeat(32),
       span_id: "c".repeat(16),
       start_timestamp: 1,
-      data: { "http.request.header.referer": `/link/${URL_MARKER}` },
+      data: {
+        "http.request.header.referer": `/link/${URL_MARKER}`,
+        // Sentry's own header attributes hold a list of values.
+        "http.request.header.next-url": [`/link/${URL_MARKER}`, "/library"],
+      },
     });
     expect(span.data).toEqual({
       "http.request.header.referer": "/link/[REDACTED]",
+      "http.request.header.next-url": ["/link/[REDACTED]", "/library"],
     });
   });
 
@@ -321,7 +340,7 @@ describe.each([
   it("sends no user email or IP address", async () => {
     await load();
 
-    const { sendDefaultPii, beforeSend, beforeSendTransaction } =
+    const { dataCollection, beforeSend, beforeSendTransaction } =
       initMock.mock.calls[0][0];
     function withPersonalData() {
       return {
@@ -347,7 +366,7 @@ describe.each([
       };
     }
 
-    expect(sendDefaultPii).toBe(false);
+    expect(dataCollection.userInfo).toBe(false);
     for (const event of [
       beforeSend(withPersonalData(), {}),
       beforeSendTransaction(withPersonalData()),
@@ -476,7 +495,7 @@ describe.each([
   it("sends logs with the user id only, and no email, name or IP address", async () => {
     await load();
 
-    const { enableLogs, beforeSendLog } = initMock.mock.calls[0][0];
+    const { beforeSendLog } = initMock.mock.calls[0][0];
     const log = beforeSendLog({
       level: "info",
       message: "rendered the library",
@@ -492,7 +511,6 @@ describe.each([
       },
     });
 
-    expect(enableLogs).toBe(true);
     expect(log).toEqual({
       level: "info",
       message: "rendered the library",

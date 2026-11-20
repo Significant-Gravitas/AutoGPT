@@ -18,19 +18,19 @@ export function SubmissionMetaGrid({ items, shouldReduceMotion }: Props) {
       initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.24, ease: "easeOut", delay: 0.21 }}
-      className="mt-4 grid w-full max-w-md grid-cols-2 gap-x-4 gap-y-3 rounded-[14px] border border-border-base bg-surface-muted/60 p-4"
+      className="mt-4 grid w-full max-w-md grid-cols-2 gap-x-4 gap-y-3 rounded-xl border border-border-base bg-surface-muted/60 p-4"
       data-testid="submission-meta"
     >
       {items.map((item) => (
         <div key={item.label} className="flex min-w-0 flex-col">
-          <Text variant="small" as="span" className="text-foreground-tertiary">
+          <Text variant="small" as="span" tone="muted">
             {item.label}
           </Text>
           <Text
             variant="small-medium"
             as="span"
             title={item.title}
-            className="truncate text-textBlack"
+            className="truncate"
           >
             {item.value}
           </Text>

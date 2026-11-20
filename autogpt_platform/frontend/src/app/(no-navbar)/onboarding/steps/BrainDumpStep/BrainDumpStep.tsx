@@ -72,16 +72,18 @@ export function BrainDumpStep() {
         />
         <RevealGroup
           className={cn(
+            // oxlint-disable-next-line design-system/no-restyle -- RevealGroup/RevealItem are motion wrappers that lay out their children; a wrapper div would split the stagger
             "relative z-10 flex w-full flex-col items-center gap-6 px-4",
             isTyping
-              ? "w-[calc(100vw-3rem)] max-w-3xl [@media(max-height:800px)]:gap-4"
+              ? // oxlint-disable-next-line design-system/no-restyle -- see above
+                "w-[calc(100vw-3rem)] max-w-3xl [@media(max-height:800px)]:gap-4"
               : "max-w-2xl",
           )}
         >
           <StepHeader
             screen={dump.screen}
             restHeadline={dump.headline}
-            insufficientMode={dump.insufficientMode}
+            isFollowUp={dump.isFollowUp}
             elapsedSeconds={dump.elapsedSeconds}
             question={dump.prompt.question.text}
             onTogglePause={dump.prompt.togglePause}
@@ -91,7 +93,9 @@ export function BrainDumpStep() {
             <RevealItem
               blur={false}
               className={cn(
+                // oxlint-disable-next-line design-system/no-restyle -- RevealGroup/RevealItem are motion wrappers that lay out their children; a wrapper div would split the stagger
                 "flex w-full flex-col items-center gap-4",
+                // oxlint-disable-next-line design-system/no-restyle -- see above
                 isTyping && "[@media(max-height:800px)]:gap-2",
               )}
             >
@@ -103,6 +107,7 @@ export function BrainDumpStep() {
                     onChange={dump.setTypedText}
                     isTooLong={dump.isTypedTooLong}
                     onSubmit={dump.handleSubmitTyped}
+                    placeholder={dump.typingPlaceholder}
                     question={dump.prompt.question.text}
                     announcement={dump.prompt.announcement}
                     onAnotherQuestion={showAnotherQuestion}
@@ -192,9 +197,12 @@ export function BrainDumpStep() {
             <RevealItem>
               <InsufficientState
                 mode={dump.insufficientMode}
+                heardText={dump.heardText}
+                replyKind={dump.replyKind}
+                role={dump.role}
                 canRecord={!dump.isMicBlocked}
-                onRecordAgain={dump.handleRestart}
-                onTypeInstead={dump.showTyping}
+                onTalk={dump.handleRestart}
+                onWrite={dump.showTyping}
                 onSkip={dump.handleSkip}
               />
             </RevealItem>

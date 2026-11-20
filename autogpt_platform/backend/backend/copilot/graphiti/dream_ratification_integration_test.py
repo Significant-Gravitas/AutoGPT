@@ -210,7 +210,7 @@ def stub_boundaries(
     * ``get_graphiti_client`` — patched on ``ingest`` (where it is used) to
       return a Graphiti wired to the test's real driver with the LLM stubbed.
     * ``ensure_scope_scheduled`` — patched on ``ingest`` (where the first
-      write per group calls it). Left live it would fire LaunchDarkly,
+      write per group calls it). Left live it would fire PostHog,
       registry and scheduler calls from a background task.
     * ``get_redis_async`` — likewise imported lazily by the hit tracker.
     """

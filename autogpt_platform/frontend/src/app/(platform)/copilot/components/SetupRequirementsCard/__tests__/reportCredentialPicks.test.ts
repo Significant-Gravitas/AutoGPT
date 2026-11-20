@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { putV2RecordCredentialPicksForThisChat } from "@/app/api/__generated__/endpoints/chat/chat";
 import { buildCredentialSelections, reportCredentialPicks } from "../helpers";
+import type { CredentialField } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
 
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
   putV2RecordCredentialPicksForThisChat: vi.fn(),
@@ -20,6 +21,39 @@ describe("buildCredentialSelections", () => {
     expect(buildCredentialSelections(picked)).toEqual({
       github: "cred-personal",
       linear: "cred-linear",
+    });
+  });
+
+  it("keeps separate picks for HTTP hosts", () => {
+    const fields: CredentialField[] = [
+      [
+        "linear",
+        {
+          credentials_provider: ["http"],
+          credentials_types: ["host_scoped"],
+          discriminator_values: ["https://api.linear.app/graphql"],
+        },
+      ],
+      [
+        "github",
+        {
+          credentials_provider: ["http"],
+          credentials_types: ["host_scoped"],
+          discriminator_values: ["https://api.github.com/repos"],
+        },
+      ],
+    ];
+    expect(
+      buildCredentialSelections(
+        {
+          linear: { id: "linear-work", provider: "http" },
+          github: { id: "github-personal", provider: "http" },
+        },
+        fields,
+      ),
+    ).toEqual({
+      "http:api.linear.app": "linear-work",
+      "http:api.github.com": "github-personal",
     });
   });
 });
