@@ -190,6 +190,11 @@ class Flag(str, Enum):
     # a cohort before it reaches everyone.
     CHAT_CONNECTION_UPSELL = "chat-connection-upsell"
 
+    # Model-routing hints (``copilot/model_hints.py``): Jev matches each user
+    # message against a few specialist models and, when sure, tells AutoPilot
+    # which block to run. A proof of concept; off by default, and off calls no Jev.
+    COPILOT_MODEL_HINTS = "copilot-model-hints"
+
 
 def initialize_feature_flags() -> None:
     """Start the PostHog flag client and load its definitions."""

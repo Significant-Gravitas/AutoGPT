@@ -50,6 +50,7 @@ from .model import (
     update_session_title,
     upsert_chat_session,
 )
+from .model_hint_profiles import MODEL_HINT_TAG
 from .token_tracking import _extract_cache_creation_tokens, persist_and_record_usage
 
 logger = logging.getLogger(__name__)
@@ -337,6 +338,7 @@ SERVER_INJECTED_BLOCK_TAGS: tuple[str, ...] = (
     SEEN_CAPABILITIES_TAG,
     VOICE_TURN_TAG,
     SANDBOX_STATUS_TAG,
+    MODEL_HINT_TAG,
     *_EXPERT_BLOCK_TAGS,
 )
 
