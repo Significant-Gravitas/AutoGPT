@@ -160,12 +160,16 @@ def canonical_directory(path: Path) -> Path:
         # A chat's folder is one the account can open and write to, as the
         # folder dialog's choice requires (DirectoryBrowser.resolve), asked
         # the way each system answers truthfully (fsops).
-        if (
-            not resolved.is_dir()
-            or not fsops.can_open_folder(resolved)
-            or not fsops.can_write_folder(resolved)
-        ):
+        if not resolved.is_dir() or not fsops.can_open_folder(resolved):
             raise RootGrantError("Selected root is unavailable")
+        if not fsops.can_write_folder(resolved):
+            # Said as the dialog says it. It passed the dialog's check, so
+            # write access went since, and "unavailable" would send the
+            # person back to the dialog without a reason.
+            raise RootGrantError(
+                "This folder can't be shared with a chat: this account can't write to "
+                "it. Choose a folder it can write to."
+            )
         return resolved
     except RootGrantError:
         raise
