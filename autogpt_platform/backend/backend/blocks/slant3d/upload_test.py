@@ -15,6 +15,7 @@ async def test_slicer_loads_workspace_attachment_with_user_context(
 
     async def put(url, **kwargs):
         uploaded.append(kwargs["data"].read())
+        return Mock(ok=True, status=200)
 
     context = ExecutionContext(
         user_id="user-1",
