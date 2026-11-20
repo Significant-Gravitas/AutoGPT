@@ -40,7 +40,7 @@
   ],
   "dependencies": {
     "@ai-sdk/react": "4.0.173",
-    "@better-auth/core": "1.7.16",
+    "@better-auth/core": "1.7.22",
     "@faker-js/faker": "10.6.0",
     "@ferrucc-io/emoji-picker": "0.1.2",
     "@hookform/resolvers": "5.9.2",
