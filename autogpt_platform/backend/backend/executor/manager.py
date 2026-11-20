@@ -571,8 +571,9 @@ async def execute_node(
     if isinstance(node_block, AgentExecutorBlock):
         _input_data = AgentExecutorBlock.Input(**node.input_default)
         _input_data.inputs = input_data
-        if nodes_input_masks:
-            _input_data.nodes_input_masks = nodes_input_masks
+        # Like user_id, the masks are the run's own: a mask saved on the node
+        # would rewrite the sub-graph's inputs behind every check that reads it.
+        _input_data.nodes_input_masks = nodes_input_masks
         _input_data.user_id = user_id
         input_data = _input_data.model_dump()
     elif isinstance(node_block, MCPToolBlock):
