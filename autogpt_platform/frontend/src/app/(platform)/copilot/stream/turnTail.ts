@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai";
+import { v5 as uuidv5 } from "uuid";
 
 import { CANCELLED_MARKER } from "../useCopilotStop";
 import {
@@ -26,6 +27,12 @@ export interface UserSegment {
   origin: "sent" | "chip";
   rawId: string | null;
   createdAt: string | null;
+  /** The id of the row the backend writes for a send: null for a chip, a
+   *  kickoff, or a send before any view named the session's user. */
+  persistedId: string | null;
+  /** The `message_id` its request named, which a send again reuses: null
+   *  for a chip. */
+  clientMessageId: string | null;
 }
 
 export interface TurnSegment {
@@ -91,9 +98,22 @@ export function newTurnSegment(
   };
 }
 
+const CHIP_KEY_PREFIX = "pending-chip-";
+
+/** The row a promoted follow-up shows as until its drained row stands in. */
+export function chipKey(queuedId: string): string {
+  return `${CHIP_KEY_PREFIX}${queuedId}`;
+}
+
+export function isChipKey(key: string): boolean {
+  return key.startsWith(CHIP_KEY_PREFIX);
+}
+
 export function userSegment(
   message: UIMessage,
   origin: UserSegment["origin"],
+  persistedId: string | null = null,
+  clientMessageId: string | null = null,
 ): UserSegment {
   return {
     kind: "user",
@@ -103,7 +123,24 @@ export function userSegment(
     origin,
     rawId: null,
     createdAt: null,
+    persistedId,
+    clientMessageId,
   };
+}
+
+// `_CLIENT_MESSAGE_NAMESPACE` in backend/copilot/expert_kickoff.py.
+const CLIENT_MESSAGE_NAMESPACE = "d70473da-722b-55cb-963f-4729e64d7b06";
+
+/** The row id `scoped_client_message_id` gives a send: the prompt's identity in the session. */
+export function persistedPromptId(
+  userId: string,
+  sessionId: string,
+  clientMessageId: string,
+) {
+  return uuidv5(
+    `${userId}:${sessionId}:${clientMessageId}`,
+    CLIENT_MESSAGE_NAMESPACE,
+  );
 }
 
 /** Where a turn's rows start: its first checkpoint, its seed, or the row after its prompt. */
@@ -222,11 +259,10 @@ export function withPromptRow(
   seg: UserSegment,
   row: PersistedRow,
 ): UserSegment {
-  const rawId = (row as { id?: unknown }).id;
   return {
     ...seg,
     sequence: row.sequence ?? null,
-    rawId: typeof rawId === "string" ? rawId : null,
+    rawId: typeof row.id === "string" ? row.id : null,
     createdAt: createdAtOf(row),
   };
 }
@@ -345,14 +381,18 @@ export function persistedRows(
 }
 
 /**
- * The prompt's row: the first user row in the tail whose text it carries
- * (the backend appends an attached-files block after it).
+ * The prompt's row: a send's is the row with its persisted id, wherever it
+ * is, since another tab's prompt can carry the same words. Without that id,
+ * the first user row in the tail whose text it carries (the backend appends
+ * an attached-files block after it).
  */
 export function locatePrompt(
   seg: UserSegment,
   rows: readonly PersistedRow[],
   from: number | null,
 ) {
+  if (seg.persistedId)
+    return rows.find((r) => r.id === seg.persistedId) ?? null;
   const text = seg.message.parts
     .map((p) => (p.type === "text" ? p.text : ""))
     .join("");
@@ -372,18 +412,19 @@ export function promptFloor(
   index: number,
   ownedFrom: number | null,
 ) {
-  const placed = segments.slice(0, index).flatMap((seg) => {
-    if (seg.kind === "user") return [seg.sequence];
-    return (seg.kind === "rows" ? seg.rows : seg.log.rows).map(
-      (r) => r.sequence,
-    );
-  });
-  return Math.max(
-    ownedFrom ?? 0,
-    ...placed
-      .filter((s): s is number => typeof s === "number")
-      .map((s) => s + 1),
-  );
+  let floor = ownedFrom ?? 0;
+  for (const seg of segments.slice(0, index)) {
+    const sequences =
+      seg.kind === "user"
+        ? [seg.sequence]
+        : (seg.kind === "rows" ? seg.rows : seg.log.rows).map(
+            (r) => r.sequence,
+          );
+    for (const sequence of sequences)
+      if (typeof sequence === "number" && sequence + 1 > floor)
+        floor = sequence + 1;
+  }
+  return floor;
 }
 
 export function lastCheckpoint(log: TurnLog): TurnCheckpoint | null {

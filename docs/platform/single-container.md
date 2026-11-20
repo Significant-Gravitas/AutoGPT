@@ -49,6 +49,27 @@ tag or manifest digest. Docker image tags map to source releases as follows:
 
 `canary-sha-*` tags are unsupported pre-release validation artifacts.
 
+Release images carry a signed build provenance attestation, a record that this
+repository's release workflow built the image from the release's commit. To
+check an image before you run it, use the [GitHub CLI](https://cli.github.com/),
+signed in with `gh auth login`:
+
+```bash
+gh attestation verify oci://docker.io/significantgravitas/autogpt:vX.Y.Z \
+  --repo Significant-Gravitas/AutoGPT \
+  --signer-workflow Significant-Gravitas/AutoGPT/.github/workflows/platform-single-container-docker.yml \
+  --source-ref refs/tags/autogpt-platform-beta-vX.Y.Z
+```
+
+Use the same version in both places: `--source-ref` accepts only an
+attestation made from that release's tag, not one made from a branch. The
+attestation covers the multi-platform image the tag points to, so check the tag
+or that image's digest, not the digest of one platform's image.
+
+The check shows where and how the image was built, not that its code is safe.
+Images released before attestations were added have none, so the command
+finds nothing for them.
+
 To build from source instead, run Docker Buildx Bake from the repository root:
 
 ```bash
@@ -258,9 +279,10 @@ internally.
 
 Before exposing the proxy, complete the [Account policy](#account-policy)
 bootstrap, promote the intended administrator, and close new-account signup.
-The bundled nginx records the external proxy as the immediate client, so the
-proxy must preserve its own client-attribution logs and enforce any per-client
-IP rate limits or access rules.
+Set `TRUSTED_PROXIES` on the container to that proxy's addresses, so the
+bundled nginx reads the visitor's address from `X-Forwarded-For` and the
+sign-in limits, IP blocks and sign-in log see each visitor rather than the
+proxy; see [Client IP Addresses](client-ip.md#the-single-container-image).
 
 Set `AUTOGPT_PUBLIC_URL` to the browser-visible HTTPS origin, for example:
 
@@ -1185,6 +1207,9 @@ logs a warning, and startup continues without the catalog. Set
 - Required email verification is unsupported.
 - The prebuilt frontend cannot configure Google Picker public keys at runtime.
 - Remote TLS termination is operator-supplied.
-- The local `bash_exec` fallback depends on host support for Bubblewrap user and
-  network namespaces. Do not make the entire appliance privileged to work
-  around a host that disables them.
+- The local `bash_exec` fallback depends on host support for Bubblewrap user,
+  network and PID namespaces, and on a host `/proc` the sandbox can mount its
+  own copy of: an appliance started with Docker's default masked `/proc` runs no
+  command, and reports the setting to change (`--security-opt
+  systempaths=unconfined`, or `procMount: Unmasked` on Kubernetes). Do not make
+  the entire appliance privileged to work around a host that disables them.

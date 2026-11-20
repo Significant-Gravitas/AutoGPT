@@ -1,10 +1,12 @@
 import asyncio
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
 from autogpt_libs.api_key.keysmith import APIKeySmith
+from prisma import Prisma
 from prisma.enums import APIKeyPermission, APIKeyStatus
 from prisma.models import APIKey as PrismaAPIKey
 from prisma.types import APIKeyUpdateManyMutationInput, APIKeyWhereInput
@@ -14,6 +16,10 @@ from backend.data.includes import MAX_USER_API_KEYS_FETCH
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 from .base import APIAuthorizationInfo
+
+# Granted only through OAuth, to one client: an API key carrying one could not
+# use it, and listing it on a key would suggest it could.
+OAUTH_ONLY_PERMISSIONS = frozenset({APIKeyPermission.CONNECT_LOCAL_EXECUTOR})
 
 logger = logging.getLogger(__name__)
 keysmith = APIKeySmith()
@@ -116,14 +122,22 @@ async def create_api_key(
     return APIKeyInfo.from_db(saved_key_obj), generated_key.key
 
 
-async def get_active_api_keys_by_head(head: str) -> list[APIKeyInfoWithHash]:
-    results = await PrismaAPIKey.prisma().find_many(
-        where={"head": head, "status": APIKeyStatus.ACTIVE}
-    )
+async def get_active_api_keys_by_head(
+    head: str,
+    tail: str | None = None,
+) -> list[APIKeyInfoWithHash]:
+    where: APIKeyWhereInput = {"head": head, "status": APIKeyStatus.ACTIVE}
+    if tail is not None:
+        where["tail"] = tail
+    results = await PrismaAPIKey.prisma().find_many(where=where)
     return [APIKeyInfoWithHash.from_db(key) for key in results]
 
 
-async def validate_api_key(plaintext_key: str) -> Optional[APIKeyInfo]:
+async def validate_api_key(
+    plaintext_key: str,
+    *,
+    before_verify: Callable[[], Awaitable[None]] | None = None,
+) -> APIKeyInfo | None:
     """
     Validate an API key and return the API key object if valid and active.
     """
@@ -134,8 +148,26 @@ async def validate_api_key(plaintext_key: str) -> Optional[APIKeyInfo]:
             return None
 
         head = plaintext_key[: APIKeySmith.HEAD_LENGTH]
-        potential_matches = await get_active_api_keys_by_head(head)
+        # Generated and legacy keys store the final TAIL_LENGTH characters as tail.
+        # All head+tail matches, including legacy keys, remain eligible so a
+        # collision cannot make an otherwise valid key unauthenticatable.
+        tail = plaintext_key[-APIKeySmith.TAIL_LENGTH :]
+        potential_matches = await get_active_api_keys_by_head(head, tail=tail)
+    except Exception as e:
+        logger.error(f"Error while looking up API key: {e}")
+        raise RuntimeError("Failed to validate API key") from e
 
+    if not potential_matches:
+        return None
+    if before_verify is not None:
+        await before_verify()
+    return await _verify_api_key_candidates(plaintext_key, potential_matches)
+
+
+async def _verify_api_key_candidates(
+    plaintext_key: str, potential_matches: list[APIKeyInfoWithHash]
+) -> APIKeyInfo | None:
+    try:
         # Scrypt costs tens of milliseconds of CPU, which on the event loop
         # stalls every other request the worker is serving.
         matched_api_key = None
@@ -215,6 +247,20 @@ async def revoke_api_key(
         return APIKeyInfo.from_db(e.api_key)
 
     return APIKeyInfo.from_db(updated_api_key)
+
+
+async def revoke_api_keys(db: Prisma, where: APIKeyWhereInput) -> int:
+    """Revoke every key ``where`` matches, through ``db`` (the client or a
+    transaction), and return how many were revoked.
+
+    For keys whose scope is gone, such as the ones a member made in an
+    organization they were removed from. A key revoked earlier keeps its
+    ``revokedAt``.
+    """
+    return await db.apikey.update_many(
+        where={**where, "status": {"not": APIKeyStatus.REVOKED}},
+        data={"status": APIKeyStatus.REVOKED, "revokedAt": datetime.now(timezone.utc)},
+    )
 
 
 async def revoke_user_api_keys(user_id: str) -> int:

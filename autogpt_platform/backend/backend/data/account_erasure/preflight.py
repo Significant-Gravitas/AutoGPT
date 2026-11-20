@@ -42,12 +42,13 @@ async def load_subject(user_id: str, email: str | None = None) -> Subject:
         workspace_id=workspace.id if workspace else None,
         oauth_app_ids=[app.id for app in apps],
         sole_org_ids=[org.id for org in sole_orgs],
-        org_stripe_customer_ids=await _org_stripe_customers(user, sole_orgs),
+        stripe_customer_ids=await _stripe_customers(user, sole_orgs),
         expert_ids=[expert.id for expert in experts],
         request_source=request.source if request else None,
         erase_after=request.eraseAfter if request else None,
         erase_asked_now=bool(request and _cut_short(request)),
         confirmation_sent=bool(request and request.confirmationSentAt),
+        confirmation_skipped=bool(request and request.confirmationSkipped),
         request_completed=bool(request and request.completedAt),
         banned=bool(identity and identity.banned),
         ban_expires=identity.banExpires if identity else None,
@@ -211,15 +212,14 @@ async def _orgs(user_id: str) -> tuple[list[Organization], list[Organization]]:
     return sole, solely_owned_shared
 
 
-async def _org_stripe_customers(
-    user: User | None, orgs: list[Organization]
-) -> list[str]:
-    """The sole orgs' customers. The account's own is left out: closing the
-    account (`cancel_all_subscriptions_now`) cancelled its subscriptions."""
+async def _stripe_customers(user: User | None, orgs: list[Organization]) -> list[str]:
+    """The account's own customer first, then its sole orgs' customers.
+    Closing cancelled the account's own, but a Checkout started in the
+    seconds after the close can still be paid and subscribe it again."""
     subscriptions = await OrganizationSubscription.prisma().find_many(
         where={"organizationId": {"in": [org.id for org in orgs]}}
     )
-    ids = [org.stripeCustomerId for org in orgs]
+    ids = [user.stripeCustomerId if user else None]
+    ids += [org.stripeCustomerId for org in orgs]
     ids += [sub.stripeCustomerId for sub in subscriptions]
-    own = user.stripeCustomerId if user else None
-    return list(dict.fromkeys(i for i in ids if i and i != own))
+    return list(dict.fromkeys(i for i in ids if i))

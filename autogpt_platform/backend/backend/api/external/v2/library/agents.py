@@ -33,8 +33,8 @@ from ..rate_limit import enforce, graph_exec_limiter
 from ..tenancy import (
     TenantContext,
     in_tenant,
-    require_paid_permission,
-    require_permission,
+    require_paid_resource_permission,
+    require_resource_permission,
 )
 from .helpers import assert_can_pay, assert_inputs_match
 
@@ -63,7 +63,9 @@ async def list_library_agents(
         description="Filter by `isFavorite` attribute",
     ),
     page: PageRequest = Depends(page_request),
-    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.READ_LIBRARY)
+    ),
 ) -> Page[LibraryAgent]:
     """List agents in the user's library, oldest first."""
     # Creation order, not the default last-updated: every run bumps an agent's
@@ -91,7 +93,9 @@ async def list_library_agents(
 )
 async def get_library_agent(
     agent_id: str,
-    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.READ_LIBRARY)
+    ),
 ) -> LibraryAgent:
     """Get detailed information about a specific agent in the user's library."""
     agent = in_tenant(
@@ -110,7 +114,9 @@ async def get_library_agent(
 async def update_library_agent(
     request: LibraryAgentUpdateRequest,
     agent_id: str,
-    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.WRITE_LIBRARY)
+    ),
 ) -> LibraryAgent:
     """Update properties of a library agent."""
     await _assert_agent_in_tenant(agent_id, auth)
@@ -150,7 +156,9 @@ async def update_library_agent(
 )
 async def delete_library_agent(
     agent_id: str,
-    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.WRITE_LIBRARY)
+    ),
 ) -> None:
     """Remove an agent from the user's library."""
     await _assert_agent_in_tenant(agent_id, auth)
@@ -170,7 +178,7 @@ async def delete_library_agent(
 async def fork_library_agent(
     agent_id: str,
     auth: TenantContext = Security(
-        require_paid_permission(APIKeyPermission.WRITE_LIBRARY)
+        require_paid_resource_permission(APIKeyPermission.WRITE_LIBRARY)
     ),
 ) -> LibraryAgent:
     """Fork (clone) a library agent.
@@ -220,7 +228,9 @@ async def execute_agent(
     request: AgentRunRequest,
     agent_id: str,
     idempotency: Annotated[Optional[str], Depends(idempotency_key)] = None,
-    auth: TenantContext = Security(require_paid_permission(APIKeyPermission.RUN_AGENT)),
+    auth: TenantContext = Security(
+        require_paid_resource_permission(APIKeyPermission.RUN_AGENT)
+    ),
 ) -> AgentGraphRun:
     """
     Execute an agent from the library.
@@ -271,7 +281,7 @@ async def list_agent_credential_requirements(
     agent_id: str,
     page: PageRequest = Depends(page_request),
     auth: TenantContext = Security(
-        require_permission(APIKeyPermission.READ_INTEGRATIONS)
+        require_resource_permission(APIKeyPermission.READ_INTEGRATIONS)
     ),
 ) -> Page[CredentialRequirement]:
     """List credential requirements and matching user credentials for a library agent."""
