@@ -16,9 +16,9 @@ from backend.util.clients import (
 
 @pytest.fixture(autouse=True)
 def _clear_client_cache():
-    """Clear the @cached client singletons between tests.
+    """Clear the cached clients between tests.
 
-    ``_get_local_openai_client`` is a separate ``@cached`` instance from
+    ``_get_local_openai_client`` is cached separately from
     ``get_openai_client``; clearing only the latter leaves a stale local
     ``AsyncOpenAI`` aimed at a previous endpoint after a test monkeypatches
     transport/URL. Clear both.

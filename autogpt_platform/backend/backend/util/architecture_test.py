@@ -18,9 +18,8 @@ import pytest
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
-# Event-loop-bound async clients (AsyncOpenAI, httpx.AsyncClient, ...) must not
-# be shared by the whole process; .github/scripts/check_loop_bound_clients.py
-# enforces that in the backend lint job.
+# Async clients shared by the whole process (AsyncOpenAI, httpx.AsyncClient,
+# ...) are rejected by architecture_loop_bound_clients_test.py.
 
 
 def _decorator_name(node: ast.expr) -> str | None:

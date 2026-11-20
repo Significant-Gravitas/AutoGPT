@@ -9,8 +9,8 @@ event loop", and the SDK retries the call on a new connection, so the
 provider receives (and bills) the call twice while the caller sees one
 success. ``per_loop_cached`` gives every running loop its own instance, and
 ``same_loop_hooks`` makes a client that still reaches another loop fail before
-it sends. ``.github/scripts/check_loop_bound_clients.py`` rejects new
-process-wide clients in CI.
+it sends. ``architecture_loop_bound_clients_test.py`` rejects new
+process-wide clients.
 """
 
 import asyncio
@@ -81,7 +81,10 @@ class PerLoopCached(Generic[P, C]):
         return values[key]
 
     def cache_clear(self) -> None:
-        """Forget every loop's instance; the next call on each loop builds a new one."""
+        """Forget every loop's instance; the next call on each loop builds a new one.
+
+        For tests that change the config: the forgotten instances aren't
+        closed, and a loop's shutdown closes only those it built since."""
         with self._lock:
             caches = list(self._values.values())
         for values in caches:
