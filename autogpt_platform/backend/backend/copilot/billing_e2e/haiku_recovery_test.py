@@ -1,3 +1,5 @@
+"""A direct-Anthropic turn that reports no usage is priced request by request."""
+
 import json
 
 import pytest
@@ -13,19 +15,20 @@ from .ledger import PlatformLedger
 from .provider import FakeProvider
 from .replies import TOOL_MARKER
 
+# Every request's estimated output: the text it streamed. A tool-call request
+# streams none.
+ANSWER_TOKENS = 20_000
+
 
 @pytest.mark.asyncio(loop_scope="function")
-@pytest.mark.parametrize(
-    "prompt_tokens,expected", [(100_000, 20_000), (150_000, 85_000)]
-)
+@pytest.mark.parametrize("prompt_tokens", [100_000, 150_000])
 @pytest.mark.parametrize("report_usage", [False, True])
 @pytest.mark.parametrize("requests", [1, 2])
-async def test_missing_usage_does_not_tier_the_whole_turn_output(
+async def test_missing_usage_prices_each_request_at_its_own_tier(
     provider: FakeProvider,
     ledger: PlatformLedger,
     monkeypatch: pytest.MonkeyPatch,
     prompt_tokens: int,
-    expected: int,
     report_usage: bool,
     requests: int,
 ):
@@ -60,7 +63,7 @@ async def test_missing_usage_does_not_tier_the_whole_turn_output(
     monkeypatch.setattr(
         baseline,
         "estimate_token_count_str",
-        lambda value, **_: 0 if isinstance(value, list) else 20_000,
+        lambda value, **_: 0 if isinstance(value, list) else ANSWER_TOKENS,
     )
     config = baseline.config.model_copy(
         update={
@@ -84,7 +87,19 @@ async def test_missing_usage_does_not_tier_the_whole_turn_output(
     assert len(provider.calls) == requests
     if report_usage:
         expected = round(sum(call.invoice_usd for call in provider.calls) * 1_000_000)
-    elif requests == 1 and prompt_tokens == 150_000:
-        expected = 125_000
+    else:
+        # The tool-call request bills its prompt; the answering one adds its
+        # output, both at the price of their own prompt's tier.
+        expected = _request_microdollars(prompt_tokens, ANSWER_TOKENS)
+        if requests == 2:
+            expected += _request_microdollars(prompt_tokens, 0)
     assert [charge.microdollars for charge in ledger.spend] == [expected]
     assert [charge.microdollars for charge in ledger.tree] == [expected]
+
+
+def _request_microdollars(prompt_tokens: int, output_tokens: int) -> int:
+    """Haiku 5.5's published prices, by one request's prompt length."""
+    long = prompt_tokens > 100_000
+    return round(
+        prompt_tokens * (0.5 if long else 0.1) + output_tokens * (2.5 if long else 0.5)
+    )

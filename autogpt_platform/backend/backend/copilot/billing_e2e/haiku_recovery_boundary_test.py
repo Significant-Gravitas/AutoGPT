@@ -1,3 +1,9 @@
+"""Each estimated request is priced from what it sent, before the turn grows.
+
+A long answer, or a refused follow-up carrying a huge tool result, must not
+push an earlier request's prompt past Haiku 5.5's 100,000-token tier.
+"""
+
 import json
 from typing import Any
 from unittest.mock import AsyncMock
@@ -69,11 +75,17 @@ async def test_recovery_prices_the_sent_prompt_before_conversation_growth(
         await run_turn(session, prompt, new_pod=False)
         await ledger.settle()
 
-        last_request = provider.bodies[successful_requests - 1]
-        prompt_tokens = estimate_token_count(last_request["messages"], model=MODEL)
-        tool_tokens = estimate_token_count_str(last_request["tools"], model=MODEL)
+        sent = provider.bodies[:successful_requests]
+        tool_tokens = [
+            estimate_token_count_str(body["tools"], model=MODEL) for body in sent
+        ]
+        prompts = [
+            estimate_token_count(body["messages"], model=MODEL) + tools
+            for body, tools in zip(sent, tool_tokens)
+        ]
         output_tokens = estimate_token_count_str(provider.answer, model=MODEL)
-        assert 0 < tool_tokens < 100_000 - prompt_tokens
+        assert all(tools > 0 for tools in tool_tokens)
+        assert all(tokens < 100_000 for tokens in prompts)
         assert len(provider.bodies) == successful_requests + int(fail_followup)
         if fail_followup:
             assert (
@@ -82,9 +94,12 @@ async def test_recovery_prices_the_sent_prompt_before_conversation_growth(
             )
         else:
             assert output_tokens > 100_000
-        expected = round((prompt_tokens + tool_tokens) * 0.1 + output_tokens * 0.5)
-        assert [charge.microdollars for charge in ledger.spend] == [expected]
-        assert [charge.microdollars for charge in ledger.tree] == [expected]
+        # Every successful request bills its own prompt at the base price; the
+        # answer's output follows the base tier of the prompt that produced it.
+        expected = sum(prompts) * 0.1 + output_tokens * 0.5
+        charged = [charge.microdollars for charge in ledger.spend]
+        assert len(charged) == 1 and abs(charged[0] - expected) <= 1
+        assert [charge.microdollars for charge in ledger.tree] == charged
         assert not provider.unexpected
 
 

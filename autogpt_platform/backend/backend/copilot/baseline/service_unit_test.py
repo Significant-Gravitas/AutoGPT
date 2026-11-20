@@ -2853,13 +2853,10 @@ class TestDirectModeCostRecoveryOnMissingUsageChunk:
                 state=state,
             )
 
-        # With no usage chunk, _baseline_llm_caller leaves cost_usd = None.
-        # The final-fallback at stream_chat_completion_baseline level picks it
-        # up from tiktoken. At _baseline_llm_caller level cost stays None — the
-        # recovery is confirmed in TestBaselineCostExtraction (line ~749).
-        # This test specifically confirms tokens are estimated (not zero) so
-        # the outer fallback has something to work with.
-        assert state.turn_prompt_tokens > 0 or state.turn_completion_tokens >= 0
+        # With no usage chunk the request is priced from estimates of what it
+        # sent as soon as it ends, at the rate card's price for its prompt.
+        assert state.turn_prompt_tokens > 0
+        assert state.cost_usd is not None and state.cost_usd > 0
 
     @pytest.mark.asyncio
     async def test_or_mode_leaves_cost_none_when_no_usage_chunk(self):

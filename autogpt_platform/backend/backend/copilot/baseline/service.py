@@ -563,9 +563,6 @@ class _BaselineStreamState:
     turn_completion_tokens: int = 0
     turn_cache_read_tokens: int = 0
     turn_cache_creation_tokens: int = 0
-    provider_request_count: int = 0
-    last_request_prompt_tokens: int | None = None
-    recovery_text_override: str | None = None
     cost_usd: float | None = None
     # Tracks whether we've already warned about a missing `cost` field in
     # the usage chunk this stream, so non-OpenRouter providers don't
@@ -1048,9 +1045,11 @@ async def _baseline_llm_caller(
             tools=cast(list[dict[str, Any]] | None, list(tools)) if tools else None,
             max_tokens=max_tokens_arg,
         )
-        state.provider_request_count += 1
         tool_calls_by_index: dict[int, dict[str, str]] = {}
-        recover_request = True
+        # Direct Anthropic streams no usage (no ``stream_options``), so a
+        # request that reports none is priced from estimates when it ends.
+        # Anthropic bills each request on its own, at its own prompt's tier.
+        unreported = baseline_provider == "anthropic"
         usage_before = (
             state.turn_prompt_tokens,
             state.turn_completion_tokens,
@@ -1066,6 +1065,7 @@ async def _baseline_llm_caller(
         try:
             async for chunk in response:
                 if chunk.usage:
+                    unreported = False
                     state.turn_prompt_tokens += chunk.usage.prompt_tokens or 0
                     state.turn_completion_tokens += chunk.usage.completion_tokens or 0
                     ptd = chunk.usage.prompt_tokens_details
@@ -1159,7 +1159,10 @@ async def _baseline_llm_caller(
                             entry["name"] = tc.function.name
                         if tc.function and tc.function.arguments:
                             entry["arguments"] += tc.function.arguments
-        except APIError as error:
+        except Exception as error:
+            # A request that failed before answering anything is not charged.
+            if not (round_text or tool_calls_by_index):
+                unreported = False
             # The SDK uses bare APIError for an error SSE event. Transport and
             # response-validation subclasses do not establish provider failure.
             if (
@@ -1167,9 +1170,8 @@ async def _baseline_llm_caller(
                 and type(error) is APIError
                 and error.body is not None
             ):
-                recover_request = False
-                state.provider_request_count -= 1
-                state.recovery_text_override = state.assistant_text
+                # Anthropic doesn't bill a request it failed itself.
+                unreported = False
                 (
                     state.turn_prompt_tokens,
                     state.turn_completion_tokens,
@@ -1186,22 +1188,10 @@ async def _baseline_llm_caller(
                 await response.close()
             except Exception:
                 pass
-            if (
-                recover_request
-                and baseline_provider == "anthropic"
-                and state.cost_usd is None
-            ):
-                # The updater adds output and tool results after this returns.
-                # Freeze the sent prompt before those can change its price tier.
-                state.last_request_prompt_tokens = max(
-                    estimate_token_count(final_messages, model=state.model)
-                    + (
-                        estimate_token_count_str(list(tools), model=state.model)
-                        if tools
-                        else 0
-                    ),
-                    1,
-                )
+            if unreported:
+                # Priced now, from what was sent: the updater adds this
+                # request's output and tool results to the conversation next.
+                _price_unreported_request(state, final_messages, tools, round_text)
 
     finally:
         # Close open blocks on both normal and exception paths so the
@@ -1249,6 +1239,38 @@ async def _baseline_llm_caller(
     if response.tool_calls:
         _begin_baseline_tool_round(state, response)
     return response
+
+
+def _price_unreported_request(
+    state: _BaselineStreamState,
+    messages: list[dict[str, Any]],
+    tools: Sequence[Any],
+    output: str,
+) -> None:
+    """Add one direct-Anthropic request that reported no usage to the turn.
+
+    Its prompt is estimated from the messages and tool definitions it sent,
+    and its output from the text it streamed, so the rate card prices it at
+    the tier of its own prompt, the way Anthropic bills each request.
+    """
+    prompt_tokens = max(
+        estimate_token_count(messages, model=state.model)
+        + (estimate_token_count_str(list(tools), model=state.model) if tools else 0),
+        1,
+    )
+    completion_tokens = (
+        estimate_token_count_str(output, model=state.model) if output else 0
+    )
+    state.turn_prompt_tokens += prompt_tokens
+    state.turn_completion_tokens += completion_tokens
+    cost = compute_anthropic_cost_usd(
+        model=state.model,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        cache_ttl=config.baseline_prompt_cache_ttl,
+    )
+    if cost is not None:
+        state.cost_usd = (state.cost_usd or 0.0) + cost
 
 
 async def _baseline_tool_executor(
@@ -3160,31 +3182,29 @@ async def stream_chat_completion_baseline(
 
         # Fallback: estimate tokens via tiktoken when the provider does
         # not honour stream_options={"include_usage": True}.
-        # Direct-Anthropic recovery uses the last successfully sent prompt;
-        # the final transcript can contain output or an unsent tool follow-up.
-        # Other transports retain the accumulated-conversation estimate.
+        # ``openai_messages`` is mutated in-place by tool_call_loop so it
+        # contains the full accumulated conversation (system + history + all
+        # tool-call rounds) by this point — the estimate covers the complete
+        # prompt, not just the final round. Direct Anthropic is not estimated
+        # here: each of its requests that reported no usage was priced when it
+        # ended (``_price_unreported_request``). OpenRouter and local turns get
+        # tokens but no cost: OR's markup differs from raw Anthropic pricing,
+        # and local Ollama/vLLM models have no rate card (self-hosted, and
+        # ``persist_and_record_usage`` charges nothing when cost is None).
         # Skip fallback when an error occurred and no output was produced —
         # charging rate-limit tokens for completely failed requests is unfair.
+        baseline_provider = config.baseline_provider
         if (
-            state.turn_prompt_tokens == 0
+            baseline_provider != "anthropic"
+            and state.turn_prompt_tokens == 0
             and state.turn_completion_tokens == 0
             and not (_stream_error and not state.assistant_text)
         ):
-            if state.last_request_prompt_tokens is not None:
-                state.turn_prompt_tokens = state.last_request_prompt_tokens
-            elif state.recovery_text_override is not None:
-                state.turn_prompt_tokens = 0
-            else:
-                state.turn_prompt_tokens = max(
-                    estimate_token_count(openai_messages, model=active_model), 1
-                )
+            state.turn_prompt_tokens = max(
+                estimate_token_count(openai_messages, model=active_model), 1
+            )
             state.turn_completion_tokens = estimate_token_count_str(
-                (
-                    state.assistant_text
-                    if state.recovery_text_override is None
-                    else state.recovery_text_override
-                ),
-                model=active_model,
+                state.assistant_text, model=active_model
             )
             logger.info(
                 "[Baseline] No streaming usage reported; estimated tokens: "
@@ -3192,40 +3212,6 @@ async def stream_chat_completion_baseline(
                 state.turn_prompt_tokens,
                 state.turn_completion_tokens,
             )
-        # Safety net: recover cost from rate card if usage chunk was dropped
-        # (truncated SSE). OR mode skips recovery — OR's markup differs from
-        # raw Anthropic pricing. Local Ollama/vLLM never emit ``usage.cost``
-        # *and* have no rate card to recover from (``compute_anthropic_cost_usd``
-        # returns None for any non-Anthropic slug), so cost stays None for
-        # the whole turn — fine, since local deployments are self-hosted and
-        # ``persist_and_record_usage`` no-ops the cost-credit charge when
-        # ``cost_usd`` is None. Skip the rate-card call explicitly under
-        # local transport so the intent is clear.
-        baseline_provider = config.baseline_provider
-        if state.cost_usd is None and baseline_provider == "anthropic":
-            # Only one-request turns can attribute all estimated output to
-            # the frozen request prompt. Multi-request output keeps the base rate.
-            single_request = state.provider_request_count == 1
-            prompt_cost = compute_anthropic_cost_usd(
-                model=active_model,
-                prompt_tokens=state.turn_prompt_tokens,
-                completion_tokens=state.turn_completion_tokens if single_request else 0,
-                cache_read_tokens=state.turn_cache_read_tokens,
-                cache_creation_tokens=state.turn_cache_creation_tokens,
-                cache_ttl=config.baseline_prompt_cache_ttl,
-            )
-            output_cost = (
-                0.0
-                if single_request
-                else compute_anthropic_cost_usd(
-                    model=active_model,
-                    prompt_tokens=0,
-                    completion_tokens=state.turn_completion_tokens,
-                    cache_ttl=config.baseline_prompt_cache_ttl,
-                )
-            )
-            if prompt_cost is not None and output_cost is not None:
-                state.cost_usd = prompt_cost + output_cost
 
         # OAI-compat prompt_tokens includes cache buckets; subtract to keep the three buckets disjoint.
         uncached_prompt = max(

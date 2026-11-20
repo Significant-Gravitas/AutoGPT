@@ -17,8 +17,9 @@ _CACHE_MULTIPLIERS = {
 def apply_prompt_tier(info: dict[str, object], prompt_tokens: int) -> dict[str, object]:
     """Overlay the highest crossed tier without changing the cached rate card.
 
-    Missing tier buckets retain their base-rate proportions. Invalid numeric
-    fields are logged and use the same fallback, never NaN or negative costs.
+    Missing tier buckets retain their base-rate proportions. Invalid or zero
+    tier fields are logged and use the same fallback, never a free bucket or
+    a NaN or negative cost.
     """
     tiers = sorted(
         (
@@ -36,12 +37,7 @@ def apply_prompt_tier(info: dict[str, object], prompt_tokens: int) -> dict[str, 
     if base_input is None or base_input <= 0 or base_output is None:
         return info
     for threshold, key in tiers:
-        tier_input = _read_rate(info, key)
-        if tier_input == 0:
-            logger.error(
-                f"Invalid zero Anthropic input rate {key}; using rate fallback"
-            )
-            continue
+        tier_input = _read_tier_rate(info, key)
         if tier_input is not None:
             return {
                 **info,
@@ -68,12 +64,21 @@ def _tier_rates(
     return {
         field: (
             rate
-            if (rate := _read_rate(info, f"{field}_above_{threshold}k_tokens"))
+            if (rate := _read_tier_rate(info, f"{field}_above_{threshold}k_tokens"))
             is not None
             else base * ratio
         )
         for field, base in base_rates.items()
     }
+
+
+def _read_tier_rate(info: dict[str, object], key: str) -> float | None:
+    """A tier price, where zero is as broken as missing: it would bill free."""
+    rate = _read_rate(info, key)
+    if rate == 0:
+        logger.error(f"Invalid zero Anthropic rate {key}; using rate fallback")
+        return None
+    return rate
 
 
 def _read_rate(info: dict[str, object], key: str) -> float | None:

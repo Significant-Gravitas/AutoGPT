@@ -21,6 +21,9 @@ from .provider import FakeProvider
 from .wire import TOOL_NAME
 
 MODEL = "claude-haiku-5-5"
+# How the last request ends. ``silent`` drops the connection before anything
+# streams; ``disconnect`` drops it after the answer.
+Failure = Literal["provider", "provider_compat", "disconnect", "user_stop", "silent"]
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -46,13 +49,15 @@ MODEL = "claude-haiku-5-5"
         (3, "all", "provider"),
         (1, "none", "user_stop"),
         (2, "none", "user_stop"),
+        (1, "none", "silent"),
+        (2, "none", "silent"),
     ],
 )
 async def test_provider_failures_are_excluded_but_disconnects_remain_billable(
     monkeypatch: pytest.MonkeyPatch,
     ledger: PlatformLedger,
     requests: int,
-    failure: Literal["provider", "provider_compat", "disconnect", "user_stop"],
+    failure: Failure,
     usage_mode: Literal["none", "all", "failed", "completed"],
 ):
     config = baseline.config.model_copy(
@@ -120,20 +125,21 @@ async def test_provider_failures_are_excluded_but_disconnects_remain_billable(
         assert prompt_estimates[0] < 100_000
         if requests >= 2:
             assert prompt_estimates[1] > 100_000
-        eligible = requests - int(failure in {"provider", "provider_compat"})
-        reported = sum(provider.reported[:eligible])
-        if reported:
-            expected = reported * 4_750
-        elif eligible:
-            prompt_tokens = prompt_estimates[eligible - 1]
-            output_tokens = estimate_token_count_str(
-                "".join(provider.outputs[:eligible]), model=MODEL
+        # Neither the request the provider failed with an error event nor one
+        # that dropped before streaming anything is billed. Every other one
+        # is: from its reported usage, or else from estimates of its own
+        # prompt and output at its own prompt's tier.
+        eligible = requests - int(failure in {"provider", "provider_compat", "silent"})
+        expected = sum(
+            (
+                4_750
+                if provider.reported[index]
+                else _estimated_microdollars(
+                    prompt_estimates[index], provider.outputs[index]
+                )
             )
-            prompt_rate = 0.5 if prompt_tokens > 100_000 else 0.1
-            output_rate = 2.5 if prompt_tokens > 100_000 and eligible == 1 else 0.5
-            expected = round(prompt_tokens * prompt_rate + output_tokens * output_rate)
-        else:
-            expected = 0
+            for index in range(eligible)
+        )
         tolerance = 1 if eligible else 0
         assert (
             abs(sum(charge.microdollars for charge in ledger.spend) - expected)
@@ -150,11 +156,20 @@ async def test_provider_failures_are_excluded_but_disconnects_remain_billable(
         assert not provider.unexpected
 
 
+def _estimated_microdollars(prompt_tokens: int, output: str) -> float:
+    """Haiku 5.5's published prices for one request priced from estimates."""
+    output_tokens = estimate_token_count_str(output, model=MODEL)
+    long = prompt_tokens > 100_000
+    return prompt_tokens * (0.5 if long else 0.1) + output_tokens * (
+        2.5 if long else 0.5
+    )
+
+
 class FailingStreamProvider(FakeProvider):
     def __init__(
         self,
         requests: int,
-        failure: Literal["provider", "provider_compat", "disconnect", "user_stop"],
+        failure: Failure,
         usage_mode: Literal["none", "all", "failed", "completed"],
     ):
         super().__init__()
@@ -241,9 +256,9 @@ class FailingStreamProvider(FakeProvider):
             return await provider_module._stream(
                 request, sse + f"event: error\ndata: {json.dumps(error)}\n\n"
             )
-        data = sse.encode()
+        data = b"" if self.failure == "silent" else sse.encode()
         headers = {"Content-Type": "text/event-stream"}
-        if self.failure == "disconnect":
+        if self.failure in {"disconnect", "silent"}:
             headers["Content-Length"] = str(len(data) + 100)
         response = web.StreamResponse(headers=headers)
         await response.prepare(request)

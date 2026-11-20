@@ -78,7 +78,7 @@ def test_threshold_counts_prompt_buckets_only(prompt, read, write, output, expec
 
 
 @pytest.mark.parametrize("field", RATE_FIELDS[1:])
-@pytest.mark.parametrize("bad", [None, "0.1", True, float("nan"), float("inf"), -1])
+@pytest.mark.parametrize("bad", [None, "0.1", True, float("nan"), float("inf"), -1, 0])
 def test_missing_or_invalid_tier_bucket_uses_scaled_base(rate_file, caplog, field, bad):
     rates, write = rate_file
     key = field + "_above_100k_tokens"
