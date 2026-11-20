@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import time
@@ -49,6 +50,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 settings = Settings()
 _REFRESH_LOCK_WAIT_SECONDS = 5.0
+# Locked refreshes one getter runs at once; each reads the whole store twice.
+_GETTER_REFRESH_CONCURRENCY = 4
 
 
 _on_creds_changed: Callable[[str, str], None] | None = None
@@ -246,6 +249,7 @@ class IntegrationCredentialsManager:
         self, user_id: str, allow_sdk_default: bool = False
     ) -> Callable[[str], "Coroutine[Any, Any, Credentials | None]"]:
         snapshot = CredentialsSnapshot(lambda: self.store.get_all_creds(user_id))
+        refreshing = asyncio.Semaphore(_GETTER_REFRESH_CONCURRENCY)
 
         async def get_credentials(creds_id: str) -> "Credentials | None":
             if not allow_sdk_default:
@@ -265,7 +269,12 @@ class IntegrationCredentialsManager:
             # The locked refresh re-reads the whole store, so only pay for it when due.
             if not handler.needs_refresh(credential):
                 return credential
-            return await self.refresh_if_needed(user_id, credential)
+            if marker := reconnect_required(credential):
+                raise CredentialsNeedReconnectError(
+                    credential.provider, credential.id, marker
+                )
+            async with refreshing:
+                return await self.refresh_if_needed(user_id, credential)
 
         return get_credentials
 
