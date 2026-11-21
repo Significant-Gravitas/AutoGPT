@@ -151,7 +151,7 @@ async def test_get_pending_reviews_for_user(
     # Mock the batched graph-execution lookup empty, so the enrichment step's
     # dependent LibraryAgent/ChatSession queries are skipped entirely.
     mock_graph_exec_prisma = mocker.patch(
-        "backend.data.human_review.AgentGraphExecution.prisma"
+        "backend.data.human_review.ReviewedRun.prisma"
     )
     mock_graph_exec_prisma.return_value.find_many = AsyncMock(return_value=[])
 
@@ -199,7 +199,7 @@ async def test_an_experts_waiting_spend_approvals_group_as_one_node(
     )
     node_execs = mocker.patch("backend.data.human_review.AgentNodeExecution.prisma")
     node_execs.return_value.find_many = AsyncMock(return_value=[])
-    graph_execs = mocker.patch("backend.data.human_review.AgentGraphExecution.prisma")
+    graph_execs = mocker.patch("backend.data.human_review.ReviewedRun.prisma")
     graph_execs.return_value.find_many = AsyncMock(return_value=[])
 
     reviews = await get_pending_reviews_for_user("user-1")
@@ -266,7 +266,7 @@ async def test_get_pending_reviews_for_execution(
         return_value=[mock_node_exec]
     )
     mock_graph_exec_prisma = mocker.patch(
-        "backend.data.human_review.AgentGraphExecution.prisma"
+        "backend.data.human_review.ReviewedRun.prisma"
     )
     mock_graph_exec_prisma.return_value.find_many = AsyncMock(return_value=[])
 

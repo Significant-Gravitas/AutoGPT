@@ -87,6 +87,7 @@ async def test_a_library_agents_sub_graphs_and_schedule_are_read_side_by_side() 
         patch.object(
             library_db, "_fetch_schedule_info", meeting.returning({"g1": "soon"})
         ),
+        patch.object(library_db, "attach_latest_runs", AsyncMock()),
         patch.object(library_model.LibraryAgent, "from_db", from_db),
     ):
         agent = await library_db.get_library_agent_by_graph_id(USER_ID, "g1")

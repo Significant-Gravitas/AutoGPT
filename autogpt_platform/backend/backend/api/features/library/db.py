@@ -1,7 +1,7 @@
 import asyncio
 import itertools
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Literal, LiteralString, Optional, cast
 
 import fastapi
@@ -25,12 +25,16 @@ from backend.api.features.store.store_listing_versions import (
     installable_store_version_where,
 )
 from backend.data.db import get_database_schema, transaction
-from backend.data.execution import get_graph_execution
+from backend.data.execution import (
+    get_graph_execution,
+    get_latest_executions_without_inputs,
+)
 from backend.data.expert_attribution import resolve_attributable_expert
 from backend.data.graph import GraphSettings
 from backend.data.includes import (
     AGENT_PRESET_INCLUDE,
     LIBRARY_FOLDER_INCLUDE,
+    MAX_LIBRARY_AGENT_EXECUTIONS_FETCH,
     MAX_NODE_INPUT_OUTPUT_FETCH,
     library_agent_include,
 )
@@ -259,15 +263,13 @@ async def list_library_agents(
         schedules: the counts need only the page."""
         agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=where_clause,
-            include=library_agent_include(
-                user_id,
-                include_nodes=include_nodes,
-                include_executions=include_executions,
-            ),
+            include=library_agent_include(include_nodes=include_nodes),
             order=order_by,
             skip=(page - 1) * page_size,
             take=page_size,
         )
+        if include_executions:
+            await attach_latest_runs(user_id, agents)
         graph_ids = [a.agentGraphId for a in agents if a.agentGraphId]
         return agents, await _fetch_execution_counts(user_id, graph_ids)
 
@@ -379,7 +381,7 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
             "userId": user_id,
             "isDeleted": False,
         },
-        include=library_agent_include(user_id),
+        include=library_agent_include(),
     )
 
     if not library_agent:
@@ -388,10 +390,11 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
     if not library_agent.AgentGraph:
         raise NotFoundError(f"Agent graph for library agent #{id} not found")
 
-    store_listing, schedule_info, sub_graphs = await asyncio.gather(
+    store_listing, schedule_info, sub_graphs, _ = await asyncio.gather(
         _fetch_store_listing(library_agent.AgentGraph.id),
         _fetch_schedule_info(user_id, graph_id=library_agent.AgentGraph.id),
         graph_db.get_sub_graphs(library_agent.AgentGraph),
+        attach_latest_runs(user_id, [library_agent]),
     )
 
     return library_model.LibraryAgent.from_db(
@@ -445,12 +448,36 @@ async def get_library_agent_by_store_version_id(
             "agentGraphVersion": store_listing_version.agentGraphVersion,
             "isDeleted": False,
         },
-        include=library_agent_include(user_id),
+        include=library_agent_include(),
     )
     if not agent:
         return None
-    schedule_info = await _fetch_schedule_info(user_id, graph_id=agent.agentGraphId)
+    schedule_info, _ = await asyncio.gather(
+        _fetch_schedule_info(user_id, graph_id=agent.agentGraphId),
+        attach_latest_runs(user_id, [agent]),
+    )
     return library_model.LibraryAgent.from_db(agent, schedule_info=schedule_info)
+
+
+# How many agents' latest runs are read at once.
+_RUN_LOAD_CONCURRENCY = 10
+
+
+async def attach_latest_runs(
+    user_id: str, agents: Sequence[prisma.models.LibraryAgent]
+) -> None:
+    """Put each agent's latest runs, without the inputs they were started with,
+    on ``AgentGraph.Executions``, where ``LibraryAgent.from_db`` reads its
+    status."""
+    limit = asyncio.Semaphore(_RUN_LOAD_CONCURRENCY)
+
+    async def attach(graph: prisma.models.AgentGraph) -> None:
+        async with limit:
+            graph.Executions = await get_latest_executions_without_inputs(
+                user_id, graph.id, graph.version, MAX_LIBRARY_AGENT_EXECUTIONS_FETCH
+            )
+
+    await asyncio.gather(*(attach(a.AgentGraph) for a in agents if a.AgentGraph))
 
 
 async def get_library_agent_organizations(
@@ -537,16 +564,17 @@ async def get_library_agent_by_graph_id(
 
     agent = await prisma.models.LibraryAgent.prisma().find_first(
         where=filter,
-        include=library_agent_include(user_id),
+        include=library_agent_include(),
     )
     if not agent:
         return None
 
     assert agent.AgentGraph  # make type checker happy
     # Include sub-graphs so we can make a full credentials input schema
-    sub_graphs, schedule_info = await asyncio.gather(
+    sub_graphs, schedule_info, _ = await asyncio.gather(
         graph_db.get_sub_graphs(agent.AgentGraph),
         _fetch_schedule_info(user_id, graph_id=agent.agentGraphId),
+        attach_latest_runs(user_id, [agent]),
     )
     return library_model.LibraryAgent.from_db(
         agent, sub_graphs=sub_graphs, schedule_info=schedule_info
@@ -720,9 +748,7 @@ async def create_library_agent(
                             ),
                         },
                     },
-                    include=library_agent_include(
-                        user_id, include_nodes=False, include_executions=False
-                    ),
+                    include=library_agent_include(include_nodes=False),
                 )
                 for graph_entry in graph_entries
             )
@@ -834,7 +860,7 @@ async def update_agent_version_in_library(
                     },
                 },
             },
-            include=library_agent_include(user_id),
+            include=library_agent_include(),
         )
 
     if lib is None:
@@ -845,6 +871,7 @@ async def update_agent_version_in_library(
     sub_graphs = (
         await graph_db.get_sub_graphs(lib.AgentGraph) if lib.AgentGraph else None
     )
+    await attach_latest_runs(user_id, [lib])
     schedule_info = await _fetch_schedule_info(user_id, graph_id=agent_graph_id)
     library_agent = library_model.LibraryAgent.from_db(
         lib, sub_graphs=sub_graphs, schedule_info=schedule_info
@@ -2174,9 +2201,7 @@ async def bulk_move_agents_to_folder(
         )
         agents = await prisma.models.LibraryAgent.prisma(tx).find_many(
             where=scope,
-            include=library_agent_include(
-                user_id, include_nodes=False, include_executions=False
-            ),
+            include=library_agent_include(include_nodes=False),
         )
 
     schedule_info = await _fetch_schedule_info(user_id)
@@ -3153,9 +3178,7 @@ async def list_trigger_agents(
     triggers, schedule_info = await asyncio.gather(
         prisma.models.LibraryAgent.prisma().find_many(
             where=_trigger_agent_where(user_id, parent_graph_id),
-            include=library_agent_include(
-                user_id, include_nodes=False, include_executions=False
-            ),
+            include=library_agent_include(include_nodes=False),
         ),
         _fetch_schedule_info(user_id),
     )
