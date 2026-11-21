@@ -1,5 +1,8 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { augmentOutputSchemaWithEdges } from "../outputSchema";
+import {
+  augmentOutputSchemaWithEdges,
+  getNestedOutputProperties,
+} from "../outputSchema";
 import type { RJSFSchema } from "@rjsf/utils";
 import type { CustomEdge } from "../../edges/CustomEdge";
 
@@ -277,6 +280,288 @@ describe("dynamic output safety", () => {
         properties: { name: { title: "name" } },
       },
     });
+  });
+
+  it("reads object members of nullable and union outputs", () => {
+    expect(
+      getNestedOutputProperties({
+        title: "Main Result",
+        anyOf: [
+          {
+            type: "object",
+            properties: {
+              text: { title: "Text" },
+              html: { title: "Html" },
+            },
+          },
+          { type: "null" },
+        ],
+      }),
+    ).toEqual({
+      text: { title: "Text" },
+      html: { title: "Html" },
+    });
+    expect(
+      getNestedOutputProperties({
+        oneOf: [
+          { type: "object", properties: { url: { type: "string" } } },
+          { type: "object", properties: { profile: { type: "object" } } },
+        ],
+      }),
+    ).toEqual({
+      url: { type: "string" },
+      profile: { type: "object" },
+    });
+    expect(
+      getNestedOutputProperties({
+        allOf: [{ type: "object", properties: { kept: { title: "Kept" } } }],
+      }),
+    ).toEqual({ kept: { title: "Kept" } });
+  });
+
+  it("ignores scalar unions and keeps declared properties ahead of combinators", () => {
+    expect(
+      getNestedOutputProperties({
+        anyOf: [{ type: "string" }, { type: "null" }],
+      }),
+    ).toEqual({});
+    expect(
+      getNestedOutputProperties({
+        properties: { kept: { title: "Kept" } },
+        anyOf: [
+          { type: "object", properties: { ignored: { title: "Ignored" } } },
+        ],
+      }),
+    ).toEqual({ kept: { title: "Kept" } });
+    expect(
+      getNestedOutputProperties({
+        properties: { kept: { title: "Kept" } },
+        oneOf: [
+          { type: "object", properties: { ignored: { title: "Ignored" } } },
+        ],
+      }),
+    ).toEqual({ kept: { title: "Kept" } });
+  });
+
+  it("merges additive allOf properties with direct properties", () => {
+    const schema = {
+      type: "object" as const,
+      properties: {
+        kept: { title: "Kept" },
+        profile: {
+          type: "object" as const,
+          title: "Profile",
+          properties: { name: { type: "string", title: "Name" } },
+        },
+      },
+      allOf: [
+        {
+          type: "object" as const,
+          properties: {
+            added: { title: "Added" },
+            kept: { title: "From allOf" },
+            profile: {
+              type: "object" as const,
+              properties: { email: { type: "string", title: "Email" } },
+            },
+          },
+        },
+      ],
+      anyOf: [
+        {
+          type: "object" as const,
+          properties: { ignored: { title: "Ignored" } },
+        },
+      ],
+      oneOf: [
+        {
+          type: "object" as const,
+          properties: { alsoIgnored: { title: "Also ignored" } },
+        },
+      ],
+    };
+    const before = JSON.stringify(schema);
+    expect(getNestedOutputProperties(schema)).toEqual({
+      kept: { title: "Kept" },
+      profile: {
+        type: "object",
+        title: "Profile",
+        properties: {
+          name: { type: "string", title: "Name" },
+          email: { type: "string", title: "Email" },
+        },
+      },
+      added: { title: "Added" },
+    });
+    expect(JSON.stringify(schema)).toBe(before);
+  });
+
+  it("keeps allOf-only fields visible after a direct field is connected", () => {
+    const expanded = augment(
+      {
+        properties: {
+          response: {
+            type: "object",
+            title: "Response",
+            properties: { text: { type: "string", title: "Text" } },
+            allOf: [
+              {
+                type: "object",
+                properties: { html: { type: "string", title: "Html" } },
+              },
+            ],
+          },
+        },
+      },
+      "response_#_text",
+    );
+    expect(getNestedOutputProperties(expanded.response)).toEqual({
+      text: { type: "string", title: "Text" },
+      html: { type: "string", title: "Html" },
+    });
+  });
+
+  it("keeps sibling fields when a oneOf or allOf field is connected", () => {
+    const siblings = {
+      text: { type: "string", title: "Text" },
+      html: { type: "string", title: "Html" },
+    };
+    for (const keyword of ["oneOf", "allOf"] as const) {
+      const result = augment(
+        {
+          properties: {
+            response: {
+              title: "Response",
+              [keyword]: [
+                { type: "null" },
+                { type: "object", properties: siblings },
+              ],
+            },
+          },
+        },
+        "response_#_html",
+      );
+      expect((result.response as RJSFSchema).properties).toEqual(siblings);
+    }
+  });
+
+  it("resolves a connected field from a later anyOf alternative", () => {
+    const result = augment(
+      {
+        properties: {
+          response: {
+            anyOf: [
+              {
+                type: "object",
+                properties: { url: { type: "string", title: "Url" } },
+              },
+              {
+                type: "object",
+                properties: {
+                  profile: {
+                    type: "object",
+                    title: "Profile",
+                    properties: {
+                      first_name: { type: "string", title: "First Name" },
+                      last_name: { type: "string", title: "Last Name" },
+                    },
+                  },
+                  name: { type: "string", title: "Name" },
+                },
+              },
+            ],
+          },
+        },
+      },
+      "response_#_profile_#_first_name",
+    );
+    expect((result.response as RJSFSchema).properties).toEqual({
+      profile: {
+        type: "object",
+        title: "Profile",
+        properties: {
+          first_name: { type: "string", title: "First Name" },
+          last_name: { type: "string", title: "Last Name" },
+        },
+      },
+      name: { type: "string", title: "Name" },
+    });
+  });
+
+  it("merges nested properties when union branches share an object field", () => {
+    expect(
+      getNestedOutputProperties({
+        anyOf: [
+          {
+            type: "object",
+            properties: {
+              profile: {
+                type: "object",
+                title: "Profile",
+                properties: {
+                  first_name: { type: "string", title: "First Name" },
+                },
+              },
+            },
+          },
+          {
+            type: "object",
+            properties: {
+              profile: {
+                type: "object",
+                properties: {
+                  last_name: { type: "string", title: "Last Name" },
+                },
+              },
+            },
+          },
+        ],
+      }),
+    ).toEqual({
+      profile: {
+        type: "object",
+        title: "Profile",
+        properties: {
+          first_name: { type: "string", title: "First Name" },
+          last_name: { type: "string", title: "Last Name" },
+        },
+      },
+    });
+    expect(
+      getNestedOutputProperties({
+        oneOf: [
+          {
+            type: "object",
+            properties: { value: { type: "string", title: "First" } },
+          },
+          {
+            type: "object",
+            properties: {
+              value: {
+                type: "object",
+                properties: { extra: { type: "string" } },
+              },
+            },
+          },
+        ],
+      }),
+    ).toEqual({
+      value: { type: "string", title: "First" },
+    });
+  });
+
+  it("treats prototype-like union keys as own properties", () => {
+    const before = Object.getOwnPropertyDescriptors(Object.prototype);
+    const schema = JSON.parse(
+      '{"anyOf":[{"type":"object","properties":{"__proto__":{"type":"string","title":"Injected"}}},{"type":"null"}]}',
+    );
+    const result = getNestedOutputProperties(schema);
+    expect(Object.getOwnPropertyDescriptors(Object.prototype)).toEqual(before);
+    expect(Object.hasOwn(result, "__proto__")).toBe(true);
+    expect(result.__proto__).toEqual({ type: "string", title: "Injected" });
+    expect(JSON.stringify(schema)).toBe(
+      '{"anyOf":[{"type":"object","properties":{"__proto__":{"type":"string","title":"Injected"}}},{"type":"null"}]}',
+    );
   });
 
   it.each([null, undefined, false, 4, "bad", [], {}].map((value) => [value]))(
