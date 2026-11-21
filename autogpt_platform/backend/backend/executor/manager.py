@@ -166,23 +166,16 @@ def _get_execution_credit_balance(
     return db_client.get_credits(graph_exec.user_id)
 
 
-def _running_after_an_empty_start(
+def _stored_run(
     db_client: "DatabaseManagerClient",
     graph_exec: GraphExecutionEntry,
 ) -> GraphExecution | None:
-    """The run, when its start moved nothing and it is RUNNING all the same.
-
-    The database client retries a call that failed, so a start that committed
-    and lost its answer comes back empty with the run RUNNING, and that run is
-    this executor's to go on with. A run a stop got to first is terminal, and
-    None is returned for it.
-    """
-    run = db_client.get_graph_execution(
+    """The run as it is stored now, without its node executions."""
+    return db_client.get_graph_execution(
         user_id=graph_exec.user_id,
         execution_id=graph_exec.graph_exec_id,
         include_node_executions=False,
     )
-    return run if run is not None and run.status == ExecutionStatus.RUNNING else None
 
 
 def _write_the_final_state(
@@ -207,11 +200,7 @@ def _write_the_final_state(
         stats=stats,
     ):
         return True
-    stored = db_client.get_graph_execution(
-        user_id=graph_exec.user_id,
-        execution_id=graph_exec.graph_exec_id,
-        include_node_executions=False,
-    )
+    stored = _stored_run(db_client, graph_exec)
     if stored is not None and stored.status in TERMINAL_GRAPH_EXECUTION_STATUSES:
         send_execution_update(stored)
     return False
@@ -1582,19 +1571,29 @@ class ExecutionProcessor:
             )
             if started is not None:
                 send_execution_update(started)
-            elif resumed := _running_after_an_empty_start(db_client, graph_exec):
+            elif (
+                stored := _stored_run(db_client, graph_exec)
+            ) is not None and stored.status == ExecutionStatus.RUNNING:
+                # The database client retries a call that failed, so a start
+                # that committed and lost its answer comes back empty with the
+                # run RUNNING. That run is this executor's to go on with, and
+                # the earlier try's RUNNING update was lost with its answer.
                 log_metadata.info(
                     f"Graph execution #{graph_exec.graph_exec_id} was already "
                     "started by an earlier try of its start, going on with it."
                 )
-                # That try's RUNNING update was lost with its answer.
-                send_execution_update(resumed)
+                send_execution_update(stored)
             else:
-                # The start only moves a run that is still queued, so a stop
-                # that wrote its status after the read above has won the race.
+                # The start only moves a run that is still queued or
+                # incomplete, so the run left that state after the read above:
+                # a stop wrote its status first, or the run is gone.
                 log_metadata.info(
-                    f"Skipped graph execution #{graph_exec.graph_exec_id}, "
-                    "it was stopped before it started."
+                    f"Skipped graph execution #{graph_exec.graph_exec_id}, it "
+                    + (
+                        "no longer exists."
+                        if stored is None
+                        else f"became {stored.status.value} before it started."
+                    )
                 )
                 return
             exec_meta.status = ExecutionStatus.RUNNING
@@ -2603,6 +2602,12 @@ class ExecutionManager(AppProcess):
             )
 
             cancel_event = threading.Event()
+            # The run is registered, with a stand-in for its worker's future,
+            # before the worker exists, so a cancel the other consumer takes
+            # from here on reaches it. A stop's second cancel follows its own
+            # status write, so by then either the run is registered or the
+            # conditional start will skip it.
+            self.active_graph_runs[graph_exec_id] = (Future(), cancel_event)
             future = self.executor.submit(
                 execute_graph, graph_exec_entry, cancel_event, cluster_lock
             )
@@ -2613,6 +2618,7 @@ class ExecutionManager(AppProcess):
             logger.warning(
                 f"[{self.service_name}] Failed to setup execution for {graph_exec_id}: {type(e).__name__}: {e}"
             )
+            self.active_graph_runs.pop(graph_exec_id, None)
             # Release cluster lock before requeue
             cluster_lock.release()
             if graph_exec_id in self._execution_locks:
