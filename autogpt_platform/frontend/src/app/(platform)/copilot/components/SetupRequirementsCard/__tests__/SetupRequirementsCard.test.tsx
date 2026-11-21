@@ -6,7 +6,7 @@ import {
   cleanup,
   waitFor,
 } from "@testing-library/react";
-import { StrictMode } from "react";
+import { StrictMode, type ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SetupRequirementsCard } from "../SetupRequirementsCard";
 import {
@@ -89,6 +89,16 @@ afterEach(() => {
   });
 });
 
+const OPENAI_KEY = { api_key: { provider: "openai", types: ["api_key"] } };
+const URL_INPUT = { name: "url", title: "URL", type: "string", required: true };
+const PREFILLED_URL_INPUT = { ...URL_INPUT, value: "https://prefilled.com" };
+const QUERY_INPUT = {
+  name: "query",
+  title: "Query",
+  type: "string",
+  required: true,
+};
+
 function makeOutput(
   overrides: {
     message?: string;
@@ -129,90 +139,37 @@ function makeOutput(
 
 describe("SetupRequirementsCard (edit mode)", () => {
   it("renders the setup message", () => {
-    render(<SetupRequirementsCard output={makeOutput()} />);
+    renderCard();
     expect(screen.getByText("Please configure credentials")).toBeDefined();
   });
 
   it("renders credential section when missing credentials are provided", () => {
-    render(
-      <SetupRequirementsCard
-        output={makeOutput({
-          missingCredentials: {
-            api_key: {
-              provider: "openai",
-              types: ["api_key"],
-            },
-          },
-        })}
-      />,
-    );
+    renderCard({ missingCredentials: OPENAI_KEY });
     expect(screen.getByTestId("credentials-grouped-view")).toBeDefined();
   });
 
   it("uses custom credentials label when provided", () => {
-    render(
-      <SetupRequirementsCard
-        output={makeOutput({
-          missingCredentials: {
-            api_key: { provider: "openai", types: ["api_key"] },
-          },
-        })}
-        credentialsLabel="API Keys"
-      />,
+    renderCard(
+      { missingCredentials: OPENAI_KEY },
+      { credentialsLabel: "API Keys" },
     );
     expect(screen.getByText("API Keys")).toBeDefined();
   });
 
   it("renders input form when inputs are provided", () => {
-    render(
-      <SetupRequirementsCard
-        output={makeOutput({
-          inputs: [
-            { name: "url", title: "URL", type: "string", required: true },
-          ],
-        })}
-      />,
-    );
+    renderCard({ inputs: [URL_INPUT] });
     expect(screen.getByTestId("form-renderer")).toBeDefined();
     expect(screen.getByText("Inputs")).toBeDefined();
   });
 
   it("renders Proceed button that is enabled when inputs are filled", () => {
-    render(
-      <SetupRequirementsCard
-        output={makeOutput({
-          inputs: [
-            {
-              name: "url",
-              title: "URL",
-              type: "string",
-              required: true,
-              value: "https://prefilled.com",
-            },
-          ],
-        })}
-      />,
-    );
+    renderCard({ inputs: [PREFILLED_URL_INPUT] });
     const proceed = screen.getByText("Proceed");
     expect(proceed.closest("button")?.disabled).toBe(false);
   });
 
   it("calls onSend and shows Connected message when Proceed is clicked", async () => {
-    render(
-      <SetupRequirementsCard
-        output={makeOutput({
-          inputs: [
-            {
-              name: "url",
-              title: "URL",
-              type: "string",
-              required: true,
-              value: "https://prefilled.com",
-            },
-          ],
-        })}
-      />,
-    );
+    renderCard({ inputs: [PREFILLED_URL_INPUT] });
     fireEvent.click(screen.getByText("Proceed"));
     await waitFor(() => expect(mockOnSend).toHaveBeenCalledOnce());
     expect(screen.getByText(/Connected. Continuing/)).toBeDefined();
@@ -220,70 +177,36 @@ describe("SetupRequirementsCard (edit mode)", () => {
 
   it("calls onComplete callback when Proceed is clicked", () => {
     const onComplete = vi.fn();
-    render(
-      <SetupRequirementsCard
-        output={makeOutput({
-          inputs: [
-            {
-              name: "url",
-              title: "URL",
-              type: "string",
-              required: true,
-              value: "https://prefilled.com",
-            },
-          ],
-        })}
-        onComplete={onComplete}
-      />,
-    );
+    renderCard({ inputs: [PREFILLED_URL_INPUT] }, { onComplete });
     fireEvent.click(screen.getByText("Proceed"));
     expect(onComplete).toHaveBeenCalledOnce();
   });
 
   it("renders advanced toggle when advanced inputs exist", () => {
-    render(
-      <SetupRequirementsCard
-        output={makeOutput({
-          inputs: [
-            {
-              name: "debug",
-              title: "Debug Mode",
-              type: "boolean",
-              advanced: true,
-            },
-          ],
-        })}
-      />,
-    );
+    renderCard({
+      inputs: [
+        { name: "debug", title: "Debug Mode", type: "boolean", advanced: true },
+      ],
+    });
     expect(screen.getByText("Show advanced fields")).toBeDefined();
   });
 
   it("toggles advanced fields visibility", () => {
-    render(
-      <SetupRequirementsCard
-        output={makeOutput({
-          inputs: [
-            { name: "url", title: "URL", type: "string", required: false },
-            { name: "debug", title: "Debug", type: "boolean", advanced: true },
-          ],
-        })}
-      />,
-    );
+    renderCard({
+      inputs: [
+        { name: "url", title: "URL", type: "string", required: false },
+        { name: "debug", title: "Debug", type: "boolean", advanced: true },
+      ],
+    });
     const toggle = screen.getByText("Show advanced fields");
     fireEvent.click(toggle);
     expect(screen.getByText("Hide advanced fields")).toBeDefined();
   });
 
   it("includes retryInstruction in onSend message when no inputs needed", () => {
-    render(
-      <SetupRequirementsCard
-        output={makeOutput({
-          missingCredentials: {
-            api_key: { provider: "openai", types: ["api_key"] },
-          },
-        })}
-        retryInstruction="Retry the agent now"
-      />,
+    renderCard(
+      { missingCredentials: OPENAI_KEY },
+      { retryInstruction: "Retry the agent now" },
     );
     // With credentials required but no auto-filling mechanism in the mock,
     // Proceed is disabled, but we're testing render only here
@@ -291,28 +214,26 @@ describe("SetupRequirementsCard (edit mode)", () => {
   });
 
   it("does not render Proceed when neither credentials nor inputs are needed", () => {
-    render(<SetupRequirementsCard output={makeOutput()} />);
+    renderCard();
     expect(screen.queryByText("Proceed")).toBeNull();
   });
 });
 
 describe("SetupRequirementsCard (preview mode)", () => {
   it("renders inputs as read-only list, not a form", () => {
-    render(
-      <SetupRequirementsCard
-        inputsMode="preview"
-        output={makeOutput({
-          inputs: [
-            {
-              name: "query",
-              title: "Search Query",
-              type: "string",
-              required: true,
-              description: "What to search for",
-            },
-          ],
-        })}
-      />,
+    renderCard(
+      {
+        inputs: [
+          {
+            name: "query",
+            title: "Search Query",
+            type: "string",
+            required: true,
+            description: "What to search for",
+          },
+        ],
+      },
+      { inputsMode: "preview" },
     );
     expect(screen.queryByTestId("form-renderer")).toBeNull();
     expect(screen.getByText("Expected inputs")).toBeDefined();
@@ -326,50 +247,25 @@ describe("SetupRequirementsCard (preview mode)", () => {
   });
 
   it("omits the description block entirely when no description is provided", () => {
-    render(
-      <SetupRequirementsCard
-        inputsMode="preview"
-        output={makeOutput({
-          inputs: [
-            { name: "url", title: "URL", type: "string", required: true },
-          ],
-        })}
-      />,
-    );
+    renderCard({ inputs: [URL_INPUT] }, { inputsMode: "preview" });
     expect(screen.getByText("URL")).toBeDefined();
     // No "url • string" leakage and no empty description container.
     expect(screen.queryByText(/url • string/i)).toBeNull();
   });
 
   it("labels credentials section as 'Workflow credentials' by default", () => {
-    render(
-      <SetupRequirementsCard
-        inputsMode="preview"
-        output={makeOutput({
-          missingCredentials: {
-            api_key: { provider: "openai", types: ["api_key"] },
-          },
-        })}
-      />,
-    );
+    renderCard({ missingCredentials: OPENAI_KEY }, { inputsMode: "preview" });
     expect(screen.getByText("Workflow credentials")).toBeDefined();
   });
 
   it("does not render advanced toggle even when advanced inputs exist", () => {
-    render(
-      <SetupRequirementsCard
-        inputsMode="preview"
-        output={makeOutput({
-          inputs: [
-            {
-              name: "debug",
-              title: "Debug",
-              type: "boolean",
-              advanced: true,
-            },
-          ],
-        })}
-      />,
+    renderCard(
+      {
+        inputs: [
+          { name: "debug", title: "Debug", type: "boolean", advanced: true },
+        ],
+      },
+      { inputsMode: "preview" },
     );
     expect(screen.queryByText("Show advanced fields")).toBeNull();
   });
@@ -378,32 +274,14 @@ describe("SetupRequirementsCard (preview mode)", () => {
     // Proceed is rendered when needsCredentials || needsInputs — preserves
     // legacy run_agent behaviour where Proceed is shown alongside the input
     // preview and gated only by credentials.
-    render(
-      <SetupRequirementsCard
-        inputsMode="preview"
-        output={makeOutput({
-          inputs: [
-            { name: "query", title: "Query", type: "string", required: true },
-          ],
-        })}
-      />,
-    );
+    renderCard({ inputs: [QUERY_INPUT] }, { inputsMode: "preview" });
     const proceed = screen.queryByText("Proceed");
     expect(proceed).not.toBeNull();
     expect(proceed!.closest("button")?.disabled).toBe(false);
   });
 
   it("sends the legacy run_agent message on Proceed", async () => {
-    render(
-      <SetupRequirementsCard
-        inputsMode="preview"
-        output={makeOutput({
-          inputs: [
-            { name: "query", title: "Query", type: "string", required: true },
-          ],
-        })}
-      />,
-    );
+    renderCard({ inputs: [QUERY_INPUT] }, { inputsMode: "preview" });
     fireEvent.click(screen.getByText("Proceed"));
     await waitFor(() =>
       expect(mockOnSend).toHaveBeenCalledWith(
@@ -415,19 +293,9 @@ describe("SetupRequirementsCard (preview mode)", () => {
 
 describe("SetupRequirementsCard (session-scoped dismissal)", () => {
   it("auto-dismisses when all requested providers are already connected in this session", async () => {
-    useConnectedProvidersStore
-      .getState()
-      .markConnected({ sessionID: "sess-1", providers: ["openai"] });
+    connectOpenAI();
 
-    render(
-      <SetupRequirementsCard
-        output={makeOutput({
-          missingCredentials: {
-            api_key: { provider: "openai", types: ["api_key"] },
-          },
-        })}
-      />,
-    );
+    renderCard({ missingCredentials: OPENAI_KEY });
 
     expect(screen.queryByText("Proceed")).toBeNull();
     expect(screen.getByText(/Connected. Continuing/)).toBeDefined();
@@ -437,22 +305,11 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
   });
 
   it("auto-dismiss in preview mode sends the legacy run_agent message", async () => {
-    useConnectedProvidersStore
-      .getState()
-      .markConnected({ sessionID: "sess-1", providers: ["openai"] });
+    connectOpenAI();
 
-    render(
-      <SetupRequirementsCard
-        inputsMode="preview"
-        output={makeOutput({
-          inputs: [
-            { name: "url", title: "URL", type: "string", required: true },
-          ],
-          missingCredentials: {
-            api_key: { provider: "openai", types: ["api_key"] },
-          },
-        })}
-      />,
+    renderCard(
+      { inputs: [URL_INPUT], missingCredentials: OPENAI_KEY },
+      { inputsMode: "preview" },
     );
 
     await waitFor(() =>
@@ -463,66 +320,32 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
   });
 
   it("auto-dismiss invokes onComplete callback", async () => {
-    useConnectedProvidersStore
-      .getState()
-      .markConnected({ sessionID: "sess-1", providers: ["openai"] });
+    connectOpenAI();
     const onComplete = vi.fn();
 
-    render(
-      <SetupRequirementsCard
-        output={makeOutput({
-          missingCredentials: {
-            api_key: { provider: "openai", types: ["api_key"] },
-          },
-        })}
-        onComplete={onComplete}
-      />,
-    );
+    renderCard({ missingCredentials: OPENAI_KEY }, { onComplete });
 
     await waitFor(() => expect(onComplete).toHaveBeenCalledOnce());
   });
 
   it("does not auto-dismiss when only some providers are connected", () => {
-    useConnectedProvidersStore
-      .getState()
-      .markConnected({ sessionID: "sess-1", providers: ["openai"] });
+    connectOpenAI();
 
-    render(
-      <SetupRequirementsCard
-        output={makeOutput({
-          missingCredentials: {
-            api_key: { provider: "openai", types: ["api_key"] },
-            gh: { provider: "github", types: ["api_key"] },
-          },
-        })}
-      />,
-    );
+    renderCard({
+      missingCredentials: {
+        ...OPENAI_KEY,
+        gh: { provider: "github", types: ["api_key"] },
+      },
+    });
 
     expect(screen.queryByText(/Connected. Continuing/)).toBeNull();
     expect(screen.getByText("Proceed")).toBeDefined();
   });
 
   it("marks providers connected in the store when Proceed is clicked", () => {
-    render(
-      <SetupRequirementsCard
-        output={makeOutput({
-          inputs: [
-            {
-              name: "url",
-              title: "URL",
-              type: "string",
-              required: true,
-              value: "https://prefilled.com",
-            },
-          ],
-          missingCredentials: {
-            // Use a credential that auto-fills via system credentials would be
-            // ideal, but for this test we just need Proceed to be clickable —
-            // an inputs-only card with no creds is the simplest path.
-          },
-        })}
-      />,
-    );
+    // An inputs-only card with no creds is the simplest way to make Proceed
+    // clickable.
+    renderCard({ inputs: [PREFILLED_URL_INPUT], missingCredentials: {} });
 
     fireEvent.click(screen.getByText("Proceed"));
     // No credentials in this output, so no providers should be marked.
@@ -533,22 +356,9 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
     // Regression: a run_block card with both already-connected creds AND
     // unfilled user inputs must keep showing the form — otherwise handleRun
     // never fires and the chat hangs waiting for input that can't be sent.
-    useConnectedProvidersStore
-      .getState()
-      .markConnected({ sessionID: "sess-1", providers: ["openai"] });
+    connectOpenAI();
 
-    render(
-      <SetupRequirementsCard
-        output={makeOutput({
-          inputs: [
-            { name: "url", title: "URL", type: "string", required: true },
-          ],
-          missingCredentials: {
-            api_key: { provider: "openai", types: ["api_key"] },
-          },
-        })}
-      />,
-    );
+    renderCard({ inputs: [URL_INPUT], missingCredentials: OPENAI_KEY });
 
     expect(screen.queryByText(/Connected. Continuing/)).toBeNull();
     expect(screen.getByText("Proceed")).toBeDefined();
@@ -558,22 +368,11 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
     // Preview-mode inputs aren't user-fillable, so a creds-only "Proceed"
     // would just be confirming pre-set values — auto-dismiss is still the
     // right call to avoid duplicate prompts.
-    useConnectedProvidersStore
-      .getState()
-      .markConnected({ sessionID: "sess-1", providers: ["openai"] });
+    connectOpenAI();
 
-    render(
-      <SetupRequirementsCard
-        inputsMode="preview"
-        output={makeOutput({
-          inputs: [
-            { name: "url", title: "URL", type: "string", required: true },
-          ],
-          missingCredentials: {
-            api_key: { provider: "openai", types: ["api_key"] },
-          },
-        })}
-      />,
+    renderCard(
+      { inputs: [URL_INPUT], missingCredentials: OPENAI_KEY },
+      { inputsMode: "preview" },
     );
 
     expect(screen.getByText(/Connected. Continuing/)).toBeDefined();
@@ -587,15 +386,9 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
     // onSend, producing N identical "Please proceed" messages and spamming
     // the chat. The store-level claim must allow only the first auto-dismiss
     // to send.
-    useConnectedProvidersStore
-      .getState()
-      .markConnected({ sessionID: "sess-1", providers: ["openai"] });
+    connectOpenAI();
 
-    const output = makeOutput({
-      missingCredentials: {
-        api_key: { provider: "openai", types: ["api_key"] },
-      },
-    });
+    const output = makeOutput({ missingCredentials: OPENAI_KEY });
 
     render(
       <>
@@ -623,18 +416,12 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
     // Today the claim itself provides atomicity and we call `handleRun`
     // synchronously; this test pins the behaviour against a StrictMode
     // remount.
-    useConnectedProvidersStore
-      .getState()
-      .markConnected({ sessionID: "sess-1", providers: ["openai"] });
+    connectOpenAI();
 
     render(
       <StrictMode>
         <SetupRequirementsCard
-          output={makeOutput({
-            missingCredentials: {
-              api_key: { provider: "openai", types: ["api_key"] },
-            },
-          })}
+          output={makeOutput({ missingCredentials: OPENAI_KEY })}
         />
       </StrictMode>,
     );
@@ -649,16 +436,13 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
 
 describe("SetupRequirementsCard (trigger mode)", () => {
   it("carries the picked credential IDs back on Proceed", async () => {
-    render(
-      <SetupRequirementsCard
-        inputsMode="trigger"
-        credentialsLabel="Account"
-        output={makeOutput({
-          missingCredentials: {
-            github_credentials: { provider: "github", types: ["api_key"] },
-          },
-        })}
-      />,
+    renderCard(
+      {
+        missingCredentials: {
+          github_credentials: { provider: "github", types: ["api_key"] },
+        },
+      },
+      { inputsMode: "trigger", credentialsLabel: "Account" },
     );
 
     // Trigger mode labels the credentials section "Account".
@@ -698,16 +482,10 @@ describe("SetupRequirementsCard (rejected credential)", () => {
   };
 
   function renderRejected(overrides: Partial<CredentialRejection> = {}) {
-    render(
-      <SetupRequirementsCard
-        output={makeOutput({
-          missingCredentials: {
-            api_key: { provider: "openai", types: ["api_key"] },
-          },
-          rejection: { ...rejection, ...overrides },
-        })}
-      />,
-    );
+    renderCard({
+      missingCredentials: OPENAI_KEY,
+      rejection: { ...rejection, ...overrides },
+    });
   }
 
   it("shows the provider's reason and the status code", () => {
@@ -720,9 +498,7 @@ describe("SetupRequirementsCard (rejected credential)", () => {
   });
 
   it("never auto-dismisses, even when the provider is already connected here", async () => {
-    useConnectedProvidersStore
-      .getState()
-      .markConnected({ sessionID: "sess-1", providers: ["openai"] });
+    connectOpenAI();
 
     renderRejected();
 
@@ -746,15 +522,7 @@ describe("SetupRequirementsCard (rejected credential)", () => {
   });
 
   it("renders no rejection notice when the field is absent", () => {
-    render(
-      <SetupRequirementsCard
-        output={makeOutput({
-          missingCredentials: {
-            api_key: { provider: "openai", types: ["api_key"] },
-          },
-        })}
-      />,
-    );
+    renderCard({ missingCredentials: OPENAI_KEY });
 
     expect(screen.queryByRole("alert")).toBeNull();
   });
@@ -770,12 +538,7 @@ describe("SetupRequirementsCard (rejected credential)", () => {
           }}
         >
           <SetupRequirementsCard
-            output={makeOutput({
-              missingCredentials: {
-                api_key: { provider: "openai", types: ["api_key"] },
-              },
-              rejection,
-            })}
+            output={makeOutput({ missingCredentials: OPENAI_KEY, rejection })}
           />
         </ChainActionsContext.Provider>,
       );
@@ -810,3 +573,16 @@ describe("SetupRequirementsCard (rejected credential)", () => {
     });
   });
 });
+
+function renderCard(
+  output: Parameters<typeof makeOutput>[0] = {},
+  props: Omit<ComponentProps<typeof SetupRequirementsCard>, "output"> = {},
+) {
+  render(<SetupRequirementsCard output={makeOutput(output)} {...props} />);
+}
+
+function connectOpenAI() {
+  useConnectedProvidersStore
+    .getState()
+    .markConnected({ sessionID: "sess-1", providers: ["openai"] });
+}
