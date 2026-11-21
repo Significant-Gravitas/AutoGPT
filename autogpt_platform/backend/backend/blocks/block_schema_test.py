@@ -4,9 +4,15 @@ import jsonschema
 import jsonschema.exceptions
 import jsonschema.validators
 import pytest
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from backend.blocks._base import BlockSchemaInput
+from backend.blocks._base import BlockSchemaInput, BlockSchemaOutput
+
+
+class _Tagged(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    __pydantic_extra__: dict[str, Annotated[str, Field(max_length=3)]]
+    name: str = ""
 
 
 class _Input(BlockSchemaInput):
@@ -16,6 +22,11 @@ class _Input(BlockSchemaInput):
     limit: Annotated[int, Field(le=10)] | None = None
     tags: dict[str, Annotated[str, Field(max_length=3)]] = {}
     pages: Annotated[list[Annotated[int, Field(le=5)]], Field(max_length=2)] = []
+    tagged: _Tagged = Field(default_factory=_Tagged)
+
+
+class _Output(BlockSchemaOutput):
+    rows: dict | list[dict | list]
 
 
 @pytest.mark.parametrize(
@@ -46,10 +57,21 @@ def test_a_long_invalid_list_builds_at_most_one_error(
         {"tags": {"a": "long", "b": "ok"}},
         {"union": [0], "names": [1]},
         {"counts": [5], "pages": [1], "tags": {}, "limit": None},
+        {"tagged": {"name": "a long name", "x": "ok"}},
+        {"tagged": {"name": "ok", "x": "long"}},
     ],
 )
 def test_field_errors_match_a_full_validation(data: dict[str, Any]):
     assert _Input.get_field_errors(data) == _full_validation_field_errors(data)
+
+
+def test_a_long_invalid_output_keeps_a_bounded_number_of_errors(
+    errors_built: list[None],
+):
+    error = _Output.validate_field("rows", [0] * 5_000)
+
+    assert error == "rows[0]: expected object or array, got integer"
+    assert len(errors_built) < 1_000
 
 
 def _full_validation_field_errors(data: dict[str, Any]) -> dict[str, str]:
