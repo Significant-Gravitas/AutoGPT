@@ -11,34 +11,34 @@ interface Props {
 }
 
 export function SectionFrame({ title, onRemove, children }: Props) {
+  const remove = onRemove ? (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      aria-label={`Remove ${title ? `the ${title.toLowerCase()} section` : "this section"}`}
+      onClick={onRemove}
+    >
+      <Icon icon={Cancel01Icon} size={14} />
+    </Button>
+  ) : null;
+
   return (
-    <section className="flex min-w-0 flex-col gap-3 rounded-2xl bg-surface p-5 smooth-shadow-ring-sm">
-      {title || onRemove ? (
+    <section className="relative flex min-w-0 flex-col gap-3 rounded-2xl bg-surface p-5 smooth-shadow-ring-sm">
+      {title ? (
         <div className="flex items-center justify-between gap-2">
-          {title ? (
-            <Text
-              variant="small-medium"
-              tone="secondary"
-              transform="uppercase"
-              tracking="caps"
-              className="break-words"
-            >
-              {title}
-            </Text>
-          ) : (
-            <span />
-          )}
-          {onRemove ? (
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label={`Remove ${title ? `the ${title.toLowerCase()} section` : "this section"}`}
-              onClick={onRemove}
-            >
-              <Icon icon={Cancel01Icon} size={14} />
-            </Button>
-          ) : null}
+          <Text
+            variant="small-medium"
+            tone="secondary"
+            transform="uppercase"
+            tracking="caps"
+            className="break-words"
+          >
+            {title}
+          </Text>
+          {remove}
         </div>
+      ) : remove ? (
+        <div className="absolute top-3 right-3">{remove}</div>
       ) : null}
       {children}
     </section>

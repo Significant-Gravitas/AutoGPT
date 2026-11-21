@@ -28,9 +28,9 @@ export function OutdatedNotice({ workflowName, count, canAsk }: Props) {
       <Text variant="body">
         This page is out of date:{" "}
         {count === 1
-          ? "one section no longer fits the workflow"
-          : `${count} sections no longer fit the workflow`}{" "}
-        and is hidden. Ask Otto to update it.
+          ? "one section no longer fits the workflow and is hidden."
+          : `${count} sections no longer fit the workflow and are hidden.`}
+        {canAsk ? "" : " Ask Otto to update it."}
       </Text>
       {canAsk ? (
         <Button variant="outline" size="small" onClick={handleAsk}>

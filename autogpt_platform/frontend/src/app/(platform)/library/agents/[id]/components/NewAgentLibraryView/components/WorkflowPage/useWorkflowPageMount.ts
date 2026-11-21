@@ -9,7 +9,7 @@ import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { isRunActive } from "./helpers";
 import { useFollowedRunStore } from "./store";
 
@@ -30,6 +30,8 @@ export function useWorkflowPageMount(agent: LibraryAgent) {
         enabled,
         retry: false,
         select: okData,
+        // Following a new run must not blank the page and reset its form.
+        placeholderData: keepPreviousData,
         refetchInterval: (q) =>
           isRunActive(followedStatus(okData(q.state.data))) ? POLL_MS : false,
       },

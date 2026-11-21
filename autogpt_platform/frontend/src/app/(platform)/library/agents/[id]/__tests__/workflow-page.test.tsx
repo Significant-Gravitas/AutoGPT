@@ -1,5 +1,6 @@
 import {
   getGetV1ListGraphExecutionsMockHandler,
+  getGetV1ListGraphExecutionsResponseMock,
   getPostV1ExecuteGraphAgentMockHandler,
   getPostV1ExecuteGraphAgentResponseMock,
 } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
@@ -106,7 +107,7 @@ function finishedResult(runID: string) {
   };
 }
 
-function serveLibrary() {
+function serveLibrary(executions: unknown[] = []) {
   server.use(
     getGetV2GetLibraryAgentMockHandler(
       getGetV2GetLibraryAgentResponseMock({
@@ -128,10 +129,10 @@ function serveLibrary() {
       }),
     ),
     getGetV1ListGraphExecutionsMockHandler({
-      executions: [],
+      executions: executions as never[],
       pagination: {
-        total_items: 0,
-        total_pages: 0,
+        total_items: executions.length,
+        total_pages: executions.length ? 1 : 0,
         current_page: 1,
         page_size: 20,
       },
@@ -262,4 +263,30 @@ test("keeps the standard view when the workflow has no page", async () => {
     await screen.findByRole("button", { name: "Setup your task" }),
   ).toBeDefined();
   expect(screen.queryByTestId("workflow-page")).toBeNull();
+});
+
+test("opens on the page, with no run picked, when the workflow has run before", async () => {
+  const details = vi.fn();
+  serveLibrary([
+    {
+      ...getGetV1ListGraphExecutionsResponseMock().executions[0],
+      id: "old-run",
+      graph_id: "graph-1",
+      graph_version: 1,
+      status: AgentExecutionStatus.COMPLETED,
+      is_dry_run: false,
+    },
+  ]);
+  server.use(
+    http.get(PAGE_URL, () => HttpResponse.json(page())),
+    http.get("/api/proxy/api/graphs/:graphID/executions/:runID", () => {
+      details();
+      return HttpResponse.json({}, { status: 404 });
+    }),
+  );
+
+  renderView();
+
+  expect(await screen.findByTestId("workflow-page")).toBeDefined();
+  expect(details).not.toHaveBeenCalled();
 });

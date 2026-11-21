@@ -45,7 +45,10 @@ export function LatestResultSection({ section }: Props) {
         }
       })}
       {Object.keys(otherOutputs).length ? (
-        <RunOutputs outputs={otherOutputs as Record<string, unknown[]>} />
+        // RunOutputs pins its copy and download actions to this box's corner.
+        <div className="relative">
+          <RunOutputs outputs={otherOutputs as Record<string, unknown[]>} />
+        </div>
       ) : null}
     </div>
   );
