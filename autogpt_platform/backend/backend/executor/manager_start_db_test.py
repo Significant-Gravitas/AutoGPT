@@ -8,90 +8,40 @@ an Event. A start that committed and lost its answer does not drop the run.
 
 import asyncio
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 from pytest_mock import MockerFixture
 
-from backend.api.model import CreateGraph
 from backend.blocks.basic import StoreValueBlock
 from backend.data import graph
 from backend.data.execution import (
     ExecutionStatus,
     GraphExecutionEntry,
-    create_graph_execution,
     get_graph_execution,
-    update_graph_execution_stats,
 )
 from backend.executor import manager
 from backend.executor.manager import ExecutionProcessor
+from backend.executor.manager_db_test_helpers import (
+    HELD_FOR,
+    _a_queued_run,
+    _no_credit_check,
+    processor,
+)
 from backend.executor.utils import stop_graph_execution
-from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.usecases.sample import create_test_user
 from backend.util.test import SpinTestServer
 
-HELD_FOR = 60
 
-
-@pytest.fixture
-def processor() -> Iterator[ExecutionProcessor]:
-    """An executor worker with its node-execution and node-evaluation loops
-    and its credentials manager, as `on_graph_executor_start` sets it up."""
-    processor = ExecutionProcessor()
-    processor.creds_manager = IntegrationCredentialsManager()
-    loops = [asyncio.new_event_loop() for _ in range(2)]
-    threads = [threading.Thread(target=loop.run_forever, daemon=True) for loop in loops]
-    for thread in threads:
-        thread.start()
-    processor.node_execution_loop, processor.node_evaluation_loop = loops
-    yield processor
-    for loop, thread in zip(loops, threads):
-        # Closes the async Redis clients the loop's code opened, as asyncio.run
-        # does; loop.close() alone leaves them open (#17087).
-        asyncio.run_coroutine_threadsafe(loop.shutdown_asyncgens(), loop).result(10)
-        loop.call_soon_threadsafe(loop.stop)
-        thread.join(timeout=10)
-        loop.close()
-
-
-@pytest.fixture(autouse=True)
-def _no_credit_check(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(manager.settings.config, "enable_credit", False)
-
-
-async def _a_queued_run(server: SpinTestServer) -> GraphExecutionEntry:
-    """A run of one Store Value node, QUEUED as `add_graph_execution` leaves it."""
-    user = await create_test_user()
-    workflow = await server.agent_server.test_create_graph(
-        CreateGraph(
-            graph=graph.Graph(
-                name="Stopped as it starts",
-                description="One starting node, which a stop may end before it starts",
-                nodes=[
-                    graph.Node(
-                        block_id=StoreValueBlock().id, input_default={"input": "hello"}
-                    )
-                ],
-                links=[],
-            )
-        ),
-        user.id,
-    )
-    run = await create_graph_execution(
-        graph_id=workflow.id,
-        graph_version=workflow.version,
-        starting_nodes_input=[(node.id, node.input_default) for node in workflow.nodes],
-        inputs={},
-        user_id=user.id,
-    )
-    await update_graph_execution_stats(run.id, status=ExecutionStatus.QUEUED)
-    return GraphExecutionEntry(
-        user_id=user.id,
-        graph_exec_id=run.id,
-        graph_id=workflow.id,
-        graph_version=workflow.version,
+def _a_store_value_graph() -> graph.Graph:
+    return graph.Graph(
+        name="Stopped as it starts",
+        description="One starting node, which a stop may end before it starts",
+        nodes=[
+            graph.Node(block_id=StoreValueBlock().id, input_default={"input": "hello"})
+        ],
+        links=[],
     )
 
 
@@ -171,7 +121,7 @@ async def test_a_stop_after_the_executors_read_keeps_the_run_stopped(
     mocker: MockerFixture,
 ):
     _stop_without_a_queue(mocker)
-    entry = await _a_queued_run(server)
+    entry = await _a_queued_run(server, _a_store_value_graph())
     run_the_graph = mocker.patch.object(
         processor, "_on_graph_execution", wraps=processor._on_graph_execution
     )
@@ -210,7 +160,7 @@ async def test_a_start_whose_answer_was_lost_still_runs_the_graph(
     """The database client retries a call that failed. A start that committed and
     lost its answer is answered nothing by its retry, with the run RUNNING, and
     the executor goes on with that run instead of dropping it as stopped."""
-    entry = await _a_queued_run(server)
+    entry = await _a_queued_run(server, _a_store_value_graph())
     run_the_graph = mocker.patch.object(
         processor, "_on_graph_execution", wraps=processor._on_graph_execution
     )
