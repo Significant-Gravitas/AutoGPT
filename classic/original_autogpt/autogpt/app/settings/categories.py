@@ -128,6 +128,7 @@ CATEGORIES: list[Category] = [
         description="Agent Protocol server settings",
         icon="🌐",
         env_vars=[
+            "AP_SERVER_HOST",
             "AP_SERVER_PORT",
             "AP_SERVER_DB_URL",
             "AP_SERVER_CORS_ALLOWED_ORIGINS",

@@ -57,7 +57,12 @@ class AgentProtocolServer:
         self.agent_manager = AgentManager(file_storage)
         self._task_budgets = defaultdict(ModelProviderBudget)
 
-    async def start(self, port: int = 8000, router: APIRouter = base_router):
+    async def start(
+        self,
+        port: int = 8000,
+        router: APIRouter = base_router,
+        host: str = "localhost",
+    ):
         """Start the agent server."""
         logger.debug("Starting the agent server...")
         if not is_port_free(port):
@@ -69,7 +74,7 @@ class AgentProtocolServer:
             return
 
         config = HypercornConfig()
-        config.bind = [f"localhost:{port}"]
+        config.bind = [f"{host}:{port}"]
         app = FastAPI(
             title="AutoGPT Server",
             description="Forked from AutoGPT Forge; "
@@ -119,9 +124,8 @@ class AgentProtocolServer:
         app.add_middleware(AgentMiddleware, agent=self)
 
         config.loglevel = "ERROR"
-        config.bind = [f"0.0.0.0:{port}"]
 
-        logger.info(f"AutoGPT server starting on http://localhost:{port}")
+        logger.info(f"AutoGPT server starting on http://{host}:{port}")
         await hypercorn_serve(app, config)  # type: ignore
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:

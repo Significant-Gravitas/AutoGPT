@@ -569,13 +569,14 @@ async def run_auto_gpt_server(
         debug_enabled=debug,
     )
     port: int = int(os.getenv("AP_SERVER_PORT", default=8000))
+    host = os.getenv("AP_SERVER_HOST", "localhost")
     server = AgentProtocolServer(
         app_config=config,
         database=database,
         file_storage=file_storage,
         llm_provider=llm_provider,
     )
-    await server.start(port=port)
+    await server.start(port=port, host=host)
 
     logging.getLogger().info(
         f"Total OpenAI session cost: "

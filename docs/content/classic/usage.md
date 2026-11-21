@@ -107,7 +107,9 @@ To exit the program, press ++ctrl+c++
 ### `serve` &ndash; Agent Protocol mode with UI
 
 With `serve`, the application exposes an Agent Protocol compliant API and serves a
-frontend, by default on `http://localhost:8000`. You can configure the port it is served on with the `AP_SERVER_PORT` environment variable.
+frontend, by default on `http://localhost:8000`. You can configure the port it is served on with the `AP_SERVER_PORT` environment variable,
+and the host it listens on with `AP_SERVER_HOST`. The server has no authentication, so only
+set `AP_SERVER_HOST=0.0.0.0` on a network you trust.
 
 <details>
 <summary>

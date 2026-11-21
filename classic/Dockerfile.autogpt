@@ -36,6 +36,9 @@ COPY forge/ ./forge/
 COPY original_autogpt/ ./original_autogpt/
 COPY direct_benchmark/ ./direct_benchmark/
 
+# The server must listen on all interfaces to be reachable through a published port
+ENV AP_SERVER_HOST=0.0.0.0
+
 # Set the entrypoint
 ENTRYPOINT ["poetry", "run", "autogpt"]
 CMD []
