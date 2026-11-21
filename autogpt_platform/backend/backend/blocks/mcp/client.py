@@ -52,7 +52,12 @@ from backend.blocks.mcp.protocol import (
     name_header_for,
     negotiate_version,
 )
-from backend.util.request import HTTPClientError, Requests, Response
+from backend.util.request import (
+    HTTPClientError,
+    Requests,
+    Response,
+    ResponseTooLargeError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +67,17 @@ _NO_FALLBACK_STATUSES = frozenset({401, 403, 407, 429})
 # Bound on ``input_required`` retries when the server only wants its
 # ``requestState`` echoed back (no interactive input requested).
 _MAX_INPUT_REQUIRED_RETRIES = 3
+# Far above any real server's tool list; the rest of a longer list is ignored.
+MAX_TOOLS_PER_SERVER = 1000
+# Far above any real tool result; a longer one is refused.
+MAX_CONTENT_ITEMS = 10_000
 # How many times ``Requests`` sends a throttled/5xx call. MCP calls run inside
 # graph executions and chat turns, so they get the same small bound everywhere.
 _HTTP_RETRY_ATTEMPTS = 3
+# Replies are parsed whole, and parsed JSON can take many times its size.
+MAX_REPLY_BYTES = 2 * 1024 * 1024
+# ``tools/call`` results carry images and embedded resources as base64.
+MAX_TOOL_RESULT_BYTES = 8 * 1024 * 1024
 _SUPPORTED_AUTH_SCHEMES = {
     "basic": "Basic",
     "bearer": "Bearer",
@@ -193,9 +206,10 @@ class MCPClient:
         Such a caller should pass ``False`` and treat the resulting
         ``MCPClientError`` as "could not verify".
         """
-        from backend.blocks.mcp.helpers import normalize_mcp_url
+        from backend.blocks.mcp.helpers import normalize_mcp_url, server_host
 
         self.server_url = normalize_mcp_url(server_url)
+        self._server_host = server_host(self.server_url)
         self.authorization = authorization
         self.follow_redirects = follow_redirects
         self._request_id = 0
@@ -279,17 +293,22 @@ class MCPClient:
         that serves only that form, as nginx does a ``location /mcp/``,
         redirects there, where a GET is not the call that was made.
         """
+        is_tool_call = payload.get("method") == "tools/call"
         requests = Requests(
             raise_for_status=False,
-            retry_max_attempts=(
-                1 if payload.get("method") == "tools/call" else _HTTP_RETRY_ATTEMPTS
-            ),
+            retry_max_attempts=1 if is_tool_call else _HTTP_RETRY_ATTEMPTS,
             extra_headers=headers,
+            max_response_bytes=(
+                MAX_TOOL_RESULT_BYTES if is_tool_call else MAX_REPLY_BYTES
+            ),
             keep_post_on_same_origin_redirect=True,
         )
-        return await requests.post(
-            self.server_url, json=payload, allow_redirects=self.follow_redirects
-        )
+        try:
+            return await requests.post(
+                self.server_url, json=payload, allow_redirects=self.follow_redirects
+            )
+        except ResponseTooLargeError as e:
+            raise MCPClientError(f"MCP server reply is too large: {e}") from e
 
     def _decode_reply(self, response: Response, *, strict: bool) -> _Reply:
         """Decode a reply body as JSON or SSE.
@@ -363,11 +382,17 @@ class MCPClient:
             raise_for_status=False,
             retry_max_attempts=_HTTP_RETRY_ATTEMPTS,
             extra_headers=headers,
+            max_response_bytes=MAX_REPLY_BYTES,
             keep_post_on_same_origin_redirect=True,
         )
-        await requests.post(
-            self.server_url, json=notification, allow_redirects=self.follow_redirects
-        )
+        try:
+            await requests.post(
+                self.server_url,
+                json=notification,
+                allow_redirects=self.follow_redirects,
+            )
+        except ResponseTooLargeError as e:
+            raise MCPClientError(f"MCP server reply is too large: {e}") from e
 
     async def _legacy_initialize(self) -> dict[str, Any]:
         result = await self._send_legacy(
@@ -723,6 +748,7 @@ class MCPClient:
         requests = Requests(
             raise_for_status=False,
             retry_max_attempts=_HTTP_RETRY_ATTEMPTS,
+            max_response_bytes=MAX_REPLY_BYTES,
         )
         for url in candidates:
             try:
@@ -782,6 +808,7 @@ class MCPClient:
         requests = Requests(
             raise_for_status=False,
             retry_max_attempts=_HTTP_RETRY_ATTEMPTS,
+            max_response_bytes=MAX_REPLY_BYTES,
         )
         for url, expected_issuer in candidates:
             try:
@@ -812,6 +839,7 @@ class MCPClient:
                 raise_for_status=False,
                 retry_max_attempts=_HTTP_RETRY_ATTEMPTS,
                 extra_headers=headers,
+                max_response_bytes=MAX_REPLY_BYTES,
             )
             await requests.delete(
                 self.server_url, allow_redirects=self.follow_redirects
@@ -833,20 +861,24 @@ class MCPClient:
         if not result or "tools" not in result:
             return []
 
+        listed = result["tools"]
+        if len(listed) > MAX_TOOLS_PER_SERVER:
+            logger.warning(
+                f"MCP server {self._server_host} listed {len(listed)} tools; "
+                f"keeping the first {MAX_TOOLS_PER_SERVER}"
+            )
+            listed = listed[:MAX_TOOLS_PER_SERVER]
+
         tools = []
-        for tool_data in result["tools"]:
+        dropped: list[str] = []
+        for tool_data in listed:
             name = tool_data.get("name", "")
             input_schema = tool_data.get("inputSchema", {})
             if self.era is MCPProtocolEra.MODERN:
                 try:
                     self._header_params[name] = collect_header_params(input_schema)
-                except InvalidHeaderAnnotation as e:
-                    logger.warning(
-                        "Dropping MCP tool %r from %s: invalid x-mcp-header (%s)",
-                        name,
-                        self.server_url,
-                        e,
-                    )
+                except InvalidHeaderAnnotation:
+                    dropped.append(name)
                     self._header_params.pop(name, None)
                     continue
             tools.append(
@@ -857,6 +889,11 @@ class MCPClient:
                     description=tool_data.get("description") or "",
                     input_schema=input_schema,
                 )
+            )
+        if dropped:
+            logger.warning(
+                f"Dropped {len(dropped)} MCP tool(s) from {self._server_host} with an "
+                f"invalid x-mcp-header, first {str(dropped[0])[:100]!r}"
             )
         return tools
 
@@ -869,18 +906,24 @@ class MCPClient:
         """
         if not isinstance(raw, list):
             return []
+        if len(raw) > MAX_CONTENT_ITEMS:
+            raise MCPClientError(
+                f"MCP tool result has {len(raw)} content items; "
+                f"at most {MAX_CONTENT_ITEMS} are read"
+            )
         blocks: list[dict[str, Any]] = []
+        wrapped = 0
         for item in raw:
             if isinstance(item, dict):
                 blocks.append(item)
             else:
-                logger.warning(
-                    "MCP server %s returned a %s content item, not an object; "
-                    "treating it as text",
-                    self.server_url,
-                    type(item).__name__,
-                )
+                wrapped += 1
                 blocks.append({"type": "text", "text": str(item)})
+        if wrapped:
+            logger.warning(
+                f"MCP server {self._server_host} returned {wrapped} content item(s) "
+                "that are not objects; treating them as text"
+            )
         return blocks
 
     @staticmethod

@@ -246,6 +246,8 @@ _HEADER_PARAM_TYPES = {"string", "integer", "boolean"}
 _SAFE_INT_MIN = -(2**53) + 1
 _SAFE_INT_MAX = 2**53 - 1
 _HEADER_PARAM_PROPERTY = "x-mcp-header"
+# A tool annotating more parameters than this is dropped, like an invalid one.
+MAX_HEADER_PARAMS = 32
 # JSON Schema keywords whose values are *instance data*, not subschemas.  A
 # ``default``/``const``/``enum``/``examples`` value may legitimately be an
 # object carrying an ``x-mcp-header`` key (a tool that takes a schema as an
@@ -278,8 +280,9 @@ def collect_header_params(input_schema: Any) -> list[HeaderParam]:
     """
     found: list[HeaderParam] = []
     seen_names: set[str] = set()
+    path: list[str] = []
 
-    def walk(schema: Any, path: tuple[str, ...]) -> None:
+    def walk(schema: Any) -> None:
         if not isinstance(schema, dict):
             return
         # Presence, not truthiness: an explicit ``null`` is a malformed
@@ -290,16 +293,24 @@ def collect_header_params(input_schema: Any) -> list[HeaderParam]:
                 raise InvalidHeaderAnnotation(
                     "x-mcp-header is not allowed on the root schema"
                 )
+            if len(found) == MAX_HEADER_PARAMS:
+                raise InvalidHeaderAnnotation(
+                    f"more than {MAX_HEADER_PARAMS} x-mcp-header annotations"
+                )
             _validate_annotation(annotation, schema, path, seen_names)
             found.append(
-                HeaderParam(path=path, header_name=annotation, json_type=schema["type"])
+                HeaderParam(
+                    path=tuple(path), header_name=annotation, json_type=schema["type"]
+                )
             )
         properties = schema.get("properties")
         if isinstance(properties, dict):
             for key, sub in properties.items():
-                walk(sub, path + (key,))
+                path.append(key)
+                walk(sub)
+                path.pop()
 
-    walk(input_schema, ())
+    walk(input_schema)
     _reject_unreachable_annotations(input_schema)
     return found
 
@@ -307,29 +318,34 @@ def collect_header_params(input_schema: Any) -> list[HeaderParam]:
 def _validate_annotation(
     annotation: Any,
     schema: dict[str, Any],
-    path: tuple[str, ...],
+    path: list[str],
     seen_names: set[str],
 ) -> None:
-    where = ".".join(path)
     if not isinstance(annotation, str) or not annotation:
         raise InvalidHeaderAnnotation(
-            f"{where}: x-mcp-header must be a non-empty string"
+            f"{_where(path)}: x-mcp-header must be a non-empty string"
         )
     if not _TCHAR_RE.fullmatch(annotation):
         raise InvalidHeaderAnnotation(
-            f"{where}: x-mcp-header {annotation!r} is not a valid HTTP field name"
+            f"{_where(path)}: x-mcp-header {annotation[:100]!r} is not a valid "
+            "HTTP field name"
         )
     if schema.get("type") not in _HEADER_PARAM_TYPES:
         raise InvalidHeaderAnnotation(
-            f"{where}: x-mcp-header is only allowed on string/integer/boolean "
+            f"{_where(path)}: x-mcp-header is only allowed on string/integer/boolean "
             f"parameters, got {schema.get('type')!r}"
         )
     folded = annotation.casefold()
     if folded in seen_names:
         raise InvalidHeaderAnnotation(
-            f"{where}: duplicate x-mcp-header name {annotation!r}"
+            f"{_where(path)}: duplicate x-mcp-header name {annotation[:100]!r}"
         )
     seen_names.add(folded)
+
+
+def _where(path: list[str]) -> str:
+    """The parameter's dotted path for an error message, shortened."""
+    return ".".join(key[:64] for key in path[:16])
 
 
 def _reject_unreachable_annotations(schema: Any) -> None:
