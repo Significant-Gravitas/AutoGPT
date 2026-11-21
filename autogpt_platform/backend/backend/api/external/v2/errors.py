@@ -123,6 +123,7 @@ _ERROR_CODES = {
     status.HTTP_405_METHOD_NOT_ALLOWED: "method_not_allowed",
     status.HTTP_409_CONFLICT: "conflict",
     status.HTTP_413_CONTENT_TOO_LARGE: "payload_too_large",
+    status.HTTP_415_UNSUPPORTED_MEDIA_TYPE: "unsupported_media_type",
     status.HTTP_422_UNPROCESSABLE_CONTENT: "validation_error",
     status.HTTP_428_PRECONDITION_REQUIRED: "precondition_required",
     status.HTTP_429_TOO_MANY_REQUESTS: "rate_limit_exceeded",
