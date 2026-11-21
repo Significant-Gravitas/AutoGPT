@@ -1844,8 +1844,9 @@ class AgentFixer:
         """
         self.fixes_applied = []
         self.retired_models_replaced = []
-        # Read before any fix runs, which may change *agent*'s models.
-        saved_models = self.saved_models = models_by_node(
+        # Read once before any fix runs, for the pipeline to run the model fix
+        # with if a fix before it raises, and again just before the model fix.
+        self.saved_models = models_by_node(
             agent, agent if keep_switched_off_models else saved_agent
         )
 
@@ -1876,8 +1877,16 @@ class AgentFixer:
             agent = self.fix_invalid_nested_sink_links(
                 agent, blocks, node_lookup=node_lookup
             )
+            # The stored version is the fixer's own output, so a node's other
+            # inputs are compared once the fixes that rewrite them have run
+            # (single braces in a prompt, an orchestrator's defaults). No fix
+            # before this one changes a model but the orchestrator's missing
+            # one, which isn't switched off.
+            self.saved_models = models_by_node(
+                agent, agent if keep_switched_off_models else saved_agent
+            )
             agent = self.fix_ai_model_parameter(
-                agent, blocks, saved_models=saved_models
+                agent, blocks, saved_models=self.saved_models
             )
             agent = self.fix_link_static_properties(
                 agent, blocks, node_lookup=node_lookup

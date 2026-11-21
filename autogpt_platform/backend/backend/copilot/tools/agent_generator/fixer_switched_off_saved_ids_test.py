@@ -245,28 +245,6 @@ def with_node_id(agent_json: dict, old_id: str, new_id: str) -> dict:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "stored", [copy.deepcopy, stored_by_the_library], ids=["ids-current", "ids-stale"]
-)
-async def test_a_node_deleted_and_re_added_on_its_block_and_model_keeps_the_model(
-    stored,
-):
-    """A known limitation, kept on purpose: without node ids that survive a
-    save, this edit looks the same as Otto's own file under stale ids, the
-    second edit above. Keeping the saved model is the safe side: dev keeps
-    every model, and from the model's shutdown date the node runs on its
-    fallback anyway."""
-    saved = workflow(AITextGeneratorBlock, GPT5)
-
-    result = await preview(
-        with_node_id(saved, AI_NODE, NEW_AI_NODE), saved_agent=stored(saved)
-    )
-
-    assert model_on(result, NEW_AI_NODE) == GPT5
-    assert "switched-off model" not in result.message
-
-
-@pytest.mark.asyncio
 async def test_a_changed_node_does_not_take_the_stored_model_of_the_one_that_kept_it():
     """Both nodes carry stale ids: the first was moved to another model, the
     second still has the saved one."""

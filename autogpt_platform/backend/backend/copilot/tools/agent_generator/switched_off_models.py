@@ -44,28 +44,33 @@ def canonical(model: Any) -> str:
 def models_by_node(agent: AgentDict, saved_agent: AgentDict | None) -> dict[str, Any]:
     """The model each node of *agent* was saved on, by its id in *agent*.
 
-    A node is its saved self when the stored version has a node of that id on
-    the same block, and changed work when that id is on another block there.
     The library gives every node a new id each time it stores a version, so
-    the ids in a file Otto keeps editing stop matching after its first edit.
-    A node whose id the stored version lacks is therefore matched to a stored
-    node of the same block and model that the edit no longer carries, each
-    stored node at most once (``_paired`` says which).
+    an edit made from the stored version's ids carries some of them, and the
+    file Otto keeps editing carries none after its first save. In the first
+    case a node is its saved self when the stored version has a node of that
+    id on the same block; any other node is new or changed work. In the
+    second, nothing names the saved selves, so each node is matched to a
+    stored node of the same block and model, each stored node at most once
+    (``_paired`` says which).
     """
     nodes = _nodes(agent)
     saved_nodes = _nodes(saved_agent)
+    if not saved_nodes:
+        return {}
     saved_by_id = {node["id"]: node for node in saved_nodes}
-    matched = {
-        node["id"]: _model(saved_by_id[node["id"]])
-        for node in nodes
-        if node["id"] in saved_by_id
-        and saved_by_id[node["id"]].get("block_id") == node.get("block_id")
-    }
-    carried = {node["id"] for node in nodes}
-    unclaimed = _by_key(saved for saved in saved_nodes if saved["id"] not in carried)
-    unknown = _by_key(node for node in nodes if node["id"] not in saved_by_id)
-    for key, edited in unknown.items():
-        matched.update(_paired(edited, unclaimed.get(key, [])))
+    if any(node["id"] in saved_by_id for node in nodes):
+        return {
+            node["id"]: _model(saved_by_id[node["id"]])
+            for node in nodes
+            if node["id"] in saved_by_id
+            and saved_by_id[node["id"]].get("block_id") == node.get("block_id")
+        }
+    matched: dict[str, Any] = {}
+    stored = _by_key(saved_nodes)
+    for key, edited in _by_key(nodes).items():
+        # A node that names no model has none to keep.
+        if key[1] is not None:
+            matched.update(_paired(edited, stored.get(key, [])))
     return matched
 
 
