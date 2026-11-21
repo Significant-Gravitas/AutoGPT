@@ -804,6 +804,60 @@ SQL
       "${email}"
 }
 
+# The appliance's first promise: an agent a user builds in it runs. The
+# executor's start in the logs isn't enough. A run has to go from the API
+# through the queue and an executor to COMPLETED. Needs the session
+# assert_email_auth_flow leaves in AUTH_COOKIE_FILE.
+assert_agent_runs() {
+  local graph graph_id graph_version run_id status deadline
+
+  graph="$(
+    curl --fail-with-body --silent --show-error --max-time 30 \
+      --cookie "${AUTH_COOKIE_FILE}" \
+      --request POST --header 'Content-Type: application/json' \
+      --header "Origin: ${PUBLIC_URL}" \
+      --data '{"source":"upload","graph":{"name":"Single-container smoke","description":"Stores a value","is_active":true,"nodes":[{"id":"store","block_id":"1ff065e9-88e8-4358-9d82-8dc91f622ba9","input_default":{"input":"from the smoke"},"metadata":{"position":{"x":0,"y":0}},"input_links":[],"output_links":[]}],"links":[]}}' \
+      "${PUBLIC_URL}/api/proxy/api/graphs" |
+      python3 -c 'import json, sys; g = json.load(sys.stdin); print(g["id"], g["version"])'
+  )"
+  read -r graph_id graph_version <<<"${graph}"
+
+  run_id="$(
+    curl --fail-with-body --silent --show-error --max-time 30 \
+      --cookie "${AUTH_COOKIE_FILE}" \
+      --request POST --header 'Content-Type: application/json' \
+      --header "Origin: ${PUBLIC_URL}" \
+      --data '{"inputs":{},"credentials_inputs":{}}' \
+      "${PUBLIC_URL}/api/proxy/api/graphs/${graph_id}/execute/${graph_version}" |
+      python3 -c 'import json, sys; print(json.load(sys.stdin)["id"])'
+  )"
+
+  deadline=$((SECONDS + 120))
+  while :; do
+    status="$(
+      curl --fail-with-body --silent --show-error --max-time 30 \
+        --cookie "${AUTH_COOKIE_FILE}" \
+        "${PUBLIC_URL}/api/proxy/api/graphs/${graph_id}/executions/${run_id}" |
+        python3 -c 'import json, sys; print(json.load(sys.stdin)["status"])'
+    )"
+    case "${status}" in
+      COMPLETED)
+        echo "an agent run completed"
+        return 0
+        ;;
+      FAILED | TERMINATED | INCOMPLETE | REVIEW)
+        echo "the agent run ended ${status}" >&2
+        return 1
+        ;;
+    esac
+    if ((SECONDS >= deadline)); then
+      echo "the agent run was still ${status} after 120s" >&2
+      return 1
+    fi
+    sleep 2
+  done
+}
+
 assert_codex_provider_discovery() {
   curl --fail-with-body --silent --show-error --max-time 30 \
     --cookie "${AUTH_COOKIE_FILE}" \
@@ -1233,6 +1287,7 @@ assert_runtime_config_mode
 assert_frontend_database_isolation
 assert_pinned_topology_environment
 assert_email_auth_flow
+assert_agent_runs
 assert_codex_provider_discovery
 assert_falkordb_binary_contract
 assert_memory_contract verify
