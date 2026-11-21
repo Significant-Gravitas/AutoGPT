@@ -100,6 +100,13 @@ class ModelMetadata(NamedTuple):
     price_tier: Literal[1, 2, 3]
 
 
+# Far more "/" than any spelling of a model has: an id has at most one, and a
+# provider prefix adds one ("openrouter/openai/gpt-oss-120b"). A value with
+# more names no model. ``LLMModel._missing_`` strips one prefix per recursion,
+# so the enum and llm_model_named both refuse such a value up front.
+_MAX_MODEL_VALUE_SLASHES = 16
+
+
 class LLMModelMeta(EnumMeta):
     pass
 
@@ -120,7 +127,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
         2. Generic provider prefix strip — e.g.
            ``anthropic/claude-sonnet-4-6`` → ``claude-sonnet-4-6``.
         """
-        if not isinstance(value, str):
+        if not isinstance(value, str) or value.count("/") > _MAX_MODEL_VALUE_SLASHES:
             return None
         alias = _OPENROUTER_ALIASES.get(value)
         if alias is not None:
@@ -488,22 +495,29 @@ def _today() -> date:
     return datetime.now(timezone.utc).date()
 
 
-# Far longer than any model id with its provider prefixes. The enum strips a
-# prefix per recursion through ``_missing_``, so a long value costs time and
-# memory that grow with its length before it is refused.
-_MAX_MODEL_VALUE_LENGTH = 256
+# The most "/" in any model id or OpenRouter alias. ``_missing_`` strips one
+# provider prefix per recursion and stops at the first part it knows, and no
+# part with more "/" than this can be one.
+_MAX_NAME_SLASHES = max(
+    name.count("/")
+    for name in (*(model.value for model in LLMModel), *_OPENROUTER_ALIASES)
+)
 
 
 def llm_model_named(value: object) -> "LLMModel | None":
     """The ``LLMModel`` *value* names, in any spelling the enum takes
     (``openai/gpt-5-2025-08-07`` too); None when it names none."""
-    if not isinstance(value, str) or len(value) > _MAX_MODEL_VALUE_LENGTH:
+    if not isinstance(value, str) or value.count("/") > _MAX_MODEL_VALUE_SLASHES:
         return None
+    # The enum resolves *value* as it resolves its end with _MAX_NAME_SLASHES
+    # "/", since every longer part names nothing. Handing it only that end
+    # keeps a chain of prefixes from costing one recursion each.
+    _, *end = value.rsplit("/", _MAX_NAME_SLASHES + 1)
+    if len(end) > _MAX_NAME_SLASHES:
+        value = "/".join(end)
     try:
         return LLMModel(value)
-    except (ValueError, RecursionError):
-        # Hundreds of provider prefixes recurse through ``_missing_``. Such a
-        # value is unknown, and the block's input check refuses it as before.
+    except ValueError:
         return None
 
 
