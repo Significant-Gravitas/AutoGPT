@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.data.skill_capacity import SkillLimitError, SkillOwnedError
-from backend.data.workspace import WorkspaceFile
+from backend.data.workspace import FileAttributeTooLongError, WorkspaceFile
 from backend.data.workspace_skill import WorkspaceSkillPublication
 from backend.util.workspace import SkillPackageFile, WorkspaceManager
 
@@ -216,3 +216,22 @@ async def test_a_cancel_during_refusal_cleanup_still_drops_the_blobs():
 
     deleted = {call.args[0] for call in storage.delete.await_args_list}
     assert deleted == {"test://root", "test://a", "test://b"}
+
+
+@pytest.mark.asyncio
+async def test_a_package_file_with_an_over_long_path_stores_nothing():
+    database = AsyncMock()
+    database.get_workspace_total_size.return_value = 0
+    publisher = AsyncMock()
+    storage = AsyncMock()
+    write = package_write()
+    write["files"].append(
+        SkillPackageFile(path="/skills/example/" + "d/" * 510 + "c.md", content=b"c")
+    )
+    patches = package_manager(database, publisher, storage)
+    with patches[0], patches[1], patches[2], patches[3], patches[4]:
+        with pytest.raises(FileAttributeTooLongError):
+            await WorkspaceManager("user", "workspace").write_skill_package(**write)
+
+    storage.store.assert_not_awaited()
+    publisher.publish_workspace_skill_file.assert_not_awaited()
