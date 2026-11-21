@@ -895,7 +895,8 @@ async def create_store_submission(
         name: Name of the agent
         video_url: Optional URL to video demo
         image_urls: List of image URLs for the listing
-        description: Description of the agent
+        description: Description of the agent; an update to an existing
+            listing that leaves it blank keeps the latest version's
         sub_heading: Short CTA line shown under the agent name
         categories: List of categories for the agent
         changes_summary: Summary of changes made in this submission
@@ -1012,6 +1013,10 @@ async def create_store_submission(
                 )
                 if latest:
                     next_version = latest.version + 1
+                    # An update that leaves the description blank keeps the
+                    # listing's latest one rather than wiping it.
+                    if not description.strip():
+                        description = latest.description
                 await versions.update_many(
                     where={
                         "storeListingId": existing_listing.id,
