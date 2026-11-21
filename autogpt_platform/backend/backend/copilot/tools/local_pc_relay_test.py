@@ -29,6 +29,11 @@ from backend.copilot.tools.local_pc_shim import (
     ShimHello,
 )
 
+# Each wait below ends as soon as what it waits for happens, so the bound only
+# stops a hung test. A CI shard runs its tests one after another on one event
+# loop, and a stall there has held up an otherwise instant connect for over 1 s.
+_HANG_SECONDS = 10
+
 
 def _hello() -> ShimHello:
     return ShimHello(
@@ -55,7 +60,7 @@ async def test_relay_rejects_uncorrelated_shim_response() -> None:
             client_id="autogpt-local-executor",
         )
     )
-    await manager._relay.wait_for_presence("session-1", timeout=1)
+    await manager._relay.wait_for_presence("session-1", timeout=_HANG_SECONDS)
     await websocket.inbound.put(
         json.dumps(
             {
@@ -73,7 +78,7 @@ async def test_relay_rejects_uncorrelated_shim_response() -> None:
     )
 
     with pytest.raises(ValueError, match="no outstanding request"):
-        await asyncio.wait_for(serve, 1)
+        await asyncio.wait_for(serve, _HANG_SECONDS)
 
 
 @pytest.mark.asyncio
@@ -93,10 +98,12 @@ async def test_two_process_managers_relay_rpc_and_hello() -> None:
     )
 
     shim = await LocalPCShim.for_session(
-        "session-1", manager=worker_manager, connect_timeout=1
+        "session-1", manager=worker_manager, connect_timeout=_HANG_SECONDS
     )
     command_task = asyncio.create_task(shim.commands.run("echo relayed"))
-    request = json.loads(await asyncio.wait_for(websocket.outbound.get(), 1))
+    request = json.loads(
+        await asyncio.wait_for(websocket.outbound.get(), _HANG_SECONDS)
+    )
     assert request["type"] == "EXECUTE_COMMAND"
     await websocket.inbound.put(
         json.dumps(
@@ -113,12 +120,12 @@ async def test_two_process_managers_relay_rpc_and_hello() -> None:
             }
         )
     )
-    result = await asyncio.wait_for(command_task, 1)
+    result = await asyncio.wait_for(command_task, _HANG_SECONDS)
     assert result.stdout == "relayed\n"
     assert shim.machine_id == "machine-1"
 
     await websocket.close()
-    await asyncio.wait_for(serve, 1)
+    await asyncio.wait_for(serve, _HANG_SECONDS)
     await shim.kill()
 
 
@@ -137,15 +144,17 @@ async def test_worker_clears_cached_relay_session_after_remote_disconnect() -> N
             client_id="autogpt-local-executor",
         )
     )
-    shim = await LocalPCShim.for_session("session-1", manager=worker, connect_timeout=1)
+    shim = await LocalPCShim.for_session(
+        "session-1", manager=worker, connect_timeout=_HANG_SECONDS
+    )
 
     assert "session-1" in worker._relay_transports
     assert "session-1" in worker._relay_connection_ids
     assert worker.get_hello("session-1") is not None
 
     await websocket.close()
-    await asyncio.wait_for(serve, 1)
-    await asyncio.wait_for(shim.wait_closed(), 2)
+    await asyncio.wait_for(serve, _HANG_SECONDS)
+    await asyncio.wait_for(shim.wait_closed(), _HANG_SECONDS)
 
     assert "session-1" not in worker._relay_transports
     assert "session-1" not in worker._relay_connection_ids
@@ -170,16 +179,16 @@ async def test_two_workers_receive_only_their_correlated_rpc_response() -> None:
         )
     )
     first_shim = await LocalPCShim.for_session(
-        "session-1", manager=first_worker, connect_timeout=1
+        "session-1", manager=first_worker, connect_timeout=_HANG_SECONDS
     )
     second_shim = await LocalPCShim.for_session(
-        "session-1", manager=second_worker, connect_timeout=1
+        "session-1", manager=second_worker, connect_timeout=_HANG_SECONDS
     )
 
     first_task = asyncio.create_task(first_shim.commands.run("echo first"))
     second_task = asyncio.create_task(second_shim.commands.run("echo second"))
     requests = [
-        json.loads(await asyncio.wait_for(websocket.outbound.get(), 1))
+        json.loads(await asyncio.wait_for(websocket.outbound.get(), _HANG_SECONDS))
         for _ in range(2)
     ]
     by_command = {request["payload"]["command"]: request for request in requests}
@@ -199,7 +208,7 @@ async def test_two_workers_receive_only_their_correlated_rpc_response() -> None:
             }
         )
     )
-    assert (await asyncio.wait_for(second_task, 1)).stdout == "second\n"
+    assert (await asyncio.wait_for(second_task, _HANG_SECONDS)).stdout == "second\n"
     assert not first_task.done()
 
     first_request = by_command["echo first"]
@@ -218,10 +227,10 @@ async def test_two_workers_receive_only_their_correlated_rpc_response() -> None:
             }
         )
     )
-    assert (await asyncio.wait_for(first_task, 1)).stdout == "first\n"
+    assert (await asyncio.wait_for(first_task, _HANG_SECONDS)).stdout == "first\n"
 
     await websocket.close()
-    await asyncio.wait_for(serve, 1)
+    await asyncio.wait_for(serve, _HANG_SECONDS)
     await asyncio.gather(first_shim.kill(), second_shim.kill())
 
 
@@ -242,7 +251,7 @@ async def test_replacement_and_cross_process_revocation_close_owner_socket() -> 
             client_id="autogpt-local-executor",
         )
     )
-    await first_manager._relay.wait_for_presence("session-1", timeout=1)
+    await first_manager._relay.wait_for_presence("session-1", timeout=_HANG_SECONDS)
     second_task = asyncio.create_task(
         second_manager.serve_websocket(
             "session-1",
@@ -252,9 +261,9 @@ async def test_replacement_and_cross_process_revocation_close_owner_socket() -> 
             client_id="autogpt-local-executor",
         )
     )
-    revoked = json.loads(await asyncio.wait_for(first.outbound.get(), 2))
+    revoked = json.loads(await asyncio.wait_for(first.outbound.get(), _HANG_SECONDS))
     assert revoked["payload"]["reason"] == "another_shim_connected"
-    await asyncio.wait_for(first.closed.wait(), 1)
+    await asyncio.wait_for(first.closed.wait(), _HANG_SECONDS)
     assert first.close_code == 4427
 
     assert (
@@ -263,9 +272,9 @@ async def test_replacement_and_cross_process_revocation_close_owner_socket() -> 
         )
         == 1
     )
-    revoked = json.loads(await asyncio.wait_for(second.outbound.get(), 2))
+    revoked = json.loads(await asyncio.wait_for(second.outbound.get(), _HANG_SECONDS))
     assert revoked["payload"]["reason"] == "user_revoked"
-    await asyncio.wait_for(second.closed.wait(), 1)
+    await asyncio.wait_for(second.closed.wait(), _HANG_SECONDS)
     assert second.close_code == 4428
     await asyncio.gather(first_task, second_task)
 
@@ -286,7 +295,9 @@ async def test_worker_manager_replaces_cached_transport_after_reconnect() -> Non
             client_id="autogpt-local-executor",
         )
     )
-    shim = await LocalPCShim.for_session("session-1", manager=worker, connect_timeout=1)
+    shim = await LocalPCShim.for_session(
+        "session-1", manager=worker, connect_timeout=_HANG_SECONDS
+    )
     original_transport = shim._ws
 
     second_task = asyncio.create_task(
@@ -298,12 +309,12 @@ async def test_worker_manager_replaces_cached_transport_after_reconnect() -> Non
             client_id="autogpt-local-executor",
         )
     )
-    await asyncio.wait_for(first.closed.wait(), 2)
-    await worker.wait_for("session-1", timeout=1)
+    await asyncio.wait_for(first.closed.wait(), _HANG_SECONDS)
+    await worker.wait_for("session-1", timeout=_HANG_SECONDS)
 
     assert shim._ws is not original_transport
     command_task = asyncio.create_task(shim.commands.run("echo reconnected"))
-    request = json.loads(await asyncio.wait_for(second.outbound.get(), 1))
+    request = json.loads(await asyncio.wait_for(second.outbound.get(), _HANG_SECONDS))
     await second.inbound.put(
         json.dumps(
             {
@@ -319,7 +330,9 @@ async def test_worker_manager_replaces_cached_transport_after_reconnect() -> Non
             }
         )
     )
-    assert (await asyncio.wait_for(command_task, 1)).stdout == "reconnected\n"
+    assert (
+        await asyncio.wait_for(command_task, _HANG_SECONDS)
+    ).stdout == "reconnected\n"
     await second.close()
     await asyncio.gather(first_task, second_task)
     await shim.kill()
@@ -347,16 +360,18 @@ async def test_a_request_over_the_relay_cap_fails_alone(
         )
     )
     first_shim = await LocalPCShim.for_session(
-        "session-1", manager=first_worker, connect_timeout=1
+        "session-1", manager=first_worker, connect_timeout=_HANG_SECONDS
     )
     second_shim = await LocalPCShim.for_session(
-        "session-1", manager=second_worker, connect_timeout=1
+        "session-1", manager=second_worker, connect_timeout=_HANG_SECONDS
     )
     first_task = asyncio.create_task(first_shim.commands.run("echo first"))
-    first_request = json.loads(await asyncio.wait_for(websocket.outbound.get(), 1))
+    first_request = json.loads(
+        await asyncio.wait_for(websocket.outbound.get(), _HANG_SECONDS)
+    )
 
     with pytest.raises(RuntimeError, match="concurrency cap"):
-        await asyncio.wait_for(second_shim.commands.run("echo second"), 5)
+        await asyncio.wait_for(second_shim.commands.run("echo second"), _HANG_SECONDS)
 
     assert websocket.outbound.empty()
     assert not serve.done()
@@ -375,10 +390,10 @@ async def test_a_request_over_the_relay_cap_fails_alone(
             }
         )
     )
-    assert (await asyncio.wait_for(first_task, 1)).stdout == "first\n"
+    assert (await asyncio.wait_for(first_task, _HANG_SECONDS)).stdout == "first\n"
 
     await websocket.close()
-    await asyncio.wait_for(serve, 1)
+    await asyncio.wait_for(serve, _HANG_SECONDS)
     await asyncio.gather(first_shim.kill(), second_shim.kill())
 
 
@@ -408,8 +423,8 @@ async def test_a_request_read_just_before_a_replacement_is_not_sent() -> None:
             client_id="autogpt-local-executor",
         )
     )
-    presence = await relay.wait_for_presence("session-1", timeout=1)
-    await asyncio.wait_for(reading.wait(), 1)
+    presence = await relay.wait_for_presence("session-1", timeout=_HANG_SECONDS)
+    await asyncio.wait_for(reading.wait(), _HANG_SECONDS)
     await relay._register_presence(
         "session-1", hello={}, user_id="user-1", client_id="autogpt-local-executor"
     )
@@ -420,7 +435,7 @@ async def test_a_request_read_just_before_a_replacement_is_not_sent() -> None:
         reply_id="a" * 32,
     )
 
-    await asyncio.wait_for(serve, 2)
+    await asyncio.wait_for(serve, _HANG_SECONDS)
 
     sent = [
         json.loads(websocket.outbound.get_nowait())["type"]
@@ -445,14 +460,18 @@ def _status_frame(message_id: str, capacity: int, *, pad: int = 0) -> str:
     return json.dumps(frame)
 
 
-async def _eventually(check: Callable[[], bool], *, timeout: float = 2.0) -> None:
+async def _eventually(
+    check: Callable[[], bool], *, timeout: float = _HANG_SECONDS
+) -> None:
     async with asyncio.timeout(timeout):
         while not check():
             await asyncio.sleep(0.005)
 
 
 async def _answer_next_command(websocket: FakeWebSocket, stdout: str) -> None:
-    request = json.loads(await asyncio.wait_for(websocket.outbound.get(), 2))
+    request = json.loads(
+        await asyncio.wait_for(websocket.outbound.get(), _HANG_SECONDS)
+    )
     assert request["type"] == "EXECUTE_COMMAND"
     await websocket.inbound.put(
         json.dumps(
@@ -495,11 +514,13 @@ async def test_a_worker_with_nothing_outstanding_hears_the_shims_status(
             client_id="autogpt-local-executor",
         )
     )
-    shim = await LocalPCShim.for_session("session-1", manager=worker, connect_timeout=1)
+    shim = await LocalPCShim.for_session(
+        "session-1", manager=worker, connect_timeout=_HANG_SECONDS
+    )
     if asked_before:
         earlier = asyncio.create_task(shim.commands.run("echo earlier"))
         await _answer_next_command(websocket, "earlier\n")
-        assert (await asyncio.wait_for(earlier, 1)).stdout == "earlier\n"
+        assert (await asyncio.wait_for(earlier, _HANG_SECONDS)).stdout == "earlier\n"
 
     await websocket.inbound.put(_status_frame("status-full", 0))
     await _eventually(lambda: shim.pending_capacity == 0)
@@ -509,10 +530,10 @@ async def test_a_worker_with_nothing_outstanding_hears_the_shims_status(
 
     await websocket.inbound.put(_status_frame("status-free", 1))
     await _answer_next_command(websocket, "held\n")
-    assert (await asyncio.wait_for(held, 1)).stdout == "held\n"
+    assert (await asyncio.wait_for(held, _HANG_SECONDS)).stdout == "held\n"
 
     await websocket.close()
-    await asyncio.wait_for(serve, 1)
+    await asyncio.wait_for(serve, _HANG_SECONDS)
     await shim.kill()
 
 
@@ -561,7 +582,9 @@ async def test_a_transport_reads_status_and_responses_in_the_order_they_were_sto
 
     read: list[str] = []
     transport = RedisRelayTransport(relay, presence, reply_id)
-    async with asyncio.timeout(2), aclosing(transport.iter_text()) as frames:
+    async with asyncio.timeout(_HANG_SECONDS), aclosing(
+        transport.iter_text()
+    ) as frames:
         async for raw in frames:
             read.append(json.loads(raw)["type"])
             if len(read) == 2:
@@ -622,12 +645,12 @@ async def test_status_after_many_answered_machine_requests_is_held_once(
             client_id="autogpt-local-executor",
         )
     )
-    presence = await relay.wait_for_presence("machine-scope", timeout=1)
+    presence = await relay.wait_for_presence("machine-scope", timeout=_HANG_SECONDS)
     shim_side = asyncio.create_task(_answer_directory_listings(websocket))
 
     async def list_folder() -> None:
         answer = await local_pc_machine.machine_rpc(
-            presence, "DIRECTORY_LIST_REQUEST", {"path": "/"}, timeout=2
+            presence, "DIRECTORY_LIST_REQUEST", {"path": "/"}, timeout=_HANG_SECONDS
         )
         assert answer["type"] == "DIRECTORY_LIST_RESPONSE"
 
@@ -644,11 +667,11 @@ async def test_status_after_many_answered_machine_requests_is_held_once(
         assert _status_bytes_held(redis) == len(frames[-1].encode())
 
         worker = await relay.open_transport(presence)
-        async with asyncio.timeout(2), aclosing(worker.iter_text()) as read:
+        async with asyncio.timeout(_HANG_SECONDS), aclosing(worker.iter_text()) as read:
             first = json.loads(await anext(read))
         assert first["id"] == "status-2"
     finally:
         shim_side.cancel()
         await asyncio.gather(shim_side, return_exceptions=True)
         await websocket.close()
-        await asyncio.wait_for(serve, 1)
+        await asyncio.wait_for(serve, _HANG_SECONDS)

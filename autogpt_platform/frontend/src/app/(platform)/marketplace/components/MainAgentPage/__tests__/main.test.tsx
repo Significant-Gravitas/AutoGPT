@@ -84,6 +84,9 @@ describe("MainAgentPage", () => {
     expect((await screen.findByTestId("agent-title")).textContent).toContain(
       "Deterministic Agent",
     );
+    expect(
+      screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent),
+    ).toEqual(["Deterministic Agent"]);
     expect(screen.getByTestId("agent-description").textContent).toContain(
       "This agent is used for integration coverage.",
     );

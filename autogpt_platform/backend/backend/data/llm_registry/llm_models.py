@@ -11,11 +11,15 @@ for the existing import surface.
 import logging
 import re
 from collections.abc import Mapping
+from datetime import date, datetime, timezone
 from enum import Enum, EnumMeta
-from typing import Literal, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.catalog_model import CatalogPayload
+
+if TYPE_CHECKING:
+    from pydantic.fields import FieldInfo
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +222,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GEMINI_4_ARGON = "google/gemini-4-argon"
     GEMINI_4_HYDROGEN = "google/gemini-4-hydrogen"
     GEMINI_4_CARBON = "google/gemini-4-carbon"
+    GEMINI_4_NEON = "google/gemini-4-neon"
     GEMINI_2_5_FLASH_LITE = "google/gemini-2.5-flash-lite"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
     GEMMA_4_31B_IT = "google/gemma-4-31b-it"
@@ -421,8 +426,11 @@ def _picker_hidden_slugs(payload: "CatalogPayload") -> frozenset[str]:
     safety control. A hand-crafted graph node can still select a
     kill-switched slug; execution of stored graphs must keep working after
     a kill (and keep billing), so the block layer deliberately does not
-    veto. The hard-stop for an incident is the retirement CLI, which
-    rewrites the nodes; copilot serving IS vetoed at resolution time.
+    veto. A block given a kill-switched slug with a fallback runs, and is
+    billed for, the fallback (``RETIRED_MODEL_FALLBACKS``) from the model's
+    ``shutdown_at``, when it has one; until then, and without a fallback,
+    it runs as stored. The retirement CLI rewrites the stored nodes;
+    copilot serving IS vetoed at resolution time.
     """
     return frozenset(
         m.slug for m in payload.models if not m.is_enabled or m.visibility != "GA"
@@ -430,6 +438,110 @@ def _picker_hidden_slugs(payload: "CatalogPayload") -> frozenset[str]:
 
 
 _PICKER_HIDDEN_SLUGS = _picker_hidden_slugs(get_catalog())
+_SWITCHED_OFF_SLUGS = frozenset(
+    m.slug for m in get_catalog().models if not m.is_enabled
+)
+
+
+def _retired_model_fallbacks(
+    payload: "CatalogPayload",
+) -> Mapping["LLMModel", tuple["LLMModel", date | None]]:
+    """Kill-switched models whose catalog fallback is an enabled block model
+    of the same provider, so the node's credentials still fit it, each with
+    the model's shutdown date. A block given one of these runs the fallback
+    from that date: a workflow input or preset value, a schedule or an API
+    call can name a model no stored-data pass reaches, and once its provider
+    shuts it down every such run would fail.
+    """
+    members = {member.value: member for member in LLMModel}
+    by_slug = {model.slug: model for model in payload.models}
+    fallbacks: dict[LLMModel, tuple[LLMModel, date | None]] = {}
+    for model in payload.models:
+        target = by_slug.get(model.fallback_model_slug or "")
+        if (
+            model.is_enabled
+            or model.slug not in members
+            or target is None
+            or not target.is_enabled
+            or target.slug not in members
+            or target.provider != model.provider
+        ):
+            continue
+        fallbacks[members[model.slug]] = (members[target.slug], model.shutdown_at)
+    return fallbacks
+
+
+RETIRED_MODEL_FALLBACKS = _retired_model_fallbacks(get_catalog())
+
+
+def is_llm_model_field(field: "FieldInfo") -> bool:
+    """A block input the startup pass, the retire CLI and the run-time
+    fallback act on: one typed ``LLMModel``."""
+    return field.annotation is LLMModel
+
+
+def _today() -> date:
+    """Today in UTC, against which a model's shutdown date is read: when a
+    run starts (``Block._execute``), and by a charge or an estimate made
+    before one does. A run that has started settles on the model it recorded
+    then (``NodeExecutionStats.resolved_model``), whatever the date."""
+    return datetime.now(timezone.utc).date()
+
+
+# Far longer than any model id with its provider prefixes. The enum strips a
+# prefix per recursion through ``_missing_``, so a long value costs time and
+# memory that grow with its length before it is refused.
+_MAX_MODEL_VALUE_LENGTH = 256
+
+
+def llm_model_named(value: object) -> "LLMModel | None":
+    """The ``LLMModel`` *value* names, in any spelling the enum takes
+    (``openai/gpt-5-2025-08-07`` too); None when it names none."""
+    if not isinstance(value, str) or len(value) > _MAX_MODEL_VALUE_LENGTH:
+        return None
+    try:
+        return LLMModel(value)
+    except (ValueError, RecursionError):
+        # Hundreds of provider prefixes recurse through ``_missing_``. Such a
+        # value is unknown, and the block's input check refuses it as before.
+        return None
+
+
+def scheduled_model_fallback(value: object) -> "tuple[LLMModel, date | None] | None":
+    """*value*'s catalog fallback and the day blocks start running it (None:
+    at once), whether or not that day has come; None when it has none. Takes
+    any spelling the enum takes (``openai/gpt-5-2025-08-07`` too)."""
+    model = llm_model_named(value)
+    return None if model is None else RETIRED_MODEL_FALLBACKS.get(model)
+
+
+def resolved_model_value(value: object) -> str:
+    """The ``LLMModel`` value *value* resolves to, as a log names it: the
+    enum's spelling, not the stored one. Its text when it resolves to none."""
+    model = llm_model_named(value)
+    return str(value) if model is None else model.value
+
+
+def retired_model_fallback(value: object) -> "LLMModel | None":
+    """The model a block runs in place of *value*: its catalog fallback, once
+    the catalog has switched *value* off and its shutdown date, if it has
+    one, has come. None when *value* runs as it is. An unknown value gets
+    None, and the block's input check refuses it as before."""
+    entry = scheduled_model_fallback(value)
+    if entry is None:
+        return None
+    fallback, shutdown_at = entry
+    if shutdown_at is not None and _today() < shutdown_at:
+        return None
+    return fallback
+
+
+def is_switched_off(value: object) -> bool:
+    """Whether *value* names, in any spelling the enum takes, a model the
+    catalog has switched off (``is_enabled=False``). A block still runs one,
+    so stored workflows keep working, but new work must not pick one."""
+    model = llm_model_named(value)
+    return model is not None and model.value in _SWITCHED_OFF_SLUGS
 
 
 def _default_model_from_catalog() -> LLMModel:
@@ -478,6 +590,13 @@ DEFAULT_LLM_MODEL = _default_model_from_catalog()
 # migrations/20261025120000_retire_undated_claude_aliases/migration.sql.
 # Never resolve these in ``LLMModel._missing_``: the copilot's registry gate
 # accepts what the enum accepts and sends the slug unchanged.
+#
+# Some keys are still enum members: models their provider has already shut
+# down, kept in the enum (and kill-switched in the catalog) so stored graphs
+# keep validating until the next boot moves them. A model its provider still
+# serves is retired with ``python -m backend.data.llm_registry.retire``
+# instead, which records the move and can revert it. Every target must be an
+# enabled catalog model.
 LEGACY_MODEL_MAPPINGS: dict[str, LLMModel] = {
     "claude-3-haiku-20240307": LLMModel.CLAUDE_4_5_HAIKU,
     "claude-opus-4-20250514": LLMModel.CLAUDE_4_7_OPUS,
@@ -491,8 +610,21 @@ LEGACY_MODEL_MAPPINGS: dict[str, LLMModel] = {
     "claude-sonnet-4-0": LLMModel.CLAUDE_4_6_SONNET,
     "anthropic/claude-sonnet-4": LLMModel.CLAUDE_4_6_SONNET,
     "gpt-4-turbo": LLMModel.GPT41,
-    "o1": LLMModel.O3,
-    "o1-mini": LLMModel.O3_MINI,
+    # Shut down by OpenAI. These graphs move unasked at the next start, so
+    # each goes to the current model at its price, not to OpenAI's listed
+    # GPT-5.6 replacement, which can cost several times more; o1 keeps its
+    # listed gpt-5.6-sol, which costs less than o1 did. The boot pass rewrites
+    # only LLMModel fields and presets' overrides of those nodes, so Codex
+    # nodes keep a stored gpt-5.1-codex, which the Codex block reads as its
+    # own gpt-5.3-codex.
+    "o1": LLMModel.GPT5_6_SOL,
+    "o1-mini": LLMModel.GPT6_1_TERRA,
+    "o3-mini": LLMModel.GPT6_1_TERRA,
+    "o4-mini": LLMModel.GPT6_1_TERRA,
+    "gpt-4.1-nano": LLMModel.GPT6_LUNA,
+    "gpt-5-chat-latest": LLMModel.GPT6_1_SOL,
+    "gpt-5.1-codex": LLMModel.GPT6_1_SOL,
+    "gpt-5.3-chat-latest": LLMModel.GPT6_1_SOL,
     "google/gemini-2.5-pro-preview-03-25": LLMModel.GEMINI_2_5_PRO,
     "google/gemini-2.5-flash-lite-preview-06-17": LLMModel.GEMINI_2_5_FLASH,
     "cohere/command-r-08-2024": LLMModel.COHERE_COMMAND_A_03_2025,

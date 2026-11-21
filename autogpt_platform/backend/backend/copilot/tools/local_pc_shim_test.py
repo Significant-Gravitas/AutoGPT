@@ -33,8 +33,8 @@ from .local_pc_shim import (
 )
 
 # Each guard below only stops a hung test or a wait that ignored its budget:
-# a passing run ends at its short timeout, and a CI runner can stall a test
-# for seconds.
+# a passing run ends at its short timeout, or as soon as what it waits for
+# happens, and a CI runner can stall a test for seconds.
 _HANG_SECONDS = 10
 
 
@@ -556,7 +556,7 @@ class TestShimConnectionManager:
         await asyncio.sleep(0)
 
         manager.register("s1", new_websocket, ShimHello(machine_id="new"))
-        await asyncio.wait_for(old_route, timeout=1)
+        await asyncio.wait_for(old_route, timeout=_HANG_SECONDS)
 
         assert old_websocket.close_code == 4427
         revocation = json.loads(old_websocket.sent[0])
@@ -1462,7 +1462,7 @@ class TestBackpressureBlocking:
 
         # Now clear capacity. The blocked _rpc should wake and complete.
         shim._update_pending_capacity(3, source="release")
-        result = await asyncio.wait_for(task, timeout=1.0)
+        result = await asyncio.wait_for(task, timeout=_HANG_SECONDS)
         assert result["payload"]["content"] == "ok"
         assert shim._send_and_wait.await_count == 1
 
@@ -1485,7 +1485,7 @@ class TestBackpressureBlocking:
                 "payload": {"in_flight": 1, "max_concurrent": 4},
             }
         )
-        await asyncio.wait_for(task, timeout=1.0)
+        await asyncio.wait_for(task, timeout=_HANG_SECONDS)
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_a_replacement_connection_starts_with_open_capacity(self):

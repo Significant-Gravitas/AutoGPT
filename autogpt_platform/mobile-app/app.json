@@ -2,6 +2,7 @@
   "expo": {
     "name": "AutoGPT",
     "slug": "autogpt-mobile",
+    "owner": "autogpt",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -10,7 +11,10 @@
     "backgroundColor": "#0B0B0D",
     "ios": {
       "bundleIdentifier": "co.agpt.autogpt.app",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "co.agpt.autogpt.app",
@@ -18,7 +22,11 @@
         "backgroundColor": "#0B0B0D",
         "foregroundImage": "./assets/images/icon.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -51,6 +59,16 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "3fdedc8c-8a9e-4002-a95a-ab366d15cd71"
+      }
     }
   }
 }
