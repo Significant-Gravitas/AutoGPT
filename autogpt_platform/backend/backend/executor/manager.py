@@ -31,6 +31,7 @@ from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.db_accessors import experts_db
 from backend.data.dynamic_fields import parse_execution_output, sanitize_pin_name
 from backend.data.execution import (
+    STARTABLE_GRAPH_EXECUTION_STATUSES,
     ExecutionContext,
     ExecutionQueue,
     ExecutionStatus,
@@ -1525,12 +1526,21 @@ class ExecutionProcessor:
             )
             return
 
-        if exec_meta.status in [ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE]:
+        if exec_meta.status in STARTABLE_GRAPH_EXECUTION_STATUSES:
             log_metadata.info(f"⚙️ Starting graph execution #{graph_exec.graph_exec_id}")
-            exec_meta.status = ExecutionStatus.RUNNING
-            send_execution_update(
-                db_client.update_graph_execution_start_time(graph_exec.graph_exec_id)
+            started = db_client.update_graph_execution_start_time(
+                graph_exec.graph_exec_id
             )
+            if started is None:
+                # The start only moves a run that is still queued, so a stop
+                # that wrote its status after the read above has won the race.
+                log_metadata.info(
+                    f"Skipped graph execution #{graph_exec.graph_exec_id}, "
+                    "it was stopped before it started."
+                )
+                return
+            exec_meta.status = ExecutionStatus.RUNNING
+            send_execution_update(started)
         elif exec_meta.status == ExecutionStatus.RUNNING:
             log_metadata.info(
                 f"⚙️ Graph execution #{graph_exec.graph_exec_id} is already running, continuing where it left off."

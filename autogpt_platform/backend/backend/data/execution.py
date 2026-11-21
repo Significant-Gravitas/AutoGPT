@@ -1244,15 +1244,38 @@ async def get_execution_outputs_by_node_exec_id(
     return dict(result)
 
 
+STARTABLE_GRAPH_EXECUTION_STATUSES = (
+    ExecutionStatus.QUEUED,
+    ExecutionStatus.INCOMPLETE,
+)
+
+
 async def update_graph_execution_start_time(
     graph_exec_id: str,
 ) -> GraphExecution | None:
-    res = await AgentGraphExecution.prisma().update(
-        where={"id": graph_exec_id},
+    """Move a run that has not started to RUNNING and stamp its start time.
+
+    The status check is part of the write, so a run that a stop already
+    terminated (or that has otherwise left QUEUED/INCOMPLETE) is not put back
+    to RUNNING. Returns None when nothing moved, which is how the executor
+    learns the run is no longer its to start.
+    """
+    moved = await AgentGraphExecution.prisma().update_many(
+        where={
+            "id": graph_exec_id,
+            "executionStatus": {
+                "in": [s.value for s in STARTABLE_GRAPH_EXECUTION_STATUSES]
+            },
+        },
         data={
             "executionStatus": ExecutionStatus.RUNNING,
             "startedAt": datetime.now(tz=timezone.utc),
         },
+    )
+    if not moved:
+        return None
+    res = await AgentGraphExecution.prisma().find_unique(
+        where={"id": graph_exec_id},
         include=graph_execution_include(
             [*get_io_block_ids(), *get_webhook_block_ids()]
         ),

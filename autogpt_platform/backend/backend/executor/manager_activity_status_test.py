@@ -17,6 +17,7 @@ from backend.executor.manager import (
     _get_execution_credit_balance,
     _propagate_node_failure,
     _record_execution_failure,
+    send_execution_update,
 )
 from backend.util.decorator import TimingInfo
 from backend.util.exceptions import ExecutionFailureReason, InsufficientBalanceError
@@ -163,6 +164,57 @@ def test_a_queued_or_redelivered_running_run_goes_on(status: ExecutionStatus):
         processor.on_graph_execution(execution, threading.Event(), MagicMock())
 
     processor._on_graph_execution.assert_called_once()
+
+
+@pytest.mark.parametrize("status", [ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE])
+def test_a_run_stopped_before_it_started_is_left_as_the_stop_left_it(
+    status: ExecutionStatus,
+):
+    """The start write moves only a run that is still waiting to start, and
+    returns nothing for one a stop got to after the executor's read. The
+    executor then leaves it alone: it runs no graph, writes no state and
+    announces no update."""
+    execution = GraphExecutionEntry(
+        user_id="user-1",
+        graph_exec_id="exec-1",
+        graph_id="graph-1",
+        graph_version=1,
+    )
+    db_client = MagicMock()
+    db_client.get_graph_execution_meta.return_value = SimpleNamespace(
+        status=status, stats=None
+    )
+    db_client.update_graph_execution_start_time.return_value = None
+    processor = ExecutionProcessor()
+    processor._on_graph_execution = MagicMock(
+        return_value=(
+            TimingInfo(cpu_time=0.0, wall_time=0.0),
+            ExecutionStatus.TERMINATED,
+        )
+    )
+
+    with (
+        patch("backend.executor.manager.get_db_client", return_value=db_client),
+        patch("backend.executor.manager.send_execution_update") as send_update,
+        patch("backend.executor.manager.update_graph_execution_state") as write_state,
+        patch("backend.executor.manager.expert_posts.handle_expert_run_post"),
+    ):
+        processor.on_graph_execution(execution, threading.Event(), MagicMock())
+
+    db_client.update_graph_execution_start_time.assert_called_once_with("exec-1")
+    processor._on_graph_execution.assert_not_called()
+    send_update.assert_not_called()
+    write_state.assert_not_called()
+
+
+def test_an_update_that_is_none_is_not_published():
+    """The start write now returns None for a run a stop ended. An executor that
+    predates that hands the result straight to send_execution_update, so None
+    must publish nothing and raise nothing, or a deploy would break it."""
+    with patch("backend.executor.manager.get_execution_event_bus") as event_bus:
+        assert send_execution_update(None) is None
+
+    event_bus.assert_not_called()
 
 
 def test_execution_credit_balance_uses_organization_aware_lookup():
