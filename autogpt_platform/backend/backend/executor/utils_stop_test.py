@@ -31,6 +31,7 @@ def _a_stop_that_reads_the_run_as(
     mocker: MockerFixture,
     *reads: ExecutionStatus,
     event_error: Exception | None = None,
+    failing_cancel: int | None = None,
 ) -> tuple[list[str], AsyncMock]:
     """Set up a stop of RUN_ID that reads it back as each of ``reads`` in turn.
 
@@ -41,7 +42,13 @@ def _a_stop_that_reads_the_run_as(
     """
     events: list[str] = []
     queue = mocker.AsyncMock()
-    queue.publish_message.side_effect = lambda **_: events.append("cancel")
+
+    def publish_cancel(**_: object) -> None:
+        events.append("cancel")
+        if failing_cancel is not None and events.count("cancel") == failing_cancel:
+            raise ConnectionError("the broker refused the cancel")
+
+    queue.publish_message.side_effect = publish_cancel
     mocker.patch("backend.executor.utils.get_async_execution_queue", return_value=queue)
     mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
 
@@ -70,6 +77,20 @@ def _a_stop_that_reads_the_run_as(
         side_effect=lambda **_: events.append("terminated")
     )
     return events, queue.publish_message
+
+
+async def test_a_second_cancel_the_broker_refuses_still_lets_the_event_out(
+    mocker: MockerFixture,
+):
+    """The run is TERMINATED and the first cancel went out, so a failed second
+    cancel neither fails the stop nor keeps its event from being published."""
+    events, _ = _a_stop_that_reads_the_run_as(
+        mocker, ExecutionStatus.QUEUED, failing_cancel=2
+    )
+
+    await stop_graph_execution(user_id=USER_ID, graph_exec_id=RUN_ID, cascade=False)
+
+    assert events == ["cancel", "terminated", "cancel", "published"]
 
 
 @pytest.mark.parametrize(

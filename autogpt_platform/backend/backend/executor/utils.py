@@ -1532,7 +1532,16 @@ async def stop_graph_execution(
             # always registered the run by now and acts on this one; the gap
             # that remains is #17182. Sent before the event, so a failure to
             # publish that can't keep it from going out.
-            await _publish_cancel(queue_client, graph_exec_id)
+            try:
+                await _publish_cancel(queue_client, graph_exec_id)
+            except Exception:
+                # The run is TERMINATED either way and the first cancel went
+                # out, so a broker failure here doesn't fail the stop or keep
+                # its event from going out.
+                logger.warning(
+                    f"Could not send the second cancel for run #{graph_exec_id}",
+                    exc_info=True,
+                )
             # Publish graph execution event
             await get_async_execution_event_bus().publish(graph_exec)
             return
