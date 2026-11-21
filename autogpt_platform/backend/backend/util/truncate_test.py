@@ -4,6 +4,8 @@ These cover the maximal-limits fast path in :func:`truncate` and the plain
 string path.
 """
 
+import random
+
 import pytest
 
 import backend.util.truncate as truncate_module
@@ -102,12 +104,98 @@ class TestOversizedPayloads:
         assert len(result) == 2**12 + 1
         assert OMISSION_MARKER in str(result[len(result) // 2])
 
+    def test_records_are_all_kept_when_cutting_their_strings_is_enough(self):
+        rows = [{"id": i, "note": "x" * 200} for i in range(100)]
+
+        result = truncate({"rows": rows}, 6_000)
+
+        assert [row["id"] for row in result["rows"]] == list(range(100))
+        assert measured(result) <= 6_000
+
     def test_nothing_fits_falls_back_to_the_tightest_truncation(self):
         value = {"k": "x" * 1_000}
 
         result = truncate(value, 1)
 
         assert result == {"k": "…"}
+
+
+class TestCostOfOversizedPayloads:
+    """An oversized payload costs a few builds, whatever it is made of."""
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param({"x": {f"{i:x}": 0 for i in range(3_000)}}, id="many-keys"),
+            pytest.param({"x": [[1e15] * 300 for _ in range(40)]}, id="list-of-lists"),
+            pytest.param([f"line {i}\n" * 30 for i in range(500)], id="long-strings"),
+        ],
+    )
+    def test_the_whole_value_is_built_at_most_five_times(self, monkeypatch, value):
+        builds = []
+        real = truncate_module._truncate_value
+
+        def spy(val, *limits):
+            if val is value:
+                builds.append(limits)
+            return real(val, *limits)
+
+        monkeypatch.setattr(truncate_module, "_truncate_value", spy)
+
+        truncate(value, measured(value) // 3)
+
+        assert len(builds) <= 5
+
+
+@pytest.mark.parametrize("alphabet", ["abc def\n", "a'\"\n\\…é"])
+def test_the_result_keeps_the_most_list_items_that_fit(alphabet: str):
+    rng = random.Random(alphabet)
+
+    def payload(depth: int) -> object:
+        roll = rng.random()
+        if depth > 2 or roll < 0.4:
+            return rng.choice(
+                [
+                    "".join(rng.choices(alphabet, k=rng.randint(0, 50))),
+                    rng.randint(-(10**6), 10**12),
+                    None,
+                ]
+            )
+        if roll < 0.75:
+            return [payload(depth + 1) for _ in range(rng.randint(0, 12))]
+        return {f"k{i}": payload(depth + 1) for i in range(rng.randint(0, 5))}
+
+    for _ in range(300):
+        value = [payload(1) for _ in range(rng.randint(1, 8))]
+        size_limit = rng.randint(0, measured(value))
+        str_min = min(8, size_limit)
+        cuts = [_truncate_value(value, str_min, n) for n in range(1, 14)]
+        fitting = [cut for cut in cuts if measured(cut) <= size_limit]
+
+        result = truncate(value, size_limit)
+
+        if not fitting:
+            assert measured(result) == min(measured(cut) for cut in cuts)
+            continue
+        assert measured(result) <= size_limit
+        assert kept_items(result) == kept_items(fitting[-1])
+
+
+def kept_items(value: object) -> int:
+    """List items kept at every depth, not counting the omission markers."""
+    if isinstance(value, dict):
+        return sum(kept_items(v) for v in value.values())
+    if isinstance(value, list):
+        return sum(1 + kept_items(v) for v in value if not _is_list_marker(v))
+    return 0
+
+
+def _is_list_marker(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and value.startswith(OMISSION_MARKER)
+        and value.endswith(" items)…")
+    )
 
 
 class TestPlainStrings:
