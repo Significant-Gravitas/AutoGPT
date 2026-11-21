@@ -16,6 +16,7 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import HostScopedCredentials
 from backend.util.file import MediaFileType
 from backend.util.request import Response
+from backend.util.type import MAX_JSON_VALUES
 
 
 def make_test_context(
@@ -55,6 +56,7 @@ async def test_http_block_parses_structured_json_response(
         '{"type":"https://example.com/problems/invalid-request",'
         '"title":"Invalid request"}'
     )
+    response.content = response.text.return_value.encode()
     mock_requests = AsyncMock()
     mock_requests.request.return_value = response
     mock_requests_class.return_value = mock_requests
@@ -205,6 +207,40 @@ async def test_http_response_body_contract(
 
 
 @pytest.mark.asyncio
+@patch("backend.blocks.http.Requests")
+async def test_http_block_parses_json_only_within_the_value_limit(
+    mock_requests_class,
+):
+    def response_of(values: int) -> Response:
+        raw_response = MagicMock(
+            status=200, headers={"content-type": "application/json"}
+        )
+        body = b"[" + b",".join([b"0"] * values) + b"]"
+        return Response(response=raw_response, url="https://api.example.com", body=body)
+
+    async def outputs(response: Response) -> list:
+        mock_requests_class.return_value = AsyncMock(
+            request=AsyncMock(return_value=response)
+        )
+        block = SendWebRequestBlock()
+        input_data = SendWebRequestBlock.Input(url=response.url, method=HttpMethod.GET)
+        return [
+            o
+            async for o in block.run(input_data, execution_context=make_test_context())
+        ]
+
+    assert await outputs(response_of(MAX_JSON_VALUES - 1)) == [
+        ("response", [0] * (MAX_JSON_VALUES - 1))
+    ]
+    with (
+        patch("backend.util.request.loads") as loads,
+        pytest.raises(ValueError, match="more than 500,000 values"),
+    ):
+        await outputs(response_of(MAX_JSON_VALUES))
+    loads.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_prepare_files_limits_total_size(tmp_path):
     (tmp_path / "pad.bin").write_bytes(b"x" * 40)
 
@@ -247,6 +283,7 @@ class TestHttpBlockWithHostScopedCredentials:
         response.status = 200
         response.headers = {"content-type": "application/json"}
         response.json.return_value = {"success": True, "data": "test"}
+        response.content = b'{"success": true, "data": "test"}'
         return response
 
     @pytest.fixture
