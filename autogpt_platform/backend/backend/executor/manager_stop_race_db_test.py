@@ -15,7 +15,7 @@ run it has not registered (#17182).
 
 import asyncio
 import threading
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from typing import Any
 from unittest.mock import MagicMock
 
