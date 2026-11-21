@@ -87,6 +87,7 @@ from backend.util.clients import (
     get_database_manager_async_client,
     get_integration_credentials_store,
 )
+from backend.util.concurrency import gather_bounded
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
@@ -110,6 +111,10 @@ logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil
 MAX_RUN_INPUT_BYTES = 8 * 1024 * 1024
 # A credentials title is only a label; this is what a node gets of it.
 MAX_CREDENTIALS_TITLE_LENGTH = 256
+# How many of a run's child runs one stop stops at a time, and the most each waits
+# on a running child; that child's own parent stops it again once it is cancelled.
+CHILD_STOP_CONCURRENCY = 4
+CHILD_STOP_WAIT_SECONDS = 1.0
 
 # ============ Resource Helpers ============ #
 
@@ -1395,24 +1400,13 @@ class CancelExecutionEvent(BaseModel):
     graph_exec_id: str
 
 
-async def _get_child_executions(parent_exec_id: str) -> list["GraphExecutionMeta"]:
-    """
-    Get all child executions of a parent execution using the execution_db pattern.
-
-    Args:
-        parent_exec_id: Parent graph execution ID
-
-    Returns:
-        List of child graph executions
-    """
-    from backend.data.db import prisma
-
+async def _get_unfinished_child_execution_ids(parent_exec_id: str) -> list[str]:
     if prisma.is_connected():
         edb = execution_db
     else:
         edb = get_database_manager_async_client()
 
-    return await edb.get_child_graph_executions(parent_exec_id)
+    return await edb.get_unfinished_child_graph_execution_ids(parent_exec_id)
 
 
 async def stop_graph_execution(
@@ -1440,27 +1434,26 @@ async def stop_graph_execution(
     queue_client = await get_async_execution_queue()
     db = execution_db if prisma.is_connected() else get_database_manager_async_client()
 
-    # First, find and stop all child executions if cascading
+    # First, stop the child runs that haven't finished if cascading
     if cascade:
-        children = await _get_child_executions(graph_exec_id)
+        child_ids = await _get_unfinished_child_execution_ids(graph_exec_id)
         logger.info(
-            f"Stopping {len(children)} child executions of execution {graph_exec_id}"
+            f"Stopping {len(child_ids)} unfinished child executions of execution "
+            f"{graph_exec_id}"
         )
-
-        # Stop all children in parallel (recursively, with cascading enabled)
-        if children:
-            await asyncio.gather(
-                *[
-                    stop_graph_execution(
-                        user_id=user_id,
-                        graph_exec_id=child.id,
-                        wait_timeout=wait_timeout,
-                        cascade=True,  # Recursively cascade to grandchildren
-                    )
-                    for child in children
-                ],
-                return_exceptions=True,  # Don't fail parent stop if child stop fails
-            )
+        await gather_bounded(
+            (
+                stop_graph_execution(
+                    user_id=user_id,
+                    graph_exec_id=child_id,
+                    wait_timeout=min(wait_timeout, CHILD_STOP_WAIT_SECONDS),
+                    cascade=True,  # Recursively cascade to grandchildren
+                )
+                for child_id in child_ids
+            ),
+            CHILD_STOP_CONCURRENCY,
+            return_exceptions=True,  # Don't fail parent stop if child stop fails
+        )
 
     # Now stop this execution
     await queue_client.publish_message(
