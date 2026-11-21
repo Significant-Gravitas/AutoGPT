@@ -29,6 +29,7 @@ from pydantic import ValidationError
 
 from backend.util import egress_proxy
 from backend.util.llm import providers as providers_mod
+from backend.util.llm.http_attempts import record_http_request, record_http_response
 from backend.util.llm.providers import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     FAST_FAIL_TIMEOUT_SECONDS,
@@ -988,16 +989,17 @@ class TestSmallCallWireRequest:
                 },
             )
 
+        # The provider passes its own attempt-logging client; this one replaces it.
         real_openai, real_anthropic = openai.AsyncOpenAI, anthropic.AsyncAnthropic
         async with httpx.AsyncClient(transport=httpx.MockTransport(reply)) as client:
             with (
                 patch(
                     "backend.util.llm.providers.openai.AsyncOpenAI",
-                    lambda **kw: real_openai(**kw, http_client=client),
+                    lambda **kw: real_openai(**{**kw, "http_client": client}),
                 ),
                 patch(
                     "backend.util.llm.providers.anthropic.AsyncAnthropic",
-                    lambda **kw: real_anthropic(**kw, http_client=client),
+                    lambda **kw: real_anthropic(**{**kw, "http_client": client}),
                 ),
             ):
                 await call_provider(
@@ -2024,7 +2026,11 @@ class TestOllamaEgress:
                 ollama_host=providers_mod.settings.config.ollama_host,
             )
         assert ctor.call_args.kwargs["event_hooks"] == {
-            "request": [providers_mod._scope_ollama_key]
+            "request": [
+                providers_mod._scope_ollama_key,
+                record_http_request,
+            ],
+            "response": [record_http_response],
         }
 
 
