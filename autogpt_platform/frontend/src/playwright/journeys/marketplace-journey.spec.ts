@@ -11,6 +11,7 @@ import {
   approveInReviewPage,
   clickUntilOpen,
   createAgent,
+  expectNotInMarketplace,
   expectRunOf,
   newListing,
   openListing,
@@ -21,7 +22,6 @@ import {
   readStoreAgent,
   runFromLibrary,
   saveVersion,
-  searchMarketplace,
   submitDirectly,
   submitInPublishDialog,
   submitReview,
@@ -87,11 +87,11 @@ test.describe("marketplace journey", () => {
     await saveVersion(page, agent, TIMES_3);
 
     // Nobody else finds a listing before it is approved.
-    expect(
-      await searchMarketplace(shopper.page, listing.title),
+    await expectNotInMarketplace(
+      shopper.page,
+      listing,
       "a pending listing should not be in the marketplace",
-    ).toEqual([]);
-    await expect(shopper.page.getByText("No results found")).toBeVisible();
+    );
 
     const note = `Approved by the marketplace journey (${uniqueWord()})`;
     await approveInReviewPage(admin.page, listing, journeyUser.email, note);
@@ -113,8 +113,8 @@ test.describe("marketplace journey", () => {
     });
 
     // Someone else finds it under its creator. The same search came back
-    // empty before the approval, so this also proves the approval dropped
-    // the store's cached answer.
+    // without it before the approval, so this also checks that the approval
+    // dropped the store's cached answer.
     await openListing(shopper.page, listing, creator.username);
     const libraryAgent = await addToLibrary(shopper.page, submission);
     expect(
@@ -211,11 +211,11 @@ test.describe("marketplace journey", () => {
     ).toHaveCount(0);
 
     // Nobody else finds it, or can add it by its id.
-    expect(
-      await searchMarketplace(shopper.page, listing.title),
+    await expectNotInMarketplace(
+      shopper.page,
+      listing,
       "a rejected listing should not be in the marketplace",
-    ).toEqual([]);
-    await expect(shopper.page.getByText("No results found")).toBeVisible();
+    );
     const added = await shopper.page.request.post(
       "/api/proxy/api/library/agents",
       { data: { store_listing_version_id: submission.listing_version_id } },

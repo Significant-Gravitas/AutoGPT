@@ -416,15 +416,41 @@ export async function readStoreAgent(
 }
 
 // What the marketplace's search page shows for `term`, as the store answered
-// the page's own request.
-export async function searchMarketplace(page: Page, term: string) {
+// the page's own request, once the page shows its results. With embeddings
+// on, the store also returns listings that only resemble the term, so check
+// for one listing rather than the whole answer.
+async function searchMarketplace(page: Page, term: string) {
   const answered = page.waitForResponse(isStoreSearch(term));
   await page.goto(`/marketplace/search?searchTerm=${encodeURIComponent(term)}`);
   const response = await answered;
   expect(response.ok(), `searching the marketplace: ${response.status()}`).toBe(
     true,
   );
+  await expect(
+    page.getByRole("heading", { name: "Showing results for:" }),
+  ).toBeVisible();
   return ((await response.json()) as { agents: StoreAgent[] }).agents;
+}
+
+function storeCard(page: Page, listing: Listing) {
+  return page
+    .locator('[data-testid="store-card"]:visible')
+    .filter({ hasText: listing.title });
+}
+
+// Someone searching for the listing doesn't find it: the store leaves it out
+// of its answer, and the page shows no card for it.
+export async function expectNotInMarketplace(
+  page: Page,
+  listing: Listing,
+  why: string,
+) {
+  const found = await searchMarketplace(page, listing.title);
+  expect(
+    found.map((agent) => agent.slug),
+    why,
+  ).not.toContain(listing.slug);
+  await expect(storeCard(page, listing), why).toHaveCount(0);
 }
 
 // Someone searches the marketplace for the listing, finds it under its
@@ -437,16 +463,14 @@ export async function openListing(
   expect(
     await searchMarketplace(page, listing.title),
     "the approved listing should be in the marketplace, under its creator",
-  ).toEqual([
+  ).toContainEqual(
     expect.objectContaining({
       slug: listing.slug,
       agent_name: listing.title,
       creator: creatorUsername,
     }),
-  ]);
-  const card = page
-    .locator('[data-testid="store-card"]:visible')
-    .filter({ hasText: listing.title });
+  );
+  const card = storeCard(page, listing);
   await expect(card).toContainText(`by ${creatorUsername}`);
   await card.click();
   await expect(page).toHaveURL(
@@ -530,8 +554,8 @@ export async function expectRunOf(
   expect(run.status, "the run should complete").toBe("COMPLETED");
   expect(
     run,
-    `the run should be version ${libraryAgent.graph_version}: ` +
-      `${arithmetic.operation} ${arithmetic.operand} to ${RUN_INPUT}`,
+    `the run should be version ${libraryAgent.graph_version}, which makes ` +
+      `${RUN_INPUT} into ${arithmetic.output}`,
   ).toMatchObject({
     graph_version: libraryAgent.graph_version,
     outputs: { [OUTPUT_NAME]: [arithmetic.output] },
