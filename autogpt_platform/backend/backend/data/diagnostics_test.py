@@ -4,15 +4,25 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from apscheduler.triggers.cron import CronTrigger
 from pika.exceptions import ChannelClosedByBroker
 
 from backend.data.diagnostics import (
-    _calculate_total_runs,
+    _calculate_total_runs_legacy,
+    _count_scheduled_runs,
     _detect_orphaned_schedules,
     get_execution_diagnostics,
     get_rabbitmq_cancel_queue_depth,
     get_rabbitmq_queue_depth,
+    get_schedule_health_metrics,
 )
+from backend.executor.scheduler import (
+    GraphExecutionJobInfo,
+    GraphScheduleDiagnostics,
+    StoredCronTrigger,
+)
+from backend.util.cron import normalize_cron_day_of_week
+from backend.util.service import MissingRouteError
 
 # ---------------------------------------------------------------------------
 # get_execution_diagnostics tests
@@ -348,28 +358,141 @@ def test_rabbitmq_disconnect_error_handled():
 # ---------------------------------------------------------------------------
 
 
+def _schedule(
+    id: str,
+    cron: str,
+    timezone: str,
+    next_run_time: str = "",
+) -> GraphExecutionJobInfo:
+    return GraphExecutionJobInfo(
+        id=id,
+        name=id,
+        cron=cron,
+        timezone=timezone,
+        next_run_time=next_run_time,
+        user_id="user",
+        graph_id="graph",
+        graph_version=1,
+        input_data={},
+    )
+
+
+def _record_with_trigger(
+    schedule: GraphExecutionJobInfo, trigger: CronTrigger
+) -> GraphScheduleDiagnostics:
+    return GraphScheduleDiagnostics(
+        schedule=schedule, trigger=StoredCronTrigger.from_trigger(trigger)
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scheduler_has_diagnostics", [True, False])
+async def test_schedule_health_metrics_uses_persisted_cron_and_excludes_orphans(
+    scheduler_has_diagnostics: bool,
+):
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 11, 16, 8, 0, tzinfo=timezone.utc)
+
+    legacy_cron = "0 9 * * fri-1/3"
+    legacy_trigger = CronTrigger.from_crontab(legacy_cron, timezone="UTC")
+    legacy = _schedule(
+        id="legacy",
+        cron=legacy_cron,
+        timezone="UTC",
+        next_run_time="2026-11-20T09:00:00Z",
+    )
+    healthy = _schedule(
+        id="healthy",
+        cron="30 17 * * *",
+        timezone="Asia/Tokyo",
+        next_run_time="2026-11-16T08:30:00Z",
+    )
+    orphaned = _schedule(
+        id="orphan",
+        cron="0 * * * *",
+        timezone="UTC",
+        next_run_time="2026-11-16T09:00:00Z",
+    )
+
+    scheduler = MagicMock()
+    scheduler.get_graph_execution_schedules = AsyncMock(
+        return_value=[legacy, healthy, orphaned]
+    )
+    scheduler.get_graph_schedule_diagnostics = AsyncMock(
+        return_value=[
+            _record_with_trigger(legacy, legacy_trigger),
+            _record_with_trigger(
+                healthy, CronTrigger(hour=17, minute=30, timezone="Asia/Tokyo")
+            ),
+            _record_with_trigger(orphaned, CronTrigger(minute=0, timezone="UTC")),
+        ]
+    )
+    if not scheduler_has_diagnostics:
+        scheduler.get_graph_schedule_diagnostics.side_effect = MissingRouteError(
+            "get_graph_schedule_diagnostics", "http://scheduler"
+        )
+
+    with (
+        patch("backend.data.diagnostics.datetime", FixedDateTime),
+        patch("backend.data.diagnostics.get_scheduler_client", return_value=scheduler),
+        patch(
+            "backend.data.diagnostics._detect_orphaned_schedules",
+            new=AsyncMock(
+                return_value={
+                    "deleted_graph": ["orphan"],
+                    "no_library_access": [],
+                    "invalid_credentials": [],
+                    "validation_failed": [],
+                }
+            ),
+        ),
+    ):
+        metrics = await get_schedule_health_metrics()
+
+    assert metrics.total_schedules == 3
+    assert metrics.total_orphaned == 1
+    assert metrics.total_runs_next_hour == (1 if scheduler_has_diagnostics else 0)
+    assert metrics.total_runs_next_24h == 1
+    scheduler.get_graph_schedule_diagnostics.assert_awaited_once()
+    if scheduler_has_diagnostics:
+        scheduler.get_graph_execution_schedules.assert_not_awaited()
+    else:
+        scheduler.get_graph_execution_schedules.assert_awaited_once()
+
+
 def test_calculate_total_runs_basic():
     """Test calculating total runs with a simple cron (every hour)."""
     now = datetime(2026, 4, 17, 0, 0, 0, tzinfo=timezone.utc)
     end = now + timedelta(hours=3)
 
-    schedule = MagicMock()
-    schedule.cron = "0 * * * *"  # Every hour
+    schedule = MagicMock(cron="0 * * * *", timezone="UTC")
 
-    result = _calculate_total_runs([schedule], now, end)
+    result = _calculate_total_runs_legacy([schedule], now, end)
     assert result == 3  # 01:00, 02:00, 03:00
 
 
-def test_calculate_total_runs_invalid_cron():
-    """Test that invalid cron expressions are skipped."""
+@pytest.mark.parametrize(
+    ("cron", "zone"),
+    [
+        ("invalid cron expression", "UTC"),
+        ("0 * * * *", "Unknown/Zone"),
+    ],
+)
+def test_calculate_total_runs_skips_invalid_schedules(cron: str, zone: str):
     now = datetime(2026, 4, 17, 0, 0, 0, tzinfo=timezone.utc)
     end = now + timedelta(hours=1)
+    invalid = GraphScheduleDiagnostics(
+        schedule=_schedule("invalid", cron, zone),
+        trigger=StoredCronTrigger(
+            fields={"minute": "bad" if zone == "UTC" else "0"},
+            start_date=None,
+            end_date=None,
+        ),
+    )
 
-    schedule = MagicMock()
-    schedule.cron = "invalid cron expression"
-
-    result = _calculate_total_runs([schedule], now, end)
-    assert result == 0
+    assert _count_scheduled_runs(invalid, now, end, end) == (0, 0)
 
 
 def test_calculate_total_runs_multiple_schedules():
@@ -377,16 +500,72 @@ def test_calculate_total_runs_multiple_schedules():
     now = datetime(2026, 4, 17, 0, 0, 0, tzinfo=timezone.utc)
     end = now + timedelta(hours=2)
 
-    sched1 = MagicMock()
-    sched1.cron = "0 * * * *"  # Every hour
+    sched1 = MagicMock(cron="0 * * * *", timezone="UTC")
+    sched2 = MagicMock(cron="*/30 * * * *", timezone="UTC")
 
-    sched2 = MagicMock()
-    sched2.cron = "*/30 * * * *"  # Every 30 min
-
-    result = _calculate_total_runs([sched1, sched2], now, end)
+    result = _calculate_total_runs_legacy([sched1, sched2], now, end)
     # sched1: 01:00, 02:00 = 2
     # sched2: 00:30, 01:00, 01:30, 02:00 = 4
     assert result == 6
+
+
+@pytest.mark.parametrize(
+    ("cron", "zone", "start", "end", "expected"),
+    [
+        pytest.param(
+            "0 9 * * *",
+            "Asia/Tokyo",
+            "2026-11-19T23:00:00Z",
+            "2026-11-20T00:00:00Z",
+            1,
+            id="includes-local-run-at-end",
+        ),
+        pytest.param(
+            "0 9 * * *",
+            "Asia/Tokyo",
+            "2026-11-20T00:00:00Z",
+            "2026-11-20T01:00:00Z",
+            0,
+            id="excludes-local-run-at-start",
+        ),
+        pytest.param(
+            "0 9 * * 1-1",
+            "UTC",
+            "2026-11-17T08:30:00Z",
+            "2026-11-17T09:30:00Z",
+            0,
+            id="single-day-weekday-range",
+        ),
+        pytest.param(
+            "0 9 1 * mon",
+            "UTC",
+            "2026-11-16T08:30:00Z",
+            "2026-11-16T09:30:00Z",
+            0,
+            id="day-of-month-and-weekday-intersection",
+        ),
+        pytest.param(
+            "30 1 * * *",
+            "America/New_York",
+            "2026-11-01T04:59:00Z",
+            "2026-11-01T07:00:00Z",
+            2,
+            id="counts-both-fall-back-runs",
+        ),
+    ],
+)
+def test_calculate_total_runs_matches_scheduler(
+    cron: str, zone: str, start: str, end: str, expected: int
+):
+    trigger = CronTrigger.from_crontab(normalize_cron_day_of_week(cron), timezone=zone)
+    record = _record_with_trigger(_schedule("schedule", cron, zone), trigger)
+    start_time = datetime.fromisoformat(start)
+    end_time = datetime.fromisoformat(end)
+
+    assert _count_scheduled_runs(record, start_time, end_time, end_time) == (
+        expected,
+        expected,
+    )
 
 
 def test_calculate_total_runs_empty():
@@ -394,7 +573,7 @@ def test_calculate_total_runs_empty():
     now = datetime(2026, 4, 17, 0, 0, 0, tzinfo=timezone.utc)
     end = now + timedelta(hours=1)
 
-    result = _calculate_total_runs([], now, end)
+    result = _calculate_total_runs_legacy([], now, end)
     assert result == 0
 
 
