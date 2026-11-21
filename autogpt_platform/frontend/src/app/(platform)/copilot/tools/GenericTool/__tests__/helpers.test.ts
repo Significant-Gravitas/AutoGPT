@@ -91,6 +91,7 @@ describe("getToolCategory", () => {
   it("returns 'browser' for browser tools", () => {
     expect(getToolCategory("browser_navigate")).toBe("browser");
     expect(getToolCategory("browser_act")).toBe("browser");
+    expect(getToolCategory("desktop_browser")).toBe("browser");
     expect(getToolCategory("browser_screenshot")).toBe("browser");
   });
 
@@ -204,6 +205,33 @@ describe("getAnimationText", () => {
       input: { command: "ls -la" },
     });
     expect(getAnimationText(part, "bash")).toBe("Running: ls -la");
+  });
+
+  it("shows a stopped desktop_browser call as stopped, a full one as completed", () => {
+    const stopped = makePart({
+      type: "tool-desktop_browser",
+      state: "output-available",
+      output: {
+        receipts: [
+          { action: "click", status: "not_started", reason: "stale_ref" },
+        ],
+      },
+    });
+    expect(getAnimationText(stopped, "browser")).toBe("Browser action stopped");
+    const done = makePart({
+      type: "tool-desktop_browser",
+      state: "output-available",
+      output: JSON.stringify({
+        receipts: [{ action: "goto", status: "completed" }],
+      }),
+    });
+    expect(getAnimationText(done, "browser")).toBe("Browser action completed");
+    const refused = makePart({
+      type: "tool-desktop_browser",
+      state: "output-available",
+      output: { type: "error", error: "call_refused", message: "Nothing ran" },
+    });
+    expect(getAnimationText(refused, "browser")).toBe("Browser action stopped");
   });
 
   it("shows generic streaming text for bash without input", () => {

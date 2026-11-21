@@ -12,6 +12,7 @@ from .references import Reference
 _ASK: dict[str, tuple[str, tuple[str, ...]]] = {
     "bash_exec": ("Run a command in the sandbox", ()),
     "browser_act": ("Act on the open page", ()),
+    "desktop_browser": ("Act in the desktop browser", ()),
     "post_to_chat_platform": ("Post a message", ()),
     "edit_chat_platform_message": ("Edit a posted message", ()),
     "create_agent": ("Create a workflow", ()),

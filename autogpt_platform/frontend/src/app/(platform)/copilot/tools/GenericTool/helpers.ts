@@ -77,6 +77,7 @@ export function getToolCategory(toolName: string): ToolCategory {
     case "browser_navigate":
     case "browser_act":
     case "browser_screenshot":
+    case "desktop_browser":
       return "browser";
     case "read_workspace_file":
     case "read_file":
@@ -218,6 +219,26 @@ export function humanizeFileName(filePath: string): string {
 // web_search accepts a ``deep`` arg that dispatches to a multi-step
 // research model; render a distinct verb ("Researching"/"Researched"/
 // "Research failed") so users know the call takes longer.
+function _desktopBrowserStopped(part: ToolUIPart): boolean {
+  let output: unknown = part.output;
+  if (typeof output === "string") {
+    try {
+      output = JSON.parse(output);
+    } catch {
+      return false;
+    }
+  }
+  // A refused or busy call is an ErrorResponse: nothing in it ran.
+  if ((output as { type?: unknown } | undefined)?.type === "error") return true;
+  const receipts = (output as { receipts?: unknown } | undefined)?.receipts;
+  return (
+    Array.isArray(receipts) &&
+    receipts.some(
+      (r) => (r as { status?: unknown } | null)?.status !== "completed",
+    )
+  );
+}
+
 function _isDeepWebSearch(part: ToolUIPart): boolean {
   const input = part.input as Record<string, unknown> | undefined;
   return input?.deep === true;
@@ -317,6 +338,8 @@ export function getAnimationText(
             : "Fetched web content";
         case "browser":
           if (toolName === "browser_screenshot") return "Screenshot captured";
+          if (toolName === "desktop_browser" && _desktopBrowserStopped(part))
+            return "Browser action stopped";
           return shortSummary
             ? `Browsed ${shortSummary}`
             : "Browser action completed";

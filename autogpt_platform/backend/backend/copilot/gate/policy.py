@@ -151,7 +151,7 @@ _PLATFORM = frozenset(
 # there; Ask First still asks, as that chat runs in Auto.
 _TEAM = frozenset({"delegate_to_expert", "handoff_to_expert"})
 
-_EXTERNAL = frozenset({"browser_act"})
+_EXTERNAL = frozenset({"browser_act", "desktop_browser"})
 
 # A bot post in a chat platform the user linked: the supervisor judges it.
 _EXTERNAL_JUDGED = frozenset({"edit_chat_platform_message", "post_to_chat_platform"})

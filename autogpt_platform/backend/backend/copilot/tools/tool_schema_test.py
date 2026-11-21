@@ -330,8 +330,14 @@ from ._test_data import make_session
 # Measured on PR #16677 merged with latest dev:
 #     merged tree                                 83,410
 #     + headroom                       +300       83,710
+# Raised for desktop_browser (SECRT-2652): Otto drives the desktop's Chrome
+# through a fixed action set. It must be eager, since the computer note names
+# it next to start_desktop. Measured on this branch, dev 40072102bf plus the tool:
+#     dev 40072102bf                              83,394 (92 tools)
+#     + desktop_browser                +1,653     85,047 (93 tools)
+#     + headroom                         +300     85,347
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_CHAR_BUDGET = 83_710
+_CHAR_BUDGET = 85_347
 
 
 @pytest.fixture(scope="module")
@@ -578,8 +584,13 @@ def test_total_schema_char_budget() -> None:
 # Measured on PR #16677 merged with latest dev:
 #     merged tree                                 75,382
 #     + headroom                       +300       75,682
+# desktop_browser, the same tool as ``_CHAR_BUDGET`` above, is in the largest
+# session (an Otto chat on E2B). Measured on this branch, dev 40072102bf:
+#     dev 40072102bf                              75,370
+#     + desktop_browser                +1,509     76,879
+#     + headroom                         +300     77,179
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_SESSION_WIRE_BUDGET = 75_682
+_SESSION_WIRE_BUDGET = 77_179
 
 
 def test_largest_declared_session_wire_budget() -> None:

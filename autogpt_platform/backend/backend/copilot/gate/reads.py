@@ -62,6 +62,7 @@ JUDGED_READS: frozenset[str] = frozenset(
         "browser_navigate",
         "browser_screenshot",
         "delegate_to_expert",
+        "desktop_browser",
         # Only a graph it returns that another user owns, or a copy, reaches the judge.
         "find_library_agent",
         "get_sub_session_result",
@@ -90,6 +91,7 @@ _SOURCE_KINDS = {
     "browser_act": "web",
     "browser_navigate": "web",
     "browser_screenshot": "web",
+    "desktop_browser": "web",
     "delegate_to_expert": "chat",
     "get_sub_session_result": "chat",
     "read_expert_chat": "chat",
@@ -109,7 +111,10 @@ _SOURCE_KINDS = {
 }
 
 # What a card calls a read no argument names, where the tool's name is not copy.
-_READ_LABELS = {"find_library_agent": "the library search"}
+_READ_LABELS = {
+    "find_library_agent": "the library search",
+    "desktop_browser": "the desktop browser",
+}
 
 # The SDK engine caps a registry tool's text again after ``BaseTool.execute``
 # returns; it installs that cap here so the judge reads the same text.
