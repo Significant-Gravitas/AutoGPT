@@ -97,6 +97,11 @@ from backend.integrations.oauth.microsoft_identity import (
 from backend.integrations.oauth.microsoft_recovery import MicrosoftAuthError
 from backend.integrations.oauth.microsoft_tokens import browser_sign_in_available
 from backend.integrations.oauth.refresh_failure import without_reconnect_required
+from backend.integrations.oauth.stripe_link_hosted import (
+    STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED,
+    is_hosted_link_credential,
+    revocation_handler,
+)
 from backend.integrations.providers import ProviderName, provider_key
 from backend.integrations.service_identity import (
     service_for_catalog_entry,
@@ -753,6 +758,15 @@ async def device_auth_initiate(
     ] = None,
 ) -> DeviceAuthInitiateResponse:
     handler = _get_device_auth_handler(provider)
+    if provider == ProviderName.STRIPE_LINK and STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED:
+        # This deployment connects Link through its registered client. Link's
+        # public device client stays registered only so the grants it issued
+        # earlier keep refreshing and revoking.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Stripe Link connects by signing in to Link here, not with a "
+            "device code.",
+        )
 
     # Cheapest endpoint to abuse: it takes no state token, and each call mints
     # a device code upstream.
@@ -1200,6 +1214,14 @@ async def create_credentials(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Codex credentials must be created through ChatGPT sign-in",
         )
+    if provider == ProviderName.STRIPE_LINK:
+        # A Link grant's metadata says which client issued it, and refresh,
+        # revocation and the checkout's hosted check all trust that; only the
+        # connect flows may write it.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Stripe Link credentials must be created by connecting Link",
+        )
     if (
         isinstance(credentials, OAuth2Credentials)
         and credentials.refresh_strategy == "provider_runtime"
@@ -1351,6 +1373,16 @@ async def delete_and_revoke_credentials(
 
     if not isinstance(creds, OAuth2Credentials):
         return None
+    if (
+        provider == ProviderName.STRIPE_LINK
+        and is_hosted_link_credential(creds)
+        and not STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED
+    ):
+        # Only the confidential client that issued this grant can revoke it.
+        # With that client since unconfigured, nothing here can end the grant:
+        # the local delete stands, and the customer can revoke it from their
+        # Link account.
+        return False
     return await _revocation_handler(creds, provider).revoke_tokens(creds)
 
 
@@ -1360,6 +1392,9 @@ def _revocation_handler(
     if provider_matches(provider.value, ProviderName.MCP.value):
         # MCP uses dynamic per-server OAuth — create handler from metadata
         return create_mcp_oauth_handler(creds)
+    if provider == ProviderName.STRIPE_LINK and is_hosted_link_credential(creds):
+        # Issued by the confidential client, which alone can revoke it.
+        return revocation_handler()
     if (
         device_handler := DEVICE_HANDLERS_BY_NAME.get(provider_key(provider))
     ) is not None:
@@ -1984,7 +2019,33 @@ async def _upgrade_existing_credential(
     if not merged.username and existing.username:
         merged.username = existing.username
     await creds_manager.update(user_id, merged)
+    if provider_matches(existing.provider, ProviderName.STRIPE_LINK.value):
+        await _end_replaced_link_grant(existing, merged)
     return merged
+
+
+async def _end_replaced_link_grant(
+    replaced: OAuth2Credentials, current: OAuth2Credentials
+) -> None:
+    """Reconnecting a wallet through Link's other client overwrites the old
+    grant's tokens, which would leave that grant live at Link until it
+    expires. End it through the client that issued it; failing that, the
+    reconnect still stands."""
+    if is_hosted_link_credential(replaced) == is_hosted_link_credential(current):
+        return
+    if (
+        is_hosted_link_credential(replaced)
+        and not STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED
+    ):
+        return
+    try:
+        await _revocation_handler(replaced, ProviderName.STRIPE_LINK).revoke_tokens(
+            replaced
+        )
+    except Exception as e:
+        logger.warning(
+            f"Could not revoke a replaced Stripe Link grant: {type(e).__name__}"
+        )
 
 
 def _same_account(existing: OAuth2Credentials, new: OAuth2Credentials) -> bool:
@@ -2183,19 +2244,7 @@ def _get_provider_oauth_handler(provider_name: ProviderName) -> "BaseOAuthHandle
 
     if key not in HANDLERS_BY_NAME:
         if key in DEVICE_HANDLERS_BY_NAME:
-            # A device-code provider is a public client with no client secret,
-            # so there is no authorization-code flow to start. Point the caller
-            # at the device-auth endpoint rather than reporting "does not
-            # support OAuth". The detail is shown to end users verbatim.
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Provider '{key}' connects with a device code, not an "
-                    "OAuth redirect. Connect it through the device-code flow "
-                    f"instead (API: POST /api/integrations/{key}"
-                    "/device-auth/initiate)."
-                ),
-            )
+            raise _device_code_only(key)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Provider '{key}' does not support OAuth",
@@ -2259,6 +2308,23 @@ def _get_provider_oauth_handler(provider_name: ProviderName) -> "BaseOAuthHandle
         client_id=client_id,
         client_secret=client_secret,
         redirect_uri=f"{frontend_base_url}/auth/integrations/oauth_callback",
+    )
+
+
+def _device_code_only(key: str) -> HTTPException:
+    # A device-code provider with no registered confidential client (Stripe
+    # Link without its STRIPE_LINK_* settings) has no authorization-code flow
+    # to start. Point the caller at the device-auth
+    # endpoint rather than reporting "does not support OAuth" or "not
+    # configured". The detail is shown to end users verbatim.
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=(
+            f"Provider '{key}' connects with a device code, not an "
+            "OAuth redirect. Connect it through the device-code flow "
+            f"instead (API: POST /api/integrations/{key}"
+            "/device-auth/initiate)."
+        ),
     )
 
 

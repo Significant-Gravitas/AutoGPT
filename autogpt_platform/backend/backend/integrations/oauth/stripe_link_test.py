@@ -12,7 +12,11 @@ import pytest
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
-from backend.integrations.oauth.stripe_link import StripeLinkDeviceAuthHandler
+from backend.integrations.oauth.refresh_failure import describe_refresh_failure
+from backend.integrations.oauth.stripe_link import (
+    DEVICE_GRANT_METADATA,
+    StripeLinkDeviceAuthHandler,
+)
 
 
 def mock_http(status_code: int, payload: dict, text: str = ""):
@@ -111,6 +115,33 @@ async def test_poll_returns_credentials_once_approved():
     assert result.credentials.access_token.get_secret_value() == "new-access"
     assert result.credentials.provider == "stripe_link"
     assert result.credentials.access_token_expires_at is not None
+    # Names its own client, so a reconnect that replaces a hosted grant
+    # overwrites the hosted marker (see router_test's merge test).
+    assert result.credentials.metadata == DEVICE_GRANT_METADATA
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "granted",
+    ["userinfo:read payment_methods.agentic", "userinfo:read,payment_methods.agentic"],
+)
+async def test_poll_records_granted_scopes_with_either_delimiter(granted):
+    """link-cli notes the token endpoint can echo `scope` comma-delimited; kept
+    whole, the one bogus scope fails every `payment_methods.agentic` check."""
+    patcher, _ = mock_http(
+        200,
+        {
+            "access_token": "new-access",
+            "refresh_token": "new-refresh",
+            "expires_in": 3600,
+            "scope": granted,
+        },
+    )
+    with patcher:
+        result = await StripeLinkDeviceAuthHandler().poll_for_tokens("dc")
+
+    assert result.credentials is not None
+    assert result.credentials.scopes == ["userinfo:read", "payment_methods.agentic"]
 
 
 @pytest.mark.asyncio
@@ -167,6 +198,22 @@ async def test_refresh_replaces_both_tokens():
     assert updated.refresh_token is not None
     assert updated.refresh_token.get_secret_value() == "rotated-refresh"
     assert updated.access_token_expires_at > int(time.time())
+
+
+@pytest.mark.asyncio
+async def test_refresh_leaves_a_confidential_clients_grant_alone():
+    """A reconnect through the confidential client can land after this handler
+    was picked. Its grant goes nowhere near the device client, and the error
+    is not a dead grant, so the next refresh picks the right client."""
+    patcher, client = mock_http(200, {})
+    creds = credentials()
+    creds.metadata = {"link_oauth_flow": "authorization_code", "link_client_id": "c"}
+
+    with patcher, pytest.raises(RuntimeError) as failure:
+        await StripeLinkDeviceAuthHandler()._refresh_tokens(creds)
+
+    client.post.assert_not_called()
+    assert not describe_refresh_failure(failure.value).definitive
 
 
 @pytest.mark.asyncio
