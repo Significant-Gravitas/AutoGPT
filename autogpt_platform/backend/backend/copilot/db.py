@@ -3,8 +3,9 @@
 import asyncio
 import logging
 import uuid
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 import sentry_sdk
 from prisma.errors import UniqueViolationError
@@ -64,6 +65,10 @@ class PaginatedMessages(BaseModel):
 # ``extract_context_messages`` — if a session somehow exceeds this cap WITHOUT
 # a transcript, the cap-hit warning below makes the case observable in logs.
 MAX_LOADED_CHAT_MESSAGES = 1000
+
+# Loads are also capped by stored size, above what a model context holds; past
+# it older rows are left out exactly as when the row cap engages.
+MAX_LOADED_CHAT_MESSAGE_BYTES = 4 * 1024 * 1024
 
 
 # NOTE: there is intentionally no eager-load ``get_chat_session`` here. Callers
@@ -165,6 +170,100 @@ def _own_org_scope(organization_id: str | None) -> list[ChatSessionWhereInput]:
     ]
 
 
+class _Fit(NamedTuple):
+    rows: int  # how many of the window's newest rows to fetch
+    cut: bool  # older rows of the window were left out
+    size: int  # stored bytes of the rows to fetch
+
+
+async def _newest_rows_within(
+    session_id: str,
+    limit: int,
+    sequence_filter: dict[str, Any],
+    budget: int,
+    role: str | None = None,
+) -> _Fit:
+    """How many of the newest *limit* rows in the window fit in *budget*
+    stored bytes.
+
+    Sizes are summed in SQL, newest first, so an oversized window is never
+    fetched. Never below one row, so a page always makes progress, and a
+    window with no stored rows keeps *limit*.
+    """
+    conditions = ['"sessionId" = $1']
+    params: list[Any] = [session_id]
+    for key, condition in (
+        ("lt", '"sequence" < ${}::int'),
+        ("gte", '"sequence" >= ${}::int'),
+        ("in", '"sequence" = ANY(${}::int[])'),
+    ):
+        if key in sequence_filter:
+            params.append(sequence_filter[key])
+            conditions.append(condition.format(len(params)))
+    if role is not None:
+        params.append(role)
+        conditions.append(f'"role" = ${len(params)}')
+    params += [limit, budget]
+    fits = f'"running" <= ${len(params)}::bigint'
+    rows = await db.query_raw_with_schema(
+        f"""
+        SELECT COUNT(*) FILTER (WHERE {fits})::int AS "fit",
+               COUNT(*)::int AS "rows",
+               COALESCE(MAX("running") FILTER (WHERE {fits}), MIN("running"), 0)
+                   ::bigint AS "size"
+        FROM (
+            SELECT SUM("size") OVER (ORDER BY "sequence" DESC) AS "running"
+            FROM (
+                SELECT "sequence",
+                       COALESCE(octet_length("content"), 0)
+                       + COALESCE(octet_length("refusal"), 0)
+                       + COALESCE(octet_length("toolCalls"::text), 0)
+                       + COALESCE(octet_length("functionCall"::text), 0)
+                       + COALESCE(octet_length("metadata"::text), 0) AS "size"
+                FROM {{schema_prefix}}"ChatMessage"
+                WHERE {" AND ".join(conditions)}
+                ORDER BY "sequence" DESC
+                LIMIT ${len(params) - 1}::int
+            ) newest
+        ) sized
+        """,
+        *params,
+    )
+    fit, total, size = rows[0]["fit"], rows[0]["rows"], rows[0]["size"]
+    if fit == total:
+        return _Fit(limit, False, size)
+    return _Fit(max(1, fit), True, size)
+
+
+async def iter_chat_message_pages(
+    session_id: str, *, role: str | None = None
+) -> AsyncIterator[list[PrismaChatMessage]]:
+    """Every message of a session (of *role*, when given), newest first, in
+    pages that each fit ``MAX_LOADED_CHAT_MESSAGE_BYTES``."""
+    sequence_filter: dict[str, Any] = {}
+    while True:
+        fit = await _newest_rows_within(
+            session_id,
+            MAX_LOADED_CHAT_MESSAGES,
+            sequence_filter,
+            MAX_LOADED_CHAT_MESSAGE_BYTES,
+            role,
+        )
+        where: ChatMessageWhereInput = {"sessionId": session_id}
+        if role is not None:
+            where["role"] = role
+        if sequence_filter:
+            where["sequence"] = sequence_filter
+        rows = await PrismaChatMessage.prisma().find_many(
+            where=where, order={"sequence": "desc"}, take=fit.rows
+        )
+        if rows:
+            yield rows
+        if not rows or (not fit.cut and len(rows) < fit.rows):
+            return
+        sequence_filter = {"lt": rows[-1].sequence}
+
+
 async def get_chat_messages_paginated(
     session_id: str,
     limit: int = 50,
@@ -197,6 +296,10 @@ async def get_chat_messages_paginated(
     ``limit`` (i.e. the cap engaged); irrelevant for range fetches but
     harmlessly populated.
 
+    Every pattern is also capped at ``MAX_LOADED_CHAT_MESSAGE_BYTES`` of stored
+    messages, expansions included: only the newest rows that fit are fetched,
+    so the byte cap engaging looks to callers exactly like the row cap engaging.
+
     ``message_sequences`` selects exact message numbers within any bounds;
     tool-pair and visibility expansion are disabled for this selection.
     """
@@ -205,6 +308,11 @@ async def get_chat_messages_paginated(
         session_where["userId"] = user_id
     if org_scope := _own_org_scope(organization_id):
         session_where["AND"] = org_scope
+    # Sized only once the session is the caller's.
+    if (user_id is not None or org_scope) and not (
+        await PrismaChatSession.prisma().find_first(where=session_where)
+    ):
+        return None
 
     msg_filter: dict = {}
     if before_sequence is not None:
@@ -214,9 +322,14 @@ async def get_chat_messages_paginated(
     if message_sequences is not None:
         msg_filter["in"] = message_sequences
 
+    fit = await _newest_rows_within(
+        session_id, limit + 1, msg_filter, MAX_LOADED_CHAT_MESSAGE_BYTES
+    )
+    budget_left = MAX_LOADED_CHAT_MESSAGE_BYTES - fit.size
+
     msg_include: FindManyChatMessageArgsFromChatSession = {
         "order_by": {"sequence": "desc"},
-        "take": limit + 1,
+        "take": fit.rows,
     }
     if msg_filter:
         msg_include["where"] = {"sequence": msg_filter}
@@ -230,7 +343,7 @@ async def get_chat_messages_paginated(
 
     session_info = ChatSessionInfo.from_db(session)
     results = list(session.Messages) if session.Messages else []
-    has_more = len(results) > limit
+    has_more = fit.cut or len(results) > limit
     results = results[:limit]
     # Reverse DESC → ASC so callers see oldest-first.
     results.reverse()
@@ -241,12 +354,12 @@ async def get_chat_messages_paginated(
     is_range_fetch = after_sequence is not None or message_sequences is not None
     if not is_range_fetch:
         if results and results[0].role == "tool":
-            results, has_more = await _expand_tool_boundary(
-                session_id, results, has_more, user_id
+            results, has_more, budget_left = await _expand_tool_boundary(
+                session_id, results, has_more, user_id, budget_left
             )
         if results and not any(m.role in ("user", "assistant") for m in results):
-            results, has_more = await _expand_for_visibility(
-                session_id, results, has_more, user_id
+            results, has_more, budget_left = await _expand_for_visibility(
+                session_id, results, has_more, user_id, budget_left
             )
 
     messages = [ChatMessage.from_db(m) for m in results]
@@ -263,19 +376,22 @@ async def _expand_tool_boundary(
     results: list[Any],
     has_more: bool,
     user_id: str | None,
-) -> tuple[list[Any], bool]:
+    budget: int,
+) -> tuple[list[Any], bool, int]:
     """Expand backward from the oldest message to include the owning assistant
-    message when the page starts mid-tool-group."""
+    message when the page starts mid-tool-group, within *budget* stored bytes;
+    returns what is left of it."""
     boundary_where: ChatMessageWhereInput = {
         "sessionId": session_id,
         "sequence": {"lt": results[0].sequence},
     }
     if user_id is not None:
         boundary_where["Session"] = {"is": {"userId": user_id}}
+    fit = await _newest_rows_within(
+        session_id, _BOUNDARY_SCAN_LIMIT, {"lt": results[0].sequence}, budget
+    )
     extra = await PrismaChatMessage.prisma().find_many(
-        where=boundary_where,
-        order={"sequence": "desc"},
-        take=_BOUNDARY_SCAN_LIMIT,
+        where=boundary_where, order={"sequence": "desc"}, take=fit.rows
     )
     # Find the first non-tool message (should be the assistant)
     boundary_msgs = []
@@ -297,7 +413,7 @@ async def _expand_tool_boundary(
     if boundary_msgs:
         results = boundary_msgs + results
         has_more = boundary_msgs[0].sequence > 0
-    return results, has_more
+    return results, has_more, budget - fit.size
 
 
 _VISIBILITY_EXPAND_LIMIT = 200
@@ -308,22 +424,26 @@ async def _expand_for_visibility(
     results: list[Any],
     has_more: bool,
     user_id: str | None,
-) -> tuple[list[Any], bool]:
+    budget: int,
+) -> tuple[list[Any], bool, int]:
     """Expand backward until the page contains at least one user or assistant
-    message, so the chat is never blank."""
+    message, so the chat is never blank, within *budget* stored bytes; returns
+    what is left of it."""
     expand_where: ChatMessageWhereInput = {
         "sessionId": session_id,
         "sequence": {"lt": results[0].sequence},
     }
     if user_id is not None:
         expand_where["Session"] = {"is": {"userId": user_id}}
-    extra = await PrismaChatMessage.prisma().find_many(
-        where=expand_where,
-        order={"sequence": "desc"},
-        take=_VISIBILITY_EXPAND_LIMIT,
+    fit = await _newest_rows_within(
+        session_id, _VISIBILITY_EXPAND_LIMIT, {"lt": results[0].sequence}, budget
     )
+    extra = await PrismaChatMessage.prisma().find_many(
+        where=expand_where, order={"sequence": "desc"}, take=fit.rows
+    )
+    budget -= fit.size
     if not extra:
-        return results, has_more
+        return results, has_more, budget
 
     # Collect messages until we find a visible one (user/assistant)
     prepend = []
@@ -347,7 +467,7 @@ async def _expand_for_visibility(
     if prepend:
         results = prepend + results
         has_more = prepend[0].sequence > 0
-    return results, has_more
+    return results, has_more, budget
 
 
 async def create_chat_session(

@@ -32,7 +32,7 @@ from prisma.models import (
 
 from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
 from backend.blocks._base import BlockType
-from backend.copilot.db import get_chat_messages_paginated
+from backend.copilot.db import get_chat_messages_paginated, iter_chat_message_pages
 from backend.copilot.expert_kickoff import is_hidden_chat_message
 from backend.copilot.hidden_rows import is_hidden_from_model
 from backend.copilot.model import ChatSessionInfo
@@ -131,6 +131,8 @@ async def enable_chat_session_share(
         )
     else:
         executions_to_link = []
+    # Read before the transaction: it pages through the whole chat.
+    file_ids = await _referenced_file_ids(session_id)
 
     share_token = generate_share_token()
     now = datetime.now(UTC)
@@ -153,6 +155,7 @@ async def enable_chat_session_share(
             session_id=session_id,
             share_token=share_token,
             user_id=user_id,
+            file_ids=file_ids,
             tx=tx,
         )
 
@@ -560,17 +563,7 @@ async def _count_referenced_workspace_files(*, session_id: str, user_id: str) ->
     enable time so the count matches what the public viewer can actually
     download.
     """
-    rows = await PrismaChatMessage.prisma().find_many(
-        where={"sessionId": session_id},
-    )
-    file_ids: set[str] = set()
-    for row in rows:
-        if row.content is not None:
-            file_ids |= extract_workspace_file_ids(row.content)
-        if row.toolCalls is not None:
-            file_ids |= extract_workspace_file_ids(_json_or_none(row.toolCalls))
-        if row.functionCall is not None:
-            file_ids |= extract_workspace_file_ids(_json_or_none(row.functionCall))
+    file_ids = await _referenced_file_ids(session_id)
     if not file_ids:
         return 0
     workspace = await UserWorkspace.prisma().find_unique(where={"userId": user_id})
@@ -593,24 +586,12 @@ async def _build_shared_chat_files(
     session_id: str,
     share_token: str,
     user_id: str,
+    file_ids: set[str],
     *,
     tx: Any | None = None,
 ) -> int:
-    """Scan all messages in the session for workspace://<id> refs + persist
-    the allowlist of the ones that are the owner's files to share."""
-    rows = await PrismaChatMessage.prisma(tx).find_many(
-        where={"sessionId": session_id},
-    )
-
-    file_ids: set[str] = set()
-    for row in rows:
-        if row.content is not None:
-            file_ids |= extract_workspace_file_ids(row.content)
-        if row.toolCalls is not None:
-            file_ids |= extract_workspace_file_ids(_json_or_none(row.toolCalls))
-        if row.functionCall is not None:
-            file_ids |= extract_workspace_file_ids(_json_or_none(row.functionCall))
-
+    """Persist the allowlist of the chat's referenced *file_ids* that are the
+    owner's files to share."""
     if not file_ids:
         return 0
 
@@ -643,6 +624,20 @@ async def _build_shared_chat_files(
         except ForeignKeyViolationError:
             logger.debug("SharedChatFile FK violation for file %s", file.id)
     return created
+
+
+async def _referenced_file_ids(session_id: str) -> set[str]:
+    """Every workspace file id this chat's messages reference."""
+    file_ids: set[str] = set()
+    async for rows in iter_chat_message_pages(session_id):
+        for row in rows:
+            if row.content is not None:
+                file_ids |= extract_workspace_file_ids(row.content)
+            if row.toolCalls is not None:
+                file_ids |= extract_workspace_file_ids(_json_or_none(row.toolCalls))
+            if row.functionCall is not None:
+                file_ids |= extract_workspace_file_ids(_json_or_none(row.functionCall))
+    return file_ids
 
 
 def _is_shareable(file: UserWorkspaceFile | None) -> bool:
@@ -869,9 +864,13 @@ async def _collect_execution_ids_from_messages(session_id: str) -> set[str]:
     ``AgentOutputResponse`` (nested ``execution.execution_id`` from the
     sync-complete ``wait_for_result`` path).
     """
-    rows = await PrismaChatMessage.prisma().find_many(
-        where={"sessionId": session_id, "role": "tool"},
-    )
+    execution_ids: set[str] = set()
+    async for rows in iter_chat_message_pages(session_id, role="tool"):
+        execution_ids |= _execution_ids_in(rows)
+    return execution_ids
+
+
+def _execution_ids_in(rows: list[PrismaChatMessage]) -> set[str]:
     execution_ids: set[str] = set()
     for row in rows:
         if not row.content:
