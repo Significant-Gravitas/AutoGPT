@@ -274,7 +274,9 @@ export function useLibraryAgentList({
   // Favorites-only unknown must not re-read the All pages.
   const { recovered } = useSchedulerProbe(hasUnknownSchedules(allAgentsList));
   useEffect(() => {
-    if (recovered) void refetch();
+    // cancelRefetch: false lets an in-flight multi-page reread finish: a
+    // new probe answer while one runs is ignored instead of restarting it.
+    if (recovered) void refetch({ cancelRefetch: false });
   }, [recovered, refetch]);
 
   useEffect(() => {

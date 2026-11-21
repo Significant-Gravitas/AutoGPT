@@ -46,7 +46,9 @@ export function useLibraryAgents() {
   );
   const { recovered } = useSchedulerProbe(schedulesUnknown);
   useEffect(() => {
-    if (recovered) void refetch();
+    // cancelRefetch: false lets an in-flight multi-page reread finish: a
+    // new probe answer while one runs is ignored instead of restarting it.
+    if (recovered) void refetch({ cancelRefetch: false });
   }, [recovered, refetch]);
 
   const loadedPages = agentsQueryData?.pages.length ?? 0;

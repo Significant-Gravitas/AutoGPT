@@ -50,7 +50,9 @@ export function useFavoriteAgents({ searchTerm }: Props) {
   // re-reading every loaded page; once it answers, this list re-reads once per answer while its schedules stay unknown.
   const { recovered } = useSchedulerProbe(hasUnknownSchedules(allAgents));
   useEffect(() => {
-    if (recovered) void refetch();
+    // cancelRefetch: false lets an in-flight multi-page reread finish: a
+    // new probe answer while one runs is ignored instead of restarting it.
+    if (recovered) void refetch({ cancelRefetch: false });
   }, [recovered, refetch]);
 
   const agentCount = getPaginatedTotalCount(agentsQueryData);
