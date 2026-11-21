@@ -1,6 +1,7 @@
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import Link from "next/link";
 import React from "react";
+import { getBuilderHref } from "@/app/(platform)/build/helpers/builderHref";
 
 type ValidationErrorDetail = {
   type: string;
@@ -58,7 +59,7 @@ export function formatValidationError(
               Open the workflow in the builder and try running it there for more
               details.{" "}
               <Link
-                href={`/build?flowID=${agentInfo.graph_id}&flowVersion=${agentInfo.graph_version}`}
+                href={getBuilderHref(agentInfo.graph_id)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="cursor-pointer underline hover:no-underline"
