@@ -268,6 +268,14 @@ async def _run_in_a_dry_run_session(input_data: dict, **kwargs):
         patch(
             "backend.copilot.tools.run_block.execute_block", new_callable=AsyncMock
         ) as simulate,
+        patch(
+            "backend.copilot.tools.run_block.check_spend_approval",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as spend_gate,
+        patch(
+            "backend.copilot.tools.run_block.check_hitl_review", new_callable=AsyncMock
+        ) as review_gate,
     ):
         response = await RunBlockTool()._execute(
             user_id=_TEST_USER_ID,
@@ -276,7 +284,7 @@ async def _run_in_a_dry_run_session(input_data: dict, **kwargs):
             input_data=input_data,
             **kwargs,
         )
-    return response, simulate
+    return response, simulate, (spend_gate, review_gate)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -290,7 +298,7 @@ async def test_a_dry_run_session_returns_details_for_a_call_that_only_looks(
 ):
     """A dry run changes how a block runs, not whether Otto can read it first:
     the first step of the two-step flow returns the schema in any session."""
-    response, simulate = await _run_in_a_dry_run_session(
+    response, simulate, _ = await _run_in_a_dry_run_session(
         input_data, validate_only=validate_only
     )
 
@@ -301,7 +309,14 @@ async def test_a_dry_run_session_returns_details_for_a_call_that_only_looks(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_dry_run_session_simulates_a_call_that_would_run_the_block():
-    response, simulate = await _run_in_a_dry_run_session({"url": "https://example.com"})
+    """Simulation never calls the real service, so the spend and review gates
+    stay out of it."""
+    response, simulate, gates = await _run_in_a_dry_run_session(
+        {"url": "https://example.com"}
+    )
+
+    for gate in gates:
+        gate.assert_not_awaited()
 
     simulate.assert_awaited_once()
     call = simulate.await_args
