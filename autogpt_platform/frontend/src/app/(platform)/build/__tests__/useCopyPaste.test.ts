@@ -93,26 +93,6 @@ function createTestEdge(
   } as CustomEdge;
 }
 
-function makeCopyEvent(): KeyboardEvent {
-  return new KeyboardEvent("keydown", {
-    key: "c",
-    ctrlKey: true,
-    bubbles: true,
-  });
-}
-
-function makePasteEvent(): KeyboardEvent {
-  return new KeyboardEvent("keydown", {
-    key: "v",
-    ctrlKey: true,
-    bubbles: true,
-  });
-}
-
-function clipboardPayload(nodes: CustomNode[], edges: CustomEdge[]): string {
-  return `${CLIPBOARD_PREFIX}${JSON.stringify({ nodes, edges })}`;
-}
-
 describe("useCopyPaste", () => {
   beforeEach(() => {
     useNodeStore.setState({ nodes: [], nodeCounter: 0 });
@@ -135,20 +115,12 @@ describe("useCopyPaste", () => {
       const node = createTestNode("1", { selected: true });
       useNodeStore.setState({ nodes: [node] });
 
-      const { result } = renderHook(() => useCopyPaste());
+      press(keydown("c"));
 
-      act(() => {
-        result.current(makeCopyEvent());
-      });
-
-      await vi.waitFor(() => {
-        expect(mockWriteText).toHaveBeenCalledTimes(1);
-      });
-
-      const written = (mockWriteText.mock.calls as string[][])[0][0];
+      const written = await writtenClipboard();
       expect(written.startsWith(CLIPBOARD_PREFIX)).toBe(true);
 
-      const parsed = JSON.parse(written.slice(CLIPBOARD_PREFIX.length));
+      const parsed = parsePayload(written);
       expect(parsed.nodes).toHaveLength(1);
       expect(parsed.nodes[0].id).toBe("1");
       expect(parsed.edges).toHaveLength(0);
@@ -158,11 +130,7 @@ describe("useCopyPaste", () => {
       const node = createTestNode("1", { selected: true });
       useNodeStore.setState({ nodes: [node] });
 
-      const { result } = renderHook(() => useCopyPaste());
-
-      act(() => {
-        result.current(makeCopyEvent());
-      });
+      press(keydown("c"));
 
       await vi.waitFor(() => {
         expect(mockToast).toHaveBeenCalledWith(
@@ -186,21 +154,9 @@ describe("useCopyPaste", () => {
         ],
       });
 
-      const { result } = renderHook(() => useCopyPaste());
+      press(keydown("c"));
 
-      act(() => {
-        result.current(makeCopyEvent());
-      });
-
-      await vi.waitFor(() => {
-        expect(mockWriteText).toHaveBeenCalledTimes(1);
-      });
-
-      const parsed = JSON.parse(
-        (mockWriteText.mock.calls as string[][])[0][0].slice(
-          CLIPBOARD_PREFIX.length,
-        ),
-      );
+      const parsed = parsePayload(await writtenClipboard());
       expect(parsed.nodes).toHaveLength(2);
       expect(parsed.edges).toHaveLength(1);
       expect(parsed.edges[0].id).toBe("e-ab");
@@ -215,21 +171,9 @@ describe("useCopyPaste", () => {
         edges: [createTestEdge("e-ab", "a", "b")],
       });
 
-      const { result } = renderHook(() => useCopyPaste());
+      press(keydown("c"));
 
-      act(() => {
-        result.current(makeCopyEvent());
-      });
-
-      await vi.waitFor(() => {
-        expect(mockWriteText).toHaveBeenCalledTimes(1);
-      });
-
-      const parsed = JSON.parse(
-        (mockWriteText.mock.calls as string[][])[0][0].slice(
-          CLIPBOARD_PREFIX.length,
-        ),
-      );
+      const parsed = parsePayload(await writtenClipboard());
       expect(parsed.nodes).toHaveLength(1);
       expect(parsed.edges).toHaveLength(0);
     });
@@ -238,21 +182,9 @@ describe("useCopyPaste", () => {
       const node = createTestNode("1", { selected: false });
       useNodeStore.setState({ nodes: [node] });
 
-      const { result } = renderHook(() => useCopyPaste());
+      press(keydown("c"));
 
-      act(() => {
-        result.current(makeCopyEvent());
-      });
-
-      await vi.waitFor(() => {
-        expect(mockWriteText).toHaveBeenCalledTimes(1);
-      });
-
-      const parsed = JSON.parse(
-        (mockWriteText.mock.calls as string[][])[0][0].slice(
-          CLIPBOARD_PREFIX.length,
-        ),
-      );
+      const parsed = parsePayload(await writtenClipboard());
       expect(parsed.nodes).toHaveLength(0);
       expect(parsed.edges).toHaveLength(0);
     });
@@ -265,22 +197,11 @@ describe("useCopyPaste", () => {
         position: { x: 100, y: 200 },
       });
 
-      mockReadText.mockResolvedValue(clipboardPayload([node], []));
+      clipboardHolds([node]);
 
-      useNodeStore.setState({ nodes: [], nodeCounter: 0 });
+      press(keydown("v"));
 
-      const { result } = renderHook(() => useCopyPaste());
-
-      act(() => {
-        result.current(makePasteEvent());
-      });
-
-      await vi.waitFor(() => {
-        const { nodes } = useNodeStore.getState();
-        expect(nodes).toHaveLength(1);
-      });
-
-      const { nodes } = useNodeStore.getState();
+      const nodes = await pastedNodes(1);
       expect(nodes[0].id).toBe("new-uuid-1");
       expect(nodes[0].id).not.toBe("orig");
     });
@@ -294,22 +215,11 @@ describe("useCopyPaste", () => {
         position: { x: 100, y: 100 },
       });
 
-      mockReadText.mockResolvedValue(clipboardPayload([node], []));
+      clipboardHolds([node]);
 
-      useNodeStore.setState({ nodes: [], nodeCounter: 0 });
+      press(keydown("v"));
 
-      const { result } = renderHook(() => useCopyPaste());
-
-      act(() => {
-        result.current(makePasteEvent());
-      });
-
-      await vi.waitFor(() => {
-        const { nodes } = useNodeStore.getState();
-        expect(nodes).toHaveLength(1);
-      });
-
-      const { nodes } = useNodeStore.getState();
+      const nodes = await pastedNodes(1);
       // Single node: center of bounds = (100, 100)
       // Viewport center = (500, 400)
       // Offset = (400, 300)
@@ -330,20 +240,11 @@ describe("useCopyPaste", () => {
         position: { x: 100, y: 100 },
       });
 
-      mockReadText.mockResolvedValue(clipboardPayload([nodeToPaste], []));
+      clipboardHolds([nodeToPaste]);
 
-      const { result } = renderHook(() => useCopyPaste());
+      press(keydown("v"));
 
-      act(() => {
-        result.current(makePasteEvent());
-      });
-
-      await vi.waitFor(() => {
-        const { nodes } = useNodeStore.getState();
-        expect(nodes).toHaveLength(2);
-      });
-
-      const { nodes } = useNodeStore.getState();
+      const nodes = await pastedNodes(2);
       const originalNode = nodes.find((n) => n.id === "existing");
       const pastedNode = nodes.find((n) => n.id !== "existing");
 
@@ -362,21 +263,11 @@ describe("useCopyPaste", () => {
       });
       const edge = createTestEdge("e-ab", "a", "b", "output", "input");
 
-      mockReadText.mockResolvedValue(clipboardPayload([nodeA, nodeB], [edge]));
+      clipboardHolds([nodeA, nodeB], [edge]);
 
-      useNodeStore.setState({ nodes: [], nodeCounter: 0 });
-      useEdgeStore.setState({ edges: [] });
+      press(keydown("v"));
 
-      const { result } = renderHook(() => useCopyPaste());
-
-      act(() => {
-        result.current(makePasteEvent());
-      });
-
-      await vi.waitFor(() => {
-        const { nodes } = useNodeStore.getState();
-        expect(nodes).toHaveLength(2);
-      });
+      await pastedNodes(2);
 
       // Wait for edges to be added too
       await vi.waitFor(() => {
@@ -396,42 +287,19 @@ describe("useCopyPaste", () => {
       expect(newEdge.targetHandle).toBe("input");
     });
 
-    it("does nothing when clipboard does not have the expected prefix", async () => {
-      mockReadText.mockResolvedValue("some random text");
+    it.each([
+      [
+        "does nothing when clipboard does not have the expected prefix",
+        "some random text",
+      ],
+      ["does nothing when clipboard is empty", ""],
+    ])("%s", async (_title, clipboardText) => {
+      mockReadText.mockResolvedValue(clipboardText);
 
       const existingNode = createTestNode("1", { position: { x: 0, y: 0 } });
       useNodeStore.setState({ nodes: [existingNode], nodeCounter: 0 });
 
-      const { result } = renderHook(() => useCopyPaste());
-
-      act(() => {
-        result.current(makePasteEvent());
-      });
-
-      // Give async operations time to settle
-      await vi.waitFor(() => {
-        expect(mockReadText).toHaveBeenCalled();
-      });
-
-      // Ensure no state changes happen after clipboard read
-      await vi.waitFor(() => {
-        const { nodes } = useNodeStore.getState();
-        expect(nodes).toHaveLength(1);
-        expect(nodes[0].id).toBe("1");
-      });
-    });
-
-    it("does nothing when clipboard is empty", async () => {
-      mockReadText.mockResolvedValue("");
-
-      const existingNode = createTestNode("1", { position: { x: 0, y: 0 } });
-      useNodeStore.setState({ nodes: [existingNode], nodeCounter: 0 });
-
-      const { result } = renderHook(() => useCopyPaste());
-
-      act(() => {
-        result.current(makePasteEvent());
-      });
+      press(keydown("v"));
 
       await vi.waitFor(() => {
         expect(mockReadText).toHaveBeenCalled();
@@ -455,11 +323,7 @@ describe("useCopyPaste", () => {
       document.body.appendChild(input);
       input.focus();
 
-      const { result } = renderHook(() => useCopyPaste());
-
-      act(() => {
-        result.current(makeCopyEvent());
-      });
+      press(keydown("c"));
 
       // Clipboard write should NOT be called
       expect(mockWriteText).not.toHaveBeenCalled();
@@ -468,24 +332,13 @@ describe("useCopyPaste", () => {
     });
 
     it("ignores Ctrl+V when a textarea element is focused", async () => {
-      mockReadText.mockResolvedValue(
-        clipboardPayload(
-          [createTestNode("a", { position: { x: 0, y: 0 } })],
-          [],
-        ),
-      );
-
-      useNodeStore.setState({ nodes: [], nodeCounter: 0 });
+      clipboardHolds([createTestNode("a", { position: { x: 0, y: 0 } })]);
 
       const textarea = document.createElement("textarea");
       document.body.appendChild(textarea);
       textarea.focus();
 
-      const { result } = renderHook(() => useCopyPaste());
-
-      act(() => {
-        result.current(makePasteEvent());
-      });
+      press(keydown("v"));
 
       expect(mockReadText).not.toHaveBeenCalled();
 
@@ -504,11 +357,7 @@ describe("useCopyPaste", () => {
       document.body.appendChild(div);
       div.focus();
 
-      const { result } = renderHook(() => useCopyPaste());
-
-      act(() => {
-        result.current(makeCopyEvent());
-      });
+      press(keydown("c"));
 
       expect(mockWriteText).not.toHaveBeenCalled();
 
@@ -521,29 +370,15 @@ describe("useCopyPaste", () => {
       const node = createTestNode("1", { selected: true });
       useNodeStore.setState({ nodes: [node] });
 
-      const { result } = renderHook(() => useCopyPaste(true));
-
-      act(() => {
-        result.current(makeCopyEvent());
-      });
+      press(keydown("c"), true);
 
       expect(mockWriteText).not.toHaveBeenCalled();
     });
 
     it("ignores Ctrl+V when the graph is read-only", async () => {
-      mockReadText.mockResolvedValue(
-        clipboardPayload(
-          [createTestNode("a", { position: { x: 0, y: 0 } })],
-          [],
-        ),
-      );
-      useNodeStore.setState({ nodes: [], nodeCounter: 0 });
+      clipboardHolds([createTestNode("a", { position: { x: 0, y: 0 } })]);
 
-      const { result } = renderHook(() => useCopyPaste(true));
-
-      act(() => {
-        result.current(makePasteEvent());
-      });
+      press(keydown("v"), true);
 
       expect(mockReadText).not.toHaveBeenCalled();
       expect(useNodeStore.getState().nodes).toHaveLength(0);
@@ -555,21 +390,9 @@ describe("useCopyPaste", () => {
       const node = createTestNode("1", { selected: true });
       useNodeStore.setState({ nodes: [node] });
 
-      const { result } = renderHook(() => useCopyPaste());
+      press(keydown("c", "metaKey"));
 
-      const metaCopyEvent = new KeyboardEvent("keydown", {
-        key: "c",
-        metaKey: true,
-        bubbles: true,
-      });
-
-      act(() => {
-        result.current(metaCopyEvent);
-      });
-
-      await vi.waitFor(() => {
-        expect(mockWriteText).toHaveBeenCalledTimes(1);
-      });
+      await writtenClipboard();
     });
 
     it("handles Cmd+V (metaKey) the same as Ctrl+V", async () => {
@@ -577,25 +400,54 @@ describe("useCopyPaste", () => {
         selected: true,
         position: { x: 0, y: 0 },
       });
-      mockReadText.mockResolvedValue(clipboardPayload([node], []));
-      useNodeStore.setState({ nodes: [], nodeCounter: 0 });
+      clipboardHolds([node]);
 
-      const { result } = renderHook(() => useCopyPaste());
+      press(keydown("v", "metaKey"));
 
-      const metaPasteEvent = new KeyboardEvent("keydown", {
-        key: "v",
-        metaKey: true,
-        bubbles: true,
-      });
-
-      act(() => {
-        result.current(metaPasteEvent);
-      });
-
-      await vi.waitFor(() => {
-        const { nodes } = useNodeStore.getState();
-        expect(nodes).toHaveLength(1);
-      });
+      await pastedNodes(1);
     });
   });
 });
+
+// Arguments after the event go to the hook as given, so an omitted one takes its default.
+function press(
+  event: KeyboardEvent,
+  ...hookArgs: Parameters<typeof useCopyPaste>
+) {
+  const { result } = renderHook(() => useCopyPaste(...hookArgs));
+  act(() => {
+    result.current(event);
+  });
+}
+
+function keydown(
+  key: "c" | "v",
+  modifier: "ctrlKey" | "metaKey" = "ctrlKey",
+): KeyboardEvent {
+  return new KeyboardEvent("keydown", { key, [modifier]: true, bubbles: true });
+}
+
+function clipboardHolds(nodes: CustomNode[], edges: CustomEdge[] = []) {
+  mockReadText.mockResolvedValue(
+    `${CLIPBOARD_PREFIX}${JSON.stringify({ nodes, edges })}`,
+  );
+}
+
+async function writtenClipboard(): Promise<string> {
+  await vi.waitFor(() => {
+    expect(mockWriteText).toHaveBeenCalledTimes(1);
+  });
+  return (mockWriteText.mock.calls as string[][])[0][0];
+}
+
+function parsePayload(written: string) {
+  return JSON.parse(written.slice(CLIPBOARD_PREFIX.length));
+}
+
+async function pastedNodes(count: number): Promise<CustomNode[]> {
+  await vi.waitFor(() => {
+    const { nodes } = useNodeStore.getState();
+    expect(nodes).toHaveLength(count);
+  });
+  return useNodeStore.getState().nodes;
+}
