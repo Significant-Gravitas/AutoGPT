@@ -6,13 +6,15 @@ import json
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import e2b.api.client_async as e2b_client
 import httpx
 import pytest
+from connectrpc._client_async import ConnectClient
 from e2b import AsyncCommandHandle, AsyncSandbox, ConnectionConfig, SandboxException
 from e2b.envd.process import process_pb
 from packaging.version import Version
 from protobuf import Oneof
-from pyqwest import Headers, Request, Response
+from pyqwest import Client, Headers, Request, Response
 
 from backend.util.sandbox_output import (
     MAX_SANDBOX_MESSAGE_SIZE,
@@ -20,6 +22,7 @@ from backend.util.sandbox_output import (
     MAX_SANDBOX_RESPONSE_SIZE,
     OutputLimitedCodeSandbox,
     SandboxOutputLimitError,
+    _count_api_body,
     limit_sandbox_responses,
     read_sandbox_file,
     run_sandbox_command,
@@ -352,7 +355,7 @@ def _limited_sandbox_with_file_api(
 
     transport = httpx.MockTransport(respond)
     monkeypatch.setattr(
-        "e2b.api.client_async.get_envd_transport", lambda *_, **__: transport
+        "e2b.api.client_async.get_transport", lambda *_, **__: transport
     )
     return limit_sandbox_responses(_plain_sandbox())
 
@@ -429,6 +432,104 @@ async def test_a_limited_sandbox_stops_a_long_answer_to_a_health_check(monkeypat
         await sandbox.is_running()
 
     assert sent.size <= MAX_SANDBOX_MESSAGE_SIZE + _MIB // 4
+
+
+@pytest.mark.asyncio
+async def test_a_limited_sandbox_stops_a_long_answer_to_a_health_probe(monkeypatch):
+    """The SDK probes the daemon's health after a failed request, on clients of
+    its own, and reads the answer whole."""
+    sent = _Sent()
+    sandbox = _limited_sandbox_with_file_api(
+        monkeypatch, 502, _Body(_long_json(sent, b'{"message": "', b'"}'))
+    )
+
+    assert await sandbox.commands._check_health() is None
+
+    assert sent.size <= MAX_SANDBOX_MESSAGE_SIZE + _MIB // 4
+
+
+def test_every_client_the_sdk_builds_for_a_box_is_limited(monkeypatch):
+    """An SDK version that gives a box another client gives it another reader."""
+    made: list[Client] = []
+
+    def client(transport):
+        made.append(Client(transport))
+        return made[-1]
+
+    monkeypatch.setattr("backend.util.sandbox_output.Client", client)
+
+    rpc, http = _envd_clients(limit_sandbox_responses(_plain_sandbox()))
+
+    assert rpc and all(found._http_client is made[0] for found in rpc)
+    assert http and all(
+        _count_api_body in found.event_hooks["response"]
+        and found.headers["accept-encoding"] == "identity"
+        for found in http
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_limited_sandbox_reads_through_the_sdks_own_connection_pool(
+    monkeypatch,
+):
+    """The SDK picks its RPC clients' pool by settings that change between
+    versions; the limited transport must reach the same pool."""
+    sdk_pools: list[object] = []
+    limited_pools: list[object] = []
+
+    class Unreachable:
+        async def execute(self, request: Request) -> Response:
+            raise ConnectionError("no box here")
+
+    def sdk_pool(*args, **kwargs):
+        sdk_pools.append(e2b_client.get_pyqwest_transport(*args, **kwargs))
+        return sdk_pools[-1]
+
+    def limited_pool(*args, **kwargs):
+        limited_pools.append(e2b_client.get_pyqwest_transport(*args, **kwargs))
+        return Unreachable()
+
+    monkeypatch.setattr("e2b.envd.client_async.get_pyqwest_transport", sdk_pool)
+    sandbox = AsyncSandbox(
+        sandbox_id="sb-1",
+        envd_version=Version("0.2.0"),
+        envd_access_token=None,
+        sandbox_domain=None,
+        # Not the default, so a limit that ignored it would pick another pool.
+        connection_config=ConnectionConfig(api_key="k", http_version="1.1"),
+    )
+    monkeypatch.setattr(
+        "backend.util.sandbox_output.get_pyqwest_transport", limited_pool
+    )
+
+    with pytest.raises(Exception):
+        await limit_sandbox_responses(sandbox).files.list("/")
+
+    assert limited_pools and {id(pool) for pool in limited_pools} == {
+        id(pool) for pool in sdk_pools
+    }
+
+
+def _envd_clients(sandbox: AsyncSandbox):
+    """Every RPC and HTTP client the SDK keeps on the box, wherever it keeps it."""
+    rpc: list[ConnectClient] = []
+    http: list[httpx.AsyncClient] = []
+    seen: set[int] = set()
+    todo: list[object] = [sandbox]
+    while todo:
+        for value in vars(todo.pop()).values():
+            if id(value) in seen:
+                continue
+            seen.add(id(value))
+            if isinstance(value, ConnectClient):
+                rpc.append(value)
+            elif isinstance(value, httpx.AsyncClient):
+                http.append(value)
+            elif type(value).__module__.startswith("e2b.") and hasattr(
+                value, "__dict__"
+            ):
+                todo.append(value)
+    return rpc, http
 
 
 class _Stream:

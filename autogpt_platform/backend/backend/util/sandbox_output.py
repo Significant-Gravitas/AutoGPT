@@ -7,7 +7,7 @@ import httpx
 from connectrpc.code import Code
 from connectrpc.errors import ConnectError
 from e2b import AsyncSandbox, CommandResult, ConnectionConfig
-from e2b.api import envd_pool_shard, proxy_to_config
+from e2b.api import proxy_to_config
 from e2b.api.client_async import get_pyqwest_transport
 from e2b.envd.api import ENVD_API_FILES_ROUTE
 from e2b.envd.client_async import PlainHTTPErrorTransport
@@ -71,10 +71,14 @@ def limit_sandbox_responses(sandbox: S) -> S:
     http_client = Client(
         PlainHTTPErrorTransport(_LimitedTransport(sandbox.connection_config))
     )
-    for service in (sandbox.commands, sandbox.files, sandbox.pty):
+    services = (sandbox.commands, sandbox.files, sandbox.pty)
+    for service in services:
         # The SDK takes no transport from its caller.
         service._rpc._http_client = http_client
-    for api in (sandbox._envd_api, sandbox.files._envd_api_streaming):
+    file_apis = [sandbox._envd_api, sandbox.files._envd_api_streaming]
+    # Each service also probes the daemon's health after a failed request.
+    file_apis += [service._envd_health_api for service in services]
+    for api in file_apis:
         # Uncompressed, so the counter sees what the SDK will decode.
         api.headers["accept-encoding"] = "identity"
         api.event_hooks["response"].append(_count_api_body)
@@ -120,10 +124,9 @@ class _LimitedTransport:
         self._config = config
 
     async def execute(self, request: Request) -> Response:
-        # The same cached pool the SDK's own RPC clients use.
+        # The cached pool the SDK's own RPC clients use (`create_rpc_client`).
         pool = get_pyqwest_transport(
-            proxy_to_config(self._config.proxy),
-            pool_shard=envd_pool_shard(self._config),
+            proxy_to_config(self._config.proxy), http_version=self._config.http_version
         )
         response = await pool.execute(request)
         return Response(
