@@ -856,11 +856,11 @@ assert_agent_runs() {
 
   start=${SECONDS}
   while :; do
-    # A failed poll, such as a proxy blip, is retried until the deadline.
+    # A failed poll, such as a proxy blip or a body that isn't a run, is
+    # retried until the deadline.
+    status=unreachable
     if body="$(smoke_api GET "/graphs/${graph_id}/executions/${run_id}")"; then
-      status="$(json_fields "${body}" status)"
-    else
-      status=unreachable
+      status="$(json_fields "${body}" status)" || status=unreachable
     fi
     case "${status}" in
       COMPLETED)
