@@ -4,9 +4,6 @@ import { expect, test } from "./fixtures";
 
 const WEBHOOK_TRIGGER_BLOCK_ID = "8fa8c167-2002-47ce-aba8-97572fc5d387";
 const AGENT_OUTPUT_BLOCK_ID = "363ae599-353e-4804-937e-b2ee3cef3da4";
-// Webhooks arrive at the backend; the browser only talks to the frontend.
-const BACKEND_URL =
-  process.env.PLAYWRIGHT_BACKEND_URL ?? "http://localhost:8006";
 const RUN_ENDED = /^(COMPLETED|FAILED|TERMINATED)$/;
 
 interface Graph {
@@ -22,25 +19,37 @@ interface Run {
 test.describe("triggers journey", () => {
   test("a webhook trigger runs its agent with what it receives, and only with its secret", async ({
     page,
+    playwright,
     journeyUser: _user,
   }) => {
+    const backend = backendURL();
     const graph = await createWebhookAgent(
       page,
       createUniqueAgentName("Journey webhook trigger"),
     );
     const secret = `journey-secret-${Date.now()}`;
     const preset = await setUpTrigger(page, graph, secret);
-    const ingress = `${BACKEND_URL}/api/integrations/generic_webhook/webhooks/${preset.webhook_id}/ingress`;
+    // Deliveries carry no session, as a stranger's or a service's would, so
+    // the secret alone has to admit them.
+    const deliveries = await playwright.request.newContext({
+      storageState: { cookies: [], origins: [] },
+    });
 
     try {
+      expect(
+        preset.webhook_id,
+        "the trigger should get a webhook",
+      ).toBeTruthy();
+      const ingress = `${backend}/api/integrations/generic_webhook/webhooks/${preset.webhook_id}/ingress`;
+
       // Anyone who learns the URL can post to it, so the secret is what
       // keeps a stranger from running the agent.
-      const refused = await page.request.post(ingress, {
+      const refused = await deliveries.post(ingress, {
         data: { message: "without the secret" },
       });
       expect(refused.status(), "a delivery without the secret").toBe(403);
 
-      const delivered = await page.request.post(ingress, {
+      const delivered = await deliveries.post(ingress, {
         data: { message: "hello from the journey" },
         headers: { "X-Webhook-Secret": secret },
       });
@@ -76,16 +85,41 @@ test.describe("triggers journey", () => {
         expect.objectContaining({ message: "hello from the journey" }),
       ]);
     } finally {
-      const removed = await page.request.delete(
-        `/api/proxy/api/library/presets/${preset.id}`,
-      );
-      expect(
-        removed.ok(),
-        `deleting the trigger failed: ${removed.status()}`,
-      ).toBe(true);
+      await deliveries.dispose();
+      // Cleanup records its own failure, never throwing over the one that
+      // brought the test here.
+      try {
+        const removed = await page.request.delete(
+          `/api/proxy/api/library/presets/${preset.id}`,
+        );
+        expect
+          .soft(
+            removed.ok(),
+            `deleting the trigger failed: ${removed.status()}`,
+          )
+          .toBe(true);
+      } catch (error) {
+        expect.soft(error, "deleting the trigger threw").toBeUndefined();
+      }
     }
   });
 });
+
+// Webhooks arrive at the backend; the browser only talks to the frontend.
+// Against a remote frontend, say which backend to deliver to.
+function backendURL(): string {
+  const explicit = process.env.PLAYWRIGHT_BACKEND_URL;
+  if (explicit) return explicit;
+  const base = new URL(
+    process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
+  );
+  if (!["localhost", "127.0.0.1"].includes(base.hostname)) {
+    throw new Error(
+      `PLAYWRIGHT_BASE_URL is ${base.origin}: set PLAYWRIGHT_BACKEND_URL to that stack's backend, where webhooks are delivered`,
+    );
+  }
+  return "http://localhost:8006";
+}
 
 // An agent whose webhook trigger hands what it receives to an output.
 async function createWebhookAgent(page: Page, name: string): Promise<Graph> {
@@ -152,12 +186,7 @@ async function setUpTrigger(page: Page, graph: Graph, secret: string) {
     response.ok(),
     `setting up the trigger failed: ${response.status()}`,
   ).toBe(true);
-  const preset = (await response.json()) as {
-    id: string;
-    webhook_id: string | null;
-  };
-  expect(preset.webhook_id, "the trigger should get a webhook").toBeTruthy();
-  return { id: preset.id, webhook_id: String(preset.webhook_id) };
+  return (await response.json()) as { id: string; webhook_id: string | null };
 }
 
 async function listRuns(page: Page, graphId: string): Promise<Run[]> {
