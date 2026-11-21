@@ -3,8 +3,9 @@ import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ExpertAvatar } from "@/components/ExpertAvatar";
+import { ExpertConnections } from "@/features/connections/components/ExpertConnections/ExpertConnections";
 import { FileLibrary } from "@/features/files/components/FileLibrary";
-import { createStyles, spacing } from "@/lib/theme";
+import { createStyles, spacing, useColors } from "@/lib/theme";
 
 import { ActivityTab } from "./ActivityTab";
 import { PanelTopBar } from "./PanelTopBar";
@@ -21,7 +22,7 @@ interface Props {
   onClose: () => void;
 }
 
-/** The panel in an expert's chat: who they are, what they do, their files. */
+/** The panel in an expert's chat: who they are, what they do, their files and connections. */
 export function ExpertPanel({
   sessionID,
   expertID,
@@ -35,6 +36,7 @@ export function ExpertPanel({
   const [tab, setTab] = useState<PanelTab>("activity");
   const insets = useSafeAreaInsets();
   const styles = useStyles();
+  const colors = useColors();
 
   return (
     <ScrollView
@@ -45,7 +47,13 @@ export function ExpertPanel({
     >
       <PanelTopBar sessionID={sessionID} onClose={onClose} />
       <View style={styles.identity}>
-        <ExpertAvatar name={name} source={avatar} size={76} tint={tint} />
+        <ExpertAvatar
+          name={name}
+          source={avatar}
+          size={76}
+          tint={tint}
+          background={colors.panelCard}
+        />
         <Text accessibilityRole="header" numberOfLines={1} style={styles.name}>
           {name}
         </Text>
@@ -58,13 +66,22 @@ export function ExpertPanel({
       <PanelTabs selected={tab} onSelect={setTab} />
       {tab === "activity" ? (
         <ActivityTab expertID={expertID} expertName={name} isOpen={isOpen} />
-      ) : (
+      ) : null}
+      {tab === "library" ? (
         <FileLibrary
           sessionID={sessionID}
           expert={{ id: expertID, name }}
           isOpen={isOpen}
         />
-      )}
+      ) : null}
+      {tab === "connections" ? (
+        <ExpertConnections
+          sessionID={sessionID}
+          expertID={expertID}
+          expertName={name}
+          isOpen={isOpen}
+        />
+      ) : null}
     </ScrollView>
   );
 }

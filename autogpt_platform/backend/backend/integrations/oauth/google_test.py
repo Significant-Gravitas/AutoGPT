@@ -189,15 +189,10 @@ async def test_revoke_tokens_propagates_http_failure(mocker: MockerFixture):
 
 @pytest.mark.asyncio
 async def test_revoke_tokens_uses_bounded_retries(mocker: MockerFixture):
-    """Cursor Medium (thread PRRT_kwDOJKSTjM58rtx1): the platform's
-    ``Requests`` helper retries *indefinitely* on 429/5xx by default
-    (no ``stop`` condition in tenacity unless ``retry_max_attempts`` is
-    passed). If Google's revoke endpoint transiently returns a 429 or
-    5xx, ``revoke_tokens`` would hang forever and block the credential
-    deletion API call.
-
-    Pin the bound: ``Requests`` must be constructed with a finite
-    ``retry_max_attempts`` so revoke always terminates."""
+    """Cursor Medium (thread PRRT_kwDOJKSTjM58rtx1): a transient 429 or 5xx
+    from Google's revoke endpoint must not hold up the credential deletion
+    API call, so revoke names its own finite ``retry_max_attempts`` rather
+    than relying on ``Requests``' default."""
     mock_response = MagicMock()
     mock_response.ok = True
     mock_post = AsyncMock(return_value=mock_response)

@@ -16,7 +16,6 @@ export function DeleteScheduleButton({ agent, scheduleId, onDeleted }: Props) {
   const { deleteSchedule, isDeleting } = useScheduleDetailHeader(
     agent.graph_id,
     scheduleId,
-    agent.graph_version,
   );
 
   return (

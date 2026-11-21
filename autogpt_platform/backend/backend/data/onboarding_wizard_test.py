@@ -129,12 +129,14 @@ async def test_saving_draft_scopes_user_and_never_completes_or_rewards(
     )
     assert len(calls) == 1
     draft_transaction.useronboarding.update_many.assert_awaited_once_with(
-        where={"userId": "authenticated-user", "wizardRevision": 3},
+        where={"userId": "authenticated-user", "OR": [{"wizardRevision": 3}]},
         data={
             "wizardProgress": SafeJson(payload),
             "role": "Other",
             "roleOther": "Founder",
             "wizardRevision": {"increment": 1},
+            "wizardWriterId": None,
+            "wizardWriteSeq": None,
         },
     )
     draft_transaction.useronboarding.find_unique_or_raise.assert_awaited_once_with(
@@ -174,11 +176,51 @@ async def test_the_answered_role_is_kept_in_the_drafts_own_write(
     )
 
     draft_transaction.useronboarding.update_many.assert_awaited_once_with(
-        where={"userId": "user-one", "wizardRevision": 3},
+        where={"userId": "user-one", "OR": [{"wizardRevision": 3}]},
         data={
             "wizardProgress": SafeJson(payload),
             **role,
             "wizardRevision": {"increment": 1},
+            "wizardWriterId": None,
+            "wizardWriteSeq": None,
+        },
+    )
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_a_named_tab_may_save_over_its_own_later_saves(mocker, draft_transaction):
+    prisma = mocker.patch("backend.data.onboarding.UserOnboarding.prisma")
+    prisma.return_value.upsert = AsyncMock(return_value=Mock(notified=[]))
+    payload = wizard_progress()
+
+    await update_user_onboarding(
+        "user-one",
+        UserOnboardingUpdate.model_validate(
+            {
+                "wizardProgress": payload,
+                "wizardRevision": 3,
+                "wizardUserId": "user-one",
+                "wizardWriterId": "tab-1",
+                "wizardWriteSeq": 5,
+            }
+        ),
+    )
+
+    draft_transaction.useronboarding.update_many.assert_awaited_once_with(
+        where={
+            "userId": "user-one",
+            "OR": [
+                {"wizardRevision": 3},
+                {"wizardWriterId": "tab-1", "wizardWriteSeq": {"lte": 5}},
+            ],
+        },
+        data={
+            "wizardProgress": SafeJson(payload),
+            "role": "Other",
+            "roleOther": "Founder",
+            "wizardRevision": {"increment": 1},
+            "wizardWriterId": "tab-1",
+            "wizardWriteSeq": 5,
         },
     )
 
@@ -284,6 +326,34 @@ async def test_cookie_account_switch_cannot_save_previous_users_draft(
 
     read.assert_not_awaited()
     draft_transaction.useronboarding.update_many.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "writer",
+    [
+        {"wizardWriterId": "tab-1"},
+        {"wizardWriteSeq": 1},
+        {"wizardWriterId": "", "wizardWriteSeq": 1},
+        {"wizardWriterId": 42, "wizardWriteSeq": 1},
+        {"wizardWriterId": "a" * 65, "wizardWriteSeq": 1},
+        {"wizardWriterId": "a\x00b", "wizardWriteSeq": 1},
+        {"wizardWriterId": "tab 1", "wizardWriteSeq": 1},
+        {"wizardWriterId": "tab-1", "wizardWriteSeq": 0},
+        {"wizardWriterId": "tab-1", "wizardWriteSeq": "1"},
+        {"wizardWriterId": "tab-1", "wizardWriteSeq": True},
+        {"wizardWriterId": "tab-1", "wizardWriteSeq": 2**31},
+    ],
+)
+def test_draft_names_its_tab_with_a_save_number(writer):
+    with pytest.raises(ValidationError):
+        UserOnboardingUpdate.model_validate(
+            {
+                "wizardProgress": wizard_progress(),
+                "wizardRevision": 0,
+                "wizardUserId": "user-one",
+                **writer,
+            }
+        )
 
 
 @pytest.mark.parametrize("owner", [None, "", 42, "a" * 129])

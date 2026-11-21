@@ -1,5 +1,4 @@
 import { skipToken, useQuery } from "@tanstack/react-query";
-import { router } from "expo-router";
 import { useState } from "react";
 
 import {
@@ -9,6 +8,7 @@ import {
   sessionQueryOptions,
 } from "@/lib/api/chat";
 import { expertKeys, listExperts } from "@/lib/api/experts";
+import { openHome } from "@/features/home/openHome";
 import { avatarSource, avatarTint, roleLine } from "@/features/team/helpers";
 import { OTTO_AVATAR_URL, OTTO_NAME, OTTO_ROLE, OTTO_TINT } from "@/lib/otto";
 
@@ -40,7 +40,8 @@ export function useChatScreen(routeSessionID: unknown) {
     }
     if (experts.isPending) return null;
     const expert = experts.data?.find((item) => item.id === expertID);
-    if (!expert) return { name: "Expert", role: null, avatar: null, tint: null };
+    if (!expert)
+      return { name: "Expert", role: null, avatar: null, tint: null };
     return {
       name: expert.name,
       role: roleLine(expert),
@@ -50,7 +51,7 @@ export function useChatScreen(routeSessionID: unknown) {
   }
 
   function newChat() {
-    router.navigate("/");
+    openHome(expertID);
   }
 
   function openFiles() {

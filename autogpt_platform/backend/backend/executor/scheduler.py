@@ -3584,26 +3584,35 @@ class Scheduler(AppService):
         assert job_args.schedule_id is not None
         kwargs = job_args.model_dump(mode="json")
         _check_schedule_size(kwargs)
-        self._check_schedule_capacity(job_args, replaces=replaces)
-        self._check_schedule_storage(job_args, kwargs, replaces=replaces)
-        job = self.scheduler.add_job(
-            dispatch_func,
-            kwargs=kwargs,
-            # Copilot and routine callers pass names no request model bounds.
-            name=name[:MAX_SCHEDULE_NAME_LENGTH] if name else name,
-            trigger=trigger,
-            jobstore=Jobstores.EXECUTION.value,
-            replace_existing=replace_existing,
-            id=job_args.schedule_id,
-        )
-        # Index AFTER add_job: a pre-add row would race the read path's
-        # dangling-row cleanup (row visible, job not yet persisted → row
-        # deleted → schedule invisible until reconcile).
-        self._upsert_schedule_index_row(job.id, job_args)
-        # Invalidate the read cache so the new job shows up on the next
-        # ``get_execution_schedules`` call instead of waiting up to
-        # ``_JOBS_CACHE_TTL_S`` seconds for the cached list to expire.
-        self._invalidate_jobs_cache()
+        # Counting the owner's schedules and what they store, and adding this
+        # one, are one step: two creates that both counted the last free slot
+        # would both take it (#16910). The lock holds through the index row and
+        # the cache invalidation, which the next count reads. It serializes the
+        # creates of one scheduler process. Rollouts recreate the scheduler, so
+        # two never run at once there. A pod deleted outside a rollout, or a
+        # drained node, can briefly overlap its replacement, and in that
+        # window an account can go one over its limit.
+        with self._schedule_capacity_lock:
+            self._check_schedule_capacity(job_args, replaces=replaces)
+            self._check_schedule_storage(job_args, kwargs, replaces=replaces)
+            job = self.scheduler.add_job(
+                dispatch_func,
+                kwargs=kwargs,
+                # Copilot and routine callers pass names no request model bounds.
+                name=name[:MAX_SCHEDULE_NAME_LENGTH] if name else name,
+                trigger=trigger,
+                jobstore=Jobstores.EXECUTION.value,
+                replace_existing=replace_existing,
+                id=job_args.schedule_id,
+            )
+            # Index AFTER add_job: a pre-add row would race the read path's
+            # dangling-row cleanup (row visible, job not yet persisted → row
+            # deleted → schedule invisible until reconcile).
+            self._upsert_schedule_index_row(job.id, job_args)
+            # Invalidate the read cache so the new job shows up on the next
+            # ``get_execution_schedules`` call instead of waiting up to
+            # ``_JOBS_CACHE_TTL_S`` seconds for the cached list to expire.
+            self._invalidate_jobs_cache()
         return job
 
     def _check_schedule_capacity(
@@ -4203,6 +4212,9 @@ class Scheduler(AppService):
     # Process-wide; guards both lists and the version. A threading lock because
     # APScheduler's thread and the Pyro RPC workers both read.
     _jobs_cache_lock = threading.Lock()
+    # Held from a create's count of its owner's schedules through its
+    # add_job, index row and cache invalidation.
+    _schedule_capacity_lock = threading.RLock()
     # Bumped by every invalidation. A read that started before one must not
     # write its result back: it may predate the mutation.
     _jobs_cache_version: int = 0

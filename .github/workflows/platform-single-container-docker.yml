@@ -104,7 +104,7 @@ jobs:
             > "$REPORT_DIR/status.json"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
           version: v0.36.0
           cleanup: false
@@ -338,7 +338,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
           version: v0.36.0
           cleanup: false
@@ -466,6 +466,9 @@ jobs:
     environment: dockerhub-release
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    outputs:
+      release_digest: ${{ steps.publish.outputs.release_digest }}
+      sha_digest: ${{ steps.publish.outputs.sha_digest }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -480,7 +483,7 @@ jobs:
           merge-multiple: true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
           version: v0.36.0
           driver-opts: |
@@ -493,6 +496,7 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Publish and verify manifest
+        id: publish
         shell: bash
         env:
           DIGEST_DIR: ${{ runner.temp }}/platform-single-container-publish-digests
@@ -508,3 +512,49 @@ jobs:
           repository: significantgravitas/autogpt
           short-description: Self-host your AI team. Hire experts, delegate work, and review results with AutoGPT.
           readme-filepath: ./autogpt_platform/single-container/README.md
+
+  # Signed SLSA build provenance for the two image indexes publish-manifest
+  # pushed: the release (vX.Y.Z, which latest also points to) and its
+  # sha-<commit> tag. docs/platform/single-container.md tells users how to
+  # check one. Only actions/attest runs here, so no third-party action or
+  # Docker Hub credential shares the identity it signs with. If this job
+  # fails, re-run it alone: it needs only publish-manifest's outputs, which a
+  # re-run keeps.
+  attest-provenance:
+    name: Attest build provenance
+    needs: [publish-manifest]
+    # Runs once the publish step has written both digests, even if a later
+    # publish-manifest step (the Docker Hub Overview update) failed. When the
+    # publish step fails, it writes no digest and this job is skipped.
+    if: ${{ !cancelled() && needs.publish-manifest.outputs.release_digest != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # signs the build provenance attestations below
+      attestations: write # stores those attestations with the repository
+    steps:
+      - name: Check the digests to attest
+        shell: bash
+        env:
+          RELEASE_DIGEST: ${{ needs.publish-manifest.outputs.release_digest }}
+          SHA_DIGEST: ${{ needs.publish-manifest.outputs.sha_digest }}
+        run: |
+          for digest in "$RELEASE_DIGEST" "$SHA_DIGEST"; do
+            if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "refusing to attest an invalid manifest digest" >&2
+              exit 1
+            fi
+          done
+
+      - name: Attest the release image's build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.DEPLOY_IMAGE }}
+          subject-digest: ${{ needs.publish-manifest.outputs.release_digest }}
+
+      - name: Attest the sha-tagged image's build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.DEPLOY_IMAGE }}
+          subject-digest: ${{ needs.publish-manifest.outputs.sha_digest }}

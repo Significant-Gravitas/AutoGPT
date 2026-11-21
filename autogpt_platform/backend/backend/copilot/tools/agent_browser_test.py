@@ -10,6 +10,7 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import urlparse
 
 import pytest
 
@@ -89,6 +90,10 @@ def _run_result(rc: int = 0, stdout: str = "", stderr: str = "") -> tuple:
     return (rc, stdout, stderr)
 
 
+async def _checked_as_given(url: str, *args: Any, **kwargs: Any) -> tuple:
+    return urlparse(url), False, ["1.2.3.4"]
+
+
 # ---------------------------------------------------------------------------
 # SSRF protection via shared validate_url_host (backend.util.request)
 # ---------------------------------------------------------------------------
@@ -147,10 +152,34 @@ class TestSsrfViaValidateUrl:
         assert result.error == "blocked_url"
 
     @pytest.mark.asyncio
+    async def test_a_signed_paths_sub_delimiters_reach_the_browser_unchanged(self):
+        url = "https://1.1.1.1/a(b),c=d;e+f!g*h'i$j&k/x.png?sig=1"
+        with patch(
+            "backend.copilot.tools.agent_browser._run",
+            new_callable=AsyncMock,
+            return_value=_run_result(rc=1, stderr="stop"),
+        ) as mock_run:
+            await self.tool._execute(user_id=None, session=self.session, url=url)
+        mock_run.assert_any_await(self.session.session_id, "open", url)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("given", ["about:blank", "data:text/plain,hi"])
+    async def test_a_non_web_scheme_without_slashes_is_refused(self, given: str):
+        with patch(
+            "backend.copilot.tools.agent_browser._run", new_callable=AsyncMock
+        ) as mock_run:
+            result = await self.tool._execute(
+                user_id=None, session=self.session, url=given
+            )
+        assert isinstance(result, ErrorResponse)
+        assert result.error == "blocked_url"
+        mock_run.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_validate_url_host_called_without_trusted_hostnames(self):
         """Confirms no trusted-hostnames bypass is granted — all URLs are validated."""
         with patch(_VALIDATE_URL, new_callable=AsyncMock) as mock_validate:
-            mock_validate.return_value = (object(), False, ["1.2.3.4"])
+            mock_validate.side_effect = _checked_as_given
             with patch(
                 "backend.copilot.tools.agent_browser._run",
                 new_callable=AsyncMock,
@@ -167,6 +196,27 @@ class TestSsrfViaValidateUrl:
                         url="https://example.com",
                     )
         mock_validate.assert_called_once_with("https://example.com")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "given",
+        [
+            "https://someone@1.1.1.1/page",
+            "1.1.1.1/page",
+            "//1.1.1.1/page",
+            "\\\\1.1.1.1/page",
+        ],
+    )
+    async def test_opens_the_url_the_host_check_returned(self, given: str):
+        with patch(
+            "backend.copilot.tools.agent_browser._run",
+            new_callable=AsyncMock,
+            return_value=_run_result(rc=1, stderr="stop"),
+        ) as mock_run:
+            await self.tool._execute(user_id=None, session=self.session, url=given)
+        mock_run.assert_any_await(
+            self.session.session_id, "open", "https://1.1.1.1/page"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -248,7 +298,7 @@ class TestBrowserNavigateExecute:
         with patch(
             _VALIDATE_URL,
             new_callable=AsyncMock,
-            return_value=(object(), False, ["1.2.3.4"]),
+            side_effect=_checked_as_given,
         ):
             with patch(
                 "backend.copilot.tools.agent_browser._run",
@@ -268,7 +318,7 @@ class TestBrowserNavigateExecute:
         with patch(
             _VALIDATE_URL,
             new_callable=AsyncMock,
-            return_value=(object(), False, ["1.2.3.4"]),
+            side_effect=_checked_as_given,
         ):
             with patch(
                 "backend.copilot.tools.agent_browser._run",
@@ -312,7 +362,7 @@ class TestBrowserNavigateExecute:
         with patch(
             _VALIDATE_URL,
             new_callable=AsyncMock,
-            return_value=(object(), False, ["1.2.3.4"]),
+            side_effect=_checked_as_given,
         ):
             with patch(
                 "backend.copilot.tools.agent_browser._run", side_effect=fake_run
@@ -1342,6 +1392,46 @@ class TestRestoreBrowserState:
         assert len(storage_cmds) == 2
 
     @pytest.mark.asyncio
+    async def test_restore_opens_the_url_the_host_check_returned(self):
+        session = make_session("checked-sess")
+        mock_mgr = _make_mock_manager()
+        mock_mgr.get_file_info_by_path.return_value = MagicMock(id="f-1")
+        mock_mgr.read_file.return_value = json.dumps(
+            {"url": "https://someone@1.1.1.1/page", "cookies": [], "local_storage": {}}
+        ).encode("utf-8")
+
+        with patch(
+            "backend.copilot.tools.agent_browser._run",
+            new_callable=AsyncMock,
+            return_value=_run_result(rc=0),
+        ) as mock_run:
+            with patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr):
+                await _restore_browser_state("checked-sess", "user1", session)
+
+        mock_run.assert_any_await("checked-sess", "open", "https://1.1.1.1/page")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("saved", ["about:blank", "data:text/plain,hi"])
+    async def test_restore_refuses_a_non_web_scheme_without_slashes(self, saved: str):
+        session = make_session("refused-sess")
+        mock_mgr = _make_mock_manager()
+        mock_mgr.get_file_info_by_path.return_value = MagicMock(id="f-1")
+        mock_mgr.read_file.return_value = json.dumps(
+            {"url": saved, "cookies": [], "local_storage": {}}
+        ).encode("utf-8")
+
+        with patch(
+            "backend.copilot.tools.agent_browser._run", new_callable=AsyncMock
+        ) as mock_run:
+            with patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr):
+                restored = await _restore_browser_state(
+                    "refused-sess", "user1", session
+                )
+
+        assert restored is False
+        mock_run.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_no_saved_state_returns_true(self):
         session = make_session("fresh-sess")
         mock_mgr = _make_mock_manager()
@@ -1857,7 +1947,7 @@ class TestStatePersistenceIntegration:
         with patch(
             _VALIDATE_URL,
             new_callable=AsyncMock,
-            return_value=(object(), False, ["1.2.3.4"]),
+            side_effect=_checked_as_given,
         ):
             with patch(
                 "backend.copilot.tools.agent_browser._run",
@@ -1890,7 +1980,7 @@ class TestStatePersistenceIntegration:
         with patch(
             _VALIDATE_URL,
             new_callable=AsyncMock,
-            return_value=(object(), False, ["1.2.3.4"]),
+            side_effect=_checked_as_given,
         ):
             with patch(
                 "backend.copilot.tools.agent_browser._run",
@@ -1921,7 +2011,7 @@ class TestStatePersistenceIntegration:
         with patch(
             _VALIDATE_URL,
             new_callable=AsyncMock,
-            return_value=(object(), False, ["1.2.3.4"]),
+            side_effect=_checked_as_given,
         ):
             with patch(
                 "backend.copilot.tools.agent_browser._run",
@@ -2151,7 +2241,7 @@ class TestPartialFailures:
                 with patch(
                     _VALIDATE_URL,
                     new_callable=AsyncMock,
-                    return_value=(object(), False, ["1.2.3.4"]),
+                    side_effect=_checked_as_given,
                 ):
                     result = await _restore_browser_state(
                         "partial-restore", "user1", session
@@ -2183,7 +2273,7 @@ class TestPartialFailures:
                 with patch(
                     _VALIDATE_URL,
                     new_callable=AsyncMock,
-                    return_value=(object(), False, ["1.2.3.4"]),
+                    side_effect=_checked_as_given,
                 ):
                     result = await _restore_browser_state(
                         "url-fail-sess", "user1", session

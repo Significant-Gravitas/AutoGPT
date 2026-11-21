@@ -372,6 +372,23 @@ describe("ExecutionTargetPicker", () => {
     expect(screen.getByRole("button", { name: "Check Again" })).toBeDefined();
   });
 
+  it("shows the setup card as waiting, with nothing on it that looks like success", async () => {
+    const user = userEvent.setup();
+    mockMachines([]);
+
+    render(<ExecutionTargetPicker />);
+    await chooseLocalPC(user);
+
+    const waiting = await screen.findByText(
+      "Waiting for a signed-in executor…",
+    );
+    const card = screen.getByRole("region", { name: "Connect a Computer" });
+    expect(inASuccessColour(card)).toEqual([]);
+    expect(
+      waiting.querySelector('[data-slot="loading-spinner"]'),
+    ).not.toBeNull();
+  });
+
   it("invalidates the folder when a paginated response changes its binding", async () => {
     const user = userEvent.setup();
     mockMachines();
@@ -470,19 +487,58 @@ describe("ExecutionTargetPicker", () => {
       directoryRef: "folder-1",
       displayPath: "C:\\Projects",
     };
-    useCopilotUIStore.setState({ newChatExecutionTarget: selectedTarget });
-    mockMachines();
+    // The computers are checked only while the folder dialog is open.
+    useCopilotUIStore.setState({
+      newChatExecutionTarget: selectedTarget,
+      isExecutionTargetPickerOpen: true,
+    });
+    const checkStarted = vi.fn();
+    const heldChecks: Array<() => void> = [];
+    let checksReleased = false;
+    server.use(
+      http.get(EXECUTORS_URL, async () => {
+        checkStarted();
+        if (!checksReleased) {
+          await new Promise<void>((resolve) => heldChecks.push(resolve));
+        }
+        return HttpResponse.json({ executors: [MACHINE] });
+      }),
+      http.post(DIRECTORIES_URL, () =>
+        HttpResponse.json({
+          connection_id: "connection-1",
+          browse_id: "browse-1",
+          current: null,
+          parent_ref: null,
+          entries: [],
+          truncated: false,
+          expires_at: "2026-07-10T18:00:00Z",
+        }),
+      ),
+    );
 
     render(<ExecutionTargetPicker />);
 
-    expect(useCopilotUIStore.getState().newChatExecutionTarget).toEqual(
-      selectedTarget,
-    );
-    await waitFor(() => {
+    try {
+      await waitFor(() => expect(checkStarted).toHaveBeenCalled());
+      expect(
+        await screen.findByText("Looking for connected computers…"),
+      ).toBeDefined();
       expect(useCopilotUIStore.getState().newChatExecutionTarget).toEqual(
         selectedTarget,
       );
-    });
+    } finally {
+      // Frees every held check; the 3 s polls after this answer at once.
+      checksReleased = true;
+      heldChecks.splice(0).forEach((release) => release());
+    }
+
+    // The folders load once the computers have, so the check is over.
+    expect(
+      await screen.findByText("This folder has no subfolders."),
+    ).toBeDefined();
+    expect(useCopilotUIStore.getState().newChatExecutionTarget).toEqual(
+      selectedTarget,
+    );
   });
 
   it("surfaces stale directory failures and offers retry", async () => {
@@ -627,6 +683,14 @@ describe("ExecutionTargetPicker", () => {
     });
   });
 });
+
+// The colour roles are the design system's vocabulary: a success role on an
+// element is what makes it look like success.
+function inASuccessColour(root: HTMLElement) {
+  return Array.from(root.querySelectorAll("*")).filter((element) =>
+    /\bsuccess\b/.test(element.getAttribute("class") ?? ""),
+  );
+}
 
 async function chooseLocalPC(user: ReturnType<typeof userEvent.setup>) {
   await user.click(
