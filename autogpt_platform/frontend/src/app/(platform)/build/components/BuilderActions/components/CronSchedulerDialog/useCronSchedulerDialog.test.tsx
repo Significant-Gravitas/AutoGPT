@@ -59,6 +59,7 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
 
 afterEach(() => {
   toastMock.mockClear();
+  vi.restoreAllMocks();
   server.resetHandlers();
   window.sessionStorage.clear();
 });
@@ -107,7 +108,6 @@ describe("useCronSchedulerDialog", () => {
     expect(requests).toEqual([
       expect.objectContaining({ name: "Morning run" }),
     ]);
-    invalidateSpy.mockRestore();
   });
 
   test("a create whose answer was lost is sent again with its key, and a new create after success gets a new one (#16901)", async () => {
@@ -160,18 +160,37 @@ describe("useCronSchedulerDialog", () => {
       linksToSchedules: true,
     },
     {
+      status: 500,
+      detail: "Internal Server Error",
+      shown:
+        "We couldn't confirm the schedule was saved, so it may already exist. Check your schedules before trying again.",
+      linksToSchedules: true,
+    },
+    {
+      status: 0,
+      detail: "No HTTP response",
+      shown:
+        "We couldn't confirm the schedule was saved, so it may already exist. Check your schedules before trying again.",
+      linksToSchedules: true,
+    },
+    {
       status: 400,
       detail: "Cron expression '0 0 31 2 *' never fires",
       shown: "Cron expression '0 0 31 2 *' never fires",
       linksToSchedules: false,
     },
   ])(
-    "a $status answer's toast says $shown",
+    "a $status answer points to schedules and refreshes them when the create may have succeeded",
     async ({ status, detail, shown, linksToSchedules }) => {
+      const invalidateSpy = vi.spyOn(
+        invalidateSchedules,
+        "invalidateAllScheduleQueries",
+      );
       server.use(
-        http.post("/api/proxy/api/graphs/:graphId/schedules", () =>
-          HttpResponse.json({ detail }, { status }),
-        ),
+        http.post("/api/proxy/api/graphs/:graphId/schedules", () => {
+          if (status === 0) return HttpResponse.error();
+          return HttpResponse.json({ detail }, { status });
+        }),
       );
       const { result } = renderFilledDialog();
 
@@ -185,6 +204,14 @@ describe("useCronSchedulerDialog", () => {
       expect(toastMock.mock.lastCall?.[0].action !== undefined).toBe(
         linksToSchedules,
       );
+      if (linksToSchedules) {
+        expect(invalidateSpy).toHaveBeenCalledExactlyOnceWith(
+          expect.anything(),
+          "graph-xyz",
+        );
+      } else {
+        expect(invalidateSpy).not.toHaveBeenCalled();
+      }
     },
   );
 

@@ -4,6 +4,7 @@ import { server } from "@/mocks/mock-server";
 import * as invalidateSchedules from "@/services/schedules/invalidate-schedules";
 import { act, renderHook, waitFor } from "@/tests/integrations/test-utils";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { useScheduleAgentModal } from "./useScheduleAgentModal";
@@ -37,6 +38,7 @@ const agent = {
 
 afterEach(() => {
   toastMock.mockClear();
+  vi.restoreAllMocks();
   server.resetHandlers();
 });
 
@@ -62,8 +64,43 @@ describe("useScheduleAgentModal", () => {
       );
     });
     expect(invalidateSpy).toHaveBeenCalledWith(expect.anything(), "graph-xyz");
-    invalidateSpy.mockRestore();
   });
+
+  test.each([409, 503, 400])(
+    "refreshes schedules after a %i response only if the create may have succeeded",
+    async (status) => {
+      server.use(
+        http.post("/api/proxy/api/graphs/:graphId/schedules", () =>
+          HttpResponse.json({ detail: "Create failed" }, { status }),
+        ),
+      );
+      const invalidateSpy = vi.spyOn(
+        invalidateSchedules,
+        "invalidateAllScheduleQueries",
+      );
+      const { result } = renderHook(
+        () => useScheduleAgentModal(agent, {}, {}),
+        {
+          wrapper,
+        },
+      );
+
+      await act(async () => {
+        await expect(
+          result.current.handleSchedule("My schedule", "0 9 * * *"),
+        ).rejects.toThrow();
+      });
+
+      if (status === 400) {
+        expect(invalidateSpy).not.toHaveBeenCalled();
+      } else {
+        expect(invalidateSpy).toHaveBeenCalledExactlyOnceWith(
+          expect.anything(),
+          "graph-xyz",
+        );
+      }
+    },
+  );
 
   test("empty schedule name surfaces destructive toast and rejects without firing mutation", async () => {
     const { result } = renderHook(() => useScheduleAgentModal(agent, {}, {}), {
