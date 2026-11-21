@@ -892,6 +892,92 @@ class TestOrgRoutes:
 
         assert exc_info.value.status_code == 403
 
+    # ── avatar_url host allowlist ──────────────────────────────────────────
+
+    def _mock_update_org(self):
+        from backend.api.features.orgs.model import OrgResponse
+
+        self.mock_db.update_org = AsyncMock(
+            return_value=OrgResponse(
+                id=ORG_ID,
+                name="Acme",
+                slug="acme",
+                avatar_url="https://storage.googleapis.com/media/a.png",
+                description=None,
+                is_personal=False,
+                member_count=1,
+                created_at=FIXED_NOW,
+            )
+        )
+
+    def _patch_org(self, json_body):
+        from autogpt_libs.auth.dependencies import get_request_context
+
+        self.app.dependency_overrides[get_request_context] = lambda: _owner_ctx(
+            org_id=ORG_ID, user_id=self._user_id
+        )
+        return self.client.patch(f"/orgs/{ORG_ID}", json=json_body)
+
+    def test_update_org_rejects_avatar_url_on_disallowed_host(self):
+        """SECURITY: avatar URLs must not point at arbitrary hosts."""
+        self._mock_update_org()
+
+        resp = self._patch_org({"avatar_url": "https://attacker.example/a.png"})
+
+        assert resp.status_code == 422
+        self.mock_db.update_org.assert_not_called()
+
+    def test_update_org_rejects_avatar_url_lookalike_host(self):
+        """A suffix of an allowed host is not an allowed host."""
+        self._mock_update_org()
+
+        resp = self._patch_org(
+            {"avatar_url": "https://storage.googleapis.com.attacker.example/a.png"}
+        )
+
+        assert resp.status_code == 422
+        self.mock_db.update_org.assert_not_called()
+
+    def test_update_org_rejects_avatar_url_with_non_http_scheme(self):
+        """javascript:, data: etc. are not renderable image URLs."""
+        self._mock_update_org()
+
+        resp = self._patch_org({"avatar_url": "javascript:alert(1)"})
+
+        assert resp.status_code == 422
+        self.mock_db.update_org.assert_not_called()
+
+    def test_update_org_accepts_avatar_url_on_allowed_host(self):
+        """Our own media storage host (next/image allowlist) is accepted."""
+        self._mock_update_org()
+
+        resp = self._patch_org(
+            {"avatar_url": "https://storage.googleapis.com/media/users/a.png"}
+        )
+
+        assert resp.status_code == 200
+        self.mock_db.update_org.assert_called_once()
+        assert (
+            self.mock_db.update_org.call_args.args[1].avatar_url
+            == "https://storage.googleapis.com/media/users/a.png"
+        )
+
+    def test_update_org_accepts_relative_avatar_url(self):
+        """Relative paths render from our own origin through next/image."""
+        self._mock_update_org()
+
+        resp = self._patch_org({"avatar_url": "/media/users/a.png"})
+
+        assert resp.status_code == 200
+
+    def test_update_org_accepts_null_avatar_url(self):
+        """Clearing the avatar stays allowed."""
+        self._mock_update_org()
+
+        resp = self._patch_org({"avatar_url": None})
+
+        assert resp.status_code == 200
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 2. WORKSPACE CRUD (team_db.py)
