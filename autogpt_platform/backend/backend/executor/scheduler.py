@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import os
+import sys
 import tempfile
 import threading
 import time
@@ -118,7 +119,7 @@ from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
 from backend.data.memory_schedule import ScopeRunKind
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.data.redis_client import get_redis_async
-from backend.data.schedule import normalize_schedule_name
+from backend.data.schedule import MAX_SCHEDULE_NAME_LENGTH, normalize_schedule_name
 from backend.data.user import is_user_refused
 from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
@@ -158,6 +159,7 @@ from backend.util.exceptions import (
     UserBannedError,
     UserPaywalledError,
 )
+from backend.util.json import dumps as json_dumps
 from backend.util.logging import PrefixFilter
 from backend.util.process import freeze_startup_heap
 from backend.util.retry import func_retry
@@ -3580,11 +3582,15 @@ class Scheduler(AppService):
         ``ConflictingIdError`` is raised and the job is left as it was.
         """
         assert job_args.schedule_id is not None
+        kwargs = job_args.model_dump(mode="json")
+        _check_schedule_size(kwargs)
         self._check_schedule_capacity(job_args, replaces=replaces)
+        self._check_schedule_storage(job_args, kwargs, replaces=replaces)
         job = self.scheduler.add_job(
             dispatch_func,
-            kwargs=job_args.model_dump(mode="json"),
-            name=name,
+            kwargs=kwargs,
+            # Copilot and routine callers pass names no request model bounds.
+            name=name[:MAX_SCHEDULE_NAME_LENGTH] if name else name,
             trigger=trigger,
             jobstore=Jobstores.EXECUTION.value,
             replace_existing=replace_existing,
@@ -3631,6 +3637,35 @@ class Scheduler(AppService):
         paused one still counts; a spent one-shot is removed rather than
         cleared, so nothing dead does.
         """
+        replaced = set(replaces or ())
+        return sum(job.id not in replaced for job in self._held_jobs(user_id))
+
+    def _check_schedule_storage(
+        self,
+        job_args: GraphExecutionJobArgs | CopilotTurnJobArgs,
+        kwargs: dict[str, Any],
+        replaces: list[str] | None = None,
+    ) -> None:
+        """Refuse a schedule that would take what its owner and their
+        organization store in schedules past the storage limit."""
+        replaced = {job_args.schedule_id, *(replaces or ())}
+        held = self._held_jobs(job_args.user_id, job_args.organization_id or None)
+        total = _stored_size(kwargs) + sum(
+            _stored_size(job.kwargs) for job in held if job.id not in replaced
+        )
+        limit = config.max_schedule_storage_bytes
+        if total > limit:
+            raise ScheduleLimitError(
+                f"Your schedules and your organization's can store {limit:,} "
+                f"bytes together, and this one would take them to {total:,}. "
+                "Shorten its inputs or delete a schedule and try again."
+            )
+
+    def _held_jobs(
+        self, user_id: str, organization_id: str | None = None
+    ) -> list[JobObj]:
+        """*user_id*'s schedules and, with an organization, every schedule
+        tagged with it, paused ones included."""
         if not self._persistent_jobstores:
             # Not started through run_service, so there is no filtered scan.
             jobs = self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
@@ -3640,17 +3675,22 @@ class Scheduler(AppService):
                 graph_id=None,
                 session_id=None,
                 kind=None,
-                organization_id=None,
+                organization_id=organization_id,
                 include_paused=True,
             )
-        replaced = set(replaces or ())
         # What the index holds: a briefing or memory job names its user too.
-        return sum(
-            job.kwargs.get("user_id") == user_id
-            and job.id not in replaced
-            and _job_to_info(job) is not None
+        return [
+            job
             for job in jobs
-        )
+            if (
+                job.kwargs.get("user_id") == user_id
+                or (
+                    organization_id is not None
+                    and job.kwargs.get("organization_id") == organization_id
+                )
+            )
+            and _job_to_info(job) is not None
+        ]
 
     @expose
     def add_graph_execution_schedule(
@@ -3985,7 +4025,10 @@ class Scheduler(AppService):
             input_data=input_data,
             input_credentials=input_credentials,
         )
+        kwargs = job_args.model_dump(mode="json")
         if input_data is not None or input_credentials is not None:
+            _check_schedule_size(kwargs)
+            self._check_schedule_storage(job_args, kwargs, replaces=[schedule_id])
             run_async(
                 execution_utils.validate_and_construct_node_execution_input(
                     graph_id=job_args.graph_id,
@@ -3996,7 +4039,7 @@ class Scheduler(AppService):
                 )
             )
 
-        changes: dict[str, Any] = {"kwargs": job_args.model_dump(mode="json")}
+        changes: dict[str, Any] = {"kwargs": kwargs}
         if name:
             changes["name"] = job_args.agent_name
         if cron is not None or user_timezone:
@@ -5294,6 +5337,58 @@ class Scheduler(AppService):
 
         result = run_async(run_ratification_pass(user_id))
         return result.model_dump(mode="json")
+
+
+def _check_schedule_size(kwargs: dict[str, Any]) -> None:
+    """Refuse a schedule whose stored job would exceed the configured size."""
+    size = len(json_dumps(kwargs).encode())
+    limit = config.max_schedule_payload_bytes
+    if size > limit:
+        raise ValueError(
+            f"This schedule is too large to save: {size:,} bytes, over the "
+            f"limit of {limit:,}. Shorten its inputs or message and try again."
+        )
+    values = _json_value_count(kwargs)
+    value_limit = config.max_schedule_payload_values
+    if values > value_limit:
+        raise ValueError(
+            f"This schedule has too many items to save: {values:,}, over the "
+            f"limit of {value_limit:,}. Shorten its inputs or message and try again."
+        )
+
+
+def _json_value_count(data: Any) -> int:
+    """How many values JSON data holds, containers included."""
+    count, pending = 0, [data]
+    while pending:
+        value = pending.pop()
+        count += 1
+        if isinstance(value, dict):
+            pending.extend(value.values())
+        elif isinstance(value, list):
+            pending.extend(value)
+    return count
+
+
+_STORED_VALUE_BYTES = 64
+
+
+def _stored_size(data: Any) -> int:
+    """JSON data's size as Python holds it: each string's own size, and a fixed
+    size for every other value."""
+    size, pending = 0, [data]
+    while pending:
+        value = pending.pop()
+        if isinstance(value, str):
+            size += sys.getsizeof(value)
+            continue
+        size += _STORED_VALUE_BYTES
+        if isinstance(value, dict):
+            pending.extend(value)
+            pending.extend(value.values())
+        elif isinstance(value, list):
+            pending.extend(value)
+    return size
 
 
 _USER_SCHEDULE_FUNC_REFS = frozenset(
