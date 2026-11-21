@@ -35,17 +35,43 @@ GOOGLE_SHEETS_DISABLED = not GOOGLE_OAUTH_IS_CONFIGURED
 def parse_a1_notation(a1: str) -> tuple[str | None, str]:
     """Split an A1‑notation string into *(sheet_name, cell_range)*.
 
+    Quote-aware only when the string starts with a single quote (quoted sheet
+    name). Otherwise a simple split on the first ``!`` is used so that unquoted
+    names containing apostrophes (e.g. ``Bob's Sheet!A1``) are handled correctly.
+
     Examples
     --------
     >>> parse_a1_notation("Sheet1!A1:B2")
     ("Sheet1", "A1:B2")
     >>> parse_a1_notation("A1:B2")
     (None, "A1:B2")
+    >>> parse_a1_notation("'Q1!Plan'!A1:B2")
+    ("'Q1!Plan'", "A1:B2")
+    >>> parse_a1_notation("Bob's Sheet!A1")
+    ("Bob's Sheet", "A1")
     """
 
-    if "!" in a1:
-        sheet, cell_range = a1.split("!", 1)
-        return sheet, cell_range
+    if not a1.startswith("'"):
+        if "!" in a1:
+            sheet, cell = a1.split("!", 1)
+            return sheet, cell
+        return None, a1
+
+    # Quoted sheet name: scan for the closing quote, handling doubled apostrophes
+    i = 1
+    while i < len(a1):
+        ch = a1[i]
+        if ch == "'":
+            if i + 1 < len(a1) and a1[i + 1] == "'":
+                i += 2  # escaped apostrophe
+                continue
+            # closing quote
+            i += 1
+            if i < len(a1) and a1[i] == "!":
+                return a1[:i], a1[i + 1 :]
+            return None, a1
+        else:
+            i += 1
     return None, a1
 
 
@@ -69,20 +95,30 @@ def extract_spreadsheet_id(spreadsheet_id_or_url: str) -> str:
 def format_sheet_name(sheet_name: str) -> str:
     """Format sheet name for Google Sheets API, adding quotes if needed.
 
+    Per Google A1 notation, names that contain spaces, special characters
+    (including apostrophes) or that start with a digit must be wrapped in
+    single quotes. Embedded apostrophes are escaped by doubling them.
+
     Examples
     --------
     >>> format_sheet_name("Sheet1")
     "Sheet1"
     >>> format_sheet_name("Non-matching Leads")
     "'Non-matching Leads'"
+    >>> format_sheet_name("Bob's Sheet")
+    "'Bob''s Sheet'"
+    >>> format_sheet_name("It's")
+    "'It''s'"
     """
-    # If sheet name contains spaces, special characters, or starts with a digit, wrap in quotes
-    if (
+    needs_quotes = (
         " " in sheet_name
+        or "'" in sheet_name
         or any(char in sheet_name for char in "!@#$%^&*()+-=[]{}|;:,.<>?")
         or (sheet_name and sheet_name[0].isdigit())
-    ):
-        return f"'{sheet_name}'"
+    )
+    if needs_quotes:
+        escaped = sheet_name.replace("'", "''")
+        return f"'{escaped}'"
     return sheet_name
 
 
@@ -359,8 +395,12 @@ class GoogleSheetsReadBlock(Block):
         range_to_use = range or "A:Z"
         sheet_name, cell_range = parse_a1_notation(range_to_use)
         if sheet_name:
-            cleaned_sheet = sheet_name.strip().strip("'\"")
-            formatted_sheet = format_sheet_name(cleaned_sheet)
+            # Decode quoted A1 sheet names so we do not double-escape apostrophes
+            if sheet_name.startswith("'") and sheet_name.endswith("'"):
+                decoded_sheet = sheet_name[1:-1].replace("''", "'")
+            else:
+                decoded_sheet = sheet_name
+            formatted_sheet = format_sheet_name(decoded_sheet)
             cell_part = cell_range.strip() if cell_range else ""
             if cell_part:
                 range_to_use = f"{formatted_sheet}!{cell_part}"
