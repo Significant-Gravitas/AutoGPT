@@ -9,11 +9,11 @@ Each user may have ``DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER`` direct runs in
 flight in this process, and a run has ``DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS``
 from the moment it starts on its worker loop. A run that is still running
 ``DIRECT_BLOCK_EXECUTION_CANCEL_GRACE_SECONDS`` after its budget ran out (stuck
-in synchronous code, or ignoring cancellation) has its worker retired: a fresh
+in synchronous code, or ignoring cancellation) is interrupted in its worker's
+thread if it is the one executing there, and its worker is retired: a fresh
 worker takes its place in the pool and its waiting runs, and the old thread
 ends once its runs stop. While ``DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS``
-retired workers are still running, new runs are refused, since only a restart
-may free them.
+retired workers are still running, new runs are refused.
 
 Worker threads do not use the server's Prisma client (it reports itself
 disconnected there, see ``backend.data.db``), so block code reaches the
@@ -23,6 +23,7 @@ database through the database manager, as it does in the executor.
 import asyncio
 import concurrent.futures
 import contextvars
+import ctypes
 import itertools
 import logging
 import threading
@@ -50,6 +51,13 @@ class DirectBlockExecutionTimeoutError(Exception):
         super().__init__(
             f"Block execution did not finish within {timeout_seconds:g} seconds."
         )
+
+
+class DirectBlockExecutionInterrupted(BaseException):
+    """Raised in a worker's thread to stop a run past its time budget.
+
+    A ``BaseException``, so a block's ``except Exception`` can't keep it running.
+    """
 
 
 class DirectBlockExecutionLimitError(Exception):
@@ -146,8 +154,9 @@ async def run_block_off_loop(
     Raises:
         DirectBlockExecutionTimeoutError: The block ran past
             ``DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS``. It is cancelled at its
-            next ``await``, and its worker is retired if it has not stopped
-            ``DIRECT_BLOCK_EXECUTION_CANCEL_GRACE_SECONDS`` later.
+            next ``await``; if it has not stopped
+            ``DIRECT_BLOCK_EXECUTION_CANCEL_GRACE_SECONDS`` later, it is
+            interrupted in its thread and its worker is retired.
     """
     timeout = DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS
     server_loop = asyncio.get_running_loop()
@@ -157,6 +166,7 @@ async def run_block_off_loop(
     worker = _least_busy_worker()
     finished = False
     stopped = threading.Event()
+    started: list[asyncio.Task[CompletedBlockOutput]] = []
     budget = asyncio.timeout(timeout)
 
     try:
@@ -178,6 +188,7 @@ async def run_block_off_loop(
                     contextvars.copy_context(),
                     on_start=lambda: server_loop.call_soon_threadsafe(start_budget),
                     on_finish=on_finish,
+                    on_task=started.append,
                 )
             except BaseException:
                 release()  # The run never reached the worker.
@@ -194,6 +205,7 @@ async def run_block_off_loop(
             _retire_unless_stopped,
             worker,
             stopped,
+            started,
         )
         raise DirectBlockExecutionTimeoutError(timeout) from e
 
@@ -207,11 +219,13 @@ class _Run:
         context: contextvars.Context,
         on_start: Callable[[], object],
         on_finish: Callable[[], object],
+        on_task: Callable[[asyncio.Task[CompletedBlockOutput]], object],
     ):
         self.outputs = outputs
         self.context = context
         self.on_start = on_start
         self.on_finish = on_finish
+        self.on_task = on_task
         self.future: concurrent.futures.Future[CompletedBlockOutput] = (
             concurrent.futures.Future()
         )
@@ -242,7 +256,15 @@ class _WorkerLoop:
 
     def _serve(self) -> None:
         asyncio.set_event_loop(self.loop)
-        self.loop.run_forever()
+        while True:
+            try:
+                self.loop.run_forever()
+                break
+            except DirectBlockExecutionInterrupted:
+                # The interrupt landed between runs rather than in one.
+                with _workers_lock:
+                    if self.retired and self.active == 0:
+                        break
         # Only a retired worker stops, once its last run has stopped.
         with _workers_lock:
             _retired_workers.discard(self)
@@ -254,13 +276,16 @@ class _WorkerLoop:
         context: contextvars.Context,
         on_start: Callable[[], object],
         on_finish: Callable[[], object],
+        on_task: Callable[
+            [asyncio.Task[CompletedBlockOutput]], object
+        ] = lambda _: None,
     ) -> concurrent.futures.Future[CompletedBlockOutput]:
         """Run *outputs* as a task on this loop, in *context*.
 
         Cancelling the returned future cancels the task. *on_finish* runs when
         the task has stopped, which can be after the future is cancelled.
         """
-        run = _Run(outputs, context, on_start, on_finish)
+        run = _Run(outputs, context, on_start, on_finish, on_task)
         self.queue(run)
         return run.future
 
@@ -276,6 +301,19 @@ class _WorkerLoop:
                     del self._waiting[run]
                     self.active -= 1
             raise
+
+    def interrupt(self) -> None:
+        """Raise ``DirectBlockExecutionInterrupted`` in this worker's thread.
+
+        Cancelling a task reaches it only at an ``await``, so this is what
+        stops a block that keeps computing in synchronous code.
+        """
+        if self._thread.ident is None:
+            return
+        ctypes.pythonapi.PyThreadState_SetAsyncExc(
+            ctypes.c_ulong(self._thread.ident),
+            ctypes.py_object(DirectBlockExecutionInterrupted),
+        )
 
     def take_waiting_runs(self) -> list[_Run]:
         """Retire this worker and hand back the runs it has not started.
@@ -300,6 +338,7 @@ class _WorkerLoop:
             return
         task = self.loop.create_task(_collect(run.outputs), context=run.context)
         task.add_done_callback(lambda task: self._finish(run, task))
+        run.on_task(task)
 
         def cancel_task(_: concurrent.futures.Future) -> None:
             if run.future.cancelled():
@@ -337,10 +376,29 @@ def _least_busy_worker() -> _WorkerLoop:
         return min(_pool, key=lambda worker: worker.active)
 
 
-def _retire_unless_stopped(worker: _WorkerLoop, stopped: threading.Event) -> None:
-    """Replace *worker* in the pool if its timed-out run is still running."""
+def _retire_unless_stopped(
+    worker: _WorkerLoop,
+    stopped: threading.Event,
+    started: list[asyncio.Task[CompletedBlockOutput]] | None = None,
+) -> None:
+    """Replace *worker* in the pool if its timed-out run is still running,
+    then interrupt that run if it is the one executing (*started* holds its
+    task once it has one)."""
     if stopped.is_set():
         return
+    _retire(worker)
+    # After the retirement, so no waiting run can start on the freed worker.
+    # Only the timed-out run's own step is interrupted, never another run's.
+    if started and asyncio.current_task(worker.loop) is started[0]:
+        worker.interrupt()
+        logger.warning(
+            f"Interrupted a direct block run on {worker.name}, still executing "
+            f"{DIRECT_BLOCK_EXECUTION_CANCEL_GRACE_SECONDS}s past its time budget"
+        )
+
+
+def _retire(worker: _WorkerLoop) -> None:
+    """Replace *worker* in the pool and move its waiting runs to the replacement."""
     replacement: _WorkerLoop | None = None
     moved: list[_Run] = []
     with _workers_lock:

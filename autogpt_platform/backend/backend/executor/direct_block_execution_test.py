@@ -295,8 +295,14 @@ class _BlocksItsThread:
 
     async def outputs(self):
         self.threads.append(threading.current_thread())
-        # Synchronous wait: cancelling the run cannot interrupt it.
-        self.release.wait(timeout=30)
+        # Synchronous wait that outlasts the cancel and the interrupt, like a
+        # block stuck in a C call.
+        while True:
+            try:
+                if self.release.wait(timeout=30):
+                    break
+            except direct_block_execution.DirectBlockExecutionInterrupted:
+                continue
         yield "done", True
 
     @property
@@ -553,10 +559,10 @@ async def test_run_that_stops_after_its_timeout_keeps_its_worker(
     retire_unless_stopped = direct_block_execution._retire_unless_stopped
     checked = threading.Event()
 
-    def retire_once_stopped(worker, stopped: threading.Event) -> None:
+    def retire_once_stopped(worker, stopped: threading.Event, started) -> None:
         # Forces the order under test: the run has stopped before the check.
         assert stopped.wait(10)
-        retire_unless_stopped(worker, stopped)
+        retire_unless_stopped(worker, stopped, started)
         checked.set()
 
     mocker.patch.object(
@@ -601,3 +607,24 @@ async def test_slot_is_released_when_the_run_cannot_reach_its_worker(
 
 def _nothing() -> None:
     pass
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("short_budget_pool")
+async def test_a_run_computing_past_its_budget_is_stopped():
+    """Cancelling reaches a run only at an await; one that keeps computing in
+    synchronous code is stopped in its thread, which frees its user's slot."""
+
+    async def computes():
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            pass
+        yield "done", True
+
+    with claim_direct_block_execution_slot("user-computes") as slot:
+        with pytest.raises(DirectBlockExecutionTimeoutError):
+            await asyncio.wait_for(run_block_off_loop(computes(), slot), timeout=10)
+
+    await _eventually(
+        lambda: "user-computes" not in direct_block_execution._runs_per_user
+    )
