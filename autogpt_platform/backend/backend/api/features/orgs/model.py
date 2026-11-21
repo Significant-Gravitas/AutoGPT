@@ -1,6 +1,7 @@
 """Pydantic request/response models for organization management."""
 
 from datetime import datetime
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -12,6 +13,24 @@ from backend.util.text_limits import (
     MAX_NAME_LENGTH,
     MAX_URL_LENGTH,
     IDText,
+)
+
+# Hosts an org avatar URL may point at. Must stay in step with `images` in
+# autogpt_platform/frontend/next.config.mjs (domains + remotePatterns):
+# next/image errors at render time for hosts outside that list.
+# storage.googleapis.com is our own media storage — the host uploaded
+# images live on — so an avatar uploaded like other images keeps working.
+ALLOWED_AVATAR_HOSTS = frozenset(
+    {
+        "images.unsplash.com",
+        "ddz4ak4pa3d19.cloudfront.net",
+        "upload.wikimedia.org",
+        "storage.googleapis.com",
+        "ideogram.ai",
+        "example.com",
+        "storage.cloud.google.com",
+        "lh3.googleusercontent.com",
+    }
 )
 
 
@@ -36,6 +55,32 @@ class UpdateOrgRequest(BaseModel):
     )
     description: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
     avatar_url: str | None = Field(default=None, max_length=MAX_URL_LENGTH)
+
+    @field_validator("avatar_url")
+    @classmethod
+    def _avatar_url_must_use_an_allowed_host(cls, value: str | None) -> str | None:
+        """Reject avatar URLs the account menu cannot render safely.
+
+        The menu renders the avatar through optimized ``next/image``, which
+        errors at render time for hosts outside ``images`` in
+        ``next.config.mjs``; serving the URL as a plain ``<img>`` instead
+        would let the avatar's host see every member's IP address.
+        Relative paths are allowed — they render from our own origin.
+        """
+        if value is None:
+            return value
+        parsed = urlparse(value)
+        if parsed.scheme in ("http", "https"):
+            if parsed.hostname not in ALLOWED_AVATAR_HOSTS:
+                raise ValueError(
+                    "avatar_url must be an http(s) URL on an allowed media host "
+                    f"({', '.join(sorted(ALLOWED_AVATAR_HOSTS))}) or a relative path"
+                )
+        elif parsed.scheme:
+            # javascript:, data:, ftp:, ... — not a renderable image URL
+            raise ValueError("avatar_url must be an http(s) URL or a relative path")
+        # else: a relative path — renders from our own origin
+        return value
 
 
 class UpdateOrgData(BaseModel):
