@@ -1,13 +1,17 @@
+import contextlib
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from backend.blocks.autopilot import AutoPilotBlock, AutoPilotTransport
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
 from backend.data.execution import ExecutionContext
 from backend.data.graph import Graph, Node, make_graph_model
+from backend.data.model import OAuth2Credentials
+from backend.integrations.webhooks import graph_lifecycle_hooks
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     GraphActivationError,
     _before_graph_activate,
@@ -335,6 +339,52 @@ def _sheets_node(credentials_id: str) -> tuple[str, dict[str, Any]]:
         "mimeType": "application/vnd.google-apps.spreadsheet",
     }
     return GoogleSheetsReadBlock().id, {"spreadsheet": spreadsheet, "range": "A1"}
+
+
+@pytest.mark.asyncio
+async def test_a_save_reads_the_credential_store_once():
+    """However many sub-graphs and unexpired OAuth credentials a save names."""
+    stored = [
+        OAuth2Credentials(
+            id=f"oauth-{i}",
+            provider="github",
+            access_token=SecretStr("access"),
+            access_token_expires_at=4_000_000_000,
+            scopes=[],
+        )
+        for i in range(4)
+    ]
+    graph = MagicMock(nodes=[_make_node(creds_id="oauth-0")])
+    graph.auto_credentials_refs.return_value = []
+    graph.sub_graphs = [
+        MagicMock(nodes=[_make_node(creds_id=f"oauth-{i}")]) for i in range(1, 4)
+    ]
+    manager = graph_lifecycle_hooks.credentials_manager
+    load = AsyncMock(return_value=stored)
+    not_due = MagicMock(**{"needs_refresh.return_value": False})
+
+    with (
+        patch.object(manager.store, "get_all_creds", load),
+        patch.object(manager, "_get_oauth_handler", AsyncMock(return_value=not_due)),
+        patch.object(manager, "_locked", lambda *_, **__: contextlib.nullcontext()),
+    ):
+        await before_graph_activate(graph, "user-1")
+
+    load.assert_awaited_once_with("user-1")
+
+
+@pytest.mark.asyncio
+async def test_before_graph_activate_checks_sub_graph_credentials():
+    graph = MagicMock(nodes=[])
+    graph.auto_credentials_refs.return_value = []
+    graph.sub_graphs = [MagicMock(nodes=[_make_node()])]
+
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = AsyncMock(return_value=None)
+        with pytest.raises(GraphActivationError, match="no longer exists"):
+            await before_graph_activate(graph, "user-1")
 
 
 @pytest.mark.asyncio
