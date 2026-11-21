@@ -29,6 +29,11 @@ interface Run {
 
 interface PendingReview {
   node_exec_id: string;
+  graph_exec_id: string;
+  payload: unknown;
+  instructions: string;
+  editable: boolean;
+  status: string;
 }
 
 interface LibraryAgent {
@@ -91,7 +96,10 @@ test.describe("human review journey", () => {
       })
       .toBe("completed");
     await assertRunOutputValue(page, "approved", edited);
-    await expect(page.getByText("rejected", { exact: true })).toHaveCount(0);
+    await expect(
+      outputLabel(page, "rejected"),
+      "the run view should show no rejected output",
+    ).toHaveCount(0);
   });
 
   test("a rejected review sends the original note down the rejected branch only", async ({
@@ -134,8 +142,16 @@ test.describe("human review journey", () => {
       "only the rejected branch should run, with the original note",
     ).toEqual({ rejected: [note] });
 
+    await expect
+      .poll(() => readStatusBadge(page), {
+        message: "the run view should show the run completed",
+      })
+      .toBe("completed");
     await assertRunOutputValue(page, "rejected", note);
-    await expect(page.getByText("approved", { exact: true })).toHaveCount(0);
+    await expect(
+      outputLabel(page, "approved"),
+      "the run view should show no approved output",
+    ).toHaveCount(0);
   });
 
   test("with its safe mode switched off in the Library, a run passes the note through unreviewed", async ({
@@ -396,6 +412,13 @@ async function waitForReview(
     },
   ]);
   return reviews[0];
+}
+
+// The run view's label for one output, the one assertRunOutputValue reads.
+function outputLabel(page: Page, name: string) {
+  return page
+    .locator("p.capitalize:visible")
+    .filter({ hasText: new RegExp(`^${name}$`, "i") });
 }
 
 // A text payload is reviewed in a textarea named "Value".
