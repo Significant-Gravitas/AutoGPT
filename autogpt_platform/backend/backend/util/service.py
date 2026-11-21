@@ -37,6 +37,7 @@ from tenacity import RetryCallState
 from tenacity.stop import stop_base
 
 import backend.util.exceptions as exceptions
+from backend.api.middleware.fastapi_guard_wiring import attach_guard
 from backend.api.utils.validation_errors import describe_validation_error
 from backend.data import redis_client
 from backend.monitoring.instrumentation import instrument_fastapi
@@ -610,6 +611,10 @@ class AppService(BaseAppService, ABC):
             logger.error(
                 f"Failed to instrument {self.service_name} with Prometheus: {e}"
             )
+
+        # Optional fastapi-guard security middleware (off unless both
+        # AUTOGPT_GUARD_ENABLED and AUTOGPT_GUARD_INTERNAL_SERVICES are set)
+        attach_guard(app, internal_service=True)
 
         # Register the exposed API routes.
         for attr_name, attr in vars(type(self)).items():
