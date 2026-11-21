@@ -1,3 +1,4 @@
+import logging
 import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -236,6 +237,26 @@ def test_a_run_stopped_before_it_started_is_left_as_the_stop_left_it(
     write_state.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "found, says",
+    [
+        (ExecutionStatus.TERMINATED, "became TERMINATED before it started"),
+        (ExecutionStatus.REVIEW, "became REVIEW before it started"),
+        (None, "no longer exists"),
+    ],
+)
+def test_a_skipped_start_logs_what_became_of_the_run(
+    found: ExecutionStatus | None, says: str, caplog: pytest.LogCaptureFixture
+):
+    """The log tells a run a stop ended from one moved to review or gone."""
+    with caplog.at_level(logging.INFO, logger="backend.executor.manager"):
+        _run_whose_start_moves_nothing(ExecutionStatus.QUEUED, found)
+
+    skipped = [r.getMessage() for r in caplog.records if "Skipped" in r.getMessage()]
+    assert len(skipped) == 1
+    assert says in skipped[0]
+
+
 @pytest.mark.parametrize("status", [ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE])
 def test_a_start_whose_answer_was_lost_goes_on_with_the_run(status: ExecutionStatus):
     """The database client retries a call that failed, so a start that committed
@@ -289,9 +310,9 @@ def test_an_executors_refused_final_write_broadcasts_the_run_a_stop_ended():
 
 
 def test_an_update_that_is_none_is_not_published():
-    """The start write now returns None for a run a stop ended. An executor that
-    predates that hands the result straight to send_execution_update, so None
-    must publish nothing and raise nothing, or a deploy would break it."""
+    """The start write returns None for a run a stop ended. An executor from
+    before that change hands the result straight to send_execution_update, so
+    None must publish nothing and raise nothing, or a deploy would break it."""
     with patch("backend.executor.manager.get_execution_event_bus") as event_bus:
         assert send_execution_update(None) is None
 
