@@ -180,10 +180,10 @@ class ReadSpreadsheetBlock(Block):
                     raise ValueError(f"Unable to read Excel file: {e}")
             else:
                 # Handle CSV/text files
-                csv_content = Path(file_path).read_text(encoding="utf-8")
+                csv_content = Path(file_path).read_text(encoding="utf-8-sig")
         elif input_data.contents:
             # Use direct string content
-            csv_content = input_data.contents
+            csv_content = input_data.contents.removeprefix("\ufeff")
         else:
             raise ValueError("Either 'contents' or 'file_input' must be provided")
 
