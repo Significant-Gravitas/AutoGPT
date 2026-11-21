@@ -68,7 +68,13 @@ from backend.data.model import (
     is_refused_sdk_default,
     sdk_default_refused_message,
 )
-from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
+from backend.data.rabbitmq import (
+    AsyncRabbitMQ,
+    Exchange,
+    ExchangeType,
+    Queue,
+    RabbitMQConfig,
+)
 from backend.data.user import is_user_refused
 from backend.executor.input_depth import (
     validate_graph_input_depth,
@@ -1431,6 +1437,9 @@ async def stop_graph_execution(
        reinitializes worker pool, and returns.
     4. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
 
+    A run that no executor has started (QUEUED, INCOMPLETE or REVIEW) is
+    terminated here instead, and the cancel is sent again once that is written.
+
     Args:
         user_id: User ID who owns the execution
         graph_exec_id: Graph execution ID to stop
@@ -1463,11 +1472,7 @@ async def stop_graph_execution(
             )
 
     # Now stop this execution
-    await queue_client.publish_message(
-        routing_key="",
-        message=CancelExecutionEvent(graph_exec_id=graph_exec_id).model_dump_json(),
-        exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
-    )
+    await _publish_cancel(queue_client, graph_exec_id)
 
     if not wait_timeout:
         return
@@ -1516,15 +1521,29 @@ async def stop_graph_execution(
 
             graph_exec.status = ExecutionStatus.TERMINATED
 
-            await asyncio.gather(
-                # Update graph execution status
-                db.update_graph_execution_stats(
-                    graph_exec_id=graph_exec.id,
-                    status=ExecutionStatus.TERMINATED,
-                ),
-                # Publish graph execution event
-                get_async_execution_event_bus().publish(graph_exec),
+            # Update graph execution status
+            await db.update_graph_execution_stats(
+                graph_exec_id=graph_exec.id,
+                status=ExecutionStatus.TERMINATED,
             )
+            # An executor can start the run between the read above and this
+            # write. It ignores a cancel for a run it has not registered, so the
+            # one sent before the read may have been lost on it. It has almost
+            # always registered the run by now and acts on this one; the gap
+            # that remains is #17182. Sent before the event, so a failure to
+            # publish that can't keep it from going out.
+            try:
+                await _publish_cancel(queue_client, graph_exec_id)
+            except Exception:
+                # The run is TERMINATED either way and the first cancel went
+                # out, so a broker failure here doesn't fail the stop or keep
+                # its event from going out.
+                logger.warning(
+                    f"Could not send the second cancel for run #{graph_exec_id}",
+                    exc_info=True,
+                )
+            # Publish graph execution event
+            await get_async_execution_event_bus().publish(graph_exec)
             return
 
         if graph_exec.status == ExecutionStatus.RUNNING:
@@ -1533,6 +1552,14 @@ async def stop_graph_execution(
     raise TimeoutError(
         f"Workflow run #{graph_exec_id} will need to take longer than {wait_timeout} seconds to stop. "
         f"You can check the status of the execution in the UI or try again later."
+    )
+
+
+async def _publish_cancel(queue_client: AsyncRabbitMQ, graph_exec_id: str) -> None:
+    await queue_client.publish_message(
+        routing_key="",
+        message=CancelExecutionEvent(graph_exec_id=graph_exec_id).model_dump_json(),
+        exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
     )
 
 

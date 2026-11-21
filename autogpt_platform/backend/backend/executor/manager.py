@@ -31,6 +31,8 @@ from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.db_accessors import experts_db
 from backend.data.dynamic_fields import parse_execution_output, sanitize_pin_name
 from backend.data.execution import (
+    STARTABLE_GRAPH_EXECUTION_STATUSES,
+    TERMINAL_GRAPH_EXECUTION_STATUSES,
     ExecutionContext,
     ExecutionQueue,
     ExecutionStatus,
@@ -164,6 +166,57 @@ def _get_execution_credit_balance(
     return db_client.get_credits(graph_exec.user_id)
 
 
+def _running_after_an_empty_start(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+) -> GraphExecution | None:
+    """The run, when its start moved nothing and it is RUNNING all the same.
+
+    The database client retries a call that failed, so a start that committed
+    and lost its answer comes back empty with the run RUNNING, and that run is
+    this executor's to go on with. A run a stop got to first is terminal, and
+    None is returned for it.
+    """
+    run = db_client.get_graph_execution(
+        user_id=graph_exec.user_id,
+        execution_id=graph_exec.graph_exec_id,
+        include_node_executions=False,
+    )
+    return run if run is not None and run.status == ExecutionStatus.RUNNING else None
+
+
+def _write_the_final_state(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+    status: ExecutionStatus,
+    stats: GraphExecutionStats,
+) -> bool:
+    """Write the run's final status and stats, and broadcast them. Returns
+    whether the write was applied.
+
+    A stop that ended the run first left it TERMINATED, which this write can't
+    follow, so the write publishes nothing. The stop publishes on its own
+    connection, so its TERMINATED can reach a page before this executor's
+    RUNNING. The stored terminal state is then broadcast again, after RUNNING
+    on this executor's own bus.
+    """
+    if update_graph_execution_state(
+        db_client=db_client,
+        graph_exec_id=graph_exec.graph_exec_id,
+        status=status,
+        stats=stats,
+    ):
+        return True
+    stored = db_client.get_graph_execution(
+        user_id=graph_exec.user_id,
+        execution_id=graph_exec.graph_exec_id,
+        include_node_executions=False,
+    )
+    if stored is not None and stored.status in TERMINAL_GRAPH_EXECUTION_STATUSES:
+        send_execution_update(stored)
+    return False
+
+
 RUN_OUTSIDE_ITS_ORG_ERROR = (
     "This run was stopped because it was queued in an organization or team "
     "you aren't a member of. New runs go to your own."
@@ -220,11 +273,8 @@ def _stop_outside_its_org(
             status=ExecutionStatus.FAILED,
         )
     exec_stats.error = RUN_OUTSIDE_ITS_ORG_ERROR
-    if not update_graph_execution_state(
-        db_client=db_client,
-        graph_exec_id=graph_exec.graph_exec_id,
-        status=ExecutionStatus.FAILED,
-        stats=exec_stats,
+    if not _write_the_final_state(
+        db_client, graph_exec, ExecutionStatus.FAILED, exec_stats
     ):
         return
     exec_meta.status = ExecutionStatus.FAILED
@@ -1525,12 +1575,29 @@ class ExecutionProcessor:
             )
             return
 
-        if exec_meta.status in [ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE]:
+        if exec_meta.status in STARTABLE_GRAPH_EXECUTION_STATUSES:
             log_metadata.info(f"⚙️ Starting graph execution #{graph_exec.graph_exec_id}")
-            exec_meta.status = ExecutionStatus.RUNNING
-            send_execution_update(
-                db_client.update_graph_execution_start_time(graph_exec.graph_exec_id)
+            started = db_client.update_graph_execution_start_time(
+                graph_exec.graph_exec_id
             )
+            if started is not None:
+                send_execution_update(started)
+            elif resumed := _running_after_an_empty_start(db_client, graph_exec):
+                log_metadata.info(
+                    f"Graph execution #{graph_exec.graph_exec_id} was already "
+                    "started by an earlier try of its start, going on with it."
+                )
+                # That try's RUNNING update was lost with its answer.
+                send_execution_update(resumed)
+            else:
+                # The start only moves a run that is still queued, so a stop
+                # that wrote its status after the read above has won the race.
+                log_metadata.info(
+                    f"Skipped graph execution #{graph_exec.graph_exec_id}, "
+                    "it was stopped before it started."
+                )
+                return
+            exec_meta.status = ExecutionStatus.RUNNING
         elif exec_meta.status == ExecutionStatus.RUNNING:
             log_metadata.info(
                 f"⚙️ Graph execution #{graph_exec.graph_exec_id} is already running, continuing where it left off."
@@ -1629,12 +1696,7 @@ class ExecutionProcessor:
             )
             product_analytics.handle_run_finished(graph_exec, exec_meta, exec_stats)
 
-            update_graph_execution_state(
-                db_client=db_client,
-                graph_exec_id=graph_exec.graph_exec_id,
-                status=exec_meta.status,
-                stats=exec_stats,
-            )
+            _write_the_final_state(db_client, graph_exec, exec_meta.status, exec_stats)
 
     async def charge_node_usage(
         self,
