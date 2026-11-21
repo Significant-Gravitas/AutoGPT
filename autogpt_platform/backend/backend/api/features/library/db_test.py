@@ -2,10 +2,11 @@ import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+import prisma.actions
 import prisma.enums
 import prisma.fields
 import prisma.models
@@ -2552,14 +2553,10 @@ async def test_migrate_webhook_presets_rekeys_input_mask(mocker):
     preset_prisma.update_many = AsyncMock(return_value=1)
     mocker.patch("prisma.models.AgentPreset.prisma", return_value=preset_prisma)
 
-    mask_row = MagicMock(
-        id="row-1",
-        agentPresetId="preset-1",
-        data={"repo": "a/b"},
+    mask_rows = mocker.patch.object(
+        db, "query_raw_with_schema", AsyncMock(return_value=[{"id": "row-1"}])
     )
-    mask_row.name = library_model.node_input_mask_key(old_trigger.id)
     io_prisma = MagicMock()
-    io_prisma.find_many = AsyncMock(return_value=[mask_row])
     io_prisma.update_many = AsyncMock(return_value=1)
     mocker.patch(
         "prisma.models.AgentNodeExecutionInputOutput.prisma",
@@ -2569,9 +2566,11 @@ async def test_migrate_webhook_presets_rekeys_input_mask(mocker):
 
     await db.migrate_webhook_presets_to_new_version("user-1", new_graph)
 
-    where = io_prisma.find_many.await_args.kwargs["where"]
-    assert where["agentPresetId"] == {"in": ["preset-1"]}
-    assert where["AgentPreset"] == {"is": {"agentGraphVersion": new_graph.version}}
+    assert mask_rows.await_args.args[1:] == (
+        ["preset-1"],
+        new_graph.version,
+        library_model.NODE_INPUT_MASK_PREFIX,
+    )
     io_prisma.update_many.assert_awaited_once_with(
         where={"id": {"in": ["row-1"]}},
         data={"name": library_model.node_input_mask_key(new_trigger.id)},
@@ -2583,11 +2582,12 @@ async def test_a_version_move_rekeys_only_the_trigger_config_row(
     server: SpinTestServer,
 ):
     """On Postgres: a graph input named with the mask prefix is not trigger
-    config, so it keeps its name while the config row moves to the new node."""
+    config, so it keeps its name while the config row moves to the new node, and
+    a preset another activation moved past this version keeps its key."""
     user_id = str(uuid.uuid4())
     await get_or_create_user({"sub": user_id, "email": f"rekey-{user_id}@example.com"})
     graph_id = str(uuid.uuid4())
-    for version in (1, 2):
+    for version in (1, 2, 3):
         await prisma.models.AgentGraph.prisma().create(
             data={"id": graph_id, "version": version, "userId": user_id}
         )
@@ -2604,22 +2604,33 @@ async def test_a_version_move_rekeys_only_the_trigger_config_row(
             "providerWebhookId": "",
         }
     )
-    preset = await prisma.models.AgentPreset.prisma().create(
-        data={
-            "name": "p",
-            "description": "",
-            "userId": user_id,
-            "agentGraphId": graph_id,
-            "agentGraphVersion": 1,
-            "webhookId": webhook.id,
-        }
-    )
-    for name, value in (
-        (library_model.node_input_mask_key("oldnode1-x"), {"repo": "a/b"}),
-        ("_node_input_mask_note", "hello"),
+    preset, bumped = [
+        await prisma.models.AgentPreset.prisma().create(
+            data={
+                "name": name,
+                "description": "",
+                "userId": user_id,
+                "agentGraphId": graph_id,
+                "agentGraphVersion": 1,
+                "webhookId": webhook.id,
+            }
+        )
+        for name in ("p", "bumped")
+    ]
+    old_key = library_model.node_input_mask_key("oldnode1-x")
+    # The graph input is the older row, so only the object check picks the config.
+    for preset_id, name, value, minute in (
+        (preset.id, "_node_input_mask_note", "hello", 0),
+        (preset.id, old_key, {"repo": "a/b"}, 1),
+        (bumped.id, old_key, {"repo": "c/d"}, 1),
     ):
         await prisma.models.AgentNodeExecutionInputOutput.prisma().create(
-            data={"name": name, "data": SafeJson(value), "agentPresetId": preset.id}
+            data={
+                "name": name,
+                "data": SafeJson(value),
+                "agentPresetId": preset_id,
+                "time": datetime(2026, 1, 1, 0, minute, tzinfo=timezone.utc),
+            }
         )
     new_graph = MagicMock(
         id=graph_id,
@@ -2628,17 +2639,47 @@ async def test_a_version_move_rekeys_only_the_trigger_config_row(
     )
     old_graph = MagicMock(webhook_input_node=MagicMock(block_id="block-github"))
 
+    # A preset may hold up to MAX_PRESET_INPUT_BYTES per config, so the move must
+    # never load the stored inputs to find the row it renames.
+    refuse_load = AsyncMock(side_effect=AssertionError("stored inputs were loaded"))
+    move_presets = prisma.actions.AgentPresetActions.update_many
+
+    async def move_after_a_concurrent_activation(self, *args, **kwargs):
+        await prisma.models.AgentPreset.prisma().update(
+            where={"id": bumped.id}, data={"agentGraphVersion": 3}
+        )
+        return await move_presets(self, *args, **kwargs)
+
     try:
-        with patch.object(db.graph_db, "get_graph", AsyncMock(return_value=old_graph)):
+        with (
+            patch.object(db.graph_db, "get_graph", AsyncMock(return_value=old_graph)),
+            patch.object(
+                prisma.actions.AgentNodeExecutionInputOutputActions,
+                "find_many",
+                refuse_load,
+            ),
+            patch.object(
+                prisma.actions.AgentPresetActions,
+                "update_many",
+                move_after_a_concurrent_activation,
+            ),
+        ):
             result = await db.migrate_webhook_presets_to_new_version(user_id, new_graph)
         rows = await prisma.models.AgentNodeExecutionInputOutput.prisma().find_many(
             where={"agentPresetId": preset.id}
         )
+        bumped_rows = (
+            await prisma.models.AgentNodeExecutionInputOutput.prisma().find_many(
+                where={"agentPresetId": bumped.id}
+            )
+        )
     finally:
         await prisma.models.AgentNodeExecutionInputOutput.prisma().delete_many(
-            where={"agentPresetId": preset.id}
+            where={"agentPresetId": {"in": [preset.id, bumped.id]}}
         )
-        await prisma.models.AgentPreset.prisma().delete(where={"id": preset.id})
+        await prisma.models.AgentPreset.prisma().delete_many(
+            where={"id": {"in": [preset.id, bumped.id]}}
+        )
         await prisma.models.IntegrationWebhook.prisma().delete(where={"id": webhook.id})
         await prisma.models.AgentGraph.prisma().delete_many(where={"id": graph_id})
 
@@ -2651,6 +2692,7 @@ async def test_a_version_move_rekeys_only_the_trigger_config_row(
         new_key: {"repo": "a/b"},
         "_node_input_mask_note": "hello",
     }
+    assert [row.name for row in bumped_rows] == [old_key]
 
 
 @pytest.mark.asyncio
@@ -2887,11 +2929,12 @@ async def test_presets_move_and_rekey_in_one_transaction_within_the_organization
     preset_prisma = mocker.patch(
         "prisma.models.AgentPreset.prisma", return_value=presets
     )
-    rows = MagicMock(
-        find_many=AsyncMock(return_value=[]), update_many=AsyncMock(return_value=0)
-    )
+    rows = MagicMock(update_many=AsyncMock(return_value=0))
     rows_prisma = mocker.patch(
         "prisma.models.AgentNodeExecutionInputOutput.prisma", return_value=rows
+    )
+    mask_rows = mocker.patch.object(
+        db, "query_raw_with_schema", AsyncMock(return_value=[])
     )
 
     await db.migrate_webhook_presets_to_new_version(
@@ -2905,7 +2948,8 @@ async def test_presets_move_and_rekey_in_one_transaction_within_the_organization
         "name": library_model.node_input_mask_key(new_trigger.id)
     }
     assert preset_prisma.call_args_list[-1] == call(tx)
-    assert rows_prisma.call_args_list == [call(tx), call(tx)]
+    assert rows_prisma.call_args_list == [call(tx)]
+    assert mask_rows.await_args.kwargs["client"] is tx
 
 
 @pytest.mark.asyncio

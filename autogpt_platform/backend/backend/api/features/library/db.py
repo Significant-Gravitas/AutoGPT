@@ -24,7 +24,7 @@ from backend.api.features.orgs.db import resolve_member_tenancy
 from backend.api.features.store.store_listing_versions import (
     installable_store_version_where,
 )
-from backend.data.db import get_database_schema, transaction
+from backend.data.db import get_database_schema, query_raw_with_schema, transaction
 from backend.data.execution import get_graph_execution
 from backend.data.expert_attribution import resolve_attributable_expert
 from backend.data.graph import GraphSettings
@@ -2967,17 +2967,11 @@ async def migrate_webhook_presets_to_new_version(
         # Scoped to presets now pinned to this version so a preset that a
         # concurrent activation already bumped past it isn't re-keyed to the
         # wrong node.
-        prefixed = await prisma.models.AgentNodeExecutionInputOutput.prisma(
-            tx
-        ).find_many(
-            where={
-                "agentPresetId": {"in": ids_to_migrate},
-                "name": {"startswith": library_model.NODE_INPUT_MASK_PREFIX},
-                "AgentPreset": {"is": {"agentGraphVersion": new_graph.version}},
-            },
+        mask_row_ids = await _trigger_mask_row_ids(
+            tx, ids_to_migrate, new_graph.version
         )
         await prisma.models.AgentNodeExecutionInputOutput.prisma(tx).update_many(
-            where={"id": {"in": _trigger_mask_row_ids(prefixed)}},
+            where={"id": {"in": mask_row_ids}},
             data={"name": library_model.node_input_mask_key(new_trigger_node.id)},
         )
 
@@ -2993,25 +2987,29 @@ async def migrate_webhook_presets_to_new_version(
     )
 
 
-def _trigger_mask_row_ids(
-    rows: list[prisma.models.AgentNodeExecutionInputOutput],
+async def _trigger_mask_row_ids(
+    tx: prisma.Prisma, preset_ids: list[str], graph_version: int
 ) -> list[str]:
-    """Each preset's trigger-config row, picked as its readers pick it: a graph
-    input may use the mask prefix too."""
-    by_preset: dict[
-        str | None, dict[str, prisma.models.AgentNodeExecutionInputOutput]
-    ] = {}
-    for row in rows:
-        by_preset.setdefault(row.agentPresetId, {})[row.name] = row
-    return [
-        named[key].id
-        for named in by_preset.values()
-        if (
-            key := library_model.stored_trigger_mask_key(
-                {name: row.data for name, row in named.items()}
-            )
-        )
-    ]
+    """Each preset's trigger-config row, picked as `stored_trigger_mask_key` picks it
+    (a graph input may use the mask prefix too), without loading any config."""
+    rows = await query_raw_with_schema(
+        """
+        SELECT DISTINCT ON (io."agentPresetId") io."id"
+        FROM {schema_prefix}"AgentNodeExecutionInputOutput" AS io
+        JOIN {schema_prefix}"AgentPreset" AS preset
+            ON preset."id" = io."agentPresetId"
+        WHERE preset."id" = ANY($1::text[])
+            AND preset."agentGraphVersion" = $2
+            AND starts_with(io."name", $3)
+            AND jsonb_typeof(io."data") = 'object'
+        ORDER BY io."agentPresetId", io."time", io."id"
+        """,
+        preset_ids,
+        graph_version,
+        library_model.NODE_INPUT_MASK_PREFIX,
+        client=tx,
+    )
+    return [row["id"] for row in rows]
 
 
 async def delete_preset(user_id: str, preset_id: str) -> None:
