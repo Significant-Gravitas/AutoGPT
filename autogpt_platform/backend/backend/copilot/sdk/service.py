@@ -234,6 +234,7 @@ from ..tools import (
 )
 from ..tools.render_ui import render_ui_disabled_tools
 from ..tools.e2b_sandbox import (
+    SandboxUnavailableError,
     forget_turn_ceiling,
     get_or_create_sandbox,
     pause_sandbox_direct,
@@ -5556,7 +5557,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # here, but that narrowing does not carry into nested functions.
         owner_expert_id = session.expert_id
         execution_target = session.metadata.execution_target
-        e2b_refusal: SandboxLimitError | None = None
+        e2b_refusal: SandboxLimitError | SandboxUnavailableError | None = None
         local_pc_folder_refused = False
 
         async def _setup_e2b():
@@ -5609,6 +5610,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     e2b_err,
                     exc_info=True,
                 )
+                e2b_refusal = SandboxUnavailableError()
                 await forget_turn_ceiling(session_id, owner_expert_id)
                 return None
 
@@ -5671,9 +5673,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         graphiti_enabled = _graphiti_enabled(user_id)
         e2b_sandbox = await e2b_task
         if e2b_refusal is not None:
-            # Refused under a running-box limit: the turn ends here rather
-            # than running its commands on the local fallback.  The finally
-            # below saves the marker, so a reloaded chat still shows why.
+            # E2B is configured but the box did not start: the turn ends here
+            # rather than running its commands on the local fallback.  The
+            # finally below saves the marker, so a reloaded chat shows why.
             _append_error_marker(session, str(e2b_refusal), retryable=True)
             yield StreamError(errorText=str(e2b_refusal), code=e2b_refusal.code)
             return
