@@ -1,9 +1,11 @@
 import io
+from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile
+from PIL import Image
 from starlette.datastructures import Headers
 
 from backend.api.features import oauth
@@ -119,7 +121,9 @@ async def test_logo_reference_updates_before_previous_object_is_deleted(monkeypa
         patch.object(oauth, "_delete_app_current_logo_file", side_effect=delete),
         patch.object(oauth, "scan_content_safe", AsyncMock()),
         patch.object(
-            oauth.Image, "open", return_value=SimpleNamespace(size=(512, 512))
+            oauth.Image,
+            "open",
+            return_value=nullcontext(SimpleNamespace(size=(512, 512))),
         ),
         patch.object(oauth.async_storage, "Storage", return_value=context),
     ):
@@ -131,6 +135,31 @@ async def test_logo_reference_updates_before_previous_object_is_deleted(monkeypa
     assert update_arguments["logo_url"].startswith(
         "https://storage.googleapis.com/public-media/oauth-apps/app-123/logo/"
     )
+
+
+@pytest.mark.asyncio
+async def test_logo_in_another_format_is_rejected_without_parsing(monkeypatch):
+    monkeypatch.setattr(settings.config, "public_site_media_bucket", "public-media")
+    app = SimpleNamespace(id="app-123", owner_id="owner", logo_url=None)
+    content = io.BytesIO()
+    Image.new("RGB", (512, 512)).save(content, format="TIFF")
+    content.seek(0)
+    file = UploadFile(
+        filename="logo.png",
+        file=content,
+        headers=Headers({"content-type": "image/png"}),
+    )
+
+    with (
+        patch.object(oauth, "get_oauth_application_by_id", AsyncMock(return_value=app)),
+        patch("PIL.TiffImagePlugin.TiffImageFile._open") as parse,
+        pytest.raises(HTTPException) as rejection,
+    ):
+        await oauth.upload_app_logo("app-123", file, user_id="owner")
+
+    assert rejection.value.status_code == 400
+    assert rejection.value.detail == "Invalid image file"
+    parse.assert_not_called()
 
 
 @pytest.mark.asyncio

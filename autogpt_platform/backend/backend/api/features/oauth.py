@@ -13,6 +13,7 @@ Flow:
 7. App uses access token to call external API endpoints
 """
 
+import asyncio
 import io
 import logging
 import os
@@ -942,6 +943,9 @@ async def update_app_logo(
 LOGO_MIN_SIZE = 512
 LOGO_MAX_SIZE = 2048
 LOGO_ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
+# The Pillow parsers for LOGO_ALLOWED_TYPES. The content type is only what the
+# client declared, so the bytes are handed to these parsers and no others.
+LOGO_ALLOWED_FORMATS = ("JPEG", "PNG", "WEBP")
 LOGO_MAX_FILE_SIZE = 3 * 1024 * 1024  # 3MB
 
 
@@ -1013,8 +1017,7 @@ async def upload_app_logo(
 
     # Validate image dimensions
     try:
-        image = Image.open(io.BytesIO(file_bytes))
-        width, height = image.size
+        width, height = await asyncio.to_thread(_logo_size, file_bytes)
 
         if width != height:
             raise HTTPException(
@@ -1090,6 +1093,11 @@ async def upload_app_logo(
     )
 
     return updated_app
+
+
+def _logo_size(raw: bytes) -> tuple[int, int]:
+    with Image.open(io.BytesIO(raw), formats=LOGO_ALLOWED_FORMATS) as image:
+        return image.size
 
 
 async def _delete_app_current_logo_file(app: OAuthApplicationInfo):
