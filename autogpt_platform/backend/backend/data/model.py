@@ -417,6 +417,7 @@ _PROVIDER_LABELS: dict[str, str] = {
     "linear": "Linear",
     "rmfg": "RMFG",
     "smartlead": "SmartLead",
+    "specstream": "SpecStream",
 }
 
 
