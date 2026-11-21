@@ -600,6 +600,43 @@ async def test_store_skill_rejects_oversized_trigger():
     assert "trigger" in result.message
 
 
+@pytest.mark.parametrize(
+    "over_cap",
+    [
+        {"description": "<" * (MAX_DESCRIPTION_CHARS + 1)},
+        {"body": "<" * (MAX_BODY_CHARS + 1)},
+        {"triggers": ["<" * (MAX_TRIGGER_CHARS + 1)]},
+        {"triggers": ["<"] * (MAX_TRIGGERS + 1)},
+    ],
+    ids=["description", "body", "trigger", "trigger-count"],
+)
+@pytest.mark.asyncio
+async def test_store_skill_checks_caps_before_stripping_server_tags(over_cap: dict):
+    """Text over a cap is refused as submitted, before server tags are stripped."""
+    fields = {"description": "ok", "body": "ok", **over_cap}
+    with (
+        patch.object(
+            skills,
+            "strip_server_injected_tags",
+            wraps=skills.strip_server_injected_tags,
+        ) as strip,
+        pytest.raises(ValueError),
+    ):
+        await store_user_skill("user-1", name="foo", **fields)
+    strip.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_store_skill_rejects_a_body_the_strip_leaves_empty():
+    with pytest.raises(ValueError, match="body is required"):
+        await store_user_skill(
+            "user-1",
+            name="foo",
+            description="ok",
+            body="<env_context>\n/etc\n</env_context>",
+        )
+
+
 @pytest.mark.asyncio
 async def test_store_skill_happy_path_writes_to_workspace():
     """End-to-end: store_skill writes SKILL.md to the workspace and

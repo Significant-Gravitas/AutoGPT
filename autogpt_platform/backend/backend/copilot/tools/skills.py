@@ -1469,7 +1469,8 @@ async def _record_package_history(
             f.relative_path: f.content.decode("utf-8", errors="replace") for f in files
         }
         bundle["SKILL.md"] = skill.rendered
-        failure = check_skill_bundle(
+        failure = await asyncio.to_thread(
+            check_skill_bundle,
             bundle,
             approved_matches=skill.learning.content_approvals,
             seeded_values=skill.learning.seeded_secret_values,
@@ -1508,24 +1509,25 @@ def _prepare_skill(write: SkillWrite, origin: str) -> _PreparedSkill:
     if write.skill_markdown is not None:
         return _prepare_exact_package(write, origin)
     name = write.name.strip().lower()
-    # Strip any server-injected XML tags (``<available_skills>``,
-    # ``<env_context>``, etc.) from the persisted fields *before* storage —
-    # when the skill is later loaded that text lands in conversation history
-    # and could otherwise appear alongside the real server-injected versions.
-    description = strip_server_injected_tags(write.description.strip())
-    body = strip_server_injected_tags(write.body.strip())
-    triggers = [
-        strip_server_injected_tags(t.strip())
-        for t in (write.triggers or [])
-        if str(t).strip()
-    ]
-    triggers = [t for t in triggers if t]
+    description = write.description.strip()
+    body = write.body.strip()
+    triggers = [t.strip() for t in (write.triggers or []) if str(t).strip()]
 
     name_err = _validate_name(name)
     if name_err:
         raise ValueError(name_err)
     if origin not in _SKILL_ORIGINS:
         raise ValueError(f"origin must be one of {', '.join(sorted(_SKILL_ORIGINS))}")
+    # The caps first: the strip below costs time in proportion to its input.
+    validate_skill_content(description, body, triggers)
+
+    # Strip any server-injected XML tags (``<available_skills>``,
+    # ``<env_context>``, etc.) from the persisted fields *before* storage —
+    # when the skill is later loaded that text lands in conversation history
+    # and could otherwise appear alongside the real server-injected versions.
+    description = strip_server_injected_tags(description)
+    body = strip_server_injected_tags(body)
+    triggers = [t for t in (strip_server_injected_tags(t) for t in triggers) if t]
     validate_skill_content(description, body, triggers)
 
     parsed = ParsedSkill(
@@ -1573,9 +1575,9 @@ def _prepare_exact_package(write: SkillWrite, origin: str) -> _PreparedSkill:
     name_error = _validate_name(parsed.name)
     if name_error:
         raise ValueError(name_error)
+    validate_skill_content(parsed.description, parsed.body, list(parsed.triggers))
     if strip_server_injected_tags(text) != text:
         raise ValueError("Published package contains reserved server tags")
-    validate_skill_content(parsed.description, parsed.body, list(parsed.triggers))
     validate_package(SkillPackage(skill_md=text, files=write.files or []))
     return _PreparedSkill(
         replace(parsed, origin=origin, baseline=write.baseline),
@@ -1613,7 +1615,9 @@ async def _check_prepared_content(
             continue
     bundle["SKILL.md"] = skill.rendered
     approvals = skill.learning.content_approvals
-    failure = check_skill_bundle(
+    # Up to 20 MB of text, so the CPU-bound checks run off the event loop.
+    failure = await asyncio.to_thread(
+        check_skill_bundle,
         bundle,
         seeded_values=skill.learning.seeded_secret_values,
         allowed_pattern_classes=skill.learning.allowed_pattern_classes,
@@ -1623,7 +1627,8 @@ async def _check_prepared_content(
         approvals = await current_content_approvals(
             user_id, expert_id, skill.parsed.name
         )
-        failure = check_skill_bundle(
+        failure = await asyncio.to_thread(
+            check_skill_bundle,
             bundle,
             seeded_values=skill.learning.seeded_secret_values,
             allowed_pattern_classes=skill.learning.allowed_pattern_classes,
@@ -1631,7 +1636,8 @@ async def _check_prepared_content(
         )
     if failure is not None:
         raise SkillContentBlockedError(failure)
-    return collect_content_approvals(
+    return await asyncio.to_thread(
+        collect_content_approvals,
         bundle,
         approved_by_user_id=user_id,
         allowed_pattern_classes=skill.learning.allowed_pattern_classes,

@@ -1,5 +1,6 @@
 """Bounded recovery of validated, already-paid review output."""
 
+import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Literal
@@ -84,7 +85,7 @@ async def save_review_replay(
     request: PublishRequest,
     packages: dict[str, ReviewedPackage],
 ) -> None:
-    if not _safe_to_store(request, packages):
+    if not await asyncio.to_thread(_safe_to_store, request, packages):
         return
     replay = ReviewReplay(created_at=datetime.now(timezone.utc), request=request)
     payload = replay.model_dump(mode="json")
