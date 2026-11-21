@@ -2,9 +2,10 @@
 
 import logging
 import re
-from typing import Any
+from typing import Any, Literal
 
 from backend.data.dynamic_fields import DICT_SPLIT
+from backend.data.llm_registry.llm_models import is_switched_off
 
 from .helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
@@ -16,13 +17,12 @@ from .helpers import (
     get_defined_property_type,
     is_uuid,
 )
-from .switched_off_models import (
-    is_new_switched_off_model,
-    models_by_node,
-    offered_fallback,
-)
+from .switched_off_models import kept_model, models_by_node, offered_fallback
 
 logger = logging.getLogger(__name__)
+
+# Why fix_ai_model_parameter rewrote a node's model.
+_ModelFix = Literal["respelled", "switched_off", "unsupported"]
 
 # Block IDs used by the fixer
 _FIX_VALUE2_EMPTY_STRING_BLOCK_IDS = ["715696a0-e1da-45c8-b209-c2fa9c3b0be6"]
@@ -870,8 +870,9 @@ class AgentFixer:
         A model the catalog has switched off is unsupported too, though the
         enum still lists it so stored workflows keep validating. It is
         replaced with its catalog fallback when the block offers that, and
-        with the default otherwise. A node keeps it only where
-        *saved_models* shows the node already had it.
+        with the default otherwise. An edit keeps the model *saved_models*
+        shows its node had, switched off or not, when it names that model in
+        any spelling the enum takes, written as the block lists it.
 
         Args:
             agent: The agent dictionary to fix
@@ -937,19 +938,24 @@ class AgentFixer:
                     allowed_models = generic_allowed_models
                     fallback_model = default_model
 
-                switched_off = is_new_switched_off_model(
-                    current_model, saved_models.get(node_id)
+                kept = kept_model(
+                    current_model, saved_models.get(node_id), allowed_models
                 )
-                if current_model not in allowed_models or switched_off:
-                    new_model = fallback_model
-                    if switched_off:
-                        new_model = (
-                            offered_fallback(current_model, allowed_models)
-                            or fallback_model
-                        )
-                    self._log_model_fix(
-                        node_id, block, current_model, new_model, switched_off
+                fix: _ModelFix
+                if kept is not None:
+                    new_model, fix = kept, "respelled"
+                elif is_switched_off(current_model):
+                    new_model = (
+                        offered_fallback(current_model, allowed_models)
+                        or fallback_model
                     )
+                    fix = "switched_off"
+                elif current_model not in allowed_models:
+                    new_model, fix = fallback_model, "unsupported"
+                else:
+                    continue
+                if new_model != current_model:
+                    self._log_model_fix(node_id, block, current_model, new_model, fix)
                     input_default["model"] = new_model
                     node["input_default"] = input_default
                     fixed_count += 1
@@ -965,7 +971,7 @@ class AgentFixer:
         block: dict[str, Any],
         old_model: Any,
         new_model: str,
-        switched_off: bool,
+        fix: _ModelFix,
     ) -> None:
         block_name = block.get("name", "Unknown AI Block")
         if old_model is None:
@@ -973,7 +979,12 @@ class AgentFixer:
                 f"Added model parameter '{new_model}' to AI "
                 f"block node {node_id} ({block_name})"
             )
-        elif switched_off:
+        elif fix == "respelled":
+            self.add_fix_log(
+                f"Wrote model '{old_model}' as '{new_model}', the spelling the "
+                f"block lists, on AI block node {node_id} ({block_name})"
+            )
+        elif fix == "switched_off":
             self.add_fix_log(
                 f"Replaced switched-off model '{old_model}' with '{new_model}' "
                 f"on AI block node {node_id} ({block_name})"

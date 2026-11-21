@@ -8,7 +8,7 @@ import pytest
 
 from backend.blocks.codex import CodeGenerationBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-from backend.blocks.llm import AITextGeneratorBlock
+from backend.blocks.llm import DEFAULT_LLM_MODEL, AITextGeneratorBlock
 from backend.copilot.tools._test_data import make_session
 from backend.copilot.tools.fix_agent import FixAgentGraphTool
 from backend.copilot.tools.models import AgentPreviewResponse, FixResultResponse
@@ -161,16 +161,53 @@ async def test_an_edit_keeps_a_saved_switched_off_model_and_moves_new_work_off_i
 
 
 @pytest.mark.asyncio
-async def test_an_edit_keeps_a_saved_switched_off_model_in_another_spelling():
-    """The enum takes the provider-prefixed spelling too, so a node saved as
-    openai/gpt-5-2025-08-07 hasn't changed model when the edit writes the
-    bare id."""
-    saved = workflow(AITextGeneratorBlock, "openai/gpt-5-2025-08-07")
-    edited = workflow(AITextGeneratorBlock, "gpt-5-2025-08-07")
+@pytest.mark.parametrize(
+    "saved_model, written, kept",
+    [
+        ("gpt-5-2025-08-07", "openai/gpt-5-2025-08-07", "gpt-5-2025-08-07"),
+        ("openai/gpt-5-2025-08-07", "gpt-5-2025-08-07", "gpt-5-2025-08-07"),
+        ("gpt-6.1-sol", "openai/gpt-6.1-sol", "gpt-6.1-sol"),
+    ],
+    ids=[
+        "switched-off-edit-adds-the-prefix",
+        "switched-off-saved-with-the-prefix",
+        "enabled-edit-adds-the-prefix",
+    ],
+)
+async def test_an_edit_keeps_the_saved_model_in_any_spelling(
+    saved_model: str, written: str, kept: str
+):
+    """The enum takes a provider-prefixed spelling too. An edit that names
+    the model its node was saved on keeps that model, switched off or not,
+    written as the block's schema lists it."""
+    saved = workflow(AITextGeneratorBlock, saved_model)
+    edited = workflow(AITextGeneratorBlock, written)
 
     result = await preview(edited, saved_agent=saved)
 
-    assert model_on(result, AI_NODE) == "gpt-5-2025-08-07"
+    assert model_on(result, AI_NODE) == kept
+
+
+@pytest.mark.asyncio
+async def test_an_edit_still_replaces_a_value_that_names_no_model():
+    saved = workflow(AITextGeneratorBlock, "gpt-6.1-sol")
+    edited = workflow(AITextGeneratorBlock, "gpt-6.1-sol-preview")
+
+    result = await preview(edited, saved_agent=saved)
+
+    assert model_on(result, AI_NODE) == DEFAULT_LLM_MODEL.value
+
+
+@pytest.mark.asyncio
+async def test_an_edit_keeps_no_saved_model_the_block_doesnt_offer():
+    """The Codex block's own list doesn't offer gpt-6.1-sol, so a Codex node
+    saved on it gets the block's default, in either spelling."""
+    saved = workflow(CodeGenerationBlock, "gpt-6.1-sol")
+    edited = workflow(CodeGenerationBlock, "openai/gpt-6.1-sol")
+
+    result = await preview(edited, saved_agent=saved)
+
+    assert model_on(result, AI_NODE) == "gpt-5.3-codex"
 
 
 @pytest.mark.asyncio

@@ -1,11 +1,11 @@
 """Which model an AI node the agent generator writes gets in place of one the
-catalog has switched off. The block's enum still lists such a model, so
-stored workflows keep validating, but no new work may start on one."""
+catalog has switched off, and when an edit keeps the model a node was saved
+on. The block's enum still lists a switched-off model, so stored workflows
+keep validating, but no new work may start on one."""
 
 from typing import Any
 
 from backend.data.llm_registry.llm_models import (
-    is_switched_off,
     llm_model_named,
     scheduled_model_fallback,
 )
@@ -22,12 +22,14 @@ def models_by_node(agent: AgentDict | None) -> dict[str, Any]:
     }
 
 
-def is_new_switched_off_model(model: Any, saved_model: Any) -> bool:
-    """Whether *model* is switched off and not the model its node was saved
-    on, in whichever spelling the enum takes."""
-    return is_switched_off(model) and (
-        llm_model_named(model) != llm_model_named(saved_model)
-    )
+def kept_model(model: Any, saved_model: Any, offered: set[str]) -> str | None:
+    """The model an edit keeps, spelled as the block's schema lists it: the
+    one its node was saved on, when *model* names it in any spelling the enum
+    takes and the block offers it, switched off or not. None otherwise."""
+    named = llm_model_named(model)
+    if named is None or named != llm_model_named(saved_model):
+        return None
+    return named.value if named.value in offered else None
 
 
 def offered_fallback(model: Any, offered: set[str]) -> str | None:
