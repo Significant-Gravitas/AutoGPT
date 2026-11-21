@@ -326,6 +326,9 @@ def test_is_port_free_true_when_only_time_wait_connections_remain():
     # After a server restart, connections it closed linger in TIME_WAIT on its
     # port; hypercorn binds with SO_REUSEADDR, so the port counts as free.
     with socket.socket() as listener:
+        # The previous server was hypercorn too; Linux only allows the reuse if
+        # the old socket also set SO_REUSEADDR
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         listener.bind(("127.0.0.1", 0))
         listener.listen()
         port = listener.getsockname()[1]
