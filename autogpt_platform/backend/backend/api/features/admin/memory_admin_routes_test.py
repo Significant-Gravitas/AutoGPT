@@ -680,10 +680,19 @@ class TestGraph:
         forget emptied shows only when it was emptied."""
         stamp = "2026-09-26T12:00:00+00:00"
         driver = _driver_returning(
-            [{"uuid": "alice", "name": "Alice", "summary": "", "all_labels": []}],
+            [
+                {
+                    "uuid": "alice",
+                    "node_id": 0,
+                    "name": "Alice",
+                    "summary": "",
+                    "all_labels": [],
+                }
+            ],
             [
                 {
                     "uuid": "ep1",
+                    "node_id": 1,
                     "name": "conversation_s1",
                     "summary": None,
                     "hard_deleted_at": stamp,
@@ -709,8 +718,14 @@ class TestGraph:
         assert "coalesce(e.fact_redacted, e.fact) AS fact" in edge_query
 
     @staticmethod
-    def _node(uuid: str) -> dict:
-        return {"uuid": uuid, "name": uuid, "summary": "", "all_labels": ["Entity"]}
+    def _node(uuid: str, node_id: int = 0) -> dict:
+        return {
+            "uuid": uuid,
+            "node_id": node_id,
+            "name": uuid,
+            "summary": "",
+            "all_labels": ["Entity"],
+        }
 
     @staticmethod
     def _edge(uuid: str, source: str, target: str) -> dict:
@@ -763,6 +778,54 @@ class TestGraph:
         body = resp.json()
         assert [n["uuid"] for n in body["nodes"]] == ["a", "b"]
         assert body["truncated"] is True
+
+    def test_edge_limit_counts_only_connections_between_visible_nodes(self) -> None:
+        nodes = [self._node("a", 5), self._node("b", 6), self._node("c", 261)]
+        node_ids = {node["uuid"]: node["node_id"] for node in nodes}
+        edges = [
+            self._edge("hidden-target-1", "a", "c"),
+            self._edge("hidden-source-1", "c", "a"),
+            self._edge("hidden-target-2", "a", "c"),
+            self._edge("hidden-source-2", "c", "a"),
+            self._edge("visible", "b", "a"),
+        ]
+
+        async def query(cypher: str, *, limit: int, **params):
+            if "MATCH (n:Entity" in cypher:
+                return nodes[:limit], [], None
+
+            visible_edges = edges
+            if "node_uuid_buckets" in params:
+                buckets = params["node_uuid_buckets"]
+                for endpoint, key in [("src", "source"), ("tgt", "target")]:
+                    predicate = (
+                        f"{endpoint}.uuid IN "
+                        f"$node_uuid_buckets[id({endpoint}) % size($node_uuid_buckets)]"
+                    )
+                    if predicate in cypher:
+                        assert cypher.index(predicate) < cypher.index("LIMIT")
+                        visible_edges = [
+                            edge
+                            for edge in visible_edges
+                            if edge[key] in buckets[node_ids[edge[key]] % len(buckets)]
+                        ]
+
+            return visible_edges[:limit], [], None
+
+        driver = AsyncMock()
+        driver.execute_query.side_effect = query
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
+            resp = client.get(
+                "/admin/memory/abc/graph?node_limit=2&edge_limit=1"
+                "&include_communities=false"
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert [n["uuid"] for n in body["nodes"]] == ["a", "b"]
+        assert [e["uuid"] for e in body["edges"]] == ["visible"]
+        assert body["truncated"] is True
+        assert all("node_id" not in node for node in body["nodes"])
 
     def test_edge_beyond_limit_truncates(self) -> None:
         driver = _driver_returning(
