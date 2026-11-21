@@ -6,6 +6,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { isCompletedWithErrors } from "@/lib/run-health";
 import { formatTimeAgo } from "@/lib/utils/time";
 import Link, { useLinkStatus } from "next/link";
+import { useNowSecond } from "@/hooks/useNowSecond";
 import type { AgentExecutionWithInfo } from "../helpers";
 import { getExecutionDuration } from "../helpers";
 import {
@@ -26,8 +27,7 @@ function ActivityNavIndicator() {
     return (
       <LoadingSpinner
         size="small"
-        // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
-        className="shrink-0 text-neutral-400"
+        className="shrink-0 text-foreground-subtle"
         aria-hidden="true"
       />
     );
@@ -36,8 +36,8 @@ function ActivityNavIndicator() {
     <Icon
       icon={ArrowUpRight01Icon}
       size={16}
-      // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
-      className="shrink-0 text-neutral-400"
+      tone="subtle"
+      className="shrink-0"
       aria-hidden="true"
     />
   );
@@ -48,44 +48,36 @@ interface Props {
 }
 
 export function ActivityItem({ execution }: Props) {
+  const isActiveStatus =
+    execution.status === AgentExecutionStatus.RUNNING ||
+    execution.status === AgentExecutionStatus.QUEUED;
+  // Tick every second so live elapsed advances without waiting for stats.
+  const nowMs = useNowSecond(isActiveStatus);
+
   function getStatusIcon() {
     switch (execution.status) {
       case AgentExecutionStatus.QUEUED:
-        return <Icon icon={Clock01Icon} size={18} className="text-brand" />;
+        return <Icon icon={Clock01Icon} size={18} tone="brand" />;
       case AgentExecutionStatus.RUNNING:
-        return (
-          <Icon
-            icon={Loading03Icon}
-            size={18}
-            className="animate-spin text-brand"
-          />
-        );
+        return <Icon icon={Loading03Icon} size={18} spin tone="brand" />;
       case AgentExecutionStatus.COMPLETED:
         return isCompletedWithErrors(execution) ? (
-          <Icon
-            icon={Alert02Icon}
-            size={18}
-            // TODO(tokens): no exact role for text-amber-600 (#D97706)
-            className="text-amber-600"
-          />
+          <Icon icon={Alert02Icon} size={18} tone="warning" />
         ) : (
-          <Icon icon={CheckmarkCircle02Icon} size={18} className="text-brand" />
+          <Icon icon={CheckmarkCircle02Icon} size={18} tone="brand" />
         );
       case AgentExecutionStatus.FAILED:
-        return <Icon icon={Alert01Icon} size={18} className="text-brand" />;
+        return <Icon icon={Alert01Icon} size={18} tone="brand" />;
       case AgentExecutionStatus.TERMINATED:
-        return <Icon icon={StopCircleIcon} size={18} className="text-brand" />;
+        return <Icon icon={StopCircleIcon} size={18} tone="brand" />;
       case AgentExecutionStatus.INCOMPLETE:
-        return (
-          <Icon icon={MinusSignCircleIcon} size={18} className="text-brand" />
-        );
+        return <Icon icon={MinusSignCircleIcon} size={18} tone="brand" />;
       case AgentExecutionStatus.REVIEW:
         return (
           <Icon
             icon={Alert01Icon}
             size={18}
-            // TODO(tokens): no exact role for text-yellow-600 (#DFAF00)
-            className="text-yellow-600"
+            className="text-yellow-foreground"
           />
         );
       default:
@@ -95,10 +87,6 @@ export function ActivityItem({ execution }: Props) {
 
   function getItemDisplay() {
     // Handle active statuses (running/queued)
-    const isActiveStatus =
-      execution.status === AgentExecutionStatus.RUNNING ||
-      execution.status === AgentExecutionStatus.QUEUED;
-
     if (isActiveStatus) {
       const timeAgo = execution.started_at
         ? formatTimeAgo(execution.started_at.toString())
@@ -106,7 +94,7 @@ export function ActivityItem({ execution }: Props) {
       const statusText =
         execution.status === AgentExecutionStatus.QUEUED ? "queued" : "running";
       return [
-        `Started ${timeAgo}, ${getExecutionDuration(execution)} ${statusText}`,
+        `Started ${timeAgo}, ${getExecutionDuration(execution, new Date(nowMs))} ${statusText}`,
       ];
     }
 
@@ -156,11 +144,7 @@ export function ActivityItem({ execution }: Props) {
       {/* Icon + Agent Name */}
       <div className="flex items-center space-x-2">
         {getStatusIcon()}
-        <Text
-          variant="small-medium"
-          // TODO(tokens): no exact role for text-gray-900 (#111827)
-          className="max-w-44 truncate text-gray-900"
-        >
+        <Text variant="small-medium" className="max-w-44 truncate">
           {execution.agent_name}
         </Text>
       </div>
@@ -171,11 +155,7 @@ export function ActivityItem({ execution }: Props) {
           <Text
             key={index}
             variant="small"
-            className={
-              index === 0
-                ? "!text-foreground-secondary"
-                : "!text-foreground-tertiary"
-            }
+            tone={index === 0 ? "secondary" : "muted"}
           >
             {line}
           </Text>
@@ -187,7 +167,7 @@ export function ActivityItem({ execution }: Props) {
   if (withExecutionLink) {
     return (
       <Link
-        className="flex cursor-pointer items-center justify-between gap-2 rounded-xl px-2 py-3 transition-colors hover:bg-bgLightGrey"
+        className="flex cursor-pointer items-center justify-between gap-2 rounded-xl px-2 py-3 transition-colors hover:bg-surface-hover"
         href={linkUrl}
       >
         <div className="min-w-0 flex-1">{content}</div>

@@ -43,7 +43,7 @@ export function ContextualActionButton({
       type="button"
       onClick={handleClick}
       className={cn(
-        "inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm font-medium leading-inherit text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis",
+        "inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm leading-inherit font-medium text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis",
         className,
       )}
     >

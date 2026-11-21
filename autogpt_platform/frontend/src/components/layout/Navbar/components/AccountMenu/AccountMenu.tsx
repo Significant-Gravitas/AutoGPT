@@ -43,8 +43,7 @@ export function AccountMenu({
       <PopoverTrigger asChild>
         <button
           type="button"
-          // TODO(tokens): no exact role for focus-visible:ring-neutral-300 (#D4D4D4)
-          className="flex cursor-pointer items-center space-x-3 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
+          className="flex cursor-pointer items-center space-x-3 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
           aria-label="Open profile menu"
           aria-controls={popupId}
           aria-haspopup="true"
@@ -64,8 +63,7 @@ export function AccountMenu({
         side={side}
         align={align}
         sideOffset={8}
-        // TODO(tokens): no exact role for border-neutral-200 (#E5E5E5)
-        className="w-72 overflow-hidden rounded-2xl border border-neutral-200 bg-surface px-0 py-2 shadow-lg"
+        className="w-72 overflow-hidden rounded-2xl border border-border-base bg-surface px-0 py-2 shadow-lg"
         data-testid="account-menu-popover"
       >
         <div className="px-2">
@@ -87,10 +85,7 @@ export function AccountMenu({
           return (
             <React.Fragment key={`group-${groupIndex}`}>
               {showDivider && (
-                <div
-                  // TODO(tokens): no exact role for bg-neutral-200 (#E5E5E5)
-                  className="mx-3 my-1 h-px bg-neutral-200"
-                />
+                <div className="mx-3 my-1 h-px bg-surface-active" />
               )}
               <div className="px-2 py-1">
                 <ul className="flex flex-col gap-0.5">

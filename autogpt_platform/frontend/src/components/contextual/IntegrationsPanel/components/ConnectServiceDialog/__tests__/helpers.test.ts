@@ -133,6 +133,31 @@ describe("toConnectableProviders", () => {
     expect(openai?.supportedAuthTypes).toEqual([]);
   });
 
+  test("keeps a service's description when another of its providers has none", () => {
+    // Copilot-only connections from before Microsoft's were combined keep
+    // their provider, under the same service and with no description.
+    const result = toConnectableProviders([
+      makeMeta({
+        name: "microsoft",
+        service: "microsoft",
+        description: "Mail, calendar, files, Teams and Microsoft 365 Copilot",
+        supported_auth_types: ["device_code"],
+      }),
+      makeMeta({
+        name: "microsoft_365_copilot",
+        service: "microsoft",
+        description: null,
+        supported_auth_types: ["device_code"],
+      }),
+    ]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: "microsoft",
+      description: "Mail, calendar, files, Teams and Microsoft 365 Copilot",
+    });
+  });
+
   test("merges ChatGPT sign-in into OpenAI while preserving backend auth targets", () => {
     const result = toConnectableProviders([
       makeMeta({

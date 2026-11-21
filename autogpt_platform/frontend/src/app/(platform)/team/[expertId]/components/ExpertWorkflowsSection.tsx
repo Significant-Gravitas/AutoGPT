@@ -96,27 +96,15 @@ export function ExpertWorkflowsSection({
       {workflows.length === 0 ? (
         <SectionEmptyState
           tiles={[
-            <Icon
-              key="flow"
-              icon={WorkflowSquare01Icon}
-              size={22}
-              // TODO(tokens): no exact role: text-sky-500 #0EA5E9
-              className="text-sky-500"
-            />,
-            <Icon
-              key="play"
-              icon={PlayIcon}
-              size={22}
-              // TODO(tokens): no exact role: text-orange-500 #FE8700
-              className="text-orange-500"
-            />,
-            <Icon
-              key="calendar"
-              icon={Calendar03Icon}
-              size={22}
-              // TODO(tokens): no exact role: text-violet-500 #8B5CF6
-              className="text-violet-500"
-            />,
+            <span key="flow" className="inline-flex text-sky">
+              <Icon icon={WorkflowSquare01Icon} size={22} />
+            </span>,
+            <span key="play" className="inline-flex text-orange">
+              <Icon icon={PlayIcon} size={22} />
+            </span>,
+            <span key="calendar" className="inline-flex text-brand">
+              <Icon icon={Calendar03Icon} size={22} />
+            </span>,
           ]}
           title="No workflows yet"
           description={

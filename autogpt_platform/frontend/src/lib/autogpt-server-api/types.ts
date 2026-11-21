@@ -240,6 +240,8 @@ export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   discriminator_type_mapping?: Record<string, CredentialsType[]>;
   discriminator_values?: any[];
   credential_free_discriminator_values?: unknown[];
+  /* Set by the backend on blocks that can't run on the platform's shared keys */
+  refuses_platform_credentials?: boolean;
   secret?: boolean;
 };
 
@@ -698,6 +700,7 @@ export type UserPasswordCredentials = BaseCredentials & {
   title: string;
   username: string;
   password: string;
+  scope?: string;
 };
 
 /* Mirror of backend/backend/data/model.py:HostScopedCredentials */

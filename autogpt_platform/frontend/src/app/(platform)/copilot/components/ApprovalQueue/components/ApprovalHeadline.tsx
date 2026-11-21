@@ -1,6 +1,5 @@
 import { ReferenceLink } from "@/components/organisms/ApprovalFields/components/ReferenceLink";
 import { Text } from "@/components/atoms/Text/Text";
-import { cn } from "@/lib/utils";
 import { COPILOT_TOOL_CATALOG } from "../../ToolChain/toolCatalog";
 import { RowIcon } from "../../ToolChain/RowIcon";
 import type { ApprovalItem } from "../helpers";
@@ -23,18 +22,18 @@ export function ApprovalHeadline({ item, compact = false }: Props) {
           row={{ key: item.reviewId, category, text: "", state: "done" }}
         />
       </span>
-      <Text
-        variant="body"
-        as={compact ? "span" : "h3"}
-        className={cn(
-          "min-w-0 flex-1 pt-[3px] text-foreground-strong",
-          compact ? "truncate" : "text-pretty",
-        )}
-      >
-        <HeadlineText item={item} linked={!compact} />
-      </Text>
+      <div className="min-w-0 flex-1 pt-0.5">
+        <Text
+          variant="body"
+          as={compact ? "span" : "h3"}
+          tone="primary"
+          className={compact ? "block truncate" : "text-pretty"}
+        >
+          <HeadlineText item={item} linked={!compact} />
+        </Text>
+      </div>
       {item.subject.irreversible && (
-        <span className="mt-0.5 shrink-0 rounded-md bg-error-surface px-1.5 py-0.5 text-xs font-medium text-error-foreground">
+        <span className="mt-0.5 shrink-0 rounded-md bg-error-surface px-1.5 py-0.5 text-caption font-medium text-error-foreground">
           Can&apos;t be undone
         </span>
       )}

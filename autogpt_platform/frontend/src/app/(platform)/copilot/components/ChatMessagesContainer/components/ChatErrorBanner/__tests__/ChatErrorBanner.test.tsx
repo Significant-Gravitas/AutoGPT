@@ -1,10 +1,11 @@
-import { render, screen } from "@/tests/integrations/test-utils";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CopilotAuthError } from "../../../../../helpers";
 import {
   ChatUnavailableError,
   SendRefusedError,
+  UnconfirmedSendError,
 } from "../../../../../stream/turnRuntime";
 import { ChatErrorBanner } from "../ChatErrorBanner";
 
@@ -58,6 +59,30 @@ describe("ChatErrorBanner", () => {
     expect(
       screen.getByText("Ask whoever runs this server to set one up."),
     ).toBeDefined();
+  });
+
+  it("a send no check could confirm: offers to send it again", async () => {
+    const onResend = vi.fn();
+    render(
+      <ChatErrorBanner
+        error={new UnconfirmedSendError("local:1")}
+        onResend={onResend}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "We couldn't confirm your message was sent. Check your connection and send it again.",
+      ),
+    ).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Send again" }));
+    expect(onResend).toHaveBeenCalledTimes(1);
+  });
+
+  it("a send no check could confirm, where nothing can send it again: no button", () => {
+    render(<ChatErrorBanner error={new UnconfirmedSendError("local:1")} />);
+
+    expect(screen.queryByRole("button", { name: "Send again" })).toBeNull();
   });
 
   it("a chat that is gone: offers a new chat", () => {

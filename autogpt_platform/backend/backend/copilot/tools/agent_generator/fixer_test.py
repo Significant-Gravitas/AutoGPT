@@ -449,11 +449,15 @@ class TestFixAiModelParameter:
         "name, model_property, input_default, expected",
         [
             pytest.param(
-                None, {"type": "string"}, {}, "gpt-4o", id="missing_model_gets_default"
+                None,
+                {"type": "string", "llm_model": True},
+                {},
+                "gpt-4o",
+                id="missing_model_gets_default",
             ),
             pytest.param(
                 None,
-                {"type": "string"},
+                {"type": "string", "llm_model": True},
                 {"model": "claude-opus-4-6"},
                 "claude-opus-4-6",
                 id="valid_model_unchanged",
@@ -461,10 +465,22 @@ class TestFixAiModelParameter:
             # In generic_allowed_models, so it must not fall back to the default.
             pytest.param(
                 None,
-                {"type": "string"},
+                {"type": "string", "llm_model": True},
                 {"model": "claude-opus-5-5"},
                 "claude-opus-5-5",
                 id="new_generic_model_survives_string_model_field",
+            ),
+            # A spelling of an offered model is written as the block lists it.
+            pytest.param(
+                None,
+                {
+                    "type": "string",
+                    "enum": ["gpt-4o", "claude-opus-5"],
+                    "default": "claude-opus-5",
+                },
+                {"model": "openai/gpt-4o"},
+                "gpt-4o",
+                id="block_specific_enum_respells_a_prefixed_spelling",
             ),
             pytest.param(
                 "PerplexityBlock",
@@ -501,6 +517,23 @@ class TestFixAiModelParameter:
         result = fixer.fix_ai_model_parameter(agent, blocks)
 
         assert result["nodes"][0]["input_default"]["model"] == expected
+
+    def test_free_form_model_field_keeps_its_value_and_gets_no_llm(self):
+        """A model field that is neither an LLM field nor an enum names a
+        model of the block's own service, which no LLM list knows."""
+        fixer = AgentFixer()
+        block_id = generate_uuid()
+        named = _make_node(
+            node_id="n1", block_id=block_id, input_default={"model": "own-model-2"}
+        )
+        unnamed = _make_node(node_id="n2", block_id=block_id, input_default={})
+        agent = _make_agent(nodes=[named, unnamed])
+        blocks = [_ai_block(block_id, {"model": {"type": "string"}})]
+
+        result = fixer.fix_ai_model_parameter(agent, blocks)
+
+        assert result["nodes"][0]["input_default"]["model"] == "own-model-2"
+        assert "model" not in result["nodes"][1]["input_default"]
 
     def test_ai_block_without_model_property_is_skipped(self):
         """AI-category blocks that have no 'model' input property should not

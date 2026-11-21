@@ -16,6 +16,7 @@ from typing import Any
 from e2b import AsyncSandbox, FileType, NotFoundException
 
 from backend.data.redis_client import get_redis_async
+from backend.util.sandbox_output import read_sandbox_file, run_sandbox_command
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +68,8 @@ async def run_internal(
     if keep_home:
         home = "/root" if user == "root" else USER_HOME
         command = f"export HOME={shlex.quote(home)}; {command}"
-    return await sandbox.commands.run(
-        command, user=user, envs={**(envs or {}), "HOME": _NO_HOME}, **kwargs
+    return await run_sandbox_command(
+        sandbox, command, user=user, envs={**(envs or {}), "HOME": _NO_HOME}, **kwargs
     )
 
 
@@ -113,6 +114,28 @@ async def ensure_baseline(sandbox: AsyncSandbox) -> None:
     await record_baseline(sandbox)
 
 
+async def has_baseline(sandbox: AsyncSandbox) -> bool:
+    """Whether the sandbox's login files were hashed: a chat's sandbox once
+    created or reconnected, never a block's."""
+    return bool(await (await get_redis_async()).exists(_key(sandbox)))
+
+
+async def accept_platform_file(
+    sandbox: AsyncSandbox, path: str, content: bytes
+) -> None:
+    """Put a login file the platform itself just wrote, with *content*, into
+    the baseline, so it does not read as an edit.  Only that file's entry
+    changes: an edit to any other stays visible.  Without a baseline there is
+    nothing to update; the next one takes the file in."""
+    redis = await get_redis_async()
+    raw = await redis.get(_key(sandbox))
+    if not raw:
+        return
+    baseline = json.loads(raw)
+    baseline[path] = _digest(content)
+    await redis.set(_key(sandbox), json.dumps(baseline), ex=_BASELINE_TTL_SECONDS)
+
+
 async def changed_login_files(
     sandbox: AsyncSandbox, *, system_only: bool = False
 ) -> dict[str, str | None]:
@@ -137,18 +160,11 @@ async def read_capped(sandbox: AsyncSandbox, path: str) -> bytes | None:
     """At most ``READ_CAP + 1`` bytes of ``path``, streamed so a huge file is never
     held whole; None when it does not exist. Any other failure raises."""
     try:
-        stream = await sandbox.files.read(
-            path, format="stream", request_timeout=_READ_TIMEOUT_SECONDS
+        return await read_sandbox_file(
+            sandbox, path, READ_CAP, request_timeout=_READ_TIMEOUT_SECONDS
         )
-        data = bytearray()
-        async with stream:
-            async for chunk in stream:
-                data += chunk
-                if len(data) > READ_CAP:
-                    break
     except NotFoundException:
         return None
-    return bytes(data[: READ_CAP + 1])
 
 
 def judged_text(raw: bytes) -> str:

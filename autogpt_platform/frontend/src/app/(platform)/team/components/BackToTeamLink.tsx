@@ -11,12 +11,7 @@ export function BackToTeamLink() {
       data-testid="expert-back-to-team"
     >
       <Icon icon={ArrowLeft02Icon} size={14} />
-      <Text
-        variant="body"
-        as="span"
-        tone="muted"
-        className="group-hover:text-foreground-emphasis"
-      >
+      <Text variant="body" as="span" tone="inherit">
         Back to Team
       </Text>
     </Link>

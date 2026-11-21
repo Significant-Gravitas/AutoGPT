@@ -44,16 +44,14 @@ export function OttoMightAsk({
         className,
       )}
     >
-      <Text
-        variant="small-semibold"
-        as="span"
+      <span
         className={cn(
-          "text-caption-sm uppercase tracking-eyebrow text-accent-strong",
+          "font-sans text-caption-sm font-semibold tracking-eyebrow text-accent-strong uppercase",
           isLeft && "col-start-1 row-start-1",
         )}
       >
         Otto might ask
-      </Text>
+      </span>
       <SwapFade
         swapKey={question}
         className={cn("mt-0.5", isLeft && "col-span-2 row-start-2")}
@@ -73,12 +71,11 @@ export function OttoMightAsk({
           variant="ghost"
           size="xs"
           onClick={onAnother}
-          className={cn(
-            "underline underline-offset-4",
-            isLeft ? "col-start-2 row-start-1 -mr-2.5" : "mt-1",
-          )}
+          className={isLeft ? "col-start-2 row-start-1 -mr-2.5" : "mt-1"}
         >
-          Another question
+          <Text variant="small-medium-loose-underline" as="span">
+            Another question
+          </Text>
         </Button>
       )}
       {/* The only announcement of the prompt layer: the ambient cards are

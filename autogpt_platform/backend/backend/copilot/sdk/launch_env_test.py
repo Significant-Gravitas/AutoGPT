@@ -5,7 +5,9 @@ The parent is seeded with the kinds of secret a backend holds, all fake; each
 launch's environment is read off the real SDK transport as it spawns the CLI.
 """
 
+import asyncio
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -25,6 +27,7 @@ from backend.copilot.executor import cli_warmup
 from backend.data.model import APIKeyCredentials
 
 from . import cli_version, subscription
+from .anthropic_key_relay import AnthropicKeyRelay
 from .env import build_sdk_env
 from .launch_env import SDK_MANAGED_NAMES, inherited, launch_options
 
@@ -70,18 +73,24 @@ def parent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     for name in ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
-    monkeypatch.setattr("backend.copilot.sdk.env.validate_subscription", lambda: None)
+    monkeypatch.setattr(
+        "backend.copilot.sdk.env.validate_subscription", lambda cli_path=None: None
+    )
 
 
 async def _spawned_env(
-    monkeypatch: pytest.MonkeyPatch, options: ClaudeAgentOptions
+    monkeypatch: pytest.MonkeyPatch,
+    options: ClaudeAgentOptions,
+    commands: list[list[str]] | None = None,
 ) -> dict[str, str]:
     """The environment the SDK hands the CLI it starts with *options*, which
     is the only process it starts: one started without an environment of its
     own, like the SDK's own version check, gets the backend's whole one."""
     envs: list[dict[str, str] | None] = []
 
-    async def open_process(*_args, **kwargs):
+    async def open_process(command, **kwargs):
+        if commands is not None:
+            commands.append(command)
         envs.append(kwargs.get("env"))
         raise _Spawned
 
@@ -170,20 +179,59 @@ async def test_a_variable_the_backend_gains_later_is_blanked_too(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "provider, credential_name",
-    [("anthropic", "ANTHROPIC_API_KEY"), ("open_router", "ANTHROPIC_AUTH_TOKEN")],
+    "provider, credential_names",
+    [
+        ("anthropic", {"ANTHROPIC_API_KEY"}),
+        ("open_router", {"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"}),
+    ],
 )
-async def test_an_orchestrator_launch_keeps_only_the_users_key_and_the_runtime(
-    provider: str, credential_name: str, parent: None, monkeypatch: pytest.MonkeyPatch
+async def test_an_orchestrator_launch_keeps_only_the_runtime_and_not_the_users_key(
+    provider: str,
+    credential_names: set[str],
+    parent: None,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     """Read off the options the block starts its CLI with, so a launch that
-    skips the allowlist fails here."""
+    skips the allowlist fails here. The user's key is the relay's, and the
+    CLI gets the relay's loopback address and token."""
+    relays = _record_relays(monkeypatch)
     options = await _orchestrator_launch(provider)
 
     spawned = await _spawned_env(monkeypatch, options)
 
     _assert_keeps_only(spawned, options.env, _ROUTE_KEY)
-    assert spawned[credential_name] == _ROUTE_KEY
+    assert not any(_ROUTE_KEY in value for value in spawned.values())
+    [(_, relayed_key)] = relays
+    assert relayed_key == _ROUTE_KEY
+    assert re.fullmatch(r"http://127\.0\.0\.1:\d+", spawned["ANTHROPIC_BASE_URL"])
+    [token] = {spawned[name] for name in credential_names}
+    assert token
+    if "ANTHROPIC_AUTH_TOKEN" not in credential_names:
+        assert not spawned.get("ANTHROPIC_AUTH_TOKEN")
+    assert "127.0.0.1" in spawned["NO_PROXY"].split(",")
+
+
+@pytest.mark.asyncio
+async def test_an_orchestrator_launch_relays_an_anthropic_key_to_anthropic(
+    parent: None, monkeypatch: pytest.MonkeyPatch
+):
+    relays = _record_relays(monkeypatch)
+
+    await _orchestrator_launch("anthropic")
+
+    assert relays == [("https://api.anthropic.com", _ROUTE_KEY)]
+
+
+@pytest.mark.asyncio
+async def test_an_orchestrator_step_closes_its_relay(
+    parent: None, monkeypatch: pytest.MonkeyPatch
+):
+    """A step leaves no listener holding the user's key behind it."""
+    options = await _orchestrator_launch("anthropic")
+
+    port = int(options.env["ANTHROPIC_BASE_URL"].rsplit(":", 1)[1])
+    with pytest.raises(OSError):
+        await asyncio.open_connection("127.0.0.1", port)
 
 
 @pytest.mark.asyncio
@@ -197,12 +245,12 @@ async def test_an_orchestrator_launch_sends_the_users_key_where_anthropic_is_rea
         "https://svc:FAKE-gateway-password@anthropic-proxy.example:8443/v",
     )
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "FAKE-deployment-bearer")
+    relays = _record_relays(monkeypatch)
     options = await _orchestrator_launch("anthropic")
 
     spawned = await _spawned_env(monkeypatch, options)
 
-    assert spawned["ANTHROPIC_BASE_URL"] == "https://anthropic-proxy.example:8443/v"
-    assert spawned["ANTHROPIC_API_KEY"] == _ROUTE_KEY
+    assert relays == [("https://anthropic-proxy.example:8443/v", _ROUTE_KEY)]
     assert spawned["ANTHROPIC_AUTH_TOKEN"] == ""
     assert not any("FAKE-gateway-password" in value for value in spawned.values())
 
@@ -271,16 +319,91 @@ def test_the_subscription_check_starts_the_cli_from_the_allowlist(
     parent: None, monkeypatch: pytest.MonkeyPatch
 ):
     envs = _record_runs(monkeypatch, "2.1.284", auth='{"loggedIn": true}')
-    monkeypatch.setattr(subscription, "find_bundled_cli", lambda: _CLI)
     monkeypatch.setattr(subscription, "provision_credentials_file", lambda: None)
 
-    subscription.validate_subscription.__wrapped__()
+    subscription._validate_subscription.__wrapped__(_CLI)
 
     version_env, auth_env = envs
     secrets = set(_PARENT_SECRETS.values())
     assert not secrets & set(version_env.values())
     assert set(auth_env.values()) & secrets == {_HOST_LOGIN}
     assert all(inherited(name) for name in version_env)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "source",
+    [
+        "explicit",
+        "CHAT_CLAUDE_AGENT_CLI_PATH",
+        "CLAUDE_AGENT_CLI_PATH",
+        "bundled",
+        "path",
+    ],
+)
+async def test_subscription_probes_and_sdk_launch_use_the_selected_executable(
+    source: str, parent: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    cli = tmp_path / "selected-claude.exe"
+    cli.write_bytes(b"stand-in executable, never run")
+    cli.chmod(0o755)
+    for name in ("CHAT_CLAUDE_AGENT_CLI_PATH", "CLAUDE_AGENT_CLI_PATH"):
+        monkeypatch.delenv(name, raising=False)
+    settings = {"use_claude_code_subscription": True, "_env_file": None}
+    if source == "explicit":
+        settings["claude_agent_cli_path"] = str(cli)
+        monkeypatch.setenv("CHAT_CLAUDE_AGENT_CLI_PATH", "missing-prefixed-cli")
+        monkeypatch.setenv("CLAUDE_AGENT_CLI_PATH", "missing-alias-cli")
+    elif source not in {"bundled", "path"}:
+        monkeypatch.setenv(source, str(cli))
+    cfg = _config(**settings)
+    monkeypatch.setattr("backend.copilot.sdk.env.config", cfg)
+    monkeypatch.setattr(
+        "backend.copilot.sdk.env.validate_subscription",
+        subscription.validate_subscription,
+    )
+    probes: list[list[str]] = []
+
+    def run(argv, **kwargs):
+        probes.append(argv)
+        output = '{"loggedIn": true}' if argv[1:] == ["auth", "status"] else "2.1.284"
+        return subprocess.CompletedProcess(argv, 0, output, "")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with (
+        patch.object(subscription, "provision_credentials_file") as provision,
+        patch.object(
+            subprocess_cli.SubprocessCLITransport,
+            "_find_bundled_cli",
+            return_value=None if source == "path" else str(cli),
+        ) as bundled,
+        patch.object(subscription.shutil, "which", return_value=str(cli)) as which,
+    ):
+        subscription._validate_subscription.cache_clear()
+        try:
+            env = build_sdk_env()
+            options = launch_options(
+                ClaudeAgentOptions(
+                    env=env,
+                    cli_path=cli_version.require_verbatim_prompts_cli(
+                        cfg.claude_agent_cli_path
+                    ),
+                )
+            )
+            commands: list[list[str]] = []
+            spawned = await _spawned_env(monkeypatch, options, commands)
+        finally:
+            subscription._validate_subscription.cache_clear()
+    assert probes == [
+        [str(cli), "--version"],
+        [str(cli), "auth", "status"],
+        [str(cli), "-v"],
+    ]
+    assert [command[0] for command in commands] == [str(cli)]
+    assert bundled.call_count == (1 if source in {"bundled", "path"} else 0)
+    assert which.call_count == (1 if source == "path" else 0)
+    provision.assert_called_once_with()
+    _assert_keeps_only(spawned, env, _HOST_LOGIN)
 
 
 def _assert_keeps_only(
@@ -321,6 +444,20 @@ class _StartingClient:
 
     async def __aexit__(self, *_: object) -> None:
         return None
+
+
+def _record_relays(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
+    """Where each relay the orchestrator block starts sends a user's key, and
+    the key."""
+    relays: list[tuple[str, str]] = []
+
+    class _Relay(AnthropicKeyRelay):
+        def __init__(self, upstream_url: str, api_key: str, **kwargs: bool) -> None:
+            relays.append((upstream_url, api_key))
+            super().__init__(upstream_url, api_key, **kwargs)
+
+    monkeypatch.setattr("backend.blocks.orchestrator.AnthropicKeyRelay", _Relay)
+    return relays
 
 
 async def _orchestrator_launch(provider: str) -> ClaudeAgentOptions:

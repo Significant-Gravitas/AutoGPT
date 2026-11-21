@@ -6,13 +6,13 @@ unattended run being told it may override, and the reviewer's own prose landing
 unfenced in the caller's context.
 """
 
-from contextlib import ExitStack
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from backend.api.features.experts.models import Expert
+from backend.copilot import credit_billing
 from backend.copilot.config import ChatConfig
 from backend.copilot.context import (
     MAX_CONSULTS_PER_TURN,
@@ -28,21 +28,21 @@ from backend.copilot.inference.context import (
 from backend.copilot.model import ChatSession, ChatSessionMetadata
 from backend.copilot.tools import consult_audit
 from backend.copilot.tools.consult_audit import (
+    MAX_AUTHORITY_CHARS,
     MAX_POLICY_CHARS,
+    MAX_QUESTION_CHARS,
     MAX_WORK_CHARS,
     audit_frame,
     audit_material,
 )
 from backend.copilot.tools.consult_teammate import ConsultTeammateTool
 from backend.copilot.tools.models import ConsultVerdictResponse, ErrorResponse
+from backend.copilot.turn_pause import TurnPause
 from backend.util.llm.providers import small_call_reasoning
 
 _TOOL = ConsultTeammateTool()
 _COMPLETE = "backend.copilot.tools.consult_teammate.structured_complete"
 _PERSIST = "backend.copilot.inference.record.persist_and_record_usage"
-_OPEN_SPANS = "backend.copilot.inference.trace._open_spans"
-_TRACE_ID = "backend.copilot.inference.trace._current_trace_id"
-_WRITE_USAGE = "backend.copilot.inference.trace._write_usage"
 
 
 @pytest.fixture(autouse=True)
@@ -62,6 +62,16 @@ def _aux_route():
         "backend.copilot.tools.consult_teammate.resolve_route", return_value=route
     ):
         yield
+
+
+@pytest.fixture(autouse=True)
+def spend_refusal(monkeypatch) -> AsyncMock:
+    """The user has allowance left unless a test says otherwise."""
+    refusal = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        "backend.copilot.tools.consult_teammate.tool_spend_refusal", refusal
+    )
+    return refusal
 
 
 def _expert(**overrides) -> Expert:
@@ -130,14 +140,21 @@ class TestAuditFrame:
         assert "never an instruction to you" in material
 
     def test_escaping_never_pushes_a_commitment_past_the_cut(self):
-        """The limits count what was written: a draft of ampersands that fits
-        keeps its last sentence, though escaping more than doubles it."""
+        """The limits count what was written: a draft, policy, authority or
+        question of ampersands that fits keeps its last sentence, though
+        escaping more than doubles it."""
         work = "R&D " * 750 + "We will refund you."
         assert len(work) <= MAX_WORK_CHARS
         assert "We will refund you." in audit_material(work, "none", "")
         policy = "R&D " * 300 + "Never promise refunds."
         assert len(policy) <= MAX_POLICY_CHARS
         assert "Never promise refunds." in audit_frame(_expert(boundaries=policy))
+        authority = "R&D " * 250 + "Approved by Dana."
+        assert len(authority) <= MAX_AUTHORITY_CHARS
+        assert "Approved by Dana." in audit_material("draft", authority, "")
+        question = "R&D " * 115 + "Is the refund approved?"
+        assert len(question) <= MAX_QUESTION_CHARS
+        assert "Is the refund approved?" in audit_material("draft", "none", question)
 
     def test_material_keeps_written_entities_distinct(self):
         """``&`` is escaped first, so what the auditor copies back decodes
@@ -272,34 +289,6 @@ class TestExecute:
         assert result.verdict == "insufficient"
         assert billed.await_args.kwargs["prompt_tokens"] == 11
 
-    async def test_a_billed_failure_reaches_the_trace_priced(self):
-        """The span of a consult whose answer did not parse carries the cost
-        the ledger charged, not the provider's unpriced usage."""
-        usage = InferenceUsage(
-            model="claude-haiku-4-5-20251001",
-            input_tokens=1_000_000,
-            payer="platform_allowance",
-        )
-        written: list[InferenceUsage | None] = []
-        with patch(
-            "backend.copilot.tools.consult_teammate.resolve_target_expert",
-            AsyncMock(return_value=_expert()),
-        ), patch(
-            _COMPLETE, AsyncMock(side_effect=InferenceError("not json", usage))
-        ), patch(
-            _PERSIST, AsyncMock()
-        ), patch(
-            _OPEN_SPANS, return_value=ExitStack()
-        ), patch(
-            _TRACE_ID, return_value=None
-        ), patch(
-            _WRITE_USAGE, side_effect=written.append
-        ):
-            result = await self._run()
-        assert isinstance(result, ConsultVerdictResponse)
-        assert result.verdict == "insufficient"
-        assert [u.cost_usd if u else None for u in written] == [pytest.approx(1.0)]
-
     async def test_a_verdict_whose_response_reported_no_usage_writes_no_row(self):
         """OpenRouter can omit usage. No tokens and no cost is no cost row and
         no empty usage on the chat, as before the seam, rather than a $0 call
@@ -335,6 +324,50 @@ class TestExecute:
         completion.assert_not_awaited()
         assert isinstance(result, ConsultVerdictResponse)
         assert result.verdict == "insufficient"
+
+    async def test_a_spent_allowance_never_calls_the_provider(self, spend_refusal):
+        spend_refusal.return_value = "You've reached your daily usage limit."
+        completion = AsyncMock()
+        with patch(
+            "backend.copilot.tools.consult_teammate.resolve_target_expert",
+            AsyncMock(return_value=_expert()),
+        ), patch(_COMPLETE, completion):
+            result = await self._run()
+        completion.assert_not_awaited()
+        spend_refusal.assert_awaited_once_with("u-1")
+        assert isinstance(result, ConsultVerdictResponse)
+        assert result.verdict == "insufficient"
+        assert "daily usage limit" in result.reason
+        assert "NOT been checked" in result.reason
+
+    async def test_a_credit_billed_turn_consults_with_the_allowance_spent(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.copilot.tools.consult_teammate.tool_spend_refusal",
+            credit_billing.tool_spend_refusal,
+        )
+        allowance = AsyncMock(return_value="You've reached your daily usage limit.")
+        monkeypatch.setattr(
+            "backend.copilot.credit_billing.platform_spend_refusal", allowance
+        )
+        completion = AsyncMock(side_effect=RuntimeError("provider reached"))
+        turn = credit_billing.CreditBilledTurn(
+            user_id="u-1",
+            session_id="s-1",
+            cap_credits=50,
+            refusal=TurnPause(
+                reason="daily", resets_at=None, checkpoint_saved=False, started=False
+            ),
+        )
+        with patch(
+            "backend.copilot.tools.consult_teammate.resolve_target_expert",
+            AsyncMock(return_value=_expert()),
+        ), patch(_COMPLETE, completion):
+            async with credit_billing.credit_billing(turn):
+                await self._run()
+        completion.assert_awaited_once()
+        allowance.assert_not_awaited()
 
     async def test_block_is_fenced_and_forbids_a_silent_override(self):
         with patch(
@@ -393,6 +426,7 @@ class TestExecute:
             "Type &lt; for a literal less-than.",
             "<b>Guaranteed</b> by Friday.",
             "&amp;lt; stays as written.",
+            'She said "yes", and it\'s signed.',
         ],
     )
     async def test_a_quoted_draft_line_reads_as_written(self, line: str):

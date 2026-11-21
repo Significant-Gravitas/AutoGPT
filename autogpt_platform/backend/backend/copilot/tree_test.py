@@ -463,6 +463,13 @@ def test_all_tool_names_cover_the_denied_set() -> None:
     assert SPAWN_TOOLS <= ALL_TOOL_NAMES
 
 
+def test_a_tool_reserved_for_a_person_is_never_handed_to_a_child() -> None:
+    # The descent list holds whatever origin a child is stamped with.
+    from backend.copilot.tools import INTERACTIVE_ORIGIN_TOOLS
+
+    assert INTERACTIVE_ORIGIN_TOOLS <= DESCENT_DENIED_TOOLS
+
+
 # ── ceiling formula (finding 3) ────────────────────────────────────────
 
 

@@ -16,12 +16,11 @@ export function ProviderRow({ provider, onSelect }: Props) {
     <button
       type="button"
       onClick={() => onSelect(provider.id)}
-      // TODO(tokens): no exact role for focus-visible:ring-purple-400 #925cf7
-      className="group flex min-h-20 w-full items-center gap-3 rounded-xl border border-border-base bg-surface px-[0.875rem] py-[0.625rem] text-left transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 active:bg-surface-hover"
+      className="group flex min-h-20 w-full items-center gap-3 rounded-xl border border-border-base bg-surface px-3.5 py-2.5 text-left transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none active:bg-surface-hover"
     >
       <ProviderLogo provider={provider} size="md" />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body font-medium leading-5.5 text-foreground-emphasis">
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body leading-5.5 font-medium text-foreground-emphasis">
           <span>{provider.name}</span>
           {provider.mcpServer &&
             provider.mcpServer.connection_mode !== "hosted" && (
@@ -36,8 +35,7 @@ export function ProviderRow({ provider, onSelect }: Props) {
       </span>
       <span
         aria-hidden
-        // TODO(tokens): no exact role for bg-zinc-700 #505057; #505057 is foreground-body, a text colour
-        className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-zinc-700 text-action-foreground transition-transform group-hover:bg-action group-active:scale-[0.96]"
+        className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-foreground-body text-action-foreground transition-transform group-hover:bg-action group-active:scale-[0.96]"
       >
         <Icon icon={PlusSignIcon} size={18} />
       </span>

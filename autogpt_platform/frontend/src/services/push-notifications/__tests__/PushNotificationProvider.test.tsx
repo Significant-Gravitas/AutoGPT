@@ -44,6 +44,7 @@ vi.mock("@/app/(platform)/copilot/store", () => ({
     { setState: vi.fn() },
   ),
   getPersistedNotificationsEnabled: () => notificationsEnabledMock(),
+  getPersistedNotificationBannerDismissed: () => false,
 }));
 
 const mockIsPushSupported = vi.fn(() => true);

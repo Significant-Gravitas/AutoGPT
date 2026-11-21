@@ -8,7 +8,7 @@ import tempfile
 import types
 import uuid as uuid_mod
 from collections import Counter
-from collections.abc import AsyncIterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from concurrent.futures import Future
 from enum import Enum
 from functools import partial
@@ -27,14 +27,17 @@ from backend.blocks._base import (
     BlockType,
 )
 from backend.blocks.agent import AgentExecutorBlock
+from backend.copilot.sdk.anthropic_key_relay import ANTHROPIC_API_URL, AnthropicKeyRelay
+from backend.copilot.sdk.cli_io import send_user_text
 from backend.copilot.sdk.cli_version import require_verbatim_prompts_cli
-from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG, cli_prompt_text
+from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG
 from backend.copilot.sdk.env import config as copilot_config
 from backend.copilot.sdk.env import without_url_credentials
 from backend.copilot.sdk.launch_env import launch_options
 from backend.data.dynamic_fields import (
     extract_base_field_name,
     get_dynamic_field_description,
+    get_dynamic_field_schema,
     is_dynamic_field,
     is_tool_pin,
 )
@@ -44,7 +47,8 @@ from backend.util import json
 from backend.util.clients import get_database_manager_async_client
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.llm.prompt_refusal import PromptRefusedError
-from backend.util.prompt import MAIN_OBJECTIVE_PREFIX
+from backend.util.llm.request_too_large import RequestTooLargeError
+from backend.util.prompt import MAIN_OBJECTIVE_PREFIX, estimate_token_count
 from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.tool_call_loop import (
     LLMLoopResponse,
@@ -412,6 +416,31 @@ def _select_final_answer_parts(
     return current
 
 
+_SDK_CONVERSATION_LABELS = {
+    "user": "User",
+    "assistant": "You responded",
+    "tool": "Tool output",
+}
+
+
+def format_sdk_conversation(prompt: list[dict[str, Any]]) -> str:
+    """Render a multi-turn prompt as the text of one SDK user message.
+
+    The CLI takes no assistant or tool turn on stdin, so the turns go in as
+    text, laid out like the copilot's ``_format_conversation_context``; an
+    entry that is not a user, assistant or tool turn is dropped.
+    """
+    lines: list[str] = []
+    for p in prompt:
+        role, content = p.get("role"), p.get("content")
+        label = _SDK_CONVERSATION_LABELS.get(role) if isinstance(role, str) else None
+        if label and content:
+            if not isinstance(content, str):
+                content = json.dumps(content)
+            lines.append(f"{label}: {content}")
+    return "<conversation_history>\n" + "\n".join(lines) + "\n</conversation_history>"
+
+
 def sdk_disallowed_tools() -> list[str]:
     """Disable ALL known SDK built-in tools — only graph MCP tools available.
 
@@ -651,6 +680,26 @@ class OrchestratorBlock(Block):
         )
 
     @staticmethod
+    def _dynamic_pin_schema(input_schema: Any, field_name: str) -> dict[str, Any]:
+        """Tool parameter schema for a dynamic (`_#_`/`_$_`/`_@_`) sink pin."""
+        description = get_dynamic_field_description(field_name)
+        base_name = extract_base_field_name(field_name)
+        try:
+            base_schema = input_schema.jsonschema().get("properties", {}).get(base_name)
+        except (KeyError, AttributeError, ValueError):
+            base_schema = None
+        leaf = (
+            get_dynamic_field_schema(base_schema, field_name)
+            if isinstance(base_schema, dict)
+            else None
+        )
+        if leaf is None:
+            return {"type": "string", "description": description}
+        if leaf_description := leaf.get("description"):
+            description = f"{description}: {leaf_description}"
+        return {**leaf, "description": description}
+
+    @staticmethod
     async def _create_block_function_signature(
         sink_node: "Node", links: list["Link"]
     ) -> dict[str, Any]:
@@ -689,11 +738,12 @@ class OrchestratorBlock(Block):
             field_mapping[clean_field_name] = field_name
 
             if is_dynamic:
-                # For dynamic fields, use cleaned name but preserve original in description
-                properties[clean_field_name] = {
-                    "type": "string",
-                    "description": get_dynamic_field_description(field_name),
-                }
+                # For dynamic fields, use cleaned name but preserve original in
+                # description, and take the type from the base field's schema
+                # so the sink block gets the value type it expects.
+                properties[clean_field_name] = OrchestratorBlock._dynamic_pin_schema(
+                    sink_block_input_schema, field_name
+                )
             else:
                 # For regular fields, use the block's schema directly
                 try:
@@ -923,6 +973,7 @@ class OrchestratorBlock(Block):
             tools=tool_functions,
             ollama_host=input_data.ollama_host,
             parallel_tool_calls=input_data.multiple_tool_calls,
+            on_abandoned=self.merge_stats,
         )
 
         # Track LLM usage stats per call
@@ -1265,6 +1316,14 @@ class OrchestratorBlock(Block):
                     nodes_input_masks=nodes_input_masks,
                     graph_stats_pair=graph_stats_pair,
                 )
+                # A stop, or this block's time limit, ends in the tool node's
+                # own task, which takes the cancel and returns: end here too.
+                this_task = asyncio.current_task()
+                if node_exec_future.cancelled() or (
+                    this_task and this_task.cancelling()
+                ):
+                    node_exec_future.cancel()
+                    raise asyncio.CancelledError()
                 if tool_node_stats is None:
                     nil_err = RuntimeError(
                         f"on_node_execution returned None for node {sink_node_id} "
@@ -1706,49 +1765,26 @@ class OrchestratorBlock(Block):
             return
         provider = credentials.provider
         api_key = credentials.api_key.get_secret_value()
+        # The CLI never holds the user's key: a loopback relay puts it on the
+        # CLI's model calls.
         if provider == "open_router":
-            # Route through OpenRouter proxy: point ``ANTHROPIC_BASE_URL`` at
-            # OpenRouter's Anthropic-compat endpoint and set BOTH auth env
-            # vars to the OpenRouter key.  OpenRouter accepts either
-            # ``x-api-key`` (set by ``ANTHROPIC_API_KEY``) or
-            # ``Authorization: Bearer`` (set by ``ANTHROPIC_AUTH_TOKEN``);
-            # whichever the Claude Code CLI happens to send on the wire is
-            # a valid OR credential.
-            #
-            # We MUST explicitly set ``ANTHROPIC_API_KEY`` here rather than
-            # omit it or set it to an empty string.  The Claude Agent SDK
-            # merges ``options.env`` on top of ``os.environ``, so omitting
-            # the key lets any inherited platform ``ANTHROPIC_API_KEY``
-            # (e.g. a deployment's direct-Anthropic key) leak through to
-            # OpenRouter and 401.  Setting it to ``""`` was the previous
-            # approach to "force AUTH_TOKEN usage", but the CLI's HTTP
-            # layer treats the empty string as set and emits
-            # ``x-api-key:`` (empty value), which OpenRouter rejects with
-            # ``invalid x-api-key``.  Using the OR key for both vars
-            # avoids both failure modes.
-            #
-            # NOTE: We use the platform's global OpenRouter base URL from
-            # ChatConfig.  Per-credential base URLs are not yet supported;
-            # if the user's credential targets a custom proxy, the SDK will
-            # still route through the platform's configured endpoint.
+            # The platform's OpenRouter endpoint (per-credential base URLs are
+            # not supported), which takes the key as x-api-key or bearer token.
             or_base = (copilot_config.base_url or "https://openrouter.ai/api").rstrip(
                 "/"
             )
             if or_base.endswith("/v1"):
                 or_base = or_base[:-3]
-            sdk_env = {
-                "ANTHROPIC_BASE_URL": or_base,
-                "ANTHROPIC_AUTH_TOKEN": api_key,
-                "ANTHROPIC_API_KEY": api_key,
-            }
+            key_relay = AnthropicKeyRelay(or_base, api_key, as_bearer_too=True)
         else:
-            # Direct Anthropic key, sent wherever the deployment points
-            # Anthropic traffic: the launch keeps nothing else of the
-            # backend's environment (``launch_env.py``), nor a user name and
-            # password the deployment embedded in that URL.
-            sdk_env = {"ANTHROPIC_API_KEY": api_key}
-            if base_url := os.environ.get("ANTHROPIC_BASE_URL"):
-                sdk_env["ANTHROPIC_BASE_URL"] = without_url_credentials(base_url)
+            # Wherever the deployment points Anthropic traffic, without a user
+            # name and password embedded in that URL.
+            key_relay = AnthropicKeyRelay(
+                without_url_credentials(
+                    os.environ.get("ANTHROPIC_BASE_URL") or ANTHROPIC_API_URL
+                ),
+                api_key,
+            )
 
         # Use an execution-specific working directory to prevent concurrent
         # SDK executions from colliding.  tempfile.mkdtemp() respects TMPDIR
@@ -1776,9 +1812,14 @@ class OrchestratorBlock(Block):
         total_prompt_tokens = 0
         total_completion_tokens = 0
         total_cost_usd: float | None = None
+        # A query cut off before its ResultMessage reports no usage at all.
+        query_sent = False
+        got_result = False
+        cancelled = False
 
         sdk_error: Exception | None = None
         try:
+            sdk_env = await key_relay.start()
             # Build SDK options
             options = ClaudeAgentOptions(
                 system_prompt=input_data.sys_prompt or "",
@@ -1803,27 +1844,19 @@ class OrchestratorBlock(Block):
             # ClaudeAgentOptions.system_prompt to avoid sending them twice.
             sdk_prompt = [p for p in prompt if p.get("role") != "system"]
 
-            # Build user message from prompt.
-            # The SDK's query() accepts a string or an async iterable of message dicts.
-            # For multi-turn conversations, pass the full history as an async iterable
-            # to preserve assistant replies, tool calls/results, and system messages.
+            # The user message is always one string, sent with ``send_user_text``.
             has_multi_turn = any(
                 p.get("role") in ("assistant", "tool") for p in sdk_prompt
             )
             if has_multi_turn:
-
-                async def _prompt_iter():
-                    for p in sdk_prompt:
-                        yield p
-
-                user_message: str | AsyncIterable[dict[str, Any]] = _prompt_iter()
+                user_message = format_sdk_conversation(sdk_prompt)
             else:
                 # Single-turn: collapse user content into one string
                 user_parts = []
                 for p in sdk_prompt:
                     if p.get("role") == "user" and p.get("content"):
                         user_parts.append(str(p["content"]))
-                user_message = cli_prompt_text(
+                user_message = (
                     "\n\n".join(user_parts) if user_parts else input_data.prompt
                 )
 
@@ -1831,18 +1864,16 @@ class OrchestratorBlock(Block):
             # We must NOT cancel __anext__() mid-flight — doing so corrupts
             # the SDK's internal anyio memory stream (same pattern as
             # copilot/sdk/service.py:_iter_sdk_messages).  Every fetch task
-            # runs in one shared context: once configure_claude_agent_sdk()
-            # has wrapped the client, langsmith's tracing wrapper keeps the
-            # conversation run in a ContextVar set during the first fetch,
-            # and a fresh context per task would drop every later reply's
-            # span from the trace.
+            # runs in one shared context, so a ContextVar set while fetching
+            # one message is still set for the next.
 
             _HEARTBEAT_INTERVAL = 10.0  # seconds
             options.cli_path = await asyncio.to_thread(
                 require_verbatim_prompts_cli, options.cli_path
             )
             async with ClaudeSDKClient(options=launch_options(options)) as client:
-                await client.query(user_message)
+                query_sent = True
+                await send_user_text(client, user_message)
 
                 msg_iter = client.receive_response().__aiter__()
                 fetch_context = contextvars.copy_context()
@@ -1941,6 +1972,7 @@ class OrchestratorBlock(Block):
                                     }
                                 )
                         elif isinstance(sdk_msg, ResultMessage):
+                            got_result = True
                             if sdk_msg.usage:
                                 total_prompt_tokens += getattr(
                                     sdk_msg.usage, "input_tokens", 0
@@ -1961,6 +1993,9 @@ class OrchestratorBlock(Block):
             # IBE must propagate — see class docstring. The `finally`
             # block below still runs and records partial token usage.
             raise
+        except asyncio.CancelledError:
+            cancelled = True
+            raise
         except Exception as e:
             # Surface OTHER SDK errors as user-visible output instead
             # of crashing, consistent with _execute_tools_agent_mode
@@ -1968,6 +2003,7 @@ class OrchestratorBlock(Block):
             # merge_stats below so partial token usage is always recorded.
             sdk_error = e
         finally:
+            await key_relay.close()
             # Always record usage stats, even on error.  The SDK may have
             # made LLM calls (consuming tokens) before the failure; dropping
             # those stats would under-count resource usage.
@@ -1984,6 +2020,14 @@ class OrchestratorBlock(Block):
                         output_token_count=total_completion_tokens,
                         llm_call_count=1,
                         provider_cost=total_cost_usd,
+                    )
+                )
+            # A cancel after the query went out leaves no usage to read, so
+            # the prompt's estimated input tokens stand in for it.
+            if query_sent and not got_result and cancelled:
+                self.merge_stats(
+                    llm.abandoned_call_stats(
+                        estimate_token_count(prompt, model=input_data.model.value)
                     )
                 )
             # Clean up execution-specific working directory.
@@ -2076,8 +2120,8 @@ class OrchestratorBlock(Block):
             )
             prompt.extend(tool_output)
 
-        values = input_data.prompt_values
-        if values:
+        if input_data.prompt_values:
+            values = llm.strip_prompt_value_keys(input_data.prompt_values)
             input_data.prompt = await llm.fmt.format_string(input_data.prompt, values)
             input_data.sys_prompt = await llm.fmt.format_string(
                 input_data.sys_prompt, values
@@ -2188,7 +2232,7 @@ class OrchestratorBlock(Block):
                 )
                 break
 
-            except PromptRefusedError:
+            except (PromptRefusedError, RequestTooLargeError):
                 # Not a tool-call mistake the model can fix on a retry.
                 raise
             except ValueError as e:

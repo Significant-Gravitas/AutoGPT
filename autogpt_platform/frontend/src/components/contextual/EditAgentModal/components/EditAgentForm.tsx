@@ -94,25 +94,16 @@ export function EditAgentForm({
           onSubmit={form.handleSubmit(handleFormSubmit)}
           className="flex flex-col gap-5 pb-5"
         >
-          <section className="rounded-[18px] border border-warning-border bg-warning-surface p-4">
+          <section className="rounded-2xl border border-warning-border bg-warning-surface p-4">
             <div className="mb-4 flex items-start gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface text-warning-foreground shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface text-warning-foreground shadow-subtle">
                 <Icon icon={InformationCircleIcon} size={18} />
               </div>
               <div className="flex min-w-0 flex-col gap-1">
-                <Text
-                  // TODO(tokens): no exact role for text-amber-950 #451a03
-                  variant="body-medium"
-                  as="h3"
-                  className="text-amber-950"
-                >
+                <Text variant="body-medium" as="h3" tone="warning-strong">
                   Update note
                 </Text>
-                <Text
-                  // TODO(tokens): no exact role for text-amber-800 #92400e
-                  variant="small"
-                  className="text-amber-800"
-                >
+                <Text variant="small" tone="warning">
                   Reviewers use this to understand why this submission was
                   edited.
                 </Text>
@@ -149,38 +140,25 @@ export function EditAgentForm({
             collapsible
             value={openAccordion}
             onValueChange={setOpenAccordion}
-            className="overflow-hidden rounded-[14px] border border-border-base bg-surface shadow-[0_1px_2px_rgba(15,15,20,0.04)] [&>*+*]:border-t [&>*+*]:border-border-base"
+            className="overflow-hidden rounded-xl border border-border-base bg-surface shadow-subtle [&>*+*]:border-t [&>*+*]:border-border-base"
           >
             <AccordionItem value="basics" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
                 <Text
                   variant="body-medium-tight"
                   as="span"
-                  className="flex items-center gap-2 text-textBlack"
+                  className="flex items-center gap-2"
                 >
-                  <Icon
-                    icon={Store01Icon}
-                    size={18}
-                    className="text-foreground-tertiary"
-                  />
+                  <Icon icon={Store01Icon} size={18} tone="muted" />
                   Listing basics
                   {basicsHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      // TODO(tokens): no exact role for text-rose-500 #f43f5e
-                      className="text-rose-500"
-                    />
+                    <Icon icon={AlertCircleIcon} size={16} tone="error" />
                   ) : basicsComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-brand"
-                    />
+                    <Icon icon={CheckmarkCircle02Icon} size={16} tone="brand" />
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <div className="grid gap-x-4 sm:grid-cols-2">
                   <FormField
                     control={form.control}
@@ -249,31 +227,18 @@ export function EditAgentForm({
                 <Text
                   variant="body-medium-tight"
                   as="span"
-                  className="flex items-center gap-2 text-textBlack"
+                  className="flex items-center gap-2"
                 >
-                  <Icon
-                    icon={Album01Icon}
-                    size={18}
-                    className="text-foreground-tertiary"
-                  />
+                  <Icon icon={Album01Icon} size={18} tone="muted" />
                   Thumbnails
                   {thumbnailsHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      // TODO(tokens): no exact role for text-rose-500 #f43f5e
-                      className="text-rose-500"
-                    />
+                    <Icon icon={AlertCircleIcon} size={16} tone="error" />
                   ) : thumbnailsComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-brand"
-                    />
+                    <Icon icon={CheckmarkCircle02Icon} size={16} tone="brand" />
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <ThumbnailImages
                   agentId={submission.graph_id}
                   onImagesChange={handleImagesChange}
@@ -291,31 +256,18 @@ export function EditAgentForm({
                 <Text
                   variant="body-medium-tight"
                   as="span"
-                  className="flex items-center gap-2 text-textBlack"
+                  className="flex items-center gap-2"
                 >
-                  <Icon
-                    icon={SparklesIcon}
-                    size={18}
-                    className="text-foreground-tertiary"
-                  />
+                  <Icon icon={SparklesIcon} size={18} tone="muted" />
                   Experience details
                   {experienceHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      // TODO(tokens): no exact role for text-rose-500 #f43f5e
-                      className="text-rose-500"
-                    />
+                    <Icon icon={AlertCircleIcon} size={16} tone="error" />
                   ) : experienceComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-brand"
-                    />
+                    <Icon icon={CheckmarkCircle02Icon} size={16} tone="brand" />
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <FormField
                   control={form.control}
                   name="description"

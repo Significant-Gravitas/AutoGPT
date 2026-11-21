@@ -13,6 +13,15 @@ vi.mock("../components/DotDistortionShader/DotDistortionShader", () => ({
   DotDistortionShader: () => null,
 }));
 
+// A signed-out visitor, answered at once: the auth store's session checks
+// settle before their deadlines are armed, so teardown's timer sweep never
+// fires one.
+vi.mock("@/lib/auth/actions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/actions")>()),
+  getCurrentUser: async () => ({ user: null }),
+  validateSession: async () => ({ user: null, isValid: false }),
+}));
+
 import {
   configureCookiebot,
   installCookiebot,
@@ -21,7 +30,15 @@ import {
 import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 
 const { posthog } = vi.hoisted(() => ({
-  posthog: { __loaded: true, is_capturing: () => true, capture: vi.fn() },
+  posthog: {
+    __loaded: true,
+    is_capturing: () => true,
+    // posthog-js returns the event it takes, and nothing when it drops one.
+    capture: vi.fn((event: string, properties?: unknown) => ({
+      event,
+      properties,
+    })),
+  },
 }));
 vi.mock("posthog-js", () => ({ default: posthog }));
 

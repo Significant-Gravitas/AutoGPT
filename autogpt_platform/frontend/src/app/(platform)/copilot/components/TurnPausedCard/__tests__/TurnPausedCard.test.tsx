@@ -41,6 +41,10 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => ({
   useGetFlag: () => true,
 }));
 
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({ isPaymentEnabled: true, isResolved: true }),
+}));
+
 const SESSION_ID = "chat-1";
 // Sunday evening in local time, so the resets below read the same anywhere.
 const NOW = new Date(2026, 9, 11, 20, 48);

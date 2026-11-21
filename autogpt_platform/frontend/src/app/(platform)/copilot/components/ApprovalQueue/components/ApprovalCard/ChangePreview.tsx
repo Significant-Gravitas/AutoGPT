@@ -25,16 +25,17 @@ function TablePreview({ table }: { table: PreviewTable }) {
   return (
     <section className="overflow-hidden rounded-xl border border-border-base">
       {table.name && (
-        <header className="flex flex-col gap-0.5 bg-surface-muted px-3 py-2 text-sm">
+        <header className="flex flex-col gap-0.5 bg-surface-muted px-3 py-2 text-body">
           <div className="flex min-w-0 items-center gap-2">
             <Icon
               icon={Table01Icon}
               size={16}
-              className="shrink-0 text-foreground-tertiary"
+              tone="muted"
+              className="shrink-0"
             />
             <span
               translate="no"
-              className="min-w-0 font-medium text-foreground-strong [overflow-wrap:anywhere]"
+              className="min-w-0 font-medium [overflow-wrap:anywhere] text-foreground-strong"
             >
               {table.name}
             </span>
@@ -43,7 +44,7 @@ function TablePreview({ table }: { table: PreviewTable }) {
             </span>
           </div>
           {table.description && (
-            <p className="ps-6 text-foreground-tertiary [overflow-wrap:anywhere]">
+            <p className="ps-6 [overflow-wrap:anywhere] text-foreground-tertiary">
               {table.description}
             </p>
           )}
@@ -54,22 +55,22 @@ function TablePreview({ table }: { table: PreviewTable }) {
           {table.fields.map((field, index) => (
             <li
               key={`${field.name}-${index}`}
-              className="flex min-w-0 items-baseline justify-between gap-3 px-3 py-1.5 text-sm"
+              className="flex min-w-0 items-baseline justify-between gap-3 px-3 py-1.5 text-body"
             >
               <span className="flex min-w-0 flex-col">
                 <span
                   translate="no"
-                  className="text-foreground-strong [overflow-wrap:anywhere]"
+                  className="[overflow-wrap:anywhere] text-foreground-strong"
                 >
                   {field.name}
                 </span>
                 {field.detail && (
-                  <span className="text-xs text-foreground-tertiary [overflow-wrap:anywhere]">
+                  <span className="text-caption [overflow-wrap:anywhere] text-foreground-tertiary">
                     {field.detail}
                   </span>
                 )}
               </span>
-              <span className="max-w-[55%] text-end text-foreground-tertiary [overflow-wrap:anywhere]">
+              <span className="max-w-[55%] text-end [overflow-wrap:anywhere] text-foreground-tertiary">
                 {field.kind}
               </span>
             </li>

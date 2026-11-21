@@ -26,8 +26,8 @@ export function TriggerAgentListItem({
   return (
     <SidebarItemCard
       icon={
-        <IconWrapper className="border-info-surface bg-info-surface">
-          <Icon icon={Robot01Icon} size={16} className="text-foreground-body" />
+        <IconWrapper className="border-info-surface bg-info-surface text-foreground-body">
+          <Icon icon={Robot01Icon} size={16} />
         </IconWrapper>
       }
       title={triggerAgent.name}

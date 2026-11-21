@@ -1,4 +1,6 @@
-import type { Event, init } from "@sentry/nextjs";
+import type { Event, EventHint, init } from "@sentry/nextjs";
+
+import { isAbortError, isNetworkError } from "@/lib/transient-errors";
 
 // Next.js logs exactly this when a client-side navigation cannot fetch the RSC
 // payload (flaky network, tab backgrounded, deploy in progress). It then does a
@@ -42,6 +44,55 @@ export function isInjectedIframeProbe(event: Event) {
   return (
     typeof message === "string" && INJECTED_IFRAME_PROBE_MESSAGE.test(message)
   );
+}
+
+/**
+ * True for a fetch our code caught after the network dropped ("Failed to
+ * fetch", "Load failed", "network error"), or a request it cancelled and
+ * logged (AbortError). The catch already handles it, and minified frames open
+ * a new issue for each browser and build. Still sent: an uncaught one, which
+ * shows a missing catch; one an error boundary caught, because the user saw an
+ * error page; and an AbortError reported on purpose, such as an aborted
+ * IndexedDB transaction. A fetch the browser blocks (CSP, CORS, a bad
+ * certificate) fails the same way, so a handled one is not sent either.
+ */
+export function isHandledTransientFailure(event: Event, hint: EventHint) {
+  if (event.tags?.errorBoundary || isBareConsoleError(event)) return false;
+  if (event.exception?.values?.[0]?.mechanism?.handled === false) return false;
+  const error = hint.originalException;
+  if (isNetworkError(error)) return true;
+  return isAbortError(error) && event.logger === "console";
+}
+
+// Next logs an error a boundary caught as console.error(error), and that
+// capture marks the error as sent, so the boundary's own tagged report never
+// goes out. Our catches log a message before the error.
+function isBareConsoleError(event: Event) {
+  if (event.logger !== "console") return false;
+  const args = event.extra?.arguments;
+  return Array.isArray(args) && typeof args[0] !== "string";
+}
+
+// webpack ("Loading chunk 34006 failed.", "Loading CSS chunk 123 failed.")
+// and Turbopack ("Failed to load chunk /_next/static/…").
+const CHUNK_LOAD_MESSAGE =
+  /Loading (CSS )?chunk \S+ failed|Failed to load chunk/;
+
+export function isChunkLoadFailure(name = "", message = "") {
+  return name === "ChunkLoadError" || CHUNK_LOAD_MESSAGE.test(message);
+}
+
+/**
+ * Marks a failed on-demand code load as deploy skew: a tab on an older build
+ * asked for a chunk the current deployment no longer serves. The event is
+ * still sent, so a chunk that fails for another reason stays visible.
+ */
+export function tagDeploySkew<T extends Event>(event: T): T {
+  const exception = event.exception?.values?.[0];
+  if (isChunkLoadFailure(exception?.type, exception?.value)) {
+    event.tags = { ...event.tags, deploy_skew: true };
+  }
+  return event;
 }
 
 export const CLIENT_IGNORE_ERRORS = [
@@ -160,7 +211,28 @@ function withoutPrivateAttributes<V>(attributes: Record<string, V>) {
 
 type SentryOptions = NonNullable<Parameters<typeof init>[0]>;
 type SentryLog = Parameters<NonNullable<SentryOptions["beforeSendLog"]>>[0];
-type SentrySpan = Parameters<NonNullable<SentryOptions["beforeSendSpan"]>>[0];
+type SentrySpan = NonNullable<Event["spans"]>[number];
+
+// The names the SDK treats as private in headers and query parameters.
+const SDK_PRIVATE_NAMES = {
+  deny: ["forwarded", "-ip", "remote-", "via", "-user"],
+};
+
+// Sentry collects user details, cookies, headers and bodies unless told not
+// to. This keeps it to what it collected while told to send no personal data,
+// which the filters here then narrow further.
+export const SENTRY_DATA_COLLECTION = {
+  userInfo: false,
+  cookies: false,
+  httpHeaders: { request: SDK_PRIVATE_NAMES, response: SDK_PRIVATE_NAMES },
+  httpBodies: [],
+  urlQueryParams: SDK_PRIVATE_NAMES,
+  genAI: { inputs: false, outputs: false },
+  databaseQueryData: false,
+  queues: false,
+  graphQL: { document: false, variables: false },
+  frameContextLines: 7,
+} satisfies SentryOptions["dataCollection"];
 
 // Logs are known to Sentry by the user id only, like errors and transactions.
 export function stripLogUserPII(log: SentryLog): SentryLog {

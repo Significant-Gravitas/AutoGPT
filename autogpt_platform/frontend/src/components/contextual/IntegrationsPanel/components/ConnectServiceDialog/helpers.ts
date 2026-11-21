@@ -119,7 +119,9 @@ export function toConnectableProviders(
         new Set([...(provider.searchTerms ?? []), item.name]),
       );
     }
-    if (item.name === displayProvider && !item.mcp_server) {
+    // A service's own provider names it, but one without a description
+    // (Microsoft 365 Copilot's older provider) mustn't blank it.
+    if (item.name === displayProvider && !item.mcp_server && item.description) {
       provider.description = item.description;
     }
     byService.set(key, provider);

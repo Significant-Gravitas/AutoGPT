@@ -48,7 +48,7 @@ const preview: Preview = {
   decorators: [
     (Story) => (
       <QueryClientProvider client={storyQueryClient}>
-        <div className="bg-background p-8">
+        <div className="bg-canvas p-8">
           <Story />
         </div>
       </QueryClientProvider>

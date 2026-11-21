@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { resolveCanvasColour } from "./helpers";
 
 interface DotDistortionShaderProps {
   className?: string;
@@ -9,7 +10,6 @@ interface DotDistortionShaderProps {
   dotSize?: number;
   dotColor?: string;
   glowColor?: string;
-  backgroundColor?: string;
   mouseRadius?: number;
   distortionStrength?: number;
   breathingSpeed?: number;
@@ -40,9 +40,8 @@ export const DotDistortionShader: React.FC<DotDistortionShaderProps> = ({
   className,
   dotGap = 16,
   dotSize = 1,
-  dotColor = "var(--color-sky-700)",
-  glowColor = "var(--color-sky-700)",
-  backgroundColor,
+  dotColor = "var(--color-foreground-base)",
+  glowColor = "var(--color-foreground-base)",
   mouseRadius = 100,
   distortionStrength = 1,
   breathingSpeed = 1,
@@ -111,15 +110,8 @@ export const DotDistortionShader: React.FC<DotDistortionShaderProps> = ({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const resolveColor = (color: string) => {
-      if (color.startsWith("var(")) {
-        const varName = color.match(/var\(([^)]+)\)/)?.[1];
-        if (varName) {
-          return getComputedStyle(container).getPropertyValue(varName).trim();
-        }
-      }
-      return color;
-    };
+    const resolveColor = (color: string) =>
+      resolveCanvasColour(color, container);
 
     let stopped = false;
     const dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -358,18 +350,11 @@ export const DotDistortionShader: React.FC<DotDistortionShaderProps> = ({
   return (
     <div
       ref={containerRef}
-      className={cn(
-        "relative overflow-hidden bg-white dark:bg-black",
-        className,
-      )}
-      style={{
-        background: backgroundColor,
-      }}
+      className={cn("relative overflow-hidden bg-surface", className)}
     >
       <canvas
         ref={canvasRef}
-        className="absolute inset-0 h-full w-full"
-        style={{ display: "block" }}
+        className="absolute inset-0 block h-full w-full"
       />
     </div>
   );

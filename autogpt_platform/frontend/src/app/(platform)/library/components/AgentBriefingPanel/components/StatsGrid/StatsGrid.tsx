@@ -16,7 +16,7 @@ interface Props {
 
 const TILES: {
   label: string;
-  key: keyof FleetSummary;
+  key: Exclude<keyof FleetSummary, "schedulesUnknown">;
   format?: (v: number) => string;
   filter: AgentStatusFilter;
   emoji: string;
@@ -56,7 +56,7 @@ const TILES: {
     key: "scheduled",
     filter: "scheduled",
     emoji: "📅",
-    color: "text-yellow-600",
+    color: "text-warning",
   },
   {
     label: "Idle",
@@ -84,6 +84,11 @@ export function StatsGrid({ summary, activeTab, onTabChange }: Props) {
         const rawValue = summary[tile.key];
         const value = tile.format ? tile.format(rawValue) : rawValue;
         const isActive = activeTab === tile.filter;
+        // Without the scheduler a scheduled workflow can't be told from an
+        // idle one, so neither count is shown rather than a wrong one.
+        const isUnknown =
+          summary.schedulesUnknown &&
+          (tile.key === "scheduled" || tile.key === "idle");
 
         return (
           <button
@@ -93,6 +98,9 @@ export function StatsGrid({ summary, activeTab, onTabChange }: Props) {
             // A second click goes back to the overview, which has no tile of
             // its own when billing is off.
             onClick={() => onTabChange(isActive ? "all" : tile.filter)}
+            title={
+              isUnknown ? "Schedules are temporarily unavailable" : undefined
+            }
             className={cn(
               "flex min-w-0 flex-col gap-1 rounded-medium border p-3 text-left shadow-md transition-all hover:shadow-lg",
               isActive
@@ -102,13 +110,18 @@ export function StatsGrid({ summary, activeTab, onTabChange }: Props) {
           >
             <div className="flex min-w-0 items-center gap-1.5">
               <Emoji text={tile.emoji} size={18} />
-              <OverflowText
-                value={tile.label}
-                variant="body"
-                className="text-foreground-emphasis"
-              />
+              <OverflowText value={tile.label} variant="body" tone="emphasis" />
             </div>
-            <Text variant="h4">{value}</Text>
+            <Text variant="h4">
+              {isUnknown ? (
+                <>
+                  <span aria-hidden="true">—</span>
+                  <span className="sr-only">Unknown</span>
+                </>
+              ) : (
+                value
+              )}
+            </Text>
           </button>
         );
       })}
