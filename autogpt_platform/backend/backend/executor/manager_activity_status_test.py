@@ -182,10 +182,12 @@ def _run_whose_start_moves_nothing(
         graph_version=1,
     )
     db_client = MagicMock()
-    db_client.get_graph_execution_meta.side_effect = [
-        SimpleNamespace(status=status, stats=None),
-        None if found is None else SimpleNamespace(status=found, stats=None),
-    ]
+    db_client.get_graph_execution_meta.return_value = SimpleNamespace(
+        status=status, stats=None
+    )
+    db_client.get_graph_execution.return_value = (
+        None if found is None else SimpleNamespace(status=found, stats=None)
+    )
     db_client.update_graph_execution_start_time.return_value = None
     processor = ExecutionProcessor()
     processor._on_graph_execution = MagicMock(
@@ -240,9 +242,14 @@ def test_a_start_whose_answer_was_lost_goes_on_with_the_run(status: ExecutionSta
     and lost its answer is answered nothing by its retry, with the run RUNNING.
     That run is this executor's to go on with: dropping it would leave it
     RUNNING with nothing running it."""
-    _, run_graph, _, _ = _run_whose_start_moves_nothing(status, ExecutionStatus.RUNNING)
+    db_client, run_graph, send_update, _ = _run_whose_start_moves_nothing(
+        status, ExecutionStatus.RUNNING
+    )
 
+    db_client.update_graph_execution_start_time.assert_called_once_with("exec-1")
     run_graph.assert_called_once()
+    # The RUNNING update the first try's lost answer would have carried.
+    send_update.assert_called_once_with(db_client.get_graph_execution.return_value)
 
 
 def test_an_update_that_is_none_is_not_published():

@@ -1528,9 +1528,10 @@ async def stop_graph_execution(
             )
             # An executor can start the run between the read above and this
             # write. It ignores a cancel for a run it has not registered, so the
-            # one sent before the read may have been lost on it. By now it has
-            # registered the run, and acts on this one. Sent before the event, so
-            # a failure to publish that can't keep it from going out.
+            # one sent before the read may have been lost on it. It has almost
+            # always registered the run by now and acts on this one; the gap
+            # that remains is #17182. Sent before the event, so a failure to
+            # publish that can't keep it from going out.
             await _publish_cancel(queue_client, graph_exec_id)
             # Publish graph execution event
             await get_async_execution_event_bus().publish(graph_exec)

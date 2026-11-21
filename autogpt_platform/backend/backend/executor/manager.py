@@ -169,17 +169,20 @@ def _get_execution_credit_balance(
 def _running_after_an_empty_start(
     db_client: "DatabaseManagerClient",
     graph_exec: GraphExecutionEntry,
-) -> bool:
-    """Whether a run whose start moved nothing is RUNNING all the same.
+) -> GraphExecution | None:
+    """The run, when its start moved nothing and it is RUNNING all the same.
 
     The database client retries a call that failed, so a start that committed
     and lost its answer comes back empty with the run RUNNING, and that run is
-    this executor's to go on with. A run a stop got to first is terminal.
+    this executor's to go on with. A run a stop got to first is terminal, and
+    None is returned for it.
     """
-    run = db_client.get_graph_execution_meta(
-        user_id=graph_exec.user_id, execution_id=graph_exec.graph_exec_id
+    run = db_client.get_graph_execution(
+        user_id=graph_exec.user_id,
+        execution_id=graph_exec.graph_exec_id,
+        include_node_executions=False,
     )
-    return run is not None and run.status == ExecutionStatus.RUNNING
+    return run if run is not None and run.status == ExecutionStatus.RUNNING else None
 
 
 def _write_the_final_state(
@@ -1580,11 +1583,13 @@ class ExecutionProcessor:
             )
             if started is not None:
                 send_execution_update(started)
-            elif _running_after_an_empty_start(db_client, graph_exec):
+            elif resumed := _running_after_an_empty_start(db_client, graph_exec):
                 log_metadata.info(
                     f"Graph execution #{graph_exec.graph_exec_id} was already "
                     "started by an earlier try of its start, going on with it."
                 )
+                # That try's RUNNING update was lost with its answer.
+                send_execution_update(resumed)
             else:
                 # The start only moves a run that is still queued, so a stop
                 # that wrote its status after the read above has won the race.
