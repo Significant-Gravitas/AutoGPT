@@ -100,6 +100,7 @@ describe("SignupPage sends a new account to onboarding first", () => {
         PASSWORD,
         false,
         safeNext,
+        "",
       );
     },
   );
@@ -141,7 +142,13 @@ describe("SignupPage sends a new account to onboarding first", () => {
     submitSignupForm();
 
     await waitFor(() => expect(routerReplace).toHaveBeenCalledWith(next));
-    expect(mockSignupAction).toHaveBeenCalledWith(EMAIL, PASSWORD, false, next);
+    expect(mockSignupAction).toHaveBeenCalledWith(
+      EMAIL,
+      PASSWORD,
+      false,
+      next,
+      "",
+    );
   });
 
   test("continuing with Google from a campaign link hands /auth/callback the whole next", async () => {

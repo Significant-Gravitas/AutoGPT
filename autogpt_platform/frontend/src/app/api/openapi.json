@@ -33101,7 +33101,6 @@
           "user_name": {
             "type": "string",
             "maxLength": 100,
-            "minLength": 1,
             "title": "User Name"
           },
           "user_role": {
