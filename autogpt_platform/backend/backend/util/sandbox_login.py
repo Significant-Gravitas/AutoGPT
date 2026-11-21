@@ -31,6 +31,8 @@ SYSTEM_FILES = ("/etc/profile", "/etc/bash.bashrc")
 PROFILE_D = "/etc/profile.d"
 # A file past this is cut, which puts a judged call past every supervisor ceiling.
 READ_CAP = 64_000
+# Each file there is a read of its own, and the sandbox decides how many there are.
+MAX_PROFILE_D_FILES = 100
 
 _NO_HOME = "/nonexistent"
 _BASELINE_TTL_SECONDS = 30 * 24 * 3600
@@ -43,6 +45,10 @@ class LoginChainChanged(RuntimeError):
 
 class _TooLong(Exception):
     """A login file past ``READ_CAP``, which cannot be compared whole."""
+
+
+class _TooMany(Exception):
+    """More files in ``PROFILE_D`` than ``MAX_PROFILE_D_FILES``, none of them read."""
 
 
 async def run_internal(
@@ -191,6 +197,10 @@ async def _snapshot(
         entries = []
         listing[PROFILE_D] = error
     profile_d = [entry.path for entry in entries if entry.type is not FileType.DIR]
+    if len(profile_d) > MAX_PROFILE_D_FILES:
+        # Held like a directory that cannot be listed, before any read starts.
+        profile_d = []
+        listing[PROFILE_D] = _TooMany(PROFILE_D)
     paths = [*SYSTEM_FILES, *profile_d, *([] if system_only else USER_FILES)]
     contents = await asyncio.gather(
         *(read_capped(sandbox, path) for path in paths), return_exceptions=True
