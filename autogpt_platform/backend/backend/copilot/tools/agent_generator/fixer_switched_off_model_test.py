@@ -161,6 +161,19 @@ async def test_an_edit_keeps_a_saved_switched_off_model_and_moves_new_work_off_i
 
 
 @pytest.mark.asyncio
+async def test_an_edit_keeps_a_saved_switched_off_model_in_another_spelling():
+    """The enum takes the provider-prefixed spelling too, so a node saved as
+    openai/gpt-5-2025-08-07 hasn't changed model when the edit writes the
+    bare id."""
+    saved = workflow(AITextGeneratorBlock, "openai/gpt-5-2025-08-07")
+    edited = workflow(AITextGeneratorBlock, "gpt-5-2025-08-07")
+
+    result = await preview(edited, saved_agent=saved)
+
+    assert model_on(result, AI_NODE) == "gpt-5-2025-08-07"
+
+
+@pytest.mark.asyncio
 async def test_an_edit_that_moves_a_node_onto_a_switched_off_model_gets_the_replacement():
     saved = workflow(AITextGeneratorBlock, "gpt-5.6-sol")
     edited = workflow(AITextGeneratorBlock, "o3-2025-04-16")

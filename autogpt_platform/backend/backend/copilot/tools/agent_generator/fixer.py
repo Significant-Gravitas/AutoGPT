@@ -5,10 +5,6 @@ import re
 from typing import Any
 
 from backend.data.dynamic_fields import DICT_SPLIT
-from backend.data.llm_registry.llm_models import (
-    is_switched_off,
-    scheduled_model_fallback,
-)
 
 from .helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
@@ -19,6 +15,11 @@ from .helpers import (
     generate_uuid,
     get_defined_property_type,
     is_uuid,
+)
+from .switched_off_models import (
+    is_new_switched_off_model,
+    models_by_node,
+    offered_fallback,
 )
 
 logger = logging.getLogger(__name__)
@@ -936,14 +937,14 @@ class AgentFixer:
                     allowed_models = generic_allowed_models
                     fallback_model = default_model
 
-                switched_off = is_switched_off(current_model) and (
-                    saved_models.get(node_id) != current_model
+                switched_off = is_new_switched_off_model(
+                    current_model, saved_models.get(node_id)
                 )
                 if current_model not in allowed_models or switched_off:
                     new_model = fallback_model
                     if switched_off:
                         new_model = (
-                            _offered_fallback(current_model, allowed_models)
+                            offered_fallback(current_model, allowed_models)
                             or fallback_model
                         )
                     self._log_model_fix(
@@ -1805,7 +1806,7 @@ class AgentFixer:
         self.fixes_applied = []
         self.retired_models_replaced = []
         # Read before any fix runs: *saved_agent* may be *agent* itself.
-        saved_models = _models_by_node(saved_agent)
+        saved_models = models_by_node(saved_agent)
 
         # Apply fixes in order
         agent = self.fix_agent_ids(agent)
@@ -1861,21 +1862,3 @@ class AgentFixer:
     def get_fixes_applied(self) -> list[str]:
         """Get a list of all fixes that were applied."""
         return self.fixes_applied.copy()
-
-
-def _models_by_node(agent: AgentDict | None) -> dict[str, Any]:
-    """Each node's ``model`` input, by node id."""
-    return {
-        node["id"]: (node.get("input_default") or {}).get("model")
-        for node in (agent or {}).get("nodes", [])
-        if node.get("id")
-    }
-
-
-def _offered_fallback(model: Any, offered: set[str]) -> str | None:
-    """A switched-off model's catalog fallback, the model blocks run in its
-    place, when the block offers it."""
-    scheduled = scheduled_model_fallback(model)
-    if scheduled is None or scheduled[0].value not in offered:
-        return None
-    return scheduled[0].value
