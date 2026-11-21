@@ -1,5 +1,6 @@
 import asyncio
 import io
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from backend.blocks._base import (
@@ -12,9 +13,18 @@ from backend.blocks._base import (
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import ContributorDetails, SchemaField
-from backend.util.file import get_exec_file_path, store_media_file
-from backend.util.file_content_parser import check_xlsx_unpacked_size
+from backend.util.file import MAX_FILE_SIZE_BYTES, get_exec_file_path, store_media_file
+from backend.util.file_content_parser import (
+    check_xlsx_sheet_size,
+    check_xlsx_unpacked_size,
+)
 from backend.util.type import MediaFileType
+
+# What the rows output may hold: the UTF-8 bytes of its names and values plus
+# ROWS_ITEM_SIZE per row and per cell, and the UTF-8 bytes of the names it holds.
+MAX_ROWS_SIZE = 100_000_000
+ROWS_ITEM_SIZE = 64
+MAX_ROWS_NAMES_SIZE = 10_000_000
 
 
 class ReadSpreadsheetBlock(Block):
@@ -137,10 +147,15 @@ class ReadSpreadsheetBlock(Block):
                 try:
                     import pandas as pd
 
-                    def _read_xlsx() -> "pd.DataFrame":
+                    def _read_xlsx() -> str:
                         workbook = Path(file_path).read_bytes()
                         check_xlsx_unpacked_size(
                             io.BytesIO(workbook), source="spreadsheet_block"
+                        )
+                        check_xlsx_sheet_size(
+                            io.BytesIO(workbook),
+                            input_data.sheet_name,
+                            source="spreadsheet_block",
                         )
                         # dtype=object and keep_default_na=False keep the sheet's own
                         # values: "N/A"/"NULL"/"NaN" stay text instead of being read as
@@ -150,27 +165,26 @@ class ReadSpreadsheetBlock(Block):
                         # reader below, so pandas doesn't rename duplicate or blank
                         # headers ("a.1", "Unnamed: 2") and Excel gets the same
                         # header handling as CSV.
-                        return pd.read_excel(
+                        df = pd.read_excel(
                             io.BytesIO(workbook),
                             sheet_name=input_data.sheet_name or 0,
                             header=None,
                             dtype=object,
                             keep_default_na=False,
                         )
+                        # Write the CSV with the same dialect it is parsed with below,
+                        # otherwise a non-default delimiter yields a single column.
+                        csv_buffer = _BoundedTextBuffer(MAX_FILE_SIZE_BYTES)
+                        df.to_csv(
+                            csv_buffer,
+                            index=False,
+                            header=False,
+                            sep=input_data.delimiter,
+                            quotechar=input_data.quotechar,
+                        )
+                        return csv_buffer.getvalue()
 
-                    df = await asyncio.to_thread(_read_xlsx)
-
-                    # Write the CSV with the same dialect it is parsed with below,
-                    # otherwise a non-default delimiter yields a single column.
-                    csv_buffer = StringIO()
-                    df.to_csv(
-                        csv_buffer,
-                        index=False,
-                        header=False,
-                        sep=input_data.delimiter,
-                        quotechar=input_data.quotechar,
-                    )
-                    csv_content = csv_buffer.getvalue()
+                    csv_content = await asyncio.to_thread(_read_xlsx)
 
                 except ImportError:
                     raise ValueError(
@@ -237,14 +251,57 @@ class ReadSpreadsheetBlock(Block):
                     data[column_key(i)] = value.strip() if input_data.strip else value
             return data
 
-        # csv.reader yields [] for a blank line; don't turn those into {} rows.
-        rows = [process_row(row) for row in reader if row]
+        rows = _collect_rows(reader, process_row)
 
         if input_data.produce_singular_result:
             for processed_row in rows:
                 yield "row", processed_row
         else:
             yield "rows", rows
+
+
+def _collect_rows(
+    reader: Iterable[list[str]], process_row: Callable[[list[str]], dict[str, str]]
+) -> list[dict[str, str]]:
+    """Process every row, refusing once the output passes the rows limits."""
+    rows = []
+    size = names_size = 0
+    for row in reader:
+        # csv.reader yields [] for a blank line; don't turn those into {} rows.
+        if not row:
+            continue
+        processed = process_row(row)
+        names = sum(_utf8_size(name) for name in processed)
+        values = sum(_utf8_size(value) for value in processed.values())
+        names_size += names
+        size += ROWS_ITEM_SIZE * (1 + len(processed)) + names + values
+        if size > MAX_ROWS_SIZE or names_size > MAX_ROWS_NAMES_SIZE:
+            raise ValueError(
+                "The spreadsheet is too large for this block to output; read a "
+                "smaller file, or skip some columns."
+            )
+        rows.append(processed)
+    return rows
+
+
+def _utf8_size(text: str) -> int:
+    return len(text) if text.isascii() else len(text.encode())
+
+
+class _BoundedTextBuffer(io.StringIO):
+    """A text buffer that refuses to grow past ``limit`` characters."""
+
+    def __init__(self, limit: int):
+        super().__init__()
+        self._limit = limit
+
+    def write(self, text: str) -> int:
+        if self.tell() + len(text) > self._limit:
+            raise ValueError(
+                f"The sheet is larger than {self._limit // (1024 * 1024)} MB as "
+                "CSV, more than can be read."
+            )
+        return super().write(text)
 
 
 def _unique_column_names(header: list[str]) -> list[str]:

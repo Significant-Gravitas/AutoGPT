@@ -1062,14 +1062,15 @@ def test_sandbox_output_is_read_through_a_limit():
 # ---------------------------------------------------------------------------
 #
 # Motivation: backend/util/zip_member.py reads a zip member under a byte cap,
-# and check_xlsx_unpacked_size applies the .xlsx caps before pandas reads a
-# workbook. A read that goes around them has neither cap.
+# and check_xlsx_unpacked_size and check_xlsx_sheet_size apply the .xlsx caps
+# before pandas reads a workbook. A read that goes around them has no cap.
 
 _ZIP_MEMBER_MODULE = "util/zip_member.py"
 _READ_EXCEL_MODULES = frozenset(
     {"util/file_content_parser.py", "blocks/spreadsheet.py"}
 )
 _ZIP_READ_METHODS = frozenset({"read", "open", "extract", "extractall"})
+_XLSX_CHECKS = ("check_xlsx_unpacked_size", "check_xlsx_sheet_size")
 
 
 def test_zip_members_and_workbooks_are_read_through_the_capped_readers():
@@ -1088,13 +1089,20 @@ def test_zip_members_and_workbooks_are_read_through_the_capped_readers():
             if call != "read_excel" and rel == _ZIP_MEMBER_MODULE:
                 continue
             offenders.append(f"{rel}:{line} {call}")
+        if rel in _READ_EXCEL_MODULES:
+            offenders.extend(
+                f"{rel}:{line} read_excel without {missing}"
+                for line, missing in _unchecked_read_excel(tree)
+            )
 
     assert not offenders, (
         "Zip members are read through backend/util/zip_member.py, and a workbook "
-        "is checked with check_xlsx_unpacked_size before pandas reads it.\n\n"
+        "is checked with check_xlsx_unpacked_size and check_xlsx_sheet_size "
+        "before pandas reads it.\n\n"
         "Offenders:\n  " + "\n  ".join(offenders) + "\n\n"
         "Fix: read the member with zip_member.read_member / iter_member, or call "
-        "check_xlsx_unpacked_size first and add the module to _READ_EXCEL_MODULES."
+        "both checks in the function that calls read_excel and add the module to "
+        "_READ_EXCEL_MODULES."
     )
 
 
@@ -1214,6 +1222,54 @@ def _sandbox_reads_in(tree: ast.Module) -> list[tuple[int, str]]:
 )  # fmt: skip
 def test_archive_read_scan_reads_each_form(source: str, expected: list[str]):
     assert [call for call, _ in _uncapped_archive_reads(ast.parse(source))] == expected
+
+
+@pytest.mark.parametrize(
+    "source, expected",
+    [
+        ("def f(b):\n    check_xlsx_unpacked_size(b)\n    check_xlsx_sheet_size(b)\n    pd.read_excel(b)", []),
+        ("def f(b):\n    check_xlsx_unpacked_size(b)\n    pd.read_excel(b)", ["check_xlsx_sheet_size"]),
+        ("def f(b):\n    pd.read_excel(b)", ["check_xlsx_unpacked_size, check_xlsx_sheet_size"]),
+        ("def f(b):\n    check_xlsx_unpacked_size(b)\n    check_xlsx_sheet_size(b)\n    def g():\n        pd.read_excel(b)", ["check_xlsx_unpacked_size, check_xlsx_sheet_size"]),
+    ],
+)  # fmt: skip
+def test_read_excel_scan_wants_both_checks_in_its_function(
+    source: str, expected: list[str]
+):
+    assert [m for _, m in _unchecked_read_excel(ast.parse(source))] == expected
+
+
+def _unchecked_read_excel(tree: ast.Module) -> list[tuple[int, str]]:
+    """``read_excel`` calls whose own function does not call both .xlsx checks."""
+    found: list[tuple[int, str]] = []
+    for func in ast.walk(tree):
+        if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        calls = _own_call_names(func)
+        missing = [check for check in _XLSX_CHECKS if check not in calls]
+        found.extend(
+            (line, ", ".join(missing))
+            for name, line in calls.items()
+            if name == "read_excel" and missing
+        )
+    return sorted(found)
+
+
+def _own_call_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[str, int]:
+    """Names this function calls, by line, leaving out nested functions."""
+    names: dict[str, int] = {}
+    stack: list[ast.AST] = list(func.body)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Attribute):
+                names[node.func.attr] = node.lineno
+            elif isinstance(node.func, ast.Name):
+                names[node.func.id] = node.lineno
+        stack.extend(ast.iter_child_nodes(node))
+    return names
 
 
 def _uncapped_archive_reads(tree: ast.Module) -> list[tuple[str, int]]:

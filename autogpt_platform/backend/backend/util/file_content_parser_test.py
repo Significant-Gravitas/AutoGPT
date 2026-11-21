@@ -2,6 +2,7 @@
 
 import io
 import json
+import re
 import struct
 import zipfile
 from unittest.mock import patch
@@ -11,6 +12,8 @@ import pytest
 from backend.util import file_content_parser
 from backend.util.file_content_parser import (
     BINARY_FORMATS,
+    XlsxSheetTooLarge,
+    check_xlsx_sheet_size,
     infer_format_from_uri,
     parse_file_content,
 )
@@ -668,6 +671,142 @@ class TestXlsxUnpackedSize:
             parse_file_content(xlsx_bytes, "xlsx", strict=True)
 
         report.assert_not_called()
+
+
+class TestXlsxSheetSize:
+    @pytest.mark.parametrize(
+        "workbook, refusal",
+        [
+            (lambda: _sheet({"A1": "Name", "XFD400": "far"}), "spans more than"),
+            (
+                lambda: _rewrite(
+                    _sheet({"A1": "Name", "XFD400": "far"}),
+                    "xl/worksheets/sheet1.xml",
+                    (rb'<dimension ref="[^"]*"\s*/>', b'<dimension ref="A1:A1"/>'),
+                ),
+                "spans more than",
+            ),
+            (
+                lambda: _rewrite(
+                    _sheet({"A1": "Name", "XFD400": "far"}),
+                    "xl/workbook.xml",
+                    (
+                        rb"</sheets>",
+                        b'</sheets><externalReferences><externalReference r:id="rId99"'
+                        b"/></externalReferences>",
+                    ),
+                ),
+                "spans more than",
+            ),
+            (
+                lambda: _rewrite(
+                    _sheet({"A1": "Name", "A2": None}),
+                    "xl/worksheets/sheet1.xml",
+                    (rb'<row r="2"', b'<row r="1048577"'),
+                    (rb'r="A2"', b'r="A1048577"'),
+                ),
+                "has more than 1,048,576 rows",
+            ),
+        ],
+        ids=["table-cap", "dimension", "external-link", "row-cap"],
+    )
+    def test_a_sheet_past_a_cap_is_refused_unread(self, workbook, refusal):
+        with (
+            patch(
+                "pandas.read_excel",
+                side_effect=AssertionError("the workbook was read"),
+            ) as read_excel,
+            pytest.raises(XlsxSheetTooLarge, match=refusal),
+        ):
+            parse_file_content(workbook(), "xlsx", strict=True)
+        read_excel.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "cap, at_cap, cells",
+        [
+            ("MAX_XLSX_SHEET_ROWS", 3, {"A1": "a", "A3": "c"}),
+            ("MAX_XLSX_SHEET_CELLS_LISTED", 6, {f"{c}{r}": c for c in "ABC" for r in (1, 2)}),
+            ("MAX_XLSX_SHEET_CELLS", 6, {"A1": "a", "C2": "c"}),
+            ("MAX_XLSX_SHEET_CHARACTERS", 10, {"A1": "x" * 10}),
+            ("MAX_XLSX_SHEET_CHARACTERS", 309, {"A1": 1e308}),
+        ],
+        ids=["rows", "cells-listed", "cells", "text", "whole-number-float"],
+    )  # fmt: skip
+    @pytest.mark.parametrize("past_cap", [False, True])
+    def test_a_sheet_at_a_cap_is_read_and_one_past_it_is_refused(
+        self, monkeypatch, cap, at_cap, cells, past_cap
+    ):
+        monkeypatch.setattr(file_content_parser, cap, at_cap - past_cap)
+        data = _sheet(cells)
+
+        if past_cap:
+            with pytest.raises(XlsxSheetTooLarge):
+                parse_file_content(data, "xlsx", strict=True)
+        else:
+            assert parse_file_content(data, "xlsx", strict=True) != data
+
+    def test_a_refused_sheet_falls_back_to_the_raw_bytes(self):
+        data = _sheet({"A1": "Name", "XFD400": "far"})
+
+        assert parse_file_content(data, "xlsx") == data
+
+    def test_a_refused_sheet_is_reported_once(self):
+        with (
+            patch.object(file_content_parser.sentry_sdk, "capture_message") as report,
+            pytest.raises(XlsxSheetTooLarge),
+        ):
+            parse_file_content(
+                _sheet({"A1": "Name", "XFD400": "far"}), "xlsx", strict=True
+            )
+
+        report.assert_called_once()
+        assert report.call_args.args == ("xlsx sheet over size limit",)
+        assert report.call_args.kwargs["tags"] == {
+            "xlsx_limit": "MAX_XLSX_SHEET_CELLS",
+            "xlsx_source": "file_content_parser",
+        }
+
+    def test_a_zip_that_is_not_a_workbook_is_refused_by_the_check(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as archive:
+            archive.writestr("notes.txt", "not a workbook")
+
+        with pytest.raises(file_content_parser.PARSE_EXCEPTIONS):
+            check_xlsx_sheet_size(buf, source="file_content_parser")
+
+
+def _sheet(cells: dict[str, object]) -> bytes:
+    """A one-sheet workbook; a ``None`` cell is an empty bold cell the file lists."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    workbook = Workbook()
+    sheet = workbook.active
+    assert sheet is not None
+    for ref, value in cells.items():
+        sheet[ref] = value
+        if value is None:
+            sheet[ref].font = Font(bold=True)
+    buf = io.BytesIO()
+    workbook.save(buf)
+    return buf.getvalue()
+
+
+def _rewrite(xlsx: bytes, part: str, *edits: tuple[bytes, bytes]) -> bytes:
+    """Apply each ``(pattern, replacement)`` once to one part of the workbook."""
+    out = io.BytesIO()
+    with (
+        zipfile.ZipFile(io.BytesIO(xlsx)) as source,
+        zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as target,
+    ):
+        for item in source.infolist():
+            content = source.read(item)
+            if item.filename == part:
+                for pattern, replacement in edits:
+                    content, found = re.subn(pattern, replacement, content, count=1)
+                    assert found == 1, pattern
+            target.writestr(item, content)
+    return out.getvalue()
 
 
 # ---------------------------------------------------------------------------

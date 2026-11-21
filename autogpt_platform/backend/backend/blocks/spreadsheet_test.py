@@ -20,7 +20,9 @@ from unittest.mock import patch
 
 import pytest
 from openpyxl import Workbook
+from openpyxl.styles import Font
 
+from backend.blocks import spreadsheet
 from backend.blocks.spreadsheet import ReadSpreadsheetBlock
 from backend.data.execution import ExecutionContext
 from backend.util.file import get_exec_file_path
@@ -244,6 +246,133 @@ async def test_excel_within_the_caps_is_not_reported(workbook_path):
         await read_rows(file_input=MediaFileType("book.xlsx"))
 
     report.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "cells, refusal",
+    [
+        ({"A1": "id", "XFD400": "far"}, "cells"),
+        ({f"XFD{row}": None for row in range(1, 400)}, "cells"),
+        # A cell holds at most 32,767 characters, so 1,100 full ones pass 32 MB.
+        ({f"A{row}": "x" * 32_767 for row in range(1, 1101)}, "MB of text"),
+    ],
+    ids=["grid", "listed-empty-cells", "text"],
+)
+async def test_excel_sheet_reading_past_the_caps_is_refused_unread(cells, refusal):
+    target = save_workbook("big.xlsx", cells)
+    try:
+        with (
+            patch(
+                "pandas.read_excel",
+                side_effect=AssertionError("the workbook was read"),
+            ) as read_excel,
+            pytest.raises(ValueError, match=refusal),
+        ):
+            await read_rows(file_input=MediaFileType(target.name))
+    finally:
+        target.unlink(missing_ok=True)
+    read_excel.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "sheet_name, refused", [("Big", True), ("Small", False), (None, False)]
+)
+async def test_excel_counts_the_sheet_it_reads(sheet_name, refused):
+    workbook = Workbook()
+    small = workbook.active
+    assert small is not None
+    small.title = "Small"
+    small.append(["id"])
+    small.append(["1"])
+    big = workbook.create_sheet("Big")
+    big["A1"], big["XFD400"] = "id", "far"
+    base = Path(get_exec_file_path(GRAPH_EXEC_ID, ""))
+    base.mkdir(parents=True, exist_ok=True)
+    target = base / "two.xlsx"
+    workbook.save(target)
+    try:
+        if refused:
+            with pytest.raises(ValueError, match="spans more than"):
+                await read_rows(file_input=MediaFileType("two.xlsx"), sheet_name="Big")
+        else:
+            rows = await read_rows(
+                file_input=MediaFileType("two.xlsx"), sheet_name=sheet_name
+            )
+            assert rows == [{"id": "1"}]
+    finally:
+        target.unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("limit, refused", [(310, False), (309, True)])
+async def test_excel_csv_past_the_size_limit_is_refused(monkeypatch, limit, refused):
+    # The CSV of this sheet is 310 characters long.
+    monkeypatch.setattr(spreadsheet, "MAX_FILE_SIZE_BYTES", limit)
+    target = save_workbook("number.xlsx", {"A1": 1e308})
+    try:
+        if refused:
+            with pytest.raises(ValueError, match="as CSV"):
+                await read_rows(file_input=MediaFileType(target.name), has_header=False)
+        else:
+            rows = await read_rows(
+                file_input=MediaFileType(target.name), has_header=False
+            )
+            assert len(rows[0]["0"]) == 309
+    finally:
+        target.unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_rows_past_the_names_cap_are_refused():
+    contents = "h" * 100_000 + "\n" + "1\n" * 400
+
+    with pytest.raises(ValueError, match="too large for this block to output"):
+        await read_rows(contents=contents)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "cap, at_cap, contents, skip_columns",
+    [
+        # 64 per row and per cell, plus UTF-8 bytes: "é" counts 2.
+        ("MAX_ROWS_SIZE", 393, "a,b\né,x\ny,z\n", []),
+        ("MAX_ROWS_SIZE", 128, "a,b\n1,2\n3,4\n", ["0", "1"]),
+        ("MAX_ROWS_NAMES_SIZE", 8, "ab,cd\n1,2\n3,4\n", []),
+    ],
+    ids=["bytes-and-items", "skipped-columns", "names"],
+)  # fmt: skip
+@pytest.mark.parametrize("past_cap", [False, True])
+async def test_rows_at_a_cap_are_read_and_one_byte_past_it_refused(
+    monkeypatch, cap, at_cap, contents, skip_columns, past_cap
+):
+    monkeypatch.setattr(spreadsheet, cap, at_cap - past_cap)
+
+    if past_cap:
+        with pytest.raises(ValueError, match="too large for this block to output"):
+            await read_rows(contents=contents, skip_columns=skip_columns)
+    else:
+        assert len(await read_rows(contents=contents, skip_columns=skip_columns)) == 2
+
+
+def save_workbook(name: str, cells: dict[str, object]) -> Path:
+    """Write a one-sheet workbook into the block's exec_file directory.
+
+    A ``None`` cell is written as an empty bold cell, listed in the file.
+    """
+    workbook = Workbook()
+    sheet = workbook.active
+    assert sheet is not None
+    for ref, value in cells.items():
+        sheet[ref] = value
+        if value is None:
+            sheet[ref].font = Font(bold=True)
+    base = Path(get_exec_file_path(GRAPH_EXEC_ID, ""))
+    base.mkdir(parents=True, exist_ok=True)
+    target = base / name
+    workbook.save(target)
+    return target
 
 
 @pytest.mark.asyncio
