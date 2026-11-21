@@ -101,15 +101,16 @@ export function ShareRunButton({
                   wrapperClassName="flex-1"
                 />
                 <Button
-                  variant="secondary"
+                  variant="icon"
                   onClick={handleCopy}
                   size="small"
-                  className="mt-0.5 !min-w-0"
+                  aria-label="Copy share link"
+                  className="mt-0.5"
                 >
                   {copied ? (
-                    <Icon icon={Tick02Icon} size={16} />
+                    <Icon icon={Tick02Icon} size={16} aria-hidden />
                   ) : (
-                    <Icon icon={Copy01Icon} size={16} />
+                    <Icon icon={Copy01Icon} size={16} aria-hidden />
                   )}
                 </Button>
               </div>

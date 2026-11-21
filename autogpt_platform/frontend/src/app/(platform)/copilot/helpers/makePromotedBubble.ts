@@ -15,7 +15,7 @@ export function makePromotedUserBubble(
   suffix: string,
 ): UIMessage {
   return {
-    id: `promoted-${prefix}-${suffix}`,
+    id: promotedBubbleId(prefix, suffix),
     role: "user" as const,
     parts: [
       {
@@ -25,4 +25,12 @@ export function makePromotedUserBubble(
       },
     ],
   };
+}
+
+/** The id `makePromotedUserBubble` gives a bubble; it does not depend on the text. */
+export function promotedBubbleId(
+  prefix: "auto-continue" | "midturn",
+  suffix: string,
+): string {
+  return `promoted-${prefix}-${suffix}`;
 }

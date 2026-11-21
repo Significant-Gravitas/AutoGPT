@@ -68,7 +68,13 @@ from backend.data.model import (
     is_refused_sdk_default,
     sdk_default_refused_message,
 )
-from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
+from backend.data.rabbitmq import (
+    AsyncRabbitMQ,
+    Exchange,
+    ExchangeType,
+    Queue,
+    RabbitMQConfig,
+)
 from backend.data.user import is_user_refused
 from backend.executor.input_depth import (
     validate_graph_input_depth,
@@ -178,6 +184,7 @@ def block_usage_cost(
     run_time: float = 0,
     stats: NodeExecutionStats | None = None,
     use_preflight_estimate: bool = True,
+    pre_flight_resolved_model: str | None = None,
 ) -> tuple[int, BlockInput]:
     """Calculate the credit charge for a block invocation.
 
@@ -187,6 +194,15 @@ def block_usage_cost(
         estimate is registered for the block in `block_preflight_estimates.json`.
       - Post-flight (stats populated): dynamic types consume the captured
         stats to compute the actual charge.
+
+    Which model is priced (`_with_schema_defaults`): a run that has started
+    is priced on the model it recorded when it started, never on today's
+    date. A caller after a run passes the run's ``stats``, whose
+    ``resolved_model`` is that record; only the pre-flight price of a run
+    that has started (settlement's baseline when none was pinned) passes the
+    record as ``pre_flight_resolved_model`` instead. A caller passing neither
+    prices the model a run starting now would run: right before a run, wrong
+    after one. ``block_usage_cost_test`` names the callers that may.
 
     For SECOND/ITEMS/TOKENS cost entries, ``cost_amount`` is interpreted as
     "credits per ``cost_divisor`` units" — e.g. ``cost_amount=1,
@@ -204,7 +220,11 @@ def block_usage_cost(
     if not block_costs:
         return 0, {}
 
-    input_data = _with_schema_defaults(block, input_data)
+    input_data = _with_schema_defaults(
+        block,
+        input_data,
+        pre_flight_resolved_model or (stats.resolved_model if stats else None),
+    )
     is_preflight = stats is None and run_time == 0 and use_preflight_estimate
 
     for block_cost in block_costs:
@@ -335,22 +355,29 @@ def _coerce_usd(stats: NodeExecutionStats | None) -> float:
     return max(0.0, float(stats.provider_cost))
 
 
-def _with_schema_defaults(block: Block, input_data: BlockInput) -> BlockInput:
+def _with_schema_defaults(
+    block: Block, input_data: BlockInput, resolved_model: str | None
+) -> BlockInput:
     """The input `Block._execute` runs on: `None` values dropped, schema defaults
-    filled in, and a model the catalog has switched off replaced by its
-    fallback from its shutdown date. Cost filters are matched against this,
-    with each credentials input marked by whether the platform pays for its
-    key. The shutdown date is read when this is called, so a settlement
-    prices the model as of the day it settles: a node still running at
-    00:00 UTC on a model's shutdown date ran the model itself, but settles at
-    its fallback's rates."""
+    filled in, and each LLM model as the block runs it
+    (`Block.with_retired_models_replaced`). Cost filters are matched against
+    this, with each credentials input marked by whether the platform pays for
+    its key.
+
+    ``resolved_model`` is the model a run recorded when it started
+    (`NodeExecutionStats.resolved_model`), and a run that has started is
+    priced on it: a node still running at 00:00 UTC on its model's shutdown
+    date ran the model itself, and settles at that model's rates. Given None,
+    before a run starts, the model a run starting now runs: a switched-off
+    model's fallback from its shutdown date."""
     defaults = {
         name: field.get_default(call_default_factory=True)
         for name, field in block.input_schema.model_fields.items()
         if not field.is_required()
     }
     merged = block.with_retired_models_replaced(
-        {**defaults, **{k: v for k, v in input_data.items() if v is not None}}
+        {**defaults, **{k: v for k, v in input_data.items() if v is not None}},
+        resolved_model,
     )
     for field_name in block.input_schema.get_credentials_fields():
         if isinstance(credentials := merged.get(field_name), dict):
@@ -1410,6 +1437,9 @@ async def stop_graph_execution(
        reinitializes worker pool, and returns.
     4. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
 
+    A run that no executor has started (QUEUED, INCOMPLETE or REVIEW) is
+    terminated here instead, and the cancel is sent again once that is written.
+
     Args:
         user_id: User ID who owns the execution
         graph_exec_id: Graph execution ID to stop
@@ -1442,11 +1472,7 @@ async def stop_graph_execution(
             )
 
     # Now stop this execution
-    await queue_client.publish_message(
-        routing_key="",
-        message=CancelExecutionEvent(graph_exec_id=graph_exec_id).model_dump_json(),
-        exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
-    )
+    await _publish_cancel(queue_client, graph_exec_id)
 
     if not wait_timeout:
         return
@@ -1495,15 +1521,30 @@ async def stop_graph_execution(
 
             graph_exec.status = ExecutionStatus.TERMINATED
 
-            await asyncio.gather(
-                # Update graph execution status
-                db.update_graph_execution_stats(
-                    graph_exec_id=graph_exec.id,
-                    status=ExecutionStatus.TERMINATED,
-                ),
-                # Publish graph execution event
-                get_async_execution_event_bus().publish(graph_exec),
+            # Update graph execution status
+            await db.update_graph_execution_stats(
+                graph_exec_id=graph_exec.id,
+                status=ExecutionStatus.TERMINATED,
             )
+            # An executor that started the run between the read above and this
+            # write may have taken the first cancel before it registered the
+            # run, and dropped it. It registers a run before handing it to a
+            # worker, so this cancel reaches any worker that started first;
+            # one that starts after this write finds the run stopped (#17182).
+            # Sent before the event, so a failure to publish that can't keep
+            # it from going out.
+            try:
+                await _publish_cancel(queue_client, graph_exec_id)
+            except Exception:
+                # The run is TERMINATED either way and the first cancel went
+                # out, so a broker failure here doesn't fail the stop or keep
+                # its event from going out.
+                logger.warning(
+                    f"Could not send the second cancel for run #{graph_exec_id}",
+                    exc_info=True,
+                )
+            # Publish graph execution event
+            await get_async_execution_event_bus().publish(graph_exec)
             return
 
         if graph_exec.status == ExecutionStatus.RUNNING:
@@ -1512,6 +1553,14 @@ async def stop_graph_execution(
     raise TimeoutError(
         f"Workflow run #{graph_exec_id} will need to take longer than {wait_timeout} seconds to stop. "
         f"You can check the status of the execution in the UI or try again later."
+    )
+
+
+async def _publish_cancel(queue_client: AsyncRabbitMQ, graph_exec_id: str) -> None:
+    await queue_client.publish_message(
+        routing_key="",
+        message=CancelExecutionEvent(graph_exec_id=graph_exec_id).model_dump_json(),
+        exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
     )
 
 

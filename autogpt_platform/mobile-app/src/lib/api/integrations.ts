@@ -1,4 +1,5 @@
 import { assertSameSession, sessionMark } from "@/lib/auth/token";
+import { APP_SCHEME } from "@/lib/env";
 
 import { ApiError, apiRequest } from "./client";
 
@@ -77,7 +78,7 @@ export const integrationKeys = {
 };
 
 /** Where every sign-in started from the app comes back to. */
-export const OAUTH_RETURN_URL = "autogpt-app://integrations/oauth";
+export const OAUTH_RETURN_URL = `${APP_SCHEME}://integrations/oauth`;
 
 function toRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)

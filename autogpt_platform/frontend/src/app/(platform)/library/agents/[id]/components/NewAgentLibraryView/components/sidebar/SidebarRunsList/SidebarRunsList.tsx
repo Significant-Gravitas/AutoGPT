@@ -31,6 +31,7 @@ interface Props {
     tab?: "runs" | "scheduled" | "templates" | "triggers",
   ) => void;
   onClearSelectedRun?: () => void;
+  onRunDeleted?: (deletedRunId: string) => void;
   onScheduleDeleted?: (deletedScheduleId: string) => void;
   onTabChange?: (tab: "runs" | "scheduled" | "templates" | "triggers") => void;
   onCountsChange?: (info: {
@@ -48,6 +49,7 @@ export function SidebarRunsList({
   selectedRunId,
   onSelectRun,
   onClearSelectedRun,
+  onRunDeleted,
   onScheduleDeleted,
   onTabChange,
   onCountsChange,
@@ -55,6 +57,9 @@ export function SidebarRunsList({
   // Stable, so the memoised run rows and the auto-select effects in
   // useSidebarRunsList do not re-run on every parent render.
   const selectRun = useStableCallback(onSelectRun);
+  const handleRunDeleted = useStableCallback((runId: string) =>
+    onRunDeleted?.(runId),
+  );
   const {
     runs,
     schedules,
@@ -178,6 +183,7 @@ export function SidebarRunsList({
                 agent={agent}
                 selected={selectedRunId === run.id}
                 onSelectRun={selectRun}
+                onRunDeleted={handleRunDeleted}
               />
             )}
           />

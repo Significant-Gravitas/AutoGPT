@@ -81,7 +81,7 @@ describe("useSelectedScheduleActions", () => {
     invalidateSpy.mockRestore();
   });
 
-  test("openInBuilderHref points to /build with graph id + version", () => {
+  test("openInBuilderHref opens the workflow's active version in the builder", () => {
     const { result } = renderHook(
       () =>
         useSelectedScheduleActions({
@@ -90,9 +90,7 @@ describe("useSelectedScheduleActions", () => {
         }),
       { wrapper },
     );
-    expect(result.current.openInBuilderHref).toBe(
-      "/build?flowID=graph-xyz&flowVersion=1",
-    );
+    expect(result.current.openInBuilderHref).toBe("/build?flowID=graph-xyz");
   });
 
   test("handleRunNow without a loaded schedule surfaces a destructive toast", async () => {

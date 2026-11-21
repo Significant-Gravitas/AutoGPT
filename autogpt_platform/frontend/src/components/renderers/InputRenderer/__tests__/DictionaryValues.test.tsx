@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { BlockUIType } from "@/app/(platform)/build/components/types";
 import { render } from "@/tests/integrations/test-utils";
+import { expectTypingKept } from "@/tests/integrations/typing";
 
 import { FormRenderer } from "../FormRenderer";
 
@@ -181,4 +182,61 @@ describe("Dictionary input preservation", () => {
       expect(screen.getByDisplayValue("First")).toBeDefined();
     });
   });
+});
+
+describe("Integer dictionary values beyond 2^53", () => {
+  const intSchema: RJSFSchema = {
+    type: "object",
+    properties: {
+      ids: {
+        title: "Ids",
+        type: "object",
+        additionalProperties: { type: "integer" },
+      },
+    },
+  };
+
+  type IntData = { ids: Record<string, unknown> };
+
+  function IntForm() {
+    const [data, setData] = useState<IntData>({ ids: { id: -9 } });
+    return (
+      <>
+        <FormRenderer
+          jsonSchema={intSchema}
+          handleChange={(event: IChangeEvent<IntData>) => {
+            if (event.formData) setData(event.formData);
+          }}
+          uiSchema={{}}
+          initialValues={data}
+          formContext={{
+            nodeId: "int-node",
+            uiType: BlockUIType.STANDARD,
+            showHandles: false,
+            size: "small",
+          }}
+        />
+        <output aria-label="Stored data">{JSON.stringify(data)}</output>
+      </>
+    );
+  }
+
+  it.each([
+    ["223372036854775807", '{"ids":{"id":"-9223372036854775807"}}'],
+    ["2", '{"ids":{"id":-92}}'],
+  ])(
+    "stores -9%s typed into a dictionary value exactly",
+    async (text, stored) => {
+      render(<IntForm />);
+
+      await expectTypingKept(
+        screen.getByRole("spinbutton") as HTMLInputElement,
+        text,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("Stored data").textContent).toBe(stored);
+      });
+    },
+  );
 });

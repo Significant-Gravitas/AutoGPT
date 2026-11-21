@@ -5,7 +5,7 @@ import { Button } from "@/components/Button";
 import { useOAuthReturn } from "@/features/connections/useOAuthReturn";
 import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
-/** Where `autogpt-app://integrations/oauth` lands when it opens the app. */
+/** Where `OAUTH_RETURN_URL` lands when it opens the app. */
 export default function OAuthReturnScreen() {
   const params = useLocalSearchParams();
   const { error, goBack, canRetry, isRetrying, retryGrant } = useOAuthReturn(params);

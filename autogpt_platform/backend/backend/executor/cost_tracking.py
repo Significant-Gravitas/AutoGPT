@@ -230,9 +230,11 @@ async def log_system_credential_cost(
             ):
                 continue
 
-            # The model that ran: a switched-off model's fallback from its date.
+            # The model that ran: the one the run resolved when it started.
             model_name = _extract_model_name(
-                block.with_retired_models_replaced(input_data).get("model")
+                block.with_retired_models_replaced(
+                    input_data, stats.resolved_model
+                ).get("model")
             )
 
             # Pass stats so post-flight branches (SECOND/ITEMS/COST_USD/TOKENS)

@@ -22,6 +22,7 @@ from backend.data.workspace import (
     get_workspace_file_by_path,
     list_workspace_files,
     soft_delete_workspace_file,
+    storage_limit_exceeded,
 )
 from backend.util.test import SpinTestServer
 
@@ -201,3 +202,22 @@ async def test_list_workspace_files_name_and_path_filters_are_literal(mocker):
     counted = files.count.call_args.kwargs["where"]
     assert counted["path"] == where["path"]
     assert counted["AND"] == where["AND"]
+
+
+@pytest.mark.parametrize(
+    "payment_enabled, advice",
+    [
+        (True, "Delete some files or upgrade your plan for more storage."),
+        (False, "Delete some files to free up space."),
+    ],
+)
+def test_the_quota_refusal_offers_a_plan_only_where_there_are_plans(
+    set_platform_payment, payment_enabled: bool, advice: str
+):
+    set_platform_payment(payment_enabled)
+
+    message = str(storage_limit_exceeded(300 * 1024**2, 250 * 1024**2))
+
+    assert message == (
+        "Storage limit exceeded. You've used 300 MB of your 250 MB quota. " + advice
+    )
