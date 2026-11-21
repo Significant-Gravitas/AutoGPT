@@ -78,3 +78,30 @@ it("points to the payment method row when the open invoice can't be read", async
   expect(screen.queryByRole("button", { name: /^Start/ })).toBeNull();
   expect(screen.getByText("Manage payment method")).toBeDefined();
 });
+
+it("shows a running trial, not a renewal bill read beside it", async () => {
+  server.use(
+    getGetTrialsGetTrialStatusMockHandler200(trialResponse()),
+    http.get("*/api/credits/subscription", () =>
+      HttpResponse.json({
+        tier: "NO_TIER",
+        monthly_cost: 0,
+        has_active_stripe_subscription: false,
+        payment_due: {
+          amount_due: 5000,
+          currency: "usd",
+          payment_url: PAYMENT_URL,
+          plan: "PRO",
+          due_since: Date.UTC(2026, 2, 3, 12) / 1000,
+        },
+      }),
+    ),
+    http.get("*/api/credits/invoices", () => HttpResponse.json([])),
+  );
+  render(<SettingsBillingPage />);
+  expect(
+    await screen.findByRole("button", { name: "Cancel trial" }),
+  ).toBeDefined();
+  expect(screen.queryByText("Your payment didn’t go through")).toBeNull();
+  expect(screen.queryByRole("link", { name: /^Pay / })).toBeNull();
+});

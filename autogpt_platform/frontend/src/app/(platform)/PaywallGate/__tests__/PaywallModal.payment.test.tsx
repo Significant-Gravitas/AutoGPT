@@ -144,3 +144,92 @@ test("keeps plan choices for a trial that simply ended", async () => {
   expect(await screen.findByRole("region", { name: "Pro plan" })).toBeDefined();
   expect(screen.queryByText("Your payment didn’t go through")).toBeNull();
 });
+
+const RENEWAL_BILL = {
+  amount_due: 5000,
+  currency: "usd",
+  payment_url: PAYMENT_URL,
+  plan: "PRO",
+  due_since: Date.UTC(2026, 2, 3, 12) / 1000,
+};
+
+function subscriptionWithBill(payment_due: typeof RENEWAL_BILL | null) {
+  return {
+    data: {
+      tier: "NO_TIER",
+      tier_costs: { PRO: 5000, MAX: 32000 },
+      payment_due,
+    },
+    isLoading: false,
+    isFetching: false,
+    refetch: vi.fn(),
+  };
+}
+
+test("a failed renewal pays its open bill instead of offering Get Pro", async () => {
+  server.use(
+    getGetTrialsGetTrialStatusMockHandler200(
+      trialResponse({ active: false, converted: true, status: "past_due" }),
+    ),
+  );
+  mockUseGetSubscriptionStatus.mockReturnValue(
+    subscriptionWithBill(RENEWAL_BILL),
+  );
+
+  render(<PaywallModal />);
+
+  const pay = await screen.findByRole("link", { name: "Pay $50 now" });
+  expect(pay.getAttribute("href")).toBe(PAYMENT_URL);
+  expect(
+    screen.getByText(/Pro was due to renew on Mar 3, but the \$50 charge/),
+  ).toBeDefined();
+  expect(
+    screen.getByText(/a full billing period from the day you pay/),
+  ).toBeDefined();
+  expect(screen.queryByRole("region", { name: "Pro plan" })).toBeNull();
+  expect(screen.queryByRole("button", { name: /^Start/ })).toBeNull();
+  expect(screen.getByRole("button", { name: "Back to billing" })).toBeDefined();
+});
+
+test("keeps checking the subscription while a renewal bill is open", async () => {
+  server.use(
+    getGetTrialsGetTrialStatusMockHandler200(
+      trialResponse({ active: false, converted: true, status: "past_due" }),
+    ),
+  );
+  mockUseGetSubscriptionStatus.mockReturnValue(
+    subscriptionWithBill(RENEWAL_BILL),
+  );
+
+  render(<PaywallModal />);
+  await screen.findByRole("link", { name: "Pay $50 now" });
+
+  const recoveryQuery = mockUseGetSubscriptionStatus.mock.calls
+    .map(([options]) => options as { query?: Record<string, unknown> })
+    .find((options) => options.query?.enabled === true);
+  const interval = recoveryQuery?.query?.refetchInterval as (query: {
+    state: { data?: unknown };
+  }) => number | false;
+  expect(
+    interval({
+      state: { data: { status: 200, data: { payment_due: RENEWAL_BILL } } },
+    }),
+  ).toBe(15_000);
+  expect(
+    interval({ state: { data: { status: 200, data: { payment_due: null } } } }),
+  ).toBe(false);
+});
+
+test("offers plans again once nothing is left to pay", async () => {
+  server.use(
+    getGetTrialsGetTrialStatusMockHandler200(
+      trialResponse({ active: false, status: "expired" }),
+    ),
+  );
+  mockUseGetSubscriptionStatus.mockReturnValue(subscriptionWithBill(null));
+
+  render(<PaywallModal />);
+
+  expect(await screen.findByRole("region", { name: "Pro plan" })).toBeDefined();
+  expect(screen.queryByText("Your payment didn’t go through")).toBeNull();
+});
