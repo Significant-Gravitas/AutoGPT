@@ -54,7 +54,7 @@ mem0ai = "1.0.8"
 # If GitHub ever rebuilds the tarball differently, re-lock for its new hash.
 moviepy = { url = "https://github.com/Zulko/moviepy/archive/4cf7f84ed1f840e4f0c3ed92b8cdec12a87b56ec.tar.gz" }
 ollama = "^0.6.1"
-openai = "^1.97.1"
+openai = ">=1.97.1,<4.0.0"
 orjson = "^3.10.0"
 pika = "^1.3.2"
 pinecone = "^7.3.0"
