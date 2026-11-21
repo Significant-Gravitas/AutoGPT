@@ -265,7 +265,7 @@ class ConnectionManager:
         if not outbox.is_open:
             # Retired for falling behind: a stream would read for nothing.
             raise EventStreamLostError(f"{full_channel}: the socket is closing")
-        shard = redis.resolve_shard_for_channel(full_channel)
+        shard = await redis.resolve_shard_for_channel_async(full_channel)
         streams = self._ws_streams.setdefault(websocket, {})
         stream = streams.get(shard)
         if stream is None:

@@ -42,8 +42,8 @@ def fake_shard(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         redis_client, "connect_sharded_pubsub_async", AsyncMock(return_value=client)
     )
-    refresh = MagicMock()
-    monkeypatch.setattr(redis_client, "refresh_slot_map", refresh)
+    refresh = AsyncMock()
+    monkeypatch.setattr(redis_client, "refresh_slot_map_async", refresh)
     return pubsub, client, refresh
 
 
@@ -139,7 +139,25 @@ async def test_a_channel_no_shard_owns_is_a_lost_stream(
     with pytest.raises(EventStreamLostError, match="No cluster node"):
         await ShardedSubscription.open("chan")
 
-    refresh.assert_called_once()
+    refresh.assert_awaited_once()
+
+
+async def test_a_timed_out_shard_lookup_is_a_lost_stream(
+    fake_shard, monkeypatch: pytest.MonkeyPatch
+):
+    """Redis down at open: the bounded lookup times the open out, the loss is
+    reported for resubscribe, and the slot map gets refreshed for the retry."""
+    _, _, refresh = fake_shard
+    monkeypatch.setattr(
+        redis_client,
+        "connect_sharded_pubsub_async",
+        AsyncMock(side_effect=TimeoutError()),
+    )
+
+    with pytest.raises(EventStreamLostError, match="could not subscribe"):
+        await ShardedSubscription.open("chan")
+
+    refresh.assert_awaited_once()
 
 
 async def test_a_moved_reply_is_a_lost_stream_even_if_following_it_fails(
@@ -148,7 +166,7 @@ async def test_a_moved_reply_is_a_lost_stream_even_if_following_it_fails(
     pubsub, _, _ = fake_shard
     pubsub.ssubscribe.side_effect = MovedError("1234 10.0.0.9:7001")
     monkeypatch.setattr(
-        redis_client, "follow_moved_slot", MagicMock(side_effect=OSError("down"))
+        redis_client, "follow_moved_slot_async", AsyncMock(side_effect=OSError("down"))
     )
 
     with pytest.raises(EventStreamLostError, match="moved"):

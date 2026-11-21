@@ -225,11 +225,11 @@ class _Liveness:
 
 
 async def _follow_moved_slot(error: MovedError) -> None:
-    # Off the loop, and bounded: get_redis() reconnects (with retries) if its
-    # cache expired. A worker that outlives the bound still updates the cache.
+    # Bounded: get_redis_async() retries a lost Redis for minutes. The async
+    # client's own map is the one the resolve path reads now.
     try:
         async with asyncio.timeout(_SLOT_MAP_WAIT_S):
-            await asyncio.to_thread(redis.follow_moved_slot, error)
+            await redis.follow_moved_slot_async(error)
     except Exception:
         logger.warning("Could not follow a MOVED reply", exc_info=True)
 
@@ -242,7 +242,7 @@ def _describe(error: BaseException) -> str:
 async def _refresh_slot_map() -> None:
     try:
         async with asyncio.timeout(_SLOT_MAP_WAIT_S):
-            await asyncio.to_thread(redis.refresh_slot_map)
+            await redis.refresh_slot_map_async()
     except Exception:
         logger.debug("Could not refresh the Redis slot map", exc_info=True)
 

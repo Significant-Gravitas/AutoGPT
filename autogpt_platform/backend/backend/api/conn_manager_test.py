@@ -96,7 +96,7 @@ def fake_redis():
             side_effect=fake.connect,
         ),
         patch(
-            "backend.api.conn_manager.redis.resolve_shard_for_channel",
+            "backend.api.conn_manager.redis.resolve_shard_for_channel_async",
             side_effect=lambda channel: fake.shard_of(channel),
         ),
         patch("backend.api.conn_manager.redis.refresh_slot_map"),
@@ -212,6 +212,32 @@ async def test_unsubscribe(
     fake_redis.pubsubs[0].sunsubscribe.assert_awaited_once_with(
         event_bus_channel("{user-1/graph-1}/all")
     )
+
+
+@pytest.mark.asyncio
+async def test_a_timed_out_shard_lookup_fails_the_subscribe_cleanly(
+    connection_manager: ConnectionManager,
+    mock_websocket: AsyncMock,
+    fake_redis: _FakeRedis,
+) -> None:
+    """Redis down at subscribe: the bounded lookup raises, and the socket
+    holds no stream, shard slot, or subscription for the failed channel."""
+    with (
+        patch(
+            "backend.api.conn_manager.redis.resolve_shard_for_channel_async",
+            new_callable=AsyncMock,
+            side_effect=TimeoutError(),
+        ),
+        pytest.raises(TimeoutError),
+    ):
+        await connection_manager.subscribe_graph_execs(
+            user_id="user-1", graph_id="graph-1", websocket=mock_websocket
+        )
+
+    assert connection_manager.subscriptions == {}
+    assert dict(connection_manager._streams_per_shard) == {}
+    assert dict(connection_manager._user_streams) == {}
+    assert connection_manager._ws_streams.get(mock_websocket, {}) == {}
 
 
 # ---------- Channel-name helpers ----------
@@ -1077,12 +1103,15 @@ async def test_opening_a_stream_gives_up_when_redis_does_not_answer(
                 "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
                 side_effect=never_connects,
             ),
-            patch("backend.api.conn_manager.redis.refresh_slot_map") as refresh,
+            patch(
+                "backend.api.conn_manager.redis.refresh_slot_map_async",
+                new_callable=AsyncMock,
+            ) as refresh,
             pytest.raises(EventStreamLostError),
         ):
             await stream.add("{u/g}/exec/a", AsyncMock())
     assert stream.handlers == {}
-    refresh.assert_called_once()
+    refresh.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -1112,6 +1141,10 @@ async def test_a_stalled_ssubscribe_does_not_hang_past_the_open_timeout(
             patch(
                 "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
                 side_effect=connect_then_stall,
+            ),
+            patch(
+                "backend.api.conn_manager.redis.refresh_slot_map_async",
+                new_callable=AsyncMock,
             ),
             pytest.raises(EventStreamLostError),
         ):

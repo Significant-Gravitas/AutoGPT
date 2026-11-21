@@ -194,11 +194,16 @@ async def redis_shard_proxies() -> AsyncIterator[Callable[[str], Awaitable[TcpPr
     owns it, and returns the proxy to break. The cluster client and every
     other channel still go direct."""
     real_resolve = redis_client.resolve_shard_for_channel
+    real_resolve_async = redis_client.resolve_shard_for_channel_async
     routes: dict[str, TcpProxy] = {}
 
     def resolve(channel: str) -> tuple[str, int]:
         proxy = routes.get(channel)
         return proxy.address if proxy else real_resolve(channel)
+
+    async def resolve_async(channel: str) -> tuple[str, int]:
+        proxy = routes.get(channel)
+        return proxy.address if proxy else await real_resolve_async(channel)
 
     async with AsyncExitStack() as stack:
 
@@ -207,5 +212,10 @@ async def redis_shard_proxies() -> AsyncIterator[Callable[[str], Awaitable[TcpPr
             routes[channel] = await stack.enter_async_context(proxy)
             return proxy
 
-        with patch.object(redis_client, "resolve_shard_for_channel", resolve):
+        with (
+            patch.object(redis_client, "resolve_shard_for_channel", resolve),
+            patch.object(
+                redis_client, "resolve_shard_for_channel_async", resolve_async
+            ),
+        ):
             yield route
