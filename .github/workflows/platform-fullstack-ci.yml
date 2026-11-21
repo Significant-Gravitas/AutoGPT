@@ -197,8 +197,8 @@ jobs:
           - suite: smoke
             config: playwright.config.ts
             playwright_args: ""
-            # Pinned inventory: 29 tests in 10 files; raise when adding E2E tests.
-            min_tests: 29
+            # Pinned inventory: 36 tests in 15 files; raise when adding E2E tests.
+            min_tests: 36
             embeddings: true
             seed: true
             hosted: false
@@ -213,7 +213,8 @@ jobs:
             # selfhost-journey asserts nothing hosted-only exists; it needs a
             # self-hosted stack (TODO in src/playwright/journeys/README.md).
             playwright_args: --project hosted
-            min_tests: 13
+            # Pinned inventory: 24 tests in 14 files; raise when adding journeys.
+            min_tests: 24
             embeddings: false
             # Journeys sign up their own users and need no seeded data.
             seed: false
