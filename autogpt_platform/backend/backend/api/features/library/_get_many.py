@@ -52,13 +52,17 @@ async def get_library_agents_by_ids(
     )
 
     by_id: dict[str, library_model.LibraryAgent] = {}
+    # A sub-graph several cards share is converted once for all of them.
+    shared_sub_graphs: dict[tuple[str, int, str], graph_db.GraphModel] = {}
     for detail in details:
-        if detail is None:
+        if detail is None or not detail.row.AgentGraph:
             continue
         try:
             by_id[detail.row.id] = library_model.LibraryAgent.from_db(
                 detail.row,
-                sub_graphs=detail.sub_graphs,
+                graph=graph_db.graph_model_sharing_sub_graphs(
+                    detail.row.AgentGraph, detail.sub_graphs, shared_sub_graphs, user_id
+                ),
                 store_listing=detail.store_listing,
                 schedule_info=schedule_info,
                 execution_count_override=execution_counts.get(detail.row.agentGraphId),

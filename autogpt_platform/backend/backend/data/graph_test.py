@@ -1337,6 +1337,56 @@ async def test_an_edit_that_unnames_an_output_keeps_the_saved_version(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_version_list_converts_and_strips_a_sub_graph_its_versions_share_once(
+    server: SpinTestServer, mocker
+):
+    sub_graph = await db_create_graph(
+        Graph(name="Sub", description="", nodes=[Node(block_id=StoreValueBlock().id)]),
+        DEFAULT_USER_ID,
+    )
+    parent_id = str(uuid4())
+    for _ in range(3):
+        await db_create_graph(
+            Graph(
+                id=parent_id,
+                name="Parent",
+                description="",
+                nodes=[
+                    Node(
+                        block_id=AgentExecutorBlock().id,
+                        input_default={
+                            "user_id": DEFAULT_USER_ID,
+                            "graph_id": sub_graph.id,
+                            "graph_version": sub_graph.version,
+                            "inputs": {},
+                            "input_schema": {},
+                            "output_schema": {},
+                        },
+                    )
+                ],
+            ),
+            DEFAULT_USER_ID,
+        )
+    node_from_db = mocker.spy(NodeModel, "from_db")
+
+    versions = await get_graph_all_versions(
+        parent_id, user_id=DEFAULT_USER_ID, include_subgraphs=True
+    )
+
+    assert len(versions) == 3
+    assert node_from_db.call_count == 3 + 1
+    assert len({id(version.sub_graphs[0]) for version in versions}) == 1
+    schemas = [version.credentials_input_schema for version in versions]
+    stripped_sub_graphs: dict[int, BaseGraph] = {}
+    copies = [version.shared_copy(stripped_sub_graphs) for version in versions]
+    assert len({id(copy.sub_graphs[0]) for copy in copies}) == 1
+    # What the owner's view derived from the unstripped nodes stays with it.
+    memo = copies[0].sub_graphs[0]._shared_memo
+    assert memo is not None and memo.credentials_inputs is None
+    assert [copy.credentials_input_schema for copy in copies] == schemas
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_get_graph_at_version_reads_the_version_asked_for(
     server: SpinTestServer,
 ):
