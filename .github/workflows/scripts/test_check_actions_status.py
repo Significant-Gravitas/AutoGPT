@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -162,6 +163,123 @@ class ProcessCheckRunsTests(unittest.TestCase):
         failed_check = {**CANCELED_CHECK, "conclusion": "failure"}
 
         self.assertEqual(process_check_runs([failed_check]), (False, False))
+
+
+NOW = datetime(2026, 11, 14, 8, 0, tzinfo=timezone.utc)
+
+# The two check runs Codecov left unfinished on #16679's head, as the API
+# returned them.
+ABANDONED_CODECOV_CHECKS = [
+    {
+        "id": 131368114474,
+        "name": "codecov/project/Platform Frontend",
+        "app": {"slug": "codecov"},
+        "status": "in_progress",
+        "conclusion": None,
+        "started_at": "2026-11-12T17:36:41Z",
+    },
+    {
+        "id": 131368077377,
+        "name": "codecov/patch/classic",
+        "app": {"slug": "codecov"},
+        "status": "in_progress",
+        "conclusion": None,
+        "started_at": "2026-11-12T17:36:38Z",
+    },
+]
+
+PASSING_CHECK = {
+    "id": 1002,
+    "name": "test (3.12, data)",
+    "app": {"slug": "github-actions"},
+    "status": "completed",
+    "conclusion": "success",
+    "started_at": "2026-11-12T17:00:00Z",
+}
+
+
+def started(minutes_ago: int) -> str:
+    return (NOW - timedelta(minutes=minutes_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+class CodecovCheckRunTests(unittest.TestCase):
+    def test_ignores_codecov_runs_left_in_progress(self):
+        self.assertEqual(
+            process_check_runs(
+                [PASSING_CHECK, *ABANDONED_CODECOV_CHECKS], now=NOW
+            ),
+            (False, True),
+        )
+
+    def test_still_waits_on_a_codecov_run_that_just_started(self):
+        fresh = {**ABANDONED_CODECOV_CHECKS[0], "started_at": started(2)}
+
+        self.assertEqual(
+            process_check_runs([PASSING_CHECK, fresh], now=NOW), (True, False)
+        )
+
+    def test_a_finished_codecov_failure_still_fails(self):
+        failed = {
+            **ABANDONED_CODECOV_CHECKS[0],
+            "status": "completed",
+            "conclusion": "failure",
+            "started_at": started(120),
+        }
+
+        self.assertEqual(
+            process_check_runs([PASSING_CHECK, failed], now=NOW), (False, False)
+        )
+
+    def test_other_apps_runs_in_progress_still_hold_the_check(self):
+        slow = {
+            **PASSING_CHECK,
+            "status": "in_progress",
+            "conclusion": None,
+            "started_at": started(120),
+        }
+
+        self.assertEqual(process_check_runs([slow], now=NOW), (True, False))
+
+    @patch("check_actions_status.time.sleep")
+    @patch("check_actions_status.get_paginated_items")
+    @patch("check_actions_status.get_environment_variables")
+    def test_main_does_not_wait_on_abandoned_codecov_runs(
+        self, environment, get_items, sleep
+    ):
+        from check_actions_status import main
+
+        environment.return_value = ("api", "repo", "sha", "", "1")
+        get_items.side_effect = [[PASSING_CHECK, *ABANDONED_CODECOV_CHECKS], []]
+        sleep.side_effect = AssertionError("waited on an abandoned Codecov run")
+
+        with self.assertRaises(SystemExit) as raised:
+            main()
+
+        self.assertEqual(raised.exception.code, 0)
+        sleep.assert_not_called()
+
+    @patch("check_actions_status.time.sleep")
+    @patch("check_actions_status.get_paginated_items")
+    @patch("check_actions_status.get_environment_variables")
+    def test_main_waits_for_a_fresh_codecov_run_and_judges_it(
+        self, environment, get_items, sleep
+    ):
+        from check_actions_status import main
+
+        now = datetime.now(timezone.utc)
+        fresh = {
+            **ABANDONED_CODECOV_CHECKS[0],
+            "started_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+        failed = {**fresh, "status": "completed", "conclusion": "failure"}
+        environment.return_value = ("api", "repo", "sha", "", "1")
+        get_items.side_effect = [[PASSING_CHECK, fresh], [PASSING_CHECK, failed], []]
+
+        with self.assertRaises(SystemExit) as raised:
+            main()
+
+        self.assertEqual(raised.exception.code, 1)
+        sleep.assert_called_once()
 
 
 class PaginationTests(unittest.TestCase):
