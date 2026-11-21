@@ -76,6 +76,8 @@ class AgentFixer:
         # Each AI node the last fix moved off a switched-off model, for the
         # note that tells Otto the model the workflow uses now.
         self.retired_models_replaced: list[SwitchedOffMove] = []
+        # Each node's saved model, as apply_all_fixes read it before any fix.
+        self.saved_models: dict[str, Any] = {}
 
     @staticmethod
     def _build_node_lookup(
@@ -960,14 +962,17 @@ class AgentFixer:
                 # block details Otto reads (run_block._offered_models_only)
                 # also hide models that aren't generally available yet; the
                 # fixer keeps such a model when Otto writes it, since it's
-                # switched on. One shared predicate is a follow-up.
+                # switched on.
                 elif is_switched_off(current_model):
                     new_model = (
                         offered_fallback(current_model, allowed_models)
                         or fallback_model
                     )
                     fix = "switched_off"
-                elif current_model not in allowed_models:
+                elif (
+                    not isinstance(current_model, str)
+                    or current_model not in allowed_models
+                ):
                     new_model, fix = fallback_model, "unsupported"
                 else:
                     continue
@@ -1840,7 +1845,7 @@ class AgentFixer:
         self.fixes_applied = []
         self.retired_models_replaced = []
         # Read before any fix runs, which may change *agent*'s models.
-        saved_models = models_by_node(
+        saved_models = self.saved_models = models_by_node(
             agent, agent if keep_switched_off_models else saved_agent
         )
 

@@ -68,6 +68,10 @@ FALLBACKS = {fallback_of(model) for model in SWITCHED_OFF}
 # none of them reaches a note unless something goes wrong.
 UNRELATED = [m for m in LLM_ENUM if m in ENABLED and m not in FALLBACKS]
 ENABLED_OPENAI = next(m for m in UNRELATED if LLMModel(m).provider == "openai")
+# The parametrized tests read these lists from the catalog, and an empty one
+# would skip them without a word.
+assert SWITCHED_OFF, "the catalog switches no model off"
+assert len(UNRELATED) >= 4, "the catalog enables too few unrelated models"
 
 
 def workflow(ai_block: type, model: str) -> dict:

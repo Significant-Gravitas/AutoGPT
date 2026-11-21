@@ -138,6 +138,18 @@ async def fix_validate_and_save(
             logger.info(f"Applied {len(fixes)} auto-fixes to agent JSON")
     except Exception as e:
         logger.warning(f"Auto-fix failed: {e}")
+        # The fixes run in order, so one that raised before the model fix
+        # skipped it, and a new node would be saved on a switched-off model.
+        # Running it again is harmless: a node it already moved or kept
+        # stays as it is.
+        try:
+            agent_json = fixer.fix_ai_model_parameter(
+                agent_json, blocks, saved_models=fixer.saved_models
+            )
+        except Exception as model_fix_error:
+            logger.warning(
+                f"Model fix after a failed auto-fix failed: {model_fix_error}"
+            )
     # The fixes edit agent_json in place, so a model moved before a later fix
     # raised stays moved, and the note must still say so.
     retired_models_hint = _retired_models_hint(fixer.retired_models_replaced)

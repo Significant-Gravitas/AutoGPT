@@ -15,6 +15,7 @@ from backend.blocks.llm import AIStructuredResponseGeneratorBlock, AITextGenerat
 from backend.copilot.tools.agent_generator.core import graph_to_json, json_to_graph
 from backend.data.graph import make_graph_model
 
+from . import switched_off_models
 from .fixer_switched_off_model_test import (
     AI_NODE,
     GPT5,
@@ -128,6 +129,25 @@ async def test_of_two_identical_nodes_one_keeps_each_stored_model(stored):
     assert model_on(result, AI_NODE) == GPT5
     assert model_on(result, NEW_AI_NODE) == GPT5
     assert model_on(result, COPY_NODE) == GPT5_FALLBACK
+
+
+@pytest.mark.asyncio
+async def test_two_identical_saved_nodes_both_keep_their_model_under_stale_ids():
+    """Each stored node pairs with its own edited node, so the second of two
+    equal nodes isn't left over and moved."""
+    saved = with_new_ai_node(
+        with_new_ai_node(workflow(AITextGeneratorBlock, GPT5), GPT5),
+        GPT5,
+        node_id=COPY_NODE,
+    )
+
+    result = await preview(
+        copy.deepcopy(saved), saved_agent=stored_by_the_library(saved)
+    )
+
+    assert model_on(result, AI_NODE) == GPT5
+    assert model_on(result, NEW_AI_NODE) == GPT5
+    assert model_on(result, COPY_NODE) == GPT5
 
 
 @pytest.mark.asyncio
@@ -257,3 +277,31 @@ async def test_a_changed_node_does_not_take_the_stored_model_of_the_one_that_kep
 
     assert model_on(result, AI_NODE) == fallback_of(O3)
     assert model_on(result, NEW_AI_NODE) == GPT5
+
+
+def test_a_large_pool_pairs_in_one_pass(mocker):
+    """Pairing reads each node's inputs once, so an edit of thousands of nodes
+    on one block and model under stale ids doesn't stall the event loop."""
+    count = 2000
+    block_id = AITextGeneratorBlock().id
+
+    def nodes(prefix: str, prompts) -> dict:
+        return {
+            "nodes": [
+                {
+                    "id": f"{prefix}{i}",
+                    "block_id": block_id,
+                    "input_default": {"model": GPT5, "prompt": prompt},
+                }
+                for i, prompt in enumerate(prompts)
+            ]
+        }
+
+    stored = nodes("stored-", [f"prompt {i}" for i in range(count)])
+    edited = nodes("edited-", [f"prompt {i}" for i in reversed(range(count))])
+    read_inputs = mocker.spy(switched_off_models, "_inputs")
+
+    matched = switched_off_models.models_by_node(edited, stored)
+
+    assert matched == {f"edited-{i}": GPT5 for i in range(count)}
+    assert read_inputs.call_count == 2 * count

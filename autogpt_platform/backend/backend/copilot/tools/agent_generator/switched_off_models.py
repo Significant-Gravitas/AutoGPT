@@ -3,6 +3,8 @@ catalog has switched off, and when an edit keeps the model a node was saved
 on. The block's enum still lists a switched-off model, so stored workflows
 keep validating, but no new work may start on one."""
 
+import json
+from collections import deque
 from collections.abc import Iterable, Sequence
 from typing import Any
 
@@ -77,18 +79,23 @@ def _paired(
     inputs can't tell apart (several equal, or none) are interchangeable: the
     first in the edit gets the model, and exactly one keeps it per stored
     node."""
-    left = list(edited)
+    by_inputs: dict[str, deque[dict[str, Any]]] = {}
+    for node in edited:
+        if (inputs := _inputs(node)) is not None:
+            by_inputs.setdefault(inputs, deque()).append(node)
+    taken: set[int] = set()
     paired: dict[str, Any] = {}
     unmatched: list[dict[str, Any]] = []
     for saved in stored:
-        same = next(
-            (i for i, node in enumerate(left) if _others(node) == _others(saved)),
-            None,
-        )
-        if same is None:
-            unmatched.append(saved)
+        inputs = _inputs(saved)
+        same = by_inputs.get(inputs) if inputs is not None else None
+        if same:
+            node = same.popleft()
+            taken.add(id(node))
+            paired[node["id"]] = _model(saved)
         else:
-            paired[left.pop(same)["id"]] = _model(saved)
+            unmatched.append(saved)
+    left = [node for node in edited if id(node) not in taken]
     paired.update((node["id"], _model(saved)) for node, saved in zip(left, unmatched))
     return paired
 
@@ -125,12 +132,18 @@ def _key(node: dict[str, Any]) -> _Key:
     )
 
 
-def _others(node: dict[str, Any]) -> dict[str, Any]:
-    """*node*'s inputs other than its model."""
+def _inputs(node: dict[str, Any]) -> str | None:
+    """*node*'s inputs other than its model, as text that is equal for equal
+    inputs, so a pool pairs in one pass however large the edit. None when
+    they don't serialize, which no node parsed from JSON does."""
     defaults = node.get("input_default")
     if not isinstance(defaults, dict):
-        return {}
-    return {key: value for key, value in defaults.items() if key != "model"}
+        defaults = {}
+    others = {key: value for key, value in defaults.items() if key != "model"}
+    try:
+        return json.dumps(others, sort_keys=True, default=str)
+    except (TypeError, ValueError, RecursionError):
+        return None
 
 
 def kept_model(model: Any, saved_model: Any, offered: set[str]) -> str | None:

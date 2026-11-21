@@ -19,8 +19,10 @@ from backend.data.llm_registry.llm_models import LLMModel
 from .fixer import AgentFixer
 from .fixer_switched_off_model_test import (
     AI_NODE,
+    ENABLED,
     GPT5,
     GPT5_FALLBACK,
+    NEW_AI_NODE,
     O3,
     SWITCHED_OFF,
     UNRELATED,
@@ -115,6 +117,7 @@ async def test_the_note_carries_no_text_from_the_nodes():
 
 @pytest.mark.asyncio
 async def test_the_note_lists_at_most_five_kinds_of_move():
+    assert len(SWITCHED_OFF) >= 6, "the cap needs six switched-off models"
     agent = workflow(AITextGeneratorBlock, SWITCHED_OFF[0])
     for model in SWITCHED_OFF[1:6]:
         agent = with_new_ai_node(agent, model, str(uuid.uuid4()))
@@ -139,6 +142,35 @@ async def test_the_note_survives_a_later_fix_that_raises(monkeypatch):
 
     assert model_on(result, AI_NODE) == GPT5_FALLBACK
     assert moved(GPT5, GPT5_FALLBACK) in result.message
+
+
+@pytest.mark.asyncio
+async def test_a_fix_that_raises_before_the_model_fix_does_not_skip_it(monkeypatch):
+    """The fixes run in order, and one that raises stops the rest; the model
+    fix runs again on its own, so the save never lands on a switched-off
+    model."""
+
+    def fails(self, agent, *args, **kwargs):
+        raise RuntimeError("an earlier fix failed")
+
+    monkeypatch.setattr(AgentFixer, "fix_node_x_coordinates", fails)
+
+    result = await preview(workflow(AITextGeneratorBlock, GPT5))
+
+    assert model_on(result, AI_NODE) == GPT5_FALLBACK
+    assert moved(GPT5, GPT5_FALLBACK) in result.message
+
+
+@pytest.mark.asyncio
+async def test_a_model_that_is_not_text_is_replaced_and_the_rest_still_fixed():
+    """A list can't be looked up among the block's models; it used to raise
+    there and leave every later node on its switched-off model."""
+    agent = with_new_ai_node(workflow(AITextGeneratorBlock, [GPT5]), GPT5)
+
+    result = await preview(agent)
+
+    assert model_on(result, AI_NODE) in ENABLED
+    assert model_on(result, NEW_AI_NODE) == GPT5_FALLBACK
 
 
 @pytest.mark.asyncio
