@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
+import { ApiError } from "@/lib/api-error";
 import {
   API_KEY_HEADER_NAME,
   IMPERSONATION_HEADER_NAME,
@@ -7,37 +8,7 @@ import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 import { cache } from "react";
 
-import { GraphValidationErrorResponse } from "./types";
-
-export class ApiError<R = any> extends Error {
-  public status: number;
-  public response: R;
-
-  constructor(message: string, status: number, response: R) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-    this.response = response;
-  }
-
-  /**
-   * Type guard to check if this error is a structured graph validation error
-   */
-  isGraphValidationError(): this is ApiError<GraphValidationErrorResponse> {
-    return (
-      this.response !== undefined &&
-      typeof this.response === "object" &&
-      this.response !== null &&
-      "detail" in this.response &&
-      typeof this.response.detail === "object" &&
-      this.response.detail !== null &&
-      "type" in this.response.detail &&
-      this.response.detail.type === "validation_error" &&
-      "node_errors" in this.response.detail &&
-      typeof this.response.detail.node_errors === "object"
-    );
-  }
-}
+export { ApiError };
 
 export const AUTH_TOKEN_UNAVAILABLE = "auth_token_unavailable";
 
