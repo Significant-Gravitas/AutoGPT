@@ -2,7 +2,7 @@ import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission"
 import { useCallback, useEffect, useState } from "react";
 import { PublishAgentInfoInitialData } from "./components/AgentInfoStep/helpers";
 import { useRouter } from "next/navigation";
-import { emptyModalState } from "./helpers";
+import { emptyModalState, findPublishedSubmission } from "./helpers";
 import {
   useGetV2GetMyAgents,
   useGetV2GetUserProfile,
@@ -136,15 +136,10 @@ export function usePublishAgentModal({
     if (!agent) return;
 
     // Find published submission data for this agent (for updates)
-    const publishedSubmissionData = submissionsData.submissions
-      ?.filter(
-        (s: StoreSubmission) =>
-          s.status === "APPROVED" && s.graph_id === preSelectedAgentId,
-      )
-      .sort(
-        (a: StoreSubmission, b: StoreSubmission) =>
-          b.graph_version - a.graph_version,
-      )[0];
+    const publishedSubmissionData = findPublishedSubmission(
+      submissionsData.submissions,
+      preSelectedAgentId,
+    );
 
     // Populate initial data (same logic as handleNextFromSelect)
     const initialFormData: PublishAgentInfoInitialData = publishedSubmissionData
@@ -226,8 +221,14 @@ export function usePublishAgentModal({
       imageSrc: string;
       recommendedScheduleCron: string | null;
     },
-    publishedSubmissionData?: StoreSubmission | null,
+    passedSubmission?: StoreSubmission | null,
   ) {
+    // The picker passes no submission. The backend files a submission for an
+    // already-listed graph as its listing's next version, so open that update.
+    const publishedSubmissionData =
+      passedSubmission ??
+      findPublishedSubmission(okData(mySubmissions)?.submissions, agentId);
+
     // Pre-populate with published data if this is an update, otherwise use agent data
     const initialFormData: PublishAgentInfoInitialData = publishedSubmissionData
       ? {

@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 
 import {
+  findPublishedSubmission,
   formatRelativeDate,
   formatSubmissionDate,
   getSubmissionMeta,
@@ -113,6 +115,56 @@ describe("PublishAgentModal helpers", () => {
         submittedAt: "2026-07-01T00:00:00Z",
       });
       expect(items.some((i) => i.label === "Submitted")).toBe(true);
+    });
+  });
+
+  describe("findPublishedSubmission", () => {
+    function makeSubmission(
+      overrides: Partial<StoreSubmission>,
+    ): StoreSubmission {
+      return {
+        listing_id: "listing-1",
+        user_id: "user-1",
+        slug: "listed-slug",
+        listing_version_id: "listing-version-1",
+        listing_version: 1,
+        graph_id: "g1",
+        graph_version: 1,
+        name: "Listed name",
+        sub_heading: "Listed subheading",
+        description: "Listed description",
+        instructions: null,
+        categories: [],
+        image_urls: [],
+        video_url: null,
+        agent_output_demo_url: null,
+        submitted_at: null,
+        changes_summary: null,
+        status: SubmissionStatus.APPROVED,
+        ...overrides,
+      };
+    }
+
+    it("returns the graph's approved submission with the highest graph version", () => {
+      const newest = makeSubmission({ graph_version: 3 });
+      const submissions = [
+        makeSubmission({ graph_version: 1 }),
+        newest,
+        makeSubmission({ graph_version: 4, status: SubmissionStatus.PENDING }),
+        makeSubmission({ graph_id: "g2", graph_version: 5 }),
+      ];
+
+      expect(findPublishedSubmission(submissions, "g1")).toBe(newest);
+    });
+
+    it("returns undefined when the graph has no approved submission", () => {
+      const submissions = [
+        makeSubmission({ status: SubmissionStatus.REJECTED }),
+        makeSubmission({ graph_id: "g2" }),
+      ];
+
+      expect(findPublishedSubmission(submissions, "g1")).toBeUndefined();
+      expect(findPublishedSubmission(undefined, "g1")).toBeUndefined();
     });
   });
 });

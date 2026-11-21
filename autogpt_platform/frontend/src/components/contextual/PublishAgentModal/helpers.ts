@@ -1,4 +1,18 @@
+import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
+
+export function findPublishedSubmission(
+  submissions: StoreSubmission[] | undefined,
+  graphId: string,
+): StoreSubmission | undefined {
+  return submissions
+    ?.filter(
+      (submission) =>
+        submission.status === SubmissionStatus.APPROVED &&
+        submission.graph_id === graphId,
+    )
+    .sort((a, b) => b.graph_version - a.graph_version)[0];
+}
 
 export const emptyModalState = {
   agent_id: "",
