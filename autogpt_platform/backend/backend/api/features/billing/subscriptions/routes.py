@@ -869,7 +869,8 @@ async def _restart_period_if_paid_late(invoice_id: str | None) -> None:
             f"Stripe refused the billing restart of late invoice {invoice_id}"
         )
         outcome = RestartOutcome.NEEDS_MANUAL_FIX
-    if outcome != RestartOutcome.NEEDS_MANUAL_FIX:
+    message = _RESTART_ALERTS.get(outcome)
+    if message is None:
         return
     claim = await _claim_restart_alert(invoice_id)
     if claim is False:
@@ -878,11 +879,23 @@ async def _restart_period_if_paid_late(invoice_id: str | None) -> None:
     # failed alert is already logged at ERROR with its content. Releasing the
     # claim lets the payment's other events, or a redelivery, alert again.
     delivered = await alert_tier_reconciliation_discrepancy(
-        f"Invoice {invoice_id} was paid late but its subscription's billing"
-        " period could not be restarted from the payment; see the logs"
+        message.format(invoice_id=invoice_id)
     )
     if not delivered and claim:
         await _release_restart_alert(invoice_id)
+
+
+_RESTART_ALERTS = {
+    RestartOutcome.NEEDS_MANUAL_FIX: (
+        "Invoice {invoice_id} was paid late but its subscription's billing"
+        " period could not be restarted from the payment; see the logs"
+    ),
+    RestartOutcome.NEEDS_REFUND: (
+        "Invoice {invoice_id} was paid after its subscription was ended as"
+        " replaced by another plan, so the plan stays cancelled. The payment"
+        " needs a manual refund"
+    ),
+}
 
 
 def _restart_alert_key(invoice_id: str) -> str:

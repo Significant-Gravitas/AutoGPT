@@ -52,6 +52,7 @@ from prisma.models import SubscriptionBillingRestart, User
 from pydantic import BaseModel
 
 from backend.data.credit import (
+    REPLACED_PLAN_CANCELLATION_COMMENT,
     _invoice_subscription_id,
     invalidate_billing_lookups,
     replaced_by_newer_plan,
@@ -87,6 +88,9 @@ class RestartOutcome(StrEnum):
     NOT_LATE = "not_late"
     NOT_APPLICABLE = "not_applicable"
     NEEDS_MANUAL_FIX = "needs_manual_fix"
+    # Paid after its plan was ended as replaced: Stripe kept the money for a
+    # plan that will never revive, so a person must refund it.
+    NEEDS_REFUND = "needs_refund"
 
 
 class LatePayment(BaseModel):
@@ -146,12 +150,19 @@ async def record_plan_paused(user_id: str, invoice: dict, subscription: dict) ->
 
 async def restart_period_after_late_payment(invoice_id: str) -> RestartOutcome:
     """Restart the subscription's billing period from this invoice's payment,
-    if it was paid late and still opens the subscription's current period."""
+    if it was paid late and still opens the subscription's current period.
+    Any invoice of a plan already ended as replaced that is paid needs a
+    refund instead."""
     invoice = dict(await stripe_call(stripe.Invoice.retrieve_async, invoice_id))
     sub_id = _invoice_subscription_id(invoice)
-    if not sub_id or invoice.get("billing_reason") not in PERIOD_OPENING_REASONS:
+    if not sub_id or invoice.get("status") != "paid":
         return RestartOutcome.NOT_APPLICABLE
-    if invoice.get("status") != "paid":
+    if invoice.get("billing_reason") not in PERIOD_OPENING_REASONS:
+        subscription = dict(
+            await stripe_call(stripe.Subscription.retrieve_async, sub_id)
+        )
+        if paid_after_replacement(invoice, subscription):
+            return _needs_refund(invoice_id, sub_id)
         return RestartOutcome.NOT_APPLICABLE
     async with transaction(timeout=timedelta(seconds=90)) as tx:
         await tx.execute_raw(
@@ -165,7 +176,10 @@ async def _restart_locked(invoice: dict, sub_id: str, tx: Prisma) -> RestartOutc
     invoice_id: str = invoice["id"]
     subscription = dict(await stripe_call(stripe.Subscription.retrieve_async, sub_id))
     if subscription.get("status") != "active":
-        return await _not_applicable(invoice, subscription, tx)
+        outcome = await _not_applicable(invoice, subscription, tx)
+        if paid_after_replacement(invoice, subscription):
+            return _needs_refund(invoice_id, sub_id)
+        return outcome
     if stripe_id(subscription.get("latest_invoice")) != invoice_id:
         # Restarted already, or a newer invoice opened a later period: an old
         # payment never moves the renewal date of the period after it.
@@ -233,8 +247,12 @@ async def _not_applicable(
     pause = await SubscriptionBillingRestart.prisma(tx).find_unique(
         where={"stripeInvoiceId": invoice_id}
     )
-    if pause is None or pause.restartedAt is not None or pause.abandonedAt:
+    if pause is None or pause.restartedAt is not None:
         return RestartOutcome.NOT_APPLICABLE
+    if pause.abandonedAt is not None:
+        # Left for a person already; reported again so a delivery after an
+        # alert that failed to send retries it. The alert claim keeps it to one.
+        return RestartOutcome.NEEDS_MANUAL_FIX
     ours, _ = await _existing_credit_notes(invoice_id)
     if ours is None:
         return RestartOutcome.NOT_APPLICABLE
@@ -244,6 +262,34 @@ async def _not_applicable(
         customer_id = stripe_id(invoice.get("customer"))
         await _take_back_credit(invoice, customer_id, ours["id"], tx)
     return RestartOutcome.NEEDS_MANUAL_FIX
+
+
+def paid_after_replacement(invoice: dict, subscription: dict) -> bool:
+    """Whether the invoice was paid after its plan was ended as replaced.
+
+    A bank debit still processing when the plan was ended can settle later,
+    on an older bill too, since a past-due plan keeps billing each period.
+    The plan never revives, so nothing else asks for that refund. A payment
+    made before the plan was ended revived it, and ``end_revived_plan`` or
+    the replaced-plan cleanup raised the refund alert already.
+    """
+    details = subscription.get("cancellation_details") or {}
+    if (
+        subscription.get("status") != "canceled"
+        or details.get("comment") != REPLACED_PLAN_CANCELLATION_COMMENT
+    ):
+        return False
+    paid_at = (invoice.get("status_transitions") or {}).get("paid_at")
+    canceled_at = subscription.get("canceled_at")
+    return bool(paid_at and canceled_at and paid_at >= canceled_at)
+
+
+def _needs_refund(invoice_id: str, sub_id: str) -> RestartOutcome:
+    logger.error(
+        f"Invoice {invoice_id} was paid after subscription {sub_id} was ended"
+        " as replaced by another plan; refund the payment by hand"
+    )
+    return RestartOutcome.NEEDS_REFUND
 
 
 async def _record_finished_reset(invoice: dict, subscription: dict, tx: Prisma) -> None:
