@@ -39,6 +39,7 @@ from tenacity.stop import stop_base
 import backend.util.exceptions as exceptions
 from backend.api.utils.validation_errors import describe_validation_error
 from backend.data import redis_client
+from backend.data.db_errors import DatabaseConnectionError
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util import tracing
 from backend.util.json import to_dict
@@ -346,7 +347,12 @@ class AppService(BaseAppService, ABC):
         return self
 
     @staticmethod
-    def _handle_internal_http_error(status_code: int = 500, log_error: bool = True):
+    def _handle_internal_http_error(
+        status_code: int = 500, log_error: bool = True, retried: bool = False
+    ):
+        """``retried`` marks a failure the clients retry: it is logged as a
+        warning without a traceback, so an outage logs no error per attempt."""
+
         def handler(request: Request, exc: Exception):
             if log_error:
                 logged = (
@@ -354,7 +360,11 @@ class AppService(BaseAppService, ABC):
                     if isinstance(exc, ValidationError)
                     else exc
                 )
-                if status_code >= 500:
+                if retried:
+                    logger.warning(
+                        f"{request.method} {request.url.path} failed: {logged}"
+                    )
+                elif status_code >= 500:
                     logger.error(
                         f"{request.method} {request.url.path} failed: {logged}",
                         exc_info=logged,
@@ -467,6 +477,11 @@ class AppService(BaseAppService, ABC):
             exceptions.ConflictError, cls._handle_internal_http_error(409)
         )
         app.add_exception_handler(DataError, cls._handle_internal_http_error(400))
+        # Not the query's fault: its connection was lost, refused or timed out.
+        app.add_exception_handler(
+            DatabaseConnectionError,
+            cls._handle_internal_http_error(503, retried=True),
+        )
         app.add_exception_handler(
             UniqueViolationError, cls._handle_internal_http_error(400)
         )
@@ -1086,6 +1101,7 @@ RETRYABLE_SERVICE_ERRORS: tuple[type[BaseException], ...] = (
     HTTPServerError,
     MissingRouteError,
     RequestHTTPServerError,
+    DatabaseConnectionError,
     exceptions.DatabaseError,
     exceptions.ExpertHireUnavailableError,
     exceptions.RedisError,

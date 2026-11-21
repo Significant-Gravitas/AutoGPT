@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from prisma import Prisma
 from pydantic import BaseModel, Field, field_validator
 
+from backend.data.db_errors import RetryablePrisma
 from backend.util.retry import conn_retry
 
 load_dotenv()
@@ -47,7 +48,7 @@ if STMT_CACHE_SIZE:
 HTTP_TIMEOUT = int(POOL_TIMEOUT) if POOL_TIMEOUT else None
 
 
-class _ThreadBoundPrisma(Prisma):
+class _ThreadBoundPrisma(RetryablePrisma):
     """A Prisma client that reports itself connected only on the thread that
     connected it.
 
