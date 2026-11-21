@@ -233,3 +233,90 @@ async def test_stratified_sizes_match_the_original_adjustment():
         for i in out["sample_indices"]:
             got[str(data[i]["g"])] += 1
         assert got == expected
+
+
+@pytest.mark.parametrize("weight", [float("inf"), float("-inf"), float("nan")])
+async def test_weighted_sampling_refuses_non_finite_weights(weight):
+    data = [{"w": 1}, {"w": weight}, {"w": 2}]
+
+    with pytest.raises(ValueError, match="finite numbers"):
+        await _sample(
+            data=data,
+            sample_size=1,
+            sampling_method=SamplingMethod.WEIGHTED,
+            weight_key="w",
+        )
+
+
+async def test_weighted_sampling_returns_distinct_items():
+    data = [{"w": 1} for _ in range(12)]
+
+    out = await _sample(
+        data=data,
+        sample_size=7,
+        sampling_method=SamplingMethod.WEIGHTED,
+        weight_key="w",
+        random_seed=3,
+    )
+
+    indices = out["sample_indices"]
+    assert len(indices) == 7
+    assert len(set(indices)) == 7
+    assert out["sampled_data"] == [data[i] for i in indices]
+
+
+async def test_weighted_sampling_stays_weighted_with_subnormal_weights():
+    data = [{"w": 1e-320} for _ in range(3)]
+
+    picked = {
+        (
+            await _sample(
+                data=data,
+                sample_size=1,
+                sampling_method=SamplingMethod.WEIGHTED,
+                weight_key="w",
+                random_seed=seed,
+            )
+        )["sample_indices"][0]
+        for seed in range(30)
+    }
+
+    assert picked == {0, 1, 2}
+
+
+async def test_weighted_sampling_never_picks_a_zero_weight_item():
+    data = [{"w": 0}, {"w": 1}, {"w": 2}, {"w": 3}]
+
+    out = await _sample(
+        data=data,
+        sample_size=2,
+        sampling_method=SamplingMethod.WEIGHTED,
+        weight_key="w",
+        random_seed=3,
+    )
+
+    assert 0 not in out["sample_indices"]
+
+
+async def test_weighted_sampling_refuses_negative_weights():
+    data = [{"w": 1}, {"w": -1}, {"w": 2}]
+
+    with pytest.raises(ValueError, match="cannot be negative"):
+        await _sample(
+            data=data,
+            sample_size=1,
+            sampling_method=SamplingMethod.WEIGHTED,
+            weight_key="w",
+        )
+
+
+async def test_weighted_sampling_refuses_more_samples_than_positive_weights():
+    data = [{"w": 0}, {"w": 1}]
+
+    with pytest.raises(ValueError, match="positive weight"):
+        await _sample(
+            data=data,
+            sample_size=2,
+            sampling_method=SamplingMethod.WEIGHTED,
+            weight_key="w",
+        )
