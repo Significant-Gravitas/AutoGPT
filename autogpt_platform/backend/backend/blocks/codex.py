@@ -13,6 +13,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.block import BlockInput
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -45,11 +46,30 @@ class CodexCallResult:
 class CodexModel(str, Enum):
     """Codex-capable OpenAI models."""
 
+    @classmethod
+    def _missing_(cls, value: object) -> "CodexModel | None":
+        """A node saved on a model this list no longer offers runs on its
+        replacement (``_RETIRED_MODELS``)."""
+        return _replacement_for(value)
+
     GPT5_6_SOL = "gpt-5.6-sol"
     GPT5_6_TERRA = "gpt-5.6-terra"
     GPT5_6_LUNA = "gpt-5.6-luna"
     GPT5_3_CODEX = "gpt-5.3-codex"
-    GPT5_1_CODEX = "gpt-5.1-codex"
+
+
+# Models this block offered that OpenAI has shut down, and what a node saved on
+# one runs on. OpenAI shut gpt-5.1-codex down on 2026-07-23. gpt-5.3-codex is
+# this block's default and the one Codex model OpenAI still serves, at the
+# nearest price; OpenAI's listed gpt-5.6-sol costs several times more.
+_RETIRED_MODELS: dict[str, CodexModel] = {
+    "gpt-5.1-codex": CodexModel.GPT5_3_CODEX,
+}
+
+
+def _replacement_for(value: object) -> CodexModel | None:
+    """The current model a saved retired value runs as; None for any other."""
+    return _RETIRED_MODELS.get(value) if isinstance(value, str) else None
 
 
 class CodexReasoningEffort(str, Enum):
@@ -181,6 +201,21 @@ class CodeGenerationBlock(Block):
         )
         credentials: CodexCredentials = CodexCredentialsField()
 
+        @classmethod
+        def validate_data(
+            cls,
+            data: BlockInput,
+            exclude_fields: set[str] | None = None,
+        ) -> str | None:
+            """Check a node saved on a retired model as its replacement: the
+            JSON schema lists only the current models, so it would refuse the
+            saved value before the ``model`` field resolves it. Works on a
+            copy, so the caller's data keeps the saved value."""
+            replacement = _replacement_for(data.get("model"))
+            if replacement is not None:
+                data = {**data, "model": replacement.value}
+            return super().validate_data(data, exclude_fields=exclude_fields)
+
     class Output(BlockSchemaOutput):
         response: str = SchemaField(
             description="Code-focused response returned by the Codex model."
@@ -232,7 +267,6 @@ class CodeGenerationBlock(Block):
         CodexModel.GPT5_6_TERRA: (2.5, 15.0),
         CodexModel.GPT5_6_LUNA: (1.0, 6.0),
         CodexModel.GPT5_3_CODEX: (1.75, 14.0),
-        CodexModel.GPT5_1_CODEX: (1.25, 10.0),
     }
 
     @classmethod

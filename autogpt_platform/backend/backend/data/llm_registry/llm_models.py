@@ -596,9 +596,10 @@ LEGACY_MODEL_MAPPINGS: dict[str, LLMModel] = {
     # Shut down by OpenAI. These graphs move unasked at the next start, so
     # each goes to the current model at its price, not to OpenAI's listed
     # GPT-5.6 replacement, which can cost several times more; o1 keeps its
-    # listed gpt-5.6-sol, which costs less than o1 did. Codex's own list also
-    # offers gpt-5.1-codex: the boot pass rewrites only LLMModel fields and
-    # presets' overrides of those nodes, so Codex nodes keep it.
+    # listed gpt-5.6-sol, which costs less than o1 did. The boot pass rewrites
+    # only LLMModel fields and presets' overrides of those nodes, so Codex
+    # nodes keep a stored gpt-5.1-codex, which the Codex block reads as its
+    # own gpt-5.3-codex.
     "o1": LLMModel.GPT5_6_SOL,
     "o1-mini": LLMModel.GPT6_1_TERRA,
     "o3-mini": LLMModel.GPT6_1_TERRA,

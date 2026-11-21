@@ -174,10 +174,10 @@ def test_validate_codex_costs_catches_missing_model():
 @pytest.mark.parametrize(
     "input_tokens, output_tokens, expected_usd",
     [
-        # GPT-5.1-Codex: $1.25 / 1M input, $10 / 1M output.
-        (1_000_000, 0, 1.25),
-        (0, 1_000_000, 10.0),
-        (100_000, 10_000, 0.225),  # 0.125 + 0.100
+        # GPT-5.3-Codex: $1.75 / 1M input, $14 / 1M output.
+        (1_000_000, 0, 1.75),
+        (0, 1_000_000, 14.0),
+        (100_000, 10_000, 0.315),  # 0.175 + 0.140
         (0, 0, 0.0),
     ],
 )
@@ -185,11 +185,11 @@ def test_codex_computes_provider_cost_usd_from_token_counts(
     input_tokens, output_tokens, expected_usd
 ):
     """Drive CodeGenerationBlock._compute_token_usd directly. A regression
-    to the wrong rate constants (e.g. swapping the $1.25 input rate for
-    GPT-4o's $2.50) would fail this test.
+    to the wrong rate constants (e.g. swapping the $1.75 input rate for
+    GPT-5.6 Terra's $2.50) would fail this test.
     """
     assert CodeGenerationBlock._compute_token_usd(
-        CodexModel.GPT5_1_CODEX, input_tokens, output_tokens
+        CodexModel.GPT5_3_CODEX, input_tokens, output_tokens
     ) == pytest.approx(expected_usd)
 
 
