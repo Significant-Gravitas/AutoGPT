@@ -122,6 +122,7 @@
         "subject": {
           "advanced": false,
           "description": "Email subject",
+          "maxLength": 998,
           "secret": false,
           "title": "Subject",
           "type": "string"
@@ -1410,6 +1411,7 @@
         "subject": {
           "advanced": false,
           "description": "Email subject",
+          "maxLength": 998,
           "secret": false,
           "title": "Subject",
           "type": "string"
@@ -1727,6 +1729,7 @@
         "subject": {
           "advanced": false,
           "description": "Email subject",
+          "maxLength": 998,
           "secret": false,
           "title": "Subject",
           "type": "string"

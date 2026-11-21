@@ -50,6 +50,8 @@ TEST_CREDENTIALS_INPUT = {
     "title": TEST_CREDENTIALS.title,
 }
 SMTPCredentials = UserPasswordCredentials
+# RFC 5322's limit on a line, for a header value before it is folded.
+MAX_EMAIL_HEADER_LENGTH = 998
 SMTPCredentialsInput = CredentialsMetaInput[
     Literal[ProviderName.SMTP],
     Literal["user_password"],
@@ -72,10 +74,14 @@ class SMTPConfig(BaseModel):
 class SendEmailBlock(Block):
     class Input(BlockSchemaInput):
         to_email: str = SchemaField(
-            description="Recipient email address", placeholder="recipient@example.com"
+            description="Recipient email address",
+            placeholder="recipient@example.com",
+            max_length=MAX_EMAIL_HEADER_LENGTH,
         )
         subject: str = SchemaField(
-            description="Subject of the email", placeholder="Enter the email subject"
+            description="Subject of the email",
+            placeholder="Enter the email subject",
+            max_length=MAX_EMAIL_HEADER_LENGTH,
         )
         body: str = SchemaField(
             description="Body of the email", placeholder="Enter the email body"
@@ -134,6 +140,11 @@ class SendEmailBlock(Block):
         smtp_port = config.smtp_port
         smtp_username = credentials.username.get_secret_value()
         smtp_password = credentials.password.get_secret_value()
+        if len(smtp_username) > MAX_EMAIL_HEADER_LENGTH:
+            raise ValueError(
+                "The SMTP username is used as the sender's address, which can be "
+                f"at most {MAX_EMAIL_HEADER_LENGTH} characters long."
+            )
 
         msg = MIMEMultipart()
         msg["From"] = smtp_username
