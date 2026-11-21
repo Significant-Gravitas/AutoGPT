@@ -6,6 +6,7 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Link } from "@/components/atoms/Link/Link";
 import { Text } from "@/components/atoms/Text/Text";
 import AuthFeedback from "@/components/auth/AuthFeedback";
+import { AuthTermsNotice } from "@/components/auth/AuthTermsNotice";
 import { CheckYourInbox } from "@/components/auth/CheckYourInbox/CheckYourInbox";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
@@ -197,6 +198,8 @@ export default function LoginPage() {
             ) : null}
           </>
         ) : null}
+
+        {isCloudEnv ? <AuthTermsNotice /> : null}
 
         <AuthFeedback
           type="login"
