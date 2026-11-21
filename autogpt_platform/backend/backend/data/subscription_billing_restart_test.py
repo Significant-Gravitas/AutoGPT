@@ -664,9 +664,12 @@ async def test_a_credit_whose_record_rolled_back_is_taken_back_when_the_retry_ex
     assert fake.rows["in_march"].abandonedAt is not None
     assert fake.subscriptions[SUB]["current_period_start"] == _ts(2026, 3, 3)
 
-    # Redeliveries find it taken back and leave it.
+    # Redeliveries find it taken back and leave it, but still report it for
+    # a person, so one that follows an alert that failed to send retries it.
     fake.idempotent.clear()
-    await restart_period_after_late_payment("in_march")
+    assert await restart_period_after_late_payment("in_march") == (
+        RestartOutcome.NEEDS_MANUAL_FIX
+    )
     assert len(fake.balance_transactions) == 1
     assert fake.balance == 0
 
@@ -804,6 +807,56 @@ async def test_an_old_plan_revived_beside_a_newer_plan_is_not_restarted(fake):
         RestartOutcome.NOT_APPLICABLE
     )
     assert fake.credit_notes == []
+
+
+def _ended_as_replaced(fake: FakeStripe, at: int) -> None:
+    """The failure handler cancelled the plan as replaced at ``at``."""
+    _replaced(fake)
+    fake.subscriptions[SUB].update(
+        status="canceled",
+        canceled_at=at,
+        cancellation_details={"comment": credit.REPLACED_PLAN_CANCELLATION_COMMENT},
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reason", ["subscription_cycle", "subscription_update"])
+async def test_a_debit_settling_after_its_plan_was_ended_as_replaced_needs_a_refund(
+    fake, reason
+):
+    """March's bill is paid by bank debit on 25 March, the customer picks
+    another plan on 26 March, and the old plan renews on 1 April while the
+    debit is still processing. April's charge fails, so the old plan is ended
+    as replaced; March's bill is left alone because its debit is processing.
+    The debit settles on 8 April on a cancelled plan, which never revives:
+    the money is Stripe's, and a person must refund it."""
+    fake.add_subscription(period_start=_ts(2026, 3, 3))
+    fake.add_invoice("in_march", paid_at=None, billing_reason=reason)
+    fake.pause("in_march", at=_ts(2026, 3, 3) + HOUR)
+    fake.add_invoice("in_april", paid_at=None)
+    fake.invoices["in_april"]["status"] = "void"
+    _ended_as_replaced(fake, at=_ts(2026, 4, 1) + HOUR)
+    fake.pay("in_march", _ts(2026, 4, 8))
+
+    assert await restart_period_after_late_payment("in_march") == (
+        RestartOutcome.NEEDS_REFUND
+    )
+    assert fake.credit_notes == []
+    assert fake.balance_transactions == []
+
+
+@pytest.mark.asyncio
+async def test_a_plan_paid_before_it_was_ended_as_replaced_is_not_reported_again(
+    fake,
+):
+    """A retry revived the old plan and was then ended as replaced; that
+    path raised its own refund alert, so the payment's events add none."""
+    _fail_on_3rd_pay_on_9th(fake)
+    _ended_as_replaced(fake, at=_ts(2026, 3, 9) + 30)
+
+    assert await restart_period_after_late_payment("in_march") == (
+        RestartOutcome.NOT_APPLICABLE
+    )
 
 
 @pytest.mark.asyncio

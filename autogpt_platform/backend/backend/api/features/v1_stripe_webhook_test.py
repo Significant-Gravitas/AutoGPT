@@ -1159,7 +1159,10 @@ def test_paid_invoice_restarts_the_period_last_and_alerts_when_it_cannot(
         "restart",
     ]
     restart.assert_awaited_once_with("in_late")
-    assert alert.await_count == int(outcome == RestartOutcome.NEEDS_MANUAL_FIX)
+    needs_person = (RestartOutcome.NEEDS_MANUAL_FIX, RestartOutcome.NEEDS_REFUND)
+    assert alert.await_count == int(outcome in needs_person)
+    if outcome == RestartOutcome.NEEDS_REFUND:
+        assert "needs a manual refund" in alert.await_args.args[0]
 
 
 class _InMemoryRedis:
@@ -1236,6 +1239,23 @@ def test_a_late_payment_needing_a_person_alerts_once_across_its_deliveries(
 
     assert restart.await_count == 3
     alert.assert_awaited_once()
+
+
+def test_a_payment_after_its_plan_was_replaced_asks_for_one_refund(
+    mocker: pytest_mock.MockFixture, late_payment_needing_a_person
+) -> None:
+    """A bank debit that settles after its plan was ended as replaced arrives
+    as three events and redeliveries too; the refund is asked for once."""
+    deliveries, restart, alert = late_payment_needing_a_person
+    restart.return_value = RestartOutcome.NEEDS_REFUND
+
+    for event in deliveries:
+        _post_event(mocker, event)
+
+    assert restart.await_count == 3
+    alert.assert_awaited_once()
+    assert "in_late" in alert.await_args.args[0]
+    assert "needs a manual refund" in alert.await_args.args[0]
 
 
 def test_a_late_payment_alert_that_was_not_delivered_is_sent_by_the_next_delivery(
