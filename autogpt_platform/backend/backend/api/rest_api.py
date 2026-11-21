@@ -80,6 +80,7 @@ import backend.api.features.subscription_activation_routes as subscription_activ
 import backend.api.features.subscription_trial_routes as subscription_trial_routes
 import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.user.routes as user_routes
+import backend.api.features.workflow_pages.routes as workflow_pages_routes
 import backend.api.features.workspace.folder_routes as workspace_folder_routes
 import backend.api.features.workspace.routes as team_routes
 import backend.data.autopilot_migrate
@@ -526,6 +527,7 @@ app.include_router(
     skill_learning_routes.router, tags=["v2", "skill-learning"], prefix="/api"
 )
 app.include_router(home_routes.router, prefix="/api")
+app.include_router(workflow_pages_routes.router, prefix="/api")
 app.include_router(feature_flags_routes.router, prefix="/api")
 app.include_router(platform_config_routes.router, prefix="/api")
 app.include_router(

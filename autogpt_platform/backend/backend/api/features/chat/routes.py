@@ -164,6 +164,7 @@ from backend.copilot.service import (
     strip_injected_context_for_display,
 )
 from backend.copilot.session_permissions import resolve_session_permissions
+from backend.copilot.tools.design_workflow_page import WorkflowPageResponse
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.local_pc_machine import (
     MachineConnectionStaleError,
@@ -3383,6 +3384,7 @@ ToolResponseUnion = (
     | ExpertSoulUpdatedResponse
     | ExpertOnboardingResponse
     | UIBlocksResponse
+    | WorkflowPageResponse
     | FeedbackPromptToolResponse
 )
 

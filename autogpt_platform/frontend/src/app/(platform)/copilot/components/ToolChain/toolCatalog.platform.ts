@@ -289,6 +289,11 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     running: "Preparing your answer",
     done: "Showed your answer",
   },
+  design_workflow_page: {
+    category: "info",
+    running: "Composing a workflow page",
+    done: "Composed a workflow page",
+  },
   request_work_check: {
     category: "question",
     running: "Asking how the task went",

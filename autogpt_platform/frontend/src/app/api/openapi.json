@@ -4619,6 +4619,7 @@
                     },
                     { "$ref": "#/components/schemas/ExpertOnboardingResponse" },
                     { "$ref": "#/components/schemas/UIBlocksResponse" },
+                    { "$ref": "#/components/schemas/WorkflowPageResponse" },
                     {
                       "$ref": "#/components/schemas/FeedbackPromptToolResponse"
                     }
@@ -20034,6 +20035,192 @@
         }
       }
     },
+    "/api/workflow-pages/{library_agent_id}": {
+      "delete": {
+        "tags": ["workflow-pages"],
+        "summary": "Delete Workflow Page",
+        "operationId": "delete_workflow_page",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "library_agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "title": "Library Agent Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["workflow-pages"],
+        "summary": "Get Workflow Page",
+        "operationId": "get_workflow_page",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "library_agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "title": "Library Agent Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 64 },
+                { "type": "null" }
+              ],
+              "description": "Feed the result from this run.",
+              "title": "Run Id"
+            },
+            "description": "Feed the result from this run."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvedWorkflowPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow-pages/{library_agent_id}/restore": {
+      "post": {
+        "tags": ["workflow-pages"],
+        "summary": "Restore Workflow Page",
+        "operationId": "restore_workflow_page",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "library_agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "title": "Library Agent Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvedWorkflowPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow-pages/{library_agent_id}/sections/{index}": {
+      "delete": {
+        "tags": ["workflow-pages"],
+        "summary": "Remove Workflow Page Section",
+        "operationId": "remove_workflow_page_section",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "library_agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "title": "Library Agent Id"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 0,
+              "title": "Index"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvedWorkflowPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/files": {
       "get": {
         "tags": ["workspace"],
@@ -28695,7 +28882,8 @@
           "copilot-auto-mode",
           "copilot-stream-shadow",
           "copilot-stream-runtime",
-          "onboarding-step-order"
+          "onboarding-step-order",
+          "workflow-pages"
         ],
         "title": "FrontendFlag",
         "description": "Every flag the frontend reads; the frontend's `Flag` is generated from this.\n\nA key the backend reads too comes from the backend's `Flag`, so it is written once.",
@@ -28717,7 +28905,8 @@
           "COPILOT_AUTO_MODE",
           "COPILOT_STREAM_SHADOW",
           "COPILOT_STREAM_RUNTIME",
-          "ONBOARDING_STEP_ORDER"
+          "ONBOARDING_STEP_ORDER",
+          "WORKFLOW_PAGES"
         ]
       },
       "FrontendFlagValues": {
@@ -30909,6 +31098,16 @@
           "source_kinds"
         ],
         "title": "LearningStatus"
+      },
+      "LeftOutSection": {
+        "properties": {
+          "index": { "type": "integer", "title": "Index" },
+          "kind": { "type": "string", "title": "Kind" },
+          "problem": { "type": "string", "title": "Problem" }
+        },
+        "type": "object",
+        "required": ["index", "kind", "problem"],
+        "title": "LeftOutSection"
       },
       "LibraryAgent": {
         "properties": {
@@ -33491,6 +33690,179 @@
         "required": ["version_id", "outcome"],
         "title": "OutcomeReportRequest"
       },
+      "PageField": {
+        "properties": {
+          "input": { "type": "string", "title": "Input" },
+          "label": { "type": "string", "title": "Label" },
+          "help": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Help"
+          },
+          "default": { "title": "Default" },
+          "group": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Group"
+          },
+          "input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Schema"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["input", "label", "input_schema"],
+        "title": "PageField"
+      },
+      "PageLatestResult": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "latest_result",
+            "title": "Kind"
+          },
+          "index": { "type": "integer", "title": "Index" },
+          "run_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Run Id"
+          },
+          "run_status": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/AgentExecutionStatus" },
+              { "type": "null" }
+            ]
+          },
+          "finished_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Finished At"
+          },
+          "blocks": {
+            "items": {
+              "oneOf": [
+                { "$ref": "#/components/schemas/StatsBlock" },
+                { "$ref": "#/components/schemas/TableBlock" },
+                { "$ref": "#/components/schemas/ChartBlock" }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "chart": "#/components/schemas/ChartBlock",
+                  "stats": "#/components/schemas/StatsBlock",
+                  "table": "#/components/schemas/TableBlock"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Blocks"
+          },
+          "other_outputs": {
+            "additionalProperties": { "items": {}, "type": "array" },
+            "type": "object",
+            "title": "Other Outputs",
+            "description": "Outputs no card shows, drawn as the run view does."
+          }
+        },
+        "type": "object",
+        "required": ["kind", "index"],
+        "title": "PageLatestResult"
+      },
+      "PageRecentRuns": {
+        "properties": {
+          "kind": { "type": "string", "const": "recent_runs", "title": "Kind" },
+          "index": { "type": "integer", "title": "Index" },
+          "runs": {
+            "items": { "$ref": "#/components/schemas/PageRun" },
+            "type": "array",
+            "title": "Runs"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "index", "runs"],
+        "title": "PageRecentRuns"
+      },
+      "PageRun": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "ended_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At"
+          },
+          "cost_cents": {
+            "type": "integer",
+            "title": "Cost Cents",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": ["id", "status"],
+        "title": "PageRun"
+      },
+      "PageRunForm": {
+        "properties": {
+          "kind": { "type": "string", "const": "run_form", "title": "Kind" },
+          "index": { "type": "integer", "title": "Index" },
+          "fields": {
+            "items": { "$ref": "#/components/schemas/PageField" },
+            "type": "array",
+            "title": "Fields"
+          },
+          "button_label": { "type": "string", "title": "Button Label" }
+        },
+        "type": "object",
+        "required": ["kind", "index", "fields", "button_label"],
+        "title": "PageRunForm"
+      },
+      "PageSchedule": {
+        "properties": {
+          "kind": { "type": "string", "const": "schedule", "title": "Kind" },
+          "index": { "type": "integer", "title": "Index" },
+          "is_scheduled": { "type": "boolean", "title": "Is Scheduled" },
+          "next_run": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Next Run"
+          },
+          "unavailable": {
+            "type": "boolean",
+            "title": "Unavailable",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["kind", "index", "is_scheduled"],
+        "title": "PageSchedule"
+      },
+      "PageText": {
+        "properties": {
+          "kind": { "type": "string", "const": "text", "title": "Kind" },
+          "index": { "type": "integer", "title": "Index" },
+          "heading": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Heading"
+          },
+          "body": { "type": "string", "title": "Body" }
+        },
+        "type": "object",
+        "required": ["kind", "index", "body"],
+        "title": "PageText"
+      },
       "Pagination": {
         "properties": {
           "total_items": {
@@ -35903,6 +36275,50 @@
         "title": "RequeueExecutionResponse",
         "description": "Response model for requeue execution operations"
       },
+      "ResolvedWorkflowPage": {
+        "properties": {
+          "library_agent_id": { "type": "string", "title": "Library Agent Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "title": { "type": "string", "title": "Title" },
+          "sections": {
+            "items": {
+              "oneOf": [
+                { "$ref": "#/components/schemas/PageText" },
+                { "$ref": "#/components/schemas/PageRunForm" },
+                { "$ref": "#/components/schemas/PageLatestResult" },
+                { "$ref": "#/components/schemas/PageRecentRuns" },
+                { "$ref": "#/components/schemas/PageSchedule" }
+              ],
+              "discriminator": {
+                "propertyName": "kind",
+                "mapping": {
+                  "latest_result": "#/components/schemas/PageLatestResult",
+                  "recent_runs": "#/components/schemas/PageRecentRuns",
+                  "run_form": "#/components/schemas/PageRunForm",
+                  "schedule": "#/components/schemas/PageSchedule",
+                  "text": "#/components/schemas/PageText"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Sections"
+          },
+          "left_out": {
+            "items": { "$ref": "#/components/schemas/LeftOutSection" },
+            "type": "array",
+            "title": "Left Out",
+            "description": "Sections that no longer fit the workflow."
+          },
+          "has_previous": {
+            "type": "boolean",
+            "title": "Has Previous",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["library_agent_id", "graph_id", "title", "sections"],
+        "title": "ResolvedWorkflowPage"
+      },
       "ResponseType": {
         "type": "string",
         "enum": [
@@ -35993,6 +36409,7 @@
           "expert_chat_transcript",
           "expert_onboarding",
           "ui_blocks",
+          "workflow_page",
           "feedback_prompt",
           "team_consult",
           "session_list",
@@ -42329,6 +42746,25 @@
         "required": ["type", "steps"],
         "title": "WorkflowDiagramBlock",
         "description": "Steps of a workflow in order, showing where things stand."
+      },
+      "WorkflowPageResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "workflow_page"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "page": { "$ref": "#/components/schemas/ResolvedWorkflowPage" },
+          "saved": { "type": "boolean", "title": "Saved", "default": false }
+        },
+        "type": "object",
+        "required": ["message", "page"],
+        "title": "WorkflowPageResponse",
+        "description": "A workflow page for the chat to draw, previewed or saved."
       },
       "WorkflowRecording": {
         "properties": {

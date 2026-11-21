@@ -33,6 +33,7 @@ import {
 } from "./helpers";
 import { useMarketplaceUpdate } from "./hooks/useMarketplaceUpdate";
 import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
+import { WorkflowPageMount } from "./components/WorkflowPage/WorkflowPageMount";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -229,12 +230,14 @@ export function NewAgentLibraryView() {
             </div>
           </div>
           <div className="flex min-h-0 flex-1">
-            <EmptyTasks
-              agent={agent}
-              onRun={onRunInitiated}
-              onTriggerSetup={onTriggerSetup}
-              onScheduleCreated={onScheduleCreated}
-            />
+            <WorkflowPageMount agent={agent}>
+              <EmptyTasks
+                agent={agent}
+                onRun={onRunInitiated}
+                onTriggerSetup={onTriggerSetup}
+                onScheduleCreated={onScheduleCreated}
+              />
+            </WorkflowPageMount>
           </div>
         </div>
         {renderPublishAgentModal()}
@@ -367,12 +370,17 @@ export function NewAgentLibraryView() {
             agent={agent}
             banner={renderMarketplaceUpdateBanner()}
           >
-            <EmptyTasks
+            <WorkflowPageMount
               agent={agent}
-              onRun={onRunInitiated}
-              onTriggerSetup={onTriggerSetup}
-              onScheduleCreated={onScheduleCreated}
-            />
+              onSelectRun={(id) => handleSelectRun(id, "runs")}
+            >
+              <EmptyTasks
+                agent={agent}
+                onRun={onRunInitiated}
+                onTriggerSetup={onTriggerSetup}
+                onScheduleCreated={onScheduleCreated}
+              />
+            </WorkflowPageMount>
           </SelectedViewLayout>
         )}
       </div>

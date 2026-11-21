@@ -32,6 +32,7 @@ from .customize_agent import CustomizeAgentTool
 from .decompose_goal import DecomposeGoalTool
 from .delegate_to_expert import DelegateToExpertTool
 from .describe_capability import DescribeCapabilityTool
+from .design_workflow_page import DesignWorkflowPageTool
 from .edit_agent import EditAgentTool
 from .enter_building_mode import EnterAgentBuildingModeTool
 from .expert_chats import ListExpertChatsTool, ReadExpertChatTool
@@ -115,6 +116,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "add_understanding": AddUnderstandingTool(),
     "ask_question": AskQuestionTool(),
     "render_ui": RenderUITool(),
+    "design_workflow_page": DesignWorkflowPageTool(),
     "create_agent": CreateAgentTool(),
     "customize_agent": CustomizeAgentTool(),
     "decompose_goal": DecomposeGoalTool(),

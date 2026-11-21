@@ -170,6 +170,7 @@ from backend.copilot.tools import (
     origin_disabled_tools,
     tool_names_in_groups,
 )
+from backend.copilot.tools.design_workflow_page import workflow_pages_disabled_tools
 from backend.copilot.tools.e2b_sandbox import (
     count_expert_turn,
     forget_turn_ceiling,
@@ -2762,6 +2763,7 @@ async def stream_chat_completion_baseline(
         if is_expert_kickoff_turn(session)
         else origin_disabled_tools(session.metadata.origin)
         | await render_ui_disabled_tools(session)
+        | await workflow_pages_disabled_tools(session)
     )
     tools = get_available_tools(
         disabled_groups=disabled_tool_groups, disabled_tools=disabled_tools

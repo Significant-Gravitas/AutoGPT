@@ -117,6 +117,8 @@ _PLATFORM = frozenset(
         "customize_agent",
         "edit_agent",
         "enter_agent_building_mode",
+        # A save; a preview is a no-op subject (``gate_subject``).
+        "design_workflow_page",
         "fix_agent_graph",
         "create_folder",
         "delete_folder",

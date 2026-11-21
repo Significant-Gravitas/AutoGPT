@@ -25,6 +25,8 @@ import { RunCapabilityTool } from "../../../tools/RunCapability/RunCapability";
 import { RunMCPToolComponent } from "../../../tools/RunMCPTool/RunMCPTool";
 import { SearchDocsTool } from "../../../tools/SearchDocs/SearchDocs";
 import { SetupTriggerTool } from "../../../tools/SetupTrigger/SetupTrigger";
+import { DesignWorkflowPage } from "../../../tools/DesignWorkflowPage/DesignWorkflowPage";
+import { DESIGN_WORKFLOW_PAGE_PART_TYPE } from "../../../tools/DesignWorkflowPage/helpers";
 import { RenderUI } from "../../../tools/RenderUI/RenderUI";
 import { RENDER_UI_PART_TYPE } from "../../../tools/RenderUI/helpers";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
@@ -285,6 +287,15 @@ export function MessagePartRenderer({
           canAct={Boolean(canActOnCards && !isCurrentlyStreaming && !readOnly)}
           isCurrentlyStreaming={isCurrentlyStreaming}
           fileUrlBuilder={fileUrlBuilder}
+        />
+      );
+    case DESIGN_WORKFLOW_PAGE_PART_TYPE:
+      return (
+        <DesignWorkflowPage
+          key={key}
+          part={part as ToolUIPart}
+          canAct={Boolean(canActOnCards && !isCurrentlyStreaming && !readOnly)}
+          isCurrentlyStreaming={isCurrentlyStreaming}
         />
       );
     case "tool-ask_question":

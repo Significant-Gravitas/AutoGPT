@@ -232,6 +232,7 @@ from ..tools import (
     origin_disabled_tools,
     tool_names_in_groups,
 )
+from ..tools.design_workflow_page import workflow_pages_disabled_tools
 from ..tools.render_ui import render_ui_disabled_tools
 from ..tools.e2b_sandbox import (
     forget_turn_ceiling,
@@ -5866,6 +5867,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 else frozenset()
             )
             | await render_ui_disabled_tools(session)
+            | await workflow_pages_disabled_tools(session)
         )
         # run_capability reaches deferred tools by id; the same hidden set
         # must bound it, so it travels with the turn's execution context.
