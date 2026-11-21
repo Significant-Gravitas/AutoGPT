@@ -543,20 +543,33 @@ async def test_follow_moved_slot_async_updates_the_async_clients_map() -> None:
 
 
 @pytest.mark.asyncio
-async def test_refresh_slot_map_async_is_throttled() -> None:
-    """Same throttle as the sync variant: back-to-back refreshes reach the
-    client at most once per window."""
-    client = MagicMock()
-    client.nodes_manager.initialize = AsyncMock()
+async def test_refresh_slot_map_async_is_throttled_per_client() -> None:
+    first, second = MagicMock(), MagicMock()
+    first.nodes_manager.initialize = AsyncMock()
+    second.nodes_manager.initialize = AsyncMock()
 
+    now = 100.0
     with (
-        patch.object(redis_client, "get_redis_async", AsyncMock(return_value=client)),
-        patch.object(redis_client, "_async_slot_map_refreshed_at", float("-inf")),
+        patch.object(
+            redis_client,
+            "get_redis_async",
+            AsyncMock(side_effect=[first, first, second, second, first]),
+        ),
+        patch.object(redis_client, "_async_slot_map_clock", lambda: now),
     ):
         await redis_client.refresh_slot_map_async()
         await redis_client.refresh_slot_map_async()
+        await redis_client.refresh_slot_map_async()
+        await redis_client.refresh_slot_map_async()
 
-    client.nodes_manager.initialize.assert_awaited_once()
+        first.nodes_manager.initialize.assert_awaited_once()
+        second.nodes_manager.initialize.assert_awaited_once()
+
+        now += redis_client._SLOT_MAP_REFRESH_EVERY_S
+        await redis_client.refresh_slot_map_async()
+
+    assert first.nodes_manager.initialize.await_count == 2
+    second.nodes_manager.initialize.assert_awaited_once()
 
 
 def test_health_check_interval_is_30s_default() -> None:

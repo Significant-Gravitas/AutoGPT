@@ -350,21 +350,22 @@ _slot_map_refresh_lock = threading.Lock()
 async def refresh_slot_map_async() -> None:
     """Async variant of :func:`refresh_slot_map`, for the async client's map.
 
-    Runs on the caller's loop instead of a worker thread; the throttle is a
-    plain timestamp because the check-and-set can't interleave between awaits
-    on one loop. ``NodesManager.initialize`` serializes concurrent refreshes
-    of one client itself.
+    Each loop-owned client has its own cooldown. The check-and-set can't
+    interleave between awaits on the client's loop.
     """
-    global _async_slot_map_refreshed_at
-    now = time.monotonic()
-    if now - _async_slot_map_refreshed_at < _SLOT_MAP_REFRESH_EVERY_S:
-        return
-    _async_slot_map_refreshed_at = now
     client = await get_redis_async()
+    now = _async_slot_map_clock()
+    last_refresh = _async_slot_map_refreshed_at.get(client, float("-inf"))
+    if now - last_refresh < _SLOT_MAP_REFRESH_EVERY_S:
+        return
+    _async_slot_map_refreshed_at[client] = now
     await client.nodes_manager.initialize()
 
 
-_async_slot_map_refreshed_at = float("-inf")
+_async_slot_map_refreshed_at: WeakKeyDictionary[AsyncRedisClient, float] = (
+    WeakKeyDictionary()
+)
+_async_slot_map_clock = time.monotonic
 
 
 @conn_retry("RedisShardedPubSub", "Acquiring connection")
