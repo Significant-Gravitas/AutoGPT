@@ -10,7 +10,7 @@ import pytest
 from claude_agent_sdk import ClaudeAgentOptions
 
 from backend.copilot.pending_messages import PendingMessage
-from backend.copilot.response_model import StreamError, StreamStart
+from backend.copilot.response_model import StreamError, StreamStart, StreamStatus
 from backend.copilot.sdk import cli_prelaunch
 from backend.copilot.sdk import retry_scenarios_test as scenarios
 from backend.copilot.sdk.cli_prelaunch import CLIPrelaunch
@@ -141,6 +141,40 @@ async def test_the_first_launch_runs_on_the_cli_spawned_ahead_of_the_query():
     assert not spawned.closed
     assert not [e for e in events if isinstance(e, StreamError)]
     assert any(isinstance(e, StreamStart) for e in events)
+
+
+@pytest.mark.asyncio
+async def test_a_turn_closed_mid_reply_has_stopped_its_cli_when_the_close_returns():
+    """A Stop can close the turn's stream while the attempt waits at a yield,
+    outside it; the CLI is interrupted and closed before the turn lets go of
+    its session, not later when the attempt is garbage-collected."""
+    client = _turns._make_client_mock(result_message=_turns._make_result_message())
+    cli = client.__aenter__.return_value
+    calls: list[str] = []
+    cli.interrupt = AsyncMock(side_effect=lambda: calls.append("interrupt"))
+    client.__aexit__.side_effect = lambda *_args: calls.append("close")
+    session = _turns._make_session()
+    session.messages[-1].content = "hello"
+
+    with _patched_turn(lambda *_args, **_kwargs: client, session):
+        turn = stream_chat_completion_sdk(
+            session_id="test-session-id",
+            message="hello",
+            is_user_message=True,
+            user_id="test-user",
+            session=session,
+        )
+        async for event in turn:
+            if isinstance(event, StreamStatus) and event.message.startswith(
+                "Reading your message"
+            ):
+                break
+        else:
+            pytest.fail("the turn never sent its query")
+        await turn.aclose()
+
+    # Interrupted first: a CLI closed mid-reply waits out the SDK's grace.
+    assert calls == ["interrupt", "close"]
 
 
 @pytest.mark.asyncio

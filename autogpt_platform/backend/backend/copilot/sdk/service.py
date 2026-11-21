@@ -345,6 +345,8 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
 # 2 h hard cap (lets long sub-AutoPilots run, still backstops a hung tool).
 _IDLE_TIMEOUT_SECONDS = 30 * 60
 _HUNG_TOOL_CAP_SECONDS = HUNG_TOOL_CAP_SECONDS
+# How long a stopped turn's CLI gets to answer the interrupt before its close.
+_CLI_INTERRUPT_SECONDS = 2.0
 
 
 @dataclass
@@ -4355,7 +4357,7 @@ def _check_empty_tool_breaker(
 async def _run_stream_attempt(
     ctx: _StreamContext,
     state: "_RetryState",
-) -> AsyncIterator[StreamBaseResponse]:
+) -> AsyncGenerator[StreamBaseResponse, None]:
     """Run one SDK streaming attempt.
 
     Opens a `ClaudeSDKClient`, sends the query, iterates SDK messages with
@@ -4515,6 +4517,13 @@ async def _run_stream_attempt(
                 client, ctx, state, acc, loop_state
             ):
                 yield ev
+    except (asyncio.CancelledError, GeneratorExit):
+        # The CLI replies on through a closed stdin, so the close would wait out
+        # its grace and then SIGTERM it; interrupted, it drops the reply at once.
+        with contextlib.suppress(Exception):
+            async with asyncio.timeout(_CLI_INTERRUPT_SECONDS):
+                await client.interrupt()
+        raise
     finally:
         await _safe_close_sdk_client(sdk_client, ctx.log_prefix)
 
@@ -6716,8 +6725,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             transcript_snap = state.transcript_builder.snapshot()
             events_yielded = 0
 
+            attempt_events = _run_stream_attempt(stream_ctx, state)
             try:
-                async for event in _run_stream_attempt(stream_ctx, state):
+                async for event in attempt_events:
                     if not isinstance(event, _EPHEMERAL_EVENT_TYPES):
                         events_yielded += 1
                     # Emit a one-time StreamStatus when the SDK switches
@@ -6905,6 +6915,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     break
                 attempt += 1  # advance to next context-level attempt
                 continue
+            finally:
+                # A Stop that lands outside the attempt still interrupts and
+                # closes its CLI here, before the stream's lock is released.
+                await attempt_events.aclose()
         else:
             # while condition became False — all attempts exhausted without
             # break.  skip_transcript_upload is already set by _reduce_context
