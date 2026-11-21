@@ -287,6 +287,11 @@ class MCPClient:
         ``tools/call`` is never retried: a tool may have applied its side
         effect before the server answered with a retryable status, and the
         spec gives no idempotency guarantee for re-sending it.
+
+        A 301 or 302 within the server's origin keeps the POST: the URL is
+        sent without the trailing slash a user may have pasted, and a server
+        that serves only that form, as nginx does a ``location /mcp/``,
+        redirects there, where a GET is not the call that was made.
         """
         is_tool_call = payload.get("method") == "tools/call"
         requests = Requests(
@@ -296,6 +301,7 @@ class MCPClient:
             max_response_bytes=(
                 MAX_TOOL_RESULT_BYTES if is_tool_call else MAX_REPLY_BYTES
             ),
+            keep_post_on_same_origin_redirect=True,
         )
         try:
             return await requests.post(
@@ -368,7 +374,8 @@ class MCPClient:
         return body.get("result")
 
     async def _send_notification(self, method: str) -> None:
-        """Send a JSON-RPC notification (no id, no response expected)."""
+        """Send a JSON-RPC notification (no id, no response expected), through
+        a same-origin 301 or 302 as a POST, as ``_post`` sends a request."""
         headers = self._build_headers()
         notification = {"jsonrpc": "2.0", "method": method}
         requests = Requests(
@@ -376,6 +383,7 @@ class MCPClient:
             retry_max_attempts=_HTTP_RETRY_ATTEMPTS,
             extra_headers=headers,
             max_response_bytes=MAX_REPLY_BYTES,
+            keep_post_on_same_origin_redirect=True,
         )
         try:
             await requests.post(
