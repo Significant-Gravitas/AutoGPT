@@ -48,6 +48,12 @@ class _SchedulerStub:
             if s.user_id == user_id and graph_id in (None, s.graph_id)
         ]
 
+    async def get_graph_schedule_next_runs(
+        self, user_id: str, graph_id: str | None = None
+    ) -> dict[str, str] | None:
+        await self._misbehave()
+        return None  # As while the index can't answer: the reader lists instead.
+
     async def get_execution_schedules(
         self, user_id: str | None = None
     ) -> list[GraphExecutionJobInfo]:

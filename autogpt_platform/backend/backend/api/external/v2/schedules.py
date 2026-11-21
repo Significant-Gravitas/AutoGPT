@@ -171,11 +171,16 @@ async def _visible_schedules(
 
 async def _assert_schedule_in_tenant(schedule_id: str, auth: TenantContext) -> None:
     """404 for a schedule outside the organization the credentials act in."""
-    visible = await _visible_schedules(auth)
-    if not any(
-        schedule.id == schedule_id and _in_tenant(schedule, auth)
-        for schedule in visible
-    ):
+    schedule = await get_scheduler_client().get_graph_execution_schedule(
+        schedule_id=schedule_id,
+        user_id=auth.user_id,
+        organization_id=auth.organization_id,
+        team_ids=await get_user_team_ids(auth.user_id, auth.organization_id),
+    )
+    visible = (
+        await visible_graph_schedules([schedule], auth.user_id) if schedule else []
+    )
+    if not (visible and _in_tenant(visible[0], auth)):
         raise NotFoundError(f"Schedule #{schedule_id} not found")
 
 

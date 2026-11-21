@@ -4546,22 +4546,7 @@ class Scheduler(AppService):
                 continue
             if kind is not None and info.kind != kind:
                 continue
-            if info.expert_id is not None:
-                if (
-                    user_id is not None or organization_id is not None
-                ) and info.user_id != user_id:
-                    continue
-            elif organization_id is not None:
-                # GraphExecutionJobArgs defaults organization_id to "" —
-                # normalise so untagged rows never match an org clause.
-                info_org = info.organization_id or None
-                owned = user_id is not None and info.user_id == user_id
-                in_org = info_org == organization_id and (
-                    info.team_id is None or info.team_id in (team_ids or [])
-                )
-                if not (owned or in_org):
-                    continue
-            elif user_id is not None and info.user_id != user_id:
+            if not _visible_to(info, user_id, organization_id, team_ids):
                 continue
             if graph_id is not None and (
                 not isinstance(info, GraphExecutionJobInfo) or info.graph_id != graph_id
@@ -4574,6 +4559,47 @@ class Scheduler(AppService):
                 continue
             results.append(info)
         return results
+
+    @expose
+    def get_graph_schedule_next_runs(
+        self, user_id: str, graph_id: str | None = None
+    ) -> dict[str, str] | None:
+        """Each of *user_id*'s graphs' earliest next run, in UTC ISO format, read
+        from the schedule index without loading any schedule. None while the
+        index cannot answer, so the caller lists the schedules instead."""
+        index = self._schedule_index
+        store = self._persistent_jobstores.get(Jobstores.EXECUTION.value)
+        with self._jobs_cache_lock:
+            ready = self._schedule_index_ready
+        if index is None or store is None or not ready:
+            return None
+        try:
+            runs = index.earliest_next_runs(
+                store.jobs_t, user_id=user_id, graph_id=graph_id
+            )
+        except Exception:
+            logger.warning("Schedule index next-run query failed", exc_info=True)
+            return None
+        return {
+            run_graph_id: datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+            for run_graph_id, timestamp in runs.items()
+        }
+
+    @expose
+    def get_graph_execution_schedule(
+        self,
+        schedule_id: str,
+        user_id: str,
+        organization_id: str | None = None,
+        team_ids: list[str] | None = None,
+    ) -> GraphExecutionJobInfo | None:
+        """One graph schedule, paused ones included, if *user_id* may see it
+        under the rules :meth:`get_execution_schedules` applies."""
+        job = self.scheduler.get_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
+        info = _job_to_info(job) if job else None
+        if not isinstance(info, GraphExecutionJobInfo):
+            return None
+        return info if _visible_to(info, user_id, organization_id, team_ids) else None
 
     @expose
     def execute_flush_matured_alerts(self):
@@ -5318,6 +5344,29 @@ def _log_refresh_failure(refresh: "Future[list[JobObj]]") -> None:
         )
 
 
+def _visible_to(
+    info: GraphExecutionJobInfo | CopilotTurnJobInfo,
+    user_id: str | None,
+    organization_id: str | None,
+    team_ids: list[str] | None,
+) -> bool:
+    """With *organization_id* (from a membership-verified context): own schedules,
+    org-home ones and those of teams in *team_ids*; expert schedules stay
+    owner-only. Without either id, a trusted global caller sees every schedule."""
+    if info.expert_id is not None:
+        return (user_id is None and organization_id is None) or info.user_id == user_id
+    if organization_id is not None:
+        # GraphExecutionJobArgs defaults organization_id to "" — normalise so
+        # untagged rows never match an org clause.
+        info_org = info.organization_id or None
+        owned = user_id is not None and info.user_id == user_id
+        in_org = info_org == organization_id and (
+            info.team_id is None or info.team_id in (team_ids or [])
+        )
+        return owned or in_org
+    return user_id is None or info.user_id == user_id
+
+
 class SchedulerClient(AppServiceClient):
     @classmethod
     def get_service_type(cls):
@@ -5339,6 +5388,12 @@ class SchedulerClient(AppServiceClient):
     )
     # Polymorphic list — preferred for new callers; returns both kinds.
     get_execution_schedules = endpoint_to_async(Scheduler.get_execution_schedules)
+    get_graph_execution_schedule = endpoint_to_async(
+        Scheduler.get_graph_execution_schedule
+    )
+    get_graph_schedule_next_runs = endpoint_to_async(
+        Scheduler.get_graph_schedule_next_runs
+    )
 
     get_parked_jobs = endpoint_to_async(Scheduler.get_parked_jobs)
     reconcile_parked_jobs = endpoint_to_async(Scheduler.reconcile_parked_jobs)
