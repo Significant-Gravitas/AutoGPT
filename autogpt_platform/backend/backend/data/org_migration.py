@@ -295,6 +295,25 @@ async def _find_owned_personal_org(user_id: str):
     )
 
 
+async def personal_org_tenancy(user_id: str) -> tuple[str, str | None]:
+    """*user_id*'s personal org and its default team, bootstrapping the org first
+    if the user has none.
+
+    Raises:
+        RuntimeError: the personal org could not be created.
+    """
+    member = await _find_owned_personal_org(user_id)
+    if member is None:
+        await ensure_personal_org(user_id)
+        member = await _find_owned_personal_org(user_id)
+    if member is None:
+        raise RuntimeError(f"User {user_id} has no personal organization")
+    team = await prisma.team.find_first(
+        where={"orgId": member.orgId, "isDefault": True}
+    )
+    return member.orgId, team.id if team else None
+
+
 async def has_personal_org(user_id: str) -> bool:
     """Whether *user_id* owns its personal org yet.
 

@@ -37,7 +37,7 @@ async def test_a_save_refuses_metadata_over_the_bound(field_name: str):
     # `tx=None` is enough: the check runs before the first query, which is the
     # point — no oversized row reaches the database on any save path.
     with pytest.raises(ValueError, match=f"Graph {field_name} is too long"):
-        await _create_graph(None, graph, "user-1")
+        await _create_graph(None, graph, "user-1", organization_id="org-1")
 
 
 class _ReachedTheFirstQuery(Exception):
@@ -52,7 +52,7 @@ async def test_a_save_accepts_metadata_at_the_bound(field_name: str, mocker):
     mocker.patch.object(graph_db, "graph_owner_id", side_effect=_ReachedTheFirstQuery)
 
     with pytest.raises(_ReachedTheFirstQuery):
-        await _create_graph(None, graph, "user-1")
+        await _create_graph(None, graph, "user-1", organization_id="org-1")
 
 
 @pytest.mark.asyncio
@@ -72,7 +72,7 @@ async def test_a_workflow_named_at_the_bound_can_be_forked(mocker):
     mocker.patch.object(graph_db, "graph_owner_id", side_effect=_ReachedTheFirstQuery)
 
     with pytest.raises(_ReachedTheFirstQuery):
-        await graph_db.fork_graph("graph-1", 1, "user-1")
+        await graph_db.fork_graph("graph-1", 1, "user-1", organization_id="org-1")
     assert source.name.endswith(" (copy)")
 
 
@@ -86,4 +86,4 @@ async def test_a_sub_graph_is_bounded_too():
     graph = _graph(sub_graphs=[sub])
 
     with pytest.raises(ValueError, match="Graph name is too long"):
-        await _create_graph(None, graph, "user-1")
+        await _create_graph(None, graph, "user-1", organization_id="org-1")

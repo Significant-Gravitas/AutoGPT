@@ -15,6 +15,7 @@ from backend.data.includes import (
     INTEGRATION_WEBHOOK_INCLUDE,
     MAX_INTEGRATION_WEBHOOKS_FETCH,
 )
+from backend.data.tenancy import tenancy_for_new_row
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
@@ -115,6 +116,9 @@ class WebhookWithRelations(Webhook):
 
 
 async def create_webhook(webhook: Webhook) -> Webhook:
+    organization_id, team_id = await tenancy_for_new_row(
+        webhook.user_id, webhook.organization_id, webhook.team_id
+    )
     create_input = IntegrationWebhookCreateInput(
         id=webhook.id,
         userId=webhook.user_id,
@@ -126,11 +130,10 @@ async def create_webhook(webhook: Webhook) -> Webhook:
         config=SafeJson(webhook.config),
         secret=webhook.secret,
         providerWebhookId=webhook.provider_webhook_id,
+        organizationId=organization_id,
     )
-    if webhook.organization_id:
-        create_input["organizationId"] = webhook.organization_id
-    if webhook.team_id:
-        create_input["teamId"] = webhook.team_id
+    if team_id:
+        create_input["teamId"] = team_id
     created_webhook = await IntegrationWebhook.prisma().create(data=create_input)
     return Webhook.from_db(created_webhook)
 

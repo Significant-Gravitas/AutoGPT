@@ -72,9 +72,14 @@ async def test_unversioned_lookups_follow_a_rollback(
         CreateGraph(graph=Graph(name="Rollback", description="")), DEFAULT_USER_ID
     )
     assert (created.version, created.is_active) == (1, True)
+    # v2 joins v1's organization, as the save routes do.
+    v1 = await AgentGraph.prisma().find_first(where={"id": created.id, "version": 1})
+    assert v1
     await create_graph(
         Graph(id=created.id, version=2, name="Rollback", description=""),
         DEFAULT_USER_ID,
+        organization_id=v1.organizationId,
+        team_id=v1.teamId,
     )
     await set_graph_active_version(created.id, 2, DEFAULT_USER_ID)
     # Roll back, as the builder chat "Revert" does.

@@ -45,6 +45,10 @@ async def test_create_graph_execution_reads_the_run_back_once(mocker):
         prisma.models.AgentGraphExecution, "prisma", return_value=execution_client
     )
     mocker.patch.object(prisma.models.LibraryAgent, "prisma", return_value=AsyncMock())
+    mocker.patch(
+        "backend.data.tenancy.personal_org_tenancy",
+        AsyncMock(return_value=("org-personal", "team-default")),
+    )
 
     run = await create_graph_execution(
         graph_id="graph-1",

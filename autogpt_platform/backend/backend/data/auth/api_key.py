@@ -13,6 +13,7 @@ from prisma.types import APIKeyUpdateManyMutationInput, APIKeyWhereInput
 from pydantic import Field
 
 from backend.data.includes import MAX_USER_API_KEYS_FETCH
+from backend.data.tenancy import tenancy_for_new_row
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 from .base import APIAuthorizationInfo
@@ -98,6 +99,7 @@ async def create_api_key(
     Returns the API key object (without hash) and the plain text key.
     """
     generated_key = keysmith.generate_key()
+    organization_id, _ = await tenancy_for_new_row(user_id, organization_id)
 
     create_data: dict[str, object] = {
         "id": str(uuid.uuid4()),
@@ -109,9 +111,8 @@ async def create_api_key(
         "permissions": [p for p in permissions],
         "description": description,
         "userId": user_id,
+        "organizationId": organization_id,
     }
-    if organization_id is not None:
-        create_data["organizationId"] = organization_id
     if owner_type is not None:
         create_data["ownerType"] = owner_type
     if team_id_restriction is not None:

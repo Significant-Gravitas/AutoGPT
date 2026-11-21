@@ -38,7 +38,7 @@ async def _marketplace_install_race(existing: object | None):
         ),
         patch.object(
             raise_attachments,
-            "resolve_default_tenancy",
+            "tenancy_for_new_row",
             new_callable=AsyncMock,
             return_value=("org-1", "team-1"),
         ),

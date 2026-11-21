@@ -1283,7 +1283,7 @@ async def _save_session_to_db(
 
         if not existing:
             # Create new session
-            await db.create_chat_session(
+            persisted = await db.create_chat_session(
                 session_id=session.session_id,
                 user_id=session.user_id,
                 organization_id=session.organization_id,
@@ -1291,6 +1291,8 @@ async def _save_session_to_db(
                 metadata=session.metadata,
                 expert_id=session.expert_id,
             )
+            session.organization_id = persisted.organization_id
+            session.team_id = persisted.team_id
             existing_message_count = 0
 
     fields = ChatSessionSaveFields(
@@ -1686,6 +1688,9 @@ async def create_chat_session(
             metadata=session.metadata,
             expert_id=expert_id,
         )
+        # The row's tenancy is authoritative: without an org it got the personal one.
+        session.organization_id = persisted.organization_id
+        session.team_id = persisted.team_id
         session.expert_id = persisted.expert_id
     except ExpertNotFoundError:
         # Domain error, not a persistence failure: the expert lost the

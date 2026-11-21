@@ -20,6 +20,7 @@ from backend.blocks._base import (
     BlockType,
 )
 from backend.blocks.llm import LLMModel
+from backend.data.tenancy import tenancy_for_new_row
 from backend.integrations.providers import ProviderName
 from backend.util.cache import cached
 from backend.util.models import Pagination
@@ -222,13 +223,14 @@ async def update_search(
         )
         if updated:
             return search.search_id
+    organization_id, _ = await tenancy_for_new_row(user_id, organization_id)
     new_search = await prisma.models.BuilderSearchHistory.prisma().create(
         data={
             "userId": user_id,
             "searchQuery": search.search_query or "",
             "filter": search.filter or [],  # type: ignore
             "byCreator": search.by_creator or [],
-            **({"organizationId": organization_id} if organization_id else {}),
+            "organizationId": organization_id,
         }
     )
     return new_search.id

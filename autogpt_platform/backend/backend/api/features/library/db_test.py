@@ -234,7 +234,7 @@ async def test_list_library_agents_search_matches_snapshot_and_graph(mocker):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_add_agent_to_library(mocker):
     mocker.patch(
-        "backend.api.features.orgs.db.get_user_default_team",
+        "backend.data.tenancy.personal_org_tenancy",
         AsyncMock(return_value=("org-fallback", "team-fallback")),
     )
     await connect()
@@ -527,7 +527,7 @@ async def test_restore_existing_library_agent_handles_deleted_update(mocker):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_add_agent_to_library_not_found(mocker):
     mocker.patch(
-        "backend.api.features.orgs.db.get_user_default_team",
+        "backend.data.tenancy.personal_org_tenancy",
         AsyncMock(return_value=("org-fallback", "team-fallback")),
     )
     await connect()
@@ -592,7 +592,7 @@ async def test_get_library_agent_by_graph_id_can_include_archived(mocker):
 @pytest.mark.asyncio
 async def test_update_graph_in_library_allows_archived_library_agent(mocker):
     mocker.patch(
-        "backend.api.features.orgs.db.get_user_default_team",
+        "backend.data.tenancy.personal_org_tenancy",
         AsyncMock(return_value=("org-fallback", "team-fallback")),
     )
     graph = mocker.Mock(id="graph-id")
@@ -661,7 +661,7 @@ async def test_update_graph_in_library_moves_webhook_presets_only_when_asked(
     mocker, move: bool
 ):
     mocker.patch(
-        "backend.api.features.orgs.db.get_user_default_team",
+        "backend.data.tenancy.personal_org_tenancy",
         AsyncMock(return_value=("org-fallback", "team-fallback")),
     )
     graph_model = mocker.Mock(is_active=True)
@@ -784,7 +784,7 @@ async def test_create_library_agent_uses_upsert():
             return_value=MagicMock(),
         ),
         patch(
-            "backend.api.features.orgs.db.get_user_default_team",
+            "backend.data.tenancy.personal_org_tenancy",
             new=AsyncMock(return_value=("org-personal", "team-default")),
         ),
     ):
@@ -837,7 +837,7 @@ async def test_create_library_agent_preserves_is_hidden_in_upsert(is_hidden):
             return_value=MagicMock(),
         ),
         patch(
-            "backend.api.features.orgs.db.get_user_default_team",
+            "backend.data.tenancy.personal_org_tenancy",
             new=AsyncMock(return_value=("org-personal", "team-default")),
         ),
     ):
@@ -1446,9 +1446,9 @@ async def test_a_preset_on_someone_elses_workflow_stays_in_the_users_org(mocker)
 
 
 @pytest.mark.asyncio
-async def test_create_preset_tenantless_graph_creates_untagged(mocker):
-    """Graphs predating org tagging have no org — the preset create must
-    not write organizationId/teamId keys at all (backfill sweep owns them)."""
+async def test_create_preset_from_a_tenantless_graph_goes_to_the_personal_org(mocker):
+    """A graph with no org gives its preset none to inherit: the preset goes to
+    the user's personal org and its default team."""
     created_row = prisma.models.AgentPreset(
         deactivatedByExpertArchive=False,
         id="preset-2",
@@ -1470,6 +1470,10 @@ async def test_create_preset_tenantless_graph_creates_untagged(mocker):
         "get_graph",
         new=AsyncMock(return_value=MagicMock(organization_id=None, team_id=None)),
     )
+    mocker.patch(
+        "backend.data.tenancy.personal_org_tenancy",
+        AsyncMock(return_value=("org-personal", "team-default")),
+    )
     mock_preset_client = AsyncMock()
     mock_preset_client.create.return_value = created_row
     mocker.patch.object(
@@ -1490,8 +1494,8 @@ async def test_create_preset_tenantless_graph_creates_untagged(mocker):
     )
 
     create_data = mock_preset_client.create.call_args.kwargs["data"]
-    assert "organizationId" not in create_data
-    assert "teamId" not in create_data
+    assert create_data["organizationId"] == "org-personal"
+    assert create_data["teamId"] == "team-default"
 
 
 @pytest.mark.asyncio
@@ -1578,6 +1582,10 @@ async def test_create_preset_accepts_own_webhook(mocker):
         db.graph_db,
         "get_graph",
         new=AsyncMock(return_value=MagicMock(organization_id=None, team_id=None)),
+    )
+    mocker.patch(
+        "backend.data.tenancy.personal_org_tenancy",
+        AsyncMock(return_value=("org-personal", "team-default")),
     )
     mocker.patch.object(
         db.integrations_db,
@@ -2226,7 +2234,7 @@ async def test_create_library_agent_tags_adders_org():
             return_value=MagicMock(),
         ),
         patch(
-            "backend.api.features.orgs.db.get_user_default_team",
+            "backend.data.tenancy.personal_org_tenancy",
             new=default_team,
         ),
     ):

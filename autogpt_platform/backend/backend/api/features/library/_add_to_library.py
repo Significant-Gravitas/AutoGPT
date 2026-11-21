@@ -12,12 +12,12 @@ import prisma.models
 
 import backend.api.features.library.model as library_model
 import backend.data.graph as graph_db
-from backend.api.features.orgs.db import resolve_default_tenancy
 from backend.api.features.store.store_listing_versions import (
     installable_store_version_where,
 )
 from backend.data.graph import GraphModel, GraphSettings
 from backend.data.includes import library_agent_include
+from backend.data.tenancy import tenancy_for_new_row
 from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
 
@@ -218,8 +218,10 @@ async def add_graph_to_library(
     )
     marketplace = _marketplace_metadata(store_listing_version)
     # A transactional caller resolves the tenancy before its transaction.
-    if tx is None and organization_id is None:
-        organization_id, team_id = await resolve_default_tenancy(user_id)
+    if tx is None:
+        organization_id, team_id = await tenancy_for_new_row(
+            user_id, organization_id, team_id
+        )
     create_data, update_data = await _library_agent_payloads(
         graph_model, user_id, settings_json, marketplace, organization_id, team_id
     )
@@ -250,7 +252,7 @@ async def _library_agent_payloads(
     user_id: str,
     settings_json: SafeJson,
     marketplace: dict[str, str | None],
-    organization_id: str | None = None,
+    organization_id: str | None,
     team_id: str | None = None,
 ) -> tuple[dict, dict]:
     create_data = {
@@ -269,7 +271,7 @@ async def _library_agent_payloads(
         "name": marketplace["name"],
         "description": marketplace["description"],
         "imageUrl": marketplace["imageUrl"],
-        **({"organizationId": organization_id} if organization_id else {}),
+        "organizationId": organization_id,
         **({"Team": {"connect": {"id": team_id}}} if team_id else {}),
     }
     # Deliberately leave settings and organizationId/Team untouched on re-add:
