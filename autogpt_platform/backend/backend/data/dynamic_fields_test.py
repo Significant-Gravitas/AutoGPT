@@ -279,6 +279,8 @@ def test_dynamic_field_schema_follows_lists_and_typed_dicts():
         ({"type": "array", "items": {}}, "entries_$_0"),
         # the key isn't in the schema
         (_TIMING_SCHEMA, "timing_#_unknown"),
+        # an index the executor can't merge
+        ({"type": "array", "items": {"type": "integer"}}, "entries_$_first"),
         # Any
         ({}, "data_@_user_name"),
         ({"type": "object"}, "plain_field"),

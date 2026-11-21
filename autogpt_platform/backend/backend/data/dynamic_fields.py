@@ -107,6 +107,9 @@ def get_dynamic_field_schema(
     `timing` is a union of models. A key found in several union variants with
     different schemas gets an `anyOf` of them.
 
+    `base_field_schema` must have its `$ref`s resolved, as
+    `BlockSchema.jsonschema()` does; a `$ref` leaf counts as unconstrained.
+
     Returns None when the path is invalid or leads to a value the base schema
     leaves unconstrained (e.g. a `dict[str, Any]` value).
     """
@@ -152,10 +155,13 @@ def _child_schema(
     schema: dict[str, Any], delim: str, ident: str
 ) -> dict[str, Any] | None:
     if delim == LIST_SPLIT:
+        try:
+            index = _parse_list_index(ident)
+        except ValueError:
+            return None  # the executor can't merge this pin either
         prefix_items = schema.get("prefixItems")
-        if isinstance(prefix_items, list) and ident.isdigit():
-            if int(ident) < len(prefix_items):
-                return prefix_items[int(ident)]
+        if isinstance(prefix_items, list) and index < len(prefix_items):
+            return prefix_items[index]
         items = schema.get("items")
         return items if isinstance(items, dict) else None
 
