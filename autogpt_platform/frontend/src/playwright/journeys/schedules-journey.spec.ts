@@ -106,6 +106,56 @@ test.describe("schedules journey", () => {
     );
     expect(await runs.json()).toMatchObject({ executions: [] });
   });
+
+  test("a schedule runs its agent when it fires, and the run completes", async ({
+    page,
+    journeyUser: _user,
+  }) => {
+    // The schedule fires at the next minute boundary, so this test can wait
+    // up to a minute before its run even starts.
+    test.setTimeout(180_000);
+    const graphId = await createAgent(
+      page,
+      createUniqueAgentName("Journey firing schedule"),
+    );
+    const response = await page.request.post(
+      `/api/proxy/api/graphs/${graphId}/schedules`,
+      {
+        data: {
+          name: "Every minute",
+          cron: "* * * * *",
+          inputs: {},
+          timezone: TIMEZONE,
+        },
+      },
+    );
+    expect(
+      response.ok(),
+      `creating the schedule failed: ${response.status()}`,
+    ).toBe(true);
+    const schedule = (await response.json()) as Schedule;
+
+    try {
+      // Nothing else runs this agent, so its first run is the schedule's:
+      // the scheduler queued it and an executor ran it to the end.
+      await expect
+        .poll(() => firstRunStatus(page, graphId), {
+          message: "the schedule's run should start and end",
+          timeout: 150_000,
+          intervals: [2_000],
+        })
+        .toMatch(RUN_ENDED);
+      expect(await firstRunStatus(page, graphId)).toBe("COMPLETED");
+    } finally {
+      const removed = await page.request.delete(
+        `/api/proxy/api/schedules/${schedule.id}`,
+      );
+      expect(
+        removed.ok(),
+        `deleting the schedule failed: ${removed.status()}`,
+      ).toBe(true);
+    }
+  });
 });
 
 async function whileSchedulerIsOut(page: Page, check: () => Promise<void>) {
@@ -156,6 +206,20 @@ async function listSchedules(page: Page, graphId: string) {
   );
   expect(response.ok(), `listing schedules: ${response.status()}`).toBe(true);
   return (await response.json()) as Schedule[];
+}
+
+const RUN_ENDED = /^(COMPLETED|FAILED|TERMINATED)$/;
+
+// The status of the agent's first run, or "no run yet".
+async function firstRunStatus(page: Page, graphId: string): Promise<string> {
+  const response = await page.request.get(
+    `/api/proxy/api/graphs/${graphId}/executions`,
+  );
+  expect(response.ok(), `listing runs: ${response.status()}`).toBe(true);
+  const { executions } = (await response.json()) as {
+    executions: { status: string }[];
+  };
+  return executions[0]?.status ?? "no run yet";
 }
 
 async function onlySchedule(page: Page, graphId: string) {
