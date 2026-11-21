@@ -13,6 +13,10 @@ import { SelectedScheduleView } from "../components/NewAgentLibraryView/componen
 import { SelectedTriggerAgentView } from "../components/NewAgentLibraryView/components/selected-views/SelectedTriggerAgentView/SelectedTriggerAgentView";
 
 describe.each(["schedule", "trigger"] as const)("%s next run", (view) => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   test.each([
     ["missing", undefined, "Not scheduled"],
     ["null", null, "Not scheduled"],
@@ -75,28 +79,32 @@ describe.each(["schedule", "trigger"] as const)("%s next run", (view) => {
     },
   );
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   // The cron runs in the schedule's timezone; the next run is shown in the
   // viewer's: their profile's, or the browser's while that is unset.
   test.each([
     {
       viewer: "America/New_York",
       scheduleTimezone: "UTC",
+      scheduleLabel: "UTC",
       nextRun: "January 15, 2024 at 07:00",
       nextRunTimezone: "America/New_York",
     },
     {
       viewer: "not-set",
       scheduleTimezone: "America/New_York",
+      scheduleLabel: getTimezoneDisplayName("America/New_York"),
       nextRun: "January 15, 2024 at 21:00",
       nextRunTimezone: "Asia/Tokyo",
     },
   ])(
     "labels each time with its own timezone (viewer $viewer, schedule $scheduleTimezone)",
-    async ({ viewer, scheduleTimezone, nextRun, nextRunTimezone }) => {
+    async ({
+      viewer,
+      scheduleTimezone,
+      scheduleLabel,
+      nextRun,
+      nextRunTimezone,
+    }) => {
       const resolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
       vi.spyOn(
         Intl.DateTimeFormat.prototype,
@@ -157,11 +165,14 @@ describe.each(["schedule", "trigger"] as const)("%s next run", (view) => {
 
       const recurrenceRow = screen.getByText("Recurrence")
         .parentElement as HTMLElement;
-      expect(
-        within(recurrenceRow).getByText(
-          getTimezoneDisplayName(scheduleTimezone),
-        ),
-      ).toBeDefined();
+      expect(within(recurrenceRow).getByText(scheduleLabel)).toBeDefined();
+
+      if (view === "schedule") {
+        // The header repeats the recurrence: "<cron> · <schedule timezone>".
+        expect(
+          screen.getByText((text) => text.endsWith(` · ${scheduleLabel}`)),
+        ).toBeDefined();
+      }
     },
   );
 });

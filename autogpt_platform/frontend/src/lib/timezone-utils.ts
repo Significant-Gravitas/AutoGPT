@@ -105,7 +105,7 @@ export function formatScheduleTime(
 export function getViewerTimezone(userTimezone: string | undefined): string {
   return userTimezone && userTimezone !== "not-set"
     ? userTimezone
-    : Intl.DateTimeFormat().resolvedOptions().timeZone;
+    : Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
 
 /**

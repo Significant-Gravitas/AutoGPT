@@ -42,6 +42,7 @@ export function SelectedScheduleView({
   );
 
   const viewerTimezone = getViewerTimezone(useUserTimezone());
+  const scheduleTimezone = schedule?.timezone || "UTC";
 
   const breakpoint = useBreakpoint();
   const isLgScreenUp = isLargeScreen(breakpoint);
@@ -95,7 +96,7 @@ export function SelectedScheduleView({
                 run={undefined}
                 scheduleRecurrence={
                   schedule
-                    ? `${humanizeCronExpression(schedule.cron || "")} · ${getTimezoneDisplayName(schedule.timezone || "UTC")}`
+                    ? `${humanizeCronExpression(schedule.cron || "")} · ${getTimezoneDisplayName(scheduleTimezone)}`
                     : undefined
                 }
               />
@@ -135,7 +136,7 @@ export function SelectedScheduleView({
                           •
                         </Text>{" "}
                         <Text variant="body" as="span" tone="muted">
-                          {getTimezoneDisplayName(schedule.timezone || "UTC")}
+                          {getTimezoneDisplayName(scheduleTimezone)}
                         </Text>
                       </div>
                     </div>
