@@ -51,6 +51,7 @@ function serveAppInfo() {
     getGetOauthGetOauthAppInfoMockHandler200({
       name: "Example App",
       scopes: ["IDENTITY"],
+      self_registered: false,
     }),
   );
 }
@@ -82,6 +83,7 @@ describe("AuthorizePage", () => {
       getGetOauthGetOauthAppInfoMockHandler200({
         name: "AutoGPT Local Executor",
         scopes: ["CONNECT_LOCAL_EXECUTOR"],
+        self_registered: false,
       }),
     );
 
@@ -179,7 +181,11 @@ describe("AuthorizePage", () => {
     server.use(
       getGetOauthGetOauthAppInfoMockHandler200(({ request }) => {
         requested = new URL(request.url);
-        return { name: "Example App", scopes: ["IDENTITY"] };
+        return {
+          name: "Example App",
+          scopes: ["IDENTITY"],
+          self_registered: false,
+        };
       }),
     );
 
@@ -188,5 +194,38 @@ describe("AuthorizePage", () => {
 
     expect(requested?.pathname).toBe("/api/proxy/api/oauth/app/client%231");
     expect(requested?.searchParams.get("redirect_uri")).toBe(REGISTERED);
+  });
+
+  test("warns that a self-registered app is unreviewed and names where it sends the user", async () => {
+    openWith("http://localhost:8765/callback");
+    server.use(
+      getGetOauthGetOauthAppInfoMockHandler200({
+        name: "Totally Official",
+        scopes: ["IDENTITY"],
+        self_registered: true,
+      }),
+    );
+
+    render(<AuthorizePage />);
+
+    const notice = await screen.findByRole("alert");
+    expect(notice.textContent).toContain("hasn't reviewed this app");
+    expect(notice.textContent).toContain("localhost:8765");
+  });
+
+  test("shows no warning for an app AutoGPT registered", async () => {
+    openWith(REGISTERED);
+    server.use(
+      getGetOauthGetOauthAppInfoMockHandler200({
+        name: "Example App",
+        scopes: ["IDENTITY"],
+        self_registered: false,
+      }),
+    );
+
+    render(<AuthorizePage />);
+    await screen.findByRole("button", { name: "Authorize" });
+
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

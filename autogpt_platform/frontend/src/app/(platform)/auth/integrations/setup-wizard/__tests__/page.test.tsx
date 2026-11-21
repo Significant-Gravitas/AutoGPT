@@ -93,7 +93,11 @@ describe("IntegrationSetupWizardPage", () => {
     server.use(
       getGetOauthGetOauthAppInfoMockHandler200(({ request }) => {
         requested = new URL(request.url);
-        return { name: "Example App", scopes: ["IDENTITY"] };
+        return {
+          name: "Example App",
+          scopes: ["IDENTITY"],
+          self_registered: false,
+        };
       }),
     );
 
@@ -113,7 +117,11 @@ describe("IntegrationSetupWizardPage", () => {
     server.use(
       getGetOauthGetOauthAppInfoMockHandler200(({ request }) => {
         requested = new URL(request.url);
-        return { name: "Example App", scopes: ["IDENTITY"] };
+        return {
+          name: "Example App",
+          scopes: ["IDENTITY"],
+          self_registered: false,
+        };
       }),
     );
 
@@ -131,6 +139,7 @@ describe("IntegrationSetupWizardPage", () => {
       getGetOauthGetOauthAppInfoMockHandler200({
         name: "Example App",
         scopes: ["IDENTITY"],
+        self_registered: false,
       }),
     );
 
@@ -150,6 +159,7 @@ describe("IntegrationSetupWizardPage", () => {
       getGetOauthGetOauthAppInfoMockHandler200({
         name: "Example App",
         scopes: ["IDENTITY"],
+        self_registered: false,
       }),
     );
 

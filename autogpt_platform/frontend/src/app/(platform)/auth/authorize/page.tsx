@@ -17,6 +17,7 @@ import { SCOPE_DESCRIPTIONS } from "@/lib/api-key-scopes";
 import { CheckmarkBadge01Icon, Image01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { UnreviewedAppNotice } from "./components/UnreviewedAppNotice";
 
 export default function AuthorizePage() {
   const searchParams = useSearchParams();
@@ -250,6 +251,10 @@ export default function AuthorizePage() {
               </Text>
             )}
           </div>
+
+          {appInfo.self_registered && (
+            <UnreviewedAppNotice redirectURI={redirectURI!} />
+          )}
 
           {/* Permissions */}
           <div>

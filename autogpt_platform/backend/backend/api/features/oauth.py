@@ -51,6 +51,7 @@ from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from backend.api.features.local_executor.gating import is_local_executor_enabled
+from backend.api.features.oauth_registration import router as registration_router
 from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.tools.local_pc_shim import get_shim_manager
@@ -87,6 +88,7 @@ settings = Settings()
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+router.include_router(registration_router)
 
 # The consent page sends the client's state to Approve and Deny alike, so
 # both take the same bound, far above any state a client sends.
@@ -150,6 +152,9 @@ class OAuthApplicationPublicInfo(BaseModel):
     description: Optional[str] = None
     logo_url: Optional[str] = None
     scopes: list[str]
+    self_registered: bool = Field(
+        description="The application registered itself; nobody has reviewed it"
+    )
 
 
 # ============================================================================
@@ -206,6 +211,7 @@ async def get_oauth_app_info(
         description=app.description,
         logo_url=app.logo_url,
         scopes=[s.value for s in app.scopes],
+        self_registered=app.owner_id is None,
     )
 
 
