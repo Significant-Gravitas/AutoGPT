@@ -106,6 +106,9 @@ USER_ERROR_STATUS_CODES = (401, 403, 429)
 # budget has to span the entire generation, not time-to-first-byte.
 LLM_REQUEST_TIMEOUT_SECONDS: int = settings.config.llm_request_timeout_seconds
 
+# A run makes at most this many attempts, whatever its Retry Count says.
+MAX_LLM_RETRIES = 10
+
 # Only a cutoff that ate most of the budget was mid-inference; a fast fail burns
 # nothing, and paging on those during an outage would bury the ones that cost.
 _SPEND_BURNED_ELAPSED_FRACTION = 0.9
@@ -781,7 +784,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         deadline = _now() + per_attempt_timeout
 
         attempt_timeout = per_attempt_timeout
-        for retry_count in range(input_data.retry):
+        for retry_count in range(min(input_data.retry, MAX_LLM_RETRIES)):
             if retry_count:
                 attempt_timeout = remaining_attempt_timeout(
                     deadline, per_attempt_timeout, _now()

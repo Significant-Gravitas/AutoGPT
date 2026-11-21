@@ -8,10 +8,12 @@ import httpx
 import openai
 import pytest
 
+import backend.blocks.llm as llm
 from backend.api.model import CreateGraph
 from backend.api.rest_api import AgentServer
 from backend.blocks._base import BlockCost, BlockCostType
 from backend.blocks.llm import AITextGeneratorBlock
+from backend.blocks.orchestrator import OrchestratorBlock
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import ExecutionContext
 from backend.data.model import (
@@ -284,6 +286,46 @@ async def test_orchestrator_tracks_llm_stats():
         # Verify outputs
         assert "finished" in outputs  # Should have finished since no tool calls
         assert outputs["finished"] == "I need to think about this."
+
+
+@pytest.mark.asyncio
+async def test_one_off_attempts_stop_at_the_retry_cap():
+    block = OrchestratorBlock()
+    input_data = OrchestratorBlock.Input(
+        prompt="Search for keywords",
+        model=llm.DEFAULT_LLM_MODEL,
+        credentials=cast(llm.AICredentials, llm.TEST_CREDENTIALS_INPUT),
+        retry=llm.MAX_LLM_RETRIES + 40,
+        agent_mode_max_iterations=0,
+    )
+
+    with patch.object(
+        OrchestratorBlock,
+        "_create_tool_node_signatures",
+        new_callable=AsyncMock,
+        return_value=[],
+    ), patch.object(
+        OrchestratorBlock,
+        "_attempt_llm_call_with_validation",
+        new_callable=AsyncMock,
+        side_effect=ValueError("bad tool call"),
+    ) as attempt:
+        with pytest.raises(ValueError, match="bad tool call"):
+            async for _ in block.run(
+                input_data,
+                credentials=llm.TEST_CREDENTIALS,
+                graph_id="test-graph-id",
+                node_id="test-node-id",
+                graph_exec_id="test-exec-id",
+                node_exec_id="test-node-exec-id",
+                user_id="test-user-id",
+                graph_version=1,
+                execution_context=ExecutionContext(human_in_the_loop_safe_mode=False),
+                execution_processor=MagicMock(),
+            ):
+                pass
+
+    assert attempt.call_count == llm.MAX_LLM_RETRIES
 
 
 @pytest.mark.asyncio

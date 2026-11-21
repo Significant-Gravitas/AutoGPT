@@ -275,6 +275,47 @@ class TestLLMStatsTracking:
         assert block.execution_stats.llm_retry_count == 1
 
     @pytest.mark.asyncio
+    async def test_attempts_stop_at_the_retry_cap(self):
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        calls = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return llm.LLMResponse(
+                raw_response="",
+                prompt=[],
+                response='<json_output id="test123456">{"wrong": "format"}</json_output>',
+                tool_calls=None,
+                prompt_tokens=1,
+                completion_tokens=1,
+                reasoning=None,
+            )
+
+        input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+            prompt="Test prompt",
+            expected_format={"key1": "desc1"},
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+            retry=llm.MAX_LLM_RETRIES + 40,
+        )
+        with (
+            patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)),
+            patch.object(
+                llm.AIStructuredResponseGeneratorBlock,
+                "get_collision_proof_output_tag_id",
+                return_value="test123456",
+            ),
+            pytest.raises(RuntimeError),
+        ):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+        assert calls == llm.MAX_LLM_RETRIES
+
+    @pytest.mark.asyncio
     async def test_retry_cost_accumulates_across_attempts(self):
         """provider_cost accumulates across all retry attempts.
 
