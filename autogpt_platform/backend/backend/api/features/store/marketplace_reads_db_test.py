@@ -1,8 +1,4 @@
-"""Public marketplace reads against a real Postgres.
-
-The creator views are SQL and the listing-version filter is a Prisma query,
-so ``db_test.py``'s mocks cannot run either; ``server`` starts the test stack.
-"""
+"""Public Marketplace reads and admin listing search against PostgreSQL."""
 
 from uuid import uuid4
 
@@ -12,17 +8,21 @@ import pytest
 
 from backend.api.features.store import db as store_db
 from backend.api.features.store import exceptions as store_exceptions
+from backend.api.features.store.marketplace_db_test_helpers import (
+    APPROVED,
+    PENDING,
+    REJECTED,
+    clean_up,
+    seed_creator,
+    seed_listing,
+)
 from backend.util.exceptions import NotFoundError
-
-APPROVED = prisma.enums.SubmissionStatus.APPROVED
-PENDING = prisma.enums.SubmissionStatus.PENDING
-REJECTED = prisma.enums.SubmissionStatus.REJECTED
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_creator_page_answers_once_a_workflow_is_listed(server):
     tag = uuid4().hex[:12]
-    owner = await _seed_creator(tag, avatar_url="")
+    owner = await seed_creator(tag, avatar_url="")
     graph_id = f"graph-{tag}"
     try:
         with pytest.raises(store_exceptions.CreatorNotFoundError):
@@ -30,21 +30,21 @@ async def test_a_creator_page_answers_once_a_workflow_is_listed(server):
         own = await store_db.get_store_creator(owner, include_unlisted=True)
         assert own.num_agents == 0
 
-        await _seed_listing(graph_id, owner, [APPROVED])
+        await seed_listing(graph_id, owner, [APPROVED])
 
         page = await store_db.get_store_creator(owner)
         assert page.num_agents == 1
     finally:
-        await _clean_up(owner, [graph_id])
+        await clean_up(owner, [graph_id])
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_creator_without_an_avatar_is_listed(server):
     tag = uuid4().hex[:12]
-    owner = await _seed_creator(tag, avatar_url=None)
+    owner = await seed_creator(tag, avatar_url=None)
     graph_id = f"graph-{tag}"
     try:
-        await _seed_listing(graph_id, owner, [APPROVED])
+        await seed_listing(graph_id, owner, [APPROVED])
 
         listed = await store_db.get_store_creators(search_query=tag)
         page = await store_db.get_store_creator(owner)
@@ -52,16 +52,16 @@ async def test_a_creator_without_an_avatar_is_listed(server):
         assert [(c.username, c.avatar_url) for c in listed.creators] == [(owner, None)]
         assert page.avatar_url is None
     finally:
-        await _clean_up(owner, [graph_id])
+        await clean_up(owner, [graph_id])
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_listing_graph_is_served_only_for_a_listed_version(server):
     tag = uuid4().hex[:12]
-    owner = await _seed_creator(tag, avatar_url="")
+    owner = await seed_creator(tag, avatar_url="")
     graph_id = f"graph-{tag}"
     try:
-        approved, pending, rejected = await _seed_listing(
+        approved, pending, rejected = await seed_listing(
             graph_id, owner, [APPROVED, PENDING, REJECTED]
         )
 
@@ -77,77 +77,29 @@ async def test_a_listing_graph_is_served_only_for_a_listed_version(server):
         with pytest.raises(NotFoundError):
             await store_db.get_available_graph(approved)
     finally:
-        await _clean_up(owner, [graph_id])
+        await clean_up(owner, [graph_id])
 
 
-async def _seed_creator(tag: str, avatar_url: str | None) -> str:
-    """A user and their marketplace profile; returns the username."""
-    username = f"creator-{tag}"
-    await prisma.models.User.prisma().create(
-        data={"id": username, "email": f"{username}@example.invalid"}
-    )
-    await prisma.models.Profile.prisma().create(
-        data={
-            "userId": username,
-            "name": username,
-            "username": username,
-            "avatarUrl": avatar_url,
-            "description": "",
-            "links": [],
-        }
-    )
-    return username
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_admin_listing_search_finds_owners_by_email_literally(server):
+    """An admin search matches the owner's email in the listings query itself,
+    with `_` as the character: `x_y` finds its owner's listing and not that of
+    an `xzy` lookalike. The slugs don't hold the term, so only the email can
+    match."""
+    tag = uuid4().hex[:12]
+    owner = await seed_creator(f"x_y{tag}", avatar_url="")
+    lookalike = await seed_creator(f"xzy{tag}", avatar_url="")
+    graph_ids = [f"graph-{uuid4().hex[:12]}", f"graph-{uuid4().hex[:12]}"]
+    try:
+        await seed_listing(graph_ids[0], owner, [PENDING])
+        await seed_listing(graph_ids[1], lookalike, [PENDING])
 
-
-async def _seed_listing(
-    graph_id: str, owner: str, statuses: list[prisma.enums.SubmissionStatus]
-) -> list[str]:
-    """One listing with a version per status, the first one active."""
-    await prisma.models.AgentGraph.prisma().create(
-        data={
-            "id": graph_id,
-            "version": 1,
-            "name": graph_id,
-            "description": "test",
-            "userId": owner,
-            "isActive": True,
-        }
-    )
-    listing = await prisma.models.StoreListing.prisma().create(
-        data={
-            "slug": graph_id,
-            "agentGraphId": graph_id,
-            "owningUserId": owner,
-            "hasApprovedVersion": APPROVED in statuses,
-        }
-    )
-    version_ids: list[str] = []
-    for number, status in enumerate(statuses, start=1):
-        version = await prisma.models.StoreListingVersion.prisma().create(
-            data={
-                "storeListingId": listing.id,
-                "version": number,
-                "agentGraphId": graph_id,
-                "agentGraphVersion": 1,
-                "name": graph_id,
-                "subHeading": "",
-                "description": "",
-                "imageUrls": [],
-                "categories": [],
-                "submissionStatus": status,
-            }
+        found = await store_db.get_admin_listings_with_versions(
+            search_query=f"x_y{tag}"
         )
-        version_ids.append(version.id)
-    await prisma.models.StoreListing.prisma().update(
-        where={"id": listing.id}, data={"activeVersionId": version_ids[0]}
-    )
-    return version_ids
 
-
-async def _clean_up(owner: str, graph_ids: list[str]) -> None:
-    # Deleting a listing cascades to its versions.
-    await prisma.models.StoreListing.prisma().delete_many(
-        where={"agentGraphId": {"in": graph_ids}}
-    )
-    await prisma.models.AgentGraph.prisma().delete_many(where={"id": {"in": graph_ids}})
-    await prisma.models.User.prisma().delete_many(where={"id": owner})
+        assert [listing.graph_id for listing in found.listings] == [graph_ids[0]]
+        assert found.pagination.total_items == 1
+    finally:
+        await clean_up(owner, graph_ids[:1])
+        await clean_up(lookalike, graph_ids[1:])

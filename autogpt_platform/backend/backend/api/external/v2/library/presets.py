@@ -53,8 +53,8 @@ from ..rate_limit import enforce, graph_exec_limiter
 from ..tenancy import (
     TenantContext,
     in_tenant,
-    require_paid_permission,
-    require_permission,
+    require_paid_resource_permission,
+    require_resource_permission,
 )
 from .helpers import assert_can_pay, assert_inputs_match
 
@@ -71,7 +71,9 @@ presets_router = APIRouter(tags=["presets"])
 async def list_presets(
     graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
     page: PageRequest = Depends(page_request),
-    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.READ_LIBRARY)
+    ),
 ) -> Page[AgentPreset]:
     """List presets in the user's library, optionally filtered by graph ID."""
     result = await library_db.list_presets(
@@ -95,7 +97,9 @@ async def list_presets(
 )
 async def get_preset(
     preset_id: str,
-    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.READ_LIBRARY)
+    ),
 ) -> AgentPreset:
     """Get details of a specific preset."""
     return AgentPreset.from_internal(
@@ -112,7 +116,7 @@ async def get_preset(
 async def create_preset(
     request: AgentPresetCreateRequest,
     auth: TenantContext = Security(
-        require_paid_permission(APIKeyPermission.WRITE_LIBRARY)
+        require_paid_resource_permission(APIKeyPermission.WRITE_LIBRARY)
     ),
 ) -> AgentPreset:
     """Create a new preset with saved inputs and credentials for an agent.
@@ -158,7 +162,7 @@ async def create_preset(
 async def setup_trigger(
     request: AgentTriggerSetupRequest,
     auth: TenantContext = Security(
-        require_paid_permission(
+        require_paid_resource_permission(
             APIKeyPermission.WRITE_LIBRARY, APIKeyPermission.RUN_AGENT
         )
     ),
@@ -200,7 +204,7 @@ async def update_preset(
     request: AgentPresetUpdateRequest,
     preset_id: str,
     auth: TenantContext = Security(
-        require_paid_permission(APIKeyPermission.WRITE_LIBRARY)
+        require_paid_resource_permission(APIKeyPermission.WRITE_LIBRARY)
     ),
 ) -> AgentPreset:
     """Update properties of a preset. Only provided fields will be updated.
@@ -247,7 +251,9 @@ async def update_preset(
 )
 async def delete_preset(
     preset_id: str,
-    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.WRITE_LIBRARY)
+    ),
 ) -> None:
     """Delete a preset. A webhook trigger's webhook is deregistered with it."""
     await _preset_in_tenant(preset_id, auth)
@@ -288,7 +294,9 @@ async def execute_preset(
     preset_id: str,
     request: AgentPresetRunRequest = AgentPresetRunRequest(),
     idempotency: Annotated[Optional[str], Depends(idempotency_key)] = None,
-    auth: TenantContext = Security(require_paid_permission(APIKeyPermission.RUN_AGENT)),
+    auth: TenantContext = Security(
+        require_paid_resource_permission(APIKeyPermission.RUN_AGENT)
+    ),
 ) -> AgentGraphRun:
     """
     Execute a preset, optionally overriding saved inputs and credentials.

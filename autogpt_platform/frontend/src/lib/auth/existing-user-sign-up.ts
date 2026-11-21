@@ -9,7 +9,6 @@ interface Args {
   user: { id: string; email: string; emailVerified?: boolean | null };
   getAuthContext: () => Promise<AuthEmailContext>;
   hasPlatformUser: (userId: string) => Promise<boolean>;
-  resetRedirectTo: string;
 }
 
 /**
@@ -37,7 +36,6 @@ export async function emailRepeatSignUp({
   user,
   getAuthContext,
   hasPlatformUser,
-  resetRedirectTo,
 }: Args) {
   if (user.emailVerified) return;
   try {
@@ -55,7 +53,7 @@ export async function emailRepeatSignUp({
         update: { password: await context.password.hash(randomToken(32)) },
       });
     }
-    await sendSetPasswordLink(context, user, resetRedirectTo);
+    await sendSetPasswordLink(context, user);
   } catch (error) {
     console.error("Failed to handle a repeat sign-up", {
       error: error instanceof Error ? error.message : String(error),

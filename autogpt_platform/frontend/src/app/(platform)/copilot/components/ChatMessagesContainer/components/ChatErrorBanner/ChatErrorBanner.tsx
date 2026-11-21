@@ -9,9 +9,11 @@ import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   error: Error;
+  /** Sends the message again, where the guidance offers it. */
+  onResend?: () => void;
 }
 
-export function ChatErrorBanner({ error }: Props) {
+export function ChatErrorBanner({ error, onResend }: Props) {
   const guidance = describeChatError(error);
   const isBillingEnabled = useIsBillingEnabled();
   // Without billing (most self-hosted installs) there are no plans to pick
@@ -38,7 +40,16 @@ export function ChatErrorBanner({ error }: Props) {
           {note}
         </Text>
       ) : null}
-      {action ? (
+      {action === "resend" && onResend ? (
+        <Button
+          variant="secondary"
+          size="small"
+          className="mt-3"
+          onClick={onResend}
+        >
+          {ACTION_LABELS.resend}
+        </Button>
+      ) : action && action !== "resend" ? (
         <Button
           as="NextLink"
           href={hrefFor(action)}
@@ -57,9 +68,10 @@ const ACTION_LABELS: Record<ChatErrorAction, string> = {
   "sign-in": "Sign in",
   "new-chat": "Start a new chat",
   plans: "See plans",
+  resend: "Send again",
 };
 
-function hrefFor(action: ChatErrorAction) {
+function hrefFor(action: Exclude<ChatErrorAction, "resend">) {
   if (action === "new-chat") return "/copilot";
   if (action === "plans") return "/settings/billing";
   const here =

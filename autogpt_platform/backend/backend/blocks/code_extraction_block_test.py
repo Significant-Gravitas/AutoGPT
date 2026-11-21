@@ -24,7 +24,7 @@ def test_extract_code_takes_each_closed_fence_of_the_language(text: str, code: s
 
 def test_extract_code_scans_unclosed_fences_in_linear_time():
     text = "```py\nx" * 20_000
-    started = time.perf_counter()
+    started = time.thread_time()
     assert CodeExtractionBlock().extract_code(text, "py") == ""
     # A pattern that rescans from every fence takes over 10 s on this input.
-    assert time.perf_counter() - started < 1.0
+    assert time.thread_time() - started < 1.0

@@ -49,7 +49,8 @@ vi.mock("../provision-platform-user", () => ({
   provisionPlatformUser: vi.fn(async () => "created"),
   platformUserExists: vi.fn(async () => false),
 }));
-vi.mock("../email", () => ({ sendAuthEmail: vi.fn() }));
+const sendAuthEmail = vi.hoisted(() => vi.fn());
+vi.mock("../email", () => ({ sendAuthEmail }));
 // Sign-up looks the address's domain up in DNS; these addresses are made up.
 vi.mock("../email-deliverability", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../email-deliverability")>()),
@@ -62,6 +63,9 @@ vi.mock("../disposable-email", async (importOriginal) => ({
 
 const baseURL = "http://localhost:3000";
 const callbackURL = `${baseURL}/auth/callback?provider=microsoft`;
+// Where a sign-in that waits on an emailed code lands (require-sign-in-code.ts).
+const CODE_SENT =
+  "/login?error=sign_in_code_sent&error_description=sign_in_code_sent";
 const PERSONAL_TENANT = "9188040d-6c67-4c5b-b112-36a304b66dad";
 
 type Handler = (request: Request) => Promise<Response>;
@@ -183,7 +187,16 @@ async function continueWithMicrosoft(
 afterEach(() => {
   vi.unstubAllEnvs();
   photoRequests.length = 0;
+  sendAuthEmail.mockReset();
 });
+
+// Who was emailed a sign-in code.
+function codesSentTo() {
+  return sendAuthEmail.mock.calls
+    .map(([args]) => args)
+    .filter((args) => args.type === "sign_in_code")
+    .map((args) => args.to);
+}
 
 // Where a refused sign-up lands: the page, and the `error` code it explains.
 // Better Auth also sends the refusal's message, which nothing shows.
@@ -230,7 +243,7 @@ describe("Continue with Microsoft", () => {
     expect(new URL(url).searchParams.get("scope")).toBe("openid profile email");
   });
 
-  it("signs a work address its organization verified in to the account that uses it", async () => {
+  it("asks for a code before a work address its organization verified joins the account that uses it", async () => {
     const { handler, db } = await createAuthHandler();
     existingAccount(db, "pat@company.example");
 
@@ -242,18 +255,13 @@ describe("Continue with Microsoft", () => {
       xms_edov: true,
     });
 
-    expect(landing).toBe(callbackURL);
+    // Microsoft vouches for the domain, but doesn't run its mailbox: the code
+    // emailed there finishes the sign-in (sign-in-code-flow.test.ts).
+    expect(landing).toBe(CODE_SENT);
+    expect(codesSentTo()).toEqual(["pat@company.example"]);
     expect(db.UserAuthIdentity).toHaveLength(1);
-    expect(db.UserAuthAccount).toEqual([
-      expect.objectContaining({
-        providerId: "microsoft",
-        accountId: "work-id",
-        userId: "existing-user",
-      }),
-    ]);
-    expect(db.UserAuthSession).toEqual([
-      expect.objectContaining({ userId: "existing-user" }),
-    ]);
+    expect(db.UserAuthAccount).toEqual([]);
+    expect(db.UserAuthSession).toEqual([]);
   });
 
   it.each([
@@ -365,27 +373,34 @@ describe("Continue with Microsoft", () => {
     expect(db.UserAuthSession).toEqual([]);
   });
 
-  it("keeps an AutoGPT team address to Google sign-up", async () => {
+  it("keeps an AutoGPT team address to Google sign-up, and answers an unconfirmed one as any other", async () => {
     const { handler, db } = await createAuthHandler();
-
-    // Only the team's own tenant can confirm an @agpt.co address.
-    const landing = await continueWithMicrosoft(handler, {
+    const teamAddress = {
       sub: "pairwise",
       oid: "work-id",
       tid: "agpt-tenant",
       email: "someone@agpt.co",
+    };
+
+    // Only the team's own tenant can confirm an @agpt.co address.
+    const confirmed = await continueWithMicrosoft(handler, {
+      ...teamAddress,
       xms_edov: true,
     });
+    // Unconfirmed, it gets every provider's answer for an unverified address,
+    // the same as when an account uses it.
+    const unconfirmed = await continueWithMicrosoft(handler, teamAddress);
 
-    expect(refusal(landing)).toEqual({
+    expect(refusal(confirmed)).toEqual({
       path: "/login",
       error: "team_email_requires_google",
     });
+    expect(unconfirmed).toBe("/login?error=account_not_linked");
     expect(db.UserAuthIdentity).toEqual([]);
     expect(db.UserAuthSession).toEqual([]);
   });
 
-  it("still signs a team member's existing account in with Microsoft", async () => {
+  it("lets a team member's existing account add Microsoft with the code emailed to it", async () => {
     const { handler, db } = await createAuthHandler();
     existingAccount(db, "pat@agpt.co");
 
@@ -397,13 +412,9 @@ describe("Continue with Microsoft", () => {
       xms_edov: true,
     });
 
-    expect(landing).toBe(callbackURL);
-    expect(db.UserAuthAccount).toEqual([
-      expect.objectContaining({
-        providerId: "microsoft",
-        userId: "existing-user",
-      }),
-    ]);
+    expect(landing).toBe(CODE_SENT);
+    expect(codesSentTo()).toEqual(["pat@agpt.co"]);
+    expect(db.UserAuthAccount).toEqual([]);
   });
 
   it("still signs in an account already linked to that Microsoft login once its address stops counting", async () => {

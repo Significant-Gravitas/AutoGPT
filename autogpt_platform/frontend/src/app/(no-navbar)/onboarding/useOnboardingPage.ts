@@ -1,11 +1,13 @@
 import { postV1CompleteOnboardingStep } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import * as Sentry from "@sentry/nextjs";
 import { trackAdsConversion } from "@/services/analytics/google-ads";
 import { trackTrialCheckoutAbandoned } from "@/services/analytics/monetization-analytics";
 import { environment } from "@/services/environment";
 import { useTrialCheckoutReturn } from "@/services/trials/useTrialCheckoutReturn";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { pendingSetupInputs } from "./helpers";
 import { stepKey } from "./progress";
 import { Step, useOnboardingWizardStore } from "./store";
 import { onboardingStepKey, trackOnboardingStep } from "./tracking";
@@ -39,6 +41,7 @@ export function useOnboardingPage() {
   const progress = useWizardProgress({
     userID: user?.id ?? null,
     ready: isReady,
+    isUserSettled: !isUserLoading,
     steps,
     hasPaywall: isPaymentEnabled,
   });
@@ -57,6 +60,26 @@ export function useOnboardingPage() {
     userID: string | undefined;
     message: string;
   } | null>(null);
+  const setupWaitingFor = pendingSetupInputs({
+    hasAccount: !!user,
+    isLayoutReady: isReady,
+    isProgressReady: progress.isReady,
+  });
+  // Once per page: the placeholder remounts as the page moves between its
+  // loading states, and one slow setup is one report.
+  const reportedSlowSetup = useRef(false);
+
+  function reportSlowSetup() {
+    if (reportedSlowSetup.current) return;
+    reportedSlowSetup.current = true;
+    Sentry.captureMessage("Onboarding setup did not load in time", {
+      level: "warning",
+      tags: {
+        context: "onboarding-setup",
+        waiting_for: setupWaitingFor.join(","),
+      },
+    });
+  }
 
   useEffect(() => {
     return () => {
@@ -153,5 +176,7 @@ export function useOnboardingPage() {
     totalSteps,
     trialConfirmation,
     paidConfirmation,
+    setupWaitingFor,
+    reportSlowSetup,
   };
 }
