@@ -3580,24 +3580,30 @@ class Scheduler(AppService):
         ``ConflictingIdError`` is raised and the job is left as it was.
         """
         assert job_args.schedule_id is not None
-        self._check_schedule_capacity(job_args, replaces=replaces)
-        job = self.scheduler.add_job(
-            dispatch_func,
-            kwargs=job_args.model_dump(mode="json"),
-            name=name,
-            trigger=trigger,
-            jobstore=Jobstores.EXECUTION.value,
-            replace_existing=replace_existing,
-            id=job_args.schedule_id,
-        )
-        # Index AFTER add_job: a pre-add row would race the read path's
-        # dangling-row cleanup (row visible, job not yet persisted → row
-        # deleted → schedule invisible until reconcile).
-        self._upsert_schedule_index_row(job.id, job_args)
-        # Invalidate the read cache so the new job shows up on the next
-        # ``get_execution_schedules`` call instead of waiting up to
-        # ``_JOBS_CACHE_TTL_S`` seconds for the cached list to expire.
-        self._invalidate_jobs_cache()
+        # Counting the owner's schedules and adding this one are one step:
+        # two creates that both counted the last free slot would both take
+        # it (#16910). The scheduler runs as a single process, so holding a
+        # lock in it serializes every create, through the index and cache
+        # the next count reads.
+        with self._schedule_capacity_lock:
+            self._check_schedule_capacity(job_args, replaces=replaces)
+            job = self.scheduler.add_job(
+                dispatch_func,
+                kwargs=job_args.model_dump(mode="json"),
+                name=name,
+                trigger=trigger,
+                jobstore=Jobstores.EXECUTION.value,
+                replace_existing=replace_existing,
+                id=job_args.schedule_id,
+            )
+            # Index AFTER add_job: a pre-add row would race the read path's
+            # dangling-row cleanup (row visible, job not yet persisted → row
+            # deleted → schedule invisible until reconcile).
+            self._upsert_schedule_index_row(job.id, job_args)
+            # Invalidate the read cache so the new job shows up on the next
+            # ``get_execution_schedules`` call instead of waiting up to
+            # ``_JOBS_CACHE_TTL_S`` seconds for the cached list to expire.
+            self._invalidate_jobs_cache()
         return job
 
     def _check_schedule_capacity(
@@ -4160,6 +4166,8 @@ class Scheduler(AppService):
     # Process-wide; guards both lists and the version. A threading lock because
     # APScheduler's thread and the Pyro RPC workers both read.
     _jobs_cache_lock = threading.Lock()
+    # Held while a create counts its owner's schedules and adds its own.
+    _schedule_capacity_lock = threading.RLock()
     # Bumped by every invalidation. A read that started before one must not
     # write its result back: it may predate the mutation.
     _jobs_cache_version: int = 0
