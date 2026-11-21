@@ -100,8 +100,10 @@ async def test_uncollectible_invoice_nobody_must_pay_requires_no_notice(
 
 
 @pytest.mark.asyncio
-async def test_uncollectible_invoice_of_a_replaced_plan_requires_no_notice():
-    """Paying it would reactivate the plan the customer replaced."""
+async def test_uncollectible_invoice_of_a_replaced_plan_ends_it_without_notice():
+    """Paying it would reactivate the plan the customer replaced, so no
+    notice asks for it. The plan is ended and its bill voided instead, as
+    for an open bill: left alone, it stays payable through its link."""
     with World() as world:
         invoice = _superseded_by_a_newer_plan(world, balance=0)
         world.stripe.invoices["in_old"]["status"] = "uncollectible"
@@ -109,4 +111,5 @@ async def test_uncollectible_invoice_of_a_replaced_plan_requires_no_notice():
         outcome = await handle_subscription_payment_failure(invoice)
 
     assert outcome == "ignored"
-    assert world.stripe.cancelled == []
+    assert world.stripe.cancelled == ["sub_old"]
+    assert world.stripe.voided == ["in_old"]
