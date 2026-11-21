@@ -9,6 +9,7 @@ import prisma.enums
 import prisma.errors
 import prisma.models
 import prisma.types
+import pydantic
 from starlette.datastructures import Headers
 
 import backend.api.features.store.image_gen as store_image_gen
@@ -24,6 +25,7 @@ from backend.api.features.orgs.db import resolve_member_tenancy
 from backend.api.features.store.store_listing_versions import (
     installable_store_version_where,
 )
+from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.data.db import get_database_schema, transaction
 from backend.data.execution import get_graph_execution
 from backend.data.expert_attribution import resolve_attributable_expert
@@ -1719,6 +1721,7 @@ async def create_folder(
         FolderAlreadyExistsError: If a folder with this name already exists.
         NotFoundError: If the parent folder doesn't exist.
     """
+    _check_folder_text(name=name, icon=icon, color=color)
     logger.debug(f"Creating folder '{name}' for user #{user_id}")
 
     # Authorization: FK only checks existence, not ownership.
@@ -1812,6 +1815,7 @@ async def update_folder(
         NotFoundError: If the folder doesn't exist.
         DatabaseError: If there's a database error.
     """
+    _check_folder_text(name=name, icon=icon, color=color)
     logger.debug(f"Updating folder #{folder_id} for user #{user_id}")
 
     # Authorization: update uses where={"id": ...} without userId,
@@ -1848,6 +1852,22 @@ async def update_folder(
         agent_count=len(folder.LibraryAgents) if folder.LibraryAgents else 0,
         subfolder_count=len(folder.Children) if folder.Children else 0,
     )
+
+
+def _check_folder_text(
+    name: Optional[str], icon: Optional[str], color: Optional[str]
+) -> None:
+    """Hold a folder's text to the request models' rules, for the callers
+    (AutoPilot's folder tools) that reach the writers without one."""
+    try:
+        library_model.FolderUpdateRequest(name=name, icon=icon, color=color)
+    except pydantic.ValidationError as e:
+        raise FolderValidationError(
+            "; ".join(
+                f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+                for error in bounded_validation_errors(e)
+            )
+        ) from None
 
 
 async def move_folder(
