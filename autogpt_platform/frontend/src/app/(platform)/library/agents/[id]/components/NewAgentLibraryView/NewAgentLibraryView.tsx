@@ -56,6 +56,7 @@ export function NewAgentLibraryView() {
     handleSelectRun,
     handleCountsChange,
     handleClearSelectedRun,
+    handleRunDeleted,
     handleScheduleDeleted,
     onRunInitiated,
     onTriggerSetup,
@@ -288,6 +289,7 @@ export function NewAgentLibraryView() {
             selectedRunId={activeItemId ?? undefined}
             onSelectRun={handleSelectRun}
             onClearSelectedRun={handleClearSelectedRun}
+            onRunDeleted={handleRunDeleted}
             onScheduleDeleted={handleScheduleDeleted}
             onTabChange={setActiveTab}
             onCountsChange={handleCountsChange}

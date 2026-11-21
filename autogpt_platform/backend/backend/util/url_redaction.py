@@ -84,6 +84,9 @@ _MAX_QUERY_CREDENTIALS = 16
 # `clientsecret`, and header names as Sentry shows an ASGI scope's bytes
 # (`b'cookie'`), are masked. The accepted cost: a name that only contains one of
 # these words, such as `author` or `design`, has its value masked too.
+# `backend.util.request` also drops, on a redirect to another origin, every
+# header this matches: narrowing it lets more headers through there, widening
+# it drops more.
 _CREDENTIAL_NAME = re.compile(
     r"(?i)auth|code|cookie|credential|csrf|jwt|key|password|secret|sess|sid|sig"
     r"|state|token|sec-websocket-protocol|content-mac"

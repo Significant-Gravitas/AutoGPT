@@ -70,6 +70,10 @@ PLAYWRIGHT_JOURNEY_COST_PER_NODE=1 PLAYWRIGHT_JOURNEY_TIER=PRO \
 pnpm exec playwright test --config playwright.journeys.config.ts --project hosted run-correctness --headed
 ```
 
+Journeys that call the backend directly, such as a webhook delivery, use
+`PLAYWRIGHT_BACKEND_URL` (default `http://localhost:8006`). Set it whenever
+`PLAYWRIGHT_BASE_URL` points at a remote stack.
+
 The frontend must be built with `NEXT_PUBLIC_PW_TEST=true`; only that build
 reads the hosted flag values the fixtures hand it.
 `PLAYWRIGHT_JOURNEY_COST_PER_NODE` tells cost assertions what the stack bills

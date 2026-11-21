@@ -326,7 +326,8 @@ async def test_boot_pass_moves_shut_down_models_once_and_nothing_else(
     in either stored spelling, o1-mini included, and logs what it moved. It
     leaves a model still being served (the retire CLI moves those), a live
     model and other blocks' values alone: the Codex node's ``gpt-5.1-codex``
-    (a legacy key in Codex's own list) and an image node's model outside
+    (which the Codex block reads as its own ``gpt-5.3-codex``) and an image
+    node's model outside
     ``LLMModel`` too. A second boot changes nothing and logs no move."""
     nodes = {
         "o3-mini": await _seed_node(retirement_env, "o3-mini"),
@@ -382,8 +383,9 @@ async def test_boot_pass_rewrites_only_llm_block_preset_overrides(
     retirement_env, caplog
 ):
     """A preset's override of an LLM node moves off a model OpenAI has shut
-    down. The same value in a Codex node's override (Codex's own list offers
-    gpt-5.1-codex), an image node's override, and objects a workflow input
+    down. The same value in a Codex node's override (the Codex block reads
+    gpt-5.1-codex as its own gpt-5.3-codex), an image node's override, and
+    objects a workflow input
     holds stay as they are, also under the catch-all that sends values outside
     ``LLMModel`` to the default model."""
     llm_graph, llm_node = await _seed_graph(retirement_env, "gpt-6.1-sol")
