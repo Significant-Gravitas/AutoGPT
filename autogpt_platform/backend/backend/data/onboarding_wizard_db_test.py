@@ -225,13 +225,17 @@ async def test_an_older_save_waiting_on_a_newer_ones_write_is_refused(
         with pytest.raises(OnboardingWizardConflict):
             await older
     finally:
-        if older is not None:
-            older.cancel()
-            # Joined on every path, so the save can't still be using the
-            # database when the next test starts.
-            with contextlib.suppress(asyncio.CancelledError, OnboardingWizardConflict):
-                await older
-        await newer_client.disconnect(db.DISCONNECT_TIMEOUT)
+        try:
+            if older is not None:
+                older.cancel()
+                # Joined on every path, so the save can't still be using the
+                # database when the next test starts.
+                with contextlib.suppress(
+                    asyncio.CancelledError, OnboardingWizardConflict
+                ):
+                    await older
+        finally:
+            await newer_client.disconnect(db.DISCONNECT_TIMEOUT)
 
     row = await read_row(user_id)
     assert (row.wizardProgress, row.wizardRevision) == (
