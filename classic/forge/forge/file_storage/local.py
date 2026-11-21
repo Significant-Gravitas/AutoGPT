@@ -159,6 +159,7 @@ class LocalFileStorage(FileStorage):
         source = self.get_path(source)
         destination = self.get_path(destination)
         if source.is_file():
+            destination.parent.mkdir(exist_ok=True, parents=True)
             destination.write_bytes(source.read_bytes())
         else:
             destination.mkdir(exist_ok=True, parents=True)
