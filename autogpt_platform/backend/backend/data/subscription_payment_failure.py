@@ -101,10 +101,16 @@ class FailedInvoice(BaseModel):
 
     @property
     def is_unpaid(self) -> bool:
+        return self.bill_is_payable and self.invoice.get("status") == "open"
+
+    @property
+    def bill_is_payable(self) -> bool:
+        """The unpaid plan's latest bill can still be paid: ``open``, or
+        ``uncollectible`` once Stripe's retries ran out, through its link."""
         return (
             self.is_latest
             and not self.waits_on_pending_update
-            and self.invoice.get("status") == "open"
+            and self.invoice.get("status") in _PAYABLE_INVOICE_STATUSES
             and self.subscription.get("status") in _UNPAID_STATUSES
         )
 
@@ -121,9 +127,10 @@ async def handle_subscription_payment_failure(invoice: dict) -> PaymentFailureOu
     - A payment still processing (e.g. a bank debit) is left to settle before
       anything else: the wallet is not touched and the tier sync cuts access.
     - A subscription a newer active or trialing plan replaced is cancelled
-      and its unpaid invoices voided, never paid: paying would reactivate
-      it, and its update event would then cancel the newer plan as a
-      duplicate. A wallet debit already started for it is refunded.
+      and its unpaid invoices voided, never paid, whether its latest bill
+      is ``open`` or ``uncollectible``: paying would reactivate it, and its
+      update event would then cancel the newer plan as a duplicate. A
+      wallet debit already started for it is refunded.
     - An invoice a pending update waits on, or one Stripe has since paid or
       voided, covers nothing: the change it holds applies only once paid.
     - A wallet payment already started for this invoice is finished first.
@@ -141,7 +148,7 @@ async def handle_subscription_payment_failure(invoice: dict) -> PaymentFailureOu
     payment = await find_wallet_payment(failed.user_id, failed.invoice_id)
     if await _left_to_settle(failed, payment):
         return PaymentFailureOutcome.IGNORED
-    replaced = failed.is_unpaid and await replaced_by_newer_plan(
+    replaced = failed.bill_is_payable and await replaced_by_newer_plan(
         failed.customer_id, failed.subscription
     )
     if payment is not None:
