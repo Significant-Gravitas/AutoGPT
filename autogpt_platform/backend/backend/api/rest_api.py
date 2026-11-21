@@ -103,6 +103,7 @@ from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi, start_metrics_server
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
 from backend.util.process import freeze_startup_heap
+from backend.util.request_credentials import remember_request_credentials
 from backend.util.service import UnhealthyServiceError
 from backend.util.trusted_proxies import uvicorn_forwarded_allow_ips
 from backend.util.workspace_storage import shutdown_workspace_storage
@@ -117,6 +118,7 @@ from .external.v2.mcp_server import (
 )
 from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
+from .features.integrations.sign_in_connection import sign_in_connection_router
 from .middleware.analytics import AnalyticsContextMiddleware
 from .middleware.body_limit import RequestBodyLimitMiddleware
 from .middleware.compression import BoundedGZipMiddleware
@@ -325,6 +327,8 @@ app.add_middleware(AnalyticsContextMiddleware)
 
 # Add GZip compression middleware for large responses (like /api/blocks)
 app.add_middleware(BoundedGZipMiddleware)
+# Keeps each request's credentials for the error reports raised handling it.
+remember_request_credentials(app)
 
 # Add 401 responses to authenticated endpoints in OpenAPI spec
 add_auth_responses_to_openapi(app)
@@ -337,7 +341,9 @@ sort_openapi(app)
 instrument_fastapi(app, service_name="rest-api", expose_endpoint=False)
 
 
-add_exception_handlers(app)
+add_exception_handlers(
+    app, server_error_detail=False, expose_missing_config_detail=True
+)
 
 app.include_router(
     backend.api.features.desktop_preview.router, tags=["v1"], prefix="/api"
@@ -400,6 +406,11 @@ app.include_router(
     auth_email_routes.auth_email_router,
     prefix="/api/auth/email",
     tags=["auth-email"],
+)
+app.include_router(
+    sign_in_connection_router,
+    prefix="/api/auth",
+    tags=["integrations"],
 )
 app.include_router(
     integrations_router,

@@ -72,6 +72,7 @@ async def create_graph_execution_schedule(
         graph_id=graph_id,
         version=schedule_params.graph_version,
         user_id=user_id,
+        organization_id=ctx.org_id,
     )
     if not graph:
         raise HTTPException(

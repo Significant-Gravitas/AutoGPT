@@ -1,13 +1,16 @@
 import asyncio
 import json
 import logging
+import sys
 from collections import Counter
+from functools import partial
 from typing import Awaitable, Callable, Dict, Optional, Set
 
 from fastapi import WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
 from backend.api.model import WSMessage, WSMethod
+from backend.api.ws_outbox import ENTRY_OVERHEAD_BYTES, WSBacklog, WSOutbox
 from backend.data import redis_client as redis
 from backend.data.db_accessors import execution_db
 from backend.data.event_bus import _assert_no_wildcard
@@ -93,6 +96,10 @@ class ConnectionManager:
         self._ws_notifications: dict[WebSocket, str] = {}
         # websocket → {shard: the one connection it subscribes over there}
         self._ws_streams: dict[WebSocket, dict[Shard, _ShardStream]] = {}
+        # websocket → its events on their way to the client, from every shard
+        self._outboxes: dict[WebSocket, WSOutbox] = {}
+        # what every socket's outbox holds together
+        self._backlog = WSBacklog()
         # user_id → that user's sockets on this process
         self._user_sockets: dict[str, set[WebSocket]] = {}
         # shard → shard streams open to it from this process
@@ -156,9 +163,16 @@ class ConnectionManager:
         self.active_connections.discard(websocket)
         self._release_user_socket(user_id, websocket)
         # Stop the shard streams before dropping bookkeeping to avoid leaks.
-        for shard, stream in self._ws_streams.pop(websocket, {}).items():
-            await stream.stop()
-            self._release_stream(user_id, shard)
+        try:
+            for shard, stream in self._ws_streams.pop(websocket, {}).items():
+                await stream.stop()
+                self._release_stream(user_id, shard)
+        finally:
+            # Even when a stop is cancelled (the server shutting down), so the
+            # socket's backlog stops counting against the process.
+            outbox = self._outboxes.pop(websocket, None)
+            if outbox is not None:
+                await outbox.stop()
         self._ws_notifications.pop(websocket, None)
         for channel_key in self._ws_subs.pop(websocket, {}):
             subscribers = self.subscriptions.get(channel_key)
@@ -247,6 +261,10 @@ class ConnectionManager:
     ) -> None:
         """SSUBSCRIBE on the socket's stream for the channel's shard, opening
         that stream if this is the socket's first channel there."""
+        outbox = self._outbox_for(user_id, websocket)
+        if not outbox.is_open:
+            # Retired for falling behind: a stream would read for nothing.
+            raise EventStreamLostError(f"{full_channel}: the socket is closing")
         shard = redis.resolve_shard_for_channel(full_channel)
         streams = self._ws_streams.setdefault(websocket, {})
         stream = streams.get(shard)
@@ -257,7 +275,7 @@ class ConnectionManager:
             async def on_lost() -> None:
                 await self._close_for_lost_stream(websocket)
 
-            stream = streams[shard] = _ShardStream(on_lost)
+            stream = streams[shard] = _ShardStream(on_lost, outbox)
             self._streams_per_shard[shard] += 1
             self._user_streams[(user_id, shard)] += 1
         try:
@@ -280,14 +298,51 @@ class ConnectionManager:
                 self._release_stream(user_id, shard)
             return
 
+    def _outbox_for(self, user_id: str, websocket: WebSocket) -> WSOutbox:
+        """The socket's outbox, made on first use; disconnect_socket drops it."""
+        outbox = self._outboxes.get(websocket)
+        if outbox is None:
+
+            async def on_overflow(why: str) -> None:
+                await self._close_for_slow_client(websocket, user_id, why)
+
+            outbox = self._outboxes[websocket] = WSOutbox(on_overflow, self._backlog)
+        return outbox
+
     async def _close_for_lost_stream(self, websocket: WebSocket) -> None:
         """Close a socket whose events stopped arriving, so the client
         reconnects, resubscribes and refetches what it missed."""
         logger.warning("Closing WebSocket after its event stream was lost")
+        await self._close_to_resync(websocket, "Event stream interrupted")
+
+    async def _close_for_slow_client(
+        self, websocket: WebSocket, user_id: str, why: str
+    ) -> None:
+        """Close a socket whose client fell too far behind: the events it
+        would get next are dropped, so it resyncs as after a lost stream. Its
+        outbox shut before this ran, which retires the socket: ``_subscribe``
+        refuses it new streams from then on."""
+        logger.warning(
+            f"Closing WebSocket for user #{user_id}: its client fell too far "
+            f"behind ({why})"
+        )
         try:
-            await websocket.close(
-                code=WS_CLOSE_EVENT_STREAM_LOST, reason="Event stream interrupted"
-            )
+            # Nothing they read would reach the client now, and the close may
+            # never get through a transport the client has stopped reading. A
+            # copy: the socket's own messages can still drop streams meanwhile.
+            for stream in list(self._ws_streams.get(websocket, {}).values()):
+                try:
+                    await stream.stop()
+                except Exception:
+                    logger.warning(
+                        "Failed to stop a slow client's stream", exc_info=True
+                    )
+        finally:
+            await self._close_to_resync(websocket, "Client fell behind")
+
+    async def _close_to_resync(self, websocket: WebSocket, reason: str) -> None:
+        try:
+            await websocket.close(code=WS_CLOSE_EVENT_STREAM_LOST, reason=reason)
         except Exception as e:
             if not _is_ws_close_race(e, websocket):
                 logger.warning("Failed to close WebSocket", exc_info=True)
@@ -429,12 +484,15 @@ class ConnectionManager:
 
 
 class _ShardStream:
-    """One socket's SSUBSCRIBEs on one Redis shard, all over one connection."""
+    """One socket's SSUBSCRIBEs on one Redis shard, all over one connection.
+    Its events go through the socket's outbox, so a client that reads slowly
+    never holds up reading Redis."""
 
-    def __init__(self, on_lost: LostHandler) -> None:
+    def __init__(self, on_lost: LostHandler, outbox: WSOutbox) -> None:
         # full channel → handler
         self.handlers: dict[str, MessageHandler] = {}
         self._on_lost = on_lost
+        self._outbox = outbox
         self._subscription: ShardedSubscription | None = None
         self._task: asyncio.Task | None = None
         # SUNSUBSCRIBEs sent per channel whose confirmation is still on its way
@@ -449,6 +507,10 @@ class _ShardStream:
 
     async def add(self, channel: str, handler: MessageHandler) -> None:
         _assert_no_wildcard(channel)
+        if self._stopping:
+            # Retired with its socket closing; reopened, it would read for a
+            # client that is gone.
+            raise EventStreamLostError(f"{channel}: the stream has stopped")
         if channel in self._subscribing:
             raise RuntimeError(f"{channel} is already being subscribed")
         # In place before the SSUBSCRIBE: the pump reads a message queued
@@ -456,6 +518,11 @@ class _ShardStream:
         self.handlers[channel] = handler
         try:
             subscription = await self._open_or_subscribe(channel)
+            if self._stopping or not self._outbox.is_open:
+                # Stopped while this opened its connection, so that stop
+                # closed nothing, or about to be, the socket having been
+                # retired meanwhile: closed below, as no pump will read it.
+                raise EventStreamLostError(f"{channel}: the stream has stopped")
         except BaseException:
             self.handlers.pop(channel, None)
             if not self.handlers:
@@ -487,7 +554,7 @@ class _ShardStream:
         self._subscribing[channel] = confirmed
         try:
             # SSUBSCRIBE has no socket timeout of its own.
-            async with asyncio.timeout(_SUBSCRIBE_TIMEOUT_S):
+            async with _subscribe_deadline():
                 await subscription.add(channel)
                 await confirmed
         except TimeoutError:
@@ -611,10 +678,31 @@ class _ShardStream:
             handler = self.handlers.get(channel) if channel else None
             if handler is None:
                 continue
-            try:
-                await handler(message.get("data"))
-            except Exception:
-                logger.exception(f"Websocket message-handler failed for {channel}")
+            # Never awaited here: a send waiting on a slow client would hold
+            # up the next read, a subscribe's confirmation included.
+            data = message.get("data")
+            self._outbox.put(
+                partial(self._deliver, channel, handler, data),
+                sys.getsizeof(data) + ENTRY_OVERHEAD_BYTES,
+            )
+
+    async def _deliver(
+        self, channel: str, handler: MessageHandler, data: Optional[bytes | str]
+    ) -> None:
+        # Unsubscribed, or subscribed again, while it waited: it belongs to a
+        # subscription the client has let go of.
+        if self.handlers.get(channel) is not handler:
+            return
+        try:
+            await handler(data)
+        except Exception:
+            logger.exception(f"Websocket message-handler failed for {channel}")
+
+
+def _subscribe_deadline() -> asyncio.Timeout:
+    """The bound on Redis confirming one SSUBSCRIBE, from now: a function of
+    its own so a test can expire it at the point it chooses."""
+    return asyncio.timeout(_SUBSCRIBE_TIMEOUT_S)
 
 
 def graph_exec_channel_key(user_id: str, *, graph_exec_id: str) -> str:

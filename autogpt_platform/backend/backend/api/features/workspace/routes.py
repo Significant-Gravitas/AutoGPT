@@ -24,6 +24,7 @@ from backend.copilot.rate_limit import (
     enforce_payment_paywall,
     get_workspace_storage_limit_bytes,
 )
+from backend.copilot.tools.skills import invalidate_skills_index_for_path
 from backend.data.skill_capacity import SkillLimitError
 from backend.data.workspace import (
     WorkspaceFile,
@@ -323,9 +324,14 @@ async def delete_workspace_file(
         raise fastapi.HTTPException(status_code=404, detail="Workspace not found")
 
     manager = WorkspaceManager(user_id, workspace.id)
-    deleted = await manager.delete_file(file_id)
-    if not deleted:
+    file = await manager.get_file_info(file_id)
+    if file is None:
         raise fastapi.HTTPException(status_code=404, detail="File not found")
+    try:
+        if not await manager.delete_file(file_id):
+            raise fastapi.HTTPException(status_code=404, detail="File not found")
+    finally:
+        await invalidate_skills_index_for_path(user_id, file.path)
 
     return DeleteFileResponse(deleted=True)
 
@@ -348,6 +354,9 @@ async def rename_workspace_file_route(
     workspace = await get_workspace(user_id)
     if workspace is None:
         raise fastapi.HTTPException(status_code=404, detail="Workspace not found")
+    file = await get_workspace_file(file_id, workspace.id)
+    if file is None:
+        raise fastapi.HTTPException(status_code=404, detail="File not found")
     try:
         renamed = await rename_workspace_file(file_id, workspace.id, payload.name)
     except UniqueViolationError:
@@ -356,6 +365,9 @@ async def rename_workspace_file_route(
         )
     except SkillLimitError as exc:
         raise fastapi.HTTPException(status_code=409, detail=str(exc))
+    finally:
+        # A rename stays in its folder, including after a lost acknowledgement.
+        await invalidate_skills_index_for_path(user_id, file.path)
     if renamed is None:
         raise fastapi.HTTPException(status_code=404, detail="File not found")
     expert_by_session = await _expert_ids_by_session(user_id, [renamed])

@@ -3,6 +3,7 @@ fallback; a page that loads does not. Fixtures are shaped like what each site
 served an anonymous fetch and a headless browser on 3 Nov 2026."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import urlparse
 
 import pytest
 
@@ -154,6 +155,7 @@ async def test_browser_navigate_names_the_refusing_site_and_a_fallback(
         patch(
             "backend.copilot.tools.agent_browser.validate_url_host",
             new_callable=AsyncMock,
+            side_effect=lambda u, *a, **k: (urlparse(u), False, ["1.2.3.4"]),
         ),
         patch("backend.copilot.tools.agent_browser._run", side_effect=fake_run),
         patch(
