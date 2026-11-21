@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import gzip
 import json
 import socket
 from contextlib import contextmanager
@@ -46,7 +47,7 @@ from backend.util.llm.providers import (
     small_call_openai_reasoning,
     small_call_reasoning,
 )
-from backend.util.request import parse_url
+from backend.util.request import ResponseTooLargeError, parse_url
 from backend.util.settings import Config, Settings
 
 
@@ -1716,10 +1717,16 @@ class _FakeOllama:
     and recording the last ``Authorization`` header, or redirects every request
     to ``redirect_to``."""
 
-    def __init__(self, redirect_to: str | None = None) -> None:
+    def __init__(
+        self,
+        redirect_to: str | None = None,
+        answer: web.Response | None = None,
+    ) -> None:
         self.requests = 0
         self.authorization: str | None = None
+        self.accept_encoding: str | None = None
         self.redirect_to = redirect_to
+        self.answer = answer
         app = web.Application()
         app.router.add_post("/{path:.*}", self._chat)
         self.server = TestServer(app, host="127.0.0.1")
@@ -1739,8 +1746,11 @@ class _FakeOllama:
     async def _chat(self, request: web.Request) -> web.Response:
         self.requests += 1
         self.authorization = request.headers.get("Authorization")
+        self.accept_encoding = request.headers.get("Accept-Encoding")
         if self.redirect_to:
             return web.Response(status=307, headers={"Location": self.redirect_to})
+        if self.answer is not None:
+            return self.answer
         return web.json_response(
             {"model": "llama3", "message": {"role": "assistant", "content": "hi"}}
         )
@@ -1801,6 +1811,51 @@ async def _ollama_chat(
         )
     assert isinstance(result, ProviderResponse)
     return result
+
+
+class TestOllamaAnswerSize:
+    """A user-supplied Ollama host decides what it answers, so the client asks
+    for an uncompressed answer and stops reading one past its cap."""
+
+    @pytest.mark.asyncio
+    async def test_a_compressed_answer_is_refused(self, monkeypatch):
+        body = gzip.compress(
+            json.dumps(
+                {"model": "llama3", "message": {"role": "assistant", "content": "hi"}}
+            ).encode()
+        )
+        answer = web.Response(
+            body=body,
+            headers={"Content-Encoding": "gzip", "Content-Type": "application/json"},
+        )
+        async with _FakeOllama(answer=answer) as server:
+            host = f"http://127.0.0.1:{server.port}"
+            monkeypatch.setattr(providers_mod.settings.config, "ollama_host", host)
+            with pytest.raises(ValueError, match="'gzip'-encoded body"):
+                await _ollama_chat(host)
+        assert server.accept_encoding == "identity"
+
+    @pytest.mark.asyncio
+    async def test_an_answer_past_the_cap_is_refused(self, monkeypatch):
+        content = "x" * 2_000
+        answer = web.json_response(
+            {"model": "llama3", "message": {"role": "assistant", "content": content}}
+        )
+        monkeypatch.setattr(providers_mod, "_OLLAMA_MAX_RESPONSE_BYTES", 1_000)
+        async with _FakeOllama(answer=answer) as server:
+            host = f"http://127.0.0.1:{server.port}"
+            monkeypatch.setattr(providers_mod.settings.config, "ollama_host", host)
+            with pytest.raises(ResponseTooLargeError):
+                await _ollama_chat(host)
+
+    @pytest.mark.asyncio
+    async def test_an_answer_within_the_cap_is_read(self, monkeypatch):
+        monkeypatch.setattr(providers_mod, "_OLLAMA_MAX_RESPONSE_BYTES", 1_000)
+        async with _FakeOllama() as server:
+            host = f"http://127.0.0.1:{server.port}"
+            monkeypatch.setattr(providers_mod.settings.config, "ollama_host", host)
+            result = await _ollama_chat(host)
+        assert result.content == "hi"
 
 
 class TestOllamaEgress:
@@ -2024,7 +2079,8 @@ class TestOllamaEgress:
                 ollama_host=providers_mod.settings.config.ollama_host,
             )
         assert ctor.call_args.kwargs["event_hooks"] == {
-            "request": [providers_mod._scope_ollama_key]
+            "request": [providers_mod._scope_ollama_key],
+            "response": [providers_mod._bound_ollama_response],
         }
 
 
