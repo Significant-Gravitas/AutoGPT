@@ -48,6 +48,7 @@ from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.trial_cost_context import attributed_usage
 from backend.data.model import NodeExecutionStats
 from backend.util.clients import get_openai_client, openrouter_helper_cost_provider
+from backend.util.json import bounded_validator_class
 
 logger = logging.getLogger(__name__)
 
@@ -819,7 +820,7 @@ def _make_output_validator(
     empty when the output conforms.
     """
     relaxed = {**output_schema, "required": []}
-    validator = jsonschema.Draft202012Validator(relaxed)
+    validator = bounded_validator_class(jsonschema.Draft202012Validator)(relaxed)
 
     def _validate(parsed: dict[str, Any]) -> list[str]:
         problems: list[str] = []
