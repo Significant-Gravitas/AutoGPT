@@ -1478,6 +1478,7 @@ model LibraryAgent {
   settings Json @default("{}")
 
   ExpertWorkflows ExpertWorkflow[]
+  WorkflowPage    WorkflowPage?
 
   // Tenancy
   organizationId String?
@@ -1491,6 +1492,21 @@ model LibraryAgent {
   @@index([folderId])
   @@index([teamId])
   @@index([organizationId])
+}
+
+// A page Otto composed for one library workflow, behind `workflow-pages`. It
+// holds no results: the design is checked against the workflow on every read.
+model WorkflowPage {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  libraryAgentId String       @unique
+  LibraryAgent   LibraryAgent @relation(fields: [libraryAgentId], references: [id], onDelete: Cascade)
+  userId         String
+
+  design         Json
+  previousDesign Json?
 }
 
 model LibraryFolder {

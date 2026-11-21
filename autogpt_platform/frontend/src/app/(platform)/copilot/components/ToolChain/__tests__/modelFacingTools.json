@@ -26,6 +26,7 @@
   "delete_skill",
   "delete_workspace_file",
   "describe_capability",
+  "design_workflow_page",
   "edit_agent",
   "edit_chat_platform_message",
   "edit_file",

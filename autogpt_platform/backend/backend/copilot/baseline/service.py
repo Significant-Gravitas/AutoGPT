@@ -165,6 +165,7 @@ from backend.copilot.tools import (
     ToolGroup,
     execute_tool,
     expert_tool_disabled_groups,
+    flag_disabled_tools,
     get_available_tools,
     kickoff_turn_disabled_tools,
     origin_disabled_tools,
@@ -176,11 +177,7 @@ from backend.copilot.tools.e2b_sandbox import (
     get_or_create_sandbox,
     pause_sandbox_direct,
 )
-from backend.copilot.tools.render_ui import (
-    RENDER_UI_TOOL,
-    render_ui_disabled_tools,
-    shows_cards,
-)
+from backend.copilot.tools.render_ui import RENDER_UI_TOOL, shows_cards
 from backend.copilot.tools.seen_capabilities import build_seen_capabilities_notice
 from backend.copilot.tools.session_context import build_session_context
 from backend.copilot.tools.skill_matching import build_matched_skills_notice
@@ -2761,7 +2758,7 @@ async def stream_chat_completion_baseline(
         kickoff_turn_disabled_tools()
         if is_expert_kickoff_turn(session)
         else origin_disabled_tools(session.metadata.origin)
-        | await render_ui_disabled_tools(session)
+        | await flag_disabled_tools(session)
     )
     tools = get_available_tools(
         disabled_groups=disabled_tool_groups, disabled_tools=disabled_tools

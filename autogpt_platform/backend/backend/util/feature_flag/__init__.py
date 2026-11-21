@@ -109,6 +109,10 @@ class Flag(str, Enum):
     # so turning this off never breaks an old conversation.
     COPILOT_VISUAL_ANSWERS = "copilot-visual-answers"
 
+    # Workflow pages: Otto composes a page for one library workflow, shown in
+    # its library view. Off: no tool, the routes answer 404. Default off.
+    WORKFLOW_PAGES = "workflow-pages"
+
     # --- Dream-system gates (P0) ---
     #
     # No "enabled-users list" flag — per-flag targeting natively

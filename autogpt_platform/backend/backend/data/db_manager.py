@@ -66,6 +66,7 @@ from backend.api.features.store.db import (
     get_store_agents,
 )
 from backend.api.features.store.embeddings import backfill_missing_embeddings
+from backend.api.features.workflow_pages.db import get_workflow_page, save_workflow_page
 from backend.blocks import get_blocks
 from backend.copilot import background_task_db
 from backend.copilot import db as chat_db
@@ -607,6 +608,10 @@ class DatabaseManager(AppService):
     # ============ Feedback Prompts ============ #
     claim_feedback_prompt = _(claim_feedback_prompt)
     count_feedback_prompts = _(count_feedback_prompts)
+
+    # ============ Workflow Pages ============ #
+    get_workflow_page = _(get_workflow_page)
+    save_workflow_page = _(save_workflow_page)
 
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = _(get_user_push_subscriptions)
@@ -1235,6 +1240,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Feedback Prompts ============ #
     claim_feedback_prompt = d.claim_feedback_prompt
     count_feedback_prompts = d.count_feedback_prompts
+
+    # ============ Workflow Pages ============ #
+    get_workflow_page = d.get_workflow_page
+    save_workflow_page = d.save_workflow_page
 
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = d.get_user_push_subscriptions
