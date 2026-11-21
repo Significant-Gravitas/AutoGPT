@@ -55,6 +55,7 @@ from backend.copilot.model_router import (
     resolve_codex_model_route,
     resolve_model_route,
 )
+from backend.copilot.model_hints import build_model_hint, with_model_hint
 from backend.copilot.ai_spans import stamp_turn_trace_id
 from backend.copilot.budget_gate import gate_auto_continue
 from backend.copilot.budget_signal import build_turn_budget_block
@@ -6395,9 +6396,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             if is_user_message
             else ""
         )
+        model_hint = (
+            await build_model_hint(user_id, session, recall_message)
+            if is_user_message
+            else ""
+        )
 
         query_message, compaction_stats = await _build_query_message(
-            budget_status + current_message + matched_skills_notice,
+            budget_status
+            + with_model_hint(current_message, model_hint)
+            + matched_skills_notice,
             session,
             use_resume,
             transcript_msg_count,
@@ -6659,7 +6667,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     state.query_message,
                     state.compaction_stats,
                 ) = await _build_query_message(
-                    budget_status + current_message + matched_skills_notice,
+                    budget_status
+                    + with_model_hint(current_message, model_hint)
+                    + matched_skills_notice,
                     session,
                     state.use_resume,
                     state.transcript_msg_count,
