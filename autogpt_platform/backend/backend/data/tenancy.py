@@ -33,6 +33,7 @@ from autogpt_libs.auth.permissions import (
     check_org_permission,
     check_team_permission,
 )
+from prisma.enums import OrgMemberStatus
 from prisma.models import OrgMember, TeamMember
 
 from backend.data.db import prisma
@@ -118,7 +119,7 @@ async def _active_team_membership(
         where={
             "userId": user_id,
             "teamId": team_id,
-            "status": "ACTIVE",
+            "status": OrgMemberStatus.ACTIVE,
             "Team": {"is": {"orgId": organization_id}},
         }
     )
@@ -236,7 +237,7 @@ async def writable_organization_ids(
             "userId": user_id,
             "orgId": organization_id,
             "isOwner": True,
-            "Org": {"isPersonal": True, "deletedAt": None},
+            "Org": {"is": {"isPersonal": True, "deletedAt": None}},
         }
     )
     if personal is None:

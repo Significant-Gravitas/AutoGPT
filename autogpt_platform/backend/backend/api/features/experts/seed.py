@@ -71,6 +71,33 @@ RETIRED_TEMPLATES: list[str] = [
 ]
 
 
+# Each Prisma input type is a different TypedDict, so these are unpacked into a
+# literal at every call site; only a literal is checked key by key.
+class _TemplateFields(TypedDict):
+    templateKey: str
+    name: str
+    role: str
+    jobTitle: str
+    tagline: str
+    avatarUrl: str | None
+    identity: str
+    voicePreferences: str
+    boundaries: str
+    bio: str
+    categories: list[str]
+    dayOne: prisma.Json
+    isArchived: bool
+
+
+class _RoutineFields(TypedDict):
+    title: str
+    prompt: str
+    crons: list[str]
+    asks: list[str]
+    sessionMode: prisma.enums.ExpertRoutineSession
+    source: prisma.enums.ExpertRoutineSource
+
+
 async def _archive_retired_templates(keys: list[str], *, dry_run: bool) -> list[str]:
     """Archive the templates the catalog retires. Hires keep working: a hire
     points at its template through sourceTemplateId, so the row stays and only
@@ -270,7 +297,7 @@ async def _find_template(entry: RosterEntry) -> prisma.models.Expert | None:
 async def _upsert_template(
     entry: RosterEntry, previous: prisma.models.Expert | None
 ) -> prisma.models.Expert:
-    fields = {
+    fields: _TemplateFields = {
         "templateKey": entry["key"],
         "name": entry["name"],
         "role": entry["role"],
@@ -292,7 +319,7 @@ async def _upsert_template(
             data={"isTemplate": True, **fields}
         )
     updated = await prisma.models.Expert.prisma().update(
-        where={"id": previous.id}, data=fields
+        where={"id": previous.id}, data={**fields}
     )
     if updated is None:
         raise RuntimeError(f"Failed to update expert template '{entry['key']}'")
@@ -484,13 +511,11 @@ async def _sync_routines(template_id: str, entry: RosterEntry) -> None:
         current = by_key.get(routine["key"])
         if current is None:
             await prisma.models.ExpertRoutine.prisma().create(
-                data=prisma.types.ExpertRoutineCreateInput(
-                    expertId=template_id, key=routine["key"], **fields
-                )
+                data={"expertId": template_id, "key": routine["key"], **fields}
             )
         else:
             await prisma.models.ExpertRoutine.prisma().update(
-                where={"id": current.id}, data=fields
+                where={"id": current.id}, data={**fields}
             )
     stale = [row.id for row in existing if row.key not in wanted]
     if not stale:
@@ -503,9 +528,7 @@ async def _sync_routines(template_id: str, entry: RosterEntry) -> None:
     )
 
 
-def _routine_fields(
-    routine: RoutineSeed,
-) -> prisma.types.ExpertRoutineUpdateManyMutationInput:
+def _routine_fields(routine: RoutineSeed) -> _RoutineFields:
     """The columns a roster entry owns on a template row.
 
     ``grantsCredentials`` is absent on purpose: it is never roster-declared, so
@@ -549,7 +572,7 @@ async def _sync_hired_routines(template_id: str, entry: RosterEntry) -> int:
                 "customizedAt": None,
                 "Expert": {"is": {"sourceTemplateId": template_id}},
             },
-            data=_routine_fields(routine),
+            data={**_routine_fields(routine)},
         )
     return refreshed
 

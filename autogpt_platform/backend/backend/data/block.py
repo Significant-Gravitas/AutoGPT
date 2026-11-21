@@ -83,7 +83,7 @@ async def initialize_blocks() -> None:
     # every get_block() instance automatically carries them.
     try:
         all_db_blocks = await AgentBlock.prisma().find_many(
-            where={"optimizedDescription": {"not": None}},
+            where={"NOT": [{"optimizedDescription": None}]},
         )
         block_classes = get_blocks()
         applied = 0
@@ -103,7 +103,7 @@ async def get_blocks_needing_optimization() -> list[dict[str, str]]:
     """Return blocks that have a description but no optimized description yet."""
     blocks = await AgentBlock.prisma().find_many(
         where={
-            "description": {"not": None},
+            "NOT": [{"description": None}],
             "optimizedDescription": None,
         },
     )

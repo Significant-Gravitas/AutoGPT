@@ -289,7 +289,10 @@ async def set_webhook_tenancy(
     """
     updated_webhook = await IntegrationWebhook.prisma().update(
         where={"id": webhook_id},
-        data={"organizationId": organization_id, "teamId": team_id},
+        data={
+            "organizationId": organization_id,
+            "Team": ({"connect": {"id": team_id}} if team_id else {"disconnect": True}),
+        },
     )
     if updated_webhook is None:
         raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")

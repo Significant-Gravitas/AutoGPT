@@ -122,7 +122,7 @@ async def test_admin_grant_survives_opening_billing_and_the_sweep(
 
     # 4. The grant is untouched: the user never became a sweep candidate.
     find_many.assert_awaited_once()
-    assert find_many.await_args.kwargs["where"]["stripeCustomerId"] == {"not": None}
+    assert {"stripeCustomerId": None} in find_many.await_args.kwargs["where"]["NOT"]
     assert summary.candidate_users == 0
     assert summary.downgrades == 0
     assert summary.discrepancies == []

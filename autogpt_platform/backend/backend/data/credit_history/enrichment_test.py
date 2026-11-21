@@ -267,7 +267,7 @@ async def test_copilot_links_only_existing_owned_conversations(mocker):
             "OR": [
                 {"organizationId": "org"},
                 {"organizationId": None},
-                {"expertId": {"not": None}},
+                {"NOT": [{"expertId": None}]},
             ]
         }
     ]

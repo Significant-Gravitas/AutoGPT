@@ -13,7 +13,7 @@ from urllib.parse import quote_plus
 from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
 from prisma import Prisma
-from prisma.enums import BriefingFrequency, SubscriptionTier
+from prisma.enums import BriefingFrequency, CredentialOwnerType, SubscriptionTier
 from prisma.errors import RecordNotFoundError, UniqueViolationError
 from prisma.models import AuthAccount, AuthUser
 from prisma.models import User as PrismaUser
@@ -535,7 +535,11 @@ async def get_user_credentials(user_id: str) -> list[Credentials]:
     ``backend.integrations.scoped_credentials``.
     """
     rows = await prisma.integrationcredential.find_many(
-        where={"ownerType": "USER", "ownerId": user_id, "status": "active"},
+        where={
+            "ownerType": CredentialOwnerType.USER,
+            "ownerId": user_id,
+            "status": "active",
+        },
         order={"createdAt": "asc"},
     )
     cryptor = JSONCryptor()
@@ -564,7 +568,11 @@ async def get_near_expiry_oauth_credentials(
     never user-scoped requests. Access-token expiry does not invalidate a refresh grant.
     """
     rows = await prisma.integrationcredential.find_many(
-        where={"ownerType": "USER", "status": "active", "credentialType": "oauth2"}
+        where={
+            "ownerType": CredentialOwnerType.USER,
+            "status": "active",
+            "credentialType": "oauth2",
+        }
     )
     now = int(time.time())
     cryptor = JSONCryptor()
@@ -617,7 +625,7 @@ async def set_user_credentials(user_id: str, credentials: list[Credentials]) -> 
     async with transaction() as tx:
         await _lock_user_credentials(tx, user_id)
         existing_rows = await tx.integrationcredential.find_many(
-            where={"ownerType": "USER", "ownerId": user_id},
+            where={"ownerType": CredentialOwnerType.USER, "ownerId": user_id},
         )
         existing_ids = {row.id for row in existing_rows}
 
@@ -640,7 +648,7 @@ async def set_user_credentials(user_id: str, credentials: list[Credentials]) -> 
                 data={
                     "id": cred.id,
                     "organizationId": org_id,
-                    "ownerType": "USER",
+                    "ownerType": CredentialOwnerType.USER,
                     "ownerId": user_id,
                     "provider": cred.provider,
                     "credentialType": cred.type,
@@ -1354,7 +1362,7 @@ async def get_briefing_candidates(
     """
     try:
         where: UserWhereInput = {
-            "briefingFrequency": {"not": BriefingFrequency.OFF},
+            "NOT": [{"briefingFrequency": BriefingFrequency.OFF}],
             "timezone": {"in": timezones},
         }
         # The consumer drops a briefing for anyone outside the audience, so

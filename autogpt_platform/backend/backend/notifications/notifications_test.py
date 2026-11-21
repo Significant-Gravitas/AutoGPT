@@ -383,7 +383,7 @@ def test_the_briefing_pass_selects_by_the_same_rule(audience):
 
     assert product_mail_audience_where(now) == {
         "OR": [
-            {"subscriptionTier": {"not": SubscriptionTier.NO_TIER}},
+            {"NOT": [{"subscriptionTier": SubscriptionTier.NO_TIER}]},
             {"subscriptionEndedAt": {"gte": since}},
             {"subscriptionTrial": {"is": {"endsAt": {"gte": since, "lte": now}}}},
         ]

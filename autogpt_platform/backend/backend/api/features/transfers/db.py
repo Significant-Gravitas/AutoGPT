@@ -5,8 +5,12 @@ from datetime import UTC, datetime
 from typing import NoReturn
 
 from prisma import Prisma
+from prisma.enums import TransferStatus
 from prisma.models import TransferRequest
-from prisma.types import TransferRequestWhereInput
+from prisma.types import (
+    TransferRequestUpdateManyMutationInput,
+    TransferRequestWhereInput,
+)
 
 from backend.data.db import prisma, transaction
 from backend.util.exceptions import NotFoundError
@@ -17,8 +21,16 @@ from .model import TransferResponse
 logger = logging.getLogger(__name__)
 
 _VALID_RESOURCE_TYPES = {"AgentGraph", "StoreListing"}
-_OPEN_STATUSES = ["PENDING", "SOURCE_APPROVED", "TARGET_APPROVED"]
-_TERMINAL_STATUSES = ["COMPLETED", "REJECTED", "CANCELLED"]
+_OPEN_STATUSES = [
+    TransferStatus.PENDING,
+    TransferStatus.SOURCE_APPROVED,
+    TransferStatus.TARGET_APPROVED,
+]
+_TERMINAL_STATUSES = [
+    TransferStatus.COMPLETED,
+    TransferStatus.REJECTED,
+    TransferStatus.CANCELLED,
+]
 
 
 class _SourceNoLongerOwnsResource(Exception):
@@ -64,7 +76,7 @@ async def create_transfer(
             "sourceOrganizationId": source_org_id,
             "targetOrganizationId": target_org_id,
             "initiatedByUserId": user_id,
-            "status": "PENDING",
+            "status": TransferStatus.PENDING,
             "reason": reason,
         }
     )
@@ -103,10 +115,10 @@ async def approve_transfer(
     if tr.status in _TERMINAL_STATUSES:
         raise ValueError(f"Cannot approve a transfer with status '{tr.status}'")
 
-    update_data: dict = {}
+    update_data: TransferRequestUpdateManyMutationInput = {}
     where: TransferRequestWhereInput = {
         "id": transfer_id,
-        "status": {"in": _OPEN_STATUSES},
+        "OR": [{"status": status} for status in _OPEN_STATUSES],
     }
 
     if org_id == tr.sourceOrganizationId:
@@ -116,9 +128,9 @@ async def approve_transfer(
         where["sourceApprovedByUserId"] = None
         if tr.targetApprovedByUserId is not None:
             # Both sides approved — ready for execution (NOT completed yet)
-            update_data["status"] = "TARGET_APPROVED"
+            update_data["status"] = TransferStatus.TARGET_APPROVED
         else:
-            update_data["status"] = "SOURCE_APPROVED"
+            update_data["status"] = TransferStatus.SOURCE_APPROVED
 
     elif org_id == tr.targetOrganizationId:
         if tr.targetApprovedByUserId is not None:
@@ -127,9 +139,9 @@ async def approve_transfer(
         where["targetApprovedByUserId"] = None
         if tr.sourceApprovedByUserId is not None:
             # Both sides approved — ready for execution (NOT completed yet)
-            update_data["status"] = "SOURCE_APPROVED"
+            update_data["status"] = TransferStatus.SOURCE_APPROVED
         else:
-            update_data["status"] = "TARGET_APPROVED"
+            update_data["status"] = TransferStatus.TARGET_APPROVED
 
     else:
         raise ValueError("Your active organization is not a party to this transfer")
@@ -164,8 +176,11 @@ async def reject_transfer(
     # Conditional, so a reject racing an execute can't flip a COMPLETED
     # transfer (whose resource has already moved) to REJECTED.
     rejected = await prisma.transferrequest.update_many(
-        where={"id": transfer_id, "status": {"not_in": _TERMINAL_STATUSES}},
-        data={"status": "REJECTED"},
+        where={
+            "id": transfer_id,
+            "NOT": [{"status": status} for status in _TERMINAL_STATUSES],
+        },
+        data={"status": TransferStatus.REJECTED},
     )
     if rejected == 0:
         raise ValueError("Transfer is no longer open")
@@ -257,11 +272,14 @@ async def _claim_completion(tx: Prisma, transfer_id: str) -> None:
     claimed = await tx.transferrequest.update_many(
         where={
             "id": transfer_id,
-            "status": {"not_in": _TERMINAL_STATUSES},
-            "sourceApprovedByUserId": {"not": None},
-            "targetApprovedByUserId": {"not": None},
+            # NOT holds when every entry is false.
+            "NOT": [
+                *({"status": status} for status in _TERMINAL_STATUSES),
+                {"sourceApprovedByUserId": None},
+                {"targetApprovedByUserId": None},
+            ],
         },
-        data={"status": "COMPLETED", "completedAt": datetime.now(UTC)},
+        data={"status": TransferStatus.COMPLETED, "completedAt": datetime.now(UTC)},
     )
     if claimed == 0:
         raise ValueError("Transfer is no longer open for execution")
@@ -274,17 +292,20 @@ async def _reject_competing_transfers(tx: Prisma, transfer: TransferRequest) -> 
             "id": {"not": transfer.id},
             "resourceType": transfer.resourceType,
             "resourceId": transfer.resourceId,
-            "status": {"in": _OPEN_STATUSES},
+            "OR": [{"status": status} for status in _OPEN_STATUSES],
         },
-        data={"status": "REJECTED"},
+        data={"status": TransferStatus.REJECTED},
     )
 
 
 async def _reject_stale_transfer(transfer_id: str) -> NoReturn:
     """Reject after rollback without overwriting a concurrent terminal state."""
     rejected = await prisma.transferrequest.update_many(
-        where={"id": transfer_id, "status": {"not_in": _TERMINAL_STATUSES}},
-        data={"status": "REJECTED"},
+        where={
+            "id": transfer_id,
+            "NOT": [{"status": status} for status in _TERMINAL_STATUSES],
+        },
+        data={"status": TransferStatus.REJECTED},
     )
     if rejected == 0:
         raise ValueError("Transfer is no longer open for execution")
@@ -361,22 +382,18 @@ async def _create_audit_logs(
             "targetOrganizationId": transfer.targetOrganizationId,
         }
     )
-    common = {
-        "actorUserId": actor_user_id,
-        "entityType": "TransferRequest",
-        "entityId": transfer.id,
-        "action": "TRANSFER_EXECUTED",
-        "afterJson": after_json,
-        "correlationId": transfer.id,
-    }
-
     for organization_id in (
         transfer.sourceOrganizationId,
         transfer.targetOrganizationId,
     ):
         await db.auditlog.create(
             data={
-                **common,
+                "actorUserId": actor_user_id,
+                "entityType": "TransferRequest",
+                "entityId": transfer.id,
+                "action": "TRANSFER_EXECUTED",
+                "afterJson": after_json,
+                "correlationId": transfer.id,
                 "organizationId": organization_id,
                 "beforeJson": SafeJson(
                     {"organizationId": transfer.sourceOrganizationId}

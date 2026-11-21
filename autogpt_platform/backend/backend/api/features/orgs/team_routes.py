@@ -6,6 +6,8 @@ from autogpt_libs.auth import get_request_context, requires_org_permission
 from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction, check_org_permission
 from fastapi import APIRouter, HTTPException, Security
+from prisma.enums import TeamJoinPolicy
+from prisma.types import TeamUpdateInput
 
 from . import team_db as team_db
 from .team_model import (
@@ -61,7 +63,7 @@ async def create_team(
         name=request.name,
         user_id=ctx.user_id,
         description=request.description,
-        join_policy=request.join_policy,
+        join_policy=TeamJoinPolicy(request.join_policy),
     )
 
 
@@ -106,14 +108,14 @@ async def update_team(
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> TeamResponse:
     await _authorize_team_management(ctx, org_id, ws_id)
-    return await team_db.update_team(
-        ws_id,
-        {
-            "name": request.name,
-            "description": request.description,
-            "joinPolicy": request.join_policy,
-        },
-    )
+    data: TeamUpdateInput = {}
+    if request.name is not None:
+        data["name"] = request.name
+    if request.description is not None:
+        data["description"] = request.description
+    if request.join_policy is not None:
+        data["joinPolicy"] = TeamJoinPolicy(request.join_policy)
+    return await team_db.update_team(ws_id, data)
 
 
 @router.delete(

@@ -16,7 +16,9 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from prisma.enums import PlatformType
 from prisma.models import BotInstall
+from prisma.types import BotInstallWhereUniqueInput
 from pydantic import BaseModel
 
 from backend.platform_linking.models import Platform
@@ -35,10 +37,10 @@ class BotInstallCredentials(BaseModel):
     name: Optional[str] = None
 
 
-def _key(platform: Platform, team_id: str) -> dict:
+def _key(platform: Platform, team_id: str) -> BotInstallWhereUniqueInput:
     return {
         "platform_platformServerId": {
-            "platform": platform.value,
+            "platform": PlatformType(platform.value),
             "platformServerId": team_id,
         }
     }
@@ -55,22 +57,26 @@ async def upsert_bot_install(
 ) -> None:
     """Store (or refresh) a workspace's encrypted bot token. Clears ``revokedAt``
     so a re-install after an uninstall resurrects the row."""
-    fields = {
-        "credentials": JSONCryptor().encrypt({"bot_token": bot_token}),
-        "botUserId": bot_user_id,
-        "appId": app_id,
-        "name": name,
-        "revokedAt": None,
-    }
+    credentials = JSONCryptor().encrypt({"bot_token": bot_token})
     await BotInstall.prisma().upsert(
         where=_key(platform, team_id),
         data={
             "create": {
-                "platform": platform.value,
+                "platform": PlatformType(platform.value),
                 "platformServerId": team_id,
-                **fields,
+                "credentials": credentials,
+                "botUserId": bot_user_id,
+                "appId": app_id,
+                "name": name,
+                "revokedAt": None,
             },
-            "update": fields,
+            "update": {
+                "credentials": credentials,
+                "botUserId": bot_user_id,
+                "appId": app_id,
+                "name": name,
+                "revokedAt": None,
+            },
         },
     )
 
@@ -110,7 +116,7 @@ async def revoke_bot_install(platform: Platform, team_id: str) -> None:
     """Mark a workspace's install revoked (app_uninstalled / tokens_revoked)."""
     await BotInstall.prisma().update_many(
         where={
-            "platform": platform.value,
+            "platform": PlatformType(platform.value),
             "platformServerId": team_id,
             "revokedAt": None,
         },
