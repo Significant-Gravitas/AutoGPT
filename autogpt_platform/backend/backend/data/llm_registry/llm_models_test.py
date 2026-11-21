@@ -201,3 +201,12 @@ def test_metadata_completeness_guard_passes_for_real_catalog():
     """The shipped enum/catalog pair must satisfy the guard (also enforced at
     import, asserted here explicitly)."""
     llm_models._assert_metadata_complete()
+
+
+def test_a_value_longer_than_any_model_id_names_no_model():
+    """The enum strips one provider prefix per recursion, so a long value is
+    refused before it costs time and memory that grow with its length."""
+    named = llm_models.llm_model_named
+
+    assert named("openai/gpt-5-2025-08-07") is LLMModel("gpt-5-2025-08-07")
+    assert named("openai/" * 40 + "gpt-5-2025-08-07") is None

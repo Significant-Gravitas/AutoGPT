@@ -15,7 +15,7 @@ aiohttp = "^3.10.0"
 aiodns = ">=3.5,<5.0"
 agentmail = ">=0.4.5,<0.6.0"
 anthropic = "^0.79.0"
-apscheduler = "^3.11.1"  # executor/scheduler_shutdown.py overrides private APScheduler 3.11 internals (its job pass and jobstore lock): on an upgrade, review upstream changes to both and rerun scheduler_shutdown_test.py.
+apscheduler = "^3.11.1"  # executor/scheduler_shutdown.py overrides private APScheduler 3.11 internals (its job pass, jobstore lock and executors): on an upgrade, review upstream changes to them and rerun scheduler_shutdown_test.py.
 autogpt-libs = { path = "../autogpt_libs", develop = true }
 bcrypt = "^5.0.0"
 bleach = { extras = ["css"], version = "^6.2.0" }
@@ -123,7 +123,7 @@ aiohappyeyeballs = "^2.6.1"
 black = "^24.10.0"
 faker = ">=38.2,<41.0"
 fakeredis = { version = "^2.40.0", extras = ["lua"] }
-isort = "^5.13.2"
+isort = ">=5.13.2,<10.0.0"
 poethepoet = ">=0.41,<0.50"
 pre-commit = "^4.4.0"
 pyright = "^1.1.407"

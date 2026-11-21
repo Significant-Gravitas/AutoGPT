@@ -4,6 +4,7 @@ import {
 } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { v4 as uuidv4 } from "uuid";
 import {
   clearLocalProgress,
   readProgress,
@@ -52,6 +53,9 @@ export function useWizardProgress({
   });
   const saver = useRef<ReturnType<typeof createProgressSaver> | null>(null);
   const early = useRef<EarlyLoad | null>(null);
+  // Names and numbers this page's saves, so a save it stopped waiting for
+  // that lands later can't get its next save refused (#17158).
+  const writer = useRef<{ id: string; seq: number } | null>(null);
 
   // The read only needs the account, so it runs while the layout's own reads
   // are in flight; the effect below applies it once the layout is ready.
@@ -84,6 +88,9 @@ export function useWizardProgress({
     early.current = null;
     const abort = pending?.abort ?? new AbortController();
     const { steps, params, router } = latest.current;
+    // uuidv4({}) rather than crypto.randomUUID, which is missing on plain HTTP.
+    writer.current ??= { id: uuidv4({}), seq: 0 };
+    const tab = writer.current;
     const isCurrent = () => active && currentUserID.current === userID;
     useOnboardingWizardStore.getState().reset();
     setStatus({
@@ -144,8 +151,15 @@ export function useWizardProgress({
         onConflict: conflict,
         async save(wizardProgress, wizardRevision, signal) {
           if (!isCurrent()) throw new Error("Your account changed.");
+          tab.seq += 1;
           const result = await patchV1UpdateOnboardingState(
-            { wizardProgress, wizardRevision, wizardUserId: userID! },
+            {
+              wizardProgress,
+              wizardRevision,
+              wizardUserId: userID!,
+              wizardWriterId: tab.id,
+              wizardWriteSeq: tab.seq,
+            },
             { signal },
           );
           if (result.status !== 200) {

@@ -53,7 +53,9 @@ export function useExecutionTargetPicker() {
 
   const machinesQuery = useGetExperimentalListLocalExecutors({
     query: {
-      enabled: target.kind === "local" || isOpen,
+      // Asked for only while the folder dialog is open. A choice that goes
+      // stale after it closes is caught when the chat is created.
+      enabled: target.kind === "local" && isOpen,
       refetchInterval: EXECUTOR_POLL_INTERVAL_MS,
       staleTime: 2_000,
     },

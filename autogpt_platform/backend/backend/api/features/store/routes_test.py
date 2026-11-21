@@ -24,6 +24,7 @@ from backend.data.graph import GraphModelWithoutNodes
 from . import cache as store_cache
 from . import model as store_model
 from . import routes as store_routes
+from .submission_deletion_test_helpers import mock_submission_deletion
 
 # Using a fixed timestamp for reproducible tests
 # 2023 date is intentionally used to ensure tests work regardless of current year
@@ -31,6 +32,7 @@ FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0)
 
 app = fastapi.FastAPI()
 app.include_router(store_routes.router)
+add_exception_handlers(app)
 
 client = fastapi.testclient.TestClient(app)
 
@@ -1097,6 +1099,59 @@ def test_post_review_rejects_out_of_range_score(
     mock_create.assert_not_called()
 
 
+def test_delete_submission_missing_is_404(mocker: pytest_mock.MockFixture) -> None:
+    _, versions = mock_submission_deletion(mocker, owning_user_id=None)
+
+    response = client.delete("/submissions/missing-id")
+
+    assert response.status_code == 404
+    versions.delete_many.assert_not_awaited()
+
+
+def test_delete_submission_another_users_is_404(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    _, versions = mock_submission_deletion(
+        mocker, owning_user_id="other-user", owning_org_id="other-org"
+    )
+
+    response = client.delete("/submissions/slv-1")
+
+    assert response.status_code == 404
+    versions.delete_many.assert_not_awaited()
+
+
+def test_delete_submission_approved_is_400(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    _, versions = mock_submission_deletion(
+        mocker,
+        owning_user_id=test_user_id,
+        owning_org_id=TEST_ORG_ID,
+        status=prisma.enums.SubmissionStatus.APPROVED,
+    )
+
+    response = client.delete("/submissions/slv-1")
+
+    assert response.status_code == 400
+    assert "approved" in response.json()["detail"].lower()
+    versions.count.assert_not_awaited()
+
+
+def test_delete_submission_pending_own_is_true(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    _, versions = mock_submission_deletion(
+        mocker, owning_user_id=test_user_id, owning_org_id=TEST_ORG_ID
+    )
+
+    response = client.delete("/submissions/slv-1")
+
+    assert response.status_code == 200
+    assert response.json() is True
+    versions.delete_many.assert_awaited_once()
+
+
 def test_post_review_accepts_in_range_score(mocker: pytest_mock.MockFixture) -> None:
     mock_create = mocker.patch(
         "backend.api.features.store.db.create_store_review",
@@ -1225,7 +1280,7 @@ def test_a_billing_manager_role_is_refused_marketplace_submissions(
             "get_store_submissions",
             "create_store_submission",
             "edit_store_submission",
-            "delete_store_submission",
+            "delete_store_submission_or_raise",
         )
     ]
 

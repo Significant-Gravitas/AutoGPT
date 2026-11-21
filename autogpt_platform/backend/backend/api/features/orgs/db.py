@@ -377,7 +377,8 @@ async def create_org(
 
 
 async def list_user_orgs(user_id: str) -> list[OrgResponse]:
-    """List all non-deleted organizations the user belongs to."""
+    """List the user's non-deleted organizations: personal first, then the
+    rest in the order the user joined them."""
     memberships = await prisma.orgmember.find_many(
         where={
             "userId": user_id,
@@ -385,14 +386,12 @@ async def list_user_orgs(user_id: str) -> list[OrgResponse]:
             "Org": {"deletedAt": None},
         },
         include={"Org": True},
+        # Oldest membership first, by createdAt like get_request_context's
+        # default-org lookup; id only breaks exact ties.
+        order=[{"createdAt": "asc"}, {"id": "asc"}],
     )
-    results = []
-    for m in memberships:
-        org = m.Org
-        if org is None:
-            continue
-        results.append(OrgResponse.from_db(org))
-    return results
+    orgs = [OrgResponse.from_db(m.Org) for m in memberships if m.Org is not None]
+    return sorted(orgs, key=lambda org: not org.is_personal)
 
 
 async def get_org(org_id: str) -> OrgResponse:

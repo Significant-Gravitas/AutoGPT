@@ -5,7 +5,6 @@ import {
   describeErrorEvent,
   isAuthenticationClose,
   logWebSocketClose,
-  logWebSocketIssue,
 } from "./websocket-logging";
 import {
   SubscribeRetries,
@@ -179,18 +178,16 @@ export class BackendWebSocket {
     };
     socket.onmessage = (event) => this.receive(socket, generation, event);
     socket.onclose = (event) => this.closed(socket, generation, event);
+    // The browser fires `close` after every `error`, and closed() reports the
+    // drop with its close code, so this event is not reported again.
     socket.onerror = (event) => {
       if (
         !this.current(socket, generation) ||
         this.authenticatedSocket !== socket
       )
         return;
-      const { summary, extra } = describeErrorEvent(event, this.url);
-      logWebSocketIssue(
-        "error",
-        `[BackendAPI] WebSocket error: ${summary}`,
-        extra,
-      );
+      const { summary } = describeErrorEvent(event, this.url);
+      console.debug(`[BackendAPI] WebSocket error: ${summary}`);
     };
   }
 

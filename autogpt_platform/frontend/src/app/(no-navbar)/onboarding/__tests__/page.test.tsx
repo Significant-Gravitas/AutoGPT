@@ -22,6 +22,8 @@ import OnboardingPage from "../page";
 import { useOnboardingWizardStore } from "../store";
 import { progressStorageKey } from "../progress";
 import { makeProgress as makeBaseProgress } from "./progress-fixture";
+import { GOOGLE_ACCESS_SCOPES } from "@/lib/google-access";
+import { MICROSOFT_BASE_SCOPES } from "@/lib/microsoft-setup";
 
 // Only the slow-setup report is checked; the rest of Sentry runs as shipped.
 vi.mock("@sentry/nextjs", async (importOriginal) => ({
@@ -304,6 +306,62 @@ describe("onboarding before payment", () => {
     render(<OnboardingPage />);
     fireEvent.click(await screen.findByTestId("step-access"));
     expect(await screen.findByTestId("step-team")).toBeDefined();
+  });
+
+  it.each([
+    ["google", GOOGLE_ACCESS_SCOPES],
+    ["microsoft", MICROSOFT_BASE_SCOPES],
+  ])(
+    "leaves the connection step out once a %s sign-in connected everything",
+    async (provider, scopes) => {
+      flags = {};
+      server.use(
+        http.get("*/api/auth/sign-in-providers", () =>
+          HttpResponse.json({ providers: [provider] }),
+        ),
+        http.get(`*/api/integrations/${provider}/credentials`, () =>
+          HttpResponse.json([
+            {
+              id: `${provider}-1`,
+              provider,
+              type: "oauth2",
+              title: null,
+              username: "pat@example.com",
+              scopes: [...scopes],
+            },
+          ]),
+        ),
+      );
+      render(<OnboardingPage />);
+      expect(await screen.findByTestId("step-team")).toBeDefined();
+      expect(screen.queryByTestId("step-access")).toBeNull();
+    },
+  );
+
+  it("keeps the connection step for what a sign-in didn't connect", async () => {
+    flags = {};
+    server.use(
+      http.get("*/api/auth/sign-in-providers", () =>
+        HttpResponse.json({ providers: ["google"] }),
+      ),
+      // Calendar was unticked on Google's screen.
+      http.get("*/api/integrations/google/credentials", () =>
+        HttpResponse.json([
+          {
+            id: "google-1",
+            provider: "google",
+            type: "oauth2",
+            title: null,
+            username: "pat@gmail.com",
+            scopes: GOOGLE_ACCESS_SCOPES.filter(
+              (scope) => !scope.includes("calendar"),
+            ),
+          },
+        ]),
+      ),
+    );
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-access")).toBeDefined();
   });
 
   it("collects role and pain points before showing the card requirement", async () => {
@@ -1021,8 +1079,11 @@ describe("a setup that is slow to load (#16965)", () => {
 
     const notice = screen.getByRole("alert");
     expect(notice.textContent).toContain(SLOW);
-    // Focus moves to the notice that replaced the placeholder.
-    expect(document.activeElement).toBe(notice.parentElement);
+    // Focus moves to the notice that replaced the placeholder; it is named by
+    // its title, so focusing it doesn't read the whole alert out again.
+    expect(document.activeElement).toBe(
+      screen.getByRole("group", { name: SLOW }),
+    );
     expect(Sentry.captureMessage).toHaveBeenCalledOnce();
     expect(Sentry.captureMessage).toHaveBeenCalledWith(
       REPORT,
@@ -1087,5 +1148,43 @@ describe("a setup that is slow to load (#16965)", () => {
     expect(screen.getByTestId("onboarding-placeholder")).toBeDefined();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it("neither shows the notice nor reports when the account arrives in time", async () => {
+    // The account comes in before the deadline; the progress read still hangs.
+    getState.mockImplementation(() => new Promise(() => {}));
+    const account = user;
+    user = null;
+    const view = render(<OnboardingPage />);
+    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS - 1));
+
+    user = account;
+    view.rerender(<OnboardingPage />);
+    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS * 2));
+
+    expect(screen.getByTestId("onboarding-placeholder")).toBeDefined();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it("gives a later wait for the account a full deadline of its own", async () => {
+    getState.mockImplementation(() => new Promise(() => {}));
+    const account = user;
+    user = null;
+    const view = render(<OnboardingPage />);
+    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS));
+    expect(screen.getByRole("alert")).toBeDefined();
+
+    user = account;
+    view.rerender(<OnboardingPage />);
+    expect(screen.queryByRole("alert")).toBeNull();
+    user = null;
+    view.rerender(<OnboardingPage />);
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS - 1));
+    expect(screen.queryByRole("alert")).toBeNull();
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(screen.getByRole("alert")).toBeDefined();
   });
 });
