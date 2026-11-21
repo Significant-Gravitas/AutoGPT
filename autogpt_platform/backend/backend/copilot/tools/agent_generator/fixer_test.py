@@ -1,11 +1,19 @@
 """Unit tests for AgentFixer."""
 
+import time
+
+import pytest
+
 from .fixer import (
     _ADDTODICTIONARY_BLOCK_ID,
     _ADDTOLIST_BLOCK_ID,
     _CODE_EXECUTION_BLOCK_ID,
+    _CREATE_DICT_BLOCK_ID,
+    _CREATE_LIST_BLOCK_ID,
     _DATA_SAMPLING_BLOCK_ID,
+    _FIX_VALUE2_EMPTY_STRING_BLOCK_IDS,
     _GET_CURRENT_DATE_BLOCK_ID,
+    _GMAIL_SEND_BLOCK_ID,
     _STORE_VALUE_BLOCK_ID,
     _TEXT_REPLACE_BLOCK_ID,
     _UNIVERSAL_TYPE_CONVERTER_BLOCK_ID,
@@ -153,6 +161,41 @@ class TestFixDoubleCurlyBraces:
         # Should not crash and prompt stays None
         assert result["nodes"][0]["input_default"]["prompt"] is None
 
+    def test_prompt_feeding_a_code_execution_block_is_left_alone(self):
+        fixer = AgentFixer()
+        to_code = _make_node(node_id="to-code", input_default={"prompt": "{a}"})
+        to_text = _make_node(node_id="to-text", input_default={"prompt": "{b}"})
+        code = _make_node(node_id="code", block_id=_CODE_EXECUTION_BLOCK_ID)
+        text = _make_node(node_id="text")
+        agent = _make_agent(
+            nodes=[to_code, to_text, code, text],
+            links=[
+                _make_link(source_id="to-code", sink_id="text"),
+                _make_link(source_id="to-code", sink_id="code"),
+                _make_link(source_id="to-text", sink_id="text"),
+            ],
+        )
+
+        result = fixer.fix_double_curly_braces(agent)
+
+        assert result["nodes"][0]["input_default"]["prompt"] == "{a}"
+        assert result["nodes"][1]["input_default"]["prompt"] == "{{b}}"
+
+    def test_linked_prompt_values_missing_from_the_prompt_are_added(self):
+        fixer = AgentFixer()
+        node = _make_node(node_id="n1", input_default={"prompt": "Hi {{name}}"})
+        agent = _make_agent(
+            nodes=[node],
+            links=[
+                _make_link(sink_id="n1", sink_name="prompt_values_#_name"),
+                _make_link(sink_id="n1", sink_name="prompt_values_#_topic"),
+            ],
+        )
+
+        result = fixer.fix_double_curly_braces(agent)
+
+        assert result["nodes"][0]["input_default"]["prompt"] == "Hi {{name}}\n{{topic}}"
+
 
 class TestFixCredentials:
     """Tests for fix_credentials."""
@@ -236,6 +279,27 @@ class TestFixDataSamplingSampleSize:
 
         assert len(result["links"]) == 0
         assert result["nodes"][0]["input_default"]["sample_size"] == 1
+
+    def test_keeps_links_to_other_fields_and_other_nodes(self):
+        fixer = AgentFixer()
+        node = _make_node(node_id="n1", block_id=_DATA_SAMPLING_BLOCK_ID)
+        other = _make_node(node_id="n2")
+        kept_links = [
+            _make_link(sink_id="n1", sink_name="data", source_id="n2"),
+            _make_link(sink_id="n2", sink_name="sample_size", source_id="n1"),
+        ]
+        agent = _make_agent(
+            nodes=[node, other],
+            links=[
+                kept_links[0],
+                _make_link(sink_id="n1", sink_name="sample_size", source_id="n2"),
+                kept_links[1],
+            ],
+        )
+
+        result = fixer.fix_data_sampling_sample_size(agent)
+
+        assert result["links"] == kept_links
 
 
 class TestFixTextReplaceNewParameter:
@@ -345,6 +409,23 @@ class TestFixAddToDictionaryBlocks:
         assert "add-1" in node_ids
         assert len(result["links"]) == 0
 
+    def test_keeps_the_other_links(self):
+        fixer = AgentFixer()
+        dict_node = _make_node(node_id="dict-1", block_id=_CREATE_DICT_BLOCK_ID)
+        add_to_dict_node = _make_node(
+            node_id="add-1", block_id=_ADDTODICTIONARY_BLOCK_ID
+        )
+        other = _make_node(node_id="other")
+        kept_link = _make_link(source_id="other", sink_id="add-1", sink_name="value")
+        agent = _make_agent(
+            nodes=[dict_node, add_to_dict_node, other],
+            links=[_make_link(source_id="dict-1", sink_id="add-1"), kept_link],
+        )
+
+        result = fixer.fix_addtodictionary_blocks(agent)
+
+        assert result["links"] == [kept_link]
+
 
 class TestFixStoreValueBeforeCondition:
     """Tests for fix_storevalue_before_condition."""
@@ -368,6 +449,43 @@ class TestFixStoreValueBeforeCondition:
         ]
         assert len(store_nodes) == 1
         assert store_nodes[0]["input_default"]["data"] is None
+
+    def test_link_from_a_storevalue_output_is_kept(self):
+        fixer = AgentFixer()
+        store_node = _make_node(node_id="store", block_id=_STORE_VALUE_BLOCK_ID)
+        cond_node = _make_node(
+            node_id="cond", block_id=_FIX_VALUE2_EMPTY_STRING_BLOCK_IDS[0]
+        )
+        link = _make_link(
+            source_id="store", source_name="output", sink_id="cond", sink_name="value2"
+        )
+        agent = _make_agent(nodes=[store_node, cond_node], links=[link])
+
+        result = fixer.fix_storevalue_before_condition(agent)
+
+        assert result["nodes"] == [store_node, cond_node]
+        assert result["links"] == [link]
+        assert fixer.fixes_applied == []
+
+    def test_condition_with_a_storevalue_gets_no_second_one(self):
+        fixer = AgentFixer()
+        src_node = _make_node(node_id="src")
+        store_node = _make_node(node_id="store", block_id=_STORE_VALUE_BLOCK_ID)
+        cond_node = _make_node(
+            node_id="cond", block_id=_FIX_VALUE2_EMPTY_STRING_BLOCK_IDS[0]
+        )
+        from_src = _make_link(source_id="src", sink_id="cond", sink_name="value2")
+        from_store = _make_link(source_id="store", sink_id="cond", sink_name="value2")
+        agent = _make_agent(
+            nodes=[src_node, store_node, cond_node], links=[from_src, from_store]
+        )
+
+        result = fixer.fix_storevalue_before_condition(agent)
+
+        assert len(result["nodes"]) == 3
+        assert result["links"] == [from_src, from_store]
+        assert len(fixer.fixes_applied) == 1
+        assert "cond - already has one connected" in fixer.fixes_applied[0]
 
 
 class TestFixAddToListBlocks:
@@ -398,6 +516,123 @@ class TestFixAddToListBlocks:
             and lnk["sink_name"] == "list"
         ]
         assert len(self_ref_links) == 1
+
+    def test_links_into_list_are_replaced_by_a_prerequisite_block(self):
+        fixer = AgentFixer()
+        create_list = _make_node(node_id="create", block_id=_CREATE_LIST_BLOCK_ID)
+        other = _make_node(node_id="other")
+        add_to_list = _make_node(node_id="atl-1", block_id=_ADDTOLIST_BLOCK_ID)
+        agent = _make_agent(
+            nodes=[create_list, other, add_to_list],
+            links=[
+                _make_link(source_id="create", sink_id="atl-1", sink_name="list"),
+                _make_link(source_id="other", sink_id="atl-1", sink_name="list"),
+                _make_link(source_id="other", sink_id="atl-1", sink_name="entry"),
+            ],
+        )
+
+        result = fixer.fix_addtolist_blocks(agent)
+
+        # The CreateListBlock is gone, and an empty AddToList block stands
+        # before the original one.
+        assert [n["id"] for n in result["nodes"]][::2] == ["other", "atl-1"]
+        prerequisite = result["nodes"][1]
+        assert prerequisite["block_id"] == _ADDTOLIST_BLOCK_ID
+        assert prerequisite["input_default"]["list"] == []
+        assert sorted(
+            (lnk["source_id"], lnk["source_name"], lnk["sink_id"], lnk["sink_name"])
+            for lnk in result["links"]
+        ) == sorted(
+            [
+                (prerequisite["id"], "updated_list", "atl-1", "list"),
+                ("other", "output", "atl-1", "entry"),
+                ("atl-1", "updated_list", "atl-1", "list"),
+            ]
+        )
+
+    def test_storevalue_fed_by_a_createlist_loses_only_its_link(self):
+        fixer = AgentFixer()
+        create_list = _make_node(node_id="create", block_id=_CREATE_LIST_BLOCK_ID)
+        fed_store = _make_node(node_id="fed-store", block_id=_STORE_VALUE_BLOCK_ID)
+        plain_store = _make_node(node_id="plain-store", block_id=_STORE_VALUE_BLOCK_ID)
+        add_to_list = _make_node(node_id="atl-1", block_id=_ADDTOLIST_BLOCK_ID)
+        agent = _make_agent(
+            nodes=[create_list, fed_store, plain_store, add_to_list],
+            links=[
+                _make_link(source_id="create", sink_id="fed-store"),
+                _make_link(source_id="fed-store", sink_id="atl-1", sink_name="entry"),
+                _make_link(source_id="plain-store", sink_id="atl-1", sink_name="entry"),
+            ],
+        )
+
+        result = fixer.fix_addtolist_blocks(agent)
+
+        node_ids = [n["id"] for n in result["nodes"]]
+        assert {"create", "fed-store", "plain-store", "atl-1"} <= set(node_ids)
+        link_ends = [(lnk["source_id"], lnk["sink_id"]) for lnk in result["links"]]
+        assert ("create", "fed-store") in link_ends
+        assert ("plain-store", "atl-1") in link_ends
+        assert ("fed-store", "atl-1") not in link_ends
+
+    def test_existing_prerequisite_block_is_not_added_again(self):
+        fixer = AgentFixer()
+        prerequisite = _make_node(
+            node_id="pre",
+            block_id=_ADDTOLIST_BLOCK_ID,
+            input_default={"list": [], "entry": None, "entries": []},
+        )
+        add_to_list = _make_node(node_id="atl-1", block_id=_ADDTOLIST_BLOCK_ID)
+        links = [
+            _make_link(
+                source_id="pre",
+                source_name="updated_list",
+                sink_id="atl-1",
+                sink_name="list",
+            ),
+            _make_link(
+                source_id="atl-1",
+                source_name="updated_list",
+                sink_id="atl-1",
+                sink_name="list",
+            ),
+        ]
+        agent = _make_agent(nodes=[prerequisite, add_to_list], links=list(links))
+
+        result = fixer.fix_addtolist_blocks(agent)
+
+        assert result["nodes"] == [prerequisite, add_to_list]
+        assert result["links"] == links
+
+
+class TestFixAddToListGmailSelfReference:
+    """Tests for fix_addtolist_gmail_self_reference."""
+
+    def test_self_reference_removed_from_addtolist_linked_to_gmail(self):
+        fixer = AgentFixer()
+        to_gmail = _make_node(node_id="to-gmail", block_id=_ADDTOLIST_BLOCK_ID)
+        elsewhere = _make_node(node_id="elsewhere", block_id=_ADDTOLIST_BLOCK_ID)
+        gmail = _make_node(node_id="gmail", block_id=_GMAIL_SEND_BLOCK_ID)
+        other = _make_node(node_id="other")
+        self_reference = {
+            "source_name": "updated_list",
+            "sink_name": "list",
+        }
+        kept_links = [
+            _make_link(source_id="to-gmail", sink_id="gmail"),
+            _make_link(source_id="elsewhere", sink_id="other"),
+            _make_link(source_id="elsewhere", sink_id="elsewhere", **self_reference),
+        ]
+        agent = _make_agent(
+            nodes=[to_gmail, elsewhere, gmail, other],
+            links=[
+                _make_link(source_id="to-gmail", sink_id="to-gmail", **self_reference),
+                *kept_links,
+            ],
+        )
+
+        result = fixer.fix_addtolist_gmail_self_reference(agent)
+
+        assert result["links"] == kept_links
 
 
 class TestFixLinkStaticProperties:
@@ -755,6 +990,206 @@ class TestApplyAllFixes:
         agent = _make_agent()
         result = fixer.apply_all_fixes(agent)
         assert result is agent
+
+    def test_fixes_logged_are_bounded(self):
+        """Every fix is applied, but only so many are listed, each cut short."""
+        fixer = AgentFixer()
+        node = _make_node(
+            node_id="n" * 10_000,
+            block_id=MCP_TOOL_BLOCK_ID,
+            input_default={
+                "tool_input_schema": {
+                    "properties": {str(i): {"default": i} for i in range(5_000)}
+                }
+            },
+        )
+        agent = _make_agent(nodes=[node], links=[{} for _ in range(5_000)])
+
+        result = fixer.apply_all_fixes(agent)
+
+        assert all(link["id"] for link in result["links"])
+        assert len(result["nodes"][0]["input_default"]["tool_arguments"]) == 5_000
+        assert len(fixer.fixes_applied) == AgentFixer.MAX_FIXES_LOGGED + 1
+        assert "more fix(es) not listed" in fixer.fixes_applied[-1]
+        assert all(
+            len(fix) <= AgentFixer.MAX_FIX_LOG_LENGTH + 3 for fix in fixer.fixes_applied
+        )
+
+    def test_omitted_fix_count_is_reset_between_runs(self):
+        fixer = AgentFixer()
+        fixer.apply_all_fixes(_make_agent(links=[{} for _ in range(5_000)]))
+
+        fixer.apply_all_fixes(_make_agent(links=[{}]))
+
+        assert not any("not listed" in fix for fix in fixer.fixes_applied)
+
+
+def _links_naming_no_node(count: int) -> list[dict]:
+    """Links no node lookup can stop early for."""
+    return [{"source_id": "missing", "sink_id": "missing"} for _ in range(count)]
+
+
+_SUB_AGENT = {
+    "graph_id": "sub-agent",
+    "graph_version": 1,
+    "name": "Sub-agent",
+    "input_schema": {"properties": {"query": {}}, "required": ["query"]},
+    "output_schema": {"properties": {}},
+}
+
+# One graph per fix, sized so that a scan of a list per node or link would
+# take far longer than the bound.
+_LARGE_GRAPHS = [
+    pytest.param(
+        AgentFixer.apply_all_fixes,
+        lambda: ([{} for _ in range(40_000)], _links_naming_no_node(8_000)),
+        id="apply_all_fixes",
+    ),
+    pytest.param(
+        AgentFixer.fix_addtolist_gmail_self_reference,
+        lambda: ([{} for _ in range(20_000)], _links_naming_no_node(20_000)),
+        id="fix_addtolist_gmail_self_reference",
+    ),
+    pytest.param(
+        AgentFixer.fix_double_curly_braces,
+        lambda: (
+            [
+                {"id": f"n{i}", "input_default": {"prompt": "{a}"}}
+                for i in range(40_000)
+            ],
+            _links_naming_no_node(40_000),
+        ),
+        id="fix_double_curly_braces",
+    ),
+    pytest.param(
+        AgentFixer.fix_double_curly_braces,
+        lambda: (
+            [{"id": "n", "input_default": {"prompt": "x" * 1_000_000}}],
+            [
+                {"sink_id": "n", "sink_name": f"prompt_values_#_v{i}"}
+                for i in range(40_000)
+            ],
+        ),
+        id="fix_double_curly_braces-prompt_values",
+    ),
+    pytest.param(
+        AgentFixer.fix_storevalue_before_condition,
+        lambda: (
+            [{"id": "cond", "block_id": _FIX_VALUE2_EMPTY_STRING_BLOCK_IDS[0]}],
+            [
+                {"source_id": "missing", "sink_id": "cond", "sink_name": "value2"}
+                for _ in range(12_000)
+            ],
+        ),
+        id="fix_storevalue_before_condition",
+    ),
+    pytest.param(
+        AgentFixer.fix_addtolist_blocks,
+        lambda: (
+            [{"id": f"n{i}", "block_id": _ADDTOLIST_BLOCK_ID} for i in range(16_000)],
+            _links_naming_no_node(16_000),
+        ),
+        id="fix_addtolist_blocks",
+    ),
+    pytest.param(
+        AgentFixer.fix_addtolist_blocks,
+        lambda: (
+            [{"id": "same", "block_id": _ADDTOLIST_BLOCK_ID} for _ in range(1_500)],
+            [
+                {"id": str(i), "sink_id": "same", "sink_name": "list"}
+                for i in range(1_500)
+            ],
+        ),
+        id="fix_addtolist_blocks-nodes-sharing-an-id",
+    ),
+    pytest.param(
+        AgentFixer.fix_addtodictionary_blocks,
+        lambda: (
+            [
+                {"id": "create", "block_id": _CREATE_DICT_BLOCK_ID},
+                {"id": "add", "block_id": _ADDTODICTIONARY_BLOCK_ID},
+            ],
+            [
+                {"id": str(i), "source_id": "create", "sink_id": "add"}
+                for i in range(60_000)
+            ],
+        ),
+        id="fix_addtodictionary_blocks",
+    ),
+    pytest.param(
+        AgentFixer.fix_data_sampling_sample_size,
+        lambda: (
+            [
+                {"id": f"n{i}", "block_id": _DATA_SAMPLING_BLOCK_ID}
+                for i in range(40_000)
+            ],
+            _links_naming_no_node(40_000),
+        ),
+        id="fix_data_sampling_sample_size",
+    ),
+    pytest.param(
+        lambda fixer, agent: fixer.fix_agent_executor_blocks(agent, [_SUB_AGENT]),
+        lambda: (
+            [
+                {
+                    "id": f"n{i}",
+                    "block_id": AGENT_EXECUTOR_BLOCK_ID,
+                    "input_default": {"graph_id": "sub-agent"},
+                }
+                for i in range(40_000)
+            ],
+            _links_naming_no_node(40_000),
+        ),
+        id="fix_agent_executor_blocks",
+    ),
+]
+
+
+class TestLargeGraphs:
+    """The fixer's work grows with the graph, not with nodes x links."""
+
+    @pytest.mark.parametrize("fix, make_nodes_and_links", _LARGE_GRAPHS)
+    def test_fix_scans_no_list_per_node_or_link(self, fix, make_nodes_and_links):
+        nodes, links = make_nodes_and_links()
+        agent = _make_agent(nodes=nodes, links=links)
+
+        started = time.thread_time()
+        fix(AgentFixer(), agent)
+
+        # One pass over the nodes and the links takes well under a second of
+        # CPU time.
+        assert time.thread_time() - started < 10.0
+
+    def test_nodes_sharing_an_id_do_not_multiply_the_fixes(self):
+        """Links into an id several nodes share are handled once."""
+        fixer = AgentFixer()
+        samplers = [
+            {"id": "sampler", "block_id": _DATA_SAMPLING_BLOCK_ID} for _ in range(1_000)
+        ]
+        prompts = [
+            {"id": "prompt", "input_default": {"prompt": ""}} for _ in range(1_000)
+        ]
+        links = [
+            {"source_id": "missing", "sink_id": "sampler", "sink_name": "sample_size"}
+            for _ in range(1_000)
+        ] + [
+            {
+                "source_id": "missing",
+                "sink_id": "prompt",
+                "sink_name": f"prompt_values_#_v{i}",
+            }
+            for i in range(1_000)
+        ]
+        agent = _make_agent(nodes=samplers + prompts, links=links)
+
+        result = fixer.apply_all_fixes(agent)
+
+        extended_prompts = [
+            node
+            for node in result["nodes"]
+            if node["id"] == "prompt" and node["input_default"]["prompt"]
+        ]
+        assert len(extended_prompts) == 1
 
 
 class TestFixMCPToolBlocks:

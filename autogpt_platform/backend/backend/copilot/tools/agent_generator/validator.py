@@ -34,17 +34,34 @@ logger = logging.getLogger(__name__)
 TRIGGER_UI_TYPES = frozenset({BlockType.WEBHOOK.value, BlockType.WEBHOOK_MANUAL.value})
 
 
+class _TooManyErrors(Exception):
+    """The error list is full; there is no point in checking further."""
+
+
 class AgentValidator:
     """
     A comprehensive validator for AutoGPT agents that provides detailed error
     reporting for LLM-based fixes.
     """
 
+    # Errors listed per run, and the length of each; past these, more detail
+    # doesn't help whoever reads the list.
+    MAX_ERRORS = 200
+    MAX_ERROR_LENGTH = 2000
+
     def __init__(self):
         self.errors: list[str] = []
 
     def add_error(self, error_message: str) -> None:
-        """Add an error message to the validation errors list."""
+        """Add an error message to the validation errors list.
+
+        Raises ``_TooManyErrors`` once ``MAX_ERRORS`` are listed, which ends
+        the run of checks in ``validate``.
+        """
+        if len(self.errors) >= self.MAX_ERRORS:
+            raise _TooManyErrors
+        if len(error_message) > self.MAX_ERROR_LENGTH:
+            error_message = error_message[: self.MAX_ERROR_LENGTH] + "..."
         self.errors.append(error_message)
 
     def _values_equal(self, val1: Any, val2: Any) -> bool:
@@ -161,6 +178,15 @@ class AgentValidator:
 
         block_lookup = {b.get("id", ""): b for b in blocks}
 
+        # The inputs each node gets from a link. A link into part of an input
+        # (files_$_0, config_#_key) provides it.
+        linked_inputs_by_node: dict[str, set[str]] = {}
+        for link in agent.get("links", []):
+            if isinstance(link.get("sink_name"), str):
+                linked_inputs_by_node.setdefault(link.get("sink_id"), set()).add(
+                    extract_base_field_name(link["sink_name"])
+                )
+
         for node in agent.get("nodes", []):
             block_id = node.get("block_id")
             block = block_lookup.get(block_id)
@@ -181,14 +207,7 @@ class AgentValidator:
                 ]
             input_defaults = node.get("input_default", {})
             node_id = node.get("id")
-
-            # A link into part of an input (files_$_0, config_#_key) provides it.
-            linked_inputs = {
-                extract_base_field_name(link["sink_name"])
-                for link in agent.get("links", [])
-                if link.get("sink_id") == node_id
-                and isinstance(link.get("sink_name"), str)
-            }
+            linked_inputs = linked_inputs_by_node.get(node_id, set())
 
             for req_input in required_inputs:
                 if (
@@ -316,8 +335,9 @@ class AgentValidator:
             if not isinstance(prompt_text, str):
                 continue
 
-            # Find all double curly brace patterns with spaces
-            matches = re.finditer(r"\{\{([^}]+)\}\}", prompt_text)
+            # Find all double curly brace patterns with spaces. A placeholder
+            # holds no brace of either kind.
+            matches = re.finditer(r"\{\{([^{}]+)\}\}", prompt_text)
 
             for match in matches:
                 content = match.group(1)
@@ -718,6 +738,13 @@ class AgentValidator:
         if library_agents:
             library_agent_lookup = {la.get("graph_id", ""): la for la in library_agents}
 
+        # Linked and provided inputs per node id and sub-agent, found once even
+        # when nodes share both.
+        links_by_sink: dict[str, list[dict[str, Any]]] = {}
+        for link in links:
+            links_by_sink.setdefault(link.get("sink_id"), []).append(link)
+        linked_inputs: dict[tuple[str | None, str], tuple[set[str], set[str]]] = {}
+
         for node in nodes:
             if node.get("block_id") != AGENT_EXECUTOR_BLOCK_ID:
                 continue
@@ -765,18 +792,20 @@ class AgentValidator:
             sub_agent_properties = sub_agent_input_schema.get("properties", {})
 
             # Get all linked inputs to this node
-            linked_sub_agent_inputs: set[str] = set()
-            # A link into part of an input (items_$_0) provides it too.
-            provided_sub_agent_inputs: set[str] = set()
-            for link in links:
-                if link.get("sink_id") == node_id:
+            if (node_id, graph_id) not in linked_inputs:
+                linked_inputs[(node_id, graph_id)] = (set(), set())
+                for link in links_by_sink.get(node_id, []):
                     sink_name = link.get("sink_name", "")
                     if sink_name in sub_agent_properties:
-                        linked_sub_agent_inputs.add(sink_name)
+                        linked_inputs[(node_id, graph_id)][0].add(sink_name)
+                    # A link into part of an input (items_$_0) provides it too.
                     if isinstance(sink_name, str):
-                        provided_sub_agent_inputs.add(
+                        linked_inputs[(node_id, graph_id)][1].add(
                             extract_base_field_name(sink_name)
                         )
+            linked_sub_agent_inputs, provided_sub_agent_inputs = linked_inputs[
+                (node_id, graph_id)
+            ]
 
             # Check for hardcoded inputs that should be linked
             hardcoded_inputs = input_default.get("inputs", {})
@@ -949,6 +978,15 @@ class AgentValidator:
             node_lookup = self._build_node_lookup(agent)
         non_tool_block_ids = {AGENT_INPUT_BLOCK_ID, AGENT_OUTPUT_BLOCK_ID}
 
+        # The nodes with a "tools" link to a downstream block
+        nodes_with_tools = {
+            link.get("source_id")
+            for link in links
+            if link.get("source_name") == "tools"
+            and node_lookup.get(link.get("sink_id", ""), {}).get("block_id")
+            not in non_tool_block_ids
+        }
+
         for node in nodes:
             if node.get("block_id") != TOOL_ORCHESTRATOR_BLOCK_ID:
                 continue
@@ -1000,15 +1038,7 @@ class AgentValidator:
                 )
                 valid = False
 
-            has_tools = any(
-                link.get("source_id") == node_id
-                and link.get("source_name") == "tools"
-                and node_lookup.get(link.get("sink_id", ""), {}).get("block_id")
-                not in non_tool_block_ids
-                for link in links
-            )
-
-            if not has_tools:
+            if node_id not in nodes_with_tools:
                 self.add_error(
                     f"OrchestratorBlock node '{customized_name}' "
                     f"({node_id}) has no downstream tool blocks connected. "
@@ -1062,24 +1092,13 @@ class AgentValidator:
 
         return valid
 
-    def validate(
+    def _run_checks(
         self,
         agent: AgentDict,
         blocks: list[dict[str, Any]],
         library_agents: list[dict[str, Any]] | None = None,
-    ) -> tuple[bool, str | None]:
-        """
-        Comprehensive validation of an agent against available blocks.
-
-        Returns:
-            Tuple[bool, Optional[str]]: (is_valid, error_message)
-            - is_valid: True if agent passes all validations, False otherwise
-            - error_message: Detailed error message if validation fails, None
-              if successful
-        """
-        logger.info("Validating agent...")
-        self.errors = []
-
+    ) -> bool:
+        """Run every check of ``validate``. Returns True if all of them pass."""
         # Build node lookup once and share across validation methods
         node_lookup = self._build_node_lookup(agent)
 
@@ -1142,7 +1161,34 @@ class AgentValidator:
                 )
             )
 
-        all_passed = all(check[1] for check in checks)
+        return all(check[1] for check in checks)
+
+    def validate(
+        self,
+        agent: AgentDict,
+        blocks: list[dict[str, Any]],
+        library_agents: list[dict[str, Any]] | None = None,
+    ) -> tuple[bool, str | None]:
+        """
+        Comprehensive validation of an agent against available blocks.
+
+        Returns:
+            Tuple[bool, Optional[str]]: (is_valid, error_message)
+            - is_valid: True if agent passes all validations, False otherwise
+            - error_message: Detailed error message if validation fails, None
+              if successful
+        """
+        logger.info("Validating agent...")
+        self.errors = []
+
+        try:
+            all_passed = self._run_checks(agent, blocks, library_agents)
+        except _TooManyErrors:
+            all_passed = False
+            self.errors.append(
+                f"More than {self.MAX_ERRORS} errors found; the rest are not "
+                f"listed. Fix the errors above and validate again."
+            )
 
         if all_passed:
             logger.info("Agent validation successful.")
