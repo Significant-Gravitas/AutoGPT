@@ -46,8 +46,6 @@ test("onboarding keeps saving after a save that landed without an answer", async
   await advanceToRoleStep(page);
 
   await expect.poll(() => answers, { timeout: 30000 }).toContain(200);
-  expect(answers).not.toContain(409);
-  await expect(page.getByText(/updated in another session/i)).toHaveCount(0);
 
   // Kept by the server, not only in this device's local copy of the draft.
   await expect
@@ -58,4 +56,8 @@ test("onboarding keeps saving after a save that landed without an answer", async
       return (await saved.json()).wizardProgress?.currentStep;
     })
     .toBe("role");
+  // The server holds the last step, and the wizard sends one save at a time,
+  // so every draft save before that one has been answered, a 409 included.
+  expect(answers).not.toContain(409);
+  await expect(page.getByText(/updated in another session/i)).toHaveCount(0);
 });

@@ -22,6 +22,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import OnboardingPage from "../page";
 import { readLocalProgress } from "../progress";
 import { useOnboardingWizardStore } from "../store";
+import { landDraftSave, type StoredDraft } from "./draft-save-rule";
 import { makeProgress } from "./progress-fixture";
 
 // #17158. A save the wizard stops waiting for at 10 s can still reach the
@@ -65,30 +66,15 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 const REFUSED = "Request failed on client: PATCH /api/onboarding 409";
 type Delivery = "answered" | "landsUnanswered" | "landsLate" | "landsTwice";
 
-let stored: {
-  progress: OnboardingWizardProgress | null;
-  revision: number;
-  writerId: string | null;
-  writeSeq: number | null;
-};
+let stored: StoredDraft<OnboardingWizardProgress>;
 let deliveries: Delivery[];
 let held: Array<() => void>;
 let landed: number;
 
-// The backend's rule (`_save_wizard_progress` in backend/data/onboarding.py),
-// as these tests in backend/data/onboarding_wizard_db_test.py pin it against
-// Postgres: test_a_tabs_next_save_is_kept_over_its_own_unanswered_one,
-// test_the_same_save_arriving_twice_is_not_refused,
-// test_an_older_save_landing_late_cannot_replace_a_newer_one,
-// test_another_tab_saving_from_the_same_revision_is_refused and
-// test_a_tabs_stale_save_is_refused_once_anything_else_saved.
 function land(save: UserOnboardingUpdate) {
   landed += 1;
-  const fromSameTab =
-    save.wizardWriterId != null &&
-    save.wizardWriterId === stored.writerId &&
-    (stored.writeSeq ?? Infinity) <= (save.wizardWriteSeq ?? 0);
-  if (save.wizardRevision !== stored.revision && !fromSameTab)
+  const next = landDraftSave(stored, save);
+  if (!next)
     return HttpResponse.json(
       {
         detail:
@@ -96,12 +82,7 @@ function land(save: UserOnboardingUpdate) {
       },
       { status: 409 },
     );
-  stored = {
-    progress: save.wizardProgress ?? null,
-    revision: stored.revision + 1,
-    writerId: save.wizardWriterId ?? null,
-    writeSeq: save.wizardWriteSeq ?? null,
-  };
+  stored = next;
   return HttpResponse.json(
     getPatchV1UpdateOnboardingStateResponseMock({
       userId: user.id,

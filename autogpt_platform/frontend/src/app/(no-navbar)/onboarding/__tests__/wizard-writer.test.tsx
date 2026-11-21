@@ -3,6 +3,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { PAYWALL_LAST_STEPS, useOnboardingWizardStore } from "../store";
 import { useWizardProgress } from "../useWizardProgress";
+import { landDraftSave, type StoredDraft } from "./draft-save-rule";
 import { makeProgress as makeBaseProgress } from "./progress-fixture";
 
 const { getState, patchState } = vi.hoisted(() => ({
@@ -123,30 +124,22 @@ it.each([
 ])(
   "is not refused when the wizard reads the account again and it %s",
   async (_name, replays) => {
-    let stored = {
-      progress: makeProgress() as unknown,
+    let stored: StoredDraft<unknown> = {
+      progress: makeProgress(),
       revision: 4,
-      writerId: null as string | null,
-      writeSeq: null as number | null,
+      writerId: null,
+      writeSeq: null,
     };
     let hold = false;
     const late: { land: (() => void) | null } = { land: null };
     const answers: number[] = [];
     function land(save: Save) {
-      const sameTab =
-        save.wizardWriterId != null &&
-        save.wizardWriterId === stored.writerId &&
-        (stored.writeSeq ?? Infinity) <= (save.wizardWriteSeq ?? 0);
-      if (save.wizardRevision !== stored.revision && !sameTab) {
+      const next = landDraftSave(stored, save);
+      if (!next) {
         answers.push(409);
         return { status: 409, data: { detail: "Changed in another session" } };
       }
-      stored = {
-        progress: save.wizardProgress,
-        revision: stored.revision + 1,
-        writerId: save.wizardWriterId ?? null,
-        writeSeq: save.wizardWriteSeq ?? null,
-      };
+      stored = next;
       answers.push(200);
       return {
         status: 200,
