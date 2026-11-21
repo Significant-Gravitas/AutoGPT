@@ -75,9 +75,10 @@ def check_unpacked_size(
 ) -> None:
     """Read every member of an archive and discard the bytes, raising
     :class:`ZipMemberTooLarge` once one member or all of them together unpack
-    past their cap."""
+    past their cap. An archive whose entries overlap is refused unread."""
     total = 0
     with zipfile.ZipFile(file) as archive:
+        check_members_disjoint(archive)
         for info in archive.infolist():
             for chunk in iter_member(archive, info, max_bytes=max_member_bytes):
                 total += len(chunk)
@@ -88,3 +89,13 @@ def check_unpacked_size(
                         counted=total,
                         limit=max_total_bytes,
                     )
+
+
+def check_members_disjoint(archive: zipfile.ZipFile) -> None:
+    """Refuse an archive whose central directory points two entries at one
+    member, or lists more compressed bytes than the archive holds before it."""
+    infos = archive.infolist()
+    if len({info.header_offset for info in infos}) != len(infos):
+        raise ZipMemberError("archive entries overlap: two share one member")
+    if sum(info.compress_size for info in infos) > archive.start_dir:
+        raise ZipMemberError("archive entries overlap: members exceed the archive")
