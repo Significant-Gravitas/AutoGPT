@@ -4037,7 +4037,6 @@ class Scheduler(AppService):
         kwargs = job_args.model_dump(mode="json")
         if input_data is not None or input_credentials is not None:
             _check_schedule_size(kwargs)
-            self._check_schedule_storage(job_args, kwargs, replaces=[schedule_id])
             run_async(
                 execution_utils.validate_and_construct_node_execution_input(
                     graph_id=job_args.graph_id,
@@ -4062,10 +4061,15 @@ class Scheduler(AppService):
                 changes["next_run_time"] = trigger.get_next_fire_time(
                     None, datetime.now(timezone.utc)
                 )
-        updated = self.scheduler.modify_job(
-            schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
-        )
-        self._invalidate_jobs_cache()
+        # Measured with the write under the lock _persist_schedule holds, so
+        # two edits or a create can't both take the last of the budget.
+        with self._schedule_capacity_lock:
+            if input_data is not None or input_credentials is not None:
+                self._check_schedule_storage(job_args, kwargs, replaces=[schedule_id])
+            updated = self.scheduler.modify_job(
+                schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
+            )
+            self._invalidate_jobs_cache()
         logger.info(
             f"Updated job {schedule_id}: cron '{job_args.cron}' in timezone "
             f"{_timezone_from_job(updated)}"

@@ -379,21 +379,27 @@ def test_two_creates_racing_for_the_accounts_last_slot_leave_it_at_its_limit(
     assert _job_ids(scheduler) == sorted([held.id, made[0].id])
 
 
-def test_two_creates_racing_for_the_accounts_last_storage_leave_it_in_budget(
-    scheduler: Scheduler, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("action", ["create", "edit"])
+def test_two_writes_racing_for_the_accounts_last_storage_leave_it_in_budget(
+    scheduler: Scheduler, monkeypatch: pytest.MonkeyPatch, action: str
 ):
-    """Two creates that each fit the storage budget, but not together. The
-    first is held right after it measures the account's storage until the
-    second reaches the capacity lock, or, measuring outside it, measures too:
-    only one of them may be stored."""
+    """Two creates, or two edits of held schedules, that each fit the storage
+    budget, but not together. The first is held right after it measures the
+    account's storage until the second reaches the capacity lock, or,
+    measuring outside it, measures too: only one of them may be stored."""
     monkeypatch.setattr(scheduler_module.config, "max_schedule_storage_bytes", 150_000)
+    big = {**INPUTS, "input_1": "x" * 100_000}
+    # Each edit grows one of two small schedules the account already holds.
+    held: list[str] = []
+    if action == "edit":
+        held = [_add(scheduler, str(uuid.uuid4())).id for _ in range(2)]
     first_measured, release_first = threading.Event(), threading.Event()
     second_reached_the_measure = threading.Event()
     measure = scheduler._check_schedule_storage
     capacity_lock = scheduler._schedule_capacity_lock
 
-    class NotingTheSecondCreate:
-        """The capacity lock, noting the second create as it reaches it."""
+    class NotingTheSecondWrite:
+        """The capacity lock, noting the second write as it reaches it."""
 
         def __enter__(self) -> None:
             if first_measured.is_set():
@@ -411,21 +417,25 @@ def test_two_creates_racing_for_the_accounts_last_storage_leave_it_in_budget(
         first_measured.set()
         release_first.wait(30)
 
-    def send(key: str) -> GraphExecutionJobInfo | ValueError:
+    def send(n: int) -> GraphExecutionJobInfo | ValueError:
         try:
-            return _add(scheduler, key, input_data={**INPUTS, "input_1": "x" * 100_000})
+            if action == "edit":
+                return scheduler.update_graph_execution_schedule(
+                    schedule_id=held[n], user_id="user-1", input_data=big
+                )
+            return _add(scheduler, str(uuid.uuid4()), input_data=big)
         except ValueError as refused:
             return refused
 
     with (
-        patch.object(scheduler, "_schedule_capacity_lock", NotingTheSecondCreate()),
+        patch.object(scheduler, "_schedule_capacity_lock", NotingTheSecondWrite()),
         patch.object(scheduler, "_check_schedule_storage", measure_and_hold_the_first),
         ThreadPoolExecutor(max_workers=2) as pool,
     ):
-        first = pool.submit(send, str(uuid.uuid4()))
+        first = pool.submit(send, 0)
         try:
             assert first_measured.wait(30)
-            second = pool.submit(send, str(uuid.uuid4()))
+            second = pool.submit(send, 1)
             assert second_reached_the_measure.wait(30)
         finally:
             release_first.set()
@@ -435,7 +445,8 @@ def test_two_creates_racing_for_the_accounts_last_storage_leave_it_in_budget(
     refused = [o for o in outcomes if isinstance(o, ValueError)]
     assert len(made) == len(refused) == 1
     assert "can store 150,000 bytes together" in str(refused[0])
-    assert _job_ids(scheduler) == [made[0].id]
+    stored = scheduler.scheduler.get_jobs(Jobstores.EXECUTION.value)
+    assert [job.kwargs["input_data"] == big for job in stored].count(True) == 1
 
 
 def test_a_limit_refusal_under_a_key_another_create_took_is_a_conflict(
