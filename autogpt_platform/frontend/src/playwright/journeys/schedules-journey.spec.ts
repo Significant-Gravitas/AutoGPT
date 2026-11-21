@@ -219,9 +219,10 @@ async function listSchedules(page: Page, graphId: string) {
   return (await response.json()) as Schedule[];
 }
 
-// A run that will change no more, or that waits on someone: the poll stops
-// on either, so the test fails fast with the status the run is in.
-const RUN_SETTLED = /^(COMPLETED|FAILED|TERMINATED|INCOMPLETE|REVIEW)$/;
+// A run that will change no more, or that waits on a reviewer: the poll
+// stops on either, so the test fails fast with the status the run is in. Not
+// INCOMPLETE, which every run starts as before it's queued.
+const RUN_SETTLED = /^(COMPLETED|FAILED|TERMINATED|REVIEW)$/;
 
 // The id of the agent's first run, or "" while it has none. The list is
 // newest first, so that is its last entry.
@@ -253,13 +254,25 @@ async function deleteSchedule(
   scheduleId: string,
   { soft = false } = {},
 ) {
-  const response = await page.request.delete(
-    `/api/proxy/api/schedules/${scheduleId}`,
-  );
-  (soft ? expect.soft : expect)(
-    response.ok(),
-    `deleting the schedule failed: ${response.status()}`,
-  ).toBe(true);
+  const url = `/api/proxy/api/schedules/${scheduleId}`;
+  if (!soft) {
+    const response = await page.request.delete(url);
+    expect(
+      response.ok(),
+      `deleting the schedule failed: ${response.status()}`,
+    ).toBe(true);
+    return;
+  }
+  // Cleanup after a failure: record its own failure, never throw over the
+  // one that brought the test here.
+  try {
+    const response = await page.request.delete(url);
+    expect
+      .soft(response.ok(), `deleting the schedule failed: ${response.status()}`)
+      .toBe(true);
+  } catch (error) {
+    expect.soft(error, "deleting the schedule threw").toBeUndefined();
+  }
 }
 
 async function onlySchedule(page: Page, graphId: string) {
