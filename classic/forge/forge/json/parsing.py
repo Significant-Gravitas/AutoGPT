@@ -49,18 +49,22 @@ def json_loads(json_str: str) -> Any:
 
 def extract_dict_from_json(json_str: str) -> dict[str, Any]:
     # Sometimes the response includes the JSON in a code block with ```
+    # Security: take the LAST code block (the agent's own command), not the
+    # first (which may be injected from web/file content in the reasoning).
     pattern = r"```(?:json|JSON)*([\s\S]*?)```"
-    match = re.search(pattern, json_str)
+    matches = re.findall(pattern, json_str)
 
-    if match:
-        json_str = match.group(1).strip()
+    if matches:
+        json_str = matches[-1].strip()
     else:
         # The string may contain JSON.
-        json_pattern = r"{[\s\S]*}"
-        match = re.search(json_pattern, json_str)
-
-        if match:
-            json_str = match.group()
+        # Security: use last complete balanced JSON object instead of greedy
+        # {[\sS]*} span. The greedy pattern spans from the first { to the last },
+        # allowing injected JSON from web content or files to hijack the parsed
+        # command. Take the LAST complete JSON object (the agent's own command).
+        json_objects = re.findall(r"{(?:[^{}]+|{(?:[^{}]+|{[^{}]*})*})*}", json_str)
+        if json_objects:
+            json_str = json_objects[-1]
 
     result = json_loads(json_str)
     if not isinstance(result, dict):
