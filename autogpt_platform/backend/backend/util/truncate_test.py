@@ -4,6 +4,8 @@ These cover the maximal-limits fast path in :func:`truncate` and the plain
 string path.
 """
 
+import random
+
 import pytest
 
 import backend.util.truncate as truncate_module
@@ -108,6 +110,64 @@ class TestOversizedPayloads:
         result = truncate(value, 1)
 
         assert result == {"k": "…"}
+
+
+class TestCostOfOversizedPayloads:
+    """An oversized payload costs a few builds, whatever it is made of."""
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param({"x": {f"{i:x}": 0 for i in range(3_000)}}, id="many-keys"),
+            pytest.param({"x": [[1e15] * 300 for _ in range(40)]}, id="list-of-lists"),
+            pytest.param([f"line {i}\n" * 30 for i in range(500)], id="long-strings"),
+        ],
+    )
+    def test_the_whole_value_is_built_at_most_five_times(self, monkeypatch, value):
+        builds = []
+        real = truncate_module._truncate_value
+
+        def spy(val, *limits):
+            if val is value:
+                builds.append(limits)
+            return real(val, *limits)
+
+        monkeypatch.setattr(truncate_module, "_truncate_value", spy)
+
+        truncate(value, measured(value) // 3)
+
+        assert len(builds) <= 5
+
+
+@pytest.mark.parametrize("alphabet", ["abc def\n", "a'\"\n\\…é"])
+def test_the_result_fits_whenever_the_tightest_cut_does(alphabet: str):
+    rng = random.Random(alphabet)
+
+    def payload(depth: int) -> object:
+        roll = rng.random()
+        if depth > 2 or roll < 0.4:
+            return rng.choice(
+                [
+                    "".join(rng.choices(alphabet, k=rng.randint(0, 50))),
+                    rng.randint(-(10**6), 10**12),
+                    None,
+                ]
+            )
+        if roll < 0.75:
+            return [payload(depth + 1) for _ in range(rng.randint(0, 12))]
+        return {f"k{i}": payload(depth + 1) for i in range(rng.randint(0, 5))}
+
+    for _ in range(300):
+        value = [payload(1) for _ in range(rng.randint(1, 8))]
+        size_limit = rng.randint(0, measured(value))
+        tightest = min(
+            measured(_truncate_value(value, min(8, size_limit), n))
+            for n in range(1, 14)
+        )
+
+        result = truncate(value, size_limit)
+
+        assert measured(result) <= max(size_limit, tightest)
 
 
 class TestPlainStrings:
