@@ -1,6 +1,10 @@
 import type { Browser, Page } from "@playwright/test";
 import { markChangelogSeen } from "../utils/changelog";
-import { adminGrantUnavailable, grantAdminRole } from "./admin-role";
+import {
+  adminGrantUnavailable,
+  grantAdminRole,
+  revokeAdminRole,
+} from "./admin-role";
 import { expect, serveHostedFlags, test as journeyTest } from "./fixtures";
 import { watchForUnexpectedErrors } from "./guard";
 import { type JourneyUser, provisionNewJourneyUser } from "./journey-user";
@@ -42,8 +46,12 @@ const test = journeyTest.extend<{ admin: Person; shopper: Person }>({
       browser,
       { baseURL, flagOverrides, who: "the admin" },
       async (person) => {
-        await grantAdminRole(person.page, person.user);
-        await provide(person);
+        try {
+          await grantAdminRole(person.page, person.user);
+          await provide(person);
+        } finally {
+          await revokeAdminRole(person.user);
+        }
       },
     );
   },
@@ -61,6 +69,9 @@ const test = journeyTest.extend<{ admin: Person; shopper: Person }>({
 test.describe("marketplace journey", () => {
   const noAdmin = adminGrantUnavailable();
   test.skip(Boolean(noAdmin), noAdmin);
+  // Three people and two reviews: the approve test takes about 50 s in CI,
+  // so a slower runner needs more than the journeys' default 90 s.
+  test.describe.configure({ timeout: 180_000 });
 
   test("an approved listing is in the marketplace under its creator, and someone else adds it and runs the version that was reviewed", async ({
     page,
@@ -324,17 +335,30 @@ async function asSomeoneElse(
     userAgent: JOURNEY_USER_AGENT,
   });
   const guard = watchForUnexpectedErrors(context, []);
+  let failure: unknown;
   try {
     await markChangelogSeen(context);
     await serveHostedFlags(context, flagOverrides);
     const page = await context.newPage();
     await body({ page, user: await provisionNewJourneyUser(page) });
   } catch (error) {
-    await context.close();
-    throw error;
+    failure = error;
   }
-  const problems = await guard.collect();
-  await context.close();
+  let problems: string[];
+  try {
+    problems = await guard.collect();
+  } finally {
+    await context.close();
+  }
+  if (failure) {
+    // What the guard saw often explains why the setup failed.
+    if (failure instanceof Error && problems.length > 0) {
+      failure.message +=
+        `\n\n${who} also hit ${problems.length} unexpected error(s):\n\n` +
+        problems.join("\n\n");
+    }
+    throw failure;
+  }
   expect(
     problems,
     `${who} hit ${problems.length} unexpected error(s):\n\n` +

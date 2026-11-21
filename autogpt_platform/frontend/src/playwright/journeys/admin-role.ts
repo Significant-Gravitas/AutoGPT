@@ -1,20 +1,19 @@
 import { expect, type Page } from "@playwright/test";
 import { withJourneyDatabase } from "./journey-database";
-import { isLocalStack, type JourneyUser, signIn } from "./journey-user";
+import { type JourneyUser, signIn } from "./journey-user";
 
 /**
  * Why this run can't make an admin, or undefined when it can. Making one
- * writes the stack's database (see withJourneyDatabase), which a journey
- * reaches on a local stack, and on a deployed one only through
- * PLAYWRIGHT_JOURNEY_DATABASE_URL.
+ * writes the stack's database through withJourneyDatabase, which needs
+ * PLAYWRIGHT_JOURNEY_DATABASE_URL or DATABASE_URL.
  */
 export function adminGrantUnavailable(): string | undefined {
-  if (isLocalStack() || process.env.PLAYWRIGHT_JOURNEY_DATABASE_URL) {
+  if (process.env.PLAYWRIGHT_JOURNEY_DATABASE_URL ?? process.env.DATABASE_URL) {
     return undefined;
   }
   return (
     "making an admin writes the stack's database: set " +
-    "PLAYWRIGHT_JOURNEY_DATABASE_URL to the deployed stack's"
+    "PLAYWRIGHT_JOURNEY_DATABASE_URL (or DATABASE_URL) to the stack's"
   );
 }
 
@@ -49,4 +48,18 @@ export async function grantAdminRole(page: Page, user: JourneyUser) {
     session?.user?.role,
     "the admin's new session should carry the role",
   ).toBe("admin");
+}
+
+/**
+ * Takes the role back, so a deployed stack the journey ran against keeps no
+ * journey admins (their passwords can sit in a failed run's trace).
+ */
+export async function revokeAdminRole(user: JourneyUser) {
+  if (!user.id) return;
+  await withJourneyDatabase("taking back the admin role", (client) =>
+    client.query(
+      `UPDATE platform."UserAuthIdentity" SET role = NULL WHERE id = $1 AND role = 'admin'`,
+      [user.id],
+    ),
+  );
 }

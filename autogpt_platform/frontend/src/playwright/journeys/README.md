@@ -157,6 +157,10 @@ PLAYWRIGHT_BASE_URL=https://autogpt-pr-<N>.vercel.app \
 - Sign-ups are capped at 5 per client IP per 10 minutes, so a full run from
   one machine can hit `429`. Reuse an account as above, or run fewer
   journeys at once.
+- Setting `PLAYWRIGHT_JOURNEY_DATABASE_URL` for a deployed stack also lets the
+  marketplace journey make a temporary admin there (`admin-role.ts`; the
+  role is taken back at teardown) and approve its test listings, which stay
+  on that stack. Without the variable, that journey skips.
 
 ## In CI
 
