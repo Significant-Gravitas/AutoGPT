@@ -27,10 +27,17 @@ from backend.copilot.scheduled_chats import forget, reconnect, service
 from backend.copilot.scheduled_chats.outcomes import RunFailure, RunOutcome
 from backend.copilot.scheduled_chats.reconnect import resume_after_reconnect
 from backend.copilot.scheduled_chats.service import (
-    ScheduledRun,
     list_paused_scheduled_chats,
     record_scheduled_run,
     resume_scheduled_chat,
+)
+from backend.copilot.scheduled_chats.service_fixtures import DISCORD_FAILURE as _DISCORD
+from backend.copilot.scheduled_chats.service_fixtures import scheduled_run as _run
+from backend.copilot.scheduled_chats.service_fixtures import (
+    scheduler_fixture as scheduler_fixture,
+)
+from backend.copilot.scheduled_chats.service_fixtures import (
+    watch_scheduler_lock_fixture as watch_scheduler_lock_fixture,
 )
 from backend.util.exceptions import NotFoundError
 from backend.util.test import SpinTestServer
@@ -38,27 +45,11 @@ from backend.util.test import SpinTestServer
 logger = logging.getLogger(__name__)
 
 _SERVICE = "backend.copilot.scheduled_chats.service"
-_JOBS = "backend.copilot.scheduled_chats.jobs"
 
-_DISCORD = RunFailure(
-    key="connection:discord", kind="connection", provider="discord", tool="run_block"
-)
 _TWITTER = RunFailure(
     key="connection:twitter", kind="connection", provider="twitter", tool="run_block"
 )
 _TWITTER_OUTRIGHT = RunOutcome(failure=_TWITTER, whole_run=True)
-
-
-@pytest.fixture
-def scheduler(mocker) -> MagicMock:
-    client = MagicMock(
-        pause_schedule=AsyncMock(return_value=True),
-        resume_schedule=AsyncMock(return_value=True),
-        # Paused jobs drop out of this list, so empty means none fires.
-        get_execution_schedules=AsyncMock(return_value=[]),
-    )
-    mocker.patch(f"{_JOBS}.get_scheduler_client", return_value=client)
-    return client
 
 
 async def _owner() -> tuple[str, str]:
@@ -80,20 +71,6 @@ async def _cleanup(user_id: str) -> None:
         await User.prisma().delete_many(where={"id": user_id})
     except Exception as exc:
         logger.warning("cleanup for %s failed: %s", user_id, exc)
-
-
-def _run(user_id: str, session_id: str, outcome: RunOutcome, **overrides):
-    base = dict(
-        user_id=user_id,
-        schedule_key="sched-1",
-        schedule_id="sched-1",
-        routine_id=None,
-        session_id=session_id,
-        title="Discord monitor",
-        outcome=outcome,
-    )
-    base.update(overrides)
-    return ScheduledRun(**base)
 
 
 async def _notes(session_id: str) -> list[ChatMessage]:
@@ -412,36 +389,37 @@ async def test_a_run_that_fired_before_the_pause_changes_nothing(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_two_runs_finishing_together_keep_the_pause(
-    server: SpinTestServer, scheduler: MagicMock
+    server: SpinTestServer, scheduler: MagicMock, watch_scheduler_lock, mocker
 ):
-    """Both read two failures; one pauses the job and records it, then the
-    other finds the job already paused. Its view from before the pause must
-    not erase it, or the chat stays paused with nothing to resume it by."""
-    straggler_waiting = asyncio.Event()
-    pause_recorded = asyncio.Event()
+    """The second failure waits for the first pause and leaves its row alone."""
+    pause_started = asyncio.Event()
+    finish_pause = asyncio.Event()
 
     async def pause(schedule_id: str, *, user_id: str) -> bool:
-        if not straggler_waiting.is_set():
-            straggler_waiting.set()
-            await pause_recorded.wait()
-            return False
+        pause_started.set()
+        await finish_pause.wait()
         return True
 
     scheduler.pause_schedule.side_effect = pause
     user_id, session_id = await _owner()
+    run = _run(user_id, session_id, RunOutcome(failure=_DISCORD, whole_run=True))
+    contend = watch_scheduler_lock(user_id, run.schedule_key)
+    read_streak = mocker.spy(ScheduledChatStreakActions, "find_unique")
+
     try:
-        failed = RunOutcome(failure=_DISCORD, whole_run=True)
         for _ in range(2):
-            await record_scheduled_run(_run(user_id, session_id, failed))
+            await record_scheduled_run(run)
 
-        straggler = asyncio.create_task(
-            record_scheduled_run(_run(user_id, session_id, failed))
-        )
-        await straggler_waiting.wait()
-        await record_scheduled_run(_run(user_id, session_id, failed))
-        pause_recorded.set()
-        await straggler
+        async with asyncio.timeout(30), asyncio.TaskGroup() as tasks:
+            tasks.create_task(record_scheduled_run(run))
+            await pause_started.wait()
+            reads = read_streak.await_count
+            tasks.create_task(record_scheduled_run(run))
+            await contend.wait()
+            assert read_streak.await_count == reads
+            finish_pause.set()
 
+        scheduler.pause_schedule.assert_awaited_once()
         assert len(await list_paused_scheduled_chats(user_id)) == 1
         assert len(await _notes(session_id)) == 1
     finally:
@@ -478,34 +456,37 @@ async def test_a_good_run_that_read_the_streak_before_the_pause_keeps_it(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_new_failure_finishing_with_the_pause_keeps_it(
-    server: SpinTestServer, scheduler: MagicMock, mocker
+    server: SpinTestServer, scheduler: MagicMock, watch_scheduler_lock, mocker
 ):
-    """A run that failed another way read the streak before the pause, so it
-    starts a new one; replacing the row would erase the pause."""
-    read_it = asyncio.Event()
-    pause_recorded = asyncio.Event()
-    schedule_of = service._schedule_of
+    """A different failure reported during a pause keeps that pause."""
+    pause_started = asyncio.Event()
+    finish_pause = asyncio.Event()
 
-    async def held_schedule_of(run):
-        if run.outcome == _TWITTER_OUTRIGHT:
-            read_it.set()
-            await pause_recorded.wait()
-        return await schedule_of(run)
+    async def pause(schedule_id: str, *, user_id: str) -> bool:
+        pause_started.set()
+        await finish_pause.wait()
+        return True
 
-    mocker.patch(f"{_SERVICE}._schedule_of", new=held_schedule_of)
+    scheduler.pause_schedule.side_effect = pause
     user_id, session_id = await _owner()
-    try:
-        failed = RunOutcome(failure=_DISCORD, whole_run=True)
-        for _ in range(2):
-            await record_scheduled_run(_run(user_id, session_id, failed))
+    run = _run(user_id, session_id, RunOutcome(failure=_DISCORD, whole_run=True))
+    contend = watch_scheduler_lock(user_id, run.schedule_key)
+    read_streak = mocker.spy(ScheduledChatStreakActions, "find_unique")
 
-        other = asyncio.create_task(
-            record_scheduled_run(_run(user_id, session_id, _TWITTER_OUTRIGHT))
-        )
-        await read_it.wait()
-        await record_scheduled_run(_run(user_id, session_id, failed))
-        pause_recorded.set()
-        await other
+    try:
+        for _ in range(2):
+            await record_scheduled_run(run)
+
+        async with asyncio.timeout(30), asyncio.TaskGroup() as tasks:
+            tasks.create_task(record_scheduled_run(run))
+            await pause_started.wait()
+            reads = read_streak.await_count
+            tasks.create_task(
+                record_scheduled_run(_run(user_id, session_id, _TWITTER_OUTRIGHT))
+            )
+            await contend.wait()
+            assert read_streak.await_count == reads
+            finish_pause.set()
 
         paused = await list_paused_scheduled_chats(user_id)
         assert [chat.provider for chat in paused] == ["discord"]
@@ -635,24 +616,35 @@ async def _alert(user_id: str) -> AlertCondition | None:
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_chat_resumed_as_its_pause_raises_the_alert_is_left_without_one(
-    server: SpinTestServer, scheduler: MagicMock, mocker
+    server: SpinTestServer, scheduler: MagicMock, watch_scheduler_lock, mocker
 ):
-    """The owner resumes from the paused list between the pause's row and its
-    alert: the resume's withdrawal finds nothing yet, and the alert must not
-    outlive the pause."""
+    """Resuming while the pause raises its alert clears the alert."""
+    alert_started = asyncio.Event()
+    finish_alert = asyncio.Event()
     raise_paused = service.alerts.raise_paused
     user_id, session_id = await _owner()
+    run = _run(user_id, session_id, RunOutcome(failure=_DISCORD, whole_run=True))
+    contend = watch_scheduler_lock(user_id, run.schedule_key)
 
-    async def resumed_first(*args, **kwargs):
-        assert await resume_scheduled_chat(user_id, "sched-1")
+    async def held_alert(*args, **kwargs):
+        alert_started.set()
+        await finish_alert.wait()
         await raise_paused(*args, **kwargs)
 
-    mocker.patch.object(service.alerts, "raise_paused", new=resumed_first)
+    mocker.patch.object(service.alerts, "raise_paused", new=held_alert)
     try:
-        failed = RunOutcome(failure=_DISCORD, whole_run=True)
-        for _ in range(3):
-            await record_scheduled_run(_run(user_id, session_id, failed))
+        for _ in range(2):
+            await record_scheduled_run(run)
 
+        async with asyncio.timeout(30), asyncio.TaskGroup() as tasks:
+            tasks.create_task(record_scheduled_run(run))
+            await alert_started.wait()
+            result = tasks.create_task(resume_scheduled_chat(user_id, run.schedule_key))
+            await contend.wait()
+            scheduler.resume_schedule.assert_not_awaited()
+            finish_alert.set()
+
+        assert result.result() is True
         alert = await _alert(user_id)
         assert alert is not None and alert.status == AlertConditionStatus.RESOLVED
     finally:
@@ -775,36 +767,39 @@ async def test_a_chat_paused_while_a_reconnect_reads_it_is_resumed(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_two_resumes_at_once_both_say_it_resumed(
-    server: SpinTestServer, scheduler: MagicMock, mocker
+    server: SpinTestServer, scheduler: MagicMock
 ):
-    """Reconnecting from the card resumes the chat twice at once: once from
-    the connect, once from the card. Both read the row before either clears
-    it; both say it resumed, and the chat gets one note."""
-    both_read_the_row = asyncio.Event()
-    waiting: list[str] = []
+    """Two callers who observe the same pause both get a successful result."""
+    both_read_the_row = asyncio.Barrier(2)
+    find_unique = ScheduledChatStreakActions.find_unique
+    remaining_observations = 2
 
-    async def resume_jobs(user_id: str, schedule_ids: list[str]) -> None:
-        waiting.append(user_id)
-        if len(waiting) == 2:
-            both_read_the_row.set()
-        await both_read_the_row.wait()
+    async def read_initial_pause(actions, **kwargs):
+        nonlocal remaining_observations
+        row = await find_unique(actions, **kwargs)
+        if remaining_observations:
+            remaining_observations -= 1
+            await both_read_the_row.wait()
+        return row
 
-    mocker.patch(f"{_SERVICE}.resume_jobs", side_effect=resume_jobs)
     user_id, session_id = await _owner()
     try:
         failed = RunOutcome(failure=_DISCORD, whole_run=True)
         for _ in range(3):
             await record_scheduled_run(_run(user_id, session_id, failed))
 
-        results = await asyncio.gather(
-            resume_scheduled_chat(user_id, "sched-1"),
-            resume_scheduled_chat(user_id, "sched-1"),
-        )
+        with patch.object(
+            ScheduledChatStreakActions, "find_unique", new=read_initial_pause
+        ):
+            async with asyncio.timeout(10), asyncio.TaskGroup() as tasks:
+                first = tasks.create_task(resume_scheduled_chat(user_id, "sched-1"))
+                second = tasks.create_task(resume_scheduled_chat(user_id, "sched-1"))
 
-        assert results == [True, True]
+        assert first.result() is second.result() is True
+        scheduler.resume_schedule.assert_awaited_once_with("sched-1", user_id=user_id)
         assert await list_paused_scheduled_chats(user_id) == []
         headlines = [n.metadata["headline"] for n in await _notes(session_id)]
-        assert headlines.count("Resumed \u201cDiscord monitor\u201d") == 1
+        assert headlines.count("Resumed “Discord monitor”") == 1
     finally:
         await _cleanup(user_id)
 

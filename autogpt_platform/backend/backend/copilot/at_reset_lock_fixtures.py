@@ -12,13 +12,20 @@ class FakeJobLock:
     ``blocking_timeout``, its renewals counted."""
 
     def __init__(
-        self, held: asyncio.Lock, blocking_timeout: float, renewals: list[float]
+        self,
+        held: asyncio.Lock,
+        blocking_timeout: float,
+        renewals: list[float],
+        contended: asyncio.Event,
     ) -> None:
         self._held = held
         self._wait = blocking_timeout
         self._renewals = renewals
+        self._contended = contended
 
     async def acquire(self) -> bool:
+        if self._held.locked():
+            self._contended.set()
         try:
             async with asyncio.timeout(self._wait):
                 await self._held.acquire()
@@ -73,6 +80,7 @@ class FakeAtResetRedis:
         self.scores: dict[str, dict[str, float]] = {}
         self.expiries: dict[str, timedelta] = {}
         self.lock_options: dict[str, dict[str, float]] = {}
+        self.lock_contended = asyncio.Event()
         # When each lock's holder renewed it, by name.
         self.renewals: dict[str, list[float]] = {}
         self._locks: dict[str, asyncio.Lock] = {}
@@ -88,6 +96,7 @@ class FakeAtResetRedis:
             self._locks.setdefault(name, asyncio.Lock()),
             blocking_timeout,
             self.renewals.setdefault(name, []),
+            self.lock_contended,
         )
 
     def is_locked(self, name: str) -> bool:
