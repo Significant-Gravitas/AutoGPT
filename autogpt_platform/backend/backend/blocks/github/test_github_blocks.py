@@ -1,8 +1,9 @@
 import asyncio
 import copy
 import inspect
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest import mock
+from urllib.parse import urlparse
 
 import pytest
 
@@ -17,6 +18,7 @@ from backend.blocks.github import (
     users,
 )
 from backend.blocks.github._api import (
+    _convert_to_api_url,
     convert_comment_url_to_api_endpoint,
     get_paginated,
 )
@@ -55,6 +57,7 @@ from backend.blocks.github.repo import (
     GithubListTagsBlock,
 )
 from backend.blocks.github.repo_branches import GithubListBranchesBlock
+from backend.blocks.github.repo_files import GithubReadFileBlock, GithubReadFolderBlock
 from backend.blocks.github.reviews import GithubListPRReviewsBlock
 from backend.blocks.github.users import GithubGetUserInfoBlock
 from backend.data.execution import ExecutionContext
@@ -702,6 +705,73 @@ class TestConvertCommentUrl:
             convert_comment_url_to_api_endpoint("https://github.com/owner")
 
 
+class TestConvertToApiUrlQuery:
+    @pytest.mark.parametrize(
+        "query", ["ref=dev", "ref=release%2Fv0.8", "ref=feature%2Fzo%C3%AB"]
+    )
+    def test_query_survives_str_input(self, query):
+        assert (
+            _convert_to_api_url(f"https://github.com/owner/repo/contents/x?{query}")
+            == f"https://api.github.com/repos/owner/repo/contents/x?{query}"
+        )
+
+    @pytest.mark.parametrize(
+        "query", ["ref=dev", "ref=release%2Fv0.8", "ref=feature%2Fzo%C3%AB"]
+    )
+    def test_query_survives_parsed_input(self, query):
+        result = _convert_to_api_url(
+            urlparse(f"https://github.com/owner/repo/contents/x?{query}")
+        )
+        assert result.netloc == "api.github.com"
+        assert result.path == "/repos/owner/repo/contents/x"
+        assert result.query == query
+
+    def test_api_host_query_is_unchanged(self):
+        url = "https://api.github.com/repos/owner/repo/contents/x?ref=dev"
+        assert _convert_to_api_url(url) == url
+        parsed = urlparse(url)
+        assert _convert_to_api_url(parsed) is parsed
+
+
+_READ_BRANCH_CASES = [
+    ("dev", "?ref=dev"),
+    ("release/v0.8", "?ref=release%2Fv0.8"),
+    ("feature/zoë", "?ref=feature%2Fzo%C3%AB"),
+    ("", ""),
+    ("  ", ""),
+]
+
+
+class TestReadBranchRef:
+    @pytest.mark.parametrize("branch, query", _READ_BRANCH_CASES)
+    def test_read_file_ref(self, branch, query):
+        _, sent = _via_requests(
+            lambda: GithubReadFileBlock.read_file(
+                TEST_CREDENTIALS, "https://github.com/owner/repo", "a.md", branch
+            ),
+            [{"type": "file", "content": "eA==", "size": 1}],
+        )
+        assert [url for _, url, _ in sent] == [
+            f"https://api.github.com/repos/owner/repo/contents/a.md{query}"
+        ]
+
+    @pytest.mark.parametrize("branch, query", _READ_BRANCH_CASES)
+    def test_read_folder_ref(self, branch, query):
+        _, sent = _via_requests(
+            lambda: GithubReadFolderBlock.read_folder(
+                TEST_CREDENTIALS, "https://github.com/owner/repo", "src", branch
+            ),
+            [[]],
+        )
+        assert [url for _, url, _ in sent] == [
+            f"https://api.github.com/repos/owner/repo/contents/src{query}"
+        ]
+
+    def test_branch_defaults_to_repository_default(self):
+        for block in (GithubReadFileBlock, GithubReadFolderBlock):
+            assert block.Input.model_fields["branch"].default == ""
+
+
 def test_subject_html_url_of_a_repo_root_is_not_rewritten():
     assert (
         _subject_html_url("https://api.github.com/repos/owner/repo")
@@ -1210,12 +1280,12 @@ class TestParseTimestamp:
 
     def test_zulu_suffix_is_understood(self):
         assert repo._parse_timestamp("2026-01-01T00:00:00Z") == datetime(
-            2026, 1, 1, tzinfo=timezone.utc
+            2026, 1, 1, tzinfo=UTC
         )
 
     def test_naive_timestamp_is_assumed_utc(self):
         assert repo._parse_timestamp("2026-01-01T00:00:00") == datetime(
-            2026, 1, 1, tzinfo=timezone.utc
+            2026, 1, 1, tzinfo=UTC
         )
 
 
