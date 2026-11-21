@@ -65,7 +65,8 @@ class AgentProtocolServer:
     ):
         """Start the agent server."""
         logger.debug("Starting the agent server...")
-        if not is_port_free(port):
+        host = host or "localhost"  # an empty bind host means all interfaces
+        if not is_port_free(port, host):
             logger.error(f"Port {port} is already in use.")
             logger.info(
                 "You can specify a port by either setting the AP_SERVER_PORT "

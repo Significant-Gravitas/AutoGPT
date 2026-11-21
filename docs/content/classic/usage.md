@@ -31,7 +31,7 @@ Commands:
 
     ```shell
     docker compose run --rm auto-gpt --ai-settings <filename>
-    docker compose run --rm auto-gpt serve
+    docker compose run --rm --service-ports auto-gpt serve
     ```
 
 ### `run` &ndash; CLI mode

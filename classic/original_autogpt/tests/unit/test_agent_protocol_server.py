@@ -40,18 +40,20 @@ async def _accepts(host: str, port: int) -> bool:
 
 
 @contextlib.asynccontextmanager
-async def _running(server: AgentProtocolServer, port: int, **start_kwargs):
+async def _running(
+    server: AgentProtocolServer, port: int, probe: str = "127.0.0.1", **start_kwargs
+):
     task = asyncio.create_task(server.start(port=port, **start_kwargs))
     try:
         for _ in range(100):
-            if await _accepts("127.0.0.1", port):
+            if await _accepts(probe, port):
                 break
             if task.done():
                 task.result()  # surface the startup error
                 pytest.fail("server exited before listening")
             await asyncio.sleep(0.05)
         else:
-            pytest.fail("server did not start listening on 127.0.0.1")
+            pytest.fail(f"server did not start listening on {probe}")
         yield
     finally:
         task.cancel()
@@ -82,11 +84,12 @@ def lan_ip() -> str:
     return ip
 
 
+@pytest.mark.parametrize("start_kwargs", [{}, {"host": ""}], ids=["unset", "empty"])
 async def test_server_listens_on_localhost_only_by_default(
-    server: AgentProtocolServer, lan_ip: str
+    server: AgentProtocolServer, lan_ip: str, start_kwargs: dict
 ):
     port = _free_port()
-    async with _running(server, port):
+    async with _running(server, port, **start_kwargs):
         assert not await _accepts(lan_ip, port)
 
 
@@ -96,3 +99,13 @@ async def test_server_listens_on_all_interfaces_when_host_is_0_0_0_0(
     port = _free_port()
     async with _running(server, port, host="0.0.0.0"):
         assert await _accepts(lan_ip, port)
+
+
+async def test_server_starts_on_configured_host_when_loopback_port_is_taken(
+    server: AgentProtocolServer, lan_ip: str
+):
+    port = _free_port()
+    with socket.socket() as loopback:
+        loopback.bind(("127.0.0.1", port))
+        async with _running(server, port, probe=lan_ip, host=lan_ip):
+            assert await _accepts(lan_ip, port)

@@ -232,7 +232,9 @@ def set_env_config_value(key: str, value: str) -> None:
 
 
 def is_port_free(port: int, host: str = "127.0.0.1"):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    # Same address family rule hypercorn uses for its bind, so "localhost" is IPv4
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    with socket.socket(family, socket.SOCK_STREAM) as s:
         try:
             s.bind((host, port))  # Try to bind to the port
             return True  # If successful, the port is free
