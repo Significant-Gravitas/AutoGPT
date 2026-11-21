@@ -41,18 +41,10 @@ def store():
         yield
 
 
-def _webhook(**fields) -> MagicMock:
-    webhook = MagicMock(
-        id="wh-1",
-        user_id=USER_ID,
-        provider="linear",
-        credentials_id=REFUSED.id,
-        triggered_nodes=[],
-        triggered_presets=[],
+def _webhook() -> MagicMock:
+    return MagicMock(
+        id="wh-1", user_id=USER_ID, provider="linear", credentials_id=REFUSED.id
     )
-    for name, value in fields.items():
-        setattr(webhook, name, value)
-    return webhook
 
 
 def _webhook_manager() -> MagicMock:
@@ -113,12 +105,13 @@ async def test_ping_uses_the_stored_key():
 
 @pytest.mark.asyncio
 async def test_orphan_cleanup_prunes_with_the_stored_key():
-    path = "backend.api.features.integrations.router"
+    path = "backend.data.integrations"
     manager = _webhook_manager()
-    linked = _webhook(triggered_nodes=[MagicMock(id="node-1", graph_id="graph-1")])
+    no_rows = MagicMock(find_many=AsyncMock(return_value=[]))
     with (
-        patch(f"{path}.get_webhook", AsyncMock(side_effect=[linked, _webhook()])),
-        patch(f"{path}.set_node_webhook", AsyncMock()),
+        patch(f"{path}.AgentNode.prisma", return_value=no_rows),
+        patch(f"{path}.AgentPreset.prisma", return_value=no_rows),
+        patch(f"{path}.get_webhook", AsyncMock(return_value=_webhook())),
         patch(f"{path}.get_webhook_manager", return_value=manager),
     ):
         await _cleanup_orphaned_webhook_for_graph("graph-1", USER_ID, "wh-1")

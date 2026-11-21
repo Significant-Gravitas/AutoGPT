@@ -30,14 +30,19 @@ from backend.copilot.scheduled_chats.reconnect import (
 from backend.data.credential_scope import scope_error
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger
-from backend.data.graph import NodeModel, get_graph, set_node_webhook
+from backend.data.graph import NodeModel, get_graph
 from backend.data.integrations import (
+    Webhook,
     WebhookEvent,
-    WebhookWithRelations,
     get_all_webhooks_by_creds,
     get_webhook,
+    get_webhook_triggered_nodes,
+    iter_webhook_triggered_presets,
     publish_webhook_event,
+    unlink_webhook_from_graph,
+    unlink_webhook_triggers,
     wait_for_webhook_event,
+    webhooks_have_triggers,
 )
 from backend.data.model import (
     Credentials,
@@ -1376,6 +1381,8 @@ def _revocation_handler(
 
 # GitHub caps its payloads at 25 MB, the largest of the providers.
 WEBHOOK_PAYLOAD_LIMIT = 25 * MiB
+# A delivery loads and starts its webhook's triggered presets this many at a time.
+WEBHOOK_TRIGGER_PAGE_SIZE = 10
 # A webhook's other fields hold secrets: `id` and `url` are its ingress
 # credential, `secret` and `config` hold signing secrets, and its triggers'
 # inputs can hold the user's own.
@@ -1414,7 +1421,7 @@ async def webhook_ingress_generic(
         )
     webhook_manager = get_webhook_manager(provider)
     try:
-        webhook = await get_webhook(webhook_id, include_relations=True)
+        webhook = await get_webhook(webhook_id)
         # Sanity check: `provider` from URL and fetched webhook must match.
         # Otherwise the URL provider's verifier runs instead of the webhook's
         # own (a no-op for unsigned providers like Compass), bypassing it.
@@ -1425,6 +1432,8 @@ async def webhook_ingress_generic(
             )
             # Same as the actual "webhook not found" response to conceal existence
             raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
+        if webhook_manager.signature_needs_triggers(webhook):
+            webhook = await get_webhook(webhook_id, include_relations=True)
     except NotFoundError as e:
         logger.warning(
             f"Webhook payload received for unknown webhook #{mask_credential(webhook_id)}"
@@ -1495,7 +1504,7 @@ async def webhook_ingress_generic(
         event_type=event_type,
         payload=payload,
     )
-    has_triggers = bool(webhook.triggered_nodes or webhook.triggered_presets)
+    has_triggers = await webhooks_have_triggers([webhook_id])
     # Each run would refuse a paywalled owner anyway. Stop before publishing and
     # the reward, so a retried delivery after a failed lookup repeats neither.
     if has_triggers and await is_user_paywalled(user_id):
@@ -1512,21 +1521,27 @@ async def webhook_ingress_generic(
 
     await complete_onboarding_step(user_id, OnboardingStep.TRIGGER_WEBHOOK)
 
-    # Execute all triggers concurrently for better performance
-    tasks = []
-    tasks.extend(
-        _execute_webhook_node_trigger(node, webhook, webhook_id, event_type, payload)
-        for node in webhook.triggered_nodes
+    await asyncio.gather(
+        *(
+            _execute_webhook_node_trigger(
+                node, webhook, webhook_id, event_type, payload
+            )
+            for node in await get_webhook_triggered_nodes(webhook_id)
+        ),
+        return_exceptions=True,
     )
-    tasks.extend(
-        _execute_webhook_preset_trigger(
-            preset, webhook, webhook_id, event_type, payload
+    async for presets in iter_webhook_triggered_presets(
+        webhook_id, WEBHOOK_TRIGGER_PAGE_SIZE
+    ):
+        await asyncio.gather(
+            *(
+                _execute_webhook_preset_trigger(
+                    preset, webhook, webhook_id, event_type, payload
+                )
+                for preset in presets
+            ),
+            return_exceptions=True,
         )
-        for preset in webhook.triggered_presets
-    )
-
-    if tasks:
-        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 @router.post(
@@ -1565,7 +1580,7 @@ async def webhook_ping(
 
 async def _execute_webhook_node_trigger(
     node: NodeModel,
-    webhook: WebhookWithRelations,
+    webhook: Webhook,
     webhook_id: str,
     event_type: str,
     payload: dict,
@@ -1625,7 +1640,7 @@ async def _execute_webhook_node_trigger(
 
 async def _execute_webhook_preset_trigger(
     preset: LibraryAgentPreset,
-    webhook: WebhookWithRelations,
+    webhook: Webhook,
     webhook_id: str,
     event_type: str,
     payload: dict,
@@ -2038,19 +2053,13 @@ async def remove_all_webhooks_for_credentials(
     Raises:
         NeedConfirmation: If any of the webhooks are still in use and `force` is `False`
     """
-    webhooks = await get_all_webhooks_by_creds(
-        user_id, credentials.id, include_relations=True
-    )
-    if any(w.triggered_nodes or w.triggered_presets for w in webhooks) and not force:
+    webhooks = await get_all_webhooks_by_creds(user_id, credentials.id)
+    if not force and await webhooks_have_triggers(w.id for w in webhooks):
         raise NeedConfirmation(
             "Some webhooks linked to these credentials are still in use by a workflow"
         )
     for webhook in webhooks:
-        # Unlink all nodes & presets
-        for node in webhook.triggered_nodes:
-            await set_node_webhook(node.id, None)
-        for preset in webhook.triggered_presets:
-            await set_preset_webhook(user_id, preset.id, None)
+        await unlink_webhook_triggers(webhook.id, user_id)
 
         # Prune the webhook
         webhook_manager = get_webhook_manager(ProviderName(credentials.provider))
@@ -2082,87 +2091,7 @@ async def _cleanup_orphaned_webhook_for_graph(
     but webhook triggers still exist.
     """
     try:
-        webhook = await get_webhook(webhook_id, include_relations=True)
-        if not webhook or webhook.user_id != user_id:
-            logger.warning(
-                f"Webhook {mask_credential(webhook_id)} not found or doesn't belong to user {user_id}"
-            )
-            return
-
-        nodes_removed = 0
-        presets_removed = 0
-
-        # Remove triggered nodes that belong to the deleted graph
-        for node in webhook.triggered_nodes:
-            if node.graph_id == graph_id:
-                try:
-                    await set_node_webhook(node.id, None)
-                    nodes_removed += 1
-                    logger.info(
-                        f"Removed orphaned webhook trigger from node {node.id} "
-                        f"in deleted/archived graph {graph_id}"
-                    )
-                except Exception:
-                    logger.exception(
-                        f"Failed to remove webhook trigger from node {node.id}"
-                    )
-
-        # Remove triggered presets that belong to the deleted graph
-        for preset in webhook.triggered_presets:
-            if preset.graph_id == graph_id:
-                try:
-                    await set_preset_webhook(user_id, preset.id, None)
-                    presets_removed += 1
-                    logger.info(
-                        f"Removed orphaned webhook trigger from preset {preset.id} "
-                        f"for deleted/archived graph {graph_id}"
-                    )
-                except Exception:
-                    logger.exception(
-                        f"Failed to remove webhook trigger from preset {preset.id}"
-                    )
-
-        if nodes_removed > 0 or presets_removed > 0:
-            logger.info(
-                f"Cleaned up orphaned webhook #{mask_credential(webhook_id)}: "
-                f"removed {nodes_removed} nodes and {presets_removed} presets "
-                f"for deleted/archived graph #{graph_id}"
-            )
-
-            # Check if webhook has any remaining triggers, if not, prune it
-            updated_webhook = await get_webhook(webhook_id, include_relations=True)
-            if (
-                not updated_webhook.triggered_nodes
-                and not updated_webhook.triggered_presets
-            ):
-                try:
-                    webhook_manager = get_webhook_manager(
-                        ProviderName(webhook.provider)
-                    )
-                    credentials = (
-                        await creds_manager.get(
-                            user_id, webhook.credentials_id, allow_sdk_default=True
-                        )
-                        if webhook.credentials_id
-                        else None
-                    )
-                    success = await webhook_manager.prune_webhook_if_dangling(
-                        user_id, webhook.id, credentials
-                    )
-                    if success:
-                        logger.info(
-                            f"Pruned orphaned webhook #{mask_credential(webhook_id)} "
-                            f"with no remaining triggers"
-                        )
-                    else:
-                        logger.warning(
-                            f"Failed to prune orphaned webhook #{mask_credential(webhook_id)}"
-                        )
-                except Exception:
-                    logger.exception(
-                        f"Failed to prune orphaned webhook #{mask_credential(webhook_id)}"
-                    )
-
+        await unlink_webhook_from_graph(webhook_id, graph_id, user_id)
     except Exception:
         logger.exception(
             f"Failed to cleanup orphaned webhook #{mask_credential(webhook_id)} for graph #{graph_id}"

@@ -162,8 +162,8 @@ class BaseWebhooksManager(ABC, Generic[WT]):
     async def prune_webhook_if_dangling(
         self, user_id: str, webhook_id: str, credentials: Optional[Credentials]
     ) -> bool:
-        webhook = await integrations.get_webhook(webhook_id, include_relations=True)
-        if webhook.triggered_nodes or webhook.triggered_presets:
+        webhook = await integrations.get_webhook(webhook_id)
+        if await integrations.webhooks_have_triggers([webhook_id]):
             # Don't prune webhook if in use
             logger.info(
                 f"Webhook #{mask_credential(webhook_id)} kept as it has triggers in other graphs"
@@ -178,11 +178,17 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         )
         return True
 
+    @classmethod
+    def signature_needs_triggers(cls, webhook: integrations.Webhook) -> bool:
+        """Whether `verify_signature` reads its secret from the triggers attached
+        to `webhook`, so ingress must load them before calling it."""
+        return False
+
     # --8<-- [start:BaseWebhooksManager6]
     @classmethod
     async def verify_signature(
         cls,
-        webhook: integrations.WebhookWithRelations,
+        webhook: integrations.Webhook,
         request: Request,
     ) -> None:
         """
@@ -193,12 +199,12 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         this. Providers whose protocol does sign deliveries (GitHub, Telegram,
         Exa, Airtable) override and raise `fastapi.HTTPException(403)` on
         missing or invalid signatures, using `hmac.compare_digest` for any
-        secret comparison. Overrides that only need the stored `secret` /
-        `config` may widen the parameter to `integrations.Webhook`.
+        secret comparison.
 
         Params:
-            webhook: Configured webhook including stored `secret` / config,
-                with `triggered_nodes` / `triggered_presets` relations loaded.
+            webhook: Configured webhook including stored `secret` / config. It is
+                an `integrations.WebhookWithRelations`, with its triggers loaded,
+                only where `signature_needs_triggers` returns True.
             request: Incoming FastAPI `Request`. Read with `await request.body()`
                 for HMAC computation; Starlette caches the body so a second
                 read inside `validate_payload` is safe.

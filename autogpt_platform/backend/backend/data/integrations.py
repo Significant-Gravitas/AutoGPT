@@ -1,8 +1,11 @@
 import logging
+from collections.abc import AsyncIterator, Iterable
 from typing import Literal, Optional, overload
 
 from prisma.models import AgentNode, AgentPreset, IntegrationWebhook
 from prisma.types import (
+    AgentNodeWhereInput,
+    AgentPresetWhereInput,
     IntegrationWebhookCreateInput,
     IntegrationWebhookUpdateInput,
     IntegrationWebhookWhereInput,
@@ -12,6 +15,8 @@ from pydantic import Field, computed_field
 
 from backend.data.event_bus import AsyncRedisEventBus
 from backend.data.includes import (
+    AGENT_NODE_INCLUDE,
+    AGENT_PRESET_INCLUDE,
     INTEGRATION_WEBHOOK_INCLUDE,
     MAX_INTEGRATION_WEBHOOKS_FETCH,
 )
@@ -163,43 +168,59 @@ async def get_webhook(
     return (WebhookWithRelations if include_relations else Webhook).from_db(webhook)
 
 
-@overload
 async def get_all_webhooks_by_creds(
     user_id: str,
     credentials_id: str,
     *,
-    include_relations: Literal[True],
     limit: int = MAX_INTEGRATION_WEBHOOKS_FETCH,
-) -> list[WebhookWithRelations]: ...
-@overload
-async def get_all_webhooks_by_creds(
-    user_id: str,
-    credentials_id: str,
-    *,
-    include_relations: Literal[False] = False,
-    limit: int = MAX_INTEGRATION_WEBHOOKS_FETCH,
-) -> list[Webhook]: ...
-
-
-async def get_all_webhooks_by_creds(
-    user_id: str,
-    credentials_id: str,
-    *,
-    include_relations: bool = False,
-    limit: int = MAX_INTEGRATION_WEBHOOKS_FETCH,
-) -> list[Webhook] | list[WebhookWithRelations]:
+) -> list[Webhook]:
     if not credentials_id:
         raise ValueError("credentials_id must not be empty")
     webhooks = await IntegrationWebhook.prisma().find_many(
         where={"userId": user_id, "credentialsId": credentials_id},
-        include=INTEGRATION_WEBHOOK_INCLUDE if include_relations else None,
         order={"createdAt": "desc"},
         take=limit,
     )
-    return [
-        (WebhookWithRelations if include_relations else Webhook).from_db(webhook)
-        for webhook in webhooks
-    ]
+    return [Webhook.from_db(webhook) for webhook in webhooks]
+
+
+async def webhooks_have_triggers(webhook_ids: Iterable[str]) -> bool:
+    """Whether any node or preset is attached to one of `webhook_ids`."""
+    ids = list(webhook_ids)
+    return bool(
+        await AgentPreset.prisma().count(where={"webhookId": {"in": ids}})
+        or await AgentNode.prisma().count(where={"webhookId": {"in": ids}})
+    )
+
+
+async def get_webhook_triggered_nodes(webhook_id: str) -> list[NodeModel]:
+    # Legacy: nothing attaches a node to a webhook any more, only presets.
+    nodes = await AgentNode.prisma().find_many(
+        where={"webhookId": webhook_id}, include=AGENT_NODE_INCLUDE
+    )
+    return [NodeModel.from_db(node) for node in nodes]
+
+
+async def iter_webhook_triggered_presets(
+    webhook_id: str, page_size: int
+) -> AsyncIterator[list[LibraryAgentPreset]]:
+    """The presets attached to `webhook_id`, with their inputs, `page_size` at a time."""
+    after: str | None = None
+    while True:
+        where: AgentPresetWhereInput = {"webhookId": webhook_id}
+        if after:
+            where["id"] = {"gt": after}
+        page = await AgentPreset.prisma().find_many(
+            where=where,
+            include=AGENT_PRESET_INCLUDE,
+            order={"id": "asc"},
+            take=page_size,
+        )
+        if page:
+            yield [LibraryAgentPreset.from_db(preset) for preset in page]
+        if len(page) < page_size:
+            return
+        after = page[-1].id
 
 
 async def find_webhook_by_credentials_and_props(
@@ -356,27 +377,7 @@ async def unlink_webhook_from_graph(
         graph_id: The ID of the graph to unlink from
         user_id: The ID of the user (for authorization)
     """
-    # Avoid circular imports
-    from backend.api.features.library.db import set_preset_webhook
-    from backend.data.graph import set_node_webhook
-
-    # Find all nodes in this graph that use this webhook
-    nodes = await AgentNode.prisma().find_many(
-        where={"agentGraphId": graph_id, "webhookId": webhook_id}
-    )
-
-    # Unlink webhook from each node
-    for node in nodes:
-        await set_node_webhook(node.id, None)
-
-    # Find all presets for this graph that use this webhook
-    presets = await AgentPreset.prisma().find_many(
-        where={"agentGraphId": graph_id, "webhookId": webhook_id, "userId": user_id}
-    )
-
-    # Unlink webhook from each preset
-    for preset in presets:
-        await set_preset_webhook(user_id, preset.id, None)
+    await unlink_webhook_triggers(webhook_id, user_id, graph_id=graph_id)
 
     # Check if webhook needs cleanup (prune_webhook_if_dangling handles the trigger check)
     webhook = await get_webhook(webhook_id, include_relations=False)
@@ -388,6 +389,26 @@ async def unlink_webhook_from_graph(
         else None
     )
     await webhook_manager.prune_webhook_if_dangling(user_id, webhook.id, credentials)
+
+
+async def unlink_webhook_triggers(
+    webhook_id: str, user_id: str, *, graph_id: str | None = None
+) -> None:
+    """Detach the nodes and presets `webhook_id` triggers; only `graph_id`'s if given."""
+    # Avoid circular imports
+    from backend.api.features.library.db import set_preset_webhook
+    from backend.data.graph import set_node_webhook
+
+    node_where: AgentNodeWhereInput = {"webhookId": webhook_id}
+    preset_where: AgentPresetWhereInput = {"webhookId": webhook_id, "userId": user_id}
+    if graph_id:
+        node_where["agentGraphId"] = graph_id
+        preset_where["agentGraphId"] = graph_id
+
+    for node in await AgentNode.prisma().find_many(where=node_where):
+        await set_node_webhook(node.id, None)
+    for preset in await AgentPreset.prisma().find_many(where=preset_where):
+        await set_preset_webhook(user_id, preset.id, None)
 
 
 async def delete_webhook(user_id: str, webhook_id: str) -> None:
