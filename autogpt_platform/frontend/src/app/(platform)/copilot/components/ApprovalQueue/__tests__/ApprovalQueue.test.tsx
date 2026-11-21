@@ -26,7 +26,7 @@ import {
 
 function serve(reviews: PendingHumanReviewModel[], status = 200) {
   server.use(
-    http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
+    http.get(`*/api/internal/review/session/${CHAT_SESSION}`, () =>
       HttpResponse.json(reviews),
     ),
     status === 200
@@ -35,7 +35,7 @@ function serve(reviews: PendingHumanReviewModel[], status = 200) {
           rejected_count: 0,
           failed_count: 0,
         })
-      : http.post("*/api/review/action", () =>
+      : http.post("*/api/internal/review/action", () =>
           HttpResponse.json({ detail: "boom" }, { status }),
         ),
   );

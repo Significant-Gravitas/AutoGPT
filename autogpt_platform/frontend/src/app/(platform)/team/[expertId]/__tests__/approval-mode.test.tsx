@@ -248,7 +248,7 @@ describe("Expert approval mode", () => {
 
   test("explains when approval modes are off for the account", async () => {
     server.use(
-      http.patch("*/api/experts/expert-maria/mode", () =>
+      http.patch("*/api/internal/experts/expert-maria/mode", () =>
         HttpResponse.json({ detail: "feature_disabled" }, { status: 403 }),
       ),
     );

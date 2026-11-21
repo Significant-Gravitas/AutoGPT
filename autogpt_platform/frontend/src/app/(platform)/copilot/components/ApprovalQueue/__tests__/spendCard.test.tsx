@@ -9,7 +9,7 @@ import { CHAT_SESSION, spendCard } from "./fixtures";
 
 function renderQueue(reviews: PendingHumanReviewModel[]) {
   server.use(
-    http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
+    http.get(`*/api/internal/review/session/${CHAT_SESSION}`, () =>
       HttpResponse.json(reviews),
     ),
   );

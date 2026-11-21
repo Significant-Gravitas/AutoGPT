@@ -58,19 +58,19 @@ describe("useOAuthConnect with the real popup lifecycle", () => {
       .mockResolvedValueOnce({
         status: 200,
         data: {
-          login_url: `${window.location.origin}/api/proxy/api/integrations/codex/device-login/first`,
+          login_url: `${window.location.origin}/api/proxy/api/internal/integrations/codex/device-login/first`,
           state_token: "first-state",
           cancel_url:
-            "/api/proxy/api/integrations/codex/device-login/first/cancel",
+            "/api/proxy/api/internal/integrations/codex/device-login/first/cancel",
         },
       } as never)
       .mockResolvedValueOnce({
         status: 200,
         data: {
-          login_url: `${window.location.origin}/api/proxy/api/integrations/codex/device-login/second`,
+          login_url: `${window.location.origin}/api/proxy/api/internal/integrations/codex/device-login/second`,
           state_token: "second-state",
           cancel_url:
-            "/api/proxy/api/integrations/codex/device-login/second/cancel",
+            "/api/proxy/api/internal/integrations/codex/device-login/second/cancel",
         },
       } as never);
     const onSuccess = vi.fn();
@@ -147,10 +147,10 @@ describe("useOAuthConnect with the real popup lifecycle", () => {
     vi.mocked(getV1InitiateOauthFlow).mockResolvedValue({
       status: 200,
       data: {
-        login_url: `${window.location.origin}/api/proxy/api/integrations/codex/device-login/completed`,
+        login_url: `${window.location.origin}/api/proxy/api/internal/integrations/codex/device-login/completed`,
         state_token: "completed-state",
         cancel_url:
-          "/api/proxy/api/integrations/codex/device-login/completed/cancel",
+          "/api/proxy/api/internal/integrations/codex/device-login/completed/cancel",
       },
     } as never);
     vi.mocked(postV1ExchangeOauthCodeForTokens).mockResolvedValue({

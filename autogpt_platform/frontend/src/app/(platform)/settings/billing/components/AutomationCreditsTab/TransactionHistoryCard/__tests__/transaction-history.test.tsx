@@ -14,7 +14,7 @@ import { executionID, libraryID, run, topUp } from "./fixtures";
 describe("Transaction history receipts", () => {
   it("links the agent separately from its task and labels run status in the receipt", async () => {
     server.use(
-      http.get("*/api/credits/transactions", () =>
+      http.get("*/api/internal/credits/transactions", () =>
         HttpResponse.json({ transactions: [run], next_cursor: null }),
       ),
     );
@@ -66,7 +66,7 @@ describe("Transaction history receipts", () => {
   it("preserves loaded receipts when loading more fails and retries the same cursor", async () => {
     let attempts = 0;
     server.use(
-      http.get("*/api/credits/transactions", ({ request }) => {
+      http.get("*/api/internal/credits/transactions", ({ request }) => {
         if (!new URL(request.url).searchParams.has("cursor"))
           return HttpResponse.json({
             transactions: [run],
@@ -103,7 +103,7 @@ describe("Transaction history receipts", () => {
 
   it("keeps unavailable history without creating a dead library or task link", async () => {
     server.use(
-      http.get("*/api/credits/transactions", () =>
+      http.get("*/api/internal/credits/transactions", () =>
         HttpResponse.json({
           transactions: [
             {
@@ -132,7 +132,7 @@ describe("Transaction history receipts", () => {
 
   it("keeps the agent link when its run is unavailable without creating a dead task link", async () => {
     server.use(
-      http.get("*/api/credits/transactions", () =>
+      http.get("*/api/internal/credits/transactions", () =>
         HttpResponse.json({
           transactions: [{ ...run, execution_available: false }],
           next_cursor: null,
@@ -154,7 +154,7 @@ describe("Transaction history receipts", () => {
 
   it("keeps complete totals when the charge-entry list is limited", async () => {
     server.use(
-      http.get("*/api/credits/transactions", () =>
+      http.get("*/api/internal/credits/transactions", () =>
         HttpResponse.json({
           transactions: [
             { ...run, charges_total_count: 130, charges_truncated: true },

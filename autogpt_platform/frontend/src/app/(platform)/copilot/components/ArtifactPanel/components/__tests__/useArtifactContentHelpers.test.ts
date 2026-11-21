@@ -37,7 +37,7 @@ function makeArtifact(overrides?: Partial<ArtifactRef>): ArtifactRef {
     id: "file-001",
     title: "test.txt",
     mimeType: "text/plain",
-    sourceUrl: "/api/proxy/api/workspace/files/file-001/download",
+    sourceUrl: "/api/proxy/api/internal/workspace/files/file-001/download",
     origin: "agent",
     ...overrides,
   };
@@ -107,7 +107,7 @@ describe("useArtifactContent helpers (module-level cache)", () => {
     for (let i = 0; i < 12; i++) {
       const artifact = makeArtifact({
         id: `lru-${i}`,
-        sourceUrl: `/api/proxy/api/workspace/files/lru-${i}/download`,
+        sourceUrl: `/api/proxy/api/internal/workspace/files/lru-${i}/download`,
       });
       const { unmount } = render(
         React.createElement(ArtifactContent, {
@@ -125,7 +125,7 @@ describe("useArtifactContent helpers (module-level cache)", () => {
 
     const artifact13 = makeArtifact({
       id: "lru-12",
-      sourceUrl: "/api/proxy/api/workspace/files/lru-12/download",
+      sourceUrl: "/api/proxy/api/internal/workspace/files/lru-12/download",
     });
     const { unmount } = render(
       React.createElement(ArtifactContent, {

@@ -52,8 +52,10 @@ async function submitTopUp() {
 function captureTopUpHeaders() {
   const captured: { headers: Headers | null } = { headers: null };
   server.use(
-    http.get("*/api/credits", () => HttpResponse.json({ credits: 1000 })),
-    http.post("*/api/credits", async ({ request }) => {
+    http.get("*/api/internal/credits", () =>
+      HttpResponse.json({ credits: 1000 }),
+    ),
+    http.post("*/api/internal/credits", async ({ request }) => {
       captured.headers = request.headers;
       return HttpResponse.json({ checkout_url: null });
     }),

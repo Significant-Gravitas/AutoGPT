@@ -115,7 +115,7 @@ beforeEach(() => {
       }),
     ),
     http.post(
-      `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${SESSION_ID}/stream`,
+      `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${SESSION_ID}/stream`,
       ({ request }) =>
         streamSseResponse(ASK_WHICH_MEMORIES, { abortSignal: request.signal }),
     ),

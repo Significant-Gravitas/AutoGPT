@@ -87,37 +87,37 @@ async function closeWindowAndFlush() {
 
 describe("client request failures in Sentry", () => {
   it("titles a server failure with its method, route and status", async () => {
-    fail(504, `/api/chat/sessions/${SESSION_A}/stream?resume=1`);
+    fail(504, `/api/internal/chat/sessions/${SESSION_A}/stream?resume=1`);
     await Sentry.flush(2000);
 
     expect(sent).toHaveLength(1);
     expect(sent[0].message).toBe(
-      "Request failed on client: GET /api/chat/sessions/{id}/stream 504",
+      "Request failed on client: GET /api/internal/chat/sessions/{id}/stream 504",
     );
     expect(sent[0].level).toBe("error");
     expect(JSON.stringify(sent[0])).not.toContain("[object Object]");
     expect(sent[0].contexts?.request_failure).toMatchObject({
-      route: "/api/chat/sessions/{id}/stream",
-      path: `/api/chat/sessions/${SESSION_A}/stream`,
+      route: "/api/internal/chat/sessions/{id}/stream",
+      path: `/api/internal/chat/sessions/${SESSION_A}/stream`,
       status: 504,
     });
   });
 
   it("groups one route's server failures together, and apart from other routes", async () => {
-    fail(504, `/api/chat/sessions/${SESSION_A}`);
-    fail(502, `/api/chat/sessions/${SESSION_B}`);
-    fail(504, "/api/credits/trial/cancel", "POST");
+    fail(504, `/api/internal/chat/sessions/${SESSION_A}`);
+    fail(502, `/api/internal/chat/sessions/${SESSION_B}`);
+    fail(504, "/api/internal/credits/trial/cancel", "POST");
     await Sentry.flush(2000);
 
     // Sentry may hand the events over in any order.
     const sessions = [
       "client-request-failure",
-      "GET /api/chat/sessions/{id}",
+      "GET /api/internal/chat/sessions/{id}",
       "5xx",
     ];
     const trialCancel = [
       "client-request-failure",
-      "POST /api/credits/trial/cancel",
+      "POST /api/internal/credits/trial/cancel",
       "5xx",
     ];
     expect(sent).toHaveLength(3);
@@ -129,21 +129,21 @@ describe("client request failures in Sentry", () => {
         ]),
       ),
     ).toEqual({
-      [`/api/chat/sessions/${SESSION_A}`]: sessions,
-      [`/api/chat/sessions/${SESSION_B}`]: sessions,
-      "/api/credits/trial/cancel": trialCancel,
+      [`/api/internal/chat/sessions/${SESSION_A}`]: sessions,
+      [`/api/internal/chat/sessions/${SESSION_B}`]: sessions,
+      "/api/internal/credits/trial/cancel": trialCancel,
     });
   });
 
   it("reports a request the app got wrong as a warning in its own 4xx issue", async () => {
-    fail(400, `/api/graphs/${SESSION_A}/execute/7`, "POST");
-    fail(422, `/api/graphs/${SESSION_B}/execute/9`, "POST");
+    fail(400, `/api/internal/graphs/${SESSION_A}/execute/7`, "POST");
+    fail(422, `/api/internal/graphs/${SESSION_B}/execute/9`, "POST");
     await Sentry.flush(2000);
 
     expect(sent.map((event) => event.level)).toEqual(["warning", "warning"]);
     expect(sent[0].fingerprint).toEqual([
       "client-request-failure",
-      "POST /api/graphs/{id}/execute/{id}",
+      "POST /api/internal/graphs/{id}/execute/{id}",
       "4xx",
     ]);
     expect(sent[1].fingerprint).toEqual(sent[0].fingerprint);
@@ -156,34 +156,34 @@ describe("client request failures in Sentry", () => {
     [404, "deleted resource"],
     [499, "user abandoned the request"],
   ])("leaves only a breadcrumb for an expected %i (%s)", async (status) => {
-    fail(status, "/api/experts/identities");
+    fail(status, "/api/internal/experts/identities");
     await Sentry.flush(2000);
 
     expect(sent).toHaveLength(0);
     expect(breadcrumbs).toEqual([
       expect.objectContaining({
         level: "info",
-        message: `Request failed on client: GET /api/experts/identities ${status}`,
+        message: `Request failed on client: GET /api/internal/experts/identities ${status}`,
       }),
     ]);
   });
 
   it("sends one event for a burst of the same failure and counts the rest in the console", async () => {
     vi.useFakeTimers();
-    for (let i = 0; i < 12; i++) fail(504, "/api/chat/connections");
+    for (let i = 0; i < 12; i++) fail(504, "/api/internal/chat/connections");
     await closeWindowAndFlush();
 
     expect(sent).toHaveLength(1);
     expect(consoleInfo).toHaveBeenLastCalledWith(
-      "Request failed on client: GET /api/chat/connections 504 ×12 in the last 10s",
+      "Request failed on client: GET /api/internal/chat/connections 504 ×12 in the last 10s",
     );
   });
 
   it("reports the same failure again once the window has passed", async () => {
     vi.useFakeTimers();
-    fail(504, "/api/chat/connections");
+    fail(504, "/api/internal/chat/connections");
     await closeWindowAndFlush();
-    fail(504, "/api/chat/connections");
+    fail(504, "/api/internal/chat/connections");
     await Sentry.flush(2000);
 
     expect(sent).toHaveLength(2);
@@ -193,7 +193,7 @@ describe("client request failures in Sentry", () => {
     logClientRequestFailure({
       status: 502,
       method: "POST",
-      url: "/api/credits/trial/cancel",
+      url: "/api/internal/credits/trial/cancel",
       errorMessage: `<!DOCTYPE html>${"<div>cloudflare</div>".repeat(200)}`,
     });
     await Sentry.flush(2000);
@@ -205,17 +205,26 @@ describe("client request failures in Sentry", () => {
 
 describe("routeTemplate", () => {
   it.each([
-    ["/api/library/agents", "/api/library/agents"],
-    [`/api/library/agents/${SESSION_A}`, "/api/library/agents/{id}"],
-    ["/api/executions/12345?page=2", "/api/executions/{id}"],
-    ["/api/files/3f9a8b7c6d5e4f30", "/api/files/{id}"],
-    ["/api/store/agents/V1StGXR8_Z5jdHi6B-myT", "/api/store/agents/{id}"],
+    ["/api/internal/library/agents", "/api/internal/library/agents"],
     [
-      "/api/store/agents/alice/email-digest",
-      "/api/store/agents/alice/email-digest",
+      `/api/internal/library/agents/${SESSION_A}`,
+      "/api/internal/library/agents/{id}",
+    ],
+    ["/api/internal/executions/12345?page=2", "/api/internal/executions/{id}"],
+    ["/api/internal/files/3f9a8b7c6d5e4f30", "/api/internal/files/{id}"],
+    [
+      "/api/internal/store/agents/V1StGXR8_Z5jdHi6B-myT",
+      "/api/internal/store/agents/{id}",
+    ],
+    [
+      "/api/internal/store/agents/alice/email-digest",
+      "/api/internal/store/agents/alice/email-digest",
     ],
     ["/api/users/someone%40example.com", "/api/users/{id}"],
-    ["/api/integrations/codex/login", "/api/integrations/codex/login"],
+    [
+      "/api/internal/integrations/codex/login",
+      "/api/internal/integrations/codex/login",
+    ],
   ])("%s → %s", (url, expected) => {
     expect(routeTemplate(url)).toBe(expected);
   });

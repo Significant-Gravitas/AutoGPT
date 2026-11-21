@@ -30,12 +30,12 @@ export function sidebarBackend(
   requests: SidebarRequest[] = [],
 ) {
   return [
-    http.get("*/api/chat/session-groups", ({ request }) => {
+    http.get("*/api/internal/chat/session-groups", ({ request }) => {
       const params = new URL(request.url).searchParams;
       requests.push({ path: "session-groups", params });
       return HttpResponse.json(groupedRead(chats(), params));
     }),
-    http.get("*/api/chat/sessions", ({ request }) => {
+    http.get("*/api/internal/chat/sessions", ({ request }) => {
       const params = new URL(request.url).searchParams;
       requests.push({ path: "sessions", params });
       return HttpResponse.json(listRead(chats(), params));

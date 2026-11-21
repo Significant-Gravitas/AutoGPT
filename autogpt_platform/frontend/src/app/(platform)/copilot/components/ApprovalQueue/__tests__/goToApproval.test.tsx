@@ -19,7 +19,7 @@ test.each([1, 4])(
       folder(`id${i}`, `Folder ${i}`, 10 - i),
     );
     server.use(
-      http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
+      http.get(`*/api/internal/review/session/${CHAT_SESSION}`, () =>
         HttpResponse.json(reviews),
       ),
     );

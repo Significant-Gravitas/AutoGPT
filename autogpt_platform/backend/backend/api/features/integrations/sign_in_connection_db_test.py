@@ -39,8 +39,10 @@ SIGN_IN = {
 
 app = fastapi.FastAPI(exception_handlers=rest_app.exception_handlers)
 # Mounted where rest_api.py mounts them.
-app.include_router(sign_in_connection.sign_in_connection_router, prefix="/api/auth")
-app.include_router(user_routes.router, prefix="/api")
+app.include_router(
+    sign_in_connection.sign_in_connection_router, prefix="/api/internal/auth"
+)
+app.include_router(user_routes.router, prefix="/api/internal")
 
 
 class _GoogleTokenInfo:
@@ -125,13 +127,15 @@ async def test_a_google_sign_ups_connection_is_kept_and_the_sign_up_still_counts
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as api:
-            handoff = await api.post("/api/auth/sign-in-connection", json=SIGN_IN)
+            handoff = await api.post(
+                "/api/internal/auth/sign-in-connection", json=SIGN_IN
+            )
             assert handoff.status_code == 200, handoff.text
             assert handoff.json() == {"result": "held"}
             # The handoff didn't set the account up: its first request does.
             signups.assert_not_called()
 
-            first = await api.post("/api/auth/user")
+            first = await api.post("/api/internal/auth/user")
 
         assert first.status_code == 200, first.text
         # Still the request that creates the account, which the signup goal

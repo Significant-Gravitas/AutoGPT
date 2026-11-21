@@ -28,7 +28,7 @@ describe("assertNotBannedAddress", () => {
 
     expect(mintServiceTokenMock).toHaveBeenCalledWith(BAN_RECORD_SCOPE);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toMatch(/\/api\/auth\/email\/ban-record$/);
+    expect(url).toMatch(/\/api\/internal\/auth\/email\/ban-record$/);
     expect(init.method).toBe("POST");
     expect(new Headers(init.headers).get("Authorization")).toBe(
       "Bearer service-token",

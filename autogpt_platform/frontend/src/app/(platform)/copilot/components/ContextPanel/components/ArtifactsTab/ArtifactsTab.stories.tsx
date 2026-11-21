@@ -63,7 +63,7 @@ export const Loading: Story = {
   parameters: {
     msw: {
       handlers: [
-        http.get("*/api/workspace/files", async () => {
+        http.get("*/api/internal/workspace/files", async () => {
           await delay("infinite");
           return HttpResponse.json({ files: [] });
         }),
@@ -77,7 +77,7 @@ export const Loaded: Story = {
   parameters: {
     msw: {
       handlers: [
-        http.get("*/api/workspace/files", () =>
+        http.get("*/api/internal/workspace/files", () =>
           HttpResponse.json({
             files: SESSION_FILES,
             offset: 0,
@@ -95,7 +95,7 @@ export const Empty: Story = {
   parameters: {
     msw: {
       handlers: [
-        http.get("*/api/workspace/files", () =>
+        http.get("*/api/internal/workspace/files", () =>
           HttpResponse.json({ files: [], offset: 0, has_more: false }),
         ),
       ],

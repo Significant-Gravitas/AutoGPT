@@ -1045,7 +1045,7 @@ describe("ToolResult start_desktop", () => {
             message: "Desktop started.",
             desktop_stream: {
               kind: "desktop_stream",
-              url: "/api/proxy/api/desktop-preview?token=abc",
+              url: "/api/proxy/api/internal/desktop-preview?token=abc",
               provider: "e2b",
               sandbox_id: "sbx-1",
               requires_auth: true,
@@ -1079,7 +1079,7 @@ describe("ToolResult run_capability", () => {
     message: "Desktop started.",
     desktop_stream: {
       kind: "desktop_stream",
-      url: "/api/proxy/api/desktop-preview?token=abc",
+      url: "/api/proxy/api/internal/desktop-preview?token=abc",
       provider: "e2b",
       sandbox_id: "sbx-2",
     },
@@ -1097,7 +1097,7 @@ describe("ToolResult run_capability", () => {
 
     const frame = screen.getByTitle("Interactive desktop (sbx-2)");
     expect(frame.getAttribute("src")).toBe(
-      "/api/proxy/api/desktop-preview?token=abc",
+      "/api/proxy/api/internal/desktop-preview?token=abc",
     );
     expect(screen.queryByText(/"kind"/)).toBeNull();
     expect(screen.queryByText(/desktop stream/i)).toBeNull();

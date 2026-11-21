@@ -556,7 +556,7 @@ export class BuildPage extends BasePage {
       .poll(
         async () => {
           const response = await this.page.request.get(
-            `/api/proxy/api/graphs/${graphId}/executions/${runID}`,
+            `/api/proxy/api/internal/graphs/${graphId}/executions/${runID}`,
           );
           if (response.ok()) run = (await response.json()) as BuilderRun;
           return run.status;
@@ -690,7 +690,7 @@ export class BuildPage extends BasePage {
 
     const { graphId, graphVersion } = this.getSavedGraphRef();
     const scheduleName = `Daily ${agentName}`;
-    const scheduleCreateUrl = `/api/proxy/api/graphs/${graphId}/schedules`;
+    const scheduleCreateUrl = `/api/proxy/api/internal/graphs/${graphId}/schedules`;
     const timeoutAt = Date.now() + 45000;
     let lastFailure = "schedule request did not run";
 

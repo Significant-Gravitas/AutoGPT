@@ -62,8 +62,8 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importActual) => {
   return { ...actual, toast: vi.fn(actual.toast) };
 });
 
-const STREAM = `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`;
-const PENDING = `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/messages/pending`;
+const STREAM = `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`;
+const PENDING = `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/messages/pending`;
 
 function resetStores() {
   resetChatRuntimes();

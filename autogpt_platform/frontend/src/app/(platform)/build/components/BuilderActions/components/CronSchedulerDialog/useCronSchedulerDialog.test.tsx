@@ -114,7 +114,7 @@ describe("useCronSchedulerDialog", () => {
     const keys: unknown[] = [];
     server.use(
       http.post(
-        "/api/proxy/api/graphs/:graphId/schedules",
+        "/api/proxy/api/internal/graphs/:graphId/schedules",
         async ({ request }) => {
           const body = (await request.json()) as { schedule_id?: unknown };
           keys.push(body.schedule_id);
@@ -169,7 +169,7 @@ describe("useCronSchedulerDialog", () => {
     "a $status answer's toast says $shown",
     async ({ status, detail, shown, linksToSchedules }) => {
       server.use(
-        http.post("/api/proxy/api/graphs/:graphId/schedules", () =>
+        http.post("/api/proxy/api/internal/graphs/:graphId/schedules", () =>
           HttpResponse.json({ detail }, { status }),
         ),
       );

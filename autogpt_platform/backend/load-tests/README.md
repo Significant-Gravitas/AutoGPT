@@ -105,12 +105,12 @@ The verdict comes from the backend's traces in Sentry through perf-compare, not 
 
    ```bash
    S=$(git rev-parse --show-toplevel)/.claude/skills/perf-compare/scripts/perf_compare.py
-   python3 "$S" --project autogpt-server-previews --transaction '/api/store/skills/{slug}' \
+   python3 "$S" --project autogpt-server-previews --transaction '/api/internal/store/skills/{slug}' \
      --baseline env=pr-<CONTROL> window=<START1>/<END1> window=<START4>/<END4> \
      --candidate env=pr-<CANDIDATE> window=<START2>/<END2> window=<START3>/<END3>
    ```
 
-   For copilot, compare the executor's `copilot.turn` transaction and its span data: `--transaction copilot.turn --field 'tags[copilot.turn.ttft_ms,number]'` (also `copilot.turn.queue_wait_ms`, `copilot.turn.duration_ms`), and the route's `/api/chat/sessions/{session_id}/stream` with `--field 'tags[copilot.stream.ttft_ms,number]'`. The run's dummy and scripted turns land there, marked as load-test turns with their engine; a window of normal use on dev or production gives the same fields for the real model, with `--project autogpt-server` and the environment from the [Sentry](#sentry) table.
+   For copilot, compare the executor's `copilot.turn` transaction and its span data: `--transaction copilot.turn --field 'tags[copilot.turn.ttft_ms,number]'` (also `copilot.turn.queue_wait_ms`, `copilot.turn.duration_ms`), and the route's `/api/internal/chat/sessions/{session_id}/stream` with `--field 'tags[copilot.stream.ttft_ms,number]'`. The run's dummy and scripted turns land there, marked as load-test turns with their engine; a window of normal use on dev or production gives the same fields for the real model, with `--project autogpt-server` and the environment from the [Sentry](#sentry) table.
 
 4. `node scripts/diff-summaries.js results/<control>.json results/<candidate>.json` shows the two runs' client-side numbers side by side. It is a quick read: it reports the change, not whether the change is real.
 
@@ -272,7 +272,7 @@ Grafana Cloud k6 bills each test as its peak VUs times its whole duration, in vi
 | Preview | `autogpt-server-previews` (backend), `builder-previews` (frontend) | `pr-<N>`                         |
 | Dev     | `autogpt-server` (backend), `builder` (frontend)                   | `app:dev-behave:cloud` (backend) |
 
-Each route is a transaction named by its path, such as `/api/store/skills/{slug}`. `/health` is not traced, and the sign-in requests from `setup()` go to the frontend project. The copilot executor's turn is its own transaction, `copilot.turn`, with the engine and timings as span data; a target that routes load-test accounts marks their turns with `copilot.load_test`. `/api/chat/sessions/{session_id}/stream` and `/ws` are long-lived transactions that measure session length, not latency.
+Each route is a transaction named by its path, such as `/api/internal/store/skills/{slug}`. `/health` is not traced, and the sign-in requests from `setup()` go to the frontend project. The copilot executor's turn is its own transaction, `copilot.turn`, with the engine and timings as span data; a target that routes load-test accounts marks their turns with `copilot.load_test`. `/api/internal/chat/sessions/{session_id}/stream` and `/ws` are long-lived transactions that measure session length, not latency.
 
 ## Troubleshooting
 

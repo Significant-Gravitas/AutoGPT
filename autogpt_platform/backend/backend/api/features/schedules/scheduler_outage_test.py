@@ -42,15 +42,15 @@ _CAP_S = 0.5
 _ANSWERED_WITHIN_S = 20.0
 
 SCHEDULE_READS = [
-    ("GET", "/api/schedules", None),
-    ("GET", "/api/schedules/followups", None),
-    ("GET", "/api/graphs/graph-1/schedules", None),
-    ("GET", "/api/admin/diagnostics/schedules", None),
-    ("GET", "/api/admin/diagnostics/schedules/all", None),
-    ("GET", "/api/admin/diagnostics/schedules/orphaned", None),
+    ("GET", "/api/internal/schedules", None),
+    ("GET", "/api/internal/schedules/followups", None),
+    ("GET", "/api/internal/graphs/graph-1/schedules", None),
+    ("GET", "/api/internal/admin/diagnostics/schedules", None),
+    ("GET", "/api/internal/admin/diagnostics/schedules/all", None),
+    ("GET", "/api/internal/admin/diagnostics/schedules/orphaned", None),
     (
         "POST",
-        "/api/admin/diagnostics/schedules/cleanup-orphaned",
+        "/api/internal/admin/diagnostics/schedules/cleanup-orphaned",
         {"schedule_ids": ["schedule-1"]},
     ),
 ]
@@ -97,8 +97,8 @@ async def scheduler_out(
 @pytest.fixture
 async def http(scheduler_out: SchedulerClient) -> AsyncIterator[httpx.AsyncClient]:
     app = FastAPI()
-    app.include_router(routes.router, prefix="/api")
-    app.include_router(diagnostics_admin_routes.router, prefix="/api")
+    app.include_router(routes.router, prefix="/api/internal")
+    app.include_router(diagnostics_admin_routes.router, prefix="/api/internal")
     add_exception_handlers(app)
     app.dependency_overrides[get_jwt_payload] = lambda: {
         "sub": "admin-1",
@@ -153,7 +153,7 @@ async def test_only_an_outage_longer_than_any_deploy_is_logged_as_an_error(
         caplog.clear()
         with caplog.at_level(logging.WARNING, logger=api_exceptions.__name__):
             await asyncio.wait_for(
-                http.get("/api/schedules"), timeout=_ANSWERED_WITHIN_S
+                http.get("/api/internal/schedules"), timeout=_ANSWERED_WITHIN_S
             )
         [record] = [r for r in caplog.records if r.name == api_exceptions.__name__]
         return record.levelname

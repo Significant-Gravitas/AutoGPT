@@ -149,10 +149,10 @@ function serveChat(reviews: PendingHumanReviewModel[]) {
     continues: 0,
   };
   server.use(
-    http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
+    http.get(`*/api/internal/review/session/${CHAT_SESSION}`, () =>
       HttpResponse.json([...waiting.values()]),
     ),
-    http.post("*/api/review/action", async ({ request }) => {
+    http.post("*/api/internal/review/action", async ({ request }) => {
       const body = (await request.json()) as {
         reviews: { node_exec_id: string; approved: boolean }[];
         wait_for_other_cards?: boolean;
@@ -176,10 +176,10 @@ function serveChat(reviews: PendingHumanReviewModel[]) {
         awaiting_other_cards: waiting.size > 0,
       });
     }),
-    http.get(`*/api/review/session/${CHAT_SESSION}/answered`, () =>
+    http.get(`*/api/internal/review/session/${CHAT_SESSION}/answered`, () =>
       HttpResponse.json([...unrun.values()]),
     ),
-    http.post(`*/api/review/session/${CHAT_SESSION}/continue`, () => {
+    http.post(`*/api/internal/review/session/${CHAT_SESSION}/continue`, () => {
       chat.continues += 1;
       unrun.clear();
       return new HttpResponse(null, { status: 204 });

@@ -33,7 +33,7 @@ function Picker() {
 describe("recipient colors", () => {
   it("keeps the saved PNG in the selected avatar and menu", async () => {
     server.use(
-      http.get("*/api/experts/identities", () =>
+      http.get("*/api/internal/experts/identities", () =>
         HttpResponse.json([
           {
             id: "expert-maria",

@@ -92,8 +92,9 @@ describe("ExpertComputerSection", () => {
     async (status, detail, shown) => {
       server.use(
         getGetV2GetExpertComputerMockHandler(computer),
-        http.post("/api/proxy/api/experts/:expertId/computer/desktop", () =>
-          HttpResponse.json({ detail }, { status }),
+        http.post(
+          "/api/proxy/api/internal/experts/:expertId/computer/desktop",
+          () => HttpResponse.json({ detail }, { status }),
         ),
       );
 

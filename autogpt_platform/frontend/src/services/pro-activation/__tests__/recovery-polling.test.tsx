@@ -64,13 +64,16 @@ beforeEach(() => {
   response = { ...quote, status: "processing", retry_after_seconds: 3 };
   server.use(
     http.get(
-      "*/api/proxy/api/credits/pro-activation/current",
+      "*/api/proxy/api/internal/credits/pro-activation/current",
       () => new HttpResponse(null, { status: 404 }),
     ),
-    http.get("*/api/proxy/api/credits/pro-activation/attempt-1", () => {
-      requests();
-      return HttpResponse.json(response);
-    }),
+    http.get(
+      "*/api/proxy/api/internal/credits/pro-activation/attempt-1",
+      () => {
+        requests();
+        return HttpResponse.json(response);
+      },
+    ),
   );
 });
 
@@ -106,10 +109,13 @@ describe("pending activation synchronization", () => {
   it("stops checking once the server has no such activation", async () => {
     const onMissing = vi.fn();
     server.use(
-      http.get("*/api/proxy/api/credits/pro-activation/attempt-1", () => {
-        requests();
-        return new HttpResponse(null, { status: 404 });
-      }),
+      http.get(
+        "*/api/proxy/api/internal/credits/pro-activation/attempt-1",
+        () => {
+          requests();
+          return new HttpResponse(null, { status: 404 });
+        },
+      ),
     );
     render(<Subject onMissing={onMissing} />);
     await vi.waitFor(async () => {
@@ -124,10 +130,13 @@ describe("pending activation synchronization", () => {
   it("looks up an activation on load only when a payment is being resumed", async () => {
     const lookups = vi.fn();
     server.use(
-      http.get("*/api/proxy/api/credits/pro-activation/current", () => {
-        lookups();
-        return new HttpResponse(null, { status: 404 });
-      }),
+      http.get(
+        "*/api/proxy/api/internal/credits/pro-activation/current",
+        () => {
+          lookups();
+          return new HttpResponse(null, { status: 404 });
+        },
+      ),
     );
     render(<PageLoad checkoutReturn={false} />);
     await advance(5_000);
@@ -159,11 +168,14 @@ describe("pending activation synchronization", () => {
       release = resolve;
     });
     server.use(
-      http.get("*/api/proxy/api/credits/pro-activation/attempt-1", async () => {
-        requests();
-        await pending;
-        return HttpResponse.json({ ...quote, status: "ready" });
-      }),
+      http.get(
+        "*/api/proxy/api/internal/credits/pro-activation/attempt-1",
+        async () => {
+          requests();
+          await pending;
+          return HttpResponse.json({ ...quote, status: "ready" });
+        },
+      ),
     );
     render(<Subject />);
     await advance(3_000);

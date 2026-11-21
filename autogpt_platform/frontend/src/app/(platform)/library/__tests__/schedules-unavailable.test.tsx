@@ -135,7 +135,7 @@ async function libraryReadsSettled(queryClient: QueryClient) {
     expect(
       queryClient.isFetching({
         predicate: (query) =>
-          String(query.queryKey[0]).startsWith("/api/library/agents"),
+          String(query.queryKey[0]).startsWith("/api/internal/library/agents"),
       }),
     ).toBe(0),
   );

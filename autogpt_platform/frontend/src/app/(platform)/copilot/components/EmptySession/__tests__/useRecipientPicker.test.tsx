@@ -50,7 +50,7 @@ describe("useRecipientPicker — a team that can't be read", () => {
       release = resolve;
     });
     server.use(
-      http.get("*/api/experts/identities", async () => {
+      http.get("*/api/internal/experts/identities", async () => {
         reads += 1;
         if (reads === 1) return HttpResponse.json([MARIA]);
         if (reads === 2) {

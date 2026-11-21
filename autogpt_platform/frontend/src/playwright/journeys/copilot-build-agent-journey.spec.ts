@@ -98,9 +98,12 @@ async function savedAgent(page: Page, sessionID: string) {
 }
 
 async function libraryAgentsNamed(page: Page, name: string) {
-  const response = await page.request.get("/api/proxy/api/library/agents", {
-    params: { search_term: name },
-  });
+  const response = await page.request.get(
+    "/api/proxy/api/internal/library/agents",
+    {
+      params: { search_term: name },
+    },
+  );
   expect(response.ok(), `GET library agents: ${response.status()}`).toBe(true);
   const body = (await response.json()) as { agents: { name: string }[] };
   return body.agents.filter((agent) => agent.name === name);

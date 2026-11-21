@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { watchForUnexpectedErrors } from "../guard";
 
 const activationURL =
-  "http://localhost:3000/api/proxy/api/credits/pro-activation/current";
+  "http://localhost:3000/api/proxy/api/internal/credits/pro-activation/current";
 
 async function collect(
   status: number,
@@ -65,7 +65,7 @@ describe("journey activation lookup contract", () => {
 });
 
 describe("a response the journey fakes itself", () => {
-  const schedulesURL = "http://localhost:3000/api/proxy/api/schedules";
+  const schedulesURL = "http://localhost:3000/api/proxy/api/internal/schedules";
   const injected = { name: "x-journey-injected", value: "scheduler-outage" };
 
   async function collectFaked(headers: Record<string, string>) {
@@ -76,7 +76,12 @@ describe("a response the journey fakes itself", () => {
       },
     } as unknown as BrowserContext;
     const guard = watchForUnexpectedErrors(context, [
-      { status: 503, method: "GET", url: "/api/schedules", header: injected },
+      {
+        status: 503,
+        method: "GET",
+        url: "/api/internal/schedules",
+        header: injected,
+      },
     ]);
     listener?.({
       url: () => schedulesURL,

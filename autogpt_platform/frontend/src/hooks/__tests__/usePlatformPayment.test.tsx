@@ -32,7 +32,7 @@ describe("usePlatformPayment", () => {
   it("ends payment-on after a transient failure", async () => {
     let requests = 0;
     server.use(
-      http.get("/api/proxy/api/platform-config", () => {
+      http.get("/api/proxy/api/internal/platform-config", () => {
         requests += 1;
         return requests === 1
           ? HttpResponse.json({ detail: "unavailable" }, { status: 503 })
@@ -50,7 +50,7 @@ describe("usePlatformPayment", () => {
   it("settles as an error, not as payment off, when the backend keeps failing", async () => {
     let requests = 0;
     server.use(
-      http.get("/api/proxy/api/platform-config", () => {
+      http.get("/api/proxy/api/internal/platform-config", () => {
         requests += 1;
         return HttpResponse.json({ detail: "unavailable" }, { status: 503 });
       }),

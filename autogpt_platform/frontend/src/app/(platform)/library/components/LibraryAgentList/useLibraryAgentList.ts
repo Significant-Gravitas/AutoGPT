@@ -103,7 +103,7 @@ export function useLibraryAgentList({
   useEffect(() => {
     if (prevSortRef.current !== null && prevSortRef.current !== librarySort) {
       stableQueryClient.resetQueries({
-        queryKey: ["/api/library/agents"],
+        queryKey: ["/api/internal/library/agents"],
       });
     }
     prevSortRef.current = librarySort;

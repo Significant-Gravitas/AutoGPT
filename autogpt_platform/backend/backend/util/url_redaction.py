@@ -42,7 +42,7 @@ _request_credentials: ContextVar[tuple[str, ...]] = ContextVar(
 # overlapping prefixes, which a crafted path or Host header can stack, are all
 # found.
 _CREDENTIAL_PATH_SEGMENT = re.compile(
-    r"(?=(?:/api/(?:integrations/(?:[^/?\s]+/)?webhooks|platform-linking/(?:user-)?tokens"
+    r"(?=(?:/api/(?:internal/)?(?:integrations/(?:[^/?\s]+/)?webhooks|platform-linking/(?:user-)?tokens"
     r"|public/shared(?:/chats)?+|invitations(?!/pending(?:[/?\s\"']|$)))/"
     r"|(?i:api\.telegram\.org)(?::443)?/(?:file/)?bot)"
     r"(?!\{\w+\}(?:[/?\s\"']|$))([^/?\s]+))"

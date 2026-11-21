@@ -300,7 +300,9 @@ describe("migration notice eligibility", () => {
 
   it("stays closed when onboarding cannot be verified", async () => {
     server.use(
-      http.get("/api/proxy/api/onboarding", () => HttpResponse.error()),
+      http.get("/api/proxy/api/internal/onboarding", () =>
+        HttpResponse.error(),
+      ),
     );
     const { result, queryClient } = renderGate();
     await waitFor(() => expect(queryClient.isFetching()).toBe(0));
@@ -357,7 +359,7 @@ describe("migration notice dismissal", () => {
       throw new Error("Storage unavailable");
     });
     server.use(
-      http.post("/api/proxy/api/onboarding/step", () =>
+      http.post("/api/proxy/api/internal/onboarding/step", () =>
         HttpResponse.json({}, { status: 503 }),
       ),
     );

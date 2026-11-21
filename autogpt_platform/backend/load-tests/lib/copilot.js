@@ -70,7 +70,7 @@ export const KICKOFF_PROMPT =
   "know about the user or their team. Do not run a workflow, create a " +
   "schedule, or start any other work before the answers come back.";
 
-const STREAM_ROUTE = "/api/chat/sessions/{session_id}/stream";
+const STREAM_ROUTE = "/api/internal/chat/sessions/{session_id}/stream";
 // How much of each tool's output a turn keeps, for a probe to read.
 const TOOL_OUTPUT_CHARS = 2000;
 

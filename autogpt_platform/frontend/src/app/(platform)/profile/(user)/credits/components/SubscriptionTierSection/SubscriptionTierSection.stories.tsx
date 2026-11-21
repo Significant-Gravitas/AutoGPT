@@ -7,8 +7,8 @@ import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 
 // The tier buttons only show with payment on, which the platform config
 // answers: that request is mocked with payment on.
-const SUBSCRIPTION_URL = "*/api/credits/subscription";
-const PLATFORM_CONFIG_URL = "*/api/platform-config";
+const SUBSCRIPTION_URL = "*/api/internal/credits/subscription";
+const PLATFORM_CONFIG_URL = "*/api/internal/platform-config";
 // A fixed date that stays in the future, so a pending change reads as upcoming.
 const PENDING_EFFECTIVE_AT = "2099-02-15T00:00:00Z";
 

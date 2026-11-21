@@ -147,7 +147,7 @@ describe("PaywallModal delete account flow for a user without a plan", () => {
       await within(panel).findByText("Gmail is disconnected."),
     ).toBeDefined();
     expect(store.deleteURLs).toEqual([
-      "/api/proxy/api/integrations/google/credentials/cred-gmail?force=true",
+      "/api/proxy/api/internal/integrations/google/credentials/cred-gmail?force=true",
     ]);
     expect(screen.getByRole("dialog", { name: "Why are you leaving?" })).toBe(
       flow,

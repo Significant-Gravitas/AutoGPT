@@ -99,7 +99,7 @@ test("a non-editable payload is displayed in full", () => {
 
 function serveBlockSchema(properties: Record<string, unknown>) {
   server.use(
-    http.get("*/api/builder/blocks/batch", () =>
+    http.get("*/api/internal/builder/blocks/batch", () =>
       HttpResponse.json([
         {
           id: "block-1",
@@ -213,7 +213,7 @@ test("offers an optional set of switches the payload left empty", async () => {
 
 test("uses the block's input schema and never shows the credential id", async () => {
   server.use(
-    http.get("*/api/builder/blocks/batch", () =>
+    http.get("*/api/internal/builder/blocks/batch", () =>
       HttpResponse.json([
         {
           id: "block-1",

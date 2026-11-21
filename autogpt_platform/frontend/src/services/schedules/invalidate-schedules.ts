@@ -14,7 +14,7 @@ import type { QueryClient } from "@tanstack/react-query";
 //   - copilot followups list — same scheduler primitive, separate
 //     endpoint; included so a followup-side mutation doesn't leave
 //     graph schedule caches stale and vice versa.
-//   - library agents list (/api/library/agents) — backend computes
+//   - library agents list (/api/internal/library/agents) — backend computes
 //     `is_scheduled` on the row, so creating/deleting a schedule flips
 //     that flag and the `/library` fleet-summary "Scheduled" count
 //     would otherwise stay stale until manual reload.
@@ -38,7 +38,9 @@ export function invalidateAllScheduleQueries(
     // `/library`'s agent list).  Required so `agent.is_scheduled` —
     // computed server-side and fed into the fleet-summary "Scheduled"
     // count — refreshes after a schedule mutation.
-    queryClient.invalidateQueries({ queryKey: ["/api/library/agents"] }),
+    queryClient.invalidateQueries({
+      queryKey: ["/api/internal/library/agents"],
+    }),
   ];
   if (graphId) {
     invalidations.push(

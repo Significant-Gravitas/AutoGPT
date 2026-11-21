@@ -548,7 +548,7 @@ describe("DeleteAccountFlow privacy panel", () => {
   test("shows no panel and no spinner while the credentials load, then the panel", async () => {
     const credentials = deferred();
     server.use(
-      http.get("/api/proxy/api/integrations/credentials", async () => {
+      http.get("/api/proxy/api/internal/integrations/credentials", async () => {
         await credentials.promise;
         return HttpResponse.json([GMAIL]);
       }),
@@ -578,7 +578,7 @@ describe("DeleteAccountFlow trial panels while the trial status loads", () => {
       subscription: subscriptionStatus({ tier: "TRIAL" }),
     });
     server.use(
-      http.get("/api/proxy/api/credits/trial", async () => {
+      http.get("/api/proxy/api/internal/credits/trial", async () => {
         await trialStatus.promise;
         return HttpResponse.json(
           trialResponse({

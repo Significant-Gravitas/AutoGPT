@@ -160,8 +160,9 @@ async def test_sentry_gets_no_credential_from_a_failing_routes_variables(
     assert variables["get_shared_execution"]["share_token"] == "[Filtered]"
     assert variables["webhook_ingress_generic"]["webhook_id"] == "[Filtered]"
     assert variables["verify_signature"]["secret_header"] == f"'{REDACTED}'"
-    # Error events keep their route's name, which names its credential.
-    assert "/api/public/shared/{share_token}" in {
+    # Error events keep their route's name, which names its credential, on the
+    # old path the rewrite serves too.
+    assert "/api/internal/public/shared/{share_token}" in {
         event.get("transaction") for event in sentry.events
     }
     # Errors and transactions both carry the request's headers.
@@ -835,7 +836,7 @@ async def test_a_credential_used_as_a_key_is_masked(
         raise RuntimeError(f"{len(runs_by_token)} runs and none shared")
 
     async with _behind_the_rest_middleware(
-        "/api/public/shared/{share_token}", find_run
+        "/api/internal/public/shared/{share_token}", find_run
     ) as client:
         response = await client.get(f"/api/public/shared/{SHARE_TOKEN}")
     assert response.status_code == 500
@@ -920,7 +921,7 @@ async def test_the_sdks_record_of_a_cut_value_keeps_no_credential_key(
         raise RuntimeError("no run is shared")
 
     async with _behind_the_rest_middleware(
-        "/api/public/shared/{share_token}", find_run
+        "/api/internal/public/shared/{share_token}", find_run
     ) as client:
         await client.get(f"/api/public/shared/{SHARE_TOKEN}")
 

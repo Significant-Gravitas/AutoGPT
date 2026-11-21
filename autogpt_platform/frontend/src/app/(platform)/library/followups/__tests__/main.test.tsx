@@ -117,7 +117,7 @@ function serveSchedulerOutage() {
     firstAnsweredAt ??= Date.now();
     return HttpResponse.json(
       {
-        message: "Failed to process GET /api/schedules",
+        message: "Failed to process GET /api/internal/schedules",
         detail: "Schedules are temporarily unavailable. Try again in a moment.",
         hint: "Retry in 15 seconds.",
       },
@@ -126,10 +126,13 @@ function serveSchedulerOutage() {
   }
   server.use(
     http.get(
-      "http://localhost:3000/api/proxy/api/schedules/followups",
+      "http://localhost:3000/api/proxy/api/internal/schedules/followups",
       schedulerOut,
     ),
-    http.get("http://localhost:3000/api/proxy/api/schedules", schedulerOut),
+    http.get(
+      "http://localhost:3000/api/proxy/api/internal/schedules",
+      schedulerOut,
+    ),
   );
   return {
     reads: () => reads,
@@ -515,7 +518,7 @@ describe("FollowupsPage", () => {
       getListCopilotFollowupSchedulesMockHandler([
         makeFollowup({ id: "f1", message: "Still visible followup" }),
       ]),
-      http.get("http://localhost:3000/api/proxy/api/schedules", () =>
+      http.get("http://localhost:3000/api/proxy/api/internal/schedules", () =>
         HttpResponse.error(),
       ),
     );
@@ -529,10 +532,11 @@ describe("FollowupsPage", () => {
 
   test("shows the full error state only when both sources fail", async () => {
     server.use(
-      http.get("http://localhost:3000/api/proxy/api/schedules/followups", () =>
-        HttpResponse.error(),
+      http.get(
+        "http://localhost:3000/api/proxy/api/internal/schedules/followups",
+        () => HttpResponse.error(),
       ),
-      http.get("http://localhost:3000/api/proxy/api/schedules", () =>
+      http.get("http://localhost:3000/api/proxy/api/internal/schedules", () =>
         HttpResponse.error(),
       ),
     );
@@ -615,7 +619,7 @@ describe("FollowupsPage", () => {
     const outage = serveSchedulerOutage();
     let failures = 0;
     server.use(
-      http.get("http://localhost:3000/api/proxy/api/schedules", () => {
+      http.get("http://localhost:3000/api/proxy/api/internal/schedules", () => {
         failures += 1;
         return HttpResponse.json(
           { detail: "The jobstore query failed" },
@@ -646,16 +650,18 @@ describe("FollowupsPage", () => {
 
   test("a real failure outranks the outage notice when nothing loaded", async () => {
     server.use(
-      http.get("http://localhost:3000/api/proxy/api/schedules/followups", () =>
-        HttpResponse.json(
-          {
-            detail:
-              "Schedules are temporarily unavailable. Try again in a moment.",
-          },
-          { status: 503 },
-        ),
+      http.get(
+        "http://localhost:3000/api/proxy/api/internal/schedules/followups",
+        () =>
+          HttpResponse.json(
+            {
+              detail:
+                "Schedules are temporarily unavailable. Try again in a moment.",
+            },
+            { status: 503 },
+          ),
       ),
-      http.get("http://localhost:3000/api/proxy/api/schedules", () =>
+      http.get("http://localhost:3000/api/proxy/api/internal/schedules", () =>
         HttpResponse.json(
           { detail: "The jobstore query failed" },
           { status: 500 },
@@ -687,10 +693,13 @@ describe("FollowupsPage", () => {
     }
     server.use(
       http.get(
-        "http://localhost:3000/api/proxy/api/schedules/followups",
+        "http://localhost:3000/api/proxy/api/internal/schedules/followups",
         heldEmptyList,
       ),
-      http.get("http://localhost:3000/api/proxy/api/schedules", heldEmptyList),
+      http.get(
+        "http://localhost:3000/api/proxy/api/internal/schedules",
+        heldEmptyList,
+      ),
     );
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
 
@@ -705,14 +714,16 @@ describe("FollowupsPage", () => {
 
   test("an outage of one list keeps the other's schedules and says the rest are unavailable", async () => {
     server.use(
-      http.get("http://localhost:3000/api/proxy/api/schedules/followups", () =>
-        HttpResponse.json(
-          {
-            detail:
-              "Schedules are temporarily unavailable. Try again in a moment.",
-          },
-          { status: 503 },
-        ),
+      http.get(
+        "http://localhost:3000/api/proxy/api/internal/schedules/followups",
+        () =>
+          HttpResponse.json(
+            {
+              detail:
+                "Schedules are temporarily unavailable. Try again in a moment.",
+            },
+            { status: 503 },
+          ),
       ),
       getGetV1ListExecutionSchedulesForAUserMockHandler([
         makeGraphSchedule({ id: "g1", agent_name: "Still listed" }),
@@ -732,7 +743,7 @@ describe("FollowupsPage", () => {
       getListCopilotFollowupSchedulesMockHandler([]),
       defaultGraphSchedulesHandler(),
       http.get(
-        "http://localhost:3000/api/proxy/api/schedules/followups/paused",
+        "http://localhost:3000/api/proxy/api/internal/schedules/followups/paused",
         () => HttpResponse.error(),
       ),
     );
@@ -745,10 +756,11 @@ describe("FollowupsPage", () => {
 
   test("a paused chat stays listed when the schedules fail to load", async () => {
     server.use(
-      http.get("http://localhost:3000/api/proxy/api/schedules/followups", () =>
-        HttpResponse.error(),
+      http.get(
+        "http://localhost:3000/api/proxy/api/internal/schedules/followups",
+        () => HttpResponse.error(),
       ),
-      http.get("http://localhost:3000/api/proxy/api/schedules", () =>
+      http.get("http://localhost:3000/api/proxy/api/internal/schedules", () =>
         HttpResponse.error(),
       ),
       getListPausedScheduledChatsMockHandler([
@@ -866,7 +878,7 @@ describe("FollowupsPage", () => {
           routine: false,
         },
       ]),
-      http.delete("*/api/schedules/:scheduleId", () =>
+      http.delete("*/api/internal/schedules/:scheduleId", () =>
         HttpResponse.json(
           { detail: "Schedule #sched-1 not found" },
           { status: 404 },

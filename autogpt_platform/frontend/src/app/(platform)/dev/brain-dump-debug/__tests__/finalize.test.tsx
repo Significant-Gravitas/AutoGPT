@@ -11,7 +11,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const FINALIZE_URL =
-  "http://localhost:3000/api/proxy/api/onboarding/brain-dump/finalize";
+  "http://localhost:3000/api/proxy/api/internal/onboarding/brain-dump/finalize";
 
 interface FakeMeta {
   recordingId: string;
@@ -145,7 +145,7 @@ describe("server status panel", () => {
       name: /Download server-side recording/,
     });
     expect(link.getAttribute("href")).toBe(
-      "/api/proxy/api/onboarding/brain-dump/recording",
+      "/api/proxy/api/internal/onboarding/brain-dump/recording",
     );
   });
 

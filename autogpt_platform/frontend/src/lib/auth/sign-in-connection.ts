@@ -110,7 +110,7 @@ export async function connectSignIn(ctx: unknown, userID: string) {
       user_id: userID,
     });
     const response = await fetch(
-      `${environment.getAGPTServerBaseUrl()}/api/auth/sign-in-connection`,
+      `${environment.getAGPTServerBaseUrl()}/api/internal/auth/sign-in-connection`,
       {
         method: "POST",
         headers: {

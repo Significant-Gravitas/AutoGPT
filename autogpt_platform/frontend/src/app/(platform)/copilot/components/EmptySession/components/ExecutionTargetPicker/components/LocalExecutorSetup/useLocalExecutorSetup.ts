@@ -25,7 +25,7 @@ export function useLocalExecutorSetup() {
     readNoOrigin,
   );
   const deployment = origin
-    ? localExecutorDeployment(environment.getAGPTServerApiUrl(), origin)
+    ? localExecutorDeployment(environment.getAGPTServerBaseUrl(), origin)
     : null;
 
   return { deployment };

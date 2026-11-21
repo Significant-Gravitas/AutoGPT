@@ -165,7 +165,9 @@ describe("OrgTeamProvider", () => {
 
   it("still marks the store loaded when the org fetch throws (network error)", async () => {
     mockLoggedIn();
-    server.use(http.get("/api/proxy/api/orgs", () => HttpResponse.error()));
+    server.use(
+      http.get("/api/proxy/api/internal/orgs", () => HttpResponse.error()),
+    );
 
     renderProvider();
 

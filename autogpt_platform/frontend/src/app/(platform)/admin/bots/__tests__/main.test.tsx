@@ -74,7 +74,7 @@ describe("BotsContent", () => {
   it("keeps rows visible when a response omits platform", async () => {
     mockAllEndpoints();
     server.use(
-      http.get("*/api/proxy/api/admin/bot-analytics/top-servers", () =>
+      http.get("*/api/proxy/api/internal/admin/bot-analytics/top-servers", () =>
         HttpResponse.json([
           {
             server_id: "legacy-1",

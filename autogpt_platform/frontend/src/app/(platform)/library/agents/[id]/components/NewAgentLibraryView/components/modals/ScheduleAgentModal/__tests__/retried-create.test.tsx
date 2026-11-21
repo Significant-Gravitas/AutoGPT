@@ -32,7 +32,7 @@ function answerCreates(statuses: number[]) {
   const keys: unknown[] = [];
   server.use(
     http.post(
-      "/api/proxy/api/graphs/:graphId/schedules",
+      "/api/proxy/api/internal/graphs/:graphId/schedules",
       async ({ request }) => {
         const body = (await request.json()) as { schedule_id?: unknown };
         keys.push(body.schedule_id);

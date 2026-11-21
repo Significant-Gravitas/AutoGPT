@@ -80,7 +80,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       );
       renderHost({
         sessionResponse: http.get(
-          `*/api/chat/sessions/${TEST_SESSION_ID}`,
+          `*/api/internal/chat/sessions/${TEST_SESSION_ID}`,
           () =>
             HttpResponse.json({
               id: TEST_SESSION_ID,
@@ -146,7 +146,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       let sends = 0;
       server.use(
         http.post(
-          `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+          `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
           () => {
             sends += 1;
             return HttpResponse.error();
@@ -382,10 +382,13 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
 function countCancels() {
   let count = 0;
   server.use(
-    http.post(`*/api/proxy/api/chat/sessions/${TEST_SESSION_ID}/cancel`, () => {
-      count += 1;
-      return HttpResponse.json({ cancelled: true, reason: null });
-    }),
+    http.post(
+      `*/api/proxy/api/internal/chat/sessions/${TEST_SESSION_ID}/cancel`,
+      () => {
+        count += 1;
+        return HttpResponse.json({ cancelled: true, reason: null });
+      },
+    ),
   );
   return () => count;
 }

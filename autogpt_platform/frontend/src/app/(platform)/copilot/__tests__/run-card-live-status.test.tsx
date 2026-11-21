@@ -52,7 +52,8 @@ vi.mock(
 
 type Messages = UIMessage<unknown, UIDataTypes, UITools>[];
 
-const EXECUTION_URL = "/api/proxy/api/graphs/:graphId/executions/:graphExecId";
+const EXECUTION_URL =
+  "/api/proxy/api/internal/graphs/:graphId/executions/:graphExecId";
 const RUN_ERROR = "Missing API key for the image provider";
 
 function makeRun(

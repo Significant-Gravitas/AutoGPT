@@ -1,11 +1,9 @@
 export function localExecutorDeployment(
-  apiURL: string,
+  serverURL: string,
   frontendOrigin: string,
 ) {
-  const backend = new URL(apiURL, frontendOrigin);
-  backend.pathname = backend.pathname
-    .replace(/\/api\/?$/, "")
-    .replace(/\/$/, "");
+  const backend = new URL(serverURL, frontendOrigin);
+  backend.pathname = backend.pathname.replace(/\/$/, "");
   backend.search = "";
   backend.hash = "";
   const platformURL = backend.toString().replace(/\/$/, "");

@@ -81,7 +81,7 @@ function renderPage(experts: Expert[]) {
     }),
     getGetV1ListCredentialsMockHandler200([]),
     getListExpertsMockHandler(experts),
-    http.get("/api/proxy/api/skills", () => HttpResponse.json([])),
+    http.get("/api/proxy/api/internal/skills", () => HttpResponse.json([])),
   );
   render(
     <>

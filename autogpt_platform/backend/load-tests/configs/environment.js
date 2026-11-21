@@ -2,7 +2,7 @@
 // (default PREVIEW, which also needs PR_NUMBER).
 //
 // - BACKEND_URL: the backend's origin; /health lives here.
-// - API_BASE_URL: the backend's REST root (BACKEND_URL + /api).
+// - API_BASE_URL: the backend's REST root (BACKEND_URL + /api/internal).
 // - FRONTEND_URL: the Next.js app. Better Auth runs under /api/auth there,
 //   and the backend verifies tokens against its /api/auth/jwks.
 // - WS_URL: the backend's WebSocket server (graph execution events).
@@ -70,7 +70,7 @@ function target(name, urls, signupAllowed, sentry) {
         ? `${name} (overridden by ${overridden.join(", ")})`
         : name,
     BACKEND_URL: backend,
-    API_BASE_URL: `${backend}/api`,
+    API_BASE_URL: `${backend}/api/internal`,
     FRONTEND_URL: frontend,
     WS_URL: ws,
     SIGNUP_ALLOWED: signupAllowed && !production,

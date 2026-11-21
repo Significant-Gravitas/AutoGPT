@@ -8,13 +8,13 @@ from backend.api.rest_api import app as real_app
 # Tags stay per-route: /onboarding/completed publishes ["onboarding", "public"]
 # while the other six publish ["onboarding"], so neither can hoist.
 EXPECTED_OPERATIONS = {
-    ("get", "/api/onboarding"): ["v1", "onboarding"],
-    ("patch", "/api/onboarding"): ["v1", "onboarding"],
-    ("post", "/api/onboarding/step"): ["v1", "onboarding"],
-    ("get", "/api/onboarding/agents"): ["v1", "onboarding"],
-    ("get", "/api/onboarding/completed"): ["v1", "onboarding", "public"],
-    ("post", "/api/onboarding/reset"): ["v1", "onboarding"],
-    ("post", "/api/onboarding/profile"): ["v1", "onboarding"],
+    ("get", "/api/internal/onboarding"): ["v1", "onboarding"],
+    ("patch", "/api/internal/onboarding"): ["v1", "onboarding"],
+    ("post", "/api/internal/onboarding/step"): ["v1", "onboarding"],
+    ("get", "/api/internal/onboarding/agents"): ["v1", "onboarding"],
+    ("get", "/api/internal/onboarding/completed"): ["v1", "onboarding", "public"],
+    ("post", "/api/internal/onboarding/reset"): ["v1", "onboarding"],
+    ("post", "/api/internal/onboarding/profile"): ["v1", "onboarding"],
 }
 
 
@@ -38,7 +38,7 @@ def test_onboarding_route_requires_an_authenticated_user(path: str):
 
 
 def test_onboarding_surface_has_no_other_operations():
-    """Keyed on the owning module: /api/onboarding/brain-dump/* shares the
+    """Keyed on the owning module: /api/internal/onboarding/brain-dump/* shares the
     prefix but belongs to features/onboarding_dump."""
     served = {
         (method.lower(), route.path)

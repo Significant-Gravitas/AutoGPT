@@ -210,7 +210,7 @@ test("leaves the paid CTAs alone when the user is not eligible", async () => {
 
 test("leaves the paid CTAs alone when the trial status fails to load", async () => {
   server.use(
-    http.get("*/api/credits/trial", () =>
+    http.get("*/api/internal/credits/trial", () =>
       HttpResponse.json({ detail: "boom" }, { status: 500 }),
     ),
   );

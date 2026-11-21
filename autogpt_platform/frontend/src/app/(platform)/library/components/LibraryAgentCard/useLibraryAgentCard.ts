@@ -35,7 +35,7 @@ export function useLibraryAgentCard({ agent, onFavoriteAdd }: Props) {
     query: {
       select: okData,
       enabled: isLoggedIn && !!user && !logoutInProgress,
-      queryKey: ["/api/store/profile", user?.id],
+      queryKey: ["/api/internal/store/profile", user?.id],
     },
   });
 

@@ -408,7 +408,7 @@ describe("feedback cards in a chat", () => {
     const { patches } = setup();
     const failed = vi.fn();
     server.use(
-      http.post("*/api/chat/sessions/:id/feedback", () => {
+      http.post("*/api/internal/chat/sessions/:id/feedback", () => {
         failed();
         return HttpResponse.json({ detail: "offline" }, { status: 500 });
       }),

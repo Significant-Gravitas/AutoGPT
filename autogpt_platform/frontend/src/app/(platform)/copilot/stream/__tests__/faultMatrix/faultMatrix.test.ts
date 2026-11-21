@@ -547,7 +547,7 @@ describe("a send", () => {
               type: "file",
               mediaType: "application/pdf",
               filename: "report.pdf",
-              url: "/api/proxy/api/workspace/files/file-1/download",
+              url: "/api/proxy/api/internal/workspace/files/file-1/download",
             },
             {
               type: "data-workspace-folder",

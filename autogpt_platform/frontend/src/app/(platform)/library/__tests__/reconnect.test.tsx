@@ -292,7 +292,7 @@ test("the Library summary and the Activity list share one request for the runs a
 
   let requests = 0;
   function count({ request }: { request: Request }) {
-    if (new URL(request.url).pathname.endsWith("/api/executions")) {
+    if (new URL(request.url).pathname.endsWith("/api/internal/executions")) {
       requests += 1;
     }
   }

@@ -102,7 +102,7 @@ function freshThreadHandlers(
       }),
     ),
     http.post(
-      `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${sessionId}/stream`,
+      `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${sessionId}/stream`,
       async ({ request }) => {
         streamBodies.push(await request.clone().text());
         return streamSseResponse(assistantTextChunks("Hi, I'm Zara."), {
@@ -234,19 +234,22 @@ describe("ExpertChatDrawer", () => {
     const streamBodies: string[] = [];
     let createAttempts = 0;
     server.use(
-      http.post("/api/proxy/api/chat/sessions", async ({ request }) => {
-        createBodies.push(await request.clone().json());
-        createAttempts += 1;
-        if (createAttempts === 1) {
+      http.post(
+        "/api/proxy/api/internal/chat/sessions",
+        async ({ request }) => {
+          createBodies.push(await request.clone().json());
+          createAttempts += 1;
+          if (createAttempts === 1) {
+            return HttpResponse.json(
+              { detail: "Could not create session" },
+              { status: 500 },
+            );
+          }
           return HttpResponse.json(
-            { detail: "Could not create session" },
-            { status: 500 },
+            getPostV2CreateSessionResponseMock200({ id: RETRY_SESSION_ID }),
           );
-        }
-        return HttpResponse.json(
-          getPostV2CreateSessionResponseMock200({ id: RETRY_SESSION_ID }),
-        );
-      }),
+        },
+      ),
       ...freshThreadHandlers([], streamBodies, RETRY_SESSION_ID),
     );
 
@@ -283,7 +286,7 @@ describe("ExpertChatDrawer", () => {
     let streamStarted = false;
     server.use(
       http.post(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${ERROR_SESSION_ID}/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${ERROR_SESSION_ID}/stream`,
         () => {
           streamStarted = true;
           return HttpResponse.json(
@@ -314,7 +317,7 @@ describe("ExpertChatDrawer", () => {
     const streamBodies: string[] = [];
     let createAttempts = 0;
     server.use(
-      http.post("/api/proxy/api/chat/sessions", () => {
+      http.post("/api/proxy/api/internal/chat/sessions", () => {
         createAttempts += 1;
         if (createAttempts === 1) {
           return HttpResponse.json(
@@ -327,7 +330,7 @@ describe("ExpertChatDrawer", () => {
         );
       }),
       http.post(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${ERROR_SESSION_ID}/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${ERROR_SESSION_ID}/stream`,
         async ({ request }) => {
           streamBodies.push(await request.clone().text());
           return HttpResponse.json(
@@ -365,7 +368,7 @@ describe("ExpertChatDrawer", () => {
     const createBodies: unknown[] = [];
     const streamBodies: string[] = [];
     server.use(
-      http.get("/api/proxy/api/chat/sessions", () =>
+      http.get("/api/proxy/api/internal/chat/sessions", () =>
         HttpResponse.json({ detail: "Unavailable" }, { status: 503 }),
       ),
       ...freshThreadHandlers(createBodies, streamBodies),
@@ -483,9 +486,9 @@ describe("ExpertChatDrawer", () => {
     const streamBodies: string[] = [];
     server.use(
       ...pendingSetupHandlers(SETUP_SESSION_ID),
-      http.post("/api/proxy/api/chat/sessions", createSession),
+      http.post("/api/proxy/api/internal/chat/sessions", createSession),
       http.post(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${SETUP_SESSION_ID}/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${SETUP_SESSION_ID}/stream`,
         async ({ request }) => {
           streamBodies.push(await request.clone().text());
           return streamSseResponse(assistantTextChunks("Thanks!"), {
@@ -526,7 +529,7 @@ describe("ExpertChatDrawer", () => {
     markKickoffDone(USER_ID, EXPERT_ID, markKickoffPending(USER_ID, EXPERT_ID));
     const request = vi.fn(() => HttpResponse.json(null));
     server.use(
-      http.get("/api/proxy/api/experts/:expertId/onboarding", request),
+      http.get("/api/proxy/api/internal/experts/:expertId/onboarding", request),
     );
     render(
       <ExpertChatDrawer
@@ -544,7 +547,7 @@ describe("ExpertChatDrawer", () => {
     markKickoffDone(USER_ID, EXPERT_ID, markKickoffPending(USER_ID, EXPERT_ID));
     const request = vi.fn(() => HttpResponse.json(onboardingCard()));
     server.use(
-      http.get("/api/proxy/api/experts/:expertId/onboarding", request),
+      http.get("/api/proxy/api/internal/experts/:expertId/onboarding", request),
     );
     render(
       <ExpertChatDrawer
@@ -574,16 +577,19 @@ describe("ExpertChatDrawer", () => {
       server.use(
         // Answering settles setup; the slow refetch leaves the cached chat id
         // in place while "New task" is already showing an empty thread.
-        http.get("/api/proxy/api/experts/:expertId/onboarding", async () => {
-          if (!answered)
-            return HttpResponse.json({ session_id: NEW_TASK_SESSION_ID });
-          await new Promise((resolve) => setTimeout(resolve, 300));
-          refetchAnswered = true;
-          return refetchResponse();
-        }),
+        http.get(
+          "/api/proxy/api/internal/experts/:expertId/onboarding",
+          async () => {
+            if (!answered)
+              return HttpResponse.json({ session_id: NEW_TASK_SESSION_ID });
+            await new Promise((resolve) => setTimeout(resolve, 300));
+            refetchAnswered = true;
+            return refetchResponse();
+          },
+        ),
         ...pendingSetupHandlers(NEW_TASK_SESSION_ID),
         http.post(
-          `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${NEW_TASK_SESSION_ID}/stream`,
+          `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${NEW_TASK_SESSION_ID}/stream`,
           async ({ request }) => {
             answered = true;
             return streamSseResponse(assistantTextChunks("Thanks!"), {
@@ -686,7 +692,7 @@ describe("ExpertChatDrawer", () => {
 
 function pendingSetupHandlers(sessionId = SESSION_ID) {
   return [
-    http.get("/api/proxy/api/experts/:expertId/onboarding", () =>
+    http.get("/api/proxy/api/internal/experts/:expertId/onboarding", () =>
       HttpResponse.json({ session_id: sessionId }),
     ),
     getGetV2GetSessionMockHandler200({

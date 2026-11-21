@@ -30,7 +30,7 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
     isPending,
   }),
   getGetV2GetSessionQueryKey: (sessionId: string) => [
-    `/api/chat/sessions/${sessionId}`,
+    `/api/internal/chat/sessions/${sessionId}`,
   ],
 }));
 

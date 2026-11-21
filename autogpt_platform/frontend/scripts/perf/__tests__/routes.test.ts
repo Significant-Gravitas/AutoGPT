@@ -25,16 +25,18 @@ function nameOf(url: string, handlers: RouteHandlers = all) {
 
 describe("matchRoute", () => {
   it("routes the copilot stream on the backend host and through the proxy", () => {
-    expect(nameOf("http://localhost:8006/api/chat/sessions/s1/stream")).toBe(
-      "chatStream",
-    );
     expect(
-      nameOf("http://localhost:3000/api/proxy/api/chat/sessions/s1/stream"),
+      nameOf("http://localhost:8006/api/internal/chat/sessions/s1/stream"),
+    ).toBe("chatStream");
+    expect(
+      nameOf(
+        "http://localhost:3000/api/proxy/api/internal/chat/sessions/s1/stream",
+      ),
     ).toBe("chatStream");
   });
 
   it("tells the session list, a session and its sub-resources apart", () => {
-    const base = "http://localhost:3000/api/proxy/api/chat/sessions";
+    const base = "http://localhost:3000/api/proxy/api/internal/chat/sessions";
     expect(nameOf(`${base}?limit=50&offset=0`)).toBe("chatSessionList");
     expect(nameOf(`${base}/s1`)).toBe("chatSession");
     expect(nameOf(`${base}/s1?limit=50&before_sequence=9`)).toBe("chatSession");
@@ -44,13 +46,13 @@ describe("matchRoute", () => {
   });
 
   it("matches an execution before its graph", () => {
-    const base = "http://localhost:3000/api/proxy/api/graphs/g1";
+    const base = "http://localhost:3000/api/proxy/api/internal/graphs/g1";
     expect(nameOf(`${base}/executions/e1`)).toBe("graphExecution");
     expect(nameOf(`${base}?version=1`)).toBe("graph");
   });
 
   it("tells a workflow's runs, schedules and presets apart from one run", () => {
-    const base = "http://localhost:3000/api/proxy/api";
+    const base = "http://localhost:3000/api/proxy/api/internal";
     expect(nameOf(`${base}/graphs/g1/executions?page=1&page_size=20`)).toBe(
       "graphExecutions",
     );
@@ -66,10 +68,12 @@ describe("matchRoute", () => {
   it("leaves pages, other endpoints and unhandled routes alone", () => {
     expect(nameOf("http://localhost:3000/home?sessionId=s1")).toBeNull();
     expect(
-      nameOf("http://localhost:3000/api/proxy/api/executions/cost-summary"),
+      nameOf(
+        "http://localhost:3000/api/proxy/api/internal/executions/cost-summary",
+      ),
     ).toBeNull();
     expect(
-      nameOf("http://localhost:3000/api/proxy/api/executions", {
+      nameOf("http://localhost:3000/api/proxy/api/internal/executions", {
         graph: handler,
       }),
     ).toBeNull();

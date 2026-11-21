@@ -85,7 +85,7 @@ async function createAuth(
   vi.stubEnv("AUTH_MICROSOFT_CLIENT_ID", "microsoft-client-id");
   vi.stubEnv("AUTH_MICROSOFT_CLIENT_SECRET", "microsoft-client-secret"); // pragma: allowlist secret
   server.use(
-    http.get("*/api/auth/sign-in-connection", () =>
+    http.get("*/api/internal/auth/sign-in-connection", () =>
       HttpResponse.json(connectionClients),
     ),
   );
@@ -112,7 +112,7 @@ afterEach(() => {
 function backendHandoffs(status = 200) {
   const bodies: Array<Record<string, unknown>> = [];
   server.use(
-    http.post("*/api/auth/sign-in-connection", async ({ request }) => {
+    http.post("*/api/internal/auth/sign-in-connection", async ({ request }) => {
       bodies.push((await request.json()) as Record<string, unknown>);
       return HttpResponse.json({ result: "created" }, { status });
     }),

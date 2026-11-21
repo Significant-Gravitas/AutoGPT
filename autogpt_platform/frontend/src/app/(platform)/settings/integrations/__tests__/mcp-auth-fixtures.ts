@@ -71,18 +71,18 @@ export function setupAuthFixtures() {
   server.use(
     getGetV1ListCredentialsMockHandler([]),
     getGetV1ListProvidersMockHandler(authProviders),
-    http.post("*/api/mcp/oauth/login", async ({ request }) => {
+    http.post("*/api/internal/mcp/oauth/login", async ({ request }) => {
       oauthRequest(await request.json());
       return HttpResponse.json(
         { detail: "Sign-in is unavailable in this test" },
         { status: 400 },
       );
     }),
-    http.post("*/api/mcp/discover-tools", async ({ request }) => {
+    http.post("*/api/internal/mcp/discover-tools", async ({ request }) => {
       discoveryRequest(await request.json());
       return HttpResponse.json({ tools: [] });
     }),
-    http.post("*/api/mcp/token", async ({ request }) => {
+    http.post("*/api/internal/mcp/token", async ({ request }) => {
       tokenRequest(await request.json());
       return HttpResponse.json({
         id: "test-credential",

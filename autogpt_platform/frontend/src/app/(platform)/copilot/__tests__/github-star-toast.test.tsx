@@ -90,7 +90,7 @@ function sessionMessage(
 }
 
 function storedSessionHandler() {
-  return http.get(`*/api/chat/sessions/${TEST_SESSION_ID}`, () =>
+  return http.get(`*/api/internal/chat/sessions/${TEST_SESSION_ID}`, () =>
     HttpResponse.json({
       id: TEST_SESSION_ID,
       created_at: "2026-05-13T00:00:00Z",
@@ -118,7 +118,7 @@ interface Turns {
 function answeringStreamHandler({ held, failedTurn, cutTurn }: Turns) {
   let turn = 0;
   return http.post(
-    `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+    `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
     async ({ request }) => {
       const body = (await request.json()) as { message?: string };
       turn += 1;
@@ -150,7 +150,7 @@ function answeringStreamHandler({ held, failedTurn, cutTurn }: Turns) {
 // A resume of a turn the server is no longer running.
 function goneStreamHandler() {
   return http.get(
-    `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+    `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
     () => new HttpResponse(null, { status: 204 }),
   );
 }

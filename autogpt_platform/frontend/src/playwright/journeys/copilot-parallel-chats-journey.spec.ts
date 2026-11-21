@@ -65,11 +65,13 @@ test.describe("copilot parallel chats journey", () => {
 /** Starts a chat and waits for its answer and its title from the model. */
 async function chatToTitle(api: APIRequestContext) {
   const run = scriptedRun("quick-answer");
-  const created = await api.post("/api/proxy/api/chat/sessions", { data: {} });
+  const created = await api.post("/api/proxy/api/internal/chat/sessions", {
+    data: {},
+  });
   expect(created.ok(), `POST chat session: ${created.status()}`).toBe(true);
   const { id: sessionID } = (await created.json()) as { id: string };
   const turn = await api.post(
-    `/api/proxy/api/chat/sessions/${sessionID}/stream`,
+    `/api/proxy/api/internal/chat/sessions/${sessionID}/stream`,
     { data: { message: `Give me a short answer. ${run.marker}` } },
   );
   expect(turn.ok(), `POST chat stream: ${turn.status()}`).toBe(true);
@@ -94,7 +96,9 @@ function titleRequests(journal: JournalEntry[]) {
 }
 
 async function savedTitle(api: APIRequestContext, sessionID: string) {
-  const response = await api.get("/api/proxy/api/chat/sessions?limit=100");
+  const response = await api.get(
+    "/api/proxy/api/internal/chat/sessions?limit=100",
+  );
   expect(response.ok(), `GET chat sessions: ${response.status()}`).toBe(true);
   const body = (await response.json()) as {
     sessions: { id: string; title: string | null }[];

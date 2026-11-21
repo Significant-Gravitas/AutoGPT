@@ -7,7 +7,7 @@ function makeArtifact(overrides?: Partial<ArtifactRef>): ArtifactRef {
     id: "file-001",
     title: "report.pdf",
     mimeType: "application/pdf",
-    sourceUrl: "/api/proxy/api/workspace/files/file-001/download",
+    sourceUrl: "/api/proxy/api/internal/workspace/files/file-001/download",
     origin: "agent",
     ...overrides,
   };
@@ -58,7 +58,7 @@ describe("downloadArtifact", () => {
     await downloadArtifact(makeArtifact());
 
     expect(fetch).toHaveBeenCalledWith(
-      "/api/proxy/api/workspace/files/file-001/download",
+      "/api/proxy/api/internal/workspace/files/file-001/download",
     );
     expect(clickSpy).toHaveBeenCalled();
     expect(removeSpy).toHaveBeenCalled();

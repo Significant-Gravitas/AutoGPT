@@ -18,7 +18,9 @@ test("microsoft sign-up: onboarding opens on the Microsoft 365 offer", async ({
   expect(signIn.ok(), `sign-in failed: ${signIn.status()}`).toBe(true);
 
   // Start onboarding over, so a retry doesn't resume or skip the last attempt.
-  const reset = await page.request.post("/api/proxy/api/onboarding/reset");
+  const reset = await page.request.post(
+    "/api/proxy/api/internal/onboarding/reset",
+  );
   expect(reset.ok()).toBe(true);
   await page.goto("/onboarding");
 

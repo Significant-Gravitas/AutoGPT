@@ -140,11 +140,11 @@ test("shows no paywall: no paywall_viewed, no trial, and no checkout request", a
         offer: trialOffer,
       });
     }),
-    http.post("*/api/credits/trial", () => {
+    http.post("*/api/internal/credits/trial", () => {
       requests("trial checkout");
       return HttpResponse.json({ url: "https://checkout.stripe.com/trial" });
     }),
-    http.post("*/api/credits/subscription", () => {
+    http.post("*/api/internal/credits/subscription", () => {
       requests("tier");
       return HttpResponse.json({ url: null });
     }),

@@ -151,7 +151,7 @@ export async function uploadFileDirect(
   sessionID?: string,
 ): Promise<WorkspaceUploadResponse> {
   const res = await postFileToBackend({
-    path: "/api/workspace/files/upload",
+    path: "/api/internal/workspace/files/upload",
     file,
     searchParams: {
       overwrite: "true",
@@ -171,7 +171,7 @@ export async function uploadSubmissionMediaDirect(
   purpose: "submission" | "expert-avatar" = "submission",
 ): Promise<string> {
   const res = await postFileToBackend({
-    path: "/api/store/submissions/media",
+    path: "/api/internal/store/submissions/media",
     file,
     searchParams: purpose === "expert-avatar" ? { purpose } : undefined,
   });
@@ -187,7 +187,7 @@ export async function uploadOAuthAppLogoDirect(
   file: File,
 ): Promise<void> {
   const res = await postFileToBackend({
-    path: `/api/oauth/apps/${encodeURIComponent(appId)}/logo/upload`,
+    path: `/api/internal/oauth/apps/${encodeURIComponent(appId)}/logo/upload`,
     file,
   });
   if (!res.ok) throw await uploadError(res);

@@ -42,7 +42,7 @@ def create_preview_link(user_id: str, live_url: str) -> str:
             purpose="e2b-desktop-preview", user_id=user_id, url=live_url
         ).model_dump()
     )
-    return f"/api/proxy/api/desktop-preview?{urlencode({'token': token})}"
+    return f"/api/proxy/api/internal/desktop-preview?{urlencode({'token': token})}"
 
 
 def resolve_preview_link(user_id: str, token: str) -> str | None:

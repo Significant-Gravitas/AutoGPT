@@ -28,12 +28,12 @@ import {
 // The new chat page asks which computers are connected every 3 s. These count
 // those requests on the real page, under a clock the test advances.
 
-const PROXY = "http://localhost:3000/api/proxy/api";
+const PROXY = "http://localhost:3000/api/proxy/api/internal";
 const EXECUTORS_URL = `${PROXY}/copilot/executors`;
 const DIRECTORIES_URL = `${EXECUTORS_URL}/machine-1/directories`;
 const EXECUTOR_STATUS_URL = `${PROXY}/copilot/sessions/:sessionId/executor`;
 const CREATE_CHAT_URL = `${PROXY}/chat/sessions`;
-const STREAM_URL = `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`;
+const STREAM_URL = `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`;
 const LIST_QUERY_KEY = getGetExperimentalListLocalExecutorsQueryKey();
 const HALF_A_MINUTE = 30_000;
 // One every 3 s, less one for where the half minute starts.

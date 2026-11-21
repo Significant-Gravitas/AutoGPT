@@ -909,7 +909,7 @@ describe("ExpertDetailPage", () => {
 
   test("shows a fallback when activity fails to load", async () => {
     server.use(
-      http.get("/api/proxy/api/experts/:expertId/activity", () =>
+      http.get("/api/proxy/api/internal/experts/:expertId/activity", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );
@@ -955,7 +955,7 @@ describe("ExpertDetailPage", () => {
   test("previews an uploaded avatar and saves it after confirmation", async () => {
     const updateSpy = vi.fn((info: { request: Request }) => info.request);
     server.use(
-      http.post("*/api/store/submissions/media", () =>
+      http.post("*/api/internal/store/submissions/media", () =>
         HttpResponse.json("https://cdn.example.com/maria.png"),
       ),
       getUpdateExpertAvatarMockHandler(async (info) => {
@@ -1001,7 +1001,7 @@ describe("ExpertDetailPage", () => {
   test("a failed avatar upload leaves the expert untouched", async () => {
     const updateSpy = vi.fn();
     server.use(
-      http.post("*/api/store/submissions/media", () =>
+      http.post("*/api/internal/store/submissions/media", () =>
         HttpResponse.json({ detail: "Upload failed" }, { status: 500 }),
       ),
       getUpdateExpertAvatarMockHandler(() => {
@@ -1132,7 +1132,7 @@ describe("ExpertDetailPage", () => {
     const pages: number[] = [];
     server.use(
       getListExpertsMockHandler([maria]),
-      http.get("*/api/library/agents", ({ request }) => {
+      http.get("*/api/internal/library/agents", ({ request }) => {
         const page = Number(new URL(request.url).searchParams.get("page") ?? 1);
         pages.push(page);
         const agents =
@@ -1202,7 +1202,7 @@ describe("ExpertDetailPage", () => {
   test("opens a fresh inline chat from the header Chat button", async () => {
     let listedSessions = 0;
     server.use(
-      http.get("*/api/chat/sessions", ({ request }) => {
+      http.get("*/api/internal/chat/sessions", ({ request }) => {
         // The Overview's recent-conversations card lists a short preview;
         // only a listing for the chat itself would mean it resumed one.
         const limit = new URL(request.url).searchParams.get("limit");
@@ -1256,7 +1256,7 @@ describe("ExpertDetailPage", () => {
         }),
       ),
       http.post(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/sess-new/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/sess-new/stream`,
         async ({ request }) => {
           streamBodies.push(await request.clone().text());
           return streamSseResponse(assistantTextChunks("On it."), {
@@ -1306,7 +1306,7 @@ describe("ExpertDetailPage", () => {
         }),
       ),
       http.post(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/sess-ask/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/sess-ask/stream`,
         async ({ request }) => {
           streamBodies.push(await request.clone().text());
           return streamSseResponse(

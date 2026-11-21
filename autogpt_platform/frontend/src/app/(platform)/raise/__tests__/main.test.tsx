@@ -327,7 +327,7 @@ test("a rapid double-click on finish sends a single POST", async () => {
 test("unlocks finish after a raise POST fails so the user can retry", async () => {
   let postCount = 0;
   server.use(
-    http.post("/api/proxy/api/experts/raise", () => {
+    http.post("/api/proxy/api/internal/experts/raise", () => {
       postCount += 1;
       return HttpResponse.json({ detail: "Raise failed" }, { status: 500 });
     }),
@@ -347,7 +347,7 @@ test("unlocks finish after a raise POST fails so the user can retry", async () =
 
 test("shows a friendly limit message on 409", async () => {
   server.use(
-    http.post("/api/proxy/api/experts/raise", () =>
+    http.post("/api/proxy/api/internal/experts/raise", () =>
       HttpResponse.json(
         { detail: { code: "active_expert_limit", limit: 20 } },
         { status: 409 },
@@ -365,7 +365,7 @@ test("shows a friendly limit message on 409", async () => {
 
 test("distinguishes the lifetime limit for created Experts", async () => {
   server.use(
-    http.post("/api/proxy/api/experts/raise", () =>
+    http.post("/api/proxy/api/internal/experts/raise", () =>
       HttpResponse.json(
         { detail: { code: "raised_expert_lifetime_limit", limit: 100 } },
         { status: 409 },
@@ -653,7 +653,7 @@ test.each([400, 422, 503])(
   "keeps the draft and displays the recovery message when creation fails (%s)",
   async (status) => {
     server.use(
-      http.post("*/api/experts/raise", () =>
+      http.post("*/api/internal/experts/raise", () =>
         HttpResponse.json(
           {
             detail:
