@@ -105,6 +105,16 @@ redis.call('LTRIM', KEYS[1], #ARGV, -1)
 return current
 """
 
+_TAKE_LIST_AND_HOLD_LUA = """
+local guarded = redis.call('HGET', KEYS[1], ARGV[1]) == ARGV[2]
+local items = redis.call('LRANGE', KEYS[2], 0, -1)
+redis.call('DEL', KEYS[2])
+if guarded then
+    redis.call('HSET', KEYS[1], ARGV[3], ARGV[4])
+end
+return items
+"""
+
 # Push to a capped list only when a hash field currently matches the expected
 # value. Returns the list length, -1 on a failed guard, or -2 at capacity.
 # A queued ID with an expired receipt restores that receipt from the list's PTTL.
@@ -118,6 +128,8 @@ return current
 #   ARGV[4]  max list length
 #   ARGV[5]  list TTL seconds
 #   ARGV[6]  message ID used to recover an expired receipt
+#   ARGV[7]  hash field holding a hold deadline (unix seconds), or "" for none
+#   ARGV[8]  the caller's current unix time; the push is refused before the deadline
 _GATED_CAPPED_RPUSH_LUA = """
 if #KEYS == 3 and redis.call('EXISTS', KEYS[3]) == 1 then
     return redis.call('LLEN', KEYS[2])
@@ -137,6 +149,12 @@ end
 local current = redis.call('HGET', KEYS[1], ARGV[1])
 if current ~= ARGV[2] then
     return -1
+end
+if ARGV[7] ~= '' then
+    local until_ts = tonumber(redis.call('HGET', KEYS[1], ARGV[7]))
+    if until_ts and until_ts > tonumber(ARGV[8]) then
+        return -1
+    end
 end
 if redis.call('LLEN', KEYS[2]) >= tonumber(ARGV[4]) then
     return -2
@@ -372,11 +390,14 @@ async def capped_rpush_if_hash_field(
     ttl_seconds: int,
     receipt_key: str | None = None,
     message_id: str | None = None,
+    hold_field: str = "",
+    now: float = 0.0,
 ) -> int | None:
-    """Atomically RPUSH to a bounded list iff a hash field matches.
+    """Atomically RPUSH to a bounded list iff a hash field matches and,
+    when ``hold_field`` is given, no hold deadline in it is later than ``now``.
 
     Returns the new list length when the push happens, or ``None`` when the
-    hash field does not currently match ``expected``. With a receipt key,
+    guard fails. With a receipt key,
     retries return the current length without pushing. A matching JSON
     ``id`` in the list restores an expired receipt. Full lists raise
     ``RedisListCapacityExceeded`` without evicting an accepted item.
@@ -397,12 +418,46 @@ async def capped_rpush_if_hash_field(
             str(max_len),
             str(ttl_seconds),
             message_id or "",
+            hold_field,
+            repr(now),
         ),
     )
     length = int(result)
     if length == -2:
         raise RedisListCapacityExceeded("Pending buffer is at capacity")
     return None if length < 0 else length
+
+
+async def take_list_and_hold(
+    redis: AsyncRedisClient,
+    *,
+    hash_key: str,
+    list_key: str,
+    guard_field: str,
+    expected: str,
+    hold_field: str,
+    hold_until: float,
+) -> list[Any]:
+    """Atomically empty a list and return it, setting ``hold_field`` to
+    ``hold_until`` when ``guard_field`` matches ``expected``.
+
+    Both keys must share a Redis Cluster slot. The script reads before it
+    writes, so a failure leaves both as they were.
+    """
+    items = await cast(
+        "Any",
+        redis.eval(
+            _TAKE_LIST_AND_HOLD_LUA,
+            2,
+            hash_key,
+            list_key,
+            guard_field,
+            expected,
+            hold_field,
+            repr(hold_until),
+        ),
+    )
+    return list(items)
 
 
 async def claim_batch_dispatch_atomic(

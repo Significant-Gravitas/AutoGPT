@@ -87,6 +87,10 @@ logger = logging.getLogger(__name__)
 
 # The error a turn ends with when the user stopped it.
 CANCELLED_MESSAGE = "Operation cancelled"
+# Set on a running turn's meta by the user's Stop to a unix time: until then the
+# pending-message gate refuses its follow-ups, so a message sent after Stop
+# starts the next turn.
+STOP_HOLD_FIELD = "stop_held_until"
 config = ChatConfig()
 _notification_bus = AsyncRedisNotificationEventBus()
 
@@ -170,6 +174,7 @@ class ActiveSession:
     turn_id: str = ""
     blocking: bool = False  # If True, HTTP request is waiting for completion
     status: Literal["running", "completed", "failed"] = "running"
+    stop_held_until: float = 0.0
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     asyncio_task: asyncio.Task | None = None
     checkpoint: TurnCheckpoint | None = None
@@ -232,6 +237,7 @@ def _parse_session_meta(meta: dict[Any, Any], session_id: str = "") -> ActiveSes
         turn_id=meta.get("turn_id", "") or session_id,
         blocking=meta.get("blocking") == "1",
         status=meta.get("status", "running"),  # type: ignore[arg-type]
+        stop_held_until=float(meta.get(STOP_HOLD_FIELD) or 0),
         created_at=created_at,
     )
 
@@ -305,6 +311,7 @@ async def create_session(
             "turn_id": turn_id,
             "blocking": "1" if blocking else "0",
             "status": session.status,
+            STOP_HOLD_FIELD: "",
             "error_message": "",
             "error_code": "",
             "created_at": session.created_at.isoformat(),
