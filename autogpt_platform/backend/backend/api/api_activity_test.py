@@ -55,6 +55,9 @@ def tally(mocker):
         api_activity._tally._counts.clear()
     tally = api_activity._Tally()
     mocker.patch.object(api_activity, "_tally", tally)
+    # A loaded runner can outlast the write's own 2 s bound, which drops the
+    # counts; only the fails-or-hangs test is about that bound.
+    mocker.patch.object(api_activity, "_FLUSH_TIMEOUT_SECONDS", 30.0)
     yield tally
     if tally._flusher is not None:
         tally._flusher.cancel()
@@ -185,6 +188,7 @@ async def test_requests_answer_while_redis_fails_or_hangs(
         side_effect=unreachable if redis == "fails" else unanswered,
     )
     mocker.patch.object(api_activity, "_failures", api_activity._FailureLog())
+    mocker.patch.object(api_activity, "_FLUSH_TIMEOUT_SECONDS", 2.0)
     path, headers = (
         (SESSION_PATH, {})
         if credential == "session"
