@@ -277,7 +277,7 @@ async def test_platform_transport_ignores_attached_codex_credential(
 
     validation = MagicMock(side_effect=lambda _node, inputs, **_kwargs: (inputs, None))
     with (
-        patch("backend.executor.manager.enforce_codex_access", new=gate),
+        patch("backend.executor.block_credentials.enforce_codex_access", new=gate),
         patch("backend.executor.manager.validate_exec", new=validation),
     ):
         outputs = [
@@ -314,7 +314,7 @@ async def test_legacy_and_codex_transports_resolve_attached_codex_credential(
     if transport is not None:
         inputs["transport"] = transport
 
-    with patch("backend.executor.manager.enforce_codex_access", new=gate):
+    with patch("backend.executor.block_credentials.enforce_codex_access", new=gate):
         outputs = [
             item
             async for item in execute_node(
@@ -365,7 +365,7 @@ async def test_codex_credential_is_rejected_and_released_without_entitlement():
     gate = AsyncMock(side_effect=UserPaywalledError("Max plan required"))
 
     with (
-        patch("backend.executor.manager.enforce_codex_access", new=gate),
+        patch("backend.executor.block_credentials.enforce_codex_access", new=gate),
         pytest.raises(UserPaywalledError, match="Max plan required"),
     ):
         await anext(
@@ -399,7 +399,7 @@ async def test_credential_metadata_cannot_hide_authoritative_codex_provider():
     }
 
     with (
-        patch("backend.executor.manager.enforce_codex_access", new=gate),
+        patch("backend.executor.block_credentials.enforce_codex_access", new=gate),
         pytest.raises(ValueError, match="Credentials #cred-1 .* not found"),
     ):
         await anext(
@@ -525,7 +525,7 @@ async def test_an_expert_run_refuses_a_credential_not_granted_to_it(
     block = _block_with_credentials({"credentials": credentials_input}, {})
 
     with (
-        patch("backend.executor.manager.experts_db", return_value=db),
+        patch("backend.executor.block_credentials.experts_db", return_value=db),
         pytest.raises(ValueError, match="not been granted to this expert"),
     ):
         await anext(
@@ -558,9 +558,9 @@ async def test_a_granted_system_or_personal_credential_runs(
     block = _block_with_credentials({"credentials": OpenAIKeyInput}, captured)
 
     with (
-        patch("backend.executor.manager.experts_db", return_value=db),
+        patch("backend.executor.block_credentials.experts_db", return_value=db),
         patch(
-            "backend.executor.manager.is_system_credential",
+            "backend.executor.block_credentials.is_system_credential",
             lambda credentials_id: system,
         ),
     ):
@@ -594,7 +594,7 @@ async def test_an_expert_run_refuses_an_mcp_run_credential_not_granted_to_it():
     run_credentials = {"id": "run-cred", "provider": "mcp", "type": "oauth2"}
 
     with (
-        patch("backend.executor.manager.experts_db", return_value=db),
+        patch("backend.executor.block_credentials.experts_db", return_value=db),
         patch.object(block, "_call_mcp_tool", new_callable=AsyncMock) as call_tool,
         pytest.raises(ValueError, match="not been granted to this expert"),
     ):
