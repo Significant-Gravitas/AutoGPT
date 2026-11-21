@@ -22,7 +22,8 @@ export function useSharedExecutionPage(token: string) {
 
   return {
     executionData: query.data,
-    isLoading: query.isPending,
+    // Not isLoading: a query paused offline is pending but not loading.
+    isPending: query.isPending,
     isError: query.isError,
     isDeadLink: isDeadLinkError(query.error),
   };

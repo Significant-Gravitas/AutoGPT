@@ -11,7 +11,12 @@ import {
   installCookiebot,
   removeCookiebot,
 } from "@/tests/integrations/cookiebot";
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+} from "@/tests/integrations/test-utils";
 import SharePage from "../page";
 
 const TOKEN = "550e8400-e29b-41d4-a716-446655440000";
@@ -176,6 +181,27 @@ describe("SharePage (execution share viewer)", () => {
       expect(requested).toHaveLength(4);
     },
   );
+
+  test("says 'Share Link Not Found' when the link is revoked after the run has loaded", async () => {
+    let revoked = false;
+    answerSharedRunWith(() =>
+      revoked
+        ? HttpResponse.json({ detail: "Not found" }, { status: 404 })
+        : HttpResponse.json(weatherRun()),
+    );
+    const queryClient = createRetryingQueryClient();
+    render(<SharePage />, { queryClient });
+    expect(
+      (await screen.findAllByText("Weather Agent")).length,
+    ).toBeGreaterThan(0);
+
+    revoked = true;
+    await act(() => queryClient.refetchQueries());
+
+    expect(
+      await screen.findByRole("heading", { name: "Share Link Not Found" }),
+    ).toBeDefined();
+  });
 
   test("keeps loading while the visitor is offline, then shows the run", async () => {
     server.use(getGetV1GetSharedExecutionMockHandler200(weatherRun));

@@ -41,10 +41,10 @@ export default function SharePage() {
   const params = useParams();
   const token = params.token as string;
 
-  const { executionData, isLoading, isError, isDeadLink } =
+  const { executionData, isPending, isError, isDeadLink } =
     useSharedExecutionPage(token);
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <ExecutionShareChrome>
         <div className="flex items-center justify-center py-16">
