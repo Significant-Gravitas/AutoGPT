@@ -8,6 +8,7 @@ import pytest
 import pytest_asyncio
 import pytest_mock
 from fastapi import HTTPException
+from prisma.actions import AgentNodeExecutionActions
 from prisma.enums import ReviewStatus
 from pytest_snapshot.plugin import Snapshot
 
@@ -28,7 +29,6 @@ from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
     GraphExecutionEntry,
-    NodeExecutionResult,
     create_graph_execution,
     update_graph_execution_stats,
 )
@@ -39,7 +39,7 @@ from backend.data.graph import (
     create_graph,
     make_graph_model,
 )
-from backend.data.human_review import get_pending_reviews_for_execution
+from backend.data.human_review import check_approval, get_pending_reviews_for_execution
 from backend.util.exceptions import BlockExecutionError
 
 from .model import PendingHumanReviewModel, ReviewItem
@@ -827,14 +827,11 @@ async def test_process_review_action_auto_approve_creates_auto_approval_records(
     )
     mock_process_all_reviews.return_value = {"test_node_123": approved_review}
 
-    # Mock get_node_executions to return node_id mapping
-    mock_get_node_executions = mocker.patch(
-        "backend.api.features.graph_executions.review.service.get_node_executions"
+    # Mock the node_exec_id -> node_id lookup
+    mocker.patch(
+        "backend.api.features.graph_executions.review.service.get_node_ids_by_node_exec_id",
+        return_value={"test_node_123": "test_node_def_456"},
     )
-    mock_node_exec = mocker.Mock(spec=NodeExecutionResult)
-    mock_node_exec.node_exec_id = "test_node_123"
-    mock_node_exec.node_id = "test_node_def_456"
-    mock_get_node_executions.return_value = [mock_node_exec]
 
     # Mock create_auto_approval_record
     mock_create_auto_approval = mocker.patch(
@@ -1126,14 +1123,11 @@ async def test_process_review_action_auto_approve_only_applies_to_approved_revie
         "node_exec_rejected": rejected_review,
     }
 
-    # Mock get_node_executions to return node_id mapping
-    mock_get_node_executions = mocker.patch(
-        "backend.api.features.graph_executions.review.service.get_node_executions"
+    # Mock the node_exec_id -> node_id lookup
+    mock_get_node_ids = mocker.patch(
+        "backend.api.features.graph_executions.review.service.get_node_ids_by_node_exec_id",
+        return_value={"node_exec_approved": "test_node_def_approved"},
     )
-    mock_node_exec = mocker.Mock(spec=NodeExecutionResult)
-    mock_node_exec.node_exec_id = "node_exec_approved"
-    mock_node_exec.node_id = "test_node_def_approved"
-    mock_get_node_executions.return_value = [mock_node_exec]
 
     # Mock create_auto_approval_record
     mock_create_auto_approval = mocker.patch(
@@ -1207,8 +1201,10 @@ async def test_process_review_action_auto_approve_only_applies_to_approved_revie
         payload={"data": "approved"},
     )
 
-    # Verify get_node_executions was called to batch-fetch node data
-    mock_get_node_executions.assert_called_once()
+    # Verify only the auto-approved review's node execution was looked up
+    mock_get_node_ids.assert_called_once_with(
+        "test_graph_exec_456", ["node_exec_approved"]
+    )
 
     # Verify ExecutionContext was created (auto-approval is now DB-based)
     call_kwargs = mock_add_execution.call_args.kwargs
@@ -1339,18 +1335,14 @@ async def test_process_review_action_per_review_auto_approve_granularity(
         ),
     }
 
-    # Mock get_node_executions to return batch node data
-    mock_get_node_executions = mocker.patch(
-        "backend.api.features.graph_executions.review.service.get_node_executions"
+    # Mock the node_exec_id -> node_id lookup for the auto-approved reviews
+    mocker.patch(
+        "backend.api.features.graph_executions.review.service.get_node_ids_by_node_exec_id",
+        return_value={
+            node_exec_id: f"node_def_{node_exec_id}"
+            for node_exec_id in ["node_1_auto", "node_3_auto"]
+        },
     )
-    # Create mock node executions for each review
-    mock_node_execs = []
-    for node_exec_id in ["node_1_auto", "node_2_manual", "node_3_auto"]:
-        mock_node = mocker.Mock(spec=NodeExecutionResult)
-        mock_node.node_exec_id = node_exec_id
-        mock_node.node_id = f"node_def_{node_exec_id}"
-        mock_node_execs.append(mock_node)
-    mock_get_node_executions.return_value = mock_node_execs
 
     # Mock create_auto_approval_record
     mock_create_auto_approval = mocker.patch(
@@ -1845,6 +1837,54 @@ async def test_a_later_irreversible_step_still_asks_after_the_run_resumes(
     create_issue.assert_awaited_once()
     pending = await get_pending_reviews_for_execution(graph_exec.id, test_user_id)
     assert [review.node_exec_id for review in pending] == [steps[1][1]]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("auto_approve_future", [True, False])
+async def test_approving_a_card_reads_only_its_own_node_execution(
+    client: httpx.AsyncClient,
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+    auto_approve_future: bool,
+) -> None:
+    """The card's node id is read from the card's own row, with nothing joined."""
+    _, steps, _, _, _, graph_exec = await _paused_issue_run(
+        mocker, test_user_id, nodes=3
+    )
+    node_id, node_exec_id = steps[0]
+    find_many = mocker.spy(AgentNodeExecutionActions, "find_many")
+    find_first = mocker.spy(AgentNodeExecutionActions, "find_first")
+
+    response = await client.post(
+        "/api/review/action",
+        json={
+            "reviews": [
+                {
+                    "node_exec_id": node_exec_id,
+                    "approved": True,
+                    "auto_approve_future": auto_approve_future,
+                }
+            ]
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["failed_count"] == 0
+
+    if auto_approve_future:
+        # The record is kept under the card's node: its next execution is approved.
+        approval = await check_approval(
+            node_exec_id="a-later-execution-of-the-node",
+            node_id=node_id,
+            user_id=test_user_id,
+            graph_exec_id=graph_exec.id,
+        )
+        assert approval is not None and approval.status == ReviewStatus.APPROVED
+
+    assert find_many.await_count > 0
+    for read in find_many.await_args_list:
+        assert read.kwargs["where"].get("id") == {"in": [node_exec_id]}
+    for read in find_many.await_args_list + find_first.await_args_list:
+        assert "GraphExecution" not in (read.kwargs.get("include") or {})
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -372,10 +372,8 @@ async def test_an_auto_approved_review_records_the_node_and_ignores_edits(
     )
     mocker.patch.object(
         review_service,
-        "get_node_executions",
-        new=mock.AsyncMock(
-            return_value=[mock.Mock(node_exec_id="node-a", node_id="node-def-1")]
-        ),
+        "get_node_ids_by_node_exec_id",
+        new=mock.AsyncMock(return_value={"node-a": "node-def-1"}),
     )
     record = mocker.patch.object(
         review_service, "create_auto_approval_record", new=mock.AsyncMock()

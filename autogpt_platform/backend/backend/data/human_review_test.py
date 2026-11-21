@@ -322,12 +322,15 @@ async def test_process_all_reviews_for_execution_success(
         new=AsyncMock(return_value=[updated_review]),
     )
 
-    # Mock get_node_execution to return node with node_id (async function)
+    # Mock the batched node_id resolution (AgentNodeExecution.prisma().find_many)
     mock_node_exec = Mock()
-    mock_node_exec.node_id = "test_node_def_789"
-    mocker.patch(
-        "backend.data.execution.get_node_execution",
-        new=AsyncMock(return_value=mock_node_exec),
+    mock_node_exec.id = "test_node_123"
+    mock_node_exec.agentNodeId = "test_node_def_789"
+    mock_node_exec_prisma = mocker.patch(
+        "backend.data.human_review.AgentNodeExecution.prisma"
+    )
+    mock_node_exec_prisma.return_value.find_many = AsyncMock(
+        return_value=[mock_node_exec]
     )
 
     result = await process_all_reviews_for_execution(
@@ -341,6 +344,11 @@ async def test_process_all_reviews_for_execution_success(
     assert "test_node_123" in result
     assert result["test_node_123"].status == ReviewStatus.APPROVED
     assert result["test_node_123"].node_id == "test_node_def_789"
+
+    # The node id comes from the bare row: nothing is joined to it
+    node_exec_read = mock_node_exec_prisma.return_value.find_many.await_args.kwargs
+    assert node_exec_read["where"]["id"] == {"in": ["test_node_123"]}
+    assert "include" not in node_exec_read
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -462,12 +470,18 @@ async def test_process_all_reviews_mixed_approval_rejection(
         new=AsyncMock(return_value=[approved_review, rejected_review]),
     )
 
-    # Mock get_node_execution to return node with node_id (async function)
-    mock_node_exec = Mock()
-    mock_node_exec.node_id = "test_node_def_789"
-    mocker.patch(
-        "backend.data.execution.get_node_execution",
-        new=AsyncMock(return_value=mock_node_exec),
+    # Mock the batched node_id resolution (AgentNodeExecution.prisma().find_many)
+    mock_node_execs = []
+    for node_exec_id in ["test_node_123", "test_node_456"]:
+        mock_node_exec = Mock()
+        mock_node_exec.id = node_exec_id
+        mock_node_exec.agentNodeId = "test_node_def_789"
+        mock_node_execs.append(mock_node_exec)
+    mock_node_exec_prisma = mocker.patch(
+        "backend.data.human_review.AgentNodeExecution.prisma"
+    )
+    mock_node_exec_prisma.return_value.find_many = AsyncMock(
+        return_value=mock_node_execs
     )
 
     result = await process_all_reviews_for_execution(
@@ -483,6 +497,9 @@ async def test_process_all_reviews_mixed_approval_rejection(
     assert "test_node_456" in result
     assert result["test_node_123"].node_id == "test_node_def_789"
     assert result["test_node_456"].node_id == "test_node_def_789"
+
+    # Both node ids come from one read
+    mock_node_exec_prisma.return_value.find_many.assert_awaited_once()
 
 
 @pytest.mark.asyncio(loop_scope="function")

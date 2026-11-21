@@ -880,12 +880,19 @@ async def process_all_reviews_for_execution(
     # Note: Execution resumption is now handled at the API layer after ALL reviews
     # for an execution are processed (both approved and rejected)
 
-    # Fetch node_id for each review and return as dict for easy access
-    # Local import to avoid event loop conflicts in tests
-    from backend.data.execution import get_node_execution
-
     # Combine updated reviews with already-processed ones (for idempotent response)
     all_result_reviews = list(updated_reviews) + already_processed
+
+    # One read for the node ids the reviews' own ids don't carry.
+    node_execs = await _node_executions_for(
+        user_id,
+        [
+            review.nodeExecId
+            for review in all_result_reviews
+            if review is not None and not _names_its_node(review.nodeExecId)
+        ],
+    )
+    node_id_by_exec = {ne.id: ne.agentNodeId for ne in node_execs}
 
     result: dict[str, PendingHumanReviewModel] = {}
     for review in all_result_reviews:
@@ -896,8 +903,7 @@ async def process_all_reviews_for_execution(
             # These node_exec_ids encode node_id as "{node_id}:{suffix}"
             node_id = parse_node_id_from_exec_id(review.nodeExecId)
         else:
-            node_exec = await get_node_execution(review.nodeExecId)
-            node_id = node_exec.node_id if node_exec else review.nodeExecId
+            node_id = node_id_by_exec.get(review.nodeExecId, review.nodeExecId)
         result[review.nodeExecId] = PendingHumanReviewModel.from_db(
             review, node_id=node_id
         )
