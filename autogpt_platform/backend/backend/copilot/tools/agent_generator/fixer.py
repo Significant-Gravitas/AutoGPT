@@ -76,7 +76,8 @@ class AgentFixer:
         # Each AI node the last fix moved off a switched-off model, for the
         # note that tells Otto the model the workflow uses now.
         self.retired_models_replaced: list[SwitchedOffMove] = []
-        # Each node's saved model, as apply_all_fixes read it before any fix.
+        # Each node's saved model as apply_all_fixes last read it, which the
+        # pipeline's retry of the model fix runs with.
         self.saved_models: dict[str, Any] = {}
 
     @staticmethod

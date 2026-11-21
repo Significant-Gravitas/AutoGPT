@@ -210,3 +210,12 @@ def test_a_value_longer_than_any_model_id_names_no_model():
 
     assert named("openai/gpt-5-2025-08-07") is LLMModel("gpt-5-2025-08-07")
     assert named("openai/" * 40 + "gpt-5-2025-08-07") is None
+
+
+def test_a_value_with_more_prefixes_than_any_spelling_names_no_model():
+    """A model id has at most one "/" and a spelling adds one prefix; more are
+    refused before the enum recurses once per prefix."""
+    named = llm_models.llm_model_named
+
+    assert named("openrouter/openai/gpt-oss-120b") is LLMModel("openai/gpt-oss-120b")
+    assert named("openai/" * 10 + "gpt-5-2025-08-07") is None

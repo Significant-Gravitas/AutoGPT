@@ -338,3 +338,26 @@ async def test_write_to_failure_falls_back_inline(tool, session):
     assert result.fixed_agent_ref is None
     assert result.fixed_agent_json is not None
     assert "could not write" in result.message
+
+
+@pytest.mark.asyncio
+async def test_an_oversized_workflow_is_refused_before_the_fixer_runs(tool, session):
+    """The same bound as the save path: the fixer's cost grows with the
+    workflow, and it runs on the event loop."""
+    node = {
+        "id": "n1",
+        "block_id": "b1",
+        "input_default": {"text": "x" * 1_100_000},
+        "metadata": {},
+    }
+
+    with patch("backend.copilot.tools.fix_agent.AgentFixer") as fixer:
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_json={"nodes": [node], "links": []},
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "agent_json_too_large"
+    fixer.assert_not_called()

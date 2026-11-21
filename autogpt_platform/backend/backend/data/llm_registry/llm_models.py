@@ -494,10 +494,20 @@ def _today() -> date:
 _MAX_MODEL_VALUE_LENGTH = 256
 
 
+# A model id has at most one "/", and a spelling adds one provider prefix. The
+# enum strips one prefix per recursion, so a value with more is refused before
+# it costs a recursion per prefix.
+_MAX_MODEL_VALUE_SLASHES = 2
+
+
 def llm_model_named(value: object) -> "LLMModel | None":
     """The ``LLMModel`` *value* names, in any spelling the enum takes
     (``openai/gpt-5-2025-08-07`` too); None when it names none."""
-    if not isinstance(value, str) or len(value) > _MAX_MODEL_VALUE_LENGTH:
+    if (
+        not isinstance(value, str)
+        or len(value) > _MAX_MODEL_VALUE_LENGTH
+        or value.count("/") > _MAX_MODEL_VALUE_SLASHES
+    ):
         return None
     try:
         return LLMModel(value)
