@@ -61,6 +61,7 @@ from backend.data.graph import GraphModel, Node
 from backend.data.model import (
     PLATFORM_FUNDED_COST_KEY,
     USER_TIMEZONE_NOT_SET,
+    APIKeyCredentials,
     CredentialsMetaInput,
     GraphInput,
     NodeExecutionStats,
@@ -637,6 +638,8 @@ async def _validate_node_input_credentials(
     user_credentials = CredentialsSnapshot(
         lambda: get_integration_credentials_store().get_all_creds(user_id)
     )
+    # Read only once an expired key needs dating in the user's own zone.
+    user_timezone: str | None = None
 
     for node in graph.nodes:
         block = node.block
@@ -764,6 +767,15 @@ async def _validate_node_input_credentials(
                     f"{credentials_meta.provider}<>{credentials.provider}"
                 )
                 credential_errors[node.id][field_name] = CRED_ERR_INVALID_TYPE_MISMATCH
+                continue
+
+            if isinstance(credentials, APIKeyCredentials) and credentials.is_expired():
+                if user_timezone is None:
+                    user_timezone = await _user_timezone(user_id)
+                expired = credentials.expired_error(user_timezone)
+                credential_errors[node.id][
+                    field_name
+                ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {expired}"
                 continue
 
         # Validate auto-credentials (GoogleDriveFileField-based)
@@ -895,6 +907,15 @@ async def _validate_node_input_credentials(
             nodes_to_skip.add(node.id)
 
     return credential_errors, nodes_to_skip
+
+
+async def _user_timezone(user_id: str) -> str:
+    """The user's time zone setting, for dating a message they read."""
+    users = user_db if prisma.is_connected() else get_database_manager_async_client()
+    try:
+        return (await users.get_user_by_id(user_id)).timezone
+    except ValueError:  # no such user
+        return "UTC"
 
 
 def _is_optional_picker(input_schema: type[BlockSchema], field_name: str) -> bool:
