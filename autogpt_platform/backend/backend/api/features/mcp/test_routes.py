@@ -933,6 +933,59 @@ class TestOAuthLogin:
         ]
         assert state_metadata["resource_url"] == "https://evil.example/mcp"
 
+    @pytest.mark.parametrize(
+        "authorization_endpoint",
+        [
+            "javascript:opener.document.title='x'//",
+            "JavaScript:alert('://')//",
+            " java\tscript:alert(1)//",
+            "data:text/html,<script>alert(1)</script>",
+            "//auth.example.com/authorize",
+            "https:///authorize",
+            "https://[auth.example.com/authorize",
+            ["https://auth.example.com/authorize"],
+            None,
+        ],
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_refuses_a_non_http_authorization_endpoint(
+        self, client, authorization_endpoint
+    ):
+        """The browser navigates a same-origin window to this URL, so no scripts.
+
+        It is the one endpoint in the document the platform hands on instead of
+        fetching, so ``Requests`` never sees it and nothing else vets it.
+        """
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            instance = MockClient.return_value
+            instance.discover_auth = AsyncMock(return_value=None)
+            instance.discover_auth_server_metadata = AsyncMock(
+                return_value=(
+                    {
+                        "authorization_endpoint": authorization_endpoint,
+                        "token_endpoint": "https://evil.example/token",
+                    },
+                    "https://evil.example",
+                )
+            )
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://evil.example/mcp"},
+            )
+
+        assert response.status_code == 400
+        assert "not an http(s) URL" in response.json()["detail"]
+        mock_cm.store.store_state_token.assert_not_awaited()
+
     @pytest.mark.asyncio(loop_scope="session")
     async def test_dynamic_client_registration_declares_web_application(self):
         from backend.api.features.mcp.routes import _register_mcp_client

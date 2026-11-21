@@ -42002,6 +42002,25 @@
             ],
             "title": "Wizarduserid"
           },
+          "wizardWriterId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$"
+              },
+              { "type": "null" }
+            ],
+            "title": "Wizardwriterid"
+          },
+          "wizardWriteSeq": {
+            "anyOf": [
+              { "type": "integer", "maximum": 2147483647.0, "minimum": 1.0 },
+              { "type": "null" }
+            ],
+            "title": "Wizardwriteseq"
+          },
           "walletShown": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Walletshown"

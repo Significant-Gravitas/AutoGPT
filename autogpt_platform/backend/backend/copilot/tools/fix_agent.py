@@ -123,7 +123,11 @@ class FixAgentGraphTool(BaseTool):
         try:
             blocks = get_blocks_as_dicts()
             fixer = AgentFixer()
-            fixed_agent = fixer.apply_all_fixes(agent_json, blocks)
+            # Only the save knows whether a node is new (edit_agent has the
+            # stored version), and it moves new work off a switched-off model.
+            fixed_agent = fixer.apply_all_fixes(
+                agent_json, blocks, keep_switched_off_models=True
+            )
             fixes_applied = fixer.get_fixes_applied()
         except Exception as e:
             logger.error(f"Fixer error: {e}", exc_info=True)
