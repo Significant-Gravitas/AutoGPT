@@ -14,6 +14,7 @@ import pytest
 
 from backend.api.features.store import db as store_db
 from backend.data.db import execute_raw_with_schema
+from backend.data.tenancy import tenancy_for_new_row
 
 APPROVED = prisma.enums.SubmissionStatus.APPROVED
 PENDING = prisma.enums.SubmissionStatus.PENDING
@@ -38,6 +39,7 @@ async def _seed_listing(
     """
     await prisma.models.AgentGraph.prisma().create(
         data={
+            "organizationId": "org-test",
             "id": graph_id,
             "version": 1,
             "name": graph_id,
@@ -51,6 +53,7 @@ async def _seed_listing(
             "slug": graph_id,
             "agentGraphId": graph_id,
             "owningUserId": owner,
+            "owningOrgId": (await tenancy_for_new_row(owner, None))[0],
             "hasApprovedVersion": True,
         }
     )
@@ -58,6 +61,7 @@ async def _seed_listing(
     for number, (status, available, category) in enumerate(versions, start=1):
         version = await prisma.models.StoreListingVersion.prisma().create(
             data={
+                "organizationId": "org-test",
                 "storeListingId": listing.id,
                 "version": number,
                 "agentGraphId": graph_id,
@@ -140,6 +144,7 @@ async def test_creator_stats_cover_only_the_listings_the_store_shows(server):
             for _ in range(runs):
                 await prisma.models.AgentGraphExecution.prisma().create(
                     data={
+                        "organizationId": "org-test",
                         "agentGraphId": graph_id,
                         "agentGraphVersion": 1,
                         "userId": runner,

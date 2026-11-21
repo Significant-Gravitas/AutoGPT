@@ -116,21 +116,12 @@ async def test_a_fork_lands_in_the_credentials_tenant(
     assert (kwargs["organization_id"], kwargs["team_id"]) == ("org-a", "team-a")
 
 
-@pytest.mark.parametrize(
-    "graph_version, organization_ids", [(2, frozenset({"org-a"})), (None, None)]
-)
+@pytest.mark.parametrize("graph_version, organization_id", [(2, "org-a"), (None, None)])
 async def test_only_this_organizations_entries_give_way_to_a_chosen_version(
     folders: dict[str, AsyncMock],
-    mocker: pytest_mock.MockFixture,
     graph_version: int | None,
-    organization_ids: frozenset[str | None] | None,
+    organization_id: str | None,
 ) -> None:
-    mocker.patch(
-        "backend.api.external.v2.library.agents.writable_organization_ids",
-        new_callable=AsyncMock,
-        return_value=frozenset({"org-a"}),
-    )
-
     await update_library_agent(
         LibraryAgentUpdateRequest(graph_version=graph_version),
         agent_id="agent-1",
@@ -138,4 +129,4 @@ async def test_only_this_organizations_entries_give_way_to_a_chosen_version(
     )
 
     kwargs = folders["update_library_agent"].await_args.kwargs
-    assert kwargs["organization_ids"] == organization_ids
+    assert kwargs["organization_id"] == organization_id

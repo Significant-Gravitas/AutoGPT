@@ -2064,12 +2064,6 @@ async def stream_chat_completion_baseline(
         team_id=session.team_id,
     )
 
-    # The session row is the tenancy anchor; the turn entry's org/team only
-    # backfills sessions created before org tagging (pre-migration rows).
-    if session.organization_id is None and organization_id:
-        session.organization_id = organization_id
-        session.team_id = team_id
-
     # Drop orphan tool_use + trailing stop-marker rows left by a previous
     # Stop mid-tool-call so the new turn starts from a well-formed message list.
     prune_orphan_tool_calls(

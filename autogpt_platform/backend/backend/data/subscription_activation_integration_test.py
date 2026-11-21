@@ -59,6 +59,7 @@ async def test_trial_conversion_preserves_lifetime_ledger_and_account_history(
     )
     chat = await db.prisma.chatsession.create(
         data={
+            "organizationId": "org-test",
             "userId": case.user_id,
             "totalPromptTokens": 1234,
             "title": "Preserved conversation",

@@ -1,0 +1,16 @@
+-- CreateIndex
+-- Declared in schema.prisma since the org tables arrived, never created by a
+-- migration, like those 20261118120001 to 20261118120013 build. The backfill
+-- in 20261118120100 finds untagged rows through them.
+-- Built CONCURRENTLY, so run reads and writes go on during the build, which
+-- is why this is the only statement in the file: Prisma sends a migration's
+-- statements together, and a second one would put both in a transaction.
+--
+-- A concurrent build that is interrupted leaves an INVALID index of this
+-- name, which IF NOT EXISTS then skips. To recover: DROP INDEX CONCURRENTLY
+-- "AgentGraphExecution_organizationId_idx", mark this migration rolled back
+-- (prisma migrate resolve --rolled-back
+-- 20261118120000_org_tenancy_execution_org_index) and deploy again. If the
+-- statement timeout stopped it, build it by hand in a session with a longer one
+-- and mark the migration applied (--applied) instead.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "AgentGraphExecution_organizationId_idx" ON "AgentGraphExecution"("organizationId");

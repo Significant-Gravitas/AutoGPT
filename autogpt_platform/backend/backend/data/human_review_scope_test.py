@@ -123,6 +123,7 @@ async def test_a_row_in_the_old_shape_still_resolves_to_its_chat(user_id):
     old_id = f"copilot-session-{session_id}"
     await PendingHumanReview.prisma().create(
         data={
+            "organizationId": "org-test",
             "nodeExecId": f"copilot-node-blk:{uuid4().hex[:8]}",
             "userId": user_id,
             "graphExecId": old_id,
@@ -171,6 +172,7 @@ async def test_a_backfilled_row_reads_as_its_chat(user_id):
     old_id = f"copilot-session-{session_id}"
     await PendingHumanReview.prisma().create(
         data={
+            "organizationId": "org-test",
             "nodeExecId": f"copilot-node-blk:{uuid4().hex[:8]}",
             "userId": user_id,
             "graphExecId": old_id,
@@ -197,6 +199,7 @@ async def test_an_auto_approval_made_before_the_migration_still_holds(user_id):
     old_id = f"copilot-session-{session_id}"
     await PendingHumanReview.prisma().create(
         data={
+            "organizationId": "org-test",
             "nodeExecId": f"auto_approve_{old_id}_{node_id}",
             "userId": user_id,
             "graphExecId": old_id,
@@ -271,6 +274,7 @@ async def test_the_database_refuses_a_review_without_exactly_one_scope(user_id, 
             data={
                 "nodeExecId": f"bad-{uuid4()}",
                 "userId": user_id,
+                "organizationId": "org-test",
                 "payload": SafeJson({}),
                 **scope,
             }
@@ -345,6 +349,7 @@ async def test_every_pending_review_of_an_execution_is_returned_oldest_first(use
     for i, node_exec_id in enumerate(created):
         await PendingHumanReview.prisma().create(
             data={
+                "organizationId": "org-test",
                 "nodeExecId": node_exec_id,
                 "userId": user_id,
                 "graphExecId": graph_exec_id,

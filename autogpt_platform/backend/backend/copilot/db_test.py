@@ -86,6 +86,7 @@ def _make_session(
         sharedAt=None,
         autoShareExecutions=False,
         Messages=messages or [],
+        organizationId="org-1",
     )
     return session
 
@@ -855,9 +856,7 @@ async def test_get_user_chat_sessions_orders_pinned_first():
 # active. The owner's expert sessions must stay listable, loadable, and
 # deletable regardless of the active organization.
 
-_EXPERT_CARVEOUT_SQL = (
-    '"organizationId" = $2 OR "organizationId" IS NULL' ' OR "expertId" IS NOT NULL'
-)
+_EXPERT_CARVEOUT_SQL = '"organizationId" = $2 OR "expertId" IS NOT NULL'
 
 
 @pytest.mark.asyncio
@@ -877,7 +876,6 @@ async def test_get_session_org_scope_exempts_expert_sessions(
         {
             "OR": [
                 {"organizationId": "shared-org"},
-                {"organizationId": None},
                 {"expertId": {"not": None}},
             ]
         }
@@ -903,7 +901,6 @@ async def test_delete_org_scope_exempts_expert_sessions():
         {
             "OR": [
                 {"organizationId": "shared-org"},
-                {"organizationId": None},
                 {"expertId": {"not": None}},
             ]
         }
@@ -998,6 +995,7 @@ async def test_list_chat_sessions_by_status_returns_app_models_oldest_first() ->
             sharedAt=None,
             autoShareExecutions=False,
             visibility=ResourceVisibility.PRIVATE,
+            organizationId="org-1",
         ),
         PrismaChatSession(
             id="s2",
@@ -1017,6 +1015,7 @@ async def test_list_chat_sessions_by_status_returns_app_models_oldest_first() ->
             sharedAt=None,
             autoShareExecutions=False,
             visibility=ResourceVisibility.PRIVATE,
+            organizationId="org-1",
         ),
     ]
     find_many = AsyncMock(return_value=rows)

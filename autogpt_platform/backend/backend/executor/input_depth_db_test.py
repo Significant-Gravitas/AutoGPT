@@ -97,6 +97,7 @@ def nested(depth):
 async def test_prisma_roundtrip_at_stored_json_limit(owner, column, depth):
     graph = await prisma.agentgraph.create(
         data={
+            "organizationId": "org-test",
             "userId": owner,
             "Nodes": {"create": [{"agentBlockId": CreateListBlock().id}]},
         },

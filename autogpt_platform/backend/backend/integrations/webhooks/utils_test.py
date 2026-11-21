@@ -294,7 +294,12 @@ async def test_concurrent_backfills_convert_a_preset_once(server: SpinTestServer
         {"sub": user_id, "email": f"backfill-{user_id}@example.com"}
     )
     graph = await AgentGraph.prisma().create(
-        data={"id": str(uuid.uuid4()), "version": 1, "userId": user_id}
+        data={
+            "organizationId": "org-test",
+            "id": str(uuid.uuid4()),
+            "version": 1,
+            "userId": user_id,
+        }
     )
     await AgentNode.prisma().create(
         data={
@@ -305,6 +310,7 @@ async def test_concurrent_backfills_convert_a_preset_once(server: SpinTestServer
     )
     preset = await AgentPreset.prisma().create(
         data={
+            "organizationId": "org-test",
             "name": "p",
             "description": "",
             "userId": user_id,

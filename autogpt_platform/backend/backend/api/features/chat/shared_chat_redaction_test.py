@@ -158,6 +158,7 @@ def _shared_session(rows: list[PrismaChatMessage]) -> PrismaChatSession:
         sharedAt=CREATED,
         # Newest first, the order the page query reads them in.
         Messages=list(reversed(rows)),
+        organizationId="org-1",
     )
 
 

@@ -17,6 +17,7 @@ SUBJECT = Subject(
     user_id=USER_ID,
     shared_graph_ids=["graph-published", "graph-sub"],
     kept_listing_ids=["listing-1"],
+    sole_org_ids=["org-of-user"],
 )
 
 
@@ -28,10 +29,14 @@ def db(monkeypatch):
     async def transaction(timeout):
         yield tx
 
+    kept = SimpleNamespace(id="listing-1", slug="weather", owningOrgId="org-of-user")
+
+    async def find_many(where):
+        # No other member published in the account's orgs.
+        return [] if "owningOrgId" in where else [kept]
+
     listings = MagicMock()
-    listings.prisma.return_value.find_many = AsyncMock(
-        return_value=[SimpleNamespace(id="listing-1", slug="weather")]
-    )
+    listings.prisma.return_value.find_many = AsyncMock(side_effect=find_many)
     listings.prisma.return_value.find_first = AsyncMock(return_value=None)
     profiles = MagicMock()
     profiles.prisma.return_value.find_unique = AsyncMock(
@@ -47,6 +52,11 @@ def db(monkeypatch):
     monkeypatch.setattr(shared_agents, "execute_raw_with_schema", execute)
     monkeypatch.setattr(shared_agents, "hand_over_graphs", hand_over)
     monkeypatch.setattr(shared_agents, "ensure_deleted_user", ensure)
+    monkeypatch.setattr(
+        shared_agents,
+        "personal_org_tenancy",
+        AsyncMock(return_value=("placeholder-org", "placeholder-team")),
+    )
     monkeypatch.setattr(shared_agents, "clear_store_caches", clear)
     monkeypatch.setattr(
         shared_agents,
@@ -79,6 +89,7 @@ async def test_a_dry_run_counts_and_changes_nothing(db):
     assert report.counts == {
         "agents": 2,
         "listings": 1,
+        "other_members_listings": 0,
         "library_entries_relabelled": 2,
     }
     db.ensure.assert_not_awaited()
@@ -117,8 +128,32 @@ async def test_agents_and_listings_go_to_the_placeholder_in_one_transaction(db):
         tx=db.tx,
     )
     listing = _listing_update(db.execute)
-    assert listing.args[1:] == (DELETED_USER_ID, "weather", "listing-1", USER_ID)
+    assert listing.args[1:] == (
+        DELETED_USER_ID,
+        "placeholder-org",
+        "weather",
+        "listing-1",
+        USER_ID,
+    )
+    versions = next(
+        call
+        for call in db.execute.await_args_list
+        if '"organizationId" = $1' in call.args[0]
+    )
+    assert versions.args[1:] == ("placeholder-org", SUBJECT.kept_listing_ids)
     db.clear.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_a_listing_in_an_org_that_outlives_the_account_keeps_it(db):
+    in_a_shared_org = SUBJECT.model_copy(update={"sole_org_ids": []})
+
+    await shared_agents.transfer_shared_agents(in_a_shared_org, dry_run=False)
+
+    assert _listing_update(db.execute).args[2] == "org-of-user"
+    assert not any(
+        '"organizationId" = $1' in call.args[0] for call in db.execute.await_args_list
+    )
 
 
 @pytest.mark.asyncio
@@ -158,7 +193,7 @@ async def test_a_slug_the_placeholder_already_uses_gets_a_suffix(db):
 
     await shared_agents.transfer_shared_agents(SUBJECT, dry_run=False)
 
-    assert _listing_update(db.execute).args[2] == "weather-3"
+    assert _listing_update(db.execute).args[3] == "weather-3"
 
 
 @pytest.mark.asyncio

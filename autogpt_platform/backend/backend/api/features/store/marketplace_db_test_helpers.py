@@ -7,6 +7,7 @@ import prisma.models
 
 from backend.api.features.store import db as store_db
 from backend.data.graph import Graph, create_graph
+from backend.data.tenancy import tenancy_for_new_row
 
 APPROVED = prisma.enums.SubmissionStatus.APPROVED
 PENDING = prisma.enums.SubmissionStatus.PENDING
@@ -96,11 +97,13 @@ async def seed_listing(
 ) -> list[str]:
     """Seed a listing and activate its first version if it is approved."""
     await create_graph(Graph(id=graph_id, name=graph_id, description="test"), owner)
+    org_id, _ = await tenancy_for_new_row(owner, None)
     listing = await prisma.models.StoreListing.prisma().create(
         data={
             "slug": graph_id,
             "agentGraphId": graph_id,
             "owningUserId": owner,
+            "owningOrgId": org_id,
             "hasApprovedVersion": APPROVED in statuses,
         }
     )
@@ -108,6 +111,7 @@ async def seed_listing(
     for number, status in enumerate(statuses, start=1):
         version = await prisma.models.StoreListingVersion.prisma().create(
             data={
+                "organizationId": org_id,
                 "storeListingId": listing.id,
                 "version": number,
                 "agentGraphId": graph_id,

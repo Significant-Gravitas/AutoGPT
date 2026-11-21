@@ -52,6 +52,7 @@ async def _create_user(user_id: str) -> None:
 async def _create_graph(graph_id: str, user_id: str, name: str) -> None:
     await AgentGraph.prisma().create(
         data={
+            "organizationId": "org-test",
             "id": graph_id,
             "version": 1,
             "name": name,
@@ -100,6 +101,7 @@ async def test_pending_reviews_are_enriched(server: SpinTestServer):
 
         lib_agent = await LibraryAgent.prisma().create(
             data={
+                "organizationId": "org-test",
                 "userId": user_id,
                 "agentGraphId": graph_id,
                 "agentGraphVersion": 1,
@@ -110,6 +112,7 @@ async def test_pending_reviews_are_enriched(server: SpinTestServer):
 
         await AgentGraphExecution.prisma().create(
             data={
+                "organizationId": "org-test",
                 "id": real_exec_id,
                 "agentGraphId": graph_id,
                 "agentGraphVersion": 1,
@@ -125,6 +128,7 @@ async def test_pending_reviews_are_enriched(server: SpinTestServer):
 
         await PendingHumanReview.prisma().create(
             data={
+                "organizationId": "org-test",
                 "nodeExecId": f"node-exec-{uuid4()}",
                 "userId": user_id,
                 "graphExecId": real_exec_id,
@@ -137,6 +141,7 @@ async def test_pending_reviews_are_enriched(server: SpinTestServer):
         )
         await PendingHumanReview.prisma().create(
             data={
+                "organizationId": "org-test",
                 "nodeExecId": f"{COPILOT_NODE_PREFIX}some-block:{uuid4().hex[:8]}",
                 "userId": user_id,
                 "chatSessionId": session.session_id,
@@ -175,6 +180,7 @@ async def test_plain_run_review_has_null_expert(server: SpinTestServer):
 
         await LibraryAgent.prisma().create(
             data={
+                "organizationId": "org-test",
                 "userId": user_id,
                 "agentGraphId": graph_id,
                 "agentGraphVersion": 1,
@@ -185,6 +191,7 @@ async def test_plain_run_review_has_null_expert(server: SpinTestServer):
 
         await AgentGraphExecution.prisma().create(
             data={
+                "organizationId": "org-test",
                 "id": plain_exec_id,
                 "agentGraphId": graph_id,
                 "agentGraphVersion": 1,
@@ -194,6 +201,7 @@ async def test_plain_run_review_has_null_expert(server: SpinTestServer):
 
         await PendingHumanReview.prisma().create(
             data={
+                "organizationId": "org-test",
                 "nodeExecId": f"node-exec-{uuid4()}",
                 "userId": user_id,
                 "graphExecId": plain_exec_id,
@@ -240,6 +248,7 @@ async def test_enrichment_never_resolves_foreign_node_executions(
         )
         await AgentGraphExecution.prisma().create(
             data={
+                "organizationId": "org-test",
                 "id": other_exec_id,
                 "agentGraphId": other_graph_id,
                 "agentGraphVersion": 1,
@@ -255,6 +264,7 @@ async def test_enrichment_never_resolves_foreign_node_executions(
 
         await PendingHumanReview.prisma().create(
             data={
+                "organizationId": "org-test",
                 "nodeExecId": foreign_node_exec.id,
                 "userId": user_id,
                 "graphExecId": other_exec_id,

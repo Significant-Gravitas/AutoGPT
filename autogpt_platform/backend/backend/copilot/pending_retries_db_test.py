@@ -47,7 +47,9 @@ async def persisted_session() -> AsyncIterator[ChatSession]:
     await User.prisma().create(
         data={"id": user_id, "email": f"pending-retry-{user_id}@example.com"}
     )
-    await StoredSession.prisma().create(data={"id": session_id, "userId": user_id})
+    await StoredSession.prisma().create(
+        data={"organizationId": "org-test", "id": session_id, "userId": user_id}
+    )
     try:
         yield ChatSession(
             session_id=session_id,

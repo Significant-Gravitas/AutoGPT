@@ -66,6 +66,7 @@ async def user_and_graph() -> AsyncIterator[tuple[str, str]]:
                 "name": "automod-clear-test",
                 "userId": user_id,
                 "isActive": True,
+                "organizationId": "org-automod",
             }
         )
         yield user_id, graph_id

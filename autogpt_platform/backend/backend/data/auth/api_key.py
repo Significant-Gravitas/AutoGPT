@@ -289,8 +289,8 @@ async def list_user_api_keys(
     """List keys visible to the user.
 
     Without org context: the user's own keys. With an active org (from a
-    membership-verified RequestContext): own keys (including untagged
-    pre-backfill rows) plus the org's ORG-owned keys — org-wide ones and
+    membership-verified RequestContext): own keys in that org plus the org's
+    ORG-owned keys — org-wide ones and
     those pinned to a team in ``team_ids``. Key material itself is never
     returned (only head/tail).
     """
@@ -298,13 +298,7 @@ async def list_user_api_keys(
     if organization_id is not None:
         where = {
             "OR": [
-                {
-                    "userId": user_id,
-                    "OR": [
-                        {"organizationId": organization_id},
-                        {"organizationId": None},
-                    ],
-                },
+                {"userId": user_id, "organizationId": organization_id},
                 {
                     "organizationId": organization_id,
                     "ownerType": "ORG",

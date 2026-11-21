@@ -69,6 +69,7 @@ async def _session(
     session = await ChatSession.prisma().create(
         data={
             "userId": user_id,
+            "organizationId": "org-test",
             "metadata": SafeJson(metadata),
             **({"expertId": expert_id} if expert_id else {}),
         }
@@ -214,6 +215,7 @@ async def test_a_pass_from_before_read_sets_marks_its_narrative_as_unknown(make_
     )
     session = await ChatSession.prisma().create(
         data={
+            "organizationId": "org-test",
             "userId": owner,
             "metadata": SafeJson({"kind": "dream", "dream_pass_id": pass_id}),
         }
@@ -252,6 +254,7 @@ async def _dream_session(
     )
     session = await ChatSession.prisma().create(
         data={
+            "organizationId": "org-test",
             "userId": user_id,
             "metadata": SafeJson({"kind": "dream", "dream_pass_id": pass_id}),
         }
@@ -286,6 +289,7 @@ async def test_a_narrative_with_no_pass_row_is_not_written(make_user, caplog):
     owner = await make_user()
     session = await ChatSession.prisma().create(
         data={
+            "organizationId": "org-test",
             "userId": owner,
             "metadata": SafeJson({"kind": "dream", "dream_pass_id": "p-no-row"}),
         }
@@ -317,6 +321,7 @@ async def test_a_narrative_goes_only_into_its_passes_own_session(
     pass_id, _ = await _dream_session(owner, erased=False)
     session = await ChatSession.prisma().create(
         data={
+            "organizationId": "org-test",
             "userId": stranger if owner_is == "stranger" else owner,
             "metadata": SafeJson({"dream_pass_id": pass_id, **metadata}),
         }
@@ -413,10 +418,10 @@ async def test_the_blank_over_3000_dream_sessions_meets_database_deadline(make_u
     owner = await make_user()
     shared = "fact-read-by-every-pass"
     await db.execute_raw_with_schema(
-        'INSERT INTO {schema_prefix}"ChatSession" ("id", "userId", "updatedAt", '
-        '"metadata", "credentials", "successfulAgentRuns", '
+        'INSERT INTO {schema_prefix}"ChatSession" ("id", "userId", "organizationId", '
+        '"updatedAt", "metadata", "credentials", "successfulAgentRuns", '
         '"successfulAgentSchedules") '
-        "SELECT gen_random_uuid()::text, $1, now(), jsonb_build_object("
+        "SELECT gen_random_uuid()::text, $1, 'org-test', now(), jsonb_build_object("
         "'kind', 'dream', 'dream_pass_id', gen_random_uuid()::text, $2::text, "
         "to_jsonb(ARRAY(SELECT gen_random_uuid()::text "
         "FROM generate_series(1, 549) WHERE session.n > 0) || $3::text)), "

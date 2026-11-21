@@ -41,6 +41,7 @@ from backend.data.account_deletion import (
     mark_confirmation_sent,
     reopen_account,
 )
+from backend.data.tenancy import tenancy_for_new_row
 from backend.util.test import SpinTestServer
 
 
@@ -387,6 +388,7 @@ async def test_an_erased_account_cannot_be_reopened(accounts: tuple[str, str]):
 async def _shared_chat(user_id: str) -> str:
     chat = await ChatSession.prisma().create(
         data={
+            "organizationId": "org-test",
             "userId": user_id,
             "isShared": True,
             "shareToken": str(uuid4()),
@@ -442,6 +444,7 @@ async def _list_agent(user_id: str, *, approved: bool) -> str:
             "slug": f"agent-{uuid4()}",
             "agentGraphId": str(uuid4()),
             "owningUserId": user_id,
+            "owningOrgId": (await tenancy_for_new_row(user_id, None))[0],
             "hasApprovedVersion": approved,
         }
     )

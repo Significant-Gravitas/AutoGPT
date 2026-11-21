@@ -5284,12 +5284,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Pre-feature history rows (NULL model) must never be back-stamped.
     routing_source: "RoutingSource" = "env"
 
-    # The session row is the tenancy anchor; the turn entry's org/team only
-    # backfills sessions created before org tagging (pre-migration rows).
-    if session.organization_id is None and organization_id:
-        session.organization_id = organization_id
-        session.team_id = team_id
-
     # Clean up ALL trailing error markers from previous turn before starting
     # a new turn.  Multiple markers can accumulate when a mid-stream error is
     # followed by a cleanup error in __aexit__ (both append a marker).

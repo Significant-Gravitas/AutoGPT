@@ -50,6 +50,7 @@ async def _library_rows(graph_id: str, user_id: str) -> int:
 async def _create_preset(created, user_id: str):
     return await prisma.models.AgentPreset.prisma().create(
         data={
+            "organizationId": "org-test",
             "name": "Delete test preset",
             "description": "",
             "userId": user_id,
@@ -91,6 +92,7 @@ async def test_delete_created_graph(server: SpinTestServer):
     # cascades on AgentGraph).
     run = await prisma.models.AgentGraphExecution.prisma().create(
         data={
+            "organizationId": "org-test",
             "agentGraphId": created.id,
             "agentGraphVersion": created.version,
             "userId": DEFAULT_USER_ID,
@@ -137,6 +139,7 @@ async def test_delete_graph_keeps_versions_saved_under_another_org(
     )
     other_org_preset = await prisma.models.AgentPreset.prisma().create(
         data={
+            "organizationId": "org-test",
             "name": "Other org preset",
             "description": "",
             "userId": DEFAULT_USER_ID,
@@ -187,6 +190,7 @@ async def test_delete_graph_after_library_soft_delete(server: SpinTestServer):
 async def _add_other_users_library_entry(created, user_id: str) -> None:
     await prisma.models.LibraryAgent.prisma().create(
         data={
+            "organizationId": "org-test",
             "userId": user_id,
             "agentGraphId": created.id,
             "agentGraphVersion": created.version,
@@ -197,6 +201,7 @@ async def _add_other_users_library_entry(created, user_id: str) -> None:
 async def _add_other_users_run(created, user_id: str) -> None:
     await prisma.models.AgentGraphExecution.prisma().create(
         data={
+            "organizationId": "org-test",
             "agentGraphId": created.id,
             "agentGraphVersion": created.version,
             "userId": user_id,

@@ -36,6 +36,7 @@ def _graph_row(nodes: list[AgentNode]) -> AgentGraph:
         createdAt=datetime.now(timezone.utc),
         visibility=ResourceVisibility.PRIVATE,
         Nodes=nodes,
+        organizationId="org-1",
     )
 
 

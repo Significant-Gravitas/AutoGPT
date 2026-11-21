@@ -17,10 +17,7 @@ from backend.data.execution import (
 VISIBILITY_AND = [
     {
         "OR": [
-            {
-                "userId": "u-1",
-                "OR": [{"organizationId": "org-1"}, {"organizationId": None}],
-            },
+            {"userId": "u-1", "organizationId": "org-1"},
             {"organizationId": "org-1", "teamId": None},
             {"organizationId": "org-1", "teamId": {"in": ["team-a"]}},
         ]

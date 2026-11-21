@@ -98,6 +98,7 @@ async def test_all_keys_with_same_head_and_tail_authenticate(stored_key):
                 hash=hashed,
                 salt=salt,
                 userId=info.user_id,
+                organizationId="org-test",
                 permissions=[],
             )
         )

@@ -21,13 +21,18 @@ of shared agents go over with them, renamed to a free slug if the placeholder
 already has one, and stay taken down: closing the account took every listing
 of its own down (`close_account`), and nothing here puts one back up. Agents
 nobody else uses are deleted with the account.
+
+A listing keeps its org unless the org is deleted with the account (one no
+other member is active in, `preflight._orgs`), which an org that owns listings
+can't be: the account's listings then go to the placeholder's own org, and those
+other, departed members published there go to each one's personal org.
 """
 
 import logging
 from datetime import timedelta
 
 from prisma import Prisma
-from prisma.models import Profile, StoreListing
+from prisma.models import Profile, StoreListing, StoreListingVersion
 from pydantic import BaseModel
 
 from backend.api.features.store.cache import clear_all_caches as clear_store_caches
@@ -39,6 +44,7 @@ from backend.data.account_erasure.deleted_user import (
 from backend.data.account_erasure.models import StepReport, StepStatus, Subject
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema, transaction
 from backend.data.graph import hand_over_graphs
+from backend.data.org_migration import personal_org_tenancy
 
 logger = logging.getLogger(__name__)
 
@@ -100,8 +106,13 @@ _KEPT_LISTINGS = """
      ORDER BY l."id"
 """
 _TRANSFER_LISTING = """
-    UPDATE {schema_prefix}"StoreListing" SET "owningUserId" = $1, "slug" = $2
-     WHERE "id" = $3 AND "owningUserId" = $4
+    UPDATE {schema_prefix}"StoreListing" SET "owningUserId" = $1, "owningOrgId" = $2,
+           "slug" = $3
+     WHERE "id" = $4 AND "owningUserId" = $5
+"""
+_REHOME_VERSIONS = """
+    UPDATE {schema_prefix}"StoreListingVersion" SET "organizationId" = $1
+     WHERE "storeListingId" = ANY($2::text[])
 """
 # A submission still waiting for review would otherwise be published under
 # the placeholder after its author asked to be deleted. REJECTED still counts
@@ -140,17 +151,52 @@ async def plan_transfer(user_id: str) -> TransferPlan:
 
 
 async def transfer_shared_agents(subject: Subject, *, dry_run: bool) -> StepReport:
-    if not subject.shared_graph_ids:
-        return _report({"agents": 0, "listings": 0}, dry_run)
+    members_listings = await _other_members_listings(subject)
     counts = {
         "agents": len(subject.shared_graph_ids),
         "listings": len(subject.kept_listing_ids),
-        "library_entries_relabelled": await _count_relabel(subject.user_id),
+        "other_members_listings": len(members_listings),
     }
-    if not dry_run:
+    if subject.shared_graph_ids:
+        counts["library_entries_relabelled"] = await _count_relabel(subject.user_id)
+    if dry_run:
+        return _report(counts, dry_run)
+    if members_listings:
+        await _rehome_other_members_listings(members_listings)
+    if subject.shared_graph_ids:
         await _transfer(subject)
         _clear_store_caches()
     return _report(counts, dry_run)
+
+
+async def _other_members_listings(subject: Subject) -> list[StoreListing]:
+    """Listings other members published in the orgs deleted with the account."""
+    if not subject.sole_org_ids:
+        return []
+    return await StoreListing.prisma().find_many(
+        where={
+            "owningOrgId": {"in": subject.sole_org_ids},
+            "owningUserId": {"not": subject.user_id},
+        }
+    )
+
+
+async def _rehome_other_members_listings(listings: list[StoreListing]) -> None:
+    """Each to its owner's personal org, with its versions."""
+    orgs = {
+        owner: (await personal_org_tenancy(owner))[0]
+        for owner in {listing.owningUserId for listing in listings}
+    }
+    async with transaction(timeout=_TRANSACTION_TIMEOUT) as tx:
+        for listing in listings:
+            org_id = orgs[listing.owningUserId]
+            await StoreListing.prisma(tx).update(
+                where={"id": listing.id},
+                data={"OwningOrg": {"connect": {"id": org_id}}},
+            )
+            await StoreListingVersion.prisma(tx).update_many(
+                where={"storeListingId": listing.id}, data={"organizationId": org_id}
+            )
 
 
 def _clear_store_caches() -> None:
@@ -166,8 +212,8 @@ def _clear_store_caches() -> None:
 
 async def _transfer(subject: Subject) -> None:
     uid = subject.user_id
+    placeholder_profile, placeholder_org_id = await _placeholder()
     async with transaction(timeout=_TRANSACTION_TIMEOUT) as tx:
-        placeholder_profile = await ensure_deleted_user(tx)
         await hand_over_graphs(
             subject.shared_graph_ids,
             from_user_id=uid,
@@ -177,14 +223,32 @@ async def _transfer(subject: Subject) -> None:
         listings = await StoreListing.prisma(tx).find_many(
             where={"id": {"in": subject.kept_listing_ids}, "owningUserId": uid}
         )
+        leaving = [
+            listing.id
+            for listing in listings
+            if listing.owningOrgId in subject.sole_org_ids
+        ]
         for listing in listings:
-            slug = await _free_slug(tx, listing.slug, listing.id)
+            org_id = (
+                placeholder_org_id if listing.id in leaving else listing.owningOrgId
+            )
+            slug = await _free_slug(tx, listing.slug, listing.id, org_id)
             await execute_raw_with_schema(
-                _TRANSFER_LISTING, DELETED_USER_ID, slug, listing.id, uid, client=tx
+                _TRANSFER_LISTING,
+                DELETED_USER_ID,
+                org_id,
+                slug,
+                listing.id,
+                uid,
+                client=tx,
             )
         if subject.kept_listing_ids:
             await execute_raw_with_schema(
                 _WITHDRAW_PENDING, subject.kept_listing_ids, client=tx
+            )
+        if leaving:
+            await execute_raw_with_schema(
+                _REHOME_VERSIONS, placeholder_org_id, leaving, client=tx
             )
         own_profile = await Profile.prisma(tx).find_unique(where={"userId": uid})
         if own_profile:
@@ -193,14 +257,23 @@ async def _transfer(subject: Subject) -> None:
             )
 
 
-async def _free_slug(tx: Prisma, slug: str, listing_id: str) -> str:
-    """The listing's slug, or the first `slug-N` the placeholder has free:
-    its listings share one creator, and slugs are unique per creator."""
+async def _placeholder() -> tuple[str, str]:
+    """The placeholder account's Profile ID and personal org, both made on first
+    use: the org takes the kept listings whose org is deleted with the account."""
+    async with transaction(timeout=_TRANSACTION_TIMEOUT) as tx:
+        profile_id = await ensure_deleted_user(tx)
+    organization_id, _ = await personal_org_tenancy(DELETED_USER_ID)
+    return profile_id, organization_id
+
+
+async def _free_slug(tx: Prisma, slug: str, listing_id: str, org_id: str) -> str:
+    """The listing's slug, or the first `slug-N` free both among the placeholder's
+    listings and in the org it ends up in: slugs are unique per creator and per org."""
     candidate, n = slug, 2
     while await StoreListing.prisma(tx).find_first(
         where={
-            "owningUserId": DELETED_USER_ID,
             "slug": candidate,
+            "OR": [{"owningUserId": DELETED_USER_ID}, {"owningOrgId": org_id}],
             "NOT": [{"id": listing_id}],
         }
     ):

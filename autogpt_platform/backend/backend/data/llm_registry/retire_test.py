@@ -105,6 +105,7 @@ async def _seed_graph(
     graph_id = str(uuid.uuid4())
     await prisma.models.AgentGraph.prisma().create(
         data={
+            "organizationId": "org-test",
             "id": graph_id,
             "version": 1,
             "name": "retire-test",
@@ -133,6 +134,7 @@ async def _seed_preset(graph_id: str, inputs: dict[str, Any]) -> dict[str, str]:
             "name": "retire-test",
             "description": "retire-test",
             "userId": _TEST_USER_ID,
+            "organizationId": "org-test",
             "agentGraphId": graph_id,
             "agentGraphVersion": 1,
             "InputPresets": {

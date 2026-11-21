@@ -50,7 +50,11 @@ async def _user() -> str:
 
 async def _folder(user_id: str) -> str:
     folder = await LibraryFolder.prisma().create(
-        data={"userId": user_id, "name": f"Folder {uuid.uuid4().hex[:8]}"}
+        data={
+            "userId": user_id,
+            "name": f"Folder {uuid.uuid4().hex[:8]}",
+            "organizationId": "org-a",
+        }
     )
     return folder.id
 
@@ -63,6 +67,7 @@ async def _agent(user_id: str, **flags: bool) -> LibraryAgent:
             "name": "Folder Move Test",
             "userId": user_id,
             "isActive": True,
+            "organizationId": "org-a",
         }
     )
     return await LibraryAgent.prisma().create(
@@ -71,13 +76,14 @@ async def _agent(user_id: str, **flags: bool) -> LibraryAgent:
             "agentGraphId": graph.id,
             "agentGraphVersion": graph.version,
             "isCreatedByUser": True,
+            "organizationId": "org-a",
             **flags,
         }
     )
 
 
 async def _entries_of_one_graph(
-    user_id: str, organizations: list[str | None]
+    user_id: str, organizations: list[str]
 ) -> list[LibraryAgent]:
     """One library entry per version of a new graph, tagged in turn."""
     graph_id = str(uuid.uuid4())
@@ -89,6 +95,7 @@ async def _entries_of_one_graph(
                 "version": version,
                 "name": "Folder Move Test",
                 "userId": user_id,
+                "organizationId": organization_id,
             }
         )
         entries.append(
@@ -149,18 +156,16 @@ async def test_archived_agent_can_be_moved(server: SpinTestServer, by: str):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_organization_moves_only_its_own_and_untagged_entries(
-    server: SpinTestServer,
-):
+async def test_organization_moves_only_its_own_entries(server: SpinTestServer):
     user = await _user()
     folder = await _folder(user)
-    own, other, untagged = await _entries_of_one_graph(user, ["org-a", "org-b", None])
+    own, other = await _entries_of_one_graph(user, ["org-a", "org-b"])
 
     moved = await bulk_move_agents_to_folder(
         [own.agentGraphId], folder, user, organization_id="org-a"
     )
 
-    assert sorted(a.id for a in moved) == sorted([own.id, untagged.id])
+    assert [a.id for a in moved] == [own.id]
     assert await _folder_of(other.id) is None
     with pytest.raises(NotFoundError, match=other.id):
         await bulk_move_agents_to_folder(

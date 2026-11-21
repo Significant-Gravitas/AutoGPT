@@ -179,24 +179,18 @@ async def test_a_store_submission_tags_its_listing_and_version(user_id):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.parametrize("submitted_in", ["personal", "untagged", "team"])
+@pytest.mark.parametrize("submitted_in", ["personal", "team"])
 async def test_an_approved_sub_workflow_is_listed_in_its_workflows_org(
     user_id, reviewer_id, submitted_in
 ):
     """The sub-workflow of an approved submission is listed in the submission's
-    org: the team org it was made in, or the creator's personal org for one
-    written before its version carried an org. Never the reviewer's."""
+    org, personal or team. Never the reviewer's."""
     await _creator_profile(user_id)
     team_org_id = await _team_org(user_id) if submitted_in == "team" else None
     sub = await _graph(user_id, team_org_id)
     submission = await _submit(
         user_id, await _workflow_using(user_id, sub, team_org_id), team_org_id
     )
-    if submitted_in == "untagged":
-        await prisma.storelistingversion.update(
-            where={"id": submission.listing_version_id},
-            data={"organizationId": None},
-        )
 
     await _approve(submission, reviewer_id)
 

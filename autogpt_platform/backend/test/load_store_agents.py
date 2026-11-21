@@ -33,6 +33,9 @@ from prisma.types import (
     UserCreateInput,
 )
 
+from backend.data import db as platform_db
+from backend.data.org_migration import personal_org_tenancy
+
 # Path to agents folder (relative to backend directory)
 AGENTS_DIR = Path(__file__).parent.parent / "agents"
 CSV_FILE = AGENTS_DIR / "StoreAgent_rows.csv"
@@ -215,7 +218,11 @@ async def load_agent_json(json_path: Path) -> dict:
 
 
 async def create_agent_graph(
-    db: Prisma, agent_data: dict, known_blocks: set[str]
+    db: Prisma,
+    agent_data: dict,
+    known_blocks: set[str],
+    organization_id: str,
+    team_id: str | None,
 ) -> tuple[str, int]:
     """Create an AgentGraph and its nodes/links from JSON data."""
     graph_id = agent_data["id"]
@@ -244,6 +251,8 @@ async def create_agent_graph(
             recommendedScheduleCron=agent_data.get("recommended_schedule_cron"),
             isActive=agent_data.get("is_active", True),
             userId=AUTOGPT_USER_ID,
+            organizationId=organization_id,
+            teamId=team_id,
             forkedFromId=agent_data.get("forked_from_id"),
             forkedFromVersion=agent_data.get("forked_from_version"),
         )
@@ -289,7 +298,7 @@ async def create_agent_graph(
     # Handle sub_graphs recursively
     sub_graphs = agent_data.get("sub_graphs", [])
     for sub_graph in sub_graphs:
-        await create_agent_graph(db, sub_graph, known_blocks)
+        await create_agent_graph(db, sub_graph, known_blocks, organization_id, team_id)
 
     return graph_id, version
 
@@ -299,6 +308,7 @@ async def create_store_listing(
     graph_id: str,
     graph_version: int,
     metadata: dict,
+    organization_id: str,
 ) -> None:
     """Create StoreListing and StoreListingVersion for an agent."""
     listing_id = metadata["listing_id"]
@@ -327,6 +337,7 @@ async def create_store_listing(
             slug=metadata["slug"],
             agentGraphId=graph_id,
             owningUserId=AUTOGPT_USER_ID,
+            owningOrgId=organization_id,
             hasApprovedVersion=is_approved,
             useForOnboarding=metadata["use_for_onboarding"],
         )
@@ -351,6 +362,7 @@ async def create_store_listing(
             submittedAt=datetime.now() if is_approved else None,
             reviewedAt=datetime.now() if is_approved else None,
             storeListingId=listing_id,
+            organizationId=organization_id,
         )
     )
 
@@ -379,6 +391,10 @@ async def main():
         # Step 1: Create user and profile
         print("\n[Step 1] Creating user and profile...")
         await create_user_and_profile(db)
+        # The listings belong to the creator's personal org, bootstrapped on the
+        # platform client as at sign-up.
+        await platform_db.connect()
+        organization_id, team_id = await personal_org_tenancy(AUTOGPT_USER_ID)
 
         # Step 2: Load CSV metadata
         print("\n[Step 2] Loading CSV metadata...")
@@ -416,12 +432,14 @@ async def main():
                     # Load and create the agent graph
                     agent_data = await load_agent_json(json_file)
                     graph_id, graph_version = await create_agent_graph(
-                        tx, agent_data, known_blocks
+                        tx, agent_data, known_blocks, organization_id, team_id
                     )
                     loaded_graphs[graph_id] = (graph_id, graph_version)
 
                     # Create store listing
-                    await create_store_listing(tx, graph_id, graph_version, metadata)
+                    await create_store_listing(
+                        tx, graph_id, graph_version, metadata, organization_id
+                    )
             except Exception as e:
                 print(f"  Error loading agent '{agent_name}': {e}")
                 failed_agents.append(agent_name)
@@ -444,6 +462,8 @@ async def main():
         print("=" * 60)
 
     finally:
+        if platform_db.is_connected():
+            await platform_db.disconnect()
         await db.disconnect()
 
 
