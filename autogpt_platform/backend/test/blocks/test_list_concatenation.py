@@ -285,6 +285,51 @@ class TestMakeHashable:
         assert result == 3.14
 
 
+@pytest.mark.parametrize(
+    "compare",
+    [
+        _deduplicate_list,
+        lambda items: ListDifferenceBlock()._compute_difference(items, items[:1]),
+        lambda items: ListDifferenceBlock()._compute_symmetric_difference(
+            items, items[:1]
+        ),
+        lambda items: ListIntersectionBlock()._compute_intersection(items, items[1:]),
+    ],
+)
+def test_items_are_found_by_key_not_compared_with_each_other(compare):
+    compared = 0
+
+    class Number(int):
+        def __hash__(self):
+            return 0
+
+        def __eq__(self, other):
+            nonlocal compared
+            compared += 1
+            return int.__eq__(self, other)
+
+    compare([[Number(k)] for k in range(300)])
+
+    assert compared == 0
+
+
+def test_equal_numbers_are_duplicates():
+    items = [1, 1.0, 0, -0.0, 2**62, float(2**62), 0.5, 0.5]
+
+    assert _deduplicate_list(items) == [1, 0, 2**62, 0.5]
+
+
+def test_equal_sets_are_duplicates_whatever_their_order():
+    # {8, 16} and {16, 8} share a hash slot, so they iterate in different orders.
+    assert _deduplicate_list([{8, 16}, {16, 8}]) == [{8, 16}]
+
+
+def test_numbers_too_long_for_repr_are_deduplicated():
+    big = 10**5000
+
+    assert _deduplicate_list([big, big, -big]) == [big, -big]
+
+
 class TestFilterNoneValues:
     """Tests for the _filter_none_values helper."""
 
@@ -362,6 +407,22 @@ class TestInterleaveListsHelper:
     def test_all_none_lists(self):
         """All-None inputs should return empty list, not crash."""
         assert _interleave_lists([None, None, None]) == []  # type: ignore[arg-type]
+
+    def test_empty_lists_are_not_visited_per_position(self):
+        lengths_read = 0
+
+        class CountingList(list):
+            def __len__(self):
+                nonlocal lengths_read
+                lengths_read += 1
+                return super().__len__()
+
+        empties = [CountingList() for _ in range(1000)]
+        result = _interleave_lists([list(range(1000)), *empties])
+
+        assert result == list(range(1000))
+        # One read per empty list; visiting each at every position is 1,000,000.
+        assert lengths_read <= 2 * len(empties)
 
 
 class TestComputeNestingDepthEdgeCases:
