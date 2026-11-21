@@ -1,8 +1,4 @@
-#!/usr/bin/env python3
-"""
-Test suite for verifying cache_delete functionality in store routes.
-Tests that specific cache entries can be deleted while preserving others.
-"""
+"""Deleting one store agent list cache entry leaves the others cached."""
 
 from unittest.mock import AsyncMock, patch
 
@@ -16,13 +12,8 @@ from .model import StoreAgent, StoreAgentsResponse
 
 
 class TestCacheDeletion:
-    """Test cache deletion functionality for store routes."""
-
-    @pytest.mark.asyncio
-    async def test_store_agents_cache_delete(self):
-        """Test that specific agent list cache entries can be deleted."""
-        # Mock the database function
-        mock_response = StoreAgentsResponse(
+    async def test_store_agents_cache_delete(self, mock_db):
+        mock_db.return_value = StoreAgentsResponse(
             agents=[
                 StoreAgent(
                     slug="test-agent",
@@ -37,218 +28,101 @@ class TestCacheDeletion:
                     agent_graph_id="test-graph-id",
                 )
             ],
-            pagination=Pagination(
-                total_items=1,
-                total_pages=1,
-                current_page=1,
-                page_size=20,
-            ),
+            pagination=_pagination(total_items=1),
         )
 
-        with patch(
-            "backend.api.features.store.db.get_store_agents",
-            new_callable=AsyncMock,
-            return_value=mock_response,
-        ) as mock_db:
-            # Clear cache first
-            store_cache.get_cached_store_agents.cache_clear()
+        result1 = await store_cache.get_cached_store_agents(**_params())
+        assert mock_db.call_count == 1
+        assert result1.agents[0].agent_name == "Test Agent"
 
-            # First call - should hit database
-            result1 = await store_cache.get_cached_store_agents(
-                featured=False,
-                creator=None,
-                sorted_by=None,
-                search_query="test",
-                category=None,
-                page=1,
-                page_size=20,
-            )
-            assert mock_db.call_count == 1
-            assert result1.agents[0].agent_name == "Test Agent"
+        await store_cache.get_cached_store_agents(**_params())
+        assert mock_db.call_count == 1
 
-            # Second call with same params - should use cache
-            await store_cache.get_cached_store_agents(
-                featured=False,
-                creator=None,
-                sorted_by=None,
-                search_query="test",
-                category=None,
-                page=1,
-                page_size=20,
-            )
-            assert mock_db.call_count == 1  # No additional DB call
+        await store_cache.get_cached_store_agents(**_params(featured=True))
+        assert mock_db.call_count == 2
 
-            # Third call with different params - should hit database
-            await store_cache.get_cached_store_agents(
-                featured=True,  # Different param
-                creator=None,
-                sorted_by=None,
-                search_query="test",
-                category=None,
-                page=1,
-                page_size=20,
-            )
-            assert mock_db.call_count == 2  # New DB call
+        deleted = store_cache.get_cached_store_agents.cache_delete(**_params())
+        assert deleted is True
 
-            # Delete specific cache entry
-            deleted = store_cache.get_cached_store_agents.cache_delete(
-                featured=False,
-                creator=None,
-                sorted_by=None,
-                search_query="test",
-                category=None,
-                page=1,
-                page_size=20,
-            )
-            assert deleted is True  # Entry was deleted
-
-            # Try to delete non-existent entry
-            deleted = store_cache.get_cached_store_agents.cache_delete(
-                featured=False,
-                creator="nonexistent",
-                sorted_by=None,
-                search_query="test",
-                category=None,
-                page=1,
-                page_size=20,
-            )
-            assert deleted is False  # Entry didn't exist
-
-            # Call with deleted params - should hit database again
-            await store_cache.get_cached_store_agents(
-                featured=False,
-                creator=None,
-                sorted_by=None,
-                search_query="test",
-                category=None,
-                page=1,
-                page_size=20,
-            )
-            assert mock_db.call_count == 3  # New DB call after deletion
-
-            # Call with featured=True - should still be cached
-            await store_cache.get_cached_store_agents(
-                featured=True,
-                creator=None,
-                sorted_by=None,
-                search_query="test",
-                category=None,
-                page=1,
-                page_size=20,
-            )
-            assert mock_db.call_count == 3  # No additional DB call
-
-    @pytest.mark.asyncio
-    async def test_cache_info_after_deletions(self):
-        """Test that cache_info correctly reflects deletions."""
-        # Clear all caches first
-        store_cache.get_cached_store_agents.cache_clear()
-
-        mock_response = StoreAgentsResponse(
-            agents=[],
-            pagination=Pagination(
-                total_items=0,
-                total_pages=1,
-                current_page=1,
-                page_size=20,
-            ),
+        deleted = store_cache.get_cached_store_agents.cache_delete(
+            **_params(creator="nonexistent")
         )
+        assert deleted is False
 
-        with patch(
-            "backend.api.features.store.db.get_store_agents",
-            new_callable=AsyncMock,
-            return_value=mock_response,
-        ):
-            # Add multiple entries
-            for i in range(5):
-                await store_cache.get_cached_store_agents(
-                    featured=False,
-                    creator=f"creator{i}",
-                    sorted_by=None,
-                    search_query=None,
-                    category=None,
-                    page=1,
-                    page_size=20,
-                )
+        await store_cache.get_cached_store_agents(**_params())
+        assert mock_db.call_count == 3
 
-            # Check cache size
-            info = store_cache.get_cached_store_agents.cache_info()
-            assert info["size"] == 5
+        # The featured=True entry survived the other entry's delete.
+        await store_cache.get_cached_store_agents(**_params(featured=True))
+        assert mock_db.call_count == 3
 
-            # Delete some entries
-            for i in range(2):
-                deleted = store_cache.get_cached_store_agents.cache_delete(
-                    featured=False,
-                    creator=f"creator{i}",
-                    sorted_by=None,
-                    search_query=None,
-                    category=None,
-                    page=1,
-                    page_size=20,
-                )
-                assert deleted is True
-
-            # Check cache size after deletion
-            info = store_cache.get_cached_store_agents.cache_info()
-            assert info["size"] == 3
-
-    @pytest.mark.asyncio
-    async def test_cache_delete_with_complex_params(self):
-        """Test cache deletion with various parameter combinations."""
-        mock_response = StoreAgentsResponse(
-            agents=[],
-            pagination=Pagination(
-                total_items=0,
-                total_pages=1,
-                current_page=1,
-                page_size=20,
-            ),
-        )
-
-        with patch(
-            "backend.api.features.store.db.get_store_agents",
-            new_callable=AsyncMock,
-            return_value=mock_response,
-        ) as mock_db:
-            store_cache.get_cached_store_agents.cache_clear()
-
-            # Test with all parameters
+    async def test_cache_info_after_deletions(self, mock_db):
+        for i in range(5):
             await store_cache.get_cached_store_agents(
-                featured=True,
-                creator="testuser",
-                sorted_by=StoreAgentsSortOptions.RATING,
-                search_query="AI assistant",
-                category="productivity",
-                page=2,
-                page_size=50,
+                **_params(creator=f"creator{i}", search_query=None)
             )
-            assert mock_db.call_count == 1
 
-            # Delete with exact same parameters
+        info = store_cache.get_cached_store_agents.cache_info()
+        assert info["size"] == 5
+
+        for i in range(2):
             deleted = store_cache.get_cached_store_agents.cache_delete(
-                featured=True,
-                creator="testuser",
-                sorted_by=StoreAgentsSortOptions.RATING,
-                search_query="AI assistant",
-                category="productivity",
-                page=2,
-                page_size=50,
+                **_params(creator=f"creator{i}", search_query=None)
             )
             assert deleted is True
 
-            # Try to delete with slightly different parameters
-            deleted = store_cache.get_cached_store_agents.cache_delete(
-                featured=True,
-                creator="testuser",
-                sorted_by=StoreAgentsSortOptions.RATING,
-                search_query="AI assistant",
-                category="productivity",
-                page=2,
-                page_size=51,  # Different page_size
-            )
-            assert deleted is False  # Different parameters, not in cache
+        info = store_cache.get_cached_store_agents.cache_info()
+        assert info["size"] == 3
+
+    async def test_cache_delete_with_complex_params(self, mock_db):
+        params = _params(
+            featured=True,
+            creator="testuser",
+            sorted_by=StoreAgentsSortOptions.RATING,
+            search_query="AI assistant",
+            category="productivity",
+            page=2,
+            page_size=50,
+        )
+        await store_cache.get_cached_store_agents(**params)
+        assert mock_db.call_count == 1
+
+        deleted = store_cache.get_cached_store_agents.cache_delete(**params)
+        assert deleted is True
+
+        deleted = store_cache.get_cached_store_agents.cache_delete(
+            **{**params, "page_size": 51}
+        )
+        assert deleted is False
 
 
-if __name__ == "__main__":
-    # Run the tests
-    pytest.main([__file__, "-v"])
+@pytest.fixture
+def mock_db():
+    with patch(
+        "backend.api.features.store.db.get_store_agents",
+        new_callable=AsyncMock,
+        return_value=StoreAgentsResponse(
+            agents=[], pagination=_pagination(total_items=0)
+        ),
+    ) as mock:
+        store_cache.get_cached_store_agents.cache_clear()
+        yield mock
+
+
+def _params(**overrides) -> dict:
+    return {
+        "featured": False,
+        "creator": None,
+        "sorted_by": None,
+        "search_query": "test",
+        "category": None,
+        "page": 1,
+        "page_size": 20,
+        **overrides,
+    }
+
+
+def _pagination(total_items: int) -> Pagination:
+    return Pagination(
+        total_items=total_items, total_pages=1, current_page=1, page_size=20
+    )
