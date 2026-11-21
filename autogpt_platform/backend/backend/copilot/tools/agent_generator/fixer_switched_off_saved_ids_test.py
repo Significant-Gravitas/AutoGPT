@@ -23,10 +23,13 @@ from .fixer_switched_off_model_test import (
     O3,
     fallback_of,
     model_on,
+    node,
     preview,
     with_new_ai_node,
     workflow,
 )
+
+COPY_NODE = "55555555-5555-4555-8555-555555555555"
 
 
 def stored_by_the_library(agent_json: dict) -> dict:
@@ -83,20 +86,63 @@ async def test_an_edit_that_gives_every_node_a_fresh_id_keeps_the_saved_model():
     assert models(result) == [GPT5]
 
 
-@pytest.mark.asyncio
-async def test_a_copy_of_a_saved_node_is_new_work_whichever_ids_the_edit_carries():
-    saved = workflow(AITextGeneratorBlock, GPT5)
-    by_id = await preview(
-        with_new_ai_node(copy.deepcopy(saved), GPT5), saved_agent=saved
-    )
-    by_stale_id = await preview(
-        with_new_ai_node(copy.deepcopy(saved), GPT5),
-        saved_agent=stored_by_the_library(saved),
-    )
+def with_new_ai_node_first(agent_json: dict, model: str) -> dict:
+    """*agent_json* plus an AI Text Generator node an edit adds on *model*,
+    listed before every other node."""
+    *nodes, added = with_new_ai_node(agent_json, model)["nodes"]
+    return {**agent_json, "nodes": [added, *nodes]}
 
-    assert model_on(by_id, AI_NODE) == GPT5
-    assert model_on(by_id, NEW_AI_NODE) == GPT5_FALLBACK
-    assert models(by_stale_id) == sorted([GPT5, GPT5_FALLBACK])
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "stored", [copy.deepcopy, stored_by_the_library], ids=["ids-current", "ids-stale"]
+)
+@pytest.mark.parametrize(
+    "add", [with_new_ai_node, with_new_ai_node_first], ids=["copy-last", "copy-first"]
+)
+async def test_a_copy_of_a_saved_node_is_new_work_whichever_ids_the_edit_carries(
+    stored, add
+):
+    """Under stale ids the copy and the node it copies compete for one stored
+    node; the copy's new inputs tell them apart, wherever it sits."""
+    saved = workflow(AITextGeneratorBlock, GPT5)
+
+    result = await preview(add(copy.deepcopy(saved), GPT5), saved_agent=stored(saved))
+
+    assert model_on(result, AI_NODE) == GPT5
+    assert model_on(result, NEW_AI_NODE) == GPT5_FALLBACK
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "stored", [copy.deepcopy, stored_by_the_library], ids=["ids-current", "ids-stale"]
+)
+async def test_of_two_identical_nodes_one_keeps_each_stored_model(stored):
+    """Nothing tells an exact copy from the node it copies: the first in the
+    edit keeps the model, and the copy is new work."""
+    saved = with_new_ai_node(workflow(AITextGeneratorBlock, GPT5), GPT5)
+    edited = with_new_ai_node(copy.deepcopy(saved), GPT5, node_id=COPY_NODE)
+
+    result = await preview(edited, saved_agent=stored(saved))
+
+    assert model_on(result, AI_NODE) == GPT5
+    assert model_on(result, NEW_AI_NODE) == GPT5
+    assert model_on(result, COPY_NODE) == GPT5_FALLBACK
+
+
+@pytest.mark.asyncio
+async def test_a_saved_node_an_edit_gave_new_inputs_keeps_its_model_under_stale_ids():
+    """Other inputs only break ties: a prompt an edit changes doesn't make
+    the node new work, beside a saved node on the same model it left as is."""
+    saved = with_new_ai_node(workflow(AITextGeneratorBlock, GPT5), GPT5)
+    edited = copy.deepcopy(saved)
+    edited["nodes"][-1]["input_default"]["prompt"] = "Write a haiku about snow."
+
+    result = await preview(edited, saved_agent=stored_by_the_library(saved))
+
+    assert model_on(result, AI_NODE) == GPT5
+    assert model_on(result, NEW_AI_NODE) == GPT5
+    assert "switched-off model" not in result.message
 
 
 @pytest.mark.asyncio
@@ -123,6 +169,30 @@ async def test_a_node_moved_to_another_block_under_its_id_is_new_work():
 
     result = await preview(
         moved_to_the_structured_response_block(saved), saved_agent=saved
+    )
+
+    assert model_on(result, AI_NODE) == GPT5_FALLBACK
+
+
+@pytest.mark.asyncio
+async def test_a_node_moved_onto_a_deleted_node_s_block_does_not_take_its_model():
+    """The edit moves the text node onto the structured block under its own
+    id and deletes the structured node: a known id on another block is
+    changed work, not the deleted node."""
+    saved = workflow(AITextGeneratorBlock, GPT5)
+    structured = node(
+        NEW_AI_NODE,
+        AIStructuredResponseGeneratorBlock().id,
+        {
+            "model": GPT5,
+            "prompt": "Write a haiku about rain.",
+            "expected_format": {"haiku": "the haiku"},
+        },
+    )
+
+    result = await preview(
+        moved_to_the_structured_response_block(saved),
+        saved_agent={**saved, "nodes": [*saved["nodes"], structured]},
     )
 
     assert model_on(result, AI_NODE) == GPT5_FALLBACK

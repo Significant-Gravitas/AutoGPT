@@ -3,7 +3,7 @@ catalog has switched off, and when an edit keeps the model a node was saved
 on. The block's enum still lists a switched-off model, so stored workflows
 keep validating, but no new work may start on one."""
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
@@ -16,6 +16,9 @@ from backend.data.llm_registry.llm_models import (
 )
 
 from .helpers import AgentDict
+
+# A node's block and the model it names, the bucket pass 2 pairs within.
+_Key = tuple[str | None, LLMModel | None]
 
 
 class SwitchedOffMove(BaseModel):
@@ -40,30 +43,61 @@ def models_by_node(agent: AgentDict, saved_agent: AgentDict | None) -> dict[str,
     """The model each node of *agent* was saved on, by its id in *agent*.
 
     A node is its saved self when the stored version has a node of that id on
-    the same block. The library gives every node a new id each time it stores
-    a version, so the ids in a file Otto keeps editing stop matching after its
-    first edit. A node whose id the stored version lacks is therefore matched
-    to a stored node of the same block and model that the edit no longer
-    carries, each stored node at most once.
+    the same block, and changed work when that id is on another block there.
+    The library gives every node a new id each time it stores a version, so
+    the ids in a file Otto keeps editing stop matching after its first edit.
+    A node whose id the stored version lacks is therefore matched to a stored
+    node of the same block and model that the edit no longer carries, each
+    stored node at most once (``_paired`` says which).
     """
     nodes = _nodes(agent)
     saved_nodes = _nodes(saved_agent)
     saved_by_id = {node["id"]: node for node in saved_nodes}
+    matched = {
+        node["id"]: _model(saved_by_id[node["id"]])
+        for node in nodes
+        if node["id"] in saved_by_id
+        and saved_by_id[node["id"]].get("block_id") == node.get("block_id")
+    }
     carried = {node["id"] for node in nodes}
-    unclaimed: dict[tuple[str | None, LLMModel | None], list[Any]] = {}
-    for saved in saved_nodes:
-        if saved["id"] not in carried:
-            unclaimed.setdefault(_key(saved), []).append(_model(saved))
-
-    matched: dict[str, Any] = {}
-    for node in nodes:
-        saved = saved_by_id.get(node["id"])
-        if saved is not None and saved.get("block_id") == node.get("block_id"):
-            matched[node["id"]] = _model(saved)
-    for node in nodes:
-        if node["id"] not in matched and (same := unclaimed.get(_key(node))):
-            matched[node["id"]] = same.pop()
+    unclaimed = _by_key(saved for saved in saved_nodes if saved["id"] not in carried)
+    unknown = _by_key(node for node in nodes if node["id"] not in saved_by_id)
+    for key, edited in unknown.items():
+        matched.update(_paired(edited, unclaimed.get(key, [])))
     return matched
+
+
+def _paired(
+    edited: list[dict[str, Any]], stored: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Each *stored* node's model given to one node of *edited*, all of them on
+    one block and model. A stored node goes first to an edited node whose
+    other inputs equal its own, so a copy with new inputs doesn't take the
+    model from the node it copies, wherever it sits in the edit. Nodes the
+    inputs can't tell apart (several equal, or none) are interchangeable: the
+    first in the edit gets the model, and exactly one keeps it per stored
+    node."""
+    left = list(edited)
+    paired: dict[str, Any] = {}
+    unmatched: list[dict[str, Any]] = []
+    for saved in stored:
+        same = next(
+            (i for i, node in enumerate(left) if _others(node) == _others(saved)),
+            None,
+        )
+        if same is None:
+            unmatched.append(saved)
+        else:
+            paired[left.pop(same)["id"]] = _model(saved)
+    paired.update((node["id"], _model(saved)) for node, saved in zip(left, unmatched))
+    return paired
+
+
+def _by_key(nodes: Iterable[dict[str, Any]]) -> dict[_Key, list[dict[str, Any]]]:
+    grouped: dict[_Key, list[dict[str, Any]]] = {}
+    for node in nodes:
+        grouped.setdefault(_key(node), []).append(node)
+    return grouped
 
 
 def _nodes(agent: AgentDict | None) -> list[dict[str, Any]]:
@@ -84,11 +118,19 @@ def _model(node: dict[str, Any]) -> Any:
     return defaults.get("model") if isinstance(defaults, dict) else None
 
 
-def _key(node: dict[str, Any]) -> tuple[str | None, LLMModel | None]:
+def _key(node: dict[str, Any]) -> _Key:
     block_id = node.get("block_id")
     return (block_id if isinstance(block_id, str) else None), llm_model_named(
         _model(node)
     )
+
+
+def _others(node: dict[str, Any]) -> dict[str, Any]:
+    """*node*'s inputs other than its model."""
+    defaults = node.get("input_default")
+    if not isinstance(defaults, dict):
+        return {}
+    return {key: value for key, value in defaults.items() if key != "model"}
 
 
 def kept_model(model: Any, saved_model: Any, offered: set[str]) -> str | None:
