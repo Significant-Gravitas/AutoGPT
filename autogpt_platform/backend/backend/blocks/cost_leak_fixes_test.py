@@ -13,7 +13,11 @@ from pydantic import SecretStr
 
 from backend.blocks._base import BlockCostType
 from backend.blocks.ai_condition import AIConditionBlock
-from backend.blocks.codex import CodeGenerationBlock, CodexModel
+from backend.blocks.codex import (
+    RETIRED_CODEX_MODELS,
+    CodeGenerationBlock,
+    CodexModel,
+)
 from backend.data.block_cost_config import BLOCK_COSTS, LLM_COST
 from backend.data.model import APIKeyCredentials, NodeExecutionStats
 
@@ -149,7 +153,7 @@ def test_perplexity_record_openrouter_cost_tags_only_on_concrete_value(
 
 def test_codex_registered_as_cost_usd_150():
     entries = BLOCK_COSTS[CodeGenerationBlock]
-    assert len(entries) == len(CodexModel)
+    assert len(entries) == len(CodexModel) + len(RETIRED_CODEX_MODELS)
     for entry in entries:
         assert entry.cost_type == BlockCostType.COST_USD
         assert entry.cost_amount == 150

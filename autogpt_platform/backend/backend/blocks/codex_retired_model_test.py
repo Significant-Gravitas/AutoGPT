@@ -9,6 +9,7 @@ from backend.blocks.codex import (
     CodexCallResult,
     CodexModel,
 )
+from backend.copilot.tools.helpers import _pre_run_charge
 from backend.data.execution import ExecutionContext
 from backend.data.graph import Node
 from backend.executor.utils import block_usage_cost, validate_exec
@@ -87,3 +88,19 @@ def test_a_node_saved_on_gpt_5_1_codex_is_billed_as_gpt_5_3_codex():
     assert queued["model"] == CodexModel.GPT5_3_CODEX
     _, cost_filter = block_usage_cost(block, queued)
     assert cost_filter["model"] == CodexModel.GPT5_3_CODEX
+
+
+def test_a_raw_saved_gpt_5_1_codex_is_priced_as_gpt_5_3_codex():
+    """The gate's run estimate (``graph_cost_credits``) and the expert spend
+    check (``check_spend_approval``) price a node's input before its schema
+    reads the value, so the retired value needs a cost entry of its own, or
+    the run is priced at nothing and skips the spend check."""
+    block = CodeGenerationBlock()
+    raw = saved_inputs(GPT_5_1_CODEX, credentials=PLATFORM_OPENAI_KEY)
+    current = saved_inputs("gpt-5.3-codex", credentials=PLATFORM_OPENAI_KEY)
+
+    cost, cost_filter = block_usage_cost(block, raw)
+
+    assert cost_filter["model"] == GPT_5_1_CODEX
+    assert cost == block_usage_cost(block, current)[0]
+    assert _pre_run_charge(block, raw)[0] == _pre_run_charge(block, current)[0] > 0

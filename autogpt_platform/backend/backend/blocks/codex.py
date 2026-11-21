@@ -49,7 +49,7 @@ class CodexModel(str, Enum):
     @classmethod
     def _missing_(cls, value: object) -> "CodexModel | None":
         """A node saved on a model this list no longer offers runs on its
-        replacement (``_RETIRED_MODELS``)."""
+        replacement (``RETIRED_CODEX_MODELS``)."""
         return _replacement_for(value)
 
     GPT5_6_SOL = "gpt-5.6-sol"
@@ -62,14 +62,14 @@ class CodexModel(str, Enum):
 # one runs on. OpenAI shut gpt-5.1-codex down on 2026-07-23. gpt-5.3-codex is
 # this block's default and the one Codex model OpenAI still serves, at the
 # nearest price; OpenAI's listed gpt-5.6-sol costs several times more.
-_RETIRED_MODELS: dict[str, CodexModel] = {
+RETIRED_CODEX_MODELS: dict[str, CodexModel] = {
     "gpt-5.1-codex": CodexModel.GPT5_3_CODEX,
 }
 
 
 def _replacement_for(value: object) -> CodexModel | None:
     """The current model a saved retired value runs as; None for any other."""
-    return _RETIRED_MODELS.get(value) if isinstance(value, str) else None
+    return RETIRED_CODEX_MODELS.get(value) if isinstance(value, str) else None
 
 
 class CodexReasoningEffort(str, Enum):
