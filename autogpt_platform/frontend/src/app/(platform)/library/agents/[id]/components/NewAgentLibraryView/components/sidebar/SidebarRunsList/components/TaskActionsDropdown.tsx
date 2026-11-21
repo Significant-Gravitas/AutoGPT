@@ -71,16 +71,14 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
 
   async function handleCreateTemplate(name: string, description: string) {
     try {
-      const res = await createPreset({
+      // A failed save throws: the API client raises on any non-2xx answer.
+      await createPreset({
         data: {
           name,
           description,
           graph_execution_id: run.id,
         },
       });
-      if (res.status !== 200) {
-        throw new Error("The template couldn't be saved.");
-      }
 
       toast({
         title: "Template created",
