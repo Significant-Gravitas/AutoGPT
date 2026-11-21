@@ -266,8 +266,9 @@ async def incr_with_ttl(
     ttl_seconds: int,
     *,
     reset_ttl_on_bump: bool = False,
+    amount: int = 1,
 ) -> int:
-    """Atomically increment *key* and set its TTL.
+    """Atomically increment *key* by *amount* and set its TTL.
 
     Returns the new counter value.
 
@@ -285,7 +286,7 @@ async def incr_with_ttl(
     TTL (the classic "process dies between INCR and EXPIRE" orphan).
     """
     pipe = redis.pipeline(transaction=True)
-    pipe.incr(key)
+    pipe.incr(key, amount)
     # EXPIRE ... NX = "only set TTL if none exists" (Redis 7+).  In
     # reset_ttl_on_bump mode, unconditional EXPIRE refreshes every bump.
     if reset_ttl_on_bump:

@@ -8,6 +8,7 @@ incr/expire/rpush/ltrim/llen, and eval() for the CAS helper.
 from typing import Any
 
 import pytest
+from fakeredis.aioredis import FakeRedis
 
 from backend.data.redis_helpers import (
     as_str,
@@ -35,8 +36,8 @@ class _Fake:
         self.expire_calls: list[tuple[str, int, bool]] = []
 
     # --- primitives ---
-    async def incr(self, key: str) -> int:
-        self.counters[key] = self.counters.get(key, 0) + 1
+    async def incr(self, key: str, amount: int = 1) -> int:
+        self.counters[key] = self.counters.get(key, 0) + amount
         return self.counters[key]
 
     async def expire(self, key: str, seconds: int, nx: bool = False) -> int:
@@ -119,8 +120,8 @@ class _FakePipe:
         self._parent = parent
         self._ops: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
 
-    def incr(self, key: str) -> "_FakePipe":
-        self._ops.append(("incr", (key,), {}))
+    def incr(self, key: str, amount: int = 1) -> "_FakePipe":
+        self._ops.append(("incr", (key, amount), {}))
         return self
 
     def expire(self, key: str, seconds: int, **kw: Any) -> "_FakePipe":
@@ -211,6 +212,14 @@ async def test_incr_with_ttl_sliding_window_refreshes_every_bump() -> None:
     # nx=False on every call → TTL is refreshed each bump.
     assert r.expire_calls == [("k", 10, False), ("k", 20, False)]
     assert r.ttls["k"] == 20
+
+
+@pytest.mark.asyncio
+async def test_incr_with_ttl_adds_the_amount() -> None:
+    async with FakeRedis(decode_responses=True) as r:
+        assert await incr_with_ttl(r, "k", 60, amount=500) == 500
+        assert await incr_with_ttl(r, "k", 60, amount=24) == 524
+        assert 0 < await r.ttl("k") <= 60
 
 
 def test_incr_with_ttl_sync_behaves_the_same() -> None:

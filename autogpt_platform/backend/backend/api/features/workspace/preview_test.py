@@ -151,7 +151,9 @@ def _mock_storage(mocker, content: bytes):
     return storage
 
 
-def _mock_redis(mocker, *, cached: bytes | None = None):
+def _mock_redis(
+    mocker, *, cached: bytes | None = None, workspace_bytes_cached: int = 0
+):
     redis = mocker.MagicMock()
     redis.get = AsyncMock(
         return_value=base64.b64encode(cached).decode() if cached else None
@@ -160,6 +162,14 @@ def _mock_redis(mocker, *, cached: bytes | None = None):
     mocker.patch(
         "backend.api.features.workspace.preview.get_redis_async",
         AsyncMock(return_value=redis),
+    )
+    mocker.patch.object(
+        preview_module,
+        "incr_with_ttl",
+        AsyncMock(
+            side_effect=lambda _redis, _key, _ttl, *, amount: workspace_bytes_cached
+            + amount
+        ),
     )
     return redis
 
@@ -532,6 +542,51 @@ async def test_preview_render_concurrency_is_bounded(mocker):
         peak = max(peak, in_flight)
     assert peak > 1  # the renders really did overlap
     assert peak <= preview_module.MAX_CONCURRENT_RENDERS
+
+
+def test_cached_thumbnail_is_charged_to_its_workspace(mocker):
+    _mock_lookups(mocker, _make_file(mime_type="image/png"))
+    _mock_storage(mocker, _png_bytes(800, 400))
+    redis = _mock_redis(mocker)
+
+    assert client.get("/files/file-001/preview?w=200").status_code == 200
+
+    key, stored = redis.set.await_args.args
+    assert key.startswith("wsfile:preview:file-001:img:200:")
+    preview_module.incr_with_ttl.assert_awaited_once_with(
+        redis,
+        "wsfile:preview-bytes:ws-001",
+        preview_module.PREVIEW_CACHE_TTL,
+        amount=len(stored),
+    )
+
+
+@pytest.mark.parametrize(
+    "max_entry_bytes, workspace_bytes_cached",
+    [
+        pytest.param(10, 0, id="thumbnail-over-the-entry-cap"),
+        pytest.param(
+            preview_module.PREVIEW_CACHE_MAX_ENTRY_BYTES,
+            preview_module.PREVIEW_CACHE_MAX_WORKSPACE_BYTES,
+            id="workspace-over-its-budget",
+        ),
+    ],
+)
+def test_thumbnail_past_a_cache_cap_is_served_but_not_cached(
+    mocker, max_entry_bytes, workspace_bytes_cached
+):
+    mocker.patch.object(
+        preview_module, "PREVIEW_CACHE_MAX_ENTRY_BYTES", max_entry_bytes
+    )
+    _mock_lookups(mocker, _make_file(mime_type="image/png"))
+    _mock_storage(mocker, _png_bytes(800, 400))
+    redis = _mock_redis(mocker, workspace_bytes_cached=workspace_bytes_cached)
+
+    response = client.get("/files/file-001/preview?w=200")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/webp"
+    redis.set.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
