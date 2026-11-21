@@ -6,6 +6,7 @@ and can't show which saves a conditional write refuses.
 """
 
 import asyncio
+import contextlib
 import uuid
 from datetime import timedelta
 
@@ -218,14 +219,18 @@ async def test_an_older_save_waiting_on_a_newer_ones_write_is_refused(
                 save(user_id, DRAFT_REVISION, tab="tab-1", number=1, role="Founder")
             )
             await _or_fail(
-                _until_a_statement_waits_on_a_lock(newer),
+                _until_an_update_waits_on(newer),
                 "the older save never waited on the newer save's lock",
             )
         with pytest.raises(OnboardingWizardConflict):
             await older
     finally:
-        if older is not None and not older.done():
+        if older is not None:
             older.cancel()
+            # Joined on every path, so the save can't still be using the
+            # database when the next test starts.
+            with contextlib.suppress(asyncio.CancelledError, OnboardingWizardConflict):
+                await older
         await newer_client.disconnect(db.DISCONNECT_TIMEOUT)
 
     row = await read_row(user_id)
@@ -265,7 +270,9 @@ async def _or_fail(waiting, reason: str) -> None:
         pytest.fail(f"{reason} within 15 s, so no race was forced")
 
 
-async def _until_a_statement_waits_on_a_lock(tx) -> None:
+async def _until_an_update_waits_on(tx) -> None:
+    """Return once an UPDATE of UserOnboarding is blocked by `tx`, the
+    session holding the newer save's row lock."""
     while True:
         # Inside a transaction, pg_stat_activity is frozen at first access
         # until the snapshot is cleared, so clear it before every look.
@@ -274,6 +281,8 @@ async def _until_a_statement_waits_on_a_lock(tx) -> None:
             "SELECT count(*)::int AS waiting FROM pg_stat_activity "
             "WHERE wait_event_type = 'Lock' AND pid <> pg_backend_pid() "
             "AND datname = current_database() "
+            "AND pg_backend_pid() = ANY(pg_blocking_pids(pid)) "
+            "AND query ILIKE 'UPDATE%' "
             "AND query LIKE '%UserOnboarding%'"
         )
         if rows and rows[0]["waiting"] >= 1:
