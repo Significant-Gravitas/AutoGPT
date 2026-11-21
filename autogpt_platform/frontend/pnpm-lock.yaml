@@ -24,8 +24,8 @@ importers:
   .:
     dependencies:
       '@ai-sdk/react':
-        specifier: 4.0.170
-        version: 4.0.170(react@19.3.1)(zod@3.25.76)
+        specifier: 4.0.173
+        version: 4.0.173(react@19.3.1)(zod@3.25.76)
       '@better-auth/core':
         specifier: 1.7.16
         version: 1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5)
@@ -498,14 +498,14 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/gateway@4.0.139':
-    resolution: {integrity: sha512-2YEIPm4n59nm4PBhMGjFWH0g+ztPgfybqoeMIjfJYNiB8zLHftUrONgb8P3Ho3Yy5cdoLCjiDE/Hv2Crol0JBw==}
+  '@ai-sdk/gateway@4.0.142':
+    resolution: {integrity: sha512-X5UpG2dMLT29OkHLOEknZ0/4/iEyPTuVEiNypiUc3ltuNz2k9ixssgBc/XcV4PylpBpz3RAdGQB4qDmVbUMX8A==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/mcp@2.0.93':
-    resolution: {integrity: sha512-Jo9NZNfpDVYUhrq/FkFo+AVQJpoFo8YHOfkgjvY4VxJ00njb3Pu129S6AYcjdcelOZSJ10ASJM6T06/oGslGTw==}
+  '@ai-sdk/mcp@2.0.96':
+    resolution: {integrity: sha512-l1QW0wYxWkvw2yQAf4J4ZA3sPQzxq0xDrc0SoTc4hB4AqcQb3rAVVe3LdvHThkqlgjuM3qtS9g5UlAe+2+cTmA==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -516,8 +516,8 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/provider-utils@5.0.76':
-    resolution: {integrity: sha512-76QcCmVtSunSAbQBJtgQTTE8e+Yaz4rJJe1MRWnJ3GAQYUvNPHJejKx4jZTbhGGTdSSLaYcMBT62SISNgnGq9w==}
+  '@ai-sdk/provider-utils@5.0.79':
+    resolution: {integrity: sha512-IYu6MT0NDE3JFWBWEJWAXjhskHTSj6NfRp9FuEAOcyS2Jrj3qBePu7OEoXVmoCWT3pYPgrF4DBKzjjjOMRyw9Q==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -530,8 +530,8 @@ packages:
     resolution: {integrity: sha512-4uPgZ3qiX/JaQFr0dQoibUzHImZit9u05ro2BxGUnJwU4fV28BOAbKUa2OjQvqtM1tMac3bTKkaXdyzGovQXqg==}
     engines: {node: '>=22'}
 
-  '@ai-sdk/react@4.0.170':
-    resolution: {integrity: sha512-ghHQDIUVMqVKdfRjejfRl5PJqcCa4z9nm61jZSQuQ3HsQfP3tRONcj5Dbd5RZPWPdv5DQ+OxU+7aNqrDsdjEXg==}
+  '@ai-sdk/react@4.0.173':
+    resolution: {integrity: sha512-XO2mepKySyYG9D2sUxck0l1ET4hm86kV33Rk8lvzp0ZURwJhiuqO2DMEbi1+0topTZU/WTmZL17WKFC3QkbJJA==}
     engines: {node: '>=22'}
     peerDependencies:
       react: ^18 || ~19.0.1 || ~19.1.2 || ^19.2.1
@@ -4807,8 +4807,8 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  ai@7.0.166:
-    resolution: {integrity: sha512-bijt5WsdpQXQLB0SHYEoSuvpZ8KdUxl3Iz843uvHFcGpEBSrxlgwXXadR7EBVOHoByEf2PwgOxutWU5dcdjs9Q==}
+  ai@7.0.169:
+    resolution: {integrity: sha512-p2GHNRXnIP7EE5/pV8pq2RrFDtXrSMSAZB6/CQHYXCaFXrKqspzDyXn89wSg5bv61V3KukjQQtguSOVkN5KI9w==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -9147,15 +9147,15 @@ packages:
   tldts-core@7.4.18:
     resolution: {integrity: sha512-KI2PKvCmvQI/xD6ypPqkU0i7oxNXR/O58RLRaHR4svsgVUQ2JE/XC8BtMbG6PSehD27I8sZJRcC1ASnCy6lp3g==}
 
-  tldts-core@7.4.19:
-    resolution: {integrity: sha512-goNXV6Ho9TIOfpJZanTd6CKG5DyYgYAL+k+22T0SLh8l6+KHIfBUPFuePuSZv05UttIaaLmI9tb7TmGIdK5AkQ==}
+  tldts-core@7.4.22:
+    resolution: {integrity: sha512-NRyhrlvJcTwvoRibE0dEZvp6C5RwV4RxpsX1zbkI1k7Fk2pzIhmQ+MvswJEd5KKl3VRFRMDTipXse/ejh/ld/w==}
 
   tldts@7.4.18:
     resolution: {integrity: sha512-somxA8xKAUzlAxl0TX/jMSYIbRNFIVGnI96pVGJPeMc5BsHmfVXn6mOJT6U++ELnl04eGfzpfcEuZe8WiASkXg==}
     hasBin: true
 
-  tldts@7.4.19:
-    resolution: {integrity: sha512-48dH6aSpQnpbzDUc4vIQZ1VjB8tkK+e8c1yx05/SZK+rkssgjEOlxDd/yU8/a4vGYQ9vRgJr9dwMq9TJ0b3X2Q==}
+  tldts@7.4.22:
+    resolution: {integrity: sha512-TmLwkCZ1GFMxGkKfg2ooQhPF8rDMuuXvJHSxFiOU1fofh27L6NaO5T9KSlQXCJX2eoSt14I8F4saSMILOmXmaQ==}
     hasBin: true
 
   to-buffer@1.2.2:
@@ -9840,17 +9840,17 @@ snapshots:
       '@vercel/oidc': 3.2.0
       zod: 3.25.76
 
-  '@ai-sdk/gateway@4.0.139(zod@3.25.76)':
+  '@ai-sdk/gateway@4.0.142(zod@3.25.76)':
     dependencies:
       '@ai-sdk/provider': 4.0.37
-      '@ai-sdk/provider-utils': 5.0.76(zod@3.25.76)
+      '@ai-sdk/provider-utils': 5.0.79(zod@3.25.76)
       '@vercel/oidc': 3.2.0
       zod: 3.25.76
 
-  '@ai-sdk/mcp@2.0.93(zod@3.25.76)':
+  '@ai-sdk/mcp@2.0.96(zod@3.25.76)':
     dependencies:
       '@ai-sdk/provider': 4.0.37
-      '@ai-sdk/provider-utils': 5.0.76(zod@3.25.76)
+      '@ai-sdk/provider-utils': 5.0.79(zod@3.25.76)
       cross-spawn: 7.0.6
       pkce-challenge: 5.0.1
       zod: 3.25.76
@@ -9864,7 +9864,7 @@ snapshots:
       undici: 7.30.1
       zod: 3.25.76
 
-  '@ai-sdk/provider-utils@5.0.76(zod@3.25.76)':
+  '@ai-sdk/provider-utils@5.0.79(zod@3.25.76)':
     dependencies:
       '@ai-sdk/provider': 4.0.37
       '@standard-schema/spec': 1.1.0
@@ -9881,12 +9881,12 @@ snapshots:
     dependencies:
       json-schema: 0.4.0
 
-  '@ai-sdk/react@4.0.170(react@19.3.1)(zod@3.25.76)':
+  '@ai-sdk/react@4.0.173(react@19.3.1)(zod@3.25.76)':
     dependencies:
-      '@ai-sdk/mcp': 2.0.93(zod@3.25.76)
+      '@ai-sdk/mcp': 2.0.96(zod@3.25.76)
       '@ai-sdk/provider': 4.0.37
-      '@ai-sdk/provider-utils': 5.0.76(zod@3.25.76)
-      ai: 7.0.166(zod@3.25.76)
+      '@ai-sdk/provider-utils': 5.0.79(zod@3.25.76)
+      ai: 7.0.169(zod@3.25.76)
       react: 19.3.1
       swr: 2.5.1(react@19.3.1)
       throttleit: 2.1.0
@@ -13984,11 +13984,11 @@ snapshots:
       '@ai-sdk/provider-utils': 5.0.62(zod@3.25.76)
       zod: 3.25.76
 
-  ai@7.0.166(zod@3.25.76):
+  ai@7.0.169(zod@3.25.76):
     dependencies:
-      '@ai-sdk/gateway': 4.0.139(zod@3.25.76)
+      '@ai-sdk/gateway': 4.0.142(zod@3.25.76)
       '@ai-sdk/provider': 4.0.37
-      '@ai-sdk/provider-utils': 5.0.76(zod@3.25.76)
+      '@ai-sdk/provider-utils': 5.0.79(zod@3.25.76)
       zod: 3.25.76
 
   ajv-draft-04@1.0.0(ajv@8.17.1):
@@ -19245,16 +19245,16 @@ snapshots:
 
   tldts-core@7.4.18: {}
 
-  tldts-core@7.4.19:
+  tldts-core@7.4.22:
     optional: true
 
   tldts@7.4.18:
     dependencies:
       tldts-core: 7.4.18
 
-  tldts@7.4.19:
+  tldts@7.4.22:
     dependencies:
-      tldts-core: 7.4.19
+      tldts-core: 7.4.22
     optional: true
 
   to-buffer@1.2.2:
@@ -19275,7 +19275,7 @@ snapshots:
 
   tough-cookie@6.1.0:
     dependencies:
-      tldts: 7.4.19
+      tldts: 7.4.22
     optional: true
 
   tr46@6.0.0:

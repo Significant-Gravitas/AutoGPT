@@ -28,6 +28,26 @@ class WSMessage(pydantic.BaseModel):
     error: str | None = None
 
 
+class WSRequestSent(pydantic.BaseModel):
+    """A client's request, as it sent it."""
+
+    method: WSMethod
+    data: Optional[dict[str, Any] | list[Any] | str] = None
+
+
+class WSRequestFailed(WSMessage):
+    """The ``error`` answering a request the server could not handle. It names
+    the request, so the client knows which subscription failed, and says
+    whether sending it again can succeed. Older clients read a plain error.
+    ``request`` is the request as received, unchanged: the client sends it
+    again as it is, and keys its retries on it."""
+
+    method: WSMethod = WSMethod.ERROR
+    success: bool | None = False
+    request: WSRequestSent
+    retryable: bool
+
+
 # Ids are UUIDs; the bound keeps Redis channel names short.
 WS_ID_MAX_LENGTH = 128
 

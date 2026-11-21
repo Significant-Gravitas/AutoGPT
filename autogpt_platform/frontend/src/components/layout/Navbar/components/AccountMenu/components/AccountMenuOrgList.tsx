@@ -66,13 +66,13 @@ export function AccountMenuOrgList() {
             onClick={() => switchOrg(org.id)}
           >
             <Avatar className="h-5 w-5">
-              <AvatarImage src={org.avatarUrl ?? ""} alt="" />
+              <AvatarImage src={org.avatar_url ?? ""} alt="" />
               <AvatarFallback className="text-caption">
                 {org.name.charAt(0)}
               </AvatarFallback>
             </Avatar>
             <span className="flex-1 truncate text-left">{org.name}</span>
-            {org.isPersonal && (
+            {org.is_personal && (
               <Text variant="small-tight" as="span" tone="subtle">
                 Personal
               </Text>

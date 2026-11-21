@@ -239,6 +239,9 @@ describe("auth config", () => {
       google: {
         clientId: "google-client-id",
         clientSecret: "google-client-secret",
+        // Ready for a sign-in that connects (sign-in-connection.ts).
+        accessType: "offline",
+        getUserInfo: expect.any(Function),
       },
     });
   });

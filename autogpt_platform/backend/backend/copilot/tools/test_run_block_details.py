@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.blocks._base import BlockType
+from backend.blocks.llm import AITextGeneratorBlock
+from backend.data.llm_registry.catalog import get_catalog
 from backend.data.model import CredentialsMetaInput
 from backend.integrations.providers import ProviderName
 
@@ -167,6 +169,7 @@ def make_annotated_block(block_id: str = "annotated-block-id"):
                 "llm_model": True,
                 "llm_model_metadata": {
                     "gpt-5": {"price_tier": "high", "creator": "OpenAI"},
+                    "claude-opus-5": {"price_tier": "high", "creator": "Anthropic"},
                 },
                 "advanced": False,
                 "secret": False,
@@ -216,6 +219,23 @@ async def test_flag_on_strips_presentation_annotations_from_both_schemas():
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_otto_is_offered_only_the_llm_models_the_block_picker_shows():
+    """The enum keeps the models the catalog has switched off, so stored
+    workflows keep validating. The schema Otto reads lists what the block
+    picker offers, so it doesn't build new work on one."""
+    block = AITextGeneratorBlock()
+    stored = block.input_schema.jsonschema()["properties"]["model"]
+    switched_off = {m.slug for m in get_catalog().models if not m.is_enabled}
+
+    response = await _details_for(block, flag_on=True)
+
+    offered = response.block.inputs["properties"]["model"]["enum"]
+    assert switched_off & set(stored["enum"])
+    assert switched_off.isdisjoint(offered)
+    assert offered == [m for m in stored["enum"] if m in stored["llm_model_metadata"]]
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_flag_on_keeps_properties_that_share_an_annotation_name():
     """``secret`` and ``title`` are both UI annotations and legal field names."""
     response = await _details_for(make_annotated_block(), flag_on=True)
@@ -244,3 +264,81 @@ async def test_the_source_schema_is_not_mutated_by_the_strip():
     original = deepcopy(block.input_schema.jsonschema.return_value)
     await _details_for(block, flag_on=True)
     assert block.input_schema.jsonschema.return_value == original
+
+
+def _dry_run_session():
+    session = make_session(user_id=_TEST_USER_ID)
+    session.metadata.dry_run = True
+    return session
+
+
+async def _run_in_a_dry_run_session(input_data: dict, **kwargs):
+    """RunBlockTool on the HTTP block in a dry-run session, with the
+    simulation (``execute_block``) recorded instead of run."""
+    http_block = make_mock_block_with_inputs(
+        "http-block-id", "HTTP Request", "Send HTTP requests"
+    )
+    with (
+        patch("backend.copilot.tools.helpers.get_block", return_value=http_block),
+        patch(
+            "backend.copilot.tools.helpers.resolve_block_credentials",
+            new_callable=AsyncMock,
+            return_value=({}, []),
+        ),
+        patch(
+            "backend.copilot.tools.run_block.execute_block", new_callable=AsyncMock
+        ) as simulate,
+        patch(
+            "backend.copilot.tools.run_block.check_spend_approval",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as spend_gate,
+        patch(
+            "backend.copilot.tools.run_block.check_hitl_review", new_callable=AsyncMock
+        ) as review_gate,
+    ):
+        response = await RunBlockTool()._execute(
+            user_id=_TEST_USER_ID,
+            session=_dry_run_session(),
+            block_id="http-block-id",
+            input_data=input_data,
+            **kwargs,
+        )
+    return response, simulate, (spend_gate, review_gate)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "input_data, validate_only",
+    [({}, False), ({"url": "https://example.com"}, True)],
+    ids=["missing-required-input", "validate-only"],
+)
+async def test_a_dry_run_session_returns_details_for_a_call_that_only_looks(
+    input_data, validate_only
+):
+    """A dry run changes how a block runs, not whether Otto can read it first:
+    the first step of the two-step flow returns the schema in any session."""
+    response, simulate, _ = await _run_in_a_dry_run_session(
+        input_data, validate_only=validate_only
+    )
+
+    assert isinstance(response, BlockDetailsResponse)
+    assert response.block.inputs["required"] == ["url"]
+    simulate.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_dry_run_session_simulates_a_call_that_would_run_the_block():
+    """Simulation never calls the real service, so the spend and review gates
+    stay out of it."""
+    response, simulate, gates = await _run_in_a_dry_run_session(
+        {"url": "https://example.com"}
+    )
+
+    for gate in gates:
+        gate.assert_not_awaited()
+
+    simulate.assert_awaited_once()
+    call = simulate.await_args
+    assert call is not None and call.kwargs["dry_run"] is True
+    assert response is simulate.return_value

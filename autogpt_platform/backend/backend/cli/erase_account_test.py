@@ -631,6 +631,19 @@ async def test_an_email_finds_the_account_or_its_leftover_identity(accounts):
 
 
 @pytest.mark.asyncio
+async def test_an_email_with_an_underscore_finds_only_that_address(accounts):
+    """The case-insensitive lookup is an ILIKE, where `_` would match any one
+    character: `sam_lee@…` must not find, and so erase, `sam.lee@…`."""
+    accounts.identities.return_value = SimpleNamespace(id=USER_ID)
+
+    await cli._resolve("sam_lee@example.com")
+
+    literal = {"email": {"equals": r"sam\_lee@example.com", "mode": "insensitive"}}
+    assert accounts.users.await_args.kwargs["where"] == literal
+    assert accounts.identities.await_args.kwargs["where"] == literal
+
+
+@pytest.mark.asyncio
 async def test_an_unknown_email_is_refused_without_echoing_it(accounts):
     with pytest.raises(click.ClickException) as raised:
         await cli._resolve(EMAIL)

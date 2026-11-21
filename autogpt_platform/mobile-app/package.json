@@ -65,7 +65,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "test": "jest",
+    "test": "TZ=UTC jest",
     "types": "tsc --noEmit"
   },
   "jest": {
