@@ -176,6 +176,8 @@ from backend.data.human_review import (
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
     get_reviews_by_node_exec_ids,
+    get_waiting_card_chat,
+    get_waiting_review_ids_for_execution,
     has_pending_reviews_for_graph_exec,
     process_all_reviews_for_execution,
     record_gate_approval,
@@ -485,6 +487,8 @@ class DatabaseManager(AppService):
     get_pending_reviews_for_chat_session = _(get_pending_reviews_for_chat_session)
     get_pending_reviews_for_user = _(get_pending_reviews_for_user)
     get_reviews_by_node_exec_ids = _(get_reviews_by_node_exec_ids)
+    get_waiting_card_chat = _(get_waiting_card_chat)
+    get_waiting_review_ids_for_execution = _(get_waiting_review_ids_for_execution)
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
     process_all_reviews_for_execution = _(process_all_reviews_for_execution)
     record_gate_approval = _(record_gate_approval)
@@ -1083,6 +1087,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_pending_reviews_for_chat_session = d.get_pending_reviews_for_chat_session
     get_pending_reviews_for_user = d.get_pending_reviews_for_user
     get_reviews_by_node_exec_ids = d.get_reviews_by_node_exec_ids
+    get_waiting_card_chat = d.get_waiting_card_chat
+    get_waiting_review_ids_for_execution = d.get_waiting_review_ids_for_execution
     process_all_reviews_for_execution = d.process_all_reviews_for_execution
     record_gate_approval = d.record_gate_approval
     release_review_claim = d.release_review_claim

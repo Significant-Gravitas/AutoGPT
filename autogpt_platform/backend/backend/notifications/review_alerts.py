@@ -9,8 +9,10 @@ behind.
 """
 
 import logging
+from datetime import datetime
 from urllib.parse import quote
 
+from prisma.bases import BasePendingHumanReview
 from prisma.enums import AlertCause, ReviewStatus
 from prisma.models import PendingHumanReview
 from prisma.types import PendingHumanReviewWhereInput
@@ -54,15 +56,16 @@ async def sync_awaiting_review(
             return
         where["userId"] = user_id
         where["status"] = ReviewStatus.WAITING
-        waiting = await PendingHumanReview.prisma().find_many(
-            where=where,
-            order={"createdAt": "asc"},
+        # Counted, not loaded: runs on every queue change, and rows carry payloads.
+        count = await PendingHumanReview.prisma().count(where=where)
+        first = await _OldestWaiting.prisma().find_first(
+            where=where, order={"createdAt": "asc"}
         )
-        if not waiting:
+        if not count or first is None:
             await alerts_db.resolve_alert_condition(user_id, cause_key)
             return
 
-        oldest = waiting[0].createdAt
+        oldest = first.createdAt
         if chat_session_id:
             agent = AUTOPILOT_NAME
             cta_path = f"/copilot?sessionId={quote(chat_session_id)}"
@@ -74,7 +77,7 @@ async def sync_awaiting_review(
         cause = AwaitingReviewCause(
             cta_path=cta_path,
             agent=agent,
-            count=len(waiting),
+            count=count,
             since_label=f"{oldest.day} {oldest.strftime('%b %Y')}, {oldest.strftime('%H:%M')} UTC",
         )
         await alerts_db.raise_alert_condition(
@@ -88,3 +91,9 @@ async def sync_awaiting_review(
             f"Could not sync the awaiting-review alert for user {user_id} {scope}",
             exc_info=True,
         )
+
+
+class _OldestWaiting(BasePendingHumanReview):
+    """Prisma selects only the declared fields, so `payload` is never read."""
+
+    createdAt: datetime
