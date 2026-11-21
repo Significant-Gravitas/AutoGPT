@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   fireEvent,
@@ -13,12 +13,23 @@ const SHARE_TOKEN = "550e8400-e29b-41d4-a716-446655440000";
 
 const writeText = vi.fn(async (_text: string) => {});
 
+let clipboardDescriptor: PropertyDescriptor | undefined;
+
 beforeEach(() => {
+  clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
     value: { writeText },
   });
   writeText.mockClear();
+});
+
+afterEach(() => {
+  if (clipboardDescriptor) {
+    Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
+  } else {
+    Reflect.deleteProperty(navigator, "clipboard");
+  }
 });
 
 describe("ShareRunButton", () => {
