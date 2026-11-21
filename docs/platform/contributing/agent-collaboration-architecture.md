@@ -109,10 +109,10 @@ None of these is part of a delegated job, so withholding them breaks nothing
 that worked, and it removes reach a spawned agent should never quietly have.
 
 **An isolate additionally loses these** (`ISOLATE_DENIED_TOOLS`,
-`tree.py:96`): `post_to_chat_platform`, `schedule_followup`, `run_mcp_tool`,
-`store_skill`, `memory_store`, `add_understanding`.
+`tree.py:96`): `post_to_chat_platform`, `schedule_followup`, `schedule_routine`,
+`run_mcp_tool`, `store_skill`, `memory_store`, `add_understanding`.
 
-The asymmetry is the point. A delegate keeps all six, because it runs under
+The asymmetry is the point. A delegate keeps all seven, because it runs under
 its own identity and its own memory — storing what it learned and posting a
 scheduled update are its job. An isolate is scratch space under someone
 else's name, so a memory it writes becomes the parent's memory and a message
@@ -122,6 +122,13 @@ it posts appears to come from the parent.
 absolute, so a parent that holds `post_to_chat_platform` still cannot pass it
 to an isolate. A job that genuinely needs a denied tool is one a human
 approves, not one an agent grants itself.
+
+**A scheduled turn keeps the filter of the turn that scheduled it.** It is a
+root, but the turn that scheduled it wrote its prompt. `schedule_followup` and
+`schedule_routine` store that turn's permission filter, which already holds its
+envelope's tool set, with the job (`CopilotTurnJobArgs.permissions`), and every
+fire runs under it. `run_agent`'s scheduling mode answers to the
+`schedule_followup` permission.
 
 Two enforcement points, and the difference matters. The envelope's tool set
 is turned into a permission filter so the model is not *shown* tools it may
