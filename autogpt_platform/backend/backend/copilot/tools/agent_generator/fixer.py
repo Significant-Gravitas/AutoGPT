@@ -2,9 +2,10 @@
 
 import logging
 import re
-from typing import Any
+from typing import Any, Literal
 
 from backend.data.dynamic_fields import DICT_SPLIT
+from backend.data.llm_registry.llm_models import is_switched_off
 
 from .helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
@@ -16,8 +17,19 @@ from .helpers import (
     get_defined_property_type,
     is_uuid,
 )
+from .switched_off_models import (
+    SwitchedOffMove,
+    canonical,
+    kept_model,
+    live_default,
+    models_by_node,
+    offered_fallback,
+)
 
 logger = logging.getLogger(__name__)
+
+# Why fix_ai_model_parameter rewrote a node's model.
+_ModelFix = Literal["respelled", "switched_off", "unsupported"]
 
 # Block IDs used by the fixer
 _FIX_VALUE2_EMPTY_STRING_BLOCK_IDS = ["715696a0-e1da-45c8-b209-c2fa9c3b0be6"]
@@ -61,6 +73,11 @@ class AgentFixer:
 
     def __init__(self):
         self.fixes_applied: list[str] = []
+        # Each AI node the last fix moved off a switched-off model, for the
+        # note that tells Otto the model the workflow uses now.
+        self.retired_models_replaced: list[SwitchedOffMove] = []
+        # Each node's saved model, as apply_all_fixes read it before any fix.
+        self.saved_models: dict[str, Any] = {}
 
     @staticmethod
     def _build_node_lookup(
@@ -845,6 +862,7 @@ class AgentFixer:
         agent: AgentDict,
         blocks: list[dict[str, Any]],
         default_model: str = "gpt-4o",
+        saved_models: dict[str, Any] | None = None,
     ) -> AgentDict:
         """
         Add or fix the model parameter on AI blocks.
@@ -858,14 +876,24 @@ class AgentFixer:
         in their inputSchema (e.g. PerplexityBlock) are validated against that
         enum instead of the generic allowed set.
 
+        A model the catalog has switched off is unsupported too, though the
+        enum still lists it so stored workflows keep validating. It is
+        replaced with its catalog fallback when the block offers that, and
+        with the default otherwise. An edit keeps the model *saved_models*
+        shows its node had, switched off or not, when it names that model in
+        any spelling the enum takes, written as the block lists it.
+
         Args:
             agent: The agent dictionary to fix
             blocks: List of available blocks with their schemas
             default_model: The fallback model to use (default "gpt-4o")
+            saved_models: Each node's model, by node id, in the stored
+                version an edit starts from; None for new work
 
         Returns:
             The fixed agent dictionary
         """
+        saved_models = saved_models or {}
         generic_allowed_models = {
             "gpt-4o",
             "claude-opus-4-6",
@@ -914,25 +942,43 @@ class AgentFixer:
 
                 if block_model_enum:
                     allowed_models = set(block_model_enum)
-                    fallback_model = model_schema.get("default", block_model_enum[0])
+                    fallback_model = live_default(
+                        model_schema.get("default", block_model_enum[0]),
+                        block_model_enum,
+                    )
                 else:
                     allowed_models = generic_allowed_models
-                    fallback_model = default_model
+                    fallback_model = live_default(
+                        default_model, sorted(generic_allowed_models)
+                    )
 
-                if current_model not in allowed_models:
-                    block_name = block.get("name", "Unknown AI Block")
-                    if current_model is None:
-                        self.add_fix_log(
-                            f"Added model parameter '{fallback_model}' to AI "
-                            f"block node {node_id} ({block_name})"
-                        )
-                    else:
-                        self.add_fix_log(
-                            f"Replaced unsupported model '{current_model}' "
-                            f"with '{fallback_model}' on AI block node "
-                            f"{node_id} ({block_name})"
-                        )
-                    input_default["model"] = fallback_model
+                kept = kept_model(
+                    current_model, saved_models.get(node_id), allowed_models
+                )
+                fix: _ModelFix
+                if kept is not None:
+                    new_model, fix = kept, "respelled"
+                # Switched off means the catalog's is_enabled=False only. The
+                # block details Otto reads (run_block._offered_models_only)
+                # also hide models that aren't generally available yet; the
+                # fixer keeps such a model when Otto writes it, since it's
+                # switched on.
+                elif is_switched_off(current_model):
+                    new_model = (
+                        offered_fallback(current_model, allowed_models)
+                        or fallback_model
+                    )
+                    fix = "switched_off"
+                elif (
+                    not isinstance(current_model, str)
+                    or current_model not in allowed_models
+                ):
+                    new_model, fix = fallback_model, "unsupported"
+                else:
+                    continue
+                if new_model != current_model:
+                    self._log_model_fix(node_id, block, current_model, new_model, fix)
+                    input_default["model"] = new_model
                     node["input_default"] = input_default
                     fixed_count += 1
 
@@ -940,6 +986,43 @@ class AgentFixer:
             logger.debug(f"Fixed model parameter on {fixed_count} AI block nodes")
 
         return agent
+
+    def _log_model_fix(
+        self,
+        node_id: str | None,
+        block: dict[str, Any],
+        old_model: Any,
+        new_model: str,
+        fix: _ModelFix,
+    ) -> None:
+        block_name = block.get("name", "Unknown AI Block")
+        if old_model is None:
+            self.add_fix_log(
+                f"Added model parameter '{new_model}' to AI "
+                f"block node {node_id} ({block_name})"
+            )
+        elif fix == "respelled":
+            self.add_fix_log(
+                f"Wrote model '{new_model}' as the block lists it on AI block "
+                f"node {node_id} ({block_name})"
+            )
+        elif fix == "switched_off":
+            # The enum takes any text before a "/" as a provider prefix, so
+            # only the catalog's spelling reaches Otto.
+            old = canonical(old_model)
+            self.add_fix_log(
+                f"Replaced switched-off model '{old}' with '{new_model}' "
+                f"on AI block node {node_id} ({block_name})"
+            )
+            self.retired_models_replaced.append(
+                SwitchedOffMove(block=block_name, old=old, new=new_model)
+            )
+        else:
+            self.add_fix_log(
+                f"Replaced unsupported model '{old_model}' "
+                f"with '{new_model}' on AI block node "
+                f"{node_id} ({block_name})"
+            )
 
     def fix_data_type_mismatch(
         self, agent: AgentDict, blocks: list[dict[str, Any]]
@@ -1738,6 +1821,8 @@ class AgentFixer:
         agent: AgentDict,
         blocks: list[dict[str, Any]] | None = None,
         library_agents: list[dict[str, Any]] | None = None,
+        saved_agent: AgentDict | None = None,
+        keep_switched_off_models: bool = False,
     ) -> AgentDict:
         """
         Apply all available fixes to the agent.
@@ -1747,11 +1832,23 @@ class AgentFixer:
             blocks: List of available blocks with their schemas (optional)
             library_agents: List of library agents for AgentExecutorBlock
                             validation
+            saved_agent: The stored version an edit starts from: a node
+                keeps a switched-off model it already has there. None for
+                new work, which never gets one.
+            keep_switched_off_models: Every node keeps its model, a
+                switched-off one too, for a caller that can't tell new work
+                from saved; the save that follows decides.
 
         Returns:
             The fixed agent dictionary
         """
         self.fixes_applied = []
+        self.retired_models_replaced = []
+        # Read once before any fix runs, for the pipeline to run the model fix
+        # with if a fix before it raises, and again just before the model fix.
+        self.saved_models = models_by_node(
+            agent, agent if keep_switched_off_models else saved_agent
+        )
 
         # Apply fixes in order
         agent = self.fix_agent_ids(agent)
@@ -1780,7 +1877,17 @@ class AgentFixer:
             agent = self.fix_invalid_nested_sink_links(
                 agent, blocks, node_lookup=node_lookup
             )
-            agent = self.fix_ai_model_parameter(agent, blocks)
+            # The stored version is the fixer's own output, so a node's other
+            # inputs are compared once the fixes that rewrite them have run
+            # (single braces in a prompt, an orchestrator's defaults). No fix
+            # before this one changes a model but the orchestrator's missing
+            # one, which isn't switched off.
+            self.saved_models = models_by_node(
+                agent, agent if keep_switched_off_models else saved_agent
+            )
+            agent = self.fix_ai_model_parameter(
+                agent, blocks, saved_models=self.saved_models
+            )
             agent = self.fix_link_static_properties(
                 agent, blocks, node_lookup=node_lookup
             )

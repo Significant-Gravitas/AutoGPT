@@ -438,6 +438,9 @@ def _picker_hidden_slugs(payload: "CatalogPayload") -> frozenset[str]:
 
 
 _PICKER_HIDDEN_SLUGS = _picker_hidden_slugs(get_catalog())
+_SWITCHED_OFF_SLUGS = frozenset(
+    m.slug for m in get_catalog().models if not m.is_enabled
+)
 
 
 def _retired_model_fallbacks(
@@ -485,10 +488,16 @@ def _today() -> date:
     return datetime.now(timezone.utc).date()
 
 
+# Far longer than any model id with its provider prefixes. The enum strips a
+# prefix per recursion through ``_missing_``, so a long value costs time and
+# memory that grow with its length before it is refused.
+_MAX_MODEL_VALUE_LENGTH = 256
+
+
 def llm_model_named(value: object) -> "LLMModel | None":
     """The ``LLMModel`` *value* names, in any spelling the enum takes
     (``openai/gpt-5-2025-08-07`` too); None when it names none."""
-    if not isinstance(value, str):
+    if not isinstance(value, str) or len(value) > _MAX_MODEL_VALUE_LENGTH:
         return None
     try:
         return LLMModel(value)
@@ -525,6 +534,14 @@ def retired_model_fallback(value: object) -> "LLMModel | None":
     if shutdown_at is not None and _today() < shutdown_at:
         return None
     return fallback
+
+
+def is_switched_off(value: object) -> bool:
+    """Whether *value* names, in any spelling the enum takes, a model the
+    catalog has switched off (``is_enabled=False``). A block still runs one,
+    so stored workflows keep working, but new work must not pick one."""
+    model = llm_model_named(value)
+    return model is not None and model.value in _SWITCHED_OFF_SLUGS
 
 
 def _default_model_from_catalog() -> LLMModel:

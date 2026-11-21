@@ -236,7 +236,9 @@ class RunBlockTool(BaseTool):
             llm_input_schema = _strip_credentials_from_schema(
                 prep.input_schema, prep.credentials_fields
             )
-            llm_input_schema = _strip_presentation_annotations(llm_input_schema)
+            llm_input_schema = _strip_presentation_annotations(
+                _offered_models_only(llm_input_schema)
+            )
             output_schema = _strip_presentation_annotations(output_schema)
             if validate_only and not missing:
                 detail_msg = (
@@ -347,6 +349,26 @@ def _strip_presentation_annotations(node: Any, name: str | None = None) -> Any:
     if isinstance(node, list):
         return [_strip_presentation_annotations(item) for item in node]
     return node
+
+
+def _offered_models_only(node: Any) -> Any:
+    """*node* with each LLM model list cut to the models the block picker
+    offers (``llm_model_metadata``). The enum keeps the models the catalog
+    has switched off, so stored workflows keep validating, but new work
+    must not pick one."""
+    if isinstance(node, list):
+        return [_offered_models_only(item) for item in node]
+    if not isinstance(node, dict):
+        return node
+    cleaned = {key: _offered_models_only(value) for key, value in node.items()}
+    offered = node.get("llm_model_metadata")
+    if (
+        node.get("llm_model") is True
+        and isinstance(offered, dict)
+        and isinstance(node.get("enum"), list)
+    ):
+        cleaned["enum"] = [model for model in node["enum"] if model in offered]
+    return cleaned
 
 
 def _derived_title(property_name: str) -> str:

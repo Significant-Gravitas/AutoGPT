@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.blocks._base import BlockType
+from backend.blocks.llm import AITextGeneratorBlock
+from backend.data.llm_registry.catalog import get_catalog
 from backend.data.model import CredentialsMetaInput
 from backend.integrations.providers import ProviderName
 
@@ -167,6 +169,7 @@ def make_annotated_block(block_id: str = "annotated-block-id"):
                 "llm_model": True,
                 "llm_model_metadata": {
                     "gpt-5": {"price_tier": "high", "creator": "OpenAI"},
+                    "claude-opus-5": {"price_tier": "high", "creator": "Anthropic"},
                 },
                 "advanced": False,
                 "secret": False,
@@ -213,6 +216,23 @@ async def test_flag_on_strips_presentation_annotations_from_both_schemas():
     assert set(model) == {"type", "enum"}
     assert model["enum"] == ["gpt-5", "claude-opus-5"]
     assert "advanced" not in response.block.outputs["properties"]["result"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_otto_is_offered_only_the_llm_models_the_block_picker_shows():
+    """The enum keeps the models the catalog has switched off, so stored
+    workflows keep validating. The schema Otto reads lists what the block
+    picker offers, so it doesn't build new work on one."""
+    block = AITextGeneratorBlock()
+    stored = block.input_schema.jsonschema()["properties"]["model"]
+    switched_off = {m.slug for m in get_catalog().models if not m.is_enabled}
+
+    response = await _details_for(block, flag_on=True)
+
+    offered = response.block.inputs["properties"]["model"]["enum"]
+    assert switched_off & set(stored["enum"])
+    assert switched_off.isdisjoint(offered)
+    assert offered == [m for m in stored["enum"] if m in stored["llm_model_metadata"]]
 
 
 @pytest.mark.asyncio(loop_scope="session")
