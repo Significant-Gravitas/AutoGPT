@@ -348,6 +348,7 @@ async def test_a_parked_block_reports_a_completed_run_with_nothing_to_bill():
 
     with (
         patch("backend.data.graph.get_block", return_value=block),
+        patch("backend.data.graph.get_block_definition", return_value=block),
         patch("backend.executor.manager.async_update_node_execution_status"),
         patch.object(
             HITLReviewHelper, "handle_review_decision", AsyncMock(return_value=None)

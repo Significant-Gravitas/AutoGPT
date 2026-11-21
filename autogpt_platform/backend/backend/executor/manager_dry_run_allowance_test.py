@@ -135,7 +135,7 @@ def _block() -> MagicMock:
 
 def _args(block: object):
     node = MagicMock()
-    node.block = block
+    node.new_block.return_value = block
     node.input_default = {}
     entry = NodeExecutionEntry(
         user_id="user-1",
