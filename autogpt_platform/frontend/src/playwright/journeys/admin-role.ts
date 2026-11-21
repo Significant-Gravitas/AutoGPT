@@ -51,8 +51,11 @@ export async function grantAdminRole(page: Page, user: JourneyUser) {
 }
 
 /**
- * Takes the role back, so a deployed stack the journey ran against keeps no
- * journey admins (their passwords can sit in a failed run's trace).
+ * Takes the role back, so a deployed stack the journey ran against doesn't
+ * keep journey admins (their passwords can sit in a failed run's trace). New
+ * sessions and tokens come without it at once; ones already issued keep it
+ * until they expire: the session cookie cache within 5 minutes, a JWT within
+ * an hour.
  */
 export async function revokeAdminRole(user: JourneyUser) {
   if (!user.id) return;

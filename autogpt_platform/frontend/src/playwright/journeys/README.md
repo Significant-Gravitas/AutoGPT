@@ -158,9 +158,10 @@ PLAYWRIGHT_BASE_URL=https://autogpt-pr-<N>.vercel.app \
   one machine can hit `429`. Reuse an account as above, or run fewer
   journeys at once.
 - Setting `PLAYWRIGHT_JOURNEY_DATABASE_URL` for a deployed stack also lets the
-  marketplace journey make a temporary admin there (`admin-role.ts`; the
-  role is taken back at teardown) and approve its test listings, which stay
-  on that stack. Without the variable, that journey skips.
+  marketplace journey make a temporary admin there and approve its test
+  listings, which stay on that stack. The role is taken back at teardown, but
+  tokens already issued keep it until they expire, within an hour
+  (`admin-role.ts`). Without the variable, that journey skips.
 
 ## In CI
 
