@@ -5,6 +5,10 @@ import re
 from typing import Any
 
 from backend.data.dynamic_fields import DICT_SPLIT
+from backend.data.llm_registry.llm_models import (
+    is_switched_off,
+    scheduled_model_fallback,
+)
 
 from .helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
@@ -61,6 +65,9 @@ class AgentFixer:
 
     def __init__(self):
         self.fixes_applied: list[str] = []
+        # Each AI node the last fix moved off a switched-off model, said for
+        # the user: Otto wrote the old model, so it would report that one.
+        self.retired_models_replaced: list[str] = []
 
     @staticmethod
     def _build_node_lookup(
@@ -845,6 +852,7 @@ class AgentFixer:
         agent: AgentDict,
         blocks: list[dict[str, Any]],
         default_model: str = "gpt-4o",
+        saved_models: dict[str, Any] | None = None,
     ) -> AgentDict:
         """
         Add or fix the model parameter on AI blocks.
@@ -858,14 +866,23 @@ class AgentFixer:
         in their inputSchema (e.g. PerplexityBlock) are validated against that
         enum instead of the generic allowed set.
 
+        A model the catalog has switched off is unsupported too, though the
+        enum still lists it so stored workflows keep validating. It is
+        replaced with its catalog fallback when the block offers that, and
+        with the default otherwise. A node keeps it only where
+        *saved_models* shows the node already had it.
+
         Args:
             agent: The agent dictionary to fix
             blocks: List of available blocks with their schemas
             default_model: The fallback model to use (default "gpt-4o")
+            saved_models: Each node's model, by node id, in the stored
+                version an edit starts from; None for new work
 
         Returns:
             The fixed agent dictionary
         """
+        saved_models = saved_models or {}
         generic_allowed_models = {
             "gpt-4o",
             "claude-opus-4-6",
@@ -919,20 +936,20 @@ class AgentFixer:
                     allowed_models = generic_allowed_models
                     fallback_model = default_model
 
-                if current_model not in allowed_models:
-                    block_name = block.get("name", "Unknown AI Block")
-                    if current_model is None:
-                        self.add_fix_log(
-                            f"Added model parameter '{fallback_model}' to AI "
-                            f"block node {node_id} ({block_name})"
+                switched_off = is_switched_off(current_model) and (
+                    saved_models.get(node_id) != current_model
+                )
+                if current_model not in allowed_models or switched_off:
+                    new_model = fallback_model
+                    if switched_off:
+                        new_model = (
+                            _offered_fallback(current_model, allowed_models)
+                            or fallback_model
                         )
-                    else:
-                        self.add_fix_log(
-                            f"Replaced unsupported model '{current_model}' "
-                            f"with '{fallback_model}' on AI block node "
-                            f"{node_id} ({block_name})"
-                        )
-                    input_default["model"] = fallback_model
+                    self._log_model_fix(
+                        node_id, block, current_model, new_model, switched_off
+                    )
+                    input_default["model"] = new_model
                     node["input_default"] = input_default
                     fixed_count += 1
 
@@ -940,6 +957,36 @@ class AgentFixer:
             logger.debug(f"Fixed model parameter on {fixed_count} AI block nodes")
 
         return agent
+
+    def _log_model_fix(
+        self,
+        node_id: str | None,
+        block: dict[str, Any],
+        old_model: Any,
+        new_model: str,
+        switched_off: bool,
+    ) -> None:
+        block_name = block.get("name", "Unknown AI Block")
+        if old_model is None:
+            self.add_fix_log(
+                f"Added model parameter '{new_model}' to AI "
+                f"block node {node_id} ({block_name})"
+            )
+        elif switched_off:
+            self.add_fix_log(
+                f"Replaced switched-off model '{old_model}' with '{new_model}' "
+                f"on AI block node {node_id} ({block_name})"
+            )
+            self.retired_models_replaced.append(
+                f"node '{node_id}' ({block_name}) uses '{new_model}' instead "
+                f"of '{old_model}'"
+            )
+        else:
+            self.add_fix_log(
+                f"Replaced unsupported model '{old_model}' "
+                f"with '{new_model}' on AI block node "
+                f"{node_id} ({block_name})"
+            )
 
     def fix_data_type_mismatch(
         self, agent: AgentDict, blocks: list[dict[str, Any]]
@@ -1738,6 +1785,7 @@ class AgentFixer:
         agent: AgentDict,
         blocks: list[dict[str, Any]] | None = None,
         library_agents: list[dict[str, Any]] | None = None,
+        saved_agent: AgentDict | None = None,
     ) -> AgentDict:
         """
         Apply all available fixes to the agent.
@@ -1747,11 +1795,17 @@ class AgentFixer:
             blocks: List of available blocks with their schemas (optional)
             library_agents: List of library agents for AgentExecutorBlock
                             validation
+            saved_agent: The stored version an edit starts from: a node
+                keeps a switched-off model it already has there. None for
+                new work, which never gets one.
 
         Returns:
             The fixed agent dictionary
         """
         self.fixes_applied = []
+        self.retired_models_replaced = []
+        # Read before any fix runs: *saved_agent* may be *agent* itself.
+        saved_models = _models_by_node(saved_agent)
 
         # Apply fixes in order
         agent = self.fix_agent_ids(agent)
@@ -1780,7 +1834,9 @@ class AgentFixer:
             agent = self.fix_invalid_nested_sink_links(
                 agent, blocks, node_lookup=node_lookup
             )
-            agent = self.fix_ai_model_parameter(agent, blocks)
+            agent = self.fix_ai_model_parameter(
+                agent, blocks, saved_models=saved_models
+            )
             agent = self.fix_link_static_properties(
                 agent, blocks, node_lookup=node_lookup
             )
@@ -1805,3 +1861,21 @@ class AgentFixer:
     def get_fixes_applied(self) -> list[str]:
         """Get a list of all fixes that were applied."""
         return self.fixes_applied.copy()
+
+
+def _models_by_node(agent: AgentDict | None) -> dict[str, Any]:
+    """Each node's ``model`` input, by node id."""
+    return {
+        node["id"]: (node.get("input_default") or {}).get("model")
+        for node in (agent or {}).get("nodes", [])
+        if node.get("id")
+    }
+
+
+def _offered_fallback(model: Any, offered: set[str]) -> str | None:
+    """A switched-off model's catalog fallback, the model blocks run in its
+    place, when the block offers it."""
+    scheduled = scheduled_model_fallback(model)
+    if scheduled is None or scheduled[0].value not in offered:
+        return None
+    return scheduled[0].value

@@ -82,6 +82,7 @@ async def fix_validate_and_save(
     team_id: str | None = None,
     move_webhook_presets: bool = True,
     external_caller: bool = False,
+    saved_agent: dict[str, Any] | None = None,
 ) -> ToolResponseBase:
     """Shared pipeline: auto-fix → validate → preview or save.
 
@@ -101,6 +102,8 @@ async def fix_validate_and_save(
             onto the new version.
         external_caller: An External API client is saving; a failed save
             tells it only what was written for it.
+        saved_agent: The stored version an edit starts from: a node keeps a
+            switched-off model it already has there. None for new work.
 
     Returns:
         An appropriate ToolResponseBase subclass.
@@ -120,12 +123,16 @@ async def fix_validate_and_save(
     blocks = get_blocks_as_dicts()
 
     # Auto-fix
+    retired_models_hint = ""
     try:
         fixer = AgentFixer()
-        agent_json = fixer.apply_all_fixes(agent_json, blocks, library_agents)
+        agent_json = fixer.apply_all_fixes(
+            agent_json, blocks, library_agents, saved_agent=saved_agent
+        )
         fixes = fixer.get_fixes_applied()
         if fixes:
             logger.info(f"Applied {len(fixes)} auto-fixes to agent JSON")
+        retired_models_hint = _retired_models_hint(fixer.retired_models_replaced)
     except Exception as e:
         logger.warning(f"Auto-fix failed: {e}")
 
@@ -193,6 +200,7 @@ async def fix_validate_and_save(
                     preview_message
                     or f"Workflow '{agent_name}' with {node_count} blocks is ready."
                 )
+                + retired_models_hint
                 + metadata_hint
             ),
             agent_json=agent_json,
@@ -224,6 +232,7 @@ async def fix_validate_and_save(
         return AgentSavedResponse(
             message=(
                 (save_message or f"Workflow '{created_graph.name}' has been saved!")
+                + retired_models_hint
                 + metadata_hint
             ),
             agent_id=created_graph.id,
@@ -243,3 +252,15 @@ async def fix_validate_and_save(
             details={"exception": detail},
             session_id=session_id,
         )
+
+
+def _retired_models_hint(replaced: list[str]) -> str:
+    """The models the fixer put in place of retired ones Otto wrote: without
+    this, Otto reports the model it wrote, not the one the workflow uses."""
+    if not replaced:
+        return ""
+    return (
+        " Note: some nodes named a retired model, so they now use a current "
+        f"one: {'; '.join(replaced)}. Tell the user which model each of these "
+        "nodes uses now."
+    )
