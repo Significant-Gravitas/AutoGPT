@@ -24,11 +24,7 @@ from backend.blocks.code_executor import (
     ExecuteCodeStepBlock,
     InstantiateCodeSandboxBlock,
 )
-from backend.blocks.codex import (
-    RETIRED_CODEX_MODELS,
-    CodeGenerationBlock,
-    CodexModel,
-)
+from backend.blocks.codex import RETIRED_CODEX_MODELS, CodeGenerationBlock, CodexModel
 from backend.blocks.enrichlayer.linkedin import (
     GetLinkedinProfileBlock,
     GetLinkedinProfilePictureBlock,

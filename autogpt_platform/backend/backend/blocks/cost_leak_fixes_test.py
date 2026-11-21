@@ -13,11 +13,7 @@ from pydantic import SecretStr
 
 from backend.blocks._base import BlockCostType
 from backend.blocks.ai_condition import AIConditionBlock
-from backend.blocks.codex import (
-    RETIRED_CODEX_MODELS,
-    CodeGenerationBlock,
-    CodexModel,
-)
+from backend.blocks.codex import RETIRED_CODEX_MODELS, CodeGenerationBlock, CodexModel
 from backend.data.block_cost_config import BLOCK_COSTS, LLM_COST
 from backend.data.model import APIKeyCredentials, NodeExecutionStats
 
