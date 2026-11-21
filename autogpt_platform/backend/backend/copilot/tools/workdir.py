@@ -208,6 +208,14 @@ async def set_executable(
             exc_info=True,
         )
         return list(paths)
+    if os.name == "nt":
+        logger.warning(
+            "[workdir] POSIX executable modes are unavailable on Windows; "
+            "left %d file(s) as they are in session %s",
+            len(paths),
+            session_id,
+        )
+        return list(paths)
     failed: list[str] = []
     for path in paths:
         try:

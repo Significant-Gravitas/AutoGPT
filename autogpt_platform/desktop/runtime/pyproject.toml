@@ -1,0 +1,12 @@
+[project]
+name = "autogpt-desktop-runtime"
+version = "0.1.0"
+description = "Runs the AutoGPT Platform as native processes on a desktop"
+requires-python = ">=3.11"
+# Runs inside the bundled interpreter, which already has the backend's
+# dependencies (aiohttp, psycopg2, redis, pika, psutil); it adds none.
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
+testpaths = ["tests"]

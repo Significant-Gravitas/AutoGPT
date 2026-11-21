@@ -1,0 +1,4 @@
+{
+  "extends": "../tsconfig.json",
+  "include": ["../update-feed.config.ts", "../update-feed.unit.config.ts", "./**/*.ts", "../lib/**/*.ts"]
+}
