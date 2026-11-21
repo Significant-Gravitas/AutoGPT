@@ -49,6 +49,7 @@ from backend.data.graph import (
     Link,
     Node,
     NodeModel,
+    _tool_properties,
     clear_sub_graph_refs_owned_by,
     copy_graph,
 )
@@ -4745,6 +4746,53 @@ def test_a_link_into_an_mcp_tool_without_an_object_schema_is_refused(
 
     with pytest.raises(ValueError):
         make_graph_model(graph, user_id="user-1").validate_graph(for_run=False)
+
+
+def test_a_refused_link_into_an_mcp_tool_names_its_arguments():
+    graph = make_graph_model(
+        _value_to_mcp_tool_graph("bogus", required=[]), user_id="user-1"
+    )
+
+    with pytest.raises(ValueError, match="`bogus` invalid") as refused:
+        graph.validate_graph(for_run=False)
+
+    assert "'query'" in str(refused.value)
+    assert "'createRequest'" in str(refused.value)
+
+
+def test_links_into_an_mcp_tool_do_not_copy_its_arguments_per_link(mocker):
+    copies = 0
+
+    class CountingArguments(dict):
+        def __iter__(self):
+            nonlocal copies
+            copies += 1
+            return super().__iter__()
+
+    mocker.patch(
+        "backend.data.graph._tool_properties",
+        side_effect=lambda node_input: CountingArguments(
+            _tool_properties(node_input) or {}
+        ),
+    )
+    link_count = 200
+    graph = _value_to_mcp_tool_graph("query", required=[])
+    graph.nodes[1].input_default["tool_input_schema"]["properties"] = {
+        f"argument_{i}": {"type": "string"} for i in range(link_count)
+    }
+    graph.links = [
+        Link(
+            source_id="value",
+            sink_id="tool",
+            source_name="output",
+            sink_name=f"argument_{i}",
+        )
+        for i in range(link_count)
+    ]
+
+    make_graph_model(graph, user_id="user-1").validate_graph(for_run=False)
+
+    assert copies < link_count
 
 
 def _value_to_mcp_tool_graph(sink_name: str, required: list[str]) -> Graph:

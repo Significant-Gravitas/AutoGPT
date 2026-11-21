@@ -1363,6 +1363,7 @@ class GraphModel(Graph, GraphMeta):
 
                 sanitized_name = sanitize_pin_name(name)
                 vals = node.input_default
+                tool_arguments: dict[str, Any] = {}
                 if i == 0:
                     fields = (
                         block.output_schema.get_fields()
@@ -1382,8 +1383,16 @@ class GraphModel(Graph, GraphMeta):
                             raise ValueError(
                                 f"{prefix}, tool_input_schema is not an object"
                             )
-                        fields = {*fields, *properties}
-                if sanitized_name not in fields and not is_tool_pin(name):
+                        # Looked up, not merged into `fields`: a copy per link
+                        # would cost links x arguments.
+                        tool_arguments = properties
+                if (
+                    sanitized_name not in fields
+                    and sanitized_name not in tool_arguments
+                    and not is_tool_pin(name)
+                ):
+                    if tool_arguments:
+                        fields = {*fields, *tool_arguments}
                     fields_msg = f"Allowed fields: {fields}"
                     raise ValueError(f"{prefix}, `{name}` invalid, {fields_msg}")
 
