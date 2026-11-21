@@ -1,24 +1,36 @@
 """Tests for SQLQueryBlock: single-statement validation, URL validation,
 error sanitization, SSRF protection, and read/write mode behavior."""
 
-from datetime import date, datetime, time
+import asyncio
+import io
+import json
+import os
+import socket
+import sys
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+from weakref import WeakKeyDictionary
 
 import pytest
 from pydantic import SecretStr
 from sqlalchemy import create_engine, text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.engine.url import URL, make_url
+from sqlalchemy.exc import DataError, OperationalError
 
+from backend.blocks import sql_query_helpers
 from backend.blocks.sql_query_block import SQLQueryBlock, UserPasswordCredentials
 from backend.blocks.sql_query_helpers import (
     _CONNECT_TIMEOUT_SECONDS,
     _MAX_ERROR_LENGTH,
     _MAX_QUERY_LENGTH,
     DatabaseType,
+    QueryWorkerError,
     _configure_session,
     _execute_query,
+    _execute_query_in_worker,
+    _read_worker_answer,
     _run_in_transaction,
     _sanitize_error,
     _serialize_value,
@@ -556,6 +568,25 @@ class TestSQLQueryBlockRunErrorHandling:
         assert outputs == {"error": "Query is too long (max 100,000 characters)."}
         block.check_host_allowed.assert_not_called()
 
+    @pytest.mark.parametrize(
+        "raised, expected",
+        [
+            (TimeoutError("stopped"), "Query timed out after 30s."),
+            (
+                QueryWorkerError("Query result is too large."),
+                "Query result is too large.",
+            ),
+        ],
+    )
+    async def test_worker_failure_reported(self, raised: Exception, expected: str):
+        block = SQLQueryBlock()
+        creds = _make_credentials()
+        input_data = _make_input(creds)
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
+        block.execute_query = AsyncMock(side_effect=raised)  # type: ignore[assignment]
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert outputs == {"error": expected}
+
     async def test_connection_failure_sanitized_no_credentials(self):
         """Connection error must not leak credentials."""
         block = SQLQueryBlock()
@@ -633,7 +664,7 @@ class TestSQLQueryBlockRunErrorHandling:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         mock_rows = [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
         mock_cols = ["id", "name"]
-        block.execute_query = lambda **_kwargs: (mock_rows, mock_cols, -1, False)  # type: ignore[assignment]
+        block.execute_query = AsyncMock(return_value=(mock_rows, mock_cols, -1, False))  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert outputs["results"] == mock_rows
         assert outputs["columns"] == mock_cols
@@ -649,6 +680,7 @@ class TestSQLQueryBlockRunErrorHandling:
         input_data = _make_input(
             creds, query="SELECT 1; DROP TABLE users", read_only=False
         )
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" in outputs
         assert "single statements" in str(outputs["error"]).lower()
@@ -661,7 +693,7 @@ class TestSQLQueryBlockRunErrorHandling:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         mock_rows = [{"id": 1}]
         mock_cols = ["id"]
-        block.execute_query = lambda **_kwargs: (mock_rows, mock_cols, -1, False)  # type: ignore[assignment]
+        block.execute_query = AsyncMock(return_value=(mock_rows, mock_cols, -1, False))  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
         assert outputs["results"] == mock_rows
@@ -686,7 +718,7 @@ class TestSQLQueryBlockWriteMode:
             read_only=False,
         )
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
-        block.execute_query = lambda **_kwargs: ([], [], 1, False)  # type: ignore[assignment]
+        block.execute_query = AsyncMock(return_value=([], [], 1, False))  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
         assert outputs["results"] == []
@@ -711,7 +743,7 @@ class TestSQLQueryBlockWriteMode:
         creds = _make_credentials()
         input_data = _make_input(creds, query=query, read_only=False)
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
-        block.execute_query = lambda **_kwargs: ([], [], affected, False)  # type: ignore[assignment]
+        block.execute_query = AsyncMock(return_value=([], [], affected, False))  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
         assert outputs["affected_rows"] == affected
@@ -726,7 +758,7 @@ class TestSQLQueryBlockWriteMode:
             read_only=False,
         )
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
-        block.execute_query = lambda **_kwargs: ([], [], 0, False)  # type: ignore[assignment]
+        block.execute_query = AsyncMock(return_value=([], [], 0, False))  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
 
@@ -740,7 +772,7 @@ class TestSQLQueryBlockWriteMode:
             read_only=False,
         )
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
-        block.execute_query = lambda **_kwargs: ([], [], 0, False)  # type: ignore[assignment]
+        block.execute_query = AsyncMock(return_value=([], [], 0, False))  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
 
@@ -753,6 +785,7 @@ class TestSQLQueryBlockWriteMode:
             query="INSERT INTO t VALUES (1); DROP TABLE t",
             read_only=False,
         )
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" in outputs
         assert "single statements" in str(outputs["error"]).lower()
@@ -786,7 +819,7 @@ class TestSQLQueryBlockWriteMode:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         mock_rows = [{"id": 1, "name": "Alice"}]
         mock_cols = ["id", "name"]
-        block.execute_query = lambda **_kwargs: (mock_rows, mock_cols, -1, False)  # type: ignore[assignment]
+        block.execute_query = AsyncMock(return_value=(mock_rows, mock_cols, -1, False))  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert outputs["results"] == mock_rows
         assert outputs["columns"] == mock_cols
@@ -814,7 +847,7 @@ class TestSQLQueryBlockReadOnlyMode:
             read_only=True,
         )
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
-        block.execute_query = lambda **_kwargs: ([{"col": 1}], ["col"], -1, False)  # type: ignore[assignment]
+        block.execute_query = AsyncMock(return_value=([{"col": 1}], ["col"], -1, False))  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
         assert outputs["results"] == [{"col": 1}]
@@ -828,6 +861,7 @@ class TestSQLQueryBlockReadOnlyMode:
             query="INSERT INTO t VALUES (1)",
             read_only=True,
         )
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" in outputs
         assert "SELECT" in outputs["error"]
@@ -877,7 +911,7 @@ class TestSQLQueryBlockDefaultPort:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         captured_conn_str = {}
 
-        def fake_execute(
+        async def fake_execute(
             **kwargs: Any,
         ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
             captured_conn_str["value"] = str(kwargs["connection_url"])
@@ -902,7 +936,7 @@ class TestSQLQueryBlockDefaultPort:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         captured_conn_str = {}
 
-        def fake_execute(
+        async def fake_execute(
             **kwargs: Any,
         ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
             captured_conn_str["value"] = str(kwargs["connection_url"])
@@ -927,7 +961,7 @@ class TestSQLQueryBlockDefaultPort:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         captured_conn_str = {}
 
-        def fake_execute(
+        async def fake_execute(
             **kwargs: Any,
         ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
             captured_conn_str["value"] = str(kwargs["connection_url"])
@@ -952,7 +986,7 @@ class TestSQLQueryBlockDefaultPort:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         captured_conn_str = {}
 
-        def fake_execute(
+        async def fake_execute(
             **kwargs: Any,
         ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
             captured_conn_str["value"] = str(kwargs["connection_url"])
@@ -981,7 +1015,7 @@ class TestSQLQueryBlockDNSPinning:
         block.check_host_allowed = AsyncMock(return_value=["93.184.216.34"])  # type: ignore[assignment]
         captured_conn_str = {}
 
-        def fake_execute(
+        async def fake_execute(
             **kwargs: Any,
         ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
             captured_conn_str["value"] = str(kwargs["connection_url"])
@@ -1004,7 +1038,7 @@ class TestSQLQueryBlockCredentialHostBinding:
     def _block_that_would_connect() -> SQLQueryBlock:
         block = SQLQueryBlock()
         block.check_host_allowed = AsyncMock(return_value=["203.0.113.7"])  # type: ignore[assignment]
-        block.execute_query = MagicMock(  # type: ignore[assignment]
+        block.execute_query = AsyncMock(  # type: ignore[assignment]
             return_value=([{"id": 1}], ["id"], -1, False)
         )
         return block
@@ -1144,7 +1178,7 @@ class TestTimeoutEnforcement:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         captured_kwargs: dict[str, Any] = {}
 
-        def fake_execute(
+        async def fake_execute(
             **kwargs: Any,
         ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
             captured_kwargs.update(kwargs)
@@ -1188,7 +1222,7 @@ class TestMaxRowsEnforcement:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         captured_kwargs: dict[str, Any] = {}
 
-        def fake_execute(
+        async def fake_execute(
             **kwargs: Any,
         ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
             captured_kwargs.update(kwargs)
@@ -1211,7 +1245,7 @@ class TestMaxRowsEnforcement:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         # Simulate the database returning exactly max_rows rows (truncated)
         mock_rows = [{"id": i} for i in range(max_rows)]
-        block.execute_query = lambda **_kwargs: (mock_rows, ["id"], -1, True)  # type: ignore[assignment]
+        block.execute_query = AsyncMock(return_value=(mock_rows, ["id"], -1, True))  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
         assert outputs["row_count"] == max_rows
@@ -1473,7 +1507,7 @@ class TestURLCreateSpecialCharacters:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         captured: dict[str, Any] = {}
 
-        def fake_execute(
+        async def fake_execute(
             **kwargs: Any,
         ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
             captured.update(kwargs)
@@ -1919,3 +1953,268 @@ class TestExecuteQueryIntegration:
             mock_ce.assert_called_once()
             _, kwargs = mock_ce.call_args
             assert kwargs["connect_args"]["connect_timeout"] == _CONNECT_TIMEOUT_SECONDS
+
+
+# ---------------------------------------------------------------------------
+# The query's worker process, against the test database
+# ---------------------------------------------------------------------------
+
+
+def _test_database_url() -> URL:
+    url = make_url(os.environ["DATABASE_URL"])
+    return URL.create(
+        drivername="postgresql",
+        username=url.username,
+        password=url.password,
+        host=url.host,
+        port=url.port,
+        database=url.database,
+    )
+
+
+@pytest.mark.asyncio
+class TestExecuteQueryInWorker:
+    """The query runs in a worker process with a memory limit and a deadline."""
+
+    async def test_rows_come_back(self):
+        result = await SQLQueryBlock.execute_query(
+            connection_url=_test_database_url(),
+            query=(
+                "SELECT 1 AS n, 'x' AS s, interval '90 seconds' AS d, "
+                "ARRAY[2, 1.5]::numeric[] AS a"
+            ),
+            timeout=10,
+            max_rows=10,
+        )
+        assert result == (
+            [{"n": 1, "s": "x", "d": 90.0, "a": [2, "1.5"]}],
+            ["n", "s", "d", "a"],
+            -1,
+            False,
+        )
+
+    async def test_driver_error_keeps_its_class_and_text(self):
+        with pytest.raises(DataError, match="division by zero"):
+            await _execute_query_in_worker(
+                _test_database_url(), "SELECT 1/0", timeout=10, max_rows=1
+            )
+
+    async def test_long_driver_error_cut_in_the_worker(self, monkeypatch):
+        monkeypatch.setattr(sql_query_helpers, "_MAX_RESULT_BYTES", 2**20)
+        with pytest.raises(DataError) as caught:
+            await _execute_query_in_worker(
+                _test_database_url(),
+                f"SELECT repeat('x', {4 * 2**20})::int",
+                timeout=10,
+                max_rows=1,
+            )
+        assert len(str(caught.value)) <= _MAX_ERROR_LENGTH + len(" ... [truncated]")
+        assert str(caught.value).endswith("... [truncated]")
+
+    async def test_result_over_the_memory_limit_fails_in_the_worker(self, monkeypatch):
+        monkeypatch.setattr(sql_query_helpers, "_WORKER_MEMORY_LIMIT", 32 * 2**20)
+        monkeypatch.setattr(sql_query_helpers, "_MAX_RESULT_BYTES", 2**30)
+        with pytest.raises(OperationalError, match="memory"):
+            await _execute_query_in_worker(
+                _test_database_url(),
+                f"SELECT repeat('x', {128 * 2**20})",
+                timeout=30,
+                max_rows=1,
+            )
+
+    async def test_result_over_the_size_limit_refused(self, monkeypatch):
+        monkeypatch.setattr(sql_query_helpers, "_MAX_RESULT_BYTES", 2**20)
+        with pytest.raises(QueryWorkerError, match="too large"):
+            await _execute_query_in_worker(
+                _test_database_url(),
+                f"SELECT repeat('x', {2 * 2**20})",
+                timeout=10,
+                max_rows=1,
+            )
+
+    async def test_unanswering_server_stopped_at_the_deadline(self, monkeypatch):
+        # The worker's own connect timeout stays 10 s; the deadline here is 2 s.
+        monkeypatch.setattr(sql_query_helpers, "_CONNECT_TIMEOUT_SECONDS", 0)
+        monkeypatch.setattr(sql_query_helpers, "_WORKER_DEADLINE_SLACK_SECONDS", 1)
+        with socket.create_server(("127.0.0.1", 0)) as server:
+            with pytest.raises(TimeoutError):
+                await _execute_query_in_worker(
+                    _unanswering_url(server), "SELECT 1", timeout=1, max_rows=1
+                )
+
+    async def test_cancelled_query_kills_its_worker(self, monkeypatch):
+        workers = _record_workers(monkeypatch)
+        with socket.create_server(("127.0.0.1", 0)) as server:
+            query = asyncio.create_task(
+                _execute_query_in_worker(
+                    _unanswering_url(server), "SELECT 1", timeout=60, max_rows=1
+                )
+            )
+            async with asyncio.timeout(10):
+                while not workers:
+                    await asyncio.sleep(0.05)
+            query.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await query
+        assert workers[0].returncode is not None
+
+    async def test_one_loop_runs_at_most_its_share_of_workers(self, monkeypatch):
+        monkeypatch.setattr(sql_query_helpers, "_WORKERS_PER_LOOP", 1)
+        monkeypatch.setattr(sql_query_helpers, "_worker_slots", WeakKeyDictionary())
+        monkeypatch.setattr(sql_query_helpers, "_CONNECT_TIMEOUT_SECONDS", 0)
+        monkeypatch.setattr(sql_query_helpers, "_WORKER_DEADLINE_SLACK_SECONDS", 1)
+        workers = _record_workers(monkeypatch)
+        alive_at_start: list[int] = []
+        original_exchange = sql_query_helpers._exchange
+
+        async def exchange(worker: Any, request: bytes) -> bytes:
+            alive_at_start.append(sum(w.returncode is None for w in workers))
+            return await original_exchange(worker, request)
+
+        monkeypatch.setattr(sql_query_helpers, "_exchange", exchange)
+        with socket.create_server(("127.0.0.1", 0)) as server:
+            outcomes = await asyncio.gather(
+                *(
+                    _execute_query_in_worker(
+                        _unanswering_url(server), "SELECT 1", timeout=1, max_rows=1
+                    )
+                    for _ in range(2)
+                ),
+                return_exceptions=True,
+            )
+        assert all(isinstance(o, TimeoutError) for o in outcomes)
+        assert alive_at_start == [1, 1]
+
+
+def _unanswering_url(server: socket.socket) -> URL:
+    return URL.create(
+        "postgresql",
+        username="u",
+        password="p",
+        host="127.0.0.1",
+        port=server.getsockname()[1],
+        database="d",
+    )
+
+
+def _record_workers(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+    workers: list[Any] = []
+    spawn = asyncio.create_subprocess_exec
+
+    async def recording_spawn(*args: Any, **kwargs: Any) -> Any:
+        worker = await spawn(*args, **kwargs)
+        workers.append(worker)
+        return worker
+
+    monkeypatch.setattr(
+        sql_query_helpers.asyncio, "create_subprocess_exec", recording_spawn
+    )
+    return workers
+
+
+class TestWorkerAnswer:
+    """The worker's side of the exchange, run in this process, read back by the
+    caller's side. Reaches the branches a PostgreSQL test database can't."""
+
+    @pytest.mark.parametrize(
+        "outcome, expected",
+        [
+            (
+                (
+                    [
+                        {
+                            "d": timedelta(seconds=90),
+                            "a": [Decimal("2"), date(2024, 6, 15)],
+                        }
+                    ],
+                    ["d", "a"],
+                    -1,
+                    False,
+                ),
+                ([{"d": 90.0, "a": [2, "2024-06-15"]}], ["d", "a"], -1, False),
+            ),
+            (([{"s": "x" * 2_000}], ["s"], -1, False), "too large"),
+            (MemoryError(), "too large"),
+        ],
+        ids=["converted_values", "answer_over_limit", "out_of_memory"],
+    )
+    def test_answer(self, monkeypatch, outcome: Any, expected: Any):
+        raw = _serve(monkeypatch, outcome)
+        if isinstance(expected, str):
+            with pytest.raises(QueryWorkerError, match=expected):
+                _read_worker_answer(raw)
+        else:
+            assert _read_worker_answer(raw) == expected
+
+    @pytest.mark.parametrize(
+        "error, raised, text",
+        [
+            (
+                OperationalError("SELECT 1", None, Exception("server closed")),
+                OperationalError,
+                "server closed",
+            ),
+            (
+                ModuleNotFoundError("No module named 'pymssql'"),
+                ModuleNotFoundError,
+                "pymssql",
+            ),
+            (ValueError("bad value"), RuntimeError, "ValueError: bad value"),
+        ],
+        ids=["driver_error", "missing_driver", "other_error"],
+    )
+    def test_error_raised_by_the_caller(
+        self, monkeypatch, error: Exception, raised: type[Exception], text: str
+    ):
+        raw = _serve(monkeypatch, error)
+        with pytest.raises(raised) as caught:
+            _read_worker_answer(raw)
+        assert text in str(caught.value)
+        if raised is OperationalError:
+            assert str(caught.value) == str(error)
+
+    def test_query_checked_before_it_runs(self, monkeypatch):
+        raw = _serve(monkeypatch, AssertionError("ran"), query="SELECT 1; SELECT 2")
+        with pytest.raises(QueryWorkerError, match="Only single statements"):
+            _read_worker_answer(raw)
+
+    def test_long_error_cut_before_it_is_sent(self, monkeypatch):
+        error = OperationalError("SELECT 1", None, Exception("x " * 1_000_000))
+        raw = _serve(monkeypatch, error, limit=10_000)
+        assert len(raw) < 5_000
+        with pytest.raises(OperationalError, match=r"\.\.\. \[truncated\]$"):
+            _read_worker_answer(raw)
+
+
+def _serve(
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: Any,
+    query: str = "SELECT 1",
+    limit: int = 1_000,
+) -> bytes:
+    """Run the worker's entry point here, with ``_execute_query`` giving ``outcome``."""
+
+    def execute_query(**_kwargs: Any) -> Any:
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    request = {
+        "url": {"drivername": "postgresql", "host": "db.example.com"},
+        "query": query,
+        "timeout": 1,
+        "max_rows": 1,
+        "read_only": True,
+        "database_type": "postgres",
+        "memory_limit": 2**20,
+        "max_result_bytes": limit,
+    }
+    stdout = io.StringIO()
+    monkeypatch.setattr(sql_query_helpers, "_limit_memory", lambda _limit: None)
+    monkeypatch.setattr(sql_query_helpers, "_execute_query", execute_query)
+    monkeypatch.setattr(
+        sys, "stdin", io.TextIOWrapper(io.BytesIO(json.dumps(request).encode()))
+    )
+    monkeypatch.setattr(sys, "stdout", stdout)
+    sql_query_helpers._serve_query()
+    return stdout.getvalue().encode()

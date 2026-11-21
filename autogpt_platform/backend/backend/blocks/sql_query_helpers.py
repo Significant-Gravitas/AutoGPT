@@ -1,13 +1,27 @@
+import asyncio
+import functools
+import json
+import logging
+import os
 import re
-from datetime import date, datetime, time
+import sys
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import Any
+from weakref import WeakKeyDictionary
 
+import sqlalchemy.exc
 import sqlparse
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine.url import URL
+from sqlalchemy.engine.url import URL, make_url
+from sqlalchemy.exc import DBAPIError
 from sqlparse.exceptions import SQLParseError
+
+if sys.platform != "win32":
+    import resource
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseType(str, Enum):
@@ -72,6 +86,15 @@ _MAX_ERROR_LENGTH = 4_000
 # are returned as strings.
 _JSON_INT_MIN = -(2**63)
 _JSON_INT_MAX = 2**64 - 1
+
+# A query runs in a worker process (see _execute_query_in_worker): the memory
+# it may allocate past its start, the longest answer it may send back, and how
+# long past its connect and statement timeouts it is given before it is killed.
+_WORKER_MEMORY_LIMIT = 512 * 2**20
+_MAX_RESULT_BYTES = 16 * 2**20
+_WORKER_DEADLINE_SLACK_SECONDS = 30
+# Workers one event loop runs at once: as many as asyncio.to_thread ran before.
+_WORKERS_PER_LOOP = min(32, (os.cpu_count() or 1) + 4)
 
 # Default ports for each database type.
 # The scheme of a database login's scope (see backend/data/credential_scope.py).
@@ -243,6 +266,17 @@ def _has_disallowed_into(stmt: sqlparse.sql.Statement) -> bool:
     return False
 
 
+def _validate_query(query: str, read_only: bool) -> str | None:
+    """Why the query is refused: not one statement, or not read-only when asked."""
+    stmt_error, parsed_stmt = _validate_single_statement(query)
+    if stmt_error:
+        return stmt_error
+    assert parsed_stmt is not None
+    if read_only:
+        return _validate_query_is_read_only(parsed_stmt)
+    return None
+
+
 def _validate_query_is_read_only(stmt: sqlparse.sql.Statement) -> str | None:
     """Validate that a parsed SQL statement is read-only (SELECT/WITH only).
 
@@ -280,8 +314,8 @@ def _validate_single_statement(
     Returns (error_message, parsed_statement). If error_message is not None,
     the query is invalid and parsed_statement will be None.
     """
-    if len(query) > _MAX_QUERY_LENGTH:
-        return f"Query is too long (max {_MAX_QUERY_LENGTH:,} characters).", None
+    if too_long := _query_too_long(query):
+        return too_long, None
 
     stripped = query.strip().rstrip(";").strip()
     if not stripped:
@@ -305,6 +339,12 @@ def _validate_single_statement(
         return "Query is empty.", None
 
     return None, statements[0]
+
+
+def _query_too_long(query: str) -> str | None:
+    if len(query) > _MAX_QUERY_LENGTH:
+        return f"Query is too long (max {_MAX_QUERY_LENGTH:,} characters)."
+    return None
 
 
 def _is_blank_statement(stmt: sqlparse.sql.Statement) -> bool:
@@ -476,3 +516,218 @@ def _execute_query(
             )
     finally:
         engine.dispose()
+
+
+class QueryWorkerError(Exception):
+    """A query's worker refused it, ran out of memory or stopped without an answer."""
+
+
+_worker_slots: WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
+    WeakKeyDictionary()
+)
+
+
+async def _execute_query_in_worker(
+    connection_url: URL | str,
+    query: str,
+    timeout: int,
+    max_rows: int,
+    read_only: bool = True,
+    database_type: DatabaseType = DatabaseType.POSTGRES,
+) -> tuple[list[dict[str, Any]], list[str], int, bool]:
+    """Check and run the query in a fresh interpreter under a memory limit.
+
+    The worker is killed when the caller is cancelled, and with a
+    ``TimeoutError`` once the connect and statement timeouts plus
+    ``_WORKER_DEADLINE_SLACK_SECONDS`` have passed. A driver error is raised
+    here as the same SQLAlchemy class and text.
+    """
+    if isinstance(connection_url, str):
+        connection_url = make_url(connection_url)
+    request = {
+        # Field by field: a rendered URL would be parsed again in the worker.
+        "url": {
+            "drivername": connection_url.drivername,
+            "username": connection_url.username,
+            "password": connection_url.password,
+            "host": connection_url.host,
+            "port": connection_url.port,
+            "database": connection_url.database,
+        },
+        "query": query,
+        "timeout": timeout,
+        "max_rows": max_rows,
+        "read_only": read_only,
+        "database_type": DatabaseType(database_type).value,
+        "memory_limit": _WORKER_MEMORY_LIMIT,
+        "max_result_bytes": _MAX_RESULT_BYTES,
+    }
+    deadline = _CONNECT_TIMEOUT_SECONDS + timeout + _WORKER_DEADLINE_SLACK_SECONDS
+    async with _loop_worker_slots():
+        worker = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-I",
+            "-c",
+            _worker_bootstrap(),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+            env={},
+        )
+        try:
+            raw = await asyncio.wait_for(
+                _exchange(worker, json.dumps(request).encode()), deadline
+            )
+        except TimeoutError as e:
+            raise TimeoutError(
+                f"The query's worker was stopped after {deadline}s"
+            ) from e
+        finally:
+            if worker.returncode is None:
+                worker.kill()
+                await worker.wait()
+    if not raw:
+        logger.warning(
+            f"SQL query worker exited with code {worker.returncode} and no answer"
+        )
+        raise QueryWorkerError(
+            "The query stopped without a result; it may have run out of memory."
+        )
+    return _read_worker_answer(raw)
+
+
+def _loop_worker_slots() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    if (slots := _worker_slots.get(loop)) is None:
+        slots = _worker_slots[loop] = asyncio.Semaphore(_WORKERS_PER_LOOP)
+    return slots
+
+
+async def _exchange(worker: asyncio.subprocess.Process, request: bytes) -> bytes:
+    """Send the request and read the answer, refusing one over the size limit."""
+    assert worker.stdin is not None and worker.stdout is not None
+    try:
+        worker.stdin.write(request)
+        await worker.stdin.drain()
+        worker.stdin.close()
+    except (BrokenPipeError, ConnectionResetError):
+        pass  # A worker that died early answers nothing, which the caller reports
+    answer = bytearray()
+    while chunk := await worker.stdout.read(2**16):
+        answer += chunk
+        if len(answer) > _MAX_RESULT_BYTES:
+            raise QueryWorkerError(_too_large(_MAX_RESULT_BYTES))
+    await worker.wait()
+    return bytes(answer)
+
+
+def _worker_bootstrap() -> str:
+    # This file alone: importing the backend.blocks package loads every block.
+    return (
+        "import importlib.util, sys; "
+        f"sys.path[:0] = {sys.path!r}; "
+        f"spec = importlib.util.spec_from_file_location('_sql_query_worker', {__file__!r}); "
+        "module = importlib.util.module_from_spec(spec); "
+        "spec.loader.exec_module(module); "
+        "module._serve_query()"
+    )
+
+
+def _read_worker_answer(
+    raw: bytes,
+) -> tuple[list[dict[str, Any]], list[str], int, bool]:
+    answer = json.loads(raw)
+    if "result" in answer:
+        rows, columns, affected, truncated = answer["result"]
+        return rows, columns, affected, truncated
+    if "refused" in answer:
+        raise QueryWorkerError(answer["refused"])
+    name, message = answer["error"]
+    if answer.get("dbapi"):
+        raise _rebuilt_error_class(name)(message)
+    if name == "ModuleNotFoundError":
+        raise ModuleNotFoundError(message)
+    raise RuntimeError(f"{name}: {message}")
+
+
+@functools.cache
+def _rebuilt_error_class(name: str) -> type[DBAPIError]:
+    """A subclass of the named SQLAlchemy error that carries the worker's text."""
+    base = getattr(sqlalchemy.exc, name, None)
+    if not (isinstance(base, type) and issubclass(base, DBAPIError)):
+        base = DBAPIError
+    return type(
+        base.__name__,
+        (base,),
+        {"__init__": _set_error_text, "__str__": _error_text},
+    )
+
+
+def _set_error_text(self: Exception, message: str) -> None:
+    Exception.__init__(self, message)
+
+
+def _error_text(self: Exception) -> str:
+    return self.args[0]
+
+
+def _serve_query() -> None:
+    """A query worker's entry point: one request on stdin, one answer on stdout."""
+    request = json.loads(sys.stdin.buffer.read())
+    _limit_memory(request["memory_limit"])
+    limit = request["max_result_bytes"]
+    try:
+        # Checked here, inside the worker's limits, rather than by the caller.
+        if refusal := _validate_query(request["query"], request["read_only"]):
+            answer = json.dumps({"refused": refusal})
+        else:
+            result = _execute_query(
+                connection_url=URL.create(**request["url"]),
+                query=request["query"],
+                timeout=request["timeout"],
+                max_rows=request["max_rows"],
+                read_only=request["read_only"],
+                database_type=DatabaseType(request["database_type"]),
+            )
+            answer = json.dumps({"result": result}, default=_json_default)
+    except MemoryError:
+        answer = json.dumps({"refused": _too_large(limit)})
+    except Exception as e:
+        # The server chooses an error's text, and so its length.
+        error = [type(e).__name__, _truncate_error(str(e))]
+        answer = json.dumps({"error": error, "dbapi": isinstance(e, DBAPIError)})
+    if len(answer) > limit:
+        answer = json.dumps({"refused": _too_large(limit)})
+    sys.stdout.write(answer)
+    sys.stdout.flush()
+
+
+def _too_large(limit: int) -> str:
+    return (
+        f"Query result is too large (max {limit // 2**20} MB); "
+        "select fewer rows or columns."
+    )
+
+
+def _json_default(value: Any) -> Any:
+    # Values JSON can't hold, e.g. inside an array: the block's own conversion,
+    # seconds for an interval (as the executor's encoder gave), else the text.
+    if isinstance(value, timedelta):
+        return value.total_seconds()
+    serialized = _serialize_value(value)
+    return str(value) if serialized is value else serialized
+
+
+def _limit_memory(limit: int) -> None:
+    # Set only where it is enforced and VmData can be read
+    if sys.platform != "linux":
+        return
+    with open("/proc/self/status") as status:
+        in_use = next(
+            int(line.split()[1]) * 1024 for line in status if line.startswith("VmData:")
+        )
+    _, hard = resource.getrlimit(resource.RLIMIT_DATA)
+    soft = in_use + limit
+    if hard != resource.RLIM_INFINITY:
+        soft = min(soft, hard)
+    resource.setrlimit(resource.RLIMIT_DATA, (soft, hard))
