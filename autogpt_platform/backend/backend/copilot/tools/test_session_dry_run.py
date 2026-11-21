@@ -13,7 +13,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.model import ChatSession
-from backend.copilot.tools.models import ErrorResponse, MCPToolOutputResponse
+from backend.copilot.tools.models import (
+    BlockDetailsResponse,
+    ErrorResponse,
+    MCPToolOutputResponse,
+)
 from backend.copilot.tools.run_agent import RunAgentInput, RunAgentTool
 from backend.copilot.tools.run_block import RunBlockTool
 from backend.copilot.tools.run_mcp_tool import RunMCPToolTool
@@ -502,3 +506,109 @@ class TestChatSessionMetadataBackwardCompat:
         restored = ChatSession.model_validate_json(json_bytes)
         assert restored.dry_run is True
         assert restored.metadata.dry_run is True
+
+
+# ---------------------------------------------------------------------------
+# Dry-run introspection: run_block details must not be swallowed by the
+# dry-run fast path (validate_only / missing required inputs).
+# ---------------------------------------------------------------------------
+
+
+class TestRunBlockToolDryRunIntrospection:
+    """In a dry-run session, introspection calls still return block details.
+
+    ``run_block._execute`` used to take the dry-run fast path before checking
+    ``validate_only`` and the missing-required-inputs condition, so in a
+    dry-run chat session a ``validate_only: true`` call — and any call with
+    missing required inputs — simulated the block instead of returning
+    ``BlockDetailsResponse``.
+    """
+
+    def _make_prep(self, provided: set[str] = frozenset()):
+        mock_block = _make_mock_block()
+        prep = MagicMock()
+        prep.block = mock_block
+        prep.input_data = {"query": "test"} if "query" in provided else {}
+        prep.matched_credentials = {}
+        prep.synthetic_node_id = "node-1"
+        prep.required_non_credential_keys = {"query"}
+        prep.provided_input_keys = provided
+        prep.input_schema = mock_block.input_schema.jsonschema.return_value
+        prep.credentials_fields = set()
+        return prep
+
+    @pytest.mark.asyncio
+    async def test_validate_only_returns_details_in_dry_run_session(self):
+        """validate_only in a dry-run session returns details, not a run."""
+        tool = RunBlockTool()
+        session = _make_session(dry_run=True)
+
+        with (
+            patch(
+                "backend.copilot.tools.run_block.prepare_block_for_execution"
+            ) as mock_prep,
+            patch("backend.copilot.tools.run_block.execute_block") as mock_exec,
+        ):
+            mock_prep.return_value = self._make_prep()
+
+            response = await tool._execute(
+                user_id="test-user",
+                session=session,
+                block_id="test-block-id",
+                input_data={},
+                validate_only=True,
+            )
+
+            assert isinstance(response, BlockDetailsResponse)
+            assert response.block.id == "test-block-id"
+            mock_exec.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_missing_required_inputs_return_details_in_dry_run_session(self):
+        """Missing required inputs in a dry-run session return details, not a run."""
+        tool = RunBlockTool()
+        session = _make_session(dry_run=True)
+
+        with (
+            patch(
+                "backend.copilot.tools.run_block.prepare_block_for_execution"
+            ) as mock_prep,
+            patch("backend.copilot.tools.run_block.execute_block") as mock_exec,
+        ):
+            mock_prep.return_value = self._make_prep(provided=set())
+
+            response = await tool._execute(
+                user_id="test-user",
+                session=session,
+                block_id="test-block-id",
+                input_data={},
+            )
+
+            assert isinstance(response, BlockDetailsResponse)
+            assert "missing required input" in response.message.lower()
+            mock_exec.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_dry_run_complete_call_still_simulates(self):
+        """A complete run call in a dry-run session still takes the fast path."""
+        tool = RunBlockTool()
+        session = _make_session(dry_run=True)
+
+        with (
+            patch(
+                "backend.copilot.tools.run_block.prepare_block_for_execution"
+            ) as mock_prep,
+            patch("backend.copilot.tools.run_block.execute_block") as mock_exec,
+        ):
+            mock_prep.return_value = self._make_prep(provided={"query"})
+
+            await tool._execute(
+                user_id="test-user",
+                session=session,
+                block_id="test-block-id",
+                input_data={"query": "test"},
+            )
+
+            mock_exec.assert_called_once()
+            call_kwargs = mock_exec.call_args
+            assert call_kwargs.kwargs.get("dry_run") is True

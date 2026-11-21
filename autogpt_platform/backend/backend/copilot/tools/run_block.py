@@ -183,9 +183,15 @@ class RunBlockTool(BaseTool):
 
         # Dry-run fast-path: skip credential/HITL checks — simulation never calls
         # the real service so credentials and review gates are not needed.
+        # Introspection calls (validate_only, or missing required inputs) must
+        # return the block's details in a dry-run session too — the details
+        # branch below reads no credentials — so only a call that would run
+        # the block for real takes the simulation path.
         # Input field validation (unrecognized fields) is already handled by
         # prepare_block_for_execution above.
-        if dry_run:
+        if dry_run and not validate_only and (
+            prep.required_non_credential_keys <= prep.provided_input_keys
+        ):
             synthetic_node_exec_id = (
                 f"{prep.synthetic_node_id}"
                 f"{COPILOT_NODE_EXEC_ID_SEPARATOR}"
