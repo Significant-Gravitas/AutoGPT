@@ -1,5 +1,5 @@
-import asyncio
 import logging
+from asyncio import sleep
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -28,6 +28,9 @@ class RSSEntry(pydantic.BaseModel):
 
 
 class ReadRSSFeedBlock(Block):
+    # Each poll downloads the whole feed again, and feeds rarely change faster.
+    MIN_POLLING_RATE_SECONDS = 60
+
     class Input(BlockSchemaInput):
         rss_url: str = SchemaField(
             description="The URL of the RSS feed to read",
@@ -39,7 +42,7 @@ class ReadRSSFeedBlock(Block):
             default=1440,
         )
         polling_rate: int = SchemaField(
-            description="The number of seconds to wait between polling attempts.",
+            description="The number of seconds to wait between polling attempts (at least 60).",
             placeholder="300",
         )
         run_continuously: bool = SchemaField(
@@ -140,12 +143,14 @@ class ReadRSSFeedBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         keep_going = True
-        start_time = datetime.now(timezone.utc) - timedelta(
-            minutes=input_data.time_period
-        )
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=input_data.time_period)
+        # Entries already output and dated at or after the cutoff, by a hash of
+        # their id, link, title and summary, so a later poll skips them.
+        output: dict[int, datetime] = {}
         while keep_going:
             keep_going = input_data.run_continuously
 
+            polled_at = datetime.now(timezone.utc)
             feed = await self.parse_feed(input_data.rss_url)
             all_entries = []
             undated_count = 0
@@ -158,22 +163,25 @@ class ReadRSSFeedBlock(Block):
                     undated_count += 1
                     continue
                 pub_date = datetime(*parsed_date[:6], tzinfo=timezone.utc)
-
-                if pub_date > start_time:
-                    rss_entry = RSSEntry(
-                        title=entry.get("title", ""),
-                        link=entry.get("link", ""),
-                        description=entry.get("summary", ""),
-                        pub_date=pub_date,
-                        author=entry.get("author", ""),
-                        categories=[
-                            tag["term"]
-                            for tag in entry.get("tags", [])
-                            if tag.get("term")
-                        ],
-                    )
-                    all_entries.append(rss_entry)
-                    yield "entry", rss_entry
+                title, link = entry.get("title", ""), entry.get("link", "")
+                description = entry.get("summary", "")
+                # The id and summary tell apart entries missing a title and a link.
+                key = hash((entry.get("id", ""), link, title, description))
+                if pub_date < cutoff or key in output:
+                    continue
+                rss_entry = RSSEntry(
+                    title=title,
+                    link=link,
+                    description=description,
+                    pub_date=pub_date,
+                    author=entry.get("author", ""),
+                    categories=[
+                        tag["term"] for tag in entry.get("tags", []) if tag.get("term")
+                    ],
+                )
+                all_entries.append(rss_entry)
+                output[key] = pub_date
+                yield "entry", rss_entry
 
             if undated_count:
                 logging.warning(
@@ -181,5 +189,9 @@ class ReadRSSFeedBlock(Block):
                 )
 
             yield "entries", all_entries
+            # Later polls skip what is older than the newest entry output; a
+            # future-dated one is remembered instead, so it holds back nothing.
+            cutoff = max((d for d in output.values() if d <= polled_at), default=cutoff)
+            output = {key: date for key, date in output.items() if date >= cutoff}
             if input_data.run_continuously:
-                await asyncio.sleep(input_data.polling_rate)
+                await sleep(max(input_data.polling_rate, self.MIN_POLLING_RATE_SECONDS))

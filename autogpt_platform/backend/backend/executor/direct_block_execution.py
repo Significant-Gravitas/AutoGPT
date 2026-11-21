@@ -13,7 +13,8 @@ in synchronous code, or ignoring cancellation) has its worker retired: a fresh
 worker takes its place in the pool and its waiting runs, and the old thread
 ends once its runs stop. While ``DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS``
 retired workers are still running, new runs are refused, since only a restart
-may free them.
+may free them. A run may return at most
+``DIRECT_BLOCK_EXECUTION_MAX_OUTPUT_SIZE`` characters of JSON.
 
 Worker threads do not use the server's Prisma client (it reports itself
 disconnected there, see ``backend.data.db``), so block code reaches the
@@ -28,8 +29,10 @@ import logging
 import threading
 from collections import defaultdict
 from collections.abc import Callable
+from contextlib import aclosing
 
 from backend.data.block import BlockOutput, CompletedBlockOutput
+from backend.util import json
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +44,7 @@ DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER = 4
 # A held run keeps its user's slot, so one user's runs fill at most
 # DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER of these.
 DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS = 8
+DIRECT_BLOCK_EXECUTION_MAX_OUTPUT_SIZE = 32 * 1024 * 1024
 
 
 class DirectBlockExecutionTimeoutError(Exception):
@@ -59,6 +63,16 @@ class DirectBlockExecutionLimitError(Exception):
         super().__init__(
             f"You already have {limit} blocks running. "
             "Wait for one to finish, then try again."
+        )
+
+
+class DirectBlockExecutionOutputTooLargeError(ValueError):
+    """The block's outputs add up to more than a direct run may return."""
+
+    def __init__(self, limit: int):
+        super().__init__(
+            f"The block's output is larger than {limit // (1024 * 1024)} MB, "
+            "the most a block run on its own can return."
         )
 
 
@@ -392,6 +406,26 @@ def _nothing() -> None:
 
 async def _collect(outputs: BlockOutput) -> CompletedBlockOutput:
     collected: CompletedBlockOutput = defaultdict(list)
-    async for name, data in outputs:
-        collected[name].append(data)
+    size = 0
+    try:
+        async with aclosing(outputs):
+            async for name, data in outputs:
+                size += _json_size(data)
+                if size > DIRECT_BLOCK_EXECUTION_MAX_OUTPUT_SIZE:
+                    raise DirectBlockExecutionOutputTooLargeError(
+                        DIRECT_BLOCK_EXECUTION_MAX_OUTPUT_SIZE
+                    )
+                collected[name].append(data)
+    except BaseException:
+        # The traceback keeps this frame, and so the outputs, alive until a full gc.
+        collected.clear()
+        raise
     return collected
+
+
+def _json_size(data: object) -> int:
+    try:
+        return len(json.dumps(data))
+    except TypeError:
+        # orjson refuses values the routes' encoder takes, such as ints past 64 bits.
+        return len(str(data))

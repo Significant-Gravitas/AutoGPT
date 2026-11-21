@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, call, patch
 
 import feedparser
@@ -54,7 +54,7 @@ async def test_run_once_does_not_sleep(monkeypatch, has_entries, polling_rate):
     )
     sleep = AsyncMock()
     monkeypatch.setattr(block, "parse_feed", parse_feed)
-    monkeypatch.setattr("backend.blocks.rss.asyncio.sleep", sleep)
+    monkeypatch.setattr("backend.blocks.rss.sleep", sleep)
 
     input_data = ReadRSSFeedBlock.Input(
         rss_url="https://example.com/rss",
@@ -86,11 +86,11 @@ async def test_continuous_mode_sleeps_between_polls(monkeypatch):
     parse_feed = AsyncMock(side_effect=[{"entries": []}, {"entries": []}])
     sleep = AsyncMock(side_effect=[None, asyncio.CancelledError])
     monkeypatch.setattr(block, "parse_feed", parse_feed)
-    monkeypatch.setattr("backend.blocks.rss.asyncio.sleep", sleep)
+    monkeypatch.setattr("backend.blocks.rss.sleep", sleep)
 
     input_data = ReadRSSFeedBlock.Input(
         rss_url="https://example.com/rss",
-        polling_rate=42,
+        polling_rate=420,
         run_continuously=True,
     )
 
@@ -103,7 +103,108 @@ async def test_continuous_mode_sleeps_between_polls(monkeypatch):
 
     assert outputs == [("entries", []), ("entries", [])]
     assert parse_feed.await_args_list == [call(input_data.rss_url)] * 2
-    assert sleep.await_args_list == [call(42)] * 2
+    assert sleep.await_args_list == [call(420)] * 2
+
+
+@pytest.mark.parametrize("polling_rate", [-1, 0, 1, 59])
+async def test_continuous_mode_waits_at_least_the_minimum(monkeypatch, polling_rate):
+    """A polling rate below the minimum waits the minimum between polls."""
+    block = ReadRSSFeedBlock()
+    sleep = AsyncMock(side_effect=asyncio.CancelledError)
+    monkeypatch.setattr(block, "parse_feed", AsyncMock(return_value={"entries": []}))
+    monkeypatch.setattr("backend.blocks.rss.sleep", sleep)
+
+    input_data = ReadRSSFeedBlock.Input(
+        rss_url="https://example.com/rss",
+        polling_rate=polling_rate,
+        run_continuously=True,
+    )
+    with pytest.raises(asyncio.CancelledError):
+        _ = [output async for output in block.run(input_data)]
+
+    sleep.assert_awaited_once_with(ReadRSSFeedBlock.MIN_POLLING_RATE_SECONDS)
+
+
+@pytest.mark.parametrize(
+    "polls, expected",
+    [
+        ([["old"], ["old"], ["new", "old"]], [["old"], [], ["new"]]),
+        ([["a"], ["b", "a"]], [["a"], ["b"]]),
+        ([["future", "a"], ["future", "a", "later"]], [["future", "a"], ["later"]]),
+    ],
+    ids=["later-entry", "same-timestamp", "future-dated"],
+)
+async def test_continuous_mode_outputs_each_entry_once(monkeypatch, polls, expected):
+    """Every entry is output once, whatever order and dates later polls bring."""
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    dates = {
+        "old": now,
+        "new": now + timedelta(minutes=1),
+        "a": now,
+        "b": now,
+        "future": now + timedelta(days=365),
+        "later": now + timedelta(hours=1),
+    }
+    block = ReadRSSFeedBlock()
+    parse_feed = AsyncMock(
+        side_effect=[
+            {"entries": [_feed_entry(title, dates[title]) for title in poll]}
+            for poll in polls
+        ]
+    )
+    sleep = AsyncMock(side_effect=[None] * (len(polls) - 1) + [asyncio.CancelledError])
+    monkeypatch.setattr(block, "parse_feed", parse_feed)
+    monkeypatch.setattr("backend.blocks.rss.sleep", sleep)
+
+    input_data = ReadRSSFeedBlock.Input(
+        rss_url="https://example.com/rss",
+        polling_rate=60,
+        run_continuously=True,
+    )
+    polled = []
+    with pytest.raises(asyncio.CancelledError):
+        async for name, value in block.run(input_data):
+            if name == "entries":
+                polled.append([e.title for e in value])
+
+    assert polled == expected
+
+
+async def test_continuous_mode_outputs_each_entry_once_with_missing_fields(
+    monkeypatch,
+):
+    """Undated entries are skipped, and ones with no title or link stay apart."""
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    undated = {"title": "undated", "link": "https://example.com/undated"}
+    a, b = _feed_entry("a", now), _feed_entry("b", now)
+    future = _feed_entry("future", now + timedelta(days=365))
+    later = _feed_entry("later", now + timedelta(hours=1))
+    one, two = (
+        {"summary": text, "published_parsed": now.timetuple()} for text in ("1", "2")
+    )
+    block = ReadRSSFeedBlock()
+    parse_feed = AsyncMock(
+        side_effect=[
+            {"entries": [undated, a, future, one]},
+            {"entries": [undated, b, a, future, one, two, later]},
+        ]
+    )
+    sleep = AsyncMock(side_effect=[None, asyncio.CancelledError])
+    monkeypatch.setattr(block, "parse_feed", parse_feed)
+    monkeypatch.setattr("backend.blocks.rss.sleep", sleep)
+
+    input_data = ReadRSSFeedBlock.Input(
+        rss_url="https://example.com/rss",
+        polling_rate=60,
+        run_continuously=True,
+    )
+    polled = []
+    with pytest.raises(asyncio.CancelledError):
+        async for name, value in block.run(input_data):
+            if name == "entries":
+                polled.append([e.title or e.description for e in value])
+
+    assert polled == [["a", "future", "1"], ["b", "2", "later"]]
 
 
 async def test_entries_missing_fields_do_not_abort_block():
@@ -140,6 +241,14 @@ async def test_category_without_term_is_ignored():
     outputs = await run_block(ATOM_CATEGORY_WITHOUT_TERM)
 
     assert outputs["entries"][0].categories == ["news"]
+
+
+def _feed_entry(title: str, published: datetime) -> dict:
+    return {
+        "title": title,
+        "link": f"https://example.com/{title}",
+        "published_parsed": published.timetuple(),
+    }
 
 
 async def run_block(feed_xml: str) -> dict:
