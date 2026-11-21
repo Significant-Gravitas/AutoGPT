@@ -34,6 +34,10 @@ export function useAutoRefillCard() {
   const [threshold, setThreshold] = useState("");
   const [refillAmount, setRefillAmount] = useState("");
   const initializedForOpenRef = useRef(false);
+  // `isSaving` disables the buttons only after a re-render, so both clicks of
+  // a double-click would get through, and a save below the threshold charges
+  // the card.
+  const configuringRef = useRef(false);
 
   useEffect(() => {
     if (!open) {
@@ -107,6 +111,16 @@ export function useAutoRefillCard() {
     }
   }
 
+  async function runOnce(action: () => Promise<void>) {
+    if (configuringRef.current) return;
+    configuringRef.current = true;
+    try {
+      await action();
+    } finally {
+      configuringRef.current = false;
+    }
+  }
+
   return {
     config,
     isEnabled,
@@ -119,7 +133,7 @@ export function useAutoRefillCard() {
     refillAmount,
     setRefillAmount,
     isValid,
-    save: () => void save(),
-    disable: () => void disable(),
+    save: () => void runOnce(save),
+    disable: () => void runOnce(disable),
   };
 }

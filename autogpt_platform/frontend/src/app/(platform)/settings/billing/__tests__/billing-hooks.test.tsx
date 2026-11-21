@@ -39,6 +39,16 @@ function jsonHandler(method: "get" | "post", path: string, body: JsonBodyType) {
   return http[method](`*${path}`, () => HttpResponse.json(body));
 }
 
+// Every request the handler holds waits on one promise, so releasing it
+// lets all of them finish, however many a regression sends.
+function holdRequests() {
+  let release: () => void = () => {};
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { released, release: () => release() };
+}
+
 function makeWrapper() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -126,6 +136,40 @@ describe("useBalanceCard", () => {
     // Hook treats a no-checkout_url response as an error → modal stays open.
     // `surface` feeds the backend's checkout_started event.
     expect(capturedBody).toEqual({ credit_amount: 2500, surface: "billing" });
+  });
+
+  it("a double-click on handleSubmit starts one checkout", async () => {
+    let posts = 0;
+    const held = holdRequests();
+    server.use(
+      jsonHandler("get", "/api/credits", { credits: 1000 }),
+      http.post("*/api/credits", async () => {
+        posts += 1;
+        await held.released;
+        return HttpResponse.json({ checkout_url: null });
+      }),
+    );
+
+    const { result } = renderHook(() => useBalanceCard(), {
+      wrapper: makeWrapper(),
+    });
+
+    try {
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      act(() => result.current.setAmount("20"));
+
+      act(() => {
+        result.current.handleSubmit();
+        result.current.handleSubmit();
+      });
+
+      await waitFor(() => expect(posts).toBe(1));
+    } finally {
+      act(() => held.release());
+    }
+    await waitFor(() => expect(result.current.isAdding).toBe(false));
+    expect(posts).toBe(1);
   });
 
   it("handleSubmit catches API failures and stops the spinner", async () => {
@@ -287,6 +331,47 @@ describe("useAutoRefillCard", () => {
 
     await waitFor(() => expect(result.current.isSaving).toBe(false));
     expect(capturedBody).toEqual({ amount: 0, threshold: 0 });
+  });
+
+  it("a double-click on save() sends one request, since a save can charge the card", async () => {
+    let posts = 0;
+    const held = holdRequests();
+    server.use(
+      jsonHandler("get", "/api/credits/auto-top-up", {
+        amount: 0,
+        threshold: 0,
+      }),
+      http.post("*/api/credits/auto-top-up", async () => {
+        posts += 1;
+        await held.released;
+        return HttpResponse.json({});
+      }),
+    );
+
+    const { result } = renderHook(() => useAutoRefillCard(), {
+      wrapper: makeWrapper(),
+    });
+
+    try {
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      act(() => {
+        result.current.setThreshold("5");
+        result.current.setRefillAmount("10");
+      });
+
+      act(() => {
+        result.current.save();
+        result.current.save();
+        result.current.disable();
+      });
+
+      await waitFor(() => expect(posts).toBe(1));
+    } finally {
+      act(() => held.release());
+    }
+    await waitFor(() => expect(result.current.isSaving).toBe(false));
+    expect(posts).toBe(1);
   });
 
   it("save() catches mutation failures and stops the spinner", async () => {
