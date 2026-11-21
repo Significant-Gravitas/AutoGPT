@@ -255,8 +255,8 @@ async def fix_validate_and_save(
 
 
 def _retired_models_hint(replaced: list[str]) -> str:
-    """The models the fixer put in place of retired ones Otto wrote: without
-    this, Otto reports the model it wrote, not the one the workflow uses."""
+    """A note for Otto naming each node the fixer moved off a retired model
+    and the model it uses now, so Otto reports the model the workflow uses."""
     if not replaced:
         return ""
     return (

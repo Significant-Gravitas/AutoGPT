@@ -17,7 +17,12 @@ from .helpers import (
     get_defined_property_type,
     is_uuid,
 )
-from .switched_off_models import kept_model, models_by_node, offered_fallback
+from .switched_off_models import (
+    kept_model,
+    live_default,
+    models_by_node,
+    offered_fallback,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -933,10 +938,15 @@ class AgentFixer:
 
                 if block_model_enum:
                     allowed_models = set(block_model_enum)
-                    fallback_model = model_schema.get("default", block_model_enum[0])
+                    fallback_model = live_default(
+                        model_schema.get("default", block_model_enum[0]),
+                        block_model_enum,
+                    )
                 else:
                     allowed_models = generic_allowed_models
-                    fallback_model = default_model
+                    fallback_model = live_default(
+                        default_model, sorted(generic_allowed_models)
+                    )
 
                 kept = kept_model(
                     current_model, saved_models.get(node_id), allowed_models
@@ -944,6 +954,11 @@ class AgentFixer:
                 fix: _ModelFix
                 if kept is not None:
                     new_model, fix = kept, "respelled"
+                # Switched off means the catalog's is_enabled=False only. The
+                # block details Otto reads (run_block._offered_models_only)
+                # also hide models that aren't generally available yet; the
+                # fixer keeps such a model when Otto writes it, since it's
+                # switched on. One shared predicate is a follow-up.
                 elif is_switched_off(current_model):
                     new_model = (
                         offered_fallback(current_model, allowed_models)
@@ -1798,6 +1813,7 @@ class AgentFixer:
         blocks: list[dict[str, Any]] | None = None,
         library_agents: list[dict[str, Any]] | None = None,
         saved_agent: AgentDict | None = None,
+        keep_switched_off_models: bool = False,
     ) -> AgentDict:
         """
         Apply all available fixes to the agent.
@@ -1810,14 +1826,19 @@ class AgentFixer:
             saved_agent: The stored version an edit starts from: a node
                 keeps a switched-off model it already has there. None for
                 new work, which never gets one.
+            keep_switched_off_models: Every node keeps its model, a
+                switched-off one too, for a caller that can't tell new work
+                from saved; the save that follows decides.
 
         Returns:
             The fixed agent dictionary
         """
         self.fixes_applied = []
         self.retired_models_replaced = []
-        # Read before any fix runs: *saved_agent* may be *agent* itself.
-        saved_models = models_by_node(saved_agent)
+        # Read before any fix runs, which may change *agent*'s models.
+        saved_models = models_by_node(
+            agent if keep_switched_off_models else saved_agent
+        )
 
         # Apply fixes in order
         agent = self.fix_agent_ids(agent)

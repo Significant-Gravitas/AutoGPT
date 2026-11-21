@@ -1,8 +1,11 @@
-"""Otto's agent generator must not build new work on a model the catalog has
-switched off. The LLM blocks' schema still lists those models, so saved
-workflows keep validating; the fixer used to accept any value it lists."""
+"""Otto's agent generator builds no new work on a model the catalog has
+switched off, while an edit keeps the model a node was saved on. The LLM
+blocks' schema still lists switched-off models so saved workflows keep
+validating. The tests run the generator's fix and validate path on the real
+block schemas."""
 
 import copy
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -11,11 +14,19 @@ from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import DEFAULT_LLM_MODEL, AITextGeneratorBlock
 from backend.copilot.tools._test_data import make_session
 from backend.copilot.tools.fix_agent import FixAgentGraphTool
-from backend.copilot.tools.models import AgentPreviewResponse, FixResultResponse
+from backend.copilot.tools.models import (
+    AgentPreviewResponse,
+    AgentSavedResponse,
+    FixResultResponse,
+)
+from backend.data.llm_registry import llm_models
 from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.llm_models import LLMModel
 
+from .fixer import AgentFixer
 from .pipeline import fix_validate_and_save
+
+PIPELINE = "backend.copilot.tools.agent_generator.pipeline"
 
 WORKFLOW_ID = "0f0f0f0f-0000-4000-8000-000000000000"
 INPUT_NODE = "11111111-1111-4111-8111-111111111111"
@@ -89,10 +100,12 @@ async def preview(agent_json: dict, **kwargs) -> AgentPreviewResponse:
 
 
 def model_on(result: AgentPreviewResponse, node_id: str) -> str:
+    return model_on_json(result.agent_json, node_id)
+
+
+def model_on_json(agent_json: dict, node_id: str) -> str:
     return next(
-        n["input_default"]["model"]
-        for n in result.agent_json["nodes"]
-        if n["id"] == node_id
+        n["input_default"]["model"] for n in agent_json["nodes"] if n["id"] == node_id
     )
 
 
@@ -158,6 +171,10 @@ async def test_an_edit_keeps_a_saved_switched_off_model_and_moves_new_work_off_i
 
     assert model_on(result, AI_NODE) == "gpt-5-2025-08-07"
     assert model_on(result, NEW_AI_NODE) == "gpt-6.1-sol"
+    # The note for Otto names the node that moved, not the one that kept its
+    # model.
+    assert f"node '{NEW_AI_NODE}'" in result.message
+    assert f"node '{AI_NODE}'" not in result.message
 
 
 @pytest.mark.asyncio
@@ -243,3 +260,65 @@ async def test_a_switched_off_model_without_a_replacement_the_block_offers_gets_
     result = await preview(workflow(CodeGenerationBlock, "gpt-5.1-codex"))
 
     assert model_on(result, AI_NODE) == "gpt-5.3-codex"
+
+
+@pytest.mark.asyncio
+async def test_the_save_tells_otto_which_model_replaced_the_one_it_wrote():
+    graph = MagicMock(id="graph-1", version=1)
+    graph.name = "Haiku Maker"
+    library_agent = MagicMock(id="library-1")
+    save = AsyncMock(return_value=(graph, library_agent))
+
+    with patch(f"{PIPELINE}.save_agent_to_library", save):
+        result = await fix_validate_and_save(
+            workflow(AITextGeneratorBlock, "gpt-5-2025-08-07"),
+            user_id="test-user-switched-off-model",
+            session_id=None,
+        )
+
+    assert isinstance(result, AgentSavedResponse)
+    assert "uses 'gpt-6.1-sol' instead of 'gpt-5-2025-08-07'" in result.message
+    saved_json = save.await_args.args[0]
+    assert model_on_json(saved_json, AI_NODE) == "gpt-6.1-sol"
+
+
+@pytest.mark.asyncio
+async def test_a_fallback_the_catalog_switched_off_too_is_not_written(monkeypatch):
+    """A chained retirement: the replacement was switched off later as well.
+    The catalog's fallback map leaves such an entry out today; the fixer
+    doesn't depend on that, so the node gets the block's default."""
+    monkeypatch.setitem(
+        llm_models.RETIRED_MODEL_FALLBACKS,
+        LLMModel("o3-2025-04-16"),
+        (LLMModel("gpt-5-2025-08-07"), None),
+    )
+
+    result = await preview(workflow(AITextGeneratorBlock, "o3-2025-04-16"))
+
+    assert model_on(result, AI_NODE) == DEFAULT_LLM_MODEL.value
+
+
+@pytest.mark.parametrize(
+    "enum, written",
+    [
+        (None, "gpt-6.1-terra"),
+        (["o3-mini", "gpt-5-2025-08-07", "gpt-6.1-sol"], "gpt-6.1-sol"),
+    ],
+    ids=["its-fallback", "the-first-model-still-on"],
+)
+def test_a_switched_off_block_default_is_not_written(
+    enum: list[str] | None, written: str
+):
+    """A block whose default is switched off: a node with no model gets the
+    default's fallback when the block offers it, else the first model the
+    block lists that the catalog still has switched on."""
+    block = copy.deepcopy(AITextGeneratorBlock().get_info().model_dump())
+    model_schema = block["inputSchema"]["properties"]["model"]
+    model_schema["default"] = "o3-mini"
+    if enum is not None:
+        model_schema["enum"] = enum
+    agent = {"nodes": [node(AI_NODE, block["id"], {})], "links": []}
+
+    fixed = AgentFixer().fix_ai_model_parameter(agent, [block])
+
+    assert model_on_json(fixed, AI_NODE) == written
