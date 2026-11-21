@@ -804,55 +804,83 @@ SQL
       "${email}"
 }
 
-# The appliance's first promise: an agent a user builds in it runs. The
-# executor's start in the logs isn't enough. A run has to go from the API
-# through the queue and an executor to COMPLETED. Needs the session
-# assert_email_auth_flow leaves in AUTH_COOKIE_FILE. A run starts INCOMPLETE
-# before it's queued, so only the other end states stop the poll.
+# Calls the platform API through the frontend's proxy, as the session in
+# AUTH_COOKIE_FILE. Prints the response body, even when its HTTP status fails
+# the call.
+smoke_api() {
+  local method=$1 path=$2 data=${3:-}
+  local args=(--fail-with-body --silent --show-error --max-time 30
+    --cookie "${AUTH_COOKIE_FILE}" --header "Origin: ${PUBLIC_URL}"
+    --request "${method}")
+  if [[ -n "${data}" ]]; then
+    args+=(--header 'Content-Type: application/json' --data "${data}")
+  fi
+  curl "${args[@]}" "${PUBLIC_URL}/api/proxy/api${path}"
+}
+
+# Prints the named top-level fields of a JSON body, or fails showing the body.
+json_fields() {
+  python3 -c '
+import json, sys
+body = sys.argv[1]
+try:
+    data = json.loads(body)
+    print(*(data[key] for key in sys.argv[2:]))
+except (ValueError, KeyError, TypeError):
+    sys.exit(f"unexpected response: {body[:2000]}")
+' "$@"
+}
+
+# An agent a user builds in the appliance runs: from the API, through the
+# queue and an executor, to COMPLETED with its block's output saved. Needs the
+# session assert_email_auth_flow leaves in AUTH_COOKIE_FILE. A run starts
+# INCOMPLETE before it's queued, so only the other end states stop the poll.
 assert_agent_runs() {
-  local graph graph_id graph_version run_id status deadline
+  local value='from the smoke' timeout_s=120
+  local graph body ids graph_id graph_version run_id status start
 
-  graph="$(
-    curl --fail-with-body --silent --show-error --max-time 30 \
-      --cookie "${AUTH_COOKIE_FILE}" \
-      --request POST --header 'Content-Type: application/json' \
-      --header "Origin: ${PUBLIC_URL}" \
-      --data '{"source":"upload","graph":{"name":"Single-container smoke","description":"Stores a value","is_active":true,"nodes":[{"id":"store","block_id":"1ff065e9-88e8-4358-9d82-8dc91f622ba9","input_default":{"input":"from the smoke"},"metadata":{"position":{"x":0,"y":0}},"input_links":[],"output_links":[]}],"links":[]}}' \
-      "${PUBLIC_URL}/api/proxy/api/graphs" |
-      python3 -c 'import json, sys; g = json.load(sys.stdin); print(g["id"], g["version"])'
-  )"
-  read -r graph_id graph_version <<<"${graph}"
+  graph="$(printf '{"source":"upload","graph":{"name":"Single-container smoke","description":"Stores a value","is_active":true,"nodes":[{"id":"store","block_id":"1ff065e9-88e8-4358-9d82-8dc91f622ba9","input_default":{"input":"%s"},"metadata":{"position":{"x":0,"y":0}},"input_links":[],"output_links":[]}],"links":[]}}' "${value}")"
+  if ! body="$(smoke_api POST /graphs "${graph}")"; then
+    echo "creating the smoke agent failed: ${body}" >&2
+    return 1
+  fi
+  ids="$(json_fields "${body}" id version)"
+  read -r graph_id graph_version <<<"${ids}"
 
-  run_id="$(
-    curl --fail-with-body --silent --show-error --max-time 30 \
-      --cookie "${AUTH_COOKIE_FILE}" \
-      --request POST --header 'Content-Type: application/json' \
-      --header "Origin: ${PUBLIC_URL}" \
-      --data '{"inputs":{},"credentials_inputs":{}}' \
-      "${PUBLIC_URL}/api/proxy/api/graphs/${graph_id}/execute/${graph_version}" |
-      python3 -c 'import json, sys; print(json.load(sys.stdin)["id"])'
-  )"
+  if ! body="$(smoke_api POST "/graphs/${graph_id}/execute/${graph_version}" \
+    '{"inputs":{},"credentials_inputs":{}}')"; then
+    echo "starting the smoke agent failed: ${body}" >&2
+    return 1
+  fi
+  run_id="$(json_fields "${body}" id)"
 
-  deadline=$((SECONDS + 120))
+  start=${SECONDS}
   while :; do
-    status="$(
-      curl --fail-with-body --silent --show-error --max-time 30 \
-        --cookie "${AUTH_COOKIE_FILE}" \
-        "${PUBLIC_URL}/api/proxy/api/graphs/${graph_id}/executions/${run_id}" |
-        python3 -c 'import json, sys; print(json.load(sys.stdin)["status"])'
-    )"
+    # A failed poll, such as a proxy blip, is retried until the deadline.
+    if body="$(smoke_api GET "/graphs/${graph_id}/executions/${run_id}")"; then
+      status="$(json_fields "${body}" status)"
+    else
+      status=unreachable
+    fi
     case "${status}" in
       COMPLETED)
-        echo "an agent run completed"
+        python3 -c '
+import json, sys
+nodes = json.loads(sys.argv[1]).get("node_executions", [])
+outputs = [node["output_data"].get("output") for node in nodes]
+if outputs != [[sys.argv[2]]]:
+    sys.exit(f"the agent run completed without its stored value: {outputs}")
+' "${body}" "${value}"
+        echo "an agent run completed with its output"
         return 0
         ;;
       FAILED | TERMINATED | REVIEW)
-        echo "the agent run ended ${status}" >&2
+        echo "the agent run ended ${status}: ${body}" >&2
         return 1
         ;;
     esac
-    if ((SECONDS >= deadline)); then
-      echo "the agent run was still ${status} after 120s" >&2
+    if ((SECONDS - start >= timeout_s)); then
+      echo "the agent run was still ${status} after $((SECONDS - start))s: ${body}" >&2
       return 1
     fi
     sleep 2
