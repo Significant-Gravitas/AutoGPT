@@ -170,6 +170,10 @@ export function useNewAgentLibraryView() {
     });
   }
 
+  function handleRunDeleted(deletedRunId: string) {
+    if (activeItem === deletedRunId) handleClearSelectedRun();
+  }
+
   const schedulerRetryOptions = useSchedulerRetryOptions();
   const schedulesQuery = useGetV1ListExecutionSchedulesForAGraph(
     agent?.graph_id || "",
@@ -317,6 +321,7 @@ export function useNewAgentLibraryView() {
     sidebarHasError,
     setActiveTab: handleSetActiveTab,
     handleClearSelectedRun,
+    handleRunDeleted,
     handleScheduleDeleted,
     handleCountsChange,
     handleSelectRun,
