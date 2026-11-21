@@ -853,7 +853,20 @@ class UserCredit(UserCreditBase):
             fail_insufficient_credits=fail_insufficient_credits,
         )
 
-        # Auto top-up if balance is below threshold.
+        # The debit is committed, so nothing after it may fail the call: the
+        # database manager's client retries a failed spend, debiting it again.
+        try:
+            await self._auto_top_up_after_spend(user_id, balance, metadata)
+        except Exception:
+            logger.exception(
+                f"Auto top-up check failed for user {user_id}, balance: {balance}"
+            )
+        return balance
+
+    async def _auto_top_up_after_spend(
+        self, user_id: str, balance: int, metadata: UsageTransactionMetadata
+    ) -> None:
+        """Top the user up if the spend left *balance* below their threshold."""
         auto_top_up = await get_auto_top_up(user_id)
         if (
             auto_top_up.threshold
@@ -873,8 +886,6 @@ class UserCredit(UserCreditBase):
                 logger.error(
                     f"Auto top-up failed for user {user_id}, balance: {balance}, amount: {auto_top_up.amount}, error: {e}"
                 )
-
-        return balance
 
     async def top_up_credits(
         self,
