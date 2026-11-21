@@ -8,14 +8,19 @@ from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+import pytest_mock
 from fastapi import Request
 from fastapi.routing import APIRoute
+from starlette.formparsers import FormParser
 from starlette.routing import Mount
 
 from backend.api import rest_api
 from backend.api.external.v2 import global_rate_limit
 from backend.api.features.integrations.router import WEBHOOK_PAYLOAD_LIMIT
+from backend.api.features.oauth import TOKEN_REQUEST_BODY_LIMIT
 from backend.api.middleware.body_limit import (
+    MULTIPART_REQUIRED,
+    NOT_MULTIPART,
     MiB,
     route_body_limit,
     settings,
@@ -24,6 +29,7 @@ from backend.api.middleware.body_limit import (
 
 MULTIPART = "multipart/form-data; boundary=x"
 JSON = "application/json"
+URLENCODED = "application/x-www-form-urlencoded"
 CHUNKED = {"transfer-encoding": "chunked"}
 VALID_TOKEN = {"authorization": "Bearer good"}
 
@@ -104,14 +110,55 @@ async def test_a_file_of_exactly_the_largest_allowed_size_fits_with_its_framing(
     assert sent.received == sum(map(len, body))
 
 
-async def test_an_upload_route_holds_any_other_body_to_the_default_limit():
+@pytest.mark.parametrize("framing", [{}, CHUNKED], ids=["declared", "chunked"])
+async def test_an_upload_route_refuses_a_body_that_is_not_multipart_unparsed(
+    framing: dict[str, str], mocker: pytest_mock.MockFixture
+):
+    parsed_field = mocker.spy(FormParser, "on_field_end")
+    fields = b"a&" * 1024
+    with _signed_in():
+        sent = await _post(
+            "/api/files/upload",
+            [fields, fields],
+            {"content-type": URLENCODED, **framing, **VALID_TOKEN},
+        )
+
+    assert sent.status == 415
+    assert json.loads(sent.content) == {"detail": MULTIPART_REQUIRED}
+    assert parsed_field.call_count == 0
+    # Refused on its declared length, or else on the first chunk read.
+    assert sent.received == (len(fields) if framing else 0)
+
+
+async def test_a_mounted_upload_route_refuses_a_body_that_is_not_multipart_unread(
+    mocker: pytest_mock.MockFixture,
+):
+    parsed_field = mocker.spy(FormParser, "on_field_end")
     sent = await _post(
-        "/api/files/upload",
-        [b"a=" + b"A" * (_default_limit() + MiB)],
-        {"content-type": "application/x-www-form-urlencoded"},
+        "/api/v2/files/upload", [b"a&" * 1024], {"content-type": URLENCODED}
+    )
+
+    assert sent.status == 415
+    assert json.loads(sent.content)["error"]["code"] == "unsupported_media_type"
+    assert sent.received == 0
+    assert parsed_field.call_count == 0
+
+
+async def test_the_token_endpoint_refuses_a_form_larger_than_a_token_request_unparsed(
+    mocker: pytest_mock.MockFixture,
+):
+    parsed_field = mocker.spy(FormParser, "on_field_end")
+    route = _routes()["/api/oauth/token"]
+    assert route_body_limit(_matched(route, URLENCODED)) == TOKEN_REQUEST_BODY_LIMIT
+
+    sent = await _post(
+        "/api/oauth/token",
+        [b"a&" * (TOKEN_REQUEST_BODY_LIMIT // 2 + 1)],
+        {"content-type": URLENCODED, **CHUNKED},
     )
 
     assert sent.status == 413
+    assert parsed_field.call_count == 0
 
 
 async def test_a_mounted_app_that_bounds_its_own_bodies_answers_in_its_own_shape():
@@ -147,7 +194,8 @@ def test_every_upload_route_gets_room_for_its_file(path: str):
     route = _routes()[path]
 
     assert route_body_limit(_matched(route, MULTIPART)) == upload_body_limit()
-    assert route_body_limit(_matched(route, JSON)) == _default_limit()
+    assert route_body_limit(_matched(route, JSON)) == NOT_MULTIPART
+    assert route_body_limit(_matched(route, URLENCODED)) == NOT_MULTIPART
 
 
 def test_webhook_ingress_takes_the_largest_provider_payload():
