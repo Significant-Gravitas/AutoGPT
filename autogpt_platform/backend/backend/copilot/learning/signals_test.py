@@ -9,6 +9,7 @@ results that merely returned without an error.
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 
@@ -50,6 +51,9 @@ def test_explicit_confirmations_count(text: str) -> None:
         "I don't think that worked.",
         "It never worked.",
         "`that worked` is the phrase we grep for",
+        "The ticket says “that worked” but I never ran it.",
+        "He wrote “that worked “really” today”.",
+        "The ticket says “that worked and was closed",
     ],
 )
 def test_negated_questioning_conditional_or_quoted_wording_never_counts(
@@ -74,6 +78,15 @@ def test_acceptance_requires_explicit_unqualified_wording(
     text: str, expected: bool
 ) -> None:
     assert ("accepted_artifact" in _kinds(text)) is expected
+
+
+@pytest.mark.parametrize("mark", ['"', "'", "`", "“", "”"])
+def test_a_message_of_quotation_marks_is_read_in_linear_time(mark: str) -> None:
+    text = mark * 64_000
+    start = time.perf_counter()
+    assert user_signals(text, "msg:1") == []
+    assert not is_learn_request(text)
+    assert time.perf_counter() - start < 10.0
 
 
 def test_learn_requests_are_explicit_and_not_questions() -> None:
