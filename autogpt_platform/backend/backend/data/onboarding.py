@@ -233,18 +233,15 @@ async def _save_wizard_progress(
     revision = data.wizardRevision
     if revision is None:
         raise ValueError("wizardRevision is required when saving wizardProgress")
-    where: UserOnboardingWhereInput = {"userId": user_id, "wizardRevision": revision}
+    saves_over: list[UserOnboardingWhereInput] = [{"wizardRevision": revision}]
     if data.wizardWriterId is not None and data.wizardWriteSeq is not None:
-        where = {
-            "userId": user_id,
-            "OR": [
-                {"wizardRevision": revision},
-                {
-                    "wizardWriterId": data.wizardWriterId,
-                    "wizardWriteSeq": {"lte": data.wizardWriteSeq},
-                },
-            ],
-        }
+        saves_over.append(
+            {
+                "wizardWriterId": data.wizardWriterId,
+                "wizardWriteSeq": {"lte": data.wizardWriteSeq},
+            }
+        )
+    where: UserOnboardingWhereInput = {"userId": user_id, "OR": saves_over}
     async with transaction() as tx:
         changed = await tx.useronboarding.update_many(
             where=where,

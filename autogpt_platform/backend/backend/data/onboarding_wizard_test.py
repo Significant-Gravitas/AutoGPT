@@ -129,7 +129,7 @@ async def test_saving_draft_scopes_user_and_never_completes_or_rewards(
     )
     assert len(calls) == 1
     draft_transaction.useronboarding.update_many.assert_awaited_once_with(
-        where={"userId": "authenticated-user", "wizardRevision": 3},
+        where={"userId": "authenticated-user", "OR": [{"wizardRevision": 3}]},
         data={
             "wizardProgress": SafeJson(payload),
             "role": "Other",
@@ -176,7 +176,7 @@ async def test_the_answered_role_is_kept_in_the_drafts_own_write(
     )
 
     draft_transaction.useronboarding.update_many.assert_awaited_once_with(
-        where={"userId": "user-one", "wizardRevision": 3},
+        where={"userId": "user-one", "OR": [{"wizardRevision": 3}]},
         data={
             "wizardProgress": SafeJson(payload),
             **role,

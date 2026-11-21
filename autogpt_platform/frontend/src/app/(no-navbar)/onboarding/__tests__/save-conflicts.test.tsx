@@ -27,8 +27,7 @@ import { makeProgress } from "./progress-fixture";
 // #17158. A save the wizard stops waiting for at 10 s can still reach the
 // server and land later. The wizard's next save carried the revision from
 // before it, and the server refused it as if another session had saved
-// (Sentry BUILDER-962). The fake server below keeps the backend's rule
-// (backend/data/onboarding.py `_save_wizard_progress`).
+// (Sentry BUILDER-962).
 
 vi.mock("@sentry/nextjs", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sentry/nextjs")>()),
@@ -76,6 +75,13 @@ let deliveries: Delivery[];
 let held: Array<() => void>;
 let landed: number;
 
+// The backend's rule (`_save_wizard_progress` in backend/data/onboarding.py),
+// as these tests in backend/data/onboarding_wizard_db_test.py pin it against
+// Postgres: test_a_tabs_next_save_is_kept_over_its_own_unanswered_one,
+// test_the_same_save_arriving_twice_is_not_refused,
+// test_an_older_save_landing_late_cannot_replace_a_newer_one,
+// test_another_tab_saving_from_the_same_revision_is_refused and
+// test_a_tabs_stale_save_is_refused_once_anything_else_saved.
 function land(save: UserOnboardingUpdate) {
   landed += 1;
   const fromSameTab =

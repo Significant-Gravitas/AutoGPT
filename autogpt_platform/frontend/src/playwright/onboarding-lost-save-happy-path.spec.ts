@@ -1,9 +1,18 @@
-import type { Route } from "@playwright/test";
+import type { Request, Route } from "@playwright/test";
 import { expect, test } from "./coverage-fixture";
 import { advanceToRoleStep } from "./utils/onboarding";
 import { signupTestUser } from "./utils/signup";
 
 const DRAFT_PATH = "/api/proxy/api/onboarding";
+
+// Other PATCHes to the same path (the wallet's, say) carry no draft.
+function isDraftSave(request: Request) {
+  return (
+    request.method() === "PATCH" &&
+    new URL(request.url()).pathname === DRAFT_PATH &&
+    Boolean(request.postDataJSON()?.wizardProgress)
+  );
+}
 
 // #17158: a wizard save can reach the server and be saved there while its
 // answer never reaches the page (a mobile connection dropping it, or the
@@ -21,35 +30,32 @@ test("onboarding keeps saving after a save that landed without an answer", async
   await page.route(
     (url) => url.pathname === DRAFT_PATH,
     async (route: Route) => {
-      const request = route.request();
-      if (request.method() !== "PATCH" || lost) return route.fallback();
-      if (!request.postDataJSON()?.wizardProgress) return route.fallback();
+      if (lost || !isDraftSave(route.request())) return route.fallback();
       lost = true;
       await route.fetch();
       await route.abort("failed");
     },
   );
-  const answered: number[] = [];
+  // The answers to the draft saves sent after the lost one, in order.
+  const answers: number[] = [];
   page.on("response", (response) => {
-    if (
-      response.request().method() === "PATCH" &&
-      new URL(response.url()).pathname === DRAFT_PATH
-    )
-      answered.push(response.status());
+    if (lost && isDraftSave(response.request()))
+      answers.push(response.status());
   });
 
   await advanceToRoleStep(page);
 
-  await expect
-    .poll(() => answered.includes(200), { timeout: 30000 })
-    .toBe(true);
-  expect(lost).toBe(true);
-  expect(answered).not.toContain(409);
+  await expect.poll(() => answers, { timeout: 30000 }).toContain(200);
+  expect(answers).not.toContain(409);
   await expect(page.getByText(/updated in another session/i)).toHaveCount(0);
 
-  // What the page saved after the lost save is the account's own copy.
-  await page.reload();
-  await expect(page.getByText("What best describes you")).toBeVisible({
-    timeout: 30000,
-  });
+  // Kept by the server, not only in this device's local copy of the draft.
+  await expect
+    .poll(async () => {
+      const saved = await page.request.get(
+        new URL(DRAFT_PATH, page.url()).href,
+      );
+      return (await saved.json()).wizardProgress?.currentStep;
+    })
+    .toBe("role");
 });
