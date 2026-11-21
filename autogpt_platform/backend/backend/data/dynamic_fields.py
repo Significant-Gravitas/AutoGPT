@@ -7,6 +7,8 @@ Dynamic fields allow graphs to connect complex data structures using special del
 - _@_ for object attributes (e.g., "obj_@_attr" → obj.attr)
 """
 
+import copy
+import json
 from typing import Any
 
 from backend.util.mock import MockObject
@@ -65,31 +67,105 @@ def get_dynamic_field_description(field_name: str) -> str:
     Returns:
         A descriptive string explaining what this dynamic field represents
     """
-    base_name = extract_base_field_name(field_name)
+    try:
+        parsed = parse_dynamic_field(field_name)
+    except ValueError:
+        parsed = None
+    if not parsed or not parsed[1]:
+        return f"Value for {field_name}"
 
-    if DICT_SPLIT in field_name:
-        # Extract the key part after _#_
-        parts = field_name.split(DICT_SPLIT)
-        if len(parts) > 1:
-            key = parts[1].split("_")[0] if "_" in parts[1] else parts[1]
-            return f"Dictionary field '{key}' for base field '{base_name}' ({base_name}['{key}'])"
-    elif LIST_SPLIT in field_name:
-        # Extract the index part after _$_
-        parts = field_name.split(LIST_SPLIT)
-        if len(parts) > 1:
-            index = parts[1].split("_")[0] if "_" in parts[1] else parts[1]
-            return (
-                f"List item {index} for base field '{base_name}' ({base_name}[{index}])"
-            )
-    elif OBJC_SPLIT in field_name:
-        # Extract the attribute part after _@_
-        parts = field_name.split(OBJC_SPLIT)
-        if len(parts) > 1:
-            # Get the full attribute name (everything after _@_)
-            attr = parts[1]
-            return f"Object attribute '{attr}' for base field '{base_name}' ({base_name}.{attr})"
+    base_name, tokens = parsed
+    path = base_name
+    for delim, ident in tokens:
+        if delim == DICT_SPLIT:
+            path += f"['{ident}']"
+        elif delim == LIST_SPLIT:
+            path += f"[{ident}]"
+        else:
+            path += f".{ident}"
 
-    return f"Value for {field_name}"
+    delim, ident = tokens[-1]
+    if delim == DICT_SPLIT:
+        return f"Dictionary field '{ident}' for base field '{base_name}' ({path})"
+    if delim == LIST_SPLIT:
+        return f"List item {ident} for base field '{base_name}' ({path})"
+    return f"Object attribute '{ident}' for base field '{base_name}' ({path})"
+
+
+# Keys that make a JSON schema say something about the value it accepts.
+_SCHEMA_TYPE_KEYS = frozenset(
+    {"type", "anyOf", "oneOf", "allOf", "enum", "const", "properties", "items"}
+)
+
+
+def get_dynamic_field_schema(
+    base_field_schema: dict[str, Any], field_name: str
+) -> dict[str, Any] | None:
+    """
+    Find the JSON schema of the value a dynamic pin writes into its base field,
+    e.g. the `duration_minutes` schema for "timing_#_duration_minutes" when
+    `timing` is a union of models. A key found in several union variants with
+    different schemas gets an `anyOf` of them.
+
+    Returns None when the path is invalid or leads to a value the base schema
+    leaves unconstrained (e.g. a `dict[str, Any]` value).
+    """
+    try:
+        parsed = parse_dynamic_field(field_name)
+    except ValueError:
+        return None
+    if not parsed or not parsed[1]:
+        return None
+
+    current = [base_field_schema]
+    for delim, ident in parsed[1]:
+        current = [
+            child
+            for schema in current
+            for variant in _schema_variants(schema)
+            if (child := _child_schema(variant, delim, ident)) is not None
+        ]
+        if not current:
+            return None
+
+    unique: dict[str, dict[str, Any]] = {}
+    for schema in current:
+        if _SCHEMA_TYPE_KEYS & schema.keys():
+            unique.setdefault(json.dumps(schema, sort_keys=True, default=str), schema)
+    if not unique:
+        return None
+    leaves = [copy.deepcopy(schema) for schema in unique.values()]
+    return leaves[0] if len(leaves) == 1 else {"anyOf": leaves}
+
+
+def _schema_variants(schema: dict[str, Any]) -> list[dict[str, Any]]:
+    """The schema itself plus every `anyOf`/`oneOf`/`allOf` member, recursively."""
+    variants = [schema]
+    for key in ("anyOf", "oneOf", "allOf"):
+        for member in schema.get(key) or []:
+            if isinstance(member, dict):
+                variants.extend(_schema_variants(member))
+    return variants
+
+
+def _child_schema(
+    schema: dict[str, Any], delim: str, ident: str
+) -> dict[str, Any] | None:
+    if delim == LIST_SPLIT:
+        prefix_items = schema.get("prefixItems")
+        if isinstance(prefix_items, list) and ident.isdigit():
+            if int(ident) < len(prefix_items):
+                return prefix_items[int(ident)]
+        items = schema.get("items")
+        return items if isinstance(items, dict) else None
+
+    properties = schema.get("properties")
+    if isinstance(properties, dict) and isinstance(properties.get(ident), dict):
+        return properties[ident]
+    if delim == DICT_SPLIT:
+        additional = schema.get("additionalProperties")
+        return additional if isinstance(additional, dict) else None
+    return None
 
 
 def is_tool_pin(name: str) -> bool:
