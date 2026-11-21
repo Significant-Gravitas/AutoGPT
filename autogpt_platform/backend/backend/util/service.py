@@ -434,6 +434,9 @@ class AppService(BaseAppService, ABC):
         RequestBodyModel = create_model("RequestBodyModel", **fields)
         f = func.__get__(self) if is_bound_method else func
 
+        # The endpoints encode their own responses: FastAPI encodes a route
+        # without a response model with jsonable_encoder's defaults, which drop
+        # every dict key starting with "_sa".
         if asyncio.iscoroutinefunction(f):
 
             async def async_endpoint(body: RequestBodyModel):  # type: ignore #RequestBodyModel being variable
@@ -441,7 +444,7 @@ class AppService(BaseAppService, ABC):
                     **{name: getattr(body, name) for name in type(body).model_fields}
                 )
                 _validate_no_prisma_objects(result, f"{func.__name__} result")
-                return result
+                return responses.JSONResponse(to_dict(result))
 
             return async_endpoint
         else:
@@ -451,7 +454,7 @@ class AppService(BaseAppService, ABC):
                     **{name: getattr(body, name) for name in type(body).model_fields}
                 )
                 _validate_no_prisma_objects(result, f"{func.__name__} result")
-                return result
+                return responses.JSONResponse(to_dict(result))
 
             return sync_endpoint
 
