@@ -59,7 +59,11 @@ class UserOnboardingUpdate(pydantic.BaseModel):
     # The wizard tab sending the draft, and the draft's number in that tab. A
     # client that sends neither is checked by revision alone.
     wizardWriterId: str | None = pydantic.Field(
-        default=None, min_length=1, max_length=64, strict=True
+        default=None,
+        min_length=1,
+        max_length=64,
+        strict=True,
+        pattern=r"^[A-Za-z0-9_-]+$",
     )
     wizardWriteSeq: int | None = pydantic.Field(
         default=None, ge=1, le=2_147_483_647, strict=True

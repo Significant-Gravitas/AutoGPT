@@ -5,11 +5,15 @@ accepts payloads the real one refuses, such as a bare ``None`` for a Json column
 and can't show which saves a conditional write refuses.
 """
 
+import asyncio
 import uuid
+from datetime import timedelta
 
 import pytest
+from prisma import Prisma
 from prisma.models import User, UserOnboarding
 
+from backend.data import db
 from backend.data.onboarding import (
     UserOnboardingUpdate,
     reset_user_onboarding,
@@ -184,6 +188,97 @@ async def test_a_tabs_stale_save_is_refused_once_anything_else_saved(
         before.wizardProgress,
         DRAFT_REVISION + 2,
     )
+
+
+async def test_an_older_save_waiting_on_a_newer_ones_write_is_refused(
+    users_with_drafts,
+):
+    """The check and the write are one statement, so a save that waits on the
+    row lock a newer save holds is judged against what that save wrote, not
+    against the row it found on arrival (READ COMMITTED re-checks the
+    conditions on the committed row). The bad order is forced: the newer save
+    is written, uncommitted, by another client, and commits once the database
+    reports the older save's statement waiting on its lock."""
+    user_id, _ = users_with_drafts
+    newer_client = Prisma(auto_register=False, datasource={"url": db.DATABASE_URL})
+    await newer_client.connect()
+    older = None
+    try:
+        async with newer_client.tx(timeout=timedelta(seconds=30)) as newer:
+            await newer.useronboarding.update_many(
+                where={"userId": user_id},
+                data={
+                    "wizardProgress": SafeJson(wizard_progress(role="Sales")),
+                    "wizardRevision": {"increment": 1},
+                    "wizardWriterId": "tab-1",
+                    "wizardWriteSeq": 2,
+                },
+            )
+            older = asyncio.ensure_future(
+                save(user_id, DRAFT_REVISION, tab="tab-1", number=1, role="Founder")
+            )
+            await _or_fail(
+                _until_a_statement_waits_on_a_lock(newer),
+                "the older save never waited on the newer save's lock",
+            )
+        with pytest.raises(OnboardingWizardConflict):
+            await older
+    finally:
+        if older is not None and not older.done():
+            older.cancel()
+        await newer_client.disconnect(db.DISCONNECT_TIMEOUT)
+
+    row = await read_row(user_id)
+    assert (row.wizardProgress, row.wizardRevision) == (
+        wizard_progress(role="Sales"),
+        DRAFT_REVISION + 1,
+    )
+
+
+async def test_a_save_never_matches_or_changes_another_accounts_row(
+    users_with_drafts,
+):
+    """The page keeps its writer id when the signed-in account changes, so two
+    accounts' rows can name the same tab. A tab's save for one account must
+    neither match nor change the other's row."""
+    user_id, other_user_id = users_with_drafts
+    await save(other_user_id, DRAFT_REVISION, tab="tab-1", number=1, role="Founder")
+
+    await save(user_id, DRAFT_REVISION, tab="tab-1", number=2, role="Sales")
+
+    row = await read_row(user_id)
+    other = await read_row(other_user_id)
+    assert (row.wizardProgress, row.wizardRevision) == (
+        wizard_progress(role="Sales"),
+        DRAFT_REVISION + 1,
+    )
+    assert (other.wizardProgress, other.wizardRevision) == (
+        wizard_progress(role="Founder"),
+        DRAFT_REVISION + 1,
+    )
+
+
+async def _or_fail(waiting, reason: str) -> None:
+    try:
+        await asyncio.wait_for(waiting, timeout=15)
+    except TimeoutError:
+        pytest.fail(f"{reason} within 15 s, so no race was forced")
+
+
+async def _until_a_statement_waits_on_a_lock(tx) -> None:
+    while True:
+        # Inside a transaction, pg_stat_activity is frozen at first access
+        # until the snapshot is cleared, so clear it before every look.
+        await tx.execute_raw("SELECT pg_stat_clear_snapshot()")
+        rows = await tx.query_raw(
+            "SELECT count(*)::int AS waiting FROM pg_stat_activity "
+            "WHERE wait_event_type = 'Lock' AND pid <> pg_backend_pid() "
+            "AND datname = current_database() "
+            "AND query LIKE '%UserOnboarding%'"
+        )
+        if rows and rows[0]["waiting"] >= 1:
+            return
+        await asyncio.sleep(0.05)
 
 
 async def save(

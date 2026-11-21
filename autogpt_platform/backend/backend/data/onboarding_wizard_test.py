@@ -336,6 +336,8 @@ async def test_cookie_account_switch_cannot_save_previous_users_draft(
         {"wizardWriterId": "", "wizardWriteSeq": 1},
         {"wizardWriterId": 42, "wizardWriteSeq": 1},
         {"wizardWriterId": "a" * 65, "wizardWriteSeq": 1},
+        {"wizardWriterId": "a\x00b", "wizardWriteSeq": 1},
+        {"wizardWriterId": "tab 1", "wizardWriteSeq": 1},
         {"wizardWriterId": "tab-1", "wizardWriteSeq": 0},
         {"wizardWriterId": "tab-1", "wizardWriteSeq": "1"},
         {"wizardWriterId": "tab-1", "wizardWriteSeq": True},
