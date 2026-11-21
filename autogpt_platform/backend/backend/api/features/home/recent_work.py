@@ -212,5 +212,8 @@ def _compose_item(
         file_id=event.object_id if event.category == "FILE" else None,
         mime_type=mime_type if isinstance(mime_type, str) else None,
         session_title=session_titles.get(session_id) if session_id else None,
-        link=f"/copilot?sessionId={session_id}" if session_id else None,
+        # A chat missing from the titles was deleted; its link would open nothing.
+        link=(
+            f"/copilot?sessionId={session_id}" if session_id in session_titles else None
+        ),
     )
