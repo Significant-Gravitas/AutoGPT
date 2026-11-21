@@ -333,7 +333,7 @@ To use them in e.g. an API request, you can either access the token directly:
 response = requests.post(
     url,
     headers={
-        "Authorization": f"Bearer {credentials.api_key.get_secret_value()})",
+        "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
     },
 )
 
@@ -341,7 +341,7 @@ response = requests.post(
 response = requests.post(
     url,
     headers={
-        "Authorization": f"Bearer {credentials.access_token.get_secret_value()})",
+        "Authorization": f"Bearer {credentials.access_token.get_secret_value()}",
     },
 )
 ```
