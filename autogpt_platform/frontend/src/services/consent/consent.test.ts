@@ -14,7 +14,9 @@ import {
   NO_CONSENT,
   openConsentSettings,
   subscribeToConsent,
+  subscribeToConsentAnswerPending,
   subscribeToConsentManagerStatus,
+  subscribeToConsentPrompt,
   toConsentState,
 } from "./consent";
 import { readConsentFromCookieHeader } from "./consent-server";
@@ -300,5 +302,28 @@ describe("before uc.js replaces the Cookiebot script element", () => {
   it("isn't reported as ready, and opening the settings doesn't throw", () => {
     expect(getConsentManagerStatus()).not.toBe("ready");
     expect(() => openConsentSettings()).not.toThrow();
+  });
+});
+
+describe("after the test environment has removed window", () => {
+  // Vitest's happy-dom teardown deletes window and the window methods it put
+  // on globalThis, and a timer can still run an unsubscribe after that, as
+  // posthog-capture's flush interval did.
+  it("unsubscribes without throwing", () => {
+    const unsubscribes = [
+      subscribeToConsent(vi.fn()),
+      subscribeToConsentPrompt(vi.fn()),
+      subscribeToConsentManagerStatus(vi.fn()),
+      subscribeToConsentAnswerPending(vi.fn()),
+    ];
+    vi.stubGlobal("window", undefined);
+    vi.stubGlobal("removeEventListener", undefined);
+    try {
+      for (const unsubscribe of unsubscribes) {
+        expect(unsubscribe).not.toThrow();
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

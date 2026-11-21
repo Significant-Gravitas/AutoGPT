@@ -113,10 +113,7 @@ export function subscribeToConsent(listener: () => void): () => void {
   COOKIEBOT_CONSENT_EVENTS.forEach((event) =>
     window.addEventListener(event, listener),
   );
-  return () =>
-    COOKIEBOT_CONSENT_EVENTS.forEach((event) =>
-      window.removeEventListener(event, listener),
-    );
+  return () => removeWindowListeners(COOKIEBOT_CONSENT_EVENTS, listener);
 }
 
 /** Calls `listener` when the banner is about to ask the visitor. */
@@ -125,10 +122,18 @@ export function subscribeToConsentPrompt(listener: () => void): () => void {
   COOKIEBOT_DIALOG_EVENTS.forEach((event) =>
     window.addEventListener(event, listener),
   );
-  return () =>
-    COOKIEBOT_DIALOG_EVENTS.forEach((event) =>
-      window.removeEventListener(event, listener),
-    );
+  return () => removeWindowListeners(COOKIEBOT_DIALOG_EVENTS, listener);
+}
+
+// A test environment can tear window down, taking its listeners with it,
+// while a timer still holds an unsubscribe (posthog-capture's flush interval
+// does), so this must not reach for a window that is gone.
+function removeWindowListeners(
+  events: readonly string[],
+  listener: () => void,
+): void {
+  if (typeof window === "undefined") return;
+  events.forEach((event) => window.removeEventListener(event, listener));
 }
 
 /**
@@ -228,9 +233,7 @@ export function subscribeToConsentManagerStatus(
   script?.addEventListener("error", listener);
   const unsubscribe = subscribeToConsent(listener);
   return () => {
-    windowEvents.forEach((event) =>
-      window.removeEventListener(event, listener),
-    );
+    removeWindowListeners(windowEvents, listener);
     script?.removeEventListener("load", listener);
     script?.removeEventListener("error", listener);
     unsubscribe();
