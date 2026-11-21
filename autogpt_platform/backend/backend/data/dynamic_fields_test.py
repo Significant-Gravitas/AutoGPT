@@ -284,6 +284,26 @@ def test_dynamic_field_schema_keeps_every_all_of_constraint():
     }
 
 
+def test_dynamic_field_schema_keeps_sibling_any_of_and_one_of_apart():
+    schema = {
+        "anyOf": [{"properties": {"x": {"type": "integer", "minimum": 0}}}],
+        "oneOf": [{"properties": {"x": {"type": "integer", "maximum": 10}}}],
+    }
+    assert get_dynamic_field_schema(schema, "data_#_x") == {
+        "allOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "integer", "maximum": 10},
+        ]
+    }
+
+
+def test_dynamic_field_schema_reads_boolean_prefix_items():
+    schema = {"type": "array", "prefixItems": [True, {"type": "integer"}, False]}
+    assert get_dynamic_field_schema(schema, "items_$_0") is None
+    assert get_dynamic_field_schema(schema, "items_$_1") == {"type": "integer"}
+    assert get_dynamic_field_schema(schema, "items_$_2") is None
+
+
 @pytest.mark.parametrize(
     "schema,field_name",
     [

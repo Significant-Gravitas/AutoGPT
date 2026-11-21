@@ -143,15 +143,15 @@ def _leaf_schema(
         if isinstance(member, dict):
             if (child := _leaf_schema(member, delim, ident)) is not None:
                 parts.append(child)
-    alternatives = [
-        child
-        for key in ("anyOf", "oneOf")
-        for member in schema.get(key) or []
-        if isinstance(member, dict)
-        and (child := _leaf_schema(member, delim, ident)) is not None
-    ]
-    if alternatives:
-        parts.append(_combine("anyOf", alternatives))
+    for key in ("anyOf", "oneOf"):
+        alternatives = [
+            child
+            for member in schema.get(key) or []
+            if isinstance(member, dict)
+            and (child := _leaf_schema(member, delim, ident)) is not None
+        ]
+        if alternatives:
+            parts.append(_combine("anyOf", alternatives))
     if not parts:
         return None
     return _combine("allOf", parts)
@@ -190,7 +190,7 @@ def _child_schema(
             return None  # the executor can't merge this pin either
         prefix_items = schema.get("prefixItems")
         if isinstance(prefix_items, list) and index < len(prefix_items):
-            return prefix_items[index]
+            return _subschema(prefix_items[index])
         return _subschema(schema.get("items"))
 
     properties = schema.get("properties")
