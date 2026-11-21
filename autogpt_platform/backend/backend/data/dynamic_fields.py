@@ -104,14 +104,16 @@ def get_dynamic_field_schema(
     """
     Find the JSON schema of the value a dynamic pin writes into its base field,
     e.g. the `duration_minutes` schema for "timing_#_duration_minutes" when
-    `timing` is a union of models. A key found in several union variants with
-    different schemas gets an `anyOf` of them.
+    `timing` is a union of models. A key found in several `anyOf`/`oneOf`
+    variants with different schemas gets an `anyOf` of them; one constrained by
+    several `allOf` members gets an `allOf`.
 
     `base_field_schema` must have its `$ref`s resolved, as
     `BlockSchema.jsonschema()` does; a `$ref` leaf counts as unconstrained.
 
     Returns None when the path is invalid or leads to a value the base schema
-    leaves unconstrained (e.g. a `dict[str, Any]` value).
+    leaves unconstrained (e.g. a `dict[str, Any]` value, or a union with an
+    untyped variant).
     """
     try:
         parsed = parse_dynamic_field(field_name)
@@ -120,35 +122,62 @@ def get_dynamic_field_schema(
     if not parsed or not parsed[1]:
         return None
 
-    current = [base_field_schema]
+    current: dict[str, Any] | None = base_field_schema
     for delim, ident in parsed[1]:
-        current = [
-            child
-            for schema in current
-            for variant in _schema_variants(schema)
-            if (child := _child_schema(variant, delim, ident)) is not None
-        ]
-        if not current:
+        current = _leaf_schema(current, delim, ident)
+        if current is None:
             return None
+    if _is_unconstrained(current):
+        return None
+    return copy.deepcopy(current)
 
+
+def _leaf_schema(
+    schema: dict[str, Any], delim: str, ident: str
+) -> dict[str, Any] | None:
+    """The schema of `schema`'s child at one path step, or None if it has none."""
+    parts: list[dict[str, Any]] = []
+    if (own := _child_schema(schema, delim, ident)) is not None:
+        parts.append(own)
+    for member in schema.get("allOf") or []:
+        if isinstance(member, dict):
+            if (child := _leaf_schema(member, delim, ident)) is not None:
+                parts.append(child)
+    alternatives = [
+        child
+        for key in ("anyOf", "oneOf")
+        for member in schema.get(key) or []
+        if isinstance(member, dict)
+        and (child := _leaf_schema(member, delim, ident)) is not None
+    ]
+    if alternatives:
+        parts.append(_combine("anyOf", alternatives))
+    if not parts:
+        return None
+    return _combine("allOf", parts)
+
+
+def _combine(keyword: str, schemas: list[dict[str, Any]]) -> dict[str, Any]:
+    """
+    One schema for `schemas` joined by `anyOf` (any may match: an unconstrained
+    one makes the whole unconstrained) or `allOf` (all must match: unconstrained
+    ones add nothing).
+    """
+    if keyword == "anyOf" and any(_is_unconstrained(s) for s in schemas):
+        return {}
     unique: dict[str, dict[str, Any]] = {}
-    for schema in current:
-        if _SCHEMA_TYPE_KEYS & schema.keys():
+    for schema in schemas:
+        if not _is_unconstrained(schema):
             unique.setdefault(json.dumps(schema, sort_keys=True, default=str), schema)
     if not unique:
-        return None
-    leaves = [copy.deepcopy(schema) for schema in unique.values()]
-    return leaves[0] if len(leaves) == 1 else {"anyOf": leaves}
+        return {}
+    if len(unique) == 1:
+        return next(iter(unique.values()))
+    return {keyword: list(unique.values())}
 
 
-def _schema_variants(schema: dict[str, Any]) -> list[dict[str, Any]]:
-    """The schema itself plus every `anyOf`/`oneOf`/`allOf` member, recursively."""
-    variants = [schema]
-    for key in ("anyOf", "oneOf", "allOf"):
-        for member in schema.get(key) or []:
-            if isinstance(member, dict):
-                variants.extend(_schema_variants(member))
-    return variants
+def _is_unconstrained(schema: dict[str, Any]) -> bool:
+    return not (_SCHEMA_TYPE_KEYS & schema.keys())
 
 
 def _child_schema(
@@ -162,16 +191,21 @@ def _child_schema(
         prefix_items = schema.get("prefixItems")
         if isinstance(prefix_items, list) and index < len(prefix_items):
             return prefix_items[index]
-        items = schema.get("items")
-        return items if isinstance(items, dict) else None
+        return _subschema(schema.get("items"))
 
     properties = schema.get("properties")
     if isinstance(properties, dict) and isinstance(properties.get(ident), dict):
         return properties[ident]
     if delim == DICT_SPLIT:
-        additional = schema.get("additionalProperties")
-        return additional if isinstance(additional, dict) else None
+        return _subschema(schema.get("additionalProperties"))
     return None
+
+
+def _subschema(value: Any) -> dict[str, Any] | None:
+    """`items`/`additionalProperties` as a schema: `true` accepts anything."""
+    if value is True:
+        return {}
+    return value if isinstance(value, dict) else None
 
 
 def is_tool_pin(name: str) -> bool:

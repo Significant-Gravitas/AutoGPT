@@ -269,9 +269,34 @@ def test_dynamic_field_schema_follows_lists_and_typed_dicts():
     assert get_dynamic_field_schema(schema, "scores_$_0_#_math") == {"type": "number"}
 
 
+def test_dynamic_field_schema_keeps_every_all_of_constraint():
+    schema = {
+        "allOf": [
+            {"properties": {"x": {"type": "integer", "minimum": 0}}},
+            {"properties": {"x": {"type": "integer", "maximum": 10}}},
+        ]
+    }
+    assert get_dynamic_field_schema(schema, "data_#_x") == {
+        "allOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "integer", "maximum": 10},
+        ]
+    }
+
+
 @pytest.mark.parametrize(
     "schema,field_name",
     [
+        # a union with an untyped variant accepts any value
+        (
+            {
+                "anyOf": [
+                    {"type": "object", "additionalProperties": {"type": "integer"}},
+                    {"type": "object", "additionalProperties": {}},
+                ]
+            },
+            "values_#_name",
+        ),
         # dict[str, Any]: the value is unconstrained
         ({"type": "object", "additionalProperties": True}, "values_#_name"),
         ({"type": "object", "additionalProperties": {}}, "values_#_name"),
