@@ -205,7 +205,9 @@ class AuthorizeRequest(BaseModel):
 
     client_id: str = Field(description="Client identifier")
     redirect_uri: str = Field(description="Redirect URI")
-    scopes: list[str] = Field(description="List of scopes")
+    scopes: list[str] = Field(
+        max_length=len(APIKeyPermission), description="List of scopes"
+    )
     state: str = Field(
         description="Anti-CSRF token from client", max_length=MAX_STATE_LENGTH
     )

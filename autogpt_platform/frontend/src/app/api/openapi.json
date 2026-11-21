@@ -21962,6 +21962,7 @@
           "scopes": {
             "items": { "type": "string" },
             "type": "array",
+            "maxItems": 26,
             "title": "Scopes",
             "description": "List of scopes"
           },
@@ -24446,18 +24447,25 @@
       },
       "CreateAPIKeyRequest": {
         "properties": {
-          "name": { "type": "string", "title": "Name" },
+          "name": { "type": "string", "maxLength": 100, "title": "Name" },
           "permissions": {
             "items": { "$ref": "#/components/schemas/APIKeyPermission" },
             "type": "array",
+            "maxItems": 26,
             "title": "Permissions"
           },
           "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
             "title": "Description"
           },
           "team_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
             "title": "Team Id"
           }
         },
@@ -40704,6 +40712,7 @@
           "permissions": {
             "items": { "$ref": "#/components/schemas/APIKeyPermission" },
             "type": "array",
+            "maxItems": 26,
             "title": "Permissions"
           }
         },
