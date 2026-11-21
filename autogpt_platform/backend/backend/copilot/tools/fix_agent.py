@@ -9,6 +9,7 @@ from prisma.enums import APIKeyPermission
 
 from backend.copilot.model import ChatSession
 
+from .agent_generator.pipeline import agent_json_too_large
 from .agent_generator.validation import AgentFixer, AgentValidator, get_blocks_as_dicts
 from .agent_json_input import (
     AGENT_JSON_REF_SCHEMA,
@@ -119,6 +120,9 @@ class FixAgentGraphTool(BaseTool):
                 error="empty_agent",
                 session_id=session_id,
             )
+
+        if (too_large := agent_json_too_large(agent_json, session_id)) is not None:
+            return too_large
 
         try:
             blocks = get_blocks_as_dicts()
