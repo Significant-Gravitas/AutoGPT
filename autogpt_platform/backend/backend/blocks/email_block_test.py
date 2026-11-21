@@ -27,6 +27,7 @@ from cryptography.x509.oid import NameOID
 from pydantic import SecretStr
 
 from backend.blocks.email_block import (
+    MAX_EMAIL_HEADER_LENGTH,
     SendEmailBlock,
     SMTPConfig,
     UserPasswordCredentials,
@@ -704,3 +705,47 @@ async def test_stopping_the_run_ends_the_conversation():
 
         assert await asyncio.to_thread(client_left.wait, 10)
         assert await asyncio.to_thread(send_ended.wait, 10)
+
+
+@pytest.mark.parametrize("field", ["to_email", "subject"])
+def test_a_header_input_over_its_limit_is_refused_before_the_run(field: str):
+    # The mail library's work on a header grows faster than its length.
+    block = SendEmailBlock()
+    data = {**block.test_input, field: "a\n" * (MAX_EMAIL_HEADER_LENGTH // 2)}
+    assert block.input_schema.validate_data(data) is None
+
+    data[field] += "a"
+
+    assert block.input_schema.validate_data(data) == (
+        f"{field}: must have at most {MAX_EMAIL_HEADER_LENGTH} characters"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_username_too_long_for_the_sender_header_is_refused_unsent():
+    credentials = _make_credentials("smtp://smtp.example.com")
+    credentials.username = SecretStr("a" * (MAX_EMAIL_HEADER_LENGTH + 1))
+    smtp = MagicMock()
+
+    with (
+        patch("backend.blocks.email_block.PinnedSMTP", smtp),
+        patch(
+            "backend.blocks.email_block.resolve_and_check_blocked",
+            new=AsyncMock(return_value=["203.0.113.7"]),
+        ),
+    ):
+        outputs = [
+            out
+            async for out in SendEmailBlock().run(
+                _make_input("smtp.example.com"), credentials=credentials
+            )
+        ]
+
+    assert outputs == [
+        (
+            "error",
+            "The SMTP username is used as the sender's address, which can be at "
+            f"most {MAX_EMAIL_HEADER_LENGTH} characters long.",
+        )
+    ]
+    smtp.assert_not_called()

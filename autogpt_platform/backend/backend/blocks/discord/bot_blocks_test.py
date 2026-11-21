@@ -15,8 +15,10 @@ from backend.blocks.discord.bot_blocks import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     ReadDiscordMessagesBlock,
+    SendDiscordFileBlock,
     SendDiscordMessageBlock,
 )
+from backend.util.filename import MAX_FILENAME_LENGTH
 from backend.util.request import Requests
 
 
@@ -279,3 +281,50 @@ async def _read_message_with_attachment(
     finally:
         await runner.cleanup()
     return dict(outputs)["message_content"]
+
+
+async def _send_file(mocker, filename: str) -> tuple[dict, str, discord.File]:
+    """The block's result, the name discord.File() got and the file sent."""
+    channel = MagicMock()
+    channel.id = 987654321098765432
+    channel.send = AsyncMock(return_value=MagicMock(id=123456789012345678))
+    _patch_client(mocker, channel)
+    file_cls = mocker.patch(
+        "backend.blocks.discord.bot_blocks.discord.File", wraps=discord.File
+    )
+
+    result = await SendDiscordFileBlock().send_file(
+        token="t",
+        channel_identifier="987654321098765432",
+        server_name=None,
+        file="data:text/plain;base64,dGVzdA==",  # type: ignore[arg-type]
+        filename=filename,
+        message_content="",
+        execution_context=MagicMock(),
+    )
+
+    return (
+        result,
+        file_cls.call_args.kwargs["filename"],
+        channel.send.await_args.kwargs["file"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_file_bounds_the_name_it_gives_discord(mocker):
+    # discord.File's work on the name grows with its length.
+    result, given, sent = await _send_file(mocker, "SPOILER_" * 10_000 + "report.pdf")
+
+    assert result["status"] == "File sent successfully"
+    assert len(given) <= MAX_FILENAME_LENGTH
+    assert sent.filename.endswith(".pdf")
+    assert sent.spoiler is True
+
+
+@pytest.mark.asyncio
+async def test_send_file_keeps_an_ordinary_name_and_its_spoiler_mark(mocker):
+    result, given, sent = await _send_file(mocker, "SPOILER_report.pdf")
+
+    assert result["status"] == "File sent successfully"
+    assert given == sent.filename == "SPOILER_report.pdf"
+    assert sent.spoiler is True
