@@ -37,8 +37,12 @@ from prisma.models import IntegrationWebhook
 from backend.api.features.integrations.router import router
 from backend.api.features.library.model import node_input_mask_key
 from backend.api.middleware.body_limit import RequestBodyTooLarge
+from backend.blocks import load_all_blocks
+from backend.blocks._base import BlockWebhookConfig
 from backend.data.integrations import Webhook, WebhookWithRelations
 from backend.integrations.providers import ProviderName
+from backend.integrations.webhooks import load_webhook_managers
+from backend.sdk.registry import AutoRegistry
 from backend.util.exceptions import NotFoundError
 from backend.util.url_redaction import mask_credential
 
@@ -868,6 +872,41 @@ class TestVerificationOrder:
 
         assert resp.status_code == 200
         creds_manager.get.assert_not_called()
+
+
+def test_only_a_webhook_made_for_one_trigger_reads_its_triggers_before_the_check():
+    """A webhook registered with the provider is shared by every trigger on the
+    same credentials and events, so it must be checked against its own row."""
+    shared: dict[tuple[str, str], bool] = {}
+    for block_cls in load_all_blocks().values():
+        config = block_cls().webhook_config
+        if config is not None:
+            kind = (ProviderName(config.provider).value, config.webhook_type)
+            shared[kind] = shared.get(kind, False) or isinstance(
+                config, BlockWebhookConfig
+            )
+    managers = {
+        ProviderName(name).value: manager
+        for name, manager in {
+            **load_webhook_managers(),
+            **AutoRegistry.get_webhook_managers(),
+        }.items()
+    }
+
+    def opts_in(provider: str, webhook_type: str) -> bool:
+        webhook = Webhook.model_construct(
+            provider=ProviderName(provider), webhook_type=webhook_type
+        )
+        return managers[provider].signature_needs_triggers(webhook)
+
+    opted_in = sorted(kind for kind in shared if opts_in(*kind))
+
+    assert [kind for kind in opted_in if shared[kind]] == []
+    assert opted_in == [
+        ("allquiet", "incident"),
+        ("exa", "search_monitor"),
+        ("generic_webhook", "plain"),
+    ]
 
 
 # ---------------------------------------------------------------------------
