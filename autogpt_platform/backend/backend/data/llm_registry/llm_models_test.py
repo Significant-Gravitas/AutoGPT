@@ -218,4 +218,5 @@ def test_a_value_with_more_prefixes_than_any_spelling_names_no_model():
     named = llm_models.llm_model_named
 
     assert named("openrouter/openai/gpt-oss-120b") is LLMModel("openai/gpt-oss-120b")
+    assert named("a/openrouter/openai/gpt-oss-120b") is None
     assert named("openai/" * 10 + "gpt-5-2025-08-07") is None

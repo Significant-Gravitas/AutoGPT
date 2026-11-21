@@ -49,8 +49,7 @@ def embedding_workflow(jina_inputs: dict) -> dict:
 
 @pytest.mark.asyncio
 async def test_a_jina_embedding_node_keeps_the_model_the_generator_wrote():
-    """Jina's model is free text the LLM lists don't know; replacing it with an
-    LLM made the saved node send gpt-4o to Jina's embeddings API."""
+    """Jina's model is free text that no LLM list knows, so the fixer keeps it."""
     result = await preview(embedding_workflow({"model": "jina-embeddings-v3"}))
 
     assert model_on(result, AI_NODE) == "jina-embeddings-v3"
