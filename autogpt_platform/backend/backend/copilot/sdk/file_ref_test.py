@@ -344,38 +344,18 @@ async def test_expand_args_raises_on_file_ref_error():
 @pytest.mark.asyncio
 async def test_bare_ref_json_returns_parsed():
     """Bare ref to a .json file returns parsed dict, not a string."""
-
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return '{"key": "value"}'
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        result = await expand_file_refs_in_args(
-            {"data": "@@agptfile:workspace:///report.json"},
-            user_id="u1",
-            session=_make_session(),
-        )
+    result = await _expand(
+        {"data": "@@agptfile:workspace:///report.json"}, '{"key": "value"}'
+    )
     assert result["data"] == {"key": "value"}
 
 
 @pytest.mark.asyncio
 async def test_bare_ref_csv_returns_rows():
     """Bare ref to a .csv file returns list[list[str]]."""
-
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return "Name,Score\nAlice,90\nBob,85"
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        result = await expand_file_refs_in_args(
-            {"data": "@@agptfile:workspace:///data.csv"},
-            user_id="u1",
-            session=_make_session(),
-        )
+    result = await _expand(
+        {"data": "@@agptfile:workspace:///data.csv"}, "Name,Score\nAlice,90\nBob,85"
+    )
     assert result["data"] == [["Name", "Score"], ["Alice", "90"], ["Bob", "85"]]
 
 
@@ -407,38 +387,18 @@ async def test_bare_ref_unknown_extension_falls_back_to_string():
 @pytest.mark.asyncio
 async def test_bare_ref_invalid_json_falls_back_to_string():
     """Bare ref to .json file with invalid content falls back to string."""
-
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return "not valid json"
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        result = await expand_file_refs_in_args(
-            {"data": "@@agptfile:workspace:///bad.json"},
-            user_id="u1",
-            session=_make_session(),
-        )
+    result = await _expand(
+        {"data": "@@agptfile:workspace:///bad.json"}, "not valid json"
+    )
     assert result["data"] == "not valid json"
 
 
 @pytest.mark.asyncio
 async def test_embedded_ref_stays_string_even_for_json():
     """Embedded ref (mixed with text) always returns plain string."""
-
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return '{"key": "value"}'
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        result = await expand_file_refs_in_args(
-            {"data": "See: @@agptfile:workspace:///report.json"},
-            user_id="u1",
-            session=_make_session(),
-        )
+    result = await _expand(
+        {"data": "See: @@agptfile:workspace:///report.json"}, '{"key": "value"}'
+    )
     # Embedded ref → inline expansion → plain string with content substituted
     assert isinstance(result["data"], str)
     assert '{"key": "value"}' in result["data"]
@@ -447,20 +407,11 @@ async def test_embedded_ref_stays_string_even_for_json():
 @pytest.mark.asyncio
 async def test_bare_ref_oversized_raises_error():
     """Bare ref exceeding _MAX_BARE_REF_BYTES raises FileRefExpansionError."""
-
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return "x" * (_MAX_BARE_REF_BYTES + 1)
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        with pytest.raises(FileRefExpansionError, match="too large"):
-            await expand_file_refs_in_args(
-                {"data": "@@agptfile:workspace:///huge.json"},
-                user_id="u1",
-                session=_make_session(),
-            )
+    with pytest.raises(FileRefExpansionError, match="too large"):
+        await _expand(
+            {"data": "@@agptfile:workspace:///huge.json"},
+            "x" * (_MAX_BARE_REF_BYTES + 1),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -474,25 +425,15 @@ async def test_bare_ref_csv_returns_raw_string_when_schema_expects_string():
     structured parsing is skipped and raw file content is returned."""
     csv_content = "Name,Score\nAlice,90\nBob,85"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return csv_content
-
     schema = {
         "type": "object",
         "properties": {"data": {"type": "string"}},
         "required": ["data"],
     }
 
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        result = await expand_file_refs_in_args(
-            {"data": "@@agptfile:workspace:///data.csv"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=schema,
-        )
+    result = await _expand(
+        {"data": "@@agptfile:workspace:///data.csv"}, csv_content, schema
+    )
     # Should return the raw CSV text, NOT a parsed list[list[str]]
     assert result["data"] == csv_content
     assert isinstance(result["data"], str)
@@ -503,25 +444,15 @@ async def test_bare_ref_json_parses_when_schema_expects_object():
     """When the input schema declares the parameter as type: object,
     structured parsing is applied as usual."""
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return '{"key": "value"}'
-
     schema = {
         "type": "object",
         "properties": {"data": {"type": "object"}},
         "required": ["data"],
     }
 
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        result = await expand_file_refs_in_args(
-            {"data": "@@agptfile:workspace:///report.json"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=schema,
-        )
+    result = await _expand(
+        {"data": "@@agptfile:workspace:///report.json"}, '{"key": "value"}', schema
+    )
     assert result["data"] == {"key": "value"}
 
 
@@ -530,18 +461,7 @@ async def test_bare_ref_csv_parses_when_no_schema_provided():
     """Without input_schema, structured parsing proceeds as usual."""
     csv_content = "Name,Score\nAlice,90\nBob,85"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return csv_content
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        result = await expand_file_refs_in_args(
-            {"data": "@@agptfile:workspace:///data.csv"},
-            user_id="u1",
-            session=_make_session(),
-        )
+    result = await _expand({"data": "@@agptfile:workspace:///data.csv"}, csv_content)
     assert result["data"] == [["Name", "Score"], ["Alice", "90"], ["Bob", "85"]]
 
 
@@ -586,9 +506,6 @@ async def test_nested_schema_propagation():
     information is used for expand/skip decisions."""
     csv_content = "Name,Score\nAlice,90\nBob,85"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return csv_content
-
     schema = {
         "type": "object",
         "properties": {
@@ -602,21 +519,16 @@ async def test_nested_schema_propagation():
         },
     }
 
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        result = await expand_file_refs_in_args(
-            {
-                "input_data": {
-                    "text": "@@agptfile:workspace:///data.csv",
-                    "rows": "@@agptfile:workspace:///data.csv",
-                },
+    result = await _expand(
+        {
+            "input_data": {
+                "text": "@@agptfile:workspace:///data.csv",
+                "rows": "@@agptfile:workspace:///data.csv",
             },
-            user_id="u1",
-            session=_make_session(),
-            input_schema=schema,
-        )
+        },
+        csv_content,
+        schema,
+    )
     # string-typed field: raw CSV text
     assert result["input_data"]["text"] == csv_content
     # array-typed field: parsed rows
@@ -728,24 +640,14 @@ async def test_matrix_format_to_string_schema(fmt: str):
     every text format returns the raw file content as a plain string."""
     ext, raw_content, _ = _FORMAT_SAMPLES[fmt]
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return raw_content
-
     schema = {
         "type": "object",
         "properties": {"text": {"type": "string"}},
     }
 
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        result = await expand_file_refs_in_args(
-            {"text": f"@@agptfile:workspace:///data{ext}"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=schema,
-        )
+    result = await _expand(
+        {"text": f"@@agptfile:workspace:///data{ext}"}, raw_content, schema
+    )
     assert isinstance(
         result["text"], str
     ), f"{fmt}: expected str, got {type(result['text'])}"
@@ -759,19 +661,8 @@ async def test_matrix_format_to_nonstring_schema(fmt: str):
     a structured (parsed) value."""
     ext, raw_content, expected_parsed = _FORMAT_SAMPLES[fmt]
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return raw_content
-
     # No input_schema → structured parsing is the default
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        result = await expand_file_refs_in_args(
-            {"data": f"@@agptfile:workspace:///data{ext}"},
-            user_id="u1",
-            session=_make_session(),
-        )
+    result = await _expand({"data": f"@@agptfile:workspace:///data{ext}"}, raw_content)
     assert result["data"] == expected_parsed, f"{fmt}: parsed value mismatch"
     assert not isinstance(
         result["data"], str
@@ -812,9 +703,6 @@ async def test_matrix_mixed_fields_string_and_array():
     CSV→string returns raw text, CSV→array returns parsed rows."""
     csv_content = "A,B\n1,2\n3,4"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return csv_content
-
     schema = {
         "type": "object",
         "properties": {
@@ -823,19 +711,14 @@ async def test_matrix_mixed_fields_string_and_array():
         },
     }
 
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        result = await expand_file_refs_in_args(
-            {
-                "raw_text": "@@agptfile:workspace:///data.csv",
-                "parsed_rows": "@@agptfile:workspace:///data.csv",
-            },
-            user_id="u1",
-            session=_make_session(),
-            input_schema=schema,
-        )
+    result = await _expand(
+        {
+            "raw_text": "@@agptfile:workspace:///data.csv",
+            "parsed_rows": "@@agptfile:workspace:///data.csv",
+        },
+        csv_content,
+        schema,
+    )
     assert isinstance(result["raw_text"], str)
     assert result["raw_text"] == csv_content
     assert result["parsed_rows"] == [["A", "B"], ["1", "2"], ["3", "4"]]
@@ -846,9 +729,6 @@ async def test_matrix_second_phase_expansion_with_block_schema():
     """Simulates the two-phase expansion: first phase skips opaque input_data,
     second phase expands with the block's actual schema."""
     csv_content = "X,Y\n10,20"
-
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return csv_content
 
     # Phase 1: tool-level schema (input_data is opaque)
     tool_schema = {
@@ -881,16 +761,9 @@ async def test_matrix_second_phase_expansion_with_block_schema():
         },
     }
 
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        phase2_result = await expand_file_refs_in_args(
-            phase1_result["input_data"],
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    phase2_result = await _expand(
+        phase1_result["input_data"], csv_content, block_schema
+    )
     # Phase 2 should return raw CSV since text is string-typed
     assert isinstance(phase2_result["text"], str)
     assert phase2_result["text"] == csv_content
@@ -922,21 +795,9 @@ async def test_e2e_csv_to_string_block_no_json_dumps():
     The block receives the raw CSV text, NOT json.dumps(parsed_rows)."""
     csv_content = "Name,Score\nAlice,90\nBob,85"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return csv_content
-
-    block_schema = _StringBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"text": "@@agptfile:workspace:///data.csv"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"text": "@@agptfile:workspace:///data.csv"}, csv_content, block=_StringBlock
+    )
 
     # After expansion: should be raw CSV string
     assert isinstance(expanded["text"], str)
@@ -954,21 +815,9 @@ async def test_e2e_csv_to_list_block_parses():
     The block receives parsed rows."""
     csv_content = "A,B\n1,2"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return csv_content
-
-    block_schema = _ListBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"rows": "@@agptfile:workspace:///data.csv"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"rows": "@@agptfile:workspace:///data.csv"}, csv_content, block=_ListBlock
+    )
 
     # After expansion: should be parsed rows
     assert expanded["rows"] == [["A", "B"], ["1", "2"]]
@@ -984,21 +833,11 @@ async def test_e2e_json_to_string_block_returns_raw_json():
     not the parsed dict."""
     json_content = '{"key": "value", "num": 42}'
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return json_content
-
-    block_schema = _StringBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"text": "@@agptfile:workspace:///config.json"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"text": "@@agptfile:workspace:///config.json"},
+        json_content,
+        block=_StringBlock,
+    )
 
     assert isinstance(expanded["text"], str)
     assert expanded["text"] == json_content
@@ -1012,23 +851,13 @@ async def test_e2e_json_to_string_block_returns_raw_json():
 async def test_e2e_binary_format_to_string_block_raises_error(fmt: str, ext: str):
     """Binary formats (parquet/xlsx) passed to a string-typed block input
     should raise FileRefExpansionError, not silently pass garbled bytes."""
-
-    async def _resolve_bytes(uri, user_id, session):  # noqa: ARG001
-        return b"\x00\x01\x02binary data"
-
-    block_schema = _StringBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.read_file_bytes",
-        new=AsyncMock(side_effect=_resolve_bytes),
-    ):
-        with pytest.raises(FileRefExpansionError, match="Cannot use .* as text input"):
-            await expand_file_refs_in_args(
-                {"text": f"@@agptfile:workspace:///data{ext}"},
-                user_id="u1",
-                session=_make_session(),
-                input_schema=block_schema,
-            )
+    with pytest.raises(FileRefExpansionError, match="Cannot use .* as text input"):
+        await _expand(
+            {"text": f"@@agptfile:workspace:///data{ext}"},
+            b"\x00\x01\x02binary data",
+            block=_StringBlock,
+            reader="read_file_bytes",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1046,21 +875,9 @@ async def test_e2e_jsonl_tabular_to_list_block():
         '{"name":"cherry","color":"red"}'
     )
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return jsonl_content
-
-    block_schema = _ListBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"rows": "@@agptfile:workspace:///data.jsonl"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"rows": "@@agptfile:workspace:///data.jsonl"}, jsonl_content, block=_ListBlock
+    )
 
     # Table format: header row + data rows
     assert expanded["rows"] == [
@@ -1080,21 +897,11 @@ async def test_e2e_jsonl_tabular_to_string_block():
     """JSONL → string block: raw JSONL text, no parsing."""
     jsonl_content = '{"name":"apple"}\n{"name":"banana"}'
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return jsonl_content
-
-    block_schema = _StringBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"text": "@@agptfile:workspace:///data.jsonl"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"text": "@@agptfile:workspace:///data.jsonl"},
+        jsonl_content,
+        block=_StringBlock,
+    )
 
     assert isinstance(expanded["text"], str)
     assert expanded["text"] == jsonl_content
@@ -1137,21 +944,9 @@ async def test_e2e_jsonl_tabular_to_dict_block():
     a column-dict {"name": ["apple","banana"], "color": ["red","yellow"]}."""
     jsonl_content = '{"name":"apple","color":"red"}\n{"name":"banana","color":"yellow"}'
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return jsonl_content
-
-    block_schema = _DictBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"data": "@@agptfile:workspace:///data.jsonl"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"data": "@@agptfile:workspace:///data.jsonl"}, jsonl_content, block=_DictBlock
+    )
 
     # Schema-aware adaptation: tabular → column-dict
     assert expanded["data"] == {
@@ -1169,21 +964,9 @@ async def test_e2e_jsonl_heterogeneous_to_list_block():
     """JSONL with different keys → list block: returns list of dicts (no table)."""
     jsonl_content = '{"name":"apple"}\n{"color":"red"}\n{"size":3}'
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return jsonl_content
-
-    block_schema = _ListBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"rows": "@@agptfile:workspace:///data.jsonl"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"rows": "@@agptfile:workspace:///data.jsonl"}, jsonl_content, block=_ListBlock
+    )
 
     # Heterogeneous dicts stay as list of dicts
     assert expanded["rows"] == [
@@ -1196,12 +979,6 @@ async def test_e2e_jsonl_heterogeneous_to_list_block():
 # ---------------------------------------------------------------------------
 # E2E: Parquet × block type matrix (requires pyarrow)
 # ---------------------------------------------------------------------------
-
-_PARQUET_AVAILABLE = True
-try:
-    import pyarrow  # noqa: F401
-except ImportError:
-    _PARQUET_AVAILABLE = False
 
 
 def _make_parquet_bytes() -> bytes:
@@ -1216,52 +993,34 @@ def _make_parquet_bytes() -> bytes:
     return buf.getvalue()
 
 
-@pytest.mark.skipif(not _PARQUET_AVAILABLE, reason="pyarrow not installed")
+@pytest.mark.skipif(not _has_pyarrow, reason="pyarrow not installed")
 @pytest.mark.asyncio
 async def test_e2e_parquet_to_list_block():
     """Parquet → list block: table format (header + rows)."""
     parquet_bytes = _make_parquet_bytes()
 
-    async def _resolve_bytes(uri, user_id, session):  # noqa: ARG001
-        return parquet_bytes
-
-    block_schema = _ListBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.read_file_bytes",
-        new=AsyncMock(side_effect=_resolve_bytes),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"rows": "@@agptfile:workspace:///data.parquet"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"rows": "@@agptfile:workspace:///data.parquet"},
+        parquet_bytes,
+        block=_ListBlock,
+        reader="read_file_bytes",
+    )
 
     assert expanded["rows"] == [["Name", "Score"], ["Alice", 90], ["Bob", 85]]
 
 
-@pytest.mark.skipif(not _PARQUET_AVAILABLE, reason="pyarrow not installed")
+@pytest.mark.skipif(not _has_pyarrow, reason="pyarrow not installed")
 @pytest.mark.asyncio
 async def test_e2e_parquet_to_dict_block():
     """Parquet → dict block: table format adapted to column-dict."""
     parquet_bytes = _make_parquet_bytes()
 
-    async def _resolve_bytes(uri, user_id, session):  # noqa: ARG001
-        return parquet_bytes
-
-    block_schema = _DictBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.read_file_bytes",
-        new=AsyncMock(side_effect=_resolve_bytes),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"data": "@@agptfile:workspace:///data.parquet"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"data": "@@agptfile:workspace:///data.parquet"},
+        parquet_bytes,
+        block=_DictBlock,
+        reader="read_file_bytes",
+    )
 
     # Schema-aware adaptation: tabular → column-dict
     assert expanded["data"] == {"Name": ["Alice", "Bob"], "Score": [90, 85]}
@@ -1278,21 +1037,9 @@ async def test_e2e_yaml_dict_to_list_block():
     pydantic flattening keys/values into a flat list."""
     yaml_content = "name: Alice\nage: 30"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return yaml_content
-
-    block_schema = _ListBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"rows": "@@agptfile:workspace:///config.yaml"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"rows": "@@agptfile:workspace:///config.yaml"}, yaml_content, block=_ListBlock
+    )
 
     # Dict is wrapped in a list — not flattened by pydantic
     assert expanded["rows"] == [{"name": "Alice", "age": 30}]
@@ -1307,21 +1054,9 @@ async def test_e2e_toml_dict_to_list_block():
     """TOML dict → list block: dict is wrapped in [dict]."""
     toml_content = 'name = "test"\ncount = 42'
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return toml_content
-
-    block_schema = _ListBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"rows": "@@agptfile:workspace:///config.toml"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"rows": "@@agptfile:workspace:///config.toml"}, toml_content, block=_ListBlock
+    )
 
     assert expanded["rows"] == [{"name": "test", "count": 42}]
 
@@ -1337,21 +1072,11 @@ async def test_e2e_yaml_dict_with_list_value_to_concat_block():
     values from the dict as inner lists, not wrapping the whole dict."""
     yaml_content = "fruits:\n  - name: apple\n  - name: banana\n  - name: cherry"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return yaml_content
-
-    block_schema = _ListOfListsBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"lists": "@@agptfile:workspace:///data.yaml"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"lists": "@@agptfile:workspace:///data.yaml"},
+        yaml_content,
+        block=_ListOfListsBlock,
+    )
 
     # List values extracted from dict — fruits list becomes an inner list
     assert expanded["lists"] == [
@@ -1372,21 +1097,11 @@ async def test_e2e_toml_dict_with_list_value_to_concat_block():
         'title = "Fruits"\n[[fruits]]\nname = "apple"\n[[fruits]]\nname = "banana"\n'
     )
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return toml_content
-
-    block_schema = _ListOfListsBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"lists": "@@agptfile:workspace:///data.toml"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"lists": "@@agptfile:workspace:///data.toml"},
+        toml_content,
+        block=_ListOfListsBlock,
+    )
 
     # Only list-typed values extracted — "title" (str) is excluded
     assert expanded["lists"] == [[{"name": "apple"}, {"name": "banana"}]]
@@ -1397,21 +1112,11 @@ async def test_e2e_yaml_flat_dict_to_concat_block():
     """YAML flat dict (no list values) → List[List[Any]]: fallback to [dict]."""
     yaml_content = "name: Alice\nage: 30"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return yaml_content
-
-    block_schema = _ListOfListsBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"lists": "@@agptfile:workspace:///config.yaml"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"lists": "@@agptfile:workspace:///config.yaml"},
+        yaml_content,
+        block=_ListOfListsBlock,
+    )
 
     # No list values in dict — fallback to wrapping as [dict]
     assert expanded["lists"] == [{"name": "Alice", "age": 30}]
@@ -1427,21 +1132,9 @@ async def test_e2e_csv_to_dict_block():
     """CSV tabular → dict block: adapted to column-dict format."""
     csv_content = "Name,Score\nAlice,90\nBob,85"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return csv_content
-
-    block_schema = _DictBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"data": "@@agptfile:workspace:///data.csv"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"data": "@@agptfile:workspace:///data.csv"}, csv_content, block=_DictBlock
+    )
 
     # Schema-aware adaptation: tabular → column-dict
     assert expanded["data"] == {"Name": ["Alice", "Bob"], "Score": ["90", "85"]}
@@ -1466,21 +1159,11 @@ async def test_e2e_csv_tabular_to_any_block():
     list of dicts so FindInDictionaryBlock can do key lookup."""
     csv_content = "name,color\napple,red\nbanana,yellow"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return csv_content
-
-    block_schema = _AnyBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"input": "@@agptfile:workspace:///data.csv", "key": "name"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"input": "@@agptfile:workspace:///data.csv", "key": "name"},
+        csv_content,
+        block=_AnyBlock,
+    )
 
     # Tabular data should be converted to list of dicts for Any-typed fields
     assert expanded["input"] == [
@@ -1494,21 +1177,11 @@ async def test_e2e_jsonl_tabular_to_any_block():
     """JSONL tabular → Any-typed block: tabular converted to list of dicts."""
     jsonl_content = '{"name":"apple","color":"red"}\n{"name":"banana","color":"yellow"}'
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return jsonl_content
-
-    block_schema = _AnyBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"input": "@@agptfile:workspace:///data.jsonl", "key": "name"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"input": "@@agptfile:workspace:///data.jsonl", "key": "name"},
+        jsonl_content,
+        block=_AnyBlock,
+    )
 
     assert expanded["input"] == [
         {"name": "apple", "color": "red"},
@@ -1521,21 +1194,11 @@ async def test_e2e_tsv_tabular_to_any_block():
     """TSV tabular → Any-typed block: same as CSV, converted to list of dicts."""
     tsv_content = "name\tcolor\napple\tred\nbanana\tyellow"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return tsv_content
-
-    block_schema = _AnyBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"input": "@@agptfile:workspace:///data.tsv", "key": "name"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"input": "@@agptfile:workspace:///data.tsv", "key": "name"},
+        tsv_content,
+        block=_AnyBlock,
+    )
 
     assert expanded["input"] == [
         {"name": "apple", "color": "red"},
@@ -1543,27 +1206,18 @@ async def test_e2e_tsv_tabular_to_any_block():
     ]
 
 
-@pytest.mark.skipif(not _PARQUET_AVAILABLE, reason="pyarrow not installed")
+@pytest.mark.skipif(not _has_pyarrow, reason="pyarrow not installed")
 @pytest.mark.asyncio
 async def test_e2e_parquet_to_any_block():
     """Parquet tabular → Any-typed block: converted to list of dicts."""
     parquet_bytes = _make_parquet_bytes()
 
-    async def _resolve_bytes(uri, user_id, session):  # noqa: ARG001
-        return parquet_bytes
-
-    block_schema = _AnyBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.read_file_bytes",
-        new=AsyncMock(side_effect=_resolve_bytes),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"input": "@@agptfile:workspace:///data.parquet", "key": "Name"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"input": "@@agptfile:workspace:///data.parquet", "key": "Name"},
+        parquet_bytes,
+        block=_AnyBlock,
+        reader="read_file_bytes",
+    )
 
     assert expanded["input"] == [
         {"Name": "Alice", "Score": 90},
@@ -1577,21 +1231,11 @@ async def test_e2e_yaml_dict_to_any_block():
     needed since FindInDict handles dicts natively)."""
     yaml_content = "name: Alice\nage: 30"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return yaml_content
-
-    block_schema = _AnyBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"input": "@@agptfile:workspace:///config.yaml", "key": "name"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"input": "@@agptfile:workspace:///config.yaml", "key": "name"},
+        yaml_content,
+        block=_AnyBlock,
+    )
 
     # Dict passes through — FindInDict handles dicts natively
     assert expanded["input"] == {"name": "Alice", "age": 30}
@@ -1602,21 +1246,11 @@ async def test_e2e_json_object_to_any_block():
     """JSON object → Any-typed block: dict passes through unchanged."""
     json_content = '{"name": "apple", "color": "red"}'
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return json_content
-
-    block_schema = _AnyBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"input": "@@agptfile:workspace:///data.json", "key": "name"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"input": "@@agptfile:workspace:///data.json", "key": "name"},
+        json_content,
+        block=_AnyBlock,
+    )
 
     assert expanded["input"] == {"name": "apple", "color": "red"}
 
@@ -1627,21 +1261,11 @@ async def test_e2e_json_array_to_any_block():
     (FindInDict handles list-of-dicts natively)."""
     json_content = '[{"name": "apple"}, {"name": "banana"}]'
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return json_content
-
-    block_schema = _AnyBlock.model_json_schema()
-
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        expanded = await expand_file_refs_in_args(
-            {"input": "@@agptfile:workspace:///data.json", "key": "name"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=block_schema,
-        )
+    expanded = await _expand(
+        {"input": "@@agptfile:workspace:///data.json", "key": "name"},
+        json_content,
+        block=_AnyBlock,
+    )
 
     # Already a list of dicts — no adaptation needed
     assert expanded["input"] == [{"name": "apple"}, {"name": "banana"}]
@@ -1821,9 +1445,6 @@ async def test_adapt_non_tabular_list_to_object_target():
     """
     json_content = "[1, 2, 3]"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return json_content
-
     schema = {
         "type": "object",
         "properties": {
@@ -1831,18 +1452,9 @@ async def test_adapt_non_tabular_list_to_object_target():
         },
     }
 
-    with (
-        patch(
-            "backend.copilot.sdk.file_ref.resolve_file_ref",
-            new=AsyncMock(side_effect=_resolve),
-        ),
-        pytest.raises(FileRefExpansionError, match="non-tabular list"),
-    ):
-        await expand_file_refs_in_args(
-            {"data": "@@agptfile:workspace:///data.json"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=schema,
+    with pytest.raises(FileRefExpansionError, match="non-tabular list"):
+        await _expand(
+            {"data": "@@agptfile:workspace:///data.json"}, json_content, schema
         )
 
 
@@ -1856,9 +1468,6 @@ async def test_adapt_dict_to_list_str_target_not_wrapped():
     """Dict with List[str] target should not be wrapped in [dict]."""
     yaml_content = "key: value"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
-        return yaml_content
-
     schema = {
         "type": "object",
         "properties": {
@@ -1866,16 +1475,9 @@ async def test_adapt_dict_to_list_str_target_not_wrapped():
         },
     }
 
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        result = await expand_file_refs_in_args(
-            {"data": "@@agptfile:workspace:///config.yaml"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=schema,
-        )
+    result = await _expand(
+        {"data": "@@agptfile:workspace:///config.yaml"}, yaml_content, schema
+    )
 
     # Dict should pass through unchanged, not wrapped in [dict]
     assert result["data"] == {"key": "value"}
@@ -1900,16 +1502,12 @@ async def test_bare_ref_binary_format_ignores_line_range():
     df.to_parquet(buf, index=False)
     parquet_bytes = buf.getvalue()
 
-    with patch(
-        "backend.copilot.sdk.file_ref.read_file_bytes",
-        new=AsyncMock(return_value=parquet_bytes),
-    ):
-        # [1-1] line range is silently ignored; full parquet is parsed.
-        result = await expand_file_refs_in_args(
-            {"data": "@@agptfile:workspace:///data.parquet[1-1]"},
-            user_id="u1",
-            session=_make_session(),
-        )
+    # [1-1] line range is silently ignored; full parquet is parsed.
+    result = await _expand(
+        {"data": "@@agptfile:workspace:///data.parquet[1-1]"},
+        parquet_bytes,
+        reader="read_file_bytes",
+    )
     # Full 2-row table is returned, not just row 1.
     assert result["data"] == [["A", "B"], [1, 3], [2, 4]]
 
@@ -1933,15 +1531,11 @@ async def test_bare_ref_parquet_nan_replaced_with_none():
     df.to_parquet(buf, index=False)
     parquet_bytes = buf.getvalue()
 
-    with patch(
-        "backend.copilot.sdk.file_ref.read_file_bytes",
-        new=AsyncMock(return_value=parquet_bytes),
-    ):
-        result = await expand_file_refs_in_args(
-            {"data": "@@agptfile:workspace:///data.parquet"},
-            user_id="u1",
-            session=_make_session(),
-        )
+    result = await _expand(
+        {"data": "@@agptfile:workspace:///data.parquet"},
+        parquet_bytes,
+        reader="read_file_bytes",
+    )
     rows = result["data"]
     # Row with NaN in float col → None
     assert rows[2][0] is None  # float NaN → None
@@ -1958,25 +1552,17 @@ async def test_union_object_string_bare_ref_parses_to_dict():
     """A bare ref in a slot typed ["object", "string"] (e.g. agent_json)
     gets structured parsing — a JSON file arrives at the tool as a dict."""
 
-    async def _resolve(*_args, **_kwargs):
-        return '{"nodes": [{"id": "n1"}], "links": []}'
-
     schema = {
         "type": "object",
         "properties": {"agent_json": {"type": ["object", "string"]}},
         "required": ["agent_json"],
     }
 
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
-    ):
-        result = await expand_file_refs_in_args(
-            {"agent_json": "@@agptfile:/home/user/agent.json"},
-            user_id="u1",
-            session=_make_session(),
-            input_schema=schema,
-        )
+    result = await _expand(
+        {"agent_json": "@@agptfile:/home/user/agent.json"},
+        '{"nodes": [{"id": "n1"}], "links": []}',
+        schema,
+    )
     assert result["agent_json"] == {"nodes": [{"id": "n1"}], "links": []}
 
 
@@ -2041,3 +1627,22 @@ async def test_union_object_string_dict_with_properties_skips_inner_expansion():
             input_schema=schema,
         )
     assert result["agent_json"] is agent
+
+
+async def _expand(
+    args: dict[str, typing.Any],
+    content: str | bytes,
+    schema: dict[str, typing.Any] | None = None,
+    *,
+    block: type[pydantic.BaseModel] | None = None,
+    reader: typing.Literal["resolve_file_ref", "read_file_bytes"] = "resolve_file_ref",
+) -> dict[str, typing.Any]:
+    """Expand *args* against *schema*, or *block*'s, with *reader* returning *content*."""
+    if block is not None:
+        schema = block.model_json_schema()
+    with patch(
+        f"backend.copilot.sdk.file_ref.{reader}", new=AsyncMock(return_value=content)
+    ):
+        return await expand_file_refs_in_args(
+            args, user_id="u1", session=_make_session(), input_schema=schema
+        )
