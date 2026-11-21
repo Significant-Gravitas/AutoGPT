@@ -184,7 +184,7 @@ This codebase has **known vulnerabilities** and issues with its dependencies. It
 
 ## License
 
-This project segment is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project segment is licensed under the MIT License - see the [LICENSE](../LICENSE) file for details.
 
 ## Documentation
 
