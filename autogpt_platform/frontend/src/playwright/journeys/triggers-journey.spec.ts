@@ -106,7 +106,6 @@ test.describe("triggers journey", () => {
   });
 });
 
-// Webhooks arrive at the backend; the browser only talks to the frontend.
 // An agent whose webhook trigger hands what it receives to an output.
 async function createWebhookAgent(page: Page, name: string): Promise<Graph> {
   const response = await page.request.post("/api/proxy/api/graphs", {

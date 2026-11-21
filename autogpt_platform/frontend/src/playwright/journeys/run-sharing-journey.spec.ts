@@ -21,6 +21,17 @@ const OUTPUT_NAME = "report";
 const RUN_ENDED = /^(COMPLETED|FAILED|TERMINATED)$/;
 // The public page reads a share through the app's proxy.
 const PUBLIC_READ = "/api/proxy/api/public/shared/";
+// One run's read, by its share token (a UUID), and nothing else under it.
+const PUBLIC_RUN_READ = /\/api\/proxy\/api\/public\/shared\/[0-9a-f-]{36}$/;
+// All the public read may carry: nothing of the owner's or the graph's.
+const PUBLIC_FIELDS = [
+  "created_at",
+  "graph_description",
+  "graph_name",
+  "id",
+  "outputs",
+  "status",
+];
 
 interface OwnedRun {
   libraryAgentID: string;
@@ -52,9 +63,9 @@ const test = journeyTest.extend<{ visitor: Page; backend: APIRequestContext }>({
       storageState: { cookies: [], origins: [] },
       userAgent: JOURNEY_USER_AGENT,
     });
-    // A revoked link reads 404; each check asserts when it must.
+    // A revoked link's run read answers 404; each check asserts when it must.
     const guard = watchForUnexpectedErrors(context, [
-      { status: 404, method: "GET", url: PUBLIC_READ },
+      { status: 404, method: "GET", url: PUBLIC_RUN_READ },
     ]);
     await provide(await context.newPage());
     const problems = await guard.collect();
@@ -352,10 +363,14 @@ async function expectVisitorSeesReport(
   const response = await read;
   expect(response.status(), "the public page should read the share").toBe(200);
   const body = await response.text();
+  const shared = JSON.parse(body) as Record<string, unknown>;
   expect(
-    (JSON.parse(body) as { outputs: unknown }).outputs,
-    "the share should carry the run's report",
-  ).toEqual({ [OUTPUT_NAME]: [run.report] });
+    Object.keys(shared).sort(),
+    "the share should carry only its public fields",
+  ).toEqual(PUBLIC_FIELDS);
+  expect(shared.outputs, "the share should carry the run's report").toEqual({
+    [OUTPUT_NAME]: [run.report],
+  });
 
   await expect(visitor, "the link should open without signing in").toHaveURL(
     share.link,
