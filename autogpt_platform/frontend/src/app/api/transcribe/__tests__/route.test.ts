@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
 
 vi.mock("@/lib/auth/server/getServerAuthToken", () => ({
@@ -39,6 +39,10 @@ describe("transcribe route", () => {
     delete process.env.TRANSCRIPTION_API_KEY;
     delete process.env.TRANSCRIPTION_API_BASE_URL;
     delete process.env.TRANSCRIPTION_MODEL;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("sends audio to a configured OpenAI-compatible transcription endpoint", async () => {
@@ -153,6 +157,32 @@ describe("transcribe route", () => {
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toEqual({
       error: "model is unavailable",
+    });
+  });
+
+  it("explains an audio rejection in plain words and marks it unreadable", async () => {
+    process.env.OPENAI_API_KEY = "openai-token";
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "Invalid file format. Supported formats: [webm]",
+            },
+          }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    const response = await POST(makeAudioRequest());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "We couldn't read that recording. Try recording again.",
+      code: "unreadable_recording",
     });
   });
 

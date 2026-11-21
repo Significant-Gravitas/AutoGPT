@@ -1,7 +1,9 @@
 import asyncio
 import logging
+import time
 from typing import Optional
 
+import aiohttp
 from google.auth.exceptions import RefreshError
 from google.auth.external_account_authorized_user import (
     Credentials as ExternalAccountCredentials,
@@ -17,8 +19,20 @@ from backend.util.request import Requests
 
 from .base import BaseOAuthHandler
 from .refresh_failure import OAuthTokenRequestError, describe_refresh_failure
+from .sign_in import SignInClientMismatch, SignInConnectionError
 
 logger = logging.getLogger(__name__)
+
+# Under the frontend's 8 s wait for a sign-in's handoff, retries included, so
+# this check never outlives the request that asked for it.
+TOKEN_INFO_TIMEOUT_SECONDS = 5
+
+
+def _expires_at(expires_in: object) -> int | None:
+    try:
+        return int(time.time()) + int(str(expires_in))
+    except ValueError:
+        return None
 
 
 class _StatusRecordingRequest(Request):
@@ -50,6 +64,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         "openid",
     ]
     # --8<-- [end:GoogleOAuthHandlerExample]
+    TOKEN_INFO_ENDPOINT = "https://oauth2.googleapis.com/tokeninfo"
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
@@ -136,6 +151,62 @@ class GoogleOAuthHandler(BaseOAuthHandler):
 
         return credentials
 
+    async def credentials_from_sign_in(
+        self,
+        access_token: str,
+        refresh_token: str | None,
+        expires_at: int | None,
+    ) -> OAuth2Credentials:
+        """The connection a Google sign-in's tokens make.
+
+        Google's tokeninfo says which OAuth client issued the token, what it
+        grants and whose it is. Only this handler's own client is accepted:
+        Google renews a refresh token only for the client it was issued to.
+        """
+        # In the body, not the query string, so the token stays out of URLs.
+        # One deadline for the whole check: a throttled answer is retried.
+        try:
+            response = await asyncio.wait_for(
+                Requests(raise_for_status=False, retry_max_attempts=3).post(
+                    self.TOKEN_INFO_ENDPOINT,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    data={"access_token": access_token},
+                ),
+                timeout=TOKEN_INFO_TIMEOUT_SECONDS,
+            )
+        # ValueError: Requests' own refusal, such as a hostname DNS can't
+        # resolve, before anything is sent.
+        except (asyncio.TimeoutError, aiohttp.ClientError, ValueError):
+            raise SignInConnectionError(
+                "Google didn't answer the sign-in's token check."
+            ) from None
+        if not response.ok:
+            raise SignInConnectionError("Google didn't accept the sign-in's token.")
+        try:
+            info = response.json()
+        except ValueError:
+            info = None
+        if not isinstance(info, dict):
+            raise SignInConnectionError(
+                "Google's token check answered with no token info."
+            )
+        if self.client_id not in (info.get("azp"), info.get("aud")):
+            raise SignInClientMismatch(
+                "Google sign-in uses a different OAuth client than Google "
+                "connections."
+            )
+        email = info.get("email")
+        return OAuth2Credentials(
+            provider=self.PROVIDER_NAME,
+            title=None,
+            username=email if isinstance(email, str) and email else None,
+            access_token=SecretStr(access_token),
+            refresh_token=SecretStr(refresh_token) if refresh_token else None,
+            access_token_expires_at=expires_at or _expires_at(info.get("expires_in")),
+            refresh_token_expires_at=None,
+            scopes=str(info.get("scope", "")).split(),
+        )
+
     async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
         # Google's revoke endpoint only needs the token in the request body;
         # it does not need an Authorization header. Previously this used
@@ -155,10 +226,8 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         # body, rate limit, etc.) flows back as response.ok=False instead of
         # raising — the caller uses the bool to set the UI `revoked` flag
         # and does not need to distinguish failure modes.
-        # retry_max_attempts bounds tenacity retries on 429/5xx — without
-        # it `Requests` retries indefinitely with exponential backoff up
-        # to 5 minutes per wait, and a transient Google failure would
-        # hang the credential deletion API call forever.
+        # retry_max_attempts bounds the retries on 429/5xx, so a transient
+        # Google failure can't hold up the credential deletion API call.
         response = await Requests(
             raise_for_status=False,
             retry_max_attempts=3,

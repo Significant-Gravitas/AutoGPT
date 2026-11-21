@@ -78,7 +78,6 @@ async function signUp(
   await expect(page.getByText("Create your account")).toBeVisible();
   await page.getByLabel("Email").fill(email);
   await page.locator("#password").fill(password);
-  await page.locator("#confirmPassword").fill(password);
   await page.getByRole("button", { name: "Sign up" }).click();
   try {
     await page.waitForURL((url) => !url.pathname.startsWith("/signup"), {

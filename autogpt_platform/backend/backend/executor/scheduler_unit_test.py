@@ -188,6 +188,34 @@ def test_build_trigger_run_at_returns_datetrigger():
     assert isinstance(trigger, DateTrigger)
 
 
+@pytest.mark.parametrize(
+    "cron",
+    [
+        "0 * * * *",  # 60 minutes → hourly
+        "0 0 * * *",  # 24 hours → daily
+        "*/59 * * * *",
+        "0 */23 * * *",
+        "15 9 */30 * *",  # day cap 30, not 31
+        "*/1 * * * *",
+    ],
+)
+def test_build_trigger_accepts_frontend_custom_interval_crons(cron: str):
+    """Every interval the frontend's custom-interval clamp emits must build a
+    trigger."""
+    trigger = _build_trigger(cron=cron, run_at=None, user_timezone="UTC")
+    assert isinstance(trigger, CronTrigger)
+    assert trigger.end_date is None
+
+
+@pytest.mark.parametrize(
+    "cron",
+    ["*/60 * * * *", "0 */24 * * *", "0 0 */31 * *", "*/0 * * * *"],
+)
+def test_build_trigger_rejects_out_of_range_custom_interval_crons(cron: str):
+    with pytest.raises(ValueError):
+        _build_trigger(cron=cron, run_at=None, user_timezone="UTC")
+
+
 # ---------------------------------------------------------------------------
 # _next_run_time_iso
 # ---------------------------------------------------------------------------
@@ -1894,7 +1922,10 @@ def _registered_jobs(
     embedding_backfill = MagicMock(return_value=None)
     at_readiness = []
     with (
-        patch(f"{_SCHEDULER_PATH}.BackgroundScheduler", return_value=mock_scheduler),
+        patch(
+            f"{_SCHEDULER_PATH}.StopSafeBackgroundScheduler",
+            return_value=mock_scheduler,
+        ),
         patch(f"{_SCHEDULER_PATH}.load_dotenv"),
         patch(f"{_SCHEDULER_PATH}.asyncio.new_event_loop", return_value=MagicMock()),
         patch(f"{_SCHEDULER_PATH}.threading.Thread", return_value=MagicMock()),

@@ -45,6 +45,7 @@ The full system (projects, quarters, areas) lives in the team's Notion page "Lin
 - `autogpt_platform/autogpt_libs` – Shared Python libraries.
 - `autogpt_platform/frontend` – Next.js + Typescript frontend.
 - `autogpt_platform/docker-compose.yml` – development stack.
+- `local_executor/` – the Local PC companion (`autogpt-shim`), a standalone MIT-licensed package with its own tooling. See `local_executor/AGENTS.md`.
 
 See `docs/platform/getting-started.md` for setup instructions.
 

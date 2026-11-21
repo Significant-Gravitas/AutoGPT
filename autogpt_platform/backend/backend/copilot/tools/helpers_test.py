@@ -1,6 +1,7 @@
 """Tests for execute_block, prepare_block_for_execution, and check_hitl_review."""
 
 import asyncio
+import json
 from collections.abc import AsyncIterator
 from typing import Any, ClassVar, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -9,7 +10,9 @@ import pytest
 from pydantic import SecretStr
 
 from backend.blocks._base import BlockType
+from backend.blocks.apollo.models import Contact
 from backend.blocks.exa.search import ExaSearchBlock
+from backend.blocks.google._drive import GoogleDriveFile
 from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
 from backend.copilot.context import set_turn_unattended
 from backend.copilot.credential_selection import CredentialPin, set_turn_credential_pins
@@ -2326,6 +2329,209 @@ async def _store_workspace_file(path: str):
             dry_run=False,
             expert_id="expert-a",
         )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_drive_file_from_one_block_runs_the_next_without_the_picker():
+    """The model passes a Drive file on as it read it in a block's output.
+    Encoded by alias, as stored graph outputs are, it keeps the
+    `_credentials_id` the next block's picker field authenticates with."""
+    producer = _make_block()
+
+    async def _execute(
+        input_data: dict, **kwargs: Any
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield "file", GoogleDriveFile.model_validate(
+            {
+                "id": "file-1",
+                "name": "Q3 report",
+                "mimeType": "application/vnd.google-apps.spreadsheet",
+                "_credentials_id": "cred-1",
+            }
+        )
+
+    producer.execute = _execute
+    creds_manager_cls = MagicMock()
+    creds_manager_cls.return_value.acquire = AsyncMock(
+        return_value=(MagicMock(id="cred-1", provider="google"), AsyncMock())
+    )
+    creds_manager_cls.return_value.get = AsyncMock(return_value=None)
+    credit_patch, _ = _patch_credit_db()
+    with (
+        _patch_workspace(),
+        patch("backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})),
+        credit_patch,
+        patch(
+            "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+            creds_manager_cls,
+        ),
+    ):
+        produced = await execute_block(
+            block=producer,
+            block_id="block-1",
+            input_data={},
+            user_id=_USER,
+            session_id=_SESSION,
+            node_exec_id="exec-produce",
+            matched_credentials={},
+            dry_run=False,
+        )
+        assert isinstance(produced, BlockOutputResponse)
+        # The content judge locates the declared outside parts as placed.
+        assert produced.outside == (produced.outputs,)
+        seen = json.loads(produced.model_dump_json(exclude_none=True))
+
+        consumed = await execute_block(
+            block=_make_block_with_auto_creds(),
+            block_id="drive-consumer",
+            input_data={"spreadsheet": seen["outputs"]["file"][0], "range": "A1"},
+            user_id=_USER,
+            session_id=_SESSION,
+            node_exec_id="exec-consume",
+            matched_credentials={},
+            dry_run=False,
+        )
+
+    assert isinstance(consumed, BlockOutputResponse)
+    creds_manager_cls.return_value.acquire.assert_awaited_once_with(_USER, "cred-1")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("dry_run", [False, True])
+async def test_output_keys_starting_with_sa_are_kept(dry_run: bool):
+    """The encoder drops keys starting with `_sa` unless told not to."""
+    value = {"_sales_total": 42, "rows": [{"_sa_region": "EMEA"}]}
+
+    async def _yield_value(*args: Any, **kwargs: Any):
+        yield "result", value
+
+    block = _make_block()
+    block.execute = _yield_value
+    credit_patch, _ = _patch_credit_db()
+    with (
+        _patch_workspace(),
+        patch("backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})),
+        credit_patch,
+        patch("backend.copilot.tools.helpers.simulate_block", _yield_value),
+    ):
+        response = await execute_block(
+            block=block,
+            block_id="block-1",
+            input_data={},
+            user_id=_USER,
+            session_id=_SESSION,
+            node_exec_id="exec-1",
+            matched_credentials={},
+            dry_run=dry_run,
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    assert bool(response.is_dry_run) is dry_run
+    assert response.outputs == {"result": [value]}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("dry_run", [False, True])
+async def test_unset_output_fields_are_left_out(dry_run: bool):
+    """The response dump leaves out unset model fields, but not unset fields
+    inside the encoded outputs, so the encoder must: a Drive file with no
+    credential would otherwise carry `_credentials_id: null`, which the next
+    block reads as a chained file instead of showing the picker."""
+    file = GoogleDriveFile.model_validate({"id": "file-1", "name": "Q3 report"})
+
+    async def _yield_file(*args: Any, **kwargs: Any):
+        yield "file", file
+
+    block = _make_block()
+    block.execute = _yield_file
+    credit_patch, _ = _patch_credit_db()
+    with (
+        _patch_workspace(),
+        patch("backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})),
+        credit_patch,
+        patch("backend.copilot.tools.helpers.simulate_block", _yield_file),
+    ):
+        response = await execute_block(
+            block=block,
+            block_id="block-1",
+            input_data={},
+            user_id=_USER,
+            session_id=_SESSION,
+            node_exec_id="exec-1",
+            matched_credentials={},
+            dry_run=dry_run,
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    assert response.outputs == {"file": [{"id": "file-1", "name": "Q3 report"}]}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("dry_run", [False, True])
+async def test_an_explicit_none_in_an_output_is_kept(dry_run: bool):
+    """Only a model's unset fields are left out: a None a block puts in a
+    plain dict is data, and a consumer may treat it apart from a missing key."""
+    value = {"status": None, "nested": {"reason": None}}
+
+    async def _yield_value(*args: Any, **kwargs: Any):
+        yield "result", value
+
+    block = _make_block()
+    block.execute = _yield_value
+    credit_patch, _ = _patch_credit_db()
+    with (
+        _patch_workspace(),
+        patch("backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})),
+        credit_patch,
+        patch("backend.copilot.tools.helpers.simulate_block", _yield_value),
+    ):
+        response = await execute_block(
+            block=block,
+            block_id="block-1",
+            input_data={},
+            user_id=_USER,
+            session_id=_SESSION,
+            node_exec_id="exec-1",
+            matched_credentials={},
+            dry_run=dry_run,
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    assert response.outputs == {"result": [value]}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("dry_run", [False, True])
+async def test_a_field_left_at_its_default_is_kept(dry_run: bool):
+    """Apollo's models override ``model_dump`` to drop fields equal to their
+    defaults; the outputs are dumped as the response dump did, without it."""
+    contact = Contact.model_validate({"id": "c-1", "free_domain": True})
+
+    async def _yield_contact(*args: Any, **kwargs: Any):
+        yield "contact", contact
+
+    block = _make_block()
+    block.execute = _yield_contact
+    credit_patch, _ = _patch_credit_db()
+    with (
+        _patch_workspace(),
+        patch("backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})),
+        credit_patch,
+        patch("backend.copilot.tools.helpers.simulate_block", _yield_contact),
+    ):
+        response = await execute_block(
+            block=block,
+            block_id="block-1",
+            input_data={},
+            user_id=_USER,
+            session_id=_SESSION,
+            node_exec_id="exec-1",
+            matched_credentials={},
+            dry_run=dry_run,
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    assert response.outputs["contact"][0]["free_domain"] is True
 
 
 # ---------------------------------------------------------------------------

@@ -42,6 +42,11 @@ TOKYO = "Asia/Tokyo"
 
 # Short enough to keep deadline tests quick; long enough for a fake to answer.
 SHORT_DEADLINE = 0.05
+# Wall-clock allowance for a call bounded by SHORT_DEADLINE: far longer, as a
+# CI runner can stall a test for seconds (a lifecycle hook took 2.3 s on one,
+# #16920), and still short of the registry's default deadline, which a call
+# that ignored the short one would wait out.
+PROMPT = 0.8 * deadline.REGISTRY_CALL_TIMEOUT_SECONDS
 
 
 def job_ids(scope: MemoryScope) -> set[str]:

@@ -93,6 +93,7 @@ export default class BackendAPI {
   private baseUrl: string;
   private webSocket: BackendWebSocket;
   private wsOnConnectHandlers: Set<() => void> = new Set();
+  private wsOnReconnectHandlers: Set<() => void> = new Set();
   private wsOnDisconnectHandlers: Set<() => void> = new Set();
   private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
   constructor(
@@ -102,6 +103,8 @@ export default class BackendAPI {
     this.baseUrl = baseUrl;
     this.webSocket = new BackendWebSocket(wsUrl, {
       onConnect: () => this.wsOnConnectHandlers.forEach((handler) => handler()),
+      onReconnect: () =>
+        this.wsOnReconnectHandlers.forEach((handler) => handler()),
       onDisconnect: () =>
         this.wsOnDisconnectHandlers.forEach((handler) => handler()),
       onMessage: (event) => this._handleWSMessage(event),
@@ -1005,6 +1008,23 @@ export default class BackendAPI {
 
     // Return detacher
     return () => this.wsOnConnectHandlers.delete(handler);
+  }
+
+  /**
+   * All handlers are invoked whenever live state should be re-read, because
+   * updates may have been missed: after the WebSocket reconnects, once the
+   * server has handled the subscriptions the connect handlers sent again (a
+   * first connection is not a reconnect), and after a subscribe the server
+   * could not complete settles on a retry, on any connection, the first
+   * included. Re-read live state here.
+   *
+   * @returns a detacher for the passed handler.
+   */
+  onWebSocketReconnect(handler: () => void): () => void {
+    this.wsOnReconnectHandlers.add(handler);
+
+    // Return detacher
+    return () => this.wsOnReconnectHandlers.delete(handler);
   }
 
   /**

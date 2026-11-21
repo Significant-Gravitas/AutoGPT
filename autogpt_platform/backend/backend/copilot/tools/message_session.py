@@ -24,7 +24,6 @@ from typing import Any
 
 from backend.copilot.active_turns import get_inflight_turn_limit
 from backend.copilot.context import get_current_envelope, take_session_message_slot
-from backend.copilot.db import get_chat_session_metadata, get_chat_session_status
 from backend.copilot.expert_context import escape_prompt_xml_tags
 from backend.copilot.limit_tracking import track_turn_cap
 from backend.copilot.model import CHAT_STATUS_IDLE, ChatSession, ChatSessionInfo
@@ -32,6 +31,7 @@ from backend.copilot.pending_message_helpers import queue_user_message
 from backend.copilot.pending_messages import PENDING_BUFFER_FULL_REFUSAL
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.turn_queue import InflightCapExceeded, try_enqueue_turn
+from backend.data.db_accessors import chat_db
 from backend.data.redis_helpers import RedisListCapacityExceeded
 
 from .base import BaseTool
@@ -115,9 +115,14 @@ class MessageSessionTool(BaseTool):
             return self._error(_SELF_REFUSAL, session)
 
         # Ownership before anything else, and not-found rather than forbidden:
-        # a distinct refusal would let this tool probe for session ids.
-        target = await get_chat_session_metadata(target_id)
-        if target is None or target.user_id != user_id:
+        # a distinct refusal would let this tool probe for session ids. The
+        # user's session in another organization is refused the same way.
+        target = await chat_db().get_chat_session_metadata(target_id)
+        if (
+            target is None
+            or target.user_id != user_id
+            or target.organization_id != session.organization_id
+        ):
             return self._error(
                 f"No session {target_id} of yours. Use tool:find_session.", session
             )
@@ -156,7 +161,8 @@ class MessageSessionTool(BaseTool):
             # user row, and the dispatcher replays the queued turn from the LATEST
             # such row — so the user's own submit-time payload (their attachments,
             # page context and model choice) would be replaced by this message's.
-            if await get_chat_session_status(target.session_id) != CHAT_STATUS_IDLE:
+            status = await chat_db().get_chat_session_status(target.session_id)
+            if status != CHAT_STATUS_IDLE:
                 await queue_user_message(
                     session_id=target.session_id, message=payload, metadata=provenance
                 )
