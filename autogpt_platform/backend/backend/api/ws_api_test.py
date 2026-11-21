@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 import logging
 from typing import cast, get_args
@@ -1011,6 +1012,222 @@ def test_the_account_checks_bound_fits_its_two_cache_reads() -> None:
     ``ACCOUNT_CHECK_TIMEOUT_S``."""
     assert _PRODUCT_REDIS_OP_TIMEOUT_S <= 1.0
     assert 2 * _PRODUCT_REDIS_OP_TIMEOUT_S < ws_api.ACCOUNT_CHECK_TIMEOUT_S
+
+
+@pytest.mark.asyncio
+async def test_other_sockets_get_a_turn_between_two_buffered_messages(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker
+) -> None:
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False))
+    heartbeat = WSMessage(method=WSMethod.HEARTBEAT).model_dump_json()
+    mock_websocket.receive_text.side_effect = [heartbeat] * 5 + [WebSocketDisconnect()]
+    other_socket_turns = 0
+    turns_at_each_reply: list[int] = []
+
+    async def other_socket() -> None:
+        nonlocal other_socket_turns
+        while True:
+            await asyncio.sleep(0)
+            other_socket_turns += 1
+
+    async def reply(_: dict) -> None:
+        turns_at_each_reply.append(other_socket_turns)
+
+    mock_websocket.send_json.side_effect = reply
+    other = asyncio.create_task(other_socket())
+    try:
+        await websocket_router(
+            cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+        )
+    finally:
+        other.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await other
+
+    assert len(set(turns_at_each_reply)) == 5
+
+
+@pytest.mark.asyncio
+async def test_a_burst_of_messages_looks_the_account_up_once(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, account_db, mocker
+) -> None:
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    banned = mocker.patch(
+        "backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False)
+    )
+    heartbeat = WSMessage(method=WSMethod.HEARTBEAT).model_dump_json()
+    mock_websocket.receive_text.side_effect = [heartbeat] * 50 + [WebSocketDisconnect()]
+
+    await websocket_router(
+        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+    )
+
+    assert mock_websocket.send_json.await_count == 50
+    assert banned.await_count == 1
+    assert account_db.closed.await_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "banned, closed, close_code",
+    [
+        pytest.param([False, True], [False, False], 4004, id="banned"),
+        pytest.param([False, False], [False, True], 4003, id="closed"),
+    ],
+)
+async def test_an_account_ended_later_closes_the_socket_once_a_recheck_is_due(
+    mock_websocket: AsyncMock,
+    mock_manager: AsyncMock,
+    account_db,
+    mocker,
+    banned: list[bool],
+    closed: list[bool],
+    close_code: int,
+) -> None:
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mocker.patch("backend.api.ws_api.ACCOUNT_RECHECK_INTERVAL_S", 0)
+    mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(side_effect=banned))
+    account_db.closed.side_effect = closed
+    heartbeat = WSMessage(method=WSMethod.HEARTBEAT).model_dump_json()
+    mock_websocket.receive_text.side_effect = [heartbeat, heartbeat]
+
+    await websocket_router(
+        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+    )
+
+    assert mock_websocket.send_json.await_count == 1
+    assert mock_websocket.close.call_args.kwargs["code"] == close_code
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "frame",
+    [
+        pytest.param("not json", id="unparseable"),
+        pytest.param(
+            WSMessage(
+                method=WSMethod.SUBSCRIBE_GRAPH_EXEC, data={"wrong": 1}
+            ).model_dump_json(),
+            id="invalid-data",
+        ),
+    ],
+)
+async def test_a_clients_invalid_message_is_logged_below_error(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker, caplog, frame: str
+) -> None:
+    """An error-level log raises a Sentry event; a client's bad input is not one."""
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False))
+    mock_websocket.receive_text.side_effect = [frame, WebSocketDisconnect()]
+
+    with caplog.at_level(logging.DEBUG, logger="backend.api.ws_api"):
+        await websocket_router(
+            cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+        )
+
+    levels = [r.levelno for r in caplog.records if r.name == "backend.api.ws_api"]
+    assert logging.WARNING in levels
+    assert max(levels) < logging.ERROR
+    assert '"method":"error"' in mock_websocket.send_text.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_an_error_message_from_the_client_is_logged_below_warning(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker, caplog
+) -> None:
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False))
+    client_data = "client-sent detail " * 50
+    mock_websocket.receive_text.side_effect = [
+        WSMessage(method=WSMethod.ERROR, data=client_data).model_dump_json(),
+        WebSocketDisconnect(),
+    ]
+
+    with caplog.at_level(logging.DEBUG, logger="backend.api.ws_api"):
+        await websocket_router(
+            cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+        )
+
+    records = [r for r in caplog.records if r.name == "backend.api.ws_api"]
+    assert max(r.levelno for r in records) < logging.WARNING
+    assert not any("client-sent detail" in r.getMessage() for r in records)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "recheck_interval, replies, close_code",
+    [
+        pytest.param(
+            ws_api.ACCOUNT_RECHECK_INTERVAL_S, 5, None, id="inside-the-interval"
+        ),
+        pytest.param(0, 1, 1013, id="recheck-due"),
+    ],
+)
+async def test_a_lookup_that_hangs_after_the_first_matters_only_once_a_recheck_is_due(
+    mock_websocket: AsyncMock,
+    mock_manager: AsyncMock,
+    mocker,
+    recheck_interval: float,
+    replies: int,
+    close_code: int | None,
+) -> None:
+    lookups = 0
+
+    async def ban_lookup(user_id: str) -> bool:
+        nonlocal lookups
+        lookups += 1
+        return False if lookups == 1 else await _never_answers(user_id)
+
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mocker.patch("backend.api.ws_api.is_user_banned", new=ban_lookup)
+    mocker.patch.object(ws_api, "ACCOUNT_RECHECK_INTERVAL_S", recheck_interval)
+    mocker.patch.object(ws_api, "ACCOUNT_CHECK_TIMEOUT_S", 0.05)
+    heartbeat = WSMessage(method=WSMethod.HEARTBEAT).model_dump_json()
+    mock_websocket.receive_text.side_effect = [heartbeat] * 5 + [WebSocketDisconnect()]
+    other_socket_turns = 0
+    turns_at_each_reply: list[int] = []
+
+    async def other_socket() -> None:
+        nonlocal other_socket_turns
+        while True:
+            await asyncio.sleep(0)
+            other_socket_turns += 1
+
+    async def reply(_: dict) -> None:
+        turns_at_each_reply.append(other_socket_turns)
+
+    mock_websocket.send_json.side_effect = reply
+    other = asyncio.create_task(other_socket())
+    try:
+        async with asyncio.timeout(_HANG_SECONDS):
+            await websocket_router(
+                cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+            )
+    finally:
+        other.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await other
+
+    assert len(turns_at_each_reply) == replies
+    assert len(set(turns_at_each_reply)) == replies
+    if close_code is None:
+        mock_websocket.close.assert_not_called()
+        assert lookups == 1
+    else:
+        assert mock_websocket.close.call_args.kwargs["code"] == close_code
 
 
 # ---------- get_connection_manager singleton ----------

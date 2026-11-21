@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import Protocol
 
@@ -45,6 +46,9 @@ settings = Settings()
 ACCOUNT_BANNED_CLOSE_CODE = 4004
 # Clients send only subscribe, unsubscribe and heartbeat messages of ~100 bytes.
 WS_MAX_MESSAGE_BYTES = 4096
+# How often an open socket asks again whether its account is banned or closed;
+# both answers are cached for 30 s anyway.
+ACCOUNT_RECHECK_INTERVAL_S = 5.0
 # The per-message account check reads the cache in milliseconds. A Redis shard
 # that stops answering costs each of its two cache reads the cache's own bound,
 # ``REDIS_OP_TIMEOUT_S``, before the database answers instead. This bounds the
@@ -321,20 +325,25 @@ async def websocket_router(
     # Each kind of failure the client may retry, once this socket has hit it.
     failed_before: set[type[Exception]] = set()
 
+    account_checked_at = float("-inf")
     try:
         while True:
             data = await websocket.receive_text()
-            # The socket outlives its token, so a ban or a closed account ends
-            # it at the next message.
-            if await _closed_for_account(websocket, user_id):
-                break
+            # Give other sockets a turn between two messages.
+            await asyncio.sleep(0)
+            # The socket outlives its token, so a ban or a closed account ends it
+            # at its first message once a recheck is due.
+            now = time.monotonic()
+            if now - account_checked_at >= ACCOUNT_RECHECK_INTERVAL_S:
+                account_checked_at = now
+                if await _closed_for_account(websocket, user_id):
+                    break
             try:
                 message = WSMessage.model_validate_json(data)
             except pydantic.ValidationError as e:
-                logger.error(
-                    "Invalid WebSocket message from user #%s: %s",
-                    user_id,
-                    loggable_validation_errors(e),
+                logger.warning(
+                    f"Invalid WebSocket message from user #{user_id}: "
+                    f"{loggable_validation_errors(e)}"
                 )
                 await websocket.send_text(
                     WSMessage(
@@ -354,7 +363,7 @@ async def websocket_router(
                 continue
 
             if message.method == WSMethod.ERROR:
-                logger.error(f"WebSocket Error message received: {message.data}")
+                logger.debug("WebSocket error message from user #%s", user_id)
 
             else:
                 logger.warning(
@@ -397,11 +406,9 @@ async def _handle_request(
             message=message,
         )
     except pydantic.ValidationError as e:
-        logger.error(
-            "Validation error while handling '%s' for user #%s: %s",
-            message.method.value,
-            user_id,
-            loggable_validation_errors(e),
+        logger.warning(
+            f"Validation error while handling '{message.method.value}' "
+            f"for user #{user_id}: {loggable_validation_errors(e)}"
         )
         await _answer_failure(
             websocket,
@@ -456,7 +463,7 @@ async def _answer_failure(
 
 
 async def _closed_now(user_id: str) -> bool:
-    """A lookup that fails keeps the socket; the next message asks again."""
+    """A lookup that fails keeps the socket; the next recheck asks again."""
     try:
         return await is_user_account_closed(user_id)
     except Exception:
@@ -467,7 +474,7 @@ async def _closed_now(user_id: str) -> bool:
 
 
 async def _banned_now(user_id: str) -> bool:
-    """A lookup that fails keeps the socket; the next message asks again."""
+    """A lookup that fails keeps the socket; the next recheck asks again."""
     try:
         return await is_user_banned(user_id)
     except Exception:

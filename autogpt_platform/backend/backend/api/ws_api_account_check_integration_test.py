@@ -82,6 +82,8 @@ def _serve(
     db.is_account_closed = AsyncMock(return_value=False)
     monkeypatch.setattr(ws_api, "authenticate_websocket", authenticate)
     monkeypatch.setattr("backend.data.user.user_db", lambda: db)
+    # Every message runs the account check, so each test's second message does.
+    monkeypatch.setattr(ws_api, "ACCOUNT_RECHECK_INTERVAL_S", 0)
     manager = ConnectionManager()
     return [
         asyncio.create_task(websocket_router(browser.websocket, manager))
