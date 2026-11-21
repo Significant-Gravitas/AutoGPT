@@ -15,7 +15,8 @@ backend sends the rest of that trace itself (SECRT-2979):
 No event carries a tool's input or output, or an error's message: those can
 hold Gmail or Drive content, which Google's Limited Use terms keep out of
 analytics. ``$ai_input_state`` and ``$ai_output_state`` are left out for
-that reason, and an error is named by its code or exception type only.
+that reason, and an error is named by its code, response type or exception
+type only.
 
 Like the generations and ``$ai_metric``, these are sent server-side for every
 user, whatever their cookie consent, on the user's distinct id (the platform
@@ -27,6 +28,7 @@ PostHog or fails because of it.
 
 import asyncio
 import logging
+import re
 import time
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -58,6 +60,8 @@ _current_span_id: ContextVar[str | None] = ContextVar("_current_span_id", defaul
 _current_outcome: ContextVar["SpanOutcome | None"] = ContextVar(
     "_current_outcome", default=None
 )
+# An error code such as ``feature_disabled``; anything else may be free text.
+_ERROR_CODE = re.compile(r"[a-z0-9_]{1,40}")
 
 
 def trace_id_for(entry: "CoPilotExecutionEntry") -> str:
@@ -89,12 +93,14 @@ def current_span_id() -> str | None:
     return _current_span_id.get()
 
 
-def mark_tool_failed() -> None:
+def mark_tool_failed(reason: str) -> None:
     """Mark the running tool call failed: it answered with an error rather
-    than raising one. Outside a tool span it does nothing."""
+    than raising one, named by *reason* (``error_reason``). Outside a tool
+    span it does nothing."""
     outcome = _current_outcome.get()
     if outcome is not None:
         outcome.is_error = True
+        outcome.error = reason
 
 
 def mark_tool_raised(error: BaseException) -> None:
@@ -106,6 +112,16 @@ def mark_tool_raised(error: BaseException) -> None:
     if outcome is not None:
         outcome.is_error = True
         outcome.error = type(error).__name__
+
+
+def error_reason(response: object) -> str:
+    """What a tool's error response is named by in its span: its ``error``
+    when that is a code, else its type. Free text never: it can quote the
+    user's content."""
+    code = getattr(response, "error", None)
+    if isinstance(code, str) and _ERROR_CODE.fullmatch(code):
+        return code
+    return type(response).__name__
 
 
 class SpanOutcome(BaseModel):
