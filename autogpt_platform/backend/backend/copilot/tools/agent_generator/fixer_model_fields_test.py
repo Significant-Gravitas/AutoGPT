@@ -9,6 +9,8 @@ from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
 from backend.blocks.llm import AITextGeneratorBlock
 
+from .blocks import get_blocks_as_dicts
+from .fixer import AgentFixer
 from .fixer_switched_off_model_test import (
     AI_NODE,
     ENABLED_OPENAI,
@@ -89,8 +91,17 @@ async def test_a_jina_embedding_node_keeps_even_an_llm_name():
     assert model_on(result, AI_NODE) == "gpt-4o"
 
 
-@pytest.mark.asyncio
-async def test_a_jina_embedding_node_with_an_empty_model_gets_the_blocks_default():
-    result = await preview(embedding_workflow({"model": ""}))
+@pytest.mark.parametrize("model", ["", "   "], ids=["empty", "blank"])
+def test_a_jina_model_that_names_none_is_logged_as_a_default_added(model: str):
+    """Not as an unsupported model replaced: there was none to replace."""
+    fixer = AgentFixer()
+    fixer.apply_all_fixes(embedding_workflow({"model": model}), get_blocks_as_dicts())
+    fixes = fixer.get_fixes_applied()
 
-    assert model_on(result, AI_NODE) == JINA_DEFAULT
+    assert any(
+        fix.startswith(
+            f"Added model parameter '{JINA_DEFAULT}' to AI block node {AI_NODE}"
+        )
+        for fix in fixes
+    ), fixes
+    assert not any("unsupported model" in fix for fix in fixes), fixes
