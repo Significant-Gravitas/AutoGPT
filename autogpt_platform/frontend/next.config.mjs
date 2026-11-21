@@ -77,6 +77,8 @@ const nextConfig = {
     "require-in-the-middle",
   ],
   experimental: {
+    // Bounds each optimizer decode; a larger image is served unoptimized.
+    imgOptMaxInputPixels: 25_000_000,
     serverActions: {
       bodySizeLimit: "256mb",
     },
@@ -121,6 +123,16 @@ const nextConfig = {
     return config;
   },
   images: {
+    // Only public/ images go through the optimizer (Next adds static imports).
+    // Listed by directory so a new route or rewrite stays out by default.
+    localPatterns: [
+      { pathname: "/*" },
+      { pathname: "/autogpt-characters/**" },
+      { pathname: "/experts/**" },
+      { pathname: "/images/**" },
+      { pathname: "/integrations/**" },
+      { pathname: "/storybook/**" },
+    ],
     domains: [
       // We dont need to maintain alphabetical order here
       // as we are doing logical grouping of domains
