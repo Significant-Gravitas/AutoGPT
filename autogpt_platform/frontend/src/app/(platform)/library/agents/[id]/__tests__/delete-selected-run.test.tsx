@@ -223,3 +223,38 @@ test("deleting a run that isn't selected through the sidebar's menu keeps the se
   expect(screen.getByText(outputOf("run-b"))).toBeDefined();
   expect(selectedRunInURL()).toBe("run-b");
 });
+
+test("selecting another run while the selected run's delete is in flight keeps the new selection", async () => {
+  let releaseDelete = () => {};
+  const deleteHeld = new Promise<void>((resolve) => {
+    releaseDelete = resolve;
+  });
+  server.use(
+    getDeleteV1DeleteGraphExecutionMockHandler(async ({ params }) => {
+      await deleteHeld;
+      listedRuns = listedRuns.filter(({ id }) => id !== params.graphExecId);
+    }),
+  );
+
+  try {
+    const { user, selectedRunInURL } = await renderWithRunSelected("run-b");
+
+    await deleteThroughSidebarMenu(user, "run-b");
+    await user.keyboard("{Escape}");
+    // Not run-a: the newest run is what an emptied selection falls back to.
+    await user.click(screen.getByTestId("library-run-item-run-c"));
+    expect(await screen.findByText(outputOf("run-c"))).toBeDefined();
+
+    releaseDelete();
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("library-run-item-run-b")).toBeNull(),
+    );
+    expect(toast).toHaveBeenCalledWith({ title: "Task deleted" });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(screen.getByText(outputOf("run-c"))).toBeDefined();
+    expect(selectedRunInURL()).toBe("run-c");
+  } finally {
+    releaseDelete();
+  }
+});
