@@ -239,7 +239,7 @@ async def test_a_moved_reply_points_the_next_subscription_at_the_new_owner():
     """After a reshard the cached slot map still names the old shard, whose
     reply to SSUBSCRIBE is MOVED; the next attempt must dial the new one
     instead of the stale shard for as long as the client stays cached."""
-    cluster = redis_client.get_redis()
+    cluster = await redis_client.get_redis_async()
     channel = f"reshard-test/{uuid4()}"
     slot = cluster.keyslot(channel)
     owner = cluster.nodes_manager.slots_cache[slot][0]
@@ -262,7 +262,7 @@ async def test_a_moved_reply_points_the_next_subscription_at_the_new_owner():
                         assert message["data"] == "after-moved"
                         break
     finally:
-        cluster.nodes_manager.initialize()
+        await cluster.nodes_manager.initialize()
         await redis_client.disconnect_async()
 
 
