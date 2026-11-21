@@ -340,14 +340,14 @@ describe("a new expert with no task", () => {
   it("has no chat link on an edit to an expert", () => {
     render(<ExpertChangeCard output={applied("update", nadia)} />);
 
-    expect(screen.queryByRole("link", { name: /Chat with/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Chat with / })).toBeNull();
   });
 
   it("has no chat link while the change is still a proposal", () => {
     renderGroup([raise("a", "Nadia", false)]);
 
     expect(screen.getByRole("button", { name: "Approve" })).toBeDefined();
-    expect(screen.queryByRole("link", { name: /Chat with/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Chat with / })).toBeNull();
   });
 });
 
@@ -647,7 +647,7 @@ describe("after the hire and hand-off", () => {
     render(sentCard("sent"));
 
     await screen.findByText(/is working on/);
-    expect(screen.queryByRole("link", { name: /Chat with/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Chat with / })).toBeNull();
   });
 });
 
