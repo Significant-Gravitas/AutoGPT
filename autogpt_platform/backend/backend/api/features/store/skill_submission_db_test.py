@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 
 import prisma.enums
@@ -319,6 +320,120 @@ async def test_an_approved_submission_cannot_be_edited(creator, reviewer):
         await skill_submission_db.edit_skill_submission(
             creator, submission.skill_listing_version_id, _request()
         )
+
+
+async def test_a_review_landing_mid_edit_keeps_the_package_it_was_given_on(
+    creator, reviewer, mocker
+):
+    """A review that lands while an edit reads the library keeps the version
+    as it was reviewed."""
+    submission = await skill_submission_db.submit_skill(
+        creator,
+        _request(),
+    )
+    version_id = submission.skill_listing_version_id
+
+    async def approve_then_read(user_id, slug):
+        await skill_submission_db.review_skill_submission(
+            version_id, is_approved=True, reviewer_id=reviewer, comments="ok"
+        )
+        return _library_package([SkillFile(relative_path="run.sh", content=b"x")])
+
+    mocker.patch.object(
+        skill_submission_db, "read_user_skill_package", side_effect=approve_then_read
+    )
+
+    with pytest.raises(PreconditionFailed, match="pending"):
+        await skill_submission_db.edit_skill_submission(
+            creator, version_id, _request(categories=["marketing"])
+        )
+
+    reviewed = await prisma.models.SkillListingVersion.prisma().find_unique(
+        where={"id": version_id}
+    )
+    assert reviewed is not None
+    assert reviewed.submissionStatus == prisma.enums.SubmissionStatus.APPROVED
+    assert reviewed.categories == ["content"]
+    assert await prisma.models.SkillListingFile.prisma().count() == 0
+
+
+async def test_publishing_again_replaces_the_version_waiting_for_review(
+    creator, mocker
+):
+    """Every pending version holds its own copy of the package, so a listing
+    keeps one however often its creator publishes it."""
+    package = mocker.patch.object(
+        skill_submission_db,
+        "read_user_skill_package",
+        return_value=_library_package(
+            [
+                SkillFile(relative_path="references/tone.md", content=b"warm"),
+                SkillFile(relative_path="references/gone.md", content=b"bye"),
+            ]
+        ),
+    )
+    first = await skill_submission_db.submit_skill(creator, _request())
+    package.return_value = _library_package(
+        [SkillFile(relative_path="references/tone.md", content=b"warmer")]
+    )
+
+    second = await skill_submission_db.submit_skill(
+        creator, _request(categories=["marketing"])
+    )
+
+    assert second.skill_listing_version_id == first.skill_listing_version_id
+    assert second.categories == ["marketing"]
+    assert len(await skill_submission_db.list_my_skill_submissions(creator)) == 1
+    rows = await prisma.models.SkillListingFile.prisma().find_many()
+    assert [(r.relativePath, r.content.decode()) for r in rows] == [
+        ("references/tone.md", b"warmer")
+    ]
+
+
+async def test_a_creators_pending_submissions_are_capped(creator, mocker):
+    mocker.patch.object(skill_submission_db, "MAX_PENDING_SUBMISSIONS_PER_USER", 2)
+    await skill_submission_db.submit_skill(creator, _request(skill_name="skill-a"))
+    await skill_submission_db.submit_skill(creator, _request(skill_name="skill-b"))
+
+    with pytest.raises(PreconditionFailed, match="waiting for review"):
+        await skill_submission_db.submit_skill(creator, _request(skill_name="skill-c"))
+
+    # The refusal holds no slug, and a version already waiting is replaced.
+    assert await prisma.models.SkillListing.prisma().count() == 2
+    await skill_submission_db.submit_skill(creator, _request(skill_name="skill-b"))
+
+
+async def test_two_publishes_at_once_cannot_both_take_the_last_slot(creator, mocker):
+    """Both would count the slot free and add a version each, unless the second
+    waits for the first to commit."""
+    mocker.patch.object(skill_submission_db, "MAX_PENDING_SUBMISSIONS_PER_USER", 1)
+    barrier = asyncio.Barrier(2)
+    ensure_pending_room = skill_submission_db._ensure_pending_room
+
+    async def count_then_wait(tx, user_id):
+        await ensure_pending_room(tx, user_id)
+        try:
+            await asyncio.wait_for(barrier.wait(), timeout=2)
+        except TimeoutError:
+            pass
+
+    mocker.patch.object(
+        skill_submission_db, "_ensure_pending_room", side_effect=count_then_wait
+    )
+
+    outcomes = await asyncio.gather(
+        *(
+            skill_submission_db.submit_skill(creator, _request(skill_name=name))
+            for name in ("skill-a", "skill-b")
+        ),
+        return_exceptions=True,
+    )
+
+    assert sum(isinstance(o, PreconditionFailed) for o in outcomes) == 1
+    waiting = await prisma.models.SkillListingVersion.prisma().count(
+        where={"submissionStatus": prisma.enums.SubmissionStatus.PENDING}
+    )
+    assert waiting == 1
 
 
 async def test_another_creators_submission_is_not_editable(creator):

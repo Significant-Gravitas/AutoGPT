@@ -28,6 +28,9 @@ from . import db as store_db
 from . import skill_db, skill_model
 
 _MAX_LICENSE_CHARS = 256
+# Each pending version stores its own copy of the package until a reviewer
+# answers it.
+MAX_PENDING_SUBMISSIONS_PER_USER = 10
 
 
 async def submit_skill(
@@ -36,7 +39,8 @@ async def submit_skill(
     """Create a pending version for the caller's library skill.
 
     Re-publishing an already-listed skill adds a version rather than editing
-    the live one, so what the marketplace serves only changes on approval.
+    the live one, so what the marketplace serves only changes on approval. A
+    version still waiting for review is replaced instead, as an edit would.
     """
     slug = request.skill_name.strip().lower()
     await _require_profile(user_id)
@@ -71,17 +75,31 @@ async def _create_pending_version(
     files: list[SkillFile],
 ) -> skill_model.SkillSubmission:
     async with transaction() as tx:
+        await _lock_creator_submissions(tx, user_id)
         listing = await prisma.models.SkillListing.prisma(tx).find_unique(
             where={"slug": slug}
         )
-        if listing is None:
-            listing = await prisma.models.SkillListing.prisma(tx).create(
-                data={"slug": slug, "owningUserId": user_id}
-            )
-        elif listing.owningUserId != user_id:
+        if listing is not None and listing.owningUserId != user_id:
             raise PreconditionFailed(
                 f"The marketplace slug '{slug}' is taken. Rename your skill "
                 "and publish it again."
+            )
+        pending = await _pending_version(tx, listing.id) if listing else None
+        if listing and pending:
+            replaced = await _replace_pending_version(
+                tx,
+                pending.id,
+                request,
+                skill,
+                files,
+                request.changes_summary or pending.changesSummary,
+            )
+            if replaced:
+                return skill_model.SkillSubmission.from_db(replaced, listing)
+        await _ensure_pending_room(tx, user_id)
+        if listing is None:
+            listing = await prisma.models.SkillListing.prisma(tx).create(
+                data={"slug": slug, "owningUserId": user_id}
             )
         version = await prisma.models.SkillListingVersion.prisma(tx).create(
             data={
@@ -146,23 +164,53 @@ async def edit_skill_submission(
     skill, files = await _read_library_package(user_id, slug)
 
     async with transaction() as tx:
-        updated = await prisma.models.SkillListingVersion.prisma(tx).update(
-            where={"id": version.id},
-            data={
-                "name": skill.name,
-                "description": skill.description,
-                "body": skill.body,
-                "triggers": list(skill.triggers),
-                "categories": request.categories,
-                "requiredProviders": request.required_providers,
-                "license": _license_of(skill),
-                "changesSummary": request.changes_summary or version.changesSummary,
-            },
+        updated = await _replace_pending_version(
+            tx,
+            version.id,
+            request,
+            skill,
+            files,
+            request.changes_summary or version.changesSummary,
         )
-        if updated is None:
-            raise NotFoundError(f"Submission #{skill_listing_version_id} not found")
-        await snapshot_version_files(updated.id, files, tx)
+    if updated is None:
+        raise PreconditionFailed("Only a pending submission can be edited")
     return skill_model.SkillSubmission.from_db(updated, listing)
+
+
+async def _replace_pending_version(
+    tx: prisma.Prisma,
+    skill_listing_version_id: str,
+    request: skill_model.SkillSubmissionRequest,
+    skill: ParsedSkill,
+    files: list[SkillFile],
+    changes_summary: str | None,
+) -> prisma.models.SkillListingVersion | None:
+    """Re-point a pending version at *skill* and its files; None when the
+    version is no longer pending."""
+    # PENDING in the WHERE, as in review_skill_submission: a verdict that lands
+    # after the caller's check keeps the package it was given on.
+    replaced = await prisma.models.SkillListingVersion.prisma(tx).update_many(
+        where={
+            "id": skill_listing_version_id,
+            "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
+        },
+        data={
+            "name": skill.name,
+            "description": skill.description,
+            "body": skill.body,
+            "triggers": list(skill.triggers),
+            "categories": request.categories,
+            "requiredProviders": request.required_providers,
+            "license": _license_of(skill),
+            "changesSummary": changes_summary,
+        },
+    )
+    if replaced == 0:
+        return None
+    await snapshot_version_files(skill_listing_version_id, files, tx)
+    return await prisma.models.SkillListingVersion.prisma(tx).find_unique(
+        where={"id": skill_listing_version_id}
+    )
 
 
 def _license_of(skill: ParsedSkill) -> str | None:
@@ -314,6 +362,44 @@ async def _owned_version(
     ):
         raise NotFoundError(f"Submission #{skill_listing_version_id} not found")
     return version, version.SkillListing
+
+
+async def _pending_version(
+    tx: prisma.Prisma, skill_listing_id: str
+) -> prisma.models.SkillListingVersion | None:
+    return await prisma.models.SkillListingVersion.prisma(tx).find_first(
+        where={
+            "skillListingId": skill_listing_id,
+            "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
+            "isDeleted": False,
+        },
+        order={"version": "desc"},
+    )
+
+
+async def _ensure_pending_room(tx: prisma.Prisma, user_id: str) -> None:
+    pending = await prisma.models.SkillListingVersion.prisma(tx).count(
+        where={
+            "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
+            "isDeleted": False,
+            "SkillListing": {"is": {"owningUserId": user_id, "isDeleted": False}},
+        }
+    )
+    if pending >= MAX_PENDING_SUBMISSIONS_PER_USER:
+        raise PreconditionFailed(
+            f"You have {pending} skills waiting for review, the most at once. "
+            "Publish this one once a reviewer has answered one of them."
+        )
+
+
+async def _lock_creator_submissions(tx: prisma.Prisma, user_id: str) -> None:
+    """Serialize one creator's publishes, so two at once cannot both find no
+    pending version, or both find room for one."""
+    # execute_raw, not query_raw: pg_advisory_xact_lock returns void.
+    await tx.execute_raw(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        f"skill-submissions:{user_id}",
+    )
 
 
 async def _next_version(tx, skill_listing_id: str) -> int:
