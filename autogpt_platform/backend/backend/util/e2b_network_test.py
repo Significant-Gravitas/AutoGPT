@@ -555,6 +555,25 @@ class TestPinned:
         assert redis.store == {}
 
 
+@pytest.mark.parametrize("address", [None, _PROXY])
+@pytest.mark.asyncio
+async def test_every_box_is_limited_in_what_its_daemon_can_answer(address):
+    """The daemon runs in the box, so its answers are the box's."""
+    created, connected = _box("sb-1"), _box("sb-1")
+    cls = _sdk(created)
+    cls.connect = AsyncMock(return_value=connected)
+    limit = MagicMock(side_effect=lambda box: box)
+    with (
+        _configured(address),
+        patch(f"{_M}.get_redis_async", AsyncMock(return_value=_redis())),
+        patch(f"{_M}.limit_sandbox_responses", limit),
+    ):
+        await create_sandbox(cls, _OWNER, template="t")
+        await connect_sandbox(cls, "sb-1", _OWNER, apply_network=False)
+
+    assert [call.args for call in limit.call_args_list] == [(created,), (connected,)]
+
+
 # ``.create(`` / ``.connect(`` calls that are not a sandbox's, in files that
 # import the SDK.  Anything else in such a file has to be listed here to pass.
 _NOT_A_SANDBOX = ("AsyncVolume.create(",)

@@ -60,6 +60,7 @@ from backend.data.redis_client import get_redis_async
 from backend.integrations.credentials_store import is_system_credential
 from backend.util.e2b_proxy_trust import trust_proxy_ca, trusted_envs
 from backend.util.sandbox_limits import USER_KEY, start_slot, stopped, tagged
+from backend.util.sandbox_output import limit_sandbox_responses
 from backend.util.settings import Secrets, Settings
 
 logger = logging.getLogger(__name__)
@@ -231,7 +232,7 @@ async def _create_pinned(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
     connection already resolves at the proxy."""
     address = proxy_address()
     if address is None:
-        return await sandbox_cls.create(**kwargs)
+        return limit_sandbox_responses(await sandbox_cls.create(**kwargs))
     credential = _mint()
     await _remember(credential, owner, sandbox_id=None)
     try:
@@ -245,6 +246,7 @@ async def _create_pinned(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
             await _forget(credential.username)
         raise
     try:
+        limit_sandbox_responses(sandbox)
         await _remember(credential, owner, sandbox_id=sandbox.sandbox_id)
         await _bind(sandbox.sandbox_id, credential.username, owner)
         # Inside the cleanup: a create cancelled during the install (a
@@ -287,7 +289,9 @@ async def _connect_pinned(
     E2B's proxy option fails closed.
     """
     # The SDK types ``connect`` as the base class; it returns *sandbox_cls*.
-    sandbox = cast(S, await sandbox_cls.connect(sandbox_id, **kwargs))
+    sandbox = limit_sandbox_responses(
+        cast(S, await sandbox_cls.connect(sandbox_id, **kwargs))
+    )
     address = proxy_address()
     if address is None or not apply_network:
         return sandbox

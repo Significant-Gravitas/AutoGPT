@@ -14,7 +14,7 @@ from e2b import SandboxState
 from backend.copilot.tools import e2b_sandbox
 from backend.copilot.tools.e2b_sandbox import SandboxOwner, connect_owned
 from backend.data.redis_client import get_redis_async
-from backend.util import sandbox_limits
+from backend.util import e2b_network, sandbox_limits
 from backend.util.e2b_network import (
     EgressOwner,
     connect_sandbox,
@@ -108,6 +108,8 @@ async def e2b(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("E2B_EGRESS_PROXY_ADDRESS", "")
     fake = _FakeE2B()
     monkeypatch.setattr(sandbox_limits, "AsyncSandbox", fake)
+    # The fake's boxes have no SDK clients to limit.
+    monkeypatch.setattr(e2b_network, "limit_sandbox_responses", lambda box: box)
     yield fake
     redis = await get_redis_async()
     await redis.delete(
