@@ -1,5 +1,6 @@
 import json
 import os
+import socket
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,6 +11,7 @@ from autogpt.app.utils import (
     get_bulletin_from_web,
     get_current_git_branch,
     get_latest_bulletin,
+    is_port_free,
     set_env_config_value,
 )
 from git import InvalidGitRepositoryError
@@ -303,3 +305,33 @@ def test_set_env_config_value_adds_new_key(mock_env_file: Path, mock_environ: di
     ]
     assert content == expected_content_lines
     assert mock_environ["NEW_KEY"] == "NEW_VALUE"
+
+
+@pytest.mark.parametrize("listener_reuses_address", [False, True])
+def test_is_port_free_false_while_a_listener_holds_the_port(
+    listener_reuses_address: bool,
+):
+    with socket.socket() as listener:
+        if listener_reuses_address:  # as hypercorn's own listener does
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        port = listener.getsockname()[1]
+
+        assert not is_port_free(port)
+        assert not is_port_free(port, "localhost")
+
+
+def test_is_port_free_true_when_only_time_wait_connections_remain():
+    # After a server restart, connections it closed linger in TIME_WAIT on its
+    # port; hypercorn binds with SO_REUSEADDR, so the port counts as free.
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        port = listener.getsockname()[1]
+        client = socket.create_connection(("127.0.0.1", port))
+        server_side, _ = listener.accept()
+        server_side.close()  # the server closes first, so its end enters TIME_WAIT
+        client.close()
+
+    assert is_port_free(port)
