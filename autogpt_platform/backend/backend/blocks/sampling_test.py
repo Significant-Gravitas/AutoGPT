@@ -51,6 +51,17 @@ async def test_negative_sample_size_is_refused(
         )
 
 
+@pytest.mark.parametrize("data", [[], [{"g": 1}]], ids=["empty", "nonempty"])
+async def test_systematic_sampling_returns_empty_result_for_zero_size(
+    data: list[dict[str, int]],
+):
+    out = await _sample(
+        data=data, sample_size=0, sampling_method=SamplingMethod.SYSTEMATIC
+    )
+
+    assert out == {"sampled_data": [], "sample_indices": []}
+
+
 async def test_sample_larger_than_the_data_is_refused():
     with pytest.raises(ValueError, match="cannot be larger"):
         await _sample(data=[{"g": 1}], sample_size=2)
