@@ -45,14 +45,24 @@ export function TrialCanceledDialog({
           </Text>
           <WorthDoingPanel offer={trial.offer} endsAt={trial.ends_at} />
         </div>
-        <Dialog.Footer>
-          <Button
-            variant="outline"
-            onClick={onResume}
-            loading={isResuming}
-            disabled={isResuming}
+        <Dialog.Footer className="flex-wrap items-center gap-2">
+          <div
+            data-slot="trial-canceled-dialog-undo"
+            className="order-last flex basis-full justify-end sm:order-none sm:mr-auto sm:basis-auto"
           >
-            Resume trial
+            <Button
+              variant="link"
+              size="inline"
+              tone="muted"
+              onClick={onResume}
+              loading={isResuming}
+              disabled={isResuming}
+            >
+              Undo cancellation
+            </Button>
+          </div>
+          <Button variant="outline" onClick={onClose}>
+            Done
           </Button>
           <Button variant="primary" onClick={onSubscribe}>
             Subscribe now

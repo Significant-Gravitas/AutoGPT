@@ -73,7 +73,9 @@ describe("resuming a cancel-pending trial", () => {
     );
     render(<TrialCard />);
     const popup = await openCanceledPopup();
-    const button = within(popup).getByRole("button", { name: "Resume trial" });
+    const button = within(popup).getByRole("button", {
+      name: "Undo cancellation",
+    });
     fireEvent.click(button);
     await waitFor(() => expect(resume).toHaveBeenCalledOnce());
     expect(button.hasAttribute("disabled")).toBe(true);
@@ -119,7 +121,7 @@ describe("resuming a cancel-pending trial", () => {
     expect(status).toHaveBeenCalledOnce();
     status.mockImplementation(() => cancelPending);
     fireEvent.click(
-      within(popup).getByRole("button", { name: "Resume trial" }),
+      within(popup).getByRole("button", { name: "Undo cancellation" }),
     );
     expect((await screen.findByRole("alert")).textContent).toContain(
       "Stripe is unavailable",
