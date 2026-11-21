@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { expect, test } from "./coverage-fixture";
-import { E2E_AUTH_STATES } from "./credentials/accounts";
+import { E2E_AUTH_STATES, SEEDED_TEST_ACCOUNTS } from "./credentials/accounts";
 
 // The backend, where the external API lives; the browser only talks to the
 // frontend.
@@ -100,16 +100,20 @@ test("api keys happy path: user can create, copy, use and revoke an API key, whi
     })
     .toBe(createdSecret);
 
-  // The key works against the external API, on its own: this context sends
-  // no session cookie that could stand in for it.
+  // The key works against the external API, on its own: this context starts
+  // with no stored session, so no cookie can stand in for the key.
   const externalAPI = await playwright.request.newContext({
+    storageState: { cookies: [], origins: [] },
     extraHTTPHeaders: { "X-API-Key": createdSecret },
   });
   const whoAmI = `${BACKEND_URL}/external-api/v1/me`;
   try {
     const accepted = await externalAPI.get(whoAmI);
     expect(accepted.status(), "the new key should authenticate").toBe(200);
-    expect((await accepted.json()).id).toBeTruthy();
+    // As the account that created it.
+    expect((await accepted.json()).email).toBe(
+      SEEDED_TEST_ACCOUNTS.parallelB.email,
+    );
 
     // Both the header "X" and the footer button are labelled "Close"; either one
     // closes the dialog and resets the form.
