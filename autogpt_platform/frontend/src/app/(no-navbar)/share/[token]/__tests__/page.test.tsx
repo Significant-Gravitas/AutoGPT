@@ -129,7 +129,7 @@ describe("SharePage (execution share viewer)", () => {
       ],
     },
   ])(
-    "says 'Share Link Not Found' for $link at once, asking the backend only once",
+    "says 'Share Link Not Found' for $link at once, asking the backend only once and offering no retry",
     async ({ token, status, detail }) => {
       mockUseParams.mockReturnValue({ token });
       const requested = answerSharedRunWith(() =>
@@ -142,8 +142,7 @@ describe("SharePage (execution share viewer)", () => {
         await screen.findByRole("heading", { name: "Share Link Not Found" }),
       ).toBeDefined();
       expect(screen.getByText(/invalid or has been disabled/i)).toBeDefined();
-      // Try again button is the only retry affordance on this view.
-      expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
+      expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
       expect(requested).toEqual([token]);
     },
   );
@@ -164,7 +163,7 @@ describe("SharePage (execution share viewer)", () => {
       respond: () => HttpResponse.error(),
     },
   ])(
-    "says 'Unable to Load', not 'Share Link Not Found', after retrying $failure",
+    "says 'Unable to Load', not 'Share Link Not Found', after retrying $failure, and offers 'Try again'",
     async ({ respond }) => {
       const requested = answerSharedRunWith(respond);
 
@@ -174,6 +173,7 @@ describe("SharePage (execution share viewer)", () => {
         await screen.findByRole("heading", { name: "Unable to Load" }),
       ).toBeDefined();
       expect(screen.getByText(/try refreshing the page/i)).toBeDefined();
+      expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
       expect(
         screen.queryByRole("heading", { name: "Share Link Not Found" }),
       ).toBeNull();
