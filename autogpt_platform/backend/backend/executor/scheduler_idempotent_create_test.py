@@ -327,7 +327,8 @@ def test_two_creates_racing_for_the_accounts_last_slot_leave_it_at_its_limit(
     too: only one of them may take the slot (#16910)."""
     held = _add(scheduler, str(uuid.uuid4()))
     first_counted, release_first = threading.Event(), threading.Event()
-    second_counted = threading.Event()
+    second_started, second_counted = threading.Event(), threading.Event()
+    second_key = str(uuid.uuid4())
     count = scheduler._schedule_count
 
     def count_and_hold_the_first(*args: Any, **kwargs: Any) -> int:
@@ -340,6 +341,8 @@ def test_two_creates_racing_for_the_accounts_last_slot_leave_it_at_its_limit(
         return counted
 
     def send(key: str) -> GraphExecutionJobInfo | ValueError:
+        if key == second_key:
+            second_started.set()
         try:
             return _add(scheduler, key)
         except ValueError as refused:
@@ -351,9 +354,10 @@ def test_two_creates_racing_for_the_accounts_last_slot_leave_it_at_its_limit(
     ):
         first = pool.submit(send, str(uuid.uuid4()))
         assert first_counted.wait(30)
-        second = pool.submit(send, str(uuid.uuid4()))
-        # Without the lock, the second create counts within milliseconds;
-        # with it, it waits for the first, and this second runs out.
+        second = pool.submit(send, second_key)
+        assert second_started.wait(30)
+        # Without the lock, the second create counts within milliseconds of
+        # starting; with it, it waits for the first, and this second runs out.
         second_counted.wait(1)
         release_first.set()
         outcomes = [first.result(30), second.result(30)]
