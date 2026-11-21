@@ -34,6 +34,7 @@ const LIVE_EVENT_NAMES = [
   "credential_oauth_popup_blocked",
   "credential_proceed_stuck_after_connect",
   "credential_scope_shortfall_blocked_selection",
+  "desktop_stream_ended",
   "dictation_rejected",
   "dictation_rerecorded",
   "expert_profile_opened",

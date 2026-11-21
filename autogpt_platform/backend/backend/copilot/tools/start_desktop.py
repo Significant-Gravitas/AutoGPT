@@ -169,5 +169,7 @@ def _build_message(first_time: bool, shared: bool, *, expert: bool = False) -> s
         f"DISPLAY={DISPLAY}: start GUI apps or a browser with bash_exec in the "
         "background; browser_* tools run elsewhere and never appear on it. "
         "The machine suspends between turns and the screen comes back as you "
-        f"left it. {files}"
+        "left it, but the user's live view stops when your turn ends: if they "
+        "must use the screen themselves (to sign in, say), tell them to press "
+        f"Reconnect on the desktop card after your reply. {files}"
     )

@@ -221,7 +221,7 @@ async def _open_desktop_locked(
         await _stream_password(owner) if was_on else None
     )
     await _remember_screen(owner, sandbox.sandbox_id, password)
-    return _owner_bound(stream, user_id), not was_on, shared
+    return _owner_bound(stream, user_id, owner), not was_on, shared
 
 
 async def screen_is_on(owner: SandboxOwner, sandbox_id: str) -> bool:
@@ -253,16 +253,18 @@ async def _remember_screen(owner: SandboxOwner, sandbox_id: str, password: str) 
     await redis.set(owner.stream_key(), password, ex=chat_config.e2b_sandbox_timeout)
 
 
-def _owner_bound(stream: DesktopStream, user_id: str) -> DesktopStream:
+def _owner_bound(
+    stream: DesktopStream, user_id: str, owner: SandboxOwner
+) -> DesktopStream:
     """The stream with its URL replaced by an owner-bound link.
 
     The real URL carries the desktop's password.  It stays on the backend;
     what the tool result, the chat message and the API hand out is a link
-    to ``/api/desktop-preview`` that only *user_id* can redeem.
+    to ``/api/desktop-preview`` that only *user_id* can redeem, and that
+    answers "ended" once the owner's stream key stops holding that password.
     """
-    return stream.model_copy(
-        update={"url": create_preview_link(user_id, stream.url), "requires_auth": True}
-    )
+    link = create_preview_link(user_id, stream.url, stream_key=owner.stream_key())
+    return stream.model_copy(update={"url": link, "requires_auth": True})
 
 
 def mounts_for(user_id: Optional[str], expert_id: Optional[str]) -> dict[str, str]:
