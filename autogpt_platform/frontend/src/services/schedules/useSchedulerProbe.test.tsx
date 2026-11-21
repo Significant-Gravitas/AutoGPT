@@ -58,12 +58,12 @@ describe("useSchedulerProbe", () => {
         timeout: 5_000,
       });
       rerender();
-      expect(result.current.recovered).toBe(false);
+      expect(result.current.recovered).toBeNull();
 
       // The mount re-read answers after the schedules went unknown, so the
       // cached pre-outage success is replaced by a fresh one.
       releaseProbe();
-      await waitFor(() => expect(result.current.recovered).toBe(true), {
+      await waitFor(() => expect(result.current.recovered).not.toBeNull(), {
         timeout: 5_000,
       });
     } finally {

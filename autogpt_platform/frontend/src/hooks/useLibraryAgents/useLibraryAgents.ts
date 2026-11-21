@@ -40,7 +40,7 @@ export function useLibraryAgents() {
   // The briefing's Scheduled and Idle counts stay unknown until the
   // scheduler answers. While they are, a cheap probe — one read of the
   // user's schedule list — checks whether it is back, instead of re-reading
-  // every loaded page; once it answers, this list re-reads once.
+  // every loaded page; once it answers, this list re-reads once per answer while its schedules stay unknown.
   const schedulesUnknown = hasUnknownSchedules(
     agentsQueryData ? unpaginate(agentsQueryData, "agents") : [],
   );

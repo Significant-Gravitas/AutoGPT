@@ -262,6 +262,96 @@ describe("LibraryAgentList — Scheduled status filter", () => {
     expect(screen.queryByText("No favorite workflows yet")).toBeNull();
   });
 
+  test("never says a filter matches nothing while a later page is still loading", async () => {
+    // Page 1 holds no scheduled workflow; page 2 holds one. The no-match
+    // message must not flash while page 2 is still loading, so the test
+    // samples for it on every tick while page 2 is held — a single
+    // waitFor(toBeNull) at the end could not see a brief flash.
+    let releasePage2 = () => {};
+    const page2Held = new Promise<void>((resolve) => {
+      releasePage2 = () => resolve();
+    });
+    let page2Requested = false;
+    const idle = makeAgent({
+      id: "a-idle",
+      graph_id: "g-idle",
+      name: "Idle Workflow",
+    });
+    const scheduled = makeAgent({
+      id: "a-scheduled",
+      graph_id: "g-scheduled",
+      name: "Scheduled Workflow",
+      is_scheduled: true,
+    });
+    server.use(
+      getGetV2ListLibraryAgentsMockHandler(async ({ request }) => {
+        const page = Number(new URL(request.url).searchParams.get("page") ?? 1);
+        if (page === 2) {
+          page2Requested = true;
+          await page2Held;
+          return {
+            agents: [scheduled],
+            pagination: {
+              total_items: 2,
+              total_pages: 2,
+              current_page: 2,
+              page_size: 1,
+            },
+          };
+        }
+        return {
+          agents: [idle],
+          pagination: {
+            total_items: 2,
+            total_pages: 2,
+            current_page: 1,
+            page_size: 1,
+          },
+        };
+      }),
+      getGetV2ListFavoriteLibraryAgentsMockHandler({
+        ...getGetV2ListFavoriteLibraryAgentsResponseMock(),
+        agents: [],
+        pagination: {
+          total_items: 0,
+          total_pages: 1,
+          current_page: 1,
+          page_size: 10,
+        },
+      }),
+      getGetV2ListLibraryFoldersMockHandler(
+        getGetV2ListLibraryFoldersResponseMock({
+          folders: [],
+          pagination: {
+            total_items: 0,
+            total_pages: 1,
+            current_page: 1,
+            page_size: 20,
+          },
+        }),
+      ),
+      getGetV1ListAllExecutionsMockHandler([]),
+    );
+
+    try {
+      renderList("scheduled", "all");
+
+      await waitFor(() => expect(page2Requested).toBe(true));
+      // Page 1 is read and page 2 is in flight: sample every tick while
+      // it is held, so any flash of the message is caught.
+      for (let i = 0; i < 20; i++) {
+        expect(screen.queryByText("No workflows match this filter")).toBeNull();
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+
+      releasePage2();
+      expect(await screen.findByText("Scheduled Workflow")).toBeDefined();
+      expect(screen.queryByText("No workflows match this filter")).toBeNull();
+    } finally {
+      releasePage2();
+    }
+  });
+
   test("a filter that matches no workflows says so on the All tab too", async () => {
     const agent = makeAgent({
       id: "a-idle",

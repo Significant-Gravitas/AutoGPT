@@ -270,7 +270,7 @@ export function useLibraryAgentList({
   // While the All list's schedules are unknown, a cheap probe — one read
   // of the user's schedule list — checks whether the scheduler is back,
   // instead of re-reading every loaded page; once it answers, this list
-  // re-reads once. Favorites has its own probe in useFavoriteAgents, so a
+  // re-reads once per probe answer while its schedules stay unknown. Favorites has its own probe in useFavoriteAgents, so a
   // Favorites-only unknown must not re-read the All pages.
   const { recovered } = useSchedulerProbe(hasUnknownSchedules(allAgentsList));
   useEffect(() => {

@@ -301,7 +301,45 @@ describe("LibraryPage while the scheduler is out", () => {
     expect(probeReads).toBe(recoveredProbes);
   });
 
-  test("does not re-read the lists again if the scheduler drops out after a first recovery", async () => {
+  test("re-reads on the next probe answer when the first re-read still finds schedules unknown", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let schedulerUp = false;
+    let reads = 0;
+    let recoveredAgents = false;
+    serveLibrary(
+      () => {
+        reads += 1;
+        return recoveredAgents ? afterRecovery : duringOutage;
+      },
+      undefined,
+      () => schedulerUp,
+    );
+    const queryClient = testClient();
+
+    render(<LibraryPage />, { queryClient });
+    expect(await screen.findByText(NOTICE)).toBeDefined();
+    await libraryReadsSettled(queryClient);
+    const settledReads = reads;
+
+    // The scheduler answers, but the first list re-read still meets
+    // unknown schedules: the probe's budget passes while a page read's
+    // budget fails, so the notice must not be left up until Try again.
+    schedulerUp = true;
+    await advanceByIntervals(queryClient, 15_000);
+    await waitFor(() => expect(reads).toBeGreaterThan(settledReads));
+    await libraryReadsSettled(queryClient);
+    const firstRecoveryReads = reads;
+    expect(screen.getByText(NOTICE)).toBeDefined();
+
+    // The scheduler keeps answering, and later reads find known
+    // schedules: the lists re-read again on the next probe answer.
+    recoveredAgents = true;
+    await advanceByIntervals(queryClient, 45_000);
+    await waitFor(() => expect(reads).toBeGreaterThan(firstRecoveryReads));
+    await waitFor(() => expect(screen.queryByText(NOTICE)).toBeNull());
+  });
+
+  test("re-reads the lists again when the scheduler answers again after dropping out", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const agents = duringOutage;
     let schedulerUp = false;
@@ -335,18 +373,17 @@ describe("LibraryPage while the scheduler is out", () => {
     const recoveredReads = reads;
     const recoveredProbes = probeReads;
 
-    // The scheduler drops out again, then answers again: the first recovery
-    // is retained for this unknown period, so the lists do not re-read.
+    // The scheduler drops out again, then answers again: the new probe
+    // answer re-reads the lists, so a re-read that still found unknown
+    // schedules is retried instead of leaving the notice up.
     schedulerUp = false;
     await advanceByIntervals(queryClient, 15_000);
     await libraryReadsSettled(queryClient);
     expect(probeReads).toBeGreaterThan(recoveredProbes);
-    const droppedProbes = probeReads;
     schedulerUp = true;
     await advanceByIntervals(queryClient, 15_000);
-    await waitFor(() => expect(probeReads).toBeGreaterThan(droppedProbes));
-    await libraryReadsSettled(queryClient);
-    expect(reads).toBe(recoveredReads);
+    await waitFor(() => expect(probeReads).toBeGreaterThan(recoveredProbes));
+    await waitFor(() => expect(reads).toBeGreaterThan(recoveredReads));
   });
 
   test("the Favorites tab rechecks on its own too", async () => {

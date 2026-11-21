@@ -367,9 +367,10 @@ export function NewAgentLibraryView() {
             agent={agent}
             banner={renderMarketplaceUpdateBanner()}
           >
-            {schedulesUnavailable && !hasAnyItems ? (
-              <SchedulesUnavailableNotice className="mb-4" />
-            ) : null}
+            <SchedulesUnavailableNotice
+              show={schedulesUnavailable && !hasAnyItems}
+              className="mb-4"
+            />
             <EmptyTasks
               agent={agent}
               onRun={onRunInitiated}

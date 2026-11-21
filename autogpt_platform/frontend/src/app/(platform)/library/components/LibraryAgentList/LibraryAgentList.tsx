@@ -172,7 +172,7 @@ export function LibraryAgentList({
   // at root never hides folders that may hold matching workflows.
   const noMatchMessage = (
     <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-foreground-tertiary">
-      <Icon icon={Search01Icon} className="h-10 w-10" />
+      <Icon icon={Search01Icon} className="h-10 w-10" aria-hidden="true" />
       <Text variant="body">No workflows match this filter</Text>
     </div>
   );
@@ -245,7 +245,11 @@ export function LibraryAgentList({
           </div>
         ) : isFavoritesTab && favoritesCount === 0 ? (
           <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-foreground-tertiary">
-            <Icon icon={FavouriteIcon} className="h-10 w-10" />
+            <Icon
+              icon={FavouriteIcon}
+              className="h-10 w-10"
+              aria-hidden="true"
+            />
             <Text variant="body">No favorite workflows yet</Text>
           </div>
         ) : isPristineEmpty ? (

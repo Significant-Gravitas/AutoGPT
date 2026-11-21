@@ -47,7 +47,7 @@ export function useFavoriteAgents({ searchTerm }: Props) {
 
   // While the schedules are unknown, a cheap probe — one read of the user's
   // schedule list — checks whether the scheduler is back, instead of
-  // re-reading every loaded page; once it answers, this list re-reads once.
+  // re-reading every loaded page; once it answers, this list re-reads once per answer while its schedules stay unknown.
   const { recovered } = useSchedulerProbe(hasUnknownSchedules(allAgents));
   useEffect(() => {
     if (recovered) void refetch();
