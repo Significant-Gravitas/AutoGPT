@@ -23,6 +23,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.tools import find_agent_tool, run_agent_tool
 from backend.copilot.tools.models import ToolResponseBase
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.util.timezone_utils import MAX_TIMEZONE_LENGTH
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,7 @@ class RunAgentRequest(BaseModel):
     )
     timezone: str = Field(
         default="UTC",
+        max_length=MAX_TIMEZONE_LENGTH,
         description="IANA timezone (e.g., 'America/New_York', 'UTC')",
     )
 

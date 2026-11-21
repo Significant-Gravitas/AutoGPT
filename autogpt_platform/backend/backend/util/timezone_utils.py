@@ -12,6 +12,9 @@ from backend.data.model import USER_TIMEZONE_NOT_SET
 
 logger = logging.getLogger(__name__)
 
+# The longest IANA zone name has 32 characters; v2's schedule model caps it at 100 too.
+MAX_TIMEZONE_LENGTH = 100
+
 
 def convert_utc_time_to_user_timezone(utc_time_str: str, user_timezone: str) -> str:
     """
@@ -59,11 +62,18 @@ def validate_timezone(timezone: str) -> bool:
     Returns:
         True if valid, False otherwise
     """
+    if len(timezone) > MAX_TIMEZONE_LENGTH:
+        return False
     try:
         ZoneInfo(timezone)
         return True
     except Exception:
         return False
+
+
+def check_timezone_length(timezone: str) -> None:
+    if len(timezone) > MAX_TIMEZONE_LENGTH:
+        raise ValueError(f"Timezone is too long (max {MAX_TIMEZONE_LENGTH} characters)")
 
 
 def get_user_timezone_or_utc(user_timezone: Optional[str]) -> str:
