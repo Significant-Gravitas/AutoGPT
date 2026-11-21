@@ -188,6 +188,36 @@ export const PendingReviews: Story = {
   ),
 };
 
+const spendReview: PendingHumanReviewModel = {
+  ...review,
+  node_exec_id: "expert-spend:exp-1:run-1",
+  node_id: "expert-spend:exp-1",
+  payload: {
+    expert: "Ana",
+    spent_credits: 300,
+    threshold_credits: 250,
+    window: "week",
+  },
+  instructions:
+    "Ana has used 300 of 250 credits this week and needs your approval to keep spending",
+  editable: false,
+};
+
+export const PendingSpendApproval: Story = {
+  render: () => (
+    <Frame>
+      <PendingReviewsList reviews={[spendReview]} />
+      <PendingReviewsList
+        reviews={[
+          spendReview,
+          { ...spendReview, node_exec_id: "expert-spend:exp-1:run-2" },
+          { ...spendReview, node_exec_id: "expert-spend:exp-1:run-3" },
+        ]}
+      />
+    </Frame>
+  ),
+};
+
 export const PendingReviewsEmpty: Story = {
   render: () => (
     <Frame>

@@ -16,6 +16,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { BlockUIType } from "@/lib/autogpt-server-api/types";
+import { parseIntegerInput } from "@/lib/integer-input";
 import { InputExpanderModal } from "./TextInputExpanderModal";
 import { ArrowExpandIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -63,11 +64,7 @@ export default function TextWidget(props: WidgetProps) {
     [InputType.INTEGER]: {
       htmlType: "number",
       placeholder: "Enter integer value...",
-      handleChange: (v: string) => {
-        if (v === "") return undefined;
-        const n = Number(v);
-        return Number.isFinite(n) ? Math.trunc(n) : undefined;
-      },
+      handleChange: parseIntegerInput,
     },
   };
 
@@ -120,7 +117,7 @@ export default function TextWidget(props: WidgetProps) {
         size="small"
         wrapperClassName="mb-0"
         value={displayValue}
-        className="!h-[230px] resize-none rounded-none border-none bg-transparent p-0 placeholder:text-black/60 focus:ring-0"
+        className="!h-[230px] resize-none rounded-none border-none bg-transparent p-0 placeholder:text-foreground-base/60 focus:ring-0"
         onChange={handleChange}
         placeholder={"Write your note here..."}
         required={props.required}
@@ -151,10 +148,11 @@ export default function TextWidget(props: WidgetProps) {
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon"
+                size="icon-2xs"
+                shape="pill"
                 onClick={handleModalOpen}
                 type="button"
-                className="p-1"
+                withTooltip={false}
                 aria-label="Expand input"
               >
                 <Icon icon={ArrowExpandIcon} className="size-4" />

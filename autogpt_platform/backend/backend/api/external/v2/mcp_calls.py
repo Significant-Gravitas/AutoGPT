@@ -16,6 +16,7 @@ from pydantic import ValidationError
 
 from backend.api.utils.rate_limit import RateLimiter
 from backend.copilot.config import ChatConfig
+from backend.copilot.limit_tracking import track_limit_exceeded
 from backend.copilot.rate_limit import (
     RateLimitExceeded,
     RateLimitUnavailable,
@@ -165,6 +166,7 @@ async def check_spend_allowance(user_id: str) -> None:
             weekly_cost_limit=weekly_limit,
         )
     except RateLimitExceeded as exc:
+        track_limit_exceeded(user_id, exc, surface="api")
         raise ToolError(str(exc)) from exc
     except RateLimitUnavailable as exc:
         # Fail closed, as the chat route does: an outage can't prove the

@@ -8,17 +8,19 @@ import asyncio
 import contextlib
 import copy
 import logging
+import threading
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
+import httpx
 import pytest
 from graphiti_core.edges import EntityEdge
+from openai import APIError
 from openai.types.chat import ChatCompletionToolParam
 
 from backend.copilot.baseline.service import (
     _BUDGET_EXHAUSTED_FALLBACK_TEXT,
-    _NATURAL_FINISH_EMPTY_FALLBACK_TEXT,
     _apply_skills_cache_breakpoint,
     _baseline_conversation_updater,
     _baseline_llm_caller,
@@ -43,7 +45,12 @@ from backend.copilot.baseline.service import (
     _supports_prompt_cache_markers,
     stream_chat_completion_baseline,
 )
-from backend.copilot.context import get_execution_context, set_execution_context
+from backend.copilot.constants import EMPTY_COMPLETION_NOTICE
+from backend.copilot.context import (
+    get_current_sandbox,
+    get_execution_context,
+    set_execution_context,
+)
 from backend.copilot.expert_context import ExpertSessionUnavailableError
 from backend.copilot.graphiti import context as graphiti_context
 from backend.copilot.graphiti import context_refresh
@@ -76,7 +83,7 @@ from backend.copilot.response_model import (
 from backend.copilot.token_tracking import _extract_cache_creation_tokens
 from backend.copilot.transcript import TranscriptDownload
 from backend.copilot.transcript_builder import TranscriptBuilder
-from backend.util.prompt import CompressResult
+from backend.util.prompt import CompressResult, estimate_token_count_str
 from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallResult
 
 
@@ -948,6 +955,52 @@ class TestBaselineCostExtraction:
         # Token accumulators are still populated so the caller can log them.
         assert state.turn_prompt_tokens == 1000
         assert state.turn_completion_tokens == 500
+
+    @pytest.mark.asyncio
+    async def test_direct_haiku_cost_uses_each_requests_full_prompt(self):
+        state = _BaselineStreamState(model="claude-haiku-5-5")
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            side_effect=[
+                _make_stream_mock(
+                    _make_usage_chunk(
+                        prompt_tokens=150_000,
+                        completion_tokens=2_000,
+                        cached_tokens=120_000,
+                        cache_creation_input_tokens=10_000,
+                    )
+                ),
+                _make_stream_mock(
+                    _make_usage_chunk(
+                        prompt_tokens=50_000,
+                        completion_tokens=1_000,
+                        cached_tokens=20_000,
+                        cache_creation_input_tokens=10_000,
+                    )
+                ),
+            ]
+        )
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_main_client",
+                return_value=mock_client,
+            ),
+            patch("backend.copilot.baseline.service.config.use_openrouter", False),
+            patch("backend.copilot.baseline.service.config.use_local", False),
+            patch(
+                "backend.copilot.baseline.service.config.baseline_prompt_cache_ttl",
+                "1h",
+            ),
+        ):
+            for expected in (0.031, 0.0357):
+                await _baseline_llm_caller(
+                    messages=[{"role": "user", "content": "hi"}],
+                    tools=[],
+                    state=state,
+                )
+                assert state.cost_usd == pytest.approx(expected)
+        assert state.turn_prompt_tokens == 200_000
+        assert state.turn_completion_tokens == 3_000
 
     @pytest.mark.asyncio
     async def test_invalid_cost_string_leaves_cost_none(self):
@@ -2615,37 +2668,35 @@ class TestNaturalFinishEmptyNoticeText:
     on baseline-routed sessions (e.g. some Kimi K2.6 cohorts)."""
 
     def test_empty_text_returns_fallback(self):
-        assert (
-            _natural_finish_empty_notice_text("") == _NATURAL_FINISH_EMPTY_FALLBACK_TEXT
-        )
+        assert _natural_finish_empty_notice_text("") == EMPTY_COMPLETION_NOTICE
 
     def test_whitespace_only_returns_fallback(self):
-        assert (
-            _natural_finish_empty_notice_text("   \n\t  ")
-            == _NATURAL_FINISH_EMPTY_FALLBACK_TEXT
-        )
+        assert _natural_finish_empty_notice_text("   \n\t  ") == EMPTY_COMPLETION_NOTICE
 
     def test_non_empty_text_returns_none(self):
         assert _natural_finish_empty_notice_text("Here is the answer.") is None
 
+    def test_cards_shown_this_turn_count_as_an_answer(self):
+        assert _natural_finish_empty_notice_text("", presented_cards=True) is None
+
     def test_fallback_text_is_user_facing(self):
         """Guard against shipping an empty / internal string."""
-        assert _NATURAL_FINISH_EMPTY_FALLBACK_TEXT.strip()
+        assert EMPTY_COMPLETION_NOTICE.strip()
         # Distinct from the budget message — they describe different causes
         # so the user gets accurate signal about what happened.
-        assert _NATURAL_FINISH_EMPTY_FALLBACK_TEXT != _BUDGET_EXHAUSTED_FALLBACK_TEXT
+        assert EMPTY_COMPLETION_NOTICE != _BUDGET_EXHAUSTED_FALLBACK_TEXT
 
 
 class TestBuildNaturalFinishEmptyFallbackEvents:
     def test_empty_terminal_text_emits_three_events(self):
         events, to_append = _build_natural_finish_empty_fallback_events("")
-        assert to_append == _NATURAL_FINISH_EMPTY_FALLBACK_TEXT
+        assert to_append == EMPTY_COMPLETION_NOTICE
         assert len(events) == 3
         assert isinstance(events[0], StreamTextStart)
         assert isinstance(events[1], StreamTextDelta)
         assert isinstance(events[2], StreamTextEnd)
         assert events[0].id == events[1].id == events[2].id
-        assert events[1].delta == _NATURAL_FINISH_EMPTY_FALLBACK_TEXT
+        assert events[1].delta == EMPTY_COMPLETION_NOTICE
 
     def test_non_empty_terminal_text_returns_empty(self):
         events, to_append = _build_natural_finish_empty_fallback_events(
@@ -2805,13 +2856,10 @@ class TestDirectModeCostRecoveryOnMissingUsageChunk:
                 state=state,
             )
 
-        # With no usage chunk, _baseline_llm_caller leaves cost_usd = None.
-        # The final-fallback at stream_chat_completion_baseline level picks it
-        # up from tiktoken. At _baseline_llm_caller level cost stays None — the
-        # recovery is confirmed in TestBaselineCostExtraction (line ~749).
-        # This test specifically confirms tokens are estimated (not zero) so
-        # the outer fallback has something to work with.
-        assert state.turn_prompt_tokens > 0 or state.turn_completion_tokens >= 0
+        # With no usage chunk the request is priced from estimates of what it
+        # sent as soon as it ends, at the rate card's price for its prompt.
+        assert state.turn_prompt_tokens > 0
+        assert state.cost_usd is not None and state.cost_usd > 0
 
     @pytest.mark.asyncio
     async def test_or_mode_leaves_cost_none_when_no_usage_chunk(self):
@@ -2843,6 +2891,235 @@ class TestDirectModeCostRecoveryOnMissingUsageChunk:
 
         # OR mode: no usage.cost in chunk → cost_usd stays None (expected).
         assert state.cost_usd is None
+
+
+@contextlib.contextmanager
+def _direct_anthropic(*streams: MagicMock):
+    """Send ``_baseline_llm_caller`` to direct Anthropic, which answers each
+    request with the next of *streams* and reports no usage."""
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(side_effect=list(streams))
+    with (
+        patch("backend.copilot.baseline.service._get_main_client", return_value=client),
+        patch("backend.copilot.baseline.service.config.use_openrouter", False),
+        patch("backend.copilot.baseline.service.config.use_local", False),
+    ):
+        yield
+
+
+def _stream_answering_then(end: str) -> MagicMock:
+    """Streams some text, then the request ``completes``, fails with a
+    ``transport`` or ``provider`` error, or waits until it is ``stopped``."""
+    stream = MagicMock()
+    stream.close = AsyncMock()
+
+    async def chunks():
+        yield _make_delta_chunk(content="Partial answer")
+        if end == "transport":
+            raise httpx.RemoteProtocolError("peer closed connection")
+        if end == "provider":
+            raise APIError(
+                "Overloaded",
+                httpx.Request("POST", "https://api.anthropic.com"),
+                body=None,
+            )
+        if end == "stopped":
+            await asyncio.Event().wait()
+
+    stream.__aiter__ = lambda self: chunks()
+    return stream
+
+
+class TestUnreportedRequestPricing:
+    """A direct-Anthropic request without usage is priced when it ends."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "broken", ["estimate_token_count", "compute_anthropic_cost_usd"]
+    )
+    @pytest.mark.parametrize(
+        "end,outcome",
+        [
+            ("completes", None),
+            ("transport", httpx.RemoteProtocolError),
+            ("provider", APIError),
+            ("stopped", asyncio.CancelledError),
+        ],
+    )
+    async def test_a_pricing_failure_leaves_the_request_as_it_ended(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        broken: str,
+        end: str,
+        outcome: type[BaseException] | None,
+    ):
+        state = _BaselineStreamState(model="claude-haiku-5-5")
+        with (
+            _direct_anthropic(_stream_answering_then(end)),
+            patch(
+                f"backend.copilot.baseline.service.{broken}",
+                side_effect=RuntimeError("pricing failed"),
+            ),
+            caplog.at_level(logging.ERROR, logger="backend.copilot.baseline.service"),
+        ):
+            request = asyncio.create_task(
+                _baseline_llm_caller(
+                    messages=[{"role": "user", "content": "hi"}],
+                    tools=[],
+                    state=state,
+                )
+            )
+            if end == "stopped":
+                async with asyncio.timeout(30):
+                    while not isinstance(
+                        await state.pending_events.get(), StreamTextDelta
+                    ):
+                        pass
+                request.cancel()
+            if outcome is None:
+                assert (await request).response_text == "Partial answer"
+            else:
+                with pytest.raises(outcome):
+                    await request
+
+        # Not billed, and said so.
+        assert state.cost_usd is None
+        assert (state.turn_prompt_tokens, state.turn_completion_tokens) == (0, 0)
+        failures = [
+            record.exc_info[0]
+            for record in caplog.records
+            if record.exc_info and "Could not price" in record.getMessage()
+        ]
+        assert failures == [RuntimeError]
+
+    @pytest.mark.asyncio
+    async def test_the_tokens_are_counted_off_the_event_loop(self):
+        state = _BaselineStreamState(model="claude-haiku-5-5")
+        threads: list[int] = []
+
+        def count(messages: list[dict[str, Any]], *, model: str) -> int:
+            threads.append(threading.get_ident())
+            return 1_000
+
+        with (
+            _direct_anthropic(_make_stream_mock()),
+            patch(
+                "backend.copilot.baseline.service.estimate_token_count",
+                side_effect=count,
+            ),
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}], tools=[], state=state
+            )
+
+        assert len(threads) == 1 and threads[0] != threading.get_ident()
+        assert state.turn_prompt_tokens == 1_000
+
+    @pytest.mark.asyncio
+    async def test_the_tools_are_counted_once_and_billed_on_every_request(self):
+        state = _BaselineStreamState(model="claude-haiku-5-5")
+        tools = [_make_tool("search"), _make_tool("fetch")]
+        count_text = MagicMock(
+            side_effect=lambda value, **_: 300 if isinstance(value, list) else 7
+        )
+        with (
+            _direct_anthropic(*(_make_stream_mock() for _ in range(4))),
+            patch(
+                "backend.copilot.baseline.service.estimate_token_count",
+                return_value=1_000,
+            ),
+            patch(
+                "backend.copilot.baseline.service.estimate_token_count_str",
+                count_text,
+            ),
+        ):
+            # A turn's last round sends no tools.
+            for round_tools in (tools, tools, tools, []):
+                await _baseline_llm_caller(
+                    messages=[{"role": "user", "content": "hi"}],
+                    tools=round_tools,
+                    state=state,
+                )
+
+        assert [call.args[0] for call in count_text.call_args_list] == [tools]
+        assert state.turn_prompt_tokens == 3 * 1_300 + 1_000
+
+    @pytest.mark.asyncio
+    async def test_a_stop_while_counting_still_bills_the_request_once(self):
+        state = _BaselineStreamState(model="claude-haiku-5-5")
+        loop_thread = threading.get_ident()
+        counting, release, counted = (threading.Event() for _ in range(3))
+
+        def count(messages: list[dict[str, Any]], *, model: str) -> int:
+            if threading.get_ident() != loop_thread:
+                counting.set()
+                release.wait(timeout=30)
+                counted.set()
+            return 1_000
+
+        with (
+            _direct_anthropic(_make_stream_mock()),
+            patch(
+                "backend.copilot.baseline.service.estimate_token_count",
+                side_effect=count,
+            ),
+        ):
+            request = asyncio.create_task(
+                _baseline_llm_caller(
+                    messages=[{"role": "user", "content": "hi"}], tools=[], state=state
+                )
+            )
+            try:
+                assert await asyncio.to_thread(counting.wait, 30)
+                request.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await request
+            finally:
+                release.set()
+            assert await asyncio.to_thread(counted.wait, 30)
+
+        assert state.turn_prompt_tokens == 1_000
+        assert state.cost_usd is not None and state.cost_usd > 0
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "content",
+        [
+            # Stripped from the answer as reasoning.
+            "<thinking>Add the rows first.</thinking>The total is 42.",
+            "<thinking>Add the rows first.</thinking>",
+            # Held back as a possible tag until the stream ends.
+            "The total is 42 <thin",
+        ],
+    )
+    @pytest.mark.parametrize("dropped", [False, True])
+    async def test_text_kept_out_of_the_answer_is_billed_as_output(
+        self, content: str, dropped: bool
+    ):
+        state = _BaselineStreamState(model="claude-haiku-5-5")
+        stream = MagicMock()
+        stream.close = AsyncMock()
+
+        async def chunks():
+            yield _make_delta_chunk(content=content)
+            if dropped:
+                raise httpx.RemoteProtocolError("peer closed connection")
+
+        stream.__aiter__ = lambda self: chunks()
+        with _direct_anthropic(stream):
+            request = _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}], tools=[], state=state
+            )
+            if dropped:
+                with pytest.raises(httpx.RemoteProtocolError):
+                    await request
+            else:
+                await request
+
+        assert state.turn_completion_tokens == estimate_token_count_str(
+            content, model="claude-haiku-5-5"
+        )
+        assert state.cost_usd is not None and state.cost_usd > 0
 
 
 class TestSplitUserMessageAfterSkillsBlock:
@@ -3118,13 +3395,33 @@ class TestRefreshFollowUpWarmContext:
 
 
 _GRACE_MS = 300
-# How much later than the grace a join may return: the event loop's timer
-# granularity (about 16 ms on Windows) and the task's cancellation.
-_JOIN_SLACK_S = 0.25
+# Caps a wait the tests expect to end well before it, so a join that waits
+# too long fails the test instead of hanging it. Far longer than a CI runner
+# stalls a test (#16920), and far shorter than the two below.
+_HANG_SECONDS = 10
+# A grace that no fast search outlasts, even on a stalled runner.
+_LONG_GRACE_MS = 60_000
+# The refresh's own deadline, out of the way: only the grace can end a join.
+_LONG_REFRESH_TIMEOUT_S = 60.0
+# How much sooner than its delay the event loop may run a timer: its clock's
+# resolution, about 16 ms on Windows.
+_TIMER_SLACK_S = 0.05
 
 
-async def _search_that_never_answers(*_args, **_kwargs):
-    await asyncio.Event().wait()
+class _HungSearch:
+    """A graph search that never answers, and when its wait was cancelled."""
+
+    def __init__(self) -> None:
+        self.cancelled = asyncio.Event()
+        self.cancelled_at = 0.0
+
+    async def __call__(self, *_args, **_kwargs):
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled_at = asyncio.get_running_loop().time()
+            self.cancelled.set()
+            raise
 
 
 def _staging_edge() -> EntityEdge:
@@ -3145,14 +3442,23 @@ class TestFollowUpRefreshJoinGrace:
     """The baseline engine starts the refresh after the pending fold, with
     nothing to overlap, so ``warm_context_refresh_join_grace_ms`` is its
     whole budget: the most it adds to time-to-first-token. Driven through
-    the real ``refresh_warm_context`` with the graph reads stubbed."""
+    the real ``refresh_warm_context`` with the graph reads stubbed.
 
-    async def _refresh(self, search) -> tuple[str | None, float]:
+    Neither test bounds the join's elapsed time from above, which a stalled
+    CI runner fails while the join is fine; one that waits too long runs
+    into ``_HANG_SECONDS`` instead."""
+
+    async def _refresh(self, search, *, grace_ms: int) -> str | None:
         with (
             patch.object(
                 context_refresh.graphiti_config,
                 "warm_context_refresh_join_grace_ms",
-                _GRACE_MS,
+                grace_ms,
+            ),
+            patch.object(
+                context_refresh.graphiti_config,
+                "context_refresh_timeout",
+                _LONG_REFRESH_TIMEOUT_S,
             ),
             patch.object(graphiti_context, "search_facts", new=search),
             patch.object(
@@ -3166,9 +3472,7 @@ class TestFollowUpRefreshJoinGrace:
                 new=AsyncMock(side_effect=lambda _scope, edges, eps: (edges, eps)),
             ),
         ):
-            loop = asyncio.get_running_loop()
-            started = loop.time()
-            out = await _refresh_follow_up_warm_context(
+            return await _refresh_follow_up_warm_context(
                 None,
                 graphiti_enabled=True,
                 user_id="u-1",
@@ -3177,28 +3481,37 @@ class TestFollowUpRefreshJoinGrace:
                 pre_drain_msg_count=4,
                 message="deploy the staging environment now",
             )
-            return out, loop.time() - started
 
     @pytest.mark.asyncio
-    async def test_a_hung_search_adds_at_most_the_grace(self, caplog):
+    async def test_a_hung_search_is_cancelled_at_the_grace(self, caplog):
         caplog.set_level(logging.INFO, logger=context_refresh.__name__)
+        search = _HungSearch()
+        started = asyncio.get_running_loop().time()
 
-        out, waited = await self._refresh(_search_that_never_answers)
+        async with asyncio.timeout(_HANG_SECONDS):
+            out = await self._refresh(search, grace_ms=_GRACE_MS)
+            await search.cancelled.wait()
 
         assert out is None
-        assert _GRACE_MS / 1000 - 0.05 <= waited <= _GRACE_MS / 1000 + _JOIN_SLACK_S
         late = [r for r in caplog.records if "refresh late, skipped" in r.message]
         assert len(late) == 1 and late[0].levelno == logging.INFO
+        # Not before the grace. Only a lower bound: a stall makes it longer.
+        assert search.cancelled_at - started >= _GRACE_MS / 1000 - _TIMER_SLACK_S
 
     @pytest.mark.asyncio
-    async def test_a_fast_search_is_still_injected(self, caplog):
+    async def test_a_fast_search_is_injected_without_waiting_out_the_grace(
+        self, caplog
+    ):
         caplog.set_level(logging.INFO, logger=context_refresh.__name__)
 
-        out, waited = await self._refresh(AsyncMock(return_value=[_staging_edge()]))
+        # A join that waited out the grace would reach _HANG_SECONDS first.
+        async with asyncio.timeout(_HANG_SECONDS):
+            out = await self._refresh(
+                AsyncMock(return_value=[_staging_edge()]), grace_ms=_LONG_GRACE_MS
+            )
 
         assert out is not None
         assert "the staging environment runs on k3s" in out
-        assert waited < _GRACE_MS / 1000
         assert "refresh late" not in caplog.text
 
 
@@ -3931,3 +4244,116 @@ class TestStampPostHogTrace:
         for stamp, save in pairs:
             stamped_at = src.index(stamp)
             assert stamped_at < src.index(save, stamped_at)
+
+
+@pytest.mark.asyncio
+async def test_skill_invocation_keeps_one_first_turn_context_in_transcript():
+    from backend.copilot.skill_invocation import InvocableSkill
+    from backend.copilot.tools.skills import ParsedSkill
+
+    session = _baseline_session("/report weekly")
+    found = InvocableSkill(
+        skill=ParsedSkill(name="report", description="Write a report", body="Write $0"),
+        is_default=True,
+    )
+    skills_context = "<available_skills>report</available_skills>"
+    turn = await _run_baseline_turn(
+        session,
+        first_block=None,
+        refresh=_refresh_nothing,
+        extra=[
+            (
+                f"{_BASELINE}.build_skills_context",
+                dict(new=AsyncMock(return_value=skills_context)),
+            ),
+            (
+                "backend.copilot.skill_invocation.is_skills_feature_enabled",
+                dict(new=AsyncMock(return_value=True)),
+            ),
+            (
+                "backend.copilot.skill_invocation.resolve_invocable_skill",
+                dict(new=AsyncMock(return_value=found)),
+            ),
+        ],
+    )
+    assert "Write weekly" in turn.model_input()
+    assert turn.model_input().count(skills_context) == 1
+    assert turn.uploaded().count(skills_context.encode()) == 1
+    assert turn.uploaded().count(b"<skill_invocation>") == 1
+
+
+@pytest.mark.asyncio
+async def test_a_command_runs_with_the_turns_sandbox_bound():
+    """A user skill's package is copied into the working directory the
+    model's shell uses, so the command expands with the turn's sandbox bound
+    even though the turn's execution context is set after it."""
+    sandbox = MagicMock(name="sandbox")
+    seen: list[Any] = []
+
+    async def resolve(*_args, **_kwargs):
+        seen.append(get_current_sandbox())
+        return None
+
+    await _run_baseline_turn(
+        _baseline_session("/report weekly"),
+        first_block=None,
+        refresh=_refresh_nothing,
+        extra=[
+            (
+                "backend.copilot.config.ChatConfig.active_e2b_api_key",
+                dict(new_callable=PropertyMock, return_value="e2b-key"),
+            ),
+            (
+                f"{_BASELINE}.get_or_create_sandbox",
+                dict(new=AsyncMock(return_value=sandbox)),
+            ),
+            (
+                "backend.copilot.skill_invocation.is_skills_feature_enabled",
+                dict(new=AsyncMock(return_value=True)),
+            ),
+            (
+                "backend.copilot.skill_invocation.resolve_invocable_skill",
+                dict(new=AsyncMock(side_effect=resolve)),
+            ),
+        ],
+    )
+    assert seen == [sandbox]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first_turn", [True, False])
+@pytest.mark.parametrize("incoming", ["/report weekly", ""])
+async def test_retry_keeps_persisted_skill_in_model_and_transcript(
+    first_turn, incoming
+):
+    expanded = "<skill_invocation>\nWrite the saved weekly report.\n</skill_invocation>\n\n/report weekly"
+    if first_turn:
+        expanded = "<available_skills>report</available_skills>\n\n" + expanded
+    session = (
+        _baseline_session(expanded)
+        if first_turn
+        else _baseline_session("hello", "ready", expanded)
+    )
+    original_rows = len(session.messages)
+    resolve = AsyncMock(return_value=None)
+    turn = await _run_baseline_turn(
+        session,
+        message=incoming,
+        first_block=None,
+        refresh=_refresh_nothing,
+        extra=[
+            (
+                "backend.copilot.skill_invocation.is_skills_feature_enabled",
+                dict(new=AsyncMock(return_value=True)),
+            ),
+            (
+                "backend.copilot.skill_invocation.resolve_invocable_skill",
+                dict(new=resolve),
+            ),
+        ],
+    )
+    assert turn.model_input().count("<skill_invocation>") == 1
+    assert turn.uploaded().count(b"<skill_invocation>") == 1
+    assert session.messages[original_rows - 1].content == expanded
+    assert sum(m.role == "user" for m in session.messages) == (1 if first_turn else 2)
+    resolve.assert_not_awaited()

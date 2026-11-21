@@ -145,6 +145,8 @@ def _trials() -> list[EmailScenario]:
         for kind in (
             "started",
             "ending",
+            "expiring",
+            "last_call",
             "canceled",
             "resumed",
             "ended",

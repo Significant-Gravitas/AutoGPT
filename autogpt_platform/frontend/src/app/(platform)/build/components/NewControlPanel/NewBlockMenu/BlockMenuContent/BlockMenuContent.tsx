@@ -11,10 +11,7 @@ export const BlockMenuContent = () => {
   return (
     <div className="flex h-full w-full flex-col">
       <BlockMenuSearchBar />
-      <Separator
-        // TODO(tokens): no fitting role for text-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (disabled text) and border-strong (a border colour), and this is a static divider (QUALITY 41(c))
-        className="h-[1px] w-full text-zinc-300"
-      />
+      <Separator className="h-[1px] w-full text-foreground-disabled" />
       {searchQuery ? <BlockMenuSearch /> : <BlockMenuDefault />}
     </div>
   );

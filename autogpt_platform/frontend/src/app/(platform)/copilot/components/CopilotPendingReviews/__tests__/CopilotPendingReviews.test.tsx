@@ -15,6 +15,9 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
+import type { UIDataTypes, UIMessage, UITools } from "ai";
+import { extractReviewTargets } from "../../ChatMessagesContainer/helpers";
+import { reviewRefetchKey } from "../../ChatMessagesContainer/reviewRefetchKey";
 import { CopilotPendingReviews } from "../CopilotPendingReviews";
 
 const onSend = vi.fn();
@@ -97,6 +100,69 @@ test("an agent run's queue is read from its execution", async () => {
   expect(screen.queryByText("Not the run's review")).toBeNull();
 });
 
+type Message = UIMessage<unknown, UIDataTypes, UITools>;
+
+function toolCall(id: string, tool: string, output: string): Message {
+  return {
+    id,
+    role: "assistant",
+    parts: [
+      {
+        type: `tool-${tool}`,
+        toolCallId: `call-${id}`,
+        state: "output-available",
+        input: {},
+        output,
+      },
+    ],
+  } as Message;
+}
+
+// The chat's own list, wired from the turn's messages as the chat wires it.
+function ChatCards({ messages }: { messages: Message[] }) {
+  return (
+    <CopilotPendingReviews
+      chatSessionId="chat-1"
+      pollWhileEmpty={extractReviewTargets(messages).chat}
+      refetchKey={reviewRefetchKey(messages)}
+    />
+  );
+}
+
+test("a block review raised mid-turn shows its card without a remount, even when the chat can't read the output", async () => {
+  let waiting: PendingHumanReviewModel[] = [];
+  let requests = 0;
+  server.use(
+    http.get("*/api/review/session/chat-1", () => {
+      requests++;
+      return HttpResponse.json(waiting);
+    }),
+  );
+  const turn = [toolCall("m1", "bash_exec", '{"stdout":"ok"}')];
+  const { rerender } = render(<ChatCards messages={turn} />);
+  // Mounting fetches the chat's cards exactly once; with no card to show and
+  // nothing readable to poll for, nothing fetches again until a block run.
+  await waitFor(() => expect(requests).toBe(1));
+  const settled = requests;
+
+  waiting = [
+    makeReview({
+      node_exec_id: "copilot-node-gmail:ab12",
+      node_id: "copilot-node-gmail",
+      instructions: "Gmail Send",
+      payload: { to: "ada@example.com" },
+    }),
+  ];
+  rerender(
+    <ChatCards
+      messages={[...turn, toolCall("m2", "run_block", "<unreadable output>")]}
+    />,
+  );
+
+  expect((await screen.findAllByText("Gmail Send")).length).toBeGreaterThan(0);
+  expect(requests).toBeGreaterThan(settled);
+});
+
 const RUNS = ["exec-1", "exec-2", "exec-3", "exec-4"];
 
 // Four runs each paused on one expert's spend approval, served like the backend.
@@ -123,7 +189,12 @@ function serveSpendRuns({
                 graph_exec_id: id,
                 graph_id: "g-1",
                 graph_version: 1,
-                payload: { expert: "Maria", spent_credits: 300 },
+                payload: {
+                  expert: "Maria",
+                  spent_credits: 300,
+                  threshold_credits: 250,
+                  window: "week",
+                },
                 instructions: "Maria needs your approval to keep spending",
                 editable: false,
               }),
@@ -176,12 +247,14 @@ test("every run waiting on one expert's spend approval is approved with one clic
   const calls = serveSpendRuns();
   renderRuns();
 
-  expect(await screen.findByText("4 reviews")).toBeDefined();
+  expect(
+    await screen.findByText(
+      "That's past your 250 check-in. 4 tasks are ready to go.",
+    ),
+  ).toBeDefined();
   expect(screen.queryByText(/Auto-approve future executions/)).toBeNull();
 
-  await userEvent.click(
-    screen.getByRole("button", { name: "Approve 4 reviews" }),
-  );
+  await userEvent.click(screen.getByRole("button", { name: "Keep going" }));
 
   await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1), {
     timeout: 5000,
@@ -199,15 +272,13 @@ test("a group can't be decided again while its later runs are still unsent", asy
   });
   const calls = serveSpendRuns({ holdRefetch });
   renderRuns();
-  await screen.findByText("4 reviews");
+  await screen.findByText(/4 tasks are ready to go/);
 
-  await userEvent.click(
-    screen.getByRole("button", { name: "Approve 4 reviews" }),
-  );
+  await userEvent.click(screen.getByRole("button", { name: "Keep going" }));
   // The first run is decided and its list is being read again; the rest wait.
   await waitFor(() => expect(calls.heldRefetches).toBeGreaterThan(0));
   expect(calls.posted).toHaveLength(1);
-  const reject = screen.getByRole("button", { name: "Reject 4 reviews" });
+  const reject = screen.getByRole("button", { name: "Cancel" });
   expect((reject as HTMLButtonElement).disabled).toBe(true);
 
   release();
@@ -220,11 +291,9 @@ test("a group can't be decided again while its later runs are still unsent", asy
 test("a run decided elsewhere doesn't keep the group's other runs from being sent", async () => {
   const calls = serveSpendRuns({ decidedElsewhere: "exec-1" });
   renderRuns();
-  await screen.findByText("4 reviews");
+  await screen.findByText(/4 tasks are ready to go/);
 
-  await userEvent.click(
-    screen.getByRole("button", { name: "Approve 4 reviews" }),
-  );
+  await userEvent.click(screen.getByRole("button", { name: "Keep going" }));
 
   await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1), {
     timeout: 5000,

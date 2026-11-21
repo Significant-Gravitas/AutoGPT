@@ -1,3 +1,6 @@
+import { cva } from "class-variance-authority";
+import { tones } from "@/components/styles/tones";
+
 export type As =
   | "h1"
   | "h2"
@@ -19,14 +22,15 @@ export type As =
   | "pre"
   | "button";
 
-// Typography comes from the size roles in tailwind.config.ts; each bundles
-// its line-height. TODO(tokens): SECRT-3152, the rem-based heading tracking
-// and the `label` size/tracking have no role yet and stay raw.
+// Typography comes from the type scale in src/app/tokens/typography.css
+// (`text-<step>`); each step bundles its line-height.
 export const variants = {
   // Headings
-  h1: "font-poppins text-display font-semibold tracking-[-0.033rem] text-foreground-base",
-  h2: "font-poppins text-title font-medium text-foreground-base tracking-[-0.02rem]",
-  h3: "font-poppins text-heading font-medium text-foreground-base tracking-[-0.01313rem]",
+  // The marketing hero: h1 at the scale's largest step.
+  hero: "font-poppins text-hero font-semibold tracking-title text-foreground-base",
+  h1: "font-poppins text-display font-semibold tracking-title text-foreground-base",
+  h2: "font-poppins text-title font-medium text-foreground-base tracking-title",
+  h3: "font-poppins text-heading font-medium text-foreground-base tracking-title",
   // TODO(tokens): no tracking token is -0.025em (tracking-tight); h3 with it.
   "h3-tracking-tight":
     "font-poppins text-heading font-medium text-foreground-base tracking-tight",
@@ -156,19 +160,15 @@ export const variants = {
 
   // Label Text
   label:
-    "font-sans text-[0.6785rem] font-medium uppercase leading-5 tracking-[0.06785rem] text-foreground-base",
+    "font-sans text-caption-sm font-medium uppercase leading-5 tracking-eyebrow text-foreground-base",
   eyebrow:
     "font-sans text-caption font-medium uppercase leading-4 tracking-eyebrow text-foreground-tertiary",
   // TODO(tokens): no mono role at caption-sm (0.6875rem/1rem, text-[11px]).
   "caption-sm-mono":
     "font-mono text-caption-sm font-normal text-foreground-base",
 
-  // TODO(tokens): SECRT-3152 no role is 1.125rem/1.75rem (text-lg); the raw size stays.
-  "lg-semibold": "font-sans text-lg font-semibold text-foreground-base",
-  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl); the raw size stays.
-  "2xl-bold": "font-sans text-2xl font-bold text-foreground-base",
-  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl); the raw size stays.
-  "2xl": "font-sans text-2xl font-normal text-foreground-base",
+  "heading-md-bold": "font-sans text-heading-md font-bold text-foreground-base",
+  "heading-md": "font-sans text-heading-md font-normal text-foreground-base",
   // TODO(tokens): no role is 0.875rem/1 (text-sm leading-none); body plus leading-none.
   "body-medium-lh-none":
     "font-sans text-body font-medium leading-none text-foreground-base",
@@ -178,52 +178,71 @@ export const variants = {
   // TODO(tokens): no role is 0.75rem/1.25 (text-xs leading-tight); caption plus leading-tight.
   "small-lh-tight":
     "font-sans text-caption font-normal leading-tight text-foreground-base",
-  // TODO(tokens): SECRT-3152 no role is 1.125rem/1.75rem (text-lg); the raw size stays.
-  "lg-medium": "font-sans text-lg font-medium text-foreground-base",
-  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl) and no tracking token is -0.025em (tracking-tight); the raw values stay.
-  "2xl-bold-tracking-tight":
-    "font-sans text-2xl font-bold tracking-tight text-foreground-base",
+  // TODO(tokens): no tracking token is -0.025em (tracking-tight).
+  "heading-md-bold-tracking-tight":
+    "font-sans text-heading-md font-bold tracking-tight text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
   "small-mono-bold-tight":
     "font-mono text-caption font-bold leading-4 text-foreground-base",
-  // h3 at semibold; the tracking is h3's (TODO(tokens): SECRT-3152 above).
+  // h3 at semibold.
   "h3-semibold":
-    "font-poppins text-heading font-semibold text-foreground-base tracking-[-0.01313rem]",
+    "font-poppins text-heading font-semibold text-foreground-base tracking-title",
   // The sans sibling of caption-sm-mono: caption-sm (0.6875rem/1rem) as it is.
   "caption-sm": "font-sans text-caption-sm font-normal text-foreground-base",
 } as const;
 
 export type Variant = keyof typeof variants;
 
-/**
- * Semantic colours, each a colour role at the hex it rendered before the
- * roles existed. Omit for the variant's own colour (foreground-base #141414).
- */
-export const tones = {
-  primary: "text-foreground-strong", // #2C2C30
-  emphasis: "text-foreground-emphasis", // #3E3E43
-  body: "text-foreground-body", // #505057
-  secondary: "text-foreground-secondary", // #68686F
-  muted: "text-foreground-tertiary", // #83838C
-  subtle: "text-foreground-subtle", // #ADADB3
-  danger: "text-error-hover", // #D93636
-  error: "text-error", // #EF4444
-  warning: "text-warning-foreground", // #B45309
-  success: "text-success", // #149443
-  disabled: "text-foreground-disabled", // #C5C5C9
-  // The parent's colour, for copy inside a control that changes it on hover.
-  inherit: "text-inherit",
-  // TODO(tokens): no role for text-emerald-300 #6EE7B7 (on a dark fill).
-  "success-light": "text-emerald-300",
-  // TODO(tokens): no role for text-emerald-700 #047857.
-  "success-strong": "text-emerald-700",
-  // TODO(tokens): no role for text-amber-800 #92400E.
-  "warning-strong": "text-amber-800",
-} as const;
-
-export type Tone = keyof typeof tones;
+// The props that adjust a variant (Text.tsx). Each applies after the
+// variant's classes, so `weight="semibold"` replaces its `font-medium`.
+export const textModifiers = cva("", {
+  variants: {
+    tone: tones,
+    weight: {
+      normal: "font-normal",
+      medium: "font-medium",
+      semibold: "font-semibold",
+      bold: "font-bold",
+    },
+    mono: { true: "font-mono" },
+    tabular: { true: "tabular-nums" },
+    italic: { true: "italic" },
+    decoration: {
+      underline: "underline",
+      "line-through": "line-through",
+      none: "no-underline",
+    },
+    transform: {
+      uppercase: "uppercase",
+      lowercase: "lowercase",
+      capitalize: "capitalize",
+      none: "normal-case",
+    },
+    tracking: {
+      tight: "tracking-tight",
+      normal: "tracking-normal",
+      wide: "tracking-wide",
+      widest: "tracking-widest",
+      title: "tracking-title",
+      heading: "tracking-heading",
+      display: "tracking-display",
+      caps: "tracking-caps",
+      eyebrow: "tracking-eyebrow",
+    },
+    // Animates a colour change, e.g. a hover colour set by a parent.
+    motion: { colors: "transition-colors" },
+    align: {
+      left: "text-left",
+      center: "text-center",
+      right: "text-right",
+      start: "text-start",
+      end: "text-end",
+    },
+  },
+});
 
 export const variantElementMap: Record<Variant, As> = {
+  hero: "h1",
   h1: "h1",
   h2: "h2",
   h3: "h3",
@@ -281,14 +300,12 @@ export const variantElementMap: Record<Variant, As> = {
   label: "span",
   eyebrow: "span",
   "caption-sm-mono": "span",
-  "lg-semibold": "h3",
-  "2xl-bold": "div",
-  "2xl": "span",
+  "heading-md-bold": "div",
+  "heading-md": "span",
   "body-medium-lh-none": "span",
   "body-medium-lh-snug": "p",
   "small-lh-tight": "p",
-  "lg-medium": "h3",
-  "2xl-bold-tracking-tight": "h1",
+  "heading-md-bold-tracking-tight": "h1",
   "small-mono-bold-tight": "code",
   "h3-semibold": "h3",
   "caption-sm": "kbd",

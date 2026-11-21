@@ -60,10 +60,7 @@ export function ProgressBar() {
       className="absolute inset-x-0 top-0 h-0.5 overflow-hidden bg-surface-active/70"
       aria-hidden
     >
-      <div
-        // TODO(tokens): no fitting role for bg-zinc-500 #83838C; #83838C is foreground-tertiary, a text colour
-        className="h-full w-1/3 animate-progress-bar rounded-full bg-zinc-500"
-      />
+      <div className="h-full w-1/3 animate-progress-bar rounded-full bg-foreground-tertiary" />
     </div>
   );
 }

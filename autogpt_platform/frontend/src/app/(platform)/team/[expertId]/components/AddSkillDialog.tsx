@@ -134,13 +134,11 @@ export function AddSkillDialog({
                   ))}
                 </ul>
               )}
-              <NextLink href="/library/skills">
-                <Text
-                  variant="body"
-                  as="span"
-                  tone="muted"
-                  className="underline underline-offset-2"
-                >
+              <NextLink
+                href="/library/skills"
+                className="text-foreground-tertiary underline underline-offset-2"
+              >
+                <Text variant="body" as="span" tone="inherit">
                   Upload a new skill in your library
                 </Text>
               </NextLink>
@@ -209,11 +207,9 @@ function SkillOption({
 }: OptionProps) {
   return (
     <li className="flex items-center gap-3 rounded-lg border border-border-base px-3 py-2.5">
-      <Icon
-        icon={icon}
-        size={18}
-        className="shrink-0 text-foreground-tertiary"
-      />
+      <span className="inline-flex shrink-0 text-foreground-tertiary">
+        <Icon icon={icon} size={18} />
+      </span>
       <span className="min-w-0 flex-1">
         <Text
           variant="body-medium"

@@ -5,9 +5,11 @@ and correct data mapping. Uses mocks for Prisma DB calls since the
 test infrastructure does not provide a live database connection.
 """
 
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from prisma.errors import DataError, UniqueViolationError
 
 from backend.data.org_migration import (
     _release_migration_lock,
@@ -93,6 +95,17 @@ class TestSanitizeSlug:
 
     def test_whitespace_only(self):
         assert _sanitize_slug("   ") == "user"
+
+    @pytest.mark.parametrize(
+        "raw, expected",
+        [
+            ("a" * 300, "a" * 100),
+            # The cut lands on a hyphen, which must not end the slug.
+            ("a" * 99 + "-bcd", "a" * 99),
+        ],
+    )
+    def test_caps_length_like_a_requested_slug(self, raw, expected):
+        assert _sanitize_slug(raw) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -618,19 +631,66 @@ class TestBackfillHardening:
         assert mock_prisma.organization.create.await_count == 2
 
     @pytest.mark.asyncio
-    async def test_persistent_failure_raises_loud(self, mock_prisma):
-        """If creation keeps violating and the user still owns no org, fail loud
-        rather than silently leaving the account without an organization."""
-        from prisma.errors import UniqueViolationError
-
-        mock_prisma.query_raw = AsyncMock(return_value=[_backfill_row("user-stuck")])
-        mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
-        mock_prisma.organization.create = AsyncMock(
-            side_effect=UniqueViolationError({})
+    @pytest.mark.parametrize("error", [UniqueViolationError, DataError])
+    async def test_a_user_whose_org_cannot_be_created_is_logged_and_skipped(
+        self, mock_prisma, caplog, error
+    ):
+        """An account whose org cannot be created costs that account its org
+        until next time, not every later account theirs."""
+        mock_prisma.query_raw = AsyncMock(
+            return_value=[_backfill_row(f"user-{i}") for i in (1, 2, 3)]
         )
 
-        with pytest.raises(RuntimeError, match="after retries"):
+        async def create(data):
+            if data["bootstrapUserId"] == "user-2":
+                raise error({})
+            return MagicMock(id=f"org-{data['bootstrapUserId']}")
+
+        mock_prisma.organization.create = AsyncMock(side_effect=create)
+
+        with caplog.at_level(logging.ERROR, logger="backend.data.org_migration"):
+            created = await create_orgs_for_existing_users()
+
+        assert created == 2
+        assert [r.levelno for r in caplog.records if "user-2" in r.getMessage()] == [
+            logging.ERROR
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_database_that_stops_answering_ends_the_loop(self, mock_prisma):
+        mock_prisma.query_raw = AsyncMock(
+            return_value=[_backfill_row(f"user-{i}") for i in (1, 2, 3)]
+        )
+        mock_prisma.orgmember.find_first = AsyncMock(
+            side_effect=[None, ConnectionError("database gone")]
+        )
+
+        with pytest.raises(ConnectionError):
             await create_orgs_for_existing_users()
+
+        assert mock_prisma.organization.create.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_a_run_of_creation_failures_ends_the_loop_too(self, mock_prisma):
+        """A connectivity failure can surface on the creation call instead of
+        the re-check above — a run of them must end the loop the same way,
+        not get logged-and-skipped for every one of many remaining users."""
+        from backend.data.org_migration import _CONSECUTIVE_CREATE_FAILURE_LIMIT
+
+        mock_prisma.query_raw = AsyncMock(
+            return_value=[_backfill_row(f"user-{i}") for i in range(10)]
+        )
+        mock_prisma.organization.create = AsyncMock(
+            side_effect=ConnectionError("database gone")
+        )
+
+        with pytest.raises(ConnectionError):
+            await create_orgs_for_existing_users()
+
+        assert (
+            mock_prisma.organization.create.await_count
+            == _CONSECUTIVE_CREATE_FAILURE_LIMIT
+        )
 
     @pytest.mark.asyncio
     async def test_find_owned_personal_org_is_ordered_oldest_first(self, mock_prisma):
@@ -653,13 +713,16 @@ class _FakeTx:
     def __init__(self):
         self.organization = MagicMock()
         self.organization.create = AsyncMock(return_value=MagicMock(id="org-new"))
+        self.organization.update_many = AsyncMock(return_value=1)
         self.orgmember = MagicMock(create=AsyncMock())
         self.team = MagicMock()
         self.team.create = AsyncMock(return_value=MagicMock(id="ws-new"))
         self.teammember = MagicMock(create=AsyncMock())
         self.organizationprofile = MagicMock(create=AsyncMock())
         self.organizationseatassignment = MagicMock(create=AsyncMock())
-        self.orgbalance = MagicMock(create=AsyncMock())
+        self.orgbalance = MagicMock(
+            create=AsyncMock(), update_many=AsyncMock(return_value=1)
+        )
 
 
 @pytest.fixture
@@ -725,6 +788,76 @@ class TestCreatePersonalOrg:
         await create_personal_org("user-9", "taken", "Taken")
 
         assert fake_tx.organization.create.call_args[1]["data"]["slug"] == "taken-1"
+
+    @pytest.mark.asyncio
+    async def test_a_conversion_flips_the_old_org_in_the_new_orgs_transaction(
+        self, mock_prisma, fake_tx
+    ):
+        from backend.data.org_migration import create_personal_org
+
+        await create_personal_org(
+            "user-9", "alice-personal-1", "Alice", replaces_org_id="org-old"
+        )
+
+        # Before the create: the old org holds the one-personal-per-user slot.
+        assert [c[0] for c in fake_tx.organization.method_calls] == [
+            "update_many",
+            "create",
+        ]
+        fake_tx.organization.update_many.assert_awaited_once_with(
+            where={"id": "org-old", "isPersonal": True, "deletedAt": None},
+            data={"isPersonal": False},
+        )
+        mock_prisma.organization.update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_conversion_whose_slug_fails_writes_nothing(
+        self, mock_prisma, fake_tx, mocker
+    ):
+        from backend.data.org_migration import create_personal_org
+
+        mocker.patch(
+            "backend.data.org_migration._resolve_unique_slug",
+            new=AsyncMock(side_effect=RuntimeError("no free slug")),
+        )
+
+        with pytest.raises(RuntimeError, match="no free slug"):
+            await create_personal_org(
+                "user-9", "alice-personal-1", "Alice", replaces_org_id="org-old"
+            )
+
+        fake_tx.organization.update_many.assert_not_called()
+        mock_prisma.organization.update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_an_org_converted_meanwhile_is_not_converted_again(
+        self, mock_prisma, fake_tx
+    ):
+        from backend.data.org_migration import create_personal_org
+
+        fake_tx.organization.update_many.return_value = 0
+
+        with pytest.raises(ValueError, match="already a team org"):
+            await create_personal_org(
+                "user-9", "alice-personal-1", "Alice", replaces_org_id="org-old"
+            )
+
+        fake_tx.organization.create.assert_not_called()
+        fake_tx.orgbalance.update_many.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_converted_org_starts_with_a_zero_balance(
+        self, mock_prisma, fake_tx
+    ):
+        from backend.data.org_migration import create_personal_org
+
+        await create_personal_org(
+            "user-9", "alice-personal-1", "Alice", replaces_org_id="org-old"
+        )
+
+        fake_tx.orgbalance.update_many.assert_awaited_once_with(
+            where={"orgId": "org-old"}, data={"balance": 0}
+        )
 
 
 # ---------------------------------------------------------------------------

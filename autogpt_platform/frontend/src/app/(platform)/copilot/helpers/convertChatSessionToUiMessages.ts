@@ -7,6 +7,8 @@ import {
   type TurnPause,
 } from "../turnPause";
 import { toolDisplayName } from "./toolDisplay";
+import { backgroundNotice } from "./backgroundSubtasks";
+import { getStandaloneBubbleMetadata } from "./standaloneMessages";
 import {
   WORKSPACE_FOLDER_PART_TYPE,
   type WorkspaceFolderPartData,
@@ -21,6 +23,10 @@ export interface TurnStats {
    *  "Queued" badge anchors on this row whenever the OWNING session's
    *  ``chat_status === "queued"`` (checked at render time). */
   isLatestUserMessage?: boolean;
+  /** The ``<session>-seq-N`` id a reload gives this bubble, once its rows are
+   *  saved. A live turn's bubble is keyed by the turn instead, and a rating
+   *  has to name the saved row. */
+  savedMessageId?: string | null;
 }
 
 export type TurnStatsMap = Map<string, TurnStats>;
@@ -35,24 +41,6 @@ interface SessionChatMessage {
   duration_ms: number | null;
   created_at: string | null;
   metadata: Record<string, unknown> | null;
-}
-
-// Assistant rows the backend posts on its own, outside any turn: a run-post
-// WorkCard, or the note a skipped scheduled chat leaves. Each is its own bubble
-// so it never reads as part of a neighbouring reply.
-const STANDALONE_METADATA_KINDS = new Set([
-  "expert_run",
-  "scheduled_chat_notice",
-]);
-
-function getStandaloneBubbleMetadata(
-  metadata: unknown,
-): Record<string, unknown> | null {
-  if (!metadata || typeof metadata !== "object") return null;
-  const kind = (metadata as Record<string, unknown>).kind;
-  return typeof kind === "string" && STANDALONE_METADATA_KINDS.has(kind)
-    ? (metadata as Record<string, unknown>)
-    : null;
 }
 
 function coerceSessionChatMessages(
@@ -450,10 +438,11 @@ export function convertChatSessionMessagesToUiMessages(
     // contributing a reasoning part to the surrounding assistant bubble —
     // the consecutive-assistant merge below then folds them into the same
     // UIMessage as the text that follows.
+    const notice = backgroundNotice(msg.metadata);
     const uiRole: "user" | "assistant" =
-      msg.role === "reasoning" ? "assistant" : msg.role;
+      msg.role === "reasoning" || notice ? "assistant" : msg.role;
 
-    const parts = buildRowParts(msg, {
+    const parts = buildRowParts(notice ? { ...msg, content: notice } : msg, {
       toolOutputsByCallId,
       fileUrlBuilder,
       unanswered: options?.isComplete ? "completed" : "input-available",
@@ -483,6 +472,7 @@ export function convertChatSessionMessagesToUiMessages(
     const prevUI = uiMessages[uiMessages.length - 1];
     if (
       uiRole === "assistant" &&
+      !notice &&
       !opensActiveTurn &&
       prevUI &&
       prevUI.role === "assistant" &&
@@ -728,6 +718,26 @@ export function createTurnLogRenderer(
     memo = next;
     return messages;
   };
+}
+
+/**
+ * The id a reload gives each assistant bubble of a turn: its last saved row's
+ * sequence, as ``convertChatSessionMessagesToUiMessages`` keys a merged bubble.
+ */
+export function savedTurnBubbleIds(
+  sessionId: string,
+  log: TurnLog,
+): Map<string, string> {
+  const ids = new Map<string, string>();
+  for (const group of groupTurnRows(log)) {
+    if (group.role !== "assistant") continue;
+    const sequence = group.rows
+      .map((i) => log.rows[i].sequence)
+      .findLast((s): s is number => s !== null);
+    if (sequence !== undefined)
+      ids.set(group.key, `${sessionId}-seq-${sequence}`);
+  }
+  return ids;
 }
 
 interface TurnGroup {

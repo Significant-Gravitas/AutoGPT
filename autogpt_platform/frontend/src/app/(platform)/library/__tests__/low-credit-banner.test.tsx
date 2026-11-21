@@ -18,7 +18,11 @@ import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPrompt
 import LibraryPage from "../page";
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
-  useAuth: () => ({ isUserLoading: false, isLoggedIn: true }),
+  useAuth: () => ({
+    user: { id: "user-a" },
+    isUserLoading: false,
+    isLoggedIn: true,
+  }),
 }));
 
 // Billing must be on for the provider to derive `isOutOfCredits`; keep the real
@@ -30,9 +34,16 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) => flag === actual.Flag.ENABLE_PLATFORM_PAYMENT,
+    useGetFlag: () => false,
   };
 });
+
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({
+    isPaymentEnabled: true,
+    isResolved: true,
+  }),
+}));
 
 function setupLibraryHandlers() {
   server.use(

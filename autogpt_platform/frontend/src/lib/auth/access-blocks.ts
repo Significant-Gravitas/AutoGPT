@@ -3,13 +3,13 @@ import { APIError } from "better-auth/api";
 import type { Pool } from "pg";
 
 // Admins write these rows from /admin/users (backend/data/access_blocks.py),
-// storing an IP exactly as Better Auth's getIp() returns it.
+// storing an IP exactly as Better Auth's getIP() returns it.
 
 export const SIGN_UP_BLOCKED_CODE = "SIGN_UP_BLOCKED";
 export const SIGN_IN_BLOCKED_CODE = "SIGN_IN_BLOCKED";
 
 // One generic sentence, so the message doesn't reveal which rule refused.
-const SIGN_UP_BLOCKED_MESSAGE =
+export const SIGN_UP_BLOCKED_MESSAGE =
   "Sign-up isn't available from this network or email address. If you think this is a mistake, please contact support.";
 const SIGN_IN_BLOCKED_MESSAGE =
   "Sign-in isn't available from this network. If you think this is a mistake, please contact support.";

@@ -41,6 +41,7 @@ import {
 import { useCredentialFailureCounters } from "./useCredentialFailureCounters";
 import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
 import { ChainRowView } from "./ChainRowView";
+import { useNoteRunningSteps } from "./StepClock";
 import { applyHeldOutcome } from "./heldRow";
 import { useHeldAnswersStore } from "../ApprovalQueue/heldAnswersStore";
 import {
@@ -240,6 +241,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
       ),
     [parts, pendingQuestions, heldOutcomes, heldAnswers],
   );
+  useNoteRunningSteps(rows);
   if (rows.length === 0) return null;
 
   const askedRecords = rows.flatMap((row) => {
@@ -318,7 +320,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                 text={heading}
                 shimmer={isStreaming && !expanded}
                 className={
-                  "min-w-0 text-sm font-normal " +
+                  "min-w-0 text-body font-normal " +
                   (hasError && !isStreaming
                     ? "text-error"
                     : "text-foreground-body")
@@ -342,7 +344,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
               >
                 <div
                   className={
-                    "flex flex-col pl-0.5 pt-2.5" +
+                    "flex flex-col pt-2.5 pl-0.5" +
                     (panelOpen && !windowMode ? " " + PANEL_REVEAL : "")
                   }
                 >
@@ -417,13 +419,9 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                   {showDone && (
                     <div className="flex items-stretch gap-2.5">
                       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-                        <Icon
-                          icon={Tick02Icon}
-                          size={14}
-                          className="text-foreground-secondary"
-                        />
+                        <Icon icon={Tick02Icon} size={14} tone="secondary" />
                       </div>
-                      <div className="flex h-7 items-center text-sm text-foreground-secondary">
+                      <div className="flex h-7 items-center text-body text-foreground-secondary">
                         Done
                       </div>
                     </div>
@@ -476,12 +474,8 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
             still need somewhere to send from. */}
         {!readOnly && pendingActions.length > 0 && !hasCardWork && (
           <div className="mt-1 flex flex-col items-start gap-2">
-            <span className="flex items-center gap-1.5 text-sm text-foreground-secondary">
-              <Icon
-                icon={SentIcon}
-                size={16}
-                className="text-foreground-subtle"
-              />
+            <span className="flex items-center gap-1.5 text-body text-foreground-secondary">
+              <Icon icon={SentIcon} size={16} tone="subtle" />
               {allActionsReady
                 ? "Everything's filled in"
                 : "Complete the steps above to continue"}

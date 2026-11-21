@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Runs the real posthog-js client against a stubbed PostHog host, so these
 // assertions cover what the SDK itself stores and sends, not our calls to it.
 
-const POSTHOG_HOST = "https://posthog.test";
+const POSTHOG_ORIGIN = "https://posthog.test";
 const POSTHOG_KEY = "phc_test";
 const EVENT_PATHS = ["/e/", "/i/v0/e/", "/batch/", "/capture/", "/s/"];
 
@@ -48,11 +48,19 @@ interface FlagsRequest {
   person_properties?: Record<string, unknown>;
 }
 
+// Each test gets its own PostHog host path. A client from an earlier test
+// can still send /flags after that test ends, and it must not count here.
+let testRun = 0;
+let hostPath = "";
 let requests: string[] = [];
 let flagsRequests: FlagsRequest[] = [];
 let captured: string[] = [];
 let capturedEvents: CaptureResult[] = [];
 let clients: PostHog[] = [];
+// Each page load's capture queue. One left holding events for a consent
+// answer retries them on an interval, and a tick after this file's window
+// is gone throws, failing the shard after every test passed.
+let captureQueueResets: (() => void)[] = [];
 
 interface RenderOptions {
   user?: User | null;
@@ -83,15 +91,18 @@ async function renderPostHog({
     { resetAnalyticsIdentity },
     { setAnalyticsIdentitySignedIn },
     { buildAttributionPayload },
+    { resetPostHogCaptureQueueForTests },
   ] = await Promise.all([
     import("@/providers/posthog/posthog-provider"),
     import("@/services/onboarding/tab-intro-analytics"),
     import("@/services/analytics/reset-identity"),
     import("@/services/analytics/anonymous-id"),
     import("@/services/analytics/attribution-payload"),
+    import("@/services/analytics/posthog-capture"),
   ]);
+  captureQueueResets.push(resetPostHogCaptureQueueForTests);
   // What the auth store reports once the session is known.
-  if (sessionKnown) setAnalyticsIdentitySignedIn(Boolean(user));
+  if (sessionKnown) setAnalyticsIdentitySignedIn(user?.id ?? null);
   const startSessionRecording = vi.spyOn(client, "startSessionRecording");
   const identify = vi.spyOn(client, "identify");
   const { PostHogProvider, PostHogPageViewTracker, PostHogUserTracker } =
@@ -186,6 +197,25 @@ function seedEarlierVisit() {
   document.cookie = `ph_${POSTHOG_KEY}_posthog=${encodeURIComponent(earlier)}; Path=/`;
 }
 
+// What posthog-js leaves once identify() merged the anonymous id into USER
+// (checked against the real client below).
+function seedIdentifiedVisit({ storeAnonymousID = true } = {}) {
+  const saved = JSON.stringify({
+    distinct_id: USER.id,
+    $device_id: "merged-id",
+    $user_state: "identified",
+  });
+  if (storeAnonymousID) {
+    window.localStorage.setItem("agpt_anonymous_id", "merged-id");
+  }
+  window.localStorage.setItem(`ph_${POSTHOG_KEY}_posthog`, saved);
+  document.cookie = `ph_${POSTHOG_KEY}_posthog=${encodeURIComponent(saved)}; Path=/`;
+}
+
+function identifyEvent() {
+  return capturedEvents.find((event) => event.event === "$identify");
+}
+
 function cookieNames() {
   return document.cookie
     .split(";")
@@ -196,7 +226,9 @@ function cookieNames() {
 beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
   vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", POSTHOG_KEY);
-  vi.stubEnv("NEXT_PUBLIC_POSTHOG_HOST", POSTHOG_HOST);
+  testRun += 1;
+  hostPath = `/run-${testRun}`;
+  vi.stubEnv("NEXT_PUBLIC_POSTHOG_HOST", `${POSTHOG_ORIGIN}${hostPath}`);
   vi.stubEnv("NEXT_PUBLIC_COOKIEBOT_CBID", "");
   // posthog-js tries a script tag for remote config first; happy-dom refuses
   // to load scripts and reports it, before the SDK falls back to fetch.
@@ -209,14 +241,19 @@ beforeEach(() => {
   capturedEvents = [];
   server.use(
     http.options(
-      `${POSTHOG_HOST}/*`,
+      `${POSTHOG_ORIGIN}/*`,
       () => new HttpResponse(null, { status: 204, headers: CORS_HEADERS }),
     ),
-    http.all(`${POSTHOG_HOST}/*`, async ({ request }) => {
-      const path = new URL(request.url).pathname;
-      requests.push(path);
-      if (path === "/flags/") flagsRequests.push(await readFlagsBody(request));
-      return HttpResponse.json(path === "/flags/" ? FLAGS_RESPONSE : {}, {
+    http.all(`${POSTHOG_ORIGIN}/*`, async ({ request }) => {
+      const { pathname } = new URL(request.url);
+      const isFlags = pathname.endsWith("/flags/");
+      // Earlier tests' clients still get a reply, but only this test's count.
+      if (pathname.startsWith(`${hostPath}/`)) {
+        const path = pathname.slice(hostPath.length);
+        requests.push(path);
+        if (isFlags) flagsRequests.push(await readFlagsBody(request));
+      }
+      return HttpResponse.json(isFlags ? FLAGS_RESPONSE : {}, {
         headers: CORS_HEADERS,
       });
     }),
@@ -228,6 +265,8 @@ afterEach(() => {
   // deleting) the next test's cookies when a late response arrives.
   clients.forEach((client) => client.set_config({ persistence: "memory" }));
   clients = [];
+  captureQueueResets.forEach((reset) => reset());
+  captureQueueResets = [];
   removeCookiebot();
   window.localStorage.clear();
   window.sessionStorage.clear();
@@ -312,7 +351,11 @@ describe("PostHog before analytics consent", () => {
       first.distinct_id,
     );
     expect(first.$device_id).toBe(first.distinct_id);
-    expect(first.person_properties).toEqual({});
+    // posthog-js only adds its own library name and version.
+    expect(first.person_properties).toEqual({
+      $lib: "web",
+      $lib_version: expect.any(String),
+    });
 
     seedEarlierVisit();
     await renderPostHog();
@@ -458,6 +501,117 @@ describe("PostHog when analytics consent is granted", () => {
 
     expect(posthog.has_opted_out_capturing()).toBe(true);
     expect(storedPostHogKeys()).toEqual([]);
+  });
+});
+
+describe("PostHog in a browser where an older account was identified", () => {
+  const OTHER_USER = {
+    id: "user-2",
+    email: "grace@example.com",
+  } as unknown as User;
+
+  beforeEach(() => {
+    configureCookiebot();
+  });
+
+  // A page load where the visitor accepts analytics.
+  async function loadAcceptedPage(options?: RenderOptions) {
+    installCookiebot();
+    const page = await renderPostHog(options);
+    act(() => answerCookiebot({ statistics: true }));
+    return page;
+  }
+
+  it("leaves the anonymous id merged into the account after identify", async () => {
+    const { posthog } = await loadAcceptedPage({ user: USER });
+    const anonymousID = identifyEvent()?.properties.$anon_distinct_id;
+
+    expect(posthog.get_distinct_id()).toBe(USER.id);
+    expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(anonymousID);
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(`ph_${POSTHOG_KEY}_posthog`) ?? "{}",
+      ),
+    ).toMatchObject({
+      distinct_id: USER.id,
+      $device_id: anonymousID,
+      $user_state: "identified",
+    });
+  });
+
+  it.each([true, false])(
+    "gives a page that loads signed out a new id (id stored: %s)",
+    async (storeAnonymousID) => {
+      seedIdentifiedVisit({ storeAnonymousID });
+
+      const { posthog } = await loadAcceptedPage();
+
+      expect(posthog.get_distinct_id()).not.toBe("merged-id");
+      expect(posthog.get_distinct_id()).not.toBe(USER.id);
+      expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(
+        posthog.get_distinct_id(),
+      );
+    },
+  );
+
+  it("merges a signed-out visit into the different account that signs in next", async () => {
+    seedIdentifiedVisit();
+    const { posthog: signedOutPage } = await loadAcceptedPage();
+    const visitorID = signedOutPage.get_distinct_id();
+
+    await loadAcceptedPage({ user: OTHER_USER });
+
+    expect(visitorID).not.toBe("merged-id");
+    expect(identifyEvent()?.properties.distinct_id).toBe(OTHER_USER.id);
+    expect(identifyEvent()?.properties.$anon_distinct_id).toBe(visitorID);
+  });
+
+  it("keeps the id for the account it was merged into", async () => {
+    seedIdentifiedVisit();
+
+    const { posthog } = await loadAcceptedPage({ user: USER });
+
+    expect(posthog.get_distinct_id()).toBe(USER.id);
+    expect(identifyEvent()?.properties.$anon_distinct_id).toBe("merged-id");
+    expect(window.localStorage.getItem("agpt_anonymous_id")).toBe("merged-id");
+  });
+
+  describe("when another account's session is known before the consent answer", () => {
+    afterEach(() => {
+      setPageURL("http://localhost:3000/");
+    });
+
+    it("attributes the new account to this page's landing, not the earlier visitor's", async () => {
+      seedIdentifiedVisit();
+      window.localStorage.setItem(
+        "agpt_first_landing",
+        JSON.stringify({
+          path: "/pricing?utm_source=earlier",
+          referrer: null,
+          utm_source: "earlier",
+          utm_medium: "email",
+          utm_campaign: "earlier-launch",
+          at: "2026-01-01T00:00:00.000Z",
+        }),
+      );
+      setPageURL(
+        "http://localhost:3000/signup?utm_source=new&utm_medium=cpc&utm_campaign=launch",
+      );
+
+      const { buildAttributionPayload } = await loadAcceptedPage({
+        user: OTHER_USER,
+      });
+
+      const payload = buildAttributionPayload();
+      expect(payload.anonymous_id).not.toBe("merged-id");
+      expect(payload).toMatchObject({
+        landing_path:
+          "/signup?utm_source=new&utm_medium=cpc&utm_campaign=launch",
+        utm_source: "new",
+        utm_medium: "cpc",
+        utm_campaign: "launch",
+      });
+    });
   });
 });
 
@@ -733,7 +887,7 @@ describe("PostHog hand-over from the marketing site", () => {
     });
     expect(captured).toEqual([]);
 
-    act(() => setAnalyticsIdentitySignedIn(false));
+    act(() => setAnalyticsIdentitySignedIn(null));
 
     expect(posthog.get_distinct_id()).toBe(WEBSITE_ID);
     expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(WEBSITE_ID);
@@ -761,7 +915,7 @@ describe("PostHog hand-over from the marketing site", () => {
       $device_id: WEBSITE_ID,
     });
 
-    act(() => setAnalyticsIdentitySignedIn(true));
+    act(() => setAnalyticsIdentitySignedIn(USER.id));
 
     expect(posthog.config.persistence).toBe("localStorage+cookie");
     expect(posthog.get_distinct_id()).not.toBe(WEBSITE_ID);

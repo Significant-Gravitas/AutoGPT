@@ -26,20 +26,12 @@ export function SpendByAgentList({ rollups, agentLookup, totalCents }: Props) {
   const hasMore = billable.length > INITIAL_VISIBLE;
 
   return (
-    <section className="flex flex-col gap-2 lg:mt-[1rem]">
-      <div className="flex items-baseline justify-between gap-2 lg:mb-[.5rem]">
-        <Text
-          // TODO(tokens): no exact role for text-neutral-800 (#262626)
-          variant="body-medium"
-          className="text-neutral-800"
-        >
+    <section className="flex flex-col gap-2 lg:mt-4">
+      <div className="flex items-baseline justify-between gap-2 lg:mb-2">
+        <Text variant="body-medium" tone="emphasis">
           Spend by workflow
         </Text>
-        <Text
-          // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
-          variant="small"
-          className="text-neutral-400"
-        >
+        <Text variant="small" tone="subtle">
           % of monthly spend
         </Text>
       </div>
@@ -60,46 +52,38 @@ export function SpendByAgentList({ rollups, agentLookup, totalCents }: Props) {
           const row = (
             <div className="flex flex-col gap-1">
               <div className="flex items-baseline justify-between gap-3">
-                <Text
-                  // TODO(tokens): no exact role for text-neutral-800 (#262626)
-                  variant="body"
-                  className="truncate text-neutral-800"
-                >
+                <Text variant="body" tone="emphasis" className="truncate">
                   {label}
                 </Text>
-                <Text
-                  variant="body-medium"
-                  // TODO(tokens): no exact role for text-neutral-800 (#262626)
-                  className="tabular-nums text-neutral-800"
-                >
-                  {formatCents(rollup.cost_cents)}
-                  <Text
-                    variant="small"
-                    as="span"
-                    // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
-                    className="ml-2 text-neutral-400"
-                  >
-                    {rollup.run_count} run{rollup.run_count === 1 ? "" : "s"}
-                    {avgPerRun > 0 &&
-                      ` · avg ${formatCents(Math.round(avgPerRun))}`}
+                <div className="tabular-nums">
+                  <Text variant="body-medium" tone="emphasis">
+                    {formatCents(rollup.cost_cents)}
+                    <Text
+                      variant="small"
+                      as="span"
+                      tone="subtle"
+                      className="ml-2"
+                    >
+                      {rollup.run_count} run{rollup.run_count === 1 ? "" : "s"}
+                      {avgPerRun > 0 &&
+                        ` · avg ${formatCents(Math.round(avgPerRun))}`}
+                    </Text>
                   </Text>
-                </Text>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-hover">
                   <div
-                    className="h-full rounded-full bg-info"
-                    style={{ width: `${widthPct}%` }}
+                    className="h-full w-[var(--share)] rounded-full bg-info"
+                    style={{ "--share": `${widthPct}%` } as React.CSSProperties}
                     aria-hidden="true"
                   />
                 </div>
-                <Text
-                  variant="small"
-                  // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
-                  className="w-9 shrink-0 text-right tabular-nums text-neutral-400"
-                >
-                  {shareLabel}
-                </Text>
+                <div className="w-9 shrink-0 tabular-nums">
+                  <Text variant="small" tone="subtle" className="text-right">
+                    {shareLabel}
+                  </Text>
+                </div>
               </div>
             </div>
           );

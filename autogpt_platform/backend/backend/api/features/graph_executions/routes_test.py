@@ -7,12 +7,15 @@ import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
+from autogpt_libs.auth.dependencies import get_request_context
+from autogpt_libs.auth.models import RequestContext
+from autogpt_libs.auth.permissions import OrgAction, TeamAction
 from fastapi.routing import APIRoute
 
 from backend.api.features.graph_executions.routes import router
 from backend.api.rest_api import app as real_app
 from backend.data import execution as execution_db
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.models import Pagination
 
 app = fastapi.FastAPI()
@@ -46,6 +49,20 @@ def setup_app_auth(mock_jwt_user, test_user_id):
     app.dependency_overrides[get_request_context] = _fake_request_context
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def role_where_the_run_lives(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """Sharing and deleting check the role in the run's own org and team, which
+    reads membership rows; it allows everything unless a test makes it refuse."""
+    mocker.patch.object(
+        execution_db, "get_graph_execution_meta", AsyncMock(return_value=None)
+    )
+    return mocker.patch(
+        "backend.api.features.graph_executions.sharing"
+        ".require_role_where_resource_lives",
+        AsyncMock(),
+    )
 
 
 # The ten operations this module owns, with the tag list and auth posture each
@@ -540,3 +557,141 @@ def test_disable_sharing_revokes_the_token_and_the_file_allowlist(
     assert response.status_code == 204
     delete_files.assert_awaited_once()
     assert update.await_args.kwargs["is_shared"] is False
+
+
+def _billing_manager_context(team_id: str | None):
+    return RequestContext(
+        user_id="billing-user",
+        org_id="test-org",
+        team_id=team_id,
+        is_org_owner=False,
+        is_org_admin=False,
+        is_org_billing_manager=team_id is None,
+        is_team_admin=False,
+        is_team_billing_manager=team_id is not None,
+        seat_status="ACTIVE",
+    )
+
+
+def _as_billing_manager(team_id: str | None) -> None:
+    async def billing_manager():
+        return _billing_manager_context(team_id)
+
+    app.dependency_overrides[get_request_context] = billing_manager
+
+
+RUN_ROUTE_CALLS = [
+    ("get", "/executions"),
+    ("get", "/graphs/graph-1/executions"),
+    ("get", "/graphs/graph-1/executions/exec-1"),
+    ("delete", "/executions/exec-1"),
+    ("post", "/graphs/graph-1/executions/exec-1/share"),
+]
+
+
+@pytest.mark.parametrize("team_id", [None, "team-1"], ids=["org-home", "team"])
+@pytest.mark.parametrize(
+    "method,path", RUN_ROUTE_CALLS, ids=[f"{m} {p}" for m, p in RUN_ROUTE_CALLS]
+)
+def test_a_billing_manager_role_is_refused_reading_changing_or_sharing_runs(
+    mocker: pytest_mock.MockFixture, method: str, path: str, team_id: str | None
+) -> None:
+    _as_billing_manager(team_id)
+    reads = [
+        mocker.patch.object(execution_db, name)
+        for name in (
+            "get_graph_executions_paginated",
+            "get_graph_execution",
+            "delete_graph_execution",
+            "update_graph_execution_share_status",
+        )
+    ]
+
+    response = client.request(method, path)
+
+    assert response.status_code == 403, response.text
+    for read in reads:
+        read.assert_not_called()
+
+
+def test_withdrawing_a_share_stays_open_to_the_runs_owner(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """It only takes exposure away."""
+    _as_billing_manager("team-1")
+    mocker.patch.object(
+        execution_db, "get_graph_execution", AsyncMock(return_value=Mock(outputs={}))
+    )
+    mocker.patch.object(execution_db, "delete_shared_execution_files", AsyncMock())
+    unshare = mocker.patch.object(
+        execution_db, "update_graph_execution_share_status", AsyncMock()
+    )
+
+    response = client.delete("/graphs/graph-1/executions/exec-1/share")
+
+    assert response.status_code == 204
+    assert unshare.await_args.kwargs["is_shared"] is False
+
+
+def test_sharing_a_run_checks_the_role_where_the_run_lives(
+    mocker: pytest_mock.MockFixture,
+    role_where_the_run_lives: AsyncMock,
+    test_user_id: str,
+) -> None:
+    """The run can live in a team the request doesn't name, so leaving the
+    team header off must not get a share past the role there."""
+    mocker.patch.object(
+        execution_db,
+        "get_graph_execution",
+        AsyncMock(
+            return_value=Mock(outputs={}, organization_id="org-1", team_id="team-1")
+        ),
+    )
+    role_where_the_run_lives.side_effect = NotAuthorizedError("no")
+    writes = [
+        mocker.patch.object(execution_db, name, AsyncMock())
+        for name in (
+            "delete_shared_execution_files",
+            "update_graph_execution_share_status",
+            "create_shared_execution_files",
+        )
+    ]
+
+    with pytest.raises(NotAuthorizedError):
+        client.post("/graphs/graph-1/executions/exec-1/share")
+
+    role_where_the_run_lives.assert_awaited_once_with(
+        test_user_id,
+        "org-1",
+        "team-1",
+        OrgAction.SHARE_RESOURCES,
+        TeamAction.VIEW_EXECUTIONS,
+    )
+    for write in writes:
+        write.assert_not_awaited()
+
+
+def test_deleting_a_run_checks_the_role_where_the_run_lives(
+    mocker: pytest_mock.MockFixture,
+    role_where_the_run_lives: AsyncMock,
+    test_user_id: str,
+) -> None:
+    mocker.patch.object(
+        execution_db,
+        "get_graph_execution_meta",
+        AsyncMock(return_value=Mock(organization_id="org-1", team_id="team-1")),
+    )
+    role_where_the_run_lives.side_effect = NotAuthorizedError("no")
+    delete = mocker.patch.object(execution_db, "delete_graph_execution", AsyncMock())
+
+    with pytest.raises(NotAuthorizedError):
+        client.delete("/executions/exec-1")
+
+    role_where_the_run_lives.assert_awaited_once_with(
+        test_user_id,
+        "org-1",
+        "team-1",
+        OrgAction.CREATE_RESOURCES,
+        TeamAction.CREATE_AGENTS,
+    )
+    delete.assert_not_awaited()
