@@ -190,6 +190,31 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
     expect(screen.queryByText("Queued")).toBeNull();
   }, 20_000);
 
+  it("a follow-up still being sent at the Stop leaves no chip when the re-read finds it first", async () => {
+    // The re-read at the Stop answers before both the send and the cancel.
+    const { buffer } = await ottoAnswers(0);
+    let answerTheSend = () => {};
+    buffer.sendGate = new Promise<void>((resolve) => {
+      answerTheSend = resolve;
+    });
+    await sendFollowUp();
+    await waitFor(() => expect(buffer.messages).toEqual([QUEUED]));
+
+    const peeksBeforeStop = buffer.peeksAnswered;
+    await clickStop();
+    await waitFor(
+      () => expect(buffer.peeksAnswered).toBeGreaterThan(peeksBeforeStop),
+      { timeout: 5000 },
+    );
+    answerTheSend();
+
+    await waitFor(() => expect(composer().value).toBe(QUEUED), {
+      timeout: 5000,
+    });
+    expect(buffer.cancelsAnswered).toBe(1);
+    expect(screen.queryAllByText("Queued")).toEqual([]);
+  }, 20_000);
+
   it("a follow-up given back after a switch to another chat stays with the stopped chat", async () => {
     const { buffer, host } = await queueAFollowUpWhileOttoAnswers(0, 1000);
 

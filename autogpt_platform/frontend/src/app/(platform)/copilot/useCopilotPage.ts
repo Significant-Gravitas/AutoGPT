@@ -434,7 +434,7 @@ function useCopilotPageChat(
 
   // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
   // lives in a dedicated hook so this component is just glue.
-  const { queuedMessages, queueMessage, dropQueued } = useCopilotPendingChips({
+  const { queuedMessages, queueMessage, holdForStop } = useCopilotPendingChips({
     sessionId,
     status,
     messages,
@@ -455,10 +455,13 @@ function useCopilotPageChat(
   );
   async function stopAndGiveBackQueued() {
     const queued = queuedMessages;
-    const discarded = await stop();
-    if (discarded === null) return;
-    dropQueued(queuedOrDiscarded(queued, discarded));
-    if (discarded.length === 0) return;
+    const settleQueue = holdForStop();
+    const discarded = await stop().catch((error: unknown) => {
+      settleQueue([]);
+      throw error;
+    });
+    settleQueue(discarded ? queuedOrDiscarded(queued, discarded) : []);
+    if (!discarded?.length) return;
     const text = discarded.join("\n\n");
     stoppedChatDraft.write((current) => restoreFailedDraft(current, text));
     toast({

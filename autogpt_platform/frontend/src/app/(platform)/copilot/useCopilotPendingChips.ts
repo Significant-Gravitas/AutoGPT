@@ -93,12 +93,14 @@ export function useCopilotPendingChips({
   // server truth (and, before this guard, the two answers each carried the
   // other's copy of a buffered message forward, doubling the strip).
   const latestPeekSeqRef = useRef(0);
+  const stopsInFlightRef = useRef(0);
 
   usePeekOnBoundary({
     sessionId,
     status,
     queueRef,
     latestPeekSeqRef,
+    stopsInFlightRef,
     promote,
     setQueue,
   });
@@ -130,10 +132,17 @@ export function useCopilotPendingChips({
     return id;
   }
 
-  /** Drop chips the server no longer holds; a peek already in flight read it before. */
-  function dropQueued(texts: readonly string[]) {
-    latestPeekSeqRef.current += 1;
-    setQueue((prev) => withoutTexts(prev, texts));
+  /**
+   * Keeps buffer re-reads off the strip until the returned call drops what the
+   * Stop discarded: a re-read mid-Stop can restore a follow-up its send then adds.
+   */
+  function holdForStop() {
+    stopsInFlightRef.current += 1;
+    return function settle(texts: readonly string[]) {
+      stopsInFlightRef.current -= 1;
+      latestPeekSeqRef.current += 1;
+      setQueue((prev) => withoutTexts(prev, texts));
+    };
   }
 
   /**
@@ -148,7 +157,7 @@ export function useCopilotPendingChips({
     });
   }
 
-  return { queuedMessages, queueMessage, unqueueMessage, dropQueued };
+  return { queuedMessages, queueMessage, unqueueMessage, holdForStop };
 }
 
 function withoutTexts(queue: QueuedMessage[], texts: readonly string[]) {
@@ -172,6 +181,7 @@ function usePeekOnBoundary({
   status,
   queueRef,
   latestPeekSeqRef,
+  stopsInFlightRef,
   promote,
   setQueue,
 }: {
@@ -179,6 +189,7 @@ function usePeekOnBoundary({
   status: ChatStatus;
   queueRef: { current: QueuedMessage[] };
   latestPeekSeqRef: { current: number };
+  stopsInFlightRef: { current: number };
   promote: Promote;
   setQueue: (updater: QueueUpdater) => void;
 }) {
@@ -233,6 +244,7 @@ function usePeekOnBoundary({
     const peek = getV2GetPendingMessages(sessionId).then((res) => {
       if (prevSessionIdRef.current !== requestSessionId) return;
       if (peekSeq !== latestPeekSeqRef.current) return;
+      if (stopsInFlightRef.current > 0) return;
       if (res.status !== 200) return;
       // Turn-start drain path: when the backend has drained everything
       // it had at GET time, promote those drained entries to user
@@ -289,7 +301,14 @@ function usePeekOnBoundary({
       });
     });
     void peek.catch(ignoreMissingSession);
-  }, [sessionId, status, queueRef, latestPeekSeqRef, setQueue]);
+  }, [
+    sessionId,
+    status,
+    queueRef,
+    latestPeekSeqRef,
+    stopsInFlightRef,
+    setQueue,
+  ]);
 }
 
 // A deleted chat, or another account's, answers 404: nothing is pending. Any
