@@ -1857,8 +1857,8 @@ async def update_folder(
 def _check_folder_text(
     name: Optional[str], icon: Optional[str], color: Optional[str]
 ) -> None:
-    """Hold a folder's text to the request models' rules, for the callers
-    (AutoPilot's folder tools) that reach the writers without one."""
+    """Hold a folder's text to the request models' rules at the write,
+    whichever caller makes it."""
     try:
         library_model.FolderUpdateRequest(name=name, icon=icon, color=color)
     except pydantic.ValidationError as e:

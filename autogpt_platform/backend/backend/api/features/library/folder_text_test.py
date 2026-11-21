@@ -1,6 +1,5 @@
 """A folder's name, icon and colour are checked where they are written, against
-the folder request models' rules, so a caller without a request model is held
-to them too."""
+the folder request models' rules, so every caller is held to them."""
 
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
