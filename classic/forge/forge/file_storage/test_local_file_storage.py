@@ -201,6 +201,13 @@ async def test_copy_file(storage: LocalFileStorage):
 
 
 @pytest.mark.asyncio
+async def test_copy_file_into_new_folder(storage: LocalFileStorage):
+    await storage.write_file("test_file.txt", "test content")
+    storage.copy("test_file.txt", "new_dir/sub_dir/test_file_copy.txt")
+    assert storage.read_file("new_dir/sub_dir/test_file_copy.txt") == "test content"
+
+
+@pytest.mark.asyncio
 async def test_copy_dir(storage: LocalFileStorage):
     storage.make_dir("dir")
     storage.make_dir("dir/sub_dir")
