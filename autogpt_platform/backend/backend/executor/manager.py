@@ -2603,10 +2603,10 @@ class ExecutionManager(AppProcess):
 
             cancel_event = threading.Event()
             # The run is registered, with a stand-in for its worker's future,
-            # before the worker exists: a cancel the other consumer takes from
-            # here on reaches it. A stop sends its second cancel after its own
-            # status write, so that cancel always finds a run whose worker got
-            # to its start write first.
+            # before the worker exists, so a cancel the other consumer takes
+            # from here on reaches it. A stop's second cancel follows its own
+            # status write, so by then either the run is registered or the
+            # conditional start will skip it.
             self.active_graph_runs[graph_exec_id] = (Future(), cancel_event)
             future = self.executor.submit(
                 execute_graph, graph_exec_entry, cancel_event, cluster_lock

@@ -142,8 +142,8 @@ async def test_a_start_that_waits_behind_a_stop_does_not_undo_it(
     await stopper.connect()
     start: asyncio.Task[Any] | None = None
     try:
-        # Longer than the waits below, so a test that fails says no race was
-        # forced rather than that this transaction expired.
+        # Longer than the wait inside it, so a test that fails says no race
+        # was forced rather than that this transaction expired.
         async with stopper.tx(timeout=timedelta(seconds=WAIT_SECONDS * 2)) as stop:
             await AgentGraphExecution.prisma(stop).update_many(
                 where={"id": run_id},

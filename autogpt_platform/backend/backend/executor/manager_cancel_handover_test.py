@@ -16,7 +16,13 @@ RUN = "run-1"
 
 
 @pytest.fixture
-def manager():
+def cluster_lock() -> MagicMock:
+    """The run's cluster-wide lock, which this executor always gets."""
+    return MagicMock()
+
+
+@pytest.fixture
+def manager(cluster_lock: MagicMock):
     """An executor whose worker pool is a stand-in the test controls."""
     manager = ExecutionManager()
     manager._run_client = MagicMock()
@@ -24,12 +30,11 @@ def manager():
     channel = manager._run_client.get_channel.return_value
     channel.connection.add_callback_threadsafe.side_effect = lambda callback: callback()
     manager._executor = MagicMock()
-    lock = MagicMock()
-    lock.try_acquire.return_value = manager.executor_id
+    cluster_lock.try_acquire.return_value = manager.executor_id
     db = MagicMock()
     db.get_graph_executions_count.return_value = 0
     with (
-        patch.object(manager_module, "ClusterLock", return_value=lock),
+        patch.object(manager_module, "ClusterLock", return_value=cluster_lock),
         patch.object(manager_module.redis, "get_redis"),
         patch.object(manager_module, "get_db_client", return_value=db),
     ):
@@ -88,10 +93,16 @@ def test_a_handed_over_run_is_held_by_its_workers_future(manager):
     assert RUN not in manager.active_graph_runs
 
 
-def test_a_run_no_worker_took_is_not_left_registered(manager):
-    """Otherwise it would hold a worker slot of this executor forever."""
+def test_a_run_no_worker_took_is_left_to_another_executor(
+    manager, cluster_lock: MagicMock
+):
+    """It isn't left registered, which would hold a worker slot of this
+    executor forever. Its cluster lock is released and its message requeued,
+    so another executor can run it."""
     manager._executor.submit.side_effect = RuntimeError("the pool is shut down")
 
     _deliver_run(manager)
 
     assert RUN not in manager.active_graph_runs
+    cluster_lock.release.assert_called_once()
+    manager._run_client.publish_message.assert_called_once()
