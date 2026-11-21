@@ -9,6 +9,11 @@ import pytest
 from autogpt_libs.auth.permissions import OrgAction, TeamAction
 from prisma import Prisma
 
+from backend.api.features.search.embeddings import EMBEDDING_DIM
+from backend.api.features.search.hybrid_search import (
+    MAX_SEARCH_QUERY_LENGTH,
+    lexical_rank_tsquery_sql,
+)
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
 from backend.util.exceptions import (
     ConflictError,
@@ -754,6 +759,33 @@ async def test_get_store_agents_rejects_nul_before_querying():
 
         hybrid_query_raw.assert_not_awaited()
         fallback_query_raw.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_agents_reads_a_long_query_up_to_the_search_bound():
+    """Both the hybrid search and its lexical fallback cut the query, and rank
+    rows by a bounded number of its terms."""
+    with patch(
+        "backend.api.features.store.hybrid_search.query_raw_with_schema",
+        AsyncMock(return_value=[]),
+    ) as hybrid_query_raw, patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(return_value=[]),
+    ) as fallback_query_raw, patch(
+        "backend.api.features.store.hybrid_search.embed_query",
+        AsyncMock(return_value=[0.1] * EMBEDDING_DIM),
+    ) as embed:
+        await db.get_store_agents(search_query="word " * 2_000)
+
+    assert len(embed.call_args.args[0]) <= MAX_SEARCH_QUERY_LENGTH
+    hybrid_sql, lexical, category_pattern, *_ = hybrid_query_raw.call_args.args
+    assert len(lexical) <= MAX_SEARCH_QUERY_LENGTH
+    assert len(category_pattern) <= MAX_SEARCH_QUERY_LENGTH
+    assert f"ts_rank_cd(uce.search, {lexical_rank_tsquery_sql('$1')})" in hybrid_sql
+    fallback_sql, fallback_text, *_ = fallback_query_raw.call_args.args
+    assert len(fallback_text) <= MAX_SEARCH_QUERY_LENGTH
+    assert lexical_rank_tsquery_sql("$1") in fallback_sql
+    assert fallback_sql.count("plainto_tsquery") == 1  # the @@ match only
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -21,9 +21,11 @@ from backend.api.features.search.embeddings import (
 )
 from backend.api.features.search.hybrid_search import (
     DEFAULT_STORE_AGENT_MIN_SCORE,
+    MAX_SEARCH_QUERY_LENGTH,
     HybridSearchRow,
     _log_vector_error_diagnostics,
     bm25_rerank,
+    lexical_rank_tsquery_sql,
 )
 from backend.data.db import query_raw_with_schema
 from backend.util.sql import escape_like
@@ -90,7 +92,7 @@ async def hybrid_search(
     ``public_search`` ranks by text alone once store search's per-minute
     embedding budget is spent.
     """
-    query = query.strip()
+    query = query.strip()[:MAX_SEARCH_QUERY_LENGTH]
     if not query:
         return [], 0
 
@@ -147,6 +149,7 @@ async def hybrid_search(
     params.append(query)
     query_param = f"${param_idx}"
     param_idx += 1
+    rank_tsquery = lexical_rank_tsquery_sql(query_param)
 
     # The category LIKE pattern, where `%` and `_` would be wildcards.
     params.append(escape_like(query.lower()))
@@ -259,7 +262,7 @@ async def hybrid_search(
                 -- Semantic score
                 COALESCE(1 - (uce.embedding <=> {embedding_param}::vector), 0) as semantic_score,
                 -- Lexical score (raw, will normalize)
-                COALESCE(ts_rank_cd(uce.search, plainto_tsquery('english', {query_param})), 0) as lexical_raw,
+                COALESCE(ts_rank_cd(uce.search, {rank_tsquery}), 0) as lexical_raw,
                 -- Category match
                 CASE
                     WHEN EXISTS (
