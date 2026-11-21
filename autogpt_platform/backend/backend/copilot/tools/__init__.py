@@ -32,7 +32,7 @@ from .customize_agent import CustomizeAgentTool
 from .decompose_goal import DecomposeGoalTool
 from .delegate_to_expert import DelegateToExpertTool
 from .describe_capability import DescribeCapabilityTool
-from .design_workflow_page import DesignWorkflowPageTool
+from .design_workflow_page import DesignWorkflowPageTool, workflow_pages_disabled_tools
 from .edit_agent import EditAgentTool
 from .enter_building_mode import EnterAgentBuildingModeTool
 from .expert_chats import ListExpertChatsTool, ReadExpertChatTool
@@ -82,7 +82,7 @@ from .message_session import MessageSessionTool
 from .models import ErrorResponse
 from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
-from .render_ui import RenderUITool
+from .render_ui import RenderUITool, render_ui_disabled_tools
 from .resume_capability import ResumeCapabilityTool
 from .routines import ListRoutinesTool, ScheduleRoutineTool
 from .run_agent import RunAgentTool
@@ -364,6 +364,13 @@ def origin_disabled_tools(origin: "ChatSessionOrigin | None") -> frozenset[str]:
     it would refuse, this stops us declaring.
     """
     return frozenset() if origin == "interactive" else INTERACTIVE_ORIGIN_TOOLS
+
+
+async def flag_disabled_tools(session: "ChatSession") -> frozenset[str]:
+    """Tools a per-user flag keeps out of this turn; both engines hide them."""
+    return await render_ui_disabled_tools(
+        session
+    ) | await workflow_pages_disabled_tools(session)
 
 
 def tool_names_in_groups(groups: Iterable[ToolGroup]) -> frozenset[str]:
