@@ -27,6 +27,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
+from backend.util.text_limits import MAX_URL_LENGTH
+
 LEGACY_PROTOCOL_VERSION = "2025-03-26"
 MODERN_PROTOCOL_VERSION = "2026-07-28"
 # Modern versions we can speak, newest first.  Extend when a newer revision is
@@ -130,6 +132,9 @@ class MCPServerEraCache:
             return value
 
     def set(self, server_url: str, value: MCPServerProtocol) -> None:
+        # A longer URL is probed again on its next connection instead of kept
+        if len(server_url) > MAX_URL_LENGTH:
+            return
         with self._lock:
             self._entries[server_url] = (value, time.monotonic() + self.ttl_seconds)
             self._entries.move_to_end(server_url)
