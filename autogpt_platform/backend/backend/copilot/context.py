@@ -44,6 +44,9 @@ else:
 _config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
 SDK_PROJECTS_DIR = os.path.realpath(os.path.join(_config_dir, "projects"))
 
+# Linux's PATH_MAX: no host file has a longer path, so none needs resolving.
+MAX_LOCAL_PATH_LENGTH = 4096
+
 # Compiled UUID pattern for validating conversation directory names.
 # Kept as a module-level constant so the security-relevant pattern is easy
 # to audit in one place and avoids recompilation on every call.
@@ -335,7 +338,7 @@ def is_sdk_tool_path(path: str) -> bool:
     excludes ``sdk_cwd`` paths because those are the agent's working directory,
     which in E2B mode is the sandbox, not the host.
     """
-    if not path:
+    if not path or len(path) > MAX_LOCAL_PATH_LENGTH:
         return False
 
     if path.startswith("~"):
@@ -605,7 +608,7 @@ def resolve_allowed_local_path(path: str, sdk_cwd: str | None = None) -> str | N
       The SDK nests tool-results under a conversation UUID directory;
       the UUID segment is validated with ``_UUID_RE``.
     """
-    if not path:
+    if not path or len(path) > MAX_LOCAL_PATH_LENGTH:
         return None
 
     if path.startswith("~"):
