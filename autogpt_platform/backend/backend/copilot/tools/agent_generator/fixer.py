@@ -5,7 +5,7 @@ import re
 from typing import Any, Literal
 
 from backend.data.dynamic_fields import DICT_SPLIT
-from backend.data.llm_registry.llm_models import is_switched_off
+from backend.data.llm_registry.llm_models import is_switched_off, llm_model_named
 
 from .helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
@@ -874,7 +874,12 @@ class AgentFixer:
 
         Blocks that define their own ``enum`` constraint on the ``model`` field
         in their inputSchema (e.g. PerplexityBlock) are validated against that
-        enum instead of the generic allowed set.
+        enum instead of the generic allowed set. A ``model`` field that is
+        neither an enum nor an LLM model field (``llm_model``) is free text
+        naming a model of the block's own service, such as Jina's embedding
+        models: it keeps what was written, and a node that names none gets the
+        block's default. Another spelling the enum takes of a model the block
+        offers (a provider prefix, say) is written as the block lists it.
 
         A model the catalog has switched off is unsupported too, though the
         enum still lists it so stored workflows keep validating. It is
@@ -946,11 +951,25 @@ class AgentFixer:
                         model_schema.get("default", block_model_enum[0]),
                         block_model_enum,
                     )
-                else:
+                elif model_schema.get("llm_model"):
                     allowed_models = generic_allowed_models
                     fallback_model = live_default(
                         default_model, sorted(generic_allowed_models)
                     )
+                else:
+                    # A free-form model field names a model of the block's own
+                    # service (a Jina embedding model, say), which no LLM list
+                    # knows: keep what the generator wrote, and give a node
+                    # that names none the block's default.
+                    block_default = model_schema.get("default")
+                    if current_model is None and isinstance(block_default, str):
+                        self._log_model_fix(
+                            node_id, block, None, block_default, "unsupported"
+                        )
+                        input_default["model"] = block_default
+                        node["input_default"] = input_default
+                        fixed_count += 1
+                    continue
 
                 kept = kept_model(
                     current_model, saved_models.get(node_id), allowed_models
@@ -969,6 +988,15 @@ class AgentFixer:
                         or fallback_model
                     )
                     fix = "switched_off"
+                elif (
+                    isinstance(current_model, str)
+                    and current_model not in allowed_models
+                    and (named := llm_model_named(current_model)) is not None
+                    and named.value in allowed_models
+                ):
+                    # Another spelling the enum takes (a provider prefix, say)
+                    # of a model the block offers: written as the block lists it.
+                    new_model, fix = named.value, "respelled"
                 elif (
                     not isinstance(current_model, str)
                     or current_model not in allowed_models
