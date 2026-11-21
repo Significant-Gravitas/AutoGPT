@@ -277,6 +277,9 @@ async def enable_execution_sharing(
     _body: ExecutionShareRequest = Body(default=ExecutionShareRequest()),
 ) -> ExecutionShareResponse:
     """Enable sharing for a graph execution."""
+    await _require_run_in_graph(
+        user_id=user_id, graph_id=graph_id, graph_exec_id=graph_exec_id
+    )
     try:
         share_token = await sharing.share_execution(user_id, graph_exec_id)
     except NotFoundError as exc:
@@ -299,10 +302,31 @@ async def disable_execution_sharing(
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> None:
     """Disable sharing for a graph execution."""
+    await _require_run_in_graph(
+        user_id=user_id, graph_id=graph_id, graph_exec_id=graph_exec_id
+    )
     try:
         await sharing.unshare_execution(user_id, graph_exec_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+async def _require_run_in_graph(
+    *, user_id: str, graph_id: str, graph_exec_id: str
+) -> None:
+    """Reject a run id that is not the graph's, as reading the run already does.
+
+    Both ids come from the path while the run is loaded by its id alone, so
+    without this a share request naming any graph shares or revokes the run.
+    """
+    execution = await execution_db.get_graph_execution(
+        user_id=user_id, execution_id=graph_exec_id
+    )
+    if not execution or execution.graph_id != graph_id:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail=f"Graph execution #{graph_exec_id} not found.",
+        )
 
 
 @router.get("/public/shared/{share_token}")
