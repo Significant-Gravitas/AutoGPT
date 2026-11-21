@@ -252,8 +252,7 @@ class ReplicateModelBlock(Block):
         Returns:
             Model output (same shape as previous async_run path)
         """
-        api_key_str = api_key.get_secret_value()
-        client = ReplicateClient(api_token=api_key_str)
+        client = ReplicateClient(api_token=api_key.get_secret_value())
 
         # Replicate SDK: version-pinned refs use `version=`; unpinned refs
         # try `model=` and fall back to the latest version (see _helper).

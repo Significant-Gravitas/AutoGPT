@@ -28,10 +28,9 @@ class DataForSeoClient:
         """Generate the authorization header using Basic Auth."""
         username = self.credentials.username.get_secret_value()
         password = self.credentials.password.get_secret_value()
-        credentials_str = f"{username}:{password}"
-        encoded = base64.b64encode(credentials_str.encode("ascii")).decode("ascii")
+        authorization = base64.b64encode(f"{username}:{password}".encode("ascii"))
         return {
-            "Authorization": f"Basic {encoded}",
+            "Authorization": f"Basic {authorization.decode('ascii')}",
             "Content-Type": "application/json",
         }
 
