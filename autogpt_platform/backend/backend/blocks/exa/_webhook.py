@@ -26,6 +26,7 @@ import hmac
 import logging
 import time
 from enum import Enum
+from typing import cast
 
 from fastapi import HTTPException, Request
 from pydantic import SecretStr, TypeAdapter, ValidationError
@@ -143,11 +144,14 @@ class ExaWebhookManager(BaseWebhooksManager):
         SEARCH_MONITOR = "search_monitor"
 
     @classmethod
-    async def verify_signature(
-        cls, webhook: WebhookWithRelations, request: Request
-    ) -> None:
+    def signature_needs_triggers(cls, webhook: Webhook) -> bool:
+        # A monitor's secret is pasted into its block; a webset's is in `config`.
+        return webhook.webhook_type == cls.WebhookType.SEARCH_MONITOR
+
+    @classmethod
+    async def verify_signature(cls, webhook: Webhook, request: Request) -> None:
         if webhook.webhook_type == cls.WebhookType.SEARCH_MONITOR:
-            secrets = _search_monitor_secrets(webhook)
+            secrets = _search_monitor_secrets(cast(WebhookWithRelations, webhook))
             if not secrets:
                 # The secret only exists once the monitor has been created, so
                 # until it is pasted into the block the URL is the only

@@ -37,7 +37,7 @@ from prisma.models import IntegrationWebhook
 from backend.api.features.integrations.router import router
 from backend.api.features.library.model import node_input_mask_key
 from backend.api.middleware.body_limit import RequestBodyTooLarge
-from backend.data.integrations import WebhookWithRelations
+from backend.data.integrations import Webhook, WebhookWithRelations
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
 from backend.util.url_redaction import mask_credential
@@ -94,10 +94,23 @@ def _patch_ingress(webhook):
     # would open connections on the portal's event loop, corrupting Prisma's
     # global client state for any session-scoped async fixture that runs
     # later in the suite (e.g. `oauth_test.py::test_user`).
+    async def get_webhook(webhook_id: str, *, include_relations: bool = False):
+        # Built per call: tests edit the webhook after `_make_webhook`.
+        if include_relations:
+            return webhook
+        return Webhook.model_construct(
+            **{name: getattr(webhook, name) for name in Webhook.model_fields}
+        )
+
+    async def preset_pages(webhook_id: str, page_size: int):
+        presets = webhook.triggered_presets
+        for start in range(0, len(presets), page_size):
+            yield presets[start : start + page_size]
+
     return [
         patch(
             "backend.api.features.integrations.router.get_webhook",
-            AsyncMock(return_value=webhook),
+            AsyncMock(side_effect=get_webhook),
         ),
         patch("backend.api.features.integrations.router.creds_manager"),
         patch(
@@ -115,6 +128,22 @@ def _patch_ingress(webhook):
         patch(
             "backend.api.features.integrations.router._execute_webhook_preset_trigger",
             AsyncMock(),
+        ),
+        patch(
+            "backend.api.features.integrations.router.webhooks_have_triggers",
+            AsyncMock(
+                side_effect=lambda _ids: bool(
+                    webhook.triggered_nodes or webhook.triggered_presets
+                )
+            ),
+        ),
+        patch(
+            "backend.api.features.integrations.router.get_webhook_triggered_nodes",
+            AsyncMock(side_effect=lambda _id: list(webhook.triggered_nodes)),
+        ),
+        patch(
+            "backend.api.features.integrations.router.iter_webhook_triggered_presets",
+            preset_pages,
         ),
     ]
 
@@ -802,6 +831,24 @@ class TestVerificationOrder:
         )
         assert mock_manager.validate_payload.await_args.args[2] is credentials
 
+    @pytest.mark.parametrize("provider", [ProviderName.GITHUB, ProviderName.TELEGRAM])
+    def test_a_refused_delivery_reads_no_trigger(self, provider: ProviderName):
+        """A webhook whose secret is stored on it is checked against its own row;
+        the triggers attached to it are read only for an authentic delivery."""
+        webhook = _make_webhook(provider, triggered_presets=[MagicMock()])
+        with ExitStack() as stack:
+            get_webhook, *_, have_triggers, get_nodes, _ = [
+                stack.enter_context(p) for p in _patch_ingress(webhook)
+            ]
+            for p in _stub_registry(_manager(provider)):
+                stack.enter_context(p)
+            resp = _post(provider.value, headers={"X-GitHub-Event": "push"})
+
+        assert resp.status_code == 403, resp.text
+        assert [call.kwargs for call in get_webhook.await_args_list] == [{}]
+        have_triggers.assert_not_awaited()
+        get_nodes.assert_not_awaited()
+
     def test_a_banned_owners_credentials_are_not_loaded(self):
         webhook = _make_webhook(ProviderName.COMPASS)
         webhook.credentials_id = "creds-1"
@@ -1069,9 +1116,7 @@ def test_a_webhook_runs_only_for_an_owner_with_a_plan(paywalled: bool, request):
         )
     ]
     with ExitStack() as stack:
-        _, _, publish, reward, run_node, _, _ = [
-            stack.enter_context(p) for p in patches
-        ]
+        _, _, publish, reward, run_node, *_ = [stack.enter_context(p) for p in patches]
         resp = _post("generic_webhook")
 
     assert resp.status_code == 200, resp.text
@@ -1095,8 +1140,9 @@ def test_a_triggered_preset_runs_only_for_an_owner_with_a_plan(
     router_path = "backend.api.features.integrations.router"
     with ExitStack() as stack:
         # Every ingress stub but the two trigger runners, so the real preset path runs.
-        _, _, publish, reward = [
-            stack.enter_context(p) for p in _patch_ingress(webhook)[:4]
+        stubs = _patch_ingress(webhook)
+        _, _, publish, reward, *_ = [
+            stack.enter_context(p) for p in [*stubs[:4], *stubs[6:]]
         ]
         stack.enter_context(
             patch(

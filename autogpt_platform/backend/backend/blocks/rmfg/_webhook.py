@@ -66,7 +66,7 @@ class RMFGWebhooksManager(BaseWebhooksManager):
 
     @classmethod
     async def verify_signature(
-        cls, webhook: integrations.WebhookWithRelations, request: Request
+        cls, webhook: integrations.Webhook, request: Request
     ) -> None:
         secret = webhook.config.get(SIGNING_SECRET_KEY, "")
         if not secret:

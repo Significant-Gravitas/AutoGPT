@@ -1,5 +1,6 @@
 import hmac
 import logging
+from typing import cast
 
 from fastapi import HTTPException, Request
 from pydantic import SecretStr, TypeAdapter, ValidationError
@@ -30,14 +31,15 @@ class GenericWebhooksManager(ManualWebhookManagerBase):
     SECRET_HEADER = "X-Webhook-Secret"
 
     @classmethod
-    async def verify_signature(
-        cls, webhook: WebhookWithRelations, request: Request
-    ) -> None:
+    def signature_needs_triggers(cls, webhook: Webhook) -> bool:
+        return True
+
+    @classmethod
+    async def verify_signature(cls, webhook: Webhook, request: Request) -> None:
         # Find any non-empty `secret_token` configured on a triggered node or
-        # preset attached to this webhook. The webhook is loaded via
-        # `get_webhook(..., include_relations=True)` in the router so these
-        # relations are already populated.
-        expected = cls._configured_secret(webhook)
+        # preset attached to this webhook; `signature_needs_triggers` has
+        # ingress load them first.
+        expected = cls._configured_secret(cast(WebhookWithRelations, webhook))
         if not expected:
             # No secret configured — back-compat with unauthenticated generic
             # webhooks. Webhook URL is the only credential.

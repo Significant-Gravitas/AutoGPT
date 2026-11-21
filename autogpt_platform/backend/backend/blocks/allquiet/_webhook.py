@@ -17,7 +17,7 @@ import hmac
 import logging
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, cast
 
 from fastapi import HTTPException, Request
 from pydantic import SecretStr, TypeAdapter, ValidationError
@@ -88,10 +88,13 @@ class AllQuietWebhooksManager(ManualWebhookManagerBase):
         return payload, AllQuietWebhookType.INCIDENT
 
     @classmethod
-    async def verify_signature(
-        cls, webhook: WebhookWithRelations, request: Request
-    ) -> None:
-        secret = cls._configured_secret(webhook)
+    def signature_needs_triggers(cls, webhook: Webhook) -> bool:
+        return True
+
+    @classmethod
+    async def verify_signature(cls, webhook: Webhook, request: Request) -> None:
+        # `signature_needs_triggers` has ingress load the triggers first.
+        secret = cls._configured_secret(cast(WebhookWithRelations, webhook))
         if not secret:
             # Signing is opt-in on the All Quiet side. With no secret
             # configured the webhook URL is the only credential, matching the
