@@ -165,9 +165,8 @@ test.describe("templates journey", () => {
         `v${stored.graph_version} and the Library agent is on v${libraryVersion}`,
     );
 
-    // Whether a template should follow its workflow's edits is open (#17201),
-    // so this asserts only that its task runs the version it stores, and
-    // that the output is that version's.
+    // The invariant, whichever version a template should follow (#17201):
+    // its task runs the version it stores, with that version's output.
     await openTemplate(page, agent, template.id);
     await expect(templateField(page, "note")).toHaveValue(note);
     const runID = await startTaskFromTemplate(page, template.id);
@@ -182,6 +181,10 @@ test.describe("templates journey", () => {
       run.graph_version,
       "the task should run the version the template stores",
     ).toBe(stored.graph_version);
+    expect(
+      Object.keys(replyOf),
+      `the task ran v${run.graph_version}, which this journey didn't make`,
+    ).toContain(String(run.graph_version));
     expect(
       run.outputs,
       "the task's output should be the one of the version it ran",
@@ -629,8 +632,8 @@ function isRunStart(graphID: string) {
     );
 }
 
-// What the journey saw, in the report: for questions the product hasn't
-// settled, such as which version a template runs (#17201).
+// What the journey saw, in the report: details worth reading next to the
+// assertions, such as which version each way of starting a template ran.
 function observe(testInfo: TestInfo, description: string) {
   testInfo.annotations.push({ type: "observed", description });
 }
