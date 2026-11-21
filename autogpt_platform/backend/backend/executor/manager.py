@@ -32,6 +32,7 @@ from backend.data.db_accessors import experts_db
 from backend.data.dynamic_fields import parse_execution_output, sanitize_pin_name
 from backend.data.execution import (
     STARTABLE_GRAPH_EXECUTION_STATUSES,
+    TERMINAL_GRAPH_EXECUTION_STATUSES,
     ExecutionContext,
     ExecutionQueue,
     ExecutionStatus,
@@ -179,6 +180,36 @@ def _running_after_an_empty_start(
         user_id=graph_exec.user_id, execution_id=graph_exec.graph_exec_id
     )
     return run is not None and run.status == ExecutionStatus.RUNNING
+
+
+def _write_the_final_state(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+    status: ExecutionStatus,
+    stats: GraphExecutionStats,
+) -> None:
+    """Write the run's final status and stats, and broadcast them.
+
+    A stop that ended the run first left it TERMINATED, which this write can't
+    follow, so the write publishes nothing. The stop publishes on its own
+    connection, so its TERMINATED can reach a page before this executor's
+    RUNNING. The stored terminal state is then broadcast again, after RUNNING
+    on this executor's own bus.
+    """
+    if update_graph_execution_state(
+        db_client=db_client,
+        graph_exec_id=graph_exec.graph_exec_id,
+        status=status,
+        stats=stats,
+    ):
+        return
+    stored = db_client.get_graph_execution(
+        user_id=graph_exec.user_id,
+        execution_id=graph_exec.graph_exec_id,
+        include_node_executions=False,
+    )
+    if stored is not None and stored.status in TERMINAL_GRAPH_EXECUTION_STATUSES:
+        send_execution_update(stored)
 
 
 RUN_OUTSIDE_ITS_ORG_ERROR = (
@@ -1661,12 +1692,7 @@ class ExecutionProcessor:
             )
             product_analytics.handle_run_finished(graph_exec, exec_meta, exec_stats)
 
-            update_graph_execution_state(
-                db_client=db_client,
-                graph_exec_id=graph_exec.graph_exec_id,
-                status=exec_meta.status,
-                stats=exec_stats,
-            )
+            _write_the_final_state(db_client, graph_exec, exec_meta.status, exec_stats)
 
     async def charge_node_usage(
         self,
