@@ -9,6 +9,7 @@ import {
   assertRunOutputValue,
   waitForAgentPageLoad,
 } from "../pages/library.page";
+import { backendURL } from "./backend";
 import { expect, test as journeyTest } from "./fixtures";
 import { watchForUnexpectedErrors } from "./guard";
 import { JOURNEY_USER_AGENT } from "./user-agent";
@@ -18,9 +19,6 @@ const STORE_VALUE_BLOCK_ID = "1ff065e9-88e8-4358-9d82-8dc91f622ba9";
 const AGENT_OUTPUT_BLOCK_ID = "363ae599-353e-4804-937e-b2ee3cef3da4";
 const OUTPUT_NAME = "report";
 const RUN_ENDED = /^(COMPLETED|FAILED|TERMINATED)$/;
-// The backend itself; the browser reaches it only through the app's proxy.
-const BACKEND_URL =
-  process.env.PLAYWRIGHT_BACKEND_URL ?? "http://localhost:8006";
 // The public page reads a share through the app's proxy.
 const PUBLIC_READ = "/api/proxy/api/public/shared/";
 
@@ -412,7 +410,7 @@ async function expectVisitorSeesNotFound(
 // What the backend itself answers for a link, asked with no session.
 async function publicStatus(backend: APIRequestContext, token: string) {
   return (
-    await backend.get(`${BACKEND_URL}/api/public/shared/${token}`)
+    await backend.get(`${backendURL()}/api/public/shared/${token}`)
   ).status();
 }
 
