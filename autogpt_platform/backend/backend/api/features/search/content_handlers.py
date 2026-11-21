@@ -574,7 +574,7 @@ class DocumentationHandler(ContentHandler):
             return []
 
         # Find all .md and .mdx files
-        all_docs = list(docs_root.rglob("*.md")) + list(docs_root.rglob("*.mdx"))
+        all_docs = _list_doc_files(docs_root)
 
         if not all_docs:
             return []
@@ -656,7 +656,7 @@ class DocumentationHandler(ContentHandler):
 
         Used for stats and cleanup to know what sections should exist.
         """
-        all_docs = list(docs_root.rglob("*.md")) + list(docs_root.rglob("*.mdx"))
+        all_docs = _list_doc_files(docs_root)
         content_ids = set()
 
         for doc_file in all_docs:
@@ -710,6 +710,18 @@ class DocumentationHandler(ContentHandler):
             return set()
         # Filesystem walk is sync; keep it off the event loop.
         return await asyncio.to_thread(self._get_all_section_content_ids, docs_root)
+
+
+def _list_doc_files(docs_root: Path) -> list[Path]:
+    # A link out of docs/ dangles in the image, which copies docs/ alone, and
+    # get_doc_page refuses to serve one anyway.
+    real_root = docs_root.resolve()
+    return [
+        path
+        for pattern in ("*.md", "*.mdx")
+        for path in docs_root.rglob(pattern)
+        if path.is_file() and path.resolve().is_relative_to(real_root)
+    ]
 
 
 class LibraryAgentHandler(ContentHandler):
