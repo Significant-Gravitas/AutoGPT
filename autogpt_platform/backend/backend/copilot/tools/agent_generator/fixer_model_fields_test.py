@@ -56,8 +56,16 @@ async def test_a_jina_embedding_node_keeps_the_model_the_generator_wrote():
 
 
 @pytest.mark.asyncio
-async def test_a_jina_embedding_node_that_names_no_model_gets_the_blocks_default():
-    result = await preview(embedding_workflow({}))
+@pytest.mark.parametrize(
+    "jina_inputs",
+    [{}, {"model": None}, {"model": ""}, {"model": "   "}, {"model": 123}],
+    ids=["missing", "none", "empty", "blank", "not-text"],
+)
+async def test_a_jina_embedding_node_that_names_no_model_gets_the_blocks_default(
+    jina_inputs: dict,
+):
+    """Blank text names no model either: kept, it would fail the run."""
+    result = await preview(embedding_workflow(jina_inputs))
 
     assert model_on(result, AI_NODE) == JINA_DEFAULT
 

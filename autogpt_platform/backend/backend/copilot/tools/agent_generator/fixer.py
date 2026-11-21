@@ -953,6 +953,8 @@ class AgentFixer:
                         block_model_enum,
                     )
                 elif model_schema.get("llm_model"):
+                    # Every LLM model field the platform ships has an enum of
+                    # its own. This serves a field marked llm_model without one.
                     allowed_models = generic_allowed_models
                     fallback_model = live_default(
                         default_model, sorted(generic_allowed_models)
@@ -961,12 +963,19 @@ class AgentFixer:
                     # A free-form model field names a model of the block's own
                     # service (a Jina embedding model, say), which no LLM list
                     # knows: keep what the generator wrote, and give a node
-                    # that names none (no text, or empty text) the default.
+                    # that names none (no text, or blank text) the default.
                     block_default = model_schema.get("default")
-                    names_one = isinstance(current_model, str) and current_model
+                    names_one = isinstance(current_model, str) and bool(
+                        current_model.strip()
+                    )
                     if not names_one and isinstance(block_default, str):
+                        # Blank text is logged as no model, not as one.
                         self._log_model_fix(
-                            node_id, block, current_model, block_default, "unsupported"
+                            node_id,
+                            block,
+                            None if isinstance(current_model, str) else current_model,
+                            block_default,
+                            "unsupported",
                         )
                         input_default["model"] = block_default
                         node["input_default"] = input_default
