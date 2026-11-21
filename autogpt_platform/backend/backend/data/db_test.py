@@ -24,6 +24,50 @@ def server():
     yield None
 
 
+async def test_is_healthy_queries_the_database(monkeypatch):
+    calls: list[bool] = []
+
+    async def query_database() -> None:
+        calls.append(True)
+
+    monkeypatch.setattr(db_module, "is_connected", lambda: True)
+    monkeypatch.setattr(db_module, "_query_database", query_database)
+
+    assert await db_module.is_healthy() is True
+    assert calls == [True]
+
+
+async def test_is_healthy_is_false_when_the_query_fails(monkeypatch):
+    async def query_database() -> None:
+        raise ConnectionError("Can't reach database server")
+
+    monkeypatch.setattr(db_module, "is_connected", lambda: True)
+    monkeypatch.setattr(db_module, "_query_database", query_database)
+
+    assert await db_module.is_healthy() is False
+
+
+async def test_is_healthy_is_false_when_the_client_is_disconnected(monkeypatch):
+    async def query_database() -> None:
+        raise AssertionError("a disconnected client must not be queried")
+
+    monkeypatch.setattr(db_module, "is_connected", lambda: False)
+    monkeypatch.setattr(db_module, "_query_database", query_database)
+
+    assert await db_module.is_healthy() is False
+
+
+async def test_is_healthy_is_false_when_the_query_times_out(monkeypatch):
+    async def query_database() -> None:
+        await asyncio.sleep(0.05)
+
+    monkeypatch.setattr(db_module, "is_connected", lambda: True)
+    monkeypatch.setattr(db_module, "_query_database", query_database)
+    monkeypatch.setattr(db_module, "HEALTH_CHECK_TIMEOUT", 0.01)
+
+    assert await db_module.is_healthy() is False
+
+
 async def test_disconnect_bounds_the_engine_shutdown(monkeypatch):
     """Prisma's shutdown wait is unbounded unless a timeout is handed to it.
 
