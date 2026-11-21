@@ -1805,10 +1805,15 @@ class OrchestratorBlock(Block):
                 allowed_tools=allowed_tools,
                 disallowed_tools=disallowed_tools,
                 cwd=sdk_cwd,
-                env=sdk_env,
+                # The CLI writes the step's transcript and logs into these two
+                # dirs; inside sdk_cwd, the rmtree below removes them with it.
+                env={
+                    **sdk_env,
+                    "CLAUDE_CONFIG_DIR": os.path.join(sdk_cwd, ".claude-config"),
+                    "XDG_CACHE_HOME": os.path.join(sdk_cwd, ".cache"),
+                },
                 model=input_data.model.value or None,
-                # No settings files or MCP servers from the CLI's config dir:
-                # every run on this host shares it.
+                # No settings files or MCP servers from any source.
                 setting_sources=[],
                 extra_args={
                     "strict-mcp-config": None,

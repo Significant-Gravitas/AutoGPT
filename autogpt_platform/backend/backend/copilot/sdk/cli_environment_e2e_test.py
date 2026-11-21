@@ -149,6 +149,8 @@ async def test_an_orchestrator_runs_cli_holds_no_key_and_its_model_calls_the_use
             ]
 
     assert not [value for name, value in outputs if name == "error"]
+    # What the CLI wrote during the run went with the run's working directory.
+    assert not list((tmp_path / "home").rglob("*"))
     assert provider.seen, "the CLI made no model request"
     for env in provider.seen:
         assert not _holds(env, _SECRET)
