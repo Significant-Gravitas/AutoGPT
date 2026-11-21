@@ -2,7 +2,11 @@ import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission"
 import { useCallback, useEffect, useState } from "react";
 import { PublishAgentInfoInitialData } from "./components/AgentInfoStep/helpers";
 import { useRouter } from "next/navigation";
-import { emptyModalState, findPublishedSubmission } from "./helpers";
+import {
+  buildInitialFormData,
+  emptyModalState,
+  findPublishedSubmission,
+} from "./helpers";
 import {
   useGetV2GetMyAgents,
   useGetV2GetUserProfile,
@@ -141,34 +145,16 @@ export function usePublishAgentModal({
       preSelectedAgentId,
     );
 
-    // Populate initial data (same logic as handleNextFromSelect)
-    const initialFormData: PublishAgentInfoInitialData = publishedSubmissionData
-      ? {
-          agent_id: preSelectedAgentId,
-          title: publishedSubmissionData.name,
-          subheader: publishedSubmissionData.sub_heading || "",
-          description: publishedSubmissionData.description,
-          instructions: publishedSubmissionData.instructions || "",
-          youtubeLink: publishedSubmissionData.video_url || "",
-          agentOutputDemo: publishedSubmissionData.agent_output_demo_url || "",
-          additionalImages: [
-            ...new Set(publishedSubmissionData.image_urls || []),
-          ].filter(Boolean) as string[],
-          category: publishedSubmissionData.categories?.[0] || "",
-          thumbnailSrc: agent.agent_image || "",
-          slug: publishedSubmissionData.slug,
-          recommendedScheduleCron: agent.recommended_schedule_cron || "",
-          changesSummary: publishedSubmissionData.changes_summary || "",
-        }
-      : {
-          ...emptyModalState,
-          agent_id: preSelectedAgentId,
-          title: agent.agent_name,
-          description: agent.description || "",
-          thumbnailSrc: agent.agent_image || "",
-          slug: agent.agent_name.replace(/ /g, "-"),
-          recommendedScheduleCron: agent.recommended_schedule_cron || "",
-        };
+    const initialFormData = buildInitialFormData(
+      preSelectedAgentId,
+      {
+        name: agent.agent_name,
+        description: agent.description || "",
+        imageSrc: agent.agent_image || "",
+        recommendedScheduleCron: agent.recommended_schedule_cron || null,
+      },
+      publishedSubmissionData,
+    );
 
     setInitialData(initialFormData);
 
@@ -221,42 +207,19 @@ export function usePublishAgentModal({
       imageSrc: string;
       recommendedScheduleCron: string | null;
     },
-    passedSubmission?: StoreSubmission | null,
   ) {
     // The picker passes no submission. The backend files a submission for an
     // already-listed graph as its listing's next version, so open that update.
-    const publishedSubmissionData =
-      passedSubmission ??
-      findPublishedSubmission(okData(mySubmissions)?.submissions, agentId);
+    const publishedSubmissionData = findPublishedSubmission(
+      okData(mySubmissions)?.submissions,
+      agentId,
+    );
 
-    // Pre-populate with published data if this is an update, otherwise use agent data
-    const initialFormData: PublishAgentInfoInitialData = publishedSubmissionData
-      ? {
-          agent_id: agentId,
-          title: publishedSubmissionData.name,
-          subheader: publishedSubmissionData.sub_heading || "",
-          description: publishedSubmissionData.description,
-          instructions: publishedSubmissionData.instructions || "",
-          youtubeLink: publishedSubmissionData.video_url || "",
-          agentOutputDemo: publishedSubmissionData.agent_output_demo_url || "",
-          additionalImages: [
-            ...new Set(publishedSubmissionData.image_urls || []),
-          ].filter(Boolean) as string[],
-          category: publishedSubmissionData.categories?.[0] || "", // Take first category
-          thumbnailSrc: agentData.imageSrc, // Use current agent image
-          slug: publishedSubmissionData.slug,
-          recommendedScheduleCron: agentData.recommendedScheduleCron || "",
-          changesSummary: publishedSubmissionData.changes_summary || "", // Pre-populate with existing changes summary
-        }
-      : {
-          ...emptyModalState,
-          agent_id: agentId,
-          title: agentData.name,
-          description: agentData.description,
-          thumbnailSrc: agentData.imageSrc,
-          slug: agentData.name.replace(/ /g, "-"),
-          recommendedScheduleCron: agentData.recommendedScheduleCron || "",
-        };
+    const initialFormData = buildInitialFormData(
+      agentId,
+      agentData,
+      publishedSubmissionData,
+    );
 
     setInitialData(initialFormData);
 
