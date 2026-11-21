@@ -582,29 +582,32 @@ async function startTaskFromTemplate(page: Page, templateID: string) {
   return id;
 }
 
-// Signs out the way the account menu's Log out does, then back in.
+// Ends the session and starts a new one, with no page of the app open
+// meanwhile: the /logout page's own requests race its sign-out, and one that
+// loses answers 401 (session-resilience-journey covers that page).
 async function signOutAndBackIn(
   page: Page,
   user: JourneyUser,
   templateID: string,
 ) {
-  await page.goto("/logout");
-  await expect(page, "signing out should land on the login page").toHaveURL(
-    /\/login/,
-    { timeout: 20_000 },
-  );
-  const signedOut = await page.request.get(
+  await page.goto("about:blank");
+  const signedOut = await page.request.post("/api/auth/sign-out", {
+    headers: authHeaders(),
+    data: {},
+  });
+  expect(signedOut.ok(), `signing out: ${signedOut.status()}`).toBe(true);
+  const refused = await page.request.get(
     `/api/proxy/api/library/presets/${templateID}`,
   );
   expect(
-    signedOut.status(),
+    refused.status(),
     "signed out, the template should be out of reach",
   ).toBe(401);
-  const response = await page.request.post("/api/auth/sign-in/email", {
+  const signedIn = await page.request.post("/api/auth/sign-in/email", {
     headers: authHeaders(),
     data: { email: user.email, password: user.password },
   });
-  expect(response.ok(), `signing back in: ${response.status()}`).toBe(true);
+  expect(signedIn.ok(), `signing back in: ${signedIn.status()}`).toBe(true);
 }
 
 function activeView(page: Page) {
