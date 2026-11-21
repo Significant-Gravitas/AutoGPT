@@ -443,14 +443,16 @@ test.each([
     const { user, urlParam } = renderPage(
       `activeTab=triggers&activeItem=${activeItem}`,
     );
-    expect(await screen.findByRole("tab", { name: /Triggers/ })).toBeDefined();
+    expect(
+      await screen.findByRole("tab", { name: /^Triggers\b/ }),
+    ).toBeDefined();
 
     await deleteThrough(user, "trg-1");
 
     await waitFor(() => expect(urlParam("activeTab")).toBe("runs"));
     await waitFor(() => expect(urlParam("activeItem")).toBe("run-a"));
     expect(await screen.findByText(RUN_OUTPUT)).toBeDefined();
-    expect(screen.queryByRole("tab", { name: /Triggers/ })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /^Triggers\b/ })).toBeNull();
   },
 );
 

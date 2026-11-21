@@ -79,7 +79,7 @@ export async function refetchPresets(args: {
   await args.queryClient.refetchQueries({ queryKey });
   return args.queryClient
     .getQueriesData<InfiniteData<getV2ListPresetsResponse>>({ queryKey })
-    .flatMap(([, data]) => (data ? unpaginate(data, "presets") : []));
+    .flatMap(([, data]) => (data?.pages ? unpaginate(data, "presets") : []));
 }
 
 /**
