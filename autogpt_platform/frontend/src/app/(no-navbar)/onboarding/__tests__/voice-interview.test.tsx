@@ -47,6 +47,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import OnboardingPage from "../page";
 import { reportCallStart } from "../steps/InterviewStep/components/VoiceCall/callTimings";
+import { FINISH_WAIT_MS } from "../steps/InterviewStep/helpers";
 import {
   ENDING_WINDOW_MS,
   HANGUP_FALLBACK_MS,
@@ -3735,6 +3736,53 @@ describe("onboarding interview by voice: the ending screens", () => {
       { corrections },
       { corrections },
     ]);
+  });
+
+  it("stops waiting for the build after a while, and offers going on without the edits", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    callStates[CALL_ID] = [
+      callRecord({
+        ending: "02-profile-card",
+        details: DETAILS,
+        interview: "taken",
+      }),
+    ];
+    server.use(
+      http.post(`${VOICE}/:callId/finish`, ({ params }) => {
+        finishes.push(String(params.callId));
+        return HttpResponse.json(
+          { detail: { code: "take_not_ready" } },
+          { status: 409 },
+        );
+      }),
+    );
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+    const user = userEvent.setup();
+
+    endCall(socket, "finished");
+    await user.click(
+      await screen.findByRole("button", { name: "Edit your team" }),
+    );
+    const team = screen.getByRole("textbox", { name: "Your team" });
+    await user.clear(team);
+    await user.type(team, "just me");
+    await user.click(screen.getByRole("button", { name: "That's me" }));
+    await waitFor(() => expect(finishes.length).toBeGreaterThan(0));
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    await passTime(FINISH_WAIT_MS);
+
+    expect(await screen.findByRole("alert")).toBeDefined();
+    // The card stays, with the edit, and the build is asked for no more.
+    expect(screen.getByText("just me")).toBeDefined();
+    const asked = finishes.length;
+    await passTime(1_000);
+    expect(finishes.length).toBe(asked);
+    await user.click(
+      screen.getByRole("button", { name: "Continue without my changes" }),
+    );
+    await expectPlanStep();
   });
 
   it("offers going on without the edits when their correction is refused", async () => {

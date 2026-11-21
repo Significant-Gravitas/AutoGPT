@@ -19,7 +19,12 @@ import {
 } from "@/services/onboarding/voice-call-ticket";
 import { useEffect, useRef, useState } from "react";
 import { trackInterview } from "../../../../tracking";
-import { finishFailureOf, refusalOf, type StartFailure } from "../../helpers";
+import {
+  FINISH_WAIT_MS,
+  finishFailureOf,
+  refusalOf,
+  type StartFailure,
+} from "../../helpers";
 import {
   type CallAudio,
   createCallAudio,
@@ -1215,7 +1220,8 @@ export function useVoiceCall(args: Args) {
   // words, a later call of the person's, or the take a correction corrects,
   // are not settled) is waited out and asked again, never shown as an
   // error; `keepsEnding` keeps the ending on screen meanwhile, so the edits
-  // on it stay.
+  // on it stay, and that wait ends after a while with the way on without
+  // them.
   async function finishCall(
     callId: string,
     { keepsEnding = false }: { keepsEnding?: boolean } = {},
@@ -1227,6 +1233,7 @@ export function useVoiceCall(args: Args) {
     setIsLeaving(true);
     setFinishFailure(null);
     const windowEndsAt = Date.now() + ENDING_WINDOW_MS;
+    const editsWaitEndsAt = keepsEnding ? Date.now() + FINISH_WAIT_MS : null;
     let outcome: ReturnType<typeof voiceFinishOutcome> = null;
     for (;;) {
       try {
@@ -1241,7 +1248,9 @@ export function useVoiceCall(args: Args) {
       } catch (error) {
         // The step went away, or the person typed instead, meanwhile.
         if (attempt !== conn.attempt || poll !== conn.poll) return;
-        if (refusalOf(error).status !== 409) {
+        const isPastEditsWait =
+          editsWaitEndsAt !== null && Date.now() >= editsWaitEndsAt;
+        if (refusalOf(error).status !== 409 || isPastEditsWait) {
           stopFinishing(finishFailureOf(error));
           return;
         }
