@@ -14,6 +14,8 @@ from sqlalchemy.exc import OperationalError
 from backend.blocks.sql_query_block import SQLQueryBlock, UserPasswordCredentials
 from backend.blocks.sql_query_helpers import (
     _CONNECT_TIMEOUT_SECONDS,
+    _MAX_ERROR_LENGTH,
+    _MAX_QUERY_LENGTH,
     DatabaseType,
     _configure_session,
     _execute_query,
@@ -82,6 +84,42 @@ class TestValidateSingleStatement:
     def test_comment_only_query(self):
         error, stmt = _validate_single_statement("-- just a comment")
         assert error == "Query is empty."
+        assert stmt is None
+
+    def test_query_at_length_limit_accepted(self):
+        query = "SELECT '" + "a" * (_MAX_QUERY_LENGTH - 9) + "'"
+        assert len(query) == _MAX_QUERY_LENGTH
+        error, stmt = _validate_single_statement(query)
+        assert error is None
+        assert stmt is not None
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "SELECT '" + "a" * _MAX_QUERY_LENGTH + "'",
+            "a;" * _MAX_QUERY_LENGTH,
+            "SELECT 1" + " " * _MAX_QUERY_LENGTH,
+        ],
+        ids=["literal", "statement_list", "padding"],
+    )
+    def test_overlong_query_rejected_without_parsing(self, query: str):
+        with patch("backend.blocks.sql_query_helpers.sqlparse.parsestream") as parse:
+            error, stmt = _validate_single_statement(query)
+        parse.assert_not_called()
+        assert error == "Query is too long (max 100,000 characters)."
+        assert stmt is None
+
+    def test_second_statement_refused_before_the_rest_is_parsed(self):
+        # The third statement alone is over sqlparse's token limit.
+        query = "SELECT 1; SELECT 2; SELECT " + "1 + " * 6_000 + "1"
+        error, stmt = _validate_single_statement(query)
+        assert error == "Only single statements are allowed."
+        assert stmt is None
+
+    def test_unparseable_query_reported(self):
+        error, stmt = _validate_single_statement("SELECT " + "1 + " * 6_000 + "1")
+        assert error is not None
+        assert error.startswith("Could not parse the query: ")
         assert stmt is None
 
 
@@ -157,6 +195,31 @@ class TestSerializeValue:
         result = _serialize_value(val)
         assert result == "123456789.123456789012345678"
         assert isinstance(result, str)
+
+    @pytest.mark.parametrize("number", [-(2**63), 2**63, 2**64 - 1])
+    def test_decimal_integer_within_json_range(self, number: int):
+        result = _serialize_value(Decimal(number))
+        assert result == number
+        assert isinstance(result, int)
+
+    @pytest.mark.parametrize("number", [-(2**63) - 1, 2**64, 10**30])
+    def test_decimal_integer_beyond_json_range(self, number: int):
+        assert _serialize_value(Decimal(number)) == str(number)
+
+    @pytest.mark.parametrize(
+        "literal", ["1E+100000", "-1E+100000", "1E+999999999999999999"]
+    )
+    def test_decimal_large_exponent_kept_in_exponent_form(self, literal: str):
+        assert _serialize_value(Decimal(literal)) == literal
+
+    def test_list_items_serialized(self):
+        # PostgreSQL arrays (e.g. NUMERIC[]) arrive as nested lists
+        value = [[Decimal("42"), Decimal("3.14")], [Decimal("1E+100000"), None]]
+        assert _serialize_value(value) == [[42, "3.14"], ["1E+100000", None]]
+        assert _serialize_value([date(2024, 6, 15), b"\xca\xfe"]) == [
+            "2024-06-15",
+            "cafe",
+        ]
 
     def test_datetime(self):
         dt = datetime(2024, 1, 1, 12, 0, 0)
@@ -335,6 +398,30 @@ class TestSanitizeError:
         assert "tested" in result
         assert '"<database>"' in result
 
+    @pytest.mark.parametrize("filler", ["://", "[a%", "abc"])
+    def test_long_error_truncated(self, filler: str):
+        conn = "postgresql://user:pass@1.2.3.4:5432/db"
+        error = f'invalid input syntax for type integer: "{filler * 30_000}"'
+        result = _sanitize_error(error, conn)
+        assert result == "invalid input syntax for type integer: ... [truncated]"
+
+    def test_error_at_length_limit_unchanged(self):
+        conn = "postgresql://user:pass@1.2.3.4:5432/db"
+        error = ("syntax error " * _MAX_ERROR_LENGTH)[:_MAX_ERROR_LENGTH]
+        assert _sanitize_error(error, conn) == error
+
+    def test_truncation_cuts_between_words(self):
+        """Half a host name at the cut would not be recognised and scrubbed."""
+        conn = "postgresql://user:pass@1.2.3.4:5432/db"
+        host = "db.internal.example.com"
+        prefix = "could not translate host name "
+        padding = "x" * (_MAX_ERROR_LENGTH - len(prefix) - len("db.internal") - 1)
+        error = f"{padding} {prefix}{host} to address"
+        assert error[:_MAX_ERROR_LENGTH].endswith(" db.internal")
+        result = _sanitize_error(error, conn, host="1.2.3.4", original_host=host)
+        assert "db.internal" not in result
+        assert result.endswith("could not translate host name ... [truncated]")
+
 
 # ---------------------------------------------------------------------------
 # Helpers for run()-level integration tests
@@ -459,6 +546,15 @@ class TestSQLQueryBlockRunSSRF:
 @pytest.mark.asyncio
 class TestSQLQueryBlockRunErrorHandling:
     """Error handling: connection failures and timeouts."""
+
+    async def test_overlong_query_refused_before_host_lookup(self):
+        block = SQLQueryBlock()
+        creds = _make_credentials()
+        input_data = _make_input(creds, query="SELECT " + "1" * _MAX_QUERY_LENGTH)
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert outputs == {"error": "Query is too long (max 100,000 characters)."}
+        block.check_host_allowed.assert_not_called()
 
     async def test_connection_failure_sanitized_no_credentials(self):
         """Connection error must not leak credentials."""
