@@ -80,7 +80,11 @@ import {
   microsoftLoginProvider,
 } from "./sign-in-connection";
 import { assertMicrosoftSignUpAllowed } from "./microsoft-sign-up-policy";
-import { assertTeamEmailUsesGoogle } from "./team-email-policy";
+import {
+  assertTeamEmailUsesGoogle,
+  CHANGE_EMAIL_PATH,
+  isTeamEmail,
+} from "./team-email-policy";
 import { sendVerificationLink } from "./verification-link";
 
 const baseURL =
@@ -216,6 +220,14 @@ export const auth = betterAuth({
       if (signUpEmail) {
         assertSignUpPolicy(signUpEmail, ctx);
       }
+      // A change of address too, as in user.update.before, but here before the
+      // lookup, so a team address is answered alike with or without an account.
+      if (
+        ctx.path === CHANGE_EMAIL_PATH &&
+        typeof ctx.body?.newEmail === "string"
+      ) {
+        await assertEmailChangePolicy(ctx, ctx.body.newEmail);
+      }
     }),
     // A reset link only reaches whoever holds the address it was mailed to,
     // so opening one verifies that address, if it is still the account's: an
@@ -303,6 +315,11 @@ export const auth = betterAuth({
         },
       },
       update: {
+        // An address an account moves to without proving it gets the same
+        // team-address rule as a sign-up (team-email-policy.ts).
+        before: async (user: { email?: string }, ctx: HookContext) => {
+          if (user.email) assertTeamEmailUsesGoogle(user.email, ctx);
+        },
         // updateUserByEmail (fired when a change-email link is confirmed)
         // runs this hook post-commit; mirror the now-verified email onto the
         // platform User row so notifications/Stripe track the confirmed
@@ -596,6 +613,21 @@ function assertSignUpPolicy(email: string, ctx: { path?: string } | null) {
       message: decision.reason ?? "Signups are not allowed.",
     });
   }
+}
+
+async function assertEmailChangePolicy(
+  ctx: { path?: string; headers?: Headers },
+  newEmail: string,
+) {
+  if (!isTeamEmail(newEmail)) return;
+  // Read as the endpoint will, a bearer token included: this hook runs before
+  // the bearer plugin's.
+  const session = await auth.api.getSession({
+    headers: ctx.headers ?? new Headers(),
+    query: { disableCookieCache: true, disableRefresh: true },
+  });
+  if (!session || session.user.emailVerified === true) return;
+  assertTeamEmailUsesGoogle(newEmail, ctx);
 }
 
 // IP and email-domain blocks from /admin/users (access-blocks.ts) and the ban
