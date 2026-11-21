@@ -1,9 +1,15 @@
+from decimal import Decimal
 from typing import Any, List, Literal, Optional
 
 import pytest
 from pydantic import BaseModel
 
-from backend.util.type import _value_satisfies_type, coerce_inputs_to_schema, convert
+from backend.util.type import (
+    ConversionError,
+    _value_satisfies_type,
+    coerce_inputs_to_schema,
+    convert,
+)
 
 
 @pytest.mark.parametrize(
@@ -437,3 +443,87 @@ class TestCoerceInputsToSchema:
         # Dicts stay as dicts — Pydantic validation handles construction
         assert data["items"] == [{"name": "a"}, {"name": "b"}]
         assert isinstance(data["items"][0], dict)
+
+
+# ---------------------------------------------------------------------------
+# Unparsable numeric strings raise instead of silently becoming 0
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "value", ["abc", "12x", "soon", "", "   ", "nan", "inf", "-inf"]
+)
+def test_unparsable_string_to_int_raises(value: str):
+    with pytest.raises(ConversionError):
+        convert(value, int)
+
+
+@pytest.mark.parametrize("value", ["abc", "12x", "soon", "", "   "])
+def test_unparsable_string_to_float_raises(value: str):
+    with pytest.raises(ConversionError):
+        convert(value, float)
+
+
+def test_lenient_numeric_conversions_unchanged():
+    # Scientific notation still parses for both numeric types.
+    assert convert("1e3", int) == 1000
+    assert convert("1e3", float) == 1000.0
+    # Decimal inputs still truncate toward zero for int targets.
+    assert convert(Decimal("3.7"), int) == 3
+    assert convert(Decimal("-3.7"), int) == -3
+    # Containers still convert via len().
+    assert convert([1, 2, 3], int) == 3
+    assert convert({"a": 1}, int) == 1
+    assert convert([], int) == 0
+    # Bool and float inputs still convert as before.
+    assert convert(True, float) == 1.0
+    assert convert(5.5, int) == 5
+    # Whitespace-padded numeric strings still parse.
+    assert convert(" 42 ", int) == 42
+    # Non-string values keep the old fallback instead of raising.
+    assert convert(None, int) == 0
+
+
+def test_union_falls_through_to_str_for_unparsable_string():
+    assert convert("abc", int | str) == "abc"
+
+
+def test_unparsable_string_to_optional_int_is_left_as_is():
+    assert convert("abc", Optional[int]) == "abc"
+
+
+class TestCoerceUnparsableNumericString:
+    def test_error_names_the_field(self):
+        class Inputs(BaseModel):
+            count: int
+
+        data: dict[str, Any] = {"count": "abc"}
+        with pytest.raises(ConversionError, match="`count`"):
+            coerce_inputs_to_schema(data, Inputs)
+
+    def test_other_fields_are_still_coerced(self):
+        class Inputs(BaseModel):
+            count: int
+            total: int
+
+        data: dict[str, Any] = {"count": "abc", "total": "42"}
+        with pytest.raises(ConversionError):
+            coerce_inputs_to_schema(data, Inputs)
+        assert data["count"] == "abc"
+        assert data["total"] == 42
+
+    def test_empty_string_raises(self):
+        class Inputs(BaseModel):
+            ratio: float
+
+        data: dict[str, Any] = {"ratio": ""}
+        with pytest.raises(ConversionError, match="`ratio`"):
+            coerce_inputs_to_schema(data, Inputs)
+
+    def test_union_field_accepts_the_string(self):
+        class Inputs(BaseModel):
+            value: int | str
+
+        data: dict[str, Any] = {"value": "abc"}
+        coerce_inputs_to_schema(data, Inputs)
+        assert data["value"] == "abc"
