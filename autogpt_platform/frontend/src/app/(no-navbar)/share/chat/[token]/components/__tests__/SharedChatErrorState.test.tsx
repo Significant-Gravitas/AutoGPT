@@ -14,9 +14,7 @@ afterEach(() => {
 
 describe("SharedChatErrorState", () => {
   test("says the link is dead, with no retry, for a dead link", () => {
-    render(
-      <SharedChatErrorState isDeadLink isRetrying={false} onRetry={vi.fn()} />,
-    );
+    render(<SharedChatErrorState isDeadLink onRetry={vi.fn()} />);
 
     expect(
       screen.getByRole("heading", { name: "Share link not found" }),
@@ -27,13 +25,7 @@ describe("SharedChatErrorState", () => {
 
   test("offers 'Try again', without calling the link dead, for any other failure", () => {
     const onRetry = vi.fn();
-    render(
-      <SharedChatErrorState
-        isDeadLink={false}
-        isRetrying={false}
-        onRetry={onRetry}
-      />,
-    );
+    render(<SharedChatErrorState isDeadLink={false} onRetry={onRetry} />);
 
     expect(
       screen.getByRole("heading", { name: "Unable to load" }),
@@ -44,17 +36,5 @@ describe("SharedChatErrorState", () => {
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
 
     expect(onRetry).toHaveBeenCalledTimes(1);
-  });
-
-  test("holds 'Try again' while a retry is under way", () => {
-    const onRetry = vi.fn();
-    render(
-      <SharedChatErrorState isDeadLink={false} isRetrying onRetry={onRetry} />,
-    );
-
-    const retry = screen.getByRole("button", { name: "Try again" });
-    expect(retry).toHaveProperty("disabled", true);
-    fireEvent.click(retry);
-    expect(onRetry).not.toHaveBeenCalled();
   });
 });

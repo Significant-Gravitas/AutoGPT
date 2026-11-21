@@ -182,6 +182,21 @@ describe("SharePage (execution share viewer)", () => {
     },
   );
 
+  test("says 'Share Link Not Found' for a 200 that carries no run, without retrying", async () => {
+    mockUseParams.mockReturnValue({ token: TOKEN });
+    const requested = answerSharedRunWith(() =>
+      HttpResponse.json(null, { status: 200 }),
+    );
+
+    render(<SharePage />, { queryClient: createRetryingQueryClient() });
+
+    expect(
+      await screen.findByRole("heading", { name: "Share Link Not Found" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(requested).toEqual([TOKEN]);
+  });
+
   test("says 'Share Link Not Found' when the link is revoked after the run has loaded", async () => {
     let revoked = false;
     answerSharedRunWith(() =>

@@ -6,6 +6,7 @@ import { http, HttpResponse } from "msw";
 import {
   getGetV2GetSharedChatMessagesMockHandler200,
   getGetV2GetSharedChatMessagesMockHandler404,
+  getGetV2GetSharedChatMessagesMockHandler422,
   getGetV2GetSharedChatMockHandler200,
   getGetV2GetSharedChatMockHandler404,
   getGetV2GetSharedChatMockHandler422,
@@ -386,23 +387,31 @@ describe("SharedChatPage", () => {
       expect(screen.queryByText(/couldn't load messages/i)).toBeNull();
     });
 
-    test("says 'Share link not found' when the link dies between the chat and its messages", async () => {
-      const messageReads: string[] = [];
-      server.use(
-        getGetV2GetSharedChatMockHandler200(deployChat),
-        getGetV2GetSharedChatMessagesMockHandler404(({ params }) => {
-          messageReads.push(String(params.shareToken));
-        }),
-      );
-      render(<SharedChatPage />, { queryClient: createRetryingQueryClient() });
+    test.each([
+      { status: 404, handler: getGetV2GetSharedChatMessagesMockHandler404 },
+      { status: 422, handler: getGetV2GetSharedChatMessagesMockHandler422 },
+    ])(
+      "says 'Share link not found' when the messages read answers $status after the chat loaded",
+      async ({ handler }) => {
+        const messageReads: string[] = [];
+        server.use(
+          getGetV2GetSharedChatMockHandler200(deployChat),
+          handler(({ params }) => {
+            messageReads.push(String(params.shareToken));
+          }),
+        );
+        render(<SharedChatPage />, {
+          queryClient: createRetryingQueryClient(),
+        });
 
-      expect(
-        await screen.findByRole("heading", { name: "Share link not found" }),
-      ).toBeDefined();
-      expect(screen.queryByText(/the share link is valid/i)).toBeNull();
-      expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
-      expect(messageReads).toEqual([TOKEN]);
-    });
+        expect(
+          await screen.findByRole("heading", { name: "Share link not found" }),
+        ).toBeDefined();
+        expect(screen.queryByText(/the share link is valid/i)).toBeNull();
+        expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+        expect(messageReads).toEqual([TOKEN]);
+      },
+    );
 
     test("keeps loading while the visitor is offline, then shows the chat", async () => {
       server.use(

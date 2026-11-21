@@ -5,15 +5,10 @@ import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   isDeadLink: boolean;
-  isRetrying: boolean;
   onRetry: () => void;
 }
 
-export function SharedChatErrorState({
-  isDeadLink,
-  isRetrying,
-  onRetry,
-}: Props) {
+export function SharedChatErrorState({ isDeadLink, onRetry }: Props) {
   return (
     <div className="flex h-full w-full flex-1 items-center justify-center">
       <div className="mx-auto w-full max-w-md p-6">
@@ -32,12 +27,7 @@ export function SharedChatErrorState({
             </Text>
           </div>
           {!isDeadLink && (
-            <Button
-              variant="link"
-              size="inline"
-              loading={isRetrying}
-              onClick={onRetry}
-            >
+            <Button variant="link" size="inline" onClick={onRetry}>
               Try again
             </Button>
           )}

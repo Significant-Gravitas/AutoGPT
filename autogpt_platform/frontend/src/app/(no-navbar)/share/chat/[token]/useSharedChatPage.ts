@@ -29,7 +29,7 @@ export function useSharedChatPage(token: string) {
     },
   );
 
-  // Not isLoading: a read paused while the viewer is offline is pending but
+  // isPending, since a read paused while the viewer is offline is pending but
   // not loading. The messages read waits for the session, so it only counts
   // once there is one.
   const isLoading =
@@ -88,7 +88,6 @@ export function useSharedChatPage(token: string) {
     hasMore: messagesQuery.data?.has_more ?? false,
     isLoading,
     isDeadLink,
-    isRetrying: sessionQuery.isFetching,
     messagesError: messagesQuery.isError,
     retry,
   };

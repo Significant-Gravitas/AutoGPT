@@ -82,7 +82,6 @@ export default function SharedChatPage() {
     hasMore,
     isLoading,
     isDeadLink,
-    isRetrying,
     messagesError,
     retry,
   } = useSharedChatPage(token);
@@ -122,11 +121,7 @@ export default function SharedChatPage() {
   if (isDeadLink || !session) {
     return (
       <SharedChatChrome>
-        <SharedChatErrorState
-          isDeadLink={isDeadLink}
-          isRetrying={isRetrying}
-          onRetry={retry}
-        />
+        <SharedChatErrorState isDeadLink={isDeadLink} onRetry={retry} />
       </SharedChatChrome>
     );
   }
