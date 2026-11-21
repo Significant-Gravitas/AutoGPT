@@ -86,6 +86,7 @@
 ## Changelog
 
 * [What's New](changelog/README.md)
+  * [Sign up in fewer steps, every Expert's chats in the sidebar, and reset an Expert](changelog/november-15-november-19-2026.md)
   * [Your plan before your trial, Wix for your team, and Otto replies on a short brain dump](changelog/november-6-november-11-2026.md)
   * [Connect tools from the chat, a login page that shows what's new, and a friendlier first email](changelog/november-4-2026.md)
   * [A brain dump that helps you answer, a calmer trial welcome, and a guided first run](changelog/october-27-2026.md)
