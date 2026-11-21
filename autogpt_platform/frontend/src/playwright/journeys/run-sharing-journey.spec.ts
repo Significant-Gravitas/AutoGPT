@@ -22,7 +22,8 @@ const RUN_ENDED = /^(COMPLETED|FAILED|TERMINATED)$/;
 // The public page reads a share through the app's proxy.
 const PUBLIC_READ = "/api/proxy/api/internal/public/shared/";
 // One run's read, by its share token (a UUID), and nothing else under it.
-const PUBLIC_RUN_READ = /\/api\/proxy\/api\/public\/shared\/[0-9a-f-]{36}$/;
+const PUBLIC_RUN_READ =
+  /\/api\/proxy\/api\/internal\/public\/shared\/[0-9a-f-]{36}$/;
 // All the public read may carry: nothing of the owner's or the graph's.
 const PUBLIC_FIELDS = [
   "created_at",

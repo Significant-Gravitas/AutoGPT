@@ -97,7 +97,7 @@ const proposal: SkillVersionSummary = {
 
 const graphRequests: string[] = [];
 function recordGraphRequest({ request }: { request: Request }) {
-  if (/\/api\/memory\/.*(facts|overview)/.test(request.url))
+  if (/\/api\/internal\/memory\/.*(facts|overview)/.test(request.url))
     graphRequests.push(request.url);
 }
 afterEach(() => {
