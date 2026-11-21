@@ -32,6 +32,11 @@ interface Retry {
 export class SubscribeRetries {
   private retries = new Map<string, Retry>();
   private reportedGivingUp = false;
+  // A retry's send count when the ordering ping now out was sent: only a
+  // retry sent before that ping is covered by its pong. A retry sent after
+  // it — or sent again since — is not, so it stays pending until a later
+  // ping covers it.
+  private coveredByPing = new Map<string, number>();
 
   constructor(private resend: (request: WebSocketRequest) => void) {}
 
@@ -80,19 +85,47 @@ export class SubscribeRetries {
     return true;
   }
 
+  /** A subscribe was sent again and waits for the server's answer. */
+  get awaitingConfirmation(): boolean {
+    return [...this.retries.values()].some(
+      (retry) => retry.timer === undefined,
+    );
+  }
+
   /**
-   * The server has answered everything sent so far, so a subscribe sent
-   * again that isn't waiting to go again was confirmed.
+   * The ordering ping is out: the retries already sent are the ones its
+   * pong vouches for. A retry sent after it is not covered, and a retry
+   * sent again since has a newer send count, so neither is settled by it.
+   */
+  markPingCovered() {
+    this.coveredByPing.clear();
+    for (const [key, retry] of this.retries) {
+      if (retry.timer === undefined) this.coveredByPing.set(key, retry.sent);
+    }
+  }
+
+  /**
+   * The server has answered everything sent before the ordering ping, so a
+   * subscribe sent again that is covered by it and isn't waiting to go
+   * again was confirmed. A retry the ping does not cover stays pending,
+   * with its attempt count, until a later ping covers it.
    */
   settle() {
     for (const [key, retry] of this.retries) {
-      if (retry.timer === undefined) this.retries.delete(key);
+      if (
+        retry.timer === undefined &&
+        this.coveredByPing.get(key) === retry.sent
+      ) {
+        this.retries.delete(key);
+      }
     }
+    this.coveredByPing.clear();
   }
 
   clear() {
     this.retries.forEach((retry) => clearTimeout(retry.timer));
     this.retries.clear();
+    this.coveredByPing.clear();
     this.reportedGivingUp = false;
   }
 

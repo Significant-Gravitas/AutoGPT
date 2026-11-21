@@ -9,6 +9,7 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import type { UserExecutionCostSummary } from "@/app/api/__generated__/models/userExecutionCostSummary";
 import { okData } from "@/app/api/helpers";
+import { listAllExecutionsQueryFn } from "@/components/layout/Navbar/components/AgentActivityDropdown/useLiveUpdateLog";
 import {
   EXECUTION_REFETCH_THROTTLE_MS,
   refetchAfterReconnect,
@@ -55,7 +56,7 @@ export function useLibraryFleetSummary(
   const isBillingEnabled = useIsBillingEnabled();
 
   const { data: executions, isSuccess } = useGetV1ListAllExecutions({
-    query: { select: okData },
+    query: { select: okData, queryFn: listAllExecutionsQueryFn },
   });
 
   // Authoritative monthly total comes from the server-side aggregator so it
