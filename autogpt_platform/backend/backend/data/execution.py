@@ -1257,8 +1257,9 @@ async def update_graph_execution_start_time(
 
     The status check is part of the write, so a run that a stop already
     terminated (or that has otherwise left QUEUED/INCOMPLETE) is not put back
-    to RUNNING. Returns None when nothing moved, which is how the executor
-    learns the run is no longer its to start.
+    to RUNNING. Returns None when nothing moved. That does not prove a stop:
+    the client retries a failed call, so a start that committed and lost its
+    answer is answered None by its retry, with the run RUNNING.
     """
     moved = await AgentGraphExecution.prisma().update_many(
         where={

@@ -166,14 +166,15 @@ def test_a_queued_or_redelivered_running_run_goes_on(status: ExecutionStatus):
     processor._on_graph_execution.assert_called_once()
 
 
-@pytest.mark.parametrize("status", [ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE])
-def test_a_run_stopped_before_it_started_is_left_as_the_stop_left_it(
-    status: ExecutionStatus,
-):
-    """The start write moves only a run that is still waiting to start, and
-    returns nothing for one a stop got to after the executor's read. The
-    executor then leaves it alone: it runs no graph, writes no state and
-    announces no update."""
+def _run_whose_start_moves_nothing(
+    status: ExecutionStatus, found: ExecutionStatus | None
+) -> tuple[MagicMock, MagicMock, MagicMock, MagicMock]:
+    """Run a run read as ``status`` whose start write returns nothing and which
+    the read after that finds ``found`` (None for a run that is gone).
+
+    Returns the database client, the graph run, the update sender and the state
+    writer.
+    """
     execution = GraphExecutionEntry(
         user_id="user-1",
         graph_exec_id="exec-1",
@@ -181,9 +182,10 @@ def test_a_run_stopped_before_it_started_is_left_as_the_stop_left_it(
         graph_version=1,
     )
     db_client = MagicMock()
-    db_client.get_graph_execution_meta.return_value = SimpleNamespace(
-        status=status, stats=None
-    )
+    db_client.get_graph_execution_meta.side_effect = [
+        SimpleNamespace(status=status, stats=None),
+        None if found is None else SimpleNamespace(status=found, stats=None),
+    ]
     db_client.update_graph_execution_start_time.return_value = None
     processor = ExecutionProcessor()
     processor._on_graph_execution = MagicMock(
@@ -201,10 +203,49 @@ def test_a_run_stopped_before_it_started_is_left_as_the_stop_left_it(
     ):
         processor.on_graph_execution(execution, threading.Event(), MagicMock())
 
+    return db_client, processor._on_graph_execution, send_update, write_state
+
+
+@pytest.mark.parametrize("status", [ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE])
+@pytest.mark.parametrize(
+    "found",
+    [
+        ExecutionStatus.TERMINATED,
+        ExecutionStatus.COMPLETED,
+        ExecutionStatus.FAILED,
+        ExecutionStatus.REVIEW,
+        None,
+    ],
+)
+def test_a_run_stopped_before_it_started_is_left_as_the_stop_left_it(
+    status: ExecutionStatus, found: ExecutionStatus | None
+):
+    """The start write moves only a run that is still waiting to start, and
+    returns nothing for one a stop got to after the executor's read. The
+    executor then leaves it alone: it runs no graph, writes no state and
+    announces no update."""
+    db_client, run_graph, send_update, write_state = _run_whose_start_moves_nothing(
+        status, found
+    )
+
     db_client.update_graph_execution_start_time.assert_called_once_with("exec-1")
-    processor._on_graph_execution.assert_not_called()
+    run_graph.assert_not_called()
     send_update.assert_not_called()
     write_state.assert_not_called()
+
+
+@pytest.mark.parametrize("status", [ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE])
+def test_a_start_whose_answer_was_lost_goes_on_with_the_run(status: ExecutionStatus):
+    """The database client retries a call that failed, so a start that committed
+    and lost its answer is answered nothing by its retry, with the run RUNNING.
+    That run is this executor's to go on with: dropping it would leave it
+    RUNNING with nothing running it."""
+    _, run_graph, send_update, _ = _run_whose_start_moves_nothing(
+        status, ExecutionStatus.RUNNING
+    )
+
+    run_graph.assert_called_once()
+    send_update.assert_not_called()
 
 
 def test_an_update_that_is_none_is_not_published():

@@ -27,23 +27,33 @@ CANCEL = {
 }
 
 
-async def _stop_run_read_as(
-    mocker: MockerFixture, *reads: ExecutionStatus
+def _a_stop_that_reads_the_run_as(
+    mocker: MockerFixture,
+    *reads: ExecutionStatus,
+    event_error: Exception | None = None,
 ) -> tuple[list[str], AsyncMock]:
-    """Stop RUN_ID, which the stop reads back as each of ``reads`` in turn.
+    """Set up a stop of RUN_ID that reads it back as each of ``reads`` in turn.
 
-    Returns what the stop did in order ("cancel" for a cancel it published,
-    "terminated" for its write of the run) and the queue its cancels went to.
+    Returns what the stop will do, in order ("cancel" for a cancel it
+    publishes, "terminated" for its write of the run, "published" for the
+    event it publishes, which fails with ``event_error`` if given), and the
+    queue its cancels go to.
     """
     events: list[str] = []
     queue = mocker.AsyncMock()
     queue.publish_message.side_effect = lambda **_: events.append("cancel")
     mocker.patch("backend.executor.utils.get_async_execution_queue", return_value=queue)
     mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
+
+    def publish_event(_run: GraphExecutionMeta) -> None:
+        events.append("published")
+        if event_error:
+            raise event_error
+
     event_bus = mocker.patch(
         "backend.executor.utils.get_async_execution_event_bus"
     ).return_value
-    event_bus.publish = mocker.AsyncMock()
+    event_bus.publish = mocker.AsyncMock(side_effect=publish_event)
     mocker.patch(
         "backend.executor.utils.human_review_db"
     ).cancel_pending_reviews_for_execution = mocker.AsyncMock(return_value=0)
@@ -59,9 +69,6 @@ async def _stop_run_read_as(
     execution_db.update_graph_execution_stats = mocker.AsyncMock(
         side_effect=lambda **_: events.append("terminated")
     )
-
-    await stop_graph_execution(user_id=USER_ID, graph_exec_id=RUN_ID, cascade=False)
-
     return events, queue.publish_message
 
 
@@ -72,9 +79,25 @@ async def _stop_run_read_as(
 async def test_a_run_the_stop_ends_itself_is_cancelled_again_once_written(
     mocker: MockerFixture, status: ExecutionStatus
 ):
-    events, publish = await _stop_run_read_as(mocker, status)
+    events, publish = _a_stop_that_reads_the_run_as(mocker, status)
 
-    assert events == ["cancel", "terminated", "cancel"]
+    await stop_graph_execution(user_id=USER_ID, graph_exec_id=RUN_ID, cascade=False)
+
+    assert events == ["cancel", "terminated", "cancel", "published"]
+    assert [call.kwargs for call in publish.await_args_list] == [CANCEL, CANCEL]
+
+
+async def test_the_second_cancel_goes_out_when_the_event_cannot_be_published(
+    mocker: MockerFixture,
+):
+    events, publish = _a_stop_that_reads_the_run_as(
+        mocker, ExecutionStatus.QUEUED, event_error=RuntimeError("event bus down")
+    )
+
+    with pytest.raises(RuntimeError, match="event bus down"):
+        await stop_graph_execution(user_id=USER_ID, graph_exec_id=RUN_ID, cascade=False)
+
+    assert events == ["cancel", "terminated", "cancel", "published"]
     assert [call.kwargs for call in publish.await_args_list] == [CANCEL, CANCEL]
 
 
@@ -100,7 +123,9 @@ async def test_a_run_the_stop_ends_itself_is_cancelled_again_once_written(
 async def test_a_run_an_executor_has_gets_one_cancel_and_no_write_from_the_stop(
     mocker: MockerFixture, reads: list[ExecutionStatus]
 ):
-    events, publish = await _stop_run_read_as(mocker, *reads)
+    events, publish = _a_stop_that_reads_the_run_as(mocker, *reads)
 
-    assert events == ["cancel"]
+    await stop_graph_execution(user_id=USER_ID, graph_exec_id=RUN_ID, cascade=False)
+
+    assert events == ["cancel", "published"]
     assert [call.kwargs for call in publish.await_args_list] == [CANCEL]

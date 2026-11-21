@@ -149,7 +149,7 @@ async def test_a_start_that_waits_behind_a_stop_does_not_undo_it(
             )
             start = asyncio.create_task(update_graph_execution_start_time(run_id))
             await _or_fail(
-                _until_a_statement_waits_on_the_run(stop),
+                _until_a_statement_is_blocked_by(stop),
                 "the start never waited behind the stop's write",
             )
         started = await asyncio.wait_for(start, timeout=WAIT_SECONDS)
@@ -173,16 +173,17 @@ async def _or_fail(waiting: Coroutine[Any, Any, None], reason: str) -> None:
         pytest.fail(f"{reason} within {WAIT_SECONDS} s, so no race was forced")
 
 
-async def _until_a_statement_waits_on_the_run(stop: Prisma) -> None:
+async def _until_a_statement_is_blocked_by(stop: Prisma) -> None:
+    """Until the database reports a backend waiting on a lock the stop's own
+    transaction holds, not just any statement waiting on some lock."""
     while True:
         # Inside a transaction, pg_stat_activity is frozen at first access
         # until the snapshot is cleared, so clear it before every look.
         await stop.execute_raw("SELECT pg_stat_clear_snapshot()")
         rows = await stop.query_raw(
             "SELECT count(*)::int AS waiting FROM pg_stat_activity "
-            "WHERE wait_event_type = 'Lock' AND pid <> pg_backend_pid() "
-            "AND datname = current_database() "
-            "AND query LIKE '%\"AgentGraphExecution\"%'"
+            "WHERE datname = current_database() "
+            "AND pg_backend_pid() = ANY(pg_blocking_pids(pid))"
         )
         if rows and rows[0]["waiting"] >= 1:
             return

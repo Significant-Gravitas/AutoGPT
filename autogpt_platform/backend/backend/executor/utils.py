@@ -1401,14 +1401,6 @@ class CancelExecutionEvent(BaseModel):
     graph_exec_id: str
 
 
-async def _publish_cancel(queue_client: AsyncRabbitMQ, graph_exec_id: str) -> None:
-    await queue_client.publish_message(
-        routing_key="",
-        message=CancelExecutionEvent(graph_exec_id=graph_exec_id).model_dump_json(),
-        exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
-    )
-
-
 async def _get_child_executions(parent_exec_id: str) -> list["GraphExecutionMeta"]:
     """
     Get all child executions of a parent execution using the execution_db pattern.
@@ -1529,20 +1521,19 @@ async def stop_graph_execution(
 
             graph_exec.status = ExecutionStatus.TERMINATED
 
-            await asyncio.gather(
-                # Update graph execution status
-                db.update_graph_execution_stats(
-                    graph_exec_id=graph_exec.id,
-                    status=ExecutionStatus.TERMINATED,
-                ),
-                # Publish graph execution event
-                get_async_execution_event_bus().publish(graph_exec),
+            # Update graph execution status
+            await db.update_graph_execution_stats(
+                graph_exec_id=graph_exec.id,
+                status=ExecutionStatus.TERMINATED,
             )
             # An executor can start the run between the read above and this
             # write. It ignores a cancel for a run it has not registered, so the
             # one sent before the read may have been lost on it. By now it has
-            # registered the run, and acts on this one.
+            # registered the run, and acts on this one. Sent before the event, so
+            # a failure to publish that can't keep it from going out.
             await _publish_cancel(queue_client, graph_exec_id)
+            # Publish graph execution event
+            await get_async_execution_event_bus().publish(graph_exec)
             return
 
         if graph_exec.status == ExecutionStatus.RUNNING:
@@ -1551,6 +1542,14 @@ async def stop_graph_execution(
     raise TimeoutError(
         f"Workflow run #{graph_exec_id} will need to take longer than {wait_timeout} seconds to stop. "
         f"You can check the status of the execution in the UI or try again later."
+    )
+
+
+async def _publish_cancel(queue_client: AsyncRabbitMQ, graph_exec_id: str) -> None:
+    await queue_client.publish_message(
+        routing_key="",
+        message=CancelExecutionEvent(graph_exec_id=graph_exec_id).model_dump_json(),
+        exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
     )
 
 

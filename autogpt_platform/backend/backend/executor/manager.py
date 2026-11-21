@@ -165,6 +165,22 @@ def _get_execution_credit_balance(
     return db_client.get_credits(graph_exec.user_id)
 
 
+def _running_after_an_empty_start(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+) -> bool:
+    """Whether a run whose start moved nothing is RUNNING all the same.
+
+    The database client retries a call that failed, so a start that committed
+    and lost its answer comes back empty with the run RUNNING, and that run is
+    this executor's to go on with. A run a stop got to first is terminal.
+    """
+    run = db_client.get_graph_execution_meta(
+        user_id=graph_exec.user_id, execution_id=graph_exec.graph_exec_id
+    )
+    return run is not None and run.status == ExecutionStatus.RUNNING
+
+
 RUN_OUTSIDE_ITS_ORG_ERROR = (
     "This run was stopped because it was queued in an organization or team "
     "you aren't a member of. New runs go to your own."
@@ -1531,7 +1547,14 @@ class ExecutionProcessor:
             started = db_client.update_graph_execution_start_time(
                 graph_exec.graph_exec_id
             )
-            if started is None:
+            if started is not None:
+                send_execution_update(started)
+            elif _running_after_an_empty_start(db_client, graph_exec):
+                log_metadata.info(
+                    f"Graph execution #{graph_exec.graph_exec_id} was already "
+                    "started by an earlier try of its start, going on with it."
+                )
+            else:
                 # The start only moves a run that is still queued, so a stop
                 # that wrote its status after the read above has won the race.
                 log_metadata.info(
@@ -1540,7 +1563,6 @@ class ExecutionProcessor:
                 )
                 return
             exec_meta.status = ExecutionStatus.RUNNING
-            send_execution_update(started)
         elif exec_meta.status == ExecutionStatus.RUNNING:
             log_metadata.info(
                 f"⚙️ Graph execution #{graph_exec.graph_exec_id} is already running, continuing where it left off."
