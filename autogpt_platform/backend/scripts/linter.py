@@ -47,7 +47,12 @@ def lint():
             lint_error = e
 
     if lint_error:
-        print("Lint failed, try running `poetry run format` to fix the issues")
+        print(
+            "Lint failed. `poetry run format` fixes most of it, but check"
+            " `ruff check --fix --diff` first: an import that pytest only"
+            " needs as a fixture reads as unused (F401) and the fix deletes"
+            " it. Share fixtures through a conftest.py instead."
+        )
         sys.exit(1)
 
 
