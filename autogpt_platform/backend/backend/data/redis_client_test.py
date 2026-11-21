@@ -208,6 +208,46 @@ def test_get_redis_async_closes_client_when_owning_loop_shuts_down() -> None:
     assert not redis_client._async_client_finalizers
 
 
+def test_get_redis_async_closes_client_when_loop_closed_without_shutdown_asyncgens() -> (
+    None
+):
+    fake = MagicMock(spec=AsyncRedisCluster)
+    fake.close = AsyncMock()
+
+    with patch.object(redis_client, "connect_async", new=AsyncMock(return_value=fake)):
+        loop = asyncio.new_event_loop()
+        try:
+            client = loop.run_until_complete(redis_client.get_redis_async())
+            assert client is fake
+            assert redis_client._async_clients[loop] is fake
+        finally:
+            loop.close()
+
+    fake.close.assert_awaited_once()
+    assert not redis_client._async_clients
+    assert not redis_client._async_client_finalizers
+
+
+def test_get_redis_async_closes_client_on_retired_worker_loop() -> None:
+    fake = MagicMock(spec=AsyncRedisCluster)
+    fake.close = AsyncMock()
+
+    with patch.object(redis_client, "connect_async", new=AsyncMock(return_value=fake)):
+        loop = asyncio.new_event_loop()
+
+        async def _run_work() -> None:
+            await redis_client.get_redis_async()
+            loop.stop()
+
+        loop.create_task(_run_work())
+        loop.run_forever()
+        loop.close()
+
+    fake.close.assert_awaited_once()
+    assert not redis_client._async_clients
+    assert not redis_client._async_client_finalizers
+
+
 def test_disconnect_closes_cached_client() -> None:
     with patch.object(redis_client, "connect", autospec=True) as mock_connect:
         fake = MagicMock(spec=RedisCluster)

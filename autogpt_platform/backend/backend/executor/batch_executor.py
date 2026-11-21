@@ -574,6 +574,10 @@ class BatchExecutor(AppService):
         try:
             loop.run_until_complete(_loop_forever(self._shutdown_event))
         finally:
+            try:
+                loop.run_until_complete(loop.shutdown_asyncgens())
+            except Exception:
+                pass
             loop.close()
 
 

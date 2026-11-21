@@ -185,6 +185,12 @@ class BaseAppService(AppProcess, ABC):
             self.shared_event_loop.run_forever()
         finally:
             logger.info(f"[{self.service_name}] 🛑 Shared event loop stopped")
+            try:
+                self.shared_event_loop.run_until_complete(
+                    self.shared_event_loop.shutdown_asyncgens()
+                )
+            except Exception:
+                pass
             self.shared_event_loop.close()  # ensure held resources are released
 
     def run_and_wait(

@@ -246,6 +246,10 @@ class _WorkerLoop:
         # Only a retired worker stops, once its last run has stopped.
         with _workers_lock:
             _retired_workers.discard(self)
+        try:
+            self.loop.run_until_complete(self.loop.shutdown_asyncgens())
+        except Exception:
+            pass
         self.loop.close()
 
     def submit(
