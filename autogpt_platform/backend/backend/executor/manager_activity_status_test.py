@@ -252,6 +252,42 @@ def test_a_start_whose_answer_was_lost_goes_on_with_the_run(status: ExecutionSta
     send_update.assert_called_once_with(db_client.get_graph_execution.return_value)
 
 
+def test_an_executors_refused_final_write_broadcasts_the_run_a_stop_ended():
+    """``on_graph_execution`` writes its final state through
+    ``_write_the_final_state``: a stop that ended the run first leaves it
+    TERMINATED, the executor's own TERMINATED write is refused, and the stored
+    state is broadcast, so a RUNNING update sent late is not the last one."""
+    execution = GraphExecutionEntry(
+        user_id="user-1",
+        graph_exec_id="exec-1",
+        graph_id="graph-1",
+        graph_version=1,
+    )
+    stopped = SimpleNamespace(status=ExecutionStatus.TERMINATED)
+    db_client = MagicMock()
+    db_client.get_graph_execution_meta.return_value = SimpleNamespace(
+        status=ExecutionStatus.RUNNING, stats=None
+    )
+    db_client.update_graph_execution_stats.return_value = None
+    db_client.get_graph_execution.return_value = stopped
+    processor = ExecutionProcessor()
+    processor._on_graph_execution = MagicMock(
+        return_value=(
+            TimingInfo(cpu_time=0.0, wall_time=0.0),
+            ExecutionStatus.TERMINATED,
+        )
+    )
+
+    with (
+        patch("backend.executor.manager.get_db_client", return_value=db_client),
+        patch("backend.executor.manager.send_execution_update") as send_update,
+        patch("backend.executor.manager.expert_posts.handle_expert_run_post"),
+    ):
+        processor.on_graph_execution(execution, threading.Event(), MagicMock())
+
+    send_update.assert_called_once_with(stopped)
+
+
 def test_an_update_that_is_none_is_not_published():
     """The start write now returns None for a run a stop ended. An executor that
     predates that hands the result straight to send_execution_update, so None

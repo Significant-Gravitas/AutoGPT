@@ -812,6 +812,21 @@ def test_a_run_a_stop_ended_is_broadcast_after_the_executors_refused_final_write
     send.assert_called_once_with(stopped)
 
 
+@pytest.mark.parametrize(
+    "status",
+    [execution.ExecutionStatus.COMPLETED, execution.ExecutionStatus.FAILED],
+)
+def test_a_refused_final_write_broadcasts_whatever_terminal_state_it_finds(status):
+    """A write is refused for any stored terminal state, as when an earlier try
+    of the same write committed and lost its answer: that state is the run's,
+    and nothing else announced it."""
+    stored = MagicMock(status=status)
+
+    _, send = _final_write(applied=False, stored=stored)
+
+    send.assert_called_once_with(stored)
+
+
 def test_an_applied_final_write_is_not_broadcast_again():
     db, send = _final_write(applied=True, stored=None)
 

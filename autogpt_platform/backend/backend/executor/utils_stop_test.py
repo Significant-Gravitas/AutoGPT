@@ -6,6 +6,7 @@ and the write, and it ignores a cancel for a run it has not registered yet, so
 the stop sends the cancel once more after the run is written TERMINATED.
 """
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -32,6 +33,7 @@ def _a_stop_that_reads_the_run_as(
     *reads: ExecutionStatus,
     event_error: Exception | None = None,
     failing_cancel: int | None = None,
+    cancel_error: BaseException | None = None,
 ) -> tuple[list[str], AsyncMock]:
     """Set up a stop of RUN_ID that reads it back as each of ``reads`` in turn.
 
@@ -46,7 +48,7 @@ def _a_stop_that_reads_the_run_as(
     def publish_cancel(**_: object) -> None:
         events.append("cancel")
         if failing_cancel is not None and events.count("cancel") == failing_cancel:
-            raise ConnectionError("the broker refused the cancel")
+            raise cancel_error or ConnectionError("the broker refused the cancel")
 
     queue.publish_message.side_effect = publish_cancel
     mocker.patch("backend.executor.utils.get_async_execution_queue", return_value=queue)
@@ -79,18 +81,42 @@ def _a_stop_that_reads_the_run_as(
     return events, queue.publish_message
 
 
+@pytest.mark.parametrize(
+    "error",
+    [ConnectionError("the broker refused the cancel"), RuntimeError("closed channel")],
+    ids=["connection", "other"],
+)
 async def test_a_second_cancel_the_broker_refuses_still_lets_the_event_out(
-    mocker: MockerFixture,
+    mocker: MockerFixture, caplog: pytest.LogCaptureFixture, error: Exception
 ):
     """The run is TERMINATED and the first cancel went out, so a failed second
-    cancel neither fails the stop nor keeps its event from being published."""
+    cancel, whatever it failed with, neither fails the stop nor keeps its event
+    from being published; it is logged."""
     events, _ = _a_stop_that_reads_the_run_as(
-        mocker, ExecutionStatus.QUEUED, failing_cancel=2
+        mocker, ExecutionStatus.QUEUED, failing_cancel=2, cancel_error=error
     )
 
-    await stop_graph_execution(user_id=USER_ID, graph_exec_id=RUN_ID, cascade=False)
+    with caplog.at_level("WARNING"):
+        await stop_graph_execution(user_id=USER_ID, graph_exec_id=RUN_ID, cascade=False)
 
     assert events == ["cancel", "terminated", "cancel", "published"]
+    assert f"Could not send the second cancel for run #{RUN_ID}" in caplog.text
+
+
+async def test_a_second_cancel_cancelled_with_the_stop_is_not_swallowed(
+    mocker: MockerFixture,
+):
+    """Best effort covers a failed publish, not the stop itself being
+    cancelled: that still propagates."""
+    _a_stop_that_reads_the_run_as(
+        mocker,
+        ExecutionStatus.QUEUED,
+        failing_cancel=2,
+        cancel_error=asyncio.CancelledError(),
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await stop_graph_execution(user_id=USER_ID, graph_exec_id=RUN_ID, cascade=False)
 
 
 @pytest.mark.parametrize(

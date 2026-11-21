@@ -190,8 +190,9 @@ def _write_the_final_state(
     graph_exec: GraphExecutionEntry,
     status: ExecutionStatus,
     stats: GraphExecutionStats,
-) -> None:
-    """Write the run's final status and stats, and broadcast them.
+) -> bool:
+    """Write the run's final status and stats, and broadcast them. Returns
+    whether the write was applied.
 
     A stop that ended the run first left it TERMINATED, which this write can't
     follow, so the write publishes nothing. The stop publishes on its own
@@ -205,7 +206,7 @@ def _write_the_final_state(
         status=status,
         stats=stats,
     ):
-        return
+        return True
     stored = db_client.get_graph_execution(
         user_id=graph_exec.user_id,
         execution_id=graph_exec.graph_exec_id,
@@ -213,6 +214,7 @@ def _write_the_final_state(
     )
     if stored is not None and stored.status in TERMINAL_GRAPH_EXECUTION_STATUSES:
         send_execution_update(stored)
+    return False
 
 
 RUN_OUTSIDE_ITS_ORG_ERROR = (
@@ -271,11 +273,8 @@ def _stop_outside_its_org(
             status=ExecutionStatus.FAILED,
         )
     exec_stats.error = RUN_OUTSIDE_ITS_ORG_ERROR
-    if not update_graph_execution_state(
-        db_client=db_client,
-        graph_exec_id=graph_exec.graph_exec_id,
-        status=ExecutionStatus.FAILED,
-        stats=exec_stats,
+    if not _write_the_final_state(
+        db_client, graph_exec, ExecutionStatus.FAILED, exec_stats
     ):
         return
     exec_meta.status = ExecutionStatus.FAILED
