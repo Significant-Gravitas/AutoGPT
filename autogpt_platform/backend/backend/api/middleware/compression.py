@@ -74,6 +74,7 @@ class _BoundedGZipResponder(GZipResponder):
             message["type"] != "http.response.body"
             or self.started
             or self.content_encoding_set
+            or self.partial_response
             or self.content_type_is_excluded
         ):
             await super().send_with_compression(message)
