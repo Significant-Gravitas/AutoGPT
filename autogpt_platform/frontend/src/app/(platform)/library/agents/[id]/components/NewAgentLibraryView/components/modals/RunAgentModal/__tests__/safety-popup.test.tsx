@@ -6,6 +6,7 @@ import { getGetV2GetLibraryAgentResponseMock } from "@/app/api/__generated__/end
 import type { GraphSettings } from "@/app/api/__generated__/models/graphSettings";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { server } from "@/mocks/mock-server";
+import { Key, storage } from "@/services/storage/local-storage";
 import {
   render,
   screen,
@@ -101,8 +102,10 @@ function modal(agent: LibraryAgent) {
   return <RunAgentModal agent={agent} triggerSlot={<button>Open</button>} />;
 }
 
+// The trigger is hidden while a run dialog is open, which a run's response
+// closes only after it arrives.
 async function startTask(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: "Open" }));
+  await user.click(await screen.findByRole("button", { name: "Open" }));
   await user.click(await screen.findByRole("button", { name: "Start Task" }));
 }
 
@@ -280,4 +283,23 @@ describe("the safety popup before a workflow's first run", () => {
     expect(querySafetyPopup()).toBeNull();
     await waitFor(() => expect(runs).toHaveBeenCalledTimes(2));
   });
+
+  test.each(["not json", '{"library-agent": true}'])(
+    "still starts the run when the stored seen list is unreadable (%s)",
+    async (stored) => {
+      storage.set(Key.AI_AGENT_SAFETY_POPUP_SHOWN, stored);
+      const runs = trackRuns();
+      const user = userEvent.setup();
+      render(
+        modal(
+          makeAgent({ hasHumanInTheLoop: true, settings: BUILDER_SETTINGS }),
+        ),
+      );
+
+      await startTask(user);
+      await acknowledgeSafetyPopup(user);
+
+      await waitFor(() => expect(runs).toHaveBeenCalledOnce());
+    },
+  );
 });

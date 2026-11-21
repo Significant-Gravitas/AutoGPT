@@ -30,7 +30,17 @@ export function markSafetyPopupSeen(agentID: string) {
   );
 }
 
+// A stored value that isn't a list of IDs counts as none seen, so the run
+// still starts.
 function getSeenAgentIDs(): string[] {
   const seenAgentsJSON = storage.get(Key.AI_AGENT_SAFETY_POPUP_SHOWN);
-  return seenAgentsJSON ? JSON.parse(seenAgentsJSON) : [];
+  if (!seenAgentsJSON) return [];
+  try {
+    const seen: unknown = JSON.parse(seenAgentsJSON);
+    return Array.isArray(seen)
+      ? seen.filter((id): id is string => typeof id === "string")
+      : [];
+  } catch {
+    return [];
+  }
 }
