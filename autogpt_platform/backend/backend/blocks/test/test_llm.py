@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import json
 import logging
 import re
 from typing import Any, cast
@@ -1360,6 +1361,41 @@ async def test_a_refused_prompt_fails_the_block_with_a_plain_error():
 
     assert str(caught.value) == PROMPT_REFUSED_MESSAGE
     assert provider.await_count == 1
+
+
+async def test_an_invalid_list_response_is_reported_once_not_per_item():
+    """The re-prompt names the first invalid item's missing keys, not every item's."""
+    expected_format = {f"key{n}": "" for n in range(50)}
+    answer = llm.LLMResponse(
+        raw_response="",
+        prompt=[],
+        response=json.dumps([dict.fromkeys(expected_format, "value")] + [{}] * 200),
+        tool_calls=None,
+        prompt_tokens=0,
+        completion_tokens=0,
+        reasoning=None,
+    )
+    block = llm.AIStructuredResponseGeneratorBlock()
+    input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+        prompt="Test prompt",
+        expected_format=expected_format,
+        model=llm.DEFAULT_LLM_MODEL,
+        credentials=_TEST_AI_CREDENTIALS,
+        list_result=True,
+        force_json_output=True,
+        retry=1,
+    )
+
+    with (
+        patch.object(block, "llm_call", AsyncMock(return_value=answer)),
+        pytest.raises(RuntimeError) as caught,
+    ):
+        async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+            pass
+
+    feedback = str(caught.value)
+    assert feedback.count("Missing keys: ") == 1
+    assert all(f"'{key}'" in feedback for key in expected_format)
 
 
 class TestLLMModelMissing:

@@ -875,19 +875,22 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                             )
                             continue
 
-                    validation_errors = "\n".join(
-                        [
-                            validation_error
+                    # Every item is held to the same format, so the first invalid
+                    # one is all the model needs to correct the rest.
+                    validation_error = next(
+                        (
+                            item_error
                             for response_item in (
                                 response_obj
                                 if isinstance(response_obj, list)
                                 else [response_obj]
                             )
-                            if (validation_error := validate_response(response_item))
-                        ]
+                            if (item_error := validate_response(response_item))
+                        ),
+                        None,
                     )
 
-                    if not validation_errors:
+                    if not validation_error:
                         self.merge_stats(
                             NodeExecutionStats(
                                 llm_call_count=retry_count + 1,
@@ -906,7 +909,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
                     prompt.append({"role": "assistant", "content": response_text})
                     error_feedback_message = self.invalid_response_feedback(
-                        validation_errors,
+                        validation_error,
                         was_parseable=True,
                         list_mode=input_data.list_result,
                         pure_json_mode=input_data.force_json_output,
