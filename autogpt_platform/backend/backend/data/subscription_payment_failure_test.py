@@ -735,12 +735,22 @@ async def test_a_bank_debit_settling_after_the_new_plan_started_is_reported():
 
 
 @pytest.mark.asyncio
-async def test_a_bank_debit_failing_after_the_new_plan_started_ends_the_old_plan():
+@pytest.mark.parametrize(
+    "old_status,bill_status",
+    [("past_due", "open"), ("past_due", "uncollectible"), ("unpaid", "uncollectible")],
+)
+async def test_a_bank_debit_failing_after_the_new_plan_started_ends_the_old_plan(
+    old_status: str, bill_status: str
+):
     """The same debit fails instead: the failure ends the replaced plan and
-    voids its bill, and there is nothing to refund."""
+    voids its bill, and there is nothing to refund. A bill Stripe marked
+    uncollectible once its retries ran out is ended the same way: it stays
+    payable through its link, and the past-due plan keeps billing."""
     with World() as world:
-        _left_for_a_new_plan(world, "past_due")
-        world.stripe.add_invoice("in_old", "sub_old", payment_intent="pi_debit")
+        _left_for_a_new_plan(world, old_status)
+        world.stripe.add_invoice(
+            "in_old", "sub_old", status=bill_status, payment_intent="pi_debit"
+        )
         world.stripe.payment_intents["pi_debit"] = {
             "id": "pi_debit",
             "status": "processing",
