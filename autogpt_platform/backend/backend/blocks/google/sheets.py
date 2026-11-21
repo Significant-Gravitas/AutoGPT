@@ -35,14 +35,26 @@ GOOGLE_SHEETS_DISABLED = not GOOGLE_OAUTH_IS_CONFIGURED
 def parse_a1_notation(a1: str) -> tuple[str | None, str]:
     """Split an A1‑notation string into *(sheet_name, cell_range)*.
 
+    Handles quoted sheet names that may contain ``!``.
+
     Examples
     --------
     >>> parse_a1_notation("Sheet1!A1:B2")
     ("Sheet1", "A1:B2")
     >>> parse_a1_notation("A1:B2")
     (None, "A1:B2")
+    >>> parse_a1_notation("'Q1!Plan'!A1:B2")
+    ("'Q1!Plan'", "A1:B2")
     """
 
+    if a1.startswith("'"):
+        # Find the closing quote, then the '!' after it
+        close = a1.find("'", 1)
+        if close != -1 and close + 1 < len(a1) and a1[close + 1] == "!":
+            return a1[: close + 1], a1[close + 2 :]
+        if close != -1 and close + 1 == len(a1):
+            # Quoted name with no range
+            return a1, ""
     if "!" in a1:
         sheet, cell_range = a1.split("!", 1)
         return sheet, cell_range
@@ -69,20 +81,32 @@ def extract_spreadsheet_id(spreadsheet_id_or_url: str) -> str:
 def format_sheet_name(sheet_name: str) -> str:
     """Format sheet name for Google Sheets API, adding quotes if needed.
 
+    Follows Google's A1 notation rules: names containing spaces, special
+    characters, or starting with a digit are wrapped in single quotes, and
+    any embedded single quotes are doubled (``'`` → ``''``).
+
     Examples
     --------
     >>> format_sheet_name("Sheet1")
     "Sheet1"
     >>> format_sheet_name("Non-matching Leads")
     "'Non-matching Leads'"
+    >>> format_sheet_name("Bob's Sheet")
+    "'Bob''s Sheet'"
+    >>> format_sheet_name("It's")
+    "'It''s'"
     """
-    # If sheet name contains spaces, special characters, or starts with a digit, wrap in quotes
+    # Characters that require quoting per Google Sheets A1 notation rules
+    _special_chars = "!@#$%^&*()+-=[]{}|;:,.<>?"
     if (
         " " in sheet_name
-        or any(char in sheet_name for char in "!@#$%^&*()+-=[]{}|;:,.<>?")
+        or "'" in sheet_name
+        or any(char in sheet_name for char in _special_chars)
         or (sheet_name and sheet_name[0].isdigit())
     ):
-        return f"'{sheet_name}'"
+        # Escape embedded single quotes by doubling them
+        escaped = sheet_name.replace("'", "''")
+        return f"'{escaped}'"
     return sheet_name
 
 
