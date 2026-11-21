@@ -1,4 +1,6 @@
-import type { Event, init } from "@sentry/nextjs";
+import type { Event, EventHint, init } from "@sentry/nextjs";
+
+import { isAbortError, isNetworkError } from "@/lib/transient-errors";
 
 // Next.js logs exactly this when a client-side navigation cannot fetch the RSC
 // payload (flaky network, tab backgrounded, deploy in progress). It then does a
@@ -42,6 +44,33 @@ export function isInjectedIframeProbe(event: Event) {
   return (
     typeof message === "string" && INJECTED_IFRAME_PROBE_MESSAGE.test(message)
   );
+}
+
+/**
+ * True for a fetch our code caught after the network dropped ("Failed to
+ * fetch", "Load failed", "network error"), or a request it cancelled and
+ * logged (AbortError). The catch already handles it, and minified frames open
+ * a new issue for each browser and build. Still sent: an uncaught one, which
+ * shows a missing catch; one an error boundary caught, because the user saw an
+ * error page; and an AbortError reported on purpose, such as an aborted
+ * IndexedDB transaction. A fetch the browser blocks (CSP, CORS, a bad
+ * certificate) fails the same way, so a handled one is not sent either.
+ */
+export function isHandledTransientFailure(event: Event, hint: EventHint) {
+  if (event.tags?.errorBoundary || isBareConsoleError(event)) return false;
+  if (event.exception?.values?.[0]?.mechanism?.handled === false) return false;
+  const error = hint.originalException;
+  if (isNetworkError(error)) return true;
+  return isAbortError(error) && event.logger === "console";
+}
+
+// Next logs an error a boundary caught as console.error(error), and that
+// capture marks the error as sent, so the boundary's own tagged report never
+// goes out. Our catches log a message before the error.
+function isBareConsoleError(event: Event) {
+  if (event.logger !== "console") return false;
+  const args = event.extra?.arguments;
+  return Array.isArray(args) && typeof args[0] !== "string";
 }
 
 // webpack ("Loading chunk 34006 failed.", "Loading CSS chunk 123 failed.")

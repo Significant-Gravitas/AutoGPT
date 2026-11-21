@@ -181,30 +181,6 @@ class RunBlockTool(BaseTool):
             return prep_or_err
         prep: BlockPreparation = prep_or_err
 
-        # Dry-run fast-path: skip credential/HITL checks — simulation never calls
-        # the real service so credentials and review gates are not needed.
-        # Input field validation (unrecognized fields) is already handled by
-        # prepare_block_for_execution above.
-        if dry_run:
-            synthetic_node_exec_id = (
-                f"{prep.synthetic_node_id}"
-                f"{COPILOT_NODE_EXEC_ID_SEPARATOR}"
-                f"{uuid.uuid4().hex[:8]}"
-            )
-            return await execute_block(
-                block=prep.block,
-                block_id=block_id,
-                input_data=prep.input_data,
-                user_id=user_id,
-                session_id=session_id,
-                node_exec_id=synthetic_node_exec_id,
-                matched_credentials=prep.matched_credentials,
-                dry_run=True,
-                organization_id=session.organization_id,
-                team_id=session.team_id,
-                expert_id=session.expert_id,
-            )
-
         # Show block details when required inputs are not yet provided
         # (two-step UX: first call returns the schema, second call actually
         # executes) or when the caller asked for introspection only via
@@ -236,7 +212,9 @@ class RunBlockTool(BaseTool):
             llm_input_schema = _strip_credentials_from_schema(
                 prep.input_schema, prep.credentials_fields
             )
-            llm_input_schema = _strip_presentation_annotations(llm_input_schema)
+            llm_input_schema = _strip_presentation_annotations(
+                _offered_models_only(llm_input_schema)
+            )
             output_schema = _strip_presentation_annotations(output_schema)
             if validate_only and not missing:
                 detail_msg = (
@@ -269,10 +247,35 @@ class RunBlockTool(BaseTool):
                 user_authenticated=True,
             ).from_outside()
 
-        if not dry_run:
-            spend_gate = await check_spend_approval(prep, user_id, session)
-            if spend_gate is not None:
-                return spend_gate
+        # A dry run simulates the block instead of running it. Only a call that
+        # would run the block gets here: validate_only and missing required
+        # inputs got the block's details above, as in a real session.
+        # Simulation never calls the real service, so the spend, credential
+        # and review gates below don't apply. Unrecognized input fields were
+        # already rejected by prepare_block_for_execution.
+        if dry_run:
+            synthetic_node_exec_id = (
+                f"{prep.synthetic_node_id}"
+                f"{COPILOT_NODE_EXEC_ID_SEPARATOR}"
+                f"{uuid.uuid4().hex[:8]}"
+            )
+            return await execute_block(
+                block=prep.block,
+                block_id=block_id,
+                input_data=prep.input_data,
+                user_id=user_id,
+                session_id=session_id,
+                node_exec_id=synthetic_node_exec_id,
+                matched_credentials=prep.matched_credentials,
+                dry_run=True,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+                expert_id=session.expert_id,
+            )
+
+        spend_gate = await check_spend_approval(prep, user_id, session)
+        if spend_gate is not None:
+            return spend_gate
 
         # Named args from run_capability._run_block, never gate markers in kwargs.
         if gate_approved or (gate_decided and await unified_approvals(user_id)):
@@ -347,6 +350,26 @@ def _strip_presentation_annotations(node: Any, name: str | None = None) -> Any:
     if isinstance(node, list):
         return [_strip_presentation_annotations(item) for item in node]
     return node
+
+
+def _offered_models_only(node: Any) -> Any:
+    """*node* with each LLM model list cut to the models the block picker
+    offers (``llm_model_metadata``). The enum keeps the models the catalog
+    has switched off, so stored workflows keep validating, but new work
+    must not pick one."""
+    if isinstance(node, list):
+        return [_offered_models_only(item) for item in node]
+    if not isinstance(node, dict):
+        return node
+    cleaned = {key: _offered_models_only(value) for key, value in node.items()}
+    offered = node.get("llm_model_metadata")
+    if (
+        node.get("llm_model") is True
+        and isinstance(offered, dict)
+        and isinstance(node.get("enum"), list)
+    ):
+        cleaned["enum"] = [model for model in node["enum"] if model in offered]
+    return cleaned
 
 
 def _derived_title(property_name: str) -> str:

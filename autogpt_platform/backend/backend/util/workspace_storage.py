@@ -25,7 +25,9 @@ from backend.util.gcs_utils import (
     parse_gcs_path,
 )
 from backend.util.settings import Config
-from backend.util.workspace_storage_base import STREAM_CHUNK_BYTES
+from backend.util.workspace_storage_base import (
+    STREAM_CHUNK_BYTES,
+)
 from backend.util.workspace_storage_base import (
     WorkspaceStorageBackend as WorkspaceStorageBackend,
 )

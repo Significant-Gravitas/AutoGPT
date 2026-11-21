@@ -6,7 +6,11 @@ from zoneinfo import ZoneInfo
 import prisma
 import pydantic
 from prisma.models import UserOnboarding
-from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
+from prisma.types import (
+    UserOnboardingCreateInput,
+    UserOnboardingUpdateInput,
+    UserOnboardingWhereInput,
+)
 
 from backend.api.features.store.model import StoreAgentDetails
 from backend.api.model import OnboardingNotificationPayload
@@ -52,6 +56,18 @@ class UserOnboardingUpdate(pydantic.BaseModel):
     wizardUserId: str | None = pydantic.Field(
         default=None, min_length=1, max_length=128, strict=True
     )
+    # The wizard tab sending the draft, and the draft's number in that tab. A
+    # client that sends neither is checked by revision alone.
+    wizardWriterId: str | None = pydantic.Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        strict=True,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    )
+    wizardWriteSeq: int | None = pydantic.Field(
+        default=None, ge=1, le=2_147_483_647, strict=True
+    )
     walletShown: Optional[bool] = None
     # Typed enum so the PATCH endpoint validates step names at the boundary
     # (invalid values get a 422 instead of being stored and then 500-ing reads,
@@ -71,6 +87,8 @@ class UserOnboardingUpdate(pydantic.BaseModel):
             raise ValueError("wizardRevision is required when saving wizardProgress")
         if "wizardProgress" in self.model_fields_set and self.wizardUserId is None:
             raise ValueError("wizardUserId is required when saving wizardProgress")
+        if (self.wizardWriterId is None) != (self.wizardWriteSeq is None):
+            raise ValueError("wizardWriterId and wizardWriteSeq are sent together")
         return self
 
 
@@ -132,6 +150,9 @@ async def reset_user_onboarding(user_id: str):
                 # Prisma refuses a bare None for a Json column.
                 "wizardProgress": SafeJson(None),
                 "wizardRevision": {"increment": 1},
+                # No tab wrote this revision, so none may save over it.
+                "wizardWriterId": None,
+                "wizardWriteSeq": None,
                 # Kept from the draft at the role step, so it goes with it.
                 "role": None,
                 "roleOther": None,
@@ -192,9 +213,7 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         ):
             update["role"] = role.choice
             update["roleOther"] = role.other
-        if data.wizardRevision is None:
-            raise ValueError("wizardRevision is required when saving wizardProgress")
-        return await _save_wizard_progress(user_id, data.wizardRevision, update)
+        return await _save_wizard_progress(user_id, data, update)
 
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
@@ -206,12 +225,36 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
 
 
 async def _save_wizard_progress(
-    user_id: str, revision: int, update: UserOnboardingUpdateInput
+    user_id: str, data: UserOnboardingUpdate, update: UserOnboardingUpdateInput
 ) -> UserOnboarding:
+    """Save the draft over the revision its tab last read, or over saves that
+    tab made since. A tab can stop waiting for a save that still lands, and
+    then sends its next save from the revision before it; that save must not
+    be refused for the tab's own. A lower number from the same tab is an
+    older save arriving late, refused so it can't replace a newer one. Any
+    other tab's save in between changes the stored writer, so this tab's
+    save is refused."""
+    revision = data.wizardRevision
+    if revision is None:
+        raise ValueError("wizardRevision is required when saving wizardProgress")
+    saves_over: list[UserOnboardingWhereInput] = [{"wizardRevision": revision}]
+    if data.wizardWriterId is not None and data.wizardWriteSeq is not None:
+        saves_over.append(
+            {
+                "wizardWriterId": data.wizardWriterId,
+                "wizardWriteSeq": {"lte": data.wizardWriteSeq},
+            }
+        )
+    where: UserOnboardingWhereInput = {"userId": user_id, "OR": saves_over}
     async with transaction() as tx:
         changed = await tx.useronboarding.update_many(
-            where={"userId": user_id, "wizardRevision": revision},
-            data={**update, "wizardRevision": {"increment": 1}},
+            where=where,
+            data={
+                **update,
+                "wizardRevision": {"increment": 1},
+                "wizardWriterId": data.wizardWriterId,
+                "wizardWriteSeq": data.wizardWriteSeq,
+            },
         )
         if changed != 1:
             raise OnboardingWizardConflict()

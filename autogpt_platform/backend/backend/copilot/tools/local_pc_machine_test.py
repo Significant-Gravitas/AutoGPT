@@ -7,6 +7,7 @@ import pytest
 from .local_pc_machine import (
     MachineConnectionStaleError,
     MachineControlError,
+    MachineRootGrantRefusedError,
     MachineSessionBinding,
     activate_machine_session,
     attach_machine_session,
@@ -235,6 +236,62 @@ async def test_only_the_machines_own_error_reply_counts_as_a_refusal():
 
     assert (refused.code, refused.refused) == ("SESSION_ALREADY_ACTIVE", True)
     assert (unanswered.code, unanswered.refused) == ("MACHINE_REQUEST_TIMEOUT", False)
+
+
+@pytest.mark.asyncio
+async def test_a_refused_folder_grant_is_told_apart_from_every_other_restore_failure():
+    """ROOT_GRANT_INVALID is the computer's answer when a chat's folder was
+    moved or replaced. The person then has to pick the folder again in a new
+    chat, which no other failure of the restore calls for."""
+
+    def transport_answering(reply):
+        transport = MagicMock()
+        transport.send_text = AsyncMock()
+        transport.close = AsyncMock()
+
+        async def responses():
+            request = json.loads(transport.send_text.await_args.args[0])
+            if reply is None:
+                raise ConnectionError("the computer went away")
+            yield json.dumps({"id": request["id"], **reply})
+
+        transport.iter_text = responses
+        return transport
+
+    async def restore(reply) -> MachineControlError:
+        relay = MagicMock()
+        relay.get_presence = AsyncMock(return_value=_presence())
+        relay.open_transport = AsyncMock(return_value=transport_answering(reply))
+        with patch(
+            "backend.copilot.tools.local_pc_machine.get_local_pc_relay",
+            return_value=relay,
+        ):
+            with pytest.raises(MachineControlError) as error:
+                await restore_machine_session(_presence(), _binding())
+        return error.value
+
+    folder_changed = await restore(
+        {
+            "type": "ERROR",
+            "payload": {
+                "code": "ROOT_GRANT_INVALID",
+                "message": "The selected directory changed after the grant was issued",
+            },
+        }
+    )
+    stale_grant = await restore(
+        {"type": "ERROR", "payload": {"code": "SESSION_REVISION_MISMATCH"}}
+    )
+    went_away = await restore(None)
+
+    assert type(folder_changed) is MachineRootGrantRefusedError
+    assert (folder_changed.code, folder_changed.refused, str(folder_changed)) == (
+        "ROOT_GRANT_INVALID",
+        True,
+        "The selected directory changed after the grant was issued",
+    )
+    assert type(stale_grant) is MachineControlError
+    assert type(went_away) is MachineConnectionStaleError
 
 
 @pytest.mark.asyncio

@@ -51,7 +51,10 @@ import {
   verifyAddressTheResetLinkWasMailedTo,
 } from "./reset-link-address";
 import { revokeResetLinksMailedElsewhere } from "./reset-links";
-import { RESET_LINK_EXPIRES_IN_SECONDS } from "./set-password-link";
+import {
+  RESET_LINK_EXPIRES_IN_SECONDS,
+  withResetCallback,
+} from "./set-password-link";
 import { requireSignInCode } from "./require-sign-in-code";
 import {
   alertNewSignInMethod,
@@ -67,6 +70,15 @@ import {
 } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
 import { getMicrosoftLoginProvider } from "./microsoft-login";
+import {
+  assertSignInScopes,
+  withoutProviderTokens,
+} from "./connect-at-sign-in";
+import {
+  connectSignIn,
+  googleLoginProvider,
+  microsoftLoginProvider,
+} from "./sign-in-connection";
 import { assertMicrosoftSignUpAllowed } from "./microsoft-sign-up-policy";
 import { assertTeamEmailUsesGoogle } from "./team-email-policy";
 import { sendVerificationLink } from "./verification-link";
@@ -83,7 +95,10 @@ function getSocialProviders() {
     const prefix = `AUTH_${provider.toUpperCase()}`;
     const clientId = process.env[`${prefix}_CLIENT_ID`];
     const clientSecret = process.env[`${prefix}_CLIENT_SECRET`];
-    if (clientId && clientSecret) {
+    if (!clientId || !clientSecret) continue;
+    if (provider === "google") {
+      providers.google = googleLoginProvider(clientId, clientSecret);
+    } else {
       providers[provider] = { clientId, clientSecret };
     }
   }
@@ -92,7 +107,9 @@ function getSocialProviders() {
   if (apple) providers.apple = apple;
 
   const microsoft = getMicrosoftLoginProvider();
-  return microsoft ? { ...providers, microsoft } : providers;
+  return microsoft
+    ? { ...providers, microsoft: microsoftLoginProvider(microsoft) }
+    : providers;
 }
 
 async function findAppleAccountUser(
@@ -112,8 +129,6 @@ const requireEmailVerification =
 const emailVerificationExpiresIn = 60 * 60 * 24;
 
 const authSecret = process.env.BETTER_AUTH_SECRET;
-
-const resetRedirectTo = new URL("/reset-password", baseURL).toString();
 
 function hasPlatformUser(userId: string) {
   return platformUserExists(authDbPool, userId);
@@ -159,6 +174,7 @@ export const auth = betterAuth({
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
       assertAppleSignInRequest(ctx.path, ctx.body);
+      await assertSignInScopes(ctx.path, ctx.body);
       // Sign-in and reset emails are limited per IP and address (attempt-limits.ts).
       await limitAuthAttempts({
         path: ctx.path,
@@ -308,7 +324,12 @@ export const auth = betterAuth({
     // A sign-in provider that joins an account it didn't create emails the
     // account's owner (sign-in-code-emails.ts), alongside the response.
     account: {
+      // Google's and Microsoft's tokens live only as the backend's encrypted
+      // connection (connect-at-sign-in.ts).
       create: {
+        before: async (account: { providerId?: string }) => ({
+          data: withoutProviderTokens(account),
+        }),
         after: async (
           account: { userId: string; providerId: string },
           ctx: HookContext,
@@ -320,6 +341,12 @@ export const auth = betterAuth({
             ),
           );
         },
+      },
+      // A returning sign-in rewrites the tokens.
+      update: {
+        before: async (account: { providerId?: string }) => ({
+          data: withoutProviderTokens(account),
+        }),
       },
     },
     // Every sign-in method ends in a session, so this is where an IP block
@@ -340,12 +367,15 @@ export const auth = betterAuth({
             getTrustedClientIP(session.ipAddress),
           );
         },
-        after: async (session: {
-          userId: string;
-          ipAddress?: string | null;
-          userAgent?: string | null;
-          impersonatedBy?: string | null;
-        }) => {
+        after: async (
+          session: {
+            userId: string;
+            ipAddress?: string | null;
+            userAgent?: string | null;
+            impersonatedBy?: string | null;
+          },
+          ctx: HookContext,
+        ) => {
           if (session.impersonatedBy) return;
           await recordAuthIP(authDbPool, {
             userId: session.userId,
@@ -353,6 +383,9 @@ export const auth = betterAuth({
             ipAddress: getTrustedClientIP(session.ipAddress),
             userAgent: session.userAgent,
           });
+          // A Google or Microsoft sign-in that was granted the data scopes
+          // becomes the account's connection (sign-in-connection.ts).
+          await connectSignIn(ctx, session.userId);
         },
       },
     },
@@ -410,7 +443,6 @@ export const auth = betterAuth({
         user,
         getAuthContext,
         hasPlatformUser,
-        resetRedirectTo,
       });
     },
     password: {
@@ -439,7 +471,7 @@ export const auth = betterAuth({
       await sendAuthEmail({
         to: user.email,
         type: "reset_password",
-        url,
+        url: withResetCallback(url),
       });
     },
   },
@@ -462,7 +494,6 @@ export const auth = betterAuth({
         getAuthContext,
         hasPlatformUser,
         requireEmailVerification,
-        resetRedirectTo,
       });
     },
   },
