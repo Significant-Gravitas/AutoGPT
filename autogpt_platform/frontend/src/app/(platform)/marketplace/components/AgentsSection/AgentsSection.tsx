@@ -12,18 +12,6 @@ import { SectionHeader } from "../SectionHeader";
 import { StoreCard } from "../StoreCard/StoreCard";
 import { useAgentsSection } from "./useAgentsSection";
 
-export interface Agent {
-  slug: string;
-  agent_name: string;
-  agent_image: string;
-  creator: string;
-  creator_avatar: string;
-  sub_heading: string;
-  description: string;
-  runs: number;
-  rating: number;
-}
-
 interface Props {
   sectionTitle?: string;
   eyebrow?: string;
