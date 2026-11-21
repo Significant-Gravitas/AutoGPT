@@ -4595,6 +4595,8 @@ def test_only_reviewed_blocks_override_the_input_check():
     }
     assert overriders == {
         ("AgentExecutorBlock", "get_mismatch_error"),
+        # Read a saved gpt-5.1-codex as gpt-5.3-codex, on a copy (#17138).
+        ("CodeGenerationBlock", "validate_data"),
         ("MCPToolBlock", "get_mismatch_error"),
         ("PerplexityBlock", "validate_data"),
         # Read a saved Claude Sonnet 4.5 as Sonnet 4.6, on a copy (#17103).
