@@ -4,8 +4,9 @@ import asyncio
 import logging
 
 from backend.data import execution as execution_db
-from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+from backend.data.execution import ExecutionStatus
 from backend.executor.utils import stop_graph_execution
+from backend.util.concurrency import gather_bounded
 
 logger = logging.getLogger(__name__)
 
@@ -18,35 +19,39 @@ UNFINISHED_STATUSES = [
     ExecutionStatus.REVIEW,
 ]
 
+# How many of the member's runs are stopped at a time.
+STOP_CONCURRENCY = 4
+
 
 async def stop_member_runs(org_id: str, user_id: str) -> None:
     """Stop the runs ``user_id`` started in ``org_id`` that haven't finished.
 
-    Called once they've been removed from the org: a run they started while
-    they were a member is stopped there rather than left running, billed to
-    the org. That includes runs they deleted from their history, as deleting
-    a run doesn't stop it. The removal has already happened, so nothing here
-    fails it: a lookup or a stop that fails is logged, and the runs the other
-    lookup found are still stopped.
+    Called after the response once they've been removed from the org: a run
+    they started while they were a member is stopped there rather than left
+    running, billed to the org. That includes runs they deleted from their
+    history, as deleting a run doesn't stop it. The removal has already
+    happened, so nothing here fails it: a lookup or a stop that fails is
+    logged, and the runs the other lookup found are still stopped.
     """
     visible, deleted = await asyncio.gather(
         _unfinished_runs(org_id, user_id, deleted=False),
         _unfinished_runs(org_id, user_id, deleted=True),
     )
-    await asyncio.gather(
-        *[_stop(org_id, user_id, run.id) for run in visible],
-        # Lookups skip deleted runs, so a deleted one's stop can only send its
-        # cancel, not wait to see it end. That's enough: only a running one
-        # would carry on, since a deleted run is never resumed or picked up.
-        *[_stop(org_id, user_id, run.id, wait_timeout=0) for run in deleted],
+    await gather_bounded(
+        [
+            *(_stop(org_id, user_id, run_id) for run_id in visible),
+            # Lookups skip deleted runs, so a deleted one's stop can only send
+            # its cancel, not wait to see it end. That's enough: only a running
+            # one would carry on, since a deleted run is never resumed.
+            *(_stop(org_id, user_id, run_id, wait_timeout=0) for run_id in deleted),
+        ],
+        STOP_CONCURRENCY,
     )
 
 
-async def _unfinished_runs(
-    org_id: str, user_id: str, deleted: bool
-) -> list[GraphExecutionMeta]:
+async def _unfinished_runs(org_id: str, user_id: str, deleted: bool) -> list[str]:
     try:
-        return await execution_db.get_graph_executions(
+        return await execution_db.get_graph_execution_ids(
             user_id=user_id,
             organization_id=org_id,
             statuses=UNFINISHED_STATUSES,
@@ -65,8 +70,12 @@ async def _stop(
     org_id: str, user_id: str, graph_exec_id: str, wait_timeout: float = 15.0
 ) -> None:
     try:
+        # A child run has its parent's user and org, so it is in the list itself.
         await stop_graph_execution(
-            user_id=user_id, graph_exec_id=graph_exec_id, wait_timeout=wait_timeout
+            user_id=user_id,
+            graph_exec_id=graph_exec_id,
+            wait_timeout=wait_timeout,
+            cascade=False,
         )
     except Exception:
         logger.warning(

@@ -1,11 +1,13 @@
 """A member removed from an org has the runs they started there stopped."""
 
+import asyncio
 import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 from autogpt_libs.auth.models import RequestContext
+from fastapi import BackgroundTasks
 
 from backend.api.features.orgs import member_runs, routes
 from backend.data.execution import ExecutionStatus
@@ -38,12 +40,9 @@ def steps(mocker):
     org_db.remove_org_member = AsyncMock(
         side_effect=lambda *_, **__: order.append("removed")
     )
-    runs = {
-        False: [SimpleNamespace(id="run-1"), SimpleNamespace(id="run-2")],
-        True: [SimpleNamespace(id="deleted-run")],
-    }
+    runs = {False: ["run-1", "run-2"], True: ["deleted-run"]}
     execution_db = mocker.patch("backend.api.features.orgs.member_runs.execution_db")
-    execution_db.get_graph_executions = AsyncMock(
+    execution_db.get_graph_execution_ids = AsyncMock(
         side_effect=lambda **kwargs: order.append("looked up")
         or runs[kwargs["deleted"]]
     )
@@ -54,7 +53,7 @@ def steps(mocker):
     return SimpleNamespace(
         order=order,
         remove=org_db.remove_org_member,
-        lookup=execution_db.get_graph_executions,
+        lookup=execution_db.get_graph_execution_ids,
         stop=stop,
     )
 
@@ -68,7 +67,7 @@ def _waits(stop: AsyncMock) -> dict[str, float]:
 
 @pytest.mark.asyncio
 async def test_removing_a_member_stops_their_unfinished_runs_in_the_org(steps):
-    await routes.remove_member(org_id=ORG_ID, uid=MEMBER_ID, ctx=_admin_ctx())
+    await _remove()
 
     assert steps.order == ["removed", "looked up", "looked up"]
     for call in steps.lookup.await_args_list:
@@ -82,13 +81,32 @@ async def test_removing_a_member_stops_their_unfinished_runs_in_the_org(steps):
         }
     waits = _waits(steps.stop)
     assert (waits["run-1"], waits["run-2"]) == (15.0, 15.0)
+    # A child run is in the list itself, so no stop reaches past its own run.
+    assert {call.kwargs["cascade"] for call in steps.stop.await_args_list} == {False}
+
+
+@pytest.mark.asyncio
+async def test_the_runs_are_stopped_after_the_response(steps):
+    background_tasks = BackgroundTasks()
+
+    await routes.remove_member(
+        org_id=ORG_ID,
+        uid=MEMBER_ID,
+        ctx=_admin_ctx(),
+        background_tasks=background_tasks,
+    )
+
+    assert steps.order == ["removed"]
+    steps.stop.assert_not_awaited()
+    await background_tasks()
+    assert set(_waits(steps.stop)) == {"run-1", "run-2", "deleted-run"}
 
 
 @pytest.mark.asyncio
 async def test_a_run_deleted_from_history_is_stopped_too(steps):
     """Deleting a run hides it without stopping it. Lookups can't see it, so
     its stop sends the cancel without waiting to see it end."""
-    await routes.remove_member(org_id=ORG_ID, uid=MEMBER_ID, ctx=_admin_ctx())
+    await _remove()
 
     assert {call.kwargs["deleted"] for call in steps.lookup.await_args_list} == {
         False,
@@ -98,18 +116,44 @@ async def test_a_run_deleted_from_history_is_stopped_too(steps):
 
 
 @pytest.mark.asyncio
+async def test_the_runs_are_stopped_a_few_at_a_time(steps):
+    runs = [f"run-{n}" for n in range(3 * member_runs.STOP_CONCURRENCY)]
+    steps.lookup.side_effect = lambda **kwargs: [] if kwargs["deleted"] else runs
+    stopping = 0
+    most_at_once = 0
+
+    async def stop(
+        user_id: str, graph_exec_id: str, wait_timeout: float, cascade: bool
+    ) -> None:
+        nonlocal stopping, most_at_once
+        stopping += 1
+        most_at_once = max(most_at_once, stopping)
+        await asyncio.sleep(0)
+        stopping -= 1
+
+    steps.stop.side_effect = stop
+
+    await _remove()
+
+    assert set(_waits(steps.stop)) == set(runs)
+    assert most_at_once == member_runs.STOP_CONCURRENCY
+
+
+@pytest.mark.asyncio
 async def test_a_run_that_wont_stop_doesnt_fail_the_removal(steps, caplog):
     """The member is already out of the org; the other runs are still stopped,
     and the one that wasn't is logged."""
 
-    async def stop(user_id: str, graph_exec_id: str, wait_timeout: float) -> None:
+    async def stop(
+        user_id: str, graph_exec_id: str, wait_timeout: float, cascade: bool
+    ) -> None:
         if graph_exec_id == "run-1":
             raise TimeoutError("still stopping")
 
     steps.stop.side_effect = stop
 
     with caplog.at_level(logging.WARNING, logger=member_runs.__name__):
-        await routes.remove_member(org_id=ORG_ID, uid=MEMBER_ID, ctx=_admin_ctx())
+        await _remove()
 
     assert set(_waits(steps.stop)) == {"run-1", "run-2", "deleted-run"}
     assert [
@@ -139,7 +183,7 @@ async def test_a_failed_lookup_doesnt_fail_the_removal(
     steps.lookup.side_effect = lookup
 
     with caplog.at_level(logging.WARNING, logger=member_runs.__name__):
-        await routes.remove_member(org_id=ORG_ID, uid=MEMBER_ID, ctx=_admin_ctx())
+        await _remove()
 
     steps.remove.assert_awaited_once()
     assert set(_waits(steps.stop)) == still_stopped
@@ -153,7 +197,19 @@ async def test_a_member_who_isnt_removed_keeps_their_runs(steps):
     steps.remove.side_effect = ValueError("Cannot remove the org owner.")
 
     with pytest.raises(ValueError):
-        await routes.remove_member(org_id=ORG_ID, uid=MEMBER_ID, ctx=_admin_ctx())
+        await _remove()
 
     steps.lookup.assert_not_awaited()
     steps.stop.assert_not_awaited()
+
+
+async def _remove() -> None:
+    """Remove the member, then run what the route left for after its response."""
+    background_tasks = BackgroundTasks()
+    await routes.remove_member(
+        org_id=ORG_ID,
+        uid=MEMBER_ID,
+        ctx=_admin_ctx(),
+        background_tasks=background_tasks,
+    )
+    await background_tasks()
