@@ -3,6 +3,7 @@ import {
   getGetV1GetExecutionDetailsResponseMock,
   getGetV1ListGraphExecutionsMockHandler,
   getGetV1ListGraphExecutionsResponseMock,
+  getPostV1ExecuteGraphAgentMockHandler,
 } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import {
   getGetV2GetLibraryAgentMockHandler,
@@ -12,11 +13,31 @@ import { getGetV2ListPresetsMockHandler } from "@/app/api/__generated__/endpoint
 import { getGetV1ListExecutionSchedulesForAGraphMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { server } from "@/mocks/mock-server";
-import { render, screen, within } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
-import { expect, test, vi } from "vitest";
+import { HttpResponse } from "msw";
+import type { ReactNode } from "react";
+import { beforeEach, expect, test, vi } from "vitest";
 import AgentLibraryPage from "../page";
+
+const toast = vi.fn();
+
+vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/components/molecules/Toast/use-toast")
+  >()),
+  useToast: () => ({ toast }),
+}));
+
+beforeEach(() => {
+  toast.mockClear();
+});
 
 vi.mock("next/navigation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/navigation")>()),
@@ -48,7 +69,13 @@ const GRAPH_ID = "graph-1";
 // a newer one, so a link carrying this version would open the old workflow.
 const LOADED_VERSION = 3;
 
-function serveAgentPage({ withRun }: { withRun: boolean }) {
+function serveAgentPage({
+  withRun = false,
+  withSchedule = false,
+}: {
+  withRun?: boolean;
+  withSchedule?: boolean;
+}) {
   const run = {
     id: "run-1",
     graph_id: GRAPH_ID,
@@ -96,7 +123,24 @@ function serveAgentPage({ withRun }: { withRun: boolean }) {
       outputs: {},
       node_executions: [],
     })),
-    getGetV1ListExecutionSchedulesForAGraphMockHandler([]),
+    getGetV1ListExecutionSchedulesForAGraphMockHandler(
+      withSchedule
+        ? [
+            {
+              id: "schedule-1",
+              name: "Morning run",
+              user_id: "user-1",
+              graph_id: GRAPH_ID,
+              graph_version: LOADED_VERSION,
+              cron: "0 8 * * *",
+              timezone: "UTC",
+              next_run_time: "2030-01-15T08:00:00Z",
+              input_data: {},
+              input_credentials: {},
+            },
+          ]
+        : [],
+    ),
     getGetV2ListPresetsMockHandler({
       presets: [],
       pagination: {
@@ -148,5 +192,65 @@ test("Edit workflow from a task's menu opens the workflow's active version in th
   );
 
   const link = await screen.findByRole("menuitem", { name: "Edit workflow" });
+  expect(link.getAttribute("href")).toBe(`/build?flowID=${GRAPH_ID}`);
+});
+
+test("the scheduled task's builder link opens the workflow's active version", async () => {
+  serveAgentPage({ withSchedule: true });
+
+  render(
+    <NuqsTestingAdapter
+      hasMemory
+      searchParams="activeTab=scheduled&activeItem=schedule-1"
+    >
+      <AgentLibraryPage />
+    </NuqsTestingAdapter>,
+  );
+
+  const link = await screen.findByRole("link", {
+    name: "View scheduled task details",
+  });
+  expect(link.getAttribute("href")).toBe(`/build?flowID=${GRAPH_ID}`);
+});
+
+test("Open in builder in a failed run's error opens the workflow's active version", async () => {
+  serveAgentPage({});
+  server.use(
+    getPostV1ExecuteGraphAgentMockHandler(() => {
+      throw HttpResponse.json(
+        {
+          detail: {
+            type: "validation_error",
+            message: "Some inputs are missing",
+            node_errors: { "node-1": { query: "This field is required" } },
+          },
+        },
+        { status: 400 },
+      );
+    }),
+  );
+
+  render(
+    <NuqsTestingAdapter hasMemory>
+      <AgentLibraryPage />
+    </NuqsTestingAdapter>,
+  );
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Setup your task" }),
+  );
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Start Task" }),
+  );
+
+  await waitFor(() =>
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Failed to execute workflow" }),
+    ),
+  );
+  const { description } = toast.mock.calls.at(-1)![0] as {
+    description: ReactNode;
+  };
+  render(<>{description}</>);
+  const link = screen.getByRole("link", { name: "Open in builder" });
   expect(link.getAttribute("href")).toBe(`/build?flowID=${GRAPH_ID}`);
 });

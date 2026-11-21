@@ -11,7 +11,6 @@ type ValidationErrorDetail = {
 
 type AgentInfo = {
   graph_id: string;
-  graph_version: number;
 };
 
 export function formatValidationError(
