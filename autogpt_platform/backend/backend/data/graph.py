@@ -31,6 +31,7 @@ from prisma.models import (
 )
 from prisma.types import (
     AgentGraphCreateInput,
+    AgentGraphInclude,
     AgentGraphOrderByInput,
     AgentGraphWhereInput,
     AgentNodeCreateInput,
@@ -77,6 +78,13 @@ from .dynamic_fields import (
 )
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE, MAX_GRAPH_VERSIONS_FETCH
 from .model import CredentialsFieldInfo, CredentialsMetaInput, is_credentials_field_name
+from .sub_graph_budget import (
+    SubGraphBudget,
+    SubGraphRef,
+    SubGraphSize,
+    get_sub_graph_sizes,
+    too_large_error,
+)
 
 if TYPE_CHECKING:
     from backend.blocks._base import AnyBlockSchema
@@ -1975,51 +1983,124 @@ async def get_sub_graphs_of_each(
     Each graph's sub-graphs, recursively, flattened, in the order of `graphs`.
     Fetched breadth-first with one DB query per level of depth for all `graphs`
     together, so a sub-graph they share (e.g. across versions) is fetched once.
+
+    Raises `SubGraphsTooLargeError` when one graph's sub-graphs are more than a
+    read of it may load (`sub_graph_budget`), before loading the level that
+    would pass it.
     """
+    each = await _walk_sub_graphs(graphs, client, AGENT_GRAPH_INCLUDE, leave_out=False)
+    # Without leave_out a walk past the bound raises rather than giving None.
+    return [sub_graphs or [] for sub_graphs in each]
+
+
+async def get_sub_graphs_leaving_out_too_large(
+    graphs: Sequence[AgentGraph], client: Prisma | None = None
+) -> list[list[AgentGraph] | None]:
+    """`get_sub_graphs_of_each`, for a batch: a graph whose sub-graphs are past
+    the bound gets None instead, and the rest still load."""
+    return await _walk_sub_graphs(graphs, client, AGENT_GRAPH_INCLUDE, leave_out=True)
+
+
+async def _walk_sub_graphs(
+    graphs: Sequence[AgentGraph],
+    client: Prisma | None,
+    include: AgentGraphInclude,
+    *,
+    leave_out: bool,
+) -> list[list[AgentGraph] | None]:
     agent_block_id = AgentExecutorBlock().id
-    fetched: dict[tuple[str, int, str], AgentGraph | None] = {}
+    # Each graph is bounded as a read of it alone would be; a sub-graph several
+    # of them share is still fetched once.
+    budgets = [SubGraphBudget() for _ in graphs]
+    counted: list[set[SubGraphRef]] = [set() for _ in graphs]
+    sizes: dict[SubGraphRef, SubGraphSize] = {}
+    sized: set[SubGraphRef] = set()
+    fetched: dict[SubGraphRef, AgentGraph] = {}
+    left_out: set[int] = set()
     found = [{graph.id: graph} for graph in graphs]
     frontiers = [[graph] for graph in graphs]
 
+    def refuse(i: int) -> None:
+        if not leave_out:
+            raise too_large_error()
+        left_out.add(i)
+        named[i] = []
+
     while any(frontiers):
-        refs = [
-            [
-                # A sub-graph counts only if the root graph's owner owns it
-                (graph_id, graph_version, root.userId)
-                for graph in frontier
-                for graph_id, graph_version in _sub_graph_refs(graph, agent_block_id)
-            ]
-            for root, frontier in zip(graphs, frontiers)
+        named = [
+            _unvisited_refs(root, frontier, found[i], counted[i], agent_block_id)
+            for i, (root, frontier) in enumerate(zip(graphs, frontiers))
         ]
-        if missing := {ref for level in refs for ref in level} - fetched.keys():
-            fetched.update(dict.fromkeys(missing))
+        # Counted by name first, so a level past the bound is never sized.
+        for i, level in enumerate(named):
+            if not budgets[i].can_name(len(level)):
+                refuse(i)
+        if unsized := {ref for level in named for ref in level} - sized:
+            sized |= unsized
+            sizes.update(await get_sub_graph_sizes(unsized, client))
+
+        for i, level in enumerate(named):
+            stored = [ref for ref in level if ref in sizes]
+            if budgets[i].take([sizes[ref] for ref in stored]):
+                counted[i].update(stored)
+            else:
+                refuse(i)
+
+        if (
+            to_fetch := {ref for level in named for ref in level if ref in sizes}
+            - fetched.keys()
+        ):
             rows = await AgentGraph.prisma(client).find_many(
                 where={
                     "OR": [
                         {"id": graph_id, "version": graph_version, "userId": user_id}
-                        for graph_id, graph_version, user_id in missing
+                        for graph_id, graph_version, user_id in to_fetch
                     ]
                 },
-                include=AGENT_GRAPH_INCLUDE,
+                include=include,
             )
             fetched.update({(row.id, row.version, row.userId): row for row in rows})
 
-        for i, level in enumerate(refs):
+        for i, level in enumerate(named):
             # Walk every version a level references, as get_sub_graphs always
             # has; the result still keeps one graph per id.
             frontiers[i] = list(
                 {
                     ref: graph
                     for ref in level
-                    if (graph := fetched[ref]) and graph.id not in found[i]
+                    if (graph := fetched.get(ref)) and graph.id not in found[i]
                 }.values()
             )
             found[i].update({graph.id: graph for graph in frontiers[i]})
 
     return [
-        [g for g in sub_graphs.values() if g.id != root.id]
-        for root, sub_graphs in zip(graphs, found)
+        None if i in left_out else [g for g in sub_graphs.values() if g.id != root.id]
+        for i, (root, sub_graphs) in enumerate(zip(graphs, found))
     ]
+
+
+def _unvisited_refs(
+    root: AgentGraph,
+    frontier: list[AgentGraph],
+    found: dict[str, AgentGraph],
+    counted: set[SubGraphRef],
+    agent_block_id: str,
+) -> list[SubGraphRef]:
+    """The sub-graphs *frontier* names that the walk from *root* has not
+    reached; one counts only if *root*'s owner owns it."""
+    refs = (
+        (graph_id, graph_version, root.userId)
+        for graph in frontier
+        for graph_id, graph_version in _sub_graph_refs(graph, agent_block_id)
+    )
+    return list(
+        dict.fromkeys(ref for ref in refs if ref[0] not in found and ref not in counted)
+    )
+
+
+def _sub_graph_refs_include(agent_block_id: str) -> AgentGraphInclude:
+    """Only the nodes that name a sub-graph: enough to walk the tree."""
+    return {"Nodes": {"where": {"agentBlockId": agent_block_id}}}
 
 
 async def foreign_sub_graph_refs(graph: AgentGraph) -> list[tuple[str, int]]:
@@ -2031,6 +2112,7 @@ async def foreign_sub_graph_refs(graph: AgentGraph) -> list[tuple[str, int]]:
     graph, but a graph that is shared runs them as whoever runs it.
     """
     agent_block_id = AgentExecutorBlock().id
+    budget = SubGraphBudget()
     seen = {(graph.id, graph.version)}
     frontier = [graph]
     foreign: set[tuple[str, int]] = set()
@@ -2040,6 +2122,13 @@ async def foreign_sub_graph_refs(graph: AgentGraph) -> list[tuple[str, int]]:
         if not refs:
             break
         seen |= refs
+        if not budget.can_name(len(refs)):
+            raise too_large_error()
+        sizes = await get_sub_graph_sizes(
+            (graph_id, version, graph.userId) for graph_id, version in refs
+        )
+        if not budget.take(list(sizes.values())):
+            raise too_large_error()
         frontier = await AgentGraph.prisma().find_many(
             where={
                 "OR": [
@@ -2047,7 +2136,7 @@ async def foreign_sub_graph_refs(graph: AgentGraph) -> list[tuple[str, int]]:
                     for graph_id, version in refs
                 ]
             },
-            include={"Nodes": True},
+            include=_sub_graph_refs_include(agent_block_id),
         )
         foreign |= refs - {(g.id, g.version) for g in frontier}
     if not foreign:
@@ -2803,7 +2892,7 @@ def record_copy_sources(graphs: Iterable[BaseGraph]) -> None:
 
 
 async def __create_graph(
-    tx,
+    tx: Prisma,
     graph: Graph,
     user_id: str,
     *,
@@ -2902,6 +2991,15 @@ async def __create_graph(
             for link in graph.links
         ]
     )
+
+    # Measured as a read of the saved graph will measure it; raising here rolls
+    # the save back, so a graph is never stored that cannot then be read.
+    refs_only = _sub_graph_refs_include(AgentExecutorBlock().id)
+    saved = await AgentGraph.prisma(tx).find_first(
+        where={"id": graph.id, "version": graph.version}, include=refs_only
+    )
+    if saved:
+        await _walk_sub_graphs([saved], tx, refs_only, leave_out=False)
 
 
 async def graph_owner_id(graph_id: str, tx: Prisma | None = None) -> str | None:

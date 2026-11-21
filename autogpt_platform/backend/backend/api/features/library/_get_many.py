@@ -14,8 +14,8 @@ from .db import _fetch_execution_counts, _fetch_store_listing
 logger = logging.getLogger(__name__)
 
 MAX_LIBRARY_AGENTS_PER_BATCH = 50
-# Each agent's details cost a marketplace lookup plus a sub-graph traversal;
-# a full batch must not take every database connection at once.
+# Each agent's details cost a marketplace lookup; a full batch must not take
+# every database connection at once.
 _DETAIL_LOAD_CONCURRENCY = 10
 
 
@@ -44,21 +44,22 @@ async def get_library_agents_by_ids(
         include=library_agent_include(user_id),
     )
     limit = asyncio.Semaphore(_DETAIL_LOAD_CONCURRENCY)
-    schedule_info, execution_counts, details = await asyncio.gather(
+    schedule_info, execution_counts, sub_graphs, details = await asyncio.gather(
         _fetch_schedule_info(user_id),
         # The include loads only the latest few executions; cards show the total.
         _fetch_execution_counts(user_id, [row.agentGraphId for row in rows]),
+        _load_sub_graphs(rows, limit),
         asyncio.gather(*(_load_details(row, limit) for row in rows)),
     )
 
     by_id: dict[str, library_model.LibraryAgent] = {}
     for detail in details:
-        if detail is None:
+        if detail is None or (subs := sub_graphs.get(detail.row.id)) is None:
             continue
         try:
             by_id[detail.row.id] = library_model.LibraryAgent.from_db(
                 detail.row,
-                sub_graphs=detail.sub_graphs,
+                sub_graphs=subs,
                 store_listing=detail.store_listing,
                 schedule_info=schedule_info,
                 execution_count_override=execution_counts.get(detail.row.agentGraphId),
@@ -68,10 +69,45 @@ async def get_library_agents_by_ids(
     return [by_id[agent_id] for agent_id in unique_ids if agent_id in by_id]
 
 
+async def _load_sub_graphs(
+    rows: list[prisma.models.LibraryAgent], limit: asyncio.Semaphore
+) -> dict[str, list[prisma.models.AgentGraph]]:
+    """Each agent's sub-graphs by library agent ID, read in one walk so a
+    sub-graph several agents share is fetched once. An agent whose sub-graphs
+    are past the bound, or cannot be read, is left out."""
+    agents = [(row.id, graph) for row in rows if (graph := row.AgentGraph)]
+    graphs = [graph for _, graph in agents]
+    try:
+        each = await graph_db.get_sub_graphs_leaving_out_too_large(graphs)
+    except Exception as e:
+        # One agent's failure must not cost the batch its other cards.
+        logger.error(f"Error loading a library batch's sub-graphs, per agent now: {e}")
+        each = await asyncio.gather(
+            *(_load_sub_graphs_alone(graph, limit) for graph in graphs)
+        )
+    left_out = [agent_id for (agent_id, _), subs in zip(agents, each) if subs is None]
+    if left_out:
+        logger.warning(f"Library agents left out of the batch: {left_out}")
+    return {
+        agent_id: subs for (agent_id, _), subs in zip(agents, each) if subs is not None
+    }
+
+
+async def _load_sub_graphs_alone(
+    graph: prisma.models.AgentGraph, limit: asyncio.Semaphore
+) -> list[prisma.models.AgentGraph] | None:
+    try:
+        async with limit:
+            [sub_graphs] = await graph_db.get_sub_graphs_leaving_out_too_large([graph])
+    except Exception as e:
+        logger.error(f"Error loading the sub-graphs of graph #{graph.id}: {e}")
+        return None
+    return sub_graphs
+
+
 class _AgentDetails(BaseModel):
     row: prisma.models.LibraryAgent
     store_listing: prisma.models.StoreListing | None
-    sub_graphs: list[prisma.models.AgentGraph]
 
 
 async def _load_details(
@@ -81,11 +117,8 @@ async def _load_details(
         return None
     try:
         async with limit:
-            store_listing, sub_graphs = await asyncio.gather(
-                _fetch_store_listing(row.AgentGraph.id),
-                graph_db.get_sub_graphs(row.AgentGraph),
-            )
+            store_listing = await _fetch_store_listing(row.AgentGraph.id)
     except Exception as e:
         logger.error(f"Error loading LibraryAgent #{row.id}: {e}")
         return None
-    return _AgentDetails(row=row, store_listing=store_listing, sub_graphs=sub_graphs)
+    return _AgentDetails(row=row, store_listing=store_listing)
