@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { createUniqueAgentName } from "../pages/build.page";
+import { backendURL } from "./backend";
 import { expect, test } from "./fixtures";
 
 const WEBHOOK_TRIGGER_BLOCK_ID = "8fa8c167-2002-47ce-aba8-97572fc5d387";
@@ -104,22 +105,6 @@ test.describe("triggers journey", () => {
     }
   });
 });
-
-// Webhooks arrive at the backend; the browser only talks to the frontend.
-// Against a remote frontend, say which backend to deliver to.
-function backendURL(): string {
-  const explicit = process.env.PLAYWRIGHT_BACKEND_URL;
-  if (explicit) return explicit;
-  const base = new URL(
-    process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
-  );
-  if (!["localhost", "127.0.0.1"].includes(base.hostname)) {
-    throw new Error(
-      `PLAYWRIGHT_BASE_URL is ${base.origin}: set PLAYWRIGHT_BACKEND_URL to that stack's backend, where webhooks are delivered`,
-    );
-  }
-  return "http://localhost:8006";
-}
 
 // An agent whose webhook trigger hands what it receives to an output.
 async function createWebhookAgent(page: Page, name: string): Promise<Graph> {
