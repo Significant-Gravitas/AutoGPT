@@ -9,7 +9,7 @@ from prisma.enums import APIKeyPermission
 
 from backend.copilot.model import ChatSession
 
-from .agent_generator.pipeline import MAX_AGENT_JSON_SIZE
+from .agent_generator.pipeline import agent_json_too_large
 from .agent_generator.validation import AgentFixer, AgentValidator, get_blocks_as_dicts
 from .agent_json_input import (
     AGENT_JSON_REF_SCHEMA,
@@ -121,18 +121,8 @@ class FixAgentGraphTool(BaseTool):
                 session_id=session_id,
             )
 
-        # The same bound as the save path: the fixer's cost grows with the
-        # workflow, and it runs on the event loop.
-        json_size = len(json.dumps(agent_json))
-        if json_size > MAX_AGENT_JSON_SIZE:
-            return ErrorResponse(
-                message=(
-                    f"Agent JSON is too large ({json_size:,} bytes, "
-                    f"max {MAX_AGENT_JSON_SIZE:,}). Reduce the number of nodes."
-                ),
-                error="agent_json_too_large",
-                session_id=session_id,
-            )
+        if (too_large := agent_json_too_large(agent_json, session_id)) is not None:
+            return too_large
 
         try:
             blocks = get_blocks_as_dicts()

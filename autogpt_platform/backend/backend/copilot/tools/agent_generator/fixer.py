@@ -961,11 +961,12 @@ class AgentFixer:
                     # A free-form model field names a model of the block's own
                     # service (a Jina embedding model, say), which no LLM list
                     # knows: keep what the generator wrote, and give a node
-                    # that names none the block's default.
+                    # that names none (no text, or empty text) the default.
                     block_default = model_schema.get("default")
-                    if current_model is None and isinstance(block_default, str):
+                    names_one = isinstance(current_model, str) and current_model
+                    if not names_one and isinstance(block_default, str):
                         self._log_model_fix(
-                            node_id, block, None, block_default, "unsupported"
+                            node_id, block, current_model, block_default, "unsupported"
                         )
                         input_default["model"] = block_default
                         node["input_default"] = input_default

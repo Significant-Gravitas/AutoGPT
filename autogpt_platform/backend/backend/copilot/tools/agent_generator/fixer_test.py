@@ -526,6 +526,36 @@ class TestFixAiModelParameter:
         assert result["nodes"][0]["input_default"]["model"] == "own-model-2"
         assert "model" not in result["nodes"][1]["input_default"]
 
+    def test_block_specific_enum_respells_a_prefixed_spelling(self):
+        """Another spelling the enum takes of a model the block offers is
+        written as the block lists it, not replaced by the block's default."""
+        fixer = AgentFixer()
+        block_id = generate_uuid()
+        node = _make_node(
+            node_id="n1", block_id=block_id, input_default={"model": "openai/gpt-4o"}
+        )
+        agent = _make_agent(nodes=[node])
+
+        blocks = [
+            {
+                "id": block_id,
+                "categories": [{"category": "AI"}],
+                "inputSchema": {
+                    "properties": {
+                        "model": {
+                            "type": "string",
+                            "enum": ["gpt-4o", "claude-opus-5"],
+                            "default": "claude-opus-5",
+                        }
+                    },
+                },
+            }
+        ]
+
+        result = fixer.fix_ai_model_parameter(agent, blocks)
+
+        assert result["nodes"][0]["input_default"]["model"] == "gpt-4o"
+
     def test_block_specific_enum_uses_block_default(self):
         """Blocks with their own model enum (e.g. PerplexityBlock) should use
         the block's allowed models and default, not the generic ones."""

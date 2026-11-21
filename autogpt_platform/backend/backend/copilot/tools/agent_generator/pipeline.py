@@ -70,6 +70,25 @@ async def fetch_library_agents(
         return None
 
 
+def agent_json_too_large(
+    agent_json: dict[str, Any], session_id: str | None
+) -> ErrorResponse | None:
+    """The error for a workflow over MAX_AGENT_JSON_SIZE, or None when it fits.
+    The fixer runs on the event loop and costs more with every node, so both
+    the save path and fix_agent_graph check this before it runs."""
+    json_size = len(json.dumps(agent_json))
+    if json_size <= MAX_AGENT_JSON_SIZE:
+        return None
+    return ErrorResponse(
+        message=(
+            f"This workflow is too large ({json_size:,} bytes, "
+            f"max {MAX_AGENT_JSON_SIZE:,}). Reduce the number of nodes."
+        ),
+        error="agent_json_too_large",
+        session_id=session_id,
+    )
+
+
 async def fix_validate_and_save(
     agent_json: dict[str, Any],
     *,
@@ -113,17 +132,8 @@ async def fix_validate_and_save(
     Returns:
         An appropriate ToolResponseBase subclass.
     """
-    # Size guard
-    json_size = len(json.dumps(agent_json))
-    if json_size > MAX_AGENT_JSON_SIZE:
-        return ErrorResponse(
-            message=(
-                f"Agent JSON is too large ({json_size:,} bytes, "
-                f"max {MAX_AGENT_JSON_SIZE:,}). Reduce the number of nodes."
-            ),
-            error="agent_json_too_large",
-            session_id=session_id,
-        )
+    if (too_large := agent_json_too_large(agent_json, session_id)) is not None:
+        return too_large
 
     blocks = get_blocks_as_dicts()
 

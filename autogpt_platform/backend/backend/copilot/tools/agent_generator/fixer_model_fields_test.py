@@ -71,3 +71,19 @@ async def test_a_new_node_on_a_prefixed_spelling_of_an_offered_model_keeps_it():
     result = await preview(workflow(AITextGeneratorBlock, f"openai/{ENABLED_OPENAI}"))
 
     assert model_on(result, AI_NODE) == ENABLED_OPENAI
+
+
+@pytest.mark.asyncio
+async def test_a_jina_embedding_node_keeps_even_an_llm_name():
+    """A free-form field keeps what was written, whatever it names: the fixer
+    can't know a service's own models, and the run reports a bad one."""
+    result = await preview(embedding_workflow({"model": "gpt-4o"}))
+
+    assert model_on(result, AI_NODE) == "gpt-4o"
+
+
+@pytest.mark.asyncio
+async def test_a_jina_embedding_node_with_an_empty_model_gets_the_blocks_default():
+    result = await preview(embedding_workflow({"model": ""}))
+
+    assert model_on(result, AI_NODE) == JINA_DEFAULT

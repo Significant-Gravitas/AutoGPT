@@ -360,4 +360,5 @@ async def test_an_oversized_workflow_is_refused_before_the_fixer_runs(tool, sess
 
     assert isinstance(result, ErrorResponse)
     assert result.error == "agent_json_too_large"
+    assert "This workflow is too large" in result.message
     fixer.assert_not_called()
