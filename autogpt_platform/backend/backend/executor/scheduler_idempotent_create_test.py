@@ -379,6 +379,65 @@ def test_two_creates_racing_for_the_accounts_last_slot_leave_it_at_its_limit(
     assert _job_ids(scheduler) == sorted([held.id, made[0].id])
 
 
+def test_two_creates_racing_for_the_accounts_last_storage_leave_it_in_budget(
+    scheduler: Scheduler, monkeypatch: pytest.MonkeyPatch
+):
+    """Two creates that each fit the storage budget, but not together. The
+    first is held right after it measures the account's storage until the
+    second reaches the capacity lock, or, measuring outside it, measures too:
+    only one of them may be stored."""
+    monkeypatch.setattr(scheduler_module.config, "max_schedule_storage_bytes", 150_000)
+    first_measured, release_first = threading.Event(), threading.Event()
+    second_reached_the_measure = threading.Event()
+    measure = scheduler._check_schedule_storage
+    capacity_lock = scheduler._schedule_capacity_lock
+
+    class NotingTheSecondCreate:
+        """The capacity lock, noting the second create as it reaches it."""
+
+        def __enter__(self) -> None:
+            if first_measured.is_set():
+                second_reached_the_measure.set()
+            capacity_lock.acquire()
+
+        def __exit__(self, *exc: object) -> None:
+            capacity_lock.release()
+
+    def measure_and_hold_the_first(*args: Any, **kwargs: Any) -> None:
+        if first_measured.is_set():
+            second_reached_the_measure.set()
+            return measure(*args, **kwargs)
+        measure(*args, **kwargs)
+        first_measured.set()
+        release_first.wait(30)
+
+    def send(key: str) -> GraphExecutionJobInfo | ValueError:
+        try:
+            return _add(scheduler, key, input_data={**INPUTS, "input_1": "x" * 100_000})
+        except ValueError as refused:
+            return refused
+
+    with (
+        patch.object(scheduler, "_schedule_capacity_lock", NotingTheSecondCreate()),
+        patch.object(scheduler, "_check_schedule_storage", measure_and_hold_the_first),
+        ThreadPoolExecutor(max_workers=2) as pool,
+    ):
+        first = pool.submit(send, str(uuid.uuid4()))
+        try:
+            assert first_measured.wait(30)
+            second = pool.submit(send, str(uuid.uuid4()))
+            assert second_reached_the_measure.wait(30)
+        finally:
+            release_first.set()
+        outcomes = [first.result(30), second.result(30)]
+
+    made = [o for o in outcomes if isinstance(o, GraphExecutionJobInfo)]
+    refused = [o for o in outcomes if isinstance(o, ValueError)]
+    assert len(made) == len(refused) == 1
+    assert "can store 150,000 bytes together" in str(refused[0])
+    assert _job_ids(scheduler) == [made[0].id]
+
+
 def test_a_limit_refusal_under_a_key_another_create_took_is_a_conflict(
     scheduler: Scheduler,
 ):
