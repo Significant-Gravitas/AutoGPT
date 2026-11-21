@@ -283,6 +283,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Stagehand Act](block-integrations/stagehand/blocks.md#stagehand-act) | Interact with a web page by performing actions on a web page |
 | [Stagehand Extract](block-integrations/stagehand/blocks.md#stagehand-extract) | Extract structured data from a webpage |
 | [Stagehand Observe](block-integrations/stagehand/blocks.md#stagehand-observe) | Find suggested actions for your workflows |
+| [Transcribe Speech](block-integrations/elevenlabs/speech_to_text.md#transcribe-speech) | Transcribes speech in an audio or video file and labels who said what |
 | [Unreal Text To Speech](block-integrations/llm.md#unreal-text-to-speech) | Converts text to speech using the Unreal Speech API |
 | [Video Narration](block-integrations/video/narration.md#video-narration) | Generate AI narration and add to video |
 

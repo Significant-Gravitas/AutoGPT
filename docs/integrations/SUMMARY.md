@@ -69,6 +69,7 @@
 * [Dataforseo Related Keywords](block-integrations/dataforseo/related_keywords.md)
 * [Discord Bot Blocks](block-integrations/discord/bot_blocks.md)
 * [Discord OAuth Blocks](block-integrations/discord/oauth_blocks.md)
+* [Elevenlabs Speech To Text](block-integrations/elevenlabs/speech_to_text.md)
 * [Enrichlayer LinkedIn](block-integrations/enrichlayer/linkedin.md)
 * [Exa Agent](block-integrations/exa/agent.md)
 * [Exa Agent Lookup](block-integrations/exa/agent_lookup.md)
