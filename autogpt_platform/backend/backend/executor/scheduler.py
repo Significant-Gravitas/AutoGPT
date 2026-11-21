@@ -3281,8 +3281,8 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
-            # No-plan API activity - daily, for the UTC day just ended. A cron,
-            # because a restart moves a 24-hour interval job's next run a day out.
+            # No-plan API activity - daily, for the UTC day just ended. A cron, so
+            # it fires just after that day ends, not at the hour it was first added.
             if config.no_plan_activity_report_enabled:
                 self.scheduler.add_job(
                     no_plan_api_activity_report,

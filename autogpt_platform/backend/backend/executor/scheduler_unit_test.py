@@ -2167,7 +2167,7 @@ def test_orphan_sweep_registered_only_when_switched_on(monkeypatch, enabled):
 
 
 def test_no_plan_activity_report_fires_daily_at_a_fixed_utc_time(monkeypatch):
-    """A cron: each restart would push an interval job's next run back a day."""
+    """A cron, so the report runs just after the UTC day it covers ends."""
     calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
     (job,) = [c for c in calls if c.kwargs.get("id") == "report_no_plan_api_activity"]
     trigger = job.args[1]
