@@ -99,15 +99,6 @@ class ResolveServerRequest(BaseModel):
     )
 
 
-class ResolveUserRequest(BaseModel):
-    platform: Platform
-    platform_user_id: str = Field(
-        description="Platform user ID to look up",
-        min_length=1,
-        max_length=255,
-    )
-
-
 class BotChatRequest(BaseModel):
     """Bot message request. If ``platform_server_id`` is set, the turn is
     billed to that server's owner; otherwise billed to ``platform_user_id``

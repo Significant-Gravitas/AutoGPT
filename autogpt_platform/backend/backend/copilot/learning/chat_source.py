@@ -47,10 +47,6 @@ CHAT_SOURCE_KIND = "chat_session"
 MAX_EVIDENCE_MESSAGES = 120
 
 
-class CapturedTurn(EvidenceRef):
-    """Marker type kept for readability of adapter code."""
-
-
 def source_revision_from_record(record: LearningSourceRecord) -> SourceRevision:
     return SourceRevision(
         source_id=record.id,
