@@ -2,6 +2,7 @@
 
 import json
 import logging
+from collections import Counter
 from typing import Any, cast
 
 from backend.api.features.library.exceptions import (
@@ -19,9 +20,13 @@ from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from .blocks import get_blocks_as_dicts
 from .core import get_library_agents_by_ids, save_agent_to_library
 from .fixer import AgentFixer
+from .switched_off_models import SwitchedOffMove
 from .validator import AgentValidator
 
 logger = logging.getLogger(__name__)
+
+# Kinds of move (block, old model, new model) the note lists before "and N more".
+_HINT_MOVES = 5
 
 MAX_AGENT_JSON_SIZE = 1_000_000  # 1 MB
 
@@ -123,18 +128,19 @@ async def fix_validate_and_save(
     blocks = get_blocks_as_dicts()
 
     # Auto-fix
-    retired_models_hint = ""
+    fixer = AgentFixer()
     try:
-        fixer = AgentFixer()
         agent_json = fixer.apply_all_fixes(
             agent_json, blocks, library_agents, saved_agent=saved_agent
         )
         fixes = fixer.get_fixes_applied()
         if fixes:
             logger.info(f"Applied {len(fixes)} auto-fixes to agent JSON")
-        retired_models_hint = _retired_models_hint(fixer.retired_models_replaced)
     except Exception as e:
         logger.warning(f"Auto-fix failed: {e}")
+    # The fixes edit agent_json in place, so a model moved before a later fix
+    # raised stays moved, and the note must still say so.
+    retired_models_hint = _retired_models_hint(fixer.retired_models_replaced)
 
     # Validate
     try:
@@ -254,13 +260,22 @@ async def fix_validate_and_save(
         )
 
 
-def _retired_models_hint(replaced: list[str]) -> str:
-    """A note for Otto naming each node the fixer moved off a retired model
-    and the model it uses now, so Otto reports the model the workflow uses."""
-    if not replaced:
+def _retired_models_hint(moves: list[SwitchedOffMove]) -> str:
+    """A note for Otto saying which blocks' nodes the fixer moved off a
+    switched-off model and the model they use now, so Otto reports the model
+    the workflow uses. It names blocks and catalog spellings only, never text
+    from the nodes, and lists at most _HINT_MOVES kinds of move."""
+    if not moves:
         return ""
+    counts = Counter(moves)
+    shown = [
+        f"{move.block} uses '{move.new}' instead of '{move.old}' "
+        f"({count} node{'' if count == 1 else 's'})"
+        for move, count in list(counts.items())[:_HINT_MOVES]
+    ]
+    if len(counts) > _HINT_MOVES:
+        shown.append(f"and {len(counts) - _HINT_MOVES} more")
     return (
-        " Note: some nodes named a retired model, so they now use a current "
-        f"one: {'; '.join(replaced)}. Tell the user which model each of these "
-        "nodes uses now."
+        " Note: some nodes were on a switched-off model and now use another: "
+        f"{'; '.join(shown)}. Tell the user which model these nodes use now."
     )

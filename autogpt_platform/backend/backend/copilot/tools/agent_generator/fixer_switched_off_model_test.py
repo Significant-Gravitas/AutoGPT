@@ -2,7 +2,11 @@
 switched off, while an edit keeps the model a node was saved on. The LLM
 blocks' schema still lists switched-off models so saved workflows keep
 validating. The tests run the generator's fix and validate path on the real
-block schemas."""
+block schemas.
+
+Which model replaces which is the catalog's choice. One test writes a pair
+out; the rest read it from ``scheduled_model_fallback``, so a catalog edit
+doesn't break a test about Otto."""
 
 import copy
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -21,7 +25,7 @@ from backend.copilot.tools.models import (
 )
 from backend.data.llm_registry import llm_models
 from backend.data.llm_registry.catalog import get_catalog
-from backend.data.llm_registry.llm_models import LLMModel
+from backend.data.llm_registry.llm_models import LLMModel, scheduled_model_fallback
 
 from .fixer import AgentFixer
 from .pipeline import fix_validate_and_save
@@ -40,6 +44,30 @@ SWITCHED_OFF = sorted(
     for model in get_catalog().models
     if not model.is_enabled and model.slug in {m.value for m in LLMModel}
 )
+LLM_ENUM: list[str] = AITextGeneratorBlock().input_schema.jsonschema()["properties"][
+    "model"
+]["enum"]
+CODEX_MODEL = CodeGenerationBlock().input_schema.jsonschema()["properties"]["model"]
+
+# Switched off; OpenAI serves both until 11 Dec.
+GPT5 = "gpt-5-2025-08-07"
+O3 = "o3-2025-04-16"
+
+
+def fallback_of(model: str) -> str:
+    """The catalog's fallback for a switched-off model: the model blocks run
+    in its place, and the one the fixer writes when the block offers it."""
+    scheduled = scheduled_model_fallback(model)
+    assert scheduled is not None, f"the catalog names no fallback for {model}"
+    return scheduled[0].value
+
+
+GPT5_FALLBACK = fallback_of(GPT5)
+FALLBACKS = {fallback_of(model) for model in SWITCHED_OFF}
+# Models the catalog still enables and no switched-off model falls back to, so
+# none of them reaches a note unless something goes wrong.
+UNRELATED = [m for m in LLM_ENUM if m in ENABLED and m not in FALLBACKS]
+ENABLED_OPENAI = next(m for m in UNRELATED if LLMModel(m).provider == "openai")
 
 
 def workflow(ai_block: type, model: str) -> dict:
@@ -62,10 +90,10 @@ def workflow(ai_block: type, model: str) -> dict:
     }
 
 
-def with_new_ai_node(agent_json: dict, model: str) -> dict:
+def with_new_ai_node(agent_json: dict, model: str, node_id: str = NEW_AI_NODE) -> dict:
     """*agent_json* plus an AI Text Generator node an edit adds on *model*."""
     added = node(
-        NEW_AI_NODE,
+        node_id,
         AITextGeneratorBlock().id,
         {"model": model, "prompt": "Write a haiku about rain."},
     )
@@ -109,54 +137,48 @@ def model_on_json(agent_json: dict, node_id: str) -> str:
     )
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "switched_off, replacement",
-    [
-        ("gpt-5-2025-08-07", "gpt-6.1-sol"),  # OpenAI serves it until 11 Dec
-        ("o3-2025-04-16", "gpt-6.1-sol"),
-        ("claude-sonnet-4-5-20250929", "claude-sonnet-5-5"),
-        ("mistralai/mistral-medium-3.1", "mistralai/mistral-medium-3-5"),
-        ("o3-mini", "gpt-6.1-terra"),  # already shut down
-    ],
-)
-async def test_a_new_workflow_on_a_switched_off_model_gets_its_replacement(
-    switched_off: str, replacement: str
-):
-    """The replacement is the model's catalog fallback, which the boot pass
-    and the retire CLI move stored nodes to and blocks run in its place."""
-    result = await preview(workflow(AITextGeneratorBlock, switched_off))
+def moved(old: str, new: str, nodes: int = 1) -> str:
+    """How Otto's note reports AI Text Generator nodes moved off *old*."""
+    count = f"{nodes} node{'' if nodes == 1 else 's'}"
+    return f"AITextGeneratorBlock uses '{new}' instead of '{old}' ({count})"
 
-    assert model_on(result, AI_NODE) == replacement
+
+@pytest.mark.asyncio
+async def test_a_new_workflow_on_gpt_5_is_saved_on_gpt_6_1_sol():
+    """The catalog's choice, written out once: OpenAI serves gpt-5 until
+    11 Dec, and its catalog fallback is gpt-6.1-sol."""
+    result = await preview(workflow(AITextGeneratorBlock, GPT5))
+
+    assert model_on(result, AI_NODE) == "gpt-6.1-sol"
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("switched_off", SWITCHED_OFF)
-async def test_no_new_workflow_is_left_on_a_switched_off_model(switched_off: str):
+async def test_a_new_workflow_on_a_switched_off_model_is_saved_on_its_fallback(
+    switched_off: str,
+):
     result = await preview(workflow(AITextGeneratorBlock, switched_off))
 
+    assert model_on(result, AI_NODE) == fallback_of(switched_off)
     assert model_on(result, AI_NODE) in ENABLED
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "pinned", ["gpt-4o", "gpt-5.2-2025-12-11", "claude-opus-4-6", "gpt-6.1-sol"]
-)
+@pytest.mark.parametrize("pinned", UNRELATED[:4])
 async def test_a_pinned_model_the_catalog_still_enables_is_kept(pinned: str):
-    assert pinned in ENABLED
     result = await preview(workflow(AITextGeneratorBlock, pinned))
 
     assert model_on(result, AI_NODE) == pinned
-    assert "retired model" not in result.message
+    assert "switched-off model" not in result.message
 
 
 @pytest.mark.asyncio
 async def test_the_preview_tells_otto_which_model_replaced_the_one_it_wrote():
-    """Otto wrote the retired model, so it would tell the user that one."""
-    result = await preview(workflow(AITextGeneratorBlock, "gpt-5-2025-08-07"))
+    """Otto wrote the switched-off model, so it would tell the user that one."""
+    result = await preview(workflow(AITextGeneratorBlock, GPT5))
 
-    assert "named a retired model" in result.message
-    assert "uses 'gpt-6.1-sol' instead of 'gpt-5-2025-08-07'" in result.message
+    assert "were on a switched-off model" in result.message
+    assert moved(GPT5, GPT5_FALLBACK) in result.message
 
 
 @pytest.mark.asyncio
@@ -164,26 +186,25 @@ async def test_an_edit_keeps_a_saved_switched_off_model_and_moves_new_work_off_i
     """A node saved on a switched-off model keeps it, as the builder does, and
     runs on its fallback from the model's shutdown date. A node the edit adds
     on it gets the replacement."""
-    saved = workflow(AITextGeneratorBlock, "gpt-5-2025-08-07")
-    edited = with_new_ai_node(copy.deepcopy(saved), "gpt-5-2025-08-07")
+    saved = workflow(AITextGeneratorBlock, GPT5)
+    edited = with_new_ai_node(copy.deepcopy(saved), GPT5)
 
     result = await preview(edited, saved_agent=saved)
 
-    assert model_on(result, AI_NODE) == "gpt-5-2025-08-07"
-    assert model_on(result, NEW_AI_NODE) == "gpt-6.1-sol"
-    # The note for Otto names the node that moved, not the one that kept its
-    # model.
-    assert f"node '{NEW_AI_NODE}'" in result.message
-    assert f"node '{AI_NODE}'" not in result.message
+    assert model_on(result, AI_NODE) == GPT5
+    assert model_on(result, NEW_AI_NODE) == GPT5_FALLBACK
+    # The note counts the node that moved, not the one that kept its model.
+    assert moved(GPT5, GPT5_FALLBACK, nodes=1) in result.message
+    assert result.message.count(" instead of ") == 1
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "saved_model, written, kept",
     [
-        ("gpt-5-2025-08-07", "openai/gpt-5-2025-08-07", "gpt-5-2025-08-07"),
-        ("openai/gpt-5-2025-08-07", "gpt-5-2025-08-07", "gpt-5-2025-08-07"),
-        ("gpt-6.1-sol", "openai/gpt-6.1-sol", "gpt-6.1-sol"),
+        (GPT5, f"openai/{GPT5}", GPT5),
+        (f"openai/{GPT5}", GPT5, GPT5),
+        (ENABLED_OPENAI, f"openai/{ENABLED_OPENAI}", ENABLED_OPENAI),
     ],
     ids=[
         "switched-off-edit-adds-the-prefix",
@@ -207,8 +228,8 @@ async def test_an_edit_keeps_the_saved_model_in_any_spelling(
 
 @pytest.mark.asyncio
 async def test_an_edit_still_replaces_a_value_that_names_no_model():
-    saved = workflow(AITextGeneratorBlock, "gpt-6.1-sol")
-    edited = workflow(AITextGeneratorBlock, "gpt-6.1-sol-preview")
+    saved = workflow(AITextGeneratorBlock, ENABLED_OPENAI)
+    edited = workflow(AITextGeneratorBlock, "gpt-9000-preview")
 
     result = await preview(edited, saved_agent=saved)
 
@@ -217,24 +238,25 @@ async def test_an_edit_still_replaces_a_value_that_names_no_model():
 
 @pytest.mark.asyncio
 async def test_an_edit_keeps_no_saved_model_the_block_doesnt_offer():
-    """The Codex block's own list doesn't offer gpt-6.1-sol, so a Codex node
-    saved on it gets the block's default, in either spelling."""
-    saved = workflow(CodeGenerationBlock, "gpt-6.1-sol")
-    edited = workflow(CodeGenerationBlock, "openai/gpt-6.1-sol")
+    """A Codex node saved on a model the Codex block's own list doesn't offer
+    gets the block's default, in either spelling."""
+    not_codex = next(m for m in UNRELATED if m not in CODEX_MODEL["enum"])
+    saved = workflow(CodeGenerationBlock, not_codex)
+    edited = workflow(CodeGenerationBlock, f"openai/{not_codex}")
 
     result = await preview(edited, saved_agent=saved)
 
-    assert model_on(result, AI_NODE) == "gpt-5.3-codex"
+    assert model_on(result, AI_NODE) == CODEX_MODEL["default"]
 
 
 @pytest.mark.asyncio
 async def test_an_edit_that_moves_a_node_onto_a_switched_off_model_gets_the_replacement():
-    saved = workflow(AITextGeneratorBlock, "gpt-5.6-sol")
-    edited = workflow(AITextGeneratorBlock, "o3-2025-04-16")
+    saved = workflow(AITextGeneratorBlock, ENABLED_OPENAI)
+    edited = workflow(AITextGeneratorBlock, O3)
 
     result = await preview(edited, saved_agent=saved)
 
-    assert model_on(result, AI_NODE) == "gpt-6.1-sol"
+    assert model_on(result, AI_NODE) == fallback_of(O3)
 
 
 @pytest.mark.asyncio
@@ -244,22 +266,24 @@ async def test_fix_agent_graph_leaves_a_switched_off_model_to_the_save():
     result = await FixAgentGraphTool()._execute(
         user_id="test-user-switched-off-model",
         session=make_session("test-user-switched-off-model"),
-        agent_json=workflow(AITextGeneratorBlock, "gpt-5-2025-08-07"),
+        agent_json=workflow(AITextGeneratorBlock, GPT5),
     )
 
     assert isinstance(result, FixResultResponse)
     assert result.fixed_agent_json is not None
     nodes = {n["id"]: n for n in result.fixed_agent_json["nodes"]}
-    assert nodes[AI_NODE]["input_default"]["model"] == "gpt-5-2025-08-07"
+    assert nodes[AI_NODE]["input_default"]["model"] == GPT5
 
 
 @pytest.mark.asyncio
 async def test_a_switched_off_model_without_a_replacement_the_block_offers_gets_its_default():
-    """The catalog sends gpt-5.1-codex to gpt-6.1-sol, which the Codex block's
-    own list doesn't offer, so the node gets the block's default."""
+    """The Codex block's own list doesn't offer gpt-5.1-codex's catalog
+    fallback, so the node gets the block's default."""
+    assert fallback_of("gpt-5.1-codex") not in CODEX_MODEL["enum"]
+
     result = await preview(workflow(CodeGenerationBlock, "gpt-5.1-codex"))
 
-    assert model_on(result, AI_NODE) == "gpt-5.3-codex"
+    assert model_on(result, AI_NODE) == CODEX_MODEL["default"]
 
 
 @pytest.mark.asyncio
@@ -271,15 +295,15 @@ async def test_the_save_tells_otto_which_model_replaced_the_one_it_wrote():
 
     with patch(f"{PIPELINE}.save_agent_to_library", save):
         result = await fix_validate_and_save(
-            workflow(AITextGeneratorBlock, "gpt-5-2025-08-07"),
+            workflow(AITextGeneratorBlock, GPT5),
             user_id="test-user-switched-off-model",
             session_id=None,
         )
 
     assert isinstance(result, AgentSavedResponse)
-    assert "uses 'gpt-6.1-sol' instead of 'gpt-5-2025-08-07'" in result.message
+    assert moved(GPT5, GPT5_FALLBACK) in result.message
     saved_json = save.await_args.args[0]
-    assert model_on_json(saved_json, AI_NODE) == "gpt-6.1-sol"
+    assert model_on_json(saved_json, AI_NODE) == GPT5_FALLBACK
 
 
 @pytest.mark.asyncio
@@ -288,12 +312,10 @@ async def test_a_fallback_the_catalog_switched_off_too_is_not_written(monkeypatc
     The catalog's fallback map leaves such an entry out today; the fixer
     doesn't depend on that, so the node gets the block's default."""
     monkeypatch.setitem(
-        llm_models.RETIRED_MODEL_FALLBACKS,
-        LLMModel("o3-2025-04-16"),
-        (LLMModel("gpt-5-2025-08-07"), None),
+        llm_models.RETIRED_MODEL_FALLBACKS, LLMModel(O3), (LLMModel(GPT5), None)
     )
 
-    result = await preview(workflow(AITextGeneratorBlock, "o3-2025-04-16"))
+    result = await preview(workflow(AITextGeneratorBlock, O3))
 
     assert model_on(result, AI_NODE) == DEFAULT_LLM_MODEL.value
 
@@ -301,8 +323,8 @@ async def test_a_fallback_the_catalog_switched_off_too_is_not_written(monkeypatc
 @pytest.mark.parametrize(
     "enum, written",
     [
-        (None, "gpt-6.1-terra"),
-        (["o3-mini", "gpt-5-2025-08-07", "gpt-6.1-sol"], "gpt-6.1-sol"),
+        (None, fallback_of("o3-mini")),
+        (["o3-mini", GPT5, UNRELATED[0]], UNRELATED[0]),
     ],
     ids=["its-fallback", "the-first-model-still-on"],
 )

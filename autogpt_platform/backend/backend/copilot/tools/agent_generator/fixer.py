@@ -18,6 +18,8 @@ from .helpers import (
     is_uuid,
 )
 from .switched_off_models import (
+    SwitchedOffMove,
+    canonical,
     kept_model,
     live_default,
     models_by_node,
@@ -71,9 +73,9 @@ class AgentFixer:
 
     def __init__(self):
         self.fixes_applied: list[str] = []
-        # Each AI node the last fix moved off a switched-off model, said for
-        # the user: Otto wrote the old model, so it would report that one.
-        self.retired_models_replaced: list[str] = []
+        # Each AI node the last fix moved off a switched-off model, for the
+        # note that tells Otto the model the workflow uses now.
+        self.retired_models_replaced: list[SwitchedOffMove] = []
 
     @staticmethod
     def _build_node_lookup(
@@ -996,17 +998,19 @@ class AgentFixer:
             )
         elif fix == "respelled":
             self.add_fix_log(
-                f"Wrote model '{old_model}' as '{new_model}', the spelling the "
-                f"block lists, on AI block node {node_id} ({block_name})"
+                f"Wrote model '{new_model}' as the block lists it on AI block "
+                f"node {node_id} ({block_name})"
             )
         elif fix == "switched_off":
+            # The enum takes any text before a "/" as a provider prefix, so
+            # only the catalog's spelling reaches Otto.
+            old = canonical(old_model)
             self.add_fix_log(
-                f"Replaced switched-off model '{old_model}' with '{new_model}' "
+                f"Replaced switched-off model '{old}' with '{new_model}' "
                 f"on AI block node {node_id} ({block_name})"
             )
             self.retired_models_replaced.append(
-                f"node '{node_id}' ({block_name}) uses '{new_model}' instead "
-                f"of '{old_model}'"
+                SwitchedOffMove(block=block_name, old=old, new=new_model)
             )
         else:
             self.add_fix_log(
@@ -1837,7 +1841,7 @@ class AgentFixer:
         self.retired_models_replaced = []
         # Read before any fix runs, which may change *agent*'s models.
         saved_models = models_by_node(
-            agent if keep_switched_off_models else saved_agent
+            agent, agent if keep_switched_off_models else saved_agent
         )
 
         # Apply fixes in order
