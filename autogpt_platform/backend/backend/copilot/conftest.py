@@ -1,6 +1,31 @@
 """Fixtures shared by every copilot test."""
 
+from typing import Any
+
 import pytest
+
+from backend.copilot.gate.reads import located_parts
+from backend.copilot.tools.models import ToolResponseBase
+
+
+@pytest.fixture(autouse=True)
+def _declared_outside_parts_are_carried(request, monkeypatch):
+    """A response that declares an outside part it does not carry is judged
+    whole, the platform's own words included. Tests of that fallback opt out
+    with ``@pytest.mark.absent_outside_part``."""
+    if request.node.get_closest_marker("absent_outside_part"):
+        return
+    declare = ToolResponseBase.from_outside
+
+    def checked(self: ToolResponseBase, *parts: Any) -> ToolResponseBase:
+        full = self.model_dump_json(exclude_none=True)
+        assert located_parts(parts, full, full) is not None, (
+            f"{type(self).__name__} declares outside parts it does not carry: "
+            f"{parts!r:.300}"
+        )
+        return declare(self, *parts)
+
+    monkeypatch.setattr(ToolResponseBase, "from_outside", checked)
 
 
 @pytest.fixture(autouse=True)

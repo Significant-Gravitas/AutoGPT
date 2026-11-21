@@ -449,14 +449,22 @@ def outside_view(
     """What of the declared parts the model reads in ``text``, each as the caps
     left it; ``text`` whole when a part is not in ``full``, so a mark that
     misses the bytes it names fails closed."""
-    pieces: dict[str, None] = {}
-    budget = [_MAX_OUTSIDE_VALUES]
-    if not all(_locate(part, full, text, pieces, budget) for part in outside):
+    pieces = located_parts(outside, full, text)
+    if pieces is None:
         logger.warning(
             f"Declared outside parts of {tool_name} not located; judged whole"
         )
         return text
     return "\n".join(pieces)
+
+
+def located_parts(outside: tuple[Any, ...], full: str, view: str) -> list[str] | None:
+    """What of each declared part shows in ``view``; None when one is not in ``full``."""
+    pieces: dict[str, None] = {}
+    budget = [_MAX_OUTSIDE_VALUES]
+    if not all(_locate(part, full, view, pieces, budget) for part in outside):
+        return None
+    return list(pieces)
 
 
 # Past this many values a declaration is judged whole: locating each is a scan

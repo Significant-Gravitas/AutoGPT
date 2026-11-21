@@ -283,8 +283,13 @@ class WebFetchTool(BaseTool):
             and response.status != 429,
         )
         if notice:
+            # A declared part the response does not carry gets the whole
+            # response judged, this notice included.
             return ErrorResponse(
-                message=notice, error="page_refused", session_id=session_id
+                message=notice,
+                error="page_refused",
+                details={"url": response.url},
+                session_id=session_id,
             ).from_outside(response.url)
 
         truncated = raw_truncated or text_truncated
