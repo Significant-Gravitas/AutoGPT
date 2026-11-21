@@ -25,9 +25,9 @@ SQLAlchemy engine as the jobstore itself — mirroring how APScheduler manages
 ``apscheduler_jobs`` — rather than via Prisma, which the scheduler process
 never connects to.
 
-Writes are plain delete+insert inside one transaction (portable across
-Postgres and the SQLite used in unit tests); schedule mutations are rare
-enough that dialect-native upserts aren't worth the coupling.
+Replacements delete and insert rows within the same transaction. A replay
+repairs a missing row with an insert, preserving any row already indexed under
+the same ID. Both paths use SQL supported by Postgres and SQLite.
 """
 
 import logging
@@ -62,6 +62,10 @@ class ScheduleIndexEntry(BaseModel):
     expert_id: Optional[str] = None
 
 
+def _entry_values(entry: ScheduleIndexEntry) -> dict[str, object]:
+    return {**entry.model_dump(), "organization_id": entry.organization_id or None}
+
+
 class ScheduleIndex:
     def __init__(self, engine: Engine, schema: str | None = None):
         self._engine = engine
@@ -86,13 +90,26 @@ class ScheduleIndex:
     def upsert(self, entry: ScheduleIndexEntry) -> None:
         self.upsert_many([entry])
 
+    def insert_if_missing(self, entry: ScheduleIndexEntry) -> None:
+        """Repair a missing row without replacing one from a later create."""
+        try:
+            with self._engine.begin() as conn:
+                conn.execute(insert(self._table), _entry_values(entry))
+        except IntegrityError:
+            # Check after rollback so we can see the row committed by its writer.
+            with self._engine.connect() as conn:
+                existing_id = conn.scalar(
+                    select(self._table.c.job_id).where(
+                        self._table.c.job_id == entry.job_id
+                    )
+                )
+            if existing_id is None:
+                raise
+
     def upsert_many(self, entries: Sequence[ScheduleIndexEntry]) -> None:
         if not entries:
             return
-        rows = [
-            {**e.model_dump(), "organization_id": e.organization_id or None}
-            for e in entries
-        ]
+        rows = [_entry_values(entry) for entry in entries]
         # delete-then-insert is not conflict-safe across replicas: under READ
         # COMMITTED a concurrent backfill's uncommitted rows are invisible to
         # the delete and then collide on the primary key. One retry after the
