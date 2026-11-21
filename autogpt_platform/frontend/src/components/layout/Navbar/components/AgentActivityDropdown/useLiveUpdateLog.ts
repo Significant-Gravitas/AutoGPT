@@ -112,9 +112,12 @@ export function createLiveUpdateLog() {
      * a list fetched before that moment replays it. When newer news did
      * come, `supersededAt` says where in the sequence it sits, so the
      * caller can tell whether it also covers a check queued after the read
-     * started; unknown when the read is gone (a reset dropped it).
+     * started; unknown when the read is gone (a reset dropped it). When
+     * the read found the run gone (`gone`), its earlier entry is dropped
+     * too: a capped list that leaves the run out would otherwise replay
+     * it over every later list, and no follow-up read ever corrects it.
      */
-    finishRead(runID: string, read?: RunStatus) {
+    finishRead(runID: string, read?: RunStatus, gone = false) {
       const pending = reads.get(runID);
       reads.delete(runID);
       if (!pending || pending.superseded) {
@@ -123,6 +126,8 @@ export function createLiveUpdateLog() {
       if (read) {
         updates.delete(runID);
         updates.set(runID, { execution: read, sequence: pending.started });
+      } else if (gone) {
+        updates.delete(runID);
       }
       return { accepted: true };
     },
