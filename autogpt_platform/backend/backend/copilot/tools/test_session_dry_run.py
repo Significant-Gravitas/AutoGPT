@@ -85,6 +85,8 @@ class TestRunBlockToolSessionDryRun:
             mock_prep_result.input_data = {"query": "test"}
             mock_prep_result.matched_credentials = {}
             mock_prep_result.synthetic_node_id = "node-1"
+            mock_prep_result.required_non_credential_keys = {"query"}
+            mock_prep_result.provided_input_keys = {"query"}
             mock_prep.return_value = mock_prep_result
 
             # Set up execute_block to return a success
