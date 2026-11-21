@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 ACCOUNT_IP_LIMIT = 50
 EVENTS_PER_IP = 20
 RELATED_ACCOUNT_LIMIT = 200
+SHARED_IP_GROUP_LIMIT = 20
+SHARED_IP_ACCOUNT_LIMIT = 100
 
 # Read from our own billing rows, never Stripe: see `_payment_status`.
 PaymentStatus = Literal[
@@ -180,6 +182,31 @@ async def delete_expired_ip_events(retention_days: int) -> int:
     if deleted > 0:
         logger.info(f"Deleted {deleted} sign-in IP records past their retention")
     return deleted
+
+
+async def find_accounts_sharing_an_ip(
+    since: datetime, until: datetime, min_accounts: int
+) -> list[list[str]]:
+    """The accounts that signed up or signed in from one IP in the window, one
+    group per IP, largest first. Returns no IPs: the caller's report goes to
+    Discord, and the admin users page shows them."""
+    rows = await query_raw_with_schema(
+        """
+        SELECT (array_agg(DISTINCT "userId" ORDER BY "userId"))[1:$4] AS account_ids
+        FROM {schema_prefix}"UserAuthIPEvent"
+        WHERE "createdAt" >= $1::timestamp AND "createdAt" < $2::timestamp
+        GROUP BY "ipAddress"
+        HAVING count(DISTINCT "userId") >= $3
+        ORDER BY count(DISTINCT "userId") DESC
+        LIMIT $5
+        """,
+        since,
+        until,
+        min_accounts,
+        SHARED_IP_ACCOUNT_LIMIT,
+        SHARED_IP_GROUP_LIMIT,
+    )
+    return [list(row["account_ids"]) for row in rows]
 
 
 async def _summarise_account_ips(user_id: str) -> list[_IPRow]:

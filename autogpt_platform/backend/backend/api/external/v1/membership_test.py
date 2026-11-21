@@ -99,7 +99,8 @@ def writes(mocker):
 
 @pytest.mark.parametrize("method, path, body", ROUTES, ids=[r[1] for r in ROUTES])
 @pytest.mark.parametrize("team_id", [None, TEAM], ids=["org-key", "team-key"])
-async def test_a_former_members_key_is_refused_before_the_route_runs(
+async def test_a_former_members_key_is_counted_and_refused_before_the_route_runs(
+    mocker,
     v1_client,
     v1_counter,
     key,
@@ -114,6 +115,7 @@ async def test_a_former_members_key_is_refused_before_the_route_runs(
 ):
     scoped(ORG, team_id)
     membership.return_value = False
+    recorded = mocker.patch.object(middleware, "record_api_request")
 
     response = await v1_client.request(
         method, path, headers={"X-API-Key": key}, json=body
@@ -125,6 +127,7 @@ async def test_a_former_members_key_is_refused_before_the_route_runs(
     for write in writes.values():
         write.assert_not_awaited()
     v1_counter.assert_not_awaited()
+    recorded.assert_called_once_with(owner, "external")
 
 
 @pytest.mark.parametrize(
