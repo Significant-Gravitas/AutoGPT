@@ -2,7 +2,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 
 class StopSafeBackgroundScheduler(BackgroundScheduler):
-    """A BackgroundScheduler whose stop never meets a job pass half-way.
+    """A BackgroundScheduler whose stop never meets a job pass half-way, and
+    never waits on a running job that calls back into it.
 
     Stock ``shutdown`` marks the scheduler stopped outside the jobstore lock,
     and job passes never check for it. A pass that gets the lock after the
@@ -20,10 +21,19 @@ class StopSafeBackgroundScheduler(BackgroundScheduler):
     The next scheduler runs each job left due once (``coalesce``, and no
     misfire grace).
 
-    Overrides APScheduler's private ``_process_jobs`` and takes its
-    ``_jobstores_lock``, as of APScheduler 3.11. ``scheduler_shutdown_test``
-    fails if an upgrade renames either; one that changes how they work needs
-    this class rechecked.
+    Stock ``shutdown`` also waits for running jobs holding the jobstore lock,
+    so a running job that calls into the scheduler (the schedule index
+    reconcile's ``get_jobs``) waits on that lock for good, and the stop on the
+    job. Here the stop waits for them first, holding no lock and with the
+    jobstores still open, so their calls go through; a pass that their
+    writes wake finds the mark and touches no job. APScheduler's own stop
+    runs after them.
+
+    Overrides APScheduler's private ``_process_jobs``, and takes its
+    ``_jobstores_lock`` and reads its ``_executors`` and their ``_instances``,
+    as of APScheduler 3.11. ``scheduler_shutdown_test`` fails if an upgrade
+    renames any of them; one that changes how they work needs this class
+    rechecked.
     """
 
     _stopping = False
@@ -37,6 +47,13 @@ class StopSafeBackgroundScheduler(BackgroundScheduler):
     def shutdown(self, wait: bool = True) -> None:
         with self._jobstores_lock:
             self._stopping = True
+        if wait and self.running:
+            # Nothing adds an executor during a stop, so the copy takes no lock.
+            executors = list(self._executors.values())
+            running = sum(sum(executor._instances.values()) for executor in executors)
+            self._logger.info(f"Waiting for {running} running job(s) to finish")
+            for executor in executors:
+                executor.shutdown(wait=True)
         super().shutdown(wait)
 
     def _process_jobs(self) -> float | None:

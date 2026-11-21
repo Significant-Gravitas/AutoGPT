@@ -1,93 +1,101 @@
-import { ActivityIndicator, Platform, Text, View } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
-import { WebView } from "react-native-webview";
+import {
+  Delete02Icon,
+  File01Icon,
+  HelpCircleIcon,
+  Logout01Icon,
+  StarIcon,
+} from "@hugeicons/core-free-icons";
+import { ScrollView, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Button } from "@/components/Button";
+import { ExpertAvatar } from "@/components/ExpertAvatar";
 import { ScreenHeader } from "@/components/ScreenHeader";
+import { AppearancePicker } from "@/features/settings/components/AppearancePicker";
+import { DeleteAccountSheet } from "@/features/settings/components/DeleteAccountSheet/DeleteAccountSheet";
+import { SettingsGroup } from "@/features/settings/components/SettingsGroup";
+import { SettingsRow } from "@/features/settings/components/SettingsRow";
 import { useSettingsScreen } from "@/features/settings/useSettingsScreen";
-import { createStyles, spacing, type, useColors } from "@/lib/theme";
+import { avatarSource } from "@/features/team/helpers";
+import { createStyles, spacing, type } from "@/lib/theme";
 
 export default function SettingsScreen() {
-  const {
-    settingsURL,
-    cookie,
-    script,
-    isBlocked,
-    webViewKey,
-    retry,
-    webViewRef,
-    handleNavigation,
-    handleStateChange,
-  } = useSettingsScreen();
+  const settings = useSettingsScreen();
   const styles = useStyles();
-  const colors = useColors();
-
-  function renderNotice(message: string) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.notice}>{message}</Text>
-        <Button label="Try again" onPress={retry} variant="secondary" size="small" />
-      </View>
-    );
-  }
-
-  function renderBody() {
-    if (isBlocked) {
-      return renderNotice(
-        "Settings didn't open here. Try again, or open Settings on the web.",
-      );
-    }
-    return (
-      <WebView
-        key={webViewKey}
-        ref={webViewRef}
-        source={{ uri: settingsURL, headers: { Cookie: cookie } }}
-        injectedJavaScriptBeforeContentLoaded={script}
-        sharedCookiesEnabled
-        originWhitelist={["*"]}
-        onShouldStartLoadWithRequest={handleNavigation}
-        onNavigationStateChange={handleStateChange}
-        // A spinner until the page arrives, and our retry if it never does.
-        startInLoadingState
-        renderLoading={() => (
-          <View style={[styles.center, styles.overlay]}>
-            <ActivityIndicator color={colors.textTertiary} />
-          </View>
-        )}
-        renderError={() =>
-          renderNotice("Settings didn't load. Check your connection and try again.")
-        }
-        style={styles.webview}
-      />
-    );
-  }
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.screen}>
       <ScreenHeader title="Settings" />
-      {/* iOS scrolls a focused field into view itself; Android needs the room made. */}
-      <KeyboardAvoidingView
-        behavior="padding"
-        enabled={Platform.OS === "android"}
-        style={styles.body}
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: insets.bottom + spacing.xxl },
+        ]}
       >
-        {renderBody()}
-      </KeyboardAvoidingView>
+        <View style={styles.person}>
+          <ExpertAvatar
+            name={settings.name || settings.email}
+            source={avatarSource({ avatar_url: settings.image })}
+            size={56}
+          />
+          <View style={styles.personText}>
+            {settings.name ? (
+              <Text numberOfLines={1} style={styles.name}>
+                {settings.name}
+              </Text>
+            ) : null}
+            <Text numberOfLines={1} style={styles.email}>
+              {settings.email}
+            </Text>
+          </View>
+        </View>
+        {settings.isPaymentEnabled ? (
+          <SettingsGroup>
+            <SettingsRow
+              icon={StarIcon}
+              label="Plan"
+              value={settings.planLabel}
+              trailing="page"
+              onPress={settings.openPlan}
+            />
+          </SettingsGroup>
+        ) : null}
+        <SettingsGroup>
+          <AppearancePicker />
+        </SettingsGroup>
+        <SettingsGroup>
+          <SettingsRow icon={HelpCircleIcon} label="Help" trailing="web" onPress={settings.openHelp} />
+          <SettingsRow icon={File01Icon} label="Terms of Use" trailing="web" onPress={settings.openTerms} />
+          <SettingsRow icon={File01Icon} label="Privacy Policy" trailing="web" onPress={settings.openPrivacy} />
+        </SettingsGroup>
+        <SettingsGroup>
+          <SettingsRow icon={Logout01Icon} label="Sign out" onPress={settings.signOut} />
+          <SettingsRow
+            icon={Delete02Icon}
+            label="Delete account"
+            isDestructive
+            onPress={settings.openDelete}
+          />
+        </SettingsGroup>
+        {settings.version ? (
+          <Text style={styles.version}>AutoGPT {settings.version}</Text>
+        ) : null}
+      </ScrollView>
+      <DeleteAccountSheet
+        email={settings.email}
+        isOpen={settings.isDeleteOpen}
+        onClose={settings.closeDelete}
+      />
     </View>
   );
 }
 
 const useStyles = createStyles((colors) => ({
-  screen: { flex: 1, backgroundColor: colors.background },
-  body: { flex: 1 },
-  webview: { flex: 1, backgroundColor: colors.background },
-  overlay: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: colors.background },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.lg,
-    paddingHorizontal: spacing.xl,
-  },
-  notice: { ...type.body, color: colors.textSecondary, textAlign: "center" },
+  screen: { flex: 1, backgroundColor: colors.menuBackground },
+  content: { gap: spacing.xl, padding: spacing.lg },
+  person: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.xs },
+  personText: { flex: 1 },
+  name: { ...type.heading, color: colors.text },
+  email: { ...type.small, color: colors.textSecondary },
+  version: { ...type.small, color: colors.textTertiary, textAlign: "center" },
 }));

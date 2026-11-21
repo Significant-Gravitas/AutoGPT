@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   OAUTH_ERROR_FLOW_CANCELED,
   OAUTH_ERROR_POPUP_BLOCKED_NO_TAB,
+  OAUTH_ERROR_UNSAFE_LOGIN_URL,
   OAUTH_ERROR_WINDOW_CLOSED,
   openOAuthPopup,
   preOpenOAuthPopup,
@@ -798,7 +799,6 @@ describe("same-origin device flow with cross-tab delivery", () => {
 
   test.each([
     { login: "https://provider.example/oauth", sameOriginFlow: true },
-    { login: "https://[invalid", sameOriginFlow: true },
     { login: "/api/oauth/redirect", sameOriginFlow: false },
   ])(
     "does not infer a same-origin lifetime from the initial URL: $login",
@@ -819,4 +819,42 @@ describe("same-origin device flow with cross-tab delivery", () => {
       await promise.catch(() => {});
     },
   );
+});
+
+describe("login URL scheme", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test.each([
+    "javascript:opener.document.title='ran'//",
+    "JavaScript:alert(1)//",
+    " java\tscript:alert(1)//",
+    "data:text/html,<script>alert(1)</script>",
+    "https://[invalid",
+  ])("opens no window for %j", (loginUrl) => {
+    const openSpy = setupPopup(makePopupStub());
+
+    expect(() =>
+      openOAuthPopup(loginUrl, { stateToken: "tok-scheme" }),
+    ).toThrow(OAUTH_ERROR_UNSAFE_LOGIN_URL);
+
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  test("leaves a pre-opened window on about:blank for the caller to close", () => {
+    const openSpy = vi.spyOn(window, "open");
+    const preOpened = makePopupStub();
+
+    expect(() =>
+      openOAuthPopup("javascript:alert(1)", {
+        stateToken: "tok-scheme-2",
+        preOpenedWindow: preOpened as unknown as Window,
+      }),
+    ).toThrow(OAUTH_ERROR_UNSAFE_LOGIN_URL);
+
+    expect(preOpened.location.href).toBe("");
+    expect(preOpened.close).not.toHaveBeenCalled();
+    expect(openSpy).not.toHaveBeenCalled();
+  });
 });

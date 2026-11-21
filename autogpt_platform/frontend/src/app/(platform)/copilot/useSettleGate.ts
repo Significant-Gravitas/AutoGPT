@@ -3,9 +3,11 @@ import { useEffect, useInsertionEffect, useRef } from "react";
 /**
  * Lets a send wait until the chat's current turn has settled. Each waiter
  * learns whether it settled (send now) or the hook went away first (the
- * chat host unmounted), in which case the send is dropped.
+ * chat host unmounted), in which case the send is dropped. A host that shows
+ * one chat after another without remounting passes the chat as `scope`, and
+ * a waiter for the chat it moved away from learns `false` as well.
  */
-export function useSettleGate(isSettled: boolean) {
+export function useSettleGate(isSettled: boolean, scope?: string | null) {
   const isSettledRef = useRef(isSettled);
   // Every commit, before the effects below resolve any waiter.
   useInsertionEffect(() => {
@@ -25,6 +27,13 @@ export function useSettleGate(isSettled: boolean) {
       waitersRef.current.splice(0).forEach((resolve) => resolve(false));
     };
   }, []);
+  // A commit runs every cleanup before any effect, so the new chat settling
+  // in the same commit cannot release these waiters first.
+  useEffect(() => {
+    return () => {
+      waitersRef.current.splice(0).forEach((resolve) => resolve(false));
+    };
+  }, [scope]);
 
   /** A send still uploading when the host unmounted asks only afterwards,
    *  when nothing is left to resolve it. */

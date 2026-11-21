@@ -34,6 +34,7 @@ from backend.api.features.search.embeddings import (
     embedding_to_vector_string,
 )
 from backend.data.db import query_raw_with_schema
+from backend.util.sql import escape_like
 
 ContentTypeValue = Literal[
     "STORE_AGENT",
@@ -319,8 +320,9 @@ async def unified_hybrid_search(
 
     # Query lowercase for category matching — keep tied to the
     # natural-language ``query`` so categories still match the user's
-    # intent words, not the stripped lexical form.
-    params.append(query.lower())
+    # intent words, not the stripped lexical form. Escaped, because it is a
+    # LIKE pattern, where `%` and `_` are wildcards.
+    params.append(escape_like(query.lower()))
     query_lower_param = f"${param_idx}"
     param_idx += 1
 

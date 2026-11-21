@@ -12,11 +12,11 @@ import {
 const RESEND = /send (it|your message) again|try sending/i;
 
 describe("describeChatError", () => {
-  it("a send the server never confirmed says so, and to send it again", () => {
+  it("a send the server never confirmed says so, and offers to send it again", () => {
     expect(describeChatError(new UnconfirmedSendError())).toEqual({
       title:
         "We couldn't confirm your message was sent. Check your connection and send it again.",
-      action: null,
+      action: "resend",
     });
   });
 
