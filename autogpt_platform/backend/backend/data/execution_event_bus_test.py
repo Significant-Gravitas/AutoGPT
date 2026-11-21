@@ -7,6 +7,7 @@ SSUBSCRIBE round-trip is covered by the integration test in
 ``event_bus_test.py``.
 """
 
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -170,6 +171,33 @@ async def test_async_publish_truncates_oversized_payload(monkeypatch):
 
     # Called twice: per-exec and per-graph channel.
     assert cluster.execute_command.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_async_publish_cuts_payloads_off_the_event_loop(monkeypatch):
+    cut_on_loop: list[bool] = []
+
+    def spy(value, size_limit):
+        cut_on_loop.append(_has_running_loop())
+        return value
+
+    monkeypatch.setattr("backend.data.execution.truncate", spy)
+    bus = AsyncRedisExecutionEventBus()
+    with patch.object(
+        AsyncRedisExecutionEventBus.__mro__[1], "publish_event", AsyncMock()
+    ):
+        await bus.publish(_sample_node_event())
+        await bus.publish(_sample_graph_event())
+
+    assert cut_on_loop == [False] * 4
+
+
+def _has_running_loop() -> bool:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return False
+    return True
 
 
 @pytest.mark.asyncio

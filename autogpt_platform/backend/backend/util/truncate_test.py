@@ -104,6 +104,14 @@ class TestOversizedPayloads:
         assert len(result) == 2**12 + 1
         assert OMISSION_MARKER in str(result[len(result) // 2])
 
+    def test_records_are_all_kept_when_cutting_their_strings_is_enough(self):
+        rows = [{"id": i, "note": "x" * 200} for i in range(100)]
+
+        result = truncate({"rows": rows}, 6_000)
+
+        assert [row["id"] for row in result["rows"]] == list(range(100))
+        assert measured(result) <= 6_000
+
     def test_nothing_fits_falls_back_to_the_tightest_truncation(self):
         value = {"k": "x" * 1_000}
 
@@ -140,7 +148,7 @@ class TestCostOfOversizedPayloads:
 
 
 @pytest.mark.parametrize("alphabet", ["abc def\n", "a'\"\n\\…é"])
-def test_the_result_fits_whenever_the_tightest_cut_does(alphabet: str):
+def test_the_result_keeps_the_most_list_items_that_fit(alphabet: str):
     rng = random.Random(alphabet)
 
     def payload(depth: int) -> object:
@@ -160,14 +168,34 @@ def test_the_result_fits_whenever_the_tightest_cut_does(alphabet: str):
     for _ in range(300):
         value = [payload(1) for _ in range(rng.randint(1, 8))]
         size_limit = rng.randint(0, measured(value))
-        tightest = min(
-            measured(_truncate_value(value, min(8, size_limit), n))
-            for n in range(1, 14)
-        )
+        str_min = min(8, size_limit)
+        cuts = [_truncate_value(value, str_min, n) for n in range(1, 14)]
+        fitting = [cut for cut in cuts if measured(cut) <= size_limit]
 
         result = truncate(value, size_limit)
 
-        assert measured(result) <= max(size_limit, tightest)
+        if not fitting:
+            assert measured(result) == min(measured(cut) for cut in cuts)
+            continue
+        assert measured(result) <= size_limit
+        assert kept_items(result) == kept_items(fitting[-1])
+
+
+def kept_items(value: object) -> int:
+    """List items kept at every depth, not counting the omission markers."""
+    if isinstance(value, dict):
+        return sum(kept_items(v) for v in value.values())
+    if isinstance(value, list):
+        return sum(1 + kept_items(v) for v in value if not _is_list_marker(v))
+    return 0
+
+
+def _is_list_marker(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and value.startswith(OMISSION_MARKER)
+        and value.endswith(" items)…")
+    )
 
 
 class TestPlainStrings:

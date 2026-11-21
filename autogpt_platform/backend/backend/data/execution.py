@@ -1852,17 +1852,21 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
         graph_exec_id: str,
     ):
         """Truncate oversized payloads, then publish to per-exec + per-graph channels."""
-        limit = config.max_message_size_limit // 2
-        if isinstance(event, GraphExecutionEvent):
-            event.inputs = truncate(event.inputs, limit)
-            event.outputs = truncate(event.outputs, limit)
-        elif isinstance(event, NodeExecutionEvent):
-            event.input_data = truncate(event.input_data, limit)
-            event.output_data = truncate(event.output_data, limit)
+        _truncate_payloads(event)
 
         # Publisher fans out: per-exec and per-graph watchers.
         super().publish_event(event, exec_channel(user_id, graph_id, graph_exec_id))
         super().publish_event(event, graph_all_channel(user_id, graph_id))
+
+
+def _truncate_payloads(event: ExecutionEvent) -> None:
+    limit = config.max_message_size_limit // 2
+    if isinstance(event, GraphExecutionEvent):
+        event.inputs = truncate(event.inputs, limit)
+        event.outputs = truncate(event.outputs, limit)
+    elif isinstance(event, NodeExecutionEvent):
+        event.input_data = truncate(event.input_data, limit)
+        event.output_data = truncate(event.output_data, limit)
 
 
 class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
@@ -1900,13 +1904,8 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
         graph_exec_id: str,
     ):
         """Truncate oversized payloads, then publish to per-exec + per-graph channels."""
-        limit = config.max_message_size_limit // 2
-        if isinstance(event, GraphExecutionEvent):
-            event.inputs = truncate(event.inputs, limit)
-            event.outputs = truncate(event.outputs, limit)
-        elif isinstance(event, NodeExecutionEvent):
-            event.input_data = truncate(event.input_data, limit)
-            event.output_data = truncate(event.output_data, limit)
+        # Cutting a large payload is CPU-bound, so it runs off the event loop.
+        await asyncio.to_thread(_truncate_payloads, event)
 
         await super().publish_event(
             event, exec_channel(user_id, graph_id, graph_exec_id)

@@ -144,9 +144,7 @@ def _truncate_to_fit(
     lengths = [m for m, _, _ in kept]
     rest = sizes[list_limit] - sum(cut for _, _, cut in kept)
     whole = list(accumulate((r for _, r, _ in kept), initial=0))
-    density = list(
-        accumulate(((r - m - 2) / (m or 1) for m, r, _ in kept), initial=0.0)
-    )
+    density = list(accumulate(((r - m - 2) / m for m, r, _ in kept), initial=0.0))
 
     def estimate(str_limit: int) -> float:
         i = bisect_right(lengths, str_limit)
@@ -180,8 +178,8 @@ def _price(
     value: list | dict, str_min: int
 ) -> tuple[list[int], list[tuple[int, int, int, int]]]:
     """Return what *value*'s size grows by at each list limit with strings cut to
-    *str_min* (exact but for list markers, priced at their widest), and each
-    string as (the list limit that keeps it, length, repr size, cut repr size).
+    *str_min*, and each string that can be cut as (the list limit that keeps it,
+    length, repr size, cut repr size).
     """
     added = [0] * (LIST_MAX + 1)
     strings: list[tuple[int, int, int, int]] = []
@@ -190,9 +188,9 @@ def _price(
         if not isinstance(node, str):
             return _repr_len(node)
         size = len(repr(node))
-        cut = size
-        if len(node) > str_min:
-            cut = len(repr(_truncate_string_middle(node, str_min)))
+        if len(node) <= str_min:
+            return size
+        cut = len(repr(_truncate_string_middle(node, str_min)))
         strings.append((kept_from, len(node), size, cut))
         return cut
 
@@ -209,12 +207,17 @@ def _price(
             return
 
         n = len(node)
-        if n > kept_from:  # the marker shows while the limit is under n
-            marker = _LIST_MARKER_COST + len(str(n - 1))
-            added[kept_from] += marker
-            if n <= LIST_MAX:
-                added[n] -= marker
         added[kept_from] += 2
+        # The marker shows while the limit is under n, and narrows by a character
+        # each time the count of omitted items loses a digit.
+        at = kept_from
+        while at < min(n, LIST_MAX + 1):
+            digits = len(str(n - at))
+            added[at] += _LIST_MARKER_COST + digits
+            narrower = n - 10 ** (digits - 1) + 1  # with one digit fewer, or none at n
+            if narrower <= LIST_MAX:
+                added[narrower] -= _LIST_MARKER_COST + digits
+            at = narrower
         for i in _indices_ever_kept(n):
             # Kept once its head or tail slot exists, or the whole list fits.
             from_head = 1 if i == 0 else 2 * i + 2
