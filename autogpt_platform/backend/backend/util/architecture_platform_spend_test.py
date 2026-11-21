@@ -22,6 +22,7 @@ _ALLOWANCE_CHECKS = frozenset({"platform_spend_refusal", "tool_spend_refusal"})
 _CHECKS_ALLOWANCE = "checks the allowance before calling"
 _DREAM_BUDGET = "a dream or skill-learning pass, gated by check_dream_budget"
 _OUTSIDE_TURNS = "a platform feature's call outside any AutoPilot turn"
+_INSIDE_A_TURN = "context compression inside a turn that admission already checked"
 
 _PLATFORM_KEY_MODEL_CALLS = {
     "api/features/onboarding_dump/intro.py generate_intro": _OUTSIDE_TURNS,
@@ -38,6 +39,7 @@ _PLATFORM_KEY_MODEL_CALLS = {
     "copilot/learning/reviewer.py _review_context": _DREAM_BUDGET,
     "copilot/tools/consult_teammate.py _complete": _CHECKS_ALLOWANCE,
     "copilot/tools/web_search.py WebSearchTool._execute": _CHECKS_ALLOWANCE,
+    "copilot/transcript.py _run_compression": _INSIDE_A_TURN,
     "data/tally.py extract_business_understanding": _OUTSIDE_TURNS,
     "executor/activity_status_generator.py "
     "generate_activity_status_for_execution": _OUTSIDE_TURNS,
