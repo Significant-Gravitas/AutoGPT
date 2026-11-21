@@ -107,11 +107,30 @@ test("a full list read without a reconnect reads no left-out run by ID", async (
 });
 
 test("a left-out run that is gone by the time it is read leaves Activity", async () => {
-  const { list } = await showOldRunThenReconnect(async () => 404);
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const { list } = await showOldRunThenReconnect(async () => 404, {
+    queryClient,
+  });
 
   await waitFor(() =>
     expect(within(list).queryByText("Old workflow")).toBeNull(),
   );
+
+  // A later capped refetch that still leaves the run out must not bring
+  // it back: the 404 read dropped its live-update entry from the log.
+  await act(() =>
+    queryClient.refetchQueries({
+      queryKey: getGetV1ListAllExecutionsQueryKey(),
+    }),
+  );
+  expect(await within(list).findByText("New workflow")).toBeDefined();
+  await waitFor(() =>
+    expect(within(list).queryByText("Old workflow")).toBeNull(),
+  );
+  await act(async () => {});
+  expect(within(list).queryByText("Old workflow")).toBeNull();
 });
 
 test("a left-out run whose read fails stays as shown", async () => {

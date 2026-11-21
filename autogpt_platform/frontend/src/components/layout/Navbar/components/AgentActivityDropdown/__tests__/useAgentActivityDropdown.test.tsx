@@ -273,7 +273,11 @@ describe("useAgentActivityDropdown", () => {
         await detailRequest;
       });
       await waitFor(() =>
-        expect(finishRead).toHaveBeenCalledWith("run-1", expect.anything()),
+        expect(finishRead).toHaveBeenCalledWith(
+          "run-1",
+          expect.anything(),
+          false,
+        ),
       );
       expect(result.current.activeExecutions).toHaveLength(0);
       expect(
@@ -291,7 +295,11 @@ describe("useAgentActivityDropdown", () => {
         const request = detailRequest;
         if (request) await request;
         await waitFor(() =>
-          expect(finishRead).toHaveBeenCalledWith("run-1", expect.anything()),
+          expect(finishRead).toHaveBeenCalledWith(
+            "run-1",
+            expect.anything(),
+            false,
+          ),
         ).catch(() => {});
       }
       finishRead.mockRestore();

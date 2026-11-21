@@ -95,6 +95,32 @@ describe("reads of a single run against live updates and lists", () => {
     expect(log.updatesNewerThan(1, [], false)).toEqual([completed]);
   });
 
+  test("a read by ID that finds a run gone drops its earlier live-update entry", () => {
+    const log = createLiveUpdateLog();
+    log.recordUpdate(status(RUN, AgentExecutionStatus.RUNNING));
+    log.startRead(RUN);
+    expect(log.finishRead(RUN, undefined, true).accepted).toBe(true);
+    const land = startList(log);
+    land(2);
+
+    // A later capped list that leaves the run out must not replay the
+    // stale RUNNING entry: the 404 read settled the run as gone.
+    expect(log.updatesNewerThan(2, [], false)).toEqual([]);
+  });
+
+  test("a read by ID with no answer that is not gone keeps the earlier entry", () => {
+    const log = createLiveUpdateLog();
+    log.recordUpdate(status(RUN, AgentExecutionStatus.RUNNING));
+    log.startRead(RUN);
+    expect(log.finishRead(RUN, undefined).accepted).toBe(true);
+    const land = startList(log);
+    land(2);
+
+    expect(log.updatesNewerThan(2, [], false)).toEqual([
+      status(RUN, AgentExecutionStatus.RUNNING),
+    ]);
+  });
+
   test("a later capped list drops a read's answer for a run past the 72-hour retention", () => {
     const log = createLiveUpdateLog();
     log.startRead(RUN);

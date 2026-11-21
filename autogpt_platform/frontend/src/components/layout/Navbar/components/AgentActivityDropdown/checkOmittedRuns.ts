@@ -15,6 +15,7 @@ interface Args {
     finishRead(
       runID: string,
       read?: GraphExecutionMeta,
+      gone?: boolean,
     ): { accepted: boolean; supersededAt?: number };
     currentSequence(): number;
   };
@@ -82,7 +83,7 @@ export function createOmittedRunChecker() {
     } finally {
       reading.delete(run.id);
     }
-    const { accepted, supersededAt } = log.finishRead(run.id, read);
+    const { accepted, supersededAt } = log.finishRead(run.id, read, gone);
     if (accepted) {
       if (read) onRead(read);
       else if (gone) onGone(run.id);
