@@ -16,6 +16,7 @@ from typing import Literal
 import bleach
 import html2text
 from markdown_it import MarkdownIt
+from markdown_it.token import Token
 from markupsafe import Markup
 from pydantic import BaseModel, ConfigDict
 
@@ -28,6 +29,7 @@ class BodyFormat(str, Enum):
 
 ImageType = Literal["image/png", "image/jpeg", "image/gif", "image/webp"]
 MAX_IMAGES = 8
+MAX_BODY_LENGTH = 50_000
 
 
 class InlineImage(BaseModel):
@@ -56,6 +58,11 @@ def render_body(
 
 def image_sources(body: str, body_format: BodyFormat) -> list[str]:
     """The fetchable image sources a body names, in order, each once."""
+    # The block calls this before the notification service validates the body.
+    if len(body) > MAX_BODY_LENGTH:
+        raise ValueError(
+            f"body: String should have at most {MAX_BODY_LENGTH} characters"
+        )
     if body_format is BodyFormat.PLAIN:
         return []
     collector = _ImageSources()
@@ -110,6 +117,9 @@ _VOID_TAGS = frozenset(
 # Opening one of these closes its open sibling, so they never stack up.
 _CLOSED_BY_SIBLINGS = frozenset({"p", "li", "dt", "dd", "tr", "td", "th", "option"})
 MAX_NESTING = 100
+# What bleach's parser may build from one body, its copies of elements included.
+MAX_ELEMENTS = 50_000
+MAX_ATTRIBUTE_TEXT = 1_000_000
 
 _BODY = "font-size:15px; line-height:24px; color:#2D2A3E;"
 _STYLES = {
@@ -137,7 +147,28 @@ _STYLES = {
 
 
 def _to_html(body: str, body_format: BodyFormat) -> str:
-    return _MARKDOWN.render(body) if body_format is BodyFormat.MARKDOWN else body
+    if body_format is not BodyFormat.MARKDOWN:
+        return body
+    env: dict = {}
+    tokens = _MARKDOWN.parse(body, env)
+    _limit_link_attributes(tokens)
+    return _MARKDOWN.renderer.render(tokens, _MARKDOWN.options, env)
+
+
+def _limit_link_attributes(tokens: list[Token]) -> None:
+    """Applies ``MAX_ATTRIBUTE_TEXT`` to the attributes Markdown's links and
+    images will be rendered with, before rendering."""
+    attribute_text = sum(
+        len(str(value))
+        for token in tokens
+        for child in token.children or ()
+        for value in child.attrs.values()
+    )
+    if attribute_text > MAX_ATTRIBUTE_TEXT:
+        raise ValueError(
+            f"The body's links and images have more than {MAX_ATTRIBUTE_TEXT:,} "
+            "characters of attributes."
+        )
 
 
 def _plain_to_html(body: str) -> str:
@@ -151,14 +182,15 @@ def _plain_to_html(body: str) -> str:
 def _sanitize(fragment: str) -> str:
     fragment = _drop_with_content(fragment)
     _refuse_deep_nesting(fragment)
-    return bleach.clean(
-        fragment,
+    cleaner = bleach.Cleaner(
         tags=ALLOWED_TAGS,
         attributes=ALLOWED_ATTRIBUTES,
         protocols=ALLOWED_PROTOCOLS,
         strip=True,
         strip_comments=True,
     )
+    _limit_tree_size(cleaner)
+    return cleaner.clean(fragment)
 
 
 def _refuse_deep_nesting(fragment: str) -> None:
@@ -168,6 +200,43 @@ def _refuse_deep_nesting(fragment: str) -> None:
     counter = _NestingCounter()
     counter.feed(fragment)
     counter.close()
+
+
+def _limit_tree_size(cleaner: bleach.Cleaner) -> None:
+    """Counts the elements and attribute text bleach's parser builds as it builds
+    them, through html5lib's ``elementClass`` hook."""
+    base = cleaner.parser.tree.elementClass
+    elements = 0
+    attribute_text = 0
+
+    def add_attributes(attributes: Mapping) -> None:
+        nonlocal attribute_text
+        attribute_text += sum(len(str(k)) + len(v) for k, v in attributes.items())
+        if attribute_text > MAX_ATTRIBUTE_TEXT:
+            raise ValueError(
+                f"The HTML has more than {MAX_ATTRIBUTE_TEXT:,} characters of "
+                "attributes."
+            )
+
+    class CountedElement(base):
+        def __init__(self, name: str, namespace: str | None = None):
+            nonlocal elements
+            elements += 1
+            if elements > MAX_ELEMENTS:
+                raise ValueError(f"The HTML has more than {MAX_ELEMENTS:,} elements.")
+            super().__init__(name, namespace)
+
+        def _set_attributes(self, attributes: Mapping) -> None:
+            add_attributes(attributes or {})
+            base._setAttributes(self, attributes)
+
+        attributes = property(base._getAttributes, _set_attributes)
+
+        def cloneNode(self):
+            add_attributes(self.attributes)
+            return super().cloneNode()
+
+    cleaner.parser.tree.elementClass = CountedElement
 
 
 def _drop_with_content(fragment: str) -> str:
