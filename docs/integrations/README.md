@@ -112,8 +112,14 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Baas Bot Fetch Meeting Data](block-integrations/baas/bots.md#baas-bot-fetch-meeting-data) | Retrieve recorded meeting data |
 | [Create Dictionary](block-integrations/data.md#create-dictionary) | Creates a dictionary with the specified key-value pairs |
 | [Create List](block-integrations/data.md#create-list) | Creates a list with the specified values |
+| [Data For Seo Ai Mentions](block-integrations/dataforseo/ai_mentions.md#data-for-seo-ai-mentions) | Find AI search answers (Google AI Overviews or ChatGPT) that cite a website or mention a term, with the question, answer and cited sources, from DataForSEO AI Optimization |
+| [Data For Seo Backlinks Summary](block-integrations/dataforseo/backlinks.md#data-for-seo-backlinks-summary) | Get a domain's or page's backlink profile from DataForSEO: authority rank, backlinks, referring domains, broken backlinks and spam score |
+| [Data For Seo Google Search Results](block-integrations/dataforseo/serp.md#data-for-seo-google-search-results) | Get live Google search results for a keyword from DataForSEO: organic rankings, AI Overview, People also ask and related searches |
 | [Data For Seo Keyword Suggestions](block-integrations/dataforseo/keyword_suggestions.md#data-for-seo-keyword-suggestions) | Get keyword suggestions from DataForSEO Labs Google API |
+| [Data For Seo Ranked Keywords](block-integrations/dataforseo/ranked_keywords.md#data-for-seo-ranked-keywords) | Get the Google keywords a domain or page ranks for from DataForSEO Labs, with position, ranking URL, search volume and estimated traffic |
+| [Data For Seo Referring Domains](block-integrations/dataforseo/backlinks.md#data-for-seo-referring-domains) | List the sites linking to a domain or page from DataForSEO Backlinks, strongest first, with rank, link count and spam score |
 | [Data For Seo Related Keywords](block-integrations/dataforseo/related_keywords.md#data-for-seo-related-keywords) | Get related keywords from DataForSEO Labs Google API |
+| [Data For Seo Site Audit](block-integrations/dataforseo/site_audit.md#data-for-seo-site-audit) | Crawl a website with DataForSEO On-Page and report technical SEO issues per page: broken pages, redirects, titles, descriptions, H1s, canonicals, duplicates, orphan pages, speed and click depth |
 | [Exa Create Import](block-integrations/exa/websets_import_export.md#exa-create-import) | Import CSV data to use with websets for targeted searches |
 | [Exa Delete Import](block-integrations/exa/websets_import_export.md#exa-delete-import) | Delete an import |
 | [Exa Export Webset](block-integrations/exa/websets_import_export.md#exa-export-webset) | Export webset data in JSON, CSV, or JSON Lines format |
