@@ -470,6 +470,24 @@ async def test_an_id_in_another_organization_stops_the_call_before_the_tool(
     library.return_value.get_folder.assert_awaited_once_with("folder-1", "user-1")
 
 
+async def test_a_list_longer_than_the_tool_takes_stops_the_call_unread(
+    mocker: pytest_mock.MockerFixture,
+):
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.get_access_token",
+        return_value=_token(APIKeyPermission.WRITE_LIBRARY),
+    )
+    library = mocker.patch("backend.api.external.v2.mcp_tenancy.library_db")
+    run = mocker.patch.object(type(TOOL_REGISTRY["move_agents_to_folder"]), "_execute")
+
+    result = await _call("move_agents_to_folder", {"agent_ids": ["agent-1"] * 101})
+
+    run.assert_not_called()
+    library.assert_not_called()
+    assert result.isError
+    assert "agent_ids takes at most 100 ids" in result.content[0].text
+
+
 @pytest.mark.parametrize(
     "allowance_failure, refusal",
     [

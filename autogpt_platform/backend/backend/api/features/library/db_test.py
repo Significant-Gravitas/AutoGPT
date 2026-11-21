@@ -3084,3 +3084,46 @@ async def test_list_library_agents_search_rejects_nul(mocker):
     with pytest.raises(ValueError, match="NUL"):
         await db.list_library_agents("test-user", search_term="a\x00b")
     mock_library_agent.return_value.find_many.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_agent_organizations_are_read_by_either_id(server: SpinTestServer):
+    """An id names the user's live entries as their own id and as their graph's;
+    deleted entries and another user's are left out."""
+    user_id, stranger_id = str(uuid.uuid4()), str(uuid.uuid4())
+    for owner in (user_id, stranger_id):
+        await get_or_create_user({"sub": owner, "email": f"orgs-{owner}@example.com"})
+    graph_id = str(uuid.uuid4())
+    for version in (1, 2, 3):
+        await prisma.models.AgentGraph.prisma().create(
+            data={"id": graph_id, "version": version, "userId": user_id}
+        )
+    older, archived, deleted, theirs = [
+        (
+            await prisma.models.LibraryAgent.prisma().create(
+                data={
+                    "userId": owner,
+                    "agentGraphId": graph_id,
+                    "agentGraphVersion": version,
+                    "organizationId": organization_id,
+                    **state,
+                }
+            )
+        ).id
+        for version, owner, organization_id, state in (
+            (1, user_id, "org-a", {}),
+            (2, user_id, "org-b", {"isArchived": True}),
+            (3, user_id, "org-c", {"isDeleted": True}),
+            (1, stranger_id, "org-d", {}),
+        )
+    ]
+
+    organizations = await db.get_library_agent_organizations_by_any_id(
+        user_id, [older, archived, graph_id, deleted, theirs, "no-such-id"]
+    )
+
+    assert {agent_id: sorted(orgs) for agent_id, orgs in organizations.items()} == {
+        older: ["org-a"],
+        archived: ["org-b"],
+        graph_id: ["org-a", "org-b"],
+    }

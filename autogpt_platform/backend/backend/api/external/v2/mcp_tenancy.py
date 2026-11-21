@@ -16,9 +16,11 @@ from typing import Any
 
 from mcp.server.fastmcp.exceptions import ToolError
 
+from backend.copilot.tools.agent_generator.core import MAX_LIBRARY_AGENT_IDS
 from backend.copilot.tools.external_scope import in_tenant
 from backend.data.db_accessors import execution_db, graph_db, library_db
 from backend.util.exceptions import NotFoundError
+from backend.util.text_limits import MAX_LIST_ENTRIES
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,9 @@ TENANTED_ARGS: dict[str, dict[str, IdKind]] = {
     "setup_agent_webhook_trigger": {"library_agent_id": AGENT, "graph_id": AGENT},
 }
 
+# Lists not named here stop at MAX_LIST_ENTRIES.
+_LIST_LIMITS = {"library_agent_ids": MAX_LIBRARY_AGENT_IDS}
+
 # Arguments that look like ids but name no organization's row, with the reason.
 UNTENANTED_ARGS: dict[str, dict[str, str]] = {
     "delete_schedule": {
@@ -79,65 +84,82 @@ async def check_ids_in_tenant(
 ) -> None:
     """Refuse a call naming a row tagged with another organization.
 
-    An id that names nothing passes; the tool says it wasn't found.
+    An id that names nothing passes; the tool says it wasn't found. An argument
+    of another type or length than the tool takes is refused before any lookup.
     """
-    for arg, kind in TENANTED_ARGS.get(tool_name, {}).items():
-        for value in _ids(args.get(arg)):
-            try:
-                allowed = await _in_tenant(kind, value, user_id, organization_id)
-            except Exception as exc:
-                logger.exception(f"MCP tenancy check failed on {tool_name}.{arg}")
-                raise ToolError("Couldn't check access; retry shortly") from exc
-            if not allowed:
+    tenanted = TENANTED_ARGS.get(tool_name, {})
+    for arg in tenanted:
+        _check_shape(arg, args.get(arg))
+
+    for arg, kind in tenanted.items():
+        values = _ids(args.get(arg))
+        if not values:
+            continue
+        try:
+            organizations = await _organizations(kind, values, user_id)
+        except Exception as exc:
+            logger.exception(f"MCP tenancy check failed on {tool_name}.{arg}")
+            raise ToolError("Couldn't check access; retry shortly") from exc
+        for value in values:
+            if not all(
+                in_tenant(org, organization_id) for org in organizations.get(value, [])
+            ):
                 raise ToolError(f"{kind.value} '{value}' not found")
 
 
+def _check_shape(arg: str, value: Any) -> None:
+    if value is None:
+        return
+    if not arg.endswith("_ids"):
+        if not isinstance(value, str):
+            raise ToolError(f"{arg} must be a single id")
+        return
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise ToolError(f"{arg} must be a list of ids")
+    limit = _LIST_LIMITS.get(arg, MAX_LIST_ENTRIES)
+    if len(value) > limit:
+        raise ToolError(f"{arg} takes at most {limit} ids")
+
+
 def _ids(value: Any) -> list[str]:
-    """The ids an argument holds, normalised the way the tools read them."""
+    """The ids an argument holds, each once, normalised the way the tools read them."""
     values = value if isinstance(value, list) else [value]
-    return [v.strip() for v in values if isinstance(v, str) and v.strip()]
+    return list(
+        dict.fromkeys(v.strip() for v in values if isinstance(v, str) and v.strip())
+    )
 
 
-async def _in_tenant(
-    kind: IdKind, value: str, user_id: str, organization_id: str
-) -> bool:
+async def _organizations(
+    kind: IdKind, values: list[str], user_id: str
+) -> dict[str, list[str | None]]:
+    """For each id, the organization of every row it could name."""
     match kind:
         case IdKind.LIBRARY_AGENT:
-            organizations = await _agent_organizations(value, user_id)
+            return await _agent_organizations(values, user_id)
         case IdKind.FOLDER:
-            organizations = await _folder_organizations(value, user_id)
+            return {v: await _folder_organizations(v, user_id) for v in values}
         case IdKind.RUN:
-            run = await execution_db().get_graph_execution_meta(
-                user_id=user_id, execution_id=value
-            )
-            organizations = [run.organization_id] if run else []
+            return {v: await _run_organizations(v, user_id) for v in values}
         case IdKind.PRESET:
-            preset = await library_db().get_preset(user_id=user_id, preset_id=value)
-            organizations = [preset.organization_id] if preset else []
-    return all(in_tenant(org, organization_id) for org in organizations)
+            return {v: await _preset_organizations(v, user_id) for v in values}
 
 
-async def _agent_organizations(value: str, user_id: str) -> list[str | None]:
-    """The organization of every row the id could name, as the tools resolve it.
+async def _agent_organizations(
+    values: list[str], user_id: str
+) -> dict[str, list[str | None]]:
+    """The organization of every row each id could name, as the tools resolve it.
 
     A library agent by its own id or by its graph's; failing both, a graph of
     the user's own with no library entry, which ``edit_agent`` opens directly.
+    Two reads of the tags alone, however many ids are listed.
     """
-    lib = library_db()
-    try:
-        by_id = await lib.get_library_agent(value, user_id)
-    except NotFoundError:
-        by_id = None
-    by_graph = await lib.get_library_agent_by_graph_id(
-        user_id, value, include_archived=True
+    organizations = await library_db().get_library_agent_organizations_by_any_id(
+        user_id, values
     )
-    organizations = [a.organization_id for a in (by_id, by_graph) if a is not None]
-    if organizations:
-        return organizations
-    graph = await graph_db().get_graph(value, None, user_id=user_id)
-    if graph is not None and graph.user_id == user_id:
-        return [graph.organization_id]
-    return []
+    if unlisted := [value for value in values if value not in organizations]:
+        owned = await graph_db().get_owned_graph_organizations(user_id, unlisted)
+        organizations.update({graph_id: [org] for graph_id, org in owned.items()})
+    return organizations
 
 
 async def _folder_organizations(value: str, user_id: str) -> list[str | None]:
@@ -146,3 +168,15 @@ async def _folder_organizations(value: str, user_id: str) -> list[str | None]:
     except NotFoundError:
         return []
     return [folder.organization_id]
+
+
+async def _run_organizations(value: str, user_id: str) -> list[str | None]:
+    run = await execution_db().get_graph_execution_meta(
+        user_id=user_id, execution_id=value
+    )
+    return [run.organization_id] if run else []
+
+
+async def _preset_organizations(value: str, user_id: str) -> list[str | None]:
+    preset = await library_db().get_preset(user_id=user_id, preset_id=value)
+    return [preset.organization_id] if preset else []

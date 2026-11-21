@@ -5,7 +5,11 @@ import pytest
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
-from backend.copilot.tools.agent_generator.core import get_agent_as_json
+from backend.copilot.tools.agent_generator.core import (
+    MAX_LIBRARY_AGENT_IDS,
+    get_agent_as_json,
+    get_library_agents_by_ids,
+)
 from backend.copilot.tools.agent_generator.validator import AgentValidator
 from backend.data.graph import GraphModel, NodeModel
 
@@ -89,3 +93,46 @@ async def test_the_owner_gets_their_workflow_as_saved():
     assert agent_json is not None
     [trigger] = agent_json["nodes"]
     assert trigger["input_default"]["secret_token"] == "owner-token"
+
+
+@pytest.mark.asyncio
+async def test_an_agent_listed_twice_is_fetched_once():
+    db = MagicMock()
+    db.get_library_agent_by_graph_id = AsyncMock(
+        return_value=MagicMock(
+            graph_id="graph-1",
+            graph_version=1,
+            description="",
+            input_schema={},
+            output_schema={},
+        )
+    )
+
+    with patch(
+        "backend.copilot.tools.agent_generator.core.library_db", return_value=db
+    ):
+        agents = await get_library_agents_by_ids(
+            "user-1", ["graph-1", "graph-1", "graph-1"]
+        )
+
+    db.get_library_agent_by_graph_id.assert_awaited_once_with("user-1", "graph-1")
+    assert [agent["graph_id"] for agent in agents] == ["graph-1"]
+
+
+@pytest.mark.asyncio
+async def test_a_long_list_is_fetched_up_to_its_limit():
+    db = MagicMock()
+    db.get_library_agent_by_graph_id = AsyncMock(
+        return_value=MagicMock(description="", input_schema={}, output_schema={})
+    )
+    agent_ids = [f"graph-{i}" for i in range(MAX_LIBRARY_AGENT_IDS + 5)]
+
+    with patch(
+        "backend.copilot.tools.agent_generator.core.library_db", return_value=db
+    ):
+        agents = await get_library_agents_by_ids("user-1", agent_ids)
+
+    assert [
+        call.args[1] for call in db.get_library_agent_by_graph_id.await_args_list
+    ] == (agent_ids[:MAX_LIBRARY_AGENT_IDS])
+    assert len(agents) == MAX_LIBRARY_AGENT_IDS

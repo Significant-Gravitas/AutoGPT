@@ -2204,6 +2204,24 @@ async def is_graph_version_owner(graph_id: str, version: int, user_id: str) -> b
     )
 
 
+async def get_owned_graph_organizations(
+    user_id: str, graph_ids: list[str]
+) -> dict[str, str | None]:
+    """The organization of the version of each of these graphs that
+    ``get_graph(version=None)`` gives its owner, in one read of the tags.
+
+    Graphs the user has no version of are left out.
+    """
+    if not graph_ids:
+        return {}
+    graphs = await AgentGraph.prisma().find_many(
+        where={"id": {"in": graph_ids}, "userId": user_id},
+        order=_active_else_newest_order(None),
+        distinct=["id"],
+    )
+    return {graph.id: graph.organizationId for graph in graphs}
+
+
 async def assert_graph_within(
     graph_id: str, user_id: str, organization_ids: Collection[str | None]
 ) -> None:
