@@ -65,7 +65,7 @@ function OwnerLine({ owner }: { owner: RecommendedExpert | null }) {
   return (
     <Text variant="small" as="span" tone="secondary" className="mt-1.5">
       <span className="font-medium text-foreground-strong">{owner.name}</span>,{" "}
-      {getExpertRoleLabel(owner.role)}{" "}
+      {owner.job_title || getExpertRoleLabel(owner.role)}{" "}
       <span className="text-foreground-subtle">· joins your team</span>
     </Text>
   );
