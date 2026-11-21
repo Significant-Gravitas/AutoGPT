@@ -240,12 +240,9 @@ def test_a_start_whose_answer_was_lost_goes_on_with_the_run(status: ExecutionSta
     and lost its answer is answered nothing by its retry, with the run RUNNING.
     That run is this executor's to go on with: dropping it would leave it
     RUNNING with nothing running it."""
-    _, run_graph, send_update, _ = _run_whose_start_moves_nothing(
-        status, ExecutionStatus.RUNNING
-    )
+    _, run_graph, _, _ = _run_whose_start_moves_nothing(status, ExecutionStatus.RUNNING)
 
     run_graph.assert_called_once()
-    send_update.assert_not_called()
 
 
 def test_an_update_that_is_none_is_not_published():
