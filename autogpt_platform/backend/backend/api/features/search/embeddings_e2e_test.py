@@ -673,7 +673,7 @@ async def test_search_all_content_types_default(server):
 # The terms ts_rank_cd scores a row by
 # ============================================================================
 
-# 170 distinct words in 509 characters, inside the search routes' bound.
+# More distinct terms than a row is ranked by, within the search routes' bound.
 MANY_WORDS = [
     letter + digit for letter in "bcdfghjklmnpqrvwz" for digit in "0123456789"
 ]
@@ -754,7 +754,7 @@ async def test_a_row_holding_every_term_of_a_long_query_is_found_and_scored(
         content_type=ContentType.LIBRARY_AGENT,
         content_id=agent_id,
         embedding=mock_embedding,
-        searchable_text=" ".join(MANY_WORDS * 40),
+        searchable_text=" ".join(MANY_WORDS),
         metadata={},
         user_id=test_user_id,
     )

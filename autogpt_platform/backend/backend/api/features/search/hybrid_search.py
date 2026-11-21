@@ -193,8 +193,8 @@ DEFAULT_STORE_AGENT_MIN_SCORE = 0.20  # For store agent search (original thresho
 # The longest query the search engines read. The search routes refuse a longer
 # one; text a tool or a block passes is cut to it.
 MAX_SEARCH_QUERY_LENGTH = 512
-# Query terms ``ts_rank_cd`` scores a row by, so scoring a row stays cheap
-# however many terms the query has. The ``@@`` match still uses every term.
+# Query terms ``ts_rank_cd`` ranks a row by; the ``@@`` match still uses every
+# term.
 MAX_LEXICAL_RANK_TERMS = 6
 
 

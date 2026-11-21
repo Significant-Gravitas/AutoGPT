@@ -473,7 +473,7 @@ async def test_unified_hybrid_search_matches_categories_literally():
 
 
 # ---------------------------------------------------------------------------
-# What a query costs: its length and the terms a row is ranked by
+# Query length and rank terms
 # ---------------------------------------------------------------------------
 
 
