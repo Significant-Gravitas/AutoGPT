@@ -144,4 +144,22 @@ describe("MethodPanel", () => {
     expect(screen.queryByText("What it costs.")).toBeNull();
     expect(screen.queryByText(/follow Notion's terms/i)).toBeNull();
   });
+
+  test("puts the right article before the provider in the sign-in note", () => {
+    render(
+      <MethodPanel
+        method={AuthType.oauth2}
+        provider={{
+          id: "etsy",
+          serviceId: "etsy",
+          name: "Etsy",
+          description: "Shop listings, photos and publishing",
+          supportedAuthTypes: [AuthType.oauth2],
+        }}
+        onSuccess={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/open an Etsy sign-in window/)).toBeDefined();
+  });
 });
