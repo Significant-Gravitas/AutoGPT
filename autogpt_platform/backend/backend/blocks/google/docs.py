@@ -91,8 +91,10 @@ def _build_drive_service(credentials: GoogleCredentials):
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
 
-def _validate_document_file(file: GoogleDriveFile) -> str | None:
+def _validate_document_file(file: GoogleDriveFile | None) -> str | None:
     """Validate that a file is a Google Doc."""
+    if not file:
+        return "No document selected"
     if not file.id:
         return "No document ID provided"
     if file.mime_type and file.mime_type != "application/vnd.google-apps.document":
@@ -172,6 +174,24 @@ def _make_document_output(file: GoogleDriveFile) -> GoogleDriveFile:
     )
 
 
+# ============ Test Data ============
+
+_TEST_DOCUMENT = {
+    "id": "1abc123def456",
+    "name": "Test Document",
+    "mimeType": "application/vnd.google-apps.document",
+}
+_TEST_DOCUMENT_OUTPUT = GoogleDriveFile(
+    id="1abc123def456",
+    name="Test Document",
+    mimeType="application/vnd.google-apps.document",
+    url="https://docs.google.com/document/d/1abc123def456/edit",
+    iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
+    isFolder=False,
+    _credentials_id=None,
+)
+
+
 # ============ Blocks ============
 
 
@@ -199,29 +219,12 @@ class GoogleDocsReadBlock(Block):
             input_schema=GoogleDocsReadBlock.Input,
             output_schema=GoogleDocsReadBlock.Output,
             disabled=GOOGLE_DOCS_DISABLED,
-            test_input={
-                "document": {
-                    "id": "1abc123def456",
-                    "name": "Test Document",
-                    "mimeType": "application/vnd.google-apps.document",
-                },
-            },
+            test_input={"document": _TEST_DOCUMENT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("text", "Hello World\nThis is a test document.\n"),
                 ("title", "Test Document"),
-                (
-                    "document",
-                    GoogleDriveFile(
-                        id="1abc123def456",
-                        name="Test Document",
-                        mimeType="application/vnd.google-apps.document",
-                        url="https://docs.google.com/document/d/1abc123def456/edit",
-                        iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
-                        isFolder=False,
-                        _credentials_id=None,
-                    ),
-                ),
+                ("document", _TEST_DOCUMENT_OUTPUT),
             ],
             test_mock={
                 "_read_document": lambda *args, **kwargs: {
@@ -235,10 +238,6 @@ class GoogleDocsReadBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.document:
-            yield "error", "No document selected"
-            return
-
         validation_error = _validate_document_file(input_data.document)
         if validation_error:
             yield "error", validation_error
@@ -422,28 +421,13 @@ class GoogleDocsAppendPlainTextBlock(Block):
             output_schema=GoogleDocsAppendPlainTextBlock.Output,
             disabled=GOOGLE_DOCS_DISABLED,
             test_input={
-                "document": {
-                    "id": "1abc123def456",
-                    "name": "Test Document",
-                    "mimeType": "application/vnd.google-apps.document",
-                },
+                "document": _TEST_DOCUMENT,
                 "text": "This is appended text.",
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("result", {"success": True, "characters_added": 23}),
-                (
-                    "document",
-                    GoogleDriveFile(
-                        id="1abc123def456",
-                        name="Test Document",
-                        mimeType="application/vnd.google-apps.document",
-                        url="https://docs.google.com/document/d/1abc123def456/edit",
-                        iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
-                        isFolder=False,
-                        _credentials_id=None,
-                    ),
-                ),
+                ("document", _TEST_DOCUMENT_OUTPUT),
             ],
             test_mock={
                 "_append_text": lambda *args, **kwargs: {
@@ -457,10 +441,6 @@ class GoogleDocsAppendPlainTextBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.document:
-            yield "error", "No document selected"
-            return
-
         validation_error = _validate_document_file(input_data.document)
         if validation_error:
             yield "error", validation_error
@@ -533,29 +513,14 @@ class GoogleDocsInsertPlainTextBlock(Block):
             output_schema=GoogleDocsInsertPlainTextBlock.Output,
             disabled=GOOGLE_DOCS_DISABLED,
             test_input={
-                "document": {
-                    "id": "1abc123def456",
-                    "name": "Test Document",
-                    "mimeType": "application/vnd.google-apps.document",
-                },
+                "document": _TEST_DOCUMENT,
                 "text": "Inserted text here. ",
                 "index": 1,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("result", {"success": True, "characters_inserted": 20}),
-                (
-                    "document",
-                    GoogleDriveFile(
-                        id="1abc123def456",
-                        name="Test Document",
-                        mimeType="application/vnd.google-apps.document",
-                        url="https://docs.google.com/document/d/1abc123def456/edit",
-                        iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
-                        isFolder=False,
-                        _credentials_id=None,
-                    ),
-                ),
+                ("document", _TEST_DOCUMENT_OUTPUT),
             ],
             test_mock={
                 "_insert_text": lambda *args, **kwargs: {
@@ -569,10 +534,6 @@ class GoogleDocsInsertPlainTextBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.document:
-            yield "error", "No document selected"
-            return
-
         validation_error = _validate_document_file(input_data.document)
         if validation_error:
             yield "error", validation_error
@@ -641,29 +602,14 @@ class GoogleDocsFindReplacePlainTextBlock(Block):
             output_schema=GoogleDocsFindReplacePlainTextBlock.Output,
             disabled=GOOGLE_DOCS_DISABLED,
             test_input={
-                "document": {
-                    "id": "1abc123def456",
-                    "name": "Test Document",
-                    "mimeType": "application/vnd.google-apps.document",
-                },
+                "document": _TEST_DOCUMENT,
                 "find_text": "old text",
                 "replace_text": "new text",
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("result", {"success": True, "replacements_made": 3}),
-                (
-                    "document",
-                    GoogleDriveFile(
-                        id="1abc123def456",
-                        name="Test Document",
-                        mimeType="application/vnd.google-apps.document",
-                        url="https://docs.google.com/document/d/1abc123def456/edit",
-                        iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
-                        isFolder=False,
-                        _credentials_id=None,
-                    ),
-                ),
+                ("document", _TEST_DOCUMENT_OUTPUT),
             ],
             test_mock={
                 "_find_replace": lambda *args, **kwargs: {
@@ -677,10 +623,6 @@ class GoogleDocsFindReplacePlainTextBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.document:
-            yield "error", "No document selected"
-            return
-
         validation_error = _validate_document_file(input_data.document)
         if validation_error:
             yield "error", validation_error
@@ -762,13 +704,7 @@ class GoogleDocsGetMetadataBlock(Block):
             input_schema=GoogleDocsGetMetadataBlock.Input,
             output_schema=GoogleDocsGetMetadataBlock.Output,
             disabled=GOOGLE_DOCS_DISABLED,
-            test_input={
-                "document": {
-                    "id": "1abc123def456",
-                    "name": "Test Document",
-                    "mimeType": "application/vnd.google-apps.document",
-                },
-            },
+            test_input={"document": _TEST_DOCUMENT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("title", "Test Document"),
@@ -778,18 +714,7 @@ class GoogleDocsGetMetadataBlock(Block):
                     "document_url",
                     "https://docs.google.com/document/d/1abc123def456/edit",
                 ),
-                (
-                    "document",
-                    GoogleDriveFile(
-                        id="1abc123def456",
-                        name="Test Document",
-                        mimeType="application/vnd.google-apps.document",
-                        url="https://docs.google.com/document/d/1abc123def456/edit",
-                        iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
-                        isFolder=False,
-                        _credentials_id=None,
-                    ),
-                ),
+                ("document", _TEST_DOCUMENT_OUTPUT),
             ],
             test_mock={
                 "_get_metadata": lambda *args, **kwargs: {
@@ -803,10 +728,6 @@ class GoogleDocsGetMetadataBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.document:
-            yield "error", "No document selected"
-            return
-
         validation_error = _validate_document_file(input_data.document)
         if validation_error:
             yield "error", validation_error
@@ -879,11 +800,7 @@ class GoogleDocsInsertTableBlock(Block):
             output_schema=GoogleDocsInsertTableBlock.Output,
             disabled=GOOGLE_DOCS_DISABLED,
             test_input={
-                "document": {
-                    "id": "1abc123def456",
-                    "name": "Test Document",
-                    "mimeType": "application/vnd.google-apps.document",
-                },
+                "document": _TEST_DOCUMENT,
                 "content": [["Header1", "Header2"], ["Row1Col1", "Row1Col2"]],
             },
             test_credentials=TEST_CREDENTIALS,
@@ -898,18 +815,7 @@ class GoogleDocsInsertTableBlock(Block):
                         "cells_found": 4,
                     },
                 ),
-                (
-                    "document",
-                    GoogleDriveFile(
-                        id="1abc123def456",
-                        name="Test Document",
-                        mimeType="application/vnd.google-apps.document",
-                        url="https://docs.google.com/document/d/1abc123def456/edit",
-                        iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
-                        isFolder=False,
-                        _credentials_id=None,
-                    ),
-                ),
+                ("document", _TEST_DOCUMENT_OUTPUT),
             ],
             test_mock={
                 "_insert_table": lambda *args, **kwargs: {
@@ -926,10 +832,6 @@ class GoogleDocsInsertTableBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.document:
-            yield "error", "No document selected"
-            return
-
         validation_error = _validate_document_file(input_data.document)
         if validation_error:
             yield "error", validation_error
@@ -1153,28 +1055,11 @@ class GoogleDocsInsertPageBreakBlock(Block):
             input_schema=GoogleDocsInsertPageBreakBlock.Input,
             output_schema=GoogleDocsInsertPageBreakBlock.Output,
             disabled=GOOGLE_DOCS_DISABLED,
-            test_input={
-                "document": {
-                    "id": "1abc123def456",
-                    "name": "Test Document",
-                    "mimeType": "application/vnd.google-apps.document",
-                },
-            },
+            test_input={"document": _TEST_DOCUMENT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("result", {"success": True}),
-                (
-                    "document",
-                    GoogleDriveFile(
-                        id="1abc123def456",
-                        name="Test Document",
-                        mimeType="application/vnd.google-apps.document",
-                        url="https://docs.google.com/document/d/1abc123def456/edit",
-                        iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
-                        isFolder=False,
-                        _credentials_id=None,
-                    ),
-                ),
+                ("document", _TEST_DOCUMENT_OUTPUT),
             ],
             test_mock={
                 "_insert_page_break": lambda *args, **kwargs: {"success": True},
@@ -1185,10 +1070,6 @@ class GoogleDocsInsertPageBreakBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.document:
-            yield "error", "No document selected"
-            return
-
         validation_error = _validate_document_file(input_data.document)
         if validation_error:
             yield "error", validation_error
@@ -1255,29 +1136,14 @@ class GoogleDocsDeleteContentBlock(Block):
             output_schema=GoogleDocsDeleteContentBlock.Output,
             disabled=GOOGLE_DOCS_DISABLED,
             test_input={
-                "document": {
-                    "id": "1abc123def456",
-                    "name": "Test Document",
-                    "mimeType": "application/vnd.google-apps.document",
-                },
+                "document": _TEST_DOCUMENT,
                 "start_index": 10,
                 "end_index": 50,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("result", {"success": True, "characters_deleted": 40}),
-                (
-                    "document",
-                    GoogleDriveFile(
-                        id="1abc123def456",
-                        name="Test Document",
-                        mimeType="application/vnd.google-apps.document",
-                        url="https://docs.google.com/document/d/1abc123def456/edit",
-                        iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
-                        isFolder=False,
-                        _credentials_id=None,
-                    ),
-                ),
+                ("document", _TEST_DOCUMENT_OUTPUT),
             ],
             test_mock={
                 "_delete_content": lambda *args, **kwargs: {
@@ -1291,10 +1157,6 @@ class GoogleDocsDeleteContentBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.document:
-            yield "error", "No document selected"
-            return
-
         validation_error = _validate_document_file(input_data.document)
         if validation_error:
             yield "error", validation_error
@@ -1380,29 +1242,14 @@ class GoogleDocsExportBlock(Block):
             output_schema=GoogleDocsExportBlock.Output,
             disabled=GOOGLE_DOCS_DISABLED,
             test_input={
-                "document": {
-                    "id": "1abc123def456",
-                    "name": "Test Document",
-                    "mimeType": "application/vnd.google-apps.document",
-                },
+                "document": _TEST_DOCUMENT,
                 "format": ExportFormat.TXT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("content", "This is the document content as plain text."),
                 ("mime_type", "text/plain"),
-                (
-                    "document",
-                    GoogleDriveFile(
-                        id="1abc123def456",
-                        name="Test Document",
-                        mimeType="application/vnd.google-apps.document",
-                        url="https://docs.google.com/document/d/1abc123def456/edit",
-                        iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
-                        isFolder=False,
-                        _credentials_id=None,
-                    ),
-                ),
+                ("document", _TEST_DOCUMENT_OUTPUT),
             ],
             test_mock={
                 "_export_document": lambda *args, **kwargs: {
@@ -1416,10 +1263,6 @@ class GoogleDocsExportBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.document:
-            yield "error", "No document selected"
-            return
-
         validation_error = _validate_document_file(input_data.document)
         if validation_error:
             yield "error", validation_error
@@ -1506,11 +1349,7 @@ class GoogleDocsFormatTextBlock(Block):
             output_schema=GoogleDocsFormatTextBlock.Output,
             disabled=GOOGLE_DOCS_DISABLED,
             test_input={
-                "document": {
-                    "id": "1abc123def456",
-                    "name": "Test Document",
-                    "mimeType": "application/vnd.google-apps.document",
-                },
+                "document": _TEST_DOCUMENT,
                 "start_index": 2,
                 "end_index": 10,
                 "bold": True,
@@ -1518,18 +1357,7 @@ class GoogleDocsFormatTextBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("result", {"success": True}),
-                (
-                    "document",
-                    GoogleDriveFile(
-                        id="1abc123def456",
-                        name="Test Document",
-                        mimeType="application/vnd.google-apps.document",
-                        url="https://docs.google.com/document/d/1abc123def456/edit",
-                        iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
-                        isFolder=False,
-                        _credentials_id=None,
-                    ),
-                ),
+                ("document", _TEST_DOCUMENT_OUTPUT),
             ],
             test_mock={
                 "_format_text": lambda *args, **kwargs: {"success": True},
@@ -1540,10 +1368,6 @@ class GoogleDocsFormatTextBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.document:
-            yield "error", "No document selected"
-            return
-
         validation_error = _validate_document_file(input_data.document)
         if validation_error:
             yield "error", validation_error
@@ -1689,11 +1513,7 @@ class GoogleDocsShareBlock(Block):
             output_schema=GoogleDocsShareBlock.Output,
             disabled=GOOGLE_DOCS_DISABLED,
             test_input={
-                "document": {
-                    "id": "1abc123def456",
-                    "name": "Test Document",
-                    "mimeType": "application/vnd.google-apps.document",
-                },
+                "document": _TEST_DOCUMENT,
                 "email": "test@example.com",
                 "role": "reader",
             },
@@ -1701,18 +1521,7 @@ class GoogleDocsShareBlock(Block):
             test_output=[
                 ("result", {"success": True}),
                 ("share_link", "https://docs.google.com/document/d/1abc123def456/edit"),
-                (
-                    "document",
-                    GoogleDriveFile(
-                        id="1abc123def456",
-                        name="Test Document",
-                        mimeType="application/vnd.google-apps.document",
-                        url="https://docs.google.com/document/d/1abc123def456/edit",
-                        iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
-                        isFolder=False,
-                        _credentials_id=None,
-                    ),
-                ),
+                ("document", _TEST_DOCUMENT_OUTPUT),
             ],
             test_mock={
                 "_share_document": lambda *args, **kwargs: {
@@ -1727,10 +1536,6 @@ class GoogleDocsShareBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.document:
-            yield "error", "No document selected"
-            return
-
         validation_error = _validate_document_file(input_data.document)
         if validation_error:
             yield "error", validation_error
@@ -1821,11 +1626,7 @@ class GoogleDocsSetPublicAccessBlock(Block):
             output_schema=GoogleDocsSetPublicAccessBlock.Output,
             disabled=GOOGLE_DOCS_DISABLED,
             test_input={
-                "document": {
-                    "id": "1abc123def456",
-                    "name": "Test Document",
-                    "mimeType": "application/vnd.google-apps.document",
-                },
+                "document": _TEST_DOCUMENT,
                 "public": True,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -1835,18 +1636,7 @@ class GoogleDocsSetPublicAccessBlock(Block):
                     "share_link",
                     "https://docs.google.com/document/d/1abc123def456/edit?usp=sharing",
                 ),
-                (
-                    "document",
-                    GoogleDriveFile(
-                        id="1abc123def456",
-                        name="Test Document",
-                        mimeType="application/vnd.google-apps.document",
-                        url="https://docs.google.com/document/d/1abc123def456/edit",
-                        iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
-                        isFolder=False,
-                        _credentials_id=None,
-                    ),
-                ),
+                ("document", _TEST_DOCUMENT_OUTPUT),
             ],
             test_mock={
                 "_set_public_access": lambda *args, **kwargs: {
@@ -1862,10 +1652,6 @@ class GoogleDocsSetPublicAccessBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.document:
-            yield "error", "No document selected"
-            return
-
         validation_error = _validate_document_file(input_data.document)
         if validation_error:
             yield "error", validation_error
@@ -1951,28 +1737,13 @@ class GoogleDocsAppendMarkdownBlock(Block):
             output_schema=GoogleDocsAppendMarkdownBlock.Output,
             disabled=GOOGLE_DOCS_DISABLED,
             test_input={
-                "document": {
-                    "id": "1abc123def456",
-                    "name": "Test Document",
-                    "mimeType": "application/vnd.google-apps.document",
-                },
+                "document": _TEST_DOCUMENT,
                 "markdown": "# Hello World\n\nThis is **bold** and *italic* text.\n\n- Item 1\n- Item 2",
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("result", {"success": True, "requests_count": 5}),
-                (
-                    "document",
-                    GoogleDriveFile(
-                        id="1abc123def456",
-                        name="Test Document",
-                        mimeType="application/vnd.google-apps.document",
-                        url="https://docs.google.com/document/d/1abc123def456/edit",
-                        iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
-                        isFolder=False,
-                        _credentials_id=None,
-                    ),
-                ),
+                ("document", _TEST_DOCUMENT_OUTPUT),
             ],
             test_mock={
                 "_append_markdown": lambda *args, **kwargs: {
@@ -1986,10 +1757,6 @@ class GoogleDocsAppendMarkdownBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.document:
-            yield "error", "No document selected"
-            return
-
         validation_error = _validate_document_file(input_data.document)
         if validation_error:
             yield "error", validation_error
@@ -2074,28 +1841,13 @@ class GoogleDocsReplaceAllWithMarkdownBlock(Block):
             output_schema=GoogleDocsReplaceAllWithMarkdownBlock.Output,
             disabled=GOOGLE_DOCS_DISABLED,
             test_input={
-                "document": {
-                    "id": "1abc123def456",
-                    "name": "Test Document",
-                    "mimeType": "application/vnd.google-apps.document",
-                },
+                "document": _TEST_DOCUMENT,
                 "markdown": "# New Document\n\nThis replaces everything.",
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("result", {"success": True, "requests_count": 3}),
-                (
-                    "document",
-                    GoogleDriveFile(
-                        id="1abc123def456",
-                        name="Test Document",
-                        mimeType="application/vnd.google-apps.document",
-                        url="https://docs.google.com/document/d/1abc123def456/edit",
-                        iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
-                        isFolder=False,
-                        _credentials_id=None,
-                    ),
-                ),
+                ("document", _TEST_DOCUMENT_OUTPUT),
             ],
             test_mock={
                 "_replace_all_with_markdown": lambda *args, **kwargs: {
@@ -2109,10 +1861,6 @@ class GoogleDocsReplaceAllWithMarkdownBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.document:
-            yield "error", "No document selected"
-            return
-
         validation_error = _validate_document_file(input_data.document)
         if validation_error:
             yield "error", validation_error
@@ -2199,29 +1947,14 @@ class GoogleDocsInsertMarkdownAtBlock(Block):
             output_schema=GoogleDocsInsertMarkdownAtBlock.Output,
             disabled=GOOGLE_DOCS_DISABLED,
             test_input={
-                "document": {
-                    "id": "1abc123def456",
-                    "name": "Test Document",
-                    "mimeType": "application/vnd.google-apps.document",
-                },
+                "document": _TEST_DOCUMENT,
                 "markdown": "## Inserted Section\n\nThis was inserted.",
                 "index": 1,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("result", {"success": True, "requests_count": 3}),
-                (
-                    "document",
-                    GoogleDriveFile(
-                        id="1abc123def456",
-                        name="Test Document",
-                        mimeType="application/vnd.google-apps.document",
-                        url="https://docs.google.com/document/d/1abc123def456/edit",
-                        iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
-                        isFolder=False,
-                        _credentials_id=None,
-                    ),
-                ),
+                ("document", _TEST_DOCUMENT_OUTPUT),
             ],
             test_mock={
                 "_insert_markdown_at": lambda *args, **kwargs: {
@@ -2235,10 +1968,6 @@ class GoogleDocsInsertMarkdownAtBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.document:
-            yield "error", "No document selected"
-            return
-
         validation_error = _validate_document_file(input_data.document)
         if validation_error:
             yield "error", validation_error
@@ -2316,11 +2045,7 @@ class GoogleDocsReplaceRangeWithMarkdownBlock(Block):
             output_schema=GoogleDocsReplaceRangeWithMarkdownBlock.Output,
             disabled=GOOGLE_DOCS_DISABLED,
             test_input={
-                "document": {
-                    "id": "1abc123def456",
-                    "name": "Test Document",
-                    "mimeType": "application/vnd.google-apps.document",
-                },
+                "document": _TEST_DOCUMENT,
                 "markdown": "**Replaced content**",
                 "start_index": 10,
                 "end_index": 50,
@@ -2331,18 +2056,7 @@ class GoogleDocsReplaceRangeWithMarkdownBlock(Block):
                     "result",
                     {"success": True, "requests_count": 2, "characters_deleted": 40},
                 ),
-                (
-                    "document",
-                    GoogleDriveFile(
-                        id="1abc123def456",
-                        name="Test Document",
-                        mimeType="application/vnd.google-apps.document",
-                        url="https://docs.google.com/document/d/1abc123def456/edit",
-                        iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
-                        isFolder=False,
-                        _credentials_id=None,
-                    ),
-                ),
+                ("document", _TEST_DOCUMENT_OUTPUT),
             ],
             test_mock={
                 "_replace_range_with_markdown": lambda *args, **kwargs: {
@@ -2357,10 +2071,6 @@ class GoogleDocsReplaceRangeWithMarkdownBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.document:
-            yield "error", "No document selected"
-            return
-
         validation_error = _validate_document_file(input_data.document)
         if validation_error:
             yield "error", validation_error
@@ -2462,11 +2172,7 @@ class GoogleDocsReplaceContentWithMarkdownBlock(Block):
             output_schema=GoogleDocsReplaceContentWithMarkdownBlock.Output,
             disabled=GOOGLE_DOCS_DISABLED,
             test_input={
-                "document": {
-                    "id": "1abc123def456",
-                    "name": "Test Document",
-                    "mimeType": "application/vnd.google-apps.document",
-                },
+                "document": _TEST_DOCUMENT,
                 "find_text": "{{PLACEHOLDER}}",
                 "markdown": "# Replaced Header\n\nThis is the **replacement** content.",
             },
@@ -2476,18 +2182,7 @@ class GoogleDocsReplaceContentWithMarkdownBlock(Block):
                     "result",
                     {"success": True, "replacements_made": 1, "requests_count": 4},
                 ),
-                (
-                    "document",
-                    GoogleDriveFile(
-                        id="1abc123def456",
-                        name="Test Document",
-                        mimeType="application/vnd.google-apps.document",
-                        url="https://docs.google.com/document/d/1abc123def456/edit",
-                        iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
-                        isFolder=False,
-                        _credentials_id=None,
-                    ),
-                ),
+                ("document", _TEST_DOCUMENT_OUTPUT),
             ],
             test_mock={
                 "_replace_content_with_markdown": lambda *args, **kwargs: {
@@ -2502,10 +2197,6 @@ class GoogleDocsReplaceContentWithMarkdownBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.document:
-            yield "error", "No document selected"
-            return
-
         validation_error = _validate_document_file(input_data.document)
         if validation_error:
             yield "error", validation_error
@@ -2671,11 +2362,7 @@ class GoogleDocsGetStructureBlock(Block):
             output_schema=GoogleDocsGetStructureBlock.Output,
             disabled=GOOGLE_DOCS_DISABLED,
             test_input={
-                "document": {
-                    "id": "1abc123def456",
-                    "name": "Test Document",
-                    "mimeType": "application/vnd.google-apps.document",
-                },
+                "document": _TEST_DOCUMENT,
                 "detailed": False,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -2698,18 +2385,7 @@ class GoogleDocsGetStructureBlock(Block):
                     ],
                 ),
                 ("structure", {}),
-                (
-                    "document",
-                    GoogleDriveFile(
-                        id="1abc123def456",
-                        name="Test Document",
-                        mimeType="application/vnd.google-apps.document",
-                        url="https://docs.google.com/document/d/1abc123def456/edit",
-                        iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
-                        isFolder=False,
-                        _credentials_id=None,
-                    ),
-                ),
+                ("document", _TEST_DOCUMENT_OUTPUT),
             ],
             test_mock={
                 "_get_structure": lambda *args, **kwargs: {
@@ -2736,10 +2412,6 @@ class GoogleDocsGetStructureBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.document:
-            yield "error", "No document selected"
-            return
-
         validation_error = _validate_document_file(input_data.document)
         if validation_error:
             yield "error", validation_error
