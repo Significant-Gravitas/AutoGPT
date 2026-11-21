@@ -801,7 +801,7 @@ class SendDiscordFileBlock(Block):
                 # Create Discord file object
                 discord_file = discord.File(
                     io.BytesIO(file_bytes),
-                    # discord.File's work on the name grows with its length.
+                    # Discord file names are kept short.
                     filename=sanitize_filename(detected_filename or "file"),
                 )
 

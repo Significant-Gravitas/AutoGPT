@@ -709,7 +709,7 @@ async def test_stopping_the_run_ends_the_conversation():
 
 @pytest.mark.parametrize("field", ["to_email", "subject"])
 def test_a_header_input_over_its_limit_is_refused_before_the_run(field: str):
-    # The mail library's work on a header grows faster than its length.
+    # A header line is at most 998 characters (RFC 5322).
     block = SendEmailBlock()
     data = {**block.test_input, field: "a\n" * (MAX_EMAIL_HEADER_LENGTH // 2)}
     assert block.input_schema.validate_data(data) is None

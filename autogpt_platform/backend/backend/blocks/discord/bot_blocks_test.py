@@ -312,7 +312,7 @@ async def _send_file(mocker, filename: str) -> tuple[dict, str, discord.File]:
 
 @pytest.mark.asyncio
 async def test_send_file_bounds_the_name_it_gives_discord(mocker):
-    # discord.File's work on the name grows with its length.
+    # Discord file names are kept short.
     result, given, sent = await _send_file(mocker, "SPOILER_" * 10_000 + "report.pdf")
 
     assert result["status"] == "File sent successfully"
