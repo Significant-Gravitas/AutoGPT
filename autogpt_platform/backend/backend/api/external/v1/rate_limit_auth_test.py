@@ -168,7 +168,14 @@ async def test_a_request_verifies_its_credential_once(
 @pytest.mark.parametrize("path", ["/me", "/blocks"])
 @pytest.mark.parametrize("bearer", [False, True], ids=["api-key", "bearer-key"])
 async def test_a_request_reserves_once_and_a_throttled_key_is_never_verified(
-    mocker, v1_client, v1_auth_storage, v1_generated_keys, path, bearer, throttled
+    mocker,
+    v1_client,
+    v1_counter,
+    v1_auth_storage,
+    v1_generated_keys,
+    path,
+    bearer,
+    throttled,
 ):
     mocker.patch("backend.blocks.get_blocks", return_value={})
     reserve = mocker.patch.object(
