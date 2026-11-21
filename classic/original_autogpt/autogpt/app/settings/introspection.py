@@ -273,6 +273,13 @@ ADDITIONAL_ENV_VARS: dict[str, SettingInfo] = {
         description="S3 endpoint URL (for non-AWS S3)",
         field_type="str",
     ),
+    "AP_SERVER_HOST": SettingInfo(
+        name="ap_server_host",
+        env_var="AP_SERVER_HOST",
+        description="Agent Protocol server host to listen on",
+        field_type="str",
+        default="localhost",
+    ),
     "AP_SERVER_PORT": SettingInfo(
         name="ap_server_port",
         env_var="AP_SERVER_PORT",
