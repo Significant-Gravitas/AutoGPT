@@ -40,10 +40,8 @@ async def _accepts(host: str, port: int) -> bool:
 
 
 @contextlib.asynccontextmanager
-async def _running(
-    server: AgentProtocolServer, port: int, probe: str = "127.0.0.1", **start_kwargs
-):
-    task = asyncio.create_task(server.start(port=port, **start_kwargs))
+async def _running(server: AgentProtocolServer, port: int, probe: str = "127.0.0.1"):
+    task = asyncio.create_task(server.start(port=port))
     try:
         for _ in range(100):
             if await _accepts(probe, port):
@@ -84,28 +82,37 @@ def lan_ip() -> str:
     return ip
 
 
-@pytest.mark.parametrize("start_kwargs", [{}, {"host": ""}], ids=["unset", "empty"])
+@pytest.mark.parametrize("host", [None, ""], ids=["unset", "empty"])
 async def test_server_listens_on_localhost_only_by_default(
-    server: AgentProtocolServer, lan_ip: str, start_kwargs: dict
+    server: AgentProtocolServer,
+    lan_ip: str,
+    host: str | None,
+    monkeypatch: pytest.MonkeyPatch,
 ):
+    if host is None:
+        monkeypatch.delenv("AP_SERVER_HOST", raising=False)
+    else:
+        monkeypatch.setenv("AP_SERVER_HOST", host)
     port = _free_port()
-    async with _running(server, port, **start_kwargs):
+    async with _running(server, port):
         assert not await _accepts(lan_ip, port)
 
 
 async def test_server_listens_on_all_interfaces_when_host_is_0_0_0_0(
-    server: AgentProtocolServer, lan_ip: str
+    server: AgentProtocolServer, lan_ip: str, monkeypatch: pytest.MonkeyPatch
 ):
+    monkeypatch.setenv("AP_SERVER_HOST", "0.0.0.0")
     port = _free_port()
-    async with _running(server, port, host="0.0.0.0"):
+    async with _running(server, port):
         assert await _accepts(lan_ip, port)
 
 
 async def test_server_starts_on_configured_host_when_loopback_port_is_taken(
-    server: AgentProtocolServer, lan_ip: str
+    server: AgentProtocolServer, lan_ip: str, monkeypatch: pytest.MonkeyPatch
 ):
+    monkeypatch.setenv("AP_SERVER_HOST", lan_ip)
     port = _free_port()
     with socket.socket() as loopback:
         loopback.bind(("127.0.0.1", port))
-        async with _running(server, port, probe=lan_ip, host=lan_ip):
+        async with _running(server, port, probe=lan_ip):
             assert await _accepts(lan_ip, port)

@@ -57,15 +57,11 @@ class AgentProtocolServer:
         self.agent_manager = AgentManager(file_storage)
         self._task_budgets = defaultdict(ModelProviderBudget)
 
-    async def start(
-        self,
-        port: int = 8000,
-        router: APIRouter = base_router,
-        host: str = "localhost",
-    ):
+    async def start(self, port: int = 8000, router: APIRouter = base_router):
         """Start the agent server."""
         logger.debug("Starting the agent server...")
-        host = host or "localhost"  # an empty bind host means all interfaces
+        # `or`, not a getenv default: an empty bind host means all interfaces
+        host = os.getenv("AP_SERVER_HOST") or "localhost"
         if not is_port_free(port, host):
             logger.error(f"Port {port} is already in use.")
             logger.info(
