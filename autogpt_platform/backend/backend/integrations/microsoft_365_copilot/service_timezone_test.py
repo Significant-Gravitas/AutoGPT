@@ -20,8 +20,9 @@ async def test_timezone_uses_rpc_when_prisma_is_disconnected(mocker) -> None:
         "backend.util.clients.get_database_manager_async_client", return_value=client
     )
     redis = MagicMock()
-    redis.get.return_value = None
-    mocker.patch("backend.util.cache._get_redis", return_value=redis)
+    redis.get = AsyncMock(return_value=None)
+    redis.set = AsyncMock()
+    mocker.patch("backend.util.cache._get_async_redis", AsyncMock(return_value=redis))
     local_query = mocker.patch.object(
         type(user_module.prisma.user),
         "find_unique",

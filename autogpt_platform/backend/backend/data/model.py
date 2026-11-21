@@ -376,6 +376,33 @@ def sdk_default_refused_message(cred_id: str) -> str:
     )
 
 
+# A managed credential the platform pays for, such as AgentMail's per-user pod
+# key, has an ID like "{provider}-managed-{uuid}". Billing reads the ID alone,
+# without loading the credential or trusting its provider string (legacy rows
+# can carry "ProviderName.AGENT_MAIL"), so these runs are priced like the
+# platform's own keys while a key the user connected stays free. Ayrshare's managed key is
+# not listed: its blocks charge per post whichever key they run on.
+PLATFORM_FUNDED_MANAGED_PROVIDERS: frozenset[str] = frozenset({"agent_mail"})
+_MANAGED_ID_INFIX = "-managed-"
+
+# Set on each credentials input before cost filters are matched (see
+# `backend.executor.utils`), from the credential ID, never from the input.
+PLATFORM_FUNDED_COST_KEY = "platform_funded"
+
+
+def platform_funded_managed_id(provider: str) -> str:
+    if provider not in PLATFORM_FUNDED_MANAGED_PROVIDERS:
+        raise ValueError(f"{provider} has no platform-funded managed credential")
+    return f"{provider}{_MANAGED_ID_INFIX}{uuid4()}"
+
+
+def is_platform_funded_managed(cred_id: str) -> bool:
+    return any(
+        cred_id.startswith(f"{provider}{_MANAGED_ID_INFIX}")
+        for provider in PLATFORM_FUNDED_MANAGED_PROVIDERS
+    )
+
+
 def provider_label(provider: str) -> str:
     """The name people know a provider by, for messages about its shared key."""
     return _PROVIDER_LABELS.get(provider, provider)
@@ -1084,6 +1111,11 @@ class NodeExecutionStats(BaseModel):
     billing_mode: Optional[str] = None
     auth_provider: Optional[str] = None
     execution_path: Optional[str] = None
+    # The model the run ran. An LLM block records the model it resolved when
+    # the run started (Block._execute: a switched-off model's fallback from
+    # its shutdown date), and billing and the cost log price and name that
+    # model, whatever the date when they read it. Codex records the model its
+    # provider reports. A merge keeps the first one (__iadd__).
     resolved_model: Optional[str] = None
     # Moderation fields
     cleared_inputs: Optional[dict[str, list[str]]] = None
@@ -1107,6 +1139,10 @@ class NodeExecutionStats(BaseModel):
             if current is None:
                 # Field doesn't exist yet or is None, just set it
                 setattr(self, key, value)
+            elif key == "resolved_model":
+                # The run is billed for the model it started on: merging in
+                # stats that name another model can't change it.
+                continue
             elif isinstance(value, dict) and isinstance(current, dict):
                 current.update(value)
             elif isinstance(value, (int, float)) and isinstance(current, (int, float)):

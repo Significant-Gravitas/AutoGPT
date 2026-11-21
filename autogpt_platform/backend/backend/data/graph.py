@@ -31,6 +31,7 @@ from prisma.models import (
 )
 from prisma.types import (
     AgentGraphCreateInput,
+    AgentGraphOrderByInput,
     AgentGraphWhereInput,
     AgentNodeCreateInput,
     AgentNodeLinkCreateInput,
@@ -44,6 +45,7 @@ from backend.blocks._base import Block, BlockType, EmptySchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
+from backend.data.llm_registry.llm_models import is_llm_model_field
 from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
@@ -55,7 +57,7 @@ from backend.util.exceptions import (
     NotAuthorizedError,
     NotFoundError,
 )
-from backend.util.json import SafeJson
+from backend.util.json import SafeJson, dumps
 from backend.util.models import Pagination
 from backend.util.request import parse_url
 from backend.util.text import split_camelcase
@@ -1673,7 +1675,7 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
 
     graph = await AgentGraph.prisma().find_first(
         where=where_clause,
-        order={"version": "desc"},
+        order=_active_else_newest_order(version),
     )
 
     if not graph:
@@ -1712,7 +1714,9 @@ async def get_graph(
 ) -> GraphModel | None:
     """
     Retrieves a graph from the DB.
-    Defaults to the version with `is_active` if `version` is not passed.
+    Defaults to the version with `is_active` if `version` is not passed, or
+    the newest version if none is active. A non-owner reading through their
+    library gets the newest submitted version in their library instead.
 
     Access: the caller owns it, or has that exact version in their library
     AND that version was submitted to the marketplace. Neither half of the
@@ -1759,7 +1763,7 @@ async def get_graph(
         graph = await AgentGraph.prisma().find_first(
             where=graph_where_clause,
             include=AGENT_GRAPH_INCLUDE,
-            order={"version": "desc"},
+            order=_active_else_newest_order(version),
         )
 
     # The only non-owner path. A store listing on its own must not grant
@@ -1906,7 +1910,8 @@ async def get_graph_as_admin(
     """
     Intentionally parallels the get_graph but should only be used for admin tasks, because can return any graph that's been submitted
     Retrieves a graph from the DB.
-    Defaults to the version with `is_active` if `version` is not passed.
+    Defaults to the version with `is_active` if `version` is not passed, or
+    the newest version if none is active.
 
     Returns `None` if the record is not found.
     """
@@ -1921,7 +1926,7 @@ async def get_graph_as_admin(
     graph = await AgentGraph.prisma(client).find_first(
         where=where_clause,
         include=AGENT_GRAPH_INCLUDE,
-        order={"version": "desc"},
+        order=_active_else_newest_order(version),
     )
 
     # Admin access bypasses ownership and marketplace checks — route-level
@@ -1938,6 +1943,21 @@ async def get_graph_as_admin(
         )
 
     return GraphModel.from_db(graph, for_export)
+
+
+def _active_else_newest_order(
+    version: int | None,
+) -> AgentGraphOrderByInput | list[AgentGraphOrderByInput]:
+    """`order` for an owner/admin `AgentGraph` lookup by id.
+
+    With no version pinned this resolves to the active version, else the
+    newest one, so a graph with no active version still resolves rather
+    than 404ing. The non-owner library path deliberately picks the newest
+    submitted version instead (see `get_graph()`).
+    """
+    if version is None:
+        return [{"isActive": "desc"}, {"version": "desc"}]
+    return {"version": "desc"}
 
 
 async def get_sub_graphs(
@@ -2248,7 +2268,8 @@ async def get_graph_all_versions(
 async def get_active_graph_version(
     graph_id: str, user_id: str, organization_id: str | None = None
 ) -> int | None:
-    """The version marked active. `get_graph(version=None)` returns the newest."""
+    """The version marked active, or None. `get_graph(version=None)` falls back
+    to the newest version when none is active."""
     graph = await AgentGraph.prisma().find_first(
         where={
             **await _graph_versions_where(graph_id, user_id, None, organization_id),
@@ -2921,6 +2942,13 @@ def make_graph_model(creatable_graph: Graph, user_id: str) -> GraphModel:
     )
 
 
+# A preset stores its input overrides for one node under this prefix plus the
+# first segment of the node's id. ``node_input_mask_key`` in
+# backend/api/features/library/model.py builds the key; that module imports
+# this one, so the prefix lives here.
+NODE_INPUT_MASK_PREFIX = "_node_input_mask_"
+
+
 def _legacy_value_aliases(legacy_value: str, replacement: LLMModel) -> set[str]:
     """Stored-value forms that should map to ``replacement`` for one legacy slug.
 
@@ -2934,111 +2962,168 @@ def _legacy_value_aliases(legacy_value: str, replacement: LLMModel) -> set[str]:
     return {legacy_value, f"{replacement.metadata.provider}/{legacy_value}"}
 
 
+# What ``migrate_llm_models`` logs as the source of a catch-all move.
+_OUTSIDE_LLM_MODEL = "a value outside LLMModel"
+# Where a table's rows go in the boot log's [nodes, preset overrides] counts.
+_NODES, _PRESETS = 0, 1
+
+# The boot pass's statements. $1 is the field as a JSON path; $2 is the
+# ``{stored value: replacement}`` object of ``_legacy_rewrites`` (targeted
+# statements) or the fallback model (catch-alls); the next ones scope a
+# statement to the blocks with that field, and a catch-all's last one holds
+# every LLMModel value, the values it leaves alone. A targeted statement moves
+# every legacy spelling at once and returns the rows it moved per (stored
+# value, replacement), which the boot log reports.
+_NODE_MOVES = """
+    WITH moved AS (
+        UPDATE {schema_prefix}"AgentNode" AS n
+        SET "constantInput" = jsonb_set(
+            n."constantInput", $1, to_jsonb(m."replacement"), true
+        )
+        FROM jsonb_each_text(($2)::jsonb) AS m("stored", "replacement")
+        WHERE n."agentBlockId" = ANY(($3)::text[])
+        AND n."constantInput" ? ($4)::text
+        AND n."constantInput"->>($4)::text = m."stored"
+        RETURNING m."stored", m."replacement"
+    )
+    SELECT "stored", "replacement", COUNT(*)::int AS "rows"
+    FROM moved
+    GROUP BY "stored", "replacement"
+    """
+_NODE_CATCH_ALL = """
+    UPDATE {schema_prefix}"AgentNode"
+    SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
+    WHERE "agentBlockId" = ANY(($3)::text[])
+    AND "constantInput" ? ($4)::text
+    AND "constantInput"->>($4)::text <> ALL(($5)::text[])
+    """
+# ``io."agentPresetId" IS NOT NULL`` bounds both preset statements to preset
+# rows. Without it the planner walks the whole execution-I/O table, every row
+# run outputs included, at every boot. Unlike the node statements, the preset
+# statements take the block ids as a JSON array: with ``= ANY($4::text[])``
+# the planner can compare every matching preset row with every LLM node,
+# where this form keeps the lookup through the preset's graph.
+_PRESET_MOVES = """
+    WITH moved AS (
+        UPDATE {schema_prefix}"AgentNodeExecutionInputOutput" AS io
+        SET "data" = jsonb_set(io."data"::jsonb, $1, to_jsonb(m."replacement"), true)
+        FROM {schema_prefix}"AgentPreset" AS p, {schema_prefix}"AgentNode" AS n,
+            jsonb_each_text(($2)::jsonb) AS m("stored", "replacement")
+        WHERE io."agentPresetId" IS NOT NULL
+        AND io."agentPresetId" = p."id"
+        AND n."agentGraphId" = p."agentGraphId"
+        AND n."agentGraphVersion" = p."agentGraphVersion"
+        AND io."name" = ($3)::text || split_part(n."id", '-', 1)
+        AND n."agentBlockId" IN (SELECT jsonb_array_elements_text(($4)::jsonb))
+        AND io."data"::jsonb ? ($5)::text
+        AND io."data"::jsonb->>($5)::text = m."stored"
+        RETURNING m."stored", m."replacement"
+    )
+    SELECT "stored", "replacement", COUNT(*)::int AS "rows"
+    FROM moved
+    GROUP BY "stored", "replacement"
+    """
+_PRESET_CATCH_ALL = """
+    UPDATE {schema_prefix}"AgentNodeExecutionInputOutput" AS io
+    SET "data" = jsonb_set(io."data"::jsonb, $1, to_jsonb($2), true)
+    FROM {schema_prefix}"AgentPreset" AS p, {schema_prefix}"AgentNode" AS n
+    WHERE io."agentPresetId" IS NOT NULL
+    AND io."agentPresetId" = p."id"
+    AND n."agentGraphId" = p."agentGraphId"
+    AND n."agentGraphVersion" = p."agentGraphVersion"
+    AND io."name" = ($3)::text || split_part(n."id", '-', 1)
+    AND n."agentBlockId" IN (SELECT jsonb_array_elements_text(($4)::jsonb))
+    AND io."data"::jsonb ? ($5)::text
+    AND io."data"::jsonb->>($5)::text <> ALL(($6)::text[])
+    """
+
+
 async def migrate_llm_models(fallback: LLMModel):
     """
     Rewrite legacy LLM model values to in-enum equivalents.
 
-    Runs in two passes per LLMModel field:
-      1. Family-aware: for each (legacy_value, replacement) in
-         LEGACY_MODEL_MAPPINGS, rewrite that exact legacy value to its mapped
-         replacement so e.g. Claude Opus lands on a newer Opus, not the global
-         GPT default.
+    Runs two statements per table and LLMModel field name, each over every
+    block with that field:
+      1. Family-aware: rewrite every stored spelling of a
+         LEGACY_MODEL_MAPPINGS key to its mapped replacement, all of them in
+         one statement, so e.g. Claude Opus lands on a newer Opus, not the
+         global GPT default.
       2. Catch-all: any value still out-of-enum gets ``fallback``.
 
-    Both passes run against two tables:
+    Both run against two tables:
       * ``AgentNode.constantInput`` — saved graph definitions (scoped by
         ``agentBlockId`` because we know the LLMModel field name per block).
       * ``AgentNodeExecutionInputOutput.data`` where ``agentPresetId`` is set —
-        preset input overrides; scoped only by the field-value match since
-        preset rows don't carry the block id.
+        a preset's input overrides for one node, the row named with that
+        node's ``NODE_INPUT_MASK_PREFIX`` key. A row is rewritten only when its
+        node is a block with that LLMModel field: other blocks' own ``model``
+        lists (Codex, Stagehand) share values with ``LLMModel``.
+
+    Every API pod awaits this before it serves, so the number of statements
+    depends only on the number of LLMModel field names, not on the map or the
+    blocks.
+
+    Logs, at INFO, how many nodes and preset overrides moved from each stored
+    value to its replacement, so an install's log shows what changed.
 
     Note: Only updates top level LLMModel SchemaFields of blocks (won't update nested fields).
     """
     logger.info("Migrating LLM models")
-    llm_model_fields = _find_llm_model_fields()
+    llm_model_fields = find_llm_model_fields()
     if not llm_model_fields:
         return
 
-    enum_values = [v.value for v in LLMModel]
-    escaped_enum_values = repr(tuple(enum_values))  # hack but works
-
-    node_targeted_query = """
-        UPDATE {schema_prefix}"AgentNode"
-        SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
-        WHERE "agentBlockId" = $3
-        AND "constantInput" ? ($4)::text
-        AND "constantInput"->>($4)::text = $5
-        """
-    node_fallback_query = f"""
-        UPDATE {{schema_prefix}}"AgentNode"
-        SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
-        WHERE "agentBlockId" = $3
-        AND "constantInput" ? ($4)::text
-        AND "constantInput"->>($4)::text NOT IN {escaped_enum_values}
-        """
-    preset_targeted_query = """
-        UPDATE {schema_prefix}"AgentNodeExecutionInputOutput"
-        SET "data" = jsonb_set("data"::jsonb, $1, to_jsonb($2), true)
-        WHERE "agentPresetId" IS NOT NULL
-        AND "data"::jsonb ? ($3)::text
-        AND "data"::jsonb->>($3)::text = $4
-        """
-    preset_fallback_query = f"""
-        UPDATE {{schema_prefix}}"AgentNodeExecutionInputOutput"
-        SET "data" = jsonb_set("data"::jsonb, $1, to_jsonb($2), true)
-        WHERE "agentPresetId" IS NOT NULL
-        AND "data"::jsonb ? ($3)::text
-        AND "data"::jsonb->>($3)::text NOT IN {escaped_enum_values}
-        """
-
-    # AgentNode pass — per (block_id, field_name).
-    for block_id, path in llm_model_fields.items():
-        for legacy_value, replacement in LEGACY_MODEL_MAPPINGS.items():
-            for stored_value in _legacy_value_aliases(legacy_value, replacement):
-                await execute_raw_with_schema(
-                    node_targeted_query,
-                    [path],
-                    replacement.value,
-                    block_id,
-                    path,
-                    stored_value,
-                )
-        await execute_raw_with_schema(
-            node_fallback_query,
-            [path],
-            fallback.value,
-            block_id,
-            path,
+    rewrites = dumps(_legacy_rewrites())
+    llm_model_values = [model.value for model in LLMModel]
+    # (stored value, replacement) -> rows moved, indexed by _NODES and _PRESETS
+    moved: defaultdict[tuple[str, str], list[int]] = defaultdict(lambda: [0, 0])
+    for path in sorted(set(llm_model_fields.values())):
+        block_ids = sorted(b for b, field in llm_model_fields.items() if field == path)
+        tables = (
+            (_NODES, _NODE_MOVES, _NODE_CATCH_ALL, (block_ids, path)),
+            (
+                _PRESETS,
+                _PRESET_MOVES,
+                _PRESET_CATCH_ALL,
+                (NODE_INPUT_MASK_PREFIX, dumps(block_ids), path),
+            ),
         )
+        for kind, moves, catch_all, scope in tables:
+            for row in await query_raw_with_schema(moves, [path], rewrites, *scope):
+                moved[repr(row["stored"]), row["replacement"]][kind] += row["rows"]
+            caught = await execute_raw_with_schema(
+                catch_all, [path], fallback.value, *scope, llm_model_values
+            )
+            moved[_OUTSIDE_LLM_MODEL, fallback.value][kind] += caught
 
-    # AgentPreset pass — per unique field name. Preset rows don't carry
-    # ``agentBlockId``, but the field-value match is tight enough on its own
-    # because no non-LLM block stores one of our retired slugs.
-    for path in set(llm_model_fields.values()):
-        for legacy_value, replacement in LEGACY_MODEL_MAPPINGS.items():
-            for stored_value in _legacy_value_aliases(legacy_value, replacement):
-                await execute_raw_with_schema(
-                    preset_targeted_query,
-                    [path],
-                    replacement.value,
-                    path,
-                    stored_value,
-                )
-        await execute_raw_with_schema(
-            preset_fallback_query,
-            [path],
-            fallback.value,
-            path,
-        )
+    for (source, target), (nodes, presets) in sorted(moved.items()):
+        if nodes or presets:
+            logger.info(
+                f"LLM model migration moved {nodes} node(s) and {presets} "
+                f"preset override(s) from {source} to '{target}'"
+            )
 
 
-def _find_llm_model_fields() -> dict[str, str]:
+def _legacy_rewrites() -> dict[str, str]:
+    """``{stored value: replacement}`` for every stored spelling of a
+    LEGACY_MODEL_MAPPINGS key. A spelling two keys share keeps the first key's
+    replacement. No replacement may itself be a stored spelling: a statement
+    matches each row's value as it was before the statement, so a chain would
+    move a row only one step per boot."""
+    rewrites: dict[str, str] = {}
+    for legacy_value, replacement in LEGACY_MODEL_MAPPINGS.items():
+        for stored_value in _legacy_value_aliases(legacy_value, replacement):
+            rewrites.setdefault(stored_value, replacement.value)
+    return rewrites
+
+
+def find_llm_model_fields() -> dict[str, str]:
     """Return ``{block_id: field_name}`` for every top-level LLMModel field."""
     llm_model_fields: dict[str, str] = {}
     for block_type in get_blocks().values():
         block = block_type()
         for field_name, field in block.input_schema.model_fields.items():
-            if field.annotation == LLMModel:
+            if is_llm_model_field(field):
                 llm_model_fields[block.id] = field_name
     return llm_model_fields
 

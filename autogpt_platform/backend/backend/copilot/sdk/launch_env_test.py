@@ -5,7 +5,9 @@ The parent is seeded with the kinds of secret a backend holds, all fake; each
 launch's environment is read off the real SDK transport as it spawns the CLI.
 """
 
+import asyncio
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -25,6 +27,7 @@ from backend.copilot.executor import cli_warmup
 from backend.data.model import APIKeyCredentials
 
 from . import cli_version, subscription
+from .anthropic_key_relay import AnthropicKeyRelay
 from .env import build_sdk_env
 from .launch_env import SDK_MANAGED_NAMES, inherited, launch_options
 
@@ -176,20 +179,59 @@ async def test_a_variable_the_backend_gains_later_is_blanked_too(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "provider, credential_name",
-    [("anthropic", "ANTHROPIC_API_KEY"), ("open_router", "ANTHROPIC_AUTH_TOKEN")],
+    "provider, credential_names",
+    [
+        ("anthropic", {"ANTHROPIC_API_KEY"}),
+        ("open_router", {"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"}),
+    ],
 )
-async def test_an_orchestrator_launch_keeps_only_the_users_key_and_the_runtime(
-    provider: str, credential_name: str, parent: None, monkeypatch: pytest.MonkeyPatch
+async def test_an_orchestrator_launch_keeps_only_the_runtime_and_not_the_users_key(
+    provider: str,
+    credential_names: set[str],
+    parent: None,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     """Read off the options the block starts its CLI with, so a launch that
-    skips the allowlist fails here."""
+    skips the allowlist fails here. The user's key is the relay's, and the
+    CLI gets the relay's loopback address and token."""
+    relays = _record_relays(monkeypatch)
     options = await _orchestrator_launch(provider)
 
     spawned = await _spawned_env(monkeypatch, options)
 
     _assert_keeps_only(spawned, options.env, _ROUTE_KEY)
-    assert spawned[credential_name] == _ROUTE_KEY
+    assert not any(_ROUTE_KEY in value for value in spawned.values())
+    [(_, relayed_key)] = relays
+    assert relayed_key == _ROUTE_KEY
+    assert re.fullmatch(r"http://127\.0\.0\.1:\d+", spawned["ANTHROPIC_BASE_URL"])
+    [token] = {spawned[name] for name in credential_names}
+    assert token
+    if "ANTHROPIC_AUTH_TOKEN" not in credential_names:
+        assert not spawned.get("ANTHROPIC_AUTH_TOKEN")
+    assert "127.0.0.1" in spawned["NO_PROXY"].split(",")
+
+
+@pytest.mark.asyncio
+async def test_an_orchestrator_launch_relays_an_anthropic_key_to_anthropic(
+    parent: None, monkeypatch: pytest.MonkeyPatch
+):
+    relays = _record_relays(monkeypatch)
+
+    await _orchestrator_launch("anthropic")
+
+    assert relays == [("https://api.anthropic.com", _ROUTE_KEY)]
+
+
+@pytest.mark.asyncio
+async def test_an_orchestrator_step_closes_its_relay(
+    parent: None, monkeypatch: pytest.MonkeyPatch
+):
+    """A step leaves no listener holding the user's key behind it."""
+    options = await _orchestrator_launch("anthropic")
+
+    port = int(options.env["ANTHROPIC_BASE_URL"].rsplit(":", 1)[1])
+    with pytest.raises(OSError):
+        await asyncio.open_connection("127.0.0.1", port)
 
 
 @pytest.mark.asyncio
@@ -203,12 +245,12 @@ async def test_an_orchestrator_launch_sends_the_users_key_where_anthropic_is_rea
         "https://svc:FAKE-gateway-password@anthropic-proxy.example:8443/v",
     )
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "FAKE-deployment-bearer")
+    relays = _record_relays(monkeypatch)
     options = await _orchestrator_launch("anthropic")
 
     spawned = await _spawned_env(monkeypatch, options)
 
-    assert spawned["ANTHROPIC_BASE_URL"] == "https://anthropic-proxy.example:8443/v"
-    assert spawned["ANTHROPIC_API_KEY"] == _ROUTE_KEY
+    assert relays == [("https://anthropic-proxy.example:8443/v", _ROUTE_KEY)]
     assert spawned["ANTHROPIC_AUTH_TOKEN"] == ""
     assert not any("FAKE-gateway-password" in value for value in spawned.values())
 
@@ -402,6 +444,20 @@ class _StartingClient:
 
     async def __aexit__(self, *_: object) -> None:
         return None
+
+
+def _record_relays(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
+    """Where each relay the orchestrator block starts sends a user's key, and
+    the key."""
+    relays: list[tuple[str, str]] = []
+
+    class _Relay(AnthropicKeyRelay):
+        def __init__(self, upstream_url: str, api_key: str, **kwargs: bool) -> None:
+            relays.append((upstream_url, api_key))
+            super().__init__(upstream_url, api_key, **kwargs)
+
+    monkeypatch.setattr("backend.blocks.orchestrator.AnthropicKeyRelay", _Relay)
+    return relays
 
 
 async def _orchestrator_launch(provider: str) -> ClaudeAgentOptions:
