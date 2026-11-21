@@ -807,7 +807,8 @@ SQL
 # The appliance's first promise: an agent a user builds in it runs. The
 # executor's start in the logs isn't enough. A run has to go from the API
 # through the queue and an executor to COMPLETED. Needs the session
-# assert_email_auth_flow leaves in AUTH_COOKIE_FILE.
+# assert_email_auth_flow leaves in AUTH_COOKIE_FILE. A run starts INCOMPLETE
+# before it's queued, so only the other end states stop the poll.
 assert_agent_runs() {
   local graph graph_id graph_version run_id status deadline
 
@@ -845,7 +846,7 @@ assert_agent_runs() {
         echo "an agent run completed"
         return 0
         ;;
-      FAILED | TERMINATED | INCOMPLETE | REVIEW)
+      FAILED | TERMINATED | REVIEW)
         echo "the agent run ended ${status}" >&2
         return 1
         ;;
