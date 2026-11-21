@@ -415,12 +415,21 @@ async def claim_interview(
     return None
 
 
+# Set-if-absent of the correction on a record that still exists, so a record
+# that expired meanwhile is not made again with no expiry. KEYS[1]: the
+# record.
+_CLAIM_CORRECTION_LUA = """
+if redis.call('EXISTS', KEYS[1]) == 0 then return 0 end
+return redis.call('HSETNX', KEYS[1], 'corrected', 'true')
+"""
+
+
 async def claim_correction(redis: AsyncRedisClient, call_id: str) -> bool:
     """Record on the call's record that its take was corrected, once:
     set-if-absent on the one record, so of two corrections one wins. True
-    for the claim that set it."""
+    for the claim that set it; a call with no record claims nothing."""
     return bool(
-        await cast(Any, redis.hsetnx(call_record_key(call_id), "corrected", "true"))
+        await cast(Any, redis.eval(_CLAIM_CORRECTION_LUA, 1, call_record_key(call_id)))
     )
 
 

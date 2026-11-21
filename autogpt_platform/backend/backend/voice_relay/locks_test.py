@@ -371,6 +371,26 @@ async def test_of_two_interview_claims_on_a_call_exactly_one_stands(redis):
     assert await locks.claim_interview(redis, "call-a", other) == standing[0]
 
 
+async def test_of_two_corrections_of_a_call_exactly_one_is_claimed(redis):
+    await locks.write_call_record(redis, "call-a", {"uid": USER})
+
+    claims = await asyncio.gather(
+        locks.claim_correction(redis, "call-a"),
+        locks.claim_correction(redis, "call-a"),
+    )
+
+    assert sorted(claims) == [False, True]
+    record = await locks.read_call(redis, "call-a")
+    assert record is not None and record.corrected
+
+
+async def test_a_call_with_no_record_takes_no_correction_claim(redis):
+    """A record that expired is not made again, with nothing to expire it."""
+    assert await locks.claim_correction(redis, "call-a") is False
+
+    assert await redis.exists(locks.call_record_key("call-a")) == 0
+
+
 async def test_a_call_with_no_record_takes_no_interview_claim(redis):
     assert (
         await locks.claim_interview(redis, "call-a", locks.INTERVIEW_SUPERSEDED) is None

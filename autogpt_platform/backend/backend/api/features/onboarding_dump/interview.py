@@ -52,6 +52,7 @@ import logging
 import re
 import time
 from collections.abc import Awaitable, Callable, Sequence
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from fastapi import BackgroundTasks, HTTPException
@@ -136,6 +137,7 @@ from backend.util.background import spawn_background_task
 from backend.util.exceptions import NotFoundError
 from backend.util.feature_flag import Flag, evaluate_feature_flag
 from backend.voice_relay import locks
+from backend.voice_relay.config import CALL_RECORD_TTL_S
 
 logger = logging.getLogger(__name__)
 
@@ -1625,7 +1627,10 @@ async def finalize_onboarding_interview(
     What an ending screen's button calls, with any corrections the person
     made on it, and what a route calls when the person ends the interview on
     screen. Corrections made once the interview's take was handed off
-    correct that take (:func:`correct_the_take`). Runs through :func:`close_onboarding_interview`, so it is
+    correct that take (:func:`correct_the_take`), once, and only while the
+    interview last changed within :data:`TYPED_CORRECTION_WINDOW`; later or
+    repeated corrections are answered with the take as it stands and spend
+    nothing. Runs through :func:`close_onboarding_interview`, so it is
     idempotent the same way: an interview already handed off is not handed
     off again, so a newer take the user made since is never replaced by it,
     and the response describes the take as it stands. Only the session's
@@ -1655,7 +1660,9 @@ async def finalize_onboarding_interview(
         or closure.hand_off.status == BrainDumpStatus.failed
     ):
         return closure.hand_off
-    session, _ = await _read_interview(user_id, session_id)
+    session, stored = await _read_interview(user_id, session_id)
+    if _past_its_correction(stored) or await _typed_corrected(session_id):
+        return closure.hand_off
     tasks = background_tasks if background_tasks is not None else BackgroundTasks()
     corrected = await correct_the_take(
         user_id,
@@ -1676,6 +1683,30 @@ async def finalize_onboarding_interview(
 # bring the take back.
 CORRECTED_KEY = "onboarding:interview:corrected:{session_id}"
 CORRECTED_TTL_S = 30 * 24 * 3600
+
+
+# How long after a typed interview last changed its take can still be
+# corrected: as long as a call's record is kept, which is what bounds a
+# call's correction.
+TYPED_CORRECTION_WINDOW = timedelta(seconds=CALL_RECORD_TTL_S)
+
+
+def _past_its_correction(stored: ChatSessionInfo) -> bool:
+    """Whether the typed interview *stored* last changed too long ago for
+    its take to be corrected: the plan and the profile built from it have
+    been the person's to change since."""
+    changed = stored.updated_at
+    if changed.tzinfo is None:
+        changed = changed.replace(tzinfo=UTC)
+    return datetime.now(UTC) - changed > TYPED_CORRECTION_WINDOW
+
+
+async def _typed_corrected(session_id: str) -> bool:
+    """Whether the typed interview *session_id* was corrected already: read
+    before a correction spends anything, and decided by
+    :func:`_mark_typed_corrected`."""
+    redis = await get_redis_async()
+    return bool(await redis.exists(CORRECTED_KEY.format(session_id=session_id)))
 
 
 async def _mark_typed_corrected(session_id: str) -> bool:

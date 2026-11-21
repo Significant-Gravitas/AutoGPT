@@ -34,11 +34,14 @@ from backend.api.features.onboarding_dump.service_test import (
     transcribe,
 )
 from backend.api.features.onboarding_dump.voice_handoff_test import (
+    EDITS,
+    SAID,
     USER,
     Interviews,
     Rig,
     _close_typed,
     _finish,
+    _handed_off_card_call,
     _type,
     interviews,
     redis,
@@ -765,6 +768,47 @@ async def test_a_start_over_after_a_corrected_interview_retires_its_take(
     await _close_typed(fresh)
     assert dumps.row.recordingId == f"interview-{fresh.session.session_id}"
     assert dumps.row.status == BrainDumpStatus.completed
+
+
+@pytest.mark.parametrize("mode", ["typed", "voice"])
+async def test_a_card_s_edits_for_a_call_started_over_from_change_nothing(
+    rig: Rig,
+    opening: dict[str, MagicMock],
+    allowance: AsyncMock,
+    voice_starts: None,
+    dumps: DumpStore,
+    jobs: dict[str, AsyncMock],
+    extraction: dict[str, AsyncMock],
+    personalization_admission: AsyncMock,
+    mocker: MockerFixture,
+    mode: str,
+):
+    """The card of the call started over from is still up somewhere: its
+    edits arrive once the call no longer holds the interview, and its take,
+    retired but still on the row, is neither corrected nor run again."""
+    first = await _handed_off_card_call(rig)
+    assert dumps.row is not None and dumps.row.status == BrainDumpStatus.completed
+    mocker.patch.object(voice, "enforce_voice_call_budget", AsyncMock())
+    if mode == "typed":
+        _next_typed_interview(mocker, opening, rig.interviews)
+        await interview.start_onboarding_interview(USER, start_over=first)
+    else:
+        await voice.start_voice_call(USER, start_over=first)
+    assert rig.interviews.taken is None
+    before = dumps.row.model_copy()
+    runs = jobs["greeting"].await_count
+    upserts = extraction["upsert_business_understanding"].await_count
+    admitted = personalization_admission.await_count
+
+    answered = await _finish(first, corrections=EDITS)
+
+    assert answered.status != BrainDumpStatus.failed
+    assert dumps.row == before
+    assert dumps.row.transcript == SAID[0]
+    assert jobs["greeting"].await_count == runs
+    assert extraction["upsert_business_understanding"].await_count == upserts
+    assert personalization_admission.await_count == admitted
+    assert not (await rig.read(first)).corrected
 
 
 async def test_a_start_over_retires_the_take_on_the_row_when_it_is_applied(

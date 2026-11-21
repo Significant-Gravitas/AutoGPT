@@ -1401,6 +1401,7 @@ async def test_a_take_is_corrected_once(
     dumps: DumpStore,
     ending: AsyncMock,
     jobs: dict[str, AsyncMock],
+    personalization_admission: AsyncMock,
     corrections_store,
 ):
     ending.return_value = InterviewEnding.PROFILE_CARD.value
@@ -1408,12 +1409,42 @@ async def test_a_take_is_corrected_once(
     await _finalize(stored.session.session_id, corrections=CORRECTION)
     assert dumps.row is not None
     corrected = dumps.row.transcript
+    admitted = personalization_admission.await_count
 
     again, _ = await _finalize(stored.session.session_id, corrections="Also: vans")
 
     assert again.status == BrainDumpStatus.completed
     assert dumps.row.transcript == corrected
     assert jobs["greeting"].await_count == 2
+    # The repeat is answered before it spends anything.
+    assert personalization_admission.await_count == admitted
+
+
+@pytest.mark.asyncio
+async def test_edits_long_after_the_interview_last_changed_change_nothing(
+    stored: StoredInterview,
+    dumps: DumpStore,
+    ending: AsyncMock,
+    jobs: dict[str, AsyncMock],
+    personalization_admission: AsyncMock,
+    corrections_store,
+):
+    ending.return_value = InterviewEnding.PROFILE_CARD.value
+    await _close(stored.session.session_id)
+    assert dumps.row is not None
+    before = dumps.row.model_copy()
+    admitted = personalization_admission.await_count
+    stored.session.updated_at = (
+        datetime.now(UTC) - interview.TYPED_CORRECTION_WINDOW - timedelta(hours=1)
+    )
+
+    answered, _ = await _finalize(stored.session.session_id, corrections=CORRECTION)
+
+    assert answered.status == BrainDumpStatus.completed
+    assert dumps.row == before
+    assert personalization_admission.await_count == admitted
+    assert await corrections_store.keys("*") == []
+    jobs["greeting"].assert_awaited_once()
 
 
 @pytest.mark.asyncio

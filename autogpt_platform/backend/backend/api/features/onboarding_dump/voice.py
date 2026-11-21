@@ -614,26 +614,50 @@ async def _correct_the_call(
     """Correct the take *record*'s call handed off with the profile card's
     *corrections*, under the finish's *claim* (``interview.correct_the_take``):
     the call's record says it was corrected, once. A correction there is
-    nothing to make for is answered with the call's take as it stands."""
+    nothing to make for is answered with the call's take as it stands, and so
+    is one of a call the person has started over from: its record still says
+    it took the interview, and their onboarding row, which a start-over
+    clears, no longer names it."""
 
     async def mark_corrected() -> bool:
         await claim.check()
         return await locks.claim_correction(redis, record.call_id)
 
-    corrected = await correct_the_take(
-        record.uid,
-        interview_recording_id(record.call_id),
-        record.transcript_of_record or "",
-        corrections,
-        background_tasks,
-        input_mode=BrainDumpInputMode.voice,
-        mark_corrected=mark_corrected,
-    )
+    corrected = None
+    if await _holds_the_interview(record):
+        corrected = await correct_the_take(
+            record.uid,
+            interview_recording_id(record.call_id),
+            record.transcript_of_record or "",
+            corrections,
+            background_tasks,
+            input_mode=BrainDumpInputMode.voice,
+            mark_corrected=mark_corrected,
+        )
     if corrected is not None:
         return corrected
     if record.hand_off is None:
         raise RuntimeError(f"Voice call {record.call_id} has no take to answer")
     return record.hand_off
+
+
+async def _holds_the_interview(record: CallRecord) -> bool:
+    """Whether *record*'s call is still the one the person's onboarding row
+    names as having taken their interview.
+
+    Raises:
+        HTTPException: 503 while the row cannot be read.
+    """
+    try:
+        return await call_that_took_the_interview(record.uid) == record.call_id
+    except Exception as exc:
+        logger.warning(
+            f"Voice call: the interview could not be read: {type(exc).__name__}"
+        )
+        raise _unavailable(
+            "Voice calls are temporarily unavailable. Please retry shortly.",
+            BUSY_RETRY_AFTER_S,
+        ) from exc
 
 
 async def end_call(user_id: str, call_id: str) -> None:
