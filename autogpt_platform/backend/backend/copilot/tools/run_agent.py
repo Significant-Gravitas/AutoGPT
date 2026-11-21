@@ -75,7 +75,7 @@ from .expert_scope import (
     resolve_credential_scope,
     ungranted_credential_hint,
 )
-from .external_scope import external_tenancy
+from .external_scope import external_tenancy, in_tenant
 from .helpers import (
     get_inputs_from_schema,
     get_picker_inputs_from_schema,
@@ -98,10 +98,12 @@ from .models import (
 from .schedule_duplicates import find_duplicate_graph_schedule
 from .utils import (
     build_missing_credentials_from_graph,
+    chat_tenancy,
     extract_credentials_from_schema,
     fetch_graph_from_store_slug,
     get_or_create_library_agent,
     match_user_credentials_to_graph,
+    workflow_in_another_organization,
 )
 
 logger = logging.getLogger(__name__)
@@ -218,18 +220,21 @@ class RunAgentTool(BaseTool):
             return NO_OP
         if params.dry_run or session.dry_run:
             return NO_OP
-        if params.preset_id:
-            preset, graph = await _preset_graph(user_id, session, params.preset_id)
-            # No such preset for this chat: the run refuses, so nothing asks.
-            if preset is None:
-                return NO_OP
-        else:
-            key = _call_key(user_id, params)
-            await _bind_builder_graph(user_id, session, params)
-            if not _names_an_agent(params):
-                return NO_OP
-            graph, library_agent = await _agent_graph(user_id, params)
-            _GATE_RESOLVED.set((key, params.library_agent_id, graph, library_agent))
+        try:
+            if params.preset_id:
+                preset, graph = await _preset_graph(user_id, session, params.preset_id)
+                # No such preset for this chat: the run refuses, so nothing asks.
+                if preset is None:
+                    return NO_OP
+            else:
+                key = _call_key(user_id, params)
+                await _bind_builder_graph(user_id, session, params)
+                if not _names_an_agent(params):
+                    return NO_OP
+                graph, library_agent = await _agent_graph(user_id, session, params)
+                _GATE_RESOLVED.set((key, params.library_agent_id, graph, library_agent))
+        except InAnotherOrganizationError:
+            return NO_OP  # the run refuses it
         if graph is None:
             # A miss must not run ungated; the tool's own effect asks.
             return None
@@ -432,7 +437,9 @@ class RunAgentTool(BaseTool):
         try:
             # Step 1: Fetch agent details
             graph, library_agent = (
-                resolved[2:] if resolved else await _agent_graph(user_id, params)
+                resolved[2:]
+                if resolved
+                else await _agent_graph(user_id, session, params)
             )
             if has_library_id and library_agent is None:
                 return ErrorResponse(
@@ -559,6 +566,8 @@ class RunAgentTool(BaseTool):
                     result.saved_preset_id = saved_preset_id
             return result
 
+        except InAnotherOrganizationError:
+            return workflow_in_another_organization(session_id)
         except ExpertNotFoundError:
             return ErrorResponse(
                 message="This expert is no longer available. Please start a new chat.",
@@ -943,7 +952,10 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             ).from_outside()
 
-        preset, graph = await _preset_graph(user_id, session, params.preset_id)
+        try:
+            preset, graph = await _preset_graph(user_id, session, params.preset_id)
+        except InAnotherOrganizationError:
+            return workflow_in_another_organization(session_id)
         if not preset:
             return ErrorResponse(
                 message=f"Preset '{params.preset_id}' not found.",
@@ -1080,13 +1092,7 @@ class RunAgentTool(BaseTool):
         # defend against a race (creds deleted between prereq and
         # execute) by turning credential errors back into the inline
         # setup card.
-        # The chat session is the tenancy anchor: an agent launched from an
-        # org's copilot chat attributes/bills to that org, not to whatever
-        # the user's default org happens to be. Default-team resolution is
-        # only the fallback for sessions predating org tagging.
-        org_id, team_id = session.organization_id, session.team_id
-        if org_id is None:
-            org_id, team_id = await orgs_db().get_user_default_team(user_id)
+        org_id, team_id = await chat_tenancy(user_id, session)
 
         # An External API call's session is never saved, so no chat can take the
         # run's approvals or vouch for it on resume: it is an API run, as on v1.
@@ -1431,9 +1437,7 @@ class RunAgentTool(BaseTool):
         # expert-scoped chat belongs to that expert, so it surfaces on her
         # Team card / expert page, counts toward her weekly credit budget,
         # and is cleaned up when she is archived.
-        org_id, team_id = session.organization_id, session.team_id
-        if org_id is None:
-            org_id, team_id = await orgs_db().get_user_default_team(user_id)
+        org_id, team_id = await chat_tenancy(user_id, session)
 
         scheduler = get_scheduler_client()
         existing = await find_duplicate_graph_schedule(
@@ -1586,8 +1590,13 @@ def _provider_refusal(graph: GraphModel, session_id: str) -> ErrorResponse | Non
 # One lookup for the run and for the gate: were they two, a drift between
 # them would gate one graph and run another.
 async def _agent_graph(
-    user_id: str, params: RunAgentInput
+    user_id: str, session: ChatSession, params: RunAgentInput
 ) -> tuple[GraphModel | None, LibraryAgent | None]:
+    """The workflow the call names, as the org the run belongs to sees it.
+
+    Raises InAnotherOrganizationError for one in another of the user's orgs.
+    """
+    org_id, _ = await chat_tenancy(user_id, session)
     if params.library_agent_id:
         try:
             library_agent = await library_db().get_library_agent(
@@ -1610,10 +1619,20 @@ async def _agent_graph(
             library_agent.graph_version,
             user_id=user_id,
             include_subgraphs=True,
+            organization_id=org_id,
         )
+        if graph is None and not in_tenant(library_agent.organization_id, org_id):
+            raise InAnotherOrganizationError()
         return graph, library_agent
     username, agent_name = params.username_agent_slug.split("/", 1)
     graph, _ = await fetch_graph_from_store_slug(username, agent_name)
+    # A listing is public, but the user's own workflow runs only in its org.
+    if (
+        graph is not None
+        and graph.user_id == user_id
+        and not in_tenant(graph.organization_id, org_id)
+    ):
+        raise InAnotherOrganizationError()
     return graph, None
 
 
@@ -1623,13 +1642,26 @@ async def _preset_graph(
     preset = await library_db().get_preset(user_id=user_id, preset_id=preset_id)
     if preset is None or preset.expert_id != session.expert_id:
         return None, None
+    org_id, _ = await chat_tenancy(user_id, session)
+    if not in_tenant(preset.organization_id, org_id):
+        raise InAnotherOrganizationError()
     graph = await graph_db().get_graph(
         preset.graph_id,
         preset.graph_version,
         user_id=user_id,
         include_subgraphs=True,  # needed for full credentials aggregation
+        organization_id=org_id,
     )
+    # An untagged preset on the user's own workflow in another org.
+    if graph is None and await graph_db().get_graph(
+        preset.graph_id, preset.graph_version, user_id=user_id
+    ):
+        raise InAnotherOrganizationError()
     return preset, graph
+
+
+class InAnotherOrganizationError(Exception):
+    """The workflow or preset a call names is in another of the user's orgs."""
 
 
 async def _bind_builder_graph(
