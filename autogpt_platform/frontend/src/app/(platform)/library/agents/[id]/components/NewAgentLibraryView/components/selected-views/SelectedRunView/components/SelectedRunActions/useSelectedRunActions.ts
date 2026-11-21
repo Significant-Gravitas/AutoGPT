@@ -126,7 +126,7 @@ export function useSelectedRunActions({
         description: "Cannot create template from missing run",
         variant: "destructive",
       });
-      return;
+      return false;
     }
 
     try {
@@ -138,21 +138,24 @@ export function useSelectedRunActions({
         },
       });
 
-      if (res.status === 200) {
-        toast({
-          title: "Template created",
-        });
-
-        if (agent) {
-          queryClient.invalidateQueries({
-            queryKey: getGetV2ListPresetsQueryKey({
-              graph_id: agent.graph_id,
-            }),
-          });
-        }
-
-        setIsCreateTemplateModalOpen(false);
+      if (res.status !== 200) {
+        throw new Error("The template couldn't be saved.");
       }
+
+      toast({
+        title: "Template created",
+      });
+
+      if (agent) {
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListPresetsQueryKey({
+            graph_id: agent.graph_id,
+          }),
+        });
+      }
+
+      setIsCreateTemplateModalOpen(false);
+      return true;
     } catch (error: unknown) {
       toast({
         title: "Failed to create template",
@@ -162,6 +165,7 @@ export function useSelectedRunActions({
             : "An unexpected error occurred.",
         variant: "destructive",
       });
+      return false;
     }
   }
 

@@ -78,20 +78,22 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
           graph_execution_id: run.id,
         },
       });
-
-      if (res.status === 200) {
-        toast({
-          title: "Template created",
-        });
-
-        queryClient.invalidateQueries({
-          queryKey: getGetV2ListPresetsQueryKey({
-            graph_id: agent.graph_id,
-          }),
-        });
-
-        setIsCreateTemplateModalOpen(false);
+      if (res.status !== 200) {
+        throw new Error("The template couldn't be saved.");
       }
+
+      toast({
+        title: "Template created",
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: getGetV2ListPresetsQueryKey({
+          graph_id: agent.graph_id,
+        }),
+      });
+
+      setIsCreateTemplateModalOpen(false);
+      return true;
     } catch (error: unknown) {
       toast({
         title: "Failed to create template",
@@ -101,6 +103,7 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
             : "An unexpected error occurred.",
         variant: "destructive",
       });
+      return false;
     }
   }
 
