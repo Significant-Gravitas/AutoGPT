@@ -64,6 +64,7 @@ from backend.util.text import split_camelcase
 from backend.util.text_limits import (
     MAX_CRON_LENGTH,
     MAX_INSTRUCTIONS_LENGTH,
+    MAX_LIST_ENTRIES,
     MAX_LONG_NAME_LENGTH,
 )
 
@@ -303,6 +304,9 @@ GRAPH_TEXT_MAX_LENGTHS = {
     "instructions": MAX_INSTRUCTIONS_LENGTH,
     "recommended_schedule_cron": MAX_CRON_LENGTH,
 }
+
+# Each sub-graph a save carries is written, and gets a library entry, on its own.
+MAX_SUB_GRAPHS_PER_SAVE = MAX_LIST_ENTRIES
 
 
 class GraphBaseMeta(BaseDbModel):
@@ -2810,6 +2814,11 @@ async def __create_graph(
     organization_id: str | None = None,
     team_id: str | None = None,
 ):
+    if len(graph.sub_graphs) > MAX_SUB_GRAPHS_PER_SAVE:
+        raise ValueError(
+            "Workflow has too many sub-workflows: "
+            f"at most {MAX_SUB_GRAPHS_PER_SAVE} are allowed"
+        )
     graphs = [graph] + graph.sub_graphs
     for g in graphs:
         g.links = dedupe_links(g.links)
