@@ -1,11 +1,13 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import ValidationError
 
 from backend.blocks.basic import StoreValueBlock
-from backend.blocks.time_blocks import CountdownTimerBlock
+from backend.blocks.time_blocks import CountdownTimerBlock, _get_timezone
 from backend.data.graph import GraphModel, Link, Node
+from backend.data.model import USER_TIMEZONE_NOT_SET
 
 
 async def _run(block: CountdownTimerBlock, **input_kwargs):
@@ -165,3 +167,29 @@ def test_validate_graph_skips_bound_check_when_field_is_linked():
     node_errors = graph.validate_graph_get_errors(for_run=True)
 
     assert "repeat" not in node_errors.get("n1", {})
+
+
+def test_get_timezone_falls_back_to_block_timezone_when_profile_not_set():
+    """A profile that never set a timezone carries the "not-set" sentinel, and
+    the execution context used to swap it for "UTC" before the block saw it —
+    so "Use user timezone" silently overrode the block's own timezone for
+    every account that never opened the profile page. The sentinel must fall
+    back to the block's timezone instead (issue #16725)."""
+    format_type = SimpleNamespace(timezone="Asia/Tokyo", use_user_timezone=True)
+
+    tz = _get_timezone(format_type, USER_TIMEZONE_NOT_SET)
+
+    assert str(tz) == "Asia/Tokyo"
+
+
+def test_get_timezone_prefers_user_timezone_when_set():
+    """The sentinel guard must not disable the user's actual timezone."""
+    format_type = SimpleNamespace(timezone="Asia/Tokyo", use_user_timezone=True)
+
+    assert str(_get_timezone(format_type, "Europe/Paris")) == "Europe/Paris"
+
+
+def test_get_timezone_falls_back_when_user_timezone_missing():
+    format_type = SimpleNamespace(timezone="Asia/Tokyo", use_user_timezone=True)
+
+    assert str(_get_timezone(format_type, None)) == "Asia/Tokyo"

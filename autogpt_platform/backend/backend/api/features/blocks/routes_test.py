@@ -16,6 +16,7 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.blocks.routes import router, upload_file
 from backend.api.rest_api import app as real_app
+from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.util.exceptions import InsufficientBalanceError
 
 
@@ -223,9 +224,13 @@ def test_execute_graph_block(
     )
 
 
+@pytest.mark.parametrize(
+    "profile_timezone", ["America/New_York", USER_TIMEZONE_NOT_SET]
+)
 def test_execute_graph_block_forwards_execution_context(
     mocker: pytest_mock.MockFixture,
     test_user_id: str,
+    profile_timezone: str,
 ) -> None:
     """Regression for #12648: blocks that read execution_context (e.g. time
     blocks) crashed because the direct-block-execute route didn't forward
@@ -249,7 +254,7 @@ def test_execute_graph_block_forwards_execution_context(
     )
 
     mock_user = Mock()
-    mock_user.timezone = "America/New_York"
+    mock_user.timezone = profile_timezone
     mocker.patch(
         "backend.api.features.blocks.routes.get_user_by_id",
         return_value=mock_user,
@@ -266,7 +271,7 @@ def test_execute_graph_block_forwards_execution_context(
     assert "execution_context" in captured_kwargs
     ctx = captured_kwargs["execution_context"]
     assert ctx.user_id == test_user_id
-    assert ctx.user_timezone == "America/New_York"
+    assert ctx.user_timezone == profile_timezone
 
 
 def test_execute_graph_block_charges_when_cost_positive(

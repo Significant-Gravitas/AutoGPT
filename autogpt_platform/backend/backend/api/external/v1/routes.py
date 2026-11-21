@@ -27,6 +27,7 @@ from backend.data.auth.api_key import APIKeyInfo
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.execution import ExecutionContext, ExecutionTrigger
+from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.executor.direct_block_execution import (
     DirectBlockExecutionBusyError,
     DirectBlockExecutionLimitError,
@@ -182,7 +183,11 @@ async def _run_direct_block(
     # timezone, so blocks that depend on those get correct data.
     execution_context = ExecutionContext(
         user_id=auth.user_id,
-        user_timezone=get_user_timezone_or_utc(user_timezone),
+        user_timezone=(
+            user_timezone
+            if user_timezone == USER_TIMEZONE_NOT_SET
+            else get_user_timezone_or_utc(user_timezone)
+        ),
         organization_id=auth.organization_id,
         team_id=auth.team_id_restriction,
     )

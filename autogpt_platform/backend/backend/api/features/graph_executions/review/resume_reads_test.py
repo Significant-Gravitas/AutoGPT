@@ -7,15 +7,17 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.api.features.graph_executions.review import service as review_service
+from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.util.testing import Rendezvous
 
 USER_ID = "user-1"
 
 
 @pytest.mark.asyncio
-async def test_a_resumed_run_reads_its_user_and_settings_side_by_side_then_its_workspace() -> (
-    None
-):
+@pytest.mark.parametrize("profile_timezone", ["Europe/Paris", USER_TIMEZONE_NOT_SET])
+async def test_a_resumed_run_reads_its_user_and_settings_side_by_side_then_its_workspace(
+    profile_timezone: str,
+) -> None:
     meeting = Rendezvous(2)
     answered: list[str] = []
     answered_before_the_workspace: list[str] = []
@@ -23,7 +25,7 @@ async def test_a_resumed_run_reads_its_user_and_settings_side_by_side_then_its_w
     async def read_user(*_args: object, **_kwargs: object) -> SimpleNamespace:
         await meeting.arrive()
         answered.append("user")
-        return SimpleNamespace(timezone="Europe/Paris")
+        return SimpleNamespace(timezone=profile_timezone)
 
     async def read_settings(*_args: object, **_kwargs: object) -> SimpleNamespace:
         await meeting.arrive()
@@ -51,7 +53,7 @@ async def test_a_resumed_run_reads_its_user_and_settings_side_by_side_then_its_w
 
     assert sorted(answered_before_the_workspace) == ["settings", "user"]
     context = add_execution.await_args.kwargs["execution_context"]
-    assert context.user_timezone == "Europe/Paris"
+    assert context.user_timezone == profile_timezone
     assert context.workspace_id == "workspace-1"
     assert context.human_in_the_loop_safe_mode is False
     assert context.sensitive_action_safe_mode is True
