@@ -120,11 +120,10 @@ def v1_clock(mocker):
 
 @pytest.fixture
 def v1_admission(mocker) -> AsyncMock:
-    """The API-key auth admission limiter reserves nothing and never throttles,
-    so a request carrying a key doesn't reach Redis. `auth_rate_limit_test.py`,
-    `auth_rate_limit_integration_test.py` and `middleware_test.py` test the
-    limiter and don't use `v1_client`. A test that wants a reservation patches
-    `middleware.enforce_api_key_validate_rate_limit` itself, after this."""
+    """The API-key auth admission limiter, patched at the names middleware.py
+    calls: it reserves nothing and never throttles, so a request carrying a
+    key doesn't reach Redis. A test that wants a throttle sets the returned
+    mock's side_effect."""
     mocker.patch.object(
         middleware, "refund_api_key_validate_rate_limit", new_callable=AsyncMock
     )

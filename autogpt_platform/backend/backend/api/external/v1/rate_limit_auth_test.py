@@ -171,6 +171,7 @@ async def test_a_request_reserves_once_and_a_throttled_key_is_never_verified(
     mocker,
     v1_client,
     v1_counter,
+    v1_admission,
     v1_auth_storage,
     v1_generated_keys,
     path,
@@ -178,12 +179,8 @@ async def test_a_request_reserves_once_and_a_throttled_key_is_never_verified(
     throttled,
 ):
     mocker.patch("backend.blocks.get_blocks", return_value={})
-    reserve = mocker.patch.object(
-        middleware,
-        "enforce_api_key_validate_rate_limit",
-        side_effect=HTTPException(status_code=429) if throttled else None,
-        return_value=None,
-    )
+    if throttled:
+        v1_admission.side_effect = HTTPException(status_code=429)
     verify = mocker.spy(api_key.keysmith, "verify_key")
     key = v1_generated_keys[0].key
     headers = {"Authorization": f"Bearer {key}"} if bearer else {"X-API-Key": key}
@@ -191,6 +188,6 @@ async def test_a_request_reserves_once_and_a_throttled_key_is_never_verified(
     response = await v1_client.get(f"/v1{path}", headers=headers)
 
     assert response.status_code == (429 if throttled else 200)
-    reserve.assert_awaited_once()
+    v1_admission.assert_awaited_once()
     assert v1_auth_storage[0].await_count == 1
     assert verify.call_count == (0 if throttled else 1)
