@@ -280,9 +280,14 @@ describe("useAgentActivityDropdown", () => {
         result.current.activeExecutions.map((run) => run.id),
       ).not.toContain("run-1");
     } finally {
-      // A failure above must not leave the held detail response pending.
+      // Release unconditionally: the detail request can reach the
+      // handler after the detailReads wait times out, leaving
+      // detailReads at zero while the handler is still parked on
+      // detailsHeld. Resolving an already-resolved promise is a no-op,
+      // so releasing twice is safe; the waits below stay conditional
+      // on a request having been observed.
+      act(() => releaseDetails());
       if (detailReads > 0) {
-        act(() => releaseDetails());
         const request = detailRequest;
         if (request) await request;
         await waitFor(() =>
