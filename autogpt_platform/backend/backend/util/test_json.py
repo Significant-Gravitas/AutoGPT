@@ -1,5 +1,6 @@
 import datetime
 import gc
+import re
 import threading
 import urllib.request
 from collections import OrderedDict
@@ -7,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional, cast
 
 import jsonschema
+import jsonschema.exceptions
 import numpy as np
 import pytest
 import referencing.exceptions
@@ -1399,6 +1401,15 @@ class TestValidateWithJsonschema:
                 {
                     "type": "object",
                     "properties": {
+                        "value": {"oneOf": [{"type": "integer"}, {"minimum": 0}]}
+                    },
+                },
+                {"value": 3},
+            ),
+            (
+                {
+                    "type": "object",
+                    "properties": {
                         "nested": {
                             "type": "object",
                             "properties": {
@@ -1414,6 +1425,30 @@ class TestValidateWithJsonschema:
     def test_nested_error_message_matches_jsonschema_exactly(self, schema, data):
         """best_match keeps byte-for-byte parity for combinator errors."""
         assert self._outcome(schema, data) == self._baseline_outcome(schema, data)
+
+    @pytest.mark.parametrize("union", ["anyOf", "oneOf"])
+    def test_a_failed_union_keeps_a_bounded_number_of_errors(
+        self, union: str, errors_built: list[None]
+    ):
+        item = {union: [{"type": "object"}, {"type": "array"}]}
+        field = {union: [{"type": "object"}, {"type": "array", "items": item}]}
+        schema = {"type": "object", "properties": {"data": field}}
+
+        error = validate_with_jsonschema(schema, {"data": [0] * 5_000})
+
+        assert error == "data[0]: expected object or array, got integer"
+        assert len(errors_built) < 1_000
+
+    def test_a_failed_check_reads_a_bounded_number_of_errors(
+        self, errors_built: list[None]
+    ):
+        names = {"type": "array", "items": {"type": "string"}}
+        schema = {"type": "object", "properties": {"names": names}}
+
+        error = validate_with_jsonschema(schema, {"names": list(range(5_000))})
+
+        assert re.fullmatch(r"names\[\d+\]: expected string, got integer", error or "")
+        assert len(errors_built) <= 100
 
     def test_a_ref_outside_the_schema_is_never_retrieved(self, monkeypatch):
         """`$ref` resolves only within the schema and the bundled meta-schemas."""
@@ -1451,6 +1486,21 @@ class TestValidateWithJsonschema:
         except jsonschema.ValidationError as error:
             return cls._signature(error)
         return None
+
+
+@pytest.fixture
+def errors_built(monkeypatch: pytest.MonkeyPatch) -> list[None]:
+    built: list[None] = []
+    init = jsonschema.exceptions.ValidationError.__init__
+
+    def counting_init(self, *args, **kwargs):
+        built.append(None)
+        init(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        jsonschema.exceptions.ValidationError, "__init__", counting_init
+    )
+    return built
 
 
 class TestNestingDepth:
