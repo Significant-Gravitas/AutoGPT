@@ -15,6 +15,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.data_manipulation import _json_bytes
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 
@@ -61,6 +62,9 @@ TimezoneLiteral = Literal[
 ]
 
 logger = logging.getLogger(__name__)
+
+# The same cap as the Zip Lists block's: what repeating one message may add.
+MAX_REPEATED_MESSAGE_BYTES = 4 * 1024 * 1024
 
 
 def _get_timezone(
@@ -517,6 +521,16 @@ class CountdownTimerBlock(Block):
                 f"Cumulative countdown duration {cumulative_seconds}s "
                 f"(per-iteration {total_seconds}s × repeat {repeat}) "
                 f"exceeds max ({self.MAX_TOTAL_SECONDS}s = 7 days)"
+            )
+
+        repeated_bytes = (
+            _json_bytes(input_data.input_message) * repeat if repeat > 1 else 0
+        )
+        if repeated_bytes > MAX_REPEATED_MESSAGE_BYTES:
+            raise ValueError(
+                f"Repeating the message {repeat} times would output "
+                f"{repeated_bytes / 2**20:.1f} MiB, more than the limit of "
+                f"{MAX_REPEATED_MESSAGE_BYTES / 2**20:g} MiB"
             )
 
         for _ in range(repeat):

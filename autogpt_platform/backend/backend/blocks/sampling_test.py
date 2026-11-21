@@ -233,3 +233,48 @@ async def test_stratified_sizes_match_the_original_adjustment():
         for i in out["sample_indices"]:
             got[str(data[i]["g"])] += 1
         assert got == expected
+
+
+async def test_a_weighted_sample_past_the_repeat_cap_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(sampling, "WEIGHTED_SAMPLE_MAX_REPEATED_BYTES", 10)
+    data = [{"w": 1, "v": "abcdefghij"}, {"w": 0}]
+
+    with pytest.raises(ValueError, match="more than the limit"):
+        await _sample(
+            data=data,
+            sample_size=2,
+            sampling_method=SamplingMethod.WEIGHTED,
+            weight_key="w",
+        )
+
+
+async def test_a_weighted_sample_within_the_repeat_cap_is_returned():
+    data = [{"w": 1, "v": "abcdefghij"}, {"w": 0}]
+
+    out = await _sample(
+        data=data,
+        sample_size=2,
+        sampling_method=SamplingMethod.WEIGHTED,
+        weight_key="w",
+    )
+
+    assert out["sampled_data"] == [data[0], data[0]]
+
+
+async def test_a_weighted_sample_is_unchanged_by_the_repeat_cap():
+    data = [{"w": i % 7, "v": i} for i in range(500)]
+
+    out = await _sample(
+        data=data,
+        sample_size=500,
+        sampling_method=SamplingMethod.WEIGHTED,
+        weight_key="w",
+        random_seed=11,
+    )
+
+    expected = random.Random(11).choices(
+        range(500), weights=[float(item["w"]) for item in data], k=500
+    )
+    assert out["sample_indices"] == expected

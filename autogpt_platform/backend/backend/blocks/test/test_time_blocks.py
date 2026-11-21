@@ -4,6 +4,8 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from backend.blocks.time_blocks import (
+    MAX_REPEATED_MESSAGE_BYTES,
+    CountdownTimerBlock,
     DateStrftimeFormat,
     GetCurrentDateAndTimeBlock,
     GetCurrentDateBlock,
@@ -116,3 +118,26 @@ async def test_get_current_date_and_time_runs_with_minimal_execution_context():
         tzinfo=ZoneInfo("UTC")
     )
     assert abs(datetime.now(tz=ZoneInfo("UTC")) - parsed) <= timedelta(seconds=10)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "message_length, repeat, allowed",
+    [(4_000, 1000, True), (5_000, 1000, False), (5 * 1024 * 1024, 1, True)],
+)
+async def test_a_repeated_countdown_message_is_bounded_in_total(
+    message_length, repeat, allowed
+):
+    block = CountdownTimerBlock()
+    input_data = block.input_schema(
+        input_message="x" * message_length, seconds=0, repeat=repeat
+    )
+    outputs = block.run(input_data=input_data)
+    if not allowed:
+        with pytest.raises(ValueError, match="more than the limit"):
+            await outputs.__anext__()
+        return
+    messages = [value async for _, value in outputs]
+    assert len(messages) == repeat
+    if repeat > 1:
+        assert sum(len(m) for m in messages) <= MAX_REPEATED_MESSAGE_BYTES
