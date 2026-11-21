@@ -725,10 +725,10 @@ class TestTrailingSlashRedirect:
         assert seen and set(seen) == {"GET"}
 
 
-class TestThrottledReplies:
+class TestRepliesOverTheLimit:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_an_oversized_throttled_reply_ends_the_call_unsent_again(self):
-        server = _ThrottlingServer(body_size=MAX_REPLY_BYTES + 1).start()
+        server = _OversizedReplyServer(status=429).start()
         try:
             client = _make_client(server.url)
             with pytest.raises(MCPClientError, match="too large"):
@@ -739,20 +739,46 @@ class TestThrottledReplies:
             server.stop()
         assert len(server.requests) == 1
 
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_oversized_reply_behind_a_same_origin_redirect_is_refused(self):
+        server = _OversizedReplyServer(status=200, slash_redirect=True).start()
+        try:
+            client = _make_client(server.url)
+            with pytest.raises(MCPClientError, match="too large"):
+                await client._post(
+                    {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, {}
+                )
+        finally:
+            server.stop()
+        assert server.redirected == ["POST"]
+        assert len(server.requests) == 1
 
-class _ThrottlingServer(_MCPTestServer):
-    """Answers every POST with ``429`` and a body of ``body_size`` bytes."""
 
-    def __init__(self, body_size: int):
+class _OversizedReplyServer(_MCPTestServer):
+    """Answers every POST with ``status`` and a body one byte over the reply
+    limit; with ``slash_redirect``, only at ``/mcp/``, after a 301 from ``/mcp``."""
+
+    def __init__(self, status: int, slash_redirect: bool = False):
         super().__init__()
-        self.body_size = body_size
+        self.status = status
+        self.slash_redirect = slash_redirect
 
     def _make_app(self) -> web.Application:
-        async def throttled(request: web.Request) -> web.Response:
+        async def oversized(request: web.Request) -> web.Response:
             request.app["requests"].append({})
-            return web.Response(status=429, body=b"x" * self.body_size)
+            body = b"x" * (MAX_REPLY_BYTES + 1)
+            return web.Response(status=self.status, body=body)
+
+        async def to_slash(request: web.Request) -> web.Response:
+            request.app["redirected"].append(request.method)
+            return web.Response(status=301, headers={"Location": "/mcp/"})
 
         app = web.Application()
         app["requests"] = []
-        app.router.add_post("/mcp", throttled)
+        app["redirected"] = []
+        if self.slash_redirect:
+            app.router.add_post("/mcp", to_slash)
+            app.router.add_post("/mcp/", oversized)
+        else:
+            app.router.add_post("/mcp", oversized)
         return app
