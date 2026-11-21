@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { onlineManager, QueryClient } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 
 import { getGetV1GetSharedExecutionMockHandler200 } from "@/app/api/__generated__/endpoints/default/default.msw";
 import type { SharedExecutionResponse } from "@/app/api/__generated__/models/sharedExecutionResponse";
+import { resetClientRequestFailureLog } from "@/app/api/mutators/request-failure-log";
 import { server } from "@/mocks/mock-server";
 import {
   configureCookiebot,
@@ -14,8 +16,10 @@ import SharePage from "../page";
 
 const TOKEN = "550e8400-e29b-41d4-a716-446655440000";
 
+const mockUseParams = vi.hoisted(() => vi.fn());
+
 vi.mock("next/navigation", () => ({
-  useParams: () => ({ token: TOKEN }),
+  useParams: mockUseParams,
   usePathname: () => `/share/${TOKEN}`,
   useRouter: () => ({
     back: vi.fn(),
@@ -40,22 +44,46 @@ vi.mock(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockUseParams.mockReturnValue({ token: TOKEN });
 });
+
+afterEach(() => {
+  resetClientRequestFailureLog();
+});
+
+function weatherRun(): SharedExecutionResponse {
+  return {
+    id: "exec-1",
+    graph_name: "Weather Agent",
+    graph_description: "Reports the weather",
+    status: "COMPLETED",
+    created_at: new Date("2026-05-12T00:00:00Z"),
+    outputs: {},
+  };
+}
+
+// The app's client keeps React Query's three retries; this one only drops the
+// backoff between them, so a test can count them without waiting ~7 s.
+function createRetryingQueryClient() {
+  return new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } });
+}
+
+// Answers every read of a shared run with `respond`, and returns the tokens
+// the page asked for.
+function answerSharedRunWith(respond: () => Response) {
+  const tokens: string[] = [];
+  server.use(
+    http.get("*/api/public/shared/:token", ({ params }) => {
+      tokens.push(String(params.token));
+      return respond();
+    }),
+  );
+  return tokens;
+}
 
 describe("SharePage (execution share viewer)", () => {
   test("renders the AutoGPT logo header + run summary + outputs on the happy path", async () => {
-    server.use(
-      getGetV1GetSharedExecutionMockHandler200(
-        (): SharedExecutionResponse => ({
-          id: "exec-1",
-          graph_name: "Weather Agent",
-          graph_description: "Reports the weather",
-          status: "COMPLETED",
-          created_at: new Date("2026-05-12T00:00:00Z"),
-          outputs: {},
-        }),
-      ),
-    );
+    server.use(getGetV1GetSharedExecutionMockHandler200(weatherRun));
 
     render(<SharePage />);
 
@@ -76,22 +104,99 @@ describe("SharePage (execution share viewer)", () => {
     expect(await screen.findByTestId("run-outputs-stub")).toBeDefined();
   });
 
-  test("renders the 'Share Link Not Found' card on a 404 from the backend", async () => {
-    server.use(
-      http.get(
-        "*/api/public/shared/:token",
-        () => new HttpResponse(null, { status: 404 }),
-      ),
-    );
+  test.each([
+    {
+      link: "a revoked link (404)",
+      token: TOKEN,
+      status: 404,
+      detail: "Shared execution not found",
+    },
+    {
+      link: "a truncated link (422)",
+      token: TOKEN.slice(0, -4),
+      status: 422,
+      detail: [
+        {
+          type: "string_pattern_mismatch",
+          loc: ["path", "share_token"],
+          msg: "String should match pattern",
+        },
+      ],
+    },
+  ])(
+    "says 'Share Link Not Found' for $link at once, asking the backend only once",
+    async ({ token, status, detail }) => {
+      mockUseParams.mockReturnValue({ token });
+      const requested = answerSharedRunWith(() =>
+        HttpResponse.json({ detail }, { status }),
+      );
 
-    render(<SharePage />);
+      render(<SharePage />, { queryClient: createRetryingQueryClient() });
 
-    expect(await screen.findByText(/share link not found/i)).toBeDefined();
-    expect(
-      await screen.findByText(/invalid or has been disabled/i),
-    ).toBeDefined();
-    // Try again button is the only retry affordance on this view.
-    expect(screen.getByRole("button", { name: /try again/i })).toBeDefined();
+      expect(
+        await screen.findByRole("heading", { name: "Share Link Not Found" }),
+      ).toBeDefined();
+      expect(screen.getByText(/invalid or has been disabled/i)).toBeDefined();
+      // Try again button is the only retry affordance on this view.
+      expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
+      expect(requested).toEqual([token]);
+    },
+  );
+
+  test.each([
+    {
+      failure: "a 500 from the backend",
+      respond: () =>
+        HttpResponse.json({ detail: "Internal Server Error" }, { status: 500 }),
+    },
+    {
+      failure: "a 502 from the proxy (backend down)",
+      respond: () =>
+        HttpResponse.json({ error: "Proxy request failed" }, { status: 502 }),
+    },
+    {
+      failure: "a network error",
+      respond: () => HttpResponse.error(),
+    },
+  ])(
+    "says 'Unable to Load', not 'Share Link Not Found', after retrying $failure",
+    async ({ respond }) => {
+      const requested = answerSharedRunWith(respond);
+
+      render(<SharePage />, { queryClient: createRetryingQueryClient() });
+
+      expect(
+        await screen.findByRole("heading", { name: "Unable to Load" }),
+      ).toBeDefined();
+      expect(screen.getByText(/try refreshing the page/i)).toBeDefined();
+      expect(
+        screen.queryByRole("heading", { name: "Share Link Not Found" }),
+      ).toBeNull();
+      // The first try and React Query's three retries.
+      expect(requested).toHaveLength(4);
+    },
+  );
+
+  test("keeps loading while the visitor is offline, then shows the run", async () => {
+    server.use(getGetV1GetSharedExecutionMockHandler200(weatherRun));
+    onlineManager.setOnline(false);
+    try {
+      render(<SharePage />);
+
+      expect(
+        await screen.findByText("Loading shared execution..."),
+      ).toBeDefined();
+      expect(
+        screen.queryByRole("heading", { name: "Share Link Not Found" }),
+      ).toBeNull();
+
+      onlineManager.setOnline(true);
+
+      const titles = await screen.findAllByText("Weather Agent");
+      expect(titles.length).toBeGreaterThan(0);
+    } finally {
+      onlineManager.setOnline(true);
+    }
   });
 
   describe("Cookie settings", () => {
