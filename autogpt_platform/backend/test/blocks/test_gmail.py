@@ -322,6 +322,55 @@ class TestGmailReadBlock:
         assert result == "It\ufffds due Friday."
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("charset", ["undefined", "idna", "bad\x00name"])
+    async def test_unusable_charset_label_falls_back_to_utf8(self, charset):
+        msg = {
+            "id": "test_msg_unusable_charset",
+            "payload": self._part(
+                "text/plain",
+                "Grüße".encode("utf-8"),
+                f'text/plain; charset="{charset}"',
+            ),
+        }
+
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
+        assert result == "Grüße"
+
+    @pytest.mark.asyncio
+    async def test_overlong_content_type_is_not_parsed(self):
+        content_type = "text/plain; charset=windows-1252; " + "x=y; " * 400
+        msg = {
+            "id": "test_msg_long_header",
+            "payload": self._part("text/plain", "Grüße".encode("utf-8"), content_type),
+        }
+
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
+        assert result == "Grüße"
+
+    @pytest.mark.asyncio
+    async def test_binary_attachment_is_not_read_as_the_body(self):
+        msg = {
+            "id": "test_msg_scan_to_email",
+            "payload": {
+                "mimeType": "multipart/mixed",
+                "parts": [
+                    {"mimeType": "text/plain", "body": {"size": 0}},
+                    {
+                        "mimeType": "application/pdf",
+                        "filename": "scan.pdf",
+                        "body": {"attachmentId": "pdf_attachment"},
+                    },
+                ],
+            },
+        }
+        self.mock_service.users().messages().attachments().get().execute.return_value = {
+            "data": base64.urlsafe_b64encode(b"%PDF-1.4\n\xe2\xe3\xcf\xd3").decode()
+        }
+
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
+        assert result == "This email does not contain a readable body."
+
+    @pytest.mark.asyncio
     async def test_no_readable_body(self):
         """Test email with no readable body content."""
         msg = {

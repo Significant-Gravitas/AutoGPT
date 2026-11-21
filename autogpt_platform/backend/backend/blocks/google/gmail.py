@@ -51,6 +51,8 @@ NO_WRAP_POLICY = SMTP.clone(max_line_length=0)
 
 # An HTML body converts to at most this many times its own length of text.
 _MAX_BODY_EXPANSION = 10
+# A part's Content-Type header is short; skip charset parsing on anything longer
+_MAX_CONTENT_TYPE_LENGTH = 1000
 
 
 def serialize_email_recipients(recipients: list[str]) -> str:
@@ -322,8 +324,8 @@ class GmailBase(Block, ABC):
                     # Keep extraction resilient if html2text is unavailable or fails.
                     return html_content
 
-        # Handle content stored as attachment
-        if body.get("attachmentId"):
+        # Handle a text body stored as attachment; other attachments are not the body
+        if mime_type.startswith("text/") and body.get("attachmentId"):
             attachment_data = await self._download_attachment_body(
                 body["attachmentId"], msg_id, service
             )
@@ -342,8 +344,11 @@ class GmailBase(Block, ABC):
         """The charset named in a part's Content-Type header, if any."""
         for header in part.get("headers", []):
             if header.get("name", "").lower() == "content-type":
+                value = header.get("value", "")
+                if len(value) > _MAX_CONTENT_TYPE_LENGTH:
+                    return None  # Too long to be real; the stdlib parser is slow on it
                 message = Message()
-                message["Content-Type"] = header.get("value", "")
+                message["Content-Type"] = value
                 return message.get_content_charset()
         return None
 
@@ -363,8 +368,8 @@ class GmailBase(Block, ABC):
         if charset:
             try:
                 return raw.decode(charset)
-            except (LookupError, UnicodeDecodeError):
-                pass  # An unknown or wrong charset; try UTF-8
+            except (LookupError, ValueError):
+                pass  # An unknown, unusable or wrong charset; try UTF-8
         # Keep the body readable even when its charset label is missing or wrong
         return raw.decode("utf-8", errors="replace")
 
