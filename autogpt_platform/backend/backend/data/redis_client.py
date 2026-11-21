@@ -62,6 +62,11 @@ REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", "10000"))
 # as a graph-exec 500.
 REDIS_RETRY_ATTEMPTS = int(os.getenv("REDIS_RETRY_ATTEMPTS", "5"))
 
+# The shard lookup joins a cold client build that ``conn_retry`` retries for
+# minutes while Redis is down; bound it like the rest of the stream open, so
+# an outage fails the one open instead of holding it.
+RESOLVE_SHARD_TIMEOUT_S = 15.0
+
 # Errors that should trigger a per-command retry inside the redis-py client.
 TRANSIENT_REDIS_ERRORS: tuple[type[RedisError], ...] = (
     RedisConnectionError,
@@ -188,9 +193,10 @@ async def connect_async() -> AsyncRedisClient:
         retry=_build_async_retry(),
     )
     # Close on PING failure so retries don't leak ClusterNodes (AUTOGPT-SERVER-8V6/8V4/8V3).
+    # BaseException: a cancelled PING (a bounded caller gave up) must close too.
     try:
         await c.ping()
-    except Exception:
+    except BaseException:
         try:
             await c.close()
         except Exception:
@@ -238,8 +244,14 @@ async def get_redis_async() -> AsyncRedisClient:
         client = _async_clients.get(loop)
         if client is None:
             client = await connect_async()
-            finalizer = _close_async_client_on_loop_shutdown(client)
-            await anext(finalizer)
+            try:
+                finalizer = _close_async_client_on_loop_shutdown(client)
+                await anext(finalizer)
+            except BaseException:
+                # A cancelled caller leaves the connected client uncached;
+                # close it rather than leak it.
+                await client.close()
+                raise
             _async_clients[loop] = client
             _async_client_finalizers[loop] = finalizer
         return client
@@ -276,6 +288,24 @@ def resolve_shard_for_channel(channel: str) -> tuple[str, int]:
     return _address_remap((node.host, node.port))
 
 
+async def resolve_shard_for_channel_async(channel: str) -> tuple[str, int]:
+    """Async variant of :func:`resolve_shard_for_channel`.
+
+    Reads the loop's async cluster client, so a cold slot map does cluster
+    discovery with async I/O instead of blocking the event loop on the sync
+    client's connect. The lookup is bounded like the rest of the stream
+    open: a client that can't be built in time fails the one open, and the
+    caller reports the stream lost and retries.
+    """
+    async with asyncio.timeout(RESOLVE_SHARD_TIMEOUT_S):
+        cluster = await get_redis_async()
+    node = cluster.get_node_from_key(channel)
+    if node is None:
+        raise RuntimeError(f"No cluster node owns the keyslot for channel {channel!r}")
+    # The async ClusterNode types its port str | int; the remap wants int.
+    return _address_remap((node.host, int(node.port)))
+
+
 def follow_moved_slot(error: MovedError) -> None:
     """Point the cached slot map at the shard a MOVED reply named.
 
@@ -285,6 +315,12 @@ def follow_moved_slot(error: MovedError) -> None:
     shard that no longer owns its channel.
     """
     get_redis().nodes_manager.move_slot(error)
+
+
+async def follow_moved_slot_async(error: MovedError) -> None:
+    """Async variant of :func:`follow_moved_slot`, for the async client's map."""
+    client = await get_redis_async()
+    await client.nodes_manager.move_slot(error)
 
 
 def refresh_slot_map() -> None:
@@ -309,6 +345,27 @@ def refresh_slot_map() -> None:
 _SLOT_MAP_REFRESH_EVERY_S = 5.0
 _slot_map_refreshed_at = float("-inf")
 _slot_map_refresh_lock = threading.Lock()
+
+
+async def refresh_slot_map_async() -> None:
+    """Async variant of :func:`refresh_slot_map`, for the async client's map.
+
+    Each loop-owned client has its own cooldown. The check-and-set can't
+    interleave between awaits on the client's loop.
+    """
+    client = await get_redis_async()
+    now = _async_slot_map_clock()
+    last_refresh = _async_slot_map_refreshed_at.get(client, float("-inf"))
+    if now - last_refresh < _SLOT_MAP_REFRESH_EVERY_S:
+        return
+    _async_slot_map_refreshed_at[client] = now
+    await client.nodes_manager.initialize()
+
+
+_async_slot_map_refreshed_at: WeakKeyDictionary[AsyncRedisClient, float] = (
+    WeakKeyDictionary()
+)
+_async_slot_map_clock = time.monotonic
 
 
 @conn_retry("RedisShardedPubSub", "Acquiring connection")
@@ -344,7 +401,7 @@ def connect_sharded_pubsub(channel: str) -> Redis:
 @conn_retry("AsyncRedisShardedPubSub", "Acquiring connection")
 async def connect_sharded_pubsub_async(channel: str) -> AsyncRedis:
     """Async variant of :func:`connect_sharded_pubsub`."""
-    host, port = resolve_shard_for_channel(channel)
+    host, port = await resolve_shard_for_channel_async(channel)
     # socket_timeout=None: see ``connect_sharded_pubsub``.
     c = AsyncRedis(
         host=host,
