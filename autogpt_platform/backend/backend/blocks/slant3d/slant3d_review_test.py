@@ -1,5 +1,5 @@
 import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from aiohttp import web
@@ -126,7 +126,9 @@ async def test_upload_passes_a_stream_and_closes_it(tmp_path):
     block = Slant3DSlicerBlock()
     streams = []
 
-    async def put(url, *, data, headers):
+    async def put(url, *, data, headers, allow_redirects):
+        # Sent once, so the file streams instead of being held in memory.
+        assert allow_redirects is False
         streams.append(data)
         chunks = []
         while chunk := data.read(65536):
@@ -134,6 +136,7 @@ async def test_upload_passes_a_stream_and_closes_it(tmp_path):
         assert b"".join(chunks) == content
         assert len(chunks) == 3
         assert headers["Content-Type"] == "application/octet-stream"
+        return Mock(ok=True, status=200)
 
     with patch(
         "backend.blocks.slant3d.base.store_media_file",
