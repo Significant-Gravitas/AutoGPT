@@ -13,6 +13,7 @@ at the bottom prove the NULL semantics against the real Postgres.
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -36,7 +37,7 @@ from backend.copilot.db import (
     update_chat_session_title,
     user_has_any_session,
 )
-from backend.copilot.model import ChatSessionMetadata
+from backend.copilot.model import PENDING_QUESTION_MAX_LENGTH, ChatSessionMetadata
 from backend.util.json import SafeJson
 
 _NULL_SAFE_DREAM_FILTER = "(metadata->>'kind' IS DISTINCT FROM 'dream')"
@@ -387,6 +388,32 @@ async def test_pending_question_query_avoids_select_star_and_excludes_delegated(
     assert "\"metadata\" -> 'delegated_by_session_id' IS NULL" not in query
     assert raw.call_args.args[1:] == ("u1", 5)
     assert raw.call_args.kwargs["model"] is PrismaChatSession
+
+
+def test_a_stored_pending_question_is_cut_when_read():
+    metadata = ChatSessionMetadata.model_validate(
+        {
+            "pending_question": {
+                "text": "q" * (PENDING_QUESTION_MAX_LENGTH * 3),
+                "asked_at": "2026-11-19T12:00:00+00:00",
+            }
+        }
+    )
+
+    assert metadata.pending_question is not None
+    assert metadata.pending_question.text == "q" * PENDING_QUESTION_MAX_LENGTH
+
+
+@pytest.mark.asyncio
+async def test_pending_question_text_is_cut_before_it_is_stored():
+    raw = AsyncMock(return_value=1)
+    with patch("backend.copilot.db.db.execute_raw_with_schema", raw):
+        await set_session_pending_question(
+            "s1", "u1", "q" * (PENDING_QUESTION_MAX_LENGTH * 3), datetime.now(UTC)
+        )
+
+    stored = json.loads(raw.call_args.args[3])
+    assert stored["text"] == "q" * PENDING_QUESTION_MAX_LENGTH
 
 
 def test_pending_question_projection_columns_exist_in_schema():
