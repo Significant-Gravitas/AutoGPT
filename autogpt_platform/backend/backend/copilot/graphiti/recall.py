@@ -58,6 +58,10 @@ FORGOTTEN_FACT = "[forgotten]"
 
 _LIVE_STATUSES = (MemoryStatus.active, MemoryStatus.tentative)
 
+# Searches embed the query's start, where a message's ask usually is. 2,000 characters
+# fit text-embedding-3-small's 8,192 tokens: at most one per UTF-8 byte, 4 per character.
+_MAX_QUERY_CHARS = 2_000
+
 # The ``expired_at`` half of the live test, applied inside every graphiti
 # search method so a retired fact never takes one of the ``limit`` slots. The
 # ``status`` half runs in Python (``is_live``): graphiti 0.30 builds no Cypher
@@ -177,7 +181,8 @@ async def search_facts(
     recipe: SearchConfig | None = None,
     include_tentative: bool = True,
 ) -> list[EntityEdge]:
-    """Live facts matching ``query``, best first, at most ``limit``.
+    """Live facts matching ``query`` (its first ``_MAX_QUERY_CHARS``), best
+    first, at most ``limit``.
 
     ``recipe`` defaults to the hybrid RRF config ``Graphiti.search`` uses. Its
     ``limit`` is replaced on a copy: ``Graphiti.search`` sets it on the shared
@@ -189,7 +194,7 @@ async def search_facts(
     client = await get_graphiti_client(scope.group_id)
     config = (recipe or EDGE_HYBRID_SEARCH_RRF).model_copy(update={"limit": limit})
     results = await client.search_(
-        query=query,
+        query=query[:_MAX_QUERY_CHARS],
         config=config,
         group_ids=[scope.group_id],
         search_filter=_LIVE_SEARCH_FILTER,
@@ -202,8 +207,8 @@ async def search_facts(
 async def search_forgotten_facts(
     scope: MemoryScope, query: str, *, limit: int
 ) -> list[EntityEdge]:
-    """Forgotten facts matching ``query`` by meaning, best first, at most
-    ``limit``: for making a soft forget permanent
+    """Forgotten facts matching ``query`` (its first ``_MAX_QUERY_CHARS``) by
+    meaning, best first, at most ``limit``: for making a soft forget permanent
     (``recall_forget.retract(hard=True)``).
 
     A forget leaves a fact's embedding but makes its sentence read
@@ -213,7 +218,8 @@ async def search_forgotten_facts(
     above the same threshold: none is crowded out by a live one.
     """
     client = await get_graphiti_client(scope.group_id)
-    vector = await client.embedder.create(input_data=[query.replace("\n", " ")])
+    text = query[:_MAX_QUERY_CHARS].replace("\n", " ")
+    vector = await client.embedder.create(input_data=[text])
     return await _forgotten_by_meaning(client.driver, scope.group_id, vector, limit)
 
 
