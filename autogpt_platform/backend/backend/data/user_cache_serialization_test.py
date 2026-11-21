@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 
 from backend.data import user as user_db
+from backend.util import cache_invalidation
 
 
 class _BlockingClear:
@@ -119,7 +120,7 @@ async def test_cancellation_returns_while_the_submitted_clear_still_runs(
     submissions = _SubmittedClears(count)
     error_logged = asyncio.Event()
     loop = asyncio.get_running_loop()
-    log_exception = user_db.logger.exception
+    log_exception = cache_invalidation.logger.exception
 
     def record_error(message: str) -> None:
         log_exception(message)
@@ -129,7 +130,7 @@ async def test_cancellation_returns_while_the_submitted_clear_still_runs(
         patch.object(user_db.get_or_create_user, "cache_clear", clear),
         patch.object(user_db.get_user_by_id, "cache_delete"),
         patch.object(user_db.get_user_by_email, "cache_delete"),
-        patch.object(user_db.logger, "exception", side_effect=record_error),
+        patch.object(cache_invalidation.logger, "exception", side_effect=record_error),
         patch.object(
             user_db._USER_CACHE_CLEAR_EXECUTOR, "submit", side_effect=submissions
         ),
@@ -163,7 +164,7 @@ async def test_cancellation_returns_while_the_submitted_clear_still_runs(
     errors = [
         record
         for record in caplog.records
-        if record.message == "User cache clear failed after request cancellation"
+        if record.message == "Cache invalidation failed after request cancellation"
     ]
     assert len(errors) == int(worker_fails)
     if worker_fails:
@@ -197,13 +198,16 @@ async def test_each_clear_preserves_its_request_context():
 
 @pytest.mark.asyncio
 async def test_cache_deletion_order_scope_and_errors_are_preserved():
+    loop_thread = threading.current_thread()
     events: list[tuple[str, str | None]] = []
     clear_calls = 0
 
     def delete_id(user_id: str) -> None:
+        assert threading.current_thread() is not loop_thread
         events.append(("id", user_id))
 
     def delete_email(email: str) -> None:
+        assert threading.current_thread() is not loop_thread
         events.append(("email", email))
 
     def clear() -> None:

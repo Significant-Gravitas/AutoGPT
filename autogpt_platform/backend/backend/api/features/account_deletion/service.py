@@ -107,11 +107,11 @@ from prisma.models import AccountDeletionRequest
 
 from backend.api.features.account_deletion.analytics import plan_state
 from backend.api.features.account_deletion.best_effort import attempt_step
+from backend.api.features.account_deletion.cache import invalidate_account_caches
 from backend.api.features.account_deletion.connected_apps import revoke_connected_apps
 from backend.api.features.account_deletion.email_opt_out import stop_account_emails
 from backend.api.features.account_deletion.issued_access import revoke_issued_access
 from backend.api.features.account_deletion.scheduled_work import stop_user_work
-from backend.api.features.store.cache import forget_store_listings
 from backend.data.account_deletion import (
     GRACE_PERIOD,
     close_account,
@@ -121,8 +121,9 @@ from backend.data.account_deletion import (
 )
 from backend.data.credit import cancel_all_subscriptions_now, set_auto_top_up
 from backend.data.model import AutoTopUpConfig
-from backend.data.user import forget_refusal, get_user_by_id
+from backend.data.user import get_user_by_id
 from backend.notifications.auth import send_account_deleted_email
+from backend.util.cache_invalidation import run_cache_invalidation
 from backend.util.posthog_client import capture_anonymous
 from backend.util.posthog_events import PostHogEvent
 
@@ -242,8 +243,9 @@ async def _close(
     # background work starts for it, and its listings and creator page leave
     # the store at once (the transaction has committed).
     remember_account_closed(user_id)
-    forget_refusal(user_id)
-    forget_store_listings()
+    await run_cache_invalidation(
+        invalidate_account_caches, user_id, listings_changed=True
+    )
     if request is not None:
         logger.info(f"Account deletion closed the account of user {user_id}")
     else:

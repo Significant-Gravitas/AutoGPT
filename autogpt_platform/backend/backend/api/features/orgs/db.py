@@ -18,6 +18,7 @@ from backend.data.org_migration import (
     create_personal_org,
 )
 from backend.data.tenancy import resource_role_refusal
+from backend.util.cache_invalidation import run_cache_invalidation
 from backend.util.exceptions import NotFoundError
 
 from .model import OrgAliasResponse, OrgMemberResponse, OrgResponse, UpdateOrgData
@@ -513,7 +514,7 @@ async def convert_personal_org(org_id: str, user_id: str) -> OrgResponse:
         check_first=lambda tx: _check_membership_count(tx, user_id),
     )
     # New runs bill the team org's balance now, not after the cached minute.
-    forget_personal_org_owner(org_id)
+    await run_cache_invalidation(forget_personal_org_owner, org_id)
 
     return await get_org(org_id)
 

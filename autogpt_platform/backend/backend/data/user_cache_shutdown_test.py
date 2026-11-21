@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from backend.data import user as user_db
+from backend.util import cache_invalidation
 
 
 def test_cancelled_clear_logs_a_worker_failure_after_its_loop_closes(caplog):
@@ -16,7 +17,7 @@ def test_cancelled_clear_logs_a_worker_failure_after_its_loop_closes(caplog):
     release = threading.Event()
     worker_finished = threading.Event()
     error_logged = threading.Event()
-    log_exception = user_db.logger.exception
+    log_exception = cache_invalidation.logger.exception
     request_label = contextvars.ContextVar("request_label", default="missing")
     logged_labels: list[str] = []
 
@@ -53,7 +54,7 @@ def test_cancelled_clear_logs_a_worker_failure_after_its_loop_closes(caplog):
     with (
         patch.object(user_db.get_or_create_user, "cache_clear", clear),
         patch.object(user_db.get_user_by_id, "cache_delete"),
-        patch.object(user_db.logger, "exception", side_effect=record_error),
+        patch.object(cache_invalidation.logger, "exception", side_effect=record_error),
     ):
         try:
             loop.run_until_complete(cancel_request())
@@ -68,7 +69,7 @@ def test_cancelled_clear_logs_a_worker_failure_after_its_loop_closes(caplog):
     [record] = [
         record
         for record in caplog.records
-        if record.message == "User cache clear failed after request cancellation"
+        if record.message == "Cache invalidation failed after request cancellation"
     ]
     assert record.exc_info is not None
     assert str(record.exc_info[1]) == "late Redis failure after loop close"

@@ -29,14 +29,15 @@ from datetime import datetime, timezone
 from autogpt_libs.auth import forget_account_state
 
 from backend.api.features.account_deletion.analytics import tenure_bucket
+from backend.api.features.account_deletion.cache import invalidate_account_caches
 from backend.api.features.account_deletion.models import AccountDeletionResponse
-from backend.api.features.store.cache import forget_store_listings
 from backend.data.account_deletion import (
     ReopenOutcome,
     get_deletion_request,
     reopen_account,
 )
-from backend.data.user import forget_refusal, get_user_by_id, is_user_banned
+from backend.data.user import get_user_by_id, is_user_banned
+from backend.util.cache_invalidation import run_cache_invalidation
 from backend.util.posthog_client import capture_anonymous
 from backend.util.posthog_events import PostHogEvent
 
@@ -91,11 +92,14 @@ async def restore_account(user_id: str) -> None:
     # background work and the creator page come back without waiting out a
     # cache.
     forget_account_state(user_id)
-    forget_refusal(user_id)
+    await run_cache_invalidation(
+        invalidate_account_caches,
+        user_id,
+        listings_changed=outcome is ReopenOutcome.REOPENED,
+    )
     if outcome is not ReopenOutcome.REOPENED:
         return
     logger.info(f"Account deletion cancelled: user {user_id} kept the account")
-    forget_store_listings()
     if request is not None:
         await _count_kept(user_id, request.eraseAfter)
 
