@@ -394,7 +394,7 @@ jobs:
         wait: [buildkit-image]
 
       - name: Set up Platform - Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
           # The runner is thrown away; removing the builder only costs ~30 s.
           cleanup: false
@@ -407,7 +407,7 @@ jobs:
       # mount. A fresh builder starts empty, so seed the mount from the last run.
       - name: Set up Platform - Restore Next.js build cache
         id: next-build-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: /tmp/next-build-cache
           # Next.js drops the whole cache when next.config.mjs or its dependencies change
@@ -514,7 +514,7 @@ jobs:
 
       - name: Set up tests - Restore Playwright browsers
         if: matrix.suite != 'smoke'
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
