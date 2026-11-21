@@ -66,6 +66,7 @@ class DesignWorkflowPageTool(BaseTool):
                 "library_agent_id": {
                     "type": "string",
                     "description": "The workflow's library id.",
+                    "entity": "library_agent",
                 },
                 "page": {
                     **compact_schema(WorkflowPageDesign),

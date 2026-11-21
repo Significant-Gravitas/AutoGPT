@@ -51,7 +51,16 @@ export function useWorkflowPageMount(agent: LibraryAgent) {
   };
   const removeSection = useRemoveWorkflowPageSection({ mutation });
   const restore = useRestoreWorkflowPage({ mutation });
-  const reset = useDeleteWorkflowPage({ mutation });
+  // A 404 refetch keeps the last page, so a reset drops it instead.
+  const reset = useDeleteWorkflowPage({
+    mutation: {
+      ...mutation,
+      onSuccess: () =>
+        queryClient.resetQueries({
+          queryKey: getGetWorkflowPageQueryKey(agent.id),
+        }),
+    },
+  });
 
   return {
     enabled,

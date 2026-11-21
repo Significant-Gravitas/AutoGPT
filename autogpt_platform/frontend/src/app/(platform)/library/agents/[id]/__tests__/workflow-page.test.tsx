@@ -17,14 +17,17 @@ import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
+import { COPILOT_PROMPT_KEYS } from "@/services/copilot/prompt-handoff";
 import { expect, test, vi } from "vitest";
 import { NewAgentLibraryView } from "../components/NewAgentLibraryView/NewAgentLibraryView";
+
+const router = vi.hoisted(() => ({ push: vi.fn() }));
 
 vi.mock("next/navigation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/navigation")>()),
   useParams: () => ({ id: "library-agent" }),
   usePathname: () => "/library/agents/library-agent",
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => ({ push: router.push, replace: vi.fn(), refresh: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -289,4 +292,86 @@ test("opens on the page, with no run picked, when the workflow has run before", 
 
   expect(await screen.findByTestId("workflow-page")).toBeDefined();
   expect(details).not.toHaveBeenCalled();
+});
+
+test("removing a section and going back to the standard view reach their routes", async () => {
+  const removed: string[] = [];
+  let hasPage = true;
+  serveLibrary();
+  server.use(
+    http.get(PAGE_URL, () =>
+      hasPage
+        ? HttpResponse.json(page())
+        : HttpResponse.json({ detail: "Not found" }, { status: 404 }),
+    ),
+    http.delete(`${PAGE_URL}/sections/:index`, ({ params }) => {
+      removed.push(String(params.index));
+      return HttpResponse.json(page());
+    }),
+    http.delete(PAGE_URL, () => {
+      hasPage = false;
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+
+  renderView();
+
+  await userEvent.click(
+    await screen.findByRole("button", {
+      name: "Remove the recent runs section",
+    }),
+  );
+  await waitFor(() => expect(removed).toEqual(["3"]));
+  await userEvent.click(
+    screen.getByRole("button", { name: "Use the standard view" }),
+  );
+
+  expect(
+    await screen.findByRole("button", { name: "Setup your task" }),
+  ).toBeDefined();
+  expect(screen.queryByTestId("workflow-page")).toBeNull();
+});
+
+test("shows when a scheduled workflow runs next", async () => {
+  serveLibrary();
+  const sections = [
+    ...page().sections,
+    {
+      kind: "schedule" as const,
+      index: 4,
+      is_scheduled: true,
+      next_run: "2026-11-23T09:00:00Z",
+      unavailable: false,
+    },
+  ];
+  server.use(http.get(PAGE_URL, () => HttpResponse.json(page({ sections }))));
+
+  renderView();
+
+  expect(
+    await screen.findByText(/Runs on a schedule\. Next run: Nov 23, 2026/),
+  ).toBeDefined();
+});
+
+test("asking Otto to update an out-of-date page opens the chat with the request filled in", async () => {
+  serveLibrary();
+  server.use(
+    http.get(PAGE_URL, () =>
+      HttpResponse.json(
+        page({ left_out: [{ index: 1, kind: "run_form", problem: "gone" }] }),
+      ),
+    ),
+  );
+
+  renderView();
+
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Ask Otto to update it" }),
+  );
+
+  expect(router.push).toHaveBeenCalledWith("/home");
+  expect(sessionStorage.getItem(COPILOT_PROMPT_KEYS.prompt)).toContain(
+    'The page for my "Lead research" workflow is out of date',
+  );
+  expect(sessionStorage.getItem(COPILOT_PROMPT_KEYS.autosubmit)).toBeNull();
 });
