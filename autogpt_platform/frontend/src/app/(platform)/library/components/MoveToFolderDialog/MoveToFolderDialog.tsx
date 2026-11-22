@@ -37,9 +37,10 @@ export function MoveToFolderDialog({
 
   // The whole tree, subfolders included. No folder change invalidates it, so
   // it is read each time the dialog opens.
-  const { data: folderTree } = useGetV2GetFolderTree({
-    query: { select: okData, enabled: isOpen, staleTime: 0 },
-  });
+  const { data: folderTree, isLoading: isLoadingFolders } =
+    useGetV2GetFolderTree({
+      query: { select: okData, enabled: isOpen, staleTime: 0 },
+    });
 
   const { mutate: moveAgent, isPending } = usePostV2BulkMoveAgents({
     mutation: {
@@ -105,7 +106,7 @@ export function MoveToFolderDialog({
             {folders.length === 0 ? (
               <div className="flex h-20 items-center justify-center">
                 <Text variant="small" tone="subtle">
-                  No folders found
+                  {isLoadingFolders ? "Loading folders…" : "No folders found"}
                 </Text>
               </div>
             ) : (

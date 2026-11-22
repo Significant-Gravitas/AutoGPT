@@ -50,8 +50,12 @@ const WORKFLOW = {
 };
 
 // The backend's folder routes over a mutable set of folders: the list
-// answers one level (the top one without a parent_id), the tree all of them.
-function serveFolders(folders: LibraryFolder[]) {
+// answers one level (the top one without a parent_id), the tree all of them,
+// once `treeReady` settles.
+function serveFolders(
+  folders: LibraryFolder[],
+  treeReady: Promise<void> = Promise.resolve(),
+) {
   const moves: BulkMoveAgentsRequest[] = [];
   const treeUnder = (parentID: string | null): LibraryFolderTree[] =>
     folders
@@ -67,7 +71,10 @@ function serveFolders(folders: LibraryFolder[]) {
       pagination: { ...PAGE, total_items: 0 },
     }),
     getGetV1ListAllExecutionsMockHandler([]),
-    getGetV2GetFolderTreeMockHandler(() => ({ tree: treeUnder(null) })),
+    getGetV2GetFolderTreeMockHandler(async () => {
+      await treeReady;
+      return { tree: treeUnder(null) };
+    }),
     getGetV2ListLibraryFoldersMockHandler(({ request }) => {
       const listed = treeUnder(
         new URL(request.url).searchParams.get("parent_id"),
@@ -143,4 +150,25 @@ test("Move to folder opens on the folders as they are, with the app's stale time
   expect(
     await within(dialog).findByRole("button", { name: /Acme/ }),
   ).toBeDefined();
+});
+
+test("Move to folder says it is loading, not that there are no folders, until they arrive", async () => {
+  let releaseTree: () => void = () => {};
+  serveFolders(
+    [folder("f-clients", "Clients")],
+    new Promise<void>((resolve) => {
+      releaseTree = () => resolve();
+    }),
+  );
+  render(<LibraryPage />);
+
+  try {
+    const dialog = await openMoveDialog();
+    expect(await within(dialog).findByText("Loading folders…")).toBeDefined();
+    expect(within(dialog).queryByText("No folders found")).toBeNull();
+    releaseTree();
+    expect(await within(dialog).findByText("Clients")).toBeDefined();
+  } finally {
+    releaseTree();
+  }
 });
