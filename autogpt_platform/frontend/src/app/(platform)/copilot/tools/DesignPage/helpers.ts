@@ -18,14 +18,25 @@ export function parsePageOutput(part: ToolUIPart): PageOutput | null {
   return output as unknown as PageOutput;
 }
 
-/** Whether the stored page moved on since this preview was drawn. */
+/** Whether the stored page moved on since this preview was drawn, or, for a
+ * new page, whether this chat already saved one. */
 export function isOutdated(
   page: ResolvedPage,
-  stored: { id: string; revision: number }[] | undefined,
+  sessionID: string | null | undefined,
+  stored:
+    | { id: string; revision: number; chat_session_id?: string | null }[]
+    | undefined,
 ) {
-  if (!page.id || page.revision == null || !stored) return false;
+  if (!stored) return false;
+  if (!page.id) {
+    return Boolean(
+      sessionID && stored.some((p) => p.chat_session_id === sessionID),
+    );
+  }
   const current = stored.find((p) => p.id === page.id);
-  return Boolean(current && current.revision > page.revision);
+  return Boolean(
+    current && page.revision != null && current.revision > page.revision,
+  );
 }
 
 function toRecord(value: unknown): Record<string, unknown> | null {

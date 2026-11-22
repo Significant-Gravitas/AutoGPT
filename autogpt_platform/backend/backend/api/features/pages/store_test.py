@@ -294,6 +294,7 @@ async def test_the_tool_previews_saves_updates_reads_and_refuses_a_stale_save(
         updated = await call(
             page_id=page_id, page=_design("Second", workflow), save=True, based_on=1
         )
+        again = await call(page=_design("Second page", workflow), save=True)
         stale = await call(
             page_id=page_id, page=_design("Third", workflow), save=True, based_on=1
         )
@@ -309,6 +310,7 @@ async def test_the_tool_previews_saves_updates_reads_and_refuses_a_stale_save(
     assert unbased["error"] == "invalid_page"
     assert updated["page"]["revision"] == 2 and updated["page"]["has_previous"] is True
     assert stale["error"] == "stale_page"
+    assert again["error"] == "stale_page" and page_id in again["message"]
     assert (
         foreign["error"] == "invalid_page"
         and "no longer available" in foreign["message"]

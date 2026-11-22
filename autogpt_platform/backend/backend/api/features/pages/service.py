@@ -30,6 +30,7 @@ class PageListItem(BaseModel):
     workflow_count: int
     expert_count: int
     pinned_library_agent_id: str | None = None
+    chat_session_id: str | None = None
     updated_at: datetime
 
 
@@ -201,5 +202,6 @@ def _list_item(record: PageRecord) -> PageListItem:
         workflow_count=workflows,
         expert_count=experts,
         pinned_library_agent_id=record.pinned_library_agent_id,
+        chat_session_id=record.chat_session_id,
         updated_at=record.updated_at,
     )

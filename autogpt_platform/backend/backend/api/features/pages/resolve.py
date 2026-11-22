@@ -492,7 +492,8 @@ async def _run_trend(
         label, unit = section.output, None
     else:
         points = [(run, _run_measure(run, section.value)) for run in runs if run.stats]
-        label, unit = ("Cost", "$") if section.value == "cost" else ("Duration", "s")
+        label = "Cost ($)" if section.value == "cost" else "Duration (s)"
+        unit = None
     block = None
     if len(points) >= 2:
         block = ChartBlock(
@@ -733,8 +734,14 @@ def _history_cell(run: GraphExecution | None, output: str) -> str | None:
     values = run.outputs.get(output) if run else None
     if not values:
         return None
+    value = values[-1]
     try:
-        return _clip(_format(values[-1]), 200)
+        # A record reads as its fields, not as JSON.
+        if isinstance(value, dict) and value:
+            return _clip(
+                " · ".join(f"{k}: {_format(v)}" for k, v in value.items()), 200
+            )
+        return _clip(_format(value), 200)
     except ValueError:
         return None
 
@@ -899,7 +906,7 @@ def _with_count(title: str | None, shown: int, total: int, noun: str) -> str | N
 
 
 def _when(moment: datetime | None) -> str:
-    return moment.strftime("%-d %b %H:%M") if moment else "–"
+    return moment.strftime("%-d %b %H:%M UTC") if moment else "–"
 
 
 def _first(*values: Any) -> Any:

@@ -29,7 +29,7 @@ export function DesignPage({ part, canAct, isCurrentlyStreaming }: Props) {
   const [isSent, setIsSent] = useState(false);
   const output = parsePageOutput(part);
   const stored = useListPages({
-    query: { enabled: Boolean(output?.page.id), select: okData },
+    query: { enabled: Boolean(output && !output.saved), select: okData },
   });
 
   if (!output) {
@@ -41,7 +41,9 @@ export function DesignPage({ part, canAct, isCurrentlyStreaming }: Props) {
     return <GenericTool part={part} />;
   }
 
-  const outdated = isOutdated(output.page, stored.data?.pages);
+  const outdated =
+    !output.saved &&
+    isOutdated(output.page, output.session_id, stored.data?.pages);
 
   function send(message: string) {
     if (!canAct || isSent || outdated) return;

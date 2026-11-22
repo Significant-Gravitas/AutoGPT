@@ -174,6 +174,19 @@ async def _save(
     session_id = session.session_id
     stored = design.model_dump(mode="json", exclude_none=True)
     if record is None:
+        made = [
+            p
+            for p in await pages_db().list_pages(user_id)
+            if p.chat_session_id == session_id
+        ]
+        if made:
+            # An older preview applied again would make a second page.
+            return _error(
+                f"This chat already made page {made[0].id}. To change it, pass that "
+                "page_id and its revision as based_on; for another page, start a new chat.",
+                "stale_page",
+                session_id,
+            )
         try:
             saved = await pages_db().create_page(
                 user_id, design.title, stored, chat_session_id=session_id

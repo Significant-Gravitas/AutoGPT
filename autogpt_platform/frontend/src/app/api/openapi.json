@@ -34080,6 +34080,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Pinned Library Agent Id"
           },
+          "chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Chat Session Id"
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time",

@@ -103,6 +103,22 @@ describe("page preview card", () => {
     ).toBeDefined();
     expect(screen.queryByRole("button", { name: "Apply" })).toBeNull();
   });
+
+  it("refuses to apply a new page's preview once its chat saved one", async () => {
+    server.use(
+      http.get("*/api/pages", () =>
+        HttpResponse.json({
+          pages: [{ ...listed("page-9", 1), chat_session_id: "chat-1" }],
+        }),
+      ),
+    );
+    renderParts([pagePart({ output: { ...output, session_id: "chat-1" } })]);
+
+    expect(
+      await screen.findByText(/A newer version of this page exists/),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Apply" })).toBeNull();
+  });
 });
 
 function listed(id: string, revision: number) {
