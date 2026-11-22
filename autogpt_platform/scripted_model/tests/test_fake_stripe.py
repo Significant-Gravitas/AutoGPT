@@ -23,6 +23,7 @@ from scripted_model.server import ScriptedModelServer
 KEY = "sk_test_scripted_model"  # pragma: allowlist secret
 SECRET = "whsec_scripted_model_tests"  # pragma: allowlist secret
 APP = "http://app.example"
+CREDITS = {"name": "AutoGPT Platform Credits"}
 
 
 class Receiver(ThreadingHTTPServer):
@@ -180,7 +181,15 @@ def test_a_journey_holds_and_redelivers_webhooks(stack: Stack) -> None:
         return await stripe.checkout.Session.create_async(
             customer=customer.id,
             mode="payment",
-            line_items=[{"price_data": {"currency": "usd", "unit_amount": 900}}],
+            line_items=[
+                {
+                    "price_data": {
+                        "currency": "usd",
+                        "product_data": CREDITS,
+                        "unit_amount": 900,
+                    }
+                }
+            ],
             success_url=f"{APP}/billing",
         )
 
@@ -216,27 +225,53 @@ def test_the_fake_refuses_what_stripe_would(stack: Stack) -> None:
             await stripe.Customer.create_async(api_key="sk_live_not_for_a_fake")
         with pytest.raises(stripe.InvalidRequestError, match="No such customer"):
             await stripe.Customer.retrieve_async("cus_missing")
+        with pytest.raises(stripe.InvalidRequestError, match="No such checkout"):
+            await stripe.checkout.Session.list_async(starting_after="cs_test_none")
         # A call the fake doesn't model fails as Stripe fails an unknown URL.
         with pytest.raises(stripe.InvalidRequestError, match="Unrecognized"):
             await stripe.Refund.create_async(payment_intent="pi_missing")
-        # Stripe keeps no result for a request refused for its parameters,
-        # so a corrected retry with the same idempotency key goes through.
-        item = {"price_data": {"currency": "usd", "unit_amount": 500}}
-        with pytest.raises(stripe.InvalidRequestError, match="success_url"):
-            await stripe.checkout.Session.create_async(
-                mode="payment", line_items=[item], idempotency_key="checkout-1"
-            )
+        # An inline price needs a product and an amount. Stripe keeps no
+        # result for a request it refused for its parameters, so a corrected
+        # retry with the same idempotency key goes through.
+        refusals = [
+            ({"currency": "usd", "unit_amount": 500}, "`product_data`"),
+            ({"currency": "usd", "product_data": CREDITS}, "unit_amount"),
+        ]
+        for price, refusal in refusals:
+            with pytest.raises(stripe.InvalidRequestError, match=refusal):
+                await stripe.checkout.Session.create_async(
+                    mode="payment",
+                    line_items=[{"price_data": price}],
+                    success_url=f"{APP}/billing",
+                    idempotency_key="checkout-1",
+                )
         session = await stripe.checkout.Session.create_async(
             mode="payment",
-            line_items=[item],
+            line_items=[
+                {
+                    "price_data": {
+                        "currency": "usd",
+                        "product_data": CREDITS,
+                        "unit_amount": 0,
+                    }
+                }
+            ],
             success_url=f"{APP}/billing",
             idempotency_key="checkout-1",
         )
-        assert session.status == "open"
+        assert session.status == "open" and session.amount_total == 0
 
+    cursor = stack.control("GET", "requests/cursor")["cursor"]
     asyncio.run(_with_closed_client(refused()))
-    unserved = stack.control("GET", "requests?unserved=true")["requests"]
-    assert [(r["method"], r["path"]) for r in unserved] == [("POST", "/v1/refunds")]
+    unserved = stack.control("GET", f"requests?unserved=true&after={cursor}")
+    assert [(r["method"], r["path"]) for r in unserved["requests"]] == [
+        ("POST", "/v1/refunds")
+    ]
+    # A journey's cursor leaves out what came before it.
+    cursor = stack.control("GET", "requests/cursor")["cursor"]
+    assert stack.control("GET", f"requests?unserved=true&after={cursor}") == {
+        "requests": []
+    }
 
 
 async def _with_closed_client(work: Any) -> Any:

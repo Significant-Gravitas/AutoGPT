@@ -169,19 +169,27 @@ the backend reads Stripe back often.
 | `billing_portal.Session.create` | a page on the fake that links back |
 
 Anything else gets Stripe's 404 for an unknown URL and is listed at
-`GET /__stripe__/requests?unserved=true`, which journeys check is empty. A
-request needs a test key (`sk_test_…`); a live key is refused.
+`GET /__stripe__/requests?unserved=true&after=<n>`. That list is never
+trimmed. A journey reads `GET /__stripe__/requests/cursor` when it starts and
+checks that nothing after that is unserved. A request needs a test key
+(`sk_test_…`); a live key is refused. As Stripe does, the fake refuses an
+inline price (`price_data`) without a product (`product` or `product_data`)
+or an amount (`unit_amount` or `unit_amount_decimal`), and keeps no result
+under an idempotency key for a request it refused.
 
 **Checkout.** A session's `url` is
 `$FAKE_STRIPE_PUBLIC_URL/stripe/checkout/<id>` (the host port, for the
 browser). **Pay** completes a payment-mode session the way a card that needs
 no extra step does: a payment intent, the card saved to the customer when the
-session asked to keep it, the session `complete` and `paid`. The fake then
-POSTs `checkout.session.completed` to `FAKE_STRIPE_WEBHOOK_URL`, signed with
-`FAKE_STRIPE_WEBHOOK_SECRET` as Stripe signs (`Stripe-Signature:
-t=<ts>,v1=<HMAC-SHA256 of "<ts>.<payload>">`), and only then redirects to
-`success_url`. So unless a journey held it, the platform has the webhook by
-the time the user is back. **Cancel** links to `cancel_url`. Subscription
+session asked to keep it, the session `complete` and `paid`. When both
+`FAKE_STRIPE_WEBHOOK_URL` and `FAKE_STRIPE_WEBHOOK_SECRET` are set, the fake
+then POSTs `checkout.session.completed` to that URL, signed with that secret
+as Stripe signs (`Stripe-Signature: t=<ts>,v1=<HMAC-SHA256 of
+"<ts>.<payload>">`), and only then redirects to `success_url`. So unless a
+journey held it, the platform has the webhook by the time the user is back.
+If either is unset, nothing is sent: each delivery is recorded as failed
+("no webhook endpoint").
+**Cancel** links to `cancel_url`. Subscription
 checkout isn't modelled: the platform reads plan prices from a PostHog JSON
 flag (`copilot-tier-stripe-prices`) that the journeys stack can't set.
 

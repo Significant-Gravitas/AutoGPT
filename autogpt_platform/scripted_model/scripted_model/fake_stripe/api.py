@@ -13,29 +13,13 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from . import resources
+from .errors import ApiError
 from .forms import as_int
+from .line_items import product_name, unit_amount
 from .store import Store, StripeObject, public
 
 Params = dict[str, Any]
 Handler = Callable[[re.Match[str], Params], StripeObject]
-
-
-class ApiError(Exception):
-    """A request Stripe would refuse, with the error body it would send."""
-
-    def __init__(
-        self,
-        status: int,
-        message: str,
-        *,
-        code: str | None = None,
-        param: str | None = None,
-        kind: str = "invalid_request_error",
-    ) -> None:
-        super().__init__(message)
-        error = {"type": kind, "message": message, "code": code, "param": param}
-        self.status = status
-        self.body = {"error": {k: v for k, v in error.items() if v is not None}}
 
 
 class StripeApi:
@@ -191,7 +175,7 @@ class StripeApi:
                     params.get(f) is None or obj.get(f) == params[f] for f in filters
                 ),
             )
-            return _page(match.string, [public(obj) for obj in found], params)
+            return self._page(kind, match.string, found, params)
 
         return list_
 
@@ -207,7 +191,7 @@ class StripeApi:
                 or (wanted is None and sub.get("status") != "canceled")
             ),
         )
-        return _page(match.string, [public(sub) for sub in found], params)
+        return self._page("subscription", match.string, found, params)
 
     def _create_customer(self, match: re.Match[str], params: Params) -> StripeObject:
         return public(self._store.add(resources.customer(params)))
@@ -247,20 +231,17 @@ class StripeApi:
         return public(self._store.add(session))
 
     def _line_item(self, index: int, item: Any) -> dict[str, Any]:
+        where = f"line_items[{index}]"
         if not isinstance(item, dict):
-            raise ApiError(400, "Invalid line item.", param=f"line_items[{index}]")
+            raise ApiError(400, "Invalid line item.", param=where)
         if isinstance(price_data := item.get("price_data"), dict):
-            product = price_data.get("product_data") or {}
-            name = product.get("name") or price_data.get("product") or "Item"
             return resources.line_item(
-                name,
-                price_data.get("unit_amount"),
+                product_name(price_data, f"{where}[price_data]"),
+                unit_amount(price_data, f"{where}[price_data]"),
                 item.get("quantity"),
                 price_data.get("currency") or "usd",
             )
-        price = self._require(
-            str(item.get("price")), "price", f"line_items[{index}][price]"
-        )
+        price = self._require(str(item.get("price")), "price", f"{where}[price]")
         return resources.line_item(
             price.get("nickname") or price["id"],
             price.get("unit_amount"),
@@ -282,6 +263,34 @@ class StripeApi:
 
         return public(self._store.update(match["id"], expire) or {})
 
+    def _page(
+        self, kind: str, url: str, found: list[StripeObject], params: Params
+    ) -> StripeObject:
+        """One page of a list, newest first: ``limit`` (10) after
+        ``starting_after``, which must name a ``kind`` Stripe holds."""
+        items = [public(obj) for obj in found]
+        after = params.get("starting_after")
+        if after:
+            ids = [item["id"] for item in items]
+            if after in ids:
+                items = items[ids.index(after) + 1 :]
+            elif self._store.get(str(after), kind) is None:
+                raise ApiError(
+                    404,
+                    f"No such {kind}: '{after}'",
+                    code="resource_missing",
+                    param="starting_after",
+                )
+            else:
+                items = []
+        limit = max(1, min(as_int(params.get("limit"), 10), 100))
+        return {
+            "object": "list",
+            "data": items[:limit],
+            "has_more": len(items) > limit,
+            "url": url,
+        }
+
     def _create_portal_session(
         self, match: re.Match[str], params: Params
     ) -> StripeObject:
@@ -301,18 +310,3 @@ def _expansions(expand: Any) -> list[str]:
     if isinstance(expand, list):
         return [str(path) for path in expand]
     return [str(expand)] if expand else []
-
-
-def _page(url: str, items: list[StripeObject], params: Params) -> StripeObject:
-    """One page of a list, newest first: ``limit`` (10) after ``starting_after``."""
-    after = params.get("starting_after")
-    if after:
-        ids = [item["id"] for item in items]
-        items = items[ids.index(after) + 1 :] if after in ids else []
-    limit = max(1, min(as_int(params.get("limit"), 10), 100))
-    return {
-        "object": "list",
-        "data": items[:limit],
-        "has_more": len(items) > limit,
-        "url": url,
-    }

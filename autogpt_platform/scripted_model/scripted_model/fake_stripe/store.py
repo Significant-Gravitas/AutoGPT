@@ -48,11 +48,15 @@ class Store:
             return copy.deepcopy(obj)
 
     def update(
-        self, object_id: str, change: Callable[[StripeObject], None]
+        self,
+        object_id: str,
+        change: Callable[[StripeObject], None],
+        also_add: tuple[StripeObject, ...] = (),
     ) -> StripeObject | None:
         """Applies ``change`` to the object under the lock, so a check it makes
-        (a session still open, say) and its write are one step. An exception
-        from ``change`` leaves the object as it was."""
+        (a session still open, say) and its write are one step, and adds
+        ``also_add`` in the same step. An exception from ``change`` leaves the
+        store as it was, without ``also_add``."""
         with self._lock:
             obj = self._objects.get(object_id)
             if obj is None:
@@ -60,6 +64,8 @@ class Store:
             changed = copy.deepcopy(obj)
             change(changed)
             self._objects[object_id] = changed
+            for extra in also_add:
+                self._objects[extra["id"]] = copy.deepcopy(extra)
             return copy.deepcopy(changed)
 
     def find(

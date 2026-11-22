@@ -79,8 +79,8 @@ class Checkout:
             text = f"<p>This checkout is {html.escape(session['status'])}.</p>"
             return Response.html(409, "Checkout", text)
         saved = bool(session["_payment_intent_data"].get("setup_future_usage"))
-        card = self._store.add(resources.card(session["customer"] if saved else None))
-        intent = self._store.add(resources.payment_intent(session, card["id"]))
+        card = resources.card(session["customer"] if saved else None)
+        intent = resources.payment_intent(session, card["id"])
         details = resources.customer_details(self._customer(session))
 
         def complete(current: StripeObject) -> None:
@@ -95,7 +95,11 @@ class Checkout:
             )
 
         try:
-            completed = self._store.update(session_id, complete)
+            # The card and the payment exist only if this pay closed the
+            # session: two payers racing for it leave nothing behind.
+            completed = self._store.update(
+                session_id, complete, also_add=(card, intent)
+            )
         except SessionClosed as closed:
             text = f"<p>This checkout is {html.escape(closed.status)}.</p>"
             return Response.html(409, "Checkout", text)
@@ -121,6 +125,7 @@ class Checkout:
 
 
 def _money(amount: int, currency: str | None) -> str:
+    """The amount for the page; the currency is the request's, so escaped."""
     if (currency or "usd").lower() == "usd":
         return f"${amount / 100:,.2f}"
-    return f"{amount / 100:,.2f} {str(currency).upper()}"
+    return f"{amount / 100:,.2f} {html.escape(str(currency).upper())}"
