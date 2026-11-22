@@ -4,7 +4,6 @@ import logging
 import os
 from pathlib import Path
 
-from .fake_stripe.fake import FakeStripe
 from .server import ScriptedModelServer, logger
 
 
@@ -15,9 +14,7 @@ def main() -> None:
     )
     port = int(os.environ.get("SCRIPTED_MODEL_PORT", "4010"))
     scripts_dir = Path(os.environ.get("SCRIPTED_MODEL_SCRIPTS_DIR", "/scripts"))
-    server = ScriptedModelServer(
-        ("0.0.0.0", port), scripts_dir, stripe=FakeStripe.from_env()
-    )
+    server = ScriptedModelServer(("0.0.0.0", port), scripts_dir)
     known = sorted(p.stem for p in scripts_dir.glob("*.json"))
     logger.info("serving on :%s with scripts from %s: %s", port, scripts_dir, known)
     server.serve_forever()

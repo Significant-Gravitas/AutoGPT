@@ -9,7 +9,8 @@
   event about the object as it is now, as Stripe sends a second event type
   for one payment. It is delivered at once, held object or not.
 - ``POST /__stripe__/hold?object=<id>``: keep the events the object's changes
-  raise from now on (paying for a session) until a journey delivers them.
+  raise from now on (paying for a session) until a journey delivers them; an
+  object the fake doesn't hold gets a 404.
 - ``GET /__stripe__/requests?unserved=true&after=<n>``: API requests the
   fake doesn't model, numbered above ``n``; without ``unserved``, every
   recent request.
@@ -31,31 +32,39 @@ if TYPE_CHECKING:
 def handle(
     fake: "FakeStripe", method: str, path: str, query: str, body: bytes
 ) -> Response:
-    parts = path.removeprefix("/__stripe__/").strip("/").split("/")
     params = {key: values[-1] for key, values in parse_qs(query).items()}
-    if method == "GET" and parts == ["events"]:
-        return Response.json(200, {"events": fake.events.find(params.get("object"))})
-    if method == "POST" and parts == ["events"]:
-        return _new_event(fake, body)
-    if method == "POST" and len(parts) == 3 and parts[0::2] == ["events", "deliver"]:
-        delivery = fake.events.deliver(parts[1])
-        if delivery is None:
-            return _missing(f"no event {parts[1]}")
-        return Response.json(200, {"delivery": delivery})
-    if method == "POST" and parts == ["hold"]:
-        object_id = params.get("object")
-        if not object_id:
-            return Response.json(400, {"error": {"message": "hold needs ?object=<id>"}})
-        fake.events.hold(object_id)
-        return Response.json(200, {"held": object_id})
-    if method == "GET" and parts == ["requests"]:
-        unserved = params.get("unserved") == "true"
-        after = as_int(params.get("after"), 0)
-        requests = fake.requests(unserved_only=unserved, after=after)
-        return Response.json(200, {"requests": requests})
-    if method == "GET" and parts == ["requests", "cursor"]:
-        return Response.json(200, {"cursor": fake.last_request()})
+    match method, path.removeprefix("/__stripe__/").strip("/").split("/"):
+        case "GET", ["events"]:
+            events = fake.events.find(params.get("object"))
+            return Response.json(200, {"events": events})
+        case "POST", ["events"]:
+            return _new_event(fake, body)
+        case "POST", ["events", event_id, "deliver"]:
+            delivery = fake.events.deliver(event_id)
+            if delivery is None:
+                return _missing(f"no event {event_id}")
+            return Response.json(200, {"delivery": delivery})
+        case "POST", ["hold"]:
+            return _hold(fake, params.get("object"))
+        case "GET", ["requests"]:
+            unserved = params.get("unserved") == "true"
+            after = as_int(params.get("after"), 0)
+            requests = fake.requests(unserved_only=unserved, after=after)
+            return Response.json(200, {"requests": requests})
+        case "GET", ["requests", "cursor"]:
+            return Response.json(200, {"cursor": fake.last_request()})
     return _missing(f"nothing serves {method} {path}")
+
+
+def _hold(fake: "FakeStripe", object_id: str | None) -> Response:
+    """Holds an object's events; one the fake doesn't hold is a typo, and
+    fails at once rather than leaving the journey's webhook unheld."""
+    if not object_id:
+        return Response.json(400, {"error": {"message": "hold needs ?object=<id>"}})
+    if fake.store.get(object_id) is None:
+        return _missing(f"no object {object_id}")
+    fake.events.hold(object_id)
+    return Response.json(200, {"held": object_id})
 
 
 def _new_event(fake: "FakeStripe", body: bytes) -> Response:

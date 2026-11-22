@@ -67,7 +67,7 @@ class ScriptedModelServer(ThreadingHTTPServer):
         self.scripts_dir = scripts_dir
         self.journal = Journal()
         self.holds = Holds()
-        self.stripe = stripe or FakeStripe(public_url="http://localhost:4010")
+        self.stripe = stripe or FakeStripe.from_env()
 
 
 class Handler(BaseHTTPRequestHandler):

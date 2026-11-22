@@ -29,14 +29,13 @@ class Checkout:
         self._events = events
 
     def handle(self, method: str, path: str) -> Response:
-        parts = path.strip("/").split("/")
-        # /stripe/checkout/<id>[/pay] or /stripe/billing_portal/<id>
-        if len(parts) == 3 and method == "GET" and parts[1] == "checkout":
-            return self._page(parts[2])
-        if len(parts) == 4 and method == "POST" and parts[1:4:2] == ["checkout", "pay"]:
-            return self._pay(parts[2])
-        if len(parts) == 3 and method == "GET" and parts[1] == "billing_portal":
-            return self._portal(parts[2])
+        match method, path.strip("/").split("/"):
+            case "GET", ["stripe", "checkout", session_id]:
+                return self._page(session_id)
+            case "POST", ["stripe", "checkout", session_id, "pay"]:
+                return self._pay(session_id)
+            case "GET", ["stripe", "billing_portal", portal_id]:
+                return self._portal(portal_id)
         return Response.html(
             404, "Not found", "<p>The fake Stripe has no such page.</p>"
         )
@@ -105,6 +104,9 @@ class Checkout:
             return Response.html(409, "Checkout", text)
         if completed is None:
             return Response.html(404, "Checkout", "<p>No such checkout session.</p>")
+        # Outside Store.update, always: the webhook goes out synchronously, and
+        # the platform's handler calls back into the fake (Session.retrieve)
+        # on another of the server's threads, which needs the store's lock.
         self._events.emit("checkout.session.completed", completed)
         success = str(completed["success_url"])
         return Response.redirect(success.replace("{CHECKOUT_SESSION_ID}", session_id))

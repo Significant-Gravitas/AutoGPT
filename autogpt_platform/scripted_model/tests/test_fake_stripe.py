@@ -172,6 +172,8 @@ def test_the_sdk_buys_credits_on_the_fake_checkout(stack: Stack) -> None:
         )
         assert portal.url.startswith(f"{stack.url}/stripe/billing_portal/")
 
+    # asyncio.run is fine here: the backend's rule against it doesn't cover
+    # this package, and each run closes the SDK client it made.
     asyncio.run(_with_closed_client(journey()))
 
 
@@ -194,6 +196,10 @@ def test_a_journey_holds_and_redelivers_webhooks(stack: Stack) -> None:
         )
 
     session = asyncio.run(_with_closed_client(checkout()))
+    # A typo'd id fails at once instead of leaving the webhook unheld.
+    with pytest.raises(urllib.error.HTTPError) as unknown:
+        stack.control("POST", "hold?object=cs_test_typo")
+    assert unknown.value.code == 404
     stack.control("POST", f"hold?object={session.id}")
     assert stack.pay(session)[0] == 303
     [held] = stack.control("GET", f"events?object={session.id}")["events"]
