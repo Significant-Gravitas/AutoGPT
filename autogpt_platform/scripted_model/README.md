@@ -89,7 +89,8 @@ script to know what to expect.
   `{"$from_tool_result": {"tool": "run_capability", "pattern": "\"schedule_id\": \"([^\"]+)\""}}`
   in place of the value: it becomes the pattern's first group in that
   tool's results the request sends back, which are only the last turn's:
-  of several calls to the tool in that turn, the last one with a match.
+  of several calls to the tool in that turn, the last one with a match
+  whose first group took part (an optional group can match empty-handed).
   An earlier turn's result is never read. No match fails the turn, naming
   the results it saw.
 - **Checks** are logged, and a journey asserts on them through the journal:
