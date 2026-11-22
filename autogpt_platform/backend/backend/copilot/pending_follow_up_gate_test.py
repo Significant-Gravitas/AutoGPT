@@ -86,6 +86,19 @@ async def test_a_last_look_at_an_empty_queue_closes_it_to_that_turn(redis):
 
 
 @pytest.mark.asyncio
+async def test_a_last_look_that_finds_only_unreadable_entries_still_closes_it(
+    redis,
+):
+    await _start_turn("turn-1")
+    # One no reader can parse, such as an entry a mismatched release wrote.
+    await redis.rpush(pending_messages._buffer_key(SESSION), "null")
+
+    assert await _last_look() == []
+    assert await _push("too late") is None
+    assert await peek_pending_messages(SESSION) == []
+
+
+@pytest.mark.asyncio
 async def test_the_next_turn_takes_follow_ups_again(redis):
     await _start_turn("turn-1")
     await _last_look()

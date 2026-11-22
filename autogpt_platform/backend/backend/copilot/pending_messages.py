@@ -59,6 +59,10 @@ PENDING_BUFFER_FULL_REFUSAL = (
 _PENDING_KEY_PREFIX = "copilot:pending:"
 _PENDING_CHANNEL_PREFIX = "copilot:pending:notify:"
 _PENDING_TTL_SECONDS = 3600  # 1 hour — matches stream_ttl default
+# A last look pops again after a batch of nothing but malformed entries. One
+# pop takes the whole capped buffer, so this cap only stops a producer that
+# keeps writing them.
+_LAST_LOOK_ATTEMPTS = 3
 
 # Secondary queue: carries drained-but-awaiting-persist PendingMessages from
 # the tool wrapper (which injects them into tool output) to sdk/service.py
@@ -464,20 +468,32 @@ async def drain_pending_or_close(
     found here leaves the buffer open for the turn that continues with it,
     and a turn the session meta no longer names (one that outlived its
     registration) closes nothing, so it cannot shut its successor's buffer.
+    A batch with nothing parseable in it counts as nothing: the turn looks
+    again, so the buffer still closes when that was all it held.
     """
     redis = await get_redis_async()
-    popped = await pop_or_close_list(
-        redis,
-        hash_key=session_meta_key,
-        list_key=_buffer_key(session_id),
-        max_items=MAX_PENDING_MESSAGES,
-        gate_field=_SESSION_STATUS_FIELD,
-        expected=_SESSION_RUNNING,
-        closed_by_field=_FOLLOW_UPS_CLOSED_BY_FIELD,
-        owner_field=_SESSION_TURN_FIELD,
-        owner=turn_id,
+    for _ in range(_LAST_LOOK_ATTEMPTS):
+        popped = await pop_or_close_list(
+            redis,
+            hash_key=session_meta_key,
+            list_key=_buffer_key(session_id),
+            max_items=MAX_PENDING_MESSAGES,
+            gate_field=_SESSION_STATUS_FIELD,
+            expected=_SESSION_RUNNING,
+            closed_by_field=_FOLLOW_UPS_CLOSED_BY_FIELD,
+            owner_field=_SESSION_TURN_FIELD,
+            owner=turn_id,
+        )
+        messages = _parse_drained(session_id, popped)
+        if messages or not popped:
+            return messages
+    logger.warning(
+        "pending_messages: last look for session=%s found only malformed "
+        "entries %d times; leaving the buffer open",
+        session_id,
+        _LAST_LOOK_ATTEMPTS,
     )
-    return _parse_drained(session_id, popped)
+    return []
 
 
 async def reopen_follow_ups(
