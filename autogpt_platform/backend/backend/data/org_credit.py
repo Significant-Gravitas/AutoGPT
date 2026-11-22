@@ -192,8 +192,16 @@ async def spend_org_credits(
     if metadata:
         tx_data["metadata"] = SafeJson(metadata)
 
-    await prisma.orgcredittransaction.create(data=tx_data)
-
+    # The balance change is committed, so a failed ledger write must not fail
+    # the call: the database manager's client would retry it, changing the
+    # balance again.
+    try:
+        await prisma.orgcredittransaction.create(data=tx_data)
+    except Exception:
+        logger.exception(
+            f"Could not record the usage of org {org_id} (user {user_id}, team "
+            f"{team_id}): {amount} credits, balance now {new_balance}"
+        )
     return new_balance
 
 

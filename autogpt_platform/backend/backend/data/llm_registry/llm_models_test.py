@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pydantic
+import pytest
 
 from backend.data.llm_registry import llm_models
 from backend.data.llm_registry.llm_models import DEFAULT_LLM_MODEL, LLMModel
@@ -203,10 +204,45 @@ def test_metadata_completeness_guard_passes_for_real_catalog():
     llm_models._assert_metadata_complete()
 
 
-def test_a_value_longer_than_any_model_id_names_no_model():
-    """The enum strips one provider prefix per recursion, so a long value is
-    refused before it costs time and memory that grow with its length."""
-    named = llm_models.llm_model_named
+def _enum_reads(value: str) -> LLMModel | None:
+    try:
+        return LLMModel(value)
+    except ValueError:
+        return None
 
-    assert named("openai/gpt-5-2025-08-07") is LLMModel("gpt-5-2025-08-07")
-    assert named("openai/" * 40 + "gpt-5-2025-08-07") is None
+
+def test_every_spelling_names_the_model_the_enum_reads_it_as():
+    """The fixer, the startup pass and a run's fallback read a model through
+    llm_model_named, and a block's input check through the enum. A spelling
+    one of them takes and the other doesn't would leave a switched-off model
+    on its old name, so they must agree on every spelling."""
+    names = [model.value for model in LLMModel]
+    names += list(llm_models._OPENROUTER_ALIASES)
+    prefixes = ["", "openai/", "openrouter/openai/", "a/b/c/", "x//", "/"]
+    prefixes += [f"{name}/" for name in names[:3]]
+    values = [prefix + name for prefix in prefixes for name in names]
+    values += ["", "/", "o3-mini/", "a/b/c/not-a-model", "openai/" * 10 + "o3"]
+    values += [prefix + "o3-mini" for prefix in ("x/" * 16, "x/" * 17, "x/" * 1000)]
+
+    for value in values:
+        assert llm_models.llm_model_named(value) is _enum_reads(value), value
+
+
+def test_a_value_with_more_prefixes_than_any_spelling_names_no_model():
+    """The enum refuses it before stripping a prefix per recursion, so a
+    thousand of them can't run into Python's recursion limit."""
+    value = "x/" * 1000 + "o3-mini"
+
+    assert llm_models.llm_model_named(value) is None
+    with pytest.raises(ValueError):
+        LLMModel(value)
+
+
+def test_reading_a_spelling_hands_the_enum_one_prefix_at_most(mocker):
+    """The enum strips one prefix per recursion. llm_model_named hands it only
+    the end of a value that can name a model, so the fixer's cost doesn't grow
+    with the number of prefixes."""
+    missing = mocker.spy(LLMModel, "_missing_")
+
+    assert llm_models.llm_model_named("x/" * 16 + "o3-mini") is LLMModel.O3_MINI
+    assert missing.call_count == 1

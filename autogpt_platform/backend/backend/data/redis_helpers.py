@@ -116,8 +116,10 @@ return items
 """
 
 # Push to a capped list only when a hash field currently matches the expected
-# value. Returns the list length, -1 on a failed guard, or -2 at capacity.
-# A queued ID with an expired receipt restores that receipt from the list's PTTL.
+# value, the list is not closed to the hash's current owner, and no hold
+# deadline has yet to pass. Returns the list length, -1 on a failed guard, or
+# -2 at capacity. A queued ID with an expired receipt restores that receipt
+# from the list's PTTL.
 #
 #   KEYS[1]  hash key
 #   KEYS[2]  list key
@@ -128,8 +130,10 @@ return items
 #   ARGV[4]  max list length
 #   ARGV[5]  list TTL seconds
 #   ARGV[6]  message ID used to recover an expired receipt
-#   ARGV[7]  hash field holding a hold deadline (unix seconds), or "" for none
-#   ARGV[8]  the caller's current unix time; the push is refused before the deadline
+#   ARGV[7]  optional closed-by field (see _POP_OR_CLOSE_LUA), "" for none
+#   ARGV[8]  owner field the closed-by field must match to refuse
+#   ARGV[9]  hash field holding a hold deadline (unix seconds), "" for none
+#   ARGV[10] the caller's current unix time; the push is refused before the deadline
 _GATED_CAPPED_RPUSH_LUA = """
 if #KEYS == 3 and redis.call('EXISTS', KEYS[3]) == 1 then
     return redis.call('LLEN', KEYS[2])
@@ -150,9 +154,16 @@ local current = redis.call('HGET', KEYS[1], ARGV[1])
 if current ~= ARGV[2] then
     return -1
 end
-if ARGV[7] ~= '' then
-    local until_ts = tonumber(redis.call('HGET', KEYS[1], ARGV[7]))
-    if until_ts and until_ts > tonumber(ARGV[8]) then
+if ARGV[7] and ARGV[7] ~= '' then
+    local closed_by = redis.call('HGET', KEYS[1], ARGV[7])
+    if closed_by and closed_by ~= ''
+        and closed_by == redis.call('HGET', KEYS[1], ARGV[8]) then
+        return -1
+    end
+end
+if ARGV[9] and ARGV[9] ~= '' then
+    local until_ts = tonumber(redis.call('HGET', KEYS[1], ARGV[9]))
+    if until_ts and until_ts > tonumber(ARGV[10]) then
         return -1
     end
 end
@@ -165,6 +176,34 @@ if #KEYS == 3 then
     redis.call('SET', KEYS[3], '1', 'EX', tonumber(ARGV[5]))
 end
 return redis.call('LLEN', KEYS[2])
+"""
+
+# Pop up to ARGV[1] items off a list; when there are none, the hash's gate
+# field still holds the expected value and the hash still names the caller as
+# its owner, close the list to that owner instead, by writing the owner into
+# the closed-by field. The gated push above then refuses that owner. A new
+# owner value reopens it, and a caller that is no longer the owner changes
+# nothing. Returns the popped items, empty when it closed or found nothing.
+#
+#   KEYS[1]  hash key
+#   KEYS[2]  list key
+#   ARGV[1]  max items to pop
+#   ARGV[2]  hash gate field
+#   ARGV[3]  expected gate value
+#   ARGV[4]  closed-by field
+#   ARGV[5]  owner field
+#   ARGV[6]  the caller's owner value
+_POP_OR_CLOSE_LUA = """
+local items = redis.call('LPOP', KEYS[2], tonumber(ARGV[1]))
+if items then
+    return items
+end
+if ARGV[6] ~= ''
+    and redis.call('HGET', KEYS[1], ARGV[2]) == ARGV[3]
+    and redis.call('HGET', KEYS[1], ARGV[5]) == ARGV[6] then
+    redis.call('HSET', KEYS[1], ARGV[4], ARGV[6])
+end
+return {}
 """
 
 _BOUNDED_RPUSH_LUA = """
@@ -390,19 +429,25 @@ async def capped_rpush_if_hash_field(
     ttl_seconds: int,
     receipt_key: str | None = None,
     message_id: str | None = None,
+    closed_by_field: str | None = None,
+    owner_field: str | None = None,
     hold_field: str = "",
     now: float = 0.0,
 ) -> int | None:
-    """Atomically RPUSH to a bounded list iff a hash field matches and,
-    when ``hold_field`` is given, no hold deadline in it is later than ``now``.
+    """Atomically RPUSH to a bounded list iff a hash field matches.
 
     Returns the new list length when the push happens, or ``None`` when the
-    guard fails. With a receipt key,
-    retries return the current length without pushing. A matching JSON
+    hash field does not currently match ``expected``, when
+    ``closed_by_field`` holds the hash's current ``owner_field`` value (the
+    owner closed the list with :func:`pop_or_close_list`), or when
+    ``hold_field`` holds a deadline later than ``now``. With a receipt
+    key, retries return the current length without pushing. A matching JSON
     ``id`` in the list restores an expired receipt. Full lists raise
     ``RedisListCapacityExceeded`` without evicting an accepted item.
     All keys must share a Redis Cluster hash tag.
     """
+    if (closed_by_field is None) != (owner_field is None):
+        raise ValueError("closed_by_field and owner_field are checked together")
     keys = [hash_key, list_key]
     if receipt_key is not None:
         keys.append(receipt_key)
@@ -418,6 +463,8 @@ async def capped_rpush_if_hash_field(
             str(max_len),
             str(ttl_seconds),
             message_id or "",
+            closed_by_field or "",
+            owner_field or "",
             hold_field,
             repr(now),
         ),
@@ -426,6 +473,46 @@ async def capped_rpush_if_hash_field(
     if length == -2:
         raise RedisListCapacityExceeded("Pending buffer is at capacity")
     return None if length < 0 else length
+
+
+async def pop_or_close_list(
+    redis: AsyncRedisClient,
+    *,
+    hash_key: str,
+    list_key: str,
+    max_items: int,
+    gate_field: str,
+    expected: str,
+    closed_by_field: str,
+    owner_field: str,
+    owner: str,
+) -> list[Any]:
+    """Atomically pop up to ``max_items`` off a list, or close it when empty.
+
+    With nothing to pop, ``gate_field`` still equal to ``expected`` and
+    ``owner_field`` still equal to ``owner``, ``owner`` is written into
+    ``closed_by_field``, and :func:`capped_rpush_if_hash_field` given the
+    same two fields refuses every push until the owner changes. A caller the
+    hash no longer names as its owner closes nothing. One script, so no push
+    can land between finding the list empty and closing it. Both keys must
+    share a Redis Cluster hash tag.
+    """
+    result = await cast(
+        "Any",
+        redis.eval(
+            _POP_OR_CLOSE_LUA,
+            2,
+            hash_key,
+            list_key,
+            str(max_items),
+            gate_field,
+            expected,
+            closed_by_field,
+            owner_field,
+            owner,
+        ),
+    )
+    return list(result or [])
 
 
 async def take_list_and_hold(

@@ -14,6 +14,8 @@ on:
       - ".github/scripts/test_frontend_build_context.py"
       - ".github/scripts/hosted_journeys_env.py"
       - ".github/scripts/test_hosted_journeys_env.py"
+      - ".github/scripts/test_rabbitmq_healthcheck_contract.py"
+      - ".github/workflows/platform-backend-ci.yml"
       - ".github/actions/generate-prisma-client/**"
       - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/scripts/install-prisma-cli-with-retry.sh"
@@ -32,6 +34,8 @@ on:
       - ".github/scripts/test_frontend_build_context.py"
       - ".github/scripts/hosted_journeys_env.py"
       - ".github/scripts/test_hosted_journeys_env.py"
+      - ".github/scripts/test_rabbitmq_healthcheck_contract.py"
+      - ".github/workflows/platform-backend-ci.yml"
       - ".github/actions/generate-prisma-client/**"
       - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/scripts/install-prisma-cli-with-retry.sh"
@@ -111,6 +115,7 @@ jobs:
             ../../.github/scripts/test_e2e_seed_cache_contract.py \
             ../../.github/scripts/test_frontend_build_context.py \
             ../../.github/scripts/test_hosted_journeys_env.py \
+            ../../.github/scripts/test_rabbitmq_healthcheck_contract.py \
             ../scripted_model/tests \
             --junitxml="$RUNNER_TEMP/fullstack-validator-results/playwright-validator-tests.xml"
 
@@ -197,8 +202,8 @@ jobs:
           - suite: smoke
             config: playwright.config.ts
             playwright_args: ""
-            # Pinned inventory: 29 tests in 10 files; raise when adding E2E tests.
-            min_tests: 29
+            # Pinned inventory: 36 tests in 15 files; raise when adding E2E tests.
+            min_tests: 36
             embeddings: true
             seed: true
             hosted: false
@@ -213,7 +218,8 @@ jobs:
             # selfhost-journey asserts nothing hosted-only exists; it needs a
             # self-hosted stack (TODO in src/playwright/journeys/README.md).
             playwright_args: --project hosted
-            min_tests: 13
+            # Pinned inventory: 41 tests in 20 files; raise when adding journeys.
+            min_tests: 41
             embeddings: false
             # Journeys sign up their own users and need no seeded data.
             seed: false
