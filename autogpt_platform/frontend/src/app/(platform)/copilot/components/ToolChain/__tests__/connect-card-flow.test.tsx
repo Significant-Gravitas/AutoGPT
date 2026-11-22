@@ -818,6 +818,9 @@ describe("copilot Connect card, already satisfied", () => {
   // an earlier answer its step has already run, so a Proceed there, or a
   // send of any kind, asks Otto to run that step a second time.
   describe("after a reload", () => {
+    beforeEach(trackPickSaves);
+    afterEach(stopTrackingPickSaves);
+
     it("offers no Proceed on a card in an earlier answer", async () => {
       const { onSend } = renderTranscript(chatAfterTheStepRan());
 
@@ -839,17 +842,39 @@ describe("copilot Connect card, already satisfied", () => {
       await user.click(
         screen.getByRole("button", { name: "Use this account" }),
       );
-      await waitFor(() =>
-        expect(
-          screen.queryByRole("button", { name: "Use this account" }),
-        ).toBeNull(),
-      );
+      // The dialog closes once the pick is saved; in the newest answer the
+      // card would then send, after saving its picks for the turn.
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(picksInFlight()).toBe(0));
 
-      // The follow-up would go out only after the account pick is saved, a
-      // request away.
-      await new Promise((resolve) => setTimeout(resolve, 300));
       expect(onSend).not.toHaveBeenCalled();
       expect(screen.queryByRole("button", { name: "Proceed" })).toBeNull();
+    });
+
+    it("sends nothing when the chat moves on while the newest card saves its picks", async () => {
+      const release = Promise.withResolvers<void>();
+      let saved = 0;
+      server.use(
+        http.put("*/api/chat/sessions/*/credential-selection", async () => {
+          await release.promise;
+          saved += 1;
+          return HttpResponse.json({ status: "ok" });
+        }),
+      );
+      const chat = chatAfterTheStepRan();
+      const { onSend, showMessages } = renderTranscript(chat.slice(0, 2));
+      await settle({ connectedRows: 1 });
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole("button", { name: "Proceed" }));
+      // A newer answer lands before the picks are saved, so the card's own
+      // answer is now an earlier one.
+      showMessages(chat);
+      release.resolve();
+      await waitFor(() => expect(saved).toBe(1));
+      await waitFor(() => expect(picksInFlight()).toBe(0));
+
+      expect(onSend).not.toHaveBeenCalled();
     });
 
     it("still offers Proceed on the same card in the newest answer", async () => {
@@ -1566,29 +1591,72 @@ function renderChain(parts: MessagePart[] = [setupRequirementsPart()]) {
   return { onSend, ...utils };
 }
 
+// Saves of the turn's credential picks that have started but not been
+// answered: a card saves them just before it sends its follow-up.
+const pickSaves = { started: 0, answered: 0 };
+
+function isPickSave(request: Request) {
+  return (
+    request.method === "PUT" &&
+    new URL(request.url).pathname.endsWith("/credential-selection")
+  );
+}
+
+function onRequestStart({ request }: { request: Request }) {
+  if (isPickSave(request)) pickSaves.started += 1;
+}
+
+function onRequestEnd({ request }: { request: Request }) {
+  if (isPickSave(request)) pickSaves.answered += 1;
+}
+
+function trackPickSaves() {
+  pickSaves.started = 0;
+  pickSaves.answered = 0;
+  server.events.on("request:start", onRequestStart);
+  server.events.on("request:end", onRequestEnd);
+}
+
+function stopTrackingPickSaves() {
+  server.events.removeListener("request:start", onRequestStart);
+  server.events.removeListener("request:end", onRequestEnd);
+}
+
+function picksInFlight() {
+  return pickSaves.started - pickSaves.answered;
+}
+
 /** The chat as it loads from history: every row, and the card wherever its
  *  answer falls among them. */
 function renderTranscript(messages: ChatMessage[]) {
   const onSend = vi.fn();
-  const utils = render(
-    <CredentialsProvider>
-      <CopilotChatActionsProvider onSend={onSend}>
-        <ChatMessagesContainer
-          messages={messages}
-          status="ready"
-          error={undefined}
-          isLoading={false}
-          sessionID={SESSION_ID}
-          queuedMessages={[]}
-          hasMoreMessages={false}
-          isLoadingMore={false}
-          onLoadMore={vi.fn()}
-          onRetry={vi.fn()}
-        />
-      </CopilotChatActionsProvider>
-    </CredentialsProvider>,
-  );
-  return { onSend, ...utils };
+  function transcript(shown: ChatMessage[]) {
+    return (
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ChatMessagesContainer
+            messages={shown}
+            status="ready"
+            error={undefined}
+            isLoading={false}
+            sessionID={SESSION_ID}
+            queuedMessages={[]}
+            hasMoreMessages={false}
+            isLoadingMore={false}
+            onLoadMore={vi.fn()}
+            onRetry={vi.fn()}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>
+    );
+  }
+  const utils = render(transcript(messages));
+  return {
+    onSend,
+    ...utils,
+    /** The same page, once the chat has moved on to `shown`. */
+    showMessages: (shown: ChatMessage[]) => utils.rerender(transcript(shown)),
+  };
 }
 
 /** The ask, the answer with the card, the follow-up the card sent once the

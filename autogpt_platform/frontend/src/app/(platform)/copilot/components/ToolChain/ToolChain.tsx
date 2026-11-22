@@ -63,11 +63,15 @@ async function sendOnce(
   entries: ChainActionEntry[],
   message: string,
   sendReply: (message: string) => void,
+  canStillSend: () => boolean,
 ) {
   if (sending.current) return;
   sending.current = true;
   try {
     await Promise.all(entries.map((entry) => entry.beforeSend?.()));
+    // A new message may have arrived while the picks were saved, leaving
+    // this chain in an earlier answer, which sends nothing.
+    if (!canStillSend()) return;
     entries.forEach((entry) => entry.onSent?.());
     sendReply(message);
   } finally {
@@ -205,11 +209,13 @@ export function ToolChain({
     );
   }
 
+  // Read after beforeSend's await, so it sees the chain as it is then.
+  const canStillSend = useStableCallback(() => canSend);
   // Proceed stays clickable while beforeSend runs, and a second click would
   // send the same reply again. The ref is set before the first await, so the
   // second click sees it in time.
   function sendAfter(entries: ChainActionEntry[], message: string) {
-    return sendOnce(sendingRef, entries, message, sendReply);
+    return sendOnce(sendingRef, entries, message, sendReply, canStillSend);
   }
 
   const autoSendOnce = useStableCallback(() => {
