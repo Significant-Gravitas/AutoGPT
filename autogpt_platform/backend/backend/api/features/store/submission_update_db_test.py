@@ -3,17 +3,24 @@
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
+import prisma.enums
 import prisma.models
 import pytest
 
 from backend.api.features.store import db as store_db
 from backend.api.features.store.marketplace_db_test_helpers import (
+    APPROVED,
     PENDING,
+    REJECTED,
     approve,
     clean_up,
+    reject,
     seed_creator,
+    seed_listing,
 )
+from backend.blocks.agent import AgentExecutorBlock
 from backend.data.graph import Graph, create_graph
+from backend.util.json import SafeJson
 
 LIVE_DESCRIPTION = "Finds the decision-makers at any company."
 NEWER_DESCRIPTION = "Now finds their email too."
@@ -111,6 +118,64 @@ async def test_a_blank_update_skips_the_versions_an_earlier_one_wiped(
         await clean_up(owner, [graph_id])
 
 
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    ("newer", "status"),
+    [("rejected", REJECTED), ("pending", PENDING), ("sub-agent", APPROVED)],
+    ids=["over-rejected", "over-pending", "over-sub-agent"],
+)
+async def test_a_blank_update_keeps_the_live_description_over_newer_text(
+    server, monkeypatch, newer: str, status: prisma.enums.SubmissionStatus
+):
+    tag = uuid4().hex[:12]
+    owner = await seed_creator(tag, avatar_url="")
+    graph_id, parent_id = f"graph-{tag}", f"parent-{tag}"
+    monkeypatch.setattr(store_db, "ensure_embedding", AsyncMock())
+    try:
+        await create_graph(Graph(id=graph_id, name=graph_id, description="test"), owner)
+        listed = await _submit(owner, graph_id, LIVE_DESCRIPTION)
+        await approve(listed.listing_version_id, owner)
+        added = await _add_newer_version(owner, graph_id, parent_id, newer)
+        assert (added.version, added.submissionStatus) == (2, status)
+        assert NEWER_DESCRIPTION in added.description
+
+        update = await _submit(owner, graph_id, "")
+        stored = await prisma.models.StoreListingVersion.prisma().find_unique_or_raise(
+            where={"id": update.listing_version_id}
+        )
+        assert (update.listing_version, stored.description) == (3, LIVE_DESCRIPTION)
+    finally:
+        await clean_up(owner, [graph_id, parent_id])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_blank_update_past_a_blank_live_version_skips_rejected_text(
+    server, monkeypatch
+):
+    tag = uuid4().hex[:12]
+    owner = await seed_creator(tag, avatar_url="")
+    graph_id = f"graph-{tag}"
+    monkeypatch.setattr(store_db, "ensure_embedding", AsyncMock())
+    try:
+        await create_graph(Graph(id=graph_id, name=graph_id, description="test"), owner)
+        listed = await _submit(owner, graph_id, LIVE_DESCRIPTION)
+        await approve(listed.listing_version_id, owner)
+        blank = await _store_blank_update(graph_id, "")
+        await approve(blank.id, owner)
+        turned_down = await _submit(owner, graph_id, NEWER_DESCRIPTION)
+        await reject(turned_down.listing_version_id, owner)
+        blanked = await store_db.get_store_agent_details(owner, graph_id)
+        assert (blanked.active_version_id, blanked.description) == (blank.id, "")
+
+        update = await _submit(owner, graph_id, "")
+        stored = await prisma.models.StoreListingVersion.prisma().find_unique_or_raise(
+            where={"id": update.listing_version_id}
+        )
+        assert (update.listing_version, stored.description) == (4, LIVE_DESCRIPTION)
+    finally:
+        await clean_up(owner, [graph_id])
+
+
 async def _submit(owner: str, graph_id: str, description: str):
     return await store_db.create_store_submission(
         owner,
@@ -153,4 +218,35 @@ async def _store_blank_update(
             "categories": [],
             "submissionStatus": PENDING,
         }
+    )
+
+
+async def _add_newer_version(
+    owner: str, graph_id: str, parent_id: str, kind: str
+) -> prisma.models.StoreListingVersion:
+    """Add a version with NEWER_DESCRIPTION in its text after the live one, and
+    return it: an update a review rejected, one still pending, or the version
+    approving the parent workflow ``parent_id`` adds for ``graph_id`` as its
+    sub-agent."""
+    if kind == "sub-agent":
+        await create_graph(
+            Graph(id=graph_id, version=2, name=graph_id, description=NEWER_DESCRIPTION),
+            owner,
+        )
+        [parent_version] = await seed_listing(parent_id, owner, [PENDING])
+        await prisma.models.AgentNode.prisma().create(
+            data={
+                "agentGraphId": parent_id,
+                "agentGraphVersion": 1,
+                "agentBlockId": AgentExecutorBlock().id,
+                "constantInput": SafeJson({"graph_id": graph_id, "graph_version": 2}),
+            }
+        )
+        await approve(parent_version, owner)
+    else:
+        newer = await _submit(owner, graph_id, NEWER_DESCRIPTION)
+        if kind == "rejected":
+            await reject(newer.listing_version_id, owner)
+    return await prisma.models.StoreListingVersion.prisma().find_first_or_raise(
+        where={"agentGraphId": graph_id}, order={"version": "desc"}
     )

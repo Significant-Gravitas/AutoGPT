@@ -41,6 +41,7 @@ from .categories import category_filter_values
 from .embeddings import ensure_embedding
 from .hybrid_search import hybrid_search
 from .store_listing_versions import installable_store_version_where
+from .submission_description import VersionHistoryRow, kept_description
 from .submission_review_state import lock_review_target, withdraw_store_version
 
 logger = logging.getLogger(__name__)
@@ -896,8 +897,8 @@ async def create_store_submission(
         video_url: Optional URL to video demo
         image_urls: List of image URLs for the listing
         description: Description of the agent; an update to an existing
-            listing that leaves it blank keeps the newest non-blank one
-            among the listing's versions
+            listing that leaves it blank keeps the live version's, or else
+            the newest one that no review rejected
         sub_heading: Short CTA line shown under the agent name
         categories: List of categories for the agent
         changes_summary: Summary of changes made in this submission
@@ -1007,26 +1008,23 @@ async def create_store_submission(
             versions = prisma.models.StoreListingVersion.prisma(tx)
             next_version = 1
             if existing_listing:
-                # Superseded versions still occupy their number in the unique index.
-                latest = await versions.find_first(
+                keep_description = not description.strip()
+                # Newest first. Superseded versions still occupy their number in
+                # the unique index, so the newest numbers the new one; only a
+                # blank update reads the rest.
+                history = await VersionHistoryRow.prisma(tx).find_many(
                     where={"storeListingId": existing_listing.id},
                     order={"version": "desc"},
+                    take=None if keep_description else 1,
                 )
-                if latest:
-                    next_version = latest.version + 1
-                    # An update that leaves the description blank keeps the
-                    # newest non-blank one among the listing's versions, so it
-                    # also repairs a listing an earlier blank update wiped.
-                    # Superseded versions count: they hold the creator's text.
-                    if not description.strip():
-                        history = await versions.find_many(
-                            where={"storeListingId": existing_listing.id},
-                            order={"version": "desc"},
-                        )
-                        description = next(
-                            (v.description for v in history if v.description.strip()),
-                            description,
-                        )
+                if history:
+                    next_version = history[0].version + 1
+                # A blank description keeps the live version's, or else the
+                # newest one that no review rejected.
+                if keep_description:
+                    description = kept_description(
+                        history, existing_listing.activeVersionId, description
+                    )
                 await versions.update_many(
                     where={
                         "storeListingId": existing_listing.id,
