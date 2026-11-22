@@ -397,14 +397,10 @@ async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
     reactivate the presets archiving deactivated (never ones the user had
     turned off themselves) and resume the schedules archiving paused.
 
-    Every schedule archiving paused comes back, whoever created it, and no
-    other: the scheduler resumes only a job the archive marked. One the user
-    paused, before the archive or since, stays paused, and so does one an
-    archive paused before the mark existed: resuming a schedule the user
-    switched off costs them runs and money, while one left paused is listed
-    as paused for them to resume. APScheduler recomputes the next fire from
-    the trigger, so a long-archived expert resumes at her next cadence
-    rather than replaying every run she missed.
+    Only schedules marked ``paused_by_expert_archive`` resume, whoever
+    created them; an unmarked paused schedule stays paused. APScheduler
+    recomputes the next fire from the trigger, so a long-archived expert
+    resumes at her next cadence rather than replaying every run she missed.
     """
     # Local import avoids the experts_db -> scheduling module cycle. Re-hire
     # may happen after a personal-org conversion, so restoring a trigger also

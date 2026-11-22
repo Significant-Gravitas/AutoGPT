@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import copy
 import functools
 import hashlib
 import json
@@ -4101,6 +4102,10 @@ class Scheduler(AppService):
         writes back state another has changed meanwhile. Reentrant: APScheduler
         takes it again inside ``modify_job``, and for each pass over due jobs.
 
+        The lock is per process. While two scheduler processes overlap, as
+        when a pod and its replacement both run, they can still race on one
+        schedule.
+
         ``_jobstores_lock`` is private to APScheduler 3.11, and
         ``scheduler_shutdown_test`` fails if an upgrade renames it."""
         return self.scheduler._jobstores_lock
@@ -4180,9 +4185,11 @@ class Scheduler(AppService):
             )
             if only_if_paused_by_expert_archive and not marked:
                 return False
-            # Resuming computes the next fire time from the stored trigger.
+            # Resuming computes the next fire time from the stored trigger. The
+            # check changes the end date of the trigger it is given, so it gets
+            # a copy, and the next fire time below comes from the stored one.
             if isinstance(job.trigger, CronTrigger):
-                check_cron_fires(job.trigger, info.cron or "")
+                check_cron_fires(copy.copy(job.trigger), info.cron or "")
             logger.info(f"Resuming job {schedule_id} (kind={info.kind})")
             # APScheduler's ``resume_job``, with the mark cleared in the same
             # write: a trigger with no next fire time removes the job.

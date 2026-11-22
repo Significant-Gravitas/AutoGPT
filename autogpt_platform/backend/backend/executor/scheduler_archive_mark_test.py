@@ -3,14 +3,19 @@
 Re-hiring an expert resumes the schedules its archive paused and no others, so
 the scheduler has to tell those pauses apart from every other kind. The mark
 lives in the job's own kwargs. These check who sets it, who clears it, and that
-a job stored before it existed reads as unmarked. Races between the writers
-are in ``scheduler_write_race_test.py``; the archive and re-hire flows run end
-to end in ``api/features/experts/rehire_schedules_test.py``.
+a job stored without it reads as unmarked. Races between the writers are in
+``scheduler_write_race_test.py``; the archive and re-hire flows run end to end
+in ``api/features/experts/rehire_schedules_test.py``.
 """
 
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
+import pytest
+from apscheduler.triggers.base import BaseTrigger
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from backend.executor.scheduler import GraphExecutionJobArgs, execute_graph
@@ -99,34 +104,67 @@ def test_any_resume_clears_the_mark(tmp_path):
         assert after.next_run_time and not after.paused_by_expert_archive
 
 
-def test_a_resume_with_no_fire_time_left_removes_the_job(tmp_path):
-    """As APScheduler's own ``resume_job`` does, which the resume replaces
-    to clear the mark in the same write: a trigger that has stopped firing
-    can't be resumed, so the job goes."""
-    ended = datetime.now(timezone.utc) - timedelta(days=1)
-    with sqlite_scheduler(tmp_path) as scheduler:
-        scheduler.scheduler.add_job(
-            execute_graph,
-            kwargs=graph_args().model_dump(mode="json"),
-            trigger=IntervalTrigger(
-                hours=1, start_date=ended - timedelta(days=1), end_date=ended
+# Midnight, a month from now: a trigger starting then fires at a time that
+# doesn't depend on when the test runs.
+_LATER = (datetime.now(timezone.utc) + timedelta(days=30)).replace(
+    hour=0, minute=0, second=0, microsecond=0
+)
+_ENDED = datetime.now(timezone.utc) - timedelta(days=1)
+
+
+@pytest.mark.parametrize(
+    "make_trigger",
+    [
+        pytest.param(lambda: DateTrigger(run_date=_LATER), id="date"),
+        pytest.param(
+            lambda: CronTrigger(hour=9, minute=0, start_date=_LATER, timezone="UTC"),
+            id="cron",
+        ),
+        pytest.param(
+            lambda: CronTrigger(hour=9, minute=0, end_date=_ENDED, timezone="UTC"),
+            id="cron-ended",
+        ),
+        pytest.param(
+            lambda: IntervalTrigger(
+                hours=1, start_date=_ENDED - timedelta(days=1), end_date=_ENDED
             ),
-            jobstore=STORE,
-            id="job-1",
-        )
-        # Stored paused: an ended trigger gives APScheduler no next run.
-        assert stored(scheduler).next_run_time == ""
+            id="interval-ended",
+        ),
+    ],
+)
+def test_a_resume_lands_where_apschedulers_resume_job_would(
+    tmp_path, make_trigger: Callable[[], BaseTrigger]
+):
+    """Resume repeats ``resume_job``'s steps, to clear the mark in the same
+    write, so it has to end where ``resume_job`` does: at the same next run
+    time, or with the job removed when its trigger has no next fire time.
+    An APScheduler upgrade that changes ``resume_job`` fails here."""
+    with sqlite_scheduler(tmp_path) as scheduler:
+        aps = scheduler.scheduler
+        for job_id in ("ours", "apschedulers"):
+            aps.add_job(
+                execute_graph,
+                kwargs=graph_args(job_id).model_dump(mode="json"),
+                trigger=make_trigger(),
+                jobstore=STORE,
+                id=job_id,
+                next_run_time=None,
+            )
 
-        assert resume(scheduler) is True
+        assert scheduler.resume_execution_schedule("ours", USER) is True
+        aps.resume_job("apschedulers", jobstore=STORE)
 
-        assert scheduler.scheduler.get_job("job-1", jobstore=STORE) is None
+        ours = aps.get_job("ours", jobstore=STORE)
+        theirs = aps.get_job("apschedulers", jobstore=STORE)
+        assert (ours is None) == (theirs is None)
+        if ours is not None and theirs is not None:
+            assert ours.next_run_time == theirs.next_run_time
 
 
-def test_a_schedule_stored_before_the_mark_existed_reads_as_unmarked(tmp_path):
-    """Archiving before this change paused jobs with a plain pause and stored
-    no mark at all. Such a pause can't be told apart from the user's, so
-    re-hiring leaves it paused rather than risk resuming one they switched
-    off: it stays listed as paused, for them to resume."""
+def test_a_job_stored_without_the_mark_reads_as_unmarked(tmp_path):
+    """A job whose kwargs have no ``paused_by_expert_archive``, paused the
+    plain way, reads as unmarked: its pause can't be told apart from the
+    user's, so re-hiring leaves it paused."""
     with sqlite_scheduler(tmp_path) as scheduler:
         old_kwargs = graph_args().model_dump(mode="json")
         del old_kwargs["paused_by_expert_archive"]

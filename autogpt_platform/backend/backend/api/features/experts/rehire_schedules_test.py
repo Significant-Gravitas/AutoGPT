@@ -201,17 +201,15 @@ async def test_a_schedule_paused_while_the_expert_is_away_stays_paused(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_a_schedule_paused_by_letting_go_before_the_mark_stays_paused(
+async def test_a_schedule_letting_go_paused_without_the_mark_stays_paused(
     hire: _Hire,
 ):
-    """Letting go before this change paused each running schedule with the
-    same unmarked call a user's pause makes, so re-hiring can't tell the two
-    apart and leaves both paused. Resuming one the user had switched off
-    would cost them runs and money; one left paused is listed as paused on
-    the expert's schedules, for the user to resume."""
+    """Only marked schedules resume on re-hire. One the expert was let go
+    with, but paused by the same unmarked call a user's pause makes, can't
+    be told apart from the user's, so it stays paused."""
     first = await _schedule(hire, "Morning report")
     second = await _schedule(hire, "Weekly digest")
-    # Letting go as the code before the mark did it.
+    # Let go with its schedules paused unmarked.
     await scheduling.pause_expert_schedules(
         hire.owner_id, hire.expert_id, reason="Expert archived"
     )
