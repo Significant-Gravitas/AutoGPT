@@ -631,9 +631,22 @@ test.describe("experts journey", () => {
             "re-hiring should make no second schedule",
           ).toEqual([RUNNING_SCHEDULE, PAUSED_SCHEDULE]);
           expect(
+            (await listSchedules(page, own.graphID))
+              .map((schedule) => schedule.id)
+              .sort(),
+            "re-hiring should bring back the schedules it had, not new ones",
+          ).toEqual([...scheduleIDs].sort());
+          expect(
             stateOf(states, RUNNING_SCHEDULE),
             "re-hiring should resume what letting go paused",
           ).toBe("active");
+          // Cleaned up before the pin below, and every soft check so far
+          // made to count, so a failed cleanup can't pass for the known bug.
+          await deleteSchedules(page, own.graphID, scheduleIDs);
+          expect(
+            test.info().errors.map((error) => error.message),
+            "nothing before the known failure should have failed",
+          ).toEqual([]);
           // A known failure from here on, so anything above failing still
           // fails the run.
           test.fail(
@@ -719,10 +732,14 @@ function stateOf(states: [string, string][], name: string) {
   return states.find(([scheduleName]) => scheduleName === name)?.[1];
 }
 
-/** Setup items as what each asks for, in a stable order. */
+/** Setup items as what each asks for and for which workflow, in a stable
+ *  order: two workflows can ask for the same service. */
 function setupSummary(items: SetupItem[]) {
   return items
-    .map((item) => `${item.resolution}: ${item.providers.join("+")}`)
+    .map(
+      (item) =>
+        `${item.resolution}: ${item.providers.join("+")} for ${item.workflow_id}`,
+    )
     .sort();
 }
 

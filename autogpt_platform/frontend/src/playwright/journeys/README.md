@@ -68,6 +68,10 @@ make init-env
 python ../.github/scripts/hosted_journeys_env.py >> backend/.env
 NEXT_PUBLIC_PW_TEST=true docker compose -f docker-compose.yml \
   -f docker-compose.journeys.yml up -d --build
+# The expert roster's workflows, then the roster again (see below):
+docker compose -f docker-compose.yml -f docker-compose.journeys.yml run --rm \
+  --no-deps rest_server python -m test.load_store_agents
+docker compose -f docker-compose.yml -f docker-compose.journeys.yml up publish_skills
 cd frontend
 PLAYWRIGHT_JOURNEY_COST_PER_NODE=1 PLAYWRIGHT_JOURNEY_TIER=PRO \
   pnpm exec playwright test --config playwright.journeys.config.ts --project hosted
@@ -82,13 +86,8 @@ Journeys that call the backend directly, such as a webhook delivery, use
 The expert roster's workflows are the official marketplace listings
 (`backend/agents`), and `publish_skills` installs the roster when the stack
 starts, skipping any workflow whose listing isn't there yet. CI loads the
-listings first. Locally, load them, then publish the roster again:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.journeys.yml run --rm \
-  --no-deps rest_server python -m test.load_store_agents
-docker compose -f docker-compose.yml -f docker-compose.journeys.yml up publish_skills
-```
+listings before the stack starts; the commands above load them into the
+running stack instead, then publish the roster again.
 
 The frontend must be built with `NEXT_PUBLIC_PW_TEST=true`; only that build
 reads the hosted flag values the fixtures hand it.

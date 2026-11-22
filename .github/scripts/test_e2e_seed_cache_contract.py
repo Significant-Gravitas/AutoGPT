@@ -165,7 +165,16 @@ class E2EMatrixContractTests(unittest.TestCase):
             {"true"},
         )
         load = _step(workflow, STORE_AGENTS_STEP)
-        self.assertIn("if: matrix.store_agents", load)
+        # The whole condition: a widened one, such as `|| matrix.suite ==
+        # 'smoke'`, would load the listings on smoke too.
+        self.assertEqual(
+            [
+                line.strip()
+                for line in load.splitlines()
+                if line.strip().startswith("if:")
+            ],
+            ["if: matrix.store_agents"],
+        )
         self.assertIn("python -m test.load_store_agents", load)
         steps = _e2e_step_names(workflow)
         self.assertLess(steps.index(FRONTEND_WAIT_STEP), steps.index(STORE_AGENTS_STEP))

@@ -289,7 +289,27 @@ export async function deleteSchedules(
   graphID: string,
   madeIDs: string[] = [],
 ) {
-  const listed = await listSchedules(page, graphID).catch(() => []);
+  // Retried a little, then reported rather than read as "none left": the
+  // ids made still go, but a schedule the list would have shown would stay.
+  // Soft, so a report from a `finally` can't hide the test's own failure.
+  let listed: Schedule[] = [];
+  await expect
+    .configure({ soft: true })
+    .poll(
+      async () => {
+        try {
+          listed = await listSchedules(page, graphID);
+          return "listed";
+        } catch (error) {
+          return `${error}`;
+        }
+      },
+      {
+        message: `listing graph ${graphID}'s schedules to delete them`,
+        timeout: 10_000,
+      },
+    )
+    .toBe("listed");
   const ids = new Set([...madeIDs, ...listed.map((schedule) => schedule.id)]);
   for (const id of ids) {
     const response = await page.request.delete(

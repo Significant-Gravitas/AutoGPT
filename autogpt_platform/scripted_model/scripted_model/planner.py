@@ -182,8 +182,11 @@ def _arguments(
 def _captured(
     script: Script, index: int, capture: Capture, results: tuple[ToolResult, ...]
 ) -> str:
-    """What the capture's pattern reads from the newest result of its tool,
-    the way a model reads an id out of what a tool just returned."""
+    """What the capture's pattern reads from a result of its tool, the way a
+    model reads an id out of what a tool just returned. *results* are only
+    the ones this request sends back, for the last turn's calls, so an
+    earlier turn's result (and its possibly stale id) is never read. Of
+    several calls to the tool in that turn, the last one that matches wins."""
     for result in reversed(results):
         if result.tool != capture.tool:
             continue

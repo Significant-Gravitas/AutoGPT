@@ -870,6 +870,63 @@ def test_a_tool_call_reads_its_argument_from_an_earlier_result(scripted_model):
             parse_script("bad", {"turns": [turn]})
 
 
+def test_a_capture_never_reads_an_earlier_turns_result(scripted_model):
+    """A model reads the id out of what the tool just returned, never out of
+    what an earlier turn's call to it returned, whose id may be stale."""
+    usage = {"input_tokens": 1, "output_tokens": 1}
+    find = {"name": "find_library_agent", "input": {"query": "news"}}
+    capture = {
+        "$from_tool_result": {
+            "tool": "find_library_agent",
+            "pattern": '"schedule_id": "([^"]+)"',
+        }
+    }
+    scripted_model.add_script(
+        "newest",
+        {
+            "turns": [
+                {"tool_calls": [find], "usage": usage},
+                {"tool_calls": [find], "usage": usage},
+                {
+                    "tool_calls": [
+                        {"name": "find_library_agent", "input": {"query": capture}}
+                    ],
+                    "usage": usage,
+                },
+            ]
+        },
+    )
+    client = _anthropic(scripted_model)
+    for nonce, older, newer, expected in (
+        ("newer", '{"schedule_id": "old"}', '{"schedule_id": "new"}', "new"),
+        ("stale", '{"schedule_id": "old"}', "No schedules.", None),
+    ):
+        messages = [{"role": "user", "content": f"[[script:newest#{nonce}]]"}]
+        for result in (older, newer):
+            reply = _stream(client, messages)
+            messages += [
+                {
+                    "role": "assistant",
+                    "content": [b.model_dump() for b in reply.content],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": reply.content[0].id,
+                            "content": result,
+                        }
+                    ],
+                },
+            ]
+        if expected is None:
+            with pytest.raises(anthropic.BadRequestError, match="none in this request"):
+                _stream(client, messages)
+            continue
+        assert _stream(client, messages).content[0].input == {"query": expected}
+
+
 @pytest.mark.parametrize(
     "path", sorted(JOURNEY_SCRIPTS.glob("*.json")), ids=lambda path: path.stem
 )
