@@ -187,8 +187,10 @@ def _captured(
     for result in reversed(results):
         if result.tool != capture.tool:
             continue
-        if match := capture.pattern.search(result.content):
-            return match.group(1)
+        for match in capture.pattern.finditer(result.content):
+            # An optional group can match without taking part: no value.
+            if (value := match.group(1)) is not None:
+                return value
     raise ScriptError(
         f"script {script.name!r} turn {index + 1} reads an argument from a "
         f"{capture.tool!r} result, but none in this request matches "

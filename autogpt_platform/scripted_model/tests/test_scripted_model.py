@@ -809,7 +809,9 @@ def test_a_tool_call_reads_its_argument_from_an_earlier_result(scripted_model):
                                 "query": {
                                     "$from_tool_result": {
                                         "tool": "find_library_agent",
-                                        "pattern": '"schedule_id": "([^"]+)"',
+                                        # Optional, so a match can leave the
+                                        # group out.
+                                        "pattern": '"schedule_id": "([^"]+)?"',
                                     }
                                 },
                                 "keep": ["as", "written"],
@@ -824,6 +826,13 @@ def test_a_tool_call_reads_its_argument_from_an_earlier_result(scripted_model):
     client = _anthropic(scripted_model)
     for nonce, result, expected in (
         ("found", '{"schedule_id": "sched-42", "name": "News"}', "sched-42"),
+        # A match that leaves the group out reads nothing; a later one can.
+        (
+            "later",
+            '{"schedule_id": "", "next": {"schedule_id": "sched-7"}}',
+            "sched-7",
+        ),
+        ("empty", '{"schedule_id": "", "name": "News"}', None),
         ("missing", "No schedules.", None),
     ):
         messages = [{"role": "user", "content": f"[[script:pause#{nonce}]]"}]
