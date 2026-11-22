@@ -1,5 +1,4 @@
 import { Graph } from "@/app/api/__generated__/models/graph";
-import { CREDENTIALS_TYPES } from "./types";
 
 /** Sanitizes a graph object in place so it can "safely" be imported into the system.
  *
@@ -11,10 +10,11 @@ export function sanitizeImportedGraph(graph: Graph): void {
 }
 
 /** Removes (in place) the credentials the nodes still hold, sub-workflows'
- * nodes included: each input whose value references a stored credential, which
- * would block the save or point at someone else's. The file carries no block
- * schemas, so the value's shape marks these inputs. Anything nested inside an
- * input is the user's data, even when it is keyed "credentials". */
+ * nodes included: each credentials input that points at a stored credential,
+ * which would block the save or point at someone else's. The file carries no
+ * block schemas, so the input's name marks these inputs: blocks must name every
+ * credentials field `credentials` or `*_credentials`. Anything else is the
+ * user's data, even when it is keyed "credentials" or looks like a credential. */
 function removeCredentials(graph: Graph): void {
   const nodes = [graph, ...(graph.sub_graphs ?? [])].flatMap(
     (g) => g.nodes ?? [],
@@ -22,20 +22,22 @@ function removeCredentials(graph: Graph): void {
   for (const node of nodes) {
     const inputs = node.input_default ?? {};
     for (const [name, value] of Object.entries(inputs)) {
-      if (isCredentialsReference(value)) delete inputs[name];
+      if (isCredentialsFieldName(name) && pointsAtStoredCredential(value)) {
+        delete inputs[name];
+      }
     }
   }
 }
 
-/** The `{ id, provider, type, title? }` a credentials input stores. */
-function isCredentialsReference(value: unknown): boolean {
+function isCredentialsFieldName(name: string): boolean {
+  return name === "credentials" || name.endsWith("_credentials");
+}
+
+/** A credentials value with an `id` names a stored credential; one without
+ * points at nothing, so the save skips it. */
+function pointsAtStoredCredential(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false;
-  const { id, provider, type } = value as Record<string, unknown>;
-  return (
-    typeof id === "string" &&
-    typeof provider === "string" &&
-    CREDENTIALS_TYPES.some((credentialsType) => credentialsType === type)
-  );
+  return typeof (value as Record<string, unknown>).id === "string";
 }
 
 /** ⚠️ Remove after 2025-10-01 (one year after implementation in
