@@ -49,6 +49,13 @@ function resolveInitialTab(searchParams: URLSearchParams): BillingTab {
   return "subscription";
 }
 
+// The address names the open tab, so a reload opens it again.
+function billingTabURL(searchParams: URLSearchParams, tab: BillingTab) {
+  const params = new URLSearchParams(searchParams);
+  params.set("tab", tab);
+  return `/settings/billing?${params}`;
+}
+
 export default function SettingsBillingRoute() {
   const { isBillingEnabled, isResolved } = useBillingStatus();
   if (!isResolved) return null;
@@ -79,7 +86,9 @@ function SettingsBillingPage() {
   );
 
   function handleTabChange(value: string) {
-    if (isBillingTab(value)) setActiveTab(value);
+    if (!isBillingTab(value)) return;
+    setActiveTab(value);
+    router.replace(billingTabURL(searchParams, value), { scroll: false });
   }
 
   useEffect(function setBillingDocumentTitle() {

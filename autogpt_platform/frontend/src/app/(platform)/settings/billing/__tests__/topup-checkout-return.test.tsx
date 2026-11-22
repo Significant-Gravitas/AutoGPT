@@ -1,4 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,6 +8,7 @@ import {
   getGetV1GetCreditHistoryMockHandler,
   getGetV1GetUserCreditsMockHandler,
 } from "@/app/api/__generated__/endpoints/credits/credits.msw";
+import { getGetTrialsGetTrialStatusMockHandler200 } from "@/app/api/__generated__/endpoints/trials/trials.msw";
 import type { CreditTransactionItem } from "@/app/api/__generated__/models/creditTransactionItem";
 import { resetClientRequestFailureLog } from "@/app/api/mutators/request-failure-log";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
@@ -19,6 +21,7 @@ import {
   waitFor,
   within,
 } from "@/tests/integrations/test-utils";
+import { trialResponse } from "@/tests/integrations/trial-fixtures";
 
 import SettingsBillingPage from "../page";
 
@@ -155,6 +158,25 @@ describe("returning from a top-up Checkout", () => {
     expect(selectedTab()).toBe("Automation Credits");
     expect(await findBalance("$13.00")).toBeDefined();
     expect(address.search.toString()).toBe("tab=automation-credits");
+  });
+
+  it("keeps the tab someone switches to in the address, so a reload opens it", async () => {
+    const platform = mockTopUpReturn();
+    server.use(
+      getGetTrialsGetTrialStatusMockHandler200(
+        trialResponse({ active: false, status: "canceled" }),
+      ),
+    );
+    const firstVisit = renderBillingPage();
+    await waitFor(() => expect(platform.ledger.fulfilCalls).toBe(1));
+    await platform.answerFulfil();
+
+    await userEvent.click(screen.getByRole("tab", { name: "Subscription" }));
+
+    expect(address.search.toString()).toBe("tab=subscription");
+    firstVisit.unmount();
+    renderBillingPage();
+    expect(selectedTab()).toBe("Subscription");
   });
 });
 

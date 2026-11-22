@@ -1,3 +1,4 @@
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, type JsonBodyType } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -264,6 +265,22 @@ describe("Settings billing page (integration)", () => {
       name: /automation credits/i,
     });
     expect(automationCreditsTab.getAttribute("data-state")).toBe("active");
+  });
+
+  it("writes the tab someone opens into the address, keeping its other params", async () => {
+    useDefaultBillingHandlers();
+    mockSearchParams.current = new URLSearchParams({
+      utm_source: "newsletter",
+    });
+
+    render(<SettingsBillingPage />);
+    await userEvent.click(
+      screen.getByRole("tab", { name: "Automation Credits" }),
+    );
+
+    expect(mockRouterReplace.mock.lastCall?.[0]).toBe(
+      "/settings/billing?utm_source=newsletter&tab=automation-credits",
+    );
   });
 
   it("ignores an unknown ?tab= value and falls back to the Subscription default", async () => {
