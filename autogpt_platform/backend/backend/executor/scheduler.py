@@ -2706,6 +2706,12 @@ class GraphExecutionJobArgs(BaseModel):
     # every execution this schedule fires. Optional for backward compat
     # with rows persisted before expert attribution.
     expert_id: str | None = None
+    # True while the job is paused only because its expert was let go: set
+    # when the archive pauses a running job, and re-hiring resumes exactly
+    # the jobs carrying it. Any other pause or resume clears it, so one the
+    # user paused stays paused across the re-hire. Rows persisted before it
+    # read False, so an archive's pause from then is left paused too.
+    paused_by_expert_archive: bool = False
 
 
 class CopilotTurnJobArgs(BaseModel):
@@ -2882,6 +2888,12 @@ _SCHEDULE_KEY_TAKEN = (
     "This conflicts with a schedule an earlier attempt made. Check your "
     "schedules before trying again."
 )
+
+# What a graph schedule create asks for, which a create sent again must match.
+# The archive's mark is pause state, set later like ``next_run_time``.
+_GRAPH_CREATE_FIELDS = set(GraphExecutionJobArgs.model_fields) - {
+    "paused_by_expert_archive"
+}
 
 
 def _as_json(args: dict[str, Any]) -> str:
@@ -3779,12 +3791,8 @@ class Scheduler(AppService):
         info = _job_to_info(job)
         if not (
             isinstance(info, GraphExecutionJobInfo)
-            and _as_json(
-                info.model_dump(
-                    mode="json", include=set(GraphExecutionJobArgs.model_fields)
-                )
-            )
-            == _as_json(job_args.model_dump(mode="json"))
+            and _as_json(info.model_dump(mode="json", include=_GRAPH_CREATE_FIELDS))
+            == _as_json(job_args.model_dump(mode="json", include=_GRAPH_CREATE_FIELDS))
             and _fires_alike(job.trigger, trigger)
         ):
             raise ConflictError(_SCHEDULE_KEY_TAKEN)
@@ -4055,7 +4063,9 @@ class Scheduler(AppService):
         return job, info
 
     @expose
-    def pause_execution_schedule(self, schedule_id: str, user_id: str) -> bool:
+    def pause_execution_schedule(
+        self, schedule_id: str, user_id: str, for_expert_archive: bool = False
+    ) -> bool:
         """Suspend a schedule without discarding it.
 
         APScheduler persists a pause as ``next_run_time = NULL``, which
@@ -4063,32 +4073,85 @@ class Scheduler(AppService):
         disappears from every read path while keeping its trigger, inputs
         and credentials intact for ``resume_execution_schedule``. Returns
         False when it was already paused, so callers don't double-log.
+
+        *for_expert_archive* is the archive flow pausing a graph schedule for
+        re-hire: it marks the job ``paused_by_expert_archive``, but never one
+        that was already paused, since that pause was someone else's. Any
+        other pause clears the mark, even on a job already paused, so the
+        schedule stays paused when the expert is hired again.
         """
-        job, info = self._authorized_job(schedule_id, user_id, action="pause")
-        if job.next_run_time is None:
-            return False
-        logger.info(f"Pausing job {schedule_id} (kind={info.kind})")
-        self.scheduler.pause_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
+        # One lock from the read to the write: the mark goes back with the
+        # job's other kwargs, which an edit or another pause could change.
+        with self.scheduler._jobstores_lock:
+            job, info = self._authorized_job(schedule_id, user_id, action="pause")
+            running = job.next_run_time is not None
+            changes: dict[str, Any] = {"next_run_time": None} if running else {}
+            if isinstance(info, GraphExecutionJobInfo):
+                marked = for_expert_archive and (
+                    running or info.paused_by_expert_archive
+                )
+                if marked != info.paused_by_expert_archive:
+                    changes["kwargs"] = {
+                        **job.kwargs,
+                        "paused_by_expert_archive": marked,
+                    }
+            if not changes:
+                return False
+            logger.info(
+                f"Pausing job {schedule_id} (kind={info.kind}, "
+                f"for_expert_archive={for_expert_archive}, was_running={running})"
+            )
+            self.scheduler.modify_job(
+                schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
+            )
         self._invalidate_jobs_cache()
-        return True
+        return running
 
     @expose
-    def resume_execution_schedule(self, schedule_id: str, user_id: str) -> bool:
+    def resume_execution_schedule(
+        self,
+        schedule_id: str,
+        user_id: str,
+        only_if_paused_by_expert_archive: bool = False,
+    ) -> bool:
         """Reverse of ``pause_execution_schedule``.
 
         APScheduler recomputes ``next_run_time`` from the trigger, so fires
         missed while paused are NOT backfilled — a re-hired expert picks up
         at her next cadence instead of replaying the whole archived window.
         Returns False when the schedule was not paused.
+
+        Re-hiring passes *only_if_paused_by_expert_archive*, which resumes
+        a schedule only if the archive paused it (the job's
+        ``paused_by_expert_archive`` mark) and otherwise returns False. Every
+        resume clears the mark.
         """
-        job, info = self._authorized_job(schedule_id, user_id, action="resume")
-        if job.next_run_time is not None:
-            return False
-        # Resuming computes the next fire time from the stored trigger.
-        if isinstance(job.trigger, CronTrigger):
-            check_cron_fires(job.trigger, info.cron or "")
-        logger.info(f"Resuming job {schedule_id} (kind={info.kind})")
-        self.scheduler.resume_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
+        with self.scheduler._jobstores_lock:
+            job, info = self._authorized_job(schedule_id, user_id, action="resume")
+            if job.next_run_time is not None:
+                return False
+            marked = (
+                isinstance(info, GraphExecutionJobInfo)
+                and info.paused_by_expert_archive
+            )
+            if only_if_paused_by_expert_archive and not marked:
+                return False
+            # Resuming computes the next fire time from the stored trigger.
+            if isinstance(job.trigger, CronTrigger):
+                check_cron_fires(job.trigger, info.cron or "")
+            logger.info(f"Resuming job {schedule_id} (kind={info.kind})")
+            resumed = self.scheduler.resume_job(
+                schedule_id, jobstore=Jobstores.EXECUTION.value
+            )
+            # After the resume, so a failure between the two writes leaves a
+            # running job marked, which nothing acts on: the next pause
+            # rewrites the mark. The other way round strands it paused.
+            if marked and resumed is not None:
+                self.scheduler.modify_job(
+                    schedule_id,
+                    jobstore=Jobstores.EXECUTION.value,
+                    kwargs={**job.kwargs, "paused_by_expert_archive": False},
+                )
         self._invalidate_jobs_cache()
         return True
 
