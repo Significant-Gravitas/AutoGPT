@@ -13,7 +13,8 @@ session all land on the right turn.
 A tool call's input can read a value from a result the platform sent back,
 as a model reads an id out of what a tool returned: in place of the value,
 ``{"$from_tool_result": {"tool": "<tool>", "pattern": "<regex>"}}`` takes the
-first group the pattern matches in that tool's newest result.
+first group the pattern matches in a result of that tool from the last turn,
+the last such result that has a match.
 """
 
 import json
@@ -47,7 +48,8 @@ class Usage:
 @dataclass(frozen=True)
 class Capture:
     """A tool call argument read from a result the platform sent back: the
-    first group ``pattern`` matches in the newest result of ``tool``."""
+    first group ``pattern`` matches in the last turn's results of ``tool``, the
+    last one with a match."""
 
     tool: str
     pattern: re.Pattern[str]

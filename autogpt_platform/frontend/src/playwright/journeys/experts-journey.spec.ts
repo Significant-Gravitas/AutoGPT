@@ -34,6 +34,7 @@ import {
   waitForSetup,
 } from "./experts";
 import { expect, test } from "./fixtures";
+import { pinKnownFailure } from "./known-failure";
 import kickoffScript from "./model-scripts/expert-kickoff.json";
 import pauseScript from "./model-scripts/expert-pause-schedule.json";
 import quickScript from "./model-scripts/quick-answer.json";
@@ -640,23 +641,14 @@ test.describe("experts journey", () => {
             stateOf(states, RUNNING_SCHEDULE),
             "re-hiring should resume what letting go paused",
           ).toBe("active");
-          // Cleaned up before the pin below, and every soft check so far
-          // made to count, so a failed cleanup can't pass for the known bug.
+          // Cleaned up before the pin below, which fails the run on any
+          // earlier soft check, a failed cleanup's included.
           await deleteSchedules(page, own.graphID, scheduleIDs);
-          expect(
-            test.info().errors.map((error) => error.message),
-            "nothing before the known failure should have failed",
-          ).toEqual([]);
-          // A known failure from here on, so anything above failing still
-          // fails the run.
-          test.fail(
-            true,
+          const pinned = pinKnownFailure(
             "#14577: re-hiring resumes a schedule the user paused",
-          );
-          expect(
-            stateOf(states, PAUSED_SCHEDULE),
             "a schedule the user paused before letting the expert go should stay paused",
-          ).toBe("paused");
+          );
+          expect(stateOf(states, PAUSED_SCHEDULE), pinned).toBe("paused");
         });
       } finally {
         await deleteSchedules(page, own.graphID, scheduleIDs);
