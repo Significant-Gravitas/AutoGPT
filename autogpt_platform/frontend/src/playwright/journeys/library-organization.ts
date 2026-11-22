@@ -294,13 +294,20 @@ export function folderCard(page: Page, folderID: string) {
 }
 
 /** Which of the journey's workflows the page lists, top to bottom. A preview
- * account may have other workflows, which this leaves out. */
+ * account may have other workflows, which this leaves out, and more than a
+ * page of them: each read first scrolls to the last card, as a person would,
+ * so a poll keeps loading pages until the journey's workflows are there. */
 export async function listedWorkflows(page: Page, workflows: Workflow[]) {
-  const ids = await page
-    .getByTestId("library-agent-card")
-    .evaluateAll((cards) =>
-      cards.map((card) => card.getAttribute("data-agent-id")),
-    );
+  const cards = page.getByTestId("library-agent-card");
+  if ((await cards.count()) > 0) {
+    await cards
+      .last()
+      .scrollIntoViewIfNeeded({ timeout: 2_000 })
+      .catch(() => {});
+  }
+  const ids = await cards.evaluateAll((nodes) =>
+    nodes.map((card) => card.getAttribute("data-agent-id")),
+  );
   return ids.flatMap((id) =>
     workflows
       .filter((workflow) => workflow.libraryAgentID === id)

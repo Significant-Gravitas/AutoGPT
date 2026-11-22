@@ -375,14 +375,24 @@ test.describe("Library organization journey", () => {
     );
     expect((await readEntry(page, beta)).folder_id).toBeNull();
 
+    await moveWorkflows(page, [beta], child.id);
+    await openLibrary(page);
+    await expectListed(
+      page,
+      workflows,
+      [],
+      "a workflow filed in the subfolder again should leave the main list",
+    );
+
     await deleteFolderInDialog(page, parent);
     await expectListed(
       page,
       workflows,
       workflows,
-      "deleting the parent should hand back the workflows under it",
+      "deleting the parent should hand back the workflows under it, its subfolder's included",
     );
     expect((await readEntry(page, alpha)).folder_id).toBeNull();
+    expect((await readEntry(page, beta)).folder_id).toBeNull();
     expect(
       (await readFolder(page, child.id)).status,
       "the subfolder should go with its parent",
