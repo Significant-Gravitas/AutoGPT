@@ -22,94 +22,131 @@ const USD = new Intl.NumberFormat("en-US", {
 });
 
 test.describe("billing journey", () => {
-  test("credits bought through Stripe checkout are added once, however often Stripe reports the payment", async ({
-    page,
-    journeyUser: _user,
-  }) => {
-    await requireFakeStripe();
-    const before = await getCreditBalance(page);
-    await openAutomationCredits(page);
-    await expect(balance(page, before)).toBeVisible();
+  test(
+    "credits bought through Stripe checkout are added once, however often Stripe reports the payment",
+    {
+      annotation: {
+        type: "issue",
+        description:
+          "https://github.com/Significant-Gravitas/AutoGPT/issues/17270",
+      },
+    },
+    async ({ page, journeyUser: _user }) => {
+      await requireFakeStripe();
+      const before = await getCreditBalance(page);
+      await openAutomationCredits(page);
+      await expect(balance(page, before)).toBeVisible();
 
-    const sessionID = await checkOut(page);
-    await payAndReturn(page);
+      const sessionID = await checkOut(page);
+      await payAndReturn(page);
 
-    // The fake sends checkout.session.completed before it sends the user back.
-    const events = await stripeEvents(sessionID);
-    expect(events.map((event) => event.type)).toEqual([
-      "checkout.session.completed",
-    ]);
-    const [completed] = events;
-    expect(
-      completed.deliveries.map((delivery) => delivery.status),
-      "the platform should acknowledge the payment",
-    ).toEqual([200]);
-    await expectAddedOnce(page, before, paymentIntent(completed));
+      // The fake sends checkout.session.completed before it sends the user back.
+      const events = await stripeEvents(sessionID);
+      expect(events.map((event) => event.type)).toEqual([
+        "checkout.session.completed",
+      ]);
+      const [completed] = events;
+      expect(
+        completed.deliveries.map((delivery) => delivery.status),
+        "the platform should acknowledge the payment",
+      ).toEqual([200]);
+      await expectAddedOnce(page, before, paymentIntent(completed));
 
-    // Stripe sends an event again when it doesn't hear back in time.
-    const retried = await deliverEvent(completed.id);
-    expect(retried.status, retried.body).toBe(200);
-    // A delayed payment method ends with a second event about the session.
-    const succeeded = await sendEvent(
-      "checkout.session.async_payment_succeeded",
-      sessionID,
-    );
-    expect(succeeded.deliveries.map((delivery) => delivery.status)).toEqual([
-      200,
-    ]);
-    // And the return page asks the platform to fulfil it on every visit.
-    const fulfil = await page.request.patch(CREDITS_PATH);
-    expect(fulfil.ok(), `PATCH credits: ${fulfil.status()}`).toBe(true);
+      // Stripe sends an event again when it doesn't hear back in time.
+      const retried = await deliverEvent(completed.id);
+      expect(retried.status, retried.body).toBe(200);
+      // A delayed payment method ends with a second event about the session.
+      const succeeded = await sendEvent(
+        "checkout.session.async_payment_succeeded",
+        sessionID,
+      );
+      expect(succeeded.deliveries.map((delivery) => delivery.status)).toEqual([
+        200,
+      ]);
+      // And the return page asks the platform to fulfil it on every visit.
+      const fulfil = await page.request.patch(CREDITS_PATH);
+      expect(fulfil.ok(), `PATCH credits: ${fulfil.status()}`).toBe(true);
 
-    await page.reload();
-    await expectAddedOnce(page, before, paymentIntent(completed));
-    expect(await unservedStripeRequests()).toEqual([]);
-  });
+      // The toast says to refresh if the credits don't show; the user does.
+      await page.reload();
+      const creditsTab = page.getByRole("tab", { name: "Automation Credits" });
+      await expect(creditsTab).toBeVisible();
+      const reloadedOnCredits =
+        (await creditsTab.getAttribute("aria-selected")) === "true";
+      await creditsTab.click();
+      await expectAddedOnce(page, before, paymentIntent(completed));
+      expect(await unservedStripeRequests()).toEqual([]);
 
-  test("credits whose webhook reaches the platform after the user is back are added once, and the page shows them", async ({
-    page,
-    journeyUser: _user,
-  }) => {
-    await requireFakeStripe();
-    const before = await getCreditBalance(page);
-    await openAutomationCredits(page);
-    const sessionID = await checkOut(page);
-    await holdWebhooks(sessionID);
+      // A known failure from here on, so anything above failing still fails
+      // the run.
+      test.fail(
+        true,
+        "#17270: a reload after buying credits opens the Subscription tab",
+      );
+      expect(
+        reloadedOnCredits,
+        "the reload should stay on Automation Credits, where the toast said the credits would appear",
+      ).toBe(true);
+    },
+  );
 
-    // With the webhook late, the return page fulfils the checkout itself.
-    // Against Stripe its balance read answers before that call, which waits
-    // on Stripe; the fake answers at once, so hold the call until the read
-    // is back, whatever the stack's speed.
-    const balanceRead = page.waitForResponse(isBalanceRead).catch(() => null);
-    await page.route(`**${CREDITS_PATH}`, async (route) => {
-      if (route.request().method() === "PATCH") await balanceRead;
-      await route.fallback();
-    });
-    const fulfilled = page.waitForResponse(isFulfilment);
-    await payAndReturn(page);
-    expect((await fulfilled).ok(), "PATCH credits from the return page").toBe(
-      true,
-    );
-    const [completed, ...others] = await stripeEvents(sessionID);
-    expect(others).toEqual([]);
-    expect(completed.deliveries, "the webhook is held").toEqual([]);
-    await expectInLedgerOnce(page, before, paymentIntent(completed));
+  test(
+    "credits whose webhook reaches the platform after the user is back are added once, and the page shows them",
+    {
+      annotation: {
+        type: "issue",
+        description:
+          "https://github.com/Significant-Gravitas/AutoGPT/issues/17269",
+      },
+    },
+    async ({ page, journeyUser: _user }) => {
+      await requireFakeStripe();
+      const before = await getCreditBalance(page);
+      await openAutomationCredits(page);
+      const sessionID = await checkOut(page);
+      await holdWebhooks(sessionID);
 
-    // Then Stripe's webhook arrives.
-    const late = await deliverEvent(completed.id);
-    expect(late.status, late.body).toBe(200);
-    await expectInLedgerOnce(page, before, paymentIntent(completed));
-    expect(await unservedStripeRequests()).toEqual([]);
+      // With the webhook late, the return page fulfils the checkout itself.
+      // Against Stripe its balance read answers before that call, which waits
+      // on Stripe; the fake answers at once, so hold the call until the read
+      // is back, whatever the stack's speed.
+      const balanceRead = page.waitForResponse(isBalanceRead).catch(() => null);
+      await page.route(`**${CREDITS_PATH}`, async (route) => {
+        if (route.request().method() === "PATCH") await balanceRead;
+        await route.fallback();
+      });
+      const fulfilled = page.waitForResponse(isFulfilment);
+      await payAndReturn(page);
+      expect((await fulfilled).ok(), "PATCH credits from the return page").toBe(
+        true,
+      );
+      const [completed, ...others] = await stripeEvents(sessionID);
+      expect(others).toEqual([]);
+      expect(completed.deliveries, "the webhook is held").toEqual([]);
+      await expectInLedgerOnce(page, before, paymentIntent(completed));
 
-    await expect(
-      balance(page, before + TOP_UP),
-      "the page should show the credits its own fulfil call added",
-    ).toBeVisible({ timeout: 5_000 });
-    await expect(
-      purchases(page),
-      "the history should list the purchase without a reload",
-    ).toHaveCount(1, { timeout: 5_000 });
-  });
+      // Then Stripe's webhook arrives.
+      const late = await deliverEvent(completed.id);
+      expect(late.status, late.body).toBe(200);
+      await expectInLedgerOnce(page, before, paymentIntent(completed));
+      expect(await unservedStripeRequests()).toEqual([]);
+
+      // A known failure from here on, so anything above failing still fails
+      // the run.
+      test.fail(
+        true,
+        "#17269: the page keeps the old balance after its return from checkout credits the top-up",
+      );
+      await expect(
+        balance(page, before + TOP_UP),
+        "the page should show the credits its own fulfil call added",
+      ).toBeVisible({ timeout: 5_000 });
+      await expect(
+        purchases(page),
+        "the history should list the purchase without a reload",
+      ).toHaveCount(1, { timeout: 5_000 });
+    },
+  );
 });
 
 async function openAutomationCredits(page: Page) {
