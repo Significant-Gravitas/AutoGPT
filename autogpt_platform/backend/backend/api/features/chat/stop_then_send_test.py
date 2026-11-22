@@ -6,6 +6,7 @@ database are stubbed at their boundaries.
 """
 
 import asyncio
+import time
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
@@ -241,6 +242,36 @@ async def test_a_send_that_loses_the_slot_with_no_stop_gets_its_409_at_once(
     assert sent.status_code == 409
     next_turn.assert_not_awaited()
     assert world.started == []
+
+
+async def test_a_stop_holds_a_send_no_longer_than_its_own_deadline(
+    mocker: pytest_mock.MockerFixture, session_id: str, test_user_id: str
+) -> None:
+    stopped_turn = f"stopped-{uuid.uuid4().hex}"
+    await stream_registry.create_session(
+        session_id, test_user_id, "chat_stream", "chat", turn_id=stopped_turn
+    )
+    _stub_boundaries(mocker)
+    await stream_registry.mark_session_completed(
+        session_id,
+        error_message=stream_registry.CANCELLED_MESSAGE,
+        skip_error_publish=True,
+        turn_id=stopped_turn,
+    )
+    # A hold far past any Stop's, on a turn no executor will report letting go.
+    redis = await redis_client.get_redis_async()
+    await redis.hset(  # type: ignore[misc]
+        stream_registry.get_session_meta_key(session_id),
+        stream_registry.STOP_HOLD_FIELD,
+        repr(time.time() + 3600),
+    )
+    mocker.patch.object(pending_message_helpers, "STOP_HOLD_SECONDS", 0.3)
+
+    held = await asyncio.wait_for(
+        pending_message_helpers.wait_for_stopped_turn(session_id), timeout=10
+    )
+
+    assert held is True
 
 
 async def test_a_message_that_loses_the_next_turn_to_another_send_follows_that_turn(
