@@ -84,6 +84,10 @@ make init-env
 python ../.github/scripts/hosted_journeys_env.py >> backend/.env
 NEXT_PUBLIC_PW_TEST=true docker compose -f docker-compose.yml \
   -f docker-compose.journeys.yml up -d --build
+# The expert roster's workflows, then the roster again (see below):
+docker compose -f docker-compose.yml -f docker-compose.journeys.yml run --rm \
+  --no-deps rest_server python -m test.load_store_agents
+docker compose -f docker-compose.yml -f docker-compose.journeys.yml up publish_skills
 cd frontend
 PLAYWRIGHT_JOURNEY_COST_PER_NODE=1 PLAYWRIGHT_JOURNEY_TIER=PRO \
   pnpm exec playwright test --config playwright.journeys.config.ts --project hosted
@@ -94,6 +98,12 @@ pnpm exec playwright test --config playwright.journeys.config.ts --project hoste
 Journeys that call the backend directly, such as a webhook delivery, use
 `PLAYWRIGHT_BACKEND_URL` (default `http://localhost:8006`). Set it whenever
 `PLAYWRIGHT_BASE_URL` points at a remote stack.
+
+The expert roster's workflows are the official marketplace listings
+(`backend/agents`), and `publish_skills` installs the roster when the stack
+starts, skipping any workflow whose listing isn't there yet. CI loads the
+listings before the stack starts; the commands above load them into the
+running stack instead, then publish the roster again.
 
 The frontend must be built with `NEXT_PUBLIC_PW_TEST=true`; only that build
 reads the hosted flag values the fixtures hand it.
@@ -131,6 +141,14 @@ AutoPilot at it, in place of `CHAT_TEST_MODE`'s canned reply.
   with that key, as `copilot-connect-card-journey.spec.ts` does. Its connect
   card steps (ask, add a key on the card, check the save) are in
   `connect-card.ts`.
+- **An expert's kickoff** is a message the platform writes, so no marker can
+  be typed into it. Put the marker in the expert's writing sample at the
+  hire's voice pick: the system prompt carries the sample, and the scripted
+  model looks there when no user message has a marker
+  (`experts-journey.spec.ts`).
+- **An id a tool returned**, such as a schedule's, passed on to the next
+  tool call: `$from_tool_result` in the call's input reads it from that
+  result (`scripted_model/README.md`).
 
 - **Chat helpers** are in `copilot-chat.ts`. `recordChatStreams` records the
   body of every chat stream as the browser received it (Chromium keeps no
