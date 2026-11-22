@@ -21,10 +21,8 @@ import logging
 from typing import Any
 
 from postmarker.core import PostmarkClient
-from postmarker.exceptions import ClientError
-from postmarker.models.emails import EmailManager
+from postmarker.exceptions import ClientError, TransportError
 from prisma.enums import NotificationType
-from requests import RequestException
 
 from backend.data.notifications import (
     BaseNotificationData,
@@ -39,8 +37,6 @@ from backend.util.settings import AppEnvironment, BehaveAs, Settings
 logger = logging.getLogger(__name__)
 settings = Settings()
 
-# Bounds how long one send can hold a thread-pool worker.
-POSTMARK_TIMEOUT_SECONDS = 30
 # A sign-up waits on this lookup, so it gives up long before a send would.
 SUPPRESSION_LOOKUP_TIMEOUT_SECONDS = 2
 
@@ -50,24 +46,15 @@ AUTH_EMAIL_TAG = "auth"
 OWNER_EMAIL_TAG = "owner_email"
 
 
-class TypedPostmarkClient(PostmarkClient):
-    """Workaround so the type checker sees `emails`; the Postmark library ships
-    no annotations."""
-
-    emails: EmailManager
-
-
 class EmailSender:
     def __init__(self):
         if settings.secrets.postmark_server_api_token:
-            self.postmark = TypedPostmarkClient(
+            # postmarker's default 30-second timeout bounds how long one send
+            # can hold a thread-pool worker.
+            self.postmark = PostmarkClient(
                 server_token=settings.secrets.postmark_server_api_token,
-                # postmarker defaults to no timeout, which hands `requests` an
-                # unbounded wait. Every send occupies a thread-pool worker, so a
-                # hung Postmark call would otherwise exhaust the pool.
-                timeout=POSTMARK_TIMEOUT_SECONDS,
             )
-            self.postmark_lookups = TypedPostmarkClient(
+            self.postmark_lookups = PostmarkClient(
                 server_token=settings.secrets.postmark_server_api_token,
                 timeout=SUPPRESSION_LOOKUP_TIMEOUT_SECONDS,
             )
@@ -166,18 +153,13 @@ class EmailSender:
             return False
         stream = settings.config.postmark_transactional_stream
         try:
-            found = self.postmark_lookups.call(
-                "GET",
-                f"message-streams/{stream}/suppressions/dump",
-                EmailAddress=user_email,
+            found = self.postmark_lookups.suppressions.all(
+                stream_id=stream, EmailAddress=user_email
             )
-        except (ClientError, RequestException, ValueError) as e:
+        except (ClientError, TransportError) as e:
             logger.warning(f"Postmark suppression lookup failed: {type(e).__name__}")
             return False
-        return any(
-            entry.get("EmailAddress", "").lower() == user_email.lower()
-            for entry in found.get("Suppressions", [])
-        )
+        return any(entry.EmailAddress.lower() == user_email.lower() for entry in found)
 
     async def send_owner_email(
         self,

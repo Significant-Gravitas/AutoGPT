@@ -5006,18 +5006,24 @@ zstd = ["zstandard (>=0.23.0)"]
 
 [[package]]
 name = "postmarker"
-version = "1.0"
+version = "4.0.1"
 description = "Python client library for Postmark API"
 optional = false
-python-versions = "*"
+python-versions = ">=3.11"
 groups = ["main"]
 files = [
-    {file = "postmarker-1.0-py3-none-any.whl", hash = "sha256:0fa49f236c7193650896cbf31bbfac34043e352574c6c7e3e2ad2b954704f064"},
-    {file = "postmarker-1.0.tar.gz", hash = "sha256:e735303fdf8ede667a1c6e64a95a96e97f0dabbeca726d0ae1f066bdd799fe34"},
+    {file = "postmarker-4.0.1-py3-none-any.whl", hash = "sha256:36e01c51aef15de8cbcddaa22fd5bdd7605e9e988582668f2c9e6088ce633d6b"},
+    {file = "postmarker-4.0.1.tar.gz", hash = "sha256:bfb8856802477cdf9be2761c2920037f4e0ffab1b4269015f19d741a35fa4901"},
 ]
 
 [package.dependencies]
 requests = ">=2.20.0"
+
+[package.extras]
+async = ["httpx2 (>=2.16)"]
+css-inline = ["css-inline (>=0.24)"]
+docs = ["mkdocstrings[python]", "pymdown-extensions", "ruff", "zensical (>=0.1.1,<0.2)"]
+tests = ["coverage[toml] (>=7.2)", "css-inline (>=0.24)", "httpx2 (>=2.16)", "pytest (>=8)", "pytest-django", "pytest-recording (>=0.14)", "tornado"]
 
 [[package]]
 name = "praw"
@@ -8755,4 +8761,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "0b26af998a44bb14add28296a90aea7d9d67f984d438ec56aff711a69ed54c06"
+content-hash = "2842947dd5ecc19a9da63df6a805bba029f3bbb10fb8f09e5e0f5bc7434936a9"
