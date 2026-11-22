@@ -20,11 +20,13 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => ({
   useToast: () => ({ toast: mockToast, dismiss: vi.fn() }),
 }));
 
+const router = vi.hoisted(() => ({ push: vi.fn() }));
+
 vi.mock("next/navigation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/navigation")>()),
   useParams: () => ({ id: "col-1" }),
   usePathname: () => "/collections/col-1",
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => ({ push: router.push, replace: vi.fn(), refresh: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -232,4 +234,50 @@ test("an edit on a row that changed since is refused and says so", async () => {
       }),
     ),
   );
+});
+
+test("deleting a collection asks first, then returns to the list", async () => {
+  const deleted = vi.fn();
+  serve([]);
+  server.use(
+    http.delete(BASE, () => {
+      deleted();
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  render(<CollectionViewPage />);
+
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Delete collection" }),
+  );
+  expect(
+    await screen.findByText(
+      /Its 2 rows go with it, and workflows that write to it will start a new, empty one./,
+    ),
+  ).toBeDefined();
+  expect(deleted).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+  await waitFor(() =>
+    expect(router.push).toHaveBeenCalledWith("/pages?tab=collections"),
+  );
+  expect(deleted).toHaveBeenCalledTimes(1);
+});
+
+test("another account's collection reads as no longer available", async () => {
+  server.use(
+    http.get(BASE, () =>
+      HttpResponse.json({ detail: "Not found" }, { status: 404 }),
+    ),
+    http.get(`${BASE}/rows`, () =>
+      HttpResponse.json({ detail: "Not found" }, { status: 404 }),
+    ),
+  );
+
+  render(<CollectionViewPage />);
+
+  expect(
+    await screen.findByText("This collection is no longer available"),
+  ).toBeDefined();
+  expect(screen.queryByRole("table")).toBeNull();
 });
