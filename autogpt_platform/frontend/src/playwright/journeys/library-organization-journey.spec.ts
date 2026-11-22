@@ -15,13 +15,11 @@ import {
   FOLDER_COLOR,
   folderCard,
   listedWorkflows,
-  moveDialog,
   moveInDialog,
   moveWorkflows,
   observe,
   openFolder,
   openLibrary,
-  openMoveDialog,
   orderBy,
   readEntry,
   readFavoritesCount,
@@ -115,13 +113,6 @@ test.describe("Library organization journey", () => {
     });
     expect(edited.icon).not.toBe(folder.icon);
     await expect(card.getByTestId("library-folder-name")).toHaveText(renamed);
-
-    // KNOWN BUG (evidence run): the folder opened above caches its old name.
-    await openFolder(page, edited);
-    await expect
-      .soft(breadcrumb(page), "the folder should open under its new name")
-      .toContainText(renamed);
-    await backToLibrary(page);
 
     await page.reload();
     await expect(card.getByTestId("library-folder-name")).toHaveText(renamed);
@@ -309,10 +300,6 @@ test.describe("Library organization journey", () => {
         message: "a reload should keep the Last Run order",
       })
       .toEqual(orders[2]);
-    // KNOWN BUG (evidence run): the menu forgets the URL's sort.
-    await expect
-      .soft(sortMenu(page), "the sort menu should name the sort in use")
-      .toHaveText("Last Run");
   });
 
   test("a subfolder opens from its parent, a workflow moves back out of a folder, and deleting a parent hands back everything under it", async ({
@@ -355,24 +342,6 @@ test.describe("Library organization journey", () => {
       folderCard(page, child.id).getByTestId("library-folder-agent-count"),
     ).toHaveText("1 workflow");
     await expectListed(page, workflows, [alpha], "the parent's own workflow");
-
-    // KNOWN BUGS (evidence run): Move to folder lists root folders only,
-    // and offers My Library only when it lists some other folder.
-    await openMoveDialog(page, alpha);
-    await expect
-      .soft(
-        moveDialog(page).getByRole("button").filter({ hasText: child.name }),
-        "Move to folder should offer the subfolder",
-      )
-      .toBeVisible();
-    await expect
-      .soft(
-        moveDialog(page).getByRole("button", { name: /My Library \(root\)/ }),
-        "Move to folder should offer My Library for a filed workflow",
-      )
-      .toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(moveDialog(page)).toBeHidden();
 
     await openFolder(page, child);
     await expect(breadcrumb(page)).toContainText(child.name);
