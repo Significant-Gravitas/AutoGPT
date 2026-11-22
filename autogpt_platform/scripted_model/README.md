@@ -175,7 +175,9 @@ checks that nothing after that is unserved. A request needs a test key
 (`sk_test_…`); a live key is refused. As Stripe does, the fake refuses an
 inline price (`price_data`) without a product (`product` or `product_data`)
 or an amount (`unit_amount` or `unit_amount_decimal`), and keeps no result
-under an idempotency key for a request it refused.
+under an idempotency key for a request it refused. It totals a line as
+Stripe does: the unit price times the quantity, rounded up to a whole minor
+unit.
 
 **Checkout.** A session's `url` is
 `$FAKE_STRIPE_PUBLIC_URL/stripe/checkout/<id>` (the host port, for the

@@ -274,6 +274,33 @@ def test_the_fake_refuses_what_stripe_would(stack: Stack) -> None:
     }
 
 
+def test_a_decimal_price_is_totalled_before_it_is_rounded(stack: Stack) -> None:
+    """Stripe multiplies a ``unit_amount_decimal`` by the quantity, then
+    rounds the line total up to a whole minor unit."""
+
+    async def totals() -> list[int]:
+        sessions = [
+            await stripe.checkout.Session.create_async(
+                mode="payment",
+                line_items=[
+                    {
+                        "price_data": {
+                            "currency": "usd",
+                            "product_data": CREDITS,
+                            "unit_amount_decimal": unit,
+                        },
+                        "quantity": quantity,
+                    }
+                ],
+                success_url=f"{APP}/billing",
+            )
+            for unit, quantity in (("0.5", 1000), ("0.05", 30))
+        ]
+        return [session.amount_total for session in sessions]
+
+    assert asyncio.run(_with_closed_client(totals())) == [500, 2]
+
+
 async def _with_closed_client(work: Any) -> Any:
     try:
         return await work

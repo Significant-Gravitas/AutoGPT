@@ -10,12 +10,13 @@ import json
 import re
 import threading
 from collections.abc import Callable, Mapping
+from decimal import Decimal
 from typing import Any
 
 from . import resources
 from .errors import ApiError
 from .forms import as_int
-from .line_items import product_name, unit_amount
+from .line_items import product_name, unit_price
 from .store import Store, StripeObject, public
 
 Params = dict[str, Any]
@@ -237,14 +238,14 @@ class StripeApi:
         if isinstance(price_data := item.get("price_data"), dict):
             return resources.line_item(
                 product_name(price_data, f"{where}[price_data]"),
-                unit_amount(price_data, f"{where}[price_data]"),
+                unit_price(price_data, f"{where}[price_data]"),
                 item.get("quantity"),
                 price_data.get("currency") or "usd",
             )
         price = self._require(str(item.get("price")), "price", f"{where}[price]")
         return resources.line_item(
             price.get("nickname") or price["id"],
-            price.get("unit_amount"),
+            Decimal(as_int(price.get("unit_amount"))),
             item.get("quantity"),
             price.get("currency") or "usd",
         )

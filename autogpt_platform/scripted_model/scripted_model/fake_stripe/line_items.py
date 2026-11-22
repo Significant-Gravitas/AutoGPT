@@ -26,16 +26,17 @@ def product_name(price_data: Params, where: str) -> str:
     )
 
 
-def unit_amount(price_data: Params, where: str) -> int:
-    """``unit_amount`` in the currency's smallest unit, else
-    ``unit_amount_decimal``; one of them is required, and 0 is a price."""
+def unit_price(price_data: Params, where: str) -> Decimal:
+    """The price of one unit in the currency's smallest unit: ``unit_amount``,
+    else ``unit_amount_decimal``, kept exact so the line total is rounded
+    once, after the quantity. One of them is required, and 0 is a price."""
     amount = price_data.get("unit_amount")
     if amount is not None:
         if not str(amount).isdigit():
             raise ApiError(
                 400, "Invalid integer: " + str(amount), param=f"{where}[unit_amount]"
             )
-        return int(amount)
+        return Decimal(int(amount))
     decimal = price_data.get("unit_amount_decimal")
     if decimal is None:
         raise missing(f"{where}[unit_amount]")
@@ -49,4 +50,4 @@ def unit_amount(price_data: Params, where: str) -> int:
             "Invalid decimal: " + str(decimal),
             param=f"{where}[unit_amount_decimal]",
         )
-    return int(value)
+    return value

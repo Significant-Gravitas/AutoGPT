@@ -5,6 +5,7 @@ the SDK (``id``, ``object``), are filled; the rest Stripe would send are left
 out rather than invented.
 """
 
+from decimal import ROUND_CEILING, Decimal
 from typing import Any
 
 from .forms import as_int
@@ -33,13 +34,16 @@ def customer(params: dict[str, Any]) -> StripeObject:
 
 
 def line_item(
-    description: str, unit_amount: Any, quantity: Any, currency: str
+    description: str, unit_price: Decimal, quantity: Any, currency: str
 ) -> dict[str, Any]:
+    """As Stripe totals a line: the unit price times the quantity, rounded up
+    to a whole minor unit (0.05 x 30 is 1.5, charged as 2)."""
     count = as_int(quantity, 1)
+    total = (unit_price * count).to_integral_value(rounding=ROUND_CEILING)
     return {
         "description": description,
         "quantity": count,
-        "amount_total": as_int(unit_amount) * count,
+        "amount_total": int(total),
         "currency": currency,
     }
 
