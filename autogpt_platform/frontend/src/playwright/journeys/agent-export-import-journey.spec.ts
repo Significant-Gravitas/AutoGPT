@@ -95,6 +95,10 @@ test.describe("workflow export and import journey", () => {
     page,
     journeyUser: _user,
   }, testInfo) => {
+    // Two Library runs, each of which starts a sub-workflow run, and an
+    // import that opens the builder, which can take over 10 s to draw
+    // (#16927): more than the default 90 s allows on a slow runner.
+    test.setTimeout(120_000);
     const topic = `Topic ${Date.now()}`;
     const original = await createNoteWorkflow(page);
 
@@ -534,9 +538,12 @@ async function importInLibrary(page: Page, filePath: string) {
   await dialog.getByRole("button", { name: "Upload", exact: true }).click();
   const response = await created;
   expect(response.ok(), `importing the file: ${response.status()}`).toBe(true);
-  const graphID = ((await response.json()) as { id: string }).id;
-  await expect(page).toHaveURL(new RegExp(`/build\\?.*flowID=${graphID}`));
-  return { graphID, filledIn };
+  // The page leaves for the builder as soon as the import is saved, which
+  // drops the response's body, so the new workflow's id comes from the URL.
+  await expect(page).toHaveURL(/\/build\?.*flowID=/);
+  const graphID = new URL(page.url()).searchParams.get("flowID");
+  expect(graphID, "the builder should open the imported workflow").toBeTruthy();
+  return { graphID: String(graphID), filledIn };
 }
 
 function isGraphCreation(response: Response) {
