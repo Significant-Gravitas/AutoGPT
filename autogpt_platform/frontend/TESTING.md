@@ -116,6 +116,25 @@ All handlers are aggregated in `src/mocks/mock-handlers.ts` and the MSW server i
 
 Only when the component has complex internal logic that is hard to exercise through the page test. Prefer page-level tests as the default.
 
+### Flake gate
+
+On a pull request to `dev`, the advisory `flake gate (frontend)` job re-runs each test file you add or change, with coverage on as in CI: once as usual, then up to 10 times held to one CPU core with two busy processes, each time in a new random order. A test that passes in some runs and fails in others is reported as flaky in the job summary, with the seed of each failing run. These are the tests that pass on a PR and then fail in the merge queue or on `dev`, usually because they wait for time to pass (a fixed delay, a `waitFor` that only fits an idle machine) instead of for what they test. The gate never blocks a merge.
+
+Reproduce a failing run with the command from the summary, from `autogpt_platform/frontend`:
+
+```bash
+python3 ../../.github/scripts/flake_gate.py stress --load 2 --cores 1 -- \
+  pnpm exec vitest run path/to/x.test.tsx --coverage --sequence.shuffle --sequence.seed=1234
+```
+
+Or repeat the whole gate on one or more files:
+
+```bash
+python3 ../../.github/scripts/flake_gate.py run --suite frontend path/to/x.test.tsx
+```
+
+One core shared with two busy processes is how the merge-queue flakes fixed in #15424 and #15429 were reproduced; `--load N` and `--cores N` change it.
+
 ## E2E Tests (Playwright)
 
 ### Running

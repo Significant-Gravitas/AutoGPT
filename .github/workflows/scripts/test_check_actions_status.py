@@ -1,7 +1,13 @@
+import re
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from check_actions_status import get_paginated_items, process_check_runs
+from check_actions_status import (
+    ADVISORY_CHECK_RUNS,
+    get_paginated_items,
+    process_check_runs,
+)
 
 
 PASSING_RUN = {
@@ -157,6 +163,25 @@ class ProcessCheckRunsTests(unittest.TestCase):
         smoke = {**journeys, "id": 10, "name": "end-to-end tests (smoke)"}
         self.assertEqual(process_check_runs([journeys]), (False, True))
         self.assertEqual(process_check_runs([journeys, smoke]), (False, False))
+
+    def test_the_flake_gate_never_blocks_a_merge(self):
+        gate = {
+            "id": 11,
+            "name": "flake gate (backend)",
+            "status": "completed",
+            "conclusion": "failure",
+        }
+        running = {**gate, "id": 12, "status": "in_progress", "conclusion": None}
+        self.assertEqual(process_check_runs([gate, running]), (False, True))
+
+    def test_every_flake_gate_job_is_advisory(self):
+        """A job added to or renamed in the flake gate's workflow without an
+        entry in ADVISORY_CHECK_RUNS would start blocking merges."""
+        workflow = Path(__file__).resolve().parents[1] / "platform-flake-gate.yml"
+        names = re.findall(r"^    name: (.+)$", workflow.read_text(), re.MULTILINE)
+        self.assertGreaterEqual(len(names), 4)
+        for name in names:
+            self.assertIn(name.strip(), ADVISORY_CHECK_RUNS)
 
     def test_rejects_real_failure(self):
         failed_check = {**CANCELED_CHECK, "conclusion": "failure"}
