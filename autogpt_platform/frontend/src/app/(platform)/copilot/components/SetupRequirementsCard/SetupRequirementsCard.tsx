@@ -7,7 +7,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
-import { useContext, useEffect, useId, useState } from "react";
+import { useContext, useEffect, useId, useRef, useState } from "react";
 import {
   ChainActionsContext,
   type ChainActions,
@@ -82,6 +82,10 @@ export function SetupRequirementsCard({
   >({});
   const [hasSent, setHasSent] = useState(false);
   const [justConnected, setJustConnected] = useState(false);
+  // Accounts the user picked or connected on this card during this page
+  // life, and the credential fields picked since the card last saved.
+  const [picks, setPicks] = useState(0);
+  const unsavedPicks = useRef(new Set<string>());
   // Credentials a sign-in on the chain's row reported. A renewal keeps the
   // credential's id, so this is how a renewed refused credential is told
   // apart from the refused one still being selected.
@@ -259,6 +263,48 @@ export function SetupRequirementsCard({
     (isRejectionRenewed ||
       !isRejectedCredentialSelected(rejection, inputCredentials));
 
+  // Saves go out one at a time, each after the last: the backend keeps
+  // whichever pick it writes last, so a quick second pick must not land
+  // before the first. A failed save never holds the next one back, and isn't
+  // retried (as on dev): the row then names an account the chat isn't using
+  // until the next pick or send.
+  const lastSave = useRef<Promise<void> | null>(null);
+  const queueSave = useStableCallback(
+    (selection: Record<string, CredentialsMetaInput | undefined>) => {
+      const save = (lastSave.current ?? Promise.resolve())
+        .then(() =>
+          reportCredentialPicks(sessionID, selection, credentialFields),
+        )
+        .catch(() => undefined);
+      lastSave.current = save;
+      return save;
+    },
+  );
+  // A reply runs the tool on every account the card names, so a send saves
+  // the whole selection first, its picks included.
+  const saveSelection = useStableCallback(() => {
+    unsavedPicks.current.clear();
+    return queueSave(inputCredentials);
+  });
+  // An earlier answer's chain sends nothing (see ToolChain), but an account
+  // picked there must still reach the chat: the row names it, and the tools
+  // run on what was saved. So the card saves each pick itself, once the pick
+  // is in state, and only the fields picked: an account the card merely
+  // shows, as every card re-mounted from history does, must not overwrite
+  // one picked on another card.
+  const savePicked = useStableCallback(() => {
+    if (unsavedPicks.current.size === 0) return;
+    const picked = Object.fromEntries(
+      [...unsavedPicks.current].map((key) => [key, inputCredentials[key]]),
+    );
+    unsavedPicks.current.clear();
+    void queueSave(picked);
+  });
+  const savesOwnPicks = chainActions !== null && !chainActions.canSend;
+  useEffect(() => {
+    if (savesOwnPicks) savePicked();
+  }, [savesOwnPicks, picks, savePicked]);
+
   // Inside a tool chain the card's own Proceed is replaced by the chain's
   // single Proceed step — register readiness + message with the chain.
   const registerWithChain = useStableCallback((actions: ChainActions) => {
@@ -272,8 +318,7 @@ export function SetupRequirementsCard({
       // A trigger's line carries the chosen credential ids, and an edit-mode
       // card's may carry run inputs; only a bare confirmation is shareable.
       credentialsOnly: needsCredentials && !needsInputs && !isTriggerMode,
-      beforeSend: () =>
-        reportCredentialPicks(sessionID, inputCredentials, credentialFields),
+      beforeSend: saveSelection,
       onSent: markSent,
       connectors: needsCredentials
         ? {
@@ -281,8 +326,10 @@ export function SetupRequirementsCard({
             fields: credentialFields,
             selected: inputCredentials,
             onChange: handleCredentialChange,
-            onConnected: (credentialId) => {
+            onConnected: (key, credentialId) => {
               setJustConnected(true);
+              unsavedPicks.current.add(key);
+              setPicks((count) => count + 1);
               if (credentialId) setRenewedIds((ids) => [...ids, credentialId]);
             },
             rejectedCredentialId: rejection?.credential_id ?? undefined,

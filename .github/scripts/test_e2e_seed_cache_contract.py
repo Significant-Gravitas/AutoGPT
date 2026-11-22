@@ -17,6 +17,7 @@ SEED_VERIFY_CACHED_STEP = (
 )
 FRONTEND_WAIT_STEP = "Wait for frontend image build"
 SERVICES_START_STEP = "Set up Platform - Start (all other services)"
+STORE_AGENTS_STEP = "Set up tests - Load the official marketplace agents"
 SEED_SAVE_STEP = "Push E2E test data to GHCR"
 PLAYWRIGHT_STEP = "Run Playwright E2E suite"
 PLAYWRIGHT_REPORT_STEP = "Validate Playwright JSON report"
@@ -149,6 +150,37 @@ class E2EMatrixContractTests(unittest.TestCase):
         ].split("\n      - name:", 1)[0]
         self.assertIn("-f docker-compose.journeys.yml", prepare)
         self.assertIn("matrix.scripted_model", prepare)
+
+    def test_journeys_load_the_roster_workflows_before_the_roster_publishes(self):
+        # publish_skills resolves each roster workflow to an official listing
+        # when it starts, and skips any it can't find: loaded after it, a hired
+        # expert gets no workflows. Beside the Next.js build it could also run
+        # the runner out of memory, like the seed.
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(_matrix_leg(workflow, "smoke")["store_agents"], "false")
+        self.assertEqual(
+            {leg["store_agents"] for leg in _matrix_legs(workflow, "journeys")},
+            {"true"},
+        )
+        load = _step(workflow, STORE_AGENTS_STEP)
+        # The whole condition: a widened one, such as `|| matrix.suite ==
+        # 'smoke'`, would load the listings on smoke too.
+        self.assertEqual(
+            [
+                line.strip()
+                for line in load.splitlines()
+                if line.strip().startswith("if:")
+            ],
+            ["if: matrix.store_agents"],
+        )
+        self.assertIn("python -m test.load_store_agents", load)
+        steps = _e2e_step_names(workflow)
+        self.assertLess(steps.index(FRONTEND_WAIT_STEP), steps.index(STORE_AGENTS_STEP))
+        self.assertLess(
+            steps.index(STORE_AGENTS_STEP), steps.index(SERVICES_START_STEP)
+        )
 
     def test_journeys_run_as_identical_shards(self):
         workflow = (
@@ -519,7 +551,7 @@ class E2ECoverageContractTests(unittest.TestCase):
         self.assertEqual(_matrix_leg(workflow, "smoke")["min_tests"], "36")
         # The whole journeys suite's inventory, one total on every shard.
         self.assertEqual(
-            {leg["min_tests"] for leg in _matrix_legs(workflow, "journeys")}, {"46"}
+            {leg["min_tests"] for leg in _matrix_legs(workflow, "journeys")}, {"49"}
         )
         # Smoke stays strict: no test.fail() known failures.
         self.assertEqual(_matrix_leg(workflow, "smoke")["known_failures"], "false")
