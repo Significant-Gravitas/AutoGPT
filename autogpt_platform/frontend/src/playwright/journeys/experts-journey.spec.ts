@@ -183,10 +183,7 @@ test.describe("experts journey", () => {
         "the kickoff should open the onboarding card",
       ).toBeVisible({ timeout: MODEL_TURN_TIMEOUT });
       await expectQuestion(card, "Question 1 of 2", FIRST.question);
-      // The rest of the turn stops at its hold: the turn is still running.
-      await expect(
-        transcript.getByText(firstWords(HELD_TEXT, 3)),
-      ).toBeVisible();
+      // The rest of the turn waits at its hold: the turn is still running.
       await expect
         .poll(async () => heldTurns(kickoff.nonce), {
           message: "the kickoff's second request should be held open",
@@ -195,6 +192,11 @@ test.describe("experts journey", () => {
           [1, true],
           [2, null],
         ]);
+      // The chat shows a word only once the next one starts, so the held
+      // reply's first three words show as two.
+      await expect(
+        transcript.getByText(firstWords(HELD_TEXT, 2)),
+      ).toBeVisible();
       sessionID = await currentSessionID(page);
       await pickOption(card, FIRST.options[0]);
       await expectQuestion(card, "Question 2 of 2", SECOND.question);
@@ -413,16 +415,9 @@ test.describe("experts journey", () => {
         after.workflows.find((w) => w.id === workflow.id)?.schedule_id,
       ).toBeNull();
       expect(
-        (await listSetupItems(page, expert.id)).map((item) => [
-          item.resolution,
-          item.providers,
-        ]),
+        setupSummary(await listSetupItems(page, expert.id)),
         "only the connected service's item should be gone",
-      ).toEqual(
-        items
-          .filter((item) => item !== connect)
-          .map((item) => [item.resolution, item.providers]),
-      );
+      ).toEqual(setupSummary(items.filter((item) => item !== connect)));
       if (workflow.graph_id) {
         expect(await listSchedules(page, workflow.graph_id)).toEqual([]);
       }
@@ -436,182 +431,204 @@ test.describe("experts journey", () => {
     });
   });
 
-  test("letting an expert go archives it, and hiring it again keeps a paused schedule paused and doubles nothing", async ({
-    page,
-    journeyUser: _user,
-  }) => {
-    test.setTimeout(REHIRE_TEST_TIMEOUT);
-    const roster = scheduledExpert(await listTemplates(page));
-    const expert = await hireThroughAPI(page, roster.id);
-    const before = await waitForSetup(page, expert.id);
-    const own = await createOwnWorkflow(
-      page,
-      `Journey digest ${uniqueStamp()}`,
-    );
-    const installed = await installOnExpert(page, expert.id, own);
-    const workflowIDs = [...before.workflows.map((w) => w.id), installed.id];
+  test(
+    "letting an expert go archives it, and hiring it again keeps a paused schedule paused and doubles nothing",
+    {
+      annotation: {
+        type: "issue",
+        description:
+          "https://github.com/Significant-Gravitas/AutoGPT/issues/14577",
+      },
+    },
+    async ({ page, journeyUser: _user }) => {
+      test.setTimeout(REHIRE_TEST_TIMEOUT);
+      const roster = scheduledExpert(await listTemplates(page));
+      const expert = await hireThroughAPI(page, roster.id);
+      const before = await waitForSetup(page, expert.id);
+      const own = await createOwnWorkflow(
+        page,
+        `Journey digest ${uniqueStamp()}`,
+      );
+      const installed = await installOnExpert(page, expert.id, own);
+      const workflowIDs = [...before.workflows.map((w) => w.id), installed.id];
 
-    try {
-      await test.step("the expert's page schedules a workflow only once its input is given", async () => {
-        await page.goto(`/team/${expert.id}?tab=schedules`);
-        await page
-          .getByRole("button", { name: "Create schedule" })
-          .first()
-          .click();
-        await page
-          .getByRole("dialog", { name: "Create schedule" })
-          .getByRole("button", { name: own.name })
-          .click();
-        const runDialog = page
-          .getByRole("dialog")
-          .filter({ has: page.getByRole("button", { name: "Schedule Task" }) });
-        const scheduleTask = runDialog.getByRole("button", {
-          name: "Schedule Task",
+      try {
+        await test.step("the expert's page schedules a workflow only once its input is given", async () => {
+          await page.goto(`/team/${expert.id}?tab=schedules`);
+          await page
+            .getByRole("button", { name: "Create schedule" })
+            .first()
+            .click();
+          await page
+            .getByRole("dialog", { name: "Create schedule" })
+            .getByRole("button", { name: own.name })
+            .click();
+          const runDialog = page
+            .getByRole("dialog")
+            .filter({
+              has: page.getByRole("button", { name: "Schedule Task" }),
+            });
+          const scheduleTask = runDialog.getByRole("button", {
+            name: "Schedule Task",
+          });
+          await expect(
+            scheduleTask,
+            "no schedule without the input the workflow needs",
+          ).toBeDisabled();
+          await runDialog
+            .getByTestId(`agent-input-${own.input}`)
+            .fill("This week's notes");
+          await scheduleTask.click();
+          const scheduleDialog = page.getByRole("dialog", {
+            name: "Schedule Run",
+          });
+          await scheduleDialog
+            .getByLabel("Schedule Name")
+            .fill(RUNNING_SCHEDULE);
+          const created = page.waitForResponse(
+            isPath("POST", `/api/proxy/api/graphs/${own.graphID}/schedules`),
+          );
+          await scheduleDialog
+            .getByRole("button", { name: "Schedule", exact: true })
+            .click();
+          expect((await created).ok(), "creating the schedule").toBe(true);
+          await expect(scheduleDialog).toBeHidden();
+          await scheduleThroughAPI(page, own, PAUSED_SCHEDULE);
+          const schedules = await listSchedules(page, own.graphID);
+          expect(
+            schedules
+              .map((schedule) => [schedule.name, schedule.expert_id])
+              .sort(),
+            "both schedules should be the expert's",
+          ).toEqual([
+            [RUNNING_SCHEDULE, expert.id],
+            [PAUSED_SCHEDULE, expert.id],
+          ]);
         });
-        await expect(
-          scheduleTask,
-          "no schedule without the input the workflow needs",
-        ).toBeDisabled();
-        await runDialog
-          .getByTestId(`agent-input-${own.input}`)
-          .fill("This week's notes");
-        await scheduleTask.click();
-        const scheduleDialog = page.getByRole("dialog", {
-          name: "Schedule Run",
-        });
-        await scheduleDialog.getByLabel("Schedule Name").fill(RUNNING_SCHEDULE);
-        const created = page.waitForResponse(
-          isPath("POST", `/api/proxy/api/graphs/${own.graphID}/schedules`),
-        );
-        await scheduleDialog
-          .getByRole("button", { name: "Schedule", exact: true })
-          .click();
-        expect((await created).ok(), "creating the schedule").toBe(true);
-        await expect(scheduleDialog).toBeHidden();
-        await scheduleThroughAPI(page, own, PAUSED_SCHEDULE);
-        const schedules = await listSchedules(page, own.graphID);
-        expect(
-          schedules
-            .map((schedule) => [schedule.name, schedule.expert_id])
-            .sort(),
-          "both schedules should be the expert's",
-        ).toEqual([
-          [RUNNING_SCHEDULE, expert.id],
-          [PAUSED_SCHEDULE, expert.id],
-        ]);
-      });
 
-      const pause = scriptedRun("expert-pause-schedule");
-      await test.step("asked in its chat, the expert pauses one of its schedules", async () => {
-        await page.goto(`/copilot?expertId=${expert.id}`);
-        await sendInChat(
-          page,
-          page,
-          `${pause.marker} Please pause the schedule called "${PAUSED_SCHEDULE}".`,
-        );
-        await expect(
-          page.getByRole("log").getByText(PAUSE.turns[2].text ?? ""),
-        ).toBeVisible({ timeout: MODEL_TURN_TIMEOUT });
-        expectEachTurnOnce(await readJournal(pause.nonce), PAUSE);
-        expect(await scheduleStates(page, own.graphID)).toEqual([
-          [RUNNING_SCHEDULE, "active"],
-          [PAUSED_SCHEDULE, "paused"],
-        ]);
-      });
-
-      await test.step("letting it go archives it and pauses what was still running", async () => {
-        await page.goto("/team");
-        await teamCard(page, expert.name)
-          .getByTestId("expert-card-actions")
-          .click();
-        await page
-          .getByRole("menuitem", { name: `Fire ${expert.name}` })
-          .click();
-        const dialog = page.getByRole("dialog", {
-          name: `Fire ${expert.name}?`,
-        });
-        await expect(
-          dialog.getByText("1 automation will pause."),
-        ).toBeVisible();
-        await expect(dialog.getByText(RUNNING_SCHEDULE)).toBeVisible();
-        const archived = page.waitForResponse(
-          isPath("DELETE", `/api/proxy/api/experts/${expert.id}`),
-        );
-        await dialog.getByTestId("fire-expert-confirm").click();
-        expect((await archived).status(), "archiving").toBe(204);
-        await expect(
-          page.getByRole("link", { name: `View ${expert.name}`, exact: true }),
-          "Team should no longer list it",
-        ).toHaveCount(0);
-        expect((await listHiredExperts(page)).map((e) => e.id)).not.toContain(
-          expert.id,
-        );
-        expect(
-          await listSchedules(page, own.graphID),
-          "an archived expert's schedules are kept out of reach",
-        ).toEqual([]);
-      });
-
-      await test.step("hiring it again from the Marketplace brings the same expert back", async () => {
-        await page.goto(`/marketplace/experts/${roster.id}`);
-        const hire = page.getByRole("button", {
-          name: `Hire ${roster.name}`,
-          exact: true,
-        });
-        const hired = page.waitForResponse(
-          isPath("POST", "/api/proxy/api/experts"),
-        );
-        await hire.click();
-        const response = await hired;
-        expect(response.ok(), `re-hiring: ${response.status()}`).toBe(true);
-        expect(
-          ((await response.json()) as { expert: Expert }).expert.id,
-          "the expert should come back, not a second one",
-        ).toBe(expert.id);
-        await page
-          .getByRole("dialog")
-          .getByRole("button", { name: "Skip for now" })
-          .click();
-        await page.waitForURL(
-          (url) =>
-            url.pathname === "/copilot" &&
-            url.searchParams.get("expertId") === expert.id,
-        );
-        await expect(
-          page.getByRole("log").getByText(PAUSE.turns[2].text ?? ""),
-          "it should reopen the chat it had, not introduce itself again",
-        ).toBeVisible();
-      });
-
-      await test.step("nothing is doubled, and the schedule paused before letting go stays paused", async () => {
-        const rehired = await waitForSetup(page, expert.id);
-        expect(rehired.is_archived).toBe(false);
-        expect(rehired.schedules_paused_at).toBeNull();
-        expect(
-          rehired.workflows.map((w) => w.id).sort(),
-          "each workflow should be there once",
-        ).toEqual([...workflowIDs].sort());
-        expect(
-          (await listHiredExperts(page))
-            .filter((e) => e.source_template_id === roster.id)
-            .map((e) => e.id),
-        ).toEqual([expert.id]);
-        // TODO(evidence run): reattach_expert_triggers resumes every paused
-        // schedule, so this is expected to fail; pin it once confirmed.
-        expect
-          .soft(
-            await scheduleStates(page, own.graphID),
-            "re-hiring should resume what letting go paused, and nothing else",
-          )
-          .toEqual([
+        const pause = scriptedRun("expert-pause-schedule");
+        await test.step("asked in its chat, the expert pauses one of its schedules", async () => {
+          await page.goto(`/copilot?expertId=${expert.id}`);
+          await sendInChat(
+            page,
+            page,
+            `${pause.marker} Please pause the schedule called "${PAUSED_SCHEDULE}".`,
+          );
+          await expect(
+            page.getByRole("log").getByText(PAUSE.turns[2].text ?? ""),
+          ).toBeVisible({ timeout: MODEL_TURN_TIMEOUT });
+          expectEachTurnOnce(await readJournal(pause.nonce), PAUSE);
+          expect(await scheduleStates(page, own.graphID)).toEqual([
             [RUNNING_SCHEDULE, "active"],
             [PAUSED_SCHEDULE, "paused"],
           ]);
-      });
-    } finally {
-      await deleteSchedules(page, own.graphID);
-    }
-  });
+        });
+
+        await test.step("letting it go archives it and pauses what was still running", async () => {
+          await page.goto("/team");
+          await teamCard(page, expert.name)
+            .getByTestId("expert-card-actions")
+            .click();
+          await page
+            .getByRole("menuitem", { name: `Fire ${expert.name}` })
+            .click();
+          const dialog = page.getByRole("dialog", {
+            name: `Fire ${expert.name}?`,
+          });
+          await expect(
+            dialog.getByText("1 automation will pause."),
+          ).toBeVisible();
+          await expect(dialog.getByText(RUNNING_SCHEDULE)).toBeVisible();
+          const archived = page.waitForResponse(
+            isPath("DELETE", `/api/proxy/api/experts/${expert.id}`),
+          );
+          await dialog.getByTestId("fire-expert-confirm").click();
+          expect((await archived).status(), "archiving").toBe(204);
+          await expect(
+            page.getByRole("link", {
+              name: `View ${expert.name}`,
+              exact: true,
+            }),
+            "Team should no longer list it",
+          ).toHaveCount(0);
+          expect((await listHiredExperts(page)).map((e) => e.id)).not.toContain(
+            expert.id,
+          );
+          expect(
+            await listSchedules(page, own.graphID),
+            "an archived expert's schedules are kept out of reach",
+          ).toEqual([]);
+        });
+
+        await test.step("hiring it again from the Marketplace brings the same expert back", async () => {
+          await page.goto(`/marketplace/experts/${roster.id}`);
+          const hire = page.getByRole("button", {
+            name: `Hire ${roster.name}`,
+            exact: true,
+          });
+          const hired = page.waitForResponse(
+            isPath("POST", "/api/proxy/api/experts"),
+          );
+          await hire.click();
+          const response = await hired;
+          expect(response.ok(), `re-hiring: ${response.status()}`).toBe(true);
+          expect(
+            ((await response.json()) as { expert: Expert }).expert.id,
+            "the expert should come back, not a second one",
+          ).toBe(expert.id);
+          await page
+            .getByRole("dialog")
+            .getByRole("button", { name: "Skip for now" })
+            .click();
+          await page.waitForURL(
+            (url) =>
+              url.pathname === "/copilot" &&
+              url.searchParams.get("expertId") === expert.id,
+          );
+          await expect(
+            page.getByRole("log").getByText(PAUSE.turns[2].text ?? ""),
+            "it should reopen the chat it had, not introduce itself again",
+          ).toBeVisible();
+        });
+
+        await test.step("nothing is doubled, and the schedule paused before letting go stays paused", async () => {
+          const rehired = await waitForSetup(page, expert.id);
+          expect(rehired.is_archived).toBe(false);
+          expect(rehired.schedules_paused_at).toBeNull();
+          expect(
+            rehired.workflows.map((w) => w.id).sort(),
+            "each workflow should be there once",
+          ).toEqual([...workflowIDs].sort());
+          expect(
+            (await listHiredExperts(page))
+              .filter((e) => e.source_template_id === roster.id)
+              .map((e) => e.id),
+          ).toEqual([expert.id]);
+          const states = await scheduleStates(page, own.graphID);
+          expect(
+            states.map(([name]) => name),
+            "re-hiring should make no second schedule",
+          ).toEqual([RUNNING_SCHEDULE, PAUSED_SCHEDULE]);
+          expect(
+            stateOf(states, RUNNING_SCHEDULE),
+            "re-hiring should resume what letting go paused",
+          ).toBe("active");
+          // A known failure from here on, so anything above failing still
+          // fails the run.
+          test.fail(
+            true,
+            "#14577: re-hiring resumes a schedule the user paused",
+          );
+          expect(
+            stateOf(states, PAUSED_SCHEDULE),
+            "a schedule the user paused before letting the expert go should stay paused",
+          ).toBe("paused");
+        });
+      } finally {
+        await deleteSchedules(page, own.graphID);
+      }
+    },
+  );
 });
 
 /** The scripted run's chat turns: [turn, whether its reply finished]. */
@@ -674,6 +691,17 @@ async function apiKeyItem(page: Page, items: SetupItem[]) {
     );
   }
   return item;
+}
+
+function stateOf(states: [string, string][], name: string) {
+  return states.find(([scheduleName]) => scheduleName === name)?.[1];
+}
+
+/** Setup items as what each asks for, in a stable order. */
+function setupSummary(items: SetupItem[]) {
+  return items
+    .map((item) => `${item.resolution}: ${item.providers.join("+")}`)
+    .sort();
 }
 
 function escapeRegExp(text: string) {

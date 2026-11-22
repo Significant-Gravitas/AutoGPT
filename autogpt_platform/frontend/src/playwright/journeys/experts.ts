@@ -270,14 +270,14 @@ export async function listSchedules(page: Page, graphID: string) {
   );
 }
 
-/** Each schedule's name, and whether it will fire. */
+/** Each schedule's name, and whether it will fire, by name. */
 export async function scheduleStates(page: Page, graphID: string) {
   return (await listSchedules(page, graphID))
-    .map((schedule) => [
+    .map((schedule): [string, string] => [
       schedule.name,
       schedule.next_run_time ? "active" : "paused",
     ])
-    .sort();
+    .sort(([a], [b]) => a.localeCompare(b));
 }
 
 /** A schedule left behind fires into the next journey's stack. */
