@@ -7016,6 +7016,7 @@
         "tags": ["v1", "credits"],
         "summary": "Get auto top up",
         "operationId": "getV1Get auto top up",
+        "security": [{ "HTTPBearerJWT": [] }],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -7028,21 +7029,37 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       },
       "post": {
         "tags": ["v1", "credits"],
         "summary": "Configure auto top up",
         "description": "Configure auto top-up settings and perform an immediate top-up if needed.\n\nRaises HTTPException(422) if the request parameters are invalid or if\nthe credit top-up fails.",
         "operationId": "postV1Configure auto top up",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 200 },
+                { "type": "null" }
+              ],
+              "description": "Identifies this save. A repeat with the same key charges at most once; without one, every request is a separate save.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Identifies this save. A repeat with the same key charges at most once; without one, every request is a separate save."
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": { "$ref": "#/components/schemas/AutoTopUpConfig" }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -7067,8 +7084,7 @@
               }
             }
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/credits/invoices": {

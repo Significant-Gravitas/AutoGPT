@@ -19,7 +19,6 @@ from fakeredis.aioredis import FakeRedis
 from fastapi.routing import APIRoute
 from pytest_snapshot.plugin import Snapshot
 
-from backend.api.features.billing.credits import auto_top_up_lock
 from backend.api.features.billing.credits.routes import (
     configure_user_auto_top_up,
     get_credit_history,
@@ -555,13 +554,69 @@ def test_configure_auto_top_up_beyond_stripes_ceiling_is_refused(
     set_auto_top_up.assert_not_called()
 
 
+class _Ledger:
+    """A credit model whose top-ups, like the real ledger's, are idempotent per
+    request key: a key it already credited charges nothing."""
+
+    def __init__(self, start: int) -> None:
+        self.balance = start
+        self.charges: list[int] = []
+        self.credited: set[str | None] = set()
+
+    async def get_credits(self, user_id: str) -> int:
+        return self.balance
+
+    async def top_up_credits(
+        self, user_id: str, amount: int, idempotency_key: str | None = None
+    ) -> None:
+        if not amount or idempotency_key in self.credited:
+            return
+        self.charges.append(amount)
+        # The charge is a Stripe round trip; the balance moves after it.
+        await asyncio.sleep(0)
+        self.balance += amount
+        self.credited.add(idempotency_key)
+
+
+def _use_ledger(mocker: pytest_mock.MockFixture, ledger: _Ledger) -> AsyncMock:
+    credit_model = mocker.AsyncMock()
+    credit_model.get_credits.side_effect = ledger.get_credits
+    credit_model.top_up_credits.side_effect = ledger.top_up_credits
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=credit_model,
+    )
+    mocker.patch("backend.api.features.billing.credits.routes.set_auto_top_up")
+    return credit_model
+
+
+AUTO_TOP_UP_CTX = RequestContext(
+    user_id="user-1",
+    org_id="org-1",
+    team_id=None,
+    is_org_owner=True,
+    is_org_admin=True,
+    is_org_billing_manager=False,
+    is_team_admin=True,
+    is_team_billing_manager=False,
+    seat_status="ACTIVE",
+)
+
+
+async def _save(config: AutoTopUpConfig, key: str | None) -> str:
+    return await configure_user_auto_top_up(
+        request=config, user_id="user-1", ctx=AUTO_TOP_UP_CTX, idempotency_key=key
+    )
+
+
 @pytest.mark.parametrize(
-    "start, threshold, amount",
+    "start, threshold, amount, key",
     [
-        (300, 500, 1000),
-        # From a negative balance one refill still leaves it under the
-        # threshold, so the balance alone can't stop the second charge.
-        (-100, 500, 500),
+        # Two separate saves: the second sees the first's credit in the balance.
+        (300, 500, 1000, None),
+        # The same save twice. From a negative balance one refill still leaves
+        # it under the threshold, so only the request's key stops the repeat.
+        (-100, 500, 500, "click-1"),
     ],
 )
 async def test_concurrent_auto_top_up_saves_charge_the_card_once(
@@ -569,141 +624,73 @@ async def test_concurrent_auto_top_up_saves_charge_the_card_once(
     start: int,
     threshold: int,
     amount: int,
+    key: str | None,
 ) -> None:
-    """#16840: a double-click sends two saves while the balance is under the
-    new threshold. Only the first may charge; the second must see its credit."""
-    mocker.patch("backend.api.features.billing.credits.routes.set_auto_top_up")
-    balance = {"credits": start}
-    charges: list[int] = []
+    """#16840: two saves arrive together while the balance is under the new
+    threshold. Only the first may charge; the second must see its credit."""
+    ledger = _Ledger(start)
+    credit_model = _use_ledger(mocker, ledger)
     both_reading = asyncio.Barrier(2)
 
     async def get_credits(user_id: str) -> int:
         # Forces the bad order: without a lock, both saves read the balance
         # before either charge lands. With one, the second never gets here
         # while the first waits, so the wait times out and the first goes on.
-        credits = balance["credits"]
+        credits = ledger.balance
         with contextlib.suppress(TimeoutError, asyncio.BrokenBarrierError):
             async with asyncio.timeout(2):
                 await both_reading.wait()
         return credits
 
-    async def top_up_credits(user_id: str, amount: int) -> None:
-        if amount:
-            charges.append(amount)
-            # The charge is a Stripe round trip; the balance moves after it.
-            await asyncio.sleep(0)
-            balance["credits"] += amount
-
-    credit_model = mocker.AsyncMock()
     credit_model.get_credits.side_effect = get_credits
-    credit_model.top_up_credits.side_effect = top_up_credits
-    mocker.patch(
-        "backend.api.features.billing.credits.routes.get_credit_model",
-        return_value=credit_model,
-    )
-
     config = AutoTopUpConfig(threshold=threshold, amount=amount)
-    ctx = RequestContext(
-        user_id="user-1",
-        org_id="org-1",
-        team_id=None,
-        is_org_owner=True,
-        is_org_admin=True,
-        is_org_billing_manager=False,
-        is_team_admin=True,
-        is_team_billing_manager=False,
-        seat_status="ACTIVE",
-    )
-    results = await asyncio.gather(
-        configure_user_auto_top_up(request=config, user_id="user-1", ctx=ctx),
-        configure_user_auto_top_up(request=config, user_id="user-1", ctx=ctx),
-    )
+
+    results = await asyncio.gather(_save(config, key), _save(config, key))
 
     assert results == ["Auto top-up settings updated"] * 2
-    assert charges == [amount]
-    assert balance["credits"] == start + amount
+    assert ledger.charges == [amount]
+    assert ledger.balance == start + amount
 
 
-async def test_a_save_queued_after_the_charge_landed_does_not_charge_again(
+async def test_a_repeat_of_a_save_that_charged_does_not_charge_again(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """The second save queues after the first save's charge is credited but
-    before it lets go of the lock. From -$1 the balance is then $4, still under
-    $5, so only knowing it queued behind a charge stops a second charge. A later
-    save that finds the lock free is a separate save and still charges."""
-    balance = {"credits": -100}
-    charges: list[int] = []
-    first_charged = asyncio.Event()
-    second_queued = asyncio.Event()
-    saves = 0
-
-    async def get_credits(user_id: str) -> int:
-        return balance["credits"]
-
-    async def top_up_credits(user_id: str, amount: int) -> None:
-        if amount:
-            charges.append(amount)
-            balance["credits"] += amount
-
-    async def set_auto_top_up(user_id: str, config: AutoTopUpConfig) -> None:
-        nonlocal saves
-        saves += 1
-        if saves == 1:
-            # The first save's charge has landed; it keeps the lock until the
-            # second save has queued on it.
-            first_charged.set()
-            async with asyncio.timeout(5):
-                await second_queued.wait()
-
-    real_holder_token = auto_top_up_lock._holder_token
-
-    async def holder_token(redis: FakeRedis, key: str) -> str | None:
-        token = await real_holder_token(redis, key)
-        second_queued.set()
-        return token
-
-    credit_model = mocker.AsyncMock()
-    credit_model.get_credits.side_effect = get_credits
-    credit_model.top_up_credits.side_effect = top_up_credits
-    mocker.patch(
-        "backend.api.features.billing.credits.routes.get_credit_model",
-        return_value=credit_model,
-    )
-    mocker.patch(
-        "backend.api.features.billing.credits.routes.set_auto_top_up",
-        side_effect=set_auto_top_up,
-    )
-    mocker.patch(
-        "backend.api.features.billing.credits.auto_top_up_lock._holder_token",
-        side_effect=holder_token,
-    )
+    """A repeat of the same save can arrive after the first one let go of the
+    lock (it was still checking the account), so it takes the lock at once.
+    From -$1 the first refill leaves $4, under $5; the key stops the repeat,
+    and a separate save with its own key still charges."""
+    ledger = _Ledger(-100)
+    _use_ledger(mocker, ledger)
     config = AutoTopUpConfig(threshold=500, amount=500)
-    ctx = RequestContext(
-        user_id="user-1",
-        org_id="org-1",
-        team_id=None,
-        is_org_owner=True,
-        is_org_admin=True,
-        is_org_billing_manager=False,
-        is_team_admin=True,
-        is_team_billing_manager=False,
-        seat_status="ACTIVE",
-    )
 
-    first = asyncio.create_task(
-        configure_user_auto_top_up(request=config, user_id="user-1", ctx=ctx)
-    )
-    async with asyncio.timeout(5):
-        await first_charged.wait()
-    await configure_user_auto_top_up(request=config, user_id="user-1", ctx=ctx)
-    await first
+    await _save(config, "click-1")
+    await _save(config, "click-1")
 
-    assert charges == [500]
-    assert balance["credits"] == 400
+    assert ledger.charges == [500]
+    assert ledger.balance == 400
 
-    await configure_user_auto_top_up(request=config, user_id="user-1", ctx=ctx)
+    await _save(config, "click-2")
 
-    assert charges == [500, 500]
+    assert ledger.charges == [500, 500]
+
+
+def test_auto_top_up_charges_under_the_request_key(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The header names the save; without one each request is its own save."""
+    # Far enough under the threshold that every save charges.
+    credit_model = _use_ledger(mocker, _Ledger(-10_000))
+    body = {"threshold": 500, "amount": 1000}
+
+    client.post("/credits/auto-top-up", json=body, headers={"Idempotency-Key": "abc"})
+    client.post("/credits/auto-top-up", json=body)
+    client.post("/credits/auto-top-up", json=body)
+
+    keys = [
+        c.kwargs["idempotency_key"] for c in credit_model.top_up_credits.await_args_list
+    ]
+    assert keys[0] == "abc"
+    assert keys[1] and keys[2] and keys[1] != keys[2]
 
 
 def test_auto_top_up_is_not_charged_when_the_save_cannot_be_locked(
@@ -948,6 +935,10 @@ def test_configure_auto_top_up_with_a_declined_card_says_why(
     )
     credit_model = UserCredit()
     mocker.patch.object(credit_model, "get_credits", AsyncMock(return_value=balance))
+    mocker.patch(
+        "backend.data.credit._top_up_credited_for_request",
+        AsyncMock(return_value=False),
+    )
     mocker.patch.object(
         credit_model, "_add_transaction", AsyncMock(return_value=(0, "tx_pending"))
     )
