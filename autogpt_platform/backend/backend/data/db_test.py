@@ -68,6 +68,52 @@ async def test_is_healthy_is_false_when_the_query_times_out(monkeypatch):
     assert await db_module.is_healthy() is False
 
 
+async def test_health_route_stays_process_level(monkeypatch):
+    """/health is the Kubernetes liveness and readiness probe target: it keeps
+    the client's own flag and must never hit the database — a database outage
+    would otherwise fail liveness on every API pod at once, and a restart
+    cannot fix the database."""
+    from backend.api import rest_api
+    from backend.util.service import UnhealthyServiceError
+
+    async def no_live_query() -> bool:
+        raise AssertionError("the liveness route must stay process-level")
+
+    monkeypatch.setattr(db_module, "is_healthy", no_live_query)
+    monkeypatch.setattr(db_module, "is_connected", lambda: True)
+
+    assert await rest_api.health() == {"status": "healthy"}
+
+    monkeypatch.setattr(db_module, "is_connected", lambda: False)
+    with pytest.raises(UnhealthyServiceError):
+        await rest_api.health()
+
+
+async def test_health_db_route_reports_the_live_database(monkeypatch):
+    """/health/db is the monitor-facing live check: it asks the database and
+    reports 503 through UnhealthyServiceError when the answer fails."""
+    from backend.api import rest_api
+    from backend.util.service import UnhealthyServiceError
+
+    checked: list[bool] = []
+
+    async def is_healthy() -> bool:
+        checked.append(True)
+        return True
+
+    monkeypatch.setattr(db_module, "is_healthy", is_healthy)
+
+    assert await rest_api.health_database() == {"status": "healthy"}
+    assert checked == [True]
+
+    async def unhealthy() -> bool:
+        return False
+
+    monkeypatch.setattr(db_module, "is_healthy", unhealthy)
+    with pytest.raises(UnhealthyServiceError):
+        await rest_api.health_database()
+
+
 async def test_disconnect_bounds_the_engine_shutdown(monkeypatch):
     """Prisma's shutdown wait is unbounded unless a timeout is handed to it.
 

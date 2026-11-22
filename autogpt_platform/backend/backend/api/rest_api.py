@@ -645,8 +645,25 @@ async def mcp_protected_resource_metadata() -> ProtectedResourceMetadata:
 
 @app.get(path="/health", tags=["health"], dependencies=[])
 async def health():
-    if not await backend.data.db.is_healthy():
+    # The Kubernetes liveness and readiness probes point here, so this stays a
+    # process-level check: a database outage must not fail liveness on every
+    # API pod at once — a restart cannot fix the database. Monitors that want
+    # the live database answer use /health/db.
+    if not backend.data.db.is_connected():
         raise UnhealthyServiceError("Database is not connected")
+    return {"status": "healthy"}
+
+
+@app.get(path="/health/db", tags=["health"], dependencies=[])
+async def health_database():
+    """Live database answer for monitors and alerting.
+
+    Separate from /health so the probes stay process-level: when the pool is
+    saturated, this check's ``SELECT 1`` can wait out its timeout and fail —
+    which is useful alerting but would be a restart loop if /health did it.
+    """
+    if not await backend.data.db.is_healthy():
+        raise UnhealthyServiceError("Database is not healthy")
     return {"status": "healthy"}
 
 
