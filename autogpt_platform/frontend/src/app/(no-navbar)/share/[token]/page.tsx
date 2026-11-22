@@ -84,14 +84,16 @@ export default function SharePage() {
                         : "There was an error loading this shared execution. Please try refreshing the page."}
                     </p>
                   </div>
-                  <div className="pt-2">
-                    <button
-                      onClick={() => window.location.reload()}
-                      className="text-body text-action hover:underline"
-                    >
-                      Try again
-                    </button>
-                  </div>
+                  {!isDeadLink && (
+                    <div className="pt-2">
+                      <button
+                        onClick={() => window.location.reload()}
+                        className="text-body text-action hover:underline"
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

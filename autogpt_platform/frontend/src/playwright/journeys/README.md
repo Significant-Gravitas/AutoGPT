@@ -37,6 +37,13 @@ product does what the user expects.
     same shape as an admin grant), so the hosted paywall lets them run agents.
     A journey never shares a user with another one and never depends on CI's
     seeded accounts.
+- **More than one person.** Give each other person (an admin, a second user)
+  a browser context of their own, made in a local `test.extend` fixture so it
+  is closed after the test, with `serveHostedFlags` from `./fixtures` and its
+  own `watchForUnexpectedErrors` guard, and sign them up with
+  `provisionNewJourneyUser`. `grantAdminRole` (`admin-role.ts`) makes one an
+  admin; it writes the stack's database, so skip with `adminGrantUnavailable()`
+  where that can't be reached. `marketplace-journey.spec.ts` does all of this.
 - **Make your own data.** Build or import the agents you need inside the
   journey. Name things uniquely (`Date.now()` suffix).
 - **Assert invariants, not DOM trivia.** Use web-first assertions
@@ -150,6 +157,11 @@ PLAYWRIGHT_BASE_URL=https://autogpt-pr-<N>.vercel.app \
 - Sign-ups are capped at 5 per client IP per 10 minutes, so a full run from
   one machine can hit `429`. Reuse an account as above, or run fewer
   journeys at once.
+- Setting `PLAYWRIGHT_JOURNEY_DATABASE_URL` for a deployed stack also lets the
+  marketplace journey make a temporary admin there and approve its test
+  listings, which stay on that stack. The role is taken back at teardown, but
+  tokens already issued keep it until they expire, within an hour
+  (`admin-role.ts`). Without the variable, that journey skips.
 
 ## In CI
 
