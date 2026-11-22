@@ -9,6 +9,11 @@ Turn ``n`` answers the model request whose conversation already holds ``n``
 assistant messages. Every request carries the whole conversation, so this
 needs no state: concurrent runs of one script, a platform retry and a resumed
 session all land on the right turn.
+
+A tool call's input can read a value from a result the platform sent back,
+as a model reads an id out of what a tool returned: in place of the value,
+``{"$from_tool_result": {"tool": "<tool>", "pattern": "<regex>"}}`` takes the
+first group the pattern matches in that tool's newest result.
 """
 
 import json
@@ -24,6 +29,8 @@ MARKER = re.compile(r"\[\[script:([a-z0-9][a-z0-9-]*)(?:#([A-Za-z0-9_.-]+))?\]\]
 
 DEFAULT_TITLE = "Scripted chat"
 
+FROM_TOOL_RESULT = "$from_tool_result"
+
 
 class ScriptError(Exception):
     """A model request the script can't answer. The message says why."""
@@ -38,8 +45,18 @@ class Usage:
 
 
 @dataclass(frozen=True)
+class Capture:
+    """A tool call argument read from a result the platform sent back: the
+    first group ``pattern`` matches in the newest result of ``tool``."""
+
+    tool: str
+    pattern: re.Pattern[str]
+
+
+@dataclass(frozen=True)
 class ToolCall:
     name: str
+    # Values may be Captures, filled in when the turn is answered.
     input: dict[str, Any]
 
 
@@ -179,7 +196,33 @@ def _tool_call(where: str, raw: Any) -> ToolCall:
     data = _object(raw, where, required={"name", "input"})
     if not isinstance(data["input"], dict):
         raise ScriptError(f"{where}: 'input' must be a JSON object")
-    return ToolCall(name=str(data["name"]), input=data["input"])
+    return ToolCall(name=str(data["name"]), input=_arguments(where, data["input"]))
+
+
+def _arguments(where: str, value: Any) -> Any:
+    """``value`` with each ``{"$from_tool_result": ...}`` read as a Capture."""
+    if isinstance(value, dict):
+        if FROM_TOOL_RESULT in value:
+            return _capture(where, value)
+        return {key: _arguments(f"{where}.{key}", v) for key, v in value.items()}
+    if isinstance(value, list):
+        return [_arguments(f"{where}[{i}]", v) for i, v in enumerate(value)]
+    return value
+
+
+def _capture(where: str, raw: dict[str, Any]) -> Capture:
+    spec = _object(
+        _object(raw, where, required={FROM_TOOL_RESULT})[FROM_TOOL_RESULT],
+        f"{where} {FROM_TOOL_RESULT}",
+        required={"tool", "pattern"},
+    )
+    try:
+        pattern = re.compile(str(spec["pattern"]))
+    except re.error as error:
+        raise ScriptError(f"{where}: 'pattern' is not a regular expression: {error}")
+    if pattern.groups < 1:
+        raise ScriptError(f"{where}: 'pattern' needs a group to read the value from")
+    return Capture(tool=str(spec["tool"]), pattern=pattern)
 
 
 def _usage(where: str, raw: Any) -> Usage:

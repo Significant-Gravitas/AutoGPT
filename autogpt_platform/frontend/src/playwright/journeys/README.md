@@ -37,6 +37,13 @@ product does what the user expects.
     same shape as an admin grant), so the hosted paywall lets them run agents.
     A journey never shares a user with another one and never depends on CI's
     seeded accounts.
+- **More than one person.** Give each other person (an admin, a second user)
+  a browser context of their own, made in a local `test.extend` fixture so it
+  is closed after the test, with `serveHostedFlags` from `./fixtures` and its
+  own `watchForUnexpectedErrors` guard, and sign them up with
+  `provisionNewJourneyUser`. `grantAdminRole` (`admin-role.ts`) makes one an
+  admin; it writes the stack's database, so skip with `adminGrantUnavailable()`
+  where that can't be reached. `marketplace-journey.spec.ts` does all of this.
 - **Make your own data.** Build or import the agents you need inside the
   journey. Name things uniquely (`Date.now()` suffix).
 - **Assert invariants, not DOM trivia.** Use web-first assertions
@@ -61,6 +68,10 @@ make init-env
 python ../.github/scripts/hosted_journeys_env.py >> backend/.env
 NEXT_PUBLIC_PW_TEST=true docker compose -f docker-compose.yml \
   -f docker-compose.journeys.yml up -d --build
+# The expert roster's workflows, then the roster again (see below):
+docker compose -f docker-compose.yml -f docker-compose.journeys.yml run --rm \
+  --no-deps rest_server python -m test.load_store_agents
+docker compose -f docker-compose.yml -f docker-compose.journeys.yml up publish_skills
 cd frontend
 PLAYWRIGHT_JOURNEY_COST_PER_NODE=1 PLAYWRIGHT_JOURNEY_TIER=PRO \
   pnpm exec playwright test --config playwright.journeys.config.ts --project hosted
@@ -71,6 +82,12 @@ pnpm exec playwright test --config playwright.journeys.config.ts --project hoste
 Journeys that call the backend directly, such as a webhook delivery, use
 `PLAYWRIGHT_BACKEND_URL` (default `http://localhost:8006`). Set it whenever
 `PLAYWRIGHT_BASE_URL` points at a remote stack.
+
+The expert roster's workflows are the official marketplace listings
+(`backend/agents`), and `publish_skills` installs the roster when the stack
+starts, skipping any workflow whose listing isn't there yet. CI loads the
+listings before the stack starts; the commands above load them into the
+running stack instead, then publish the roster again.
 
 The frontend must be built with `NEXT_PUBLIC_PW_TEST=true`; only that build
 reads the hosted flag values the fixtures hand it.
@@ -102,6 +119,20 @@ AutoPilot at it, in place of `CHAT_TEST_MODE`'s canned reply.
   seen, every reply delivered in full) and `expectChargedWhatWasBilled` (the
   copilot's cost ledger charged exactly what the model billed). They read the
   scripted model's journal at `localhost:4010`.
+- **A block run with the user's own key:** the stack points Anthropic clients
+  at the scripted model too, so an AI block run with an Anthropic key the
+  journey's user saved lands there. `readJournalForKey` lists the calls made
+  with that key, as `copilot-connect-card-journey.spec.ts` does. Its connect
+  card steps (ask, add a key on the card, check the save) are in
+  `connect-card.ts`.
+- **An expert's kickoff** is a message the platform writes, so no marker can
+  be typed into it. Put the marker in the expert's writing sample at the
+  hire's voice pick: the system prompt carries the sample, and the scripted
+  model looks there when no user message has a marker
+  (`experts-journey.spec.ts`).
+- **An id a tool returned**, such as a schedule's, passed on to the next
+  tool call: `$from_tool_result` in the call's input reads it from that
+  result (`scripted_model/README.md`).
 
 - **Chat helpers** are in `copilot-chat.ts`. `recordChatStreams` records the
   body of every chat stream as the browser received it (Chromium keeps no
@@ -120,7 +151,7 @@ deployed app, whose AutoPilot uses real models.
 billing, paywall or third-party hosts), so it fails by design on the hosted
 configuration. The config runs it only in the `selfhost` project, against a
 self-hosted build (see the spec's header); every other journey is in
-`hosted`. CI's journeys leg runs `--project hosted`.
+`hosted`. CI's journeys legs run `--project hosted`.
 
 **TODO:** a `journeys-selfhost` CI leg (compose stack with hosted flags off,
 no `CHAT_TEST_MODE`, since the spec expects "No AI connection") would run it
@@ -150,28 +181,67 @@ PLAYWRIGHT_BASE_URL=https://autogpt-pr-<N>.vercel.app \
 - Sign-ups are capped at 5 per client IP per 10 minutes, so a full run from
   one machine can hit `429`. Reuse an account as above, or run fewer
   journeys at once.
+- Setting `PLAYWRIGHT_JOURNEY_DATABASE_URL` for a deployed stack also lets the
+  marketplace journey make a temporary admin there and approve its test
+  listings, which stay on that stack. The role is taken back at teardown, but
+  tokens already issued keep it until they expire, within an hour
+  (`admin-role.ts`). Without the variable, that journey skips.
 
 ## In CI
 
-Job `end-to-end tests (journeys)` in `.github/workflows/platform-fullstack-ci.yml`
-is a matrix leg beside the smoke suite, on its own runner, so it adds no wall
-clock. It's **advisory** for now (`ADVISORY_CHECK_RUNS` in
+Journeys run as two Playwright shards, jobs `end-to-end tests (journeys 1/2)`
+and `end-to-end tests (journeys 2/2)` in
+`.github/workflows/platform-fullstack-ci.yml`. Each is a matrix leg beside the
+smoke suite with its own runner and stack, so they add no wall clock. They're
+**advisory** for now (`ADVISORY_CHECK_RUN_PREFIXES` in
 `.github/workflows/scripts/check_actions_status.py`): a failure shows on the
-PR but doesn't block merging. It becomes blocking once it has proven stable.
+PR but doesn't block merging. They become blocking once they have proven
+stable.
 
-- Raise `min_tests` for the journeys leg in the workflow matrix when you add
-  tests; `.github/scripts/test_e2e_seed_cache_contract.py` pins it.
-- Reports and traces: artifacts `playwright-report-journeys` and
-  `playwright-test-results-journeys`.
+- **Shards:** the two legs are identical except `shard_index`; Playwright
+  gets `--shard=<shard_index>/<shard_total>`. The journeys config inherits
+  `fullyParallel: true` from `playwright.config.ts`, so Playwright cuts the
+  listed tests, not files, in file order, into slices of equal count: shard 1
+  runs the first half of the list. The slices hold equal counts, not equal
+  times: the long journeys
+  aren't spread evenly through the list.
+- **The floor:** `min_tests` on the journeys legs is the pinned inventory of
+  the whole suite, the same number on every leg, not a per-shard count. Raise
+  it when you add journeys (`.github/scripts/test_e2e_seed_cache_contract.py`
+  pins it too). Count them with
+  `pnpm exec playwright test --config playwright.journeys.config.ts --project hosted --list`;
+  the last line reads `Total: N tests in M files`, and listing needs no
+  stack. Each leg runs that listing while its stack builds, in "Count the
+  shard's tests", and fails if the total is below `min_tests`. It then lists
+  its own shard, with the run's `--shard` and `--repeat-each`, and
+  `validate_playwright_json.py` gets that count as `--min-tests`, so a shard
+  that runs fewer tests than it listed fails too.
+- **Reports and traces:** each shard uploads its own pair of artifacts,
+  `playwright-report-journeys-<shard_index>` and
+  `playwright-test-results-journeys-<shard_index>`. A test's trace and
+  `results.json` entry are in the artifact of the shard that ran it; download
+  both with
+  `gh run download <run> -p 'playwright-test-results-journeys-*'`.
 - Check a new journey for flakiness before relying on it: dispatch the
   workflow on your branch with `journeys_repeat_each`, e.g.
   `gh workflow run platform-fullstack-ci.yml --ref <branch> -f journeys_repeat_each=10`.
-- Keep the leg's Playwright step under ~200 s at 4 workers. Past that, shard
-  it into more legs with `--shard=i/N` rather than lengthening it.
+  The repeated list is split the same way, so each journey still runs 10
+  times across the shards.
+- **When to add a shard:** keep each shard's Playwright step under ~200 s at
+  4 workers. When the slower one goes past that, add a shard rather than
+  lengthening it: copy a journeys leg with the next `shard_index`, and set
+  `shard_total` on every leg to the new count. Every leg's name changes
+  (`journeys 1/2` becomes `journeys 1/3`); the status check treats any
+  `end-to-end tests (journeys …` check as advisory, so it needs no edit. Then
+  update `.github/scripts/test_e2e_seed_cache_contract.py`, which pins the
+  shard legs and their arguments (`test_journeys_run_as_identical_shards`)
+  and their job and artifact names
+  (`test_each_leg_has_its_own_job_and_artifact_names`). Each shard costs a runner that builds its own stack, about
+  10 minutes before the first test.
 
 ## Hosted vs self-hosted configuration
 
-The journeys leg runs as close to the hosted product as one compose stack
+The journeys legs run as close to the hosted product as one compose stack
 allows. Flag values live in `hosted-flags.json`, read by both sides:
 
 - **Backend:** `.github/scripts/hosted_journeys_env.py` turns them into
@@ -195,5 +265,5 @@ Differences from hosted that are still open:
 | Pods               | One `executor`, one `copilot_executor`                                                                                                                                               | Many                                                                           |
 | Frontend runtime   | Next.js standalone server in Docker                                                                                                                                                  | Vercel (body size limits, edge routing)                                        |
 | External services  | No Stripe, OAuth providers, Postmark or E2B; ClamAV, Redis, RabbitMQ and FalkorDB are real                                                                                           | Real                                                                           |
-| LLM keys           | None; blocks that need platform credentials fail                                                                                                                                     | Platform keys                                                                  |
+| LLM keys           | None; blocks that need platform credentials fail. Anthropic clients point at the scripted model, so a block run with the user's own Anthropic key reaches it                         | Platform keys                                                                  |
 | Origin             | `http://localhost:3000`                                                                                                                                                              | HTTPS                                                                          |
