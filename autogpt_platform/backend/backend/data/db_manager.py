@@ -143,6 +143,7 @@ from backend.data.collections.db import (
     get_collection,
     get_row,
     graph_created_by,
+    group_rows,
     list_collections,
     query_rows,
     update_row,
@@ -643,6 +644,7 @@ class DatabaseManager(AppService):
     delete_rows = _(delete_rows)
     query_rows = _(query_rows)
     aggregate_rows = _(aggregate_rows)
+    group_rows = _(group_rows)
     add_row = _(add_row)
     edit_row = _(edit_row)
     accept_pending_values = _(accept_pending_values)
@@ -1298,6 +1300,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     delete_rows = d.delete_rows
     query_rows = d.query_rows
     aggregate_rows = d.aggregate_rows
+    group_rows = d.group_rows
     add_row = d.add_row
     edit_row = d.edit_row
     accept_pending_values = d.accept_pending_values

@@ -281,3 +281,33 @@ test("another account's collection reads as no longer available", async () => {
   ).toBeDefined();
   expect(screen.queryByRole("table")).toBeNull();
 });
+
+test("the plain view renames a field and exports its rows", async () => {
+  const changes: unknown[] = [];
+  const assign = vi.fn();
+  serve([]);
+  server.use(
+    http.patch(BASE, async ({ request }) => {
+      changes.push(await request.json());
+      return HttpResponse.json({ collection: COLLECTION, limits: LIMITS });
+    }),
+  );
+  render(<CollectionViewPage />);
+
+  const name = await screen.findByLabelText("Name of what");
+  await userEvent.clear(name);
+  await userEvent.type(name, "task{Enter}");
+  await waitFor(() =>
+    expect(changes).toEqual([
+      { rename_fields: [{ field: "what", to: "task" }] },
+    ]),
+  );
+  // The download navigates away; stubbed last, since requests read the location.
+  vi.stubGlobal("location", { ...window.location, assign });
+  await userEvent.click(screen.getByRole("button", { name: "Export CSV" }));
+  vi.unstubAllGlobals();
+
+  expect(assign).toHaveBeenCalledWith(
+    "/api/proxy/api/collections/col-1/export",
+  );
+});

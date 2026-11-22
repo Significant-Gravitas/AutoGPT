@@ -15,6 +15,7 @@ from .model import (
     CollectionInfo,
     CollectionRowRecord,
     FieldType,
+    GroupValue,
     RowPage,
     WriteResult,
 )
@@ -57,6 +58,11 @@ ROW = CollectionRowRecord(
         (db.edit_row, CollectionRowRecord, ROW),
         (db.add_row, CollectionRowRecord, ROW),
         (db.query_rows, RowPage, RowPage(rows=[ROW], total=1)),
+        (
+            db.group_rows,
+            list[GroupValue],
+            [GroupValue(label="Booked", value=9.0), GroupValue(label=None, value=None)],
+        ),
         (
             db.write_rows,
             WriteResult,

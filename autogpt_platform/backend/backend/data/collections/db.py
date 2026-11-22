@@ -6,6 +6,7 @@ parallel writers to one collection take turns: two upserts of one key make one
 row, and parallel adds cannot pass the row limit together.
 """
 
+from datetime import date
 from typing import Any
 
 from prisma.models import AgentGraph, Collection, CollectionRow
@@ -21,6 +22,7 @@ from .model import (
     MAX_ROWS,
     OWNER,
     Aggregate,
+    Bucket,
     CollectionError,
     CollectionField,
     CollectionInfo,
@@ -28,6 +30,7 @@ from .model import (
     CollectionRowRecord,
     Condition,
     FieldSpec,
+    GroupValue,
     RowNotFoundError,
     RowPage,
     RowQuery,
@@ -35,8 +38,17 @@ from .model import (
     Writer,
     WriteResult,
 )
-from .query import Params, aggregate_expr, order_clause, where_clause, where_conditions
+from .query import (
+    Params,
+    aggregate_expr,
+    group_expr,
+    order_clause,
+    where_clause,
+    where_conditions,
+)
 from .schema import SchemaChange, apply_schema_change
+
+MAX_GROUPS = 100
 
 
 async def list_collections(user_id: str) -> list[CollectionInfo]:
@@ -197,7 +209,7 @@ async def query_rows(user_id: str, collection: str, query: RowQuery) -> RowPage:
     if found is None:
         raise CollectionNotFoundError(f"No collection named '{collection}'")
     fields = FieldSet(_fields(found))
-    params = Params(user_id, found.id)
+    params = Params(user_id, found.id, today=query.today)
     where = where_clause(fields, query, params)
     order = order_clause(fields, query.sort, params)
     limit, offset = params.add(query.limit), params.add(query.offset)
@@ -224,6 +236,7 @@ async def aggregate_rows(
     collection: str,
     aggregates: list[Aggregate],
     conditions: list[Condition] | None = None,
+    today: date | None = None,
 ) -> list[float | None]:
     """Each aggregate over the rows that meet *conditions*, in one query."""
     found = await _find(user_id, collection)
@@ -232,7 +245,7 @@ async def aggregate_rows(
     if not aggregates:
         return []
     fields = FieldSet(_fields(found))
-    params = Params(user_id, found.id)
+    params = Params(user_id, found.id, today=today)
     where = where_conditions(fields, conditions or [], params)
     columns = ", ".join(
         f"{aggregate_expr(fields, a, params)} AS a{i}" for i, a in enumerate(aggregates)
@@ -242,6 +255,39 @@ async def aggregate_rows(
         *params.values,
     )
     return [_float(row[f"a{i}"]) for i in range(len(aggregates))]
+
+
+async def group_rows(
+    user_id: str,
+    collection: str,
+    group_by: str,
+    aggregate: Aggregate,
+    *,
+    bucket: Bucket | None = None,
+    conditions: list[Condition] | None = None,
+    today: date | None = None,
+) -> list[GroupValue]:
+    """*aggregate* per group, in label order, a select's in its options' order."""
+    found = await _find(user_id, collection)
+    if found is None:
+        raise CollectionNotFoundError(f"No collection named '{collection}'")
+    fields = FieldSet(_fields(found))
+    field = fields.require(group_by)
+    params = Params(user_id, found.id, today=today)
+    label = group_expr(field, bucket, params)
+    value = aggregate_expr(fields, aggregate, params)
+    where = where_conditions(fields, conditions or [], params)
+    rows = await query_raw_with_schema(
+        f"SELECT {label} AS label, {value} AS value "
+        f'FROM {{schema_prefix}}"CollectionRow" r WHERE {where} '
+        f"GROUP BY 1 ORDER BY 1 NULLS LAST LIMIT {MAX_GROUPS}",
+        *params.values,
+    )
+    groups = [GroupValue(label=r["label"], value=_float(r["value"])) for r in rows]
+    if field.options:
+        order = {option: i for i, option in enumerate(field.options)}
+        groups.sort(key=lambda g: order.get(g.label or "", len(order)))
+    return groups
 
 
 async def add_row(
@@ -542,7 +588,7 @@ async def _store_fields(tx: Any, locked: Collection, fields: FieldSet) -> Collec
 async def _count_where(
     fields: FieldSet, query: RowQuery, user_id: str, collection_id: str
 ) -> int:
-    params = Params(user_id, collection_id)
+    params = Params(user_id, collection_id, today=query.today)
     where = where_clause(fields, query, params)
     (row,) = await query_raw_with_schema(
         f'SELECT count(*)::int AS n FROM {{schema_prefix}}"CollectionRow" r WHERE {where}',

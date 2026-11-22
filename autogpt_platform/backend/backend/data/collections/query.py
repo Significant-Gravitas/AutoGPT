@@ -5,6 +5,7 @@ bound parameter; the SQL text holds nothing a design, a block input or a
 person typed.
 """
 
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from .fields import FieldSet, coerce
@@ -24,8 +25,9 @@ _SEARCHED = _TEXTUAL | {FieldType.MULTI_SELECT}
 
 
 class Params:
-    def __init__(self, *initial: Any):
+    def __init__(self, *initial: Any, today: date | None = None):
         self.values: list[Any] = list(initial)
+        self.today = today or datetime.now(UTC).date()
 
     def add(self, value: Any) -> str:
         self.values.append(value)
@@ -64,6 +66,7 @@ def where_clause(fields: FieldSet, query: RowQuery | None, params: Params) -> st
 def where_conditions(
     fields: FieldSet, conditions: list[Condition], params: Params
 ) -> str:
+    """*conditions* alone, for an aggregate, which takes no search or chips."""
     return where_clause(fields, RowQuery(conditions=conditions), params)
 
 
@@ -92,12 +95,33 @@ def aggregate_expr(fields: FieldSet, aggregate: Aggregate, params: Params) -> st
     return f"{function}({_number(params.add(field.name))})::float8"
 
 
+def group_expr(field: CollectionField, bucket: str | None, params: Params) -> str:
+    """The label rows are grouped under: a select's option, or a date's day,
+    week (its Monday) or month."""
+    name = params.add(field.name)
+    if field.type is FieldType.SELECT:
+        return _text(name)
+    if field.type is not FieldType.DATE:
+        raise CollectionError(
+            f"A chart groups by a select or a date field; '{field.name}' is "
+            f"{field.type.value}"
+        )
+    day = f"left({_text(name)}, 10)"
+    if bucket == "month":
+        return f"left({day}, 7)"
+    if bucket == "week":
+        return f"to_char(date_trunc('week', ({day})::date), 'YYYY-MM-DD')"
+    return day
+
+
 def _condition(fields: FieldSet, condition: Condition, params: Params) -> str:
     field = fields.require(condition.field)
     op = condition.op
     if op in ("empty", "not_empty"):
         empty = _is_empty(field, params.add(field.name))
         return empty if op == "empty" else f"NOT {empty}"
+    if op in ("today", "before_today", "last_days", "next_days", "this_month"):
+        return _relative(field, op, condition.value, params)
     if condition.value is None:
         raise CollectionError(f"'{op}' on '{field.name}' needs a value")
     if op == "is":
@@ -149,6 +173,36 @@ def _compare(field: CollectionField, op: str, value: Any, params: Params) -> str
     if len(converted) == 10:
         return f"left({_text(name)}, 10) {sign} {params.add(converted)}"
     return f"{_text(name)} {sign} {params.add(converted)}"
+
+
+def _relative(field: CollectionField, op: str, value: Any, params: Params) -> str:
+    if field.type is not FieldType.DATE:
+        raise CollectionError(
+            f"'{op}' applies to date fields; '{field.name}' is {field.type.value}"
+        )
+    day = f"left({_text(params.add(field.name))}, 10)"
+    today = params.today
+    if op == "today":
+        return f"{day} = {params.add(today.isoformat())}"
+    if op == "before_today":
+        return f"{day} < {params.add(today.isoformat())}"
+    if op == "this_month":
+        return f"left({day}, 7) = {params.add(today.isoformat()[:7])}"
+    days = timedelta(days=_day_count(op, value))
+    start, end = (today - days, today) if op == "last_days" else (today, today + days)
+    return f"{day} BETWEEN {params.add(start.isoformat())} AND {params.add(end.isoformat())}"
+
+
+def _day_count(op: str, value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise CollectionError(f"'{op}' takes a number of days")
+    try:
+        days = int(float(value))
+    except ValueError:
+        raise CollectionError(f"'{op}' takes a number of days") from None
+    if not 1 <= days <= 366:
+        raise CollectionError(f"'{op}' takes 1 to 366 days")
+    return days
 
 
 def _is_empty(field: CollectionField, name: str) -> str:

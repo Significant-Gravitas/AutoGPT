@@ -8,7 +8,9 @@ import { Flag } from "@/services/feature-flags/use-get-flag";
 import { withFeatureFlag } from "@/services/feature-flags/with-feature-flag";
 import NextLink from "next/link";
 import { useParams } from "next/navigation";
+import { getExportCollectionUrl } from "@/app/api/__generated__/endpoints/collections/collections";
 import { CollectionTable } from "../components/CollectionTable/CollectionTable";
+import { FieldsPanel } from "./components/FieldsPanel/FieldsPanel";
 import { COLLECTIONS_LIST_HREF, useCollectionView } from "./useCollectionView";
 
 function CollectionView() {
@@ -60,13 +62,26 @@ function CollectionView() {
             </Text>
           ) : null}
         </div>
-        <Button
-          size="small"
-          variant="ghost-danger"
-          onClick={() => view.setConfirmingDelete(true)}
-        >
-          Delete collection
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            size="small"
+            variant="outline"
+            onClick={() =>
+              window.location.assign(
+                `/api/proxy${getExportCollectionUrl(collection.id)}`,
+              )
+            }
+          >
+            Export CSV
+          </Button>
+          <Button
+            size="small"
+            variant="ghost-danger"
+            onClick={() => view.setConfirmingDelete(true)}
+          >
+            Delete collection
+          </Button>
+        </div>
       </header>
       <CollectionTable
         collectionID={collection.id}
@@ -80,6 +95,7 @@ function CollectionView() {
         total={view.total}
         readOnly={false}
       />
+      <FieldsPanel collectionID={collection.id} fields={collection.fields} />
       <Dialog
         controlled={{
           isOpen: view.confirmingDelete,

@@ -6311,6 +6311,44 @@
         }
       }
     },
+    "/api/collections/{collection_id}/export": {
+      "get": {
+        "tags": ["collections"],
+        "summary": "Export Collection",
+        "description": "Every row as CSV, one column per field, in the collection's order.",
+        "operationId": "export_collection",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "title": "Collection Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "text/csv": {} }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/collections/{collection_id}/rows": {
       "get": {
         "tags": ["collections"],
@@ -23277,6 +23315,24 @@
         "required": ["blocks", "pagination"],
         "title": "BlockResponse"
       },
+      "BoardColumn": {
+        "properties": {
+          "option": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Option",
+            "description": "None holds the rows with no value."
+          },
+          "rows": {
+            "items": { "$ref": "#/components/schemas/CollectionRowRecord" },
+            "type": "array",
+            "title": "Rows"
+          },
+          "total": { "type": "integer", "title": "Total" }
+        },
+        "type": "object",
+        "required": ["option", "rows", "total"],
+        "title": "BoardColumn"
+      },
       "Body_patchOauthUpdateAppStatus": {
         "properties": {
           "is_active": {
@@ -24660,6 +24716,18 @@
             "type": "boolean",
             "title": "Clear Key",
             "default": false
+          },
+          "rename_fields": {
+            "items": { "$ref": "#/components/schemas/FieldRename" },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Rename Fields"
+          },
+          "change_types": {
+            "items": { "$ref": "#/components/schemas/TypeChange" },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Change Types"
           }
         },
         "type": "object",
@@ -24868,7 +24936,12 @@
               "gte",
               "lte",
               "empty",
-              "not_empty"
+              "not_empty",
+              "today",
+              "before_today",
+              "last_days",
+              "next_days",
+              "this_month"
             ],
             "title": "Op"
           },
@@ -29426,6 +29499,25 @@
         "required": ["message", "kind"],
         "title": "FeedbackPromptToolResponse",
         "description": "A work check or mistake card, or the news that none will appear."
+      },
+      "FieldRename": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Field"
+          },
+          "to": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "To"
+          }
+        },
+        "type": "object",
+        "required": ["field", "to"],
+        "title": "FieldRename"
       },
       "FieldSpec": {
         "properties": {
@@ -34544,6 +34636,30 @@
         "required": ["version_id", "outcome"],
         "title": "OutcomeReportRequest"
       },
+      "PageButton": {
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "library_agent_id": { "type": "string", "title": "Library Agent Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
+          "inputs": {
+            "additionalProperties": { "type": "string" },
+            "type": "object",
+            "title": "Inputs",
+            "description": "Workflow input -> row field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "library_agent_id",
+          "graph_id",
+          "graph_version",
+          "inputs"
+        ],
+        "title": "PageButton",
+        "description": "A row's button: runs the page's workflow with the row's values."
+      },
       "PageCards": {
         "properties": {
           "kind": { "type": "string", "const": "cards", "title": "Kind" },
@@ -34584,6 +34700,124 @@
         "type": "object",
         "required": ["kind", "index", "blocks"],
         "title": "PageCards"
+      },
+      "PageCollectionBoard": {
+        "properties": {
+          "index": { "type": "integer", "title": "Index" },
+          "collection_id": { "type": "string", "title": "Collection Id" },
+          "collection_name": { "type": "string", "title": "Collection Name" },
+          "kind": {
+            "type": "string",
+            "const": "collection_board",
+            "title": "Kind"
+          },
+          "title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Title"
+          },
+          "group_by": { "type": "string", "title": "Group By" },
+          "card_title": { "$ref": "#/components/schemas/PageTableColumn" },
+          "card_fields": {
+            "items": { "$ref": "#/components/schemas/PageTableColumn" },
+            "type": "array",
+            "title": "Card Fields"
+          },
+          "columns": {
+            "items": { "$ref": "#/components/schemas/BoardColumn" },
+            "type": "array",
+            "title": "Columns"
+          },
+          "read_only": { "type": "boolean", "title": "Read Only" },
+          "buttons": {
+            "items": { "$ref": "#/components/schemas/PageButton" },
+            "type": "array",
+            "title": "Buttons"
+          }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "collection_id",
+          "collection_name",
+          "kind",
+          "group_by",
+          "card_title",
+          "card_fields",
+          "columns",
+          "read_only"
+        ],
+        "title": "PageCollectionBoard"
+      },
+      "PageCollectionCards": {
+        "properties": {
+          "index": { "type": "integer", "title": "Index" },
+          "collection_id": { "type": "string", "title": "Collection Id" },
+          "collection_name": { "type": "string", "title": "Collection Name" },
+          "kind": {
+            "type": "string",
+            "const": "collection_cards",
+            "title": "Kind"
+          },
+          "title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Title"
+          },
+          "card_title": { "$ref": "#/components/schemas/PageTableColumn" },
+          "card_fields": {
+            "items": { "$ref": "#/components/schemas/PageTableColumn" },
+            "type": "array",
+            "title": "Card Fields"
+          },
+          "rows": {
+            "items": { "$ref": "#/components/schemas/CollectionRowRecord" },
+            "type": "array",
+            "title": "Rows"
+          },
+          "total": { "type": "integer", "title": "Total" },
+          "buttons": {
+            "items": { "$ref": "#/components/schemas/PageButton" },
+            "type": "array",
+            "title": "Buttons"
+          }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "collection_id",
+          "collection_name",
+          "kind",
+          "card_title",
+          "card_fields",
+          "rows",
+          "total"
+        ],
+        "title": "PageCollectionCards"
+      },
+      "PageCollectionChart": {
+        "properties": {
+          "index": { "type": "integer", "title": "Index" },
+          "collection_id": { "type": "string", "title": "Collection Id" },
+          "collection_name": { "type": "string", "title": "Collection Name" },
+          "kind": {
+            "type": "string",
+            "const": "collection_chart",
+            "title": "Kind"
+          },
+          "title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Title"
+          },
+          "block": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ChartBlock" },
+              { "type": "null" }
+            ],
+            "description": "None while nothing matches."
+          }
+        },
+        "type": "object",
+        "required": ["index", "collection_id", "collection_name", "kind"],
+        "title": "PageCollectionChart"
       },
       "PageCollectionNumbers": {
         "properties": {
@@ -34653,6 +34887,11 @@
           "key_field": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Key Field"
+          },
+          "buttons": {
+            "items": { "$ref": "#/components/schemas/PageButton" },
+            "type": "array",
+            "title": "Buttons"
           }
         },
         "type": "object",
@@ -37706,12 +37945,18 @@
                 { "$ref": "#/components/schemas/PageWaiting" },
                 { "$ref": "#/components/schemas/PageCollectionTable" },
                 { "$ref": "#/components/schemas/PageCollectionNumbers" },
+                { "$ref": "#/components/schemas/PageCollectionBoard" },
+                { "$ref": "#/components/schemas/PageCollectionCards" },
+                { "$ref": "#/components/schemas/PageCollectionChart" },
                 { "$ref": "#/components/schemas/PageNotice" }
               ],
               "discriminator": {
                 "propertyName": "kind",
                 "mapping": {
                   "cards": "#/components/schemas/PageCards",
+                  "collection_board": "#/components/schemas/PageCollectionBoard",
+                  "collection_cards": "#/components/schemas/PageCollectionCards",
+                  "collection_chart": "#/components/schemas/PageCollectionChart",
                   "collection_numbers": "#/components/schemas/PageCollectionNumbers",
                   "collection_table": "#/components/schemas/PageCollectionTable",
                   "expert_activity": "#/components/schemas/PageExpertActivity",
@@ -42411,6 +42656,20 @@
         "required": ["entry_id", "rows", "sequence"],
         "title": "TurnCheckpoint",
         "description": "Where a turn's last ``data-checkpoint`` sits in its stream."
+      },
+      "TypeChange": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Field"
+          },
+          "type": { "$ref": "#/components/schemas/FieldType" }
+        },
+        "type": "object",
+        "required": ["field", "type"],
+        "title": "TypeChange"
       },
       "UIBlocksResponse": {
         "properties": {

@@ -70,7 +70,12 @@ export function sectionTitle(section: PageSection): string | null {
   if (section.kind === "text") return section.heading ?? null;
   if (section.kind === "cards" || section.kind === "notice") return null;
   if (section.kind === "run_form") return section.workflow_name;
-  if (section.kind === "collection_table") {
+  if (
+    section.kind === "collection_table" ||
+    section.kind === "collection_board" ||
+    section.kind === "collection_cards" ||
+    section.kind === "collection_chart"
+  ) {
     return section.title ?? section.collection_name;
   }
   const base = TITLES[section.kind] ?? null;

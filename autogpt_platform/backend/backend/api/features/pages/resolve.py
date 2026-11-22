@@ -5,8 +5,9 @@ import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable, Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import ValidationError
 
@@ -26,15 +27,17 @@ from backend.copilot.tools.render_ui_models import (
     TimelineBlock,
     TimelineItem,
 )
-from backend.data.db_accessors import execution_db, experts_db, library_db, review_db
+from backend.data.db_accessors import (
+    execution_db,
+    experts_db,
+    library_db,
+    review_db,
+    user_db,
+)
 from backend.data.execution import ExecutionStatus, GraphExecution, GraphExecutionMeta
 
-from .collection_design import (
-    CollectionNumbersSection,
-    CollectionTableSection,
-    section_collection,
-)
-from .collection_resolve import resolve_numbers, resolve_table
+from .collection_design import section_collection
+from .collection_resolve import resolve_collection
 from .design import (
     UNAVAILABLE,
     Card,
@@ -190,13 +193,13 @@ async def _resolve(
     if collection := section_collection(section):
         info = sources.collections[collection]
         assert info is not None
-        if isinstance(section, CollectionTableSection):
-            return await resolve_table(
-                index, section, CollectionRowSource(info), reader.user_id
-            )
-        assert isinstance(section, CollectionNumbersSection)
-        return await resolve_numbers(
-            index, section, CollectionRowSource(info), reader.user_id
+        return await resolve_collection(
+            index,
+            section,
+            CollectionRowSource(info),
+            sources,
+            reader.user_id,
+            await reader.today(),
         )
     workflow, expert = section_workflow(section), section_expert(section)
     if workflow:
@@ -218,6 +221,18 @@ class _Reader:
         self.user_id = user_id
         self._followed = {run.graph_id: run for run in followed}
         self._tasks: dict[tuple[str, str], asyncio.Future[Any]] = {}
+
+    def today(self) -> Awaitable[date]:
+        """The owner's date where they are, for filters like "due today"."""
+        return self._once(("today", ""), self._today)
+
+    async def _today(self) -> date:
+        user = await user_db().get_user_by_id(self.user_id)
+        try:
+            zone = ZoneInfo(user.timezone)
+        except (ValueError, ZoneInfoNotFoundError):
+            zone = ZoneInfo("UTC")
+        return datetime.now(zone).date()
 
     def recent(self, graph_id: str) -> Awaitable[list[GraphExecutionMeta]]:
         return self._once(("recent", graph_id), lambda: self._recent(graph_id))

@@ -208,6 +208,16 @@ class PageTableColumn(BaseModel):
     unit: str | None = None
 
 
+class PageButton(BaseModel):
+    """A row's button: runs the page's workflow with the row's values."""
+
+    label: str
+    library_agent_id: str
+    graph_id: str
+    graph_version: int
+    inputs: dict[str, str] = Field(description="Workflow input -> row field.")
+
+
 class PageCollectionTable(_CollectionSourced):
     kind: Literal["collection_table"]
     title: str | None = None
@@ -221,6 +231,40 @@ class PageCollectionTable(_CollectionSourced):
     sort: Sort | None = None
     read_only: bool
     key_field: str | None = None
+    buttons: list[PageButton] = Field(default_factory=list)
+
+
+class BoardColumn(BaseModel):
+    option: str | None = Field(description="None holds the rows with no value.")
+    rows: list[CollectionRowRecord]
+    total: int
+
+
+class PageCollectionBoard(_CollectionSourced):
+    kind: Literal["collection_board"]
+    title: str | None = None
+    group_by: str
+    card_title: PageTableColumn
+    card_fields: list[PageTableColumn]
+    columns: list[BoardColumn]
+    read_only: bool
+    buttons: list[PageButton] = Field(default_factory=list)
+
+
+class PageCollectionCards(_CollectionSourced):
+    kind: Literal["collection_cards"]
+    title: str | None = None
+    card_title: PageTableColumn
+    card_fields: list[PageTableColumn]
+    rows: list[CollectionRowRecord]
+    total: int
+    buttons: list[PageButton] = Field(default_factory=list)
+
+
+class PageCollectionChart(_CollectionSourced):
+    kind: Literal["collection_chart"]
+    title: str | None = None
+    block: ChartBlock | None = Field(None, description="None while nothing matches.")
 
 
 class PageCollectionNumbers(_CollectionSourced):
@@ -256,6 +300,9 @@ PageSection = Annotated[
     | PageWaiting
     | PageCollectionTable
     | PageCollectionNumbers
+    | PageCollectionBoard
+    | PageCollectionCards
+    | PageCollectionChart
     | PageNotice,
     Field(discriminator="kind"),
 ]
