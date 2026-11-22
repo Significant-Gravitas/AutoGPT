@@ -5,7 +5,9 @@ import pytest
 
 from backend.copilot import stream_registry
 from backend.copilot.baseline import service_unit_test as baseline_tests
-from backend.copilot.executor.processor_error_code_test import _run
+from backend.copilot.executor.processor_error_code_test import (
+    _run,
+)
 from backend.copilot.executor.processor_error_code_test import (
     allowance_admits_every_turn as allowance_admits_every_turn,
 )
@@ -100,8 +102,8 @@ async def test_command_persistence_failure_completes_the_turn_with_stream_error(
         ),
         patch.object(stream_registry, "publish_chunk", published),
         patch(
-            "backend.copilot.executor.processor.is_user_banned",
-            AsyncMock(return_value=False),
+            "backend.copilot.executor.processor.account_refusal",
+            AsyncMock(return_value=None),
         ),
     ):
         expectation = (

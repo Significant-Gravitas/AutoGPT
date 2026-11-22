@@ -3,6 +3,7 @@
 import { Text } from "@/components/atoms/Text/Text";
 import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
+import { stashCopilotPrompt } from "@/services/copilot/prompt-handoff";
 import NextLink from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -83,8 +84,15 @@ export function LibraryAgentCard({
         }}
       >
         <NextLink href={`/library/agents/${id}`} className="flex-shrink-0">
-          <div className="relative flex items-center gap-3 pt-3 pr-4 pl-2">
-            <StatusBadge status={statusInfo.status} />
+          <div
+            className={cn(
+              "relative flex items-center gap-3 pt-3 pr-4",
+              statusInfo.scheduleUnknown ? "pl-4" : "pl-2",
+            )}
+          >
+            {!statusInfo.scheduleUnknown && (
+              <StatusBadge status={statusInfo.status} />
+            )}
             <Text variant="small" tone="subtle">
               {statusInfo.totalRuns} tasks
             </Text>
@@ -147,10 +155,11 @@ export function LibraryAgentCard({
             <button
               type="button"
               onClick={() => {
-                const prompt = encodeURIComponent(
-                  `Tell me about my workflow "${name}" (library workflow ID: ${id}). Use find_library_agent with this exact agent_id to look it up, then summarize its current status, recent runs, and how I can get the most out of it.`,
-                );
-                router.push(`/home?autosubmit=true#prompt=${prompt}`);
+                stashCopilotPrompt({
+                  prompt: `Tell me about my workflow "${name}" (library workflow ID: ${id}). Use find_library_agent with this exact agent_id to look it up, then summarize its current status, recent runs, and how I can get the most out of it.`,
+                  autosubmit: true,
+                });
+                router.push("/home");
               }}
               className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm leading-inherit font-medium whitespace-nowrap text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
             >

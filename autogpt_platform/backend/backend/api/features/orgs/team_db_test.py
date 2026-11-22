@@ -91,7 +91,13 @@ class _Store:
         self.teammember = _TeamMembers()
         self.team = SimpleNamespace(find_unique=self._find_team)
         self.orgmember = SimpleNamespace(find_unique=self._find_org_member)
+        self.apikey = SimpleNamespace(update_many=self._revoke_keys)
         self.locked: list[str] = []
+        self.revoked_keys: list[dict] = []
+
+    async def _revoke_keys(self, where, data):
+        self.revoked_keys.append(where)
+        return 0
 
     async def execute_raw(self, query, *args):
         if "pg_advisory_xact_lock" in query:
@@ -162,6 +168,8 @@ async def test_non_admin_can_leave(store):
 
     await team_db.leave_team(WS, "member")
     assert (WS, "member") not in store.teammember.rows
+    assert [w["teamIdRestriction"] for w in store.revoked_keys] == [WS]
+    assert [w["userId"] for w in store.revoked_keys] == ["member"]
 
 
 @pytest.mark.asyncio

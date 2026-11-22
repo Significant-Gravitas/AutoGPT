@@ -1,4 +1,23 @@
+import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
+import type { PublishAgentInfoInitialData } from "./components/AgentInfoStep/helpers";
+
+export function findPublishedSubmission(
+  submissions: StoreSubmission[] | undefined,
+  graphId: string,
+): StoreSubmission | undefined {
+  return (
+    submissions
+      ?.filter(
+        (submission) =>
+          submission.status === SubmissionStatus.APPROVED &&
+          submission.graph_id === graphId,
+      )
+      // The newest approved listing version is the live one; it can point at
+      // an older graph version than an earlier approved listing version.
+      .sort((a, b) => b.listing_version - a.listing_version)[0]
+  );
+}
 
 export const emptyModalState = {
   agent_id: "",
@@ -15,6 +34,53 @@ export const emptyModalState = {
   changesSummary: "",
   additionalImages: [],
 };
+
+interface AgentFormSource {
+  name: string;
+  description: string;
+  imageSrc: string;
+  recommendedScheduleCron: string | null;
+}
+
+/**
+ * The info step's starting values: the live listing's when the workflow
+ * already has one (an update), otherwise the workflow's own (a new listing).
+ * Both ways into the dialog build them here, so they can't drift apart.
+ */
+export function buildInitialFormData(
+  agentId: string,
+  agent: AgentFormSource,
+  submission: StoreSubmission | undefined,
+): PublishAgentInfoInitialData {
+  if (!submission) {
+    return {
+      ...emptyModalState,
+      agent_id: agentId,
+      title: agent.name,
+      description: agent.description,
+      thumbnailSrc: agent.imageSrc,
+      slug: agent.name.replace(/ /g, "-"),
+      recommendedScheduleCron: agent.recommendedScheduleCron || "",
+    };
+  }
+  return {
+    agent_id: agentId,
+    title: submission.name,
+    subheader: submission.sub_heading || "",
+    description: submission.description,
+    instructions: submission.instructions || "",
+    youtubeLink: submission.video_url || "",
+    agentOutputDemo: submission.agent_output_demo_url || "",
+    additionalImages: [...new Set(submission.image_urls || [])].filter(
+      Boolean,
+    ) as string[],
+    category: submission.categories?.[0] || "",
+    thumbnailSrc: agent.imageSrc,
+    slug: submission.slug,
+    recommendedScheduleCron: agent.recommendedScheduleCron || "",
+    changesSummary: submission.changes_summary || "",
+  };
+}
 
 export interface SubmissionMetaItem {
   label: string;

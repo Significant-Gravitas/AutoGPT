@@ -36,6 +36,7 @@ export function TriggerAgentListItem({
       })}`}
       onClick={onClick}
       selected={selected}
+      testID={`library-trigger-agent-item-${triggerAgent.id}`}
       actions={
         <TriggerAgentActionsDropdown
           parentAgent={parentAgent}

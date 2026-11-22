@@ -54,9 +54,8 @@ export function PaywallGate({ children }: { children: ReactNode }) {
     // the modal's own Log out button), and the modal must not linger or block
     // that exit.
     isLoggedIn &&
-    // A user who hasn't finished onboarding picks a plan there, and is on
-    // their way to it (SECRT-3384). Unknown counts as not finished, so the
-    // paywall can't flash on Home while that check is still in flight.
+    // Onboarding has its own plan step. Unknown counts as unfinished, so the
+    // paywall can't flash while that check is in flight.
     isOnboardingComplete === true &&
     !isLoading &&
     !isExempt &&

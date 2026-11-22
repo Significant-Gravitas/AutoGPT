@@ -414,7 +414,9 @@ class UpdatePresetTool(BaseTool):
                 inputs=merged_inputs,
                 credentials=credentials,
                 name=kwargs.get("name"),
-                description=kwargs.get("description"),
+                # Models often fill optional fields with "", so an empty
+                # description here means "not given", never "clear it".
+                description=kwargs.get("description") or None,
                 is_active=kwargs.get("is_active"),
             )
         except NotFoundError:

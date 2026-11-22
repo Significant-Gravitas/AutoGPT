@@ -68,7 +68,14 @@ _EXPIRED_CODES = frozenset(
 
 
 class CodexAuthError(RuntimeError):
-    """Sign-in failed in a way that repeating the same poll will not fix."""
+    """Sign-in failed in a way that repeating the same poll will not fix.
+
+    ``status`` is ChatGPT's HTTP status, when the failure was a response.
+    """
+
+    def __init__(self, message: str, *, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 class ChatGPTDeviceCode(BaseModel):
@@ -246,7 +253,8 @@ async def refresh_access_token(
     )
     if response.status != 200:
         raise CodexAuthError(
-            f"ChatGPT refused to refresh the credential (HTTP {response.status})"
+            f"ChatGPT refused to refresh the credential (HTTP {response.status})",
+            status=response.status,
         )
     payload = response.json()
     # A refresh that omits a new refresh token means the existing one stands.

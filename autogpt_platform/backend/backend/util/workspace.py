@@ -11,7 +11,7 @@ import mimetypes
 import posixpath
 import re
 import uuid
-from collections.abc import Collection, Sequence
+from collections.abc import Callable, Collection, Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
@@ -330,18 +330,28 @@ class WorkspaceManager:
         # Both refusals come before virus scanning, so a cheap check isn't
         # blocked by a potentially slow or unavailable scanner. The quota one
         # is early only: the row's own transaction holds it against concurrent
-        # writes. An overwrite does not count the file it replaces.
+        # writes. An overwrite does not count the file it replaces. The file
+        # at the path is read beside the quota; a failed read is raised in the
+        # order the reads ran when the path was read after the quota.
         db = workspace_db()
-        storage_limit, current_usage = await asyncio.gather(
+        storage_limit, current_usage, existing = await asyncio.gather(
             get_workspace_storage_limit_bytes(self.user_id),
             db.get_workspace_total_size(self.workspace_id),
+            # A renamed write replaces nothing, even a file that took its free
+            # name since.
+            (
+                _no_file()
+                if rename_on_conflict
+                else db.get_workspace_file_by_path(self.workspace_id, path)
+            ),
+            return_exceptions=True,
         )
-        # A renamed write replaces nothing, even a file that took its free name since.
-        existing = (
-            None
-            if rename_on_conflict
-            else await db.get_workspace_file_by_path(self.workspace_id, path)
-        )
+        if isinstance(storage_limit, BaseException):
+            raise storage_limit
+        if isinstance(current_usage, BaseException):
+            raise current_usage
+        if isinstance(existing, BaseException):
+            raise existing
         if existing is not None and not overwrite:
             raise ValueError(f"File already exists at path: {path}")
         if existing is not None:
@@ -471,6 +481,7 @@ class WorkspaceManager:
                 logger.warning("Failed to clean up replaced blob", exc_info=True)
 
         if replaced_file_id and replaced_file_id != file.id:
+            file = file.model_copy(update={"replaced_file_id": replaced_file_id})
             try:
                 from backend.api.features.workspace.embeddings import (
                     delete_workspace_file_embedding,
@@ -543,6 +554,7 @@ class WorkspaceManager:
         scanned_checksums: Collection[str] = (),
         *,
         config: Config | None = None,
+        on_change: Callable[[], None] | None = None,
     ) -> WorkspaceFile:
         """Write a skill package as one change: ``root`` is its SKILL.md,
         ``files`` the other files that changed, and ``removed_paths`` the
@@ -551,6 +563,9 @@ class WorkspaceManager:
         Every blob is checked, scanned and stored before one transaction
         swaps the rows, so a failure anywhere leaves the previous package
         exactly as it was, rather than new files beside an old SKILL.md.
+
+        ``on_change`` marks a confirmed or uncertain publication, including a
+        lost reply. Staging failures and explicit refusals leave live rows alone.
         """
         package = [
             item.model_copy(update={"path": self._resolve_path(item.path)})
@@ -581,13 +596,23 @@ class WorkspaceManager:
                 storage_limit_bytes=storage_limit,
                 **stored[0].model_dump(),
             )
-            publication = await workspace_skill_db().publish_workspace_skill_file(write)
+            publication: WorkspaceSkillPublication | None = None
+            try:
+                publication = await workspace_skill_db().publish_workspace_skill_file(
+                    write
+                )
+            finally:
+                if on_change is not None and (
+                    publication is None or publication.status == "stored"
+                ):
+                    on_change()
         except BaseException:
             # Cancellation included: a save stopped part-way must not leave
             # blobs no row points at. Shielded so a second cancel cannot
             # interrupt the cleanup itself.
             await asyncio.shield(self._discard_unpublished(storage, stored))
             raise
+        assert publication is not None
         refusal = publication_refusal(publication, write)
         if refusal is not None:
             await asyncio.shield(self._discard_unpublished(storage, stored))
@@ -974,3 +999,7 @@ class WorkspaceManager:
             allowed_path_prefixes=self._allowed_prefixes(allowed_path_prefixes),
             include_user_files=self._include_user_files(include_user_files),
         )
+
+
+async def _no_file() -> WorkspaceFile | None:
+    return None

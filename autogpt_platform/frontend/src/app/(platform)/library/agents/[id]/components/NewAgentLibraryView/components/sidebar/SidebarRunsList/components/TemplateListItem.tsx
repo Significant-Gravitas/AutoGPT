@@ -37,6 +37,7 @@ export function TemplateListItem({
       })}
       onClick={onClick}
       selected={selected}
+      testID={`library-template-item-${template.id}`}
       actions={
         <TemplateActionsDropdown
           agent={agent}

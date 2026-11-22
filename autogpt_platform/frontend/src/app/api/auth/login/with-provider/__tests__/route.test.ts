@@ -1,5 +1,7 @@
 import { APIError } from "better-auth/api";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { server } from "@/mocks/mock-server";
 
 const signInSocialMock = vi.fn();
 const isWaitlistErrorMock = vi.fn();
@@ -26,6 +28,23 @@ function makeProviderRequest(body: unknown): Request {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+// Sign-in uses these clients, and the backend says its connections use
+// `connections`.
+function signInClients(
+  connections: Record<string, string | null> = {
+    google: "google-client",
+    microsoft: "microsoft-client",
+  },
+) {
+  vi.stubEnv("AUTH_GOOGLE_CLIENT_ID", "google-client");
+  vi.stubEnv("AUTH_MICROSOFT_CLIENT_ID", "microsoft-client");
+  server.use(
+    http.get("*/api/auth/sign-in-connection", () =>
+      HttpResponse.json(connections),
+    ),
+  );
 }
 
 beforeEach(() => {
@@ -55,13 +74,81 @@ describe("POST /api/auth/login/with-provider", () => {
       body: {
         provider: "google",
         callbackURL: "/auth/callback?next=/marketplace",
+        errorCallbackURL: "/login?next=%2Fmarketplace",
       },
       headers: request.headers,
     });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       url: "https://accounts.google.com/o/oauth2/auth?state=xyz",
+      connecting: false,
     });
+  });
+
+  it("asks Google for the data scopes too when its sign-in can connect", async () => {
+    signInClients();
+    signInSocialMock.mockResolvedValue({
+      url: "https://accounts.google.com/x",
+    });
+    const { GOOGLE_ACCESS_SCOPES } = await import("@/lib/google-access");
+
+    const response = await POST(
+      makeProviderRequest({
+        provider: "google",
+        redirectTo: "/auth/callback?next=/marketplace",
+      }),
+    );
+
+    const [{ body }] = signInSocialMock.mock.calls[0];
+    expect(body.scopes).toEqual(GOOGLE_ACCESS_SCOPES);
+    // A refused sign-in says it was connecting, so /login can offer one
+    // without connecting.
+    expect(body.errorCallbackURL).toBe(
+      "/login?connect=google&next=%2Fmarketplace",
+    );
+    expect(await response.json()).toMatchObject({ connecting: true });
+  });
+
+  it("signs in without the data scopes when asked to", async () => {
+    signInClients();
+    signInSocialMock.mockResolvedValue({
+      url: "https://accounts.google.com/x",
+    });
+
+    const response = await POST(
+      makeProviderRequest({ provider: "google", connect: false }),
+    );
+
+    const [{ body }] = signInSocialMock.mock.calls[0];
+    expect(body.scopes).toBeUndefined();
+    expect(body.errorCallbackURL).not.toContain("connect=");
+    expect(await response.json()).toMatchObject({ connecting: false });
+  });
+
+  it("only signs in where sign-in has a client of its own", async () => {
+    signInClients();
+    // Not the client the backend's Google connections use.
+    vi.stubEnv("AUTH_GOOGLE_CLIENT_ID", "login-client");
+    signInSocialMock.mockResolvedValue({
+      url: "https://accounts.google.com/x",
+    });
+
+    const response = await POST(makeProviderRequest({ provider: "google" }));
+
+    const [{ body }] = signInSocialMock.mock.calls[0];
+    expect(body.scopes).toBeUndefined();
+    expect(body.errorCallbackURL).not.toContain("connect=");
+    expect(await response.json()).toMatchObject({ connecting: false });
+  });
+
+  it("asks a provider whose data isn't connected at sign-in for nothing more", async () => {
+    signInClients();
+    signInSocialMock.mockResolvedValue({ url: "https://github.com/oauth" });
+
+    await POST(makeProviderRequest({ provider: "github" }));
+
+    const [{ body }] = signInSocialMock.mock.calls[0];
+    expect(body.scopes).toBeUndefined();
   });
 
   it("falls back to the default callback URL when redirectTo is omitted", async () => {
@@ -71,9 +158,93 @@ describe("POST /api/auth/login/with-provider", () => {
     await POST(makeProviderRequest({ provider: "github" }));
 
     expect(signInSocialMock).toHaveBeenCalledWith({
-      body: { provider: "github", callbackURL: "/auth/callback" },
+      body: {
+        provider: "github",
+        callbackURL: "/auth/callback",
+        errorCallbackURL: "/login",
+      },
       headers: expect.any(Headers),
     });
+  });
+
+  it("sends a refused sign-in, such as a banned account, back to /login", async () => {
+    signInSocialMock.mockResolvedValue({ url: "https://discord.com/oauth2" });
+
+    await POST(makeProviderRequest({ provider: "discord" }));
+
+    expect(signInSocialMock.mock.calls[0][0].body.errorCallbackURL).toBe(
+      "/login",
+    );
+  });
+
+  it("tells /login that a refused sign-in was Microsoft's", async () => {
+    signInSocialMock.mockResolvedValue({ url: "https://login.example/x" });
+
+    await POST(makeProviderRequest({ provider: "microsoft" }));
+
+    expect(signInSocialMock).toHaveBeenCalledWith({
+      body: expect.objectContaining({
+        provider: "microsoft",
+        errorCallbackURL: "/login?provider=microsoft",
+      }),
+      headers: expect.any(Headers),
+    });
+  });
+
+  it("keeps the deep link when it sends a refused Microsoft sign-in to /login", async () => {
+    signInSocialMock.mockResolvedValue({ url: "https://login.example/x" });
+
+    await POST(
+      makeProviderRequest({
+        provider: "microsoft",
+        redirectTo:
+          "http://localhost:3000/auth/callback?provider=microsoft&next=%2Flink%2Fabc",
+      }),
+    );
+
+    expect(signInSocialMock).toHaveBeenCalledWith({
+      body: expect.objectContaining({
+        errorCallbackURL: "/login?provider=microsoft&next=%2Flink%2Fabc",
+      }),
+      headers: expect.any(Headers),
+    });
+  });
+
+  it("leaves out a next that would go off the site", async () => {
+    signInSocialMock.mockResolvedValue({ url: "https://login.example/x" });
+
+    await POST(
+      makeProviderRequest({
+        provider: "microsoft",
+        redirectTo:
+          "http://localhost:3000/auth/callback?provider=microsoft&next=https%3A%2F%2Fevil.example",
+      }),
+    );
+
+    expect(signInSocialMock).toHaveBeenCalledWith({
+      body: expect.objectContaining({
+        errorCallbackURL: "/login?provider=microsoft",
+      }),
+      headers: expect.any(Headers),
+    });
+  });
+
+  it("starts Apple browser login through the existing provider endpoint", async () => {
+    vi.stubEnv("AUTH_CALLBACK_URL", "");
+    const url = "https://appleid.apple.com/auth/authorize?state=apple-state";
+    signInSocialMock.mockResolvedValue({ url });
+    const request = makeProviderRequest({ provider: "apple" });
+    const response = await POST(request);
+    expect(signInSocialMock).toHaveBeenCalledWith({
+      body: {
+        provider: "apple",
+        callbackURL: "/auth/callback",
+        errorCallbackURL: "/login",
+      },
+      headers: request.headers,
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ url, connecting: false });
   });
 
   it("returns 400 when no provider is supplied", async () => {

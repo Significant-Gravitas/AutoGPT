@@ -12,6 +12,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import {
   getLoginRedirect,
   getPlatformDisplayName,
+  getSignupRedirect,
   getTelegramAuth,
   isUserLink,
   TOKEN_PATTERN,
@@ -37,6 +38,9 @@ export function usePlatformLinkingPage() {
   const searchParams = useSearchParams();
   const rawToken = (params.token as string | undefined) ?? "";
   const token = TOKEN_PATTERN.test(rawToken) ? rawToken : null;
+  // A login_url button tap appends a Telegram-signed identity to this page's
+  // URL; forwarding it lets the backend verify WHO opened the link.
+  const telegramAuth = getTelegramAuth(searchParams);
   const platformFromUrl = getPlatformDisplayName(searchParams.get("platform"));
   const { user, isUserLoading, logOut } = useAuth();
   const { toast } = useToast();
@@ -78,12 +82,7 @@ export function usePlatformLinkingPage() {
 
   function handleLink() {
     if (!token || !info) return;
-    // A login_url button tap appends a Telegram-signed identity to this
-    // page's URL; forwarding it lets the backend verify WHO opened the link.
-    mutation.mutate({
-      token,
-      data: { telegram_auth: getTelegramAuth(searchParams) },
-    });
+    mutation.mutate({ token, data: { telegram_auth: telegramAuth } });
   }
 
   async function handleSwitchAccount() {
@@ -99,13 +98,14 @@ export function usePlatformLinkingPage() {
       });
       return;
     }
-    window.location.href = getLoginRedirect(token);
+    window.location.href = getLoginRedirect({ token, telegramAuth });
   }
 
   return {
     status,
     token,
-    loginRedirect: getLoginRedirect(token),
+    loginRedirect: getLoginRedirect({ token, telegramAuth }),
+    signupRedirect: getSignupRedirect({ token, telegramAuth }),
     userEmail: user?.email ?? null,
     viewData: buildViewData({ info, platformFromUrl }),
     successData: buildSuccessData({

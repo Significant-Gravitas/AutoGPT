@@ -1,3 +1,4 @@
+import type { OrgResponse } from "@/app/api/__generated__/models/orgResponse";
 import { Key, storage } from "@/services/storage/local-storage";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -13,13 +14,15 @@ function seedStore() {
   });
 }
 
-const ORG = {
+const ORG: OrgResponse = {
   id: "org-1",
   name: "Acme",
   slug: "acme",
-  avatarUrl: null,
-  isPersonal: false,
-  memberCount: 3,
+  avatar_url: null,
+  description: null,
+  is_personal: false,
+  member_count: 3,
+  created_at: new Date("2026-01-05T00:00:00Z"),
 };
 
 const TEAM = {

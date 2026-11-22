@@ -1,5 +1,6 @@
 """Shared utilities for chat tools."""
 
+import asyncio
 import logging
 import re
 from collections.abc import Mapping
@@ -23,9 +24,11 @@ from backend.data.model import (
     CredentialsMetaInput,
     HostScopedCredentials,
     OAuth2Credentials,
+    is_refused_sdk_default,
 )
 from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.oauth.refresh_failure import reconnect_required
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
 from backend.util.request import CREDENTIAL_REJECTED_STATUS_CODES
@@ -260,10 +263,12 @@ async def get_or_create_library_agent(
             raises LibraryAgentInAnotherOrganizationError.
 
     Returns:
-        LibraryAgent instance
+        LibraryAgent instance; an archived entry is reused as it is.
     """
     existing = await library_db().get_library_agent_by_graph_id(
         graph_id=graph.id, user_id=user_id
+    ) or await library_db().get_library_agent_by_graph_id(
+        graph_id=graph.id, user_id=user_id, include_archived=True
     )
     if existing:
         # Unique per user and graph, so another organization's entry can be
@@ -365,9 +370,44 @@ async def get_user_credentials(
     user_id: str, expert_id: str | None = None
 ) -> list[Credentials]:
     """Get the credentials available for a user, scoped to an expert if given."""
-    creds_manager = IntegrationCredentialsManager()
-    credentials = await creds_manager.store.get_all_creds(user_id)
-    return await scope_credentials_to_expert(user_id, expert_id, credentials)
+    credentials, granted = await credentials_with_grants(user_id, expert_id)
+    if granted is None:
+        return credentials
+
+    from backend.api.features.experts.credentials import filter_credentials_for_expert
+
+    return filter_credentials_for_expert(credentials, granted)
+
+
+async def credentials_with_grants(
+    user_id: str, expert_id: str | None
+) -> tuple[list[Credentials], set[str] | None]:
+    """The account's credentials, and the ids *expert_id* was granted (``None``
+    for a plain session, which keeps everything).
+
+    The two are read side by side, and a failure is raised in the order they
+    ran one after the other. An expert's first grants read seeds its grants,
+    a write, so that read still waits until the credentials have been read.
+    """
+    store = IntegrationCredentialsManager().store
+    if expert_id is None:
+        return await store.get_all_creds(user_id), None
+
+    from backend.data.db_accessors import experts_db
+
+    experts = experts_db()
+    credentials, granted = await asyncio.gather(
+        store.get_all_creds(user_id),
+        experts.seeded_expert_credential_ids(user_id, expert_id),
+        return_exceptions=True,
+    )
+    if isinstance(credentials, BaseException):
+        raise credentials
+    if isinstance(granted, BaseException):
+        raise granted
+    if granted is None:
+        granted = await experts.expert_allowed_credential_ids(user_id, expert_id)
+    return credentials, set(granted)
 
 
 async def scope_credentials_to_expert(
@@ -463,6 +503,9 @@ def find_matching_credential(
     """
     fits = [c for c in available_creds if _credential_fits(c, field_info)]
     if selected:
+        # A pick wins even after the provider refused its refresh: the run
+        # then asks for that account to be reconnected instead of quietly
+        # switching to another one.
         for cred in fits:
             provider = _provider_slug(cred)
             key = (
@@ -472,6 +515,11 @@ def find_matching_credential(
             )
             if selected.get(key, selected.get(provider)) == cred.id:
                 return cred
+    # A credential whose refresh the provider refused for good only yields a
+    # reconnect card; while any other fits, it must not be picked or counted
+    # as a choice. With nothing else, keep it so the card can say why.
+    healthy = [c for c in fits if reconnect_required(c) is None]
+    fits = healthy or fits
     if field_info.supported_types == {"host_scoped"} and _pinned_for(field_info):
         return None
     own = [c for c in fits if not is_system_credential(c.id)]
@@ -507,6 +555,12 @@ def _selection_key(provider: str, field_info: CredentialsFieldInfo) -> str:
 
 def _credential_fits(cred: Credentials, field_info: CredentialsFieldInfo) -> bool:
     if cred.provider not in field_info.provider:
+        return False
+    if is_refused_sdk_default(cred.id):
+        # The operator's own key for a provider whose SDK default can't run:
+        # ``creds_manager.get`` refuses it, so it fits no field. Counting it
+        # would pick it over the "Use Credits" system credential in a watched
+        # chat, or make it a second "own" account to choose between.
         return False
     if cred.type not in field_info.supported_types:
         return False
@@ -573,10 +627,7 @@ async def match_user_credentials_to_graph(
     # subsequent grant UI use the same data without repeated store reads.
     available_creds = available_credentials
     if available_creds is None:
-        creds_manager = IntegrationCredentialsManager()
-        available_creds = await scope_credentials_to_expert(
-            user_id, expert_id, await creds_manager.store.get_all_creds(user_id)
-        )
+        available_creds = await get_user_credentials(user_id, expert_id)
     available_creds = keep_to_pins(available_creds)
     selected = await selected_credentials(session_id)
 
@@ -696,10 +747,7 @@ async def check_user_has_required_credentials(
     if not required_credentials:
         return []
 
-    creds_manager = IntegrationCredentialsManager()
-    available_creds = await scope_credentials_to_expert(
-        user_id, expert_id, await creds_manager.store.get_all_creds(user_id)
-    )
+    available_creds = await get_user_credentials(user_id, expert_id)
 
     missing: list[CredentialsMetaInput] = []
     for required in required_credentials:

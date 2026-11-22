@@ -184,7 +184,6 @@ export function useAgentRunModal(
       onError: (error: any) => {
         showExecutionErrorToast(toast, error, {
           graph_id: agent.graph_id,
-          graph_version: agent.graph_version,
         });
       },
     },

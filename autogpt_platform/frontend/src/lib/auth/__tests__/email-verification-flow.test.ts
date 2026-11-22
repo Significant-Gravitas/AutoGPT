@@ -39,6 +39,7 @@ vi.mock("better-auth/next-js", () => ({
 }));
 vi.mock("better-auth/plugins", () => ({
   admin: vi.fn(() => ({ id: "admin" })),
+  bearer: vi.fn(() => ({ id: "bearer", hooks: { before: [], after: [] } })),
   jwt: vi.fn(() => ({ id: "jwt" })),
 }));
 vi.mock("../supabase-bridge", () => ({
@@ -72,6 +73,8 @@ const sentEmails = vi.hoisted(
 );
 // Addresses the mail provider refuses at send time, as sendAuthEmail reports it.
 const refusedAtSend = vi.hoisted(() => new Set<string>());
+// Its own lookup is tested in ban-record.test.ts and access-blocks-flow.test.ts.
+vi.mock("../ban-record", () => ({ assertNotBannedAddress: vi.fn() }));
 vi.mock("../email", () => ({
   sendAuthEmail: vi.fn(async (email: (typeof sentEmails)[number]) => {
     if (refusedAtSend.has(email.to)) {
@@ -892,6 +895,32 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
       "a-new-long-enough-password",
     );
     expect(signedIn.status).toBe(200);
+  });
+
+  it("sends every reset link back to the reset page", async () => {
+    const { handler } = await createAuthHandler(true);
+    await signUp(handler, "verified@example.com");
+    await emailsSent();
+    await handler(new Request(lastVerifyLink("verified@example.com") ?? ""));
+    await post(handler, "/request-password-reset", {
+      email: "verified@example.com",
+      redirectTo: `${baseURL}/library`,
+    });
+    await emailsSent();
+
+    const link = sentEmails
+      .filter(
+        (sent) =>
+          sent.to === "verified@example.com" && sent.type === "reset_password",
+      )
+      .at(-1)?.url;
+    expect(new URL(link ?? "").searchParams.get("callbackURL")).toBe(
+      `${baseURL}/reset-password`,
+    );
+    const opened = await handler(new Request(link ?? ""));
+    const landing = new URL(opened.headers.get("location") ?? "", baseURL);
+    expect(landing.pathname).toBe("/reset-password");
+    expect(landing.searchParams.get("token")).toBeTruthy();
   });
 
   it("re-sends the link through the resend endpoint", async () => {

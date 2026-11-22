@@ -246,12 +246,12 @@ def _catalog_rates() -> dict[str, tuple[float, float]]:
 @cache
 def _reference_rates() -> tuple[float, float]:
     per_input = compute_anthropic_cost_usd(
-        model=REFERENCE_MODEL, prompt_tokens=_PER_MTOK, completion_tokens=0
+        model=REFERENCE_MODEL, prompt_tokens=1, completion_tokens=0
     )
     per_output = compute_anthropic_cost_usd(
-        model=REFERENCE_MODEL, prompt_tokens=0, completion_tokens=_PER_MTOK
+        model=REFERENCE_MODEL, prompt_tokens=0, completion_tokens=1
     )
-    return per_input or 0.0, per_output or 0.0
+    return (per_input or 0.0) * _PER_MTOK, (per_output or 0.0) * _PER_MTOK
 
 
 def _reference_cost_usd(call: CallUsage) -> float:

@@ -3,10 +3,12 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
   getGetV2GetMyAgentsMockHandler,
   getGetV2ListMySubmissionsMockHandler,
+  getGetV2ListMySubmissionsResponseMock,
 } from "@/app/api/__generated__/endpoints/store/store.msw";
 import type { MyUnpublishedAgent } from "@/app/api/__generated__/models/myUnpublishedAgent";
 import type { MyUnpublishedAgentsResponse } from "@/app/api/__generated__/models/myUnpublishedAgentsResponse";
 import type { StoreSubmissionsResponse } from "@/app/api/__generated__/models/storeSubmissionsResponse";
+import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
@@ -111,6 +113,28 @@ function installScopedHandlers() {
   );
 }
 
+const LIVE_DESCRIPTION = "Finds the decision-makers at any company.";
+
+function installListedAgentHandlers() {
+  const [listing] = getGetV2ListMySubmissionsResponseMock().submissions;
+  server.use(
+    getGetV2GetMyAgentsMockHandler(makeAgentsResponse([makeAgent()])),
+    getGetV2ListMySubmissionsMockHandler(
+      getGetV2ListMySubmissionsResponseMock({
+        submissions: [
+          {
+            ...listing,
+            graph_id: FLOW_ID,
+            status: SubmissionStatus.APPROVED,
+            description: LIVE_DESCRIPTION,
+            changes_summary: "Initial Submission",
+          },
+        ],
+      }),
+    ),
+  );
+}
+
 describe("PublishToMarketplace (builder)", () => {
   beforeEach(() => {
     mockUseAuth.mockReturnValue({
@@ -135,6 +159,34 @@ describe("PublishToMarketplace (builder)", () => {
     expect(screen.queryByText(/choose a workflow/i)).toBeNull();
 
     expect(await screen.findByDisplayValue(AGENT_NAME)).toBeDefined();
+  });
+
+  test("opens an update to a listed workflow with the live description, and says leaving it empty keeps it", async () => {
+    installListedAgentHandlers();
+
+    render(
+      <PublishToMarketplace flowID={FLOW_ID} flowVersion={FLOW_VERSION} />,
+    );
+
+    fireEvent.click(screen.getByRole("button"));
+
+    expect(await screen.findByText("Describe the update")).toBeDefined();
+    fireEvent.click(screen.getByText("Experience details"));
+
+    const description = await screen.findByRole("textbox", {
+      name: "Description",
+    });
+    await waitFor(() => {
+      expect((description as HTMLTextAreaElement).value).toBe(LIVE_DESCRIPTION);
+    });
+    const hintId = description.getAttribute("aria-describedby") ?? "";
+    expect(document.getElementById(hintId)?.textContent).toBe(
+      "Leave empty to keep the current description.",
+    );
+    const changesSummary = screen.getByRole("textbox", {
+      name: "What changed?",
+    });
+    expect((changesSummary as HTMLTextAreaElement).value).toBe("");
   });
 
   test("closes the modal when going back from the pre-scoped listing form", async () => {

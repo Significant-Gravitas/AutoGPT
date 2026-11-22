@@ -45,6 +45,7 @@ from . import shadow
 from .content import ContentVerdict, Image, judge_content
 from .headline import Headline, named
 from .policy import DEFAULT_MODE
+from .spent_approval import UnconfirmedSpend
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,8 @@ JUDGED_READS: frozenset[str] = frozenset(
         "browser_navigate",
         "browser_screenshot",
         "delegate_to_expert",
+        # Only a graph it returns that another user owns, or a copy, reaches the judge.
+        "find_library_agent",
         "get_sub_session_result",
         "read_expert_chat",
         "read_skill",
@@ -97,12 +100,16 @@ _SOURCE_KINDS = {
     "grep": "file",
     "read_file": "file",
     "read_tool_result": "file",
+    "find_library_agent": "workflow",
     "run_agent": "workflow",
     "view_agent_output": "workflow",
     "search_feature_requests": "platform",
     "web_fetch": "web",
     "web_search": "web",
 }
+
+# What a card calls a read no argument names, where the tool's name is not copy.
+_READ_LABELS = {"find_library_agent": "the library search"}
 
 # The SDK engine caps a registry tool's text again after ``BaseTool.execute``
 # returns; it installs that cap here so the judge reads the same text.
@@ -190,12 +197,12 @@ async def release_held_read(
         return Release(
             output=_stub(tool_name, source, _WAITING, session), success=False
         )
-    consumed = await review_store.consume(review_id, user_id)
     if review.status == ReviewStatus.REJECTED:
+        await review_store.discard(review, user_id)
         return Release(
             output=_stub(tool_name, source, _REJECTED, session), success=False
         )
-    if not consumed:
+    if not await review_store.consume(review, user_id):
         # The late result took the approved bytes first.
         return Release(
             output=_stub(tool_name, source, _DELIVERED, session), success=False
@@ -220,9 +227,14 @@ async def answered_read(
     Never re-runs the read, and never sets a chat rule: a rejected page says
     nothing about the tool that fetched it.
     """
-    consumed = await review_store.consume(review.node_exec_id, user_id)
     if review.status != ReviewStatus.APPROVED:
+        await review_store.discard(review, user_id)
         return "rejected", _REJECTED
+    try:
+        consumed = await review_store.consume(review, user_id)
+    except Exception as failed:
+        # Nothing was delivered; UnconfirmedSpend tells the fold so.
+        raise UnconfirmedSpend(review.node_exec_id) from failed
     if not consumed:
         # An identical re-read already received the released bytes.
         return "closed", _DELIVERED
@@ -295,6 +307,7 @@ async def screen_read(
             args=args,
             envelope=get_current_envelope(),
             cost_context=await capture_cost_context(user_id),
+            generation=held.card_generation(),
         )
         return await _hold(
             call,
@@ -592,8 +605,7 @@ def read_headline(tool_name: str, args: dict[str, Any], actor: str) -> Headline:
     """``actor`` is who reads it: the chat's Expert, or Otto in a plain chat."""
     headline = named(f"Let {actor} read", _SOURCE_KEYS, args)
     if headline.object is None:
-        label = tool_name.replace("_", " ")
-        return Headline(ask=f"Let {actor} read what {label} returned")
+        return Headline(ask=f"Let {actor} read what {_label(tool_name)} returned")
     return headline
 
 
@@ -641,6 +653,7 @@ async def _hold(
         "passage": passage,
         "judged": judged,
         "success": success,
+        review_store.HELD_GENERATION: call.generation,
         # Both seams hand over JSON-encoded text, whose control characters are
         # escaped, so the column's sanitiser leaves it byte-identical.
         "content": output,
@@ -653,6 +666,8 @@ async def _hold(
         headline.text,
     ):
         return _stub(tool_name, source, _UNRECORDABLE, session)
+    if not await held.kept_for_its_card(user_id, session.session_id, call):
+        return _stub(tool_name, source, _WAITING, session)
     return _stub(tool_name, source, _HELD, session, call.review_id)
 
 
@@ -695,10 +710,10 @@ def _stub(
         reason=reason,
         review_id=review_id,
         # The chain row's words; the card asks from ``read_headline``.
-        ask=(
-            "Read"
-            if named_source
-            else f"Read what {tool_name.replace('_', ' ')} returned"
-        ),
+        ask="Read" if named_source else f"Read what {_label(tool_name)} returned",
         object=named_source or None,
     ).model_dump_json()
+
+
+def _label(tool_name: str) -> str:
+    return _READ_LABELS.get(tool_name, tool_name.replace("_", " "))

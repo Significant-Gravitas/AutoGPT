@@ -1,6 +1,13 @@
+import { useHasSessionCookie } from "@/components/auth/SessionCookieProvider";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
-import { getAuthDeepLink } from "@/lib/auth-redirect";
+import { useServerRenderedForm } from "@/hooks/useServerRenderedForm";
+import {
+  getAuthDeepLink,
+  sanitizeAuthNext,
+  withAuthTracking,
+} from "@/lib/auth-redirect";
+import { providerCallbackPath } from "@/lib/auth/provider-callback";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { setMarketingOptOutFlag } from "@/services/analytics/marketing-opt-out-cookie";
 import { trackSignupMarketingOptOut } from "@/services/analytics/signup-analytics";
@@ -14,19 +21,32 @@ import z from "zod";
 import { signup as signupAction } from "./actions";
 import { isTeamEmail } from "@/lib/auth/team-email";
 import { clearImpersonationEverywhere } from "@/lib/impersonation";
+import { rememberConnectAttempt } from "@/lib/auth/connect-attempt";
+import { useConnectFallback } from "@/components/auth/useConnectFallback";
+import { usePageRestored } from "@/components/auth/usePageRestored";
 
 export function useSignupPage() {
   useCaptureMarketingPrompt();
 
   const { user, isUserLoading, isLoggedIn } = useAuth();
+  const hasSessionCookie = useHasSessionCookie();
   const [hasInitializedAuth, setHasInitializedAuth] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const connectFallback = useConnectFallback();
   const [isLoading, setIsLoading] = useState(false);
   const [isSigningUp, setIsSigningUp] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [loadingProvider, setLoadingProvider] = useState<LoginProvider | null>(
+    null,
+  );
+  // Back from the provider can bring the page back as it was left, still
+  // starting that sign-up.
+  usePageRestored(() => {
+    setLoadingProvider(null);
+    setIsSigningUp(false);
+  });
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState<string | null>(
     null,
@@ -36,10 +56,12 @@ export function useSignupPage() {
   const isMounted = useRef(false);
 
   // Same-origin redirect target; off-site values are dropped so a crafted
-  // `/signup?next=https://phishing.site` cannot redirect users elsewhere. A
-  // default landing (`next=/home`) is dropped too, so a new account goes to
-  // onboarding instead of Home (SECRT-3384).
-  const nextUrl = getAuthDeepLink(searchParams.get("next"));
+  // `/signup?next=https://phishing.site` cannot redirect users elsewhere.
+  const rawNext = searchParams.get("next");
+  const nextUrl = getAuthDeepLink(rawNext);
+  // Round trips (Google, the verification email) carry the whole safe `next`;
+  // /auth/callback decides from it, tracking params included.
+  const safeNext = sanitizeAuthNext(rawNext);
 
   useEffect(() => {
     isMounted.current = true;
@@ -75,10 +97,10 @@ export function useSignupPage() {
     defaultValues: {
       email: "",
       password: "",
-      confirmPassword: "",
       marketingOptOut: false,
     },
   });
+  const { formRef, isHydrated } = useServerRenderedForm(form);
 
   function handleToggleMarketingOptOut() {
     if (isSigningUp) return;
@@ -87,25 +109,29 @@ export function useSignupPage() {
     if (optOut) trackSignupMarketingOptOut();
   }
 
-  async function handleProviderSignup(provider: LoginProvider) {
-    setIsGoogleLoading(true);
+  async function handleProviderSignup(
+    provider: LoginProvider,
+    { connect }: { connect?: boolean } = {},
+  ) {
+    setLoadingProvider(provider);
     setIsSigningUp(true);
     // Leftover impersonation (expired admin session, pre-fix cookie) would 403 a non-admin.
     clearImpersonationEverywhere();
 
     try {
       // Include next URL in OAuth flow if present
-      const callbackUrl = nextUrl
-        ? `/auth/callback?next=${encodeURIComponent(nextUrl)}`
-        : `/auth/callback`;
-      const fullCallbackUrl = `${window.location.origin}${callbackUrl}`;
+      const fullCallbackUrl = `${window.location.origin}${providerCallbackPath(provider, safeNext)}`;
 
       setMarketingOptOutFlag(form.getValues("marketingOptOut") ?? false);
 
       const response = await fetch("/api/auth/login/with-provider", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, redirectTo: fullCallbackUrl }),
+        body: JSON.stringify({
+          provider,
+          redirectTo: fullCallbackUrl,
+          connect,
+        }),
       });
 
       if (!response.ok) {
@@ -120,10 +146,11 @@ export function useSignupPage() {
         throw new Error(error || "Failed to start OAuth flow");
       }
 
-      const { url } = await response.json();
+      const { url, connecting } = await response.json();
+      if (connecting) rememberConnectAttempt(provider);
       if (url) window.location.href = url as string;
     } catch (error) {
-      setIsGoogleLoading(false);
+      setLoadingProvider(null);
       setIsSigningUp(false);
       toast({
         title:
@@ -158,9 +185,8 @@ export function useSignupPage() {
       const result = await signupAction(
         data.email,
         data.password,
-        data.confirmPassword,
         data.marketingOptOut,
-        nextUrl,
+        safeNext,
       );
 
       if (!result.success) {
@@ -194,7 +220,8 @@ export function useSignupPage() {
       }
 
       // Prefer the URL's next parameter, then result.next (for onboarding), then default
-      const redirectTo = nextUrl || result.next || "/";
+      const redirectTo =
+        nextUrl || withAuthTracking(result.next || "/", rawNext);
       router.replace(redirectTo);
     } catch (error) {
       setIsLoading(false);
@@ -224,13 +251,19 @@ export function useSignupPage() {
 
   return {
     form,
+    formRef,
     feedback,
-    nextUrl,
+    nextUrl: safeNext,
     verificationEmail,
     isLoggedIn: !!user,
-    hasInitializedAuth,
+    // Without a session cookie the visitor is signed out, so the form shows at
+    // once; with one, it waits for the session check.
+    isCheckingSession: hasSessionCookie && !hasInitializedAuth,
+    isHydrated,
     isLoading,
-    isGoogleLoading,
+    isGoogleLoading: loadingProvider === "google",
+    isMicrosoftLoading: loadingProvider === "microsoft",
+    isMicrosoftEnabled: environment.isMicrosoftLoginEnabled(),
     isSigningUp,
     isCloudEnv,
     isUserLoading,
@@ -240,6 +273,7 @@ export function useSignupPage() {
     handleToggleMarketingOptOut,
     handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
     handleProviderSignup,
+    connectFallback,
     handleStartAgain,
   };
 }

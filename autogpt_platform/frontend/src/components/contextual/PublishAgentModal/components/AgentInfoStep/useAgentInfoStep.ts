@@ -71,7 +71,7 @@ export function useAgentInfoStep({
         slug: initialData.slug.toLocaleLowerCase().trim(),
         youtubeLink: initialData.youtubeLink,
         category: initialData.category,
-        description: isMarketplaceUpdate ? "" : initialData.description,
+        description: initialData.description,
         recommendedScheduleCron: initialData.recommendedScheduleCron || "",
         instructions: initialData.instructions || "",
         agentOutputDemo: initialData.agentOutputDemo || "",

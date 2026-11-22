@@ -32,7 +32,7 @@ def lint():
         run("gen-prisma-stub")
 
     lint_step_args: list[list[str]] = [
-        ["ruff", "check", *TARGET_DIRS, "--exit-zero"],
+        ["ruff", "check", *TARGET_DIRS],
         ["ruff", "format", "--diff", "--check", LIBS_DIR],
         ["isort", "--diff", "--check", "--profile", "black", BACKEND_DIR],
         ["black", "--diff", "--check", BACKEND_DIR],
@@ -47,7 +47,12 @@ def lint():
             lint_error = e
 
     if lint_error:
-        print("Lint failed, try running `poetry run format` to fix the issues")
+        print(
+            "Lint failed. `poetry run format` fixes most of it, but check"
+            " `ruff check --fix --diff` first: an import that pytest only"
+            " needs as a fixture reads as unused (F401) and the fix deletes"
+            " it. Share fixtures through a conftest.py instead."
+        )
         sys.exit(1)
 
 

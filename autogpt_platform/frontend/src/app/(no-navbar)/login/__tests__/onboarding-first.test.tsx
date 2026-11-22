@@ -82,18 +82,35 @@ describe("LoginPage routes an unfinished onboarding ahead of a default landing",
     vi.restoreAllMocks();
   });
 
-  test.each(["/home", "/", "/copilot"])(
+  test.each([
+    ["/home", "/home"],
+    ["/", "/"],
+    ["/copilot", "/home"],
+  ])(
     "logging in from ?next=%s before finishing onboarding goes to /onboarding",
-    async (next) => {
+    async (next, safeNext) => {
       mockLoginAction.mockResolvedValue({ success: true, next: "/onboarding" });
       openLogin(next);
 
       submitLoginForm();
 
       await waitFor(() => expect(pageLocation.href).toBe("/onboarding"));
-      expect(mockLoginAction).toHaveBeenCalledWith(EMAIL, PASSWORD, null);
+      expect(mockLoginAction).toHaveBeenCalledWith(EMAIL, PASSWORD, safeNext);
     },
   );
+
+  test("a campaign link keeps its tracking params on the page login lands on", async () => {
+    mockLoginAction.mockResolvedValue({ success: true, next: "/onboarding" });
+    openLogin("/home?utm_source=newsletter&gclid=abc");
+
+    submitLoginForm();
+
+    await waitFor(() =>
+      expect(pageLocation.href).toBe(
+        "/onboarding?utm_source=newsletter&gclid=abc",
+      ),
+    );
+  });
 
   test("an onboarded user logging in from ?next=/home still lands on /home", async () => {
     mockLoginAction.mockResolvedValue({ success: true, next: "/home" });
@@ -122,7 +139,7 @@ describe("LoginPage routes an unfinished onboarding ahead of a default landing",
     ).toBe("/signup?next=%2Fhome");
   });
 
-  test("continuing with Google from ?next=/home lets the callback route by onboarding", async () => {
+  test("continuing with Google from ?next=/home hands /auth/callback the next to decide from", async () => {
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
@@ -143,6 +160,6 @@ describe("LoginPage routes an unfinished onboarding ahead of a default landing",
       ([input]) => input === "/api/auth/login/with-provider",
     )!;
     const { redirectTo } = JSON.parse(String(init?.body));
-    expect(redirectTo).toBe("http://localhost/auth/callback");
+    expect(redirectTo).toBe("http://localhost/auth/callback?next=%2Fhome");
   });
 });
