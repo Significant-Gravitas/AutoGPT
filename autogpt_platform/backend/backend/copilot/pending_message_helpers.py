@@ -50,7 +50,7 @@ from backend.copilot.response_model import (
     StreamPendingDrainedMessage,
 )
 from backend.copilot.service import EmptyUserMessage, normalise_user_message
-from backend.copilot.stream_registry import STOP_HOLD_FIELD
+from backend.copilot.stream_registry import STOP_HOLD_FIELD, ActiveSession
 from backend.copilot.stream_registry import get_session as get_active_session_meta
 from backend.copilot.stream_registry import get_session_meta_key
 from backend.data.db_accessors import chat_db
@@ -150,6 +150,7 @@ async def is_turn_in_flight(session_id: str) -> bool:
 # the stopped turn itself; the hold of a cancel that failed lapses with it.
 STOP_HOLD_SECONDS = 10.0
 _STOPPED_TURN_POLL_SECONDS = 0.1
+_STOPPED_TURN_MAX_POLL_SECONDS = 0.5
 _NEXT_TURN_WAIT_SECONDS = 5.0
 
 
@@ -172,21 +173,31 @@ async def wait_for_stopped_turn(session_id: str) -> bool:
     which drops a turn sent to a chat it still holds. The wait ends there, or
     when the Stop's hold lapses: the cancel failed and the turn runs on, or no
     executor reports letting go (one that died, or predates the marker).
-    Returns whether a stopped turn held the session.
+    Returns whether a stopped turn held the session. Raises
+    :class:`StreamRegistryUnavailable` when Redis or the database can't answer.
     """
     held = False
+    # Bounded here too, whatever deadline the meta carries.
+    deadline = time.monotonic() + STOP_HOLD_SECONDS
+    interval = _STOPPED_TURN_POLL_SECONDS
     while True:
-        active = await get_active_session_meta(session_id)
-        if active is None or active.stop_held_until <= time.time():
+        active = await _read_active_meta(session_id)
+        if (
+            active is None
+            or active.stop_held_until <= time.time()
+            or time.monotonic() >= deadline
+        ):
             return held
-        if active.status != "running":
-            status = await chat_db().get_chat_session_status(session_id)
-            if status != CHAT_STATUS_RUNNING and await _executor_released(
-                session_id, active.turn_id
-            ):
-                return True
+        # The database is asked only once the executor has let go.
+        if (
+            active.status != "running"
+            and await _executor_released(session_id, active.turn_id)
+            and await _chat_status(session_id) != CHAT_STATUS_RUNNING
+        ):
+            return True
         held = True
-        await asyncio.sleep(_STOPPED_TURN_POLL_SECONDS)
+        await asyncio.sleep(interval)
+        interval = min(interval * 2, _STOPPED_TURN_MAX_POLL_SECONDS)
 
 
 async def wait_for_next_turn(session_id: str) -> bool:
@@ -195,10 +206,11 @@ async def wait_for_next_turn(session_id: str) -> bool:
     That send holds the turn slot before it writes its stream meta, so a send
     that lost the slot to it finds no turn to follow for a moment. Returns
     whether a running turn took the session within ``_NEXT_TURN_WAIT_SECONDS``.
+    Raises :class:`StreamRegistryUnavailable` when Redis can't answer.
     """
     deadline = time.monotonic() + _NEXT_TURN_WAIT_SECONDS
     while True:
-        active = await get_active_session_meta(session_id)
+        active = await _read_active_meta(session_id)
         if (
             active is not None
             and active.status == "running"
@@ -210,10 +222,31 @@ async def wait_for_next_turn(session_id: str) -> bool:
         await asyncio.sleep(_STOPPED_TURN_POLL_SECONDS)
 
 
+async def _read_active_meta(session_id: str) -> ActiveSession | None:
+    try:
+        return await get_active_session_meta(session_id)
+    except _REDIS_ERRORS as exc:
+        raise StreamRegistryUnavailable() from exc
+
+
 async def _executor_released(session_id: str, turn_id: str) -> bool:
-    redis = await get_redis_async()
-    released = await redis.get(get_session_released_key(session_id))
+    try:
+        redis = await get_redis_async()
+        released = await redis.get(get_session_released_key(session_id))
+    except _REDIS_ERRORS as exc:
+        raise StreamRegistryUnavailable() from exc
     return as_str(released) == turn_id
+
+
+async def _chat_status(session_id: str) -> str | None:
+    try:
+        return await chat_db().get_chat_session_status(session_id)
+    except Exception as exc:
+        raise StreamRegistryUnavailable() from exc
+
+
+# RedisClusterException (a slot moving in a rolling restart) is no RedisError.
+_REDIS_ERRORS = (RedisError, RedisClusterException, ConnectionError, OSError)
 
 
 class QueuePendingMessageResponse(BaseModel):

@@ -88,10 +88,9 @@ export function useCopilotPendingChips({
     queueRef.current = queue;
   }, [queue]);
   // Peeks overlap: Strict Mode mounts the peek effect twice, and two idle
-  // edges can land within one round trip.  Only the newest peek's answer is
-  // applied — an older one resolving later would rebase over fresher
-  // server truth (and, before this guard, the two answers each carried the
-  // other's copy of a buffered message forward, doubling the strip).
+  // edges can land within one round trip. Only the newest peek's answer is
+  // applied, or an older one resolving later would rebase over fresher
+  // server truth and double a buffered message in the strip.
   const latestPeekSeqRef = useRef(0);
   const stopsInFlightRef = useRef(0);
 

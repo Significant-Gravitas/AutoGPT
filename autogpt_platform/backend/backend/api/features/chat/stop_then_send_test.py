@@ -15,6 +15,7 @@ import pytest_mock
 from autogpt_libs.auth.dependencies import get_request_context
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from httpx import ASGITransport, AsyncClient
+from redis.exceptions import RedisError
 
 from backend.api.features.chat import routes as chat_routes
 from backend.copilot import pending_message_helpers
@@ -118,21 +119,21 @@ async def test_a_message_sent_while_a_stop_settles_runs_as_the_next_turn(
     assert await peek_pending_messages(session_id) == []
 
 
-@pytest.mark.parametrize("sent_before_the_cancel_gives_up", [True, False])
+@pytest.mark.parametrize("sent_before_the_turn_ends", [True, False])
 async def test_a_message_sent_while_a_stop_settles_waits_for_the_executor_to_let_go(
     mocker: pytest_mock.MockerFixture,
     session_id: str,
     test_user_id: str,
-    sent_before_the_cancel_gives_up: bool,
+    sent_before_the_turn_ends: bool,
 ) -> None:
     stopped_turn = f"stopped-{uuid.uuid4().hex}"
     await stream_registry.create_session(
         session_id, test_user_id, "chat_stream", "chat", turn_id=stopped_turn
     )
     world = _stub_boundaries(mocker)
-    # The cancel gives up waiting and completes the turn itself, while the
-    # executor is still draining it and would drop a turn sent to the chat.
-    mocker.patch.object(chat_routes, "_CANCEL_CONFIRM_TIMEOUT_SECONDS", 0.5)
+    # Only the turn's end and the executor letting go may move this test on.
+    mocker.patch.object(chat_routes, "_CANCEL_CONFIRM_TIMEOUT_SECONDS", 60)
+    mocker.patch.object(pending_message_helpers, "STOP_HOLD_SECONDS", 60)
     released_at_start: list[bool] = []
     started = asyncio.Event()
     admit = world.schedule.side_effect
@@ -143,33 +144,103 @@ async def test_a_message_sent_while_a_stop_settles_waits_for_the_executor_to_let
         return await admit(**kwargs)
 
     world.schedule.side_effect = start_turn
+    # The database reads made by the time of each look at the executor's release.
+    status_reads = pending_message_helpers.chat_db().get_chat_session_status
+    reads_at_look: list[int] = []
+    looked_twice = asyncio.Event()
+    executor_released = pending_message_helpers._executor_released
+
+    async def look(look_session: str, turn_id: str) -> bool:
+        reads_at_look.append(status_reads.await_count)
+        if len(reads_at_look) == 2:
+            looked_twice.set()
+        return await executor_released(look_session, turn_id)
+
+    mocker.patch.object(pending_message_helpers, "_executor_released", look)
 
     async with _client() as client:
         cancel = asyncio.create_task(client.post(f"/sessions/{session_id}/cancel"))
         await asyncio.wait_for(world.cancel_published.wait(), timeout=10)
-        if not sent_before_the_cancel_gives_up:
-            await asyncio.wait_for(cancel, timeout=10)
-        send = asyncio.create_task(
-            client.post(
-                f"/sessions/{session_id}/stream", json={"message": "do this instead"}
-            )
-        )
-        if sent_before_the_cancel_gives_up:
+        if sent_before_the_turn_ends:
+            send = asyncio.create_task(_send(client, session_id))
             await asyncio.wait_for(world.send_reached_gate.wait(), timeout=10)
+        # The turn ends before its executor has let go of the chat.
+        await stream_registry.mark_session_completed(
+            session_id,
+            error_message=stream_registry.CANCELLED_MESSAGE,
+            skip_error_publish=True,
+            turn_id=stopped_turn,
+        )
         cancelled = await asyncio.wait_for(cancel, timeout=10)
-        # The drain ends once a turn has started without it, or 2 s on.
-        try:
-            await asyncio.wait_for(started.wait(), timeout=2)
-        except TimeoutError:
-            pass
+        if not sent_before_the_turn_ends:
+            send = asyncio.create_task(_send(client, session_id))
+        await _first_of(looked_twice, started)
         await _executor_lets_go(session_id, stopped_turn)
         sent = await asyncio.wait_for(send, timeout=30)
 
-    assert cancelled.json()["reason"] == "cancel_published_not_confirmed"
+    assert cancelled.json()["cancelled"] is True
     assert sent.status_code == 200
     assert "data-follow-up-queued" not in sent.text
     assert released_at_start == [True]
     assert world.started == ["do this instead"]
+    assert reads_at_look[0] == reads_at_look[1]
+
+
+async def test_a_send_waiting_out_a_stop_answers_503_when_redis_fails(
+    mocker: pytest_mock.MockerFixture, session_id: str, test_user_id: str
+) -> None:
+    stopped_turn = f"stopped-{uuid.uuid4().hex}"
+    await stream_registry.create_session(
+        session_id, test_user_id, "chat_stream", "chat", turn_id=stopped_turn
+    )
+    world = _stub_boundaries(mocker)
+    await stop_follow_ups(session_id)
+    await stream_registry.mark_session_completed(
+        session_id,
+        error_message=stream_registry.CANCELLED_MESSAGE,
+        skip_error_publish=True,
+        turn_id=stopped_turn,
+    )
+    mocker.patch.object(
+        pending_message_helpers,
+        "get_redis_async",
+        new=AsyncMock(side_effect=RedisError("connection reset")),
+    )
+
+    async with _client() as client:
+        sent = await _send(client, session_id)
+
+    assert sent.status_code == 503
+    assert sent.headers["Retry-After"] == "30"
+    assert world.started == []
+
+
+async def test_a_send_that_loses_the_slot_with_no_stop_gets_its_409_at_once(
+    mocker: pytest_mock.MockerFixture, session_id: str, test_user_id: str
+) -> None:
+    ended_turn = f"ended-{uuid.uuid4().hex}"
+    await stream_registry.create_session(
+        session_id, test_user_id, "chat_stream", "chat", turn_id=ended_turn
+    )
+    world = _stub_boundaries(mocker)
+    await stream_registry.mark_session_completed(
+        session_id,
+        error_message=stream_registry.CANCELLED_MESSAGE,
+        skip_error_publish=True,
+        turn_id=ended_turn,
+    )
+    # Another send's turn holds the slot and has not written its stream yet.
+    world.chat_status = "running"
+    next_turn = mocker.patch.object(
+        chat_routes, "wait_for_next_turn", new=AsyncMock(return_value=False)
+    )
+
+    async with _client() as client:
+        sent = await _send(client, session_id)
+
+    assert sent.status_code == 409
+    next_turn.assert_not_awaited()
+    assert world.started == []
 
 
 async def test_a_message_that_loses_the_next_turn_to_another_send_follows_that_turn(
@@ -379,6 +450,24 @@ async def _last_look(session_id: str, turn_id: str) -> None:
         )
         == []
     )
+
+
+async def _send(client: AsyncClient, session_id: str):
+    return await client.post(
+        f"/sessions/{session_id}/stream", json={"message": "do this instead"}
+    )
+
+
+async def _first_of(*events: asyncio.Event) -> None:
+    waits = [asyncio.create_task(event.wait()) for event in events]
+    try:
+        done, _ = await asyncio.wait(
+            waits, timeout=30, return_when=asyncio.FIRST_COMPLETED
+        )
+        assert done, "neither event came"
+    finally:
+        for wait in waits:
+            wait.cancel()
 
 
 async def _executor_lets_go(session_id: str, turn_id: str) -> None:

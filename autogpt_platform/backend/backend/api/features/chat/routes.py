@@ -2657,26 +2657,29 @@ async def stream_chat_post(
             return False
         return True
 
-    turn_was_ending = False
-    if turn_in_flight:
-        if request.expert_kickoff:
-            if persisted_kickoff_has_reply is not None:
-                return _empty_ui_message_stream_response()
-            raise HTTPException(
-                status_code=409,
-                detail="expert kickoff requires an idle session",
-            )
-        # A turn the user stopped takes no follow-ups: this message is the next
-        # turn, or a follow-up again if the Stop's hold lapses with the turn alive.
-        for _ in range(2):
-            if await queue_as_follow_up():
-                return _empty_ui_message_stream_response(follow_up_queued=True)
-            turn_was_ending = True
-            if not await wait_for_stopped_turn(session_id):
-                break
-    else:
-        # A Stop's cancel can end the turn before its executor lets go of it.
-        await wait_for_stopped_turn(session_id)
+    stopped_turn_held = False
+    try:
+        if turn_in_flight:
+            if request.expert_kickoff:
+                if persisted_kickoff_has_reply is not None:
+                    return _empty_ui_message_stream_response()
+                raise HTTPException(
+                    status_code=409,
+                    detail="expert kickoff requires an idle session",
+                )
+            # A turn the user stopped takes no follow-ups: this message is the next
+            # turn, or a follow-up again if the Stop's hold lapses with the turn alive.
+            for _ in range(2):
+                if await queue_as_follow_up():
+                    return _empty_ui_message_stream_response(follow_up_queued=True)
+                if not await wait_for_stopped_turn(session_id):
+                    break
+                stopped_turn_held = True
+        else:
+            # A Stop's cancel can end the turn before its executor lets go of it.
+            stopped_turn_held = await wait_for_stopped_turn(session_id)
+    except StreamRegistryUnavailable as exc:
+        raise _chat_service_degraded() from exc
 
     if request.expert_kickoff and persisted_kickoff_has_reply is not None:
         if persisted_kickoff_has_reply:
@@ -2793,12 +2796,16 @@ async def stream_chat_post(
             )
     except turn_queue.SessionNotIdle as exc:
         await release_client_message_claim()
-        # The turn this message saw ending gave way to another send's: follow it.
-        if (
-            turn_was_ending
-            and await wait_for_next_turn(session_id)
-            and await queue_as_follow_up()
-        ):
+        # The turn a Stop held this message for gave way to another send's: follow it.
+        try:
+            follows = (
+                stopped_turn_held
+                and await wait_for_next_turn(session_id)
+                and await queue_as_follow_up()
+            )
+        except StreamRegistryUnavailable as degraded:
+            raise _chat_service_degraded() from degraded
+        if follows:
             return _empty_ui_message_stream_response(follow_up_queued=True)
         raise HTTPException(
             status_code=409,
@@ -3051,6 +3058,14 @@ async def stream_chat_post(
         event_generator(),
         media_type="text/event-stream",
         headers=_ui_message_stream_headers(),
+    )
+
+
+def _chat_service_degraded() -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail="Chat service degraded, retry shortly",
+        headers={"Retry-After": "30"},
     )
 
 
