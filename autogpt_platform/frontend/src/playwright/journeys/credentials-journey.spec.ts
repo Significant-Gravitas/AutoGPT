@@ -402,91 +402,9 @@ test.describe("credentials journey: removing a key in use", () => {
         step.getByText(`${credential.title} was removed.`, { exact: false }),
         "the builder should say the step's key was removed",
       ).toBeVisible();
-      observe(
-        testInfo,
-        `the builder's save button reads "${await page
-          .getByTestId("save-control-save-button")
-          .innerText()}" and is ${
-          (await page.getByTestId("save-control-save-button").isEnabled())
-            ? "enabled"
-            : "disabled"
-        } after the field let go of the removed key`,
-      );
     } finally {
       await deleteSchedule(page, schedule.id);
     }
-  });
-});
-
-test.describe("credentials journey: evidence for open bugs", () => {
-  // TODO(evidence run): a soft check of #17240, to be removed before review:
-  // Settings → Integrations doesn't notice a key deleted in a workflow
-  // step's field, when it shows the list it read in the last minute.
-  test("a key deleted in the run dialog's credentials field is gone from Settings → Integrations", async ({
-    page,
-    journeyUser: _user,
-  }) => {
-    const credential = await createAPIKey(page, `Journey key ${uniqueStamp()}`);
-    const workflow = await createWorkflow(
-      page,
-      createUniqueAgentName("Journey scraping"),
-    );
-    await page.goto(`/library/agents/${workflow.libraryAgentID}`);
-    await waitForAgentPageLoad(page);
-    const setUp = page.getByRole("button", { name: "Setup your task" });
-    await expect(setUp).toBeVisible();
-
-    // From here on, every move stays in the app: menus, links and the
-    // browser's back and forward buttons, never a reload.
-    await page.getByTestId("profile-popout-menu-trigger").click();
-    await page.getByRole("link", { name: "Settings", exact: true }).click();
-    await page
-      .getByRole("link", { name: "Integrations", exact: true })
-      .filter({ visible: true })
-      .first()
-      .click();
-    await expect(page).toHaveURL(/\/settings\/integrations$/);
-    await expect(keyCheckbox(page, credential.title)).toBeVisible();
-
-    await page.goBack();
-    await page.goBack();
-    await expect(page).toHaveURL(
-      new RegExp(`/library/agents/${workflow.libraryAgentID}`),
-    );
-    await setUp.click();
-    const dialog = runDialog(page);
-    const keyName = dialog.getByText(credential.title, { exact: true });
-    await expect(keyName).toBeVisible();
-    await keyName
-      .locator("xpath=ancestor::div[.//button][1]")
-      .getByRole("button")
-      .last()
-      .click();
-    await page.getByRole("menuitem", { name: "Delete" }).click();
-    const confirm = page.getByRole("dialog", { name: "Delete credential" });
-    const deleted = page.waitForResponse(
-      (response) =>
-        response.request().method() === "DELETE" &&
-        response.url().includes(`/credentials/${credential.id}`),
-    );
-    await confirm.getByRole("button", { name: "Delete", exact: true }).click();
-    expect((await deleted).ok()).toBe(true);
-    await expect(confirm).toBeHidden();
-    await page.keyboard.press("Escape");
-    await expect(dialog).toBeHidden();
-
-    await page.goForward();
-    await page.goForward();
-    await expect(page).toHaveURL(/\/settings\/integrations$/);
-    await expect(
-      page.getByRole("heading", { name: "Integrations", exact: true }),
-    ).toBeVisible();
-    await expect
-      .soft(
-        keyCheckbox(page, credential.title),
-        "#17240: the deleted key should be gone from Integrations",
-      )
-      .toHaveCount(0);
   });
 });
 
