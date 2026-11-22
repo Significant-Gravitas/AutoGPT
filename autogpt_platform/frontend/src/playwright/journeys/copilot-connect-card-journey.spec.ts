@@ -48,8 +48,10 @@ const CARD_HEADING = /^(Connect your apps|Your apps are connected)$/;
 const STILL_WAITING = "Once these apps are connected, Otto will continue.";
 // A model turn starts a Claude Agent SDK session, which takes a while on CI.
 const MODEL_TURN_TIMEOUT = 60_000;
-// EVIDENCE RUN: soft checks report every miss in one CI run. Hard before review.
-const softly = expect.configure({ soft: true });
+// On dev the card is back as soon as the chat renders. A known failure must
+// end as a failed assertion, not a timeout, so this stays well under the
+// test's budget.
+const REDO_CHECK_TIMEOUT = 5_000;
 
 test.describe("copilot connect card journey", () => {
   test.beforeAll(requireScriptedModel);
@@ -72,49 +74,39 @@ test.describe("copilot connect card journey", () => {
         transcript.getByText(texts[3], { exact: true }),
         "the chat should carry on by itself and finish, once",
       ).toHaveCount(1, { timeout: MODEL_TURN_TIMEOUT });
-      await expect
-        .soft(
-          connectCards(transcript),
-          "the card should go once it has sent its follow-up",
-        )
-        .toHaveCount(0);
+      await expect(
+        connectCards(transcript),
+        "the card should go once it has sent its follow-up",
+      ).toHaveCount(0);
       const streamed = (await finishedChatStreams(page, "POST", 2)).flatMap(
         streamedTexts,
       );
-      expect
-        .soft(streamed, "the streams should carry what the model said")
-        .toEqual(texts);
-      expect
-        .soft(
-          await chatStreamCount(page, "POST"),
-          "the card should send one follow-up, and nothing else should",
-        )
-        .toBe(2);
+      expect(streamed, "the streams should carry what the model said").toEqual(
+        texts,
+      );
+      expect(
+        await chatStreamCount(page, "POST"),
+        "the card should send one follow-up, and nothing else should",
+      ).toBe(2);
       await expectChatSettled(page, sessionID);
 
-      expect
-        .soft(
-          await savedKeys(page),
-          "the key should be saved once, as the user named it",
-        )
-        .toEqual([[keyName, "api_key"]]);
-      expect
-        .soft(
-          (await readJournalForKey(key)).map((call) => [
-            call.kind,
-            call.model,
-            call.completed,
-          ]),
-          "the step should call the provider once, with the key the user saved",
-        )
-        .toEqual([["side_call", BLOCK_MODEL, true]]);
-      expect
-        .soft(
-          await toolResultTypes(page, sessionID),
-          "the step should run once more after the card, not twice",
-        )
-        .toEqual(["setup_requirements", "block_output"]);
-      await softly
+      expect(
+        await savedKeys(page),
+        "the key should be saved once, as the user named it",
+      ).toEqual([[keyName, "api_key"]]);
+      expect(
+        (await readJournalForKey(key)).map((call) => [
+          call.kind,
+          call.model,
+          call.completed,
+        ]),
+        "the step should call the provider once, with the key the user saved",
+      ).toEqual([["side_call", BLOCK_MODEL, true]]);
+      expect(
+        await toolResultTypes(page, sessionID),
+        "the step should run once more after the card, not twice",
+      ).toEqual(["setup_requirements", "block_output"]);
+      await expect
         .poll(() => savedConversation(page, sessionID), {
           message: "the chat should save what was said, once each, in order",
         })
@@ -127,30 +119,13 @@ test.describe("copilot connect card journey", () => {
           ["assistant", texts[3]],
         ]);
 
-      const credentialsLoaded = page.waitForResponse(isCredentialsList);
       await page.reload();
-      await credentialsLoaded;
-      const reloaded = page.getByRole("log");
       for (const text of [...streamed, CONNECTED]) {
-        await expect
-          .soft(
-            reloaded.getByText(text, { exact: true }),
-            "the reloaded chat should show what was streamed, once",
-          )
-          .toHaveCount(1);
+        await expect(
+          page.getByRole("log").getByText(text, { exact: true }),
+          "the reloaded chat should show what was streamed, once",
+        ).toHaveCount(1);
       }
-      await expect
-        .soft(
-          connectCards(reloaded),
-          "the finished step's connect card should not come back after a reload",
-        )
-        .toHaveCount(0);
-      await expect
-        .soft(
-          reloaded.getByRole("button", { name: /^(Connect|Proceed)$/ }),
-          "nothing should offer to run the finished step again",
-        )
-        .toHaveCount(0);
 
       await openIntegrations(page);
       await expectListedInIntegrations(page, credential, SERVICE);
@@ -162,6 +137,53 @@ test.describe("copilot connect card journey", () => {
       await deleteCredential(page, credential);
     }
   });
+
+  test.fail(
+    "after a reload, the finished step's connect card stays gone and nothing offers to run the step again",
+    {
+      annotation: {
+        type: "issue",
+        description:
+          "https://github.com/Significant-Gravitas/AutoGPT/issues/17253",
+      },
+    },
+    async ({ page, journeyUser: _user }) => {
+      const run = scriptedRun("connect-card-api-key");
+      const finished = CONNECT.turns[3].text ?? "";
+
+      const sessionID = await askForTheLine(page, run.marker, CONNECT);
+      const credential = await connectKeyOnTheCard(page, {
+        key: fakeAPIKey(),
+        keyName: `Journey key ${run.nonce}`,
+      });
+      try {
+        await expect(
+          page.getByRole("log").getByText(finished, { exact: true }),
+          "the chat should carry on by itself and finish",
+        ).toHaveCount(1, { timeout: MODEL_TURN_TIMEOUT });
+        await expectChatSettled(page, sessionID);
+
+        // The card's row picks the saved key once the key list has loaded.
+        const keysLoaded = page.waitForResponse(isCredentialsList);
+        await page.reload();
+        await keysLoaded;
+        const reloaded = page.getByRole("log");
+        await expect(reloaded.getByText(finished, { exact: true })).toHaveCount(
+          1,
+        );
+        await expect(
+          connectCards(reloaded),
+          "the finished step's connect card should not come back after a reload",
+        ).toHaveCount(0, { timeout: REDO_CHECK_TIMEOUT });
+        await expect(
+          reloaded.getByRole("button", { name: /^(Connect|Proceed)$/ }),
+          "nothing should offer to run the finished step again",
+        ).toHaveCount(0, { timeout: REDO_CHECK_TIMEOUT });
+      } finally {
+        await deleteCredential(page, credential);
+      }
+    },
+  );
 
   test("cancelling the key on the card saves nothing and sends nothing: the chat stays where Otto said it needs the key, nothing is left running, and the next message is answered", async ({
     page,
@@ -183,33 +205,26 @@ test.describe("copilot connect card journey", () => {
     await dialog.getByRole("button", { name: "Cancel" }).click();
     await expect(dialog, "Cancel should close the dialog").toBeHidden();
 
-    await expect
-      .soft(
-        connectCards(transcript),
-        "the card should still ask for the account",
-      )
-      .toHaveCount(1);
-    await expect
-      .soft(
-        transcript.getByText("0 of 1 ready", { exact: true }),
-        "nothing should be connected",
-      )
-      .toBeVisible();
-    await expect
-      .soft(
-        transcript.getByText(STILL_WAITING, { exact: true }),
-        "the card should say the chat can't go on without the account",
-      )
-      .toBeVisible();
-    await expect
-      .soft(
-        connectButtons(transcript),
-        "the card should still offer to connect",
-      )
-      .toBeVisible();
-    expect
-      .soft(await savedKeys(page), "a cancelled key should not be saved")
-      .toEqual([]);
+    await expect(
+      connectCards(transcript),
+      "the card should still ask for the account",
+    ).toHaveCount(1);
+    await expect(
+      transcript.getByText("0 of 1 ready", { exact: true }),
+      "nothing should be connected",
+    ).toBeVisible();
+    await expect(
+      transcript.getByText(STILL_WAITING, { exact: true }),
+      "the card should say the chat can't go on without the account",
+    ).toBeVisible();
+    await expect(
+      connectButtons(transcript),
+      "the card should still offer to connect",
+    ).toBeVisible();
+    expect(
+      await savedKeys(page),
+      "a cancelled key should not be saved",
+    ).toEqual([]);
     await expectChatSettled(page, sessionID);
 
     const input = page.getByRole("textbox", { name: "Chat message input" });
@@ -220,7 +235,7 @@ test.describe("copilot connect card journey", () => {
       "the chat should answer the user's next message, once",
     ).toHaveCount(1, { timeout: MODEL_TURN_TIMEOUT });
     await expectChatSettled(page, sessionID);
-    await softly
+    await expect
       .poll(() => savedConversation(page, sessionID), {
         message:
           "the chat should hold only what the user and Otto said: no follow-up from the card",
@@ -232,18 +247,14 @@ test.describe("copilot connect card journey", () => {
         ["user", SKIP],
         ["assistant", texts[2]],
       ]);
-    expect
-      .soft(
-        await chatStreamCount(page, "POST"),
-        "only the user's own messages should be sent",
-      )
-      .toBe(2);
-    expect
-      .soft(
-        await toolResultTypes(page, sessionID),
-        "the step should not run again",
-      )
-      .toEqual(["setup_requirements"]);
+    expect(
+      await chatStreamCount(page, "POST"),
+      "only the user's own messages should be sent",
+    ).toBe(2);
+    expect(
+      await toolResultTypes(page, sessionID),
+      "the step should not run again",
+    ).toEqual(["setup_requirements"]);
 
     const journal = await readJournal(run.nonce);
     expectEachTurnOnce(journal, CANCEL);
