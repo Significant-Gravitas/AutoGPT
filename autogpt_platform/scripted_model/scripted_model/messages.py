@@ -44,6 +44,7 @@ def conversation(body: dict[str, Any]) -> Conversation:
             for m in messages[last_assistant + 1 :]
             if m.get("role") == "user"
         ),
+        system_text=_text(body.get("system")),
     )
 
 

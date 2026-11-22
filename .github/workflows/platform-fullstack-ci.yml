@@ -209,6 +209,7 @@ jobs:
             seed: true
             hosted: false
             scripted_model: false
+            store_agents: false
             known_failures: false
           # Holistic *-journey.spec.ts flows on the hosted configuration:
           # hosted feature flags, credits on. Advisory until proven stable
@@ -225,9 +226,9 @@ jobs:
             # self-hosted stack (TODO in src/playwright/journeys/README.md).
             playwright_args: --project hosted
             # Pinned inventory of the whole suite, the same on every shard:
-            # 44 tests in 21 files; raise when adding journeys. Each shard's
+            # 47 tests in 22 files; raise when adding journeys. Each shard's
             # own floor is counted at run time ("Count the shard's tests").
-            min_tests: 44
+            min_tests: 47
             embeddings: false
             # Journeys sign up their own users and need no seeded data.
             seed: false
@@ -236,6 +237,9 @@ jobs:
             # instead of CHAT_TEST_MODE's canned reply, so journeys run the
             # real copilot pipeline: tools, persistence, streaming, cost.
             scripted_model: true
+            # The official marketplace agents, which the expert roster's
+            # workflows are, so a hired expert gets them as on a deploy.
+            store_agents: true
             # Journeys may pin a known bug with test.fail(); it must still fail.
             known_failures: true
           # The leg above, second shard.
@@ -244,11 +248,12 @@ jobs:
             shard_total: 2
             config: playwright.journeys.config.ts
             playwright_args: --project hosted
-            min_tests: 44
+            min_tests: 47
             embeddings: false
             seed: false
             hosted: true
             scripted_model: true
+            store_agents: true
             known_failures: true
     permissions:
       contents: read
@@ -651,6 +656,16 @@ jobs:
       # runner out of memory and freeze or lose it (OPEN-3734, SECRT-3254).
       - name: Wait for frontend image build
         wait: [platform-build-frontend]
+
+      # The expert roster's workflows are these listings (backend/agents).
+      # publish_skills starts with the services below and resolves each
+      # roster workflow to its listing then, so they must exist first: the
+      # order a deploy and platform-preview-seed-fixture.yml use.
+      - name: Set up tests - Load the official marketplace agents
+        if: matrix.store_agents
+        run: |
+          docker compose -f ../docker-compose.resolved.yml run --rm --no-deps \
+            rest_server python -m test.load_store_agents
 
       - name: Set up Platform - Start (all other services)
         run: |

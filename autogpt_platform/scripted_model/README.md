@@ -60,6 +60,15 @@ script to know what to expect.
 }
 ```
 
+- **A turn the platform sends itself**, such as an expert's kickoff, has no
+  message the journey can type a marker into. When no user message holds
+  one, the marker is looked for in the system prompt, so a journey puts it in
+  text the user sets that the system prompt carries: an expert's writing
+  sample (`<voice_preferences>`). A marker in a user message still wins.
+  The sample stays in that expert's system prompt, so every later request
+  of that hire with no marker of its own goes to the same script, a turn the
+  platform starts later included. Give such a turn its own marker in a user
+  message, or expect it to run past the script's end.
 - **Which turn answers a request:** turn `n` answers the request whose
   conversation already holds `n` assistant messages. Requests carry the whole
   conversation, so the server keeps no state: concurrent runs of one script,
@@ -74,6 +83,13 @@ script to know what to expect.
   and `create_agent` needs the building guide read first
   (`{"id": "skill:agent_building_guide"}`). See
   `model-scripts/build-doubler-agent.json`.
+- **An argument read from a tool's result:** a model passes on an id it read
+  from what a tool returned (`list_schedules`, then `pause_schedule`). In a
+  tool call's input, write
+  `{"$from_tool_result": {"tool": "run_capability", "pattern": "\"schedule_id\": \"([^\"]+)\""}}`
+  in place of the value: it becomes the pattern's first group in the newest
+  result of that tool in the request. No match fails the turn, naming the
+  results it saw.
 - **Checks** are logged, and a journey asserts on them through the journal:
   `expect_tool_results` against the tool results the platform sends back,
   `expect_user_text` against what the user said since the last answer.
