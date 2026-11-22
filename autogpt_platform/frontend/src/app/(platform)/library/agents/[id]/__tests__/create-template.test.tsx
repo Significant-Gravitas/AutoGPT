@@ -63,6 +63,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => ({
 
 const GRAPH_ID = "graph-1";
 const TEMPLATE_NAME = "Morning digest";
+const TEMPLATE_DESCRIPTION = "Every weekday before standup";
 
 const run: GraphExecutionMeta = {
   id: "run-a",
@@ -159,7 +160,7 @@ async function renderWithRunSelected() {
 type User = Awaited<ReturnType<typeof renderWithRunSelected>>;
 
 async function openFromSidebarMenu(user: User) {
-  const row = screen.getByTestId("library-run-item-run-a");
+  const row = await screen.findByTestId("library-run-item-run-a");
   await user.click(within(row).getByRole("button", { name: "More actions" }));
   await user.click(
     await screen.findByRole("menuitem", { name: "Save as template" }),
@@ -176,7 +177,7 @@ test.each([
   ["the sidebar's menu", openFromSidebarMenu],
   ["the run view", openFromRunView],
 ])(
-  "a template that fails to save from %s keeps the dialog and what was typed",
+  "a template that fails to save from %s keeps the dialog and what was typed, and saves on a retry",
   async (_, openDialog) => {
     answerCreateWith(500);
     const user = await renderWithRunSelected();
@@ -186,6 +187,10 @@ test.each([
       name: "Create Template",
     });
     await user.type(within(dialog).getByLabelText("Name"), TEMPLATE_NAME);
+    await user.type(
+      within(dialog).getByLabelText("Description"),
+      TEMPLATE_DESCRIPTION,
+    );
     await user.click(
       within(dialog).getByRole("button", { name: "Create Template" }),
     );
@@ -203,6 +208,25 @@ test.each([
       "value",
       TEMPLATE_NAME,
     );
+    expect(within(dialog).getByLabelText("Description")).toHaveProperty(
+      "value",
+      TEMPLATE_DESCRIPTION,
+    );
+
+    answerCreateWith(200);
+    await user.click(
+      within(dialog).getByRole("button", { name: "Create Template" }),
+    );
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith({ title: "Template created" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Create Template" }),
+      ).toBeNull(),
+    );
+    expect(createdTemplates).toEqual([TEMPLATE_NAME, TEMPLATE_NAME]);
   },
 );
 

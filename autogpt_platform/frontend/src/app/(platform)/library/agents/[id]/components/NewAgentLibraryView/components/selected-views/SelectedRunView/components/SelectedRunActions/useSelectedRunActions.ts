@@ -151,7 +151,6 @@ export function useSelectedRunActions({
         });
       }
 
-      setIsCreateTemplateModalOpen(false);
       return true;
     } catch (error: unknown) {
       toast({

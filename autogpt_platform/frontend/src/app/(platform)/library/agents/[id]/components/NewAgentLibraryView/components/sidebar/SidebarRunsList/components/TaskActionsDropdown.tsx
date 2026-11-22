@@ -90,7 +90,6 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
         }),
       });
 
-      setIsCreateTemplateModalOpen(false);
       return true;
     } catch (error: unknown) {
       toast({
