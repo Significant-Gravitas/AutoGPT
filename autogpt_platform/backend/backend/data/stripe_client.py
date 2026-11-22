@@ -39,23 +39,26 @@ StripeResource = TypeVar("StripeResource", bound=stripe.StripeObject)
 # ever means a stalled socket, and holding a request that long serves nobody.
 DEFAULT_TIMEOUT_SECONDS = 30.0
 
-LIVE_KEY_PREFIXES = ("sk_live_", "rk_live_")
+TEST_KEY_PREFIXES = ("sk_test_", "rk_test_")
 
 
 def api_base_override(api_base: str, api_key: str) -> str | None:
     """Where to send the SDK's requests instead of Stripe, if anywhere.
 
-    ``STRIPE_API_BASE`` is for test stacks that run a fake Stripe. It is
-    refused beside a live key, so a live key and real charges only ever go
-    to Stripe. The refusal is logged rather than raised, so a stray setting
-    can't keep a service from starting.
+    ``STRIPE_API_BASE`` is for test stacks that run a fake Stripe, so it is
+    applied only beside a test key or no key at all. Any other key, a live
+    one or one this can't recognise, keeps the SDK on Stripe: a live key and
+    real charges never go anywhere else. The refusal is logged rather than
+    raised, so a stray setting can't keep a service from starting.
     """
     if not api_base:
         return None
-    if api_key.startswith(LIVE_KEY_PREFIXES):
+    key = api_key.strip()
+    if key and not key.startswith(TEST_KEY_PREFIXES):
         logger.error(
-            "STRIPE_API_BASE is ignored: it is set together with a live Stripe"
-            " key, and live requests only go to Stripe"
+            "STRIPE_API_BASE is ignored: it is applied only with a Stripe test"
+            " key (sk_test_ or rk_test_), and requests with any other key only"
+            " go to Stripe"
         )
         return None
     return api_base

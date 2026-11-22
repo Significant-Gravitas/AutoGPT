@@ -122,12 +122,19 @@ async def test_incomplete_empty_page_is_not_treated_as_exhaustive_history():
     [
         ("sk_test_fake", True),
         ("rk_test_fake", True),
+        ("  sk_test_fake\n", True),
         ("", True),
+        ("   ", True),
         ("sk_live_fake", False),
         ("rk_live_fake", False),
+        ("sk_org_live_fake", False),
+        ("  sk_live_fake", False),
+        ('"sk_live_fake"', False),
+        ("pk_test_fake", False),
+        ("something_else", False),
     ],
 )
-def test_api_base_is_refused_beside_a_live_key(
+def test_api_base_is_applied_only_with_a_test_key(
     api_key: str, applied: bool, caplog: pytest.LogCaptureFixture
 ):
     base = "http://scripted_model:4010/stripe"
