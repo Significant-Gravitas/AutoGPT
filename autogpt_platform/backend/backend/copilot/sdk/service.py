@@ -7507,6 +7507,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Nor does a platform turn the allowance can no longer cover: nobody
     # pressed send for the continuation, so nothing else would check it. The
     # queued messages stay queued and a not-started pause takes their place.
+    #
+    # This drain is the turn's last look at the queue. Finding it empty, it
+    # closes the queue to this turn in the same Redis step, so a follow-up
+    # sent from here until the turn is marked done is refused with a 409 (the
+    # client then sends it as a new turn) rather than accepted into a queue no
+    # turn will drain again (#17247).
     # -------------------------------------------------------------------------
     if not ended_with_stream_error and not (governor is not None and governor.landed):
         auto_continue = await gate_auto_continue(
@@ -7515,7 +7521,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         if auto_continue.pause is not None:
             yield StreamTurnPaused.of(auto_continue.pause)
         _auto_pending_messages = (
-            await drain_pending_safe(session_id, log_prefix)
+            await drain_pending_safe(session_id, log_prefix, close_when_empty=True)
             if auto_continue.proceed
             else []
         )

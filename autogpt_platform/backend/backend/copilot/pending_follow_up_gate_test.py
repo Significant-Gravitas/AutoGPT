@@ -1,0 +1,119 @@
+"""The follow-up queue a turn closes at its last look, on the real Lua scripts.
+
+``follow_up_after_last_look_test`` runs the race through the SDK engine; these
+pin the gate itself: who can still push, and what reopens it.
+"""
+
+import contextlib
+from collections.abc import AsyncIterator
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from fakeredis.aioredis import FakeRedis
+
+from backend.copilot import pending_messages, stream_registry
+from backend.copilot.pending_messages import (
+    PendingMessage,
+    drain_pending_or_close,
+    peek_pending_messages,
+    push_pending_message_if_session_running,
+)
+
+SESSION = "gate-session"
+META = stream_registry.get_session_meta_key(SESSION)
+
+
+@pytest.fixture
+async def redis() -> AsyncIterator[FakeRedis]:
+    async with FakeRedis(decode_responses=True) as fake:
+        with contextlib.ExitStack() as stack:
+            for module in (pending_messages, stream_registry):
+                stack.enter_context(
+                    patch.object(
+                        module, "get_redis_async", AsyncMock(return_value=fake)
+                    )
+                )
+            chat_db = stack.enter_context(patch.object(stream_registry, "chat_db"))
+            chat_db.return_value.set_turn_duration = AsyncMock()
+            yield fake
+
+
+async def _start_turn(turn_id: str) -> None:
+    await stream_registry.create_session(
+        SESSION, None, "chat_stream", "chat", turn_id=turn_id
+    )
+
+
+async def _push(text: str, *, message_id: str | None = None) -> int | None:
+    message = PendingMessage(content=text)
+    if message_id is not None:
+        message.id = message_id
+    return await push_pending_message_if_session_running(
+        SESSION,
+        message,
+        session_meta_key=META,
+        deduplicate=message_id is not None,
+    )
+
+
+async def _last_look() -> list[str]:
+    drained = await drain_pending_or_close(SESSION, session_meta_key=META)
+    return [message.content for message in drained]
+
+
+@pytest.mark.asyncio
+async def test_a_last_look_that_finds_follow_ups_takes_them_and_stays_open(redis):
+    await _start_turn("turn-1")
+    await _push("first")
+    await _push("second")
+
+    assert await _last_look() == ["first", "second"]
+    # The turn continues with them, so it can still take more.
+    assert await _push("third") == 1
+    assert [m.content for m in await peek_pending_messages(SESSION)] == ["third"]
+
+
+@pytest.mark.asyncio
+async def test_a_last_look_at_an_empty_queue_closes_it_to_that_turn(redis):
+    await _start_turn("turn-1")
+
+    assert await _last_look() == []
+    assert await _push("too late") is None
+    assert await peek_pending_messages(SESSION) == []
+
+
+@pytest.mark.asyncio
+async def test_the_next_turn_takes_follow_ups_again(redis):
+    await _start_turn("turn-1")
+    await _last_look()
+    await stream_registry.mark_session_completed(SESSION, turn_id="turn-1")
+
+    await _start_turn("turn-2")
+
+    assert await _push("for the new turn") == 1
+
+
+@pytest.mark.asyncio
+async def test_a_resent_accepted_follow_up_is_still_answered_as_accepted(redis):
+    """A retransmit of a send the queue took before it closed must not be told
+    to start a turn: the client would send the same message twice."""
+    await _start_turn("turn-1")
+    assert await _push("sent once", message_id="msg-1") == 1
+    assert await _last_look() == ["sent once"]
+    await _last_look()
+
+    assert await _push("sent once", message_id="msg-1") == 0
+    assert await _push("a different one", message_id="msg-2") is None
+
+
+@pytest.mark.parametrize("ended", [True, False])
+@pytest.mark.asyncio
+async def test_only_a_running_turn_closes_the_queue(redis, ended):
+    if ended:
+        await _start_turn("turn-1")
+        await stream_registry.mark_session_completed(SESSION, turn_id="turn-1")
+    before = await redis.hgetall(META)
+
+    assert await _last_look() == []
+
+    assert await redis.hgetall(META) == before

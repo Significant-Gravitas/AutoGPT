@@ -33,6 +33,7 @@ from backend.copilot.pending_messages import (
     accept_client_message,
     claim_client_message,
     drain_pending_messages,
+    drain_pending_or_close,
     finish_despite_cancellation,
     peek_pending_count,
     pending_message_text,
@@ -458,20 +459,30 @@ async def check_pending_call_rate(user_id: str) -> int:
 
 
 async def drain_pending_safe(
-    session_id: str, log_prefix: str = "", *, drain_backlog: bool = False
+    session_id: str,
+    log_prefix: str = "",
+    *,
+    drain_backlog: bool = False,
+    close_when_empty: bool = False,
 ) -> list[PendingMessage]:
     """Drain the pending buffer and return the full ``PendingMessage`` objects.
 
     Preserves already-popped messages if a later Redis call fails.
     ``drain_backlog`` snapshots the initial length, so new producers cannot
-    extend a turn-start drain. Callers that only need the rendered string
-    (turn-start injection, auto-continue combined prompt) wrap this with
-    :func:`pending_texts_from` — we return the structured objects so the
+    extend a turn-start drain. ``close_when_empty`` is a turn's last look
+    before it ends: finding nothing, it closes the buffer to the turn (see
+    :func:`drain_pending_or_close`). Callers that only need the rendered
+    string (turn-start injection, auto-continue combined prompt) wrap this
+    with :func:`pending_texts_from` — we return the structured objects so the
     re-queue rollback path can preserve ``file_ids`` / ``context`` that
     would otherwise be stripped by a text-only conversion.
     """
     messages: list[PendingMessage] = []
     try:
+        if close_when_empty:
+            return await drain_pending_or_close(
+                session_id, session_meta_key=get_session_meta_key(session_id)
+            )
         if not drain_backlog:
             return await drain_pending_messages(session_id)
         count = await peek_pending_count(session_id)
