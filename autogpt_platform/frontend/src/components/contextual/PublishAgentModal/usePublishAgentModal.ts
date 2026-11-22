@@ -1,3 +1,4 @@
+import type { LiveStoreSubmission } from "@/app/api/__generated__/models/liveStoreSubmission";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { useCallback, useEffect, useState } from "react";
 import { PublishAgentInfoInitialData } from "./components/AgentInfoStep/helpers";
@@ -64,9 +65,8 @@ export function usePublishAgentModal({
   // The selected workflow's live listing, as the last check found it. Kept
   // out of currentState: a parent that hands in a fresh targetState on every
   // render would overwrite it.
-  const [liveSubmission, setLiveSubmission] = useState<StoreSubmission | null>(
-    null,
-  );
+  const [liveSubmission, setLiveSubmission] =
+    useState<LiveStoreSubmission | null>(null);
   const listingCheck = useLiveListingCheck();
 
   const [_, setSelectedAgent] = useState<string | null>(null);
@@ -122,10 +122,14 @@ export function usePublishAgentModal({
   function checkPreSelectedAgent() {
     if (!preSelectedAgentId) return;
     const agentId = preSelectedAgentId;
-    listingCheck.checkPreSelectedAgent(agentId, (live, agent) => {
-      setLiveSubmission(live);
-      setInitialData(buildInitialFormData(agentId, agent, live ?? undefined));
-    });
+    listingCheck.checkPreSelectedAgent(
+      agentId,
+      preSelectedAgentVersion,
+      (live, agent) => {
+        setLiveSubmission(live);
+        setInitialData(buildInitialFormData(agentId, agent, live ?? undefined));
+      },
+    );
   }
 
   function handleClose() {

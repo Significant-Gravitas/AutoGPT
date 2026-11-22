@@ -994,7 +994,7 @@ def test_get_submissions_malformed_request(mocker: pytest_mock.MockFixture):
     mock_db_call.assert_not_called()
 
 
-_LIVE_SUBMISSION = store_model.StoreSubmission(
+_LIVE_SUBMISSION = store_model.LiveStoreSubmission(
     listing_id="listing-1",
     user_id="test-user-id",
     slug="listed-agent",
@@ -1013,6 +1013,7 @@ _LIVE_SUBMISSION = store_model.StoreSubmission(
     submitted_at=FIXED_NOW,
     changes_summary=None,
     status=prisma.enums.SubmissionStatus.APPROVED,
+    recommended_schedule_cron="0 9 * * 1",
 )
 
 
@@ -1022,7 +1023,7 @@ _LIVE_SUBMISSION = store_model.StoreSubmission(
 def test_get_live_submission_reads_the_callers_listing_in_their_org(
     mocker: pytest_mock.MockFixture,
     test_user_id: str,
-    live: store_model.StoreSubmission | None,
+    live: store_model.LiveStoreSubmission | None,
 ) -> None:
     lookup = mocker.patch(
         "backend.api.features.store.live_submission.get_live_submission",
