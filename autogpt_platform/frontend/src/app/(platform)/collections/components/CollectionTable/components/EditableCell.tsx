@@ -5,6 +5,7 @@ import { Link } from "@/components/atoms/Link/Link";
 import { Select } from "@/components/atoms/Select/Select";
 import { Text } from "@/components/atoms/Text/Text";
 import { isKey } from "@/lib/keyboard";
+import { cn } from "@/lib/utils";
 import { useState } from "react";
 import {
   cellText,
@@ -35,8 +36,9 @@ export function EditableCell({
   const value = row.values[column.field];
   const label = `${column.field} of ${rowLabel}`;
   const pending = row.pending?.[column.field];
+  const numeric = column.type === "number";
   return (
-    <div className="flex flex-col gap-1">
+    <div className={cn("flex flex-col gap-1", numeric && "items-end")}>
       <CellValue
         column={column}
         value={value}
@@ -45,14 +47,19 @@ export function EditableCell({
         onSave={onSave}
       />
       {pending !== undefined && pending !== null ? (
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div
+          className={cn(
+            "flex max-w-56 flex-wrap items-center gap-x-1.5",
+            numeric && "justify-end text-right",
+          )}
+        >
           <Text variant="small" tone="secondary">
             {writerName(row.written_by)} has a newer value:{" "}
             {cellText(column, pending)}
           </Text>
           {readOnly ? null : (
             <Button
-              size="small"
+              size="xs"
               variant="ghost"
               aria-label={`Use the newer value for ${label}`}
               onClick={() => onAccept()}
@@ -98,6 +105,7 @@ function CellValue({
         label={label}
         hideLabel
         size="small"
+        wrapperClassName="!mb-0"
         value={typeof value === "string" ? value : ""}
         placeholder="–"
         options={(column.options ?? []).map((o) => ({ value: o, label: o }))}
@@ -123,7 +131,10 @@ function CellValue({
         <button
           type="button"
           aria-label={`Edit ${label}`}
-          className="min-h-6 w-full cursor-text rounded-md text-left hover:bg-surface-muted"
+          className={cn(
+            "min-h-6 w-full cursor-text rounded-md hover:bg-surface-muted",
+            column.type === "number" ? "text-right" : "text-left",
+          )}
           onClick={() => setDraft(editText(value))}
         >
           <Display column={column} text={text} />
@@ -147,6 +158,7 @@ function CellValue({
       label={label}
       hideLabel
       size="small"
+      wrapperClassName="!mb-0"
       autoFocus
       type={inputType(column.type)}
       value={draft}

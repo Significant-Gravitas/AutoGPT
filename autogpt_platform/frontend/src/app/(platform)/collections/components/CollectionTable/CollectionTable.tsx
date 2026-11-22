@@ -50,14 +50,14 @@ export function CollectionTable({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-end gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Input
           id={`search-${collectionID}`}
           label="Search rows"
           hideLabel
           size="small"
           placeholder="Search"
-          wrapperClassName="w-48"
+          wrapperClassName="!mb-0 w-48"
           value={table.search}
           onChange={(e) => table.setSearch(e.target.value)}
         />
@@ -166,7 +166,7 @@ function TableRowView({
         <td
           key={column.field}
           className={cn(
-            "px-4 py-2 align-top",
+            "px-4 py-2 align-middle",
             isNumeric(column) ? "text-right" : "min-w-32",
           )}
         >
@@ -181,7 +181,7 @@ function TableRowView({
         </td>
       ))}
       {readOnly ? null : (
-        <td className="px-2 py-1.5 text-right align-top">
+        <td className="px-2 py-1.5 text-right align-middle">
           <Button
             size="icon-xs"
             variant="ghost"
