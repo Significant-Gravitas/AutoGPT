@@ -113,7 +113,7 @@ export function NewAgentLibraryView() {
         targetState={{
           isOpen: true,
           step: "info",
-          submissionData: { isMarketplaceUpdate: true } as any,
+          submissionData: null,
         }}
         preSelectedAgentId={agent.graph_id}
         preSelectedAgentVersion={agent.graph_version}

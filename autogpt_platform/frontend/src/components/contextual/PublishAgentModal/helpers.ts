@@ -1,23 +1,10 @@
+import type { MyUnpublishedAgent } from "@/app/api/__generated__/models/myUnpublishedAgent";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import type { PublishAgentInfoInitialData } from "./components/AgentInfoStep/helpers";
 
-export function findPublishedSubmission(
-  submissions: StoreSubmission[] | undefined,
-  graphId: string,
-): StoreSubmission | undefined {
-  return (
-    submissions
-      ?.filter(
-        (submission) =>
-          submission.status === SubmissionStatus.APPROVED &&
-          submission.graph_id === graphId,
-      )
-      // The newest approved listing version is the live one; it can point at
-      // an older graph version than an earlier approved listing version.
-      .sort((a, b) => b.listing_version - a.listing_version)[0]
-  );
-}
+export const LISTING_CHECK_FAILED_MESSAGE =
+  "We couldn't check whether this workflow is already in the Marketplace.";
 
 export const emptyModalState = {
   agent_id: "",
@@ -35,11 +22,22 @@ export const emptyModalState = {
   additionalImages: [],
 };
 
-interface AgentFormSource {
+export interface AgentFormSource {
   name: string;
   description: string;
   imageSrc: string;
   recommendedScheduleCron: string | null;
+}
+
+export function toAgentFormSource(
+  agent: MyUnpublishedAgent | undefined,
+): AgentFormSource {
+  return {
+    name: agent?.agent_name ?? "",
+    description: agent?.description || "",
+    imageSrc: agent?.agent_image || "",
+    recommendedScheduleCron: agent?.recommended_schedule_cron || null,
+  };
 }
 
 /**
