@@ -577,13 +577,13 @@ function shapeOf(graph: GraphJSON) {
 }
 
 function workflowShape(graph: GraphJSON, carried: GraphJSON[]) {
-  const keys = new Map(graph.nodes.map((node) => [node.id, stepKey(node)]));
+  const keys = stepKeys(graph.nodes);
   return {
     name: graph.name,
     description: graph.description,
     steps: Object.fromEntries(
       graph.nodes.map((node) => [
-        stepKey(node),
+        keys.get(node.id),
         {
           block_id: node.block_id,
           input_default: comparableInput(node, carried),
@@ -601,6 +601,20 @@ function workflowShape(graph: GraphJSON, carried: GraphJSON[]) {
     required_inputs: [...(graph.input_schema.required ?? [])].sort(),
     outputs: graph.output_schema.properties,
   };
+}
+
+// Each step's key, by node ID. A second step with the same key gets "#2", so
+// a step the round trip added shows up as one the original doesn't have.
+function stepKeys(nodes: StepJSON[]) {
+  const seen = new Map<string, number>();
+  return new Map(
+    nodes.map((node) => {
+      const key = stepKey(node);
+      const count = (seen.get(key) ?? 0) + 1;
+      seen.set(key, count);
+      return [node.id, count === 1 ? key : `${key} #${count}`];
+    }),
+  );
 }
 
 function stepKey(node: StepJSON) {
