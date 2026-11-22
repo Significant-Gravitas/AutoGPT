@@ -1,4 +1,5 @@
 import { Graph } from "@/app/api/__generated__/models/graph";
+import { CREDENTIALS_TYPES } from "./types";
 
 /** Sanitizes a graph object in place so it can "safely" be imported into the system.
  *
@@ -9,17 +10,32 @@ export function sanitizeImportedGraph(graph: Graph): void {
   removeCredentials(graph);
 }
 
-/** Recursively remove (in place) all "credentials" properties from an object */
-function removeCredentials(obj: any): void {
-  if (obj && typeof obj === "object") {
-    if (Array.isArray(obj)) {
-      obj.forEach((item) => removeCredentials(item));
-    } else {
-      delete obj.credentials;
-      Object.values(obj).forEach((value) => removeCredentials(value));
+/** Removes (in place) the credentials the nodes still hold, sub-workflows'
+ * nodes included: each input whose value references a stored credential, which
+ * would block the save or point at someone else's. The file carries no block
+ * schemas, so the value's shape marks these inputs. Anything nested inside an
+ * input is the user's data, even when it is keyed "credentials". */
+function removeCredentials(graph: Graph): void {
+  const nodes = [graph, ...(graph.sub_graphs ?? [])].flatMap(
+    (g) => g.nodes ?? [],
+  );
+  for (const node of nodes) {
+    const inputs = node.input_default ?? {};
+    for (const [name, value] of Object.entries(inputs)) {
+      if (isCredentialsReference(value)) delete inputs[name];
     }
   }
-  return obj;
+}
+
+/** The `{ id, provider, type, title? }` a credentials input stores. */
+function isCredentialsReference(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const { id, provider, type } = value as Record<string, unknown>;
+  return (
+    typeof id === "string" &&
+    typeof provider === "string" &&
+    CREDENTIALS_TYPES.some((credentialsType) => credentialsType === type)
+  );
 }
 
 /** ⚠️ Remove after 2025-10-01 (one year after implementation in
