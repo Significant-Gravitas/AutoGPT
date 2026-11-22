@@ -14,6 +14,8 @@ on:
       - ".github/scripts/test_frontend_build_context.py"
       - ".github/scripts/hosted_journeys_env.py"
       - ".github/scripts/test_hosted_journeys_env.py"
+      - ".github/scripts/test_rabbitmq_healthcheck_contract.py"
+      - ".github/workflows/platform-backend-ci.yml"
       - ".github/actions/generate-prisma-client/**"
       - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/scripts/install-prisma-cli-with-retry.sh"
@@ -32,6 +34,8 @@ on:
       - ".github/scripts/test_frontend_build_context.py"
       - ".github/scripts/hosted_journeys_env.py"
       - ".github/scripts/test_hosted_journeys_env.py"
+      - ".github/scripts/test_rabbitmq_healthcheck_contract.py"
+      - ".github/workflows/platform-backend-ci.yml"
       - ".github/actions/generate-prisma-client/**"
       - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/scripts/install-prisma-cli-with-retry.sh"
@@ -111,6 +115,7 @@ jobs:
             ../../.github/scripts/test_e2e_seed_cache_contract.py \
             ../../.github/scripts/test_frontend_build_context.py \
             ../../.github/scripts/test_hosted_journeys_env.py \
+            ../../.github/scripts/test_rabbitmq_healthcheck_contract.py \
             ../scripted_model/tests \
             --junitxml="$RUNNER_TEMP/fullstack-validator-results/playwright-validator-tests.xml"
 
