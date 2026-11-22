@@ -51,6 +51,7 @@ from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.constants import BUDGET_EXHAUSTED_NOTICE, EMPTY_COMPLETION_NOTICE
 from backend.copilot.context import (
+    get_current_turn_id,
     get_workspace_manager,
     is_unattended_turn,
     set_execution_context,
@@ -2125,8 +2126,17 @@ async def stream_chat_completion_baseline(
     # inserting a new row, because routes.py has already saved the user message
     # before the executor picks up the turn (using insert_pending_before_last +
     # persist_session_safe would add a duplicate row at sequence N+1).
+    # A redelivered turn reruns under the same turn id, possibly here after
+    # an SDK attempt closed the queue at its last look and died, so this
+    # first look reopens it for the turn (#17247).
     async with recover_pending_on_failure(
-        session_id, drain_pending_safe(session_id, "[Baseline]", drain_backlog=True)
+        session_id,
+        drain_pending_safe(
+            session_id,
+            "[Baseline]",
+            drain_backlog=True,
+            open_for_turn=get_current_turn_id(),
+        ),
     ) as drained_at_start_pending:
         drained_at_start_pending, recovered_in_history = partition_pending_by_history(
             session, drained_at_start_pending

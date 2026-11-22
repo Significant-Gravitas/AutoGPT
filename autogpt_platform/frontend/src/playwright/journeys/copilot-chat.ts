@@ -195,12 +195,23 @@ export interface SavedMessage {
 }
 
 export async function savedMessages(page: Page, sessionID: string) {
+  return (await readSession(page, sessionID)).messages;
+}
+
+/** Whether the server is still running a turn in the chat. */
+export async function hasActiveTurn(page: Page, sessionID: string) {
+  return Boolean((await readSession(page, sessionID)).active_stream);
+}
+
+async function readSession(page: Page, sessionID: string) {
   const response = await page.request.get(
     `/api/proxy/api/chat/sessions/${sessionID}`,
   );
   expect(response.ok(), `GET chat session: ${response.status()}`).toBe(true);
-  const body = (await response.json()) as { messages: SavedMessage[] };
-  return body.messages;
+  return (await response.json()) as {
+    messages: SavedMessage[];
+    active_stream?: unknown;
+  };
 }
 
 /** The assistant's text, one entry per saved message that has any. */
