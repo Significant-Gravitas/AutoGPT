@@ -9,9 +9,10 @@ from . import model as store_model
 
 async def get_live_submission(
     user_id: str, graph_id: str, organization_id: str | None = None
-) -> store_model.StoreSubmission | None:
-    """The live version of the caller's listing for ``graph_id``, or None when
-    the graph has no listing of theirs or nothing of it is live.
+) -> store_model.LiveStoreSubmission | None:
+    """The live version of the caller's listing for ``graph_id``, with its
+    recommended schedule, or None when the graph has no listing of theirs or
+    nothing of it is live.
 
     The live version is ``StoreListing.activeVersionId``, read with the
     conditions the ``StoreAgent`` view puts on it. It isn't simply the newest
@@ -35,14 +36,20 @@ async def get_live_submission(
     else:
         where["owningUserId"] = user_id
 
-    listing = await prisma.models.StoreListing.prisma().find_first(where=where)
-    if not listing or not listing.activeVersionId:
+    # The StoreSubmission view has no schedule column, so it comes from the
+    # live version's own row.
+    listing = await prisma.models.StoreListing.prisma().find_first(
+        where=where, include={"ActiveVersion": True}
+    )
+    if not listing or not (active := listing.ActiveVersion):
         return None
 
     live = await prisma.models.StoreSubmission.prisma().find_first(
         where={
-            "listing_version_id": listing.activeVersionId,
+            "listing_version_id": active.id,
             "status": prisma.enums.SubmissionStatus.APPROVED,
         }
     )
-    return store_model.StoreSubmission.from_db(live) if live else None
+    if not live:
+        return None
+    return store_model.LiveStoreSubmission.from_live_version(live, active)

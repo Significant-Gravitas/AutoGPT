@@ -115,6 +115,35 @@ async def test_the_live_submission_is_the_version_the_marketplace_shows(server):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_the_live_submission_carries_the_live_versions_schedule(server):
+    tag = uuid4().hex[:12]
+    owner = await seed_creator(tag, avatar_url="")
+    graph_id = f"graph-{tag}"
+    try:
+        await create_graph(Graph(id=graph_id, name=graph_id, description="test"), owner)
+        listed = await submit(owner, graph_id, schedule="0 9 * * 1")
+        await approve(listed.listing_version_id, owner)
+        # Approval copied the schedule onto the workflow; give the workflow its
+        # own, so only a read of the listing's live version passes.
+        await prisma.models.AgentGraph.prisma().update(
+            where={"graphVersionId": {"id": graph_id, "version": 1}},
+            data={"recommendedScheduleCron": "0 7 * * *"},
+        )
+        update = await submit(owner, graph_id, schedule="0 8 * * *")
+
+        live = await get_live_submission(owner, graph_id)
+        assert live is not None
+        assert live.recommended_schedule_cron == "0 9 * * 1"
+
+        await approve(update.listing_version_id, owner)
+        live = await get_live_submission(owner, graph_id)
+        assert live is not None
+        assert live.recommended_schedule_cron == "0 8 * * *"
+    finally:
+        await clean_up(owner, [graph_id])
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_newer_hidden_sub_agent_version_is_not_the_live_one(server):
     tag = uuid4().hex[:12]
     owner = await seed_creator(tag, avatar_url="")
