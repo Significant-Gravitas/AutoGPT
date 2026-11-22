@@ -227,15 +227,18 @@ def test_dispatch_persists_name_without_duplicate_call_and_flags_late_save(
 
 
 @pytest.mark.asyncio
-async def test_name_wakes_stream_without_cancelling_pending_sdk_read():
+async def test_name_wakes_stream_without_cancelling_pending_sdk_read(monkeypatch):
+    monkeypatch.setattr("backend.copilot.sdk.service._HEARTBEAT_INTERVAL", 60)
     client = AsyncMock()
     display_ready = asyncio.Event()
+    receiving = asyncio.Event()
     release = asyncio.Event()
     cancelled = False
 
     async def receive():
         nonlocal cancelled
         try:
+            receiving.set()
             await release.wait()
             yield "result"
         except asyncio.CancelledError:
@@ -244,11 +247,17 @@ async def test_name_wakes_stream_without_cancelling_pending_sdk_read():
 
     client.receive_response = receive
     stream = _iter_sdk_messages(client, tool_display_wake=display_ready)
-    asyncio.get_running_loop().call_soon(display_ready.set)
+    first_message = asyncio.create_task(anext(stream))
     try:
-        assert await asyncio.wait_for(anext(stream), 1) is None
+        await asyncio.wait_for(receiving.wait(), 5)
+        assert not first_message.done()
+        display_ready.set()
+        assert await asyncio.wait_for(first_message, 5) is None
         assert not cancelled
         release.set()
-        assert await asyncio.wait_for(anext(stream), 1) == "result"
+        assert await asyncio.wait_for(anext(stream), 5) == "result"
     finally:
+        if not first_message.done():
+            first_message.cancel()
+            await asyncio.gather(first_message, return_exceptions=True)
         await stream.aclose()
