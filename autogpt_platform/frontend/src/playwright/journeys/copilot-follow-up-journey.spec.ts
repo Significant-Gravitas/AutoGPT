@@ -80,9 +80,12 @@ test.describe("copilot follow-up journey, as the answer ends", () => {
         await sent;
       });
       const sessionID = await currentSessionID(page);
+      // As long as the answer may take to start: an SDK turn has stalled
+      // 15 s between the model's last message and the end of its stream.
       await expect
         .poll(() => hasActiveTurn(page, sessionID), {
           message: "the answer's turn should end while the follow-up waits",
+          timeout: 60_000,
         })
         .toBe(false);
       const refused = page.waitForResponse((response) =>
