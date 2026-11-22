@@ -232,6 +232,27 @@ function PreScopedPublishDialog() {
   );
 }
 
+// Opened the way the Library opens it: a new targetState on every render.
+function LibraryStylePublishDialog() {
+  const [, setRenders] = useState(0);
+  return (
+    <>
+      <button
+        type="button"
+        data-testid="page-rerenders"
+        onClick={() => setRenders((renders) => renders + 1)}
+      />
+      <PublishAgentModal
+        showTrigger={false}
+        targetState={{ isOpen: true, step: "info", submissionData: null }}
+        onStateChange={() => {}}
+        preSelectedAgentId={LISTED_AGENT.graph_id}
+        preSelectedAgentVersion={LISTED_AGENT.graph_version}
+      />
+    </>
+  );
+}
+
 async function pickAgentAndContinue(agentName: string) {
   fireEvent.click(await screen.findByText(agentName));
   fireEvent.click(screen.getByRole("button", { name: "Continue" }));
@@ -402,6 +423,25 @@ describe("PublishAgentModal opened pre-scoped to a workflow", () => {
     releaseLookup();
 
     await expectUpdateFormFromLiveListing();
+  });
+
+  test("keeps the update form from one lookup while a page re-renders it with a new targetState each time", async () => {
+    installHandlers();
+    const lookups = vi.fn();
+    server.use(
+      getGetV2GetMyLiveSubmissionMockHandler(({ params }) => {
+        lookups(params.graphId);
+        return liveListingOf(String(params.graphId));
+      }),
+    );
+    renderDialog(<LibraryStylePublishDialog />);
+    await expectUpdateFormFromLiveListing();
+
+    fireEvent.click(screen.getByTestId("page-rerenders"));
+    fireEvent.click(screen.getByTestId("page-rerenders"));
+
+    await expectUpdateFormFromLiveListing();
+    expect(lookups).toHaveBeenCalledOnce();
   });
 
   test("shows an error instead of the new-listing form when the lookup fails, and tries again", async () => {

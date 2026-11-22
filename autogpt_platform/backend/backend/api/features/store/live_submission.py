@@ -14,10 +14,9 @@ async def get_live_submission(
     the graph has no listing of theirs or nothing of it is live.
 
     The live version is ``StoreListing.activeVersionId``, read with the
-    conditions the ``StoreAgent`` view puts on it (the ``StoreSubmission`` view
-    already leaves out deleted listings). It isn't simply the newest approved
-    version: a sub-workflow's approved version is hidden, and a rejection moves
-    the listing back to an older one.
+    conditions the ``StoreAgent`` view puts on it. It isn't simply the newest
+    approved version: a sub-workflow's approved version is hidden, and a
+    rejection moves the listing back to an older one.
 
     Ownership follows ``get_store_submissions``: with ``organization_id``
     (membership-verified RequestContext), the org's listings and the caller's
@@ -25,6 +24,7 @@ async def get_live_submission(
     """
     where: prisma.types.StoreListingWhereInput = {
         "agentGraphId": graph_id,
+        "isDeleted": False,
         "hasApprovedVersion": True,
     }
     if organization_id is not None:

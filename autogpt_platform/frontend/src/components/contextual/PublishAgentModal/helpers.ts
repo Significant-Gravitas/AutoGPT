@@ -4,7 +4,7 @@ import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatu
 import type { PublishAgentInfoInitialData } from "./components/AgentInfoStep/helpers";
 
 export const LISTING_CHECK_FAILED_MESSAGE =
-  "We couldn't check whether this workflow is already in the Marketplace. Try again.";
+  "We couldn't check whether this workflow is already in the Marketplace.";
 
 export const emptyModalState = {
   agent_id: "",

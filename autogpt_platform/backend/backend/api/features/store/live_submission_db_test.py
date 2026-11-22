@@ -196,13 +196,12 @@ async def test_only_the_callers_own_or_their_orgs_listing_is_returned(
     tag = uuid4().hex[:12]
     owner = await seed_creator(tag, avatar_url="")
     graph_id = f"graph-{tag}"
-    orgs = {
-        name: await prisma.models.Organization.prisma().create(
-            data={"name": f"{name} {tag}", "slug": f"{name}-{tag}"}
-        )
-        for name in ("listing", "other")
-    }
+    orgs: dict[str, prisma.models.Organization] = {}
     try:
+        for name in ("listing", "other"):
+            orgs[name] = await prisma.models.Organization.prisma().create(
+                data={"name": f"{name} {tag}", "slug": f"{name}-{tag}"}
+            )
         [live_version] = await seed_listing(graph_id, owner, [APPROVED])
         if filed_in_org:
             await prisma.models.StoreListing.prisma().update(
