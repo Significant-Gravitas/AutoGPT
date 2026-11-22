@@ -1,5 +1,6 @@
-import type { MyUnpublishedAgent } from "@/app/api/__generated__/models/myUnpublishedAgent";
-import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
+import type { GraphModel } from "@/app/api/__generated__/models/graphModel";
+import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import type { LiveStoreSubmission } from "@/app/api/__generated__/models/liveStoreSubmission";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import type { PublishAgentInfoInitialData } from "./components/AgentInfoStep/helpers";
 
@@ -29,26 +30,35 @@ export interface AgentFormSource {
   recommendedScheduleCron: string | null;
 }
 
+/**
+ * A new listing's starting values from the workflow itself: the name,
+ * description and schedule of the version being published, and the image of
+ * its Library entry, if it has one.
+ */
 export function toAgentFormSource(
-  agent: MyUnpublishedAgent | undefined,
+  graph: GraphModel,
+  libraryAgent: LibraryAgent | null,
 ): AgentFormSource {
   return {
-    name: agent?.agent_name ?? "",
-    description: agent?.description || "",
-    imageSrc: agent?.agent_image || "",
-    recommendedScheduleCron: agent?.recommended_schedule_cron || null,
+    name: graph.name,
+    description: graph.description,
+    imageSrc: libraryAgent?.image_url || "",
+    recommendedScheduleCron: graph.recommended_schedule_cron || null,
   };
 }
 
 /**
  * The info step's starting values: the live listing's when the workflow
  * already has one (an update), otherwise the workflow's own (a new listing).
+ * An update submits what the form starts with, so it takes nothing from the
+ * workflow: the workflow's image or schedule would replace the listing's
+ * though the creator never touched them.
  * Both ways into the dialog build them here, so they can't drift apart.
  */
 export function buildInitialFormData(
   agentId: string,
   agent: AgentFormSource,
-  submission: StoreSubmission | undefined,
+  submission: LiveStoreSubmission | undefined,
 ): PublishAgentInfoInitialData {
   if (!submission) {
     return {
@@ -61,6 +71,7 @@ export function buildInitialFormData(
       recommendedScheduleCron: agent.recommendedScheduleCron || "",
     };
   }
+  const images = [...new Set(submission.image_urls || [])].filter(Boolean);
   return {
     agent_id: agentId,
     title: submission.name,
@@ -69,13 +80,11 @@ export function buildInitialFormData(
     instructions: submission.instructions || "",
     youtubeLink: submission.video_url || "",
     agentOutputDemo: submission.agent_output_demo_url || "",
-    additionalImages: [...new Set(submission.image_urls || [])].filter(
-      Boolean,
-    ) as string[],
+    additionalImages: images,
     category: submission.categories?.[0] || "",
-    thumbnailSrc: agent.imageSrc,
+    thumbnailSrc: images[0] ?? "",
     slug: submission.slug,
-    recommendedScheduleCron: agent.recommendedScheduleCron || "",
+    recommendedScheduleCron: submission.recommended_schedule_cron || "",
     changesSummary: submission.changes_summary || "",
   };
 }
