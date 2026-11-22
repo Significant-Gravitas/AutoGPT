@@ -484,6 +484,13 @@ def test_lenient_numeric_conversions_unchanged():
     assert convert(None, int) == 0
 
 
+def test_huge_int_to_float_raises_instead_of_returning_zero():
+    # A non-string value that overflows float must surface as an error,
+    # not silently become 0.0.
+    with pytest.raises(ConversionError):
+        convert(10**400, float)
+
+
 def test_union_falls_through_to_str_for_unparsable_string():
     assert convert("abc", int | str) == "abc"
 
