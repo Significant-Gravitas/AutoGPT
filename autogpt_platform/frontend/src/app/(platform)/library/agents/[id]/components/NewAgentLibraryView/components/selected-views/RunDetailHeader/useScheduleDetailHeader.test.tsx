@@ -40,7 +40,7 @@ describe("useScheduleDetailHeader", () => {
     );
 
     const { result } = renderHook(
-      () => useScheduleDetailHeader("graph-xyz", "sched-1", 7),
+      () => useScheduleDetailHeader("graph-xyz", "sched-1"),
       { wrapper },
     );
 
@@ -58,19 +58,9 @@ describe("useScheduleDetailHeader", () => {
     invalidateSpy.mockRestore();
   });
 
-  test("openInBuilderHref includes graph id + version for the builder link", () => {
-    const { result } = renderHook(
-      () => useScheduleDetailHeader("graph-xyz", undefined, 3),
-      { wrapper },
-    );
-    expect(result.current.openInBuilderHref).toBe(
-      "/build?flowID=graph-xyz&flowVersion=3",
-    );
-  });
-
   test("deleteSchedule is a no-op when scheduleId is undefined", () => {
     const { result } = renderHook(
-      () => useScheduleDetailHeader("graph-xyz", undefined, 1),
+      () => useScheduleDetailHeader("graph-xyz", undefined),
       { wrapper },
     );
     // Should not throw and isDeleting should never flip.
