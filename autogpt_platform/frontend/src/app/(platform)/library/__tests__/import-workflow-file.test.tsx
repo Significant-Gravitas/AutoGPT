@@ -8,6 +8,7 @@ import {
   getGetV2ListFavoriteLibraryAgentsMockHandler,
   getGetV2ListLibraryAgentsMockHandler,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
+import type { CreateGraph } from "@/app/api/__generated__/models/createGraph";
 import { server } from "@/mocks/mock-server";
 import {
   render,
@@ -106,6 +107,35 @@ afterEach(() => {
   });
 });
 
+function captureCreatedGraph() {
+  const sent = vi.fn<(body: CreateGraph) => void>();
+  server.use(
+    getPostV1CreateNewGraphMockHandler(async ({ request }) => {
+      sent((await request.json()) as CreateGraph);
+      return { ...getPostV1CreateNewGraphResponseMock(), id: "imported" };
+    }),
+  );
+  return sent;
+}
+
+async function uploadWorkflowFile(text: string) {
+  render(<LibraryPage />);
+
+  await userEvent.click(screen.getAllByTestId("import-button")[0]);
+  const dialog = await screen.findByRole("dialog", { name: "Import" });
+  await userEvent.click(
+    within(dialog).getByRole("tab", { name: "AutoGPT workflow" }),
+  );
+  const fileInput =
+    dialog.querySelector<HTMLInputElement>('input[type="file"]');
+  if (!fileInput) throw new Error("The AutoGPT workflow tab has no file input");
+  await userEvent.upload(
+    fileInput,
+    new File([text], "workflow.json", { type: "application/json" }),
+  );
+  return dialog;
+}
+
 test.each([
   { file: "as exported", text: JSON.stringify(WORKFLOW, null, 2) },
   // Some editors save UTF-8 files with a byte-order mark.
@@ -116,28 +146,8 @@ test.each([
 ])(
   "a workflow file in any language imports as written ($file)",
   async ({ text }) => {
-    const sent = vi.fn();
-    server.use(
-      getPostV1CreateNewGraphMockHandler(async ({ request }) => {
-        sent(await request.json());
-        return { ...getPostV1CreateNewGraphResponseMock(), id: "imported" };
-      }),
-    );
-    render(<LibraryPage />);
-
-    await userEvent.click(screen.getAllByTestId("import-button")[0]);
-    const dialog = await screen.findByRole("dialog", { name: "Import" });
-    await userEvent.click(
-      within(dialog).getByRole("tab", { name: "AutoGPT workflow" }),
-    );
-    const fileInput =
-      dialog.querySelector<HTMLInputElement>('input[type="file"]');
-    if (!fileInput)
-      throw new Error("The AutoGPT workflow tab has no file input");
-    await userEvent.upload(
-      fileInput,
-      new File([text], "workflow.json", { type: "application/json" }),
-    );
+    const sent = captureCreatedGraph();
+    const dialog = await uploadWorkflowFile(text);
 
     // The dialog fills in the name and description from the file it read.
     const name = within(dialog).getByRole("textbox", { name: "Workflow name" });
@@ -168,3 +178,51 @@ test.each([
     );
   },
 );
+
+test('an imported workflow drops the exporter\'s credentials and keeps data keyed "credentials"', async () => {
+  const exporters = (provider: string) => ({
+    id: `exporters-${provider}-key`,
+    provider,
+    type: "api_key",
+  });
+  const file = {
+    name: "Support triage",
+    description: "Answers and fixes support tickets",
+    nodes: [
+      {
+        id: "fix",
+        block_id: "4e34f4a5-9b89-4326-ba77-2dd6750b7194",
+        input_default: {
+          prompt: "Fix the failing test",
+          e2b_credentials: exporters("e2b"),
+          anthropic_credentials: exporters("anthropic"),
+        },
+      },
+      {
+        id: "compose",
+        block_id: "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+        input_default: {
+          format: "Sign in as {{credentials}}",
+          values: { credentials: "the on-call login" },
+        },
+      },
+    ],
+    links: [],
+  };
+  const sent = captureCreatedGraph();
+  const dialog = await uploadWorkflowFile(JSON.stringify(file));
+
+  const name = within(dialog).getByRole("textbox", { name: "Workflow name" });
+  await waitFor(() => expect(name).toHaveProperty("value", file.name));
+  await userEvent.click(within(dialog).getByRole("button", { name: "Upload" }));
+
+  await waitFor(() => expect(sent).toHaveBeenCalledOnce());
+  const imported = sent.mock.calls[0][0].graph.nodes ?? [];
+  expect(imported.map((node) => node.input_default)).toEqual([
+    { prompt: "Fix the failing test" },
+    {
+      format: "Sign in as {{credentials}}",
+      values: { credentials: "the on-call login" },
+    },
+  ]);
+});
