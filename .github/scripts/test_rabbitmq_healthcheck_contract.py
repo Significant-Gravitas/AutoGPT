@@ -52,11 +52,22 @@ def workflow_healthchecks() -> dict[str, str]:
         workflow = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for job_name, job in (workflow.get("jobs") or {}).items():
             for name, service in ((job or {}).get("services") or {}).items():
-                options = shlex.split(str((service or {}).get("options", "")))
-                for flag, value in zip(options, options[1:]):
-                    if flag == "--health-cmd":
-                        key = f"{path.relative_to(REPO_ROOT)}: {job_name}.{name}"
-                        commands[key] = value
+                options = str((service or {}).get("options", ""))
+                for command in health_commands(options):
+                    key = f"{path.relative_to(REPO_ROOT)}: {job_name}.{name}"
+                    commands[key] = command
+    return commands
+
+
+def health_commands(options: str) -> list[str]:
+    """The `--health-cmd` values in `docker create` options, in either form."""
+    tokens = shlex.split(options)
+    commands = []
+    for flag, value in zip(tokens, tokens[1:] + [""]):
+        if flag.startswith("--health-cmd="):
+            flag, value = flag.split("=", 1)
+        if flag == "--health-cmd":
+            commands.append(value)
     return commands
 
 
@@ -78,6 +89,10 @@ class RabbitMQHealthcheckContractTest(unittest.TestCase):
 
     def test_ci_service_healthchecks_leave_the_cookie_to_the_broker(self) -> None:
         self._assert_guarded(workflow_healthchecks())
+
+    def test_health_commands_are_read_in_either_option_form(self) -> None:
+        options = '--health-cmd "a b" --health-interval 30s --health-cmd="c d"'
+        self.assertEqual(health_commands(options), ["a b", "c d"])
 
     def _assert_guarded(self, commands: dict[str, str]) -> None:
         probes = {
