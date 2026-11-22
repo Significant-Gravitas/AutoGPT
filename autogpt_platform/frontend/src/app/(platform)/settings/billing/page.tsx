@@ -31,13 +31,8 @@ import {
   type AbandonedPlan,
 } from "./components/CheckoutAbandonedPrompt/helpers";
 import { SubscriptionTab } from "./components/SubscriptionTab/SubscriptionTab";
+import { billingTabURL, isBillingTab, type BillingTab } from "./helpers";
 import { useTopupCheckoutReturn } from "./useTopupCheckoutReturn";
-
-type BillingTab = "subscription" | "automation-credits";
-
-function isBillingTab(value: string): value is BillingTab {
-  return value === "subscription" || value === "automation-credits";
-}
 
 function resolveInitialTab(searchParams: URLSearchParams): BillingTab {
   const tabParam = searchParams.get("tab");
@@ -47,13 +42,6 @@ function resolveInitialTab(searchParams: URLSearchParams): BillingTab {
   // Subscription default.
   if (searchParams.get("topup")) return "automation-credits";
   return "subscription";
-}
-
-// The address names the open tab, so a reload opens it again.
-function billingTabURL(searchParams: URLSearchParams, tab: BillingTab) {
-  const params = new URLSearchParams(searchParams);
-  params.set("tab", tab);
-  return `/settings/billing?${params}`;
 }
 
 export default function SettingsBillingRoute() {
@@ -88,14 +76,14 @@ function SettingsBillingPage() {
   function handleTabChange(value: string) {
     if (!isBillingTab(value)) return;
     setActiveTab(value);
-    router.replace(billingTabURL(searchParams, value), { scroll: false });
+    router.replace(billingTabURL(value, searchParams), { scroll: false });
   }
 
   useEffect(function setBillingDocumentTitle() {
     document.title = "Billing – AutoGPT Platform";
   }, []);
 
-  useTopupCheckoutReturn(topupStatus);
+  useTopupCheckoutReturn({ topupStatus, activeTab });
 
   useEffect(
     function handleSubscriptionRedirect() {

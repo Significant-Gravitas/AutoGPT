@@ -8,9 +8,11 @@ import {
   getGetV1GetCreditHistoryMockHandler,
   getGetV1GetUserCreditsMockHandler,
 } from "@/app/api/__generated__/endpoints/credits/credits.msw";
+import { getGetV1CheckIfOnboardingIsCompletedMockHandler200 } from "@/app/api/__generated__/endpoints/onboarding/onboarding.msw";
 import { getGetTrialsGetTrialStatusMockHandler200 } from "@/app/api/__generated__/endpoints/trials/trials.msw";
 import type { CreditTransactionItem } from "@/app/api/__generated__/models/creditTransactionItem";
 import { resetClientRequestFailureLog } from "@/app/api/mutators/request-failure-log";
+import { getCurrentUser } from "@/lib/auth/actions";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { server } from "@/mocks/mock-server";
 import {
@@ -24,6 +26,12 @@ import {
 import { trialResponse } from "@/tests/integrations/trial-fixtures";
 
 import SettingsBillingPage from "../page";
+
+// Sign-in's start-up lookup, which a test holds to keep sign-in loading.
+vi.mock("@/lib/auth/actions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/actions")>()),
+  getCurrentUser: vi.fn(),
+}));
 
 // These cover the hosted billing UI, which self-hosted builds hide.
 vi.mock("@/hooks/useIsBillingEnabled", () => ({
@@ -109,6 +117,8 @@ beforeEach(() => {
 afterEach(async () => {
   cleanup();
   await Promise.all(heldFulfilments.splice(0).map((answer) => answer()));
+  useAuthStore.getState().cleanup();
+  vi.mocked(getCurrentUser).mockReset();
   useAuthStore.setState({ user: null });
   address.search = new URLSearchParams();
   resetClientRequestFailureLog();
@@ -162,11 +172,7 @@ describe("returning from a top-up Checkout", () => {
 
   it("keeps the tab someone switches to in the address, so a reload opens it", async () => {
     const platform = mockTopUpReturn();
-    server.use(
-      getGetTrialsGetTrialStatusMockHandler200(
-        trialResponse({ active: false, status: "canceled" }),
-      ),
-    );
+    mockNoTrial();
     const firstVisit = renderBillingPage();
     await waitFor(() => expect(platform.ledger.fulfilCalls).toBe(1));
     await platform.answerFulfil();
@@ -177,6 +183,31 @@ describe("returning from a top-up Checkout", () => {
     firstVisit.unmount();
     renderBillingPage();
     expect(selectedTab()).toBe("Subscription");
+  });
+
+  it("keeps a tab picked while sign-in loads when the return cleans up the address", async () => {
+    const platform = mockTopUpReturn();
+    mockNoTrial();
+    const signIn =
+      Promise.withResolvers<Awaited<ReturnType<typeof getCurrentUser>>>();
+    vi.mocked(getCurrentUser).mockReturnValue(signIn.promise);
+    useAuthStore.setState({
+      user: null,
+      isUserLoading: true,
+      hasLoadedUser: false,
+    });
+    renderBillingPage();
+    await userEvent.click(screen.getByRole("tab", { name: "Subscription" }));
+
+    await act(async () => {
+      signIn.resolve({ user: buyer });
+      await useAuthStore.getState().initializationPromise;
+    });
+    await waitFor(() => expect(platform.ledger.fulfilCalls).toBe(1));
+    await platform.answerFulfil();
+
+    expect(selectedTab()).toBe("Subscription");
+    expect(address.search.toString()).toBe("tab=subscription");
   });
 });
 
@@ -217,9 +248,9 @@ interface Options {
   fulfilFails?: boolean;
 }
 
-// The platform's side of the top-up. The page's fulfil call is held until the
-// test answers it; a successful one credits the purchase, as the platform does
-// once Stripe reports the session paid.
+// The platform's side of the top-up, for a buyer past onboarding. The page's
+// fulfil call is held until the test answers it; a successful one credits the
+// purchase, as the platform does once Stripe reports the session paid.
 function mockTopUpReturn({ fulfilFails = false }: Options = {}) {
   const ledger = { credited: false, balanceReads: 0, fulfilCalls: 0 };
   const release = Promise.withResolvers<void>();
@@ -239,6 +270,7 @@ function mockTopUpReturn({ fulfilFails = false }: Options = {}) {
       next_cursor: null,
     })),
     getGetV1GetAutoTopUpMockHandler({ amount: 0, threshold: 0 }),
+    getGetV1CheckIfOnboardingIsCompletedMockHandler200({ is_completed: true }),
     http.patch("*/api/credits", async () => {
       ledger.fulfilCalls += 1;
       await release.promise;
@@ -263,6 +295,15 @@ function mockTopUpReturn({ fulfilFails = false }: Options = {}) {
       ledger.credited = true;
     },
   };
+}
+
+// Signed in, the Subscription tab reads the trial; this buyer has none.
+function mockNoTrial() {
+  server.use(
+    getGetTrialsGetTrialStatusMockHandler200(
+      trialResponse({ active: false, status: "canceled" }),
+    ),
+  );
 }
 
 // The app keeps query data fresh for a minute (lib/react-query/queryClient.ts),

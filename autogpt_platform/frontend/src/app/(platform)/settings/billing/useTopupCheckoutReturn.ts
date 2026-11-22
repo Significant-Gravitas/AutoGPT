@@ -13,13 +13,18 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { trackCheckoutAbandoned } from "@/services/analytics/monetization-analytics";
 
-// A top-up starts on this tab, and the credits it buys show there.
-const AUTOMATION_CREDITS_URL = "/settings/billing?tab=automation-credits";
+import { billingTabURL, type BillingTab } from "./helpers";
+
 // Stripe's webhook may still credit the purchase after the page's own fulfil
 // call has answered, so the credits are read once more this long after it.
 const LATE_WEBHOOK_MS = 10_000;
 
-export function useTopupCheckoutReturn(topupStatus: string | null) {
+interface Args {
+  topupStatus: string | null;
+  activeTab: BillingTab;
+}
+
+export function useTopupCheckoutReturn({ topupStatus, activeTab }: Args) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const identityKey = useAuthStore((state) => state.user?.id ?? null);
@@ -58,9 +63,11 @@ export function useTopupCheckoutReturn(topupStatus: string | null) {
         });
       }
 
-      router.replace(AUTOMATION_CREDITS_URL);
+      // A return opens Automation Credits, but a tab picked while sign-in was
+      // loading stays, so the address names the tab on screen.
+      router.replace(billingTabURL(activeTab));
     },
-    [topupStatus, fulfillCheckout, identityKey, router],
+    [topupStatus, fulfillCheckout, identityKey, router, activeTab],
   );
 
   useEffect(
