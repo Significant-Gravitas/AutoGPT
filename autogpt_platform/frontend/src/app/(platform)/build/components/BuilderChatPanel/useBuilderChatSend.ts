@@ -6,6 +6,7 @@ import type { ChatStatus } from "ai";
 import { useEffect, useInsertionEffect, useRef } from "react";
 import { isQueueRefusal } from "./helpers";
 import {
+  chatShownUnder,
   noteFailedSetAside,
   noteSetAside,
   returnFailedFollowUp,
@@ -24,7 +25,9 @@ interface Args {
   messages: ChipArgs["messages"];
   setMessages: NonNullable<ChipArgs["setMessages"]>;
   sendMessage: (message: { text: string }) => unknown;
-  /** Where a held follow-up's copy waits (see `useHeldFollowUps`). */
+  /** Where a held follow-up's copy waits (see `useHeldFollowUps`). Omitted,
+   *  it is the session; null keeps copies under their own session, and no
+   *  chat takes them back when it opens. */
   heldKey?: string | null;
   /** The toast's reason when the panel moves to another chat before a held
    *  follow-up went out; null shows none. */
@@ -35,7 +38,7 @@ interface Args {
  * Sends a message, or queues it behind the turn in flight. A follow-up the
  * backend refuses to queue (its turn has already ended) is held, shown as a
  * queued chip, and goes out as a new turn once this panel has finished
- * drawing the previous answer. The memory chat sends this way too.
+ * drawing the previous answer.
  */
 export function useBuilderChatSend({
   sessionId,
@@ -54,11 +57,9 @@ export function useBuilderChatSend({
   const isInFlight = status === "streaming" || status === "submitted";
   const isInFlightRef = useRef(isInFlight);
   const sessionIdRef = useRef(sessionId);
-  const heldKeyRef = useRef(heldKey);
   useInsertionEffect(() => {
     isInFlightRef.current = isInFlight;
     sessionIdRef.current = sessionId;
-    heldKeyRef.current = heldKey;
   });
   const isMountedRef = useRef(true);
   useEffect(() => {
@@ -108,18 +109,14 @@ export function useBuilderChatSend({
   }
 
   /**
-   * The refusal came back after the panel moved on to another chat that
-   * keeps its copies under the same key (the memory chat's next chat about
-   * the same memory). That chat took what was waiting for it when it opened,
-   * so a copy stored now would wait for yet another chat.
+   * The refusal came back after another chat under the same `heldKey` opened,
+   * in this panel or in one mounted since this one went away. That chat took
+   * what was waiting for it when it opened, so a copy stored now would wait
+   * for yet another chat.
    */
   function hasMovedOnUnderSameKey(forSessionId: string) {
-    return (
-      heldKey !== null &&
-      sessionIdRef.current !== null &&
-      sessionIdRef.current !== forSessionId &&
-      heldKeyRef.current === heldKey
-    );
+    const shown = heldKey === null ? undefined : chatShownUnder(heldKey);
+    return shown !== undefined && shown !== forSessionId;
   }
 
   /**

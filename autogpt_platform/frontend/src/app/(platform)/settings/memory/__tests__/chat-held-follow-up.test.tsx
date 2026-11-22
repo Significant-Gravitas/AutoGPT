@@ -301,13 +301,43 @@ describe("Memory chat — a follow-up the queue refuses mid-answer", () => {
     ]);
   });
 
+  it("keeps one refused after you closed the chat, and puts it back in the composer of the next memory chat", async () => {
+    const backend = serveMemoryChat({ holdRefusal: true });
+    renderMemoryPage();
+    const { user, panel } = await sendFollowUpMidAnswer();
+    await waitFor(() => expect(backend.queued).toEqual([FOLLOW_UP]));
+    backend.finishAnswer();
+    // Settled, so a follow-up held for this chat from now on goes out at once.
+    await within(panel).findByText("Reply finished", undefined, {
+      timeout: 10_000,
+    });
+
+    await user.click(
+      within(panel).getByRole("button", { name: "Close memory chat" }),
+    );
+    backend.refuse();
+    // Kept for the next chat: sent into the closed one, it would be gone.
+    await waitFor(() => expect(heldCopies()).toEqual(KEPT));
+    expect(backend.turns.map((turn) => turn.message)).toEqual([SUMMARY_PROMPT]);
+
+    await user.click(screen.getByRole("button", { name: "View my summary" }));
+    const nextChat = await memoryChatPanel();
+    await expectBackInComposer(nextChat);
+    expect(heldCopies()).toEqual([]);
+    await within(nextChat).findByText(FULL_ANSWER);
+    expect(backend.turns).toEqual([
+      { sessionId: FIRST_CHAT, message: SUMMARY_PROMPT },
+      { sessionId: "memory-chat-2", message: SUMMARY_PROMPT },
+    ]);
+  });
+
   it("keeps it for its own memory when you switch to another one first", async () => {
     const backend = serveMemoryChat();
     renderMemoryPage();
     const { user, panel } = await sendFollowUpMidAnswer();
     await expectHeld(panel);
 
-    await selectMemory(/Growth Marketer/);
+    await selectMemory(/Growth Marketer$/);
     await waitFor(() =>
       expect(
         screen.queryByRole("complementary", { name: "Memory chat panel" }),
@@ -323,7 +353,7 @@ describe("Memory chat — a follow-up the queue refuses mid-answer", () => {
     await within(mariasChat).findByText(FULL_ANSWER);
     expect(composer(mariasChat).value).toBe("");
 
-    await selectMemory(/Your account memory/);
+    await selectMemory(/Your account memory — everything you do together$/);
     await user.click(
       await screen.findByRole("button", { name: "View my summary" }),
     );
@@ -363,6 +393,30 @@ describe("Memory chat — a follow-up the queue refuses mid-answer", () => {
 
     await user.click(screen.getByRole("button", { name: "View my summary" }));
     const newChat = await memoryChatPanel();
+    // Open and answered: it has long since taken what was waiting for it.
+    await within(newChat).findByText(FULL_ANSWER);
+    expect(composer(newChat).value).toBe("");
+
+    backend.refuse();
+    await expectBackInComposer(newChat);
+    expect(heldCopies()).toEqual([]);
+
+    backend.finishAnswer();
+    await waitForFirstAnswerToEnd();
+    expect(backend.turns.map((turn) => turn.message)).toEqual([
+      SUMMARY_PROMPT,
+      SUMMARY_PROMPT,
+    ]);
+  });
+
+  it("puts one refused only after you left and opened a new chat about the same memory in that chat's composer", async () => {
+    const backend = serveMemoryChat({ holdRefusal: true });
+    const visit = renderMemoryPage();
+    await sendFollowUpMidAnswer();
+    await waitFor(() => expect(backend.queued).toEqual([FOLLOW_UP]));
+    visit.unmount();
+
+    const newChat = await openMemoryChatAgain();
     // Open and answered: it has long since taken what was waiting for it.
     await within(newChat).findByText(FULL_ANSWER);
     expect(composer(newChat).value).toBe("");

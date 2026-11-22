@@ -91,11 +91,12 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
   });
 
   // A follow-up the queue refuses waits until this panel has finished
-  // drawing the answer. One left behind when the panel moves to another
-  // chat, or the page unmounts, comes back with the next chat of the same
-  // memory, which says why when it does.
+  // drawing the answer. One left behind when the panel closes or moves to
+  // another chat, or the page unmounts, comes back with the next chat of the
+  // same memory, which says why when it does. A closed panel shows no chat,
+  // and opening it again starts a new one, so it sends into none.
   const { onSend, queuedMessages } = useBuilderChatSend({
-    sessionId,
+    sessionId: isOpen ? sessionId : null,
     status,
     isReconnecting,
     isFinishProbing,

@@ -20,16 +20,29 @@ interface Entry extends HeldFollowUp {
   isQueuing: boolean;
 }
 
+/** The session of the chat on screen under each `heldKey`, while one is. */
+const shownUnderKey = new Map<string, string>();
+
 /**
- * Follow-ups the builder chat holds until its stream has settled (see
+ * The chat on screen under `heldKey`, whichever panel shows it: a refusal
+ * that lands after its own panel moved on or unmounted belongs in its
+ * composer.
+ */
+export function chatShownUnder(heldKey: string) {
+  return shownUnderKey.get(heldKey);
+}
+
+/**
+ * Follow-ups a chat panel holds until its stream has settled (see
  * `useBuilderChatSend`), shown as queued chips. Each also waits in
- * sessionStorage, because the panel unmounts when the user leaves the
- * builder and is gone on a reload: one left behind that way goes back to the
- * composer the next time its chat opens.
+ * sessionStorage, because the panel unmounts when the user leaves the page
+ * and is gone on a reload: one left behind that way goes back to the
+ * composer the next time a chat under its `heldKey` opens.
  *
- * A copy waits under its session unless `heldKey` names another key: the
- * memory chat starts a new session on every open, so its copies wait for the
- * next chat of the same memory instead.
+ * `heldKey` defaults to the session. A caller that starts a new session on
+ * every open passes a key its chats share instead, so a copy goes back to
+ * the next chat opened under it. An explicit null keeps copies under their
+ * own session, and no chat takes them back when it opens.
  */
 export function useHeldFollowUps(
   sessionId: string | null,
@@ -40,9 +53,14 @@ export function useHeldFollowUps(
 
   useEffect(() => {
     if (!sessionId || !heldKey) return;
+    shownUnderKey.set(heldKey, sessionId);
     const leftBehind = takeHeldFollowUps(heldKey);
-    if (leftBehind.length === 0) return;
-    returnLeftBehind(leftBehind.join("\n\n"));
+    if (leftBehind.length > 0) returnLeftBehind(leftBehind.join("\n\n"));
+    return () => {
+      if (shownUnderKey.get(heldKey) === sessionId) {
+        shownUnderKey.delete(heldKey);
+      }
+    };
   }, [sessionId, heldKey]);
 
   function hold(forSessionId: string, text: string) {
