@@ -251,6 +251,9 @@ export async function orderBy(
     const created =
       time(a.entry.created_at)! - time(b.entry.created_at)! ||
       a.entry.id.localeCompare(b.entry.id);
+    // The API's updated_at is the later of the graph's and the entry's
+    // times; the list sorts by the entry's alone. They agree while the
+    // entry's is the later one, as it is for workflows made like these.
     const updated = time(b.entry.updated_at)! - time(a.entry.updated_at)!;
     if (sort === "Creation Date") return created;
     if (sort === "Last Modified") return updated;
@@ -553,10 +556,12 @@ export async function search(page: Page, term: string) {
   await asked;
 }
 
-/** Clears the search; the unsearched list may come from the cache. */
-export async function clearSearch(page: Page) {
+/** Clears the search and waits for something only the unsearched list
+ * shows: that list may come from the cache, with no request to wait on. */
+export async function clearSearch(page: Page, unsearched: Locator) {
   await searchBox(page).fill("");
   await expect(searchBox(page)).toHaveValue("");
+  await expect(unsearched).toBeVisible();
 }
 
 export function sortMenu(page: Page) {

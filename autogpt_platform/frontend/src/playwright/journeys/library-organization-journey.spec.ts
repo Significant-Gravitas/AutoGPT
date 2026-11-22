@@ -69,6 +69,7 @@ test.describe("Library organization journey", () => {
       "0 workflows",
     );
 
+    const allTabBefore = await allTab(page).innerText();
     await moveInDialog(page, alpha, folder);
     await moveInDialog(page, beta, folder);
     await expect(
@@ -85,6 +86,11 @@ test.describe("Library organization journey", () => {
       (await readFolders(page)).find((listed) => listed.id === folder.id)
         ?.agent_count,
     ).toBe(2);
+    // Recorded, not asserted: give the count a moment to follow the moves.
+    await expect
+      .poll(() => allTab(page).innerText(), { timeout: 5_000 })
+      .not.toBe(allTabBefore)
+      .catch(() => {});
     observe(
       testInfo,
       `with 2 of 3 workflows in a folder, the All tab reads ` +
@@ -243,6 +249,7 @@ test.describe("Library organization journey", () => {
       "favoriting should leave the workflow in its folder",
     ).toMatchObject({ is_favorite: false, folder_id: folder.id });
     await allTab(page).click();
+    await expect(allTab(page)).toHaveAttribute("aria-selected", "true");
 
     await search(page, beta.name);
     await expectListed(
@@ -253,9 +260,13 @@ test.describe("Library organization journey", () => {
     );
     await expect(page.getByTestId("library-agent-card")).toHaveCount(1);
     await expect(folderCard(page, folder.id)).toHaveCount(0);
-    await clearSearch(page);
+    await clearSearch(page, folderCard(page, folder.id));
     await openFolder(page, folder);
     await search(page, delta.name);
+    await expect(
+      page.locator('[data-slot="loading-spinner"]'),
+      "the search inside the folder should finish loading",
+    ).toHaveCount(0);
     // Neither of the folder's workflows matches, whatever the search spans.
     await expectListed(page, [beta, gamma], [], "the search inside the folder");
     observe(
@@ -263,7 +274,7 @@ test.describe("Library organization journey", () => {
       `inside the folder, a search for a workflow outside it lists: ` +
         `${JSON.stringify(await listedWorkflows(page, workflows))}`,
     );
-    await clearSearch(page);
+    await clearSearch(page, workflowCard(page, beta));
     await backToLibrary(page);
 
     // Every workflow of this test, wherever it is filed, in each sort.
