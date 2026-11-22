@@ -85,6 +85,8 @@ if TYPE_CHECKING:
 
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
+if settings.config.stripe_api_base:
+    stripe.api_base = settings.config.stripe_api_base
 logger = logging.getLogger(__name__)
 base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 

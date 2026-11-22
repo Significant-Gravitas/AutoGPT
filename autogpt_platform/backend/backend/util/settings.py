@@ -1112,6 +1112,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ),
     )
 
+    stripe_api_base: str = Field(
+        default="",
+        description=(
+            "Where the Stripe SDK sends API requests, e.g. a fake Stripe in a "
+            "test stack. Blank keeps Stripe's own (https://api.stripe.com)."
+        ),
+    )
+
     stripe_tier_reconcile_interval_hours: int = Field(
         default=6,
         ge=1,
