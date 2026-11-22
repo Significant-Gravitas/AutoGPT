@@ -298,123 +298,128 @@ test.describe("credentials journey: removing a key in use", () => {
     test.setTimeout(120_000);
     const stamp = uniqueStamp();
     const credential = await createAPIKey(page, `Journey key ${stamp}`);
-    const workflow = await createWorkflow(
-      page,
-      createUniqueAgentName("Journey scraping"),
-      credential,
-    );
-    const firstRunID = await startedRunID(
-      await startRun(
-        page,
-        workflow,
-        `First ${stamp}`,
-        credentialRef(credential),
-      ),
-    );
-    expect((await waitForRunToEnd(page, workflow, firstRunID)).status).toBe(
-      "COMPLETED",
-    );
-    const template = await createTemplate(
-      page,
-      firstRunID,
-      `Template ${stamp}`,
-    );
-    // Far off, so it never fires during the test.
-    const schedule = await createSchedule(page, workflow, {
-      name: `Schedule ${stamp}`,
-      cron: "0 3 29 2 *",
-      credential: credentialRef(credential),
-    });
-
+    // The test removes the key itself; this covers a failure before then.
     try {
-      await openIntegrations(page);
-      const service = credential.service_name ?? PROVIDER_NAME;
-      await expectListedInIntegrations(page, credential, service);
-      const { warning, answer } = await removeKeyInIntegrations(
+      const workflow = await createWorkflow(
         page,
-        credential.title,
+        createUniqueAgentName("Journey scraping"),
+        credential,
       );
-      observe(
-        testInfo,
-        `removing a key a workflow, a template and a schedule use, the ` +
-          `dialog says: "${warning}"; the server answered ${JSON.stringify(answer)}`,
-      );
-      expect(warning).toContain(
-        "Experts and workflows using this credential will lose access immediately.",
-      );
-      await expect(keyCheckbox(page, credential.title)).toHaveCount(0);
-      expect(
-        (await listCredentials(page)).credentials.map((saved) => saved.id),
-      ).not.toContain(credential.id);
-      observe(
-        testInfo,
-        `after the key was removed, the workflow's schedules are: ` +
-          JSON.stringify(
-            (await listSchedules(page, workflow)).map((listed) => ({
-              id: listed.id,
-              key: listed.input_credentials?.[workflow.credentialsInput]?.id,
-            })),
-          ),
-      );
-
-      // The run dialog: nothing to pick, so the task can't start.
-      await page.goto(`/library/agents/${workflow.libraryAgentID}`);
-      await waitForAgentPageLoad(page);
-      await page.getByRole("button", { name: "New workflow task" }).click();
-      const dialog = runDialog(page);
-      await dialog.getByTestId("agent-input-note").fill(`After ${stamp}`);
-      await expect(
-        dialog.getByRole("button", { name: "Add API key" }),
-        "the run dialog should offer to add a key",
-      ).toBeVisible();
-      await expect(
-        dialog.getByText(credential.title, { exact: true }),
-      ).toHaveCount(0);
-      await expect(
-        dialog.getByRole("button", { name: "Start Task", exact: true }),
-        "a task needing a key can't start without one",
-      ).toBeDisabled();
-      await page.keyboard.press("Escape");
-      await expect(dialog).toBeHidden();
-
-      // The template: it names the key that was removed.
-      await openTemplate(page, workflow, template.id);
-      await expect(
-        page.getByText(
-          `${credential.title} was removed. Choose a connection to keep this workflow running.`,
+      const firstRunID = await startedRunID(
+        await startRun(
+          page,
+          workflow,
+          `First ${stamp}`,
+          credentialRef(credential),
         ),
-        "the template should say its key was removed",
-      ).toBeVisible();
-      const startFromTemplate = page.waitForResponse(
-        isTemplateStart(template.id),
       );
-      await page
-        .getByRole("button", { name: "Start task from template" })
-        .click();
-      const refused = await startFromTemplate;
-      observe(
-        testInfo,
-        `starting the template anyway answers ${refused.status()}: ` +
-          (await refused.text()).slice(0, 300),
+      expect((await waitForRunToEnd(page, workflow, firstRunID)).status).toBe(
+        "COMPLETED",
       );
-      expect(refused.status()).toBe(400);
-      // The toast dismisses itself after 5 s, so only its showing is checked;
-      // the refusal's text is recorded above, from the response.
-      await expect(page.getByText("Failed to start task")).toBeVisible();
-      expect(await listRunIDs(page, workflow)).toEqual([firstRunID]);
+      const template = await createTemplate(
+        page,
+        firstRunID,
+        `Template ${stamp}`,
+      );
+      // Far off, so it never fires during the test.
+      const schedule = await createSchedule(page, workflow, {
+        name: `Schedule ${stamp}`,
+        cron: "0 3 29 2 *",
+        credential: credentialRef(credential),
+      });
 
-      // The builder: the step names the key that was removed.
-      const scrape = await readScrapeStep(page, workflow);
-      await page.goto(`/build?flowID=${workflow.graphID}`);
-      await new BuildPage(page).closeTutorial();
-      const step = page.locator(`[data-id="custom-node-${scrape.nodeID}"]`);
-      await expect(step).toBeVisible({ timeout: 20_000 });
-      await expect(
-        step.getByText(`${credential.title} was removed.`, { exact: false }),
-        "the builder should say the step's key was removed",
-      ).toBeVisible();
+      try {
+        await openIntegrations(page);
+        const service = credential.service_name ?? PROVIDER_NAME;
+        await expectListedInIntegrations(page, credential, service);
+        const { warning, answer } = await removeKeyInIntegrations(
+          page,
+          credential.title,
+        );
+        observe(
+          testInfo,
+          `removing a key a workflow, a template and a schedule use, the ` +
+            `dialog says: "${warning}"; the server answered ${JSON.stringify(answer)}`,
+        );
+        expect(warning).toContain(
+          "Experts and workflows using this credential will lose access immediately.",
+        );
+        await expect(keyCheckbox(page, credential.title)).toHaveCount(0);
+        expect(
+          (await listCredentials(page)).credentials.map((saved) => saved.id),
+        ).not.toContain(credential.id);
+        observe(
+          testInfo,
+          `after the key was removed, the workflow's schedules are: ` +
+            JSON.stringify(
+              (await listSchedules(page, workflow)).map((listed) => ({
+                id: listed.id,
+                key: listed.input_credentials?.[workflow.credentialsInput]?.id,
+              })),
+            ),
+        );
+
+        // The run dialog: nothing to pick, so the task can't start.
+        await page.goto(`/library/agents/${workflow.libraryAgentID}`);
+        await waitForAgentPageLoad(page);
+        await page.getByRole("button", { name: "New workflow task" }).click();
+        const dialog = runDialog(page);
+        await dialog.getByTestId("agent-input-note").fill(`After ${stamp}`);
+        await expect(
+          dialog.getByRole("button", { name: "Add API key" }),
+          "the run dialog should offer to add a key",
+        ).toBeVisible();
+        await expect(
+          dialog.getByText(credential.title, { exact: true }),
+        ).toHaveCount(0);
+        await expect(
+          dialog.getByRole("button", { name: "Start Task", exact: true }),
+          "a task needing a key can't start without one",
+        ).toBeDisabled();
+        await page.keyboard.press("Escape");
+        await expect(dialog).toBeHidden();
+
+        // The template: it names the key that was removed.
+        await openTemplate(page, workflow, template.id);
+        await expect(
+          page.getByText(
+            `${credential.title} was removed. Choose a connection to keep this workflow running.`,
+          ),
+          "the template should say its key was removed",
+        ).toBeVisible();
+        const startFromTemplate = page.waitForResponse(
+          isTemplateStart(template.id),
+        );
+        await page
+          .getByRole("button", { name: "Start task from template" })
+          .click();
+        const refused = await startFromTemplate;
+        observe(
+          testInfo,
+          `starting the template anyway answers ${refused.status()}: ` +
+            (await refused.text()).slice(0, 300),
+        );
+        expect(refused.status()).toBe(400);
+        // The toast dismisses itself after 5 s, so only its showing is checked;
+        // the refusal's text is recorded above, from the response.
+        await expect(page.getByText("Failed to start task")).toBeVisible();
+        expect(await listRunIDs(page, workflow)).toEqual([firstRunID]);
+
+        // The builder: the step names the key that was removed.
+        const scrape = await readScrapeStep(page, workflow);
+        await page.goto(`/build?flowID=${workflow.graphID}`);
+        await new BuildPage(page).closeTutorial();
+        const step = page.locator(`[data-id="custom-node-${scrape.nodeID}"]`);
+        await expect(step).toBeVisible({ timeout: 20_000 });
+        await expect(
+          step.getByText(`${credential.title} was removed.`, { exact: false }),
+          "the builder should say the step's key was removed",
+        ).toBeVisible();
+      } finally {
+        await deleteSchedule(page, schedule.id);
+      }
     } finally {
-      await deleteSchedule(page, schedule.id);
+      await deleteCredential(page, credential);
     }
   });
 });

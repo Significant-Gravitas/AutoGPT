@@ -430,9 +430,14 @@ export async function addKeyInIntegrations(
   // row that's being replaced; click until the key form opens.
   const nameField = dialog.getByRole("textbox", { name: "Name", exact: true });
   await expect(async () => {
-    await dialog
-      .getByRole("button", { name: new RegExp(PROVIDER_NAME) })
-      .click({ timeout: 2_000 });
+    // Once the form has opened the service list is gone, so a retry only
+    // waits for the form.
+    const serviceButton = dialog.getByRole("button", {
+      name: new RegExp(PROVIDER_NAME),
+    });
+    if (await serviceButton.isVisible()) {
+      await serviceButton.click({ timeout: 2_000 });
+    }
     await expect(nameField).toBeVisible({ timeout: 2_000 });
   }).toPass();
   await nameField.fill(key.title);
