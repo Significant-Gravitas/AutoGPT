@@ -70,6 +70,9 @@ const COPILOT_USAGE_RESPONSE = {
 
 const INVOICES_RESPONSE: never[] = [];
 
+// Where a top-up return leaves the address: the tab it started on.
+const AUTOMATION_CREDITS_URL = "/settings/billing?tab=automation-credits";
+
 function jsonHandler(method: "get" | "post", path: string, body: JsonBodyType) {
   return http[method](`*${path}`, () => HttpResponse.json(body));
 }
@@ -133,7 +136,7 @@ describe("Settings billing page (integration)", () => {
     expect(screen.getByRole("button", { name: /add credits/i })).toBeDefined();
   });
 
-  it("clears the ?topup=success query and shows a success toast after a Stripe redirect", async () => {
+  it("clears the ?topup=success query but keeps the Automation Credits tab after a Stripe redirect", async () => {
     useDefaultBillingHandlers();
     server.use(
       http.patch("*/api/credits/fulfill_checkout", () =>
@@ -146,11 +149,11 @@ describe("Settings billing page (integration)", () => {
     render(<SettingsBillingPage />);
 
     await waitFor(() =>
-      expect(mockRouterReplace).toHaveBeenCalledWith("/settings/billing"),
+      expect(mockRouterReplace).toHaveBeenCalledWith(AUTOMATION_CREDITS_URL),
     );
   });
 
-  it("clears the ?topup=cancel query without firing fulfillCheckout", async () => {
+  it("clears the ?topup=cancel query, keeping the tab, without firing fulfillCheckout", async () => {
     useDefaultBillingHandlers();
     let fulfillCalled = false;
     server.use(
@@ -164,7 +167,7 @@ describe("Settings billing page (integration)", () => {
     render(<SettingsBillingPage />);
 
     await waitFor(() =>
-      expect(mockRouterReplace).toHaveBeenCalledWith("/settings/billing"),
+      expect(mockRouterReplace).toHaveBeenCalledWith(AUTOMATION_CREDITS_URL),
     );
     // Cancel branch must NOT fulfill — webhook is the source of truth and
     // the user explicitly aborted the checkout.
@@ -181,12 +184,12 @@ describe("Settings billing page (integration)", () => {
       }),
     );
     mockSearchParams.current = new URLSearchParams({ topup: "success" });
-    // The redirect handler clears the query string as its last step, so its
+    // The redirect handler replaces the query string as its last step, so its
     // calls show whether it ran. (Onboarding may also replace the route once
     // someone signs in, so only these count.)
     function topupRedirectsHandled() {
       return mockRouterReplace.mock.calls.filter(
-        ([path]) => path === "/settings/billing",
+        ([path]) => path === AUTOMATION_CREDITS_URL,
       ).length;
     }
 
