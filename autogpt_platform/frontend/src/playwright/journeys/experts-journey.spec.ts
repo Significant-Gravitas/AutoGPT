@@ -24,6 +24,7 @@ import {
   onboardingCard,
   pendingOnboarding,
   pickOption,
+  type Schedule,
   scheduledExpert,
   scheduledWorkflow,
   scheduleStates,
@@ -76,11 +77,23 @@ const RUNNING_SCHEDULE = "Kept running";
 const ONBOARDING_TEST_TIMEOUT = 180_000;
 // One chat of three model requests, two hires and a schedule dialog.
 const REHIRE_TEST_TIMEOUT = 150_000;
-// Two hires' background setup and some navigation, no model turns.
-const SETUP_TEST_TIMEOUT = 120_000;
+// Three waits on background setup (up to a minute each) and some navigation,
+// no model turns.
+const SETUP_TEST_TIMEOUT = 210_000;
+
+// Held replies a test started but didn't get to release: each release lets
+// one held reply through, so only a failed test's are released after it,
+// and the scripted model isn't left holding a turn open.
+const unreleased = new Set<string>();
 
 test.describe("experts journey", () => {
   test.beforeAll(requireScriptedModel);
+  test.afterEach(async () => {
+    for (const nonce of unreleased) {
+      await releaseHeldReply(nonce).catch(() => undefined);
+    }
+    unreleased.clear();
+  });
 
   test("an expert found by its job title is hired, and its kickoff card is answered mid-turn and from Team", async ({
     page,
@@ -137,6 +150,7 @@ test.describe("experts journey", () => {
     });
 
     const kickoff = scriptedRun("expert-kickoff");
+    unreleased.add(kickoff.nonce);
     let hiredID = "";
     await test.step("signed in, its page offers Hire, and hiring opens its first chat", async () => {
       const hire = page.getByRole("button", {
@@ -206,6 +220,7 @@ test.describe("experts journey", () => {
 
     await test.step("once the turn ends, the card still waits on question 2", async () => {
       await releaseHeldReply(kickoff.nonce);
+      unreleased.delete(kickoff.nonce);
       await expect(transcript.getByText(HELD_TEXT)).toBeVisible();
       await expect(
         page.getByText("Reply finished", { exact: true }),
@@ -343,15 +358,16 @@ test.describe("experts journey", () => {
     });
 
     const setup = page.getByRole("region", { name: "Setup needed" });
+    // The expert's own row: its teammate may need the same service.
+    const forExpert = new RegExp(` for ${escapeRegExp(expert.name)}$`);
     const row = setup
       .getByRole("article")
-      .filter({ has: page.getByRole("img", { name: provider, exact: true }) });
+      .filter({ has: page.getByRole("img", { name: provider, exact: true }) })
+      .filter({ has: page.getByText(forExpert) });
     let service = "";
     await test.step("Setup needed connects the service, and the expert's item clears", async () => {
       await expect(row).toHaveCount(1);
-      const title = await row
-        .getByText(new RegExp(` for ${escapeRegExp(expert.name)}$`))
-        .textContent();
+      const title = await row.getByText(forExpert).textContent();
       service = (title ?? "").replace(` for ${expert.name}`, "");
       await row.getByRole("button", { name: "Connect", exact: true }).click();
       const dialog = page.getByRole("dialog");
@@ -453,6 +469,7 @@ test.describe("experts journey", () => {
       );
       const installed = await installOnExpert(page, expert.id, own);
       const workflowIDs = [...before.workflows.map((w) => w.id), installed.id];
+      const scheduleIDs: string[] = [];
 
       try {
         await test.step("the expert's page schedules a workflow only once its input is given", async () => {
@@ -491,9 +508,13 @@ test.describe("experts journey", () => {
           await scheduleDialog
             .getByRole("button", { name: "Schedule", exact: true })
             .click();
-          expect((await created).ok(), "creating the schedule").toBe(true);
+          const response = await created;
+          expect(response.ok(), "creating the schedule").toBe(true);
+          scheduleIDs.push(((await response.json()) as Schedule).id);
           await expect(scheduleDialog).toBeHidden();
-          await scheduleThroughAPI(page, own, PAUSED_SCHEDULE);
+          scheduleIDs.push(
+            (await scheduleThroughAPI(page, own, PAUSED_SCHEDULE)).id,
+          );
           const schedules = await listSchedules(page, own.graphID);
           expect(
             schedules
@@ -625,7 +646,7 @@ test.describe("experts journey", () => {
           ).toBe("paused");
         });
       } finally {
-        await deleteSchedules(page, own.graphID);
+        await deleteSchedules(page, own.graphID, scheduleIDs);
       }
     },
   );
@@ -658,6 +679,7 @@ async function openIntegrations(page: Page, expertName: string) {
   await page
     .getByRole("link", { name: `View ${expertName}`, exact: true })
     .click();
+  await page.waitForURL(/\/team\/[^/?]+/);
   await page.getByRole("tab", { name: "Integrations" }).click();
 }
 

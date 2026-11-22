@@ -246,7 +246,7 @@ export async function scheduleThroughAPI(
     {
       data: {
         name,
-        cron: WEEKLY,
+        cron: LEAP_DAY,
         inputs: { [workflow.input]: `Scheduled ${name}` },
         credentials: {},
         timezone: "UTC",
@@ -260,8 +260,9 @@ export async function scheduleThroughAPI(
   return (await response.json()) as Schedule;
 }
 
-// Mondays at 09:00: nothing fires while the journey runs, unless it runs then.
-export const WEEKLY = "0 9 * * 1";
+// Midnight on 29 February: a real cadence that won't fire while a journey
+// runs (the next one is in 2028).
+export const LEAP_DAY = "0 0 29 2 *";
 
 export async function listSchedules(page: Page, graphID: string) {
   return getJSON<Schedule[]>(
@@ -280,16 +281,24 @@ export async function scheduleStates(page: Page, graphID: string) {
     .sort(([a], [b]) => a.localeCompare(b));
 }
 
-/** A schedule left behind fires into the next journey's stack. */
-export async function deleteSchedules(page: Page, graphID: string) {
-  for (const schedule of await listSchedules(page, graphID).catch(() => [])) {
+/** A schedule left behind fires into the next journey's stack. Pass the ids
+ *  the test made as well: an archived expert's schedules drop out of the
+ *  list, so a test that failed before re-hiring would leave them. */
+export async function deleteSchedules(
+  page: Page,
+  graphID: string,
+  madeIDs: string[] = [],
+) {
+  const listed = await listSchedules(page, graphID).catch(() => []);
+  const ids = new Set([...madeIDs, ...listed.map((schedule) => schedule.id)]);
+  for (const id of ids) {
     const response = await page.request.delete(
-      `/api/proxy/api/schedules/${schedule.id}`,
+      `/api/proxy/api/schedules/${id}`,
     );
     expect
       .soft(
         response.ok() || response.status() === 404,
-        `deleting schedule ${schedule.id}: ${response.status()}`,
+        `deleting schedule ${id}: ${response.status()}`,
       )
       .toBe(true);
   }

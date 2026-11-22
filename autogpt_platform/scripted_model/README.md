@@ -65,6 +65,10 @@ script to know what to expect.
   one, the marker is looked for in the system prompt, so a journey puts it in
   text the user sets that the system prompt carries: an expert's writing
   sample (`<voice_preferences>`). A marker in a user message still wins.
+  The sample stays in that expert's system prompt, so every later request
+  of that hire with no marker of its own goes to the same script, a turn the
+  platform starts later included. Give such a turn its own marker in a user
+  message, or expect it to run past the script's end.
 - **Which turn answers a request:** turn `n` answers the request whose
   conversation already holds `n` assistant messages. Requests carry the whole
   conversation, so the server keeps no state: concurrent runs of one script,
