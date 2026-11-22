@@ -219,6 +219,20 @@ def test_the_fake_refuses_what_stripe_would(stack: Stack) -> None:
         # A call the fake doesn't model fails as Stripe fails an unknown URL.
         with pytest.raises(stripe.InvalidRequestError, match="Unrecognized"):
             await stripe.Refund.create_async(payment_intent="pi_missing")
+        # Stripe keeps no result for a request refused for its parameters,
+        # so a corrected retry with the same idempotency key goes through.
+        item = {"price_data": {"currency": "usd", "unit_amount": 500}}
+        with pytest.raises(stripe.InvalidRequestError, match="success_url"):
+            await stripe.checkout.Session.create_async(
+                mode="payment", line_items=[item], idempotency_key="checkout-1"
+            )
+        session = await stripe.checkout.Session.create_async(
+            mode="payment",
+            line_items=[item],
+            success_url=f"{APP}/billing",
+            idempotency_key="checkout-1",
+        )
+        assert session.status == "open"
 
     asyncio.run(_with_closed_client(refused()))
     unserved = stack.control("GET", "requests?unserved=true")["requests"]

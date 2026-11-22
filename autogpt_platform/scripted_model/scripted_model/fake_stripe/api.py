@@ -125,7 +125,9 @@ class StripeApi:
             seen = self._replies.get(key)
             if seen is None:
                 status, body = self._run(match, params, handler)
-                if status < 500:
+                # Stripe keeps no result for a request it refused for its
+                # parameters, and the fake's only errors are such refusals.
+                if status < 400:
                     self._replies[key] = (fingerprint, status, body)
                 return status, body
         if seen[0] != fingerprint:
