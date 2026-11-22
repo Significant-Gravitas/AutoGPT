@@ -132,12 +132,14 @@ class GetSubSessionResultTool(BaseTool):
         session: ChatSession,
         *,
         sub_session_id: str = "",
+        sub_autopilot_session_id: str = "",
         wait_if_running: int = 60,
         cancel: bool = False,
         include_progress: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
-        inner_session_id = sub_session_id.strip()
+        # The description accepts the name run_sub_session returns the id under.
+        inner_session_id = (sub_session_id or sub_autopilot_session_id).strip()
         if not inner_session_id:
             return ErrorResponse(
                 message="sub_session_id is required",

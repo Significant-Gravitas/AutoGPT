@@ -809,6 +809,44 @@ class TestGetSubSessionResult:
         mock_waiter.result_mock.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_the_sub_can_be_named_the_way_run_sub_session_returns_it(
+        self, monkeypatch, mock_waiter
+    ):
+        """#17260: run_sub_session hands the id back as sub_autopilot_session_id,
+        and the description says that name works here too, so a model copying
+        it into the poll must reach the sub rather than get 'required'."""
+        sub = MagicMock(user_id="alice", expert_id=None, messages=[])
+        sub.metadata.delegated_by_session_id = None
+        looked_up: list[str] = []
+
+        async def fake_get(sid):
+            looked_up.append(sid)
+            return sub
+
+        async def no_active_session(_sid):
+            return None
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            fake_get,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            no_active_session,
+        )
+
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            sub_autopilot_session_id=" inner-7 ",
+            wait_if_running=30,
+        )
+
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.sub_session_id == "inner-7"
+        assert looked_up == ["inner-7"]
+
+    @pytest.mark.asyncio
     async def test_progress_reads_an_old_sub_without_its_stored_memory_block(
         self, monkeypatch, mock_waiter
     ):
