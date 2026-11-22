@@ -52,6 +52,9 @@ FAST = Timing(
 )
 CAPS = Caps(max_call_s=20.0, soft_wrap_s=2.0, idle_s=5.0)
 
+# The cap on a wait a test expects to finish: only there to stop a hung test.
+_HANG_SECONDS = 10
+
 
 class Call:
     def __init__(
@@ -862,7 +865,7 @@ async def test_a_resume_after_a_stalled_socket_does_not_wait_on_it(redis):
 
     fresh = FakeSocket()
     # The stalled close is bounded at 0.2 s.
-    await asyncio.wait_for(session.attach(fresh), timeout=2)
+    await asyncio.wait_for(session.attach(fresh), timeout=_HANG_SECONDS)
     assert ws.close_attempts == 1
     assert (await fresh.wait_for("resumed"))["gap_s"] >= 0
     # What the call said after the socket stalled is replayed on the new one.

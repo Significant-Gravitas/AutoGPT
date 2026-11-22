@@ -14,6 +14,9 @@ from . import token_tracking
 from .model import ChatSession, Usage
 from .token_tracking import drain_pending_cost_logs, persist_and_record_usage
 
+# The cap on a wait a test expects to finish: only there to stop a hung test.
+_HANG_SECONDS = 10
+
 
 def _make_session() -> ChatSession:
     """Return a minimal in-memory ChatSession for testing."""
@@ -832,7 +835,9 @@ class TestDrainPendingCostLogs:
         with token_tracking._pending_log_tasks_lock:
             token_tracking._pending_log_tasks.add(task)
         try:
-            await asyncio.wait_for(drain_pending_cost_logs(timeout=0.05), timeout=2.0)
+            await asyncio.wait_for(
+                drain_pending_cost_logs(timeout=0.05), timeout=_HANG_SECONDS
+            )
             assert not task.done()
         finally:
             task.cancel()

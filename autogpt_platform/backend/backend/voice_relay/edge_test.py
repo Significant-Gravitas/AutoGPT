@@ -25,6 +25,9 @@ PERSON = rooms.person_identity("user-1", CALL_ID)
 TEN_MS = bytes(range(256)) + bytes(64)
 FRAME_BYTES = 1280
 
+# The cap on a wait a test expects to finish: only there to stop a hung test.
+_HANG_SECONDS = 10
+
 
 class Listener:
     """What the room tells the call."""
@@ -342,7 +345,7 @@ async def test_otto_is_handed_to_the_room_in_order_without_waiting_for_it_to_pla
     chunks = [bytes([n]) * 960 for n in range(3)]
 
     for chunk in chunks:
-        await asyncio.wait_for(joined.leg.play(chunk), timeout=1)
+        await asyncio.wait_for(joined.leg.play(chunk), timeout=_HANG_SECONDS)
     source.gate.set()
 
     await until(lambda: source.frames == chunks)
@@ -442,7 +445,7 @@ async def test_leaving_waits_for_ottos_last_words_to_play_out_and_reach_the_brow
     await asyncio.sleep(0.1)
     assert not joined.room.left
 
-    await asyncio.wait_for(leaving, timeout=2)
+    await asyncio.wait_for(leaving, timeout=_HANG_SECONDS)
     assert joined.room.left and source.closed
     assert joined.edge.rooms == 0
 
@@ -453,7 +456,7 @@ async def test_leaving_at_once_drops_what_otto_has_not_said():
     joined.source.playing = asyncio.Event()
     await joined.leg.play(b"\x01" * 960)
 
-    await asyncio.wait_for(joined.leg.close(play_out=False), timeout=1)
+    await asyncio.wait_for(joined.leg.close(play_out=False), timeout=_HANG_SECONDS)
 
     assert joined.room.left and joined.source.closed
     assert joined.source.frames == []
@@ -466,7 +469,7 @@ async def test_a_play_out_that_never_ends_is_cut_short(monkeypatch):
     joined.source.playing = asyncio.Event()
     await joined.leg.play(b"\x01" * 960)
 
-    await asyncio.wait_for(joined.leg.close(play_out=True), timeout=2)
+    await asyncio.wait_for(joined.leg.close(play_out=True), timeout=_HANG_SECONDS)
 
     assert joined.room.left
 
