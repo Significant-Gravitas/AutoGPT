@@ -15,7 +15,6 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from .planner import Conversation, Plan
-from .scripts import find_marker
 
 # Enough for a CI run's journeys; the oldest entries go first.
 MAX_ENTRIES = 1000
@@ -132,7 +131,7 @@ class Journal:
     def _add(
         self, request: Request, conversation: Conversation, **fields: Any
     ) -> dict[str, Any]:
-        marker = find_marker(conversation.user_text)
+        marker = conversation.marker()
         with self._lock:
             entry: dict[str, Any] = {
                 "id": self._take_id(),

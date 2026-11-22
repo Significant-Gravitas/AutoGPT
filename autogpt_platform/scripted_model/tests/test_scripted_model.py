@@ -737,6 +737,130 @@ def test_a_held_reply_needs_a_nonce_and_text_to_hold(scripted_model):
         parse_script("held", {"turns": [too_short]})
 
 
+def test_a_turn_the_platform_sends_finds_its_script_in_the_system_prompt(
+    scripted_model,
+):
+    """An expert's kickoff is a message the platform writes, so no marker can
+    be typed into it. The journey puts one in the expert's writing sample,
+    which the system prompt carries, and a marker the user typed still wins."""
+    scripted_model.add_script("lookup", LOOKUP)
+    scripted_model.add_script("held", HELD)
+    kickoff = [{"role": "user", "content": "You were just hired."}]
+    system = [
+        {"type": "text", "text": "You are AutoPilot."},
+        {"type": "text", "text": "Voice sample: > tidy [[script:lookup#in-soul]]"},
+    ]
+
+    reply = _stream(_anthropic(scripted_model), kickoff, system)
+    assert reply.content[0].text == "Let me check your library first."
+    text, calls, _ = _stream_chat(
+        _openai(scripted_model),
+        [
+            {"role": "system", "content": "Voice: [[script:lookup#in-system]]"},
+            *kickoff,
+        ],
+    )
+    assert (text, [c["name"] for c in calls]) == (
+        "Let me check your library first.",
+        ["find_library_agent"],
+    )
+    typed = [{"role": "user", "content": "[[script:quick#typed]] Hi"}]
+    scripted_model.add_script(
+        "quick",
+        {
+            "turns": [
+                {"text": "Hello.", "usage": {"input_tokens": 1, "output_tokens": 1}}
+            ]
+        },
+    )
+    assert _stream(_anthropic(scripted_model), typed, system).content[0].text == (
+        "Hello."
+    )
+
+    assert [e["turn"] for e in scripted_model.journal(nonce="in-soul")] == [1]
+    assert [e["turn"] for e in scripted_model.journal(nonce="in-system")] == [1]
+    assert scripted_model.journal(nonce="typed")[0]["script"] == "quick"
+    with pytest.raises(anthropic.BadRequestError, match="no \\[\\[script:<name>\\]\\]"):
+        _stream(
+            _anthropic(scripted_model),
+            kickoff,
+            [{"type": "text", "text": "No marker here."}],
+        )
+
+
+def test_a_tool_call_reads_its_argument_from_an_earlier_result(scripted_model):
+    """A model reads an id out of what a tool returned and passes it on; a
+    script does it with a pattern over that result."""
+    scripted_model.add_script(
+        "pause",
+        {
+            "turns": [
+                {
+                    "tool_calls": [
+                        {"name": "find_library_agent", "input": {"query": "news"}}
+                    ],
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
+                {
+                    "tool_calls": [
+                        {
+                            "name": "find_library_agent",
+                            "input": {
+                                "query": {
+                                    "$from_tool_result": {
+                                        "tool": "find_library_agent",
+                                        "pattern": '"schedule_id": "([^"]+)"',
+                                    }
+                                },
+                                "keep": ["as", "written"],
+                            },
+                        }
+                    ],
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
+            ]
+        },
+    )
+    client = _anthropic(scripted_model)
+    for nonce, result, expected in (
+        ("found", '{"schedule_id": "sched-42", "name": "News"}', "sched-42"),
+        ("missing", "No schedules.", None),
+    ):
+        messages = [{"role": "user", "content": f"[[script:pause#{nonce}]]"}]
+        first = _stream(client, messages)
+        messages += [
+            {"role": "assistant", "content": [b.model_dump() for b in first.content]},
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": first.content[0].id,
+                        "content": result,
+                    }
+                ],
+            },
+        ]
+        if expected is None:
+            with pytest.raises(anthropic.BadRequestError, match="none in this request"):
+                _stream(client, messages)
+            continue
+        second = _stream(client, messages)
+        assert second.content[0].input == {"query": expected, "keep": ["as", "written"]}
+
+    for bad, reason in (
+        ({"tool": "x", "pattern": "("}, "not a regular expression"),
+        ({"tool": "x", "pattern": "no group"}, "needs a group"),
+        ({"tool": "x"}, "missing \\['pattern'\\]"),
+    ):
+        turn = {
+            "tool_calls": [{"name": "x", "input": {"id": {"$from_tool_result": bad}}}],
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        }
+        with pytest.raises(ScriptError, match=reason):
+            parse_script("bad", {"turns": [turn]})
+
+
 @pytest.mark.parametrize(
     "path", sorted(JOURNEY_SCRIPTS.glob("*.json")), ids=lambda path: path.stem
 )
