@@ -125,14 +125,28 @@ function holdRunRequest(answer: () => Response) {
     release = resolve;
   });
   let received = false;
+  let handled!: () => void;
+  const answered = new Promise<void>((resolve) => {
+    handled = resolve;
+  });
   server.use(
     http.post("/api/proxy/api/graphs/:graphId/execute/:version", async () => {
       received = true;
       await released;
+      handled();
       return answer();
     }),
   );
-  return { release, wasReceived: () => received };
+  return {
+    release,
+    wasReceived: () => received,
+    /** Lets a held request finish, so none is left open when a test ends,
+     * whether or not its assertions passed. */
+    async settle() {
+      release();
+      if (received) await answered;
+    },
+  };
 }
 
 function refusedForTheRemovedKey() {
@@ -164,30 +178,38 @@ function started() {
 describe.each(surfaces)("$name", (surface) => {
   test("says nothing started while the run is being started, nor once the server refuses it", async () => {
     const run = holdRunRequest(refusedForTheRemovedKey);
-    surface.show();
+    try {
+      surface.show();
 
-    await surface.start();
-    await waitFor(() => expect(run.wasReceived()).toBe(true));
-    expect(
-      screen.queryByText("Run started"),
-      "nothing has started while the request is pending",
-    ).toBeNull();
+      await surface.start();
+      await waitFor(() => expect(run.wasReceived()).toBe(true));
+      expect(
+        screen.queryByText("Run started"),
+        "nothing has started while the request is pending",
+      ).toBeNull();
 
-    run.release();
-    expect(await screen.findByText("Failed to start run")).toBeDefined();
-    expect(screen.queryByText("Run started")).toBeNull();
+      run.release();
+      expect(await screen.findByText("Failed to start run")).toBeDefined();
+      expect(screen.queryByText("Run started")).toBeNull();
+    } finally {
+      await run.settle();
+    }
   });
 
   test("says the run started once the server has started it", async () => {
     const run = holdRunRequest(started);
-    surface.show();
+    try {
+      surface.show();
 
-    await surface.start();
-    await waitFor(() => expect(run.wasReceived()).toBe(true));
-    expect(screen.queryByText("Run started")).toBeNull();
+      await surface.start();
+      await waitFor(() => expect(run.wasReceived()).toBe(true));
+      expect(screen.queryByText("Run started")).toBeNull();
 
-    run.release();
-    expect(await screen.findByText("Run started")).toBeDefined();
-    expect(screen.queryByText("Failed to start run")).toBeNull();
+      run.release();
+      expect(await screen.findByText("Run started")).toBeDefined();
+      expect(screen.queryByText("Failed to start run")).toBeNull();
+    } finally {
+      await run.settle();
+    }
   });
 });
