@@ -141,7 +141,7 @@ test.describe("copilot connect card journey", () => {
     }
   });
 
-  test.fail(
+  test(
     "after a reload, the finished step's connect card stays gone and nothing offers to run the step again",
     {
       annotation: {
@@ -186,6 +186,9 @@ test.describe("copilot connect card journey", () => {
         await expect(
           page.getByRole("textbox", { name: "Chat message input" }),
         ).toBeEnabled();
+        // A known failure from here on, so anything above failing still
+        // fails the run.
+        test.fail(true, "#17253: the finished step's card comes back");
         await expect(
           connectCards(reloaded),
           "the finished step's connect card should not come back after a reload",
@@ -204,6 +207,7 @@ test.describe("copilot connect card journey", () => {
     page,
     journeyUser,
   }) => {
+    test.setTimeout(TWO_TURN_TEST_TIMEOUT);
     const run = scriptedRun("connect-card-cancelled");
     const texts = CANCEL.turns.map((turn) => turn.text ?? "");
 
