@@ -8,6 +8,7 @@ So each healthcheck checks that the broker has written the cookie before it
 runs the CLI; until then there is nothing to ping anyway.
 """
 
+import os
 import re
 import shlex
 import unittest
@@ -17,6 +18,10 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COOKIE_GUARD = "test -f /var/lib/rabbitmq/.erlang.cookie && "
+# Each of these starts an Erlang node, which writes a missing cookie.
+RABBITMQ_CLI = re.compile(
+    r"\brabbitmq(?:ctl|-diagnostics|-plugins|-queues|-streams|-upgrade)\b"
+)
 HOW_TO_COMPLY = (
     f"start the health command with `{COOKIE_GUARD}`, so a root probe never "
     "writes the cookie before the broker does (see "
@@ -25,38 +30,46 @@ HOW_TO_COMPLY = (
 
 
 def compose_healthchecks() -> dict[str, str]:
-    """The health command of every RabbitMQ service in a Compose file."""
+    """Every Compose service's health command, as the shell runs it."""
     commands = {}
-    for path in sorted(REPO_ROOT.glob("autogpt_platform/**/docker-compose*.y*ml")):
-        if "node_modules" in path.parts:
-            continue
+    for path in _compose_files():
         services = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get(
             "services"
         ) or {}
         for name, service in services.items():
             test = ((service or {}).get("healthcheck") or {}).get("test")
-            if test and str(service.get("image", "")).startswith("rabbitmq"):
-                if isinstance(test, list):
-                    test = test[1] if test[0] == "CMD-SHELL" else shlex.join(test[1:])
+            if isinstance(test, list):
+                test = test[1] if test[:1] == ["CMD-SHELL"] else shlex.join(test[1:])
+            if test:
                 commands[f"{path.relative_to(REPO_ROOT)}: {name}"] = test
     return commands
 
 
 def workflow_healthchecks() -> dict[str, str]:
-    """The health command of every RabbitMQ service container in a workflow."""
+    """Every workflow service container's `--health-cmd`."""
     commands = {}
     for path in sorted((REPO_ROOT / ".github/workflows").glob("*.y*ml")):
         workflow = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for job_name, job in (workflow.get("jobs") or {}).items():
             for name, service in ((job or {}).get("services") or {}).items():
-                if not str((service or {}).get("image", "")).startswith("rabbitmq"):
-                    continue
-                options = shlex.split(str(service.get("options", "")))
+                options = shlex.split(str((service or {}).get("options", "")))
                 for flag, value in zip(options, options[1:]):
                     if flag == "--health-cmd":
                         key = f"{path.relative_to(REPO_ROOT)}: {job_name}.{name}"
                         commands[key] = value
     return commands
+
+
+def _compose_files() -> list[Path]:
+    found = []
+    for root, dirs, files in os.walk(REPO_ROOT / "autogpt_platform"):
+        dirs[:] = [d for d in dirs if d != "node_modules" and not d.startswith(".")]
+        found += [
+            Path(root, name)
+            for name in files
+            if re.fullmatch(r"docker-compose.*\.ya?ml", name)
+        ]
+    return sorted(found)
 
 
 class RabbitMQHealthcheckContractTest(unittest.TestCase):
@@ -67,12 +80,20 @@ class RabbitMQHealthcheckContractTest(unittest.TestCase):
         self._assert_guarded(workflow_healthchecks())
 
     def _assert_guarded(self, commands: dict[str, str]) -> None:
-        self.assertTrue(commands, "found no RabbitMQ healthcheck to check")
-        unguarded = {
+        probes = {
             where: command
             for where, command in commands.items()
-            if re.search(r"\brabbitmq(?:-diagnostics|ctl)\b", command)
-            and not command.startswith(COOKIE_GUARD)
+            if RABBITMQ_CLI.search(command)
+        }
+        self.assertTrue(
+            probes,
+            "found no healthcheck that runs the RabbitMQ CLI; if none should, "
+            "this test has nothing left to check and can go",
+        )
+        unguarded = {
+            where: command
+            for where, command in probes.items()
+            if not command.startswith(COOKIE_GUARD)
         }
         self.assertEqual(unguarded, {}, HOW_TO_COMPLY)
 
