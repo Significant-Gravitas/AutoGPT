@@ -386,7 +386,7 @@ export async function deleteSchedule(page: Page, scheduleID: string) {
 /** Removes a key a test made, so a reused account doesn't collect them. */
 export async function deleteCredential(page: Page, credential: Credential) {
   const response = await page.request.delete(
-    `/api/proxy/api/integrations/${PROVIDER}/credentials/${credential.id}?force=true`,
+    `/api/proxy/api/integrations/${credential.provider}/credentials/${credential.id}?force=true`,
   );
   expect
     .soft(
