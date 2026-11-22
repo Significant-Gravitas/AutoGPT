@@ -60,6 +60,10 @@ test.describe("copilot follow-up journey", () => {
 test.describe("copilot follow-up journey, as the answer ends", () => {
   // The follow-up reaches the queue only once the answer's turn has ended, so
   // the queue refuses it (#17247), and the chat sends it as a turn of its own.
+  // By then the turn is marked completed, so the refusal is the status
+  // check's: this covers how the client handles a refused follow-up. The
+  // window between the last look and the turn's end is pinned by
+  // backend/copilot/sdk/follow_up_after_last_look_test.py.
   test.use({
     expectedResponses: [{ status: 409, method: "POST", url: QUEUE_URL }],
   });

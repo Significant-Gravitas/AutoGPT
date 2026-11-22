@@ -12,6 +12,7 @@ import pytest
 from fakeredis.aioredis import FakeRedis
 
 from backend.copilot import pending_messages, stream_registry
+from backend.copilot.pending_message_helpers import drain_pending_safe
 from backend.copilot.pending_messages import (
     PendingMessage,
     drain_pending_or_close,
@@ -119,6 +120,25 @@ async def test_a_rerun_of_the_turn_reopens_the_queue_its_last_attempt_closed(red
     await reopen_follow_ups(SESSION, session_meta_key=META, turn_id="turn-1")
 
     assert await _push("during the rerun") == 1
+
+
+@pytest.mark.asyncio
+async def test_a_first_look_still_takes_the_backlog_when_reopening_fails(redis):
+    """Reopening is best effort: after a Redis error the rerun still runs with
+    what was queued, and only its later follow-ups get the 409."""
+    await _start_turn("turn-1")
+    await _push("waiting")
+
+    with patch.object(
+        pending_messages,
+        "hash_compare_and_set",
+        AsyncMock(side_effect=ConnectionError("Redis went away")),
+    ):
+        drained = await drain_pending_safe(
+            SESSION, drain_backlog=True, open_for_turn="turn-1"
+        )
+
+    assert [message.content for message in drained] == ["waiting"]
 
 
 @pytest.mark.asyncio

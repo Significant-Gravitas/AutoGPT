@@ -424,6 +424,8 @@ async def capped_rpush_if_hash_field(
     ``RedisListCapacityExceeded`` without evicting an accepted item.
     All keys must share a Redis Cluster hash tag.
     """
+    if (closed_by_field is None) != (owner_field is None):
+        raise ValueError("closed_by_field and owner_field are checked together")
     keys = [hash_key, list_key]
     if receipt_key is not None:
         keys.append(receipt_key)
