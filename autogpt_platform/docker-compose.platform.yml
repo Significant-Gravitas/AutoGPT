@@ -246,7 +246,11 @@ services:
     image: rabbitmq:4.1.4
     container_name: rabbitmq
     healthcheck:
-      test: rabbitmq-diagnostics -q ping
+      # The probe runs as root, and the CLI writes the Erlang cookie when it
+      # finds none: a probe that beats a slow-booting broker to it leaves it
+      # root-owned, and the broker then dies with `.erlang.cookie: eacces`.
+      # Until the broker has written it, there is nothing to ping.
+      test: ["CMD-SHELL", "test -f /var/lib/rabbitmq/.erlang.cookie && rabbitmq-diagnostics -q ping"]
       interval: 30s
       timeout: 10s
       retries: 5
