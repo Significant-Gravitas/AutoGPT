@@ -989,9 +989,15 @@ class TestOrgRoutes:
             ("//attacker.example/a.png", "protocol-relative URL"),
             ("/\\attacker.example/a.png", "backslash folds to '/' in browsers"),
             ("\\\\attacker.example/a.png", "backslash folds to '/' in browsers"),
+            ("/\t/attacker.example/a.png", "tab is stripped, leaving '//host/...'"),
+            ("\t//attacker.example/a.png", "tab is stripped, leaving '//host/...'"),
             ("a.png", "resolves against the page path, not the media prefix"),
             ("http://lh3.googleusercontent.com/a.png", "https-only host over http"),
             ("http://storage.cloud.google.com/a.png", "https-only host over http"),
+            (
+                "https://user:secret@storage.googleapis.com/a.png",
+                "fetch() rejects URLs that embed credentials",
+            ),
         ],
     )
     def test_update_org_rejects_avatar_url_render_tricks(self, avatar_url, reason):

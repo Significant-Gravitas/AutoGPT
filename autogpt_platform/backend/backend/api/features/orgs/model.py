@@ -84,6 +84,16 @@ class UpdateOrgRequest(BaseModel):
         if value is None:
             return value
 
+        # urlparse (like browser URL parsing) strips tabs, CR and LF from
+        # anywhere in a URL, so "/\t/attacker.example/x" silently becomes the
+        # protocol-relative "//attacker.example/x". Control characters have no
+        # business in a path, so reject them before any classification.
+        if "\t" in value or "\r" in value or "\n" in value:
+            raise ValueError(
+                "avatar_url must not contain tab, carriage-return or newline "
+                "characters; URL parsers strip them, which can turn the value "
+                "into a different URL than the one typed"
+            )
         # Browsers treat "\" as "/" in http(s) URLs, so "\/host/x" and
         # "\\host/x" parse as relative paths here but resolve to an
         # attacker-chosen host; the backslash itself disqualifies the value.
@@ -107,6 +117,15 @@ class UpdateOrgRequest(BaseModel):
                     "avatar_url must be an http(s) URL on an allowed media host "
                     f"({', '.join(sorted(ALLOWED_AVATAR_HOSTS))}) or a path "
                     "starting with a single '/'"
+                )
+            if parsed.username is not None or parsed.password is not None:
+                # userinfo has no legitimate use in an avatar URL, and
+                # next/image's optimizer fetches the URL server-side, where
+                # fetch() rejects http(s) URLs that embed credentials
+                # (WHATWG fetch: "url includes credentials" -> TypeError),
+                # so the avatar would silently fall back to the initial.
+                raise ValueError(
+                    "avatar_url must not embed credentials (user:password@host)"
                 )
             # urlparse validates the port lazily; touching it rejects
             # "https://host:invalid/..." before the URL gets persisted.
