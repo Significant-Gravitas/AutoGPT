@@ -25,6 +25,7 @@ from backend.copilot.pending_message_helpers import queue_user_message, stop_fol
 from backend.copilot.pending_messages import (
     PendingMessage,
     clear_pending_messages_unsafe,
+    drain_pending_or_close,
     peek_pending_messages,
     push_pending_message,
 )
@@ -57,13 +58,21 @@ async def session_id():
     await clear_pending_messages_unsafe(session_id)
 
 
+# Each test that takes ``last_look_closed`` also runs after the turn's last look
+# found the buffer empty and closed it to follow-ups (#17249).
+@pytest.mark.parametrize("last_look_closed", [False, True])
 async def test_a_message_sent_while_a_stop_settles_runs_as_the_next_turn(
-    mocker: pytest_mock.MockerFixture, session_id: str, test_user_id: str
+    mocker: pytest_mock.MockerFixture,
+    session_id: str,
+    test_user_id: str,
+    last_look_closed: bool,
 ) -> None:
     stopped_turn = f"stopped-{uuid.uuid4().hex}"
     await stream_registry.create_session(
         session_id, test_user_id, "chat_stream", "chat", turn_id=stopped_turn
     )
+    if last_look_closed:
+        await _last_look(session_id, stopped_turn)
     await push_pending_message(session_id, PendingMessage(content="typed before"))
     await push_pending_message(
         session_id,
@@ -147,12 +156,16 @@ async def test_a_message_that_loses_the_next_turn_to_another_send_follows_that_t
     ]
 
 
+@pytest.mark.parametrize("last_look_closed", [False, True])
 async def test_the_turn_after_a_stopped_one_takes_follow_ups(
-    session_id: str, test_user_id: str
+    session_id: str, test_user_id: str, last_look_closed: bool
 ) -> None:
+    stopped_turn = f"stopped-{uuid.uuid4().hex}"
     await stream_registry.create_session(
-        session_id, test_user_id, "", "", turn_id=f"stopped-{uuid.uuid4().hex}"
+        session_id, test_user_id, "", "", turn_id=stopped_turn
     )
+    if last_look_closed:
+        await _last_look(session_id, stopped_turn)
     await stop_follow_ups(session_id)
     refused = await queue_user_message(
         session_id=session_id, message="too late", require_turn_in_flight=True
@@ -201,6 +214,34 @@ async def test_a_send_after_a_stop_that_never_reached_the_executor_queues_once_t
     assert [m.content for m in await peek_pending_messages(session_id)] == [
         "still for this turn"
     ]
+
+
+async def test_a_send_after_a_failed_stop_to_a_turn_that_closed_its_queue_is_not_queued(
+    mocker: pytest_mock.MockerFixture, session_id: str, test_user_id: str
+) -> None:
+    running_turn = f"running-{uuid.uuid4().hex}"
+    await stream_registry.create_session(
+        session_id, test_user_id, "chat_stream", "chat", turn_id=running_turn
+    )
+    await _last_look(session_id, running_turn)
+    world = _stub_boundaries(mocker)
+    mocker.patch.object(pending_message_helpers, "STOP_HOLD_SECONDS", 0.5)
+    mocker.patch.object(
+        chat_routes,
+        "enqueue_cancel_task",
+        new=AsyncMock(side_effect=RuntimeError("broker down")),
+    )
+
+    async with _client() as client:
+        cancelled = await client.post(f"/sessions/{session_id}/cancel")
+        send = await client.post(
+            f"/sessions/{session_id}/stream", json={"message": "after the last look"}
+        )
+
+    assert cancelled.status_code == 500
+    assert send.status_code == 409
+    assert world.started == []
+    assert await peek_pending_messages(session_id) == []
 
 
 async def test_a_cancel_that_fails_after_reaching_the_executor_keeps_the_queue_closed(
@@ -268,6 +309,17 @@ async def test_a_stop_step_that_failed_leaves_no_hold_on_a_turn_whose_cancel_fai
     )
 
     assert queued.turn_in_flight is True
+
+
+async def _last_look(session_id: str, turn_id: str) -> None:
+    assert (
+        await drain_pending_or_close(
+            session_id,
+            session_meta_key=stream_registry.get_session_meta_key(session_id),
+            turn_id=turn_id,
+        )
+        == []
+    )
 
 
 def _client() -> AsyncClient:
