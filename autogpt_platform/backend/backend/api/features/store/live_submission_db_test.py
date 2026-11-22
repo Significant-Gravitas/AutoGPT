@@ -123,6 +123,12 @@ async def test_the_live_submission_carries_the_live_versions_schedule(server):
         await create_graph(Graph(id=graph_id, name=graph_id, description="test"), owner)
         listed = await submit(owner, graph_id, schedule="0 9 * * 1")
         await approve(listed.listing_version_id, owner)
+        # Approval copied the schedule onto the workflow; give the workflow its
+        # own, so only a read of the listing's live version passes.
+        await prisma.models.AgentGraph.prisma().update(
+            where={"graphVersionId": {"id": graph_id, "version": 1}},
+            data={"recommendedScheduleCron": "0 7 * * *"},
+        )
         update = await submit(owner, graph_id, schedule="0 8 * * *")
 
         live = await get_live_submission(owner, graph_id)

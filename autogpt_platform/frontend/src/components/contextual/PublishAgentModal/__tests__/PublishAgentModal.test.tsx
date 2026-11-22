@@ -692,6 +692,31 @@ describe("PublishAgentModal opened pre-scoped to a workflow", () => {
     await expectStartingImages([]);
   });
 
+  test("shows an error, not a form without the workflow's image, when its Library entry can't be read", async () => {
+    installHandlers();
+    server.use(
+      http.get(
+        "/api/proxy/api/library/agents/by-graph/:graphId",
+        () => HttpResponse.json({ detail: "Internal error" }, { status: 500 }),
+        { once: true },
+      ),
+    );
+    renderDialog(
+      <PreScopedPublishDialog
+        graphId={DEEP_WORKFLOW.graphId}
+        version={DEEP_WORKFLOW.version}
+      />,
+    );
+
+    expect(await screen.findByText(LOOKUP_FAILED)).toBeDefined();
+    expect(screen.queryByText("Build the store listing")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByDisplayValue(DEEP_WORKFLOW.name)).toBeDefined();
+    await expectStartingImages([DEEP_WORKFLOW.image]);
+  });
+
   test("shows an error instead of the new-listing form when the lookup fails, and tries again", async () => {
     installHandlers();
     server.use(
