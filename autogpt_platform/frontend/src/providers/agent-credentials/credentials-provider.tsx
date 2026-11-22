@@ -16,6 +16,7 @@ import {
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
 import { hashKey, useQueryClient } from "@tanstack/react-query";
 import isEqual from "lodash/isEqual";
@@ -181,6 +182,14 @@ export default function CredentialsProvider({
   // a reused entry never calls a stale handler.
   const entryHandlersRef = useRef<unknown[]>([]);
 
+  // Settings → Integrations and the chat connection lists read the user's
+  // credentials through React Query, which keeps them fresh for a minute. A
+  // credential added or removed here, in a workflow step's credentials field,
+  // has to mark them stale, or they keep showing the old set until a reload.
+  const refreshConnectionLists = useCallback(() => {
+    void invalidateConnectionQueries(queryClient);
+  }, [queryClient]);
+
   const upsertCredentials = useCallback(
     (
       provider: CredentialsProviderName,
@@ -230,13 +239,14 @@ export default function CredentialsProvider({
       try {
         const credsMeta = await api.oAuthCallback(provider, code, state_token);
         upsertCredentials(provider, credsMeta);
+        refreshConnectionLists();
         return credsMeta;
       } catch (error) {
         onFailToast("complete OAuth authentication")(error);
         throw error;
       }
     },
-    [api, upsertCredentials, onFailToast],
+    [api, upsertCredentials, refreshConnectionLists, onFailToast],
   );
 
   /** Exchanges an MCP OAuth code for tokens and adds the result to the internal credentials store. */
@@ -261,13 +271,14 @@ export default function CredentialsProvider({
           host: response.data.host ?? undefined,
         };
         upsertCredentials("mcp", credsMeta);
+        refreshConnectionLists();
         return credsMeta;
       } catch (error) {
         onFailToast("complete MCP OAuth authentication")(error);
         throw error;
       }
     },
-    [upsertCredentials, onFailToast],
+    [upsertCredentials, refreshConnectionLists, onFailToast],
   );
 
   /** Stores a manual MCP credential, and adds the result to the internal credentials store. */
@@ -289,9 +300,10 @@ export default function CredentialsProvider({
         host: response.data.host ?? undefined,
       };
       upsertCredentials("mcp", credsMeta);
+      refreshConnectionLists();
       return credsMeta;
     },
-    [upsertCredentials],
+    [upsertCredentials, refreshConnectionLists],
   );
 
   /** Wraps `BackendAPI.createAPIKeyCredentials`, and adds the result to the internal credentials store. */
@@ -306,13 +318,14 @@ export default function CredentialsProvider({
           ...credentials,
         });
         upsertCredentials(provider, credsMeta);
+        refreshConnectionLists();
         return credsMeta;
       } catch (error) {
         onFailToast("create API key credentials")(error);
         throw error;
       }
     },
-    [api, upsertCredentials, onFailToast],
+    [api, upsertCredentials, refreshConnectionLists, onFailToast],
   );
 
   /** Wraps `BackendAPI.createUserPasswordCredentials`, and adds the result to the internal credentials store. */
@@ -327,13 +340,14 @@ export default function CredentialsProvider({
           ...credentials,
         });
         upsertCredentials(provider, credsMeta);
+        refreshConnectionLists();
         return credsMeta;
       } catch (error) {
         onFailToast("create user/password credentials")(error);
         throw error;
       }
     },
-    [api, upsertCredentials, onFailToast],
+    [api, upsertCredentials, refreshConnectionLists, onFailToast],
   );
 
   /** Wraps `BackendAPI.createHostScopedCredentials`, and adds the result to the internal credentials store. */
@@ -348,13 +362,14 @@ export default function CredentialsProvider({
           ...credentials,
         });
         upsertCredentials(provider, credsMeta);
+        refreshConnectionLists();
         return credsMeta;
       } catch (error) {
         onFailToast("create host-scoped credentials")(error);
         throw error;
       }
     },
-    [api, upsertCredentials, onFailToast],
+    [api, upsertCredentials, refreshConnectionLists, onFailToast],
   );
 
   /** Wraps `BackendAPI.deleteCredentials`, and removes the credentials from the internal store. */
@@ -400,13 +415,14 @@ export default function CredentialsProvider({
             },
           };
         });
+        refreshConnectionLists();
         return result;
       } catch (error) {
         onFailToast("delete credentials")(error);
         throw error;
       }
     },
-    [api, onFailToast],
+    [api, refreshConnectionLists, onFailToast],
   );
 
   const loadCredentials = useCallback(() => {
