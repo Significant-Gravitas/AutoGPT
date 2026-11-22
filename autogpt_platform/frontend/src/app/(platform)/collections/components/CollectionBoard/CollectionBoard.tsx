@@ -29,7 +29,7 @@ export function CollectionBoard({ section, canEdit, onRunStarted }: Props) {
             key={name}
             aria-label={name}
             className={cn(
-              "flex w-64 shrink-0 flex-col gap-2 rounded-2xl bg-surface-muted p-2",
+              "flex min-w-48 flex-1 flex-col gap-2 rounded-2xl bg-surface-muted p-2",
               board.dropTarget === name && "ring-2 ring-focus",
             )}
             onDragOver={(e) => board.onDragOver(e, name)}
