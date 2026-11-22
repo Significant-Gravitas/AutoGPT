@@ -136,12 +136,14 @@ describe("Settings billing page (integration)", () => {
     expect(screen.getByRole("button", { name: /add credits/i })).toBeDefined();
   });
 
-  it("clears the ?topup=success query but keeps the Automation Credits tab after a Stripe redirect", async () => {
+  it("fulfils the checkout and clears the ?topup=success query, keeping the Automation Credits tab, after a Stripe redirect", async () => {
     useDefaultBillingHandlers();
+    let fulfilCalls = 0;
     server.use(
-      http.patch("*/api/credits/fulfill_checkout", () =>
-        HttpResponse.json({}, { status: 200 }),
-      ),
+      http.patch("*/api/credits", () => {
+        fulfilCalls += 1;
+        return new HttpResponse(null, { status: 200 });
+      }),
     );
     mockSearchParams.current = new URLSearchParams({ topup: "success" });
     useAuthStore.setState({ user: { id: "user-a" } as User });
@@ -151,6 +153,7 @@ describe("Settings billing page (integration)", () => {
     await waitFor(() =>
       expect(mockRouterReplace).toHaveBeenCalledWith(AUTOMATION_CREDITS_URL),
     );
+    await waitFor(() => expect(fulfilCalls).toBe(1));
   });
 
   it("clears the ?topup=cancel query, keeping the tab, without firing fulfillCheckout", async () => {
@@ -237,11 +240,6 @@ describe("Settings billing page (integration)", () => {
 
   it("activates the Automation Credits tab when a Stripe topup redirect lands on the page", async () => {
     useDefaultBillingHandlers();
-    server.use(
-      http.patch("*/api/credits/fulfill_checkout", () =>
-        HttpResponse.json({}, { status: 200 }),
-      ),
-    );
     // Topup flow originates from the Automation Credits tab; the redirect
     // back from Stripe must NOT bounce the user to Subscription.
     mockSearchParams.current = new URLSearchParams({ topup: "success" });

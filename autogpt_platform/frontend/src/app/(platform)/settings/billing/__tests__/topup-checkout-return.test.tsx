@@ -13,6 +13,7 @@ import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { server } from "@/mocks/mock-server";
 import {
   act,
+  cleanup,
   render,
   screen,
   waitFor,
@@ -27,14 +28,25 @@ vi.mock("@/hooks/useIsBillingEnabled", () => ({
   useBillingStatus: () => ({ isBillingEnabled: true, isResolved: true }),
 }));
 
-// The address bar. The router replaces it as Next's does, so rendering the
-// page again after a replace is the page reloaded at the new address.
-const address = vi.hoisted(() => ({ search: new URLSearchParams() }));
+// The address bar. The router replaces it and re-renders the page as Next's
+// does, so rendering the page again after a replace is a reload there.
+const address = vi.hoisted(() => ({
+  search: new URLSearchParams(),
+  listeners: new Set<() => void>(),
+}));
 vi.mock("next/navigation", async (importOriginal) => {
+  const { useSyncExternalStore } = await import("react");
+  function subscribe(listener: () => void) {
+    address.listeners.add(listener);
+    return () => {
+      address.listeners.delete(listener);
+    };
+  }
   const router = {
     push: vi.fn(),
     replace: (url: string) => {
       address.search = new URL(url, "https://app.test").searchParams;
+      address.listeners.forEach((listener) => listener());
     },
     prefetch: vi.fn(),
     back: vi.fn(),
@@ -43,7 +55,8 @@ vi.mock("next/navigation", async (importOriginal) => {
   };
   return {
     ...(await importOriginal<typeof import("next/navigation")>()),
-    useSearchParams: () => address.search,
+    useSearchParams: () =>
+      useSyncExternalStore(subscribe, () => address.search),
     useRouter: () => router,
     usePathname: () => "/settings/billing",
     useParams: () => ({}),
@@ -74,6 +87,10 @@ const purchase: CreditTransactionItem = {
   user_id: buyer.id,
 };
 
+// Answers for the fulfil calls tests hold. Teardown unmounts the page, then
+// sends any a failed test left unanswered, so the call can't outlive its test.
+const heldFulfilments: Array<() => Promise<void>> = [];
+
 beforeEach(() => {
   address.search = new URLSearchParams({
     topup: "success",
@@ -86,7 +103,9 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
+afterEach(async () => {
+  cleanup();
+  await Promise.all(heldFulfilments.splice(0).map((answer) => answer()));
   useAuthStore.setState({ user: null });
   address.search = new URLSearchParams();
   resetClientRequestFailureLog();
@@ -109,6 +128,20 @@ describe("returning from a top-up Checkout", () => {
     expect(within(row).getByText("+$7.00")).toBeDefined();
   });
 
+  it("shows the credits on the next visit when the page closed before the fulfil call answered", async () => {
+    const platform = mockTopUpReturn();
+    const firstVisit = renderBillingPage();
+    expect(await findBalance("$6.00")).toBeDefined();
+    await waitFor(() => expect(platform.ledger.fulfilCalls).toBe(1));
+    firstVisit.unmount();
+
+    await platform.answerFulfil();
+    await waitFor(() => expect(firstVisit.queryClient.isMutating()).toBe(0));
+    renderBillingPage(firstVisit.queryClient);
+
+    expect(await findBalance("$13.00")).toBeDefined();
+  });
+
   it("keeps Automation Credits in the address, so the refresh the toast suggests opens it", async () => {
     const platform = mockTopUpReturn();
     const firstVisit = renderBillingPage();
@@ -119,9 +152,7 @@ describe("returning from a top-up Checkout", () => {
 
     renderBillingPage();
 
-    expect(screen.getByRole("tab", { selected: true }).textContent).toBe(
-      "Automation Credits",
-    );
+    expect(selectedTab()).toBe("Automation Credits");
     expect(await findBalance("$13.00")).toBeDefined();
     expect(address.search.toString()).toBe("tab=automation-credits");
   });
@@ -144,9 +175,13 @@ describe("when Stripe's webhook adds the credits after the fulfil call", () => {
     await platform.answerFulfil();
     await waitFor(() => expect(platform.ledger.balanceReads).toBe(2));
     await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    // Only advance() moves the clock across the late read, however slow the
+    // runner; re-installing fake timers would drop the pending read instead.
+    vi.setTimerTickMode("manual");
     expect(queryHistoryRow("Credits added")).toBeNull();
     platform.creditFromWebhook();
     await advance(10_000);
+    vi.setTimerTickMode("interval");
 
     expect(await findBalance("$13.00")).toBeDefined();
     expect(await findHistoryRow("Credits added")).toBeDefined();
@@ -167,6 +202,10 @@ function mockTopUpReturn({ fulfilFails = false }: Options = {}) {
   const ledger = { credited: false, balanceReads: 0, fulfilCalls: 0 };
   const release = Promise.withResolvers<void>();
   const answered = Promise.withResolvers<void>();
+  heldFulfilments.push(async () => {
+    release.resolve();
+    if (ledger.fulfilCalls > 0) await answered.promise;
+  });
   server.use(
     getGetV1GetUserCreditsMockHandler(() => {
       ledger.balanceReads += 1;
@@ -206,10 +245,11 @@ function mockTopUpReturn({ fulfilFails = false }: Options = {}) {
 
 // The app keeps query data fresh for a minute (lib/react-query/queryClient.ts),
 // so only the page itself reads the balance or history again.
-function renderBillingPage() {
-  const queryClient = new QueryClient({
+function renderBillingPage(
+  queryClient = new QueryClient({
     defaultOptions: { queries: { staleTime: 60_000, retry: false } },
-  });
+  }),
+) {
   return {
     queryClient,
     ...render(<SettingsBillingPage />, { queryClient }),
@@ -240,6 +280,10 @@ async function findHistoryRow(activity: string) {
 
 function queryHistoryRow(activity: string) {
   return screen.queryByRole("button", { name: historyRowName(activity) });
+}
+
+function selectedTab() {
+  return screen.getByRole("tab", { selected: true }).textContent;
 }
 
 function advance(ms: number) {
