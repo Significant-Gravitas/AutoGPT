@@ -11,6 +11,8 @@ import { useEffect, useRef, useState } from "react";
 export interface HeldFollowUp {
   id: number;
   sessionId: string;
+  /** Where its copy waits in sessionStorage. */
+  heldKey: string;
   text: string;
 }
 
@@ -24,29 +26,37 @@ interface Entry extends HeldFollowUp {
  * sessionStorage, because the panel unmounts when the user leaves the
  * builder and is gone on a reload: one left behind that way goes back to the
  * composer the next time its chat opens.
+ *
+ * A copy waits under its session unless `heldKey` names another key: the
+ * memory chat starts a new session on every open, so its copies wait for the
+ * next chat of the same memory instead.
  */
-export function useHeldFollowUps(sessionId: string | null) {
+export function useHeldFollowUps(
+  sessionId: string | null,
+  heldKey: string | null = sessionId,
+) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const nextIdRef = useRef(0);
 
   useEffect(() => {
-    if (!sessionId) return;
-    const leftBehind = takeHeldFollowUps(sessionId);
+    if (!sessionId || !heldKey) return;
+    const leftBehind = takeHeldFollowUps(heldKey);
     if (leftBehind.length === 0) return;
     returnToComposer(
       leftBehind.join("\n\n"),
       "You left the chat before it could go out.",
     );
-  }, [sessionId]);
+  }, [sessionId, heldKey]);
 
   function hold(forSessionId: string, text: string) {
     const followUp: HeldFollowUp = {
       id: nextIdRef.current++,
       sessionId: forSessionId,
+      heldKey: heldKey ?? forSessionId,
       text,
     };
     setEntries((prev) => [...prev, { ...followUp, isQueuing: false }]);
-    rememberHeldFollowUp(forSessionId, text);
+    rememberHeldFollowUp(followUp.heldKey, text);
     return followUp;
   }
 
@@ -62,12 +72,13 @@ export function useHeldFollowUps(sessionId: string | null) {
   /** It went out, was queued, or went back to the composer. */
   function release(followUp: HeldFollowUp) {
     drop(followUp);
-    forgetHeldFollowUp(followUp.sessionId, followUp.text);
+    forgetHeldFollowUp(followUp.heldKey, followUp.text);
   }
 
   /**
    * Another workflow's chat is on screen, so the composer is not its own: it
-   * keeps its stored copy, which goes back when its own chat opens again.
+   * keeps its stored copy, which goes back when a chat under its `heldKey`
+   * opens again.
    */
   function setAside(followUp: HeldFollowUp) {
     drop(followUp);

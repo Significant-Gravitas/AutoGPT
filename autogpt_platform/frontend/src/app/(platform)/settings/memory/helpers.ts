@@ -15,6 +15,15 @@ export const MEMORY_CHAT_PROMPTS = {
 
 export type MemoryChatSeed = keyof typeof MEMORY_CHAT_PROMPTS;
 
+/**
+ * Where the memory chat keeps a follow-up it is holding. Every open starts a
+ * new session, so one left behind waits for the next chat of the same memory
+ * rather than for its own session, which never opens again.
+ */
+export function memoryChatHeldKey(scopeExpertID: string | null) {
+  return `memory-chat:${scopeExpertID ?? "personal"}`;
+}
+
 export function getActiveExperts(experts: Expert[] | undefined) {
   return (experts ?? []).filter((expert) => !expert.is_archived);
 }
