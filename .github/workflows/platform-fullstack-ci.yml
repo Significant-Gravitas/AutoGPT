@@ -236,7 +236,8 @@ jobs:
             # instead of CHAT_TEST_MODE's canned reply, so journeys run the
             # real copilot pipeline: tools, persistence, streaming, cost.
             scripted_model: true
-            # Journeys may pin a known bug with test.fail(); it must still fail.
+            # Journeys may pin a known bug with pinKnownFailure(); it must
+            # still fail, and only on the check it pins.
             known_failures: true
           # The leg above, second shard.
           - suite: journeys

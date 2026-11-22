@@ -23,8 +23,8 @@ product does what the user expects.
     ```
     App-wide noise that is reviewed and harmless goes in `KNOWN_BENIGN` in
     `guard.ts`, with its reason. A real bug never goes there: if the guard
-    catches one, that's a finding. Report it, or mark the journey
-    `test.fail()` with a link to the issue.
+    catches one, that's a finding. Report it, and fix it or pin it (see
+    **Known bugs**).
   - **Hosted flags.** The frontend serves the values in `hosted-flags.json`
     (see below). Change single flags per journey with
     `test.use({ flagOverrides: { "<flag>": value } })`; the rest keep their
@@ -49,6 +49,22 @@ product does what the user expects.
 - **Assert invariants, not DOM trivia.** Use web-first assertions
   (`toBeVisible`, `expect.poll`); no fixed sleeps. When the UI and the API
   should agree, check both.
+- **Known bugs.** A journey that finds an open bug keeps running in CI,
+  pinned to it:
+  - File the issue and add it to the test's details:
+    `{ annotation: { type: "issue", description: "<issue URL>" } }`.
+  - Call `pinKnownFailure("#<n>: <what goes wrong>", "<check message>")`
+    (`known-failure.ts`) right before the one check the bug breaks, and pass
+    the message it returns to that check. Every check that must still pass
+    goes above it.
+  - CI accepts the test only if it fails, and only on that check: every
+    error it reports must be that check's message
+    (`.github/scripts/validate_playwright_json.py --allow-known-failures`). A
+    cleanup in `finally`, the guard at teardown or a soft check failing as
+    well fails the run, and so does the check starting to pass. When the fix
+    lands, drop the pin.
+  - The check must fail as an assertion, not by timing out. Give it a timeout
+    well inside the test's.
 - **Keep each journey under ~60 s.** The test timeout is 90 s.
 - **Reuse page objects** from `../pages/` and helpers from `../utils/`. Put
   helpers only journeys need (credits, users) in this folder.
