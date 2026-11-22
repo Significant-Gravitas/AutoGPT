@@ -1,6 +1,7 @@
 "use client";
 
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { reloadForChunkLoadError } from "@/lib/chunk-load-reload";
 import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
 
@@ -11,13 +12,16 @@ interface Props {
 
 export default function GlobalError({ error, reset }: Props) {
   useEffect(() => {
-    Sentry.captureException(error);
+    Sentry.captureException(error, {
+      tags: { errorBoundary: "true", context: "global-error" },
+    });
+    reloadForChunkLoadError(error, "error_boundary");
   }, [error]);
 
   return (
     <html>
       <body>
-        <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
+        <div className="flex min-h-screen items-center justify-center bg-surface-muted px-4 py-12 sm:px-6 lg:px-8">
           <div className="relative w-full max-w-xl lg:bottom-[4rem]">
             <ErrorCard
               responseError={{

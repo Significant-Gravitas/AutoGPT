@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { isPaywallError } from "@/components/contextual/PaywallToast/helpers";
+
 import {
   getFileSizeError,
   OAUTH_LOGO_MAX_SIZE_MB,
@@ -118,11 +120,16 @@ describe("uploadSubmissionMediaDirect", () => {
     );
   });
 
-  it("surfaces a clear size message on HTTP 413 instead of a bare status", async () => {
-    mockFetchOnce({ ok: false, status: 413, statusText: "Payload Too Large" });
+  it("surfaces a clear size message when a proxy rejects with a non-JSON 413", async () => {
+    mockFetchOnce({
+      ok: false,
+      status: 413,
+      statusText: "Payload Too Large",
+      text: () => "<html><body>413 Request Entity Too Large</body></html>",
+    });
 
     await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
-      /too large/i,
+      "File is too large. Please choose a smaller file.",
     );
   });
 
@@ -137,6 +144,21 @@ describe("uploadSubmissionMediaDirect", () => {
     await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
       "File too large. Maximum size is 50MB",
     );
+  });
+
+  it("keeps the status, so a missing plan reads as one", async () => {
+    mockFetchOnce({
+      ok: false,
+      status: 402,
+      text: () => JSON.stringify({ detail: "A subscription is required." }),
+    });
+
+    const error = await uploadSubmissionMediaDirect(makeFile(10)).catch(
+      (e: unknown) => e,
+    );
+
+    expect(isPaywallError(error)).toBe(true);
+    expect((error as Error).message).toBe("A subscription is required.");
   });
 });
 
@@ -161,7 +183,12 @@ describe("uploadOAuthAppLogoDirect", () => {
   });
 
   it("throws a clear size message on 413", async () => {
-    mockFetchOnce({ ok: false, status: 413, statusText: "Payload Too Large" });
+    mockFetchOnce({
+      ok: false,
+      status: 413,
+      statusText: "Payload Too Large",
+      text: () => "",
+    });
 
     await expect(
       uploadOAuthAppLogoDirect("app-123", makeFile(10)),
@@ -193,6 +220,23 @@ describe("uploadFileDirect (workspace)", () => {
     expect(calledUrl).toContain("overwrite=true");
     expect(calledUrl).toContain("session_id=sess-1");
   });
+
+  it.each([
+    "Storage limit exceeded. You've used 250 MB of your 250 MB quota. Delete some files or upgrade your plan for more storage.",
+    "File exceeds maximum size of 100 MB",
+    "The request is too large. The limit is 101 MB.",
+  ])("surfaces the backend's 413 reason: %s", async (detail) => {
+    mockFetchOnce({
+      ok: false,
+      status: 413,
+      statusText: "Payload Too Large",
+      text: () => JSON.stringify({ detail }),
+    });
+
+    await expect(uploadFileDirect(makeFile(10), "sess-1")).rejects.toThrow(
+      detail,
+    );
+  });
 });
 
 describe("authentication", () => {
@@ -216,6 +260,45 @@ describe("readUploadError fallbacks", () => {
 
     await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
       "upstream connection reset",
+    );
+  });
+
+  it("falls back to statusText when a proxy answers with an HTML page", async () => {
+    mockFetchOnce({
+      ok: false,
+      status: 502,
+      statusText: "Bad Gateway",
+      text: () => "<html><body><h1>502 Bad Gateway</h1></body></html>",
+    });
+
+    await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
+      /^Bad Gateway$/,
+    );
+  });
+
+  it("keeps the size message for a plain-text 413", async () => {
+    mockFetchOnce({
+      ok: false,
+      status: 413,
+      statusText: "Payload Too Large",
+      text: () => "Request Entity Too Large",
+    });
+
+    await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
+      "File is too large. Please choose a smaller file.",
+    );
+  });
+
+  it("keeps the size message when a 413 body cannot be read", async () => {
+    mockFetchOnce({
+      ok: false,
+      status: 413,
+      statusText: "Payload Too Large",
+      text: () => Promise.reject(new TypeError("network error")),
+    });
+
+    await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
+      "File is too large. Please choose a smaller file.",
     );
   });
 

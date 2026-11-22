@@ -29,8 +29,13 @@ from backend.blocks._base import (
     BlockType,
     BlockWebhookConfig,
 )
+from backend.blocks._preview import ChangePreview, PreviewField, PreviewTable
 from backend.data.integrations import Webhook, update_webhook
-from backend.data.model import APIKeyCredentials, Credentials, CredentialsField
+from backend.data.model import (
+    APIKeyCredentials,
+    Credentials,
+    CredentialsField,
+)
 from backend.data.model import CredentialsMetaInput as _CredentialsMetaInput
 from backend.data.model import (
     NodeExecutionStats,
@@ -132,6 +137,9 @@ __all__ = [
     "BlockType",
     "BlockWebhookConfig",
     "BlockManualWebhookConfig",
+    "ChangePreview",
+    "PreviewField",
+    "PreviewTable",
     # Schema and Model Components
     "SchemaField",
     "Credentials",

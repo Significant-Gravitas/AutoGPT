@@ -12,7 +12,6 @@ import {
 import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
-import { trackAgentRunGoal } from "@/services/analytics/activation-goals";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -85,8 +84,6 @@ export function useSelectedRunActions({
     }
 
     try {
-      toast({ title: "Run started" });
-
       const res = await executeRun({
         graphId: run.graph_id,
         graphVersion: run.graph_version,
@@ -96,11 +93,9 @@ export function useSelectedRunActions({
           source: "library",
         },
       });
+      toast({ title: "Run started" });
 
       const newRunId = okData(res)?.id;
-      if (newRunId) {
-        trackAgentRunGoal({ id: run.graph_id, name: agent?.name }, "rerun");
-      }
 
       await queryClient.invalidateQueries({
         queryKey: getGetV1ListGraphExecutionsQueryKey(agentGraphId),
@@ -130,11 +125,12 @@ export function useSelectedRunActions({
         description: "Cannot create template from missing run",
         variant: "destructive",
       });
-      return;
+      return false;
     }
 
     try {
-      const res = await createPreset({
+      // A failed save throws: the API client raises on any non-2xx answer.
+      await createPreset({
         data: {
           name,
           description,
@@ -142,21 +138,19 @@ export function useSelectedRunActions({
         },
       });
 
-      if (res.status === 200) {
-        toast({
-          title: "Template created",
+      toast({
+        title: "Template created",
+      });
+
+      if (agent) {
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListPresetsQueryKey({
+            graph_id: agent.graph_id,
+          }),
         });
-
-        if (agent) {
-          queryClient.invalidateQueries({
-            queryKey: getGetV2ListPresetsQueryKey({
-              graph_id: agent.graph_id,
-            }),
-          });
-        }
-
-        setIsCreateTemplateModalOpen(false);
       }
+
+      return true;
     } catch (error: unknown) {
       toast({
         title: "Failed to create template",
@@ -166,6 +160,7 @@ export function useSelectedRunActions({
             : "An unexpected error occurred.",
         variant: "destructive",
       });
+      return false;
     }
   }
 

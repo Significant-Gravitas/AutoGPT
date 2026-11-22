@@ -37,6 +37,13 @@ product does what the user expects.
     same shape as an admin grant), so the hosted paywall lets them run agents.
     A journey never shares a user with another one and never depends on CI's
     seeded accounts.
+- **More than one person.** Give each other person (an admin, a second user)
+  a browser context of their own, made in a local `test.extend` fixture so it
+  is closed after the test, with `serveHostedFlags` from `./fixtures` and its
+  own `watchForUnexpectedErrors` guard, and sign them up with
+  `provisionNewJourneyUser`. `grantAdminRole` (`admin-role.ts`) makes one an
+  admin; it writes the stack's database, so skip with `adminGrantUnavailable()`
+  where that can't be reached. `marketplace-journey.spec.ts` does all of this.
 - **Make your own data.** Build or import the agents you need inside the
   journey. Name things uniquely (`Date.now()` suffix).
 - **Assert invariants, not DOM trivia.** Use web-first assertions
@@ -67,6 +74,10 @@ PLAYWRIGHT_JOURNEY_COST_PER_NODE=1 PLAYWRIGHT_JOURNEY_TIER=PRO \
 # one journey, headed:
 pnpm exec playwright test --config playwright.journeys.config.ts --project hosted run-correctness --headed
 ```
+
+Journeys that call the backend directly, such as a webhook delivery, use
+`PLAYWRIGHT_BACKEND_URL` (default `http://localhost:8006`). Set it whenever
+`PLAYWRIGHT_BASE_URL` points at a remote stack.
 
 The frontend must be built with `NEXT_PUBLIC_PW_TEST=true`; only that build
 reads the hosted flag values the fixtures hand it.
@@ -138,14 +149,19 @@ PLAYWRIGHT_BASE_URL=https://autogpt-pr-<N>.vercel.app \
   config, so pass it `userAgent: JOURNEY_USER_AGENT` yourself.
 - Users sign up as `journey-<id>@previews.agpt.co`, which the preview
   allowlist accepts. Override the domain with `PLAYWRIGHT_JOURNEY_EMAIL_DOMAIN`.
-- Previews serve real PostHog flags, so `enable-platform-payment` is on there
-  and a fresh user is paywalled: running an agent gets a 402. For journeys
+- Previews run with `ENABLE_PLATFORM_PAYMENT` on, so a fresh user is
+  paywalled: running an agent gets a 402. For journeys
   that run agents, sign in as a paid account instead with
   `PLAYWRIGHT_JOURNEY_EMAIL` and `PLAYWRIGHT_JOURNEY_PASSWORD`. Never put a
   real password in a log, commit or PR.
 - Sign-ups are capped at 5 per client IP per 10 minutes, so a full run from
   one machine can hit `429`. Reuse an account as above, or run fewer
   journeys at once.
+- Setting `PLAYWRIGHT_JOURNEY_DATABASE_URL` for a deployed stack also lets the
+  marketplace journey make a temporary admin there and approve its test
+  listings, which stay on that stack. The role is taken back at teardown, but
+  tokens already issued keep it until they expire, within an hour
+  (`admin-role.ts`). Without the variable, that journey skips.
 
 ## In CI
 
@@ -171,7 +187,8 @@ The journeys leg runs as close to the hosted product as one compose stack
 allows. Flag values live in `hosted-flags.json`, read by both sides:
 
 - **Backend:** `.github/scripts/hosted_journeys_env.py` turns them into
-  `FORCE_FLAG_<NAME>` lines in `backend/.env`, plus `ENABLE_CREDIT=true`.
+  `FORCE_FLAG_<NAME>` lines in `backend/.env`, plus `ENABLE_CREDIT=true`
+  and `ENABLE_PLATFORM_PAYMENT=true`.
 - **Frontend:** the fixtures write them to local storage before the app
   loads, and a `NEXT_PUBLIC_PW_TEST=true` build serves them
   (`services/feature-flags/pw-flag-overrides.ts`). That lets both legs share
@@ -182,12 +199,12 @@ Differences from hosted that are still open:
 
 | Area               | Journeys leg                                                                                                                                                                         | Hosted                                                                         |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
-| Payments           | `enable-platform-payment` **on**; journey users get a paid tier without Stripe, so checkout, trials and Stripe webhooks go untested                                                  | On, with Stripe: NO_TIER users get a 402 until they subscribe or start a trial |
+| Payments           | `ENABLE_PLATFORM_PAYMENT` **on**; journey users get a paid tier without Stripe, so checkout, trials and Stripe webhooks go untested                                                  | On, with Stripe: NO_TIER users get a 402 until they subscribe or start a trial |
 | Node execution fee | 1 credit per node (`EXECUTION_COST_COUNT_THRESHOLD=1`), so a run's cost is visible                                                                                                   | 1 credit per 100 node executions                                               |
 | Copilot            | The scripted model: the real engine (Claude Agent SDK), tools, persistence, streaming and cost, with scripted model turns. Memory (Graphiti) calls fail, so turns run without memory | Real models                                                                    |
-| Flag source        | Fixed values from `hosted-flags.json`; JSON flags (model routing, tier limits) at code defaults                                                                                      | PostHog/LaunchDarkly with targeting                                            |
+| Flag source        | Fixed values from `hosted-flags.json`; JSON flags (model routing, tier limits) at code defaults                                                                                      | PostHog with targeting                                                         |
 | `BEHAVE_AS`        | `LOCAL` on both sides; the frontend's is build time                                                                                                                                  | `CLOUD`                                                                        |
-| Pods               | One `executor`, one `copilot_executor`                                                                                                                                               | Many. Scaling needs the fixed host ports 8002/8008 removed first               |
+| Pods               | One `executor`, one `copilot_executor`                                                                                                                                               | Many                                                                           |
 | Frontend runtime   | Next.js standalone server in Docker                                                                                                                                                  | Vercel (body size limits, edge routing)                                        |
 | External services  | No Stripe, OAuth providers, Postmark or E2B; ClamAV, Redis, RabbitMQ and FalkorDB are real                                                                                           | Real                                                                           |
 | LLM keys           | None; blocks that need platform credentials fail                                                                                                                                     | Platform keys                                                                  |

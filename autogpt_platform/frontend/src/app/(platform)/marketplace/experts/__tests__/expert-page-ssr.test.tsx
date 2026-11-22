@@ -153,12 +153,12 @@ describe("Marketplace expert page on the server", () => {
 
     const html = renderServerHTML(await renderPage("template-maria"));
 
-    // Only the header's hire action waits for the session and the flag; the
-    // profile that follows the header must be text, not placeholders.
+    // Only the hire card's action waits for the session and the flag; the
+    // rest of the profile must be text, not placeholders.
     const [header, body] = html.split("</header>");
     expect(header).toContain("<h1");
     expect(body).toContain("Maria is a senior marketing strategist");
-    expect(body).not.toContain("animate-pulse");
+    expect(body.match(/animate-pulse/g) ?? []).toHaveLength(1);
   });
 
   test("404s on the server for an id that matches no template", async () => {

@@ -1,16 +1,29 @@
 """Database operations for resource transfer management."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import NoReturn
 
-from backend.data.db import prisma
+from prisma import Prisma
+from prisma.models import TransferRequest
+from prisma.types import TransferRequestWhereInput
+
+from backend.data.db import prisma, transaction
 from backend.util.exceptions import NotFoundError
+from backend.util.json import SafeJson
 
 from .model import TransferResponse
 
 logger = logging.getLogger(__name__)
 
 _VALID_RESOURCE_TYPES = {"AgentGraph", "StoreListing"}
+_OPEN_STATUSES = ["PENDING", "SOURCE_APPROVED", "TARGET_APPROVED"]
+_TERMINAL_STATUSES = ["COMPLETED", "REJECTED", "CANCELLED"]
+
+
+class _SourceNoLongerOwnsResource(Exception):
+    """Raised inside the execute transaction to roll it back when the source
+    org no longer owns the resource (e.g. a competing transfer ran first)."""
 
 
 async def create_transfer(
@@ -87,15 +100,20 @@ async def approve_transfer(
     if tr is None:
         raise NotFoundError(f"Transfer request {transfer_id} not found")
 
-    if tr.status in ("COMPLETED", "REJECTED"):
+    if tr.status in _TERMINAL_STATUSES:
         raise ValueError(f"Cannot approve a transfer with status '{tr.status}'")
 
     update_data: dict = {}
+    where: TransferRequestWhereInput = {
+        "id": transfer_id,
+        "status": {"in": _OPEN_STATUSES},
+    }
 
     if org_id == tr.sourceOrganizationId:
         if tr.sourceApprovedByUserId is not None:
             raise ValueError("Source organization has already approved this transfer")
         update_data["sourceApprovedByUserId"] = user_id
+        where["sourceApprovedByUserId"] = None
         if tr.targetApprovedByUserId is not None:
             # Both sides approved — ready for execution (NOT completed yet)
             update_data["status"] = "TARGET_APPROVED"
@@ -106,6 +124,7 @@ async def approve_transfer(
         if tr.targetApprovedByUserId is not None:
             raise ValueError("Target organization has already approved this transfer")
         update_data["targetApprovedByUserId"] = user_id
+        where["targetApprovedByUserId"] = None
         if tr.sourceApprovedByUserId is not None:
             # Both sides approved — ready for execution (NOT completed yet)
             update_data["status"] = "SOURCE_APPROVED"
@@ -115,9 +134,13 @@ async def approve_transfer(
     else:
         raise ValueError("Your active organization is not a party to this transfer")
 
-    updated = await prisma.transferrequest.update(
-        where={"id": transfer_id},
-        data=update_data,
+    approved = await prisma.transferrequest.update_many(where=where, data=update_data)
+    if approved == 0:
+        raise ValueError(
+            "Transfer is no longer open or your organization already approved"
+        )
+    updated = await prisma.transferrequest.find_unique_or_raise(
+        where={"id": transfer_id}
     )
     return TransferResponse.from_db(updated)
 
@@ -132,15 +155,22 @@ async def reject_transfer(
     if tr is None:
         raise NotFoundError(f"Transfer request {transfer_id} not found")
 
-    if tr.status in ("COMPLETED", "REJECTED"):
+    if tr.status in _TERMINAL_STATUSES:
         raise ValueError(f"Cannot reject a transfer with status '{tr.status}'")
 
     if org_id not in (tr.sourceOrganizationId, tr.targetOrganizationId):
         raise ValueError("Your active organization is not a party to this transfer")
 
-    updated = await prisma.transferrequest.update(
-        where={"id": transfer_id},
+    # Conditional, so a reject racing an execute can't flip a COMPLETED
+    # transfer (whose resource has already moved) to REJECTED.
+    rejected = await prisma.transferrequest.update_many(
+        where={"id": transfer_id, "status": {"not_in": _TERMINAL_STATUSES}},
         data={"status": "REJECTED"},
+    )
+    if rejected == 0:
+        raise ValueError("Transfer is no longer open")
+    updated = await prisma.transferrequest.find_unique_or_raise(
+        where={"id": transfer_id}
     )
     return TransferResponse.from_db(updated)
 
@@ -150,12 +180,10 @@ async def execute_transfer(
     user_id: str,
     org_id: str,
 ) -> TransferResponse:
-    """Execute an approved transfer -- move the resource to the target org.
+    """Atomically execute a transfer approved by both organizations.
 
-    Requires both source and target approvals, and the caller's active org
-    must be a party to the transfer — TRANSFER_RESOURCES is granted to every
-    personal-org owner, so without this check any authenticated user could
-    execute an approved transfer between two unrelated orgs.
+    The caller's active org must be a party, since TRANSFER_RESOURCES alone
+    is granted to every personal-org owner.
     """
     tr = await prisma.transferrequest.find_unique(where={"id": transfer_id})
     if tr is None:
@@ -172,26 +200,18 @@ async def execute_transfer(
     if tr.status == "COMPLETED":
         raise ValueError("Transfer has already been executed")
 
-    if tr.status == "REJECTED":
-        raise ValueError("Cannot execute a rejected transfer")
+    if tr.status in _TERMINAL_STATUSES:
+        raise ValueError(f"Cannot execute a transfer with status '{tr.status}'")
 
-    await _move_resource(
-        resource_type=tr.resourceType,
-        resource_id=tr.resourceId,
-        target_org_id=tr.targetOrganizationId,
+    try:
+        async with transaction() as tx:
+            await _execute_in_transaction(tx, tr, user_id)
+    except _SourceNoLongerOwnsResource:
+        await _reject_stale_transfer(transfer_id)
+
+    updated = await prisma.transferrequest.find_unique_or_raise(
+        where={"id": transfer_id}
     )
-
-    now = datetime.now(timezone.utc)
-    updated = await prisma.transferrequest.update(
-        where={"id": transfer_id},
-        data={"status": "COMPLETED", "completedAt": now},
-    )
-
-    await _create_audit_logs(
-        transfer=updated,
-        actor_user_id=user_id,
-    )
-
     return TransferResponse.from_db(updated)
 
 
@@ -200,12 +220,87 @@ async def execute_transfer(
 # ---------------------------------------------------------------------------
 
 
+async def _execute_in_transaction(
+    tx: Prisma, transfer: TransferRequest, user_id: str
+) -> None:
+    """Move, complete, audit and close competing requests in the caller's transaction.
+
+    Lock the resource before any TransferRequest row to serialize competing executes.
+    """
+    try:
+        await _validate_resource_ownership(
+            transfer.resourceType,
+            transfer.resourceId,
+            transfer.sourceOrganizationId,
+            db=tx,
+        )
+    except ValueError as e:
+        raise _SourceNoLongerOwnsResource() from e
+
+    moved = await _move_resource(
+        resource_type=transfer.resourceType,
+        resource_id=transfer.resourceId,
+        source_org_id=transfer.sourceOrganizationId,
+        target_org_id=transfer.targetOrganizationId,
+        db=tx,
+    )
+    if moved == 0:
+        raise _SourceNoLongerOwnsResource()
+
+    await _claim_completion(tx, transfer.id)
+    await _create_audit_logs(transfer=transfer, actor_user_id=user_id, db=tx)
+    await _reject_competing_transfers(tx, transfer)
+
+
+async def _claim_completion(tx: Prisma, transfer_id: str) -> None:
+    """Claim an open, fully approved request after its resource has been locked."""
+    claimed = await tx.transferrequest.update_many(
+        where={
+            "id": transfer_id,
+            "status": {"not_in": _TERMINAL_STATUSES},
+            "sourceApprovedByUserId": {"not": None},
+            "targetApprovedByUserId": {"not": None},
+        },
+        data={"status": "COMPLETED", "completedAt": datetime.now(UTC)},
+    )
+    if claimed == 0:
+        raise ValueError("Transfer is no longer open for execution")
+
+
+async def _reject_competing_transfers(tx: Prisma, transfer: TransferRequest) -> None:
+    """Close other open requests whose source can no longer transfer this resource."""
+    await tx.transferrequest.update_many(
+        where={
+            "id": {"not": transfer.id},
+            "resourceType": transfer.resourceType,
+            "resourceId": transfer.resourceId,
+            "status": {"in": _OPEN_STATUSES},
+        },
+        data={"status": "REJECTED"},
+    )
+
+
+async def _reject_stale_transfer(transfer_id: str) -> NoReturn:
+    """Reject after rollback without overwriting a concurrent terminal state."""
+    rejected = await prisma.transferrequest.update_many(
+        where={"id": transfer_id, "status": {"not_in": _TERMINAL_STATUSES}},
+        data={"status": "REJECTED"},
+    )
+    if rejected == 0:
+        raise ValueError("Transfer is no longer open for execution")
+    raise ValueError(
+        "Resource was deleted or no longer belongs to the source "
+        "organization; the transfer has been rejected"
+    )
+
+
 async def _validate_resource_ownership(
-    resource_type: str, resource_id: str, org_id: str
+    resource_type: str, resource_id: str, org_id: str, db: Prisma | None = None
 ) -> None:
     """Verify the resource exists and belongs to the given org."""
+    db = db if db is not None else prisma
     if resource_type == "AgentGraph":
-        graph = await prisma.agentgraph.find_first(
+        graph = await db.agentgraph.find_first(
             where={"id": resource_id, "isActive": True}
         )
         if graph is None:
@@ -214,7 +309,7 @@ async def _validate_resource_ownership(
             raise ValueError("AgentGraph does not belong to the source organization")
 
     elif resource_type == "StoreListing":
-        listing = await prisma.storelisting.find_unique(where={"id": resource_id})
+        listing = await db.storelisting.find_unique(where={"id": resource_id})
         if listing is None or listing.isDeleted:
             raise NotFoundError(f"StoreListing '{resource_id}' not found")
         if listing.owningOrgId != org_id:
@@ -224,54 +319,67 @@ async def _validate_resource_ownership(
 async def _move_resource(
     resource_type: str,
     resource_id: str,
+    source_org_id: str,
     target_org_id: str,
-) -> None:
-    """Move the resource to the target organization."""
+    db: Prisma | None = None,
+) -> int:
+    """Move the resource from the source to the target organization.
+
+    Returns the number of rows moved; 0 means the source org no longer owns it.
+    """
+    db = db if db is not None else prisma
     if resource_type == "AgentGraph":
         # Move ALL versions, not just the active one, and land the graph at
         # org-home (teamId=None) — a stale source-org teamId would fail every
         # clause of the target org's visibility_filter, making the graph
         # invisible to all target-org members.
-        await prisma.agentgraph.update_many(
-            where={"id": resource_id},
+        return await db.agentgraph.update_many(
+            where={"id": resource_id, "organizationId": source_org_id},
             data={"organizationId": target_org_id, "teamId": None},
         )
 
     elif resource_type == "StoreListing":
-        await prisma.storelisting.update(
-            where={"id": resource_id},
+        return await db.storelisting.update_many(
+            where={"id": resource_id, "owningOrgId": source_org_id},
             data={"owningOrgId": target_org_id},
         )
 
+    return 0
 
-async def _create_audit_logs(transfer, actor_user_id: str) -> None:
+
+async def _create_audit_logs(
+    transfer, actor_user_id: str, db: Prisma | None = None
+) -> None:
     """Create audit log entries for both source and target organizations."""
+    db = db if db is not None else prisma
+    # Json columns need SafeJson; a bare dict is rejected by prisma (#15267).
+    after_json = SafeJson(
+        {
+            "resourceType": transfer.resourceType,
+            "resourceId": transfer.resourceId,
+            "sourceOrganizationId": transfer.sourceOrganizationId,
+            "targetOrganizationId": transfer.targetOrganizationId,
+        }
+    )
     common = {
         "actorUserId": actor_user_id,
         "entityType": "TransferRequest",
         "entityId": transfer.id,
         "action": "TRANSFER_EXECUTED",
-        "afterJson": {
-            "resourceType": transfer.resourceType,
-            "resourceId": transfer.resourceId,
-            "sourceOrganizationId": transfer.sourceOrganizationId,
-            "targetOrganizationId": transfer.targetOrganizationId,
-        },
+        "afterJson": after_json,
         "correlationId": transfer.id,
     }
 
-    await prisma.auditlog.create(
-        data={
-            **common,
-            "organizationId": transfer.sourceOrganizationId,
-            "beforeJson": {"organizationId": transfer.sourceOrganizationId},
-        }
-    )
-
-    await prisma.auditlog.create(
-        data={
-            **common,
-            "organizationId": transfer.targetOrganizationId,
-            "beforeJson": {"organizationId": transfer.sourceOrganizationId},
-        }
-    )
+    for organization_id in (
+        transfer.sourceOrganizationId,
+        transfer.targetOrganizationId,
+    ):
+        await db.auditlog.create(
+            data={
+                **common,
+                "organizationId": organization_id,
+                "beforeJson": SafeJson(
+                    {"organizationId": transfer.sourceOrganizationId}
+                ),
+            }
+        )

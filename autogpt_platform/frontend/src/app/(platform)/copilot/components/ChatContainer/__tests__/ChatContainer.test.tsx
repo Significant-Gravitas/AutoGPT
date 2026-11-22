@@ -2,6 +2,7 @@ import React from "react";
 import { getGetV2GetChatShareStateMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { ChatShareStateResponse } from "@/app/api/__generated__/models/chatShareStateResponse";
 import { server } from "@/mocks/mock-server";
+import { getUsageExperience } from "@/services/usageExperience/helpers";
 import {
   act,
   render,
@@ -111,8 +112,18 @@ vi.mock("framer-motion", () => {
 });
 
 vi.mock("@/app/(platform)/copilot/components/ChatInput/ChatInput", () => ({
-  ChatInput: ({ disabled }: { disabled?: boolean }) => (
-    <input data-testid="chat-input" disabled={disabled} />
+  ChatInput: ({
+    disabled,
+    sendDisabled,
+  }: {
+    disabled?: boolean;
+    sendDisabled?: boolean;
+  }) => (
+    <input
+      data-testid="chat-input"
+      disabled={disabled}
+      data-send-disabled={String(!!sendDisabled)}
+    />
   ),
 }));
 
@@ -125,9 +136,11 @@ vi.mock("../../ChatMessagesContainer/ChatMessagesContainer", () => ({
   ChatMessagesContainer: ({
     bottomContentPadding,
     onRetry,
+    onResend,
   }: {
     bottomContentPadding?: number;
     onRetry?: () => void;
+    onResend?: () => void;
   }) => (
     <div
       data-testid="chat-messages-container"
@@ -136,6 +149,11 @@ vi.mock("../../ChatMessagesContainer/ChatMessagesContainer", () => ({
       <button type="button" onClick={onRetry}>
         Retry message
       </button>
+      {onResend ? (
+        <button type="button" onClick={onResend}>
+          Send again
+        </button>
+      ) : null}
     </div>
   ),
 }));
@@ -193,6 +211,22 @@ const baseProps = {
   droppedFiles: [],
   onDroppedFilesConsumed: vi.fn(),
   historicalDurations: new Map<string, number>(),
+};
+
+// A platform chat whose daily budget is out and resets: the composer offers
+// Send at reset in place of the paused notice.
+const sendAtResetProps = {
+  chatAuthProvider: "platform",
+  usage: {
+    budget: {
+      state: "exhausted" as const,
+      window: "daily" as const,
+      resetsAt: new Date("2026-10-16T00:00:00Z"),
+      percentUsed: 100,
+    },
+    usage: undefined,
+    experience: getUsageExperience(),
+  },
 };
 
 describe("ChatContainer", () => {
@@ -279,17 +313,141 @@ describe("ChatContainer", () => {
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
-  it("renders the blurred usage-limit backdrop only when the limit is reached", () => {
+  it("doesn't pop the usage tooltip open when a turn starts after Send at reset hid it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     mockIsUsageLimitReached.mockReturnValue(true);
+    const atReset = { ...baseProps, ...sendAtResetProps };
+    const { rerender } = render(<ChatContainer {...atReset} />);
+    const trigger = screen.getByTestId("chat-input").parentElement!;
 
+    await hoverUsageTooltipTrigger(trigger);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
+    // A running turn ends Send at reset while the limit still holds.
+    rerender(<ChatContainer {...atReset} status="streaming" />);
+
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("doesn't reopen a usage tooltip Send at reset closed once a turn starts", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mockIsUsageLimitReached.mockReturnValue(true);
+    const { rerender } = render(<ChatContainer {...baseProps} />);
+    const trigger = screen.getByTestId("chat-input").parentElement!;
+    await hoverUsageTooltipTrigger(trigger);
+    expect(screen.getByRole("tooltip")).toBeDefined();
+
+    const atReset = { ...baseProps, ...sendAtResetProps };
+    rerender(<ChatContainer {...atReset} />);
+    fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
+    rerender(<ChatContainer {...atReset} status="streaming" />);
+
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("keeps the draft editable while the usage notice pauses sending", () => {
+    mockIsUsageLimitReached.mockReturnValue(true);
     render(<ChatContainer {...baseProps} />);
-
-    const backdrop = screen.getByTestId("usage-limit-backdrop");
-
     expect(screen.getByRole("alert")).toBeDefined();
-    expect(backdrop.className).toContain("backdrop-blur-lg");
-    expect(backdrop.className).toContain("[mask-image:linear-gradient");
-    expect(backdrop.className).toContain("radial-gradient");
+    const input = screen.getByTestId("chat-input") as HTMLInputElement;
+    expect(input.disabled).toBe(false);
+    expect(input.getAttribute("data-send-disabled")).toBe("true");
+    fireEvent.change(input, { target: { value: "Keep this draft" } });
+    expect(input.value).toBe("Keep this draft");
+    expect(screen.queryByTestId("usage-limit-backdrop")).toBeNull();
+  });
+
+  it("still sends a retry while the limit pauses the composer, so the server can refuse it", () => {
+    mockIsUsageLimitReached.mockReturnValue(true);
+    const onSend = vi.fn();
+    render(
+      <ChatContainer
+        {...baseProps}
+        onSend={onSend}
+        messages={[
+          {
+            id: "question",
+            role: "user",
+            parts: [{ type: "text", text: "Summarize the launch notes" }],
+          },
+        ]}
+      />,
+    );
+    expect(
+      screen.getByTestId("chat-input").getAttribute("data-send-disabled"),
+    ).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry message" }));
+
+    expect(onSend).toHaveBeenCalledWith(
+      "Summarize the launch notes",
+      undefined,
+      undefined,
+      undefined,
+    );
+  });
+
+  it("offers Send again for a send no check could confirm", () => {
+    const onResendUnconfirmed = vi.fn();
+    render(
+      <ChatContainer
+        {...baseProps}
+        onResendUnconfirmed={onResendUnconfirmed}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send again" }));
+    expect(onResendUnconfirmed).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds Send again back while the usage limit pauses sending", () => {
+    mockIsUsageLimitReached.mockReturnValue(true);
+    const { rerender } = render(
+      <ChatContainer {...baseProps} onResendUnconfirmed={vi.fn()} />,
+    );
+    expect(
+      screen.getByTestId("chat-input").getAttribute("data-send-disabled"),
+    ).toBe("true");
+    expect(screen.queryByRole("button", { name: "Send again" })).toBeNull();
+
+    // A send the server just refused over the limit pauses it too.
+    mockIsUsageLimitReached.mockReturnValue(false);
+    rerender(
+      <ChatContainer
+        {...baseProps}
+        isUsageRefused
+        onResendUnconfirmed={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Send again" })).toBeNull();
+  });
+
+  it("holds Send again back while a new message's files upload", () => {
+    const { rerender } = render(
+      <ChatContainer
+        {...baseProps}
+        isUploadingFiles
+        onResendUnconfirmed={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Send again" })).toBeNull();
+
+    rerender(
+      <ChatContainer
+        {...baseProps}
+        pendingSend={{
+          text: "With the report",
+          attachments: [
+            {
+              name: "report.pdf",
+              mediaType: "application/pdf",
+              isUploading: true,
+            },
+          ],
+        }}
+        onResendUnconfirmed={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Send again" })).toBeNull();
   });
 
   it("does not render the usage-limit backdrop while usage is still available", () => {

@@ -6,7 +6,11 @@ from zoneinfo import ZoneInfo
 import prisma
 import pydantic
 from prisma.models import UserOnboarding
-from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
+from prisma.types import (
+    UserOnboardingCreateInput,
+    UserOnboardingUpdateInput,
+    UserOnboardingWhereInput,
+)
 
 from backend.api.features.store.model import StoreAgentDetails
 from backend.api.model import OnboardingNotificationPayload
@@ -16,6 +20,7 @@ from backend.data.notification_bus import (
     AsyncRedisNotificationEventBus,
     NotificationEvent,
 )
+from backend.data.onboarding_role import OnboardingRole
 from backend.data.onboarding_steps import (
     FrontendOnboardingStep as FrontendOnboardingStep,
 )
@@ -26,7 +31,6 @@ from backend.data.onboarding_wizard import (
 )
 from backend.data.subscription_trial import get_subscription_trial
 from backend.data.user import get_user_by_id
-from backend.util.cache import cached
 from backend.util.json import SafeJson
 from backend.util.product_analytics import track_onboarding_completed
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -40,7 +44,6 @@ REASON_MAPPING: dict[str, list[str]] = {
     "personal_productivity": ["personal", "productivity"],
 }
 POINTS_AGENT_COUNT = 50  # Number of agents to calculate points for
-MIN_AGENT_COUNT = 2  # Minimum number of marketplace agents to enable onboarding
 
 # OnboardingStep and FrontendOnboardingStep are imported from
 # backend.data.onboarding_steps and remain importable from this module for
@@ -52,6 +55,18 @@ class UserOnboardingUpdate(pydantic.BaseModel):
     wizardRevision: int | None = pydantic.Field(default=None, ge=0, strict=True)
     wizardUserId: str | None = pydantic.Field(
         default=None, min_length=1, max_length=128, strict=True
+    )
+    # The wizard tab sending the draft, and the draft's number in that tab. A
+    # client that sends neither is checked by revision alone.
+    wizardWriterId: str | None = pydantic.Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        strict=True,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    )
+    wizardWriteSeq: int | None = pydantic.Field(
+        default=None, ge=1, le=2_147_483_647, strict=True
     )
     walletShown: Optional[bool] = None
     # Typed enum so the PATCH endpoint validates step names at the boundary
@@ -72,6 +87,8 @@ class UserOnboardingUpdate(pydantic.BaseModel):
             raise ValueError("wizardRevision is required when saving wizardProgress")
         if "wizardProgress" in self.model_fields_set and self.wizardUserId is None:
             raise ValueError("wizardUserId is required when saving wizardProgress")
+        if (self.wizardWriterId is None) != (self.wizardWriteSeq is None):
+            raise ValueError("wizardWriterId and wizardWriteSeq are sent together")
         return self
 
 
@@ -130,8 +147,15 @@ async def reset_user_onboarding(user_id: str):
             "create": UserOnboardingCreateInput(userId=user_id),
             "update": {
                 "completedSteps": [],
-                "wizardProgress": None,
+                # Prisma refuses a bare None for a Json column.
+                "wizardProgress": SafeJson(None),
                 "wizardRevision": {"increment": 1},
+                # No tab wrote this revision, so none may save over it.
+                "wizardWriterId": None,
+                "wizardWriteSeq": None,
+                # Kept from the draft at the role step, so it goes with it.
+                "role": None,
+                "roleOther": None,
                 "walletShown": False,
                 "notified": [],
                 "usageReason": None,
@@ -177,14 +201,19 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     if data.onboardingAgentExecutionId is not None:
         update["onboardingAgentExecutionId"] = data.onboardingAgentExecutionId
     if "wizardProgress" in data.model_fields_set:
-        update["wizardProgress"] = (
-            SafeJson(data.wizardProgress.model_dump(mode="json"))
+        update["wizardProgress"] = SafeJson(
+            data.wizardProgress.model_dump(mode="json")
             if data.wizardProgress is not None
             else None
         )
-        if data.wizardRevision is None:
-            raise ValueError("wizardRevision is required when saving wizardProgress")
-        return await _save_wizard_progress(user_id, data.wizardRevision, update)
+        # The answered role is kept in the same revision-checked write as the
+        # draft, so a stale draft can never leave its role over a newer one.
+        if data.wizardProgress is not None and (
+            role := OnboardingRole.from_wizard(data.wizardProgress)
+        ):
+            update["role"] = role.choice
+            update["roleOther"] = role.other
+        return await _save_wizard_progress(user_id, data, update)
 
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
@@ -196,12 +225,36 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
 
 
 async def _save_wizard_progress(
-    user_id: str, revision: int, update: UserOnboardingUpdateInput
+    user_id: str, data: UserOnboardingUpdate, update: UserOnboardingUpdateInput
 ) -> UserOnboarding:
+    """Save the draft over the revision its tab last read, or over saves that
+    tab made since. A tab can stop waiting for a save that still lands, and
+    then sends its next save from the revision before it; that save must not
+    be refused for the tab's own. A lower number from the same tab is an
+    older save arriving late, refused so it can't replace a newer one. Any
+    other tab's save in between changes the stored writer, so this tab's
+    save is refused."""
+    revision = data.wizardRevision
+    if revision is None:
+        raise ValueError("wizardRevision is required when saving wizardProgress")
+    saves_over: list[UserOnboardingWhereInput] = [{"wizardRevision": revision}]
+    if data.wizardWriterId is not None and data.wizardWriteSeq is not None:
+        saves_over.append(
+            {
+                "wizardWriterId": data.wizardWriterId,
+                "wizardWriteSeq": {"lte": data.wizardWriteSeq},
+            }
+        )
+    where: UserOnboardingWhereInput = {"userId": user_id, "OR": saves_over}
     async with transaction() as tx:
         changed = await tx.useronboarding.update_many(
-            where={"userId": user_id, "wizardRevision": revision},
-            data={**update, "wizardRevision": {"increment": 1}},
+            where=where,
+            data={
+                **update,
+                "wizardRevision": {"increment": 1},
+                "wizardWriterId": data.wizardWriterId,
+                "wizardWriteSeq": data.wizardWriteSeq,
+            },
         )
         if changed != 1:
             raise OnboardingWizardConflict()
@@ -564,15 +617,3 @@ def format_brain_dump_for_extraction(
             ),
         ]
     )
-
-
-@cached(maxsize=1, ttl_seconds=300)  # Cache for 5 minutes since this rarely changes
-async def onboarding_enabled() -> bool:
-    """
-    Check if onboarding should be enabled based on store agent count.
-    Cached to prevent repeated slow database queries.
-    """
-    # Use a more efficient query that stops counting after finding enough agents
-    count = await prisma.models.StoreAgent.prisma().count(take=MIN_AGENT_COUNT + 1)
-    # Onboarding is enabled if there are at least 2 agents in the store
-    return count >= MIN_AGENT_COUNT

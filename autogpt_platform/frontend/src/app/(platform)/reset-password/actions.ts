@@ -1,7 +1,9 @@
 "use server";
 import { auth } from "@/lib/auth/auth";
+import { resetPasswordPage } from "@/lib/auth/set-password-link";
 import * as Sentry from "@sentry/nextjs";
 import { APIError } from "better-auth/api";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 export async function sendResetEmail(email: string) {
@@ -9,19 +11,16 @@ export async function sendResetEmail(email: string) {
     "sendResetEmail",
     {},
     async () => {
-      const origin =
-        process.env.BETTER_AUTH_URL ||
-        process.env.NEXT_PUBLIC_FRONTEND_BASE_URL ||
-        "http://localhost:3000";
-
       try {
         // Better Auth emails a link that redirects to
         // `/reset-password?token=<token>` (or `?error=...` on failure).
         await auth.api.requestPasswordReset({
           body: {
             email,
-            redirectTo: new URL("/reset-password", origin).toString(),
+            redirectTo: resetPasswordPage(),
           },
+          // The client's IP, for the per-IP limit (attempt-limits.ts).
+          headers: await headers(),
         });
       } catch (error) {
         console.error("Error sending reset email", error);

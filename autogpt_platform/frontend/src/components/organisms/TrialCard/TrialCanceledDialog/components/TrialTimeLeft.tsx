@@ -23,7 +23,7 @@ export function TrialTimeLeft({ endsAt }: Props) {
     return (
       <>
         You still have full access until{" "}
-        <strong className="font-semibold">
+        <strong data-slot="trial-time-left-end" className="font-semibold">
           {left.time} {left.kind}
         </strong>
         . Nothing changes until then.
@@ -32,10 +32,14 @@ export function TrialTimeLeft({ endsAt }: Props) {
   return (
     <>
       You still have{" "}
-      <strong className="font-semibold">{formatTrialDays(left.days)}</strong> of
-      full access, until{" "}
-      <strong className="font-semibold">{formatTrialEnd(endsAt)}</strong>.
-      Nothing changes until then.
+      <strong data-slot="trial-time-left-days" className="font-semibold">
+        {formatTrialDays(left.days)}
+      </strong>{" "}
+      of full access, until{" "}
+      <strong data-slot="trial-time-left-end" className="font-semibold">
+        {formatTrialEnd(endsAt)}
+      </strong>
+      . Nothing changes until then.
     </>
   );
 }

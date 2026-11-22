@@ -26,8 +26,8 @@ export function TriggerAgentListItem({
   return (
     <SidebarItemCard
       icon={
-        <IconWrapper className="border-blue-50 bg-blue-50">
-          <Icon icon={Robot01Icon} size={16} className="text-zinc-700" />
+        <IconWrapper className="border-info-surface bg-info-surface text-foreground-body">
+          <Icon icon={Robot01Icon} size={16} />
         </IconWrapper>
       }
       title={triggerAgent.name}
@@ -36,6 +36,7 @@ export function TriggerAgentListItem({
       })}`}
       onClick={onClick}
       selected={selected}
+      testID={`library-trigger-agent-item-${triggerAgent.id}`}
       actions={
         <TriggerAgentActionsDropdown
           parentAgent={parentAgent}

@@ -16,15 +16,31 @@ import {
   expectEachTurnOnce,
   type ModelScript,
   readJournal,
+  releaseHeldReply,
   requireScriptedModel,
   scriptedRun,
 } from "./scripted-model";
 
-// One answer, streamed a word at a time over a few seconds.
+// One answer, streamed a word at a time. The model sends its first
+// HELD_AFTER_WORDS words, then holds the rest until the journey has cut the
+// connection, so the journey waits for fewer words than that to show.
 const SCRIPT: ModelScript = slowAnswerScript;
 const ANSWER = SCRIPT.turns[0].text ?? "";
+const HELD_AFTER_WORDS = slowAnswerScript.turns[0].stream.hold_after_words;
+const STREAMING_WORDS = Math.floor(HELD_AFTER_WORDS / 2);
 
 test.describe("copilot reconnect journey", () => {
+  // A resume after the turn finished finds its cursor trimmed, and the chat
+  // seeds from the checkpoint this 409 carries.
+  test.use({
+    expectedResponses: [
+      {
+        status: 409,
+        method: "GET",
+        url: /\/api\/chat\/sessions\/[^/]+\/stream\?turn=/,
+      },
+    ],
+  });
   test.beforeAll(requireScriptedModel);
 
   test("an answer cut off by a dropped connection arrives whole, once and as saved", async ({
@@ -45,12 +61,6 @@ test.describe("copilot reconnect journey", () => {
     context,
     journeyUser,
   }) => {
-    // While offline, the pending follow-ups peek in useCopilotPendingChips.ts
-    // (`void getV2GetPendingMessages(sessionId).then(...)`, no catch) rejects
-    // with "Failed to fetch" and nothing handles it, so the page reports an
-    // uncaught error. Everything the user sees is right. Remove this marker
-    // when that request handles a network failure.
-    test.fail(true, "unhandled 'Failed to fetch' from useCopilotPendingChips");
     await loseConnectionMidAnswer({
       page,
       context,
@@ -75,22 +85,50 @@ async function loseConnectionMidAnswer({
 }: Args) {
   const run = scriptedRun("slow-answer");
   await recordChatStreams(page);
-  await startChat(page, `Answer me slowly. ${run.marker}`);
   const transcript = page.getByRole("log");
-  await expect(
-    transcript.getByText(firstWords(ANSWER)),
-    "the answer should start streaming",
-  ).toBeVisible();
+  let reconnected: ReturnType<Page["waitForRequest"]>;
+  let released = false;
+  try {
+    await startChat(page, `Answer me slowly. ${run.marker}`);
+    await expect(
+      transcript.getByText(firstWords(ANSWER, STREAMING_WORDS)),
+      "the answer should start streaming",
+    ).toBeVisible({ timeout: 60_000 });
 
-  // The connection drops mid-answer while the model is still writing it.
-  const reconnected = page.waitForRequest(isChatStream("GET"));
-  if (offline) await context.setOffline(true);
-  await cutChatStreams(page);
-  await expect(
-    page.getByText(/Reconnecting/).first(),
-    "the chat should say it lost the connection",
-  ).toBeVisible();
-  if (offline) await context.setOffline(false);
+    // The connection drops mid-answer while the model is still writing it.
+    // Online, one drop resumes silently: the chat speaks up from the second
+    // failed attempt in a row.
+    reconnected = page.waitForRequest(isChatStream("GET"));
+    // A failure before it is awaited mustn't leave it to reject unhandled
+    // when the page closes; the success path still awaits it below.
+    void reconnected.catch(() => undefined);
+    if (offline) await context.setOffline(true);
+    await cutChatStreams(page);
+    // Only now does the model write the rest, while the connection is down:
+    // the cut can't miss an answer that finished before the first words
+    // showed.
+    await releaseHeldReply(run.nonce);
+    released = true;
+  } finally {
+    // A journey that fails before the cut must not leave the reply held open
+    // on the scripted model. Each release lets one held reply through, so
+    // this one goes out only if the journey's own didn't.
+    if (!released) {
+      await releaseHeldReply(run.nonce).catch(() => undefined);
+      if (offline) await context.setOffline(false).catch(() => undefined);
+    }
+  }
+  if (offline) {
+    await expect(
+      page.getByText("You're offline", { exact: true }),
+      "the page should say the browser is offline",
+    ).toBeVisible();
+    await expect(
+      transcript.getByText(/Offline — waiting for the network/).first(),
+      "the chat should say it is waiting for the network",
+    ).toBeVisible();
+    await context.setOffline(false);
+  }
   await reconnected;
 
   await expect(
@@ -112,5 +150,5 @@ async function loseConnectionMidAnswer({
   const journal = await readJournal(run.nonce);
   expectEachTurnOnce(journal, SCRIPT);
   if (!journeyUser.id) throw new Error("the journey user should have an id");
-  await expectChargedWhatWasBilled(journeyUser.id, journal);
+  await expectChargedWhatWasBilled(journeyUser.id, [run.nonce]);
 }

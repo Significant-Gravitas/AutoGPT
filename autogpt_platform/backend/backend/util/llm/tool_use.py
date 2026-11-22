@@ -1,16 +1,22 @@
 """Pydantic → Anthropic tool definition conversion.
 
-Anthropic's Messages API supports forced structured output via tool
-use: provide a tool whose ``input_schema`` matches the desired output
-shape, then set ``tool_choice={"type":"tool","name":<tool_name>}``
-and the model is constrained to call exactly that tool with arguments
-matching the schema — no preamble, no markdown, no "Looking at the
-inputs, I need to..." prose. The model literally cannot emit anything
-else.
+Anthropic's Messages API supports structured output via tool use:
+provide a tool whose ``input_schema`` matches the desired output shape,
+then set ``tool_choice={"type":"tool","name":<tool_name>}`` and the
+model answers with exactly one call to that tool — no preamble, no
+markdown, no "Looking at the inputs, I need to..." prose. Forcing the
+call does not make its arguments schema-valid: that takes Anthropic's
+strict tool mode, which these helpers don't enable, so callers still
+validate the arguments against their Pydantic model.
+
+Anthropic's newest models (Opus 5.5 among them) answer a forced
+``tool_choice`` with a 400, so ``structured_tool_choice`` picks per
+model: the forced choice where it is accepted, ``auto`` where it is not.
+With ``auto`` the model can still reply in text, so the caller asks for
+the call in the prompt and parses a text reply as the fallback.
 
 This module turns any Pydantic ``BaseModel`` subclass into the tool
-definition Anthropic expects + provides the forced ``tool_choice``
-helper.
+definition Anthropic expects + provides the ``tool_choice`` helpers.
 """
 
 from __future__ import annotations
@@ -18,6 +24,8 @@ from __future__ import annotations
 from typing import Any
 
 from pydantic import BaseModel
+
+from backend.util.llm.providers import anthropic_accepts_forced_tool_choice
 
 
 def pydantic_to_anthropic_tool(
@@ -69,6 +77,35 @@ def force_tool_choice(tool_name: str) -> dict[str, Any]:
     }
 
 
+def auto_tool_choice() -> dict[str, Any]:
+    """A ``tool_choice`` that leaves calling the tool to the model, for
+    models that reject a forced one. ``disable_parallel_tool_use`` still
+    holds under ``auto``: at most one tool_use block, never a result split
+    across two calls.
+    """
+    return {"type": "auto", "disable_parallel_tool_use": True}
+
+
+def structured_tool_choice(model: str, tool_name: str) -> dict[str, Any]:
+    """The ``tool_choice`` for a structured-output call to *model*:
+    ``force_tool_choice(tool_name)`` where the model accepts a forced tool,
+    ``auto_tool_choice()`` where it answers one with a 400 (see
+    ``providers.anthropic_accepts_forced_tool_choice``).
+
+    Under ``auto`` the model may reply in text instead of calling the
+    tool, so the caller also asks for the call in the prompt and parses a
+    text reply as the fallback.
+    """
+    if anthropic_accepts_forced_tool_choice(model):
+        return force_tool_choice(tool_name)
+    return auto_tool_choice()
+
+
+def is_forced_tool_choice(tool_choice: dict[str, Any] | None) -> bool:
+    """Whether *tool_choice* forces a tool call (``tool`` or ``any``)."""
+    return tool_choice is not None and tool_choice.get("type") in ("tool", "any")
+
+
 # ---------------------------------------------------------------------------
 # $ref inlining
 # ---------------------------------------------------------------------------
@@ -79,9 +116,11 @@ def _inline_refs(schema: dict[str, Any]) -> dict[str, Any]:
 
     Pydantic emits ``{"$ref": "#/$defs/Foo"}`` for nested models. This
     walks the schema, replaces each ``$ref`` with the referenced
-    definition, and returns a fully inlined copy. Mutually recursive
-    schemas would loop forever; the dream-pass schemas don't have
-    that shape (validated by tests).
+    definition, and returns a fully inlined copy. Keys beside a ``$ref``
+    (a field's ``default`` and ``description``) are laid over the
+    inlined definition and win over its own. Mutually recursive schemas
+    would loop forever; the dream-pass schemas don't have that shape
+    (validated by tests).
     """
     defs = schema.get("$defs", {})
     return _resolve(schema, defs)
@@ -95,8 +134,16 @@ def _resolve(node: Any, defs: dict[str, Any]) -> Any:
                 key = ref.split("/")[-1]
                 target = defs.get(key)
                 if target is not None:
-                    # Resolve nested refs in the target before returning.
-                    return _resolve(target, defs)
+                    # Resolve nested refs in the target, then keep what the
+                    # referencing node says itself: pydantic puts a field's
+                    # ``default`` and ``description`` beside its ``$ref``.
+                    resolved = _resolve(target, defs)
+                    siblings = {
+                        k: _resolve(v, defs) for k, v in node.items() if k != "$ref"
+                    }
+                    if isinstance(resolved, dict):
+                        return {**resolved, **siblings}
+                    return resolved
             # Unknown ref form — leave as-is rather than fabricate.
             return node
         return {k: _resolve(v, defs) for k, v in node.items()}

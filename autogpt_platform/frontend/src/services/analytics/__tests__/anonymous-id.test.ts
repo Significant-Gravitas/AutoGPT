@@ -10,9 +10,11 @@ import {
   followAnalyticsConsentForIdentity,
   getAnonymousID,
   getPostHogDeviceID,
+  isAnonymousIDSpentFor,
   readFirstLanding,
   resetAnonymousID,
   resetAnonymousIDForTests,
+  setAnalyticsIdentitySignedIn,
 } from "../anonymous-id";
 
 function setAnalyticsConsent(analytics: boolean): void {
@@ -89,6 +91,32 @@ describe("getAnonymousID", () => {
   });
 });
 
+describe("an id an earlier page merged into an account", () => {
+  afterEach(() => {
+    document.cookie = "ph_phc_test_posthog=; Path=/; Max-Age=0";
+  });
+
+  it("trusts this app's PostHog state over a stale shared cookie", () => {
+    window.localStorage.setItem(ANONYMOUS_ID_KEY, "stored-id");
+    window.localStorage.setItem(
+      "ph_phc_test_posthog",
+      JSON.stringify({ distinct_id: "stored-id", $device_id: "stored-id" }),
+    );
+    document.cookie = `ph_phc_test_posthog=${encodeURIComponent(
+      JSON.stringify({
+        distinct_id: "user-A",
+        $device_id: "other-device",
+        $user_state: "identified",
+      }),
+    )}; Path=/`;
+
+    setAnalyticsIdentitySignedIn("user-B");
+
+    expect(getAnonymousID()).toBe("stored-id");
+    expect(isAnonymousIDSpentFor("user-B")).toBe(false);
+  });
+});
+
 describe("resetAnonymousID", () => {
   it("forgets the id and first landing so the next visitor starts fresh", () => {
     const first = getAnonymousID();
@@ -111,7 +139,7 @@ describe("resetAnonymousID", () => {
     );
     expect(getAnonymousID()).toBe("old-device");
 
-    resetAnonymousID("fresh-device");
+    resetAnonymousID({ nextID: "fresh-device" });
     resetAnonymousIDForTests();
 
     expect(getAnonymousID()).toBe("fresh-device");
@@ -287,6 +315,45 @@ describe("following analytics consent", () => {
     expect(window.localStorage.getItem(ANONYMOUS_ID_KEY)).toBeNull();
     expect(window.localStorage.getItem(FIRST_LANDING_KEY)).toBeNull();
     unfollow();
+  });
+
+  it("leaves the stored id and landing alone while the answer is pending", () => {
+    configureCookiebot();
+    installCookiebot();
+    window.localStorage.setItem(ANONYMOUS_ID_KEY, "stored-id");
+    window.localStorage.setItem(FIRST_LANDING_KEY, "{}");
+
+    const unfollow = followAnalyticsConsentForIdentity();
+
+    expect(getAnonymousID()).not.toBe("stored-id");
+    expect(window.localStorage.getItem(ANONYMOUS_ID_KEY)).toBe("stored-id");
+    expect(window.localStorage.getItem(FIRST_LANDING_KEY)).toBe("{}");
+
+    answerCookiebot({ statistics: true });
+
+    expect(getAnonymousID()).toBe("stored-id");
+    unfollow();
+  });
+
+  it("adopts the website's PostHog device id from the shared cookie on a grant", () => {
+    configureCookiebot();
+    installCookiebot();
+    document.cookie = `ph_phc_test_posthog=${encodeURIComponent(
+      JSON.stringify({ $device_id: "website-device" }),
+    )}; Path=/`;
+    setAnalyticsIdentitySignedIn(null);
+    const pageID = getAnonymousID();
+    const unfollow = followAnalyticsConsentForIdentity();
+
+    answerCookiebot({ statistics: true });
+
+    expect(pageID).not.toBe("website-device");
+    expect(getAnonymousID()).toBe("website-device");
+    expect(window.localStorage.getItem(ANONYMOUS_ID_KEY)).toBe(
+      "website-device",
+    );
+    unfollow();
+    document.cookie = "ph_phc_test_posthog=; Path=/; Max-Age=0";
   });
 
   it("keeps a first landing stored on an earlier visit", () => {

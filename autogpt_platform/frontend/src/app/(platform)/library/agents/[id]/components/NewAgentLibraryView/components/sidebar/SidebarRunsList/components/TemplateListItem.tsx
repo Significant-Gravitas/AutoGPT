@@ -27,8 +27,8 @@ export function TemplateListItem({
   return (
     <SidebarItemCard
       icon={
-        <IconWrapper className="border-blue-50 bg-blue-50">
-          <Icon icon={File02Icon} size={16} className="text-zinc-700" />
+        <IconWrapper className="border-info-surface bg-info-surface text-foreground-body">
+          <Icon icon={File02Icon} size={16} />
         </IconWrapper>
       }
       title={template.name}
@@ -37,6 +37,7 @@ export function TemplateListItem({
       })}
       onClick={onClick}
       selected={selected}
+      testID={`library-template-item-${template.id}`}
       actions={
         <TemplateActionsDropdown
           agent={agent}

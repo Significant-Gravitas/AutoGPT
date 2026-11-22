@@ -47,6 +47,8 @@ describe("formatProviderName", () => {
     expect(formatProviderName("github")).toBe("GitHub");
     expect(formatProviderName("d_id")).toBe("D-ID");
     expect(formatProviderName("twitter")).toBe("X");
+    expect(formatProviderName("aiml_api")).toBe("AI/ML API");
+    expect(formatProviderName("anysearch")).toBe("AnySearch");
   });
 
   test("title-cases unknown snake_case slugs", () => {

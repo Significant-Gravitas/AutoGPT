@@ -3,7 +3,7 @@ import type {
   HeldOutcome,
 } from "../ChatMessagesContainer/heldCallRows";
 import type { HeldAnswer } from "../ApprovalQueue/heldAnswersStore";
-import { COPILOT_GATE_NODE_PREFIX } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
+import { COPILOT_GATE_NODE_PREFIX } from "@/components/organisms/PendingReviewsList/helpers";
 import { fallbackAsk } from "../ApprovalQueue/helpers";
 import { capabilityTargetRow } from "./capabilityRow";
 import type { ChainRow } from "./helpers";
@@ -128,7 +128,7 @@ function settle(
   };
 }
 
-function isHeldReadId(reviewId: string | null) {
+export function isHeldReadId(reviewId: string | null) {
   return !!reviewId?.startsWith(`${COPILOT_GATE_NODE_PREFIX}read-`);
 }
 

@@ -195,5 +195,5 @@ export function buildClarificationAnswersMessage(
     .join("\n\n");
 
   const action = mode === "create" ? "creating" : "editing";
-  return `**Here are my answers:**\n\n${contextMessage}\n\nPlease proceed with ${action} the agent.`;
+  return `**Here are my answers:**\n\n${contextMessage}\n\nPlease proceed with ${action} the workflow.`;
 }

@@ -1,0 +1,22 @@
+name: Start MinIO
+description: Build a pinned MinIO source release and start an S3 service for tests
+runs:
+  using: composite
+  steps:
+    - name: Build MinIO
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: docker build --tag autogpt-ci-minio "$ACTION_PATH"
+    - name: Start MinIO and wait for readiness
+      shell: bash
+      run: |
+        docker run --detach --name minio --publish 127.0.0.1:9000:9000 \
+          --env MINIO_ROOT_USER=minioadmin --env MINIO_ROOT_PASSWORD=minioadmin \
+          autogpt-ci-minio
+        if ! curl --fail --silent --show-error --retry 30 --retry-delay 1 \
+          --retry-all-errors --retry-max-time 60 --max-time 2 \
+          http://127.0.0.1:9000/minio/health/ready; then
+          docker logs minio
+          exit 1
+        fi

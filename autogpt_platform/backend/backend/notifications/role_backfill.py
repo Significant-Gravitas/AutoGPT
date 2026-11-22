@@ -1,8 +1,11 @@
 """Give accounts from before SECRT-2852 the onboarding role the live code sends.
 
 Since SECRT-2852 the profile step sends the role to MailerLite and PostHog
-from the pick the wizard keeps (`data/onboarding_role.py`). Accounts that got
-there earlier have no kept pick, only the copy in their business
+from the pick the wizard keeps (`data/onboarding_role.py`), and since
+SECRT-3036 the role step does too. Accounts that moved on from the role step
+before that, but never reached the profile step at the end, have the pick in
+their saved wizard draft (`OnboardingRole.from_wizard`): most stopped at the
+paywall. Accounts from before SECRT-2852 have only the copy in their business
 understanding, which AutoPilot rewrites. An exact option ID there can only
 have come from the wizard, so it is reliable; anything else is skipped rather
 than guessed (`OnboardingRole.from_understanding`).
@@ -25,11 +28,14 @@ import logging
 from collections import Counter
 from collections.abc import Callable
 from datetime import datetime
+from functools import cached_property, partial
 
-from pydantic import BaseModel
+from posthog import Posthog
+from pydantic import BaseModel, ValidationError
 
 from backend.data.notifications import SubscriberField
 from backend.data.onboarding_role import OnboardingRole
+from backend.data.onboarding_wizard import OnboardingWizardProgress
 from backend.notifications.audience_enrichment import (
     points_at_excluded_country,
     role_fields,
@@ -44,7 +50,7 @@ from backend.notifications.mailerlite import (
 )
 from backend.notifications.mailerlite_backfill import BatchAnswer, _refusal
 from backend.notifications.mailerlite_field_backfill import Current
-from backend.util.posthog_client import get_posthog_client
+from backend.util.posthog_client import send_each
 from backend.util.product_analytics import set_onboarding_role
 
 logger = logging.getLogger(__name__)
@@ -52,8 +58,6 @@ logger = logging.getLogger(__name__)
 # One person every two seconds, a read and a write each: half MailerLite's
 # 120 calls a minute, so the live consumer keeps the rest.
 WRITE_INTERVAL_SECONDS = 2.0
-# The PostHog client drops events once its in-memory queue is full.
-POSTHOG_FLUSH_EVERY = 500
 
 
 class RoleRecord(BaseModel):
@@ -71,6 +75,8 @@ class RoleRecord(BaseModel):
     # The pick the wizard kept, if it kept one.
     choice: str | None = None
     other: str | None = None
+    # The saved wizard draft, as JSON text.
+    wizard_progress: str | None = None
     # The copy in the business understanding.
     understanding_role: str | None = None
 
@@ -78,10 +84,26 @@ class RoleRecord(BaseModel):
     def kept(self) -> bool:
         return bool(self.choice)
 
+    @cached_property
+    def drafted_role(self) -> OnboardingRole | None:
+        """The pick in the wizard draft, once they moved on from the role
+        step. A draft that no longer reads as one gives none."""
+        if not self.wizard_progress:
+            return None
+        try:
+            progress = OnboardingWizardProgress.model_validate_json(
+                self.wizard_progress
+            )
+        except ValidationError:
+            return None
+        return OnboardingRole.from_wizard(progress)
+
     def reliable_role(self) -> OnboardingRole | None:
         if self.choice:
             return OnboardingRole(choice=self.choice, other=self.other)
-        return OnboardingRole.from_understanding(self.understanding_role)
+        return self.drafted_role or OnboardingRole.from_understanding(
+            self.understanding_role
+        )
 
 
 class RoleAssignment(BaseModel):
@@ -92,8 +114,10 @@ class RoleAssignment(BaseModel):
 
 class RolePlan(BaseModel):
     accounts: int
-    # Reliable: the pick the wizard kept, or an exact option ID.
+    # Reliable: the pick the wizard kept, the pick in its draft, or an exact
+    # option ID.
     kept: int
+    drafted: int
     exact: int
     # Neither: Other's text or a rewrite, left unset.
     skipped: int
@@ -114,6 +138,7 @@ def plan(records: list[RoleRecord], current: Current) -> RolePlan:
     result = RolePlan(
         accounts=len(records),
         kept=0,
+        drafted=0,
         exact=0,
         skipped=0,
         roles={},
@@ -132,6 +157,8 @@ def plan(records: list[RoleRecord], current: Current) -> RolePlan:
             continue
         if record.kept:
             result.kept += 1
+        elif record.drafted_role:
+            result.drafted += 1
         else:
             result.exact += 1
         roles[role.label] += 1
@@ -166,18 +193,22 @@ def _plan_mailerlite(
         result.mailerlite.append(assignment)
 
 
-async def send_to_posthog(assignments: list[RoleAssignment]) -> None:
-    """A `$set_once` per person, flushed as it goes."""
-    client = get_posthog_client()
-    if client is None:
-        raise RuntimeError("PostHog is not configured")
-    for index, assignment in enumerate(assignments, start=1):
-        set_onboarding_role(
-            user_id=assignment.user_id, role=assignment.role, keep_existing=True
-        )
-        if index % POSTHOG_FLUSH_EVERY == 0:
-            await asyncio.to_thread(client.flush)
-    await asyncio.to_thread(client.flush)
+async def send_to_posthog(assignments: list[RoleAssignment]) -> int:
+    """A `$set_once` per person. Returns how many PostHog didn't take
+    (`posthog_client.send_each`); a rerun sends them again."""
+    return await send_each(
+        (assignment.user_id, partial(_send_role, assignment))
+        for assignment in assignments
+    )
+
+
+def _send_role(assignment: RoleAssignment, client: Posthog) -> bool:
+    return set_onboarding_role(
+        user_id=assignment.user_id,
+        role=assignment.role,
+        keep_existing=True,
+        client=client,
+    )
 
 
 async def apply(

@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
 
-from . import chat_completions, messages
+from . import chat_completions, embeddings, messages, responses
+from .holds import Holds
 from .journal import Journal, Request, fingerprint
 from .planner import Conversation, Plan, Reply, plan
 from .scripts import ScriptError
@@ -20,6 +21,10 @@ from .streaming import Event, sse
 logger = logging.getLogger("scripted_model")
 
 JOURNAL_PATH = "/__scripted__/journal"
+RELEASE_PATH = "/__scripted__/release"
+# A held reply nobody releases finishes after this, failing its journal check,
+# so a journey that died mid-way doesn't leave a platform turn open for good.
+HOLD_TIMEOUT_S = 120.0
 
 
 @dataclass(frozen=True)
@@ -54,6 +59,7 @@ class ScriptedModelServer(ThreadingHTTPServer):
         super().__init__(address, Handler)
         self.scripts_dir = scripts_dir
         self.journal = Journal()
+        self.holds = Holds()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -88,8 +94,12 @@ class Handler(BaseHTTPRequestHandler):
             self._unexpected()
 
     def do_POST(self) -> None:
-        path = urlparse(self.path).path
-        if path.endswith("/messages/count_tokens"):
+        url = urlparse(self.path)
+        path = url.path
+        if path == RELEASE_PATH:
+            self._read_body()
+            self._release(parse_qs(url.query).get("nonce", [""])[-1])
+        elif path.endswith("/messages/count_tokens"):
             body = self._read_json()
             tokens = max(1, len(json.dumps(body)) // 4) if body is not None else 1
             self._send_json(HTTPStatus.OK, {"input_tokens": tokens})
@@ -97,8 +107,62 @@ class Handler(BaseHTTPRequestHandler):
             self._answer(ANTHROPIC)
         elif path.endswith("/chat/completions"):
             self._answer(OPENAI)
+        elif path.endswith("/embeddings"):
+            self._embedding_response()
+        elif path.endswith("/responses"):
+            self._structured_response()
         else:
             self._unexpected()
+
+    def _embedding_response(self) -> None:
+        body = self._read_json()
+        if not isinstance(body, dict):
+            logger.error(
+                "unreadable openai-embeddings request: body is not a JSON object"
+            )
+            self._send_json(
+                HTTPStatus.BAD_REQUEST, embeddings.error("body is not a JSON object")
+            )
+            return
+        try:
+            payload = embeddings.response(body)
+        except embeddings.EmbeddingError as error:
+            logger.error("unreadable openai-embeddings request: %s", error)
+            self._send_json(HTTPStatus.BAD_REQUEST, embeddings.error(str(error)))
+            return
+
+        model = str(body["model"])
+        entry = self.model_server.journal.record_side_call(
+            Request("openai-embeddings", self.path), model, ""
+        )
+        logger.info("openai-embeddings side call (%s)", model)
+        self._send_json(HTTPStatus.OK, payload)
+        self.model_server.journal.finish(entry, completed=True)
+
+    def _structured_response(self) -> None:
+        body = self._read_json()
+        if not isinstance(body, dict):
+            logger.error(
+                "unreadable openai-responses request: body is not a JSON object"
+            )
+            self._send_json(
+                HTTPStatus.BAD_REQUEST, responses.error("body is not a JSON object")
+            )
+            return
+        try:
+            payload, output_text = responses.response(body)
+        except responses.ResponseError as error:
+            logger.error("unreadable openai-responses request: %s", error)
+            self._send_json(HTTPStatus.BAD_REQUEST, responses.error(str(error)))
+            return
+
+        model = str(body["model"])
+        entry = self.model_server.journal.record_side_call(
+            Request("openai-responses", self.path), model, output_text
+        )
+        logger.info("openai-responses side call (%s)", model)
+        self._send_json(HTTPStatus.OK, payload)
+        self.model_server.journal.finish(entry, completed=True)
 
     def _answer(self, dialect: Dialect) -> None:
         body = self._read_json()
@@ -165,6 +229,8 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         try:
             for event in events:
+                if event.hold:
+                    self._hold(entry)
                 if event.delay_ms:
                     time.sleep(event.delay_ms / 1000)
                 self._write_chunk(sse(event))
@@ -177,6 +243,24 @@ class Handler(BaseHTTPRequestHandler):
             self.model_server.journal.finish(entry, completed=False)
             return
         self.model_server.journal.finish(entry, completed=True)
+
+    def _hold(self, entry: dict[str, Any]) -> None:
+        nonce = entry["nonce"]
+        logger.info("holding run %s's reply until the journey releases it", nonce)
+        released = self.model_server.holds.wait(nonce, HOLD_TIMEOUT_S)
+        if not released:
+            logger.error("run %s was never released; finishing its reply", nonce)
+        detail = "released" if released else f"not released in {HOLD_TIMEOUT_S:g}s"
+        self.model_server.journal.add_check(entry, "held reply", released, detail)
+
+    def _release(self, nonce: str) -> None:
+        if not nonce:
+            message = "scripted-model: a release names its run: ?nonce=<nonce>"
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": {"message": message}})
+            return
+        self.model_server.holds.release(nonce)
+        logger.info("released run %s", nonce)
+        self._send_json(HTTPStatus.OK, {"released": nonce})
 
     def _write_chunk(self, data: bytes) -> None:
         self.wfile.write(f"{len(data):X}\r\n".encode() + data + b"\r\n")

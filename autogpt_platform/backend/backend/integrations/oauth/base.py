@@ -15,6 +15,9 @@ class BaseOAuthHandler(ABC):
     PROVIDER_NAME: ClassVar[ProviderName | str]
     DEFAULT_SCOPES: ClassVar[list[str]] = []
     # --8<-- [end:BaseOAuthHandler1]
+    # True when a refresh makes the old refresh token worthless; such refreshes
+    # always run under the credential lock, even for lock-free callers.
+    ROTATES_REFRESH_TOKEN: ClassVar[bool] = False
 
     @abstractmethod
     # --8<-- [start:BaseOAuthHandler2]

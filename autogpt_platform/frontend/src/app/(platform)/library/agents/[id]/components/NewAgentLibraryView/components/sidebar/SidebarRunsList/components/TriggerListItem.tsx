@@ -27,14 +27,15 @@ export function TriggerListItem({
   return (
     <SidebarItemCard
       icon={
-        <IconWrapper className="border-purple-50 bg-purple-50">
-          <Icon icon={FlashIcon} size={16} className="text-zinc-700" />
+        <IconWrapper className="border-accent-surface bg-accent-surface text-foreground-body">
+          <Icon icon={FlashIcon} size={16} />
         </IconWrapper>
       }
       title={trigger.name}
       description={formatDistanceToNow(trigger.updated_at, { addSuffix: true })}
       onClick={onClick}
       selected={selected}
+      testID={`library-trigger-item-${trigger.id}`}
       actions={
         <TriggerActionsDropdown
           agent={agent}

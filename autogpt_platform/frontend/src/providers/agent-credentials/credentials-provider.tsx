@@ -16,9 +16,18 @@ import {
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
 import { hashKey, useQueryClient } from "@tanstack/react-query";
-import { createContext, useCallback, useEffect, useState, useRef } from "react";
+import isEqual from "lodash/isEqual";
+import {
+  createContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+} from "react";
 
 type APIKeyCredentialsCreatable = Omit<
   APIKeyCredentials,
@@ -168,6 +177,19 @@ export default function CredentialsProvider({
   // Only the newest list request may publish or retire; an older one can
   // resolve last with a response that predates an upsert.
   const loadGenerationRef = useRef(0);
+  // The handlers the published provider entries close over. A load may keep an
+  // entry whose credentials did not change only while these are the same, so
+  // a reused entry never calls a stale handler.
+  const entryHandlersRef = useRef<unknown[]>([]);
+
+  // Settings → Integrations and the chat connection lists read the user's
+  // credentials through React Query, which keeps them fresh for a minute. A
+  // credential added or removed here, in a workflow step's credentials field,
+  // has to mark them stale, or they show the old set until their stale time
+  // runs out.
+  const refreshConnectionLists = useCallback(() => {
+    void invalidateConnectionQueries(queryClient);
+  }, [queryClient]);
 
   const upsertCredentials = useCallback(
     (
@@ -192,18 +214,21 @@ export default function CredentialsProvider({
    * Upsert a credential straight off the API. The generated model marks several
    * fields nullable where the store's model uses `undefined`.
    */
-  function upsertFromApi(
-    provider: CredentialsProviderName,
-    credentials: GeneratedCredentialsMetaResponse,
-  ) {
-    upsertCredentials(provider, {
-      ...credentials,
-      title: credentials.title ?? undefined,
-      scopes: credentials.scopes ?? undefined,
-      username: credentials.username ?? undefined,
-      host: credentials.host ?? undefined,
-    } as CredentialsMetaResponse);
-  }
+  const upsertFromApi = useCallback(
+    (
+      provider: CredentialsProviderName,
+      credentials: GeneratedCredentialsMetaResponse,
+    ) => {
+      upsertCredentials(provider, {
+        ...credentials,
+        title: credentials.title ?? undefined,
+        scopes: credentials.scopes ?? undefined,
+        username: credentials.username ?? undefined,
+        host: credentials.host ?? undefined,
+      } as CredentialsMetaResponse);
+    },
+    [upsertCredentials],
+  );
 
   /** Wraps `BackendAPI.oAuthCallback`, and adds the result to the internal credentials store. */
   const oAuthCallback = useCallback(
@@ -215,13 +240,14 @@ export default function CredentialsProvider({
       try {
         const credsMeta = await api.oAuthCallback(provider, code, state_token);
         upsertCredentials(provider, credsMeta);
+        refreshConnectionLists();
         return credsMeta;
       } catch (error) {
         onFailToast("complete OAuth authentication")(error);
         throw error;
       }
     },
-    [api, upsertCredentials, onFailToast],
+    [api, upsertCredentials, refreshConnectionLists, onFailToast],
   );
 
   /** Exchanges an MCP OAuth code for tokens and adds the result to the internal credentials store. */
@@ -246,13 +272,14 @@ export default function CredentialsProvider({
           host: response.data.host ?? undefined,
         };
         upsertCredentials("mcp", credsMeta);
+        refreshConnectionLists();
         return credsMeta;
       } catch (error) {
         onFailToast("complete MCP OAuth authentication")(error);
         throw error;
       }
     },
-    [upsertCredentials, onFailToast],
+    [upsertCredentials, refreshConnectionLists, onFailToast],
   );
 
   /** Stores a manual MCP credential, and adds the result to the internal credentials store. */
@@ -274,9 +301,10 @@ export default function CredentialsProvider({
         host: response.data.host ?? undefined,
       };
       upsertCredentials("mcp", credsMeta);
+      refreshConnectionLists();
       return credsMeta;
     },
-    [upsertCredentials],
+    [upsertCredentials, refreshConnectionLists],
   );
 
   /** Wraps `BackendAPI.createAPIKeyCredentials`, and adds the result to the internal credentials store. */
@@ -291,13 +319,14 @@ export default function CredentialsProvider({
           ...credentials,
         });
         upsertCredentials(provider, credsMeta);
+        refreshConnectionLists();
         return credsMeta;
       } catch (error) {
         onFailToast("create API key credentials")(error);
         throw error;
       }
     },
-    [api, upsertCredentials, onFailToast],
+    [api, upsertCredentials, refreshConnectionLists, onFailToast],
   );
 
   /** Wraps `BackendAPI.createUserPasswordCredentials`, and adds the result to the internal credentials store. */
@@ -312,13 +341,14 @@ export default function CredentialsProvider({
           ...credentials,
         });
         upsertCredentials(provider, credsMeta);
+        refreshConnectionLists();
         return credsMeta;
       } catch (error) {
         onFailToast("create user/password credentials")(error);
         throw error;
       }
     },
-    [api, upsertCredentials, onFailToast],
+    [api, upsertCredentials, refreshConnectionLists, onFailToast],
   );
 
   /** Wraps `BackendAPI.createHostScopedCredentials`, and adds the result to the internal credentials store. */
@@ -333,13 +363,14 @@ export default function CredentialsProvider({
           ...credentials,
         });
         upsertCredentials(provider, credsMeta);
+        refreshConnectionLists();
         return credsMeta;
       } catch (error) {
         onFailToast("create host-scoped credentials")(error);
         throw error;
       }
     },
-    [api, upsertCredentials, onFailToast],
+    [api, upsertCredentials, refreshConnectionLists, onFailToast],
   );
 
   /** Wraps `BackendAPI.deleteCredentials`, and removes the credentials from the internal store. */
@@ -385,13 +416,14 @@ export default function CredentialsProvider({
             },
           };
         });
+        refreshConnectionLists();
         return result;
       } catch (error) {
         onFailToast("delete credentials")(error);
         throw error;
       }
     },
-    [api, onFailToast],
+    [api, refreshConnectionLists, onFailToast],
   );
 
   const loadCredentials = useCallback(() => {
@@ -442,9 +474,23 @@ export default function CredentialsProvider({
           {} as Record<CredentialsProviderName, CredentialsMetaResponse[]>,
         );
 
-        setProviders((prev) => ({
-          ...prev,
-          ...Object.fromEntries(
+        const entryHandlers = [
+          oAuthCallback,
+          mcpOAuthCallback,
+          mcpStoreToken,
+          createAPIKeyCredentials,
+          createUserPasswordCredentials,
+          createHostScopedCredentials,
+          deleteCredentials,
+        ];
+        const canReuseEntries = isEqual(
+          entryHandlersRef.current,
+          entryHandlers,
+        );
+        entryHandlersRef.current = entryHandlers;
+
+        setProviders((prev) => {
+          const loadedEntries = Object.fromEntries(
             providerNames.map((provider) => {
               const loaded = credentialsByProvider[provider] ?? [];
               const pending = pendingUpsertsRef.current[provider];
@@ -469,13 +515,26 @@ export default function CredentialsProvider({
                 }
               }
 
+              // Every invalidate/success refetch lands here; an entry that did
+              // not change keeps its identity so consumers skip a re-render.
+              const isSystemProvider = systemProviders.has(provider);
+              const existing = prev?.[provider];
+              if (
+                canReuseEntries &&
+                existing &&
+                existing.isSystemProvider === isSystemProvider &&
+                isEqual(existing.savedCredentials, providerCredentials)
+              ) {
+                return [provider, existing];
+              }
+
               return [
                 provider,
                 {
                   provider,
                   providerName: toDisplayName(provider),
                   savedCredentials: providerCredentials,
-                  isSystemProvider: systemProviders.has(provider),
+                  isSystemProvider,
                   oAuthCallback: (code: string, state_token: string) =>
                     oAuthCallback(provider, code, state_token),
                   mcpOAuthCallback,
@@ -494,8 +553,15 @@ export default function CredentialsProvider({
                 } satisfies CredentialsProviderData,
               ];
             }),
-          ),
-        }));
+          );
+          const unchanged =
+            prev !== null &&
+            Object.entries(loadedEntries).every(
+              ([provider, entry]) =>
+                prev[provider as CredentialsProviderName] === entry,
+            );
+          return unchanged ? prev : { ...prev, ...loadedEntries };
+        });
       })
       .catch(onFailToast("load credentials"));
   }, [
@@ -567,10 +633,13 @@ export default function CredentialsProvider({
     return unsubscribe;
   }, [queryClient, loadCredentials]);
 
+  const actions = useMemo(
+    () => ({ reload: loadCredentials, upsert: upsertFromApi }),
+    [loadCredentials, upsertFromApi],
+  );
+
   return (
-    <CredentialsActionsContext.Provider
-      value={{ reload: loadCredentials, upsert: upsertFromApi }}
-    >
+    <CredentialsActionsContext.Provider value={actions}>
       <CredentialsProvidersContext.Provider value={providers}>
         {children}
       </CredentialsProvidersContext.Provider>

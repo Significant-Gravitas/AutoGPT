@@ -15,6 +15,7 @@ from typing import Any, Literal, cast
 
 from backend.api.features.search.embeddings import (
     EMBEDDING_DIM,
+    PublicSearchBudgetSpent,
     embed_query,
     embedding_to_vector_string,
 )
@@ -25,6 +26,7 @@ from backend.api.features.search.hybrid_search import (
     bm25_rerank,
 )
 from backend.data.db import query_raw_with_schema
+from backend.util.sql import escape_like
 
 from .categories import category_filter_values
 
@@ -79,11 +81,14 @@ async def hybrid_search(
     page_size: int = 20,
     weights: StoreAgentSearchWeights | None = None,
     min_score: float | None = None,
+    public_search: bool = False,
 ) -> tuple[list[dict[str, Any]], int]:
     """
     Hybrid search for store agents with full metadata.
 
     Uses UnifiedContentEmbedding for search, joins to StoreAgent for metadata.
+    ``public_search`` ranks by text alone once store search's per-minute
+    embedding budget is spent.
     """
     query = query.strip()
     if not query:
@@ -106,12 +111,17 @@ async def hybrid_search(
     offset = (page - 1) * page_size
 
     # Generate query embedding with graceful degradation
+    query_embedding: list[float] | None
     try:
-        query_embedding = await embed_query(query)
+        query_embedding = await embed_query(query, public_search=public_search)
+    except PublicSearchBudgetSpent:
+        query_embedding = None
     except Exception as e:
         logger.warning(
             f"Failed to generate query embedding - falling back to lexical-only search: {e}"
         )
+        query_embedding = None
+    if query_embedding is None:
         query_embedding = [0.0] * EMBEDDING_DIM
         total_non_semantic = (
             weights.lexical + weights.category + weights.recency + weights.popularity
@@ -138,7 +148,8 @@ async def hybrid_search(
     query_param = f"${param_idx}"
     param_idx += 1
 
-    params.append(query.lower())
+    # The category LIKE pattern, where `%` and `_` would be wildcards.
+    params.append(escape_like(query.lower()))
     query_lower_param = f"${param_idx}"
     param_idx += 1
 

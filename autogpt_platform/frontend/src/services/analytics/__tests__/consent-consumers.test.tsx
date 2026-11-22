@@ -8,35 +8,33 @@ import {
 } from "@/tests/integrations/cookiebot";
 import { ConsentWithdrawalReload } from "@/services/consent/ConsentWithdrawalReload";
 import { SetupAnalytics } from "../index";
-import { VercelAnalyticsWrapper } from "../VercelAnalyticsWrapper";
+import { VercelSpeedInsights } from "../VercelSpeedInsights";
 
 vi.mock("next/script", () => ({
   default: ({
     id,
     src,
     strategy,
-    dangerouslySetInnerHTML: _inline,
+    dangerouslySetInnerHTML: inline,
     onLoad: _onLoad,
     ...attributes
   }: {
     id?: string;
     src?: string;
     strategy?: string;
-    dangerouslySetInnerHTML?: unknown;
+    dangerouslySetInnerHTML?: { __html?: string };
     onLoad?: unknown;
   }) => (
     <div
       data-testid={`script:${id ?? src}`}
       data-src={src}
       data-strategy={strategy}
+      data-inline={inline?.__html}
       {...attributes}
     />
   ),
 }));
 
-vi.mock("@vercel/analytics/next", () => ({
-  Analytics: () => <div data-testid="vercel-analytics" />,
-}));
 vi.mock("@vercel/speed-insights/next", () => ({
   SpeedInsights: () => <div data-testid="vercel-speed-insights" />,
 }));
@@ -65,13 +63,13 @@ describe("without NEXT_PUBLIC_COOKIEBOT_CBID", () => {
     render(
       <>
         <SetupAnalytics host="platform.agpt.co" ga={GA} />
-        <VercelAnalyticsWrapper />
+        <VercelSpeedInsights />
       </>,
     );
 
     expect(queryScript("_custom-ga")).toBeNull();
     expect(queryScript(DATAFAST_SRC)).toBeNull();
-    expect(screen.queryByTestId("vercel-analytics")).toBeNull();
+    expect(screen.queryByTestId("vercel-speed-insights")).toBeNull();
   });
 
   it("keeps the Google tag off locally even for an opted-in browser", () => {
@@ -114,26 +112,28 @@ describe("with NEXT_PUBLIC_COOKIEBOT_CBID", () => {
         ad_storage: "denied",
         ad_user_data: "denied",
         ad_personalization: "denied",
+        functionality_storage: "denied",
+        personalization_storage: "denied",
       },
     ]);
     delete (window as unknown as { dataLayer?: unknown }).dataLayer;
   });
 
-  it("starts DataFast and Vercel Analytics when the visitor accepts, without a reload", () => {
+  it("starts DataFast and Vercel Speed Insights when the visitor accepts, without a reload", () => {
     installCookiebot();
     render(
       <>
         <SetupAnalytics host="platform.agpt.co" ga={GA} />
-        <VercelAnalyticsWrapper />
+        <VercelSpeedInsights />
       </>,
     );
     expect(queryScript(DATAFAST_SRC)).toBeNull();
-    expect(screen.queryByTestId("vercel-analytics")).toBeNull();
+    expect(screen.queryByTestId("vercel-speed-insights")).toBeNull();
 
     act(() => answerCookiebot({ statistics: true }));
 
     expect(queryScript(DATAFAST_SRC)).not.toBeNull();
-    expect(screen.getByTestId("vercel-analytics")).toBeDefined();
+    expect(screen.getByTestId("vercel-speed-insights")).toBeDefined();
   });
 
   it("loads the Google tag locally once the visitor accepts statistics", () => {
@@ -149,65 +149,50 @@ describe("with NEXT_PUBLIC_COOKIEBOT_CBID", () => {
     expect(queryScript("_custom-ga")).not.toBeNull();
   });
 
-  it("stops rendering Vercel Analytics when the visitor declines", () => {
+  it("stops rendering Vercel Speed Insights when the visitor declines", () => {
     installCookiebot({ statistics: true });
-    render(<VercelAnalyticsWrapper />);
-    expect(screen.getByTestId("vercel-analytics")).toBeDefined();
+    render(<VercelSpeedInsights />);
+    expect(screen.getByTestId("vercel-speed-insights")).toBeDefined();
 
     act(() => answerCookiebot({}));
 
-    expect(screen.queryByTestId("vercel-analytics")).toBeNull();
+    expect(screen.queryByTestId("vercel-speed-insights")).toBeNull();
   });
 });
 
-describe("DataFast loaded under the tour exemption", () => {
-  const reload = vi.fn<() => void>();
-  let loaded: HTMLScriptElement | null = null;
-
-  function loadDataFast({ exempt }: { exempt: boolean }) {
-    loaded = document.createElement("script");
-    loaded.src = DATAFAST_SRC;
-    if (exempt) loaded.dataset.consentExempt = "true";
-    document.head.appendChild(loaded);
-  }
-
+describe("Google tag IDs", () => {
   beforeEach(() => {
     configureCookiebot();
-    reload.mockReset();
-    vi.spyOn(window.location, "reload").mockImplementation(() => reload());
+    installCookiebot({ statistics: true, marketing: true });
   });
 
-  afterEach(() => {
-    loaded?.remove();
-    loaded = null;
-    vi.restoreAllMocks();
+  it("loads no Google tag when neither a GA nor a Google Ads ID is set", () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "");
+
+    render(<SetupAnalytics host="platform.agpt.co" ga={{ gaId: "" }} />);
+
+    expect(queryScript("_custom-ga")).toBeNull();
+    expect(queryScript("_custom-ga-init")).toBeNull();
   });
 
-  it("reloads to shed the script once the visitor leaves the tour without consent", () => {
-    loadDataFast({ exempt: true });
-    installCookiebot();
+  it("configures only Google Ads when the GA ID is not set", () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-TEST");
+
+    render(<SetupAnalytics host="platform.agpt.co" ga={{ gaId: "" }} />);
+
+    const init = queryScript("_custom-ga-init")?.getAttribute("data-inline");
+    expect(queryScript("_custom-ga")).not.toBeNull();
+    expect(init).toContain(`gtag('config', "AW-TEST"`);
+    expect(init).not.toContain(`gtag('config', ""`);
+  });
+
+  it("configures the GA property it is given", () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "");
 
     render(<SetupAnalytics host="platform.agpt.co" ga={GA} />);
 
-    expect(reload).toHaveBeenCalledOnce();
-  });
-
-  it("keeps the script when the visitor has consented", () => {
-    loadDataFast({ exempt: true });
-    installCookiebot({ statistics: true });
-
-    render(<SetupAnalytics host="platform.agpt.co" ga={GA} />);
-
-    expect(reload).not.toHaveBeenCalled();
-  });
-
-  it("waits for the visitor's reply when Cookiebot asks again about a script loaded with consent", () => {
-    loadDataFast({ exempt: false });
-    installCookiebot();
-
-    render(<SetupAnalytics host="platform.agpt.co" ga={GA} />);
-
-    expect(reload).not.toHaveBeenCalled();
+    const init = queryScript("_custom-ga-init")?.getAttribute("data-inline");
+    expect(init).toContain(`gtag('config', "G-TEST"`);
   });
 });
 
@@ -249,6 +234,15 @@ describe("ConsentWithdrawalReload", () => {
     act(() => answerCookiebot({}));
 
     expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it("does not reload when only preferences are taken back", () => {
+    installCookiebot({ statistics: true, preferences: true });
+    render(<ConsentWithdrawalReload />);
+
+    act(() => answerCookiebot({ statistics: true }));
+
+    expect(reload).not.toHaveBeenCalled();
   });
 
   it("does not reload when the visitor grants more, or repeats the same answer", () => {

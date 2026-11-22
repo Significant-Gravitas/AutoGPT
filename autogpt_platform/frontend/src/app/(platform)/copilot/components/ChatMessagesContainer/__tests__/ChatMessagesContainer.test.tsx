@@ -1,9 +1,18 @@
-import type { ComponentProps } from "react";
+import { useContext, type ComponentProps } from "react";
+import { AnsweredQuestionsContext } from "../../QuestionDock/AnsweredQuestionsContext";
+import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
+import { PendingOnboardingContext } from "../../ExpertOnboardingCard/PendingOnboardingContext";
 import { act } from "@testing-library/react";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
-import { render, screen, cleanup } from "@/tests/integrations/test-utils";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagesContainer } from "../ChatMessagesContainer";
+import { UnconfirmedSendError } from "../../../stream/turnRuntime";
 import { buildKickoffMessage } from "../../../expertKickoff";
 import type { TurnStatsMap } from "../../../helpers/convertChatSessionToUiMessages";
 
@@ -34,7 +43,7 @@ vi.mock("use-stick-to-bottom", () => ({
   ConversationScrollButton: () => null,
 }));
 
-vi.mock("@/components/ai-elements/conversation", () => ({
+vi.mock("@/components/organisms/Conversation/Conversation", () => ({
   Conversation: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="conversation">{children}</div>
   ),
@@ -44,7 +53,7 @@ vi.mock("@/components/ai-elements/conversation", () => ({
   ConversationScrollButton: () => null,
 }));
 
-vi.mock("@/components/ai-elements/message", () => ({
+vi.mock("@/components/organisms/Message/Message", () => ({
   Message: ({
     children,
     from,
@@ -78,19 +87,29 @@ vi.mock("../components/AssistantMessageActions", () => ({
   AssistantMessageActions: () => null,
 }));
 vi.mock("../components/ChainMessageParts", () => ({
-  ChainMessageParts: ({
+  ChainMessageParts: function ChainMessageParts({
     parts,
     isCurrentlyStreaming,
   }: {
     parts: unknown[];
     isCurrentlyStreaming?: boolean;
-  }) => (
-    <div
-      data-testid="chain-message-parts"
-      data-parts={JSON.stringify(parts)}
-      data-streaming={String(!!isCurrentlyStreaming)}
-    />
-  ),
+  }) {
+    const answered = useContext(AnsweredQuestionsContext);
+    const pending = useContext(PendingQuestionsContext);
+    const onboarding = useContext(PendingOnboardingContext);
+    return (
+      <div
+        data-testid="chain-message-parts"
+        data-parts={JSON.stringify(parts)}
+        data-streaming={String(!!isCurrentlyStreaming)}
+        data-answered={JSON.stringify(
+          [...answered].map(([id, answers]) => [id, [...answers]]),
+        )}
+        data-pending={String(pending !== null)}
+        data-onboarding={onboarding ?? ""}
+      />
+    );
+  },
 }));
 
 vi.mock("../components/QueueBadge", () => ({
@@ -129,6 +148,7 @@ vi.mock("../../JobStatsBar/TurnStatsBar", () => ({
 }));
 vi.mock("../../JobStatsBar/useElapsedTimer", () => ({
   useElapsedTimer: () => ({ elapsedSeconds: 0 }),
+  useElapsedAnchor: () => ({ startedAtMs: null, frozenSeconds: 0 }),
 }));
 vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
   CopilotPendingReviews: (props: object) => (
@@ -137,8 +157,7 @@ vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
 }));
 // Tests below override this default by re-mocking ../helpers as needed.
 vi.mock("../helpers", async (importOriginal) => ({
-  extractReviewTarget: (await importOriginal<typeof import("../helpers")>())
-    .extractReviewTarget,
+  ...(await importOriginal<typeof import("../helpers")>()),
   getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
   isChainableToolPart: () => false,
@@ -210,6 +229,68 @@ describe("ChatMessagesContainer — assistant rendering", () => {
     cleanup();
   });
 
+  it("shares saved answers with read-only viewers without activating question forms", () => {
+    const question = {
+      type: "tool-ask_question",
+      toolCallId: "ask-1",
+      state: "output-available",
+      input: {},
+      output: {
+        type: "agent_builder_clarification_needed",
+        questions: [{ question: "Which region?", keyword: "region" }],
+      },
+    } as Message["parts"][number];
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        readOnly
+        messages={[
+          { id: "asked", role: "assistant", parts: [question] },
+          {
+            id: "answered",
+            role: "user",
+            parts: [
+              {
+                type: "text",
+                text: "**Here are my answers:**\n\n> Which region?\n\nEurope\n\nPlease proceed.",
+              },
+            ],
+          },
+          {
+            id: "pending",
+            role: "assistant",
+            parts: [
+              { ...question, toolCallId: "ask-2" } as Message["parts"][number],
+              {
+                type: "tool-expert_onboarding",
+                toolCallId: "hire",
+                state: "output-available",
+                input: {},
+                output: {
+                  type: "expert_onboarding",
+                  steps: [
+                    {
+                      question: "Which outcome?",
+                      keyword: "outcome",
+                      options: [],
+                    },
+                  ],
+                },
+              } as Message["parts"][number],
+            ],
+          },
+        ]}
+      />,
+    );
+    for (const row of screen.getAllByTestId("chain-message-parts")) {
+      expect(JSON.parse(row.getAttribute("data-answered") ?? "[]")).toEqual([
+        ["ask-1", [["region", "Europe"]]],
+      ]);
+      expect(row.getAttribute("data-pending")).toBe("false");
+      expect(row.getAttribute("data-onboarding")).toBe("");
+    }
+  });
+
   it("renders assistant messages through the chain renderer", () => {
     render(<ChatMessagesContainer {...baseProps} messages={messages} />);
 
@@ -226,6 +307,133 @@ describe("ChatMessagesContainer — assistant rendering", () => {
     );
 
     expect(screen.getByTestId("thinking-indicator")).toBeDefined();
+  });
+
+  const finishedTool = {
+    type: "tool-find_block",
+    toolCallId: "tool-1",
+    state: "output-available",
+    input: {},
+    output: {},
+  } as Message["parts"][number];
+  const stepStart = { type: "step-start" } as Message["parts"][number];
+
+  it.each([
+    ["a turn that has only opened its first step", [stepStart]],
+    [
+      "a status line followed by the first step",
+      [
+        {
+          type: "data-status",
+          data: { message: "Preparing workspace…" },
+        } as Message["parts"][number],
+        stepStart,
+      ],
+    ],
+    ["the step opened after a finished tool", [finishedTool, stepStart]],
+    ["several steps opened in a row", [finishedTool, stepStart, stepStart]],
+    [
+      "a step opened after a follow-up was drained",
+      [
+        { type: "text", text: "Looking into it." },
+        { type: "data-pending-drained", data: {} },
+        stepStart,
+      ] as Message["parts"],
+    ],
+  ])(
+    "keeps the thinking indicator through %s, until the model writes",
+    (_label, parts) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={[{ id: "assistant-stepping", role: "assistant", parts }]}
+          status="streaming"
+        />,
+      );
+
+      expect(screen.getByTestId("thinking-indicator")).toBeDefined();
+    },
+  );
+
+  it.each([
+    ["text", [{ type: "text", text: "Looking into it." }]],
+    ["reasoning", [{ type: "reasoning", text: "Weighing the options." }]],
+    [
+      "a pause",
+      [
+        { type: "text", text: "Saved where I got to." },
+        { type: "data-turn-paused", data: { reason: "steps", steps: 450 } },
+      ],
+    ],
+    [
+      "a running tool",
+      [{ ...finishedTool, state: "input-available", output: undefined }],
+    ],
+    [
+      "a tool waiting for approval",
+      [
+        {
+          ...finishedTool,
+          state: "approval-requested",
+          output: undefined,
+          approval: { id: "approval-1" },
+        },
+      ],
+    ],
+    [
+      "a tool whose approval was just answered",
+      [
+        {
+          ...finishedTool,
+          state: "approval-responded",
+          output: undefined,
+          approval: { id: "approval-1", approved: true },
+        },
+      ],
+    ],
+  ] as Array<[string, Message["parts"]]>)(
+    "does not bring the thinking indicator back when a step opens after %s",
+    (_label, before) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={[
+            {
+              id: "assistant-then-step",
+              role: "assistant",
+              parts: [...before, stepStart],
+            },
+          ]}
+          status="streaming"
+        />,
+      );
+
+      expect(screen.queryByTestId("thinking-indicator")).toBeNull();
+    },
+  );
+
+  it("drops the thinking indicator once a streaming turn has landed on a pause", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[
+          {
+            id: "assistant-paused",
+            role: "assistant",
+            parts: [
+              { type: "text", text: "Saved where I got to." },
+              {
+                type: "data-turn-paused",
+                data: { reason: "steps", steps: 450 },
+              },
+            ],
+          },
+        ]}
+        status="streaming"
+      />,
+    );
+
+    expect(screen.queryByTestId("thinking-indicator")).toBeNull();
   });
 
   it("keeps the backend's status lines out of the thinking indicator", () => {
@@ -484,6 +692,27 @@ describe("ChatMessagesContainer — error banner dedup", () => {
     expect(screen.getByTestId("chat-error-banner")).toBeDefined();
   });
 
+  it("hands a send no check could confirm to the page to send again", () => {
+    const onResend = vi.fn();
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        error={new UnconfirmedSendError("u-1")}
+        status="error"
+        onResend={onResend}
+        messages={[
+          {
+            id: "u-1",
+            role: "user",
+            parts: [{ type: "text", text: "go" }],
+          },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send again" }));
+    expect(onResend).toHaveBeenCalledTimes(1);
+  });
+
   it("suppresses the trailing banner when the last assistant message carries an error marker", () => {
     render(
       <ChatMessagesContainer
@@ -510,6 +739,43 @@ describe("ChatMessagesContainer — error banner dedup", () => {
       />,
     );
     expect(screen.queryByTestId("chat-error-banner")).toBeNull();
+  });
+
+  it("keeps Send again for an unconfirmed prompt sent after an earlier turn's error marker", () => {
+    const onResend = vi.fn();
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        error={new UnconfirmedSendError("u-2")}
+        status="error"
+        onResend={onResend}
+        messages={[
+          {
+            id: "u-1",
+            role: "user",
+            parts: [{ type: "text", text: "go" }],
+          },
+          {
+            id: "a-1",
+            role: "assistant",
+            parts: [
+              {
+                type: "text",
+                text: "[__COPILOT_ERROR_f7a1__] SDK stream error: Prompt is too long",
+              },
+            ],
+          },
+          {
+            id: "u-2",
+            role: "user",
+            parts: [{ type: "text", text: "try once more" }],
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("chat-error-banner")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Send again" }));
+    expect(onResend).toHaveBeenCalledTimes(1);
   });
 
   it("suppresses the trailing banner when the marker is retryable", () => {
@@ -981,6 +1247,41 @@ describe("ChatMessagesContainer — readOnly mode", () => {
           title: "Daily briefing",
         },
       ]);
+    },
+  );
+
+  it.each([false, true])(
+    "shows a scheduled chat's note to its owner alone (readOnly=%s)",
+    (readOnly) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          readOnly={readOnly}
+          messages={[
+            {
+              id: "notice-1",
+              role: "assistant",
+              parts: [
+                { type: "text", text: "Skipped: daily usage limit reached" },
+              ],
+              metadata: {
+                kind: "scheduled_chat_notice",
+                reason: "no_plan",
+                headline: "Skipped: daily usage limit reached",
+                body: "“Briefing” didn't run.",
+                actions: [],
+              },
+            },
+          ]}
+        />,
+      );
+
+      expect(screen.queryAllByTestId("scheduled-chat-notice")).toHaveLength(
+        readOnly ? 0 : 1,
+      );
+      expect(
+        screen.queryAllByText("Skipped: daily usage limit reached"),
+      ).toHaveLength(readOnly ? 0 : 1);
     },
   );
 
@@ -1528,6 +1829,168 @@ describe("ChatMessagesContainer — held call rows", () => {
     expect(screen.queryByText(/folder_created/)).toBeNull();
     expect(screen.getByText("Approval answered")).toBeDefined();
   });
+
+  it.each([
+    ["approved", "Result sent to Otto."],
+    ["rejected", "Declined; nothing was sent to Otto."],
+    ["expired", "Expired; nothing was sent to Otto."],
+    ["unknown", "Unclear; check before relying on it."],
+  ])(
+    "labels the wake by the card's recorded outcome: %s",
+    (outcome, clause) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={answeredCards([{ id: "a", outcome }])}
+        />,
+      );
+
+      expect(
+        screen.getByText(`Approval answered: Read "a.example.com". ${clause}`),
+      ).toBeDefined();
+    },
+  );
+
+  // Each cause the backend closes a call for, with the body it writes; only
+  // a read can close after an identical re-read already delivered it.
+  it.each([
+    [
+      "an action whose card is no longer open",
+      false,
+      "Nothing ran: this card is no longer open.",
+      'Post to "a.example.com". Closed; nothing ran.',
+    ],
+    [
+      "an action whose details were lost",
+      false,
+      "Nothing ran: the approved action's details were lost before it could run.",
+      'Post to "a.example.com". Closed; nothing ran.',
+    ],
+    [
+      "an action whose tool no longer exists",
+      false,
+      "Nothing ran: this tool no longer exists.",
+      'Post to "a.example.com". Closed; nothing ran.',
+    ],
+    [
+      "a read whose card is no longer open",
+      true,
+      "Nothing ran: this card is no longer open.",
+      'Read "a.example.com". Closed; nothing was released, or Otto already had it.',
+    ],
+    [
+      "a read an identical re-read already received",
+      true,
+      "The user released this content and it was already delivered to you once; nothing more arrives for this call.",
+      'Read "a.example.com". Closed; nothing was released, or Otto already had it.',
+    ],
+  ])("labels a closed card truly: %s", (_cause, read, body, label) => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={answeredCards([{ id: "a", outcome: "closed", read, body }])}
+      />,
+    );
+
+    expect(screen.getByText(`Approval answered: ${label}`)).toBeDefined();
+  });
+
+  it("claims nothing for a result row with no recorded outcome", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={answeredCards([{ id: "a" }])}
+      />,
+    );
+
+    expect(
+      screen.getByText('Approval answered: Read "a.example.com".'),
+    ).toBeDefined();
+  });
+
+  it("gives each answer in one wake its own clause", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={answeredCards([
+          { id: "a", outcome: "approved" },
+          { id: "b", outcome: "rejected" },
+          { id: "c", outcome: "approved" },
+        ])}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        'Approval answered: Read "a.example.com", Read "c.example.com". ' +
+          'Results sent to Otto. Read "b.example.com". ' +
+          "Declined; nothing was sent to Otto.",
+      ),
+    ).toBeDefined();
+  });
+
+  interface AnsweredCard {
+    id: string;
+    outcome?: string;
+    read?: boolean;
+    body?: string;
+  }
+
+  // A turn's held cards, its wake row, and a result row per card, as the
+  // server persists them.
+  function answeredCards(cards: AnsweredCard[]): Message[] {
+    return [
+      {
+        id: "assistant-cards",
+        role: "assistant",
+        parts: cards.map(({ id, read = true }) => ({
+          type: "tool-run_capability",
+          toolCallId: `call-${id}`,
+          state: "output-available",
+          input: {},
+          output: JSON.stringify({
+            type: "approval_required",
+            review_id: reviewId(id, read),
+            ask: read ? "Read" : "Post to",
+            object: `${id}.example.com`,
+          }),
+        })),
+      } as Message,
+      {
+        id: "wake",
+        role: "user",
+        parts: [
+          {
+            type: "text",
+            text: "I answered an action that was waiting for my approval.",
+          },
+        ],
+        metadata: { held_calls_answered: true },
+      },
+      ...cards.map(({ id, outcome, read = true, body }) => ({
+        id: `result-${id}`,
+        role: "user" as const,
+        parts: [
+          {
+            type: "text" as const,
+            text: `<held_call_result tool="run_capability">\n${body ?? (outcome === "approved" ? "page text" : "Nothing ran.")}\n</held_call_result>`,
+          },
+        ],
+        metadata: {
+          held_call: {
+            review_id: reviewId(id, read),
+            tool_name: "run_capability",
+            tool_call_id: `call-${id}`,
+            outcome,
+          },
+        },
+      })),
+    ];
+  }
+
+  function reviewId(id: string, read: boolean) {
+    return `copilot-node-gate-${read ? "read-" : ""}run_capability:${id}`;
+  }
 });
 
 describe("ChatMessagesContainer — pending reviews", () => {
@@ -1560,6 +2023,7 @@ describe("ChatMessagesContainer — pending reviews", () => {
     pollWhileEmpty,
     refetchKey,
     expertName: null,
+    expert: null,
   });
 
   afterEach(() => {
@@ -1580,7 +2044,8 @@ describe("ChatMessagesContainer — pending reviews", () => {
       />,
     );
 
-    expect(mounted()).toEqual([chatList(true, 0)]);
+    // One block run on screen, which is also what the key counts.
+    expect(mounted()).toEqual([chatList(true, 1)]);
   });
 
   it("finds a chat review stored before it had a session id of its own", () => {
@@ -1595,7 +2060,7 @@ describe("ChatMessagesContainer — pending reviews", () => {
       />,
     );
 
-    expect(mounted()).toEqual([chatList(true, 0)]);
+    expect(mounted()).toEqual([chatList(true, 1)]);
   });
 
   it("finds an agent run's reviews by its graph execution", () => {
@@ -1606,7 +2071,32 @@ describe("ChatMessagesContainer — pending reviews", () => {
       />,
     );
 
-    expect(mounted()).toEqual([{ graphExecId: "exec-9" }, chatList(false, 0)]);
+    expect(mounted()).toEqual([
+      { runs: [{ graphExecId: "exec-9" }] },
+      chatList(false, 1),
+    ]);
+  });
+
+  it("finds the reviews of every run that paused, not only the newest", () => {
+    // Four runs of one expert each waiting on her spend approval (T554).
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={["exec-1", "exec-2", "exec-3", "exec-4"].flatMap((id) =>
+          withToolOutput({
+            execution_id: id,
+            graph_id: "g-1",
+            status: "REVIEW",
+          }),
+        )}
+      />,
+    );
+
+    expect(
+      mounted()[0]
+        .runs.map((run: { graphExecId: string }) => run.graphExecId)
+        .sort(),
+    ).toEqual(["exec-1", "exec-2", "exec-3", "exec-4"]);
   });
 
   it("keeps the chat's held cards loaded while a newer run is the review target", () => {
@@ -1620,8 +2110,12 @@ describe("ChatMessagesContainer — pending reviews", () => {
       />,
     );
 
-    // One held call on screen: fetched, but polled only if a card comes back.
-    expect(mounted()).toEqual([{ graphExecId: "exec-9" }, chatList(false, 1)]);
+    // One held call and two block runs on screen: fetched, but polled only
+    // if a card comes back.
+    expect(mounted()).toEqual([
+      { runs: [{ graphExecId: "exec-9" }] },
+      chatList(false, 3),
+    ]);
   });
 
   it("refetches the chat's list at once for a new held call while it is the target", () => {
@@ -1635,7 +2129,8 @@ describe("ChatMessagesContainer — pending reviews", () => {
       />,
     );
 
-    expect(mounted()).toEqual([chatList(true, 1)]);
+    // The held call, and the block run that returned it.
+    expect(mounted()).toEqual([chatList(true, 2)]);
   });
 
   it("still finds held cards whose call has paged out of the loaded history", () => {
@@ -1643,6 +2138,75 @@ describe("ChatMessagesContainer — pending reviews", () => {
 
     expect(mounted()).toEqual([chatList(false, 0)]);
   });
+
+  function toolCall(id: string, tool: string, output: string): Message {
+    return {
+      id,
+      role: "assistant",
+      parts: [
+        {
+          type: `tool-${tool}`,
+          toolCallId: `call-${id}`,
+          state: "output-available",
+          input: {},
+          output,
+        },
+      ],
+    } as Message;
+  }
+
+  const DIGESTED_REVIEW = [
+    `<tool-output-truncated total_chars=10200 workspace_path="tool-outputs/call-9.json" format="outline">`,
+    `$: {type="review_required", message="Block 'Gmail Send' requires human review.", block_id="gmail-send", block_name="Gmail Send", review_id="copilot-node-gmail:ab12", input_data={…4 keys @304+7650}}`,
+    ``,
+    `The preview above is a structural outline of the 10,200-char output, not a literal prefix of it.`,
+    `</tool-output-truncated>`,
+  ].join("\n");
+
+  it("keeps the chat's cards polled for a review the backend digested", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[toolCall("m1", "run_block", DIGESTED_REVIEW)]}
+      />,
+    );
+
+    expect(mounted()[0].pollWhileEmpty).toBe(true);
+  });
+
+  it.each([
+    "run_block",
+    "run_capability",
+    "continue_run_block",
+    "resume_capability",
+  ])(
+    "fetches the chat's cards again when %s returns, whatever it returned",
+    (tool) => {
+      const earlier = [toolCall("m1", "bash_exec", '{"stdout":"ok"}')];
+      const { rerender } = render(
+        <ChatMessagesContainer {...baseProps} messages={earlier} />,
+      );
+      const before = mounted()[0].refetchKey;
+
+      rerender(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={[...earlier, toolCall("m2", tool, "<unreadable output>")]}
+        />,
+      );
+
+      expect(mounted()[0].refetchKey).not.toBe(before);
+    },
+  );
+
+  it.each(["streaming", "submitted"])(
+    "polls the chat's cards while the turn is %s",
+    (status) => {
+      render(<ChatMessagesContainer {...baseProps} status={status} />);
+
+      expect(mounted()[0].pollWhileEmpty).toBe(true);
+    },
+  );
 
   it("mounts nothing in a read-only transcript", () => {
     render(

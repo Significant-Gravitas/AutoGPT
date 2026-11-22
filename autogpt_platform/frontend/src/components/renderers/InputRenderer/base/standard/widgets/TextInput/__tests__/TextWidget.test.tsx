@@ -1,9 +1,11 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { WidgetProps } from "@rjsf/utils";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { BlockUIType } from "@/app/(platform)/build/components/types";
 import { render } from "@/tests/integrations/test-utils";
+import { expectTypingKept } from "@/tests/integrations/typing";
 
 import TextWidget from "../TextWidget";
 
@@ -37,6 +39,26 @@ function makeProps(overrides: Partial<WidgetProps> = {}): WidgetProps {
       ...(overrides.registry ?? {}),
     },
   } as unknown as WidgetProps;
+}
+
+function ControlledIntegerWidget({
+  onChange,
+}: {
+  onChange: (value: unknown) => void;
+}) {
+  const [value, setValue] = useState<unknown>();
+  return (
+    <TextWidget
+      {...makeProps({
+        schema: { type: "integer" },
+        value,
+        onChange: (next: unknown) => {
+          setValue(next);
+          onChange(next);
+        },
+      })}
+    />
+  );
 }
 
 describe("TextWidget", () => {
@@ -121,6 +143,35 @@ describe("TextWidget", () => {
       });
 
       expect(onChange).toHaveBeenLastCalledWith(100000);
+    });
+
+    it.each(["9007199254740993", "-9007199254740993", "9223372036854775807"])(
+      "keeps %s as typed and stores every digit",
+      async (value) => {
+        const onChange = vi.fn();
+        render(<ControlledIntegerWidget onChange={onChange} />);
+
+        await expectTypingKept(
+          screen.getByRole("spinbutton") as HTMLInputElement,
+          value,
+        );
+
+        expect(onChange).toHaveBeenLastCalledWith(value);
+      },
+    );
+
+    it("displays a stored digit string unchanged", () => {
+      const props = makeProps({
+        schema: { type: "integer" },
+        value: "9007199254740993",
+      });
+
+      render(<TextWidget {...props} />);
+
+      expect(screen.getByRole("spinbutton")).toHaveProperty(
+        "value",
+        "9007199254740993",
+      );
     });
 
     it("rejects non-finite values like 1e309", () => {

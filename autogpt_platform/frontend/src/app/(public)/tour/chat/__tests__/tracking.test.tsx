@@ -9,8 +9,17 @@ import {
 
 // DotDistortionShader paints a canvas/WebGL frame that happy-dom cannot run and
 // that is purely decorative — stub it so the real chat tree can render.
-vi.mock("@/components/ui/dot-distortion-shader", () => ({
+vi.mock("../components/DotDistortionShader/DotDistortionShader", () => ({
   DotDistortionShader: () => null,
+}));
+
+// A signed-out visitor, answered at once: the auth store's session checks
+// settle before their deadlines are armed, so teardown's timer sweep never
+// fires one.
+vi.mock("@/lib/auth/actions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/actions")>()),
+  getCurrentUser: async () => ({ user: null }),
+  validateSession: async () => ({ user: null, isValid: false }),
 }));
 
 import {
@@ -18,10 +27,18 @@ import {
   installCookiebot,
   removeCookiebot,
 } from "@/tests/integrations/cookiebot";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 
 const { posthog } = vi.hoisted(() => ({
-  posthog: { __loaded: true, is_capturing: () => true, capture: vi.fn() },
+  posthog: {
+    __loaded: true,
+    is_capturing: () => true,
+    // posthog-js returns the event it takes, and nothing when it drops one.
+    capture: vi.fn((event: string, properties?: unknown) => ({
+      event,
+      properties,
+    })),
+  },
 }));
 vi.mock("posthog-js", () => ({ default: posthog }));
 
@@ -64,9 +81,9 @@ describe("Tour DataFast tracking", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
-    // /tour sends DataFast events without consent, but only on the tour
-    // itself and only when a consent banner is configured.
+    // DataFast waits for analytics consent on the tour like everywhere else.
     configureCookiebot();
+    installCookiebot({ statistics: true });
     window.history.pushState({}, "", "/tour/chat");
     window.datafast = datafast;
     datafast.mockClear();
@@ -87,6 +104,28 @@ describe("Tour DataFast tracking", () => {
     vi.unstubAllEnvs();
     removeCookiebot();
     window.history.pushState({}, "", "/");
+  });
+
+  test("sends no DataFast events before the visitor consents", async () => {
+    installCookiebot();
+    render(<TourChatPage />);
+    await advanceThroughTurn();
+    await pressEnterToSend();
+    fireEvent.click(screen.getByText("Make this workflow yours"));
+
+    expect(datafast).not.toHaveBeenCalled();
+  });
+
+  test("fires tour_start on a later visit when consent was not known on the first", async () => {
+    installCookiebot();
+    const first = render(<TourChatPage />);
+    first.unmount();
+    expect(eventsNamed("tour_start")).toHaveLength(0);
+
+    installCookiebot({ statistics: true });
+    render(<TourChatPage />);
+
+    expect(eventsNamed("tour_start")).toHaveLength(1);
   });
 
   test("fires tour_start once per session and tour_scenario_start per scenario run", async () => {
@@ -191,7 +230,7 @@ describe("Tour DataFast tracking", () => {
     await advanceThroughTurn();
     await pressEnterToSend();
 
-    fireEvent.click(screen.getByText("Make this agent yours"));
+    fireEvent.click(screen.getByText("Make this workflow yours"));
     fireEvent.click(screen.getByText("or self-host free"));
     fireEvent.click(
       screen.getByRole("button", { name: /Watch another scenario/i }),
@@ -213,7 +252,7 @@ describe("Tour DataFast tracking", () => {
     render(<TourChatPage />);
     await advanceThroughTurn();
     await pressEnterToSend();
-    fireEvent.click(screen.getByText("Make this agent yours"));
+    fireEvent.click(screen.getByText("Make this workflow yours"));
 
     const events = posthog.capture.mock.calls.map(([name, properties]) => [
       name,

@@ -62,8 +62,8 @@ _NO_FALLBACK_STATUSES = frozenset({401, 403, 407, 429})
 # Bound on ``input_required`` retries when the server only wants its
 # ``requestState`` echoed back (no interactive input requested).
 _MAX_INPUT_REQUIRED_RETRIES = 3
-# ``Requests`` retries throttled/5xx responses forever unless told otherwise.
-# MCP calls run inside graph executions and chat turns, so keep them bounded.
+# How many times ``Requests`` sends a throttled/5xx call. MCP calls run inside
+# graph executions and chat turns, so they get the same small bound everywhere.
 _HTTP_RETRY_ATTEMPTS = 3
 _SUPPORTED_AUTH_SCHEMES = {
     "basic": "Basic",
@@ -138,6 +138,7 @@ class MCPCallResult(BaseModel):
     """Result from calling an MCP tool."""
 
     content: list[dict[str, Any]] = Field(default_factory=list)
+    structured_content: Any = None
     is_error: bool = False
 
 
@@ -272,6 +273,11 @@ class MCPClient:
         ``tools/call`` is never retried: a tool may have applied its side
         effect before the server answered with a retryable status, and the
         spec gives no idempotency guarantee for re-sending it.
+
+        A 301 or 302 within the server's origin keeps the POST: the URL is
+        sent without the trailing slash a user may have pasted, and a server
+        that serves only that form, as nginx does a ``location /mcp/``,
+        redirects there, where a GET is not the call that was made.
         """
         requests = Requests(
             raise_for_status=False,
@@ -279,6 +285,7 @@ class MCPClient:
                 1 if payload.get("method") == "tools/call" else _HTTP_RETRY_ATTEMPTS
             ),
             extra_headers=headers,
+            keep_post_on_same_origin_redirect=True,
         )
         return await requests.post(
             self.server_url, json=payload, allow_redirects=self.follow_redirects
@@ -348,13 +355,15 @@ class MCPClient:
         return body.get("result")
 
     async def _send_notification(self, method: str) -> None:
-        """Send a JSON-RPC notification (no id, no response expected)."""
+        """Send a JSON-RPC notification (no id, no response expected), through
+        a same-origin 301 or 302 as a POST, as ``_post`` sends a request."""
         headers = self._build_headers()
         notification = {"jsonrpc": "2.0", "method": method}
         requests = Requests(
             raise_for_status=False,
             retry_max_attempts=_HTTP_RETRY_ATTEMPTS,
             extra_headers=headers,
+            keep_post_on_same_origin_redirect=True,
         )
         await requests.post(
             self.server_url, json=notification, allow_redirects=self.follow_redirects
@@ -950,5 +959,6 @@ class MCPClient:
 
         return MCPCallResult(
             content=self._content_blocks(result.get("content")),
+            structured_content=result.get("structuredContent"),
             is_error=bool(result.get("isError", False)),
         )

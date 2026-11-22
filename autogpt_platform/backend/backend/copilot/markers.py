@@ -21,6 +21,7 @@ from backend.copilot.constants import (
     STREAM_ERROR_MARKER,
     STREAM_INCOMPLETE_MARKER,
 )
+from backend.copilot.continuation import KICKOFF_NOTES
 from backend.copilot.model import ChatMessage, ChatSession
 
 
@@ -43,6 +44,8 @@ def has_trailing_marker(session: ChatSession | None) -> bool:
         return False
     last = session.messages[-1]
     if last.role != "assistant" or not last.content:
+        return False
+    if last.content in KICKOFF_NOTES:
         return False
     return (
         is_error_marker(last)

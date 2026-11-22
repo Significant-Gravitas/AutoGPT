@@ -2,6 +2,11 @@ import type { ExpertOnboardingStep as ExpertOnboardingStepPayload } from "@/app/
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import type { KeyboardEvent } from "react";
+import {
+  formatAnswer,
+  toAnswerList,
+  type QuestionAnswer,
+} from "../../tools/clarifying-questions";
 
 export const EXPERT_ONBOARDING_PART_TYPE = "tool-expert_onboarding";
 
@@ -42,7 +47,9 @@ function toStep(value: unknown, index: number): ExpertOnboardingStep | null {
         typeof option === "string" && option.trim() ? [option.trim()] : [],
       )
     : [];
-  return { question: question.trim(), keyword, options };
+  // A free-text question has nothing to tick, so the flag needs options.
+  const allow_multiple = options.length > 0 && record?.allow_multiple === true;
+  return { question: question.trim(), keyword, options, allow_multiple };
 }
 
 export function parseExpertOnboarding(
@@ -76,13 +83,29 @@ export function getLetterIndex(event: KeyboardEvent): number | null {
   return index >= 0 && index < 26 ? index : null;
 }
 
+/** Whether a keydown came from a field the user types into, where letters,
+ *  Backspace and Escape belong to the text rather than the card. */
+export function isTextEntryTarget(target: EventTarget): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLInputElement ||
+    target.isContentEditable
+  );
+}
+
+/** An answer as one line for the review list: picks joined by commas. */
+export function getAnswerSummary(answer: QuestionAnswer | undefined): string {
+  return toAnswerList(answer).join(", ");
+}
+
 export function buildOnboardingAnswersMessage(
   steps: ExpertOnboardingStep[],
-  answers: Record<string, string>,
+  answers: Record<string, QuestionAnswer>,
 ): string {
   const body = steps
     .flatMap((step) => {
-      const answer = (answers[step.keyword] ?? "").trim();
+      const answer = formatAnswer(answers[step.keyword]);
       return answer ? [`> ${step.question}\n\n${answer}`] : [];
     })
     .join("\n\n");

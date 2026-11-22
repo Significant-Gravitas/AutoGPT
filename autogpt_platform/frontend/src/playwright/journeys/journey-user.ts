@@ -17,6 +17,10 @@ const COMPLETED_ONBOARDING_STEPS = [
   "ONBOARDING_COMPLETE",
   "AGENT_NEW_RUN",
   "CAPABILITY_CARDS",
+  "FIRST_RUN_TOUR",
+  "CHATS_TIP",
+  "COST_TIP",
+  "EXPERT_TIP",
   "AGENTS_TAB_INTRO",
   "MARKETPLACE_TAB_INTRO",
   "BUILD_TAB_INTRO",
@@ -35,14 +39,30 @@ const COMPLETED_ONBOARDING_STEPS = [
 export async function provisionJourneyUser(page: Page): Promise<JourneyUser> {
   const existingEmail = process.env.PLAYWRIGHT_JOURNEY_EMAIL;
   const existingPassword = process.env.PLAYWRIGHT_JOURNEY_PASSWORD;
-  const user =
-    existingEmail && existingPassword
-      ? await signIn(page, {
-          email: existingEmail,
-          password: existingPassword,
-          name: existingEmail.split("@")[0],
-        })
-      : await signUp(page, newJourneyUser());
+  if (!existingEmail || !existingPassword) {
+    return provisionNewJourneyUser(page);
+  }
+  const user = await signIn(page, {
+    email: existingEmail,
+    password: existingPassword,
+    name: existingEmail.split("@")[0],
+  });
+  return readyForTheApp(page, user);
+}
+
+/**
+ * Signs a brand-new user into the page's browser context, ready to use the
+ * app, even when PLAYWRIGHT_JOURNEY_EMAIL names an account: for the other
+ * people in a journey (an admin, a second user), who must never turn out to
+ * be its first user.
+ */
+export async function provisionNewJourneyUser(
+  page: Page,
+): Promise<JourneyUser> {
+  return readyForTheApp(page, await signUp(page, newJourneyUser()));
+}
+
+async function readyForTheApp(page: Page, user: JourneyUser) {
   // Before anything reads the tier: the backend caches it for minutes.
   if (user.id) await grantSubscriptionTier(user.id);
   await finishAccountSetup(page);
@@ -65,7 +85,19 @@ export async function signUpBeforeAccountSetup(
   return user;
 }
 
-function newJourneyUser(): JourneyUser {
+/**
+ * Creates a brand-new account that has not started onboarding, then signs the
+ * browser out again, so the journey can log in through the app's own form.
+ */
+export async function signUpWithoutOnboarding(
+  page: Page,
+): Promise<JourneyUser> {
+  const user = await signUp(page, newJourneyUser());
+  await page.context().clearCookies();
+  return user;
+}
+
+export function newJourneyUser(): JourneyUser {
   const id = `${Date.now()}-${randomBytes(3).toString("hex")}`;
   return {
     email: `journey-${id}@${journeyEmailDomain()}`,
@@ -96,7 +128,12 @@ async function signUp(page: Page, user: JourneyUser) {
   return { ...user, id: body.user?.id };
 }
 
-async function signIn(page: Page, user: JourneyUser) {
+/**
+ * Signs an existing user in, giving the page's context a new session. Sign
+ * in again after changing the user's row: a session caches the user it
+ * started with for five minutes.
+ */
+export async function signIn(page: Page, user: JourneyUser) {
   const response = await page.request.post("/api/auth/sign-in/email", {
     headers: authHeaders(),
     data: { email: user.email, password: user.password },
@@ -134,13 +171,18 @@ async function completeOnboarding(page: Page) {
 // The app caps sign-ups per client IP. On a local or CI stack every journey
 // comes from one address, so each sign-up claims its own; a deployed app
 // behind a proxy sets the real address and the cap applies as usual.
-function authHeaders(): Record<string, string> {
+export function authHeaders(): Record<string, string> {
   const origin = appOrigin();
   if (!isLoopback(origin)) return { Origin: origin };
   return {
     Origin: origin,
     "X-Forwarded-For": `10.${randomInt(256)}.${randomInt(256)}.${randomInt(1, 255)}`,
   };
+}
+
+/** Whether the journeys run against a stack on this machine, not a deployed one. */
+export function isLocalStack() {
+  return isLoopback(appOrigin());
 }
 
 function appOrigin() {

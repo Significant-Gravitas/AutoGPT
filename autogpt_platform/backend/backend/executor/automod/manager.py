@@ -8,6 +8,8 @@ if TYPE_CHECKING:
 
 from pydantic import ValidationError
 
+from backend.blocks import get_block
+from backend.blocks._base import BlockType
 from backend.data.execution import ExecutionStatus
 from backend.util.exceptions import ModerationError
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -39,10 +41,11 @@ class AutoModManager:
 
     async def moderate_graph_execution_inputs(
         self, db_client: "DatabaseManagerAsyncClient", graph_exec, timeout: int = 10
-    ) -> Exception | None:
+    ) -> ModerationError | None:
         """
         Complete input moderation flow for graph execution
-        Returns: error_if_failed (None means success)
+        Returns: error_if_failed (None means success). On a refusal the caller
+        fails and masks the run's nodes: `update_failed_nodes_for_moderation`.
         """
         if not self.config.enabled:
             return None
@@ -115,11 +118,6 @@ class AutoModManager:
                 logger.warning(
                     f"Moderation failed for graph execution {graph_exec.graph_exec_id}"
                 )
-                # Update node statuses for frontend display before raising error
-                await self._update_failed_nodes_for_moderation(
-                    db_client, graph_exec.graph_exec_id, "input", content_id
-                )
-
                 return ModerationError(
                     message="Execution failed due to input content moderation",
                     user_id=graph_exec.user_id,
@@ -130,11 +128,6 @@ class AutoModManager:
 
             return None
 
-        except asyncio.TimeoutError:
-            logger.warning(
-                f"Input moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation"
-            )
-            return None  # Bypass moderation on timeout
         except Exception as e:
             logger.warning(f"Input moderation execution failed: {e}")
             return ModerationError(
@@ -151,10 +144,11 @@ class AutoModManager:
         user_id: str,
         graph_id: str,
         timeout: int = 10,
-    ) -> Exception | None:
+    ) -> ModerationError | None:
         """
         Complete output moderation flow for graph execution
-        Returns: error_if_failed (None means success)
+        Returns: error_if_failed (None means success). On a refusal the caller
+        fails and masks the run's nodes: `update_failed_nodes_for_moderation`.
         """
         if not self.config.enabled:
             return None
@@ -198,11 +192,6 @@ class AutoModManager:
 
             if not moderation_passed:
                 logger.warning(f"Moderation failed for graph execution {graph_exec_id}")
-                # Update node statuses for frontend display before raising error
-                await self._update_failed_nodes_for_moderation(
-                    db_client, graph_exec_id, "output", content_id
-                )
-
                 return ModerationError(
                     message="Execution failed due to output content moderation",
                     user_id=user_id,
@@ -213,11 +202,6 @@ class AutoModManager:
 
             return None
 
-        except asyncio.TimeoutError:
-            logger.warning(
-                f"Output moderation timed out for graph execution {graph_exec_id}, bypassing moderation"
-            )
-            return None  # Bypass moderation on timeout
         except Exception as e:
             logger.warning(f"Output moderation execution failed: {e}")
             return ModerationError(
@@ -227,7 +211,7 @@ class AutoModManager:
                 moderation_type="output",
             )
 
-    async def _update_failed_nodes_for_moderation(
+    async def update_failed_nodes_for_moderation(
         self,
         db_client: "DatabaseManagerAsyncClient",
         graph_exec_id: str,
@@ -262,38 +246,32 @@ class AutoModManager:
         if content_id:
             error_message += f" (Moderation ID: {content_id})"
 
-        # Prepare database update tasks
-        exec_updates = []
+        stats_patches: dict[str, dict[str, Any]] = {}
         for exec_entry in executions_to_update:
-            # Collect all input and output names to clear
-            cleared_inputs = {}
-            cleared_outputs = {}
+            cleared_inputs = {name: [error_message] for name in exec_entry.input_data}
+            # Readers treat an empty mask as no mask, so a node with no outputs
+            # yet gets its error pin: outputs written later stay hidden.
+            cleared_outputs = {
+                name: [error_message] for name in exec_entry.output_data
+            } or {"error": [error_message]}
+            # An IO block's `name` is the graph's declared input/output key, not
+            # content; run inputs/outputs are keyed by it.
+            if (
+                "name" in exec_entry.input_data
+                and (block := get_block(exec_entry.block_id))
+                and block.block_type in (BlockType.INPUT, BlockType.OUTPUT)
+            ):
+                cleared_inputs["name"] = [str(exec_entry.input_data["name"])]
+            stats_patches[exec_entry.node_exec_id] = {
+                "error": error_message,
+                "cleared_inputs": cleared_inputs,
+                "cleared_outputs": cleared_outputs,
+            }
 
-            if exec_entry.input_data:
-                for name in exec_entry.input_data.keys():
-                    cleared_inputs[name] = [error_message]
+        updated_execs = await db_client.mark_node_executions_moderated(
+            graph_exec_id, stats_patches, target_statuses
+        )
 
-            if exec_entry.output_data:
-                for name in exec_entry.output_data.keys():
-                    cleared_outputs[name] = [error_message]
-
-            # Add update task to list
-            exec_updates.append(
-                db_client.update_node_execution_status(
-                    exec_entry.node_exec_id,
-                    status=ExecutionStatus.FAILED,
-                    stats={
-                        "error": error_message,
-                        "cleared_inputs": cleared_inputs,
-                        "cleared_outputs": cleared_outputs,
-                    },
-                )
-            )
-
-        # Execute all database updates in parallel
-        updated_execs = await asyncio.gather(*exec_updates)
-
-        # Send all websocket updates in parallel
         await asyncio.gather(
             *[
                 send_async_execution_update(updated_exec)
@@ -308,11 +286,10 @@ class AutoModManager:
 
         Returns:
             Tuple of (approval_status, content_id)
-            - approval_status: True if approved or timeout occurred, False if rejected
+            - approval_status: True if approved, False if rejected. When AutoMod
+              fails or times out, ``automod_fail_open`` decides: True lets the
+              content through, False treats it as rejected.
             - content_id: Reference ID from moderation API, or None if not available
-
-        Raises:
-            asyncio.TimeoutError: When moderation times out (should be bypassed)
         """
         try:
             request_data = AutoModRequest(
@@ -335,11 +312,12 @@ class AutoModManager:
                 return False, response.content_id
 
         except asyncio.TimeoutError:
-            # Re-raise timeout to be handled by calling methods
+            # A timeout is AutoMod failing like any other error: an operator
+            # who wants runs to go on without it sets automod_fail_open.
             logger.warning(
                 f"AutoMod API timeout for {metadata.get('graph_exec_id', 'unknown')}"
             )
-            raise
+            return self.config.fail_open, None
         except Exception as e:
             logger.error(f"AutoMod moderation error: {e}")
             return self.config.fail_open, None

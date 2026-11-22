@@ -57,7 +57,7 @@ class PostToTelegramBlock(Block):
             input_schema=PostToTelegramBlock.Input,
             output_schema=PostToTelegramBlock.Output,
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(

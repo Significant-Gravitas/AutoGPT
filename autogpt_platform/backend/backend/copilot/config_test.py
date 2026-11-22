@@ -598,7 +598,7 @@ class TestLocalAuxModels:
             api_key="or-key",
             base_url="https://openrouter.ai/api/v1",
         )
-        assert cfg.title_model == "anthropic/claude-haiku-4-5"
+        assert cfg.title_model == "anthropic/claude-haiku-5.5"
         assert cfg.simulation_model == "google/gemini-2.5-flash-lite"
         assert cfg.fast_advanced_model == "anthropic/claude-opus-5-5"
 
@@ -1199,3 +1199,12 @@ class TestLangfusePromptCacheTTL:
         # at once, which is the unbounded staleness this field exists to avoid.
         with pytest.raises(ValidationError, match="langfuse_prompt_cache_ttl"):
             ChatConfig(langfuse_prompt_cache_ttl=-1)
+
+
+class TestPosthogBuiltinToolSpans:
+    def test_on_by_default(self):
+        assert ChatConfig.model_fields["posthog_builtin_tool_spans"].default is True
+
+    def test_env_turns_it_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CHAT_POSTHOG_BUILTIN_TOOL_SPANS", "false")
+        assert ChatConfig().posthog_builtin_tool_spans is False

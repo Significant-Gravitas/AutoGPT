@@ -3,6 +3,7 @@ import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExe
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { server } from "@/mocks/mock-server";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -75,6 +76,36 @@ describe("ExecutionListSection", () => {
     expect(screen.getByRole("button", { name: /collapse/i })).toBeDefined();
   });
 
+  it("counts a running item with no activity status up each second", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-21T12:00:10Z"));
+    try {
+      const agents = [makeAgent({ id: "lib-1", graph_id: "g-1" })];
+      server.use(
+        getGetV1ListAllExecutionsMockHandler200([
+          {
+            ...makeRunningExecution("g-1", "exec-1"),
+            started_at: "2026-07-21T12:00:00Z",
+            stats: null,
+          } as unknown as GraphExecutionMeta,
+        ]),
+      );
+
+      render(<ExecutionListSection activeTab="running" agents={agents} />);
+      // Runs the zero-delay timers that deliver the list without leaving 12:00:10.
+      await act(() => vi.advanceTimersByTimeAsync(100));
+      // findBy* would hang: Testing Library never advances Vitest's fake timers.
+      await vi.waitFor(() =>
+        expect(screen.getByText("Running for 10s")).toBeDefined(),
+      );
+
+      await act(() => vi.advanceTimersByTimeAsync(6_000));
+      expect(screen.getByText("Running for 16s")).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("flags a recently completed run whose step failed instead of calling it a success", async () => {
     const agents = [
       makeAgent({ id: "lib-1", graph_id: "g-1", name: "Newsletter" }),
@@ -138,6 +169,6 @@ describe("AgentListSection", () => {
   it("shows the empty message when no agent matches the tab", () => {
     server.use(getGetV1ListAllExecutionsMockHandler200([]));
     render(<AgentListSection activeTab="idle" agents={[]} />);
-    expect(screen.getByText("No idle agents")).toBeDefined();
+    expect(screen.getByText("No idle workflows")).toBeDefined();
   });
 });

@@ -11,6 +11,7 @@ import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecu
 import { useEditScheduleModal } from "./useEditScheduleModal";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 
 type Props = {
   graphId: string;
@@ -54,13 +55,14 @@ export function EditScheduleModal({
       <Dialog.Trigger>
         {iconOnly ? (
           <Button variant="icon" size="icon" aria-label="Edit schedule">
-            <Icon icon={PencilEdit02Icon} size={18} className="text-zinc-700" />
+            <Icon icon={PencilEdit02Icon} size={18} />
           </Button>
         ) : (
           <Button
             variant="ghost"
             size="small"
-            className={triggerClassName ?? "absolute -right-2 -top-2"}
+            // oxlint-disable-next-line design-system/require-static-classes -- callers outside library pass layout/size overrides
+            className={triggerClassName ?? "absolute -top-2 -right-2"}
           >
             <Icon icon={PencilEdit02Icon} className="size-4" /> Edit schedule
           </Button>
@@ -106,6 +108,7 @@ export function EditScheduleModal({
                 onChange={(e) => setTime(e.target.value.trim())}
                 placeholder="00:00"
                 error={errors.time}
+                hint={`Time in ${getTimezoneDisplayName(schedule.timezone || "UTC")}`}
               />
             </>
           ) : (

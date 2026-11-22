@@ -38,9 +38,6 @@ beforeEach(() => {
 const mockUseAuth = vi.hoisted(() => vi.fn());
 const mockRouterPush = vi.hoisted(() => vi.fn());
 const mockParams = vi.hoisted(() => ({ expertId: "template-maria" }));
-const flagStatusMock = vi.hoisted(() =>
-  vi.fn(() => ({ enabled: true, ready: true })),
-);
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -62,20 +59,6 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: mockUseAuth,
 }));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? flagStatusMock()
-        : actual.useFlagStatus(flag as never),
-  };
-});
 
 const mariaTemplate: Expert = {
   id: "template-maria",
@@ -170,7 +153,7 @@ describe("Marketplace expert page", () => {
   beforeEach(() => {
     mockRouterPush.mockReset();
     mockParams.expertId = "template-maria";
-    flagStatusMock.mockReturnValue({ enabled: true, ready: true });
+
     mockUseAuth.mockReturnValue({ user: { id: "user-1" }, isLoggedIn: true });
     server.use(
       getGetV1ListSystemProvidersMockHandler([
@@ -642,43 +625,5 @@ describe("Marketplace expert page", () => {
     expect(screen.queryByRole("button", { name: "Hire Maria" })).toBeNull();
     expect(screen.queryByText("Coming soon")).toBeNull();
     expect(rosterRequested).toBe(false);
-  });
-
-  test("shows the coming-soon label instead of hire actions when the flag is off", async () => {
-    flagStatusMock.mockReturnValue({ enabled: false, ready: true });
-    let rosterRequested = false;
-    server.use(
-      getListExpertTemplatesMockHandler([mariaTemplate]),
-      getListExpertsMockHandler(() => {
-        rosterRequested = true;
-        return [];
-      }),
-    );
-
-    renderPage();
-
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "Maria" }),
-    ).toBeDefined();
-    expect(screen.getByText("Coming soon")).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Hire Maria" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "Get started" })).toBeNull();
-    expect(rosterRequested).toBe(false);
-  });
-
-  test("waits for the flag before showing a header action", async () => {
-    flagStatusMock.mockReturnValue({ enabled: false, ready: false });
-    server.use(
-      getListExpertTemplatesMockHandler([mariaTemplate]),
-      getListExpertsMockHandler([]),
-    );
-
-    renderPage();
-
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "Maria" }),
-    ).toBeDefined();
-    expect(screen.queryByText("Coming soon")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Hire Maria" })).toBeNull();
   });
 });

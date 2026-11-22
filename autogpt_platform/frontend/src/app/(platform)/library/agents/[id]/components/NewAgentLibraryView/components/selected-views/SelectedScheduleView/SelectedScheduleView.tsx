@@ -4,10 +4,15 @@ import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { SchedulesUnavailableNotice } from "@/components/contextual/SchedulesUnavailableNotice/SchedulesUnavailableNotice";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { isLargeScreen, useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
-import { formatInTimezone, getTimezoneDisplayName } from "@/lib/timezone-utils";
+import {
+  formatInTimezone,
+  getTimezoneDisplayName,
+  getViewerTimezone,
+} from "@/lib/timezone-utils";
 import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
 import { LoadingSelectedContent } from "../LoadingSelectedContent";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
@@ -31,15 +36,24 @@ export function SelectedScheduleView({
   onSelectRun,
   banner,
 }: Props) {
-  const { schedule, isLoading, error } = useSelectedScheduleView(
+  const { schedule, unavailable, isLoading, error } = useSelectedScheduleView(
     agent.graph_id,
     scheduleId,
   );
 
-  const userTimezone = useUserTimezone();
+  const viewerTimezone = getViewerTimezone(useUserTimezone());
+  const scheduleTimezone = schedule?.timezone || "UTC";
 
   const breakpoint = useBreakpoint();
   const isLgScreenUp = isLargeScreen(breakpoint);
+
+  if (unavailable) {
+    return (
+      <SelectedViewLayout agent={agent} banner={banner}>
+        <SchedulesUnavailableNotice />
+      </SelectedViewLayout>
+    );
+  }
 
   if (error) {
     return (
@@ -82,7 +96,7 @@ export function SelectedScheduleView({
                 run={undefined}
                 scheduleRecurrence={
                   schedule
-                    ? `${humanizeCronExpression(schedule.cron || "")} · ${getTimezoneDisplayName(schedule.timezone || userTimezone || "UTC")}`
+                    ? `${humanizeCronExpression(schedule.cron || "")} · ${getTimezoneDisplayName(scheduleTimezone)}`
                     : undefined
                 }
               />
@@ -103,7 +117,7 @@ export function SelectedScheduleView({
             <div id="schedule" className="scroll-mt-4">
               <RunDetailCard title="Schedule">
                 {isLoading || !schedule ? (
-                  <div className="text-neutral-500">
+                  <div className="text-foreground-tertiary">
                     <LoadingSpinner />
                   </div>
                 ) : (
@@ -114,38 +128,42 @@ export function SelectedScheduleView({
                     </div>
                     <div className="flex flex-col gap-1.5">
                       <Text variant="large-medium">Recurrence</Text>
-                      <Text variant="body" className="flex items-center gap-3">
-                        {humanizeCronExpression(schedule.cron)}{" "}
-                        <span className="text-zinc-500">•</span>{" "}
-                        <span className="text-zinc-500">
-                          {getTimezoneDisplayName(
-                            schedule.timezone || userTimezone || "UTC",
-                          )}
-                        </span>
-                      </Text>
+                      <div className="flex items-center gap-3">
+                        <Text variant="body" as="span">
+                          {humanizeCronExpression(schedule.cron)}
+                        </Text>{" "}
+                        <Text variant="body" as="span" tone="muted">
+                          •
+                        </Text>{" "}
+                        <Text variant="body" as="span" tone="muted">
+                          {getTimezoneDisplayName(scheduleTimezone)}
+                        </Text>
+                      </div>
                     </div>
                     <div className="flex flex-col gap-1.5">
                       <Text variant="large-medium">Next run</Text>
-                      <Text variant="body" className="flex items-center gap-3">
-                        {formatInTimezone(
-                          schedule.next_run_time,
-                          userTimezone || "UTC",
-                          {
-                            year: "numeric",
-                            month: "long",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            hour12: false,
-                          },
-                        )}{" "}
-                        <span className="text-zinc-500">•</span>{" "}
-                        <span className="text-zinc-500">
-                          {getTimezoneDisplayName(
-                            schedule.timezone || userTimezone || "UTC",
+                      <div className="flex items-center gap-3">
+                        <Text variant="body" as="span">
+                          {formatInTimezone(
+                            schedule.next_run_time,
+                            viewerTimezone,
+                            {
+                              year: "numeric",
+                              month: "long",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: false,
+                            },
                           )}
-                        </span>
-                      </Text>
+                        </Text>{" "}
+                        <Text variant="body" as="span" tone="muted">
+                          •
+                        </Text>{" "}
+                        <Text variant="body" as="span" tone="muted">
+                          {getTimezoneDisplayName(viewerTimezone)}
+                        </Text>
+                      </div>
                     </div>
                   </div>
                 )}

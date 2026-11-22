@@ -1,3 +1,4 @@
+import logging
 import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -9,6 +10,7 @@ from backend.data.execution import (
     ExecutionStatus,
     GraphExecutionEntry,
     GraphExecutionMeta,
+    NodeExecutionEntry,
 )
 from backend.data.model import GraphExecutionStats
 from backend.executor.manager import (
@@ -16,6 +18,7 @@ from backend.executor.manager import (
     _get_execution_credit_balance,
     _propagate_node_failure,
     _record_execution_failure,
+    send_execution_update,
 )
 from backend.util.decorator import TimingInfo
 from backend.util.exceptions import ExecutionFailureReason, InsufficientBalanceError
@@ -101,6 +104,221 @@ def test_failed_execution_is_not_continued():
     db_client.update_graph_execution_start_time.assert_not_called()
 
 
+def test_a_delivery_leaves_a_run_waiting_for_review_parked():
+    """Only the answer to a review resumes the run waiting for it, by queueing
+    the run again with its current settings. A delivery that finds the run in
+    REVIEW is a late duplicate, such as the original message of a run an
+    admin requeued, and the safe modes it carries may be stale: it must not
+    take the run any further."""
+    execution = GraphExecutionEntry(
+        user_id="user-1",
+        graph_exec_id="exec-1",
+        graph_id="graph-1",
+        graph_version=1,
+    )
+    db_client = MagicMock()
+    db_client.get_graph_execution_meta.return_value = SimpleNamespace(
+        status=ExecutionStatus.REVIEW, stats=None
+    )
+    processor = ExecutionProcessor()
+    processor._on_graph_execution = MagicMock()
+
+    with (
+        patch("backend.executor.manager.get_db_client", return_value=db_client),
+        patch("backend.executor.manager.update_graph_execution_state") as update,
+    ):
+        processor.on_graph_execution(execution, threading.Event(), MagicMock())
+
+    processor._on_graph_execution.assert_not_called()
+    db_client.update_graph_execution_start_time.assert_not_called()
+    update.assert_not_called()
+
+
+@pytest.mark.parametrize("status", [ExecutionStatus.QUEUED, ExecutionStatus.RUNNING])
+def test_a_queued_or_redelivered_running_run_goes_on(status: ExecutionStatus):
+    """A QUEUED run starts. A RUNNING run whose pod died comes back as a
+    redelivery and carries on."""
+    execution = GraphExecutionEntry(
+        user_id="user-1",
+        graph_exec_id="exec-1",
+        graph_id="graph-1",
+        graph_version=1,
+    )
+    db_client = MagicMock()
+    db_client.get_graph_execution_meta.return_value = SimpleNamespace(
+        status=status, stats=None
+    )
+    processor = ExecutionProcessor()
+    processor._on_graph_execution = MagicMock(
+        return_value=(
+            TimingInfo(cpu_time=0.0, wall_time=0.0),
+            ExecutionStatus.TERMINATED,
+        )
+    )
+
+    with (
+        patch("backend.executor.manager.get_db_client", return_value=db_client),
+        patch("backend.executor.manager.send_execution_update"),
+        patch("backend.executor.manager.update_graph_execution_state"),
+        patch("backend.executor.manager.expert_posts.handle_expert_run_post"),
+    ):
+        processor.on_graph_execution(execution, threading.Event(), MagicMock())
+
+    processor._on_graph_execution.assert_called_once()
+
+
+def _run_whose_start_moves_nothing(
+    status: ExecutionStatus, found: ExecutionStatus | None
+) -> tuple[MagicMock, MagicMock, MagicMock, MagicMock]:
+    """Run a run read as ``status`` whose start write returns nothing and which
+    the read after that finds ``found`` (None for a run that is gone).
+
+    Returns the database client, the graph run, the update sender and the state
+    writer.
+    """
+    execution = GraphExecutionEntry(
+        user_id="user-1",
+        graph_exec_id="exec-1",
+        graph_id="graph-1",
+        graph_version=1,
+    )
+    db_client = MagicMock()
+    db_client.get_graph_execution_meta.return_value = SimpleNamespace(
+        status=status, stats=None
+    )
+    db_client.get_graph_execution.return_value = (
+        None if found is None else SimpleNamespace(status=found, stats=None)
+    )
+    db_client.update_graph_execution_start_time.return_value = None
+    processor = ExecutionProcessor()
+    processor._on_graph_execution = MagicMock(
+        return_value=(
+            TimingInfo(cpu_time=0.0, wall_time=0.0),
+            ExecutionStatus.TERMINATED,
+        )
+    )
+
+    with (
+        patch("backend.executor.manager.get_db_client", return_value=db_client),
+        patch("backend.executor.manager.send_execution_update") as send_update,
+        patch("backend.executor.manager.update_graph_execution_state") as write_state,
+        patch("backend.executor.manager.expert_posts.handle_expert_run_post"),
+    ):
+        processor.on_graph_execution(execution, threading.Event(), MagicMock())
+
+    return db_client, processor._on_graph_execution, send_update, write_state
+
+
+@pytest.mark.parametrize("status", [ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE])
+@pytest.mark.parametrize(
+    "found",
+    [
+        ExecutionStatus.TERMINATED,
+        ExecutionStatus.COMPLETED,
+        ExecutionStatus.FAILED,
+        ExecutionStatus.REVIEW,
+        None,
+    ],
+)
+def test_a_run_stopped_before_it_started_is_left_as_the_stop_left_it(
+    status: ExecutionStatus, found: ExecutionStatus | None
+):
+    """The start write moves only a run that is still waiting to start, and
+    returns nothing for one a stop got to after the executor's read. The
+    executor then leaves it alone: it runs no graph, writes no state and
+    announces no update."""
+    db_client, run_graph, send_update, write_state = _run_whose_start_moves_nothing(
+        status, found
+    )
+
+    db_client.update_graph_execution_start_time.assert_called_once_with("exec-1")
+    run_graph.assert_not_called()
+    send_update.assert_not_called()
+    write_state.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "found, says",
+    [
+        (ExecutionStatus.TERMINATED, "became TERMINATED before it started"),
+        (ExecutionStatus.REVIEW, "became REVIEW before it started"),
+        (None, "no longer exists"),
+    ],
+)
+def test_a_skipped_start_logs_what_became_of_the_run(
+    found: ExecutionStatus | None, says: str, caplog: pytest.LogCaptureFixture
+):
+    """The log tells a run a stop ended from one moved to review or gone."""
+    with caplog.at_level(logging.INFO, logger="backend.executor.manager"):
+        _run_whose_start_moves_nothing(ExecutionStatus.QUEUED, found)
+
+    skipped = [r.getMessage() for r in caplog.records if "Skipped" in r.getMessage()]
+    assert len(skipped) == 1
+    assert says in skipped[0]
+
+
+@pytest.mark.parametrize("status", [ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE])
+def test_a_start_whose_answer_was_lost_goes_on_with_the_run(status: ExecutionStatus):
+    """The database client retries a call that failed, so a start that committed
+    and lost its answer is answered nothing by its retry, with the run RUNNING.
+    That run is this executor's to go on with: dropping it would leave it
+    RUNNING with nothing running it."""
+    db_client, run_graph, send_update, _ = _run_whose_start_moves_nothing(
+        status, ExecutionStatus.RUNNING
+    )
+
+    db_client.update_graph_execution_start_time.assert_called_once_with("exec-1")
+    run_graph.assert_called_once()
+    # The RUNNING update the first try's lost answer would have carried.
+    send_update.assert_called_once_with(db_client.get_graph_execution.return_value)
+
+
+def test_an_executors_refused_final_write_broadcasts_the_run_a_stop_ended():
+    """``on_graph_execution`` writes its final state through
+    ``_write_the_final_state``: a stop that ended the run first leaves it
+    TERMINATED, the executor's own TERMINATED write is refused, and the stored
+    state is broadcast, so a RUNNING update sent late is not the last one."""
+    execution = GraphExecutionEntry(
+        user_id="user-1",
+        graph_exec_id="exec-1",
+        graph_id="graph-1",
+        graph_version=1,
+    )
+    stopped = SimpleNamespace(status=ExecutionStatus.TERMINATED)
+    db_client = MagicMock()
+    db_client.get_graph_execution_meta.return_value = SimpleNamespace(
+        status=ExecutionStatus.RUNNING, stats=None
+    )
+    db_client.update_graph_execution_stats.return_value = None
+    db_client.get_graph_execution.return_value = stopped
+    processor = ExecutionProcessor()
+    processor._on_graph_execution = MagicMock(
+        return_value=(
+            TimingInfo(cpu_time=0.0, wall_time=0.0),
+            ExecutionStatus.TERMINATED,
+        )
+    )
+
+    with (
+        patch("backend.executor.manager.get_db_client", return_value=db_client),
+        patch("backend.executor.manager.send_execution_update") as send_update,
+        patch("backend.executor.manager.expert_posts.handle_expert_run_post"),
+    ):
+        processor.on_graph_execution(execution, threading.Event(), MagicMock())
+
+    send_update.assert_called_once_with(stopped)
+
+
+def test_an_update_that_is_none_is_not_published():
+    """The start write returns None for a run a stop ended. An executor from
+    before that change hands the result straight to send_execution_update, so
+    None must publish nothing and raise nothing, or a deploy would break it."""
+    with patch("backend.executor.manager.get_execution_event_bus") as event_bus:
+        assert send_execution_update(None) is None
+
+    event_bus.assert_not_called()
+
+
 def test_execution_credit_balance_uses_organization_aware_lookup():
     execution = GraphExecutionEntry(
         user_id="user-1",
@@ -116,6 +334,23 @@ def test_execution_credit_balance_uses_organization_aware_lookup():
     assert _get_execution_credit_balance(db_client, execution) == 500
     db_client.get_org_credits.assert_called_once_with(org_id="org-1")
     db_client.get_credits.assert_not_called()
+
+
+def test_execution_credit_balance_reads_the_wallet_a_run_was_queued_on():
+    execution = GraphExecutionEntry(
+        user_id="user-1",
+        graph_exec_id="exec-1",
+        graph_id="graph-1",
+        graph_version=1,
+        execution_context=ExecutionContext(
+            organization_id="org-1", bills_own_wallet=True
+        ),
+    )
+    db_client = MagicMock()
+    db_client.get_credits.return_value = 250
+
+    assert _get_execution_credit_balance(db_client, execution) == 250
+    db_client.get_org_credits.assert_not_called()
 
 
 def test_execution_credit_balance_uses_user_wallet_without_organization():
@@ -217,7 +452,7 @@ def test_graph_start_credit_failure_records_structured_reason(credit_balance):
     assert status == ExecutionStatus.FAILED
     assert stats.failure_reason == ExecutionFailureReason.INSUFFICIENT_BALANCE
     assert stats.error == (
-        "At least 1 credit must be available to run this agent. "
+        "At least 1 credit must be available to run this workflow. "
         "Please make more credits available and try again."
     )
     db_client.get_org_credits.assert_called_once_with(org_id="org-1")
@@ -329,3 +564,101 @@ def test_nested_credit_failure_marker_respects_cancellation_precedence(
     assert status == expected_status
     assert stats.failure_reason == ExecutionFailureReason.INSUFFICIENT_BALANCE
     assert stats.error == "Organization has 0 credits but needs 25"
+
+
+def _queued_node(node_exec_id: str, status: ExecutionStatus):
+    entry = NodeExecutionEntry(
+        user_id="user-1",
+        graph_exec_id="exec-1",
+        graph_id="graph-1",
+        graph_version=1,
+        node_exec_id=node_exec_id,
+        node_id=f"node-{node_exec_id}",
+        block_id="block-1",
+        inputs={},
+    )
+    return SimpleNamespace(
+        status=status,
+        queue_time=None,
+        to_node_execution_entry=lambda execution_context: entry.model_copy(
+            update={"execution_context": execution_context}
+        ),
+    )
+
+
+def test_redispatched_review_and_running_nodes_are_not_charged_again():
+    """#15272: on resume the executor re-queues REVIEW/RUNNING node execs.
+    They were charged on first dispatch, so they are not charged again.
+    A TERMINATED row is: it was reconciled when it was interrupted, so a
+    re-dispatch is a new run."""
+    execution = GraphExecutionEntry(
+        user_id="user-1",
+        graph_exec_id="exec-1",
+        graph_id="graph-1",
+        graph_version=1,
+    )
+    db_client = MagicMock()
+    db_client.get_credits.return_value = 100
+    db_client.get_node_executions.return_value = [
+        _queued_node("review", ExecutionStatus.REVIEW),
+        _queued_node("running", ExecutionStatus.RUNNING),
+        _queued_node("terminated", ExecutionStatus.TERMINATED),
+        _queued_node("queued", ExecutionStatus.QUEUED),
+    ]
+    db_client.has_pending_reviews_for_graph_exec.return_value = False
+    processor = ExecutionProcessor()
+    processor._cleanup_graph_execution = MagicMock()
+    processor.node_evaluation_loop = MagicMock()
+    processor.node_execution_loop = MagicMock()
+    processor.on_node_execution = MagicMock()
+    completed_future = MagicMock()
+    completed_future.result.return_value = None
+
+    def complete_coroutine(coroutine, _loop):
+        # The stubbed on_node_execution returns None rather than a coroutine.
+        if coroutine is not None:
+            coroutine.close()
+        return completed_future
+
+    dispatched: list = []
+    processor.on_node_execution.side_effect = lambda node_exec, **_: dispatched.append(
+        node_exec
+    )
+    charge_usage = MagicMock(return_value=(7, 93, 7))
+    increment = MagicMock(return_value=1)
+
+    with (
+        patch("backend.executor.manager.get_db_client", return_value=db_client),
+        patch(
+            "backend.executor.manager.asyncio.run_coroutine_threadsafe",
+            side_effect=complete_coroutine,
+        ),
+        patch("backend.executor.manager.billing.charge_usage", charge_usage),
+        patch(
+            "backend.executor.manager.billing.redispatch_reconcile_baseline",
+            side_effect=lambda node_exec: {"review": 3, "running": None}[
+                node_exec.node_exec_id
+            ],
+        ),
+        patch("backend.executor.manager.billing.handle_low_balance"),
+        patch("backend.executor.manager.increment_execution_count", increment),
+    ):
+        processor._on_graph_execution(
+            graph_exec=execution,
+            cancel=threading.Event(),
+            log_metadata=MagicMock(),
+            execution_stats=GraphExecutionStats(),
+            cluster_lock=MagicMock(),
+        )
+
+    charged = [c.kwargs["node_exec"].node_exec_id for c in charge_usage.call_args_list]
+    assert charged == ["terminated", "queued"]
+    assert increment.call_count == 2
+    by_id = {n.node_exec_id: n for n in dispatched}
+    assert set(by_id) == {"review", "running", "terminated", "queued"}
+    # Reconciliation of a re-dispatched row settles against what its first
+    # dispatch left billed; charged rows settle against the new charge.
+    assert by_id["review"].pre_flight_charge == 3
+    assert by_id["running"].pre_flight_charge is None
+    assert by_id["terminated"].pre_flight_charge == 7
+    assert by_id["queued"].pre_flight_charge == 7

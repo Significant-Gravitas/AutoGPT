@@ -14,10 +14,8 @@ import {
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useEffect, useRef, useState } from "react";
 import { ScheduleAgentModal } from "../ScheduleAgentModal/ScheduleAgentModal";
-import {
-  AIAgentSafetyPopup,
-  useAIAgentSafetyPopup,
-} from "./components/AIAgentSafetyPopup/AIAgentSafetyPopup";
+import { AIAgentSafetyPopup } from "./components/AIAgentSafetyPopup/AIAgentSafetyPopup";
+import { shouldShowSafetyPopup } from "./components/AIAgentSafetyPopup/helpers";
 import { ModalHeader } from "./components/ModalHeader/ModalHeader";
 import { ModalRunSection } from "./components/ModalRunSection/ModalRunSection";
 import { RunActions } from "./components/RunActions/RunActions";
@@ -28,6 +26,7 @@ interface Props {
   triggerSlot: React.ReactNode;
   agent: LibraryAgent;
   initialInputValues?: Record<string, any>;
+  initialTriggerConfigValues?: Record<string, any>;
   initialInputCredentials?: Record<string, any>;
   onRunCreated?: (execution: GraphExecutionMeta) => void;
   onTriggerSetup?: (preset: LibraryAgentPreset) => void;
@@ -42,11 +41,12 @@ export function RunAgentModal({
   triggerSlot,
   agent,
   initialInputValues,
+  initialTriggerConfigValues,
   initialInputCredentials,
   onRunCreated,
   onTriggerSetup,
   onScheduleCreated,
-  title = "Run Agent",
+  title = "Run Workflow",
   dialogVariant = "default",
 }: Props) {
   const {
@@ -60,6 +60,11 @@ export function RunAgentModal({
     // Form: regular inputs
     inputValues,
     setInputValues,
+
+    // Form: trigger config (the trigger node's config on a triggered agent)
+    triggerConfigValues,
+    setTriggerConfigValues,
+    triggerConfigFields,
 
     // Form: credentials
     inputCredentials,
@@ -77,6 +82,7 @@ export function RunAgentModal({
     // Schemas
     agentInputFields,
     agentCredentialsInputFields,
+    hasInputFields,
 
     // Async states
     isExecuting,
@@ -89,6 +95,7 @@ export function RunAgentModal({
     onRun: onRunCreated,
     onSetupTrigger: onTriggerSetup,
     initialInputValues,
+    initialTriggerConfigValues,
     initialInputCredentials,
   });
 
@@ -100,15 +107,8 @@ export function RunAgentModal({
   );
   const contentRef = useRef<HTMLDivElement>(null);
 
-  const { shouldShowPopup, dismissPopup } = useAIAgentSafetyPopup(
-    agent.id,
-    agent.has_sensitive_action,
-    agent.has_human_in_the_loop,
-  );
-
   const hasAnySetupFields =
-    Object.keys(agentInputFields || {}).length > 0 ||
-    Object.keys(agentCredentialsInputFields || {}).length > 0;
+    hasInputFields || Object.keys(agentCredentialsInputFields || {}).length > 0;
 
   const isTriggerRunType = defaultRunType.includes("trigger");
 
@@ -156,6 +156,13 @@ export function RunAgentModal({
     }));
   }
 
+  function handleTriggerConfigChange(key: string, value: string) {
+    setTriggerConfigValues((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  }
+
   function handleCredentialsChange(key: string, value: any | undefined) {
     setInputCredentials((prev) => {
       const next = { ...prev } as Record<string, any>;
@@ -187,7 +194,7 @@ export function RunAgentModal({
   }
 
   function handleRunWithSafetyCheck() {
-    if (shouldShowPopup) {
+    if (shouldShowSafetyPopup(agent)) {
       setPendingRunAction(() => handleRun);
       setIsSafetyPopupOpen(true);
     } else {
@@ -197,7 +204,6 @@ export function RunAgentModal({
 
   function handleSafetyPopupAcknowledge() {
     setIsSafetyPopupOpen(false);
-    dismissPopup();
     if (pendingRunAction) {
       pendingRunAction();
       setPendingRunAction(null);
@@ -233,6 +239,9 @@ export function RunAgentModal({
                       inputValues,
                       setInputValue: handleInputChange,
                       agentInputFields,
+                      triggerConfigValues,
+                      setTriggerConfigValue: handleTriggerConfigChange,
+                      triggerConfigFields,
                       inputCredentials,
                       setInputCredentialsValue: handleCredentialsChange,
                       agentCredentialsInputFields,
@@ -245,9 +254,11 @@ export function RunAgentModal({
             </div>
 
             <Dialog.Footer
-              className={`sticky bottom-0 z-10 bg-white pt-4 ${
+              // oxlint-disable-next-line design-system/no-restyle -- a sticky footer over scrolling content needs its own fill and gap
+              className={`sticky bottom-0 z-10 bg-surface pt-4 ${
                 hasOverflow
-                  ? "border-t border-neutral-100 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]"
+                  ? // oxlint-disable-next-line design-system/no-restyle, design-system/no-arbitrary-values -- the overflow divider and its soft top shadow have no Dialog.Footer variant or shadow token
+                    "border-t border-separator shadow-[0_-2px_8px_rgba(0,0,0,0.04)]"
                   : ""
               }`}
             >
@@ -312,7 +323,7 @@ export function RunAgentModal({
       </Dialog>
 
       <AIAgentSafetyPopup
-        agentId={agent.id}
+        agent={agent}
         isOpen={isSafetyPopupOpen}
         onAcknowledge={handleSafetyPopupAcknowledge}
       />

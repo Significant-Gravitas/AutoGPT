@@ -22,13 +22,12 @@ interface FakePart {
 
 // happy-dom has no IndexedDB, so the recording store is an in-memory
 // double. Everything above it — the snapshot hook, the panels — is real.
-const { store, flagStatus } = vi.hoisted(() => ({
+const { store } = vi.hoisted(() => ({
   store: {
     available: true,
     meta: null as FakeMeta | null,
     parts: [] as FakePart[],
   },
-  flagStatus: { enabled: true as boolean, ready: true },
 }));
 
 vi.mock(
@@ -40,20 +39,6 @@ vi.mock(
       store.parts.filter((part) => part.recordingId === recordingId),
   }),
 );
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "onboarding-brain-dump"
-        ? flagStatus
-        : actual.useFlagStatus(flag as never),
-  };
-});
 
 const notFoundMock = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({
@@ -98,8 +83,6 @@ beforeEach(() => {
   store.available = true;
   store.meta = null;
   store.parts = [];
-  flagStatus.enabled = true;
-  flagStatus.ready = true;
   notFoundMock.mockClear();
   window.sessionStorage.clear();
   server.use(
@@ -115,7 +98,7 @@ afterEach(() => {
 });
 
 describe("brain dump debug page — gating", () => {
-  it("404s in production even with the flag on", () => {
+  it("404s in production", () => {
     vi.stubEnv("NEXT_PUBLIC_APP_ENV", "prod");
 
     renderPage();
@@ -125,33 +108,13 @@ describe("brain dump debug page — gating", () => {
     expect(statusCalls).toBe(0);
   });
 
-  it("404s when the onboarding-brain-dump flag is off", () => {
-    flagStatus.enabled = false;
-
+  it("opens the debug tools outside production without a rollout flag", async () => {
     renderPage();
-
-    expect(notFoundMock).toHaveBeenCalled();
-    expect(screen.queryByText("Brain dump debug")).toBeNull();
-    expect(statusCalls).toBe(0);
-  });
-
-  it("waits with skeletons instead of 404ing while the flag is unresolved", async () => {
-    // Short-circuiting to notFound() before LaunchDarkly answers would 404
-    // users who actually have the flag on.
-    flagStatus.ready = false;
-    flagStatus.enabled = false;
-
-    const { container } = render(<BrainDumpDebugPage />);
-
+    expect(await screen.findByText("Brain dump debug")).toBeDefined();
     expect(notFoundMock).not.toHaveBeenCalled();
-    expect(container.querySelectorAll(".animate-pulse")).toHaveLength(3);
-    expect(screen.queryByText("Brain dump debug")).toBeNull();
-    // The status query stays disabled until the page is known to be
-    // available, so nothing is polled while the flag is in flight.
-    expect(statusCalls).toBe(0);
   });
 
-  it("renders every panel once the flag resolves on outside production", async () => {
+  it("renders every panel outside production", async () => {
     renderPage();
 
     expect(await screen.findByText("Brain dump debug")).toBeDefined();

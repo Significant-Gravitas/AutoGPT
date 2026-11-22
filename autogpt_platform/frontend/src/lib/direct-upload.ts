@@ -1,4 +1,5 @@
 import { getWebSocketToken } from "@/lib/auth/actions";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { environment } from "@/services/environment";
 
 interface WorkspaceUploadResponse {
@@ -98,29 +99,51 @@ async function postFileToBackend({
   });
 }
 
+// Keeps the status, so a caller can tell a missing plan (402) from a failure.
+async function uploadError(res: Response): Promise<ApiError> {
+  return new ApiError(await readUploadError(res), res.status, null);
+}
+
+interface UploadErrorBody {
+  detail?: string | { message?: string };
+  message?: string;
+}
+
 async function readUploadError(res: Response): Promise<string> {
+  let text = "";
+  try {
+    text = await res.text();
+  } catch {
+    // A body cut off mid-read still gets the status-based message below.
+  }
+  let body: UploadErrorBody | null = null;
+  let isJson = true;
+  try {
+    body = JSON.parse(text) as UploadErrorBody | null;
+  } catch {
+    isJson = false;
+  }
+  // Backend returns { detail: "..." } or { detail: { message: "..." } }. Its
+  // 413s say which limit was hit: the per-file size or the storage quota.
+  const detail = body?.detail;
+  if (typeof detail === "string") return detail;
+  if (typeof detail?.message === "string") return detail.message;
+  if (typeof body?.message === "string") return body.message;
   // A proxy/ingress in front of the backend may still reject an oversized body
   // with a 413 whose payload isn't backend JSON — surface a clear size message
-  // instead of a bare "HTTP 413".
+  // instead of a bare "HTTP 413" or the proxy's error page.
   if (res.status === 413) {
     return "File is too large. Please choose a smaller file.";
   }
-  const text = await res.text();
-  try {
-    const body = JSON.parse(text) as {
-      detail?: string | { message?: string };
-      message?: string;
-    };
-    // Backend returns { detail: "..." } or { detail: { message: "..." } }.
-    const detail = body?.detail;
-    if (typeof detail === "string") return detail;
-    if (typeof detail?.message === "string") return detail.message;
-    if (typeof body?.message === "string") return body.message;
-  } catch {
-    // Response body wasn't JSON — surface the raw text so it reaches the toast.
-    if (text) return text;
-  }
+  // Response body wasn't JSON — surface plain text so it reaches the toast. A
+  // proxy's HTML error page would only show markup there, so it gets the
+  // status instead.
+  if (text && !isJson && !isMarkup(text)) return text;
   return res.statusText || `Upload failed (HTTP ${res.status})`;
+}
+
+function isMarkup(text: string): boolean {
+  return text.trimStart().startsWith("<");
 }
 
 export async function uploadFileDirect(
@@ -135,7 +158,7 @@ export async function uploadFileDirect(
       ...(sessionID ? { session_id: sessionID } : {}),
     },
   });
-  if (!res.ok) throw new Error(await readUploadError(res));
+  if (!res.ok) throw await uploadError(res);
   return res.json();
 }
 
@@ -152,7 +175,7 @@ export async function uploadSubmissionMediaDirect(
     file,
     searchParams: purpose === "expert-avatar" ? { purpose } : undefined,
   });
-  if (!res.ok) throw new Error(await readUploadError(res));
+  if (!res.ok) throw await uploadError(res);
   // The endpoint returns the URL as a JSON string.
   const url = (await res.json()) as unknown;
   return typeof url === "string" ? url : String(url);
@@ -167,5 +190,5 @@ export async function uploadOAuthAppLogoDirect(
     path: `/api/oauth/apps/${encodeURIComponent(appId)}/logo/upload`,
     file,
   });
-  if (!res.ok) throw new Error(await readUploadError(res));
+  if (!res.ok) throw await uploadError(res);
 }

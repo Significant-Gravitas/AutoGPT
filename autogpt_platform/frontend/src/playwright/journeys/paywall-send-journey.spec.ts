@@ -6,7 +6,7 @@ const SUBSCRIPTION_PATH = "/api/proxy/api/credits/subscription";
 
 test.use({
   // The backend's own paywall answers this send: a NO_TIER account with
-  // `enable-platform-payment` on gets a 402 from session creation.
+  // `ENABLE_PLATFORM_PAYMENT` on gets a 402 from session creation.
   expectedResponses: [
     { status: 402, url: "/api/proxy/api/chat/sessions", method: "POST" },
   ],

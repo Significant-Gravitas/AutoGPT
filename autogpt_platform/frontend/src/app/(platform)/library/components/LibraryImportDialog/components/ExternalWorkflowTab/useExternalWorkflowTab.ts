@@ -1,7 +1,9 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { uploadFileDirect } from "@/lib/direct-upload";
+import { stashCopilotPrompt } from "@/services/copilot/prompt-handoff";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { v4 as uuidv4 } from "uuid";
 import { fetchWorkflowFromUrl } from "./fetchWorkflowFromUrl";
 
 function decodeBase64Json(dataUrl: string): string {
@@ -19,7 +21,7 @@ async function uploadJsonAsFile(
 ): Promise<{ fileId: string; fileName: string; mimeType: string }> {
   const file = new File(
     [new Blob([jsonString], { type: "application/json" })],
-    `workflow-${crypto.randomUUID()}.json`,
+    `workflow-${uuidv4({})}.json`,
     { type: "application/json" },
   );
   const uploaded = await uploadFileDirect(file);
@@ -34,12 +36,12 @@ function storeAndRedirect(
   fileInfo: { fileId: string; fileName: string; mimeType: string },
   router: ReturnType<typeof useRouter>,
 ) {
-  sessionStorage.setItem(
-    "importWorkflowPrompt",
-    "Import this workflow and recreate it as an AutoGPT agent",
-  );
-  sessionStorage.setItem("importWorkflowFile", JSON.stringify(fileInfo));
-  router.push("/copilot?source=import&autosubmit=true");
+  stashCopilotPrompt({
+    prompt: "Import this workflow and recreate it as an AutoGPT workflow",
+    autosubmit: true,
+    file: fileInfo,
+  });
+  router.push("/copilot?source=import");
 }
 
 export function useExternalWorkflowTab() {

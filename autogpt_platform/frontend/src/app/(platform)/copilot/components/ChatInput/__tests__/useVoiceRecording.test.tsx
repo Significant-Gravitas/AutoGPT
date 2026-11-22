@@ -1,14 +1,15 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { UNREADABLE_RECORDING_CODE } from "@/app/api/transcribe/codes";
 import { useVoiceRecording } from "../useVoiceRecording";
-
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump" },
-  useGetFlag: () => false,
-}));
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: vi.fn() }),
+}));
+
+const trackDictation = vi.fn();
+vi.mock("@/services/copilot/dictation-analytics", () => ({
+  trackDictation: (event: string) => trackDictation(event),
 }));
 
 const downloaded: Blob[] = [];
@@ -342,8 +343,66 @@ describe("useVoiceRecording transcription failures", () => {
     expect(result.current.transcriptionError).toBeNull();
   });
 
-  function failTranscription(error: string) {
-    fetchMock.mockResolvedValue({ ok: false, json: async () => ({ error }) });
+  it("offers a new recording, not a retry, when the API cannot read the audio", async () => {
+    // The same bytes fail the same way every time: a retry only wastes a
+    // round trip and opens a second error.
+    failTranscription(
+      "We couldn't read that recording. Try recording again.",
+      UNREADABLE_RECORDING_CODE,
+    );
+    const result = await recordAndStop();
+    await waitFor(() =>
+      expect(result.current.isRecordingUnreadable).toBe(true),
+    );
+    expect(trackDictation).toHaveBeenCalledWith("dictation_rejected");
+
+    await act(async () => result.current.retryTranscription());
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // The audio is still there to download.
+    expect(result.current.hasFailedRecording).toBe(true);
+
+    await act(async () => result.current.startRecording());
+
+    expect(trackDictation).toHaveBeenCalledWith("dictation_rerecorded");
+    expect(result.current.isRecordingUnreadable).toBe(false);
+    expect(result.current.transcriptionError).toBeNull();
+  });
+
+  it("keeps Retry for a failure a second attempt can fix", async () => {
+    failTranscription("Transcription failed");
+    const result = await recordAndStop();
+    await waitFor(() => expect(result.current.hasFailedRecording).toBe(true));
+
+    expect(result.current.isRecordingUnreadable).toBe(false);
+    expect(trackDictation).not.toHaveBeenCalled();
+
+    await act(async () => result.current.retryTranscription());
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await act(async () => result.current.startRecording());
+
+    expect(trackDictation).not.toHaveBeenCalled();
+  });
+
+  it("starts no recording while a reply streams", async () => {
+    getUserMedia.mockResolvedValue({ getTracks: () => [] });
+    const { result } = renderHook(() =>
+      useVoiceRecording({ setValue, value: "", isStreaming: true }),
+    );
+
+    await act(async () => result.current.startRecording());
+
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(result.current.isRecording).toBe(false);
+  });
+
+  function failTranscription(error: string, code?: string) {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      json: async () => ({ error, code }),
+    });
   }
 
   async function recordAndStop() {
@@ -356,4 +415,62 @@ describe("useVoiceRecording transcription failures", () => {
     const body = fetchMock.mock.calls[call][1].body as FormData;
     return (body.get("audio") as Blob).text();
   }
+});
+
+describe("useVoiceRecording focus", () => {
+  const fetchMock = vi.fn();
+  let page: Record<"composer" | "micButton" | "menuItem", HTMLElement>;
+  let menu: HTMLElement;
+
+  beforeEach(() => {
+    firesOnStop = true;
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ text: "the words I said" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    getUserMedia.mockResolvedValue({ getTracks: () => [] });
+    const composer = document.createElement("textarea");
+    composer.id = "composer";
+    menu = document.createElement("div");
+    menu.setAttribute("role", "menu");
+    page = {
+      composer,
+      micButton: document.createElement("button"),
+      menuItem: menu.appendChild(document.createElement("button")),
+    };
+    document.body.append(page.composer, page.micButton, menu);
+  });
+
+  afterEach(() => {
+    page.composer.remove();
+    page.micButton.remove();
+    menu.remove();
+  });
+
+  it.each([
+    {
+      when: "puts the caret back in the composer once the words land",
+      focused: "micButton",
+      expected: "composer",
+    },
+    {
+      when: "leaves a menu opened while the words were on their way",
+      focused: "menuItem",
+      expected: "menuItem",
+    },
+  ] as const)("$when", async ({ focused, expected }) => {
+    const { result } = renderHook(() =>
+      useVoiceRecording({ setValue, value: "", inputId: "composer" }),
+    );
+    await act(async () => result.current.handleKeyDown(spaceKeydown()));
+    await waitFor(() => expect(result.current.isRecording).toBe(true));
+    page[focused].focus();
+
+    await act(async () => result.current.stopRecording());
+
+    await waitFor(() => expect(result.current.isTranscribing).toBe(false));
+    expect(setValue).toHaveBeenCalled();
+    expect(document.activeElement).toBe(page[expected]);
+  });
 });

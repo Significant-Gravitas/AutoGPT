@@ -1,0 +1,1372 @@
+data: {"type":"start","messageId":"perf-reply-long-code"}
+
+data: {"type":"start-step"}
+
+data: {"type":"text-start","id":"perf-text-1"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Here "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"is "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"full "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"report "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"script.\n\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"```ts\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"import "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"readFileSync "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"} "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"from "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"\"fs\";\n\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"/**\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"* "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Counts "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"signups "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"and "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"reports "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"busiest "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day.\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"*/\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"export "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"function "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"countSignups(events: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"type: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}[]) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events.filter((event) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=> "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event.type "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=== "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"\"signups\");\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"new "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Map<string, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"number>();\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"for "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"of "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n    "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay.set(event.day, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(byDay.get(event.day) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"?? "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"0) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"+ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"1);\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"`signups: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"${matching.length} "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events`; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"// "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"section "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"0\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"return "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"total: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching.length, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"};\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"/**\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"* "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Counts "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"refunds "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"and "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"reports "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"busiest "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day.\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"*/\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"export "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"function "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"countRefunds(events: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"type: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}[]) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events.filter((event) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=> "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event.type "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=== "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"\"refunds\");\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"new "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Map<string, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"number>();\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"for "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"of "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n    "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay.set(event.day, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(byDay.get(event.day) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"?? "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"0) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"+ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"1);\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"`refunds: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"${matching.length} "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events`; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"// "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"section "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"1\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"return "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"total: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching.length, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"};\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"/**\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"* "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Counts "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"renewals "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"and "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"reports "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"busiest "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day.\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"*/\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"export "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"function "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"countRenewals(events: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"type: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}[]) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events.filter((event) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=> "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event.type "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=== "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"\"renewals\");\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"new "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Map<string, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"number>();\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"for "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"of "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n    "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay.set(event.day, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(byDay.get(event.day) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"?? "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"0) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"+ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"1);\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"`renewals: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"${matching.length} "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events`; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"// "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"section "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"2\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"return "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"total: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching.length, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"};\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"/**\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"* "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Counts "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"upgrades "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"and "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"reports "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"busiest "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day.\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"*/\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"export "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"function "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"countUpgrades(events: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"type: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}[]) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events.filter((event) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=> "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event.type "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=== "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"\"upgrades\");\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"new "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Map<string, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"number>();\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"for "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"of "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n    "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay.set(event.day, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(byDay.get(event.day) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"?? "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"0) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"+ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"1);\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"`upgrades: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"${matching.length} "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events`; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"// "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"section "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"3\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"return "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"total: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching.length, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"};\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"/**\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"* "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Counts "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"trials "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"and "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"reports "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"busiest "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day.\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"*/\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"export "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"function "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"countTrials(events: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"type: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}[]) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events.filter((event) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=> "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event.type "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=== "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"\"trials\");\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"new "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Map<string, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"number>();\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"for "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"of "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n    "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay.set(event.day, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(byDay.get(event.day) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"?? "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"0) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"+ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"1);\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"`trials: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"${matching.length} "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events`; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"// "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"section "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"4\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"return "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"total: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching.length, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"};\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"/**\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"* "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Counts "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"invites "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"and "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"reports "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"busiest "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day.\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"*/\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"export "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"function "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"countInvites(events: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"type: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}[]) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events.filter((event) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=> "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event.type "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=== "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"\"invites\");\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"new "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Map<string, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"number>();\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"for "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"of "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n    "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay.set(event.day, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(byDay.get(event.day) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"?? "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"0) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"+ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"1);\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"`invites: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"${matching.length} "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events`; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"// "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"section "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"5\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"return "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"total: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching.length, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"};\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"/**\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"* "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Counts "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"exports "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"and "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"reports "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"busiest "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day.\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"*/\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"export "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"function "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"countExports(events: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"type: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}[]) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events.filter((event) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=> "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event.type "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=== "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"\"exports\");\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"new "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Map<string, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"number>();\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"for "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"of "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n    "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay.set(event.day, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(byDay.get(event.day) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"?? "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"0) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"+ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"1);\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"`exports: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"${matching.length} "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events`; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"// "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"section "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"6\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"return "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"total: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching.length, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"};\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"/**\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"* "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Counts "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"payouts "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"and "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"reports "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"busiest "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day.\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"*/\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"export "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"function "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"countPayouts(events: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"type: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}[]) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events.filter((event) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=> "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event.type "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=== "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"\"payouts\");\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"new "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Map<string, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"number>();\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"for "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"of "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n    "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay.set(event.day, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(byDay.get(event.day) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"?? "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"0) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"+ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"1);\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"`payouts: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"${matching.length} "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events`; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"// "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"section "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"7\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"return "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"total: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching.length, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"};\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"/**\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"* "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Counts "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"reviews "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"and "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"reports "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"busiest "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day.\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"*/\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"export "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"function "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"countReviews(events: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"type: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}[]) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events.filter((event) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=> "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event.type "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=== "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"\"reviews\");\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"new "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Map<string, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"number>();\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"for "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"of "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n    "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay.set(event.day, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(byDay.get(event.day) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"?? "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"0) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"+ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"1);\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"`reviews: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"${matching.length} "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events`; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"// "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"section "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"8\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"return "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"total: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching.length, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"};\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"/**\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"* "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Counts "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"tickets "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"and "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"reports "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"busiest "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day.\n "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"*/\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"export "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"function "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"countTickets(events: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"type: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}[]) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events.filter((event) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=> "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event.type "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=== "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"\"tickets\");\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"new "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Map<string, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"number>();\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"for "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"of "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n    "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay.set(event.day, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"(byDay.get(event.day) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"?? "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"0) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"+ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"1);\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"const "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"= "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"`tickets: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"${matching.length} "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events`; "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"// "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"section "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"9\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"return "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"total: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"matching.length, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"byDay, "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"label "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"};\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"```\n\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Run "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"it "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"once "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"a "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day."}
+
+data: {"type":"text-end","id":"perf-text-1"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"finish"}
+
+data: [DONE]
+

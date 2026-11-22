@@ -55,7 +55,35 @@ def _wait_port(port: int, *, deadline_s: float = 60.0) -> None:
                 return
         except OSError:
             time.sleep(0.5)
-    raise TimeoutError(f"port {port} never opened within {deadline_s:.0f}s")
+    raise TimeoutError(
+        f"port {port} never opened within {deadline_s:.0f}s\n{_shard_state(port)}"
+    )
+
+
+def _shard_state(port: int) -> str:
+    """The containers' state and the shard's own log, so a shard that never
+    listens says why."""
+    name = f"{ISOLATED_PROJECT}-redis-{ISOLATED_PORTS.index(port)}"
+    return _diagnostic(
+        [
+            "docker",
+            "ps",
+            "-a",
+            "--filter",
+            f"name={ISOLATED_PROJECT}",
+            "--format",
+            "{{.Names}}  {{.Status}}  {{.Ports}}",
+        ]
+    ) + _diagnostic(["docker", "logs", "--tail", "50", name])
+
+
+def _diagnostic(cmd: list[str]) -> str:
+    # Best-effort: a hung or missing docker must not replace the error it explains.
+    try:
+        rc = _run(cmd, timeout=5.0)
+    except (subprocess.TimeoutExpired, OSError) as e:
+        return f"{' '.join(cmd)}: unavailable ({type(e).__name__})\n"
+    return f"{' '.join(cmd)}:\n{rc.stdout}{rc.stderr}"
 
 
 def _start_isolated_cluster() -> None:

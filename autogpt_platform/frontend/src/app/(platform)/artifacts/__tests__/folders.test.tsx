@@ -20,12 +20,6 @@ import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspace
 import type { WorkspaceFolder } from "@/app/api/__generated__/models/workspaceFolder";
 import { FILE_DRAG_MIME } from "../components/WorkspaceFolders/drag";
 
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ARTIFACTS_PAGE: "artifacts-page" },
-  useGetFlag: () => true,
-  useFlagStatus: () => ({ enabled: true, ready: true }),
-}));
-
 // The generated default answers with random experts, which would render
 // random filter tabs on the page under test.
 beforeEach(() => {

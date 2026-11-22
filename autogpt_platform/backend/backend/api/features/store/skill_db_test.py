@@ -136,6 +136,16 @@ async def test_browse_matches_a_legacy_category_alias():
     assert [s.slug for s in result.skills] == ["legacy-one"]
 
 
+async def test_browse_search_matches_underscores_literally():
+    """`_` in a search is the character, not a one-character wildcard (#15660)."""
+    await _make_listing("first_last")
+    await _make_listing("firstxlast")
+
+    result = await skill_db.get_marketplace_skills(search_query="first_last")
+
+    assert [s.slug for s in result.skills] == ["first_last"]
+
+
 async def test_detail_carries_the_body_and_providers():
     await _make_listing("detail-one", body="# how to\nsteps\n")
 
@@ -599,6 +609,61 @@ async def test_active_versions_cover_live_and_retired_listings(tmp_path):
     assert live is not None
     assert active["brand-voice-guide"].version_id == live.activeVersionId
     assert active["brand-voice-guide"].package_sha256 is not None
+
+
+async def test_active_versions_match_a_read_of_whole_rows(tmp_path):
+    """The map reads only the columns it needs, and is the map the whole
+    listing and version rows give: published, legacy, unapproved, withdrawn
+    and delisted listings alike."""
+    await _publish(_write_catalog(tmp_path))
+    await _make_listing("old-hand", body="# Old hand\n\nStill useful.\n")
+    await _make_listing("pending-review", approved=False)
+    await _make_listing("withdrawn", available=False)
+    await _make_listing("never-approved", has_approved_version=False)
+    delisted = await _make_listing("delisted")
+    await prisma.models.SkillListing.prisma().update(
+        where={"id": delisted.id}, data={"isDeleted": True}
+    )
+    await skill_db.invalidate_active_versions_cache()
+    expected = await _active_versions_from_whole_rows()
+
+    active = await skill_db.get_active_versions([*expected, "never-existed"])
+
+    assert active == expected
+    assert {slug for slug, version in active.items() if not version.retired} == {
+        "brand-voice-guide",
+        "cold-email",
+        "old-hand",
+    }
+    assert active["old-hand"].package_sha256 is not None
+
+
+async def _active_versions_from_whole_rows() -> (
+    dict[str, skill_model.ActiveSkillVersion]
+):
+    """The map as it was built before: every listing with its whole version."""
+    listings = await prisma.models.SkillListing.prisma().find_many(
+        where={"activeVersionId": {"not": None}},
+        include={"ActiveVersion": {"include": {"Files": True}}},
+    )
+    return {
+        listing.slug: skill_model.ActiveSkillVersion(
+            listing_id=listing.id,
+            version_id=listing.ActiveVersion.id,
+            package_sha256=listing.ActiveVersion.packageSha256
+            or skill_model.legacy_package_sha256(listing.ActiveVersion, listing.slug),
+            retired=not (
+                not listing.isDeleted
+                and listing.hasApprovedVersion
+                and listing.ActiveVersion.isAvailable
+                and not listing.ActiveVersion.isDeleted
+                and listing.ActiveVersion.submissionStatus
+                == prisma.enums.SubmissionStatus.APPROVED
+            ),
+        )
+        for listing in listings
+        if listing.ActiveVersion is not None
+    }
 
 
 async def test_version_packages_serve_any_version_verbatim(tmp_path):

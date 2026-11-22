@@ -175,22 +175,40 @@ describe("ToolResult", () => {
   });
 
   describe("pending clarifying questions", () => {
-    it("renders the interactive answer form for the pending row", () => {
+    const pending = {
+      dockId: "dock-1",
+      questions: [{ question: "Which region?", keyword: "region" }],
+      callIds: ["tool"],
+    };
+
+    it("renders the interactive answer form for the lifted pending row", () => {
       render(
-        <PendingQuestionsContext.Provider
-          value={{
-            dockId: "dock-1",
-            questions: [{ question: "Which region?", keyword: "region" }],
-            callIds: ["tool"],
-          }}
-        >
+        <PendingQuestionsContext.Provider value={pending}>
+          <ToolResult
+            row={{
+              ...row({ questions: [{ question: "Which region?" }] }),
+              lifted: true,
+            }}
+          />
+        </PendingQuestionsContext.Provider>,
+      );
+
+      expect(screen.getByText("questions-form:dock-1")).toBeDefined();
+    });
+
+    // A running row animating out of the chain as its output lands is still
+    // mounted beside its lifted copy; a second form there would register the
+    // same card twice (SECRT-3135).
+    it("leaves the form to the lifted copy of the pending row", () => {
+      render(
+        <PendingQuestionsContext.Provider value={pending}>
           <ToolResult
             row={row({ questions: [{ question: "Which region?" }] })}
           />
         </PendingQuestionsContext.Provider>,
       );
 
-      expect(screen.getByText("questions-form:dock-1")).toBeDefined();
+      expect(screen.queryByText("questions-form:dock-1")).toBeNull();
     });
 
     it("keeps a read-only card for ask_question rows answered from input", () => {
@@ -394,7 +412,7 @@ describe("ToolResult", () => {
       expect(screen.getByText("by abhi")).toBeDefined();
       expect(screen.getByText("1,200 runs")).toBeDefined();
       expect(screen.getByText("4.5")).toBeDefined();
-      expect(screen.getByLabelText("Open agent").getAttribute("href")).toBe(
+      expect(screen.getByLabelText("Open workflow").getAttribute("href")).toBe(
         "/library/agents/lib-1",
       );
     });
@@ -497,7 +515,7 @@ describe("ToolResult", () => {
     it("renders a valid graph status for validate_agent_graph", () => {
       render(<ToolResult row={row({ valid: true }, "validate_agent_graph")} />);
 
-      expect(screen.getByText("Graph is valid")).toBeDefined();
+      expect(screen.getByText("Workflow is valid")).toBeDefined();
     });
 
     it("renders fix results for fix_agent_graph", () => {
@@ -610,7 +628,7 @@ describe("ToolResult", () => {
       );
 
       expect(screen.getByText("Marketing")).toBeDefined();
-      expect(screen.getByText("3 agents")).toBeDefined();
+      expect(screen.getByText("3 workflows")).toBeDefined();
     });
 
     it("renders the single folder returned by create_folder", () => {
@@ -969,10 +987,11 @@ describe("ToolResult", () => {
       expect(screen.getByText("Please connect")).toBeDefined();
     });
 
-    it("falls back to key/value output for empty web search results", () => {
+    it("says an empty web search found nothing", () => {
       render(<ToolResult row={row({ results: [] }, "web_search")} />);
 
-      expect(screen.getByText("Results")).toBeDefined();
+      expect(screen.getByText("Nothing found.")).toBeDefined();
+      expect(document.body.textContent).not.toContain("[]");
     });
 
     it("falls back to key/value pairs for multi-field outputs", () => {
@@ -1162,7 +1181,7 @@ describe("ToolResult deferred platform tools", () => {
       tool: "list_folders",
       input: {},
       output: { folders: [{ name: "Marketing", agent_count: 3 }] },
-      marker: "3 agents",
+      marker: "3 workflows",
     },
     {
       tool: "search_docs",
@@ -1200,7 +1219,7 @@ describe("ToolResult deferred platform tools", () => {
       tool: "validate_agent_graph",
       input: { agent_json: {} },
       output: { valid: true },
-      marker: "Graph is valid",
+      marker: "Workflow is valid",
     },
     {
       tool: "setup_agent_webhook_trigger",
@@ -1251,7 +1270,7 @@ describe("ToolResult deferred platform tools", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Open agent").getAttribute("href")).toBe(
+    expect(screen.getByLabelText("Open workflow").getAttribute("href")).toBe(
       "/library/agents/lib-1",
     );
   });
@@ -1266,7 +1285,7 @@ describe("ToolResult deferred platform tools", () => {
       />,
     );
 
-    expect(screen.getByText("Graph is valid")).toBeDefined();
+    expect(screen.getByText("Workflow is valid")).toBeDefined();
   });
 
   it("reads the nested input as the tool's input", () => {
@@ -1328,7 +1347,7 @@ describe("ToolResult deferred platform tools", () => {
       />,
     );
 
-    expect(screen.queryByText("Graph is valid")).toBeNull();
+    expect(screen.queryByText("Workflow is valid")).toBeNull();
   });
 
   it("does not render capability details as an execution card", () => {
@@ -1347,7 +1366,7 @@ describe("ToolResult deferred platform tools", () => {
       />,
     );
 
-    expect(screen.queryByText("Graph is valid")).toBeNull();
+    expect(screen.queryByText("Workflow is valid")).toBeNull();
   });
 
   it("does not render a describe_capability response as an execution card", () => {
@@ -1359,7 +1378,7 @@ describe("ToolResult deferred platform tools", () => {
       />,
     );
 
-    expect(screen.queryByText("Graph is valid")).toBeNull();
+    expect(screen.queryByText("Workflow is valid")).toBeNull();
   });
 
   it("leaves a resumed call alone, since it names a review and not a tool", () => {
@@ -1371,7 +1390,7 @@ describe("ToolResult deferred platform tools", () => {
       />,
     );
 
-    expect(screen.queryByText("Graph is valid")).toBeNull();
+    expect(screen.queryByText("Workflow is valid")).toBeNull();
   });
 
   it("keeps block capability rows on the block card", () => {

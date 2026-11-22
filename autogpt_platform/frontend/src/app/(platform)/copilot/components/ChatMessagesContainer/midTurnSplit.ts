@@ -78,7 +78,7 @@ export function splitMessagesAtDrainHints(
       rows.push(message);
       continue;
     }
-    const segments = splitAssistantMessage(message);
+    const segments = splitAssistantMessageCached(message);
     dropFallbackRowsDrawnBy(rows, segments);
     rows.push(...segments);
   }
@@ -146,6 +146,19 @@ function userText(message: ChatMessage): string {
     .join("");
 }
 
+// A message's split depends on nothing but the message, so the segments are
+// kept per message object: rows of a settled turn keep their identity while
+// a later turn streams, and their memoised row does not re-render.
+const splitCache = new WeakMap<ChatMessage, ChatMessage[]>();
+
+function splitAssistantMessageCached(message: ChatMessage): ChatMessage[] {
+  const cached = splitCache.get(message);
+  if (cached) return cached;
+  const segments = splitAssistantMessage(message);
+  splitCache.set(message, segments);
+  return segments;
+}
+
 function splitAssistantMessage(message: ChatMessage): ChatMessage[] {
   const rows: ChatMessage[] = [];
   let segmentParts: MessagePart[] = [];
@@ -203,9 +216,19 @@ function splitAssistantMessage(message: ChatMessage): ChatMessage[] {
   return rows;
 }
 
+const FOLLOW_UP_ROW_ID_PREFIX = "midturn-";
+
+/** The bubble a drain hint draws for a follow-up taken into a running turn,
+ *  which does not start a turn of its own. */
+export function isMidTurnFollowUpRow(message: ChatMessage): boolean {
+  return (
+    message.role === "user" && message.id.startsWith(FOLLOW_UP_ROW_ID_PREFIX)
+  );
+}
+
 function makeFollowUpRow(id: string, content: string): ChatMessage {
   return {
-    id: `midturn-${id}`,
+    id: `${FOLLOW_UP_ROW_ID_PREFIX}${id}`,
     role: "user",
     parts: [{ type: "text", text: content, state: "done" }],
   };
@@ -261,7 +284,21 @@ function readDrainedMessages(part: MessagePart): DrainedMessage[] {
 export function turnMessagesForRow(
   messages: ChatMessage[],
   row: ChatMessage,
+  indexById: ReadonlyMap<string, number>,
 ): ChatMessage[] {
-  const sourceIndex = messages.findIndex((m) => m.id === row.id);
+  const sourceIndex = indexById.get(row.id) ?? -1;
   return sourceIndex === -1 ? [row] : getTurnMessages(messages, sourceIndex);
+}
+
+/** Position of each message by id, so a row finds its source message without
+ *  a scan. Build it once per `messages`. On a repeated id the first one wins,
+ *  as `findIndex` would. */
+export function buildMessageIndexById(
+  messages: ChatMessage[],
+): Map<string, number> {
+  const indexById = new Map<string, number>();
+  messages.forEach((message, index) => {
+    if (!indexById.has(message.id)) indexById.set(message.id, index);
+  });
+  return indexById;
 }

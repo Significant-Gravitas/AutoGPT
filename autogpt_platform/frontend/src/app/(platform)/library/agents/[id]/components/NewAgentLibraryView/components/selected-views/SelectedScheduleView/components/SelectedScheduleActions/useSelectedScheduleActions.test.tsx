@@ -18,11 +18,6 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-const sendDatafastEvent = vi.hoisted(() => vi.fn());
-vi.mock("@/services/analytics", () => ({
-  analytics: { sendDatafastEvent },
-}));
-
 const toastMock = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
   const actual =
@@ -52,7 +47,6 @@ const schedule = {
 
 afterEach(() => {
   toastMock.mockClear();
-  sendDatafastEvent.mockClear();
   server.resetHandlers();
 });
 
@@ -87,7 +81,7 @@ describe("useSelectedScheduleActions", () => {
     invalidateSpy.mockRestore();
   });
 
-  test("openInBuilderHref points to /build with graph id + version", () => {
+  test("openInBuilderHref opens the workflow's active version in the builder", () => {
     const { result } = renderHook(
       () =>
         useSelectedScheduleActions({
@@ -96,9 +90,7 @@ describe("useSelectedScheduleActions", () => {
         }),
       { wrapper },
     );
-    expect(result.current.openInBuilderHref).toBe(
-      "/build?flowID=graph-xyz&flowVersion=1",
-    );
+    expect(result.current.openInBuilderHref).toBe("/build?flowID=graph-xyz");
   });
 
   test("handleRunNow without a loaded schedule surfaces a destructive toast", async () => {
@@ -123,7 +115,7 @@ describe("useSelectedScheduleActions", () => {
     );
   });
 
-  test("handleRunNow records a run_agent goal from the library surface", async () => {
+  test("handleRunNow selects the new run", async () => {
     server.use(
       getPostV1ExecuteGraphAgentMockHandler({
         id: "run-1",
@@ -149,11 +141,6 @@ describe("useSelectedScheduleActions", () => {
 
     await waitFor(() => {
       expect(onSelectRun).toHaveBeenCalledWith("run-1");
-    });
-    expect(sendDatafastEvent).toHaveBeenCalledExactlyOnceWith("run_agent", {
-      id: "graph-xyz",
-      name: "My agent",
-      surface: "library",
     });
   });
 });

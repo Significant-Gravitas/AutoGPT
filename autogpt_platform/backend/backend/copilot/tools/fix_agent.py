@@ -5,16 +5,21 @@ import json
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.copilot.model import ChatSession
 
+from .agent_generator.pipeline import agent_json_too_large
 from .agent_generator.validation import AgentFixer, AgentValidator, get_blocks_as_dicts
 from .agent_json_input import (
     AGENT_JSON_REF_SCHEMA,
     AGENT_JSON_SCHEMA,
+    reads_workspace_file,
     resolve_agent_json_or_error,
     write_agent_json_to_workspace,
 )
 from .base import BaseTool
+from .external_scope import error_detail
 from .helpers import require_guide_read
 from .models import ErrorResponse, FixResultResponse, ToolResponseBase
 
@@ -27,6 +32,18 @@ class FixAgentGraphTool(BaseTool):
     @property
     def name(self) -> str:
         return "fix_agent_graph"
+
+    @property
+    def allow_external_use(self):
+        return True, []
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        # Reading the graph from, or writing the fix to, a workspace file
+        # touches the caller's files.
+        needed = [APIKeyPermission.READ_FILES] if reads_workspace_file(args) else []
+        if isinstance(args.get("write_to"), str) and args["write_to"].strip():
+            needed.append(APIKeyPermission.WRITE_FILES)
+        return needed
 
     @property
     def description(self) -> str:
@@ -86,7 +103,7 @@ class FixAgentGraphTool(BaseTool):
             missing_message=(
                 "Please provide a valid agent JSON object via agent_json (inline "
                 'or an "@@agptfile:<path>" string), or agent_json_ref pointing '
-                "at the workspace agent file."
+                "at the workspace workflow file."
             ),
             missing_error="Missing or invalid agent_json parameter",
             invalid_error="Missing or invalid agent_json parameter",
@@ -99,20 +116,27 @@ class FixAgentGraphTool(BaseTool):
 
         if not nodes:
             return ErrorResponse(
-                message="The agent JSON has no nodes. An agent needs at least one block.",
+                message="The agent JSON has no nodes. A workflow needs at least one block.",
                 error="empty_agent",
                 session_id=session_id,
             )
 
+        if (too_large := agent_json_too_large(agent_json, session_id)) is not None:
+            return too_large
+
         try:
             blocks = get_blocks_as_dicts()
             fixer = AgentFixer()
-            fixed_agent = fixer.apply_all_fixes(agent_json, blocks)
+            # Only the save knows whether a node is new (edit_agent has the
+            # stored version), and it moves new work off a switched-off model.
+            fixed_agent = fixer.apply_all_fixes(
+                agent_json, blocks, keep_switched_off_models=True
+            )
             fixes_applied = fixer.get_fixes_applied()
         except Exception as e:
             logger.error(f"Fixer error: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Auto-fix encountered an error: {str(e)}",
+                message=f"Auto-fix encountered an error: {error_detail(e, session)}",
                 error="fix_exception",
                 session_id=session_id,
             )
@@ -124,11 +148,13 @@ class FixAgentGraphTool(BaseTool):
             remaining_errors = validator.errors if not is_valid else []
         except Exception as e:
             logger.warning(f"Post-fix validation error: {e}", exc_info=True)
-            remaining_errors = [f"Post-fix validation failed: {str(e)}"]
+            remaining_errors = [
+                f"Post-fix validation failed: {error_detail(e, session)}"
+            ]
             is_valid = False
 
         if is_valid:
-            message = f"Applied {len(fixes_applied)} fix(es). Agent graph is now valid!"
+            message = f"Applied {len(fixes_applied)} fix(es). Workflow is now valid!"
         else:
             message = (
                 f"Applied {len(fixes_applied)} fix(es), but "

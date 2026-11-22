@@ -3,36 +3,32 @@
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useTrackFunnelViewOnce } from "@/services/experts/use-track-funnel-view-once";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
+import { useHomePage } from "../../useHomePage";
 import { AgentTeam } from "../AgentTeam/AgentTeam";
 import { HomeHeader } from "../HomeHeader/HomeHeader";
 import { NeedsYou } from "../NeedsYou/NeedsYou";
 import { NowNext } from "../NowNext/NowNext";
 import { RecentWork } from "../RecentWork/RecentWork";
-import { useHomePage } from "../../useHomePage";
 
 const SHELL_CLASS = "relative mt-10 px-4 pb-8 pt-6 text-left sm:px-6";
 const CONTENT_CLASS = "relative mx-auto w-full max-w-[1120px]";
 const GRID_CLASS = "grid grid-cols-1 items-start gap-4 xl:grid-cols-12";
 
 export function HomeRecap() {
-  const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
-  const { dashboard, isLoading, isError, refetch } = useHomePage({
-    enabled: Boolean(enabled) && ready,
-  });
+  const { dashboard, isLoading, isError, isFetching, refetch } = useHomePage();
 
   useTrackFunnelViewOnce(
     "home_viewed",
-    ready && !isLoading && !isError && Boolean(dashboard) && Boolean(enabled),
+    !isLoading && !isError && Boolean(dashboard),
   );
 
-  if (!ready || isLoading) {
+  if (isLoading) {
     return <HomeSkeleton />;
   }
-  if (!enabled) {
-    return null;
-  }
-  if (isError || !dashboard) {
+
+  // A failed refresh keeps the last dashboard; only a first load that failed
+  // takes the page.
+  if (!dashboard) {
     return (
       <section className={SHELL_CLASS}>
         <div className={CONTENT_CLASS}>
@@ -59,7 +55,11 @@ export function HomeRecap() {
           </div>
           <div className="flex min-w-0 flex-col gap-4 xl:col-span-4">
             <AgentTeam dashboard={dashboard} />
-            <NowNext dashboard={dashboard} />
+            <NowNext
+              dashboard={dashboard}
+              onRetry={() => refetch()}
+              retrying={isFetching}
+            />
           </div>
         </div>
       </div>
@@ -71,7 +71,7 @@ function HomeSkeleton() {
   return (
     <section className={SHELL_CLASS} aria-label="Loading Home…">
       <div className={CONTENT_CLASS}>
-        <div className="flex items-end justify-between gap-6 px-1 pb-5 pt-1">
+        <div className="flex items-end justify-between gap-6 px-1 pt-1 pb-5">
           <div className="space-y-2">
             <Skeleton className="h-7 w-64" />
             <Skeleton className="h-4 w-80 max-w-full" />
@@ -102,10 +102,11 @@ interface Props {
 
 function HomeTileSkeleton({ cardClassName }: Props) {
   return (
-    <div className="overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm">
-      <div className="flex h-10 items-center border-b border-zinc-100 px-4">
+    <div className="overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm">
+      <div className="flex h-10 items-center border-b border-separator px-4">
         <Skeleton className="h-3.5 w-28" />
       </div>
+      {/* oxlint-disable-next-line design-system/require-static-classes -- cardClassName is a whole, static class string */}
       <Skeleton className={`${cardClassName} rounded-none`} />
     </div>
   );
