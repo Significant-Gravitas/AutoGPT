@@ -83,6 +83,7 @@ class Journal:
                 "at": time.time(),
                 "dialect": request.dialect,
                 "path": request.path,
+                "credential": request.credential,
                 "model": model,
                 "script": None,
                 "nonce": None,

@@ -133,7 +133,7 @@ class Handler(BaseHTTPRequestHandler):
 
         model = str(body["model"])
         entry = self.model_server.journal.record_side_call(
-            Request("openai-embeddings", self.path), model, ""
+            Request("openai-embeddings", self.path, self._credential()), model, ""
         )
         logger.info("openai-embeddings side call (%s)", model)
         self._send_json(HTTPStatus.OK, payload)
@@ -158,7 +158,9 @@ class Handler(BaseHTTPRequestHandler):
 
         model = str(body["model"])
         entry = self.model_server.journal.record_side_call(
-            Request("openai-responses", self.path), model, output_text
+            Request("openai-responses", self.path, self._credential()),
+            model,
+            output_text,
         )
         logger.info("openai-responses side call (%s)", model)
         self._send_json(HTTPStatus.OK, payload)

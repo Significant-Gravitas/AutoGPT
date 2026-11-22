@@ -29,10 +29,10 @@ from graphiti_core.prompts.models import Message
 from pydantic import BaseModel, Field
 from scripted_model import messages as messages_dialect
 from scripted_model import server as scripted_server
+from scripted_model.journal import fingerprint
 from scripted_model.planner import Reply
 from scripted_model.responses import ResponseError
 from scripted_model.responses import response as structured_response
-from scripted_model.journal import fingerprint
 from scripted_model.scripts import ScriptError, Usage, parse_script
 
 from backend.copilot.graphiti.llm_client import GraphitiOpenAIClient
@@ -610,6 +610,9 @@ def test_the_journal_names_the_key_a_request_used_but_never_keeps_it(
         model="anthropic/claude-haiku-4-5",
         messages=[{"role": "user", "content": "Title this chat."}],
     )
+    _openai(scripted_model).embeddings.create(
+        model="text-embedding-3-small", input=["the sea"]
+    )
 
     assert [b.text for b in answer.content] == ["Scripted reply"]
     query = urllib.parse.urlencode({"credential": fingerprint(users_key)})
@@ -619,8 +622,8 @@ def test_the_journal_names_the_key_a_request_used_but_never_keeps_it(
         (entry,) = json.load(response)["entries"]
     assert (entry["dialect"], entry["kind"]) == ("anthropic", "side_call")
     assert entry["credential"] == hashlib.sha256(users_key.encode()).hexdigest()[:16]
-    (bearer,) = scripted_model.journal(credential=fingerprint("any"))
-    assert bearer["dialect"] == "openai"
+    bearer = scripted_model.journal(credential=fingerprint("any"))
+    assert [e["dialect"] for e in bearer] == ["openai", "openai-embeddings"]
     assert users_key not in json.dumps(scripted_model.journal())
 
 
