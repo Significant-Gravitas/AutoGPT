@@ -159,11 +159,12 @@ end
 return redis.call('LLEN', KEYS[2])
 """
 
-# Pop up to ARGV[1] items off a list; when there are none and the hash's gate
-# field still holds the expected value, close the list to the hash's current
-# owner instead, by copying the owner field into the closed-by field. The
-# gated push above then refuses that owner. A new owner value reopens it.
-# Returns the popped items, empty when it closed or found nothing.
+# Pop up to ARGV[1] items off a list; when there are none, the hash's gate
+# field still holds the expected value and the hash still names the caller as
+# its owner, close the list to that owner instead, by writing the owner into
+# the closed-by field. The gated push above then refuses that owner. A new
+# owner value reopens it, and a caller that is no longer the owner changes
+# nothing. Returns the popped items, empty when it closed or found nothing.
 #
 #   KEYS[1]  hash key
 #   KEYS[2]  list key
@@ -172,16 +173,16 @@ return redis.call('LLEN', KEYS[2])
 #   ARGV[3]  expected gate value
 #   ARGV[4]  closed-by field
 #   ARGV[5]  owner field
+#   ARGV[6]  the caller's owner value
 _POP_OR_CLOSE_LUA = """
 local items = redis.call('LPOP', KEYS[2], tonumber(ARGV[1]))
 if items then
     return items
 end
-if redis.call('HGET', KEYS[1], ARGV[2]) == ARGV[3] then
-    local owner = redis.call('HGET', KEYS[1], ARGV[5])
-    if owner and owner ~= '' then
-        redis.call('HSET', KEYS[1], ARGV[4], owner)
-    end
+if ARGV[6] ~= ''
+    and redis.call('HGET', KEYS[1], ARGV[2]) == ARGV[3]
+    and redis.call('HGET', KEYS[1], ARGV[5]) == ARGV[6] then
+    redis.call('HSET', KEYS[1], ARGV[4], ARGV[6])
 end
 return {}
 """
@@ -458,15 +459,17 @@ async def pop_or_close_list(
     expected: str,
     closed_by_field: str,
     owner_field: str,
+    owner: str,
 ) -> list[Any]:
     """Atomically pop up to ``max_items`` off a list, or close it when empty.
 
-    With nothing to pop and ``gate_field`` still equal to ``expected``, the
-    hash's current ``owner_field`` value is copied into ``closed_by_field``,
-    and :func:`capped_rpush_if_hash_field` given the same two fields refuses
-    every push until the owner changes. One script, so no push can land
-    between finding the list empty and closing it. Both keys must share a
-    Redis Cluster hash tag.
+    With nothing to pop, ``gate_field`` still equal to ``expected`` and
+    ``owner_field`` still equal to ``owner``, ``owner`` is written into
+    ``closed_by_field``, and :func:`capped_rpush_if_hash_field` given the
+    same two fields refuses every push until the owner changes. A caller the
+    hash no longer names as its owner closes nothing. One script, so no push
+    can land between finding the list empty and closing it. Both keys must
+    share a Redis Cluster hash tag.
     """
     result = await cast(
         "Any",
@@ -480,6 +483,7 @@ async def pop_or_close_list(
             expected,
             closed_by_field,
             owner_field,
+            owner,
         ),
     )
     return list(result or [])

@@ -40,6 +40,7 @@ from backend.copilot.pending_messages import (
     push_pending_message,
     push_pending_message_if_session_running,
     release_client_message,
+    reopen_follow_ups,
 )
 from backend.copilot.response_model import (
     StreamPendingDrained,
@@ -463,25 +464,40 @@ async def drain_pending_safe(
     log_prefix: str = "",
     *,
     drain_backlog: bool = False,
-    close_when_empty: bool = False,
+    open_for_turn: str | None = None,
+    close_for_turn: str | None = None,
 ) -> list[PendingMessage]:
     """Drain the pending buffer and return the full ``PendingMessage`` objects.
 
     Preserves already-popped messages if a later Redis call fails.
     ``drain_backlog`` snapshots the initial length, so new producers cannot
-    extend a turn-start drain. ``close_when_empty`` is a turn's last look
-    before it ends: finding nothing, it closes the buffer to the turn (see
-    :func:`drain_pending_or_close`). Callers that only need the rendered
-    string (turn-start injection, auto-continue combined prompt) wrap this
-    with :func:`pending_texts_from` — we return the structured objects so the
+    extend a turn-start drain. With it, ``open_for_turn`` makes this that
+    turn's first look: it first reopens a buffer an earlier attempt of the
+    same turn closed (see :func:`reopen_follow_ups`). ``close_for_turn`` is
+    the turn's last look before it ends: finding nothing, it closes the
+    buffer to the turn (see :func:`drain_pending_or_close`). A last look is
+    not a backlog drain, so asking for both is refused rather than one
+    silently winning. Callers that only need the rendered string
+    (turn-start injection, auto-continue combined prompt) wrap this with
+    :func:`pending_texts_from` — we return the structured objects so the
     re-queue rollback path can preserve ``file_ids`` / ``context`` that
     would otherwise be stripped by a text-only conversion.
     """
+    if drain_backlog and close_for_turn:
+        raise ValueError("A backlog drain is a turn's first look, not its last")
+    if open_for_turn:
+        await reopen_follow_ups(
+            session_id,
+            session_meta_key=get_session_meta_key(session_id),
+            turn_id=open_for_turn,
+        )
     messages: list[PendingMessage] = []
     try:
-        if close_when_empty:
+        if close_for_turn:
             return await drain_pending_or_close(
-                session_id, session_meta_key=get_session_meta_key(session_id)
+                session_id,
+                session_meta_key=get_session_meta_key(session_id),
+                turn_id=close_for_turn,
             )
         if not drain_backlog:
             return await drain_pending_messages(session_id)

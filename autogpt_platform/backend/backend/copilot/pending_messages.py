@@ -37,6 +37,7 @@ from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import (
     bounded_rpush,
     capped_rpush_if_hash_field,
+    hash_compare_and_set,
     pop_matching_list_prefix,
     pop_or_close_list,
     string_compare_and_set,
@@ -69,9 +70,11 @@ _PERSIST_QUEUE_KEY_PREFIX = "copilot:pending-persist:"
 _NOTIFY_PAYLOAD = "1"
 
 # Session-meta fields (stream_registry's hash) the push gate reads.  A turn
-# whose last look found the buffer empty writes its ``turn_id`` into
+# whose last look found the buffer empty writes its own ``turn_id`` into
 # ``follow_ups_closed_by`` (``drain_pending_or_close``), and the gate refuses
-# pushes while the two match.  The next turn's own ``turn_id`` reopens it.
+# pushes while that matches the meta's ``turn_id``.  The next turn's own
+# ``turn_id`` reopens it, and so does a rerun of the same turn
+# (``reopen_follow_ups``).
 _SESSION_STATUS_FIELD = "status"
 _SESSION_RUNNING = "running"
 _SESSION_TURN_FIELD = "turn_id"
@@ -450,15 +453,17 @@ async def drain_pending_messages(
 
 
 async def drain_pending_or_close(
-    session_id: str, *, session_meta_key: str
+    session_id: str, *, session_meta_key: str, turn_id: str
 ) -> list[PendingMessage]:
     """Pop one batch of pending messages, or close the buffer if it is empty.
 
-    For a turn's last look at the buffer, after which it ends. With nothing
-    queued, the running turn closes the buffer to itself in the same atomic
+    For turn *turn_id*'s last look at the buffer, after which it ends. With
+    nothing queued, the turn closes the buffer to itself in the same atomic
     step, so a follow-up from then on is refused (its sender starts a new
     turn) instead of accepted into a buffer no turn will drain. A batch
-    found here leaves the buffer open for the turn that continues with it.
+    found here leaves the buffer open for the turn that continues with it,
+    and a turn the session meta no longer names (one that outlived its
+    registration) closes nothing, so it cannot shut its successor's buffer.
     """
     redis = await get_redis_async()
     popped = await pop_or_close_list(
@@ -470,8 +475,37 @@ async def drain_pending_or_close(
         expected=_SESSION_RUNNING,
         closed_by_field=_FOLLOW_UPS_CLOSED_BY_FIELD,
         owner_field=_SESSION_TURN_FIELD,
+        owner=turn_id,
     )
     return _parse_drained(session_id, popped)
+
+
+async def reopen_follow_ups(
+    session_id: str, *, session_meta_key: str, turn_id: str
+) -> None:
+    """Reopen the buffer an earlier attempt of turn *turn_id* closed.
+
+    A redelivered turn runs again under the same ``turn_id`` and no new
+    ``create_session``, so the marker its crashed attempt's last look wrote
+    would refuse every follow-up sent during the rerun. Only that turn's own
+    marker is cleared. Best effort: after a Redis error the rerun still runs,
+    and its follow-ups get the 409 clients resend as a new turn.
+    """
+    try:
+        redis = await get_redis_async()
+        await hash_compare_and_set(
+            redis,
+            session_meta_key,
+            _FOLLOW_UPS_CLOSED_BY_FIELD,
+            expected=turn_id,
+            new="",
+        )
+    except Exception as e:
+        logger.warning(
+            "pending_messages: could not reopen follow-ups for session=%s: %s",
+            session_id,
+            e,
+        )
 
 
 def _parse_drained(session_id: str, popped: Any) -> list[PendingMessage]:
