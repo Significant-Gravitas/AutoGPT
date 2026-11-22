@@ -161,7 +161,7 @@ describe("PublishToMarketplace (builder)", () => {
     expect(await screen.findByDisplayValue(AGENT_NAME)).toBeDefined();
   });
 
-  test("opens an update to a listed workflow with the live listing's description", async () => {
+  test("opens an update to a listed workflow with the live description, and says leaving it empty keeps it", async () => {
     installListedAgentHandlers();
 
     render(
@@ -179,6 +179,10 @@ describe("PublishToMarketplace (builder)", () => {
     await waitFor(() => {
       expect((description as HTMLTextAreaElement).value).toBe(LIVE_DESCRIPTION);
     });
+    const hintId = description.getAttribute("aria-describedby") ?? "";
+    expect(document.getElementById(hintId)?.textContent).toBe(
+      "Leave empty to keep the current description.",
+    );
     const changesSummary = screen.getByRole("textbox", {
       name: "What changed?",
     });
