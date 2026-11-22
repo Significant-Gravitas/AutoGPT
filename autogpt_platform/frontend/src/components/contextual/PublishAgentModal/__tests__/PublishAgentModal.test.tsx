@@ -193,11 +193,24 @@ function MarketplacePublishDialog({
     setPublishState(state);
   }
   return (
-    <PublishAgentModal
-      showTrigger={false}
-      targetState={publishState}
-      onStateChange={handleStateChange}
-    />
+    <>
+      <button
+        type="button"
+        data-testid="page-closes-dialog"
+        onClick={() =>
+          setPublishState({
+            isOpen: false,
+            step: "select",
+            submissionData: null,
+          })
+        }
+      />
+      <PublishAgentModal
+        showTrigger={false}
+        targetState={publishState}
+        onStateChange={handleStateChange}
+      />
+    </>
   );
 }
 
@@ -327,6 +340,28 @@ describe("PublishAgentModal opened from the Marketplace picker", () => {
     expect(stateChanges.map(({ isOpen, step }) => ({ isOpen, step }))).toEqual([
       { isOpen: false, step: "select" },
     ]);
+    expect(screen.queryByTestId("publish-agent-modal")).toBeNull();
+  });
+
+  test("stays closed when a lookup lands after the page closed the dialog", async () => {
+    installHandlers();
+    const releaseLookup = holdLiveListingLookup();
+    const stateChanges: PublishState[] = [];
+    const queryClient = renderDialog(
+      <MarketplacePublishDialog stateChanges={stateChanges} />,
+    );
+
+    await pickAgentAndContinue("Agent name");
+    await waitFor(() => expect(continueButton().disabled).toBe(true));
+    fireEvent.click(screen.getByTestId("page-closes-dialog"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("publish-agent-modal")).toBeNull(),
+    );
+
+    releaseLookup();
+
+    await waitForLookupToLand(queryClient, LISTED_AGENT.graph_id);
+    expect(stateChanges).toEqual([]);
     expect(screen.queryByTestId("publish-agent-modal")).toBeNull();
   });
 

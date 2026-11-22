@@ -111,6 +111,8 @@ export function usePublishAgentModal({
       setHasOpened(true);
       if (targetState.step === "info") checkPreSelectedAgent();
     } else if (!targetState.isOpen && hasOpened) {
+      // The page closed the dialog: a check still running would reopen it.
+      listingCheck.cancel();
       setHasOpened(false);
     }
   }, [targetState, preSelectedAgentId, preSelectedAgentVersion]);
