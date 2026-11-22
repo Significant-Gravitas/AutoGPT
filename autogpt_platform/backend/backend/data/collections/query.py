@@ -120,7 +120,7 @@ def _condition(fields: FieldSet, condition: Condition, params: Params) -> str:
     if op in ("empty", "not_empty"):
         empty = _is_empty(field, params.add(field.name))
         return empty if op == "empty" else f"NOT {empty}"
-    if op in ("today", "last_days", "next_days", "this_month"):
+    if op in ("today", "before_today", "last_days", "next_days", "this_month"):
         return _relative(field, op, condition.value, params)
     if condition.value is None:
         raise CollectionError(f"'{op}' on '{field.name}' needs a value")
@@ -184,6 +184,8 @@ def _relative(field: CollectionField, op: str, value: Any, params: Params) -> st
     today = params.today
     if op == "today":
         return f"{day} = {params.add(today.isoformat())}"
+    if op == "before_today":
+        return f"{day} < {params.add(today.isoformat())}"
     if op == "this_month":
         return f"left({day}, 7) = {params.add(today.isoformat()[:7])}"
     days = timedelta(days=_day_count(op, value))

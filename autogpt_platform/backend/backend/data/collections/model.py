@@ -99,6 +99,7 @@ ConditionOp = Literal[
     "not_empty",
     # Dates against the reader's own day; last_days and next_days take a count.
     "today",
+    "before_today",
     "last_days",
     "next_days",
     "this_month",

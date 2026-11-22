@@ -93,6 +93,7 @@ async def _follow_ups(user_id: str) -> None:
     "op, value, expected",
     [
         ("today", None, ["Revised quote"]),
+        ("before_today", None, ["Invoice chase", "Old note"]),
         ("next_days", 7, ["Kickoff call", "Revised quote"]),
         ("last_days", 7, ["Invoice chase", "Revised quote"]),
         ("this_month", None, ["Invoice chase", "Kickoff call", "Revised quote"]),

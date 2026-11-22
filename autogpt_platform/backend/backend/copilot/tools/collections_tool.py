@@ -349,6 +349,7 @@ def catalogue() -> dict[str, Any]:
             "empty",
             "not_empty",
             "today",
+            "before_today",
             "last_days",
             "next_days",
             "this_month",
