@@ -216,8 +216,8 @@ jobs:
             # selfhost-journey asserts nothing hosted-only exists; it needs a
             # self-hosted stack (TODO in src/playwright/journeys/README.md).
             playwright_args: --project hosted
-            # Pinned inventory: 34 tests in 18 files; raise when adding journeys.
-            min_tests: 34
+            # Pinned inventory: 37 tests in 19 files; raise when adding journeys.
+            min_tests: 37
             embeddings: false
             # Journeys sign up their own users and need no seeded data.
             seed: false
