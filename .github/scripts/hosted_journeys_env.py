@@ -22,6 +22,12 @@ HOSTED_SETTINGS = {
     "ENABLE_CREDIT": "true",
     "ENABLE_PLATFORM_PAYMENT": "true",
     "EXECUTION_COST_COUNT_THRESHOLD": "1",
+    # Stripe is the fake in the scripted_model service
+    # (docker-compose.journeys.yml), which takes any test key and signs its
+    # webhooks with FAKE_STRIPE_WEBHOOK_SECRET, the same value as here.
+    "STRIPE_API_BASE": "http://scripted_model:4010/stripe",
+    "STRIPE_API_KEY": "sk_test_journeys_fake_stripe",  # pragma: allowlist secret
+    "STRIPE_WEBHOOK_SECRET": "whsec_journeys_fake_stripe",  # pragma: allowlist secret
 }
 
 

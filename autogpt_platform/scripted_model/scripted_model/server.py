@@ -12,6 +12,8 @@ from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
 
 from . import chat_completions, embeddings, messages, responses
+from .fake_stripe.fake import FakeStripe
+from .fake_stripe.fake import serves as stripe_serves
 from .holds import Holds
 from .journal import Journal, Request, fingerprint
 from .planner import Conversation, Plan, Reply, plan
@@ -55,11 +57,17 @@ OPENAI = Dialect(
 class ScriptedModelServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], scripts_dir: Path) -> None:
+    def __init__(
+        self,
+        address: tuple[str, int],
+        scripts_dir: Path,
+        stripe: FakeStripe | None = None,
+    ) -> None:
         super().__init__(address, Handler)
         self.scripts_dir = scripts_dir
         self.journal = Journal()
         self.holds = Holds()
+        self.stripe = stripe or FakeStripe(public_url="http://localhost:4010")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -78,7 +86,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         url = urlparse(self.path)
-        if url.path == "/healthz":
+        if stripe_serves(url.path):
+            self._serve_stripe()
+        elif url.path == "/healthz":
             self._send_json(HTTPStatus.OK, {"ok": True})
         elif url.path == JOURNAL_PATH:
             query = {key: values[-1] for key, values in parse_qs(url.query).items()}
@@ -96,7 +106,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         url = urlparse(self.path)
         path = url.path
-        if path == RELEASE_PATH:
+        if stripe_serves(path):
+            self._serve_stripe()
+        elif path == RELEASE_PATH:
             self._read_body()
             self._release(parse_qs(url.query).get("nonce", [""])[-1])
         elif path.endswith("/messages/count_tokens"):
@@ -113,6 +125,28 @@ class Handler(BaseHTTPRequestHandler):
             self._structured_response()
         else:
             self._unexpected()
+
+    def do_DELETE(self) -> None:
+        if stripe_serves(urlparse(self.path).path):
+            self._serve_stripe()
+        else:
+            self._unexpected()
+
+    def _serve_stripe(self) -> None:
+        """The fake Stripe's API, checkout pages and journey controls."""
+        url = urlparse(self.path)
+        body = self._read_body() if self.command in ("POST", "DELETE") else b""
+        headers = {name.lower(): value for name, value in self.headers.items()}
+        response = self.model_server.stripe.handle(
+            self.command, url.path, url.query, body, headers
+        )
+        self.send_response(response.status)
+        self.send_header("Content-Type", response.content_type)
+        if response.location:
+            self.send_header("Location", response.location)
+        self.send_header("Content-Length", str(len(response.body)))
+        self.end_headers()
+        self.wfile.write(response.body)
 
     def _embedding_response(self) -> None:
         body = self._read_json()
@@ -288,7 +322,7 @@ class Handler(BaseHTTPRequestHandler):
         return b"".join(parts)
 
     def _unexpected(self) -> None:
-        if self.command in ("POST", "PUT", "PATCH"):
+        if self.command in ("POST", "PUT", "PATCH", "DELETE"):
             # Unread, the body would be taken for the next request's start.
             self._read_body()
         logger.warning("unexpected request: %s %s", self.command, self.path)
