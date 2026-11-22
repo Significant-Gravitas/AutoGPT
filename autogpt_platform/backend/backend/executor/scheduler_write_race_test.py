@@ -83,7 +83,8 @@ def _race(
     competitor had to wait."""
     race = _Race()
     aps = scheduler.scheduler
-    aps._jobstores_lock = _ReportingLock(aps._jobstores_lock, race)
+    lock = aps._jobstores_lock
+    aps._jobstores_lock = _ReportingLock(lock, race)
     authorized_job = scheduler._authorized_job
 
     def stop_first(at: str) -> None:
@@ -102,18 +103,27 @@ def _race(
         inputs_check.close()
         stop_first("validation")
 
-    with (
-        patch.object(scheduler, "_authorized_job", side_effect=read),
-        patch("backend.executor.scheduler.run_async", side_effect=check),
-    ):
-        first_thread = _start(first, "first", race)
-        assert race.first_stopped.wait(_HANG_SECONDS), race.errors
-        competitor_thread = _start(competitor, "competitor", race)
-        assert race.settled.wait(_HANG_SECONDS), "the competitor hung"
-        race.first_may_go.set()
-        for thread in (first_thread, competitor_thread):
-            thread.join(_HANG_SECONDS)
-            assert not thread.is_alive(), f"{thread.name} hung"
+    threads: list[threading.Thread] = []
+    try:
+        with (
+            patch.object(scheduler, "_authorized_job", side_effect=read),
+            patch("backend.executor.scheduler.run_async", side_effect=check),
+        ):
+            try:
+                threads.append(_start(first, "first", race))
+                assert race.first_stopped.wait(_HANG_SECONDS), race.errors
+                threads.append(_start(competitor, "competitor", race))
+                assert race.settled.wait(_HANG_SECONDS), "the competitor hung"
+            finally:
+                # On every path, so no worker outlives the patches, the lock
+                # or the scheduler, even when an assertion above fails.
+                race.first_may_go.set()
+                for thread in threads:
+                    thread.join(_HANG_SECONDS)
+    finally:
+        aps._jobstores_lock = lock
+    hung = [thread.name for thread in threads if thread.is_alive()]
+    assert not hung, f"hung: {hung}"
     if race.errors:
         raise race.errors[0]
     return race.competitor_waited
