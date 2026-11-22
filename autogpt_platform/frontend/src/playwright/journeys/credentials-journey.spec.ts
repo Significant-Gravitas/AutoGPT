@@ -9,6 +9,7 @@ import {
   createTemplate,
   createWorkflow,
   credentialRef,
+  deleteCredential,
   deleteSchedule,
   expectListedInIntegrations,
   fakeAPIKey,
@@ -64,207 +65,223 @@ test.describe("credentials journey", () => {
 
     await openIntegrations(page);
     const credential = await addKeyInIntegrations(page, { title, apiKey });
-    expect(credential).toMatchObject({
-      provider: PROVIDER,
-      type: "api_key",
-      title,
-    });
-    const service = credential.service_name ?? PROVIDER_NAME;
-    await expectListedInIntegrations(page, credential, service);
-    expect(
-      await page.content(),
-      "the page should never show the key itself",
-    ).not.toContain(apiKey);
-    const listed = await listCredentials(page);
-    expect(
-      listed.credentials.find((saved) => saved.id === credential.id),
-    ).toMatchObject({ provider: PROVIDER, type: "api_key", title });
-    expect(listed.text, "the API should never return the key").not.toContain(
-      apiKey,
-    );
+    try {
+      expect(credential).toMatchObject({
+        provider: PROVIDER,
+        type: "api_key",
+        title,
+      });
+      const service = credential.service_name ?? PROVIDER_NAME;
+      await expectListedInIntegrations(page, credential, service);
+      expect(
+        await page.content(),
+        "the page should never show the key itself",
+      ).not.toContain(apiKey);
+      const listed = await listCredentials(page);
+      expect(
+        listed.credentials.find((saved) => saved.id === credential.id),
+      ).toMatchObject({ provider: PROVIDER, type: "api_key", title });
+      expect(listed.text, "the API should never return the key").not.toContain(
+        apiKey,
+      );
 
-    await page.reload();
-    await expectListedInIntegrations(page, credential, service);
+      await page.reload();
+      await expectListedInIntegrations(page, credential, service);
 
-    await signOutAndBackIn(page, journeyUser);
-    await openIntegrations(page);
-    await expectListedInIntegrations(page, credential, service);
+      await signOutAndBackIn(page, journeyUser);
+      await openIntegrations(page);
+      await expectListedInIntegrations(page, credential, service);
 
-    // Someone else, in their own browser, through the page and the API.
-    const other = someoneElse.page;
-    await openIntegrations(other);
-    await expect(keyCheckbox(other, title)).toHaveCount(0);
-    const theirs = await listCredentials(other);
-    expect(theirs.credentials.map((saved) => saved.id)).not.toContain(
-      credential.id,
-    );
-    expect(theirs.text).not.toContain(title);
-    const keyURL = `/api/proxy/api/integrations/${PROVIDER}/credentials/${credential.id}`;
-    expect(
-      (await other.request.get(keyURL)).status(),
-      "another user should not be able to read the key",
-    ).toBe(404);
-    expect(
-      (await other.request.delete(keyURL)).status(),
-      "another user should not be able to delete the key",
-    ).toBe(404);
-    const theirWorkflow = await createWorkflow(
-      other,
-      createUniqueAgentName("Journey borrowed key"),
-    );
-    const borrowed = await startRun(
-      other,
-      theirWorkflow,
-      "Borrowing a key",
-      credentialRef(credential),
-    );
-    expect(
-      borrowed.status(),
-      "a run on another user's key should be refused",
-    ).toBe(400);
-    expect(await borrowed.text()).toContain(
-      `Unknown credentials #${credential.id}`,
-    );
-    expect(await listRunIDs(other, theirWorkflow)).toEqual([]);
+      // Someone else, in their own browser, through the page and the API.
+      const other = someoneElse.page;
+      await openIntegrations(other);
+      await expect(keyCheckbox(other, title)).toHaveCount(0);
+      const theirs = await listCredentials(other);
+      expect(theirs.credentials.map((saved) => saved.id)).not.toContain(
+        credential.id,
+      );
+      expect(theirs.text).not.toContain(title);
+      const keyURL = `/api/proxy/api/integrations/${PROVIDER}/credentials/${credential.id}`;
+      expect(
+        (await other.request.get(keyURL)).status(),
+        "another user should not be able to read the key",
+      ).toBe(404);
+      expect(
+        (await other.request.delete(keyURL)).status(),
+        "another user should not be able to delete the key",
+      ).toBe(404);
+      const theirWorkflow = await createWorkflow(
+        other,
+        createUniqueAgentName("Journey borrowed key"),
+      );
+      const borrowed = await startRun(
+        other,
+        theirWorkflow,
+        "Borrowing a key",
+        credentialRef(credential),
+      );
+      expect(
+        borrowed.status(),
+        "a run on another user's key should be refused",
+      ).toBe(400);
+      expect(await borrowed.text()).toContain(
+        `Unknown credentials #${credential.id}`,
+      );
+      expect(await listRunIDs(other, theirWorkflow)).toEqual([]);
 
-    expect(
-      (await listCredentials(page)).credentials.map((saved) => saved.id),
-      "the key should still be its owner's",
-    ).toContain(credential.id);
+      expect(
+        (await listCredentials(page)).credentials.map((saved) => saved.id),
+        "the key should still be its owner's",
+      ).toContain(credential.id);
+    } finally {
+      await deleteCredential(page, credential);
+    }
   });
 
   test("the key is offered in the builder's credentials field, the run dialog, a template and a schedule, and each keeps it once saved", async ({
     page,
     journeyUser: _user,
   }) => {
+    // Five surfaces in one test: about 47 s on CI, so room for a slow runner.
+    test.setTimeout(180_000);
     const stamp = uniqueStamp();
     const credential = await createAPIKey(page, `Journey key ${stamp}`);
-    const workflow = await createWorkflow(
-      page,
-      createUniqueAgentName("Journey scraping"),
-    );
-    const before = await readScrapeStep(page, workflow);
-    expect(before.credentials, "the step starts with no key").toBeNull();
-
-    // The builder: the field offers the user's only Firecrawl key.
-    await page.goto(`/build?flowID=${workflow.graphID}`);
-    await new BuildPage(page).closeTutorial();
-    const step = page.locator(`[data-id="custom-node-${before.nodeID}"]`);
-    await expect(step).toBeVisible({ timeout: 20_000 });
-    await expect(
-      step.getByText(credential.title, { exact: true }),
-    ).toBeVisible();
-    await step.getByText(credential.title, { exact: true }).click();
-    const saved = await saveInBuilder(page, workflow);
-    expect(
-      saved.credentials,
-      "saving should keep the picked key",
-    ).toMatchObject({ id: credential.id, provider: PROVIDER });
-    await page.reload();
-    await expect(
-      page
-        .locator(`[data-id="custom-node-${saved.nodeID}"]`)
-        .getByText(credential.title, { exact: true }),
-      "the builder should still show the key after a reload",
-    ).toBeVisible({ timeout: 20_000 });
-
-    // The run dialog: the key is offered, and the run uses it.
-    await page.goto(`/library/agents/${workflow.libraryAgentID}`);
-    await waitForAgentPageLoad(page);
-    const setUp = page.getByRole("button", { name: "Setup your task" });
-    await expect(setUp).toBeVisible();
-    await setUp.click();
-    const dialog = runDialog(page);
-    await expect(dialog.getByText("Task Credentials")).toBeVisible();
-    await expect(
-      dialog.getByText(credential.title, { exact: true }),
-      "the run dialog should offer the key",
-    ).toBeVisible();
-    const note = `Scraping note ${stamp}`;
-    await dialog.getByTestId("agent-input-note").fill(note);
-    const started = page.waitForResponse(isRunStart(workflow));
-    await dialog
-      .getByRole("button", { name: "Start Task", exact: true })
-      .click();
-    const startedRun = await started;
-    expect(startedRun.ok(), `starting the run: ${startedRun.status()}`).toBe(
-      true,
-    );
-    expect(
-      startedRun.request().postDataJSON().credentials_inputs,
-      "the run dialog should send the key it offered",
-    ).toEqual({
-      [workflow.credentialsInput]: expect.objectContaining({
-        id: credential.id,
-      }),
-    });
-    const runID = ((await startedRun.json()) as { id: string }).id;
-    const run = await waitForRunToEnd(page, workflow, runID);
-    expect(run.status).toBe("COMPLETED");
-    expect(run.outputs, "the scrape step never runs").toEqual({
-      reply: [note],
-    });
-    expect(run.credential_inputs?.[workflow.credentialsInput]).toMatchObject({
-      id: credential.id,
-    });
-
-    // A template saved from the run keeps the key, and shows it.
-    const template = await saveRunAsTemplate(page, runID, `Template ${stamp}`);
-    expect(template.credentials).toEqual({
-      [workflow.credentialsInput]: expect.objectContaining({
-        id: credential.id,
-      }),
-    });
-    await openTemplate(page, workflow, template.id);
-    await expect(
-      page.getByText(credential.title, { exact: true }),
-      "the template should show its key",
-    ).toBeVisible();
-    await page.reload();
-    await waitForAgentPageLoad(page);
-    await expect(
-      page.getByText(credential.title, { exact: true }),
-    ).toBeVisible();
-    expect(
-      (await readTemplate(page, template.id)).credentials[
-        workflow.credentialsInput
-      ],
-    ).toMatchObject({ id: credential.id });
-
-    // A schedule made from the run dialog keeps the key.
-    await page.goto(`/library/agents/${workflow.libraryAgentID}`);
-    await waitForAgentPageLoad(page);
-    await page.getByRole("button", { name: "New workflow task" }).click();
-    await runDialog(page).getByTestId("agent-input-note").fill(note);
-    await expect(
-      runDialog(page).getByText(credential.title, { exact: true }),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Schedule Task" }).click();
-    const scheduleDialog = page.getByRole("dialog", { name: "Schedule Run" });
-    await scheduleDialog.getByLabel("Schedule Name").fill(`Schedule ${stamp}`);
-    const scheduled = page.waitForResponse(
-      (response) =>
-        response.request().method() === "POST" &&
-        new URL(response.url()).pathname.endsWith(
-          `/api/graphs/${workflow.graphID}/schedules`,
-        ),
-    );
-    await scheduleDialog.getByRole("button", { name: "Schedule" }).click();
-    const scheduleResponse = await scheduled;
-    expect(
-      scheduleResponse.ok(),
-      `creating the schedule: ${scheduleResponse.status()}`,
-    ).toBe(true);
-    const schedule = (await scheduleResponse.json()) as { id: string };
     try {
-      const [listedSchedule] = await listSchedules(page, workflow);
-      expect(listedSchedule?.input_credentials).toEqual({
+      const workflow = await createWorkflow(
+        page,
+        createUniqueAgentName("Journey scraping"),
+      );
+      const before = await readScrapeStep(page, workflow);
+      expect(before.credentials, "the step starts with no key").toBeNull();
+
+      // The builder: the field offers the user's only Firecrawl key.
+      await page.goto(`/build?flowID=${workflow.graphID}`);
+      await new BuildPage(page).closeTutorial();
+      const step = page.locator(`[data-id="custom-node-${before.nodeID}"]`);
+      await expect(step).toBeVisible({ timeout: 20_000 });
+      await expect(
+        step.getByText(credential.title, { exact: true }),
+      ).toBeVisible();
+      await step.getByText(credential.title, { exact: true }).click();
+      const saved = await saveInBuilder(page, workflow);
+      expect(
+        saved.credentials,
+        "saving should keep the picked key",
+      ).toMatchObject({ id: credential.id, provider: PROVIDER });
+      await page.reload();
+      await expect(
+        page
+          .locator(`[data-id="custom-node-${saved.nodeID}"]`)
+          .getByText(credential.title, { exact: true }),
+        "the builder should still show the key after a reload",
+      ).toBeVisible({ timeout: 20_000 });
+
+      // The run dialog: the key is offered, and the run uses it.
+      await page.goto(`/library/agents/${workflow.libraryAgentID}`);
+      await waitForAgentPageLoad(page);
+      const setUp = page.getByRole("button", { name: "Setup your task" });
+      await expect(setUp).toBeVisible();
+      await setUp.click();
+      const dialog = runDialog(page);
+      await expect(dialog.getByText("Task Credentials")).toBeVisible();
+      await expect(
+        dialog.getByText(credential.title, { exact: true }),
+        "the run dialog should offer the key",
+      ).toBeVisible();
+      const note = `Scraping note ${stamp}`;
+      await dialog.getByTestId("agent-input-note").fill(note);
+      const started = page.waitForResponse(isRunStart(workflow));
+      await dialog
+        .getByRole("button", { name: "Start Task", exact: true })
+        .click();
+      const startedRun = await started;
+      expect(startedRun.ok(), `starting the run: ${startedRun.status()}`).toBe(
+        true,
+      );
+      expect(
+        startedRun.request().postDataJSON().credentials_inputs,
+        "the run dialog should send the key it offered",
+      ).toEqual({
         [workflow.credentialsInput]: expect.objectContaining({
           id: credential.id,
         }),
       });
+      const runID = ((await startedRun.json()) as { id: string }).id;
+      const run = await waitForRunToEnd(page, workflow, runID);
+      expect(run.status).toBe("COMPLETED");
+      expect(run.outputs, "the scrape step never runs").toEqual({
+        reply: [note],
+      });
+      expect(run.credential_inputs?.[workflow.credentialsInput]).toMatchObject({
+        id: credential.id,
+      });
+
+      // A template saved from the run keeps the key, and shows it.
+      const template = await saveRunAsTemplate(
+        page,
+        runID,
+        `Template ${stamp}`,
+      );
+      expect(template.credentials).toEqual({
+        [workflow.credentialsInput]: expect.objectContaining({
+          id: credential.id,
+        }),
+      });
+      await openTemplate(page, workflow, template.id);
+      await expect(
+        page.getByText(credential.title, { exact: true }),
+        "the template should show its key",
+      ).toBeVisible();
+      await page.reload();
+      await waitForAgentPageLoad(page);
+      await expect(
+        page.getByText(credential.title, { exact: true }),
+      ).toBeVisible();
+      expect(
+        (await readTemplate(page, template.id)).credentials[
+          workflow.credentialsInput
+        ],
+      ).toMatchObject({ id: credential.id });
+
+      // A schedule made from the run dialog keeps the key.
+      await page.goto(`/library/agents/${workflow.libraryAgentID}`);
+      await waitForAgentPageLoad(page);
+      await page.getByRole("button", { name: "New workflow task" }).click();
+      await runDialog(page).getByTestId("agent-input-note").fill(note);
+      await expect(
+        runDialog(page).getByText(credential.title, { exact: true }),
+      ).toBeVisible();
+      await page.getByRole("button", { name: "Schedule Task" }).click();
+      const scheduleDialog = page.getByRole("dialog", { name: "Schedule Run" });
+      await scheduleDialog
+        .getByLabel("Schedule Name")
+        .fill(`Schedule ${stamp}`);
+      const scheduled = page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          new URL(response.url()).pathname.endsWith(
+            `/api/graphs/${workflow.graphID}/schedules`,
+          ),
+      );
+      await scheduleDialog.getByRole("button", { name: "Schedule" }).click();
+      const scheduleResponse = await scheduled;
+      expect(
+        scheduleResponse.ok(),
+        `creating the schedule: ${scheduleResponse.status()}`,
+      ).toBe(true);
+      const schedule = (await scheduleResponse.json()) as { id: string };
+      try {
+        const [listedSchedule] = await listSchedules(page, workflow);
+        expect(listedSchedule?.input_credentials).toEqual({
+          [workflow.credentialsInput]: expect.objectContaining({
+            id: credential.id,
+          }),
+        });
+      } finally {
+        await deleteSchedule(page, schedule.id);
+      }
     } finally {
-      await deleteSchedule(page, schedule.id);
+      await deleteCredential(page, credential);
     }
   });
 });
@@ -278,6 +295,7 @@ test.describe("credentials journey: removing a key in use", () => {
     page,
     journeyUser: _user,
   }, testInfo) => {
+    test.setTimeout(120_000);
     const stamp = uniqueStamp();
     const credential = await createAPIKey(page, `Journey key ${stamp}`);
     const workflow = await createWorkflow(
@@ -380,16 +398,9 @@ test.describe("credentials journey: removing a key in use", () => {
           (await refused.text()).slice(0, 300),
       );
       expect(refused.status()).toBe(400);
-      const toast = page.getByText("Failed to start task");
-      await expect(toast).toBeVisible();
-      observe(
-        testInfo,
-        `the template's error reads: "${(
-          await toast.locator("xpath=../..").innerText()
-        )
-          .replace(/\s+/g, " ")
-          .trim()}"`,
-      );
+      // The toast dismisses itself after 5 s, so only its showing is checked;
+      // the refusal's text is recorded above, from the response.
+      await expect(page.getByText("Failed to start task")).toBeVisible();
       expect(await listRunIDs(page, workflow)).toEqual([firstRunID]);
 
       // The builder: the step names the key that was removed.

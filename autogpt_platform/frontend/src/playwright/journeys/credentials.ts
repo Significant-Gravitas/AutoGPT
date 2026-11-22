@@ -369,9 +369,31 @@ export async function listSchedules(page: Page, workflow: Workflow) {
   return (await response.json()) as Schedule[];
 }
 
-/** Best effort: a schedule left behind fires into the next journey's stack. */
+/** A schedule left behind fires into the next journey's stack, so a delete
+ * that fails is reported, softly, after the test's own steps. */
 export async function deleteSchedule(page: Page, scheduleID: string) {
-  await page.request.delete(`/api/proxy/api/schedules/${scheduleID}`);
+  const response = await page.request.delete(
+    `/api/proxy/api/schedules/${scheduleID}`,
+  );
+  expect
+    .soft(
+      response.ok() || response.status() === 404,
+      `deleting schedule ${scheduleID}: ${response.status()}`,
+    )
+    .toBe(true);
+}
+
+/** Removes a key a test made, so a reused account doesn't collect them. */
+export async function deleteCredential(page: Page, credential: Credential) {
+  const response = await page.request.delete(
+    `/api/proxy/api/integrations/${PROVIDER}/credentials/${credential.id}?force=true`,
+  );
+  expect
+    .soft(
+      response.ok() || response.status() === 404,
+      `deleting key ${credential.id}: ${response.status()}`,
+    )
+    .toBe(true);
 }
 
 // ── Settings → Integrations ────────────────────────────────────────────
@@ -404,10 +426,16 @@ export async function addKeyInIntegrations(
   await dialog
     .getByRole("textbox", { name: "Search services" })
     .fill(PROVIDER_NAME);
-  await dialog.getByRole("button", { name: new RegExp(PROVIDER_NAME) }).click();
-  await dialog
-    .getByRole("textbox", { name: "Name", exact: true })
-    .fill(key.title);
+  // The list filters on a debounce and re-renders, so a click can land on a
+  // row that's being replaced; click until the key form opens.
+  const nameField = dialog.getByRole("textbox", { name: "Name", exact: true });
+  await expect(async () => {
+    await dialog
+      .getByRole("button", { name: new RegExp(PROVIDER_NAME) })
+      .click({ timeout: 2_000 });
+    await expect(nameField).toBeVisible({ timeout: 2_000 });
+  }).toPass();
+  await nameField.fill(key.title);
   await dialog.getByLabel("API key", { exact: true }).fill(key.apiKey);
   const created = page.waitForResponse(
     (response) =>
@@ -419,6 +447,10 @@ export async function addKeyInIntegrations(
   await dialog.getByRole("button", { name: "Save API key" }).click();
   const response = await created;
   expect(response.ok(), `saving the key: ${response.status()}`).toBe(true);
+  expect(
+    await response.text(),
+    "saving a key should not answer with the key",
+  ).not.toContain(key.apiKey);
   await expect(
     dialog,
     "the dialog should close once the key is saved",
