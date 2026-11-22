@@ -1,5 +1,5 @@
 {
-  "description": "A first answer slow enough to queue a follow-up while it streams, then the answer to that follow-up. copilot-follow-up-journey.spec.ts follows it.",
+  "description": "A first answer that stops after its first ten words until copilot-follow-up-journey.spec.ts, which follows it, has queued a follow-up and released the run, then the answer to that follow-up.",
   "title": "Follow-up",
   "turns": [
     {
@@ -9,7 +9,7 @@
         "output_tokens": 30,
         "cache_read_input_tokens": 24000
       },
-      "stream": { "chunk_words": 1, "delay_ms": 200 }
+      "stream": { "chunk_words": 1, "delay_ms": 120, "hold_after_words": 10 }
     },
     {
       "expect_user_text": "What about tomorrow?",
