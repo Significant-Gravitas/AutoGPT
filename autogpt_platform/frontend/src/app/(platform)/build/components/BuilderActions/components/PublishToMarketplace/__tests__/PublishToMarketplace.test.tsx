@@ -2,12 +2,11 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   getGetV2GetMyAgentsMockHandler,
-  getGetV2ListMySubmissionsMockHandler,
+  getGetV2GetMyLiveSubmissionMockHandler,
   getGetV2ListMySubmissionsResponseMock,
 } from "@/app/api/__generated__/endpoints/store/store.msw";
 import type { MyUnpublishedAgent } from "@/app/api/__generated__/models/myUnpublishedAgent";
 import type { MyUnpublishedAgentsResponse } from "@/app/api/__generated__/models/myUnpublishedAgentsResponse";
-import type { StoreSubmissionsResponse } from "@/app/api/__generated__/models/storeSubmissionsResponse";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { server } from "@/mocks/mock-server";
 import {
@@ -87,29 +86,10 @@ function makeAgentsResponse(
   };
 }
 
-function makeEmptySubmissionsResponse(): StoreSubmissionsResponse {
-  return {
-    submissions: [],
-    pagination: {
-      total_items: 0,
-      total_pages: 1,
-      current_page: 1,
-      page_size: 20,
-    },
-    stats: {
-      total: 0,
-      approved: 0,
-      pending: 0,
-      total_runs: 0,
-      average_rating: null,
-    },
-  };
-}
-
 function installScopedHandlers() {
   server.use(
     getGetV2GetMyAgentsMockHandler(makeAgentsResponse([makeAgent()])),
-    getGetV2ListMySubmissionsMockHandler(makeEmptySubmissionsResponse()),
+    getGetV2GetMyLiveSubmissionMockHandler(null),
   );
 }
 
@@ -119,19 +99,13 @@ function installListedAgentHandlers() {
   const [listing] = getGetV2ListMySubmissionsResponseMock().submissions;
   server.use(
     getGetV2GetMyAgentsMockHandler(makeAgentsResponse([makeAgent()])),
-    getGetV2ListMySubmissionsMockHandler(
-      getGetV2ListMySubmissionsResponseMock({
-        submissions: [
-          {
-            ...listing,
-            graph_id: FLOW_ID,
-            status: SubmissionStatus.APPROVED,
-            description: LIVE_DESCRIPTION,
-            changes_summary: "Initial Submission",
-          },
-        ],
-      }),
-    ),
+    getGetV2GetMyLiveSubmissionMockHandler({
+      ...listing,
+      graph_id: FLOW_ID,
+      status: SubmissionStatus.APPROVED,
+      description: LIVE_DESCRIPTION,
+      changes_summary: "Initial Submission",
+    }),
   );
 }
 
