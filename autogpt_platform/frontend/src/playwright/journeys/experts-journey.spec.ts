@@ -44,6 +44,7 @@ import {
   requireScriptedModel,
   scriptedRun,
 } from "./scripted-model";
+import { JOURNEY_USER_AGENT } from "./user-agent";
 
 // Hire an expert from the Marketplace, work through its kickoff, chat with it
 // from Team, connect what it needs, then let it go and hire it again.
@@ -84,7 +85,7 @@ test.describe("experts journey", () => {
   test("an expert found by its job title is hired, and its kickoff card is answered mid-turn and from Team", async ({
     page,
     journeyUser: _user,
-    playwright,
+    browser,
     baseURL,
   }) => {
     test.setTimeout(ONBOARDING_TEST_TIMEOUT);
@@ -92,33 +93,34 @@ test.describe("experts journey", () => {
     const jobTitle = expert.job_title as string;
 
     await test.step("its public profile names it in the server's HTML", async () => {
-      const visitor = await playwright.request.newContext({
+      // What a crawler reads without running a script: the page as the
+      // server sent it, with scripts switched off.
+      const crawler = await browser.newContext({
         baseURL,
+        javaScriptEnabled: false,
         storageState: { cookies: [], origins: [] },
+        userAgent: JOURNEY_USER_AGENT,
       });
       try {
-        const response = await visitor.get(`/marketplace/experts/${expert.id}`);
-        expect(response.status(), "a signed-out visitor gets the page").toBe(
+        const visitor = await crawler.newPage();
+        const response = await visitor.goto(
+          `/marketplace/experts/${expert.id}`,
+          { waitUntil: "domcontentloaded" },
+        );
+        expect(response?.status(), "a signed-out visitor gets the page").toBe(
           200,
         );
-        const html = await response.text();
-        const title = decodeEntities(
-          html.match(/<title>([^<]*)<\/title>/)?.[1] ?? "",
-        );
-        expect(title).toContain(`${expert.name}, ${jobTitle}`);
-        // What a crawler reads without running a script.
-        const body = decodeEntities(
-          (html.split(/<body[^>]*>/)[1] ?? "").replace(
-            /<script[\s\S]*?<\/script>/g,
-            "",
-          ),
-        );
-        expect(body).toMatch(
-          new RegExp(`<h1[^>]*>${escapeRegExp(expert.name)}</h1>`),
-        );
-        expect(body).toContain(`>${jobTitle}<`);
+        expect(await visitor.title()).toContain(`${expert.name}, ${jobTitle}`);
+        expect(
+          await visitor.locator("h1").allTextContents(),
+          "the page should be headed with the expert's name",
+        ).toContain(expert.name);
+        await expect(
+          visitor.getByText(jobTitle, { exact: true }).first(),
+          "the page should show the expert's job title",
+        ).toBeAttached();
       } finally {
-        await visitor.dispose();
+        await crawler.close();
       }
     });
 
@@ -463,11 +465,9 @@ test.describe("experts journey", () => {
             .getByRole("dialog", { name: "Create schedule" })
             .getByRole("button", { name: own.name })
             .click();
-          const runDialog = page
-            .getByRole("dialog")
-            .filter({
-              has: page.getByRole("button", { name: "Schedule Task" }),
-            });
+          const runDialog = page.getByRole("dialog").filter({
+            has: page.getByRole("button", { name: "Schedule Task" }),
+          });
           const scheduleTask = runDialog.getByRole("button", {
             name: "Schedule Task",
           });
@@ -706,13 +706,4 @@ function setupSummary(items: SetupItem[]) {
 
 function escapeRegExp(text: string) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function decodeEntities(text: string) {
-  return text
-    .replace(/&#x27;|&#39;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&");
 }
