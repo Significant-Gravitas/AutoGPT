@@ -9,6 +9,7 @@ import {
   getGetV2GetMyLiveSubmissionMockHandler422,
   getGetV2ListMySubmissionsMockHandler,
   getGetV2ListStoreCategoriesMockHandler,
+  getPostV2CreateStoreSubmissionMockHandler,
 } from "@/app/api/__generated__/endpoints/store/store.msw";
 import type { MyUnpublishedAgent } from "@/app/api/__generated__/models/myUnpublishedAgent";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
@@ -31,6 +32,11 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 
 vi.mock("@/components/contextual/CronScheduler/cron-scheduler-dialog", () => ({
   CronExpressionDialog: () => null,
+}));
+
+// The success screen's confetti draws on a canvas, which jsdom doesn't have.
+vi.mock("@/components/molecules/Confetti/Confetti", () => ({
+  Confetti: () => null,
 }));
 
 vi.mock(
@@ -442,6 +448,41 @@ describe("PublishAgentModal opened pre-scoped to a workflow", () => {
 
     await expectUpdateFormFromLiveListing();
     expect(lookups).toHaveBeenCalledOnce();
+  });
+
+  test("stays on the success screen after a submit while a page re-renders it with a new targetState each time", async () => {
+    installHandlers();
+    server.use(
+      getGetV2GetMyLiveSubmissionMockHandler({
+        ...LIVE_LISTING,
+        image_urls: ["https://example.com/listed-thumbnail.png"],
+      }),
+      getPostV2CreateStoreSubmissionMockHandler({
+        ...LIVE_LISTING,
+        listing_version_id: "listing-version-2",
+        listing_version: 2,
+        status: SubmissionStatus.PENDING,
+      }),
+    );
+    renderDialog(<LibraryStylePublishDialog />);
+    await expectUpdateFormFromLiveListing();
+    fireEvent.change(screen.getByRole("textbox", { name: "What changed?" }), {
+      target: { value: "Clearer instructions" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
+    expect(await screen.findByText("Submission received")).toBeDefined();
+
+    fireEvent.click(screen.getByTestId("page-rerenders"));
+    fireEvent.click(screen.getByTestId("page-rerenders"));
+
+    // The step strip shows on every step but the success screen. It sits
+    // outside the animated step, so it changes in the render that changes the
+    // step, before the form could animate back in.
+    expect(screen.queryByRole("list", { name: "Publish progress" })).toBeNull();
+    expect(screen.getByText("Submission received")).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Submit for review" }),
+    ).toBeNull();
   });
 
   test("shows an error instead of the new-listing form when the lookup fails, and tries again", async () => {

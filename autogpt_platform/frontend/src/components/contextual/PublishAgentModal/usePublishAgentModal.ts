@@ -62,8 +62,7 @@ export function usePublishAgentModal({
     useState<PublishAgentInfoInitialData>(emptyModalState);
 
   // The selected workflow's live listing, as the last check found it. Kept
-  // out of currentState: a parent that hands in a fresh targetState on every
-  // render would overwrite it.
+  // out of currentState, which follows the page's targetState.
   const [liveSubmission, setLiveSubmission] = useState<StoreSubmission | null>(
     null,
   );
@@ -91,12 +90,20 @@ export function usePublishAgentModal({
   });
   const creatorUsername = profile?.username;
 
-  // Sync currentState with targetState when it changes from outside
+  // Follow targetState when what it asks for changes, not each time the page
+  // hands in a new object. The Library writes it inline, so following every
+  // new object sent the dialog back to that step whenever the page
+  // re-rendered, from wherever the creator had moved it.
+  const hasTarget = targetState !== undefined;
+  const target = targetState ?? defaultTargetState;
   useEffect(() => {
-    if (targetState) {
-      setCurrentState(targetState);
-    }
-  }, [targetState]);
+    if (!hasTarget) return;
+    setCurrentState({
+      isOpen: target.isOpen,
+      step: target.step,
+      submissionData: target.submissionData,
+    });
+  }, [hasTarget, target.isOpen, target.step, target.submissionData]);
 
   // Reset internal state when modal opens (only on initial open, not on every targetState change)
   const [hasOpened, setHasOpened] = useState(false);
