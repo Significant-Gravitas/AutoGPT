@@ -190,7 +190,8 @@ jobs:
           if-no-files-found: error
 
   e2e_test:
-    name: end-to-end tests (${{ matrix.suite }})
+    # A sharded leg adds its shard: "end-to-end tests (journeys 1/2)".
+    name: end-to-end tests (${{ matrix.suite }}${{ matrix.shard_index && format(' {0}/{1}', matrix.shard_index, matrix.shard_total) || '' }})
     # Pinned: Playwright has no Chromium build for ubuntu-latest's 26.04 image.
     runs-on: ubuntu-24.04
     strategy:
@@ -214,12 +215,19 @@ jobs:
           # hosted feature flags, credits on. Advisory until proven stable
           # (ADVISORY_CHECK_RUNS in check_actions_status.py). No OpenAI key,
           # so the seed skips embeddings and finishes in ~30 s.
+          # Two Playwright shards (--shard=<shard_index>/<shard_total>), each
+          # on its own runner. The legs differ only in shard_index; see "In
+          # CI" in src/playwright/journeys/README.md to add one.
           - suite: journeys
+            shard_index: 1
+            shard_total: 2
             config: playwright.journeys.config.ts
             # selfhost-journey asserts nothing hosted-only exists; it needs a
             # self-hosted stack (TODO in src/playwright/journeys/README.md).
             playwright_args: --project hosted
-            # Pinned inventory: 47 tests in 22 files; raise when adding journeys.
+            # Pinned inventory of the whole suite, the same on every shard:
+            # 47 tests in 22 files; raise when adding journeys. Each shard's
+            # own floor is counted at run time ("Count the shard's tests").
             min_tests: 47
             embeddings: false
             # Journeys sign up their own users and need no seeded data.
@@ -234,6 +242,19 @@ jobs:
             store_agents: true
             # Journeys may pin a known bug with test.fail(); it must still fail.
             known_failures: true
+          # The leg above, second shard.
+          - suite: journeys
+            shard_index: 2
+            shard_total: 2
+            config: playwright.journeys.config.ts
+            playwright_args: --project hosted
+            min_tests: 47
+            embeddings: false
+            seed: false
+            hosted: true
+            scripted_model: true
+            store_agents: true
+            known_failures: true
     permissions:
       contents: read
       # Only dev pushes and the merge queue write the GHCR build cache. Every
@@ -242,9 +263,11 @@ jobs:
     env:
       BUILD_CACHE_IMAGE: ghcr.io/significant-gravitas/autogpt-platform-e2e-buildcache
       E2E_SEED_IMAGE: ghcr.io/significant-gravitas/autogpt-platform-e2e-seed
-      # Both legs build the same images; only smoke writes them.
+      # Every leg builds the same images; only smoke writes them.
       WRITE_BUILD_CACHE: ${{ matrix.suite == 'smoke' && ((github.event_name == 'push' && github.ref == 'refs/heads/dev') || github.event_name == 'merge_group' || (github.event_name == 'workflow_dispatch' && inputs.publish_build_cache)) }}
       BUILDKIT_IMAGE: docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
+      # Names the leg's artifacts and coverage upload: smoke, journeys-1, journeys-2.
+      E2E_LEG: ${{ matrix.suite }}${{ matrix.shard_index && format('-{0}', matrix.shard_index) || '' }}
 
     steps:
       - name: Checkout repository
@@ -534,6 +557,60 @@ jobs:
       - name: Set up tests - Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
 
+      # A shard runs a slice of its suite, so its floor is counted from
+      # Playwright's listing, which needs no stack, rather than pinned. The
+      # suite's listed total must reach min_tests, its one pin, so a test that
+      # was deleted or stopped matching fails here. The shard's own count,
+      # listed with the run's --shard and --repeat-each, is the floor
+      # "Validate Playwright JSON report" holds it to, so a shard that runs
+      # fewer tests than it listed fails there.
+      - name: Set up tests - Count the shard's tests
+        id: e2e-inventory
+        if: matrix.shard_index
+        env:
+          E2E_CONFIG: ${{ matrix.config }}
+          E2E_PLAYWRIGHT_ARGS: ${{ matrix.playwright_args }}
+          E2E_MIN_TESTS: ${{ matrix.min_tests }}
+          # The selection "Run Playwright E2E suite" passes.
+          E2E_SHARD: ${{ matrix.shard_index }}/${{ matrix.shard_total }}
+          E2E_REPEAT_EACH: ${{ matrix.suite == 'journeys' && inputs.journeys_repeat_each || 1 }}
+        run: |
+          # An empty or non-numeric pin would make the floor check below
+          # silently pass.
+          if [[ ! $E2E_MIN_TESTS =~ ^[0-9]+$ ]]; then
+            echo "::error title=No pinned min_tests::min_tests ('$E2E_MIN_TESTS') on this leg in platform-fullstack-ci.yml isn't a number."
+            exit 1
+          fi
+          read -r -a suite <<< "--config $E2E_CONFIG $E2E_PLAYWRIGHT_ARGS"
+          # The listing ends "Total: N tests in M files"; this prints N.
+          count_tests() {
+            local listing
+            listing=$(pnpm exec playwright test "${suite[@]}" --list --reporter=list "$@" 2>&1) || {
+              printf '%s\n' "$listing" >&2
+              return 1
+            }
+            sed -nE 's/^Total: ([0-9]+) tests? in [0-9]+ files?$/\1/p' <<< "$listing"
+          }
+          if ! total=$(count_tests) ||
+            ! shard=$(count_tests --shard="$E2E_SHARD" --repeat-each="$E2E_REPEAT_EACH"); then
+            echo "::error title=Listing the tests failed::playwright test --list failed; its output is above."
+            exit 1
+          fi
+          if [[ ! $total =~ ^[0-9]+$ || ! $shard =~ ^[0-9]+$ ]]; then
+            echo "::error title=No test count::Playwright's listing has no \"Total: N tests in M files\" line."
+            exit 1
+          fi
+          echo "The suite lists $total tests (min_tests: $E2E_MIN_TESTS); shard $E2E_SHARD lists $shard with --repeat-each=$E2E_REPEAT_EACH."
+          if (( total < E2E_MIN_TESTS )); then
+            echo "::error title=Fewer tests than min_tests::The suite lists $total tests, below its pinned min_tests of $E2E_MIN_TESTS in platform-fullstack-ci.yml. A test was deleted or no longer matches the suite. If that was meant, lower min_tests and its pin in .github/scripts/test_e2e_seed_cache_contract.py."
+            exit 1
+          fi
+          if (( shard == 0 )); then
+            echo "::error title=Empty shard::Shard $E2E_SHARD lists no tests: the suite has fewer tests than shards."
+            exit 1
+          fi
+          echo "tests=$shard" >> "$GITHUB_OUTPUT"
+
       - name: Set up tests - Install browser 'chromium'
         # No --with-deps: the runner image already has Chromium's libraries, and the
         # apt fetch it adds took up to 16 minutes when Ubuntu's mirror was slow.
@@ -700,7 +777,7 @@ jobs:
 
       - name: Run Playwright E2E suite
         id: e2e-playwright
-        run: pnpm exec playwright test --config ${{ matrix.config }} ${{ matrix.playwright_args }} ${{ matrix.suite == 'journeys' && format('--repeat-each={0}', inputs.journeys_repeat_each || 1) || '' }} --retries=0 --trace=retain-on-failure
+        run: pnpm exec playwright test --config ${{ matrix.config }} ${{ matrix.playwright_args }} ${{ matrix.suite == 'journeys' && format('--repeat-each={0}', inputs.journeys_repeat_each || 1) || '' }} ${{ matrix.shard_index && format('--shard={0}/{1}', matrix.shard_index, matrix.shard_total) || '' }} --retries=0 --trace=retain-on-failure
         env:
           PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/results.json
           PLAYWRIGHT_RETRIES: "0"
@@ -735,11 +812,15 @@ jobs:
       - name: Validate Playwright JSON report
         id: e2e-playwright-report
         if: ${{ always() }}
-        # Each leg's floor is pinned in the matrix; raise it when adding tests.
+        env:
+          # A leg's floor is its pinned min_tests; a shard's is what it listed
+          # ("Count the shard's tests"). A shard with no count gets the whole
+          # suite's pin, which its slice can't reach.
+          MIN_TESTS: ${{ matrix.shard_index && steps.e2e-inventory.outputs.tests || matrix.min_tests }}
         run: >-
           python ../../.github/scripts/validate_playwright_json.py
           --synthesize-invalid
-          --min-tests ${{ matrix.min_tests }}
+          --min-tests "$MIN_TESTS"
           ${{ matrix.known_failures && '--allow-known-failures' || '' }}
           test-results/results.json
 
@@ -773,7 +854,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: platform-frontend-e2e
-          name: e2e-${{ matrix.suite }}
+          name: e2e-${{ env.E2E_LEG }}
           files: ./autogpt_platform/frontend/coverage/e2e/cobertura-coverage.xml
           disable_search: true
 
@@ -781,7 +862,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-report-${{ matrix.suite }}
+          name: playwright-report-${{ env.E2E_LEG }}
           path: autogpt_platform/frontend/playwright-report
           if-no-files-found: ignore
           retention-days: 3
@@ -790,7 +871,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-test-results-${{ matrix.suite }}
+          name: playwright-test-results-${{ env.E2E_LEG }}
           path: |
             autogpt_platform/frontend/test-results
             autogpt_platform/frontend/coverage/e2e/cobertura-coverage.xml

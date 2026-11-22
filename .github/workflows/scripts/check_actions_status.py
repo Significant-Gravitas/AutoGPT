@@ -14,16 +14,22 @@ PASSING_CONCLUSIONS = {"success", "skipped", "neutral"}
 # through this check. Other review bots report "neutral" in that case, which
 # PASSING_CONCLUSIONS already accepts; this is the same treatment for one
 # that does not.
-# The journeys e2e leg is advisory while it beds in: its failures show on the
-# PR but don't block merging. Drop it from here once it has proven stable.
 ADVISORY_CHECK_RUNS = {
     "copilot-pull-request-reviewer",
-    "end-to-end tests (journeys)",
 }
+# The journeys e2e legs, one per Playwright shard ("end-to-end tests
+# (journeys 1/2)"), are advisory while they bed in: their failures show on the
+# PR but don't block merging. Matched by prefix, because a shard's name holds
+# the shard count and adding a shard renames every leg. This check runs the
+# base branch's copy, so a list of exact names would leave a renamed leg
+# blocking until the rename reached the base. Drop this once they have proven
+# stable.
+ADVISORY_CHECK_RUN_PREFIXES = ("end-to-end tests (journeys",)
 
 
 def is_advisory(check_run: Dict) -> bool:
-    return str(check_run.get("name")) in ADVISORY_CHECK_RUNS
+    name = str(check_run.get("name"))
+    return name in ADVISORY_CHECK_RUNS or name.startswith(ADVISORY_CHECK_RUN_PREFIXES)
 
 
 def get_environment_variables() -> Tuple[str, str, str, str, str]:
