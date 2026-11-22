@@ -14,11 +14,14 @@ PASSING_CONCLUSIONS = {"success", "skipped", "neutral"}
 # through this check. Other review bots report "neutral" in that case, which
 # PASSING_CONCLUSIONS already accepts; this is the same treatment for one
 # that does not.
-# The journeys e2e leg is advisory while it beds in: its failures show on the
-# PR but don't block merging. Drop it from here once it has proven stable.
+# The journeys e2e legs, one per Playwright shard, are advisory while they bed
+# in: their failures show on the PR but don't block merging. Drop them from
+# here once they have proven stable. A shard's name holds the shard count, so
+# adding a shard renames every leg.
 ADVISORY_CHECK_RUNS = {
     "copilot-pull-request-reviewer",
-    "end-to-end tests (journeys)",
+    "end-to-end tests (journeys 1/2)",
+    "end-to-end tests (journeys 2/2)",
 }
 
 

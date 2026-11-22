@@ -127,7 +127,7 @@ deployed app, whose AutoPilot uses real models.
 billing, paywall or third-party hosts), so it fails by design on the hosted
 configuration. The config runs it only in the `selfhost` project, against a
 self-hosted build (see the spec's header); every other journey is in
-`hosted`. CI's journeys leg runs `--project hosted`.
+`hosted`. CI's journeys legs run `--project hosted`.
 
 **TODO:** a `journeys-selfhost` CI leg (compose stack with hosted flags off,
 no `CHAT_TEST_MODE`, since the spec expects "No AI connection") would run it
@@ -165,25 +165,53 @@ PLAYWRIGHT_BASE_URL=https://autogpt-pr-<N>.vercel.app \
 
 ## In CI
 
-Job `end-to-end tests (journeys)` in `.github/workflows/platform-fullstack-ci.yml`
-is a matrix leg beside the smoke suite, on its own runner, so it adds no wall
-clock. It's **advisory** for now (`ADVISORY_CHECK_RUNS` in
+Journeys run as two Playwright shards, jobs `end-to-end tests (journeys 1/2)`
+and `end-to-end tests (journeys 2/2)` in
+`.github/workflows/platform-fullstack-ci.yml`. Each is a matrix leg beside the
+smoke suite with its own runner and stack, so they add no wall clock. They're
+**advisory** for now (`ADVISORY_CHECK_RUNS` in
 `.github/workflows/scripts/check_actions_status.py`): a failure shows on the
-PR but doesn't block merging. It becomes blocking once it has proven stable.
+PR but doesn't block merging. They become blocking once they have proven
+stable.
 
-- Raise `min_tests` for the journeys leg in the workflow matrix when you add
-  tests; `.github/scripts/test_e2e_seed_cache_contract.py` pins it.
-- Reports and traces: artifacts `playwright-report-journeys` and
-  `playwright-test-results-journeys`.
+- **Shards:** the two legs are identical except `shard_index`; Playwright
+  gets `--shard=<shard_index>/<shard_total>`. It cuts the listed tests, in
+  file order, into slices of equal count, so shard 1 runs the first half of
+  the list. The slices hold equal counts, not equal times: the long journeys
+  aren't spread evenly through the list.
+- **The floor:** `min_tests` on the journeys legs is the pinned inventory of
+  the whole suite, the same number on every leg, not a per-shard count. Raise
+  it when you add journeys (`.github/scripts/test_e2e_seed_cache_contract.py`
+  pins it too). Count them with
+  `pnpm exec playwright test --config playwright.journeys.config.ts --project hosted --list`;
+  the last line reads `Total: N tests in M files`, and listing needs no
+  stack. Each leg runs that listing while its stack builds, in "Count the
+  shard's tests", and fails if the total is below `min_tests`. It then lists
+  its own shard, with the run's `--shard` and `--repeat-each`, and
+  `validate_playwright_json.py` gets that count as `--min-tests`, so a shard
+  that runs fewer tests than it listed fails too.
+- **Reports and traces:** each shard uploads its own pair of artifacts,
+  `playwright-report-journeys-<shard_index>` and
+  `playwright-test-results-journeys-<shard_index>`. A test's trace and
+  `results.json` entry are in the artifact of the shard that ran it; download
+  both with
+  `gh run download <run> -p 'playwright-test-results-journeys-*'`.
 - Check a new journey for flakiness before relying on it: dispatch the
   workflow on your branch with `journeys_repeat_each`, e.g.
   `gh workflow run platform-fullstack-ci.yml --ref <branch> -f journeys_repeat_each=10`.
-- Keep the leg's Playwright step under ~200 s at 4 workers. Past that, shard
-  it into more legs with `--shard=i/N` rather than lengthening it.
+  The repeated list is split the same way, so each journey still runs 10
+  times across the shards.
+- **When to add a shard:** keep each shard's Playwright step under ~200 s at
+  4 workers. When the slower one goes past that, add a shard rather than
+  lengthening it: copy a journeys leg with the next `shard_index`, set
+  `shard_total` on every leg to the new count, and replace the names in
+  `ADVISORY_CHECK_RUNS`. Every leg's name changes (`journeys 1/2` becomes
+  `journeys 1/3`). Each shard costs a runner that builds its own stack, about
+  10 minutes before the first test.
 
 ## Hosted vs self-hosted configuration
 
-The journeys leg runs as close to the hosted product as one compose stack
+The journeys legs run as close to the hosted product as one compose stack
 allows. Flag values live in `hosted-flags.json`, read by both sides:
 
 - **Backend:** `.github/scripts/hosted_journeys_env.py` turns them into
