@@ -2,9 +2,11 @@
 
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import Any
 
 from .invoice import cost_usd
 from .scripts import (
+    Capture,
     Expectation,
     Marker,
     Script,
@@ -44,6 +46,16 @@ class Conversation:
     latest_user_text: str = ""
     # The prompt-cache lifetime the request asked for, if any.
     cache_ttl: str | None = None
+    # The system prompt's text.
+    system_text: str = ""
+
+    def marker(self) -> Marker | None:
+        """The marker that picks the script: the one in the user's messages,
+        else one in the system prompt. A turn the platform sends itself (an
+        expert's kickoff) has no user-typed marker, so a journey puts one in
+        text the user controls that the system prompt carries (an expert's
+        writing sample)."""
+        return find_marker(self.user_text) or find_marker(self.system_text)
 
 
 @dataclass(frozen=True)
@@ -98,7 +110,7 @@ def _plan(conversation: Conversation, scripts_dir: Path) -> Plan:
     answer. A request offering tools is a model turn and must belong to a
     script.
     """
-    marker = find_marker(conversation.user_text)
+    marker = conversation.marker()
     script = load_script(scripts_dir, marker.script) if marker else None
     if not conversation.offered_tools:
         title = script.title if script else "Scripted reply"
@@ -131,22 +143,62 @@ def _plan(conversation: Conversation, scripts_dir: Path) -> Plan:
         marker=marker,
         turn_index=index,
         turn_count=len(script.turns),
-        reply=_reply(script, index, turn, conversation.offered_tools),
+        reply=_reply(script, index, turn, conversation),
         checks=_checks(turn, conversation),
     )
 
 
-def _reply(script: Script, index: int, turn: Turn, offered: tuple[str, ...]) -> Reply:
+def _reply(script: Script, index: int, turn: Turn, conversation: Conversation) -> Reply:
     return Reply(
         text=turn.text,
         tool_calls=tuple(
-            (_offered_name(script, index, call.name, offered), call.input)
+            (
+                _offered_name(script, index, call.name, conversation.offered_tools),
+                _arguments(script, index, call.input, conversation.tool_results),
+            )
             for call in turn.tool_calls
         ),
         usage=turn.usage,
         chunk_words=turn.chunk_words,
         delay_ms=turn.delay_ms,
         hold_after_words=turn.hold_after_words,
+    )
+
+
+def _arguments(
+    script: Script, index: int, value: Any, results: tuple[ToolResult, ...]
+) -> Any:
+    """The tool call's input, with each value the script reads from a tool
+    result (a ``Capture``) filled in from this request's results."""
+    if isinstance(value, Capture):
+        return _captured(script, index, value, results)
+    if isinstance(value, dict):
+        return {k: _arguments(script, index, v, results) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_arguments(script, index, v, results) for v in value]
+    return value
+
+
+def _captured(
+    script: Script, index: int, capture: Capture, results: tuple[ToolResult, ...]
+) -> str:
+    """What the capture's pattern reads from a result of its tool, the way a
+    model reads an id out of what a tool just returned. *results* are only
+    the ones this request sends back, for the last turn's calls, so an
+    earlier turn's result (and its possibly stale id) is never read. Of
+    several calls to the tool in that turn, the last one that matches wins."""
+    for result in reversed(results):
+        if result.tool != capture.tool:
+            continue
+        for match in capture.pattern.finditer(result.content):
+            # An optional group can match without taking part: no value.
+            if (value := match.group(1)) is not None:
+                return value
+    raise ScriptError(
+        f"script {script.name!r} turn {index + 1} reads an argument from a "
+        f"{capture.tool!r} result, but none in this request matches "
+        f"{capture.pattern.pattern!r}. Results: "
+        f"{[(r.tool, r.content[:200]) for r in results]}"
     )
 
 

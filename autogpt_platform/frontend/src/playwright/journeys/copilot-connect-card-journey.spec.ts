@@ -142,7 +142,7 @@ test.describe("copilot connect card journey", () => {
   });
 
   test(
-    "after a reload, the finished step's connect card stays gone and nothing offers to run the step again",
+    "after a reload, nothing offers to run the finished step again, and its connect card stays gone",
     {
       annotation: {
         type: "issue",
@@ -186,16 +186,23 @@ test.describe("copilot connect card journey", () => {
         await expect(
           page.getByRole("textbox", { name: "Chat message input" }),
         ).toBeEnabled();
-        // A known failure from here on, so anything above failing still
-        // fails the run.
+        // The row names the saved key once it has picked it, which is when a
+        // Proceed would show if the finished step offered one.
+        await expect(
+          reloaded.getByText(newKey.keyName, { exact: true }),
+          "the reloaded card's row should name the saved key",
+        ).toBeVisible();
+        await expect(
+          reloaded.getByRole("button", { name: /^(Connect|Proceed)$/ }),
+          "nothing should offer to run the finished step again",
+        ).toHaveCount(0, { timeout: REDO_CHECK_TIMEOUT });
+        // Whether a finished card shows at all is still open (#17253): a
+        // known failure from here on, so anything above failing still fails
+        // the run.
         test.fail(true, "#17253: the finished step's card comes back");
         await expect(
           connectCards(reloaded),
           "the finished step's connect card should not come back after a reload",
-        ).toHaveCount(0, { timeout: REDO_CHECK_TIMEOUT });
-        await expect(
-          reloaded.getByRole("button", { name: /^(Connect|Proceed)$/ }),
-          "nothing should offer to run the finished step again",
         ).toHaveCount(0, { timeout: REDO_CHECK_TIMEOUT });
       } finally {
         if (save.credential) await deleteCredential(page, save.credential);

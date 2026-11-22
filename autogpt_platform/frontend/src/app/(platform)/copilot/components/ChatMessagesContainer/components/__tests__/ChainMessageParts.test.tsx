@@ -60,6 +60,7 @@ describe("ChainMessageParts", () => {
 
     render(
       <ChainMessageParts
+        isLatestAnswer
         parts={parts}
         messageID="message"
         isCurrentlyStreaming
@@ -97,6 +98,7 @@ describe("ChainMessageParts", () => {
 
     render(
       <ChainMessageParts
+        isLatestAnswer
         parts={parts}
         messageID="message"
         isCurrentlyStreaming={false}
@@ -127,6 +129,7 @@ describe("ChainMessageParts", () => {
 
     render(
       <ChainMessageParts
+        isLatestAnswer
         parts={parts}
         messageID="message"
         isCurrentlyStreaming={true}
@@ -157,6 +160,7 @@ describe("ChainMessageParts", () => {
 
     render(
       <ChainMessageParts
+        isLatestAnswer
         parts={parts}
         messageID="message"
         isCurrentlyStreaming={false}
@@ -181,6 +185,7 @@ describe("ChainMessageParts", () => {
 
     const { rerender } = render(
       <ChainMessageParts
+        isLatestAnswer
         parts={parts}
         messageID="message"
         isCurrentlyStreaming
@@ -188,6 +193,7 @@ describe("ChainMessageParts", () => {
     );
     rerender(
       <ChainMessageParts
+        isLatestAnswer
         parts={parts}
         messageID="message"
         isCurrentlyStreaming={false}
@@ -221,6 +227,7 @@ describe("ChainMessageParts", () => {
     const { rerender } = render(
       <HeldOutcomesContext.Provider value={getHeldOutcomes([turn])}>
         <ChainMessageParts
+          isLatestAnswer
           parts={parts}
           messageID="a1"
           isCurrentlyStreaming={false}
@@ -234,6 +241,7 @@ describe("ChainMessageParts", () => {
     rerender(
       <HeldOutcomesContext.Provider value={getHeldOutcomes([turn, lateResult])}>
         <ChainMessageParts
+          isLatestAnswer
           parts={parts}
           messageID="a1"
           isCurrentlyStreaming={false}
