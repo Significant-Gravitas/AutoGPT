@@ -44,7 +44,8 @@ export function useRemoveTriggerAgent({
       mutation: {
         onSuccess: async () => {
           toast({ title: "Trigger removed" });
-          queryClient.invalidateQueries({
+          // Before onDeleted, so the next trigger is picked from what's left.
+          await queryClient.refetchQueries({
             queryKey: getGetV2ListTriggerAgentsQueryKey(parentAgent.id),
           });
           setShowDialog(false);

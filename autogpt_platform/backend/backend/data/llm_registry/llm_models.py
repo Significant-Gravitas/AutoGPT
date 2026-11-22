@@ -100,6 +100,13 @@ class ModelMetadata(NamedTuple):
     price_tier: Literal[1, 2, 3]
 
 
+# Far more "/" than any spelling of a model has: an id has at most one, and a
+# provider prefix adds one ("openrouter/openai/gpt-oss-120b"). A value with
+# more names no model. ``LLMModel._missing_`` strips one prefix per recursion,
+# so the enum and llm_model_named both refuse such a value up front.
+_MAX_INPUT_SLASHES = 16
+
+
 class LLMModelMeta(EnumMeta):
     pass
 
@@ -120,7 +127,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
         2. Generic provider prefix strip — e.g.
            ``anthropic/claude-sonnet-4-6`` → ``claude-sonnet-4-6``.
         """
-        if not isinstance(value, str):
+        if not isinstance(value, str) or value.count("/") > _MAX_INPUT_SLASHES:
             return None
         alias = _OPENROUTER_ALIASES.get(value)
         if alias is not None:
@@ -438,6 +445,9 @@ def _picker_hidden_slugs(payload: "CatalogPayload") -> frozenset[str]:
 
 
 _PICKER_HIDDEN_SLUGS = _picker_hidden_slugs(get_catalog())
+_SWITCHED_OFF_SLUGS = frozenset(
+    m.slug for m in get_catalog().models if not m.is_enabled
+)
 
 
 def _retired_model_fallbacks(
@@ -485,16 +495,29 @@ def _today() -> date:
     return datetime.now(timezone.utc).date()
 
 
+# The most "/" in any model id or OpenRouter alias. ``_missing_`` strips one
+# provider prefix per recursion and stops at the first part it knows, and no
+# part with more "/" than this can be one.
+_MAX_KNOWN_NAME_SLASHES = max(
+    name.count("/")
+    for name in (*(model.value for model in LLMModel), *_OPENROUTER_ALIASES)
+)
+
+
 def llm_model_named(value: object) -> "LLMModel | None":
     """The ``LLMModel`` *value* names, in any spelling the enum takes
     (``openai/gpt-5-2025-08-07`` too); None when it names none."""
-    if not isinstance(value, str):
+    if not isinstance(value, str) or value.count("/") > _MAX_INPUT_SLASHES:
         return None
+    # The enum resolves *value* as it resolves its end with _MAX_KNOWN_NAME_SLASHES
+    # "/", since every longer part names nothing. Handing it only that end
+    # keeps a chain of prefixes from costing one recursion each.
+    _, *end = value.rsplit("/", _MAX_KNOWN_NAME_SLASHES + 1)
+    if len(end) > _MAX_KNOWN_NAME_SLASHES:
+        value = "/".join(end)
     try:
         return LLMModel(value)
-    except (ValueError, RecursionError):
-        # Hundreds of provider prefixes recurse through ``_missing_``. Such a
-        # value is unknown, and the block's input check refuses it as before.
+    except ValueError:
         return None
 
 
@@ -525,6 +548,14 @@ def retired_model_fallback(value: object) -> "LLMModel | None":
     if shutdown_at is not None and _today() < shutdown_at:
         return None
     return fallback
+
+
+def is_switched_off(value: object) -> bool:
+    """Whether *value* names, in any spelling the enum takes, a model the
+    catalog has switched off (``is_enabled=False``). A block still runs one,
+    so stored workflows keep working, but new work must not pick one."""
+    model = llm_model_named(value)
+    return model is not None and model.value in _SWITCHED_OFF_SLUGS
 
 
 def _default_model_from_catalog() -> LLMModel:

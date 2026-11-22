@@ -1,3 +1,4 @@
+import type { BrowserContext } from "@playwright/test";
 import { PW_FLAG_OVERRIDES_STORAGE_KEY } from "../../services/feature-flags/pw-flag-overrides";
 import { expect, test as base } from "../coverage-fixture";
 import { type ExpectedResponse, watchForUnexpectedErrors } from "./guard";
@@ -23,19 +24,7 @@ export const test = base.extend<JourneyOptions & JourneyFixtures>({
 
   journeyGuard: [
     async ({ context, expectedResponses, flagOverrides }, use) => {
-      await context.addInitScript(
-        ({ key, value }) => {
-          try {
-            window.localStorage.setItem(key, value);
-          } catch {
-            // Opaque origins (about:blank, data:) have no storage.
-          }
-        },
-        {
-          key: PW_FLAG_OVERRIDES_STORAGE_KEY,
-          value: JSON.stringify({ ...hostedFlags, ...flagOverrides }),
-        },
-      );
+      await serveHostedFlags(context, flagOverrides);
       const guard = watchForUnexpectedErrors(context, expectedResponses);
 
       await use();
@@ -55,5 +44,29 @@ export const test = base.extend<JourneyOptions & JourneyFixtures>({
     await provide(await provisionJourneyUser(page));
   },
 });
+
+/**
+ * Serves the hosted flag values, with `overrides`, to every page `context`
+ * opens. A journey's own context gets them already; give them to any other
+ * context it makes, such as a second user's.
+ */
+export async function serveHostedFlags(
+  context: BrowserContext,
+  overrides: Record<string, unknown>,
+) {
+  await context.addInitScript(
+    ({ key, value }) => {
+      try {
+        window.localStorage.setItem(key, value);
+      } catch {
+        // Opaque origins (about:blank, data:) have no storage.
+      }
+    },
+    {
+      key: PW_FLAG_OVERRIDES_STORAGE_KEY,
+      value: JSON.stringify({ ...hostedFlags, ...overrides }),
+    },
+  );
+}
 
 export { expect };

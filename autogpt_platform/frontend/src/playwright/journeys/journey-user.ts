@@ -39,14 +39,30 @@ const COMPLETED_ONBOARDING_STEPS = [
 export async function provisionJourneyUser(page: Page): Promise<JourneyUser> {
   const existingEmail = process.env.PLAYWRIGHT_JOURNEY_EMAIL;
   const existingPassword = process.env.PLAYWRIGHT_JOURNEY_PASSWORD;
-  const user =
-    existingEmail && existingPassword
-      ? await signIn(page, {
-          email: existingEmail,
-          password: existingPassword,
-          name: existingEmail.split("@")[0],
-        })
-      : await signUp(page, newJourneyUser());
+  if (!existingEmail || !existingPassword) {
+    return provisionNewJourneyUser(page);
+  }
+  const user = await signIn(page, {
+    email: existingEmail,
+    password: existingPassword,
+    name: existingEmail.split("@")[0],
+  });
+  return readyForTheApp(page, user);
+}
+
+/**
+ * Signs a brand-new user into the page's browser context, ready to use the
+ * app, even when PLAYWRIGHT_JOURNEY_EMAIL names an account: for the other
+ * people in a journey (an admin, a second user), who must never turn out to
+ * be its first user.
+ */
+export async function provisionNewJourneyUser(
+  page: Page,
+): Promise<JourneyUser> {
+  return readyForTheApp(page, await signUp(page, newJourneyUser()));
+}
+
+async function readyForTheApp(page: Page, user: JourneyUser) {
   // Before anything reads the tier: the backend caches it for minutes.
   if (user.id) await grantSubscriptionTier(user.id);
   await finishAccountSetup(page);
@@ -112,7 +128,12 @@ async function signUp(page: Page, user: JourneyUser) {
   return { ...user, id: body.user?.id };
 }
 
-async function signIn(page: Page, user: JourneyUser) {
+/**
+ * Signs an existing user in, giving the page's context a new session. Sign
+ * in again after changing the user's row: a session caches the user it
+ * started with for five minutes.
+ */
+export async function signIn(page: Page, user: JourneyUser) {
   const response = await page.request.post("/api/auth/sign-in/email", {
     headers: authHeaders(),
     data: { email: user.email, password: user.password },
@@ -157,6 +178,11 @@ export function authHeaders(): Record<string, string> {
     Origin: origin,
     "X-Forwarded-For": `10.${randomInt(256)}.${randomInt(256)}.${randomInt(1, 255)}`,
   };
+}
+
+/** Whether the journeys run against a stack on this machine, not a deployed one. */
+export function isLocalStack() {
+  return isLoopback(appOrigin());
 }
 
 function appOrigin() {

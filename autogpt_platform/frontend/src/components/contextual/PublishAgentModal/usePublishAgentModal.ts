@@ -2,18 +2,19 @@ import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission"
 import { useCallback, useEffect, useState } from "react";
 import { PublishAgentInfoInitialData } from "./components/AgentInfoStep/helpers";
 import { useRouter } from "next/navigation";
-import { emptyModalState } from "./helpers";
 import {
-  useGetV2GetMyAgents,
+  type AgentFormSource,
+  buildInitialFormData,
+  emptyModalState,
+} from "./helpers";
+import {
   useGetV2GetUserProfile,
-  useGetV2ListMySubmissions,
   getGetV2ListMySubmissionsQueryKey,
 } from "@/app/api/__generated__/endpoints/store/store";
-import { okData } from "@/app/api/helpers";
-import type { MyUnpublishedAgent } from "@/app/api/__generated__/models/myUnpublishedAgent";
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { useLiveListingCheck } from "./useLiveListingCheck";
 
 const defaultTargetState: PublishState = {
   isOpen: false,
@@ -60,6 +61,14 @@ export function usePublishAgentModal({
   const [initialData, setInitialData] =
     useState<PublishAgentInfoInitialData>(emptyModalState);
 
+  // The selected workflow's live listing, as the last check found it. Kept
+  // out of currentState: a parent that hands in a fresh targetState on every
+  // render would overwrite it.
+  const [liveSubmission, setLiveSubmission] = useState<StoreSubmission | null>(
+    null,
+  );
+  const listingCheck = useLiveListingCheck();
+
   const [_, setSelectedAgent] = useState<string | null>(null);
 
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(
@@ -74,17 +83,6 @@ export function usePublishAgentModal({
   const queryClient = useQueryClient();
   const { isLoggedIn } = useAuth();
 
-  // Fetch agent data for pre-populating form when agent is pre-selected
-  const { data: myAgents } = useGetV2GetMyAgents(undefined, {
-    query: {
-      enabled: isLoggedIn,
-    },
-  });
-  const { data: mySubmissions } = useGetV2ListMySubmissions(undefined, {
-    query: {
-      enabled: isLoggedIn,
-    },
-  });
   const { data: profile } = useGetV2GetUserProfile({
     query: {
       select: (x) => x.data as ProfileDetails,
@@ -109,95 +107,35 @@ export function usePublishAgentModal({
       setSelectedAgentId(preSelectedAgentId || null);
       setSelectedAgentVersion(preSelectedAgentVersion || null);
       setInitialData(emptyModalState);
+      setLiveSubmission(null);
       setHasOpened(true);
+      if (targetState.step === "info") checkPreSelectedAgent();
     } else if (!targetState.isOpen && hasOpened) {
+      // The page closed the dialog: a check still running would reopen it.
+      listingCheck.cancel();
       setHasOpened(false);
     }
   }, [targetState, preSelectedAgentId, preSelectedAgentVersion]);
 
-  // Pre-populate form data when modal opens with info step and pre-selected agent
-  useEffect(() => {
-    if (
-      !targetState?.isOpen ||
-      targetState.step !== "info" ||
-      !preSelectedAgentId ||
-      !preSelectedAgentVersion
-    )
-      return;
-    const agentsData = okData(myAgents);
-    const submissionsData = okData(mySubmissions);
-
-    if (!agentsData || !submissionsData) return;
-
-    // Find the agent data
-    const agent = agentsData.agents?.find(
-      (a: MyUnpublishedAgent) => a.graph_id === preSelectedAgentId,
-    );
-    if (!agent) return;
-
-    // Find published submission data for this agent (for updates)
-    const publishedSubmissionData = submissionsData.submissions
-      ?.filter(
-        (s: StoreSubmission) =>
-          s.status === "APPROVED" && s.graph_id === preSelectedAgentId,
-      )
-      .sort(
-        (a: StoreSubmission, b: StoreSubmission) =>
-          b.graph_version - a.graph_version,
-      )[0];
-
-    // Populate initial data (same logic as handleNextFromSelect)
-    const initialFormData: PublishAgentInfoInitialData = publishedSubmissionData
-      ? {
-          agent_id: preSelectedAgentId,
-          title: publishedSubmissionData.name,
-          subheader: publishedSubmissionData.sub_heading || "",
-          description: publishedSubmissionData.description,
-          instructions: publishedSubmissionData.instructions || "",
-          youtubeLink: publishedSubmissionData.video_url || "",
-          agentOutputDemo: publishedSubmissionData.agent_output_demo_url || "",
-          additionalImages: [
-            ...new Set(publishedSubmissionData.image_urls || []),
-          ].filter(Boolean) as string[],
-          category: publishedSubmissionData.categories?.[0] || "",
-          thumbnailSrc: agent.agent_image || "",
-          slug: publishedSubmissionData.slug,
-          recommendedScheduleCron: agent.recommended_schedule_cron || "",
-          changesSummary: publishedSubmissionData.changes_summary || "",
-        }
-      : {
-          ...emptyModalState,
-          agent_id: preSelectedAgentId,
-          title: agent.agent_name,
-          description: agent.description || "",
-          thumbnailSrc: agent.agent_image || "",
-          slug: agent.agent_name.replace(/ /g, "-"),
-          recommendedScheduleCron: agent.recommended_schedule_cron || "",
-        };
-
-    setInitialData(initialFormData);
-
-    // Update the state with the submission data if this is an update
-    if (publishedSubmissionData) {
-      setCurrentState((prevState) => ({
-        ...prevState,
-        submissionData: publishedSubmissionData,
-      }));
-    }
-  }, [
-    targetState,
-    preSelectedAgentId,
-    preSelectedAgentVersion,
-    myAgents,
-    mySubmissions,
-  ]);
+  // A dialog opened pre-scoped to a workflow starts on the listing form; build
+  // it once the workflow's live listing is known.
+  function checkPreSelectedAgent() {
+    if (!preSelectedAgentId) return;
+    const agentId = preSelectedAgentId;
+    listingCheck.checkPreSelectedAgent(agentId, (live, agent) => {
+      setLiveSubmission(live);
+      setInitialData(buildInitialFormData(agentId, agent, live ?? undefined));
+    });
+  }
 
   function handleClose() {
     // Reset all internal state
+    listingCheck.cancel();
     setSelectedAgent(null);
     setSelectedAgentId(null);
     setSelectedAgentVersion(null);
     setInitialData(emptyModalState);
+    setLiveSubmission(null);
 
     // Invalidate submissions query to refresh the data after modal closes
     queryClient.invalidateQueries({
@@ -214,59 +152,27 @@ export function usePublishAgentModal({
   }
 
   function handleAgentSelect(agentName: string) {
+    // A check still running is for the workflow picked before this one.
+    listingCheck.cancel();
     setSelectedAgent(agentName);
   }
 
   function handleNextFromSelect(
     agentId: string,
     agentVersion: number,
-    agentData: {
-      name: string;
-      description: string;
-      imageSrc: string;
-      recommendedScheduleCron: string | null;
-    },
-    publishedSubmissionData?: StoreSubmission | null,
+    agentData: AgentFormSource,
   ) {
-    // Pre-populate with published data if this is an update, otherwise use agent data
-    const initialFormData: PublishAgentInfoInitialData = publishedSubmissionData
-      ? {
-          agent_id: agentId,
-          title: publishedSubmissionData.name,
-          subheader: publishedSubmissionData.sub_heading || "",
-          description: publishedSubmissionData.description,
-          instructions: publishedSubmissionData.instructions || "",
-          youtubeLink: publishedSubmissionData.video_url || "",
-          agentOutputDemo: publishedSubmissionData.agent_output_demo_url || "",
-          additionalImages: [
-            ...new Set(publishedSubmissionData.image_urls || []),
-          ].filter(Boolean) as string[],
-          category: publishedSubmissionData.categories?.[0] || "", // Take first category
-          thumbnailSrc: agentData.imageSrc, // Use current agent image
-          slug: publishedSubmissionData.slug,
-          recommendedScheduleCron: agentData.recommendedScheduleCron || "",
-          changesSummary: publishedSubmissionData.changes_summary || "", // Pre-populate with existing changes summary
-        }
-      : {
-          ...emptyModalState,
-          agent_id: agentId,
-          title: agentData.name,
-          description: agentData.description,
-          thumbnailSrc: agentData.imageSrc,
-          slug: agentData.name.replace(/ /g, "-"),
-          recommendedScheduleCron: agentData.recommendedScheduleCron || "",
-        };
-
-    setInitialData(initialFormData);
-
-    updateState({
-      ...currentState,
-      step: "info",
-      submissionData: publishedSubmissionData || null,
+    // The backend files a submission for an already-listed workflow as its
+    // listing's next version, so ask for the live one before opening the form.
+    listingCheck.checkPickedAgent(agentId, (live) => {
+      setLiveSubmission(live);
+      setInitialData(
+        buildInitialFormData(agentId, agentData, live ?? undefined),
+      );
+      updateState({ ...currentState, step: "info", submissionData: null });
+      setSelectedAgentId(agentId);
+      setSelectedAgentVersion(agentVersion);
     });
-
-    setSelectedAgentId(agentId);
-    setSelectedAgentVersion(agentVersion);
   }
 
   function handleSuccessFromInfo(submissionData: any) {
@@ -318,6 +224,7 @@ export function usePublishAgentModal({
     handleGoToBuilder,
     handleSuccessFromInfo,
     handleBack,
+    handleRetryListingCheck: checkPreSelectedAgent,
     // state
     currentState,
     updateState,
@@ -325,5 +232,10 @@ export function usePublishAgentModal({
     selectedAgentId,
     selectedAgentVersion,
     creatorUsername,
+    isMarketplaceUpdate: !!liveSubmission,
+    // A pre-scoped dialog has no form to show until its check answers.
+    isInfoFormReady: !!initialData.agent_id || !preSelectedAgentId,
+    isCheckingListing: listingCheck.isChecking,
+    listingCheckFailed: listingCheck.hasFailed,
   };
 }

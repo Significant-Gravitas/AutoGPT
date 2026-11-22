@@ -1,36 +1,28 @@
 "use client";
 
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { Key, storage } from "@/services/storage/local-storage";
-import { useCallback, useEffect, useState } from "react";
 import { SecurityCheckIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { getSafetyChecks, markSafetyPopupSeen } from "./helpers";
 
 interface Props {
-  agentId: string;
+  agent: LibraryAgent;
   onAcknowledge: () => void;
   isOpen: boolean;
 }
 
-export function AIAgentSafetyPopup({ agentId, onAcknowledge, isOpen }: Props) {
+export function AIAgentSafetyPopup({ agent, onAcknowledge, isOpen }: Props) {
   function handleAcknowledge() {
-    // Add this agent to the list of agents for which popup has been shown
-    const seenAgentsJson = storage.get(Key.AI_AGENT_SAFETY_POPUP_SHOWN);
-    const seenAgents: string[] = seenAgentsJson
-      ? JSON.parse(seenAgentsJson)
-      : [];
-
-    if (!seenAgents.includes(agentId)) {
-      seenAgents.push(agentId);
-      storage.set(Key.AI_AGENT_SAFETY_POPUP_SHOWN, JSON.stringify(seenAgents));
-    }
-
+    markSafetyPopupSeen(agent.id);
     onAcknowledge();
   }
 
   if (!isOpen) return null;
+
+  const checks = getSafetyChecks(agent);
 
   return (
     <Dialog
@@ -53,11 +45,18 @@ export function AIAgentSafetyPopup({ agentId, onAcknowledge, isOpen }: Props) {
             external systems.
           </Text>
 
-          <Text variant="body" tone="body" className="mb-8">
-            AutoGPT includes safety checks so you&apos;ll always have the
-            opportunity to review and approve sensitive actions before they
-            happen.
-          </Text>
+          {checks.sensitiveActions ? (
+            <Text variant="body" tone="body" className="mb-8">
+              AutoGPT includes safety checks so you&apos;ll always have the
+              opportunity to review and approve sensitive actions before they
+              happen.
+            </Text>
+          ) : (
+            <Text variant="body" tone="body" className="mb-8">
+              This workflow will pause at its human-in-the-loop blocks and wait
+              for your review before continuing.
+            </Text>
+          )}
 
           <Button
             variant="primary"
@@ -71,36 +70,4 @@ export function AIAgentSafetyPopup({ agentId, onAcknowledge, isOpen }: Props) {
       </Dialog.Content>
     </Dialog>
   );
-}
-
-export function useAIAgentSafetyPopup(
-  agentId: string,
-  hasSensitiveAction: boolean,
-  hasHumanInTheLoop: boolean,
-) {
-  const [shouldShowPopup, setShouldShowPopup] = useState(false);
-  const [hasChecked, setHasChecked] = useState(false);
-
-  useEffect(() => {
-    if (hasChecked) return;
-
-    const seenAgentsJson = storage.get(Key.AI_AGENT_SAFETY_POPUP_SHOWN);
-    const seenAgents: string[] = seenAgentsJson
-      ? JSON.parse(seenAgentsJson)
-      : [];
-    const hasSeenPopupForThisAgent = seenAgents.includes(agentId);
-    const isRelevantAgent = hasSensitiveAction || hasHumanInTheLoop;
-
-    setShouldShowPopup(!hasSeenPopupForThisAgent && isRelevantAgent);
-    setHasChecked(true);
-  }, [agentId, hasSensitiveAction, hasHumanInTheLoop, hasChecked]);
-
-  const dismissPopup = useCallback(() => {
-    setShouldShowPopup(false);
-  }, []);
-
-  return {
-    shouldShowPopup,
-    dismissPopup,
-  };
 }
