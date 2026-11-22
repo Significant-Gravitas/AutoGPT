@@ -160,8 +160,9 @@ app opens the fake's checkout page, **Pay** sends the platform a signed
 - `stripeEvents` lists the events about a session with each delivery's HTTP
   status from the platform; `deliverEvent` sends one again, as Stripe
   retries, and `sendEvent` sends a new event type about it.
-- `unservedStripeRequests` lists Stripe calls the fake doesn't model; a
-  journey that buys something checks it's empty.
+- `unservedStripeRequests` lists Stripe calls the fake doesn't model since a
+  `stripeRequestCursor` the journey took when it started; a journey that buys
+  something checks it's empty.
 
 They skip against a deployed app, whose Stripe is real (test mode on
 previews).

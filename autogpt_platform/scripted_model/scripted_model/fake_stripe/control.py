@@ -10,14 +10,18 @@
   for one payment. It is delivered at once, held object or not.
 - ``POST /__stripe__/hold?object=<id>``: keep the events the object's changes
   raise from now on (paying for a session) until a journey delivers them.
-- ``GET /__stripe__/requests?unserved=true``: API requests the fake doesn't
-  model.
+- ``GET /__stripe__/requests?unserved=true&after=<n>``: API requests the
+  fake doesn't model, numbered above ``n``; without ``unserved``, every
+  recent request.
+- ``GET /__stripe__/requests/cursor``: the latest request's number, for a
+  journey to read at its start and pass as ``after``.
 """
 
 import json
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qs
 
+from .forms import as_int
 from .responses import Response
 
 if TYPE_CHECKING:
@@ -46,7 +50,11 @@ def handle(
         return Response.json(200, {"held": object_id})
     if method == "GET" and parts == ["requests"]:
         unserved = params.get("unserved") == "true"
-        return Response.json(200, {"requests": fake.requests(unserved_only=unserved)})
+        after = as_int(params.get("after"), 0)
+        requests = fake.requests(unserved_only=unserved, after=after)
+        return Response.json(200, {"requests": requests})
+    if method == "GET" and parts == ["requests", "cursor"]:
+        return Response.json(200, {"cursor": fake.last_request()})
     return _missing(f"nothing serves {method} {path}")
 
 

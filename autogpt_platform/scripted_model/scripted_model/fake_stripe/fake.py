@@ -29,7 +29,8 @@ logger = logging.getLogger("scripted_model.fake_stripe")
 API_PREFIX = "/stripe/v1/"
 PAGE_PREFIXES = ("/stripe/checkout/", "/stripe/billing_portal/")
 CONTROL_PREFIX = "/__stripe__/"
-# Enough for a journeys run; the oldest requests go first.
+# Enough for a journeys run; the oldest requests go first. Unserved requests
+# are also kept apart and never dropped, so a journey always sees them.
 JOURNAL_LIMIT = 2000
 
 
@@ -46,6 +47,8 @@ class FakeStripe:
         self.api = StripeApi(self.store, public_url.rstrip("/"))
         self.checkout = Checkout(self.store, self.events)
         self._requests: deque[dict[str, Any]] = deque(maxlen=JOURNAL_LIMIT)
+        self._unserved: list[dict[str, Any]] = []
+        self._last_seq = 0
         self._requests_lock = threading.Lock()
 
     @classmethod
@@ -74,12 +77,19 @@ class FakeStripe:
             return control.handle(self, method, path, query, body)
         return Response.json(404, {"error": {"message": f"nothing serves {path}"}})
 
-    def requests(self, unserved_only: bool = False) -> list[dict[str, Any]]:
-        """The platform's API requests, oldest first."""
+    def requests(
+        self, unserved_only: bool = False, after: int = 0
+    ) -> list[dict[str, Any]]:
+        """The platform's API requests numbered above ``after``, oldest first."""
         with self._requests_lock:
-            return [
-                dict(r) for r in self._requests if not (unserved_only and r["served"])
-            ]
+            journal = self._unserved if unserved_only else self._requests
+            return [dict(r) for r in journal if r["seq"] > after]
+
+    def last_request(self) -> int:
+        """The number of the latest API request: a journey's cursor, to look
+        only at requests made after it."""
+        with self._requests_lock:
+            return self._last_seq
 
     def _api(
         self,
@@ -94,9 +104,17 @@ class FakeStripe:
             method, path, decode(encoded), headers
         )
         with self._requests_lock:
-            self._requests.append(
-                {"method": method, "path": path, "status": status, "served": served}
-            )
+            self._last_seq += 1
+            entry = {
+                "seq": self._last_seq,
+                "method": method,
+                "path": path,
+                "status": status,
+                "served": served,
+            }
+            self._requests.append(entry)
+            if not served:
+                self._unserved.append(entry)
         log = logger.info if served else logger.warning
         log(
             "stripe %s %s -> %s%s",

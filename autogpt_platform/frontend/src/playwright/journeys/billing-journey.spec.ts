@@ -7,6 +7,7 @@ import {
   requireFakeStripe,
   sendEvent,
   stripeEvents,
+  stripeRequestCursor,
   unservedStripeRequests,
 } from "./fake-stripe";
 import { expect, test } from "./fixtures";
@@ -35,6 +36,7 @@ test.describe("billing journey", () => {
     async ({ page, journeyUser: _user }) => {
       await requireFakeStripe();
       const unexpected = watchForUnexpectedErrors(page.context(), []);
+      const stripeCursor = await stripeRequestCursor();
       const before = await getCreditBalance(page);
       await openAutomationCredits(page);
       await expect(balance(page, before)).toBeVisible();
@@ -73,23 +75,25 @@ test.describe("billing journey", () => {
       await page.reload();
       const creditsTab = page.getByRole("tab", { name: "Automation Credits" });
       await expect(creditsTab).toBeVisible();
-      const reloadedOnCredits =
-        (await creditsTab.getAttribute("aria-selected")) === "true";
-      await creditsTab.click();
-      await expectAddedOnce(page, before, paymentIntent(completed));
-      expect(await unservedStripeRequests()).toEqual([]);
+      // A fresh load of Automation Credits, in a page of its own: this one
+      // stays as the reload left it, for the pinned check at the end.
+      const credits = await page.context().newPage();
+      await openAutomationCredits(credits);
+      await expectAddedOnce(credits, before, paymentIntent(completed));
+      await credits.close();
+      expect(await unservedStripeRequests(stripeCursor)).toEqual([]);
 
       // A known failure from here on, so anything above failing still fails
       // the run.
-      await expectNoUnexpectedErrors(unexpected);
+      await expectNothingFailedYet(unexpected);
       test.fail(
         true,
         "#17270: a reload after buying credits opens the Subscription tab",
       );
-      expect(
-        reloadedOnCredits,
+      await expect(
+        creditsTab,
         "the reload should stay on Automation Credits, where the toast said the credits would appear",
-      ).toBe(true);
+      ).toHaveAttribute("aria-selected", "true", { timeout: 5_000 });
     },
   );
 
@@ -105,6 +109,7 @@ test.describe("billing journey", () => {
     async ({ page, journeyUser: _user }) => {
       await requireFakeStripe();
       const unexpected = watchForUnexpectedErrors(page.context(), []);
+      const stripeCursor = await stripeRequestCursor();
       const before = await getCreditBalance(page);
       await openAutomationCredits(page);
       const sessionID = await checkOut(page);
@@ -114,7 +119,9 @@ test.describe("billing journey", () => {
       // Against Stripe its balance read answers before that call, which waits
       // on Stripe; the fake answers at once, so hold the call until the read
       // is back, whatever the stack's speed.
-      const balanceRead = page.waitForResponse(isBalanceRead).catch(() => null);
+      const balanceRead = page
+        .waitForResponse(isBalanceRead, { timeout: 15_000 })
+        .catch(() => null);
       await page.route(`**${CREDITS_PATH}`, async (route) => {
         if (route.request().method() === "PATCH") await balanceRead;
         await route.fallback();
@@ -133,11 +140,12 @@ test.describe("billing journey", () => {
       const late = await deliverEvent(completed.id);
       expect(late.status, late.body).toBe(200);
       await expectInLedgerOnce(page, before, paymentIntent(completed));
-      expect(await unservedStripeRequests()).toEqual([]);
+      expect(await unservedStripeRequests(stripeCursor)).toEqual([]);
+      await page.unroute(`**${CREDITS_PATH}`);
 
       // A known failure from here on, so anything above failing still fails
       // the run.
-      await expectNoUnexpectedErrors(unexpected);
+      await expectNothingFailedYet(unexpected);
       test.fail(
         true,
         "#17269: the page keeps the old balance after its return from checkout credits the top-up",
@@ -155,13 +163,17 @@ test.describe("billing journey", () => {
 });
 
 /**
- * The journey guard's check, made before a known failure is pinned. The
- * guard's own check runs after the test, where test.fail() would take an
- * unexpected error for the known failure.
+ * Checks made before a known failure is pinned, since test.fail() would take
+ * any other failure for it: nothing failed softly, and the journey guard has
+ * seen no unexpected error (its own check runs after the test).
  */
-async function expectNoUnexpectedErrors(
+async function expectNothingFailedYet(
   guard: ReturnType<typeof watchForUnexpectedErrors>,
 ) {
+  expect(
+    test.info().errors.map((error) => error.message),
+    "nothing before the known failure should have failed",
+  ).toEqual([]);
   const problems = await guard.collect();
   expect(
     problems,

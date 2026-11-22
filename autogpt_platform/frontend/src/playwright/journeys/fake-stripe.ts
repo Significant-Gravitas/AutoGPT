@@ -92,11 +92,23 @@ export async function sendEvent(
   return control("POST", "events", { type, object: objectID });
 }
 
-/** Stripe API calls the platform made that the fake doesn't model. */
-export async function unservedStripeRequests(): Promise<
-  { method: string; path: string; status: number }[]
-> {
-  const body = await control("GET", "requests?unserved=true");
+/**
+ * Where the fake's request journal is now. Take it at a journey's start, and
+ * give it to `unservedStripeRequests` to look only at the journey's calls.
+ */
+export async function stripeRequestCursor(): Promise<number> {
+  const body = await control("GET", "requests/cursor");
+  return body.cursor;
+}
+
+/**
+ * Stripe API calls the platform made after `cursor` that the fake doesn't
+ * model.
+ */
+export async function unservedStripeRequests(
+  cursor: number,
+): Promise<{ method: string; path: string; status: number }[]> {
+  const body = await control("GET", `requests?unserved=true&after=${cursor}`);
   return body.requests;
 }
 
@@ -104,6 +116,7 @@ async function control(method: string, path: string, body?: unknown) {
   const response = await fetch(`${FAKE_STRIPE_URL}/__stripe__/${path}`, {
     method,
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
   });
   expect(
     response.ok,
