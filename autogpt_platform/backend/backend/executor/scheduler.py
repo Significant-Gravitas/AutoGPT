@@ -11,7 +11,7 @@ import time
 import uuid
 from collections.abc import Callable, Mapping
 from concurrent.futures import Future
-from contextlib import nullcontext
+from contextlib import AbstractContextManager, nullcontext
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Protocol, Union
@@ -2709,8 +2709,8 @@ class GraphExecutionJobArgs(BaseModel):
     # True while the job is paused only because its expert was let go: set
     # when the archive pauses a running job, and re-hiring resumes exactly
     # the jobs carrying it. Any other pause or resume clears it, so one the
-    # user paused stays paused across the re-hire. Rows persisted before it
-    # read False, so an archive's pause from then is left paused too.
+    # user paused stays paused across the re-hire. Jobs stored without the
+    # field read False, so re-hire leaves them paused.
     paused_by_expert_archive: bool = False
 
 
@@ -3990,52 +3990,85 @@ class Scheduler(AppService):
         jobstore writes as a single row update: a concurrent reader sees the
         old schedule or the new one, never a mix. Omitted fields keep their
         current value, and a paused schedule stays paused.
+
+        New inputs are checked against the graph before the jobstore lock is
+        taken, since the check reads the database. The job is then read again
+        under the lock and the write built from that read, so a pause or
+        resume landing in between keeps its next run time and its archive
+        mark.
         """
-        job, info = self._authorized_job(schedule_id, user_id, action="update")
-        if not isinstance(info, GraphExecutionJobInfo):
-            raise NotFoundError(f"Workflow schedule #{schedule_id} not found.")
-
-        job_args = _updated_graph_job_args(
-            info,
-            name=name,
-            cron=cron,
-            input_data=input_data,
-            input_credentials=input_credentials,
-        )
         if input_data is not None or input_credentials is not None:
-            run_async(
-                execution_utils.validate_and_construct_node_execution_input(
-                    graph_id=job_args.graph_id,
-                    user_id=user_id,
-                    graph_inputs=job_args.input_data,
-                    graph_version=job_args.graph_version,
-                    graph_credentials_inputs=job_args.input_credentials,
-                )
+            self._validate_schedule_inputs(
+                schedule_id, user_id, input_data, input_credentials
             )
-
-        changes: dict[str, Any] = {"kwargs": job_args.model_dump(mode="json")}
-        if name:
-            changes["name"] = job_args.agent_name
-        if cron is not None or user_timezone:
-            trigger = _build_trigger(
-                cron=job_args.cron,
-                run_at=None,
-                user_timezone=user_timezone or info.timezone,
+        with self._jobstore_locked():
+            job, info = self._authorized_graph_job(schedule_id, user_id)
+            job_args = _updated_graph_job_args(
+                info,
+                name=name,
+                cron=cron,
+                input_data=input_data,
+                input_credentials=input_credentials,
             )
-            changes["trigger"] = trigger
-            if job.next_run_time is not None:
-                changes["next_run_time"] = trigger.get_next_fire_time(
-                    None, datetime.now(timezone.utc)
+            changes: dict[str, Any] = {"kwargs": job_args.model_dump(mode="json")}
+            if name:
+                changes["name"] = job_args.agent_name
+            if cron is not None or user_timezone:
+                trigger = _build_trigger(
+                    cron=job_args.cron,
+                    run_at=None,
+                    user_timezone=user_timezone or info.timezone,
                 )
-        updated = self.scheduler.modify_job(
-            schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
-        )
+                changes["trigger"] = trigger
+                if job.next_run_time is not None:
+                    changes["next_run_time"] = trigger.get_next_fire_time(
+                        None, datetime.now(timezone.utc)
+                    )
+            updated = self.scheduler.modify_job(
+                schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
+            )
         self._invalidate_jobs_cache()
         logger.info(
             f"Updated job {schedule_id}: cron '{job_args.cron}' in timezone "
             f"{_timezone_from_job(updated)}"
         )
         return GraphExecutionJobInfo.from_db(job_args, updated)
+
+    def _validate_schedule_inputs(
+        self,
+        schedule_id: str,
+        user_id: str,
+        input_data: GraphInput | None,
+        input_credentials: dict[str, CredentialsMetaInput] | None,
+    ) -> None:
+        """Check new inputs against the schedule's graph, an input left out at
+        its stored value. Runs without the jobstore lock, which would hold up
+        every pause, resume and fire while the check reads the database."""
+        _, info = self._authorized_graph_job(schedule_id, user_id)
+        merged = _updated_graph_job_args(
+            info,
+            name=None,
+            cron=None,
+            input_data=input_data,
+            input_credentials=input_credentials,
+        )
+        run_async(
+            execution_utils.validate_and_construct_node_execution_input(
+                graph_id=merged.graph_id,
+                user_id=user_id,
+                graph_inputs=merged.input_data,
+                graph_version=merged.graph_version,
+                graph_credentials_inputs=merged.input_credentials,
+            )
+        )
+
+    def _authorized_graph_job(
+        self, schedule_id: str, user_id: str
+    ) -> tuple[JobObj, GraphExecutionJobInfo]:
+        job, info = self._authorized_job(schedule_id, user_id, action="update")
+        if not isinstance(info, GraphExecutionJobInfo):
+            raise NotFoundError(f"Workflow schedule #{schedule_id} not found.")
+        return job, info
 
     def _authorized_job(
         self, schedule_id: str, user_id: str, *, action: str
@@ -4062,6 +4095,16 @@ class Scheduler(AppService):
             raise NotAuthorizedError("User ID does not match the job's user ID")
         return job, info
 
+    def _jobstore_locked(self) -> AbstractContextManager[Any]:
+        """APScheduler's jobstore lock, held from a read of a job to the write
+        built from it. Pause, resume and both edits hold it, so none of them
+        writes back state another has changed meanwhile. Reentrant: APScheduler
+        takes it again inside ``modify_job``, and for each pass over due jobs.
+
+        ``_jobstores_lock`` is private to APScheduler 3.11, and
+        ``scheduler_shutdown_test`` fails if an upgrade renames it."""
+        return self.scheduler._jobstores_lock
+
     @expose
     def pause_execution_schedule(
         self, schedule_id: str, user_id: str, for_expert_archive: bool = False
@@ -4072,7 +4115,8 @@ class Scheduler(AppService):
         ``get_execution_schedules`` already skips — so a paused schedule
         disappears from every read path while keeping its trigger, inputs
         and credentials intact for ``resume_execution_schedule``. Returns
-        False when it was already paused, so callers don't double-log.
+        whether this call stopped a running schedule, so callers don't
+        double-log.
 
         *for_expert_archive* is the archive flow pausing a graph schedule for
         re-hire: it marks the job ``paused_by_expert_archive``, but never one
@@ -4080,9 +4124,9 @@ class Scheduler(AppService):
         other pause clears the mark, even on a job already paused, so the
         schedule stays paused when the expert is hired again.
         """
-        # One lock from the read to the write: the mark goes back with the
-        # job's other kwargs, which an edit or another pause could change.
-        with self.scheduler._jobstores_lock:
+        # The mark goes back with the job's other kwargs, which an edit or
+        # another pause could change between the read and the write.
+        with self._jobstore_locked():
             job, info = self._authorized_job(schedule_id, user_id, action="pause")
             running = job.next_run_time is not None
             changes: dict[str, Any] = {"next_run_time": None} if running else {}
@@ -4126,7 +4170,7 @@ class Scheduler(AppService):
         ``paused_by_expert_archive`` mark) and otherwise returns False. Every
         resume clears the mark.
         """
-        with self.scheduler._jobstores_lock:
+        with self._jobstore_locked():
             job, info = self._authorized_job(schedule_id, user_id, action="resume")
             if job.next_run_time is not None:
                 return False
@@ -4140,17 +4184,24 @@ class Scheduler(AppService):
             if isinstance(job.trigger, CronTrigger):
                 check_cron_fires(job.trigger, info.cron or "")
             logger.info(f"Resuming job {schedule_id} (kind={info.kind})")
-            resumed = self.scheduler.resume_job(
-                schedule_id, jobstore=Jobstores.EXECUTION.value
+            # APScheduler's ``resume_job``, with the mark cleared in the same
+            # write: a trigger with no next fire time removes the job.
+            next_run_time = job.trigger.get_next_fire_time(
+                None, datetime.now(self.scheduler.timezone)
             )
-            # After the resume, so a failure between the two writes leaves a
-            # running job marked, which nothing acts on: the next pause
-            # rewrites the mark. The other way round strands it paused.
-            if marked and resumed is not None:
+            if next_run_time is None:
+                self.scheduler.remove_job(
+                    schedule_id, jobstore=Jobstores.EXECUTION.value
+                )
+            else:
+                changes: dict[str, Any] = {"next_run_time": next_run_time}
+                if marked:
+                    changes["kwargs"] = {
+                        **job.kwargs,
+                        "paused_by_expert_archive": False,
+                    }
                 self.scheduler.modify_job(
-                    schedule_id,
-                    jobstore=Jobstores.EXECUTION.value,
-                    kwargs={**job.kwargs, "paused_by_expert_archive": False},
+                    schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
                 )
         self._invalidate_jobs_cache()
         return True
@@ -4164,33 +4215,37 @@ class Scheduler(AppService):
         The job keeps its id, which is what its failure streak, its notes and
         Resume all name it by. A paused one stays paused: changing how often it
         runs is not the same thing as starting it again. A routine's jobs are
-        not changed here; its row owns their crons.
+        not changed here; its row owns their crons. Read and written under
+        the jobstore lock, so a pause landing in between is kept.
         """
-        job, info = self._authorized_job(schedule_id, user_id, action="reschedule")
-        if not isinstance(info, CopilotTurnJobInfo) or info.cron is None:
-            raise NotFoundError(f"Job #{schedule_id} is not a repeating follow-up.")
-        if info.routine_id is not None:
-            raise NotFoundError(f"Job #{schedule_id} belongs to a routine.")
-        # The zone the dialog showed its times in: a follow-up saved before
-        # user_timezone existed keeps its zone on the trigger alone.
-        trigger = _build_trigger(
-            cron=cron, run_at=None, user_timezone=info.user_timezone or info.timezone
-        )
-        args = CopilotTurnJobArgs.model_validate(job.kwargs).model_copy(
-            update={"cron": cron}
-        )
-        changes: dict[str, object] = {
-            "trigger": trigger,
-            "kwargs": args.model_dump(mode="json"),
-        }
-        if job.next_run_time is not None:
-            changes["next_run_time"] = trigger.get_next_fire_time(
-                None, datetime.now(timezone.utc)
+        with self._jobstore_locked():
+            job, info = self._authorized_job(schedule_id, user_id, action="reschedule")
+            if not isinstance(info, CopilotTurnJobInfo) or info.cron is None:
+                raise NotFoundError(f"Job #{schedule_id} is not a repeating follow-up.")
+            if info.routine_id is not None:
+                raise NotFoundError(f"Job #{schedule_id} belongs to a routine.")
+            # The zone the dialog showed its times in: a follow-up saved before
+            # user_timezone existed keeps its zone on the trigger alone.
+            trigger = _build_trigger(
+                cron=cron,
+                run_at=None,
+                user_timezone=info.user_timezone or info.timezone,
             )
-        logger.info(f"Changing the cadence of job {schedule_id}")
-        updated = self.scheduler.modify_job(
-            schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
-        )
+            args = CopilotTurnJobArgs.model_validate(job.kwargs).model_copy(
+                update={"cron": cron}
+            )
+            changes: dict[str, object] = {
+                "trigger": trigger,
+                "kwargs": args.model_dump(mode="json"),
+            }
+            if job.next_run_time is not None:
+                changes["next_run_time"] = trigger.get_next_fire_time(
+                    None, datetime.now(timezone.utc)
+                )
+            logger.info(f"Changing the cadence of job {schedule_id}")
+            updated = self.scheduler.modify_job(
+                schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
+            )
         self._invalidate_jobs_cache()
         return CopilotTurnJobInfo.from_db(args, updated)
 
