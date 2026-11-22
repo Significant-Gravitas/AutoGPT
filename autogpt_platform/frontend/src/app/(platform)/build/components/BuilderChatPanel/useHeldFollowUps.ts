@@ -42,10 +42,7 @@ export function useHeldFollowUps(
     if (!sessionId || !heldKey) return;
     const leftBehind = takeHeldFollowUps(heldKey);
     if (leftBehind.length === 0) return;
-    returnToComposer(
-      leftBehind.join("\n\n"),
-      "You left the chat before it could go out.",
-    );
+    returnLeftBehind(leftBehind.join("\n\n"));
   }, [sessionId, heldKey]);
 
   function hold(forSessionId: string, text: string) {
@@ -97,6 +94,11 @@ export function useHeldFollowUps(
     release,
     setAside,
   };
+}
+
+/** For a follow-up whose chat went away before it could go out. */
+export function returnLeftBehind(text: string) {
+  returnToComposer(text, "You left the chat before it could go out.");
 }
 
 /** For a follow-up that never went out: its text goes back in the composer. */

@@ -6,6 +6,8 @@ import {
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import { ImpersonationState } from "@/lib/impersonation";
 import * as Sentry from "@sentry/nextjs";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -23,8 +25,10 @@ interface Args {
 
 interface MemoryChatSession {
   id: string;
-  /** Set with the id, so it always names the memory this session is about. */
-  heldKey: string;
+  /** Set with the id, so it always names the account and memory this session
+   *  is about. Null without a signed-in user: copies then wait under the
+   *  session, which no other account can open. */
+  heldKey: string | null;
 }
 
 /**
@@ -34,6 +38,7 @@ interface MemoryChatSession {
  * prompt ("summary" or "forget") as its first message.
  */
 export function useMemoryChatPanel({ scopeExpertID }: Args) {
+  const viewerID = useAuthStore((state) => state.user?.id ?? null);
   const [isOpen, setIsOpen] = useState(false);
   const [session, setSession] = useState<MemoryChatSession | null>(null);
   const sessionId = session?.id ?? null;
@@ -140,6 +145,14 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
     if (openingGenRef.current === scopeGenRef.current) return;
     const generation = scopeGenRef.current;
     openingGenRef.current = generation;
+    // Read before the session is created for whoever is signed in now.
+    const heldKey = viewerID
+      ? memoryChatHeldKey({
+          viewerID,
+          actingAsID: ImpersonationState.get(),
+          scopeExpertID,
+        })
+      : null;
     setSession(null);
     setMessages([]);
     try {
@@ -151,10 +164,7 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
       }
       if (generation !== scopeGenRef.current) return;
       pendingPromptRef.current = MEMORY_CHAT_PROMPTS[lastSeedRef.current];
-      setSession({
-        id: response.data.id,
-        heldKey: memoryChatHeldKey(scopeExpertID),
-      });
+      setSession({ id: response.data.id, heldKey });
     } catch (err) {
       if (generation !== scopeGenRef.current) return;
       if (toastIfPlanRequired(err, "The memory chat needs an active plan")) {

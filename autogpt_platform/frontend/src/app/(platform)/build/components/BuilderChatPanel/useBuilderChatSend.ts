@@ -9,6 +9,7 @@ import {
   noteFailedSetAside,
   noteSetAside,
   returnFailedFollowUp,
+  returnLeftBehind,
   useHeldFollowUps,
   type HeldFollowUp,
 } from "./useHeldFollowUps";
@@ -53,9 +54,11 @@ export function useBuilderChatSend({
   const isInFlight = status === "streaming" || status === "submitted";
   const isInFlightRef = useRef(isInFlight);
   const sessionIdRef = useRef(sessionId);
+  const heldKeyRef = useRef(heldKey);
   useInsertionEffect(() => {
     isInFlightRef.current = isInFlight;
     sessionIdRef.current = sessionId;
+    heldKeyRef.current = heldKey;
   });
   const isMountedRef = useRef(true);
   useEffect(() => {
@@ -95,9 +98,28 @@ export function useBuilderChatSend({
       // The composer restores the draft and shows the one toast for it.
       throw error;
     }
+    if (hasMovedOnUnderSameKey(sessionId)) {
+      returnLeftBehind(text);
+      return;
+    }
     // Not awaited: the composer keeps Enter and the queue button locked
     // until this resolves, and the wait can last as long as the answer.
     void sendOnceSettled(held.hold(sessionId, text));
+  }
+
+  /**
+   * The refusal came back after the panel moved on to another chat that
+   * keeps its copies under the same key (the memory chat's next chat about
+   * the same memory). That chat took what was waiting for it when it opened,
+   * so a copy stored now would wait for yet another chat.
+   */
+  function hasMovedOnUnderSameKey(forSessionId: string) {
+    return (
+      heldKey !== null &&
+      sessionIdRef.current !== null &&
+      sessionIdRef.current !== forSessionId &&
+      heldKeyRef.current === heldKey
+    );
   }
 
   /**

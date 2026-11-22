@@ -15,13 +15,28 @@ export const MEMORY_CHAT_PROMPTS = {
 
 export type MemoryChatSeed = keyof typeof MEMORY_CHAT_PROMPTS;
 
+interface MemoryChatHeldKeyArgs {
+  /** The signed-in user, who typed it. */
+  viewerID: string;
+  /** The user an admin is acting as, whose memory it is; null when none. */
+  actingAsID: string | null;
+  scopeExpertID: string | null;
+}
+
 /**
  * Where the memory chat keeps a follow-up it is holding. Every open starts a
- * new session, so one left behind waits for the next chat of the same memory
- * rather than for its own session, which never opens again.
+ * new session, so one left behind waits for the next chat about the same
+ * memory rather than for its own session, which never opens again. It names
+ * who typed it and whose memory it is, so it never comes back in another
+ * account's chat: not after a sign-out and sign-in on the same tab, and not
+ * across an admin acting as a user.
  */
-export function memoryChatHeldKey(scopeExpertID: string | null) {
-  return `memory-chat:${scopeExpertID ?? "personal"}`;
+export function memoryChatHeldKey({
+  viewerID,
+  actingAsID,
+  scopeExpertID,
+}: MemoryChatHeldKeyArgs) {
+  return `memory-chat:${viewerID}:${actingAsID ?? viewerID}:${scopeExpertID ?? "personal"}`;
 }
 
 export function getActiveExperts(experts: Expert[] | undefined) {
