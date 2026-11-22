@@ -43,6 +43,7 @@ function renderParts({
   render(
     <CopilotChatActionsProvider onSend={onSend}>
       <ChainMessageParts
+        isLatestAnswer
         parts={parts}
         messageID="message-1"
         isCurrentlyStreaming={isCurrentlyStreaming}
@@ -168,6 +169,7 @@ describe("render_ui cards", () => {
     const { container } = render(
       <CopilotChatActionsProvider onSend={vi.fn()}>
         <ChainMessageParts
+          isLatestAnswer
           parts={[toolPart({ output: "{not json" })]}
           messageID="message-1"
           isCurrentlyStreaming={false}
