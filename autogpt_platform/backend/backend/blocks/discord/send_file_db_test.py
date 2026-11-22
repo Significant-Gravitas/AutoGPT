@@ -33,10 +33,13 @@ from backend.util.workspace_storage import LocalWorkspaceStorage
 FILE_NAME = "Umsatz-November 🥨.csv"
 CSV = "Monat;Umsatz\nNovember;12.345,67 €\n".encode()
 PDF = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n1 0 obj <<>> endobj\ntrailer <<>>\n%%EOF\n"
+PNG = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06"
+GREETING = "Grüße aus München".encode()
 
 # Each attachment the channel got, as (name, bytes).
 Sent = list[tuple[str, bytes]]
-# Runs the block on a file (and an optional filename): its status, and what was sent.
+# Runs the block in a context on a file (and an optional filename): its
+# status, and what was sent.
 SendFile = Callable[..., Awaitable[tuple[str, Sent]]]
 
 
@@ -57,7 +60,7 @@ async def test_a_workspace_file_goes_out_under_its_own_name(
 ):
     file_id = await _write_csv(chat)
 
-    status, sent = await send(reference.format(id=file_id, name=FILE_NAME))
+    status, sent = await send(chat, reference.format(id=file_id, name=FILE_NAME))
 
     assert status == "File sent successfully"
     assert sent == [(FILE_NAME, CSV)]
@@ -69,10 +72,27 @@ async def test_a_filename_given_to_the_block_wins(
 ):
     file_id = await _write_csv(chat)
 
-    status, sent = await send(f"workspace://{file_id}#text/csv", "Bericht.csv")
+    status, sent = await send(chat, f"workspace://{file_id}#text/csv", "Bericht.csv")
 
     assert status == "File sent successfully"
     assert sent == [("Bericht.csv", CSV)]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_run_file_goes_out_under_its_own_name(
+    send: SendFile, graph_run: ExecutionContext
+):
+    """A file an earlier block left in a workflow run's own folder, with no
+    workspace in play."""
+    assert graph_run.graph_exec_id
+    path = Path(file_module.get_exec_file_path(graph_run.graph_exec_id, "image.png"))
+    path.parent.mkdir(parents=True)
+    path.write_bytes(PNG)
+
+    status, sent = await send(graph_run, "image.png")
+
+    assert status == "File sent successfully"
+    assert sent == [("image.png", PNG)]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -84,32 +104,46 @@ async def test_a_filename_given_to_the_block_wins(
             "file.pdf",
             PDF,
         ),
+        (
+            "data:text/plain;charset=utf-8;base64,"
+            + base64.b64encode(GREETING).decode(),
+            "file.txt",
+            GREETING,
+        ),
         ("data:text/plain,Hallo%20Welt", "file.txt", b"Hallo Welt"),
         (
             "data:text/plain;charset=utf-8,Gr%C3%BC%C3%9Fe%20aus%20M%C3%BCnchen",
             "file.txt",
-            "Grüße aus München".encode(),
+            GREETING,
         ),
         # RFC 2397: a data URI that names no media type holds text/plain.
         ("data:,Hallo", "file.txt", b"Hallo"),
     ],
-    ids=["base64", "percent-encoded", "percent-encoded-utf8", "no-media-type"],
+    ids=[
+        "base64",
+        "base64-with-charset",
+        "percent-encoded",
+        "percent-encoded-utf8",
+        "no-media-type",
+    ],
 )
 async def test_a_data_uri_goes_out_as_the_data_it_holds(
-    send: SendFile, data_uri: str, name: str, content: bytes
+    send: SendFile, chat: ExecutionContext, data_uri: str, name: str, content: bytes
 ):
-    status, sent = await send(data_uri)
+    status, sent = await send(chat, data_uri)
 
     assert status == "File sent successfully"
     assert sent == [(name, content)]
 
 
 @pytest.fixture
-def send(mocker, chat: ExecutionContext) -> SendFile:
-    """Runs the block in ``chat`` on one file, sending it to a channel that
+def send(mocker) -> SendFile:
+    """Runs the block in a context on one file, sending it to a channel that
     records what it got."""
 
-    async def run(file: str, filename: str = "") -> tuple[str, Sent]:
+    async def run(
+        context: ExecutionContext, file: str, filename: str = ""
+    ) -> tuple[str, Sent]:
         channel = _RecordingChannel()
         mocker.patch(
             "backend.blocks.discord.bot_blocks.discord.Client",
@@ -127,7 +161,7 @@ def send(mocker, chat: ExecutionContext) -> SendFile:
         outputs = [
             output
             async for output in block.run(
-                input_data, credentials=TEST_CREDENTIALS, execution_context=chat
+                input_data, credentials=TEST_CREDENTIALS, execution_context=context
             )
         ]
         return dict(outputs)["status"], channel.sent
@@ -144,6 +178,16 @@ def chat(workspace: UserWorkspace, local_files: None) -> ExecutionContext:
         graph_exec_id=f"{COPILOT_SESSION_PREFIX}{session_id}",
         workspace_id=workspace.id,
         session_id=session_id,
+    )
+
+
+@pytest.fixture
+def graph_run(local_files: None) -> ExecutionContext:
+    """The context of a workflow run outside AutoPilot: no workspace, no chat."""
+    return ExecutionContext(
+        user_id=str(uuid.uuid4()),
+        graph_id=str(uuid.uuid4()),
+        graph_exec_id=str(uuid.uuid4()),
     )
 
 
