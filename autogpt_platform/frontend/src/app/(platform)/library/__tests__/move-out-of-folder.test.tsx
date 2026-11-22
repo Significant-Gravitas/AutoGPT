@@ -117,7 +117,9 @@ async function openMoveDialog() {
 }
 
 function myLibraryOption(dialog: HTMLElement) {
-  return within(dialog).queryByRole("button", { name: /My Library \(root\)/ });
+  return within(dialog).queryByRole("button", {
+    name: /^📂\s*My Library \(root\)/,
+  });
 }
 
 test("a workflow in the only folder can be moved back to My Library", async () => {
