@@ -273,7 +273,7 @@ jobs:
           --health-interval 30s
           --health-timeout 10s
           --health-retries 5
-          --health-start-period 10s
+          --health-start-period 60s
       clamav:
         image: clamav/clamav-debian:1.5.4
         ports:

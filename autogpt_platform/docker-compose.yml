@@ -158,11 +158,9 @@ services:
       service: frontend
 
   # db waits on rabbitmq:service_healthy, and migrate and the backend services
-  # all wait on db, so the broker boots before the rest of the stack loads the
-  # machine. This was added against the broker's `.erlang.cookie: eacces`
-  # crash on a slow boot, whose cause (a root healthcheck probe writing the
-  # cookie first) rabbitmq's healthcheck in docker-compose.platform.yml now
-  # rules out.
+  # all wait on db, so the broker is up before the rest of the stack starts.
+  # The ordering is for startup only: rabbitmq's healthcheck in
+  # docker-compose.platform.yml keeps the Erlang cookie with the broker.
   db:
     <<: *agpt-services
     # Pinned to pg15 to track the managed Postgres major that prod and dev

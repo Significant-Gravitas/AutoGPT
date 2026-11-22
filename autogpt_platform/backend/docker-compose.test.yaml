@@ -85,7 +85,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 10s
+      start_period: 60s
     # The login the tests read from backend/.env, where `make init-env`
     # generates the password.
     env_file:

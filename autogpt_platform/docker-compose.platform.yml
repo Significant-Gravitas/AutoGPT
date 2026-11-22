@@ -254,7 +254,9 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 10s
+      # Probed every 5 s while starting, so a slow boot turns healthy as soon
+      # as the broker has written its cookie, not at the next 30 s probe.
+      start_period: 60s
     <<: *backend-env-files
     environment:
       <<: *backend-env

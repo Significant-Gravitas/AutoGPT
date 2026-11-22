@@ -6,11 +6,17 @@ slow-booting broker leaves the cookie root-owned and 0400, and the broker,
 which runs as `rabbitmq`, then fails its boot with `.erlang.cookie: eacces`.
 So each healthcheck checks that the broker has written the cookie before it
 runs the CLI; until then there is nothing to ping anyway.
+
+The check is deliberately simple. A health command must start with the guard,
+so an equivalent guard written another way is refused, and nothing after the
+first CLI call is checked (a trailing `; rabbitmqctl ...` would pass). It reads
+Compose healthchecks and workflow service containers' `--health-cmd`, not a
+step's own `docker run` or a composite action.
 """
 
-import os
 import re
 import shlex
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -72,15 +78,20 @@ def health_commands(options: str) -> list[str]:
 
 
 def _compose_files() -> list[Path]:
-    found = []
-    for root, dirs, files in os.walk(REPO_ROOT / "autogpt_platform"):
-        dirs[:] = [d for d in dirs if d != "node_modules" and not d.startswith(".")]
-        found += [
-            Path(root, name)
-            for name in files
-            if re.fullmatch(r"docker-compose.*\.ya?ml", name)
-        ]
-    return sorted(found)
+    """The Compose files git tracks under autogpt_platform/. A developer's
+    uncommitted local override isn't the repository's to check."""
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z", "--", "autogpt_platform"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split("\0")
+    return sorted(
+        REPO_ROOT / path
+        for path in tracked
+        if path and re.fullmatch(r"docker-compose.*\.ya?ml", Path(path).name)
+    )
 
 
 class RabbitMQHealthcheckContractTest(unittest.TestCase):
