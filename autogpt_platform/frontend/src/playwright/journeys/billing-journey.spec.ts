@@ -131,6 +131,13 @@ test.describe("billing journey", () => {
       expect((await fulfilled).ok(), "PATCH credits from the return page").toBe(
         true,
       );
+      // The wait's timeout still lets the call go, but without the read first
+      // this test proves nothing about the page, so it fails here.
+      const read = await balanceRead;
+      expect(
+        read?.ok(),
+        "the return page should have read the balance before its fulfil call",
+      ).toBe(true);
       const [completed, ...others] = await stripeEvents(sessionID);
       expect(others).toEqual([]);
       expect(completed.deliveries, "the webhook is held").toEqual([]);
