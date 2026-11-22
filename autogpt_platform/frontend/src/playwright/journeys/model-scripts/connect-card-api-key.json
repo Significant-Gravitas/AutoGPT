@@ -1,5 +1,5 @@
 {
-  "description": "AutoPilot runs the AI Text Generator with Claude, but the user has no Anthropic key, so the block answers with its sign-in card and AutoPilot stops. Once the user saves a key on the card, the chat carries on: AutoPilot runs the block again and it calls the provider (this server) with that key. copilot-connect-card-journey.spec.ts follows it.",
+  "description": "AutoPilot runs the AI Text Generator with Claude, but the user has no Anthropic key, so the block answers with a sign-in card and AutoPilot stops. Once the user saves a key on the chat's connect card, the card sends its follow-up and the chat carries on: AutoPilot runs the block again and it calls the provider (this server) with that key. copilot-connect-card-journey.spec.ts follows it.",
   "title": "A line about the sea",
   "turns": [
     {

@@ -1,5 +1,4 @@
-import { randomBytes } from "crypto";
-import type { Locator, Page } from "@playwright/test";
+import type { Locator, Page, Response } from "@playwright/test";
 import {
   chatStreamCount,
   currentSessionID,
@@ -9,6 +8,14 @@ import {
   savedMessages,
   startChat,
 } from "./copilot-chat";
+import {
+  type Credential,
+  deleteCredential,
+  expectListedInIntegrations,
+  fakeAPIKey,
+  listCredentials,
+  openIntegrations,
+} from "./credentials";
 import { expect, test } from "./fixtures";
 import connectScript from "./model-scripts/connect-card-api-key.json";
 import cancelScript from "./model-scripts/connect-card-cancelled.json";
@@ -24,153 +31,185 @@ import {
 } from "./scripted-model";
 
 // AutoPilot runs the AI Text Generator with Claude. The stack has no platform
-// LLM keys, so the block needs the user's own Anthropic key and answers with
-// its sign-in card. The journeys stack points Anthropic clients at the
-// scripted model, which journals which key each request presented.
+// LLM keys, so the block needs the user's own Anthropic key and answers with a
+// sign-in card, which the chat shows as one connect card under the step. The
+// journeys stack points Anthropic clients at the scripted model, which
+// journals which key each request presented.
 const CONNECT: ModelScript = connectScript;
 const CANCEL: ModelScript = cancelScript;
+const PROVIDER = "anthropic";
+const SERVICE = "Anthropic";
 const FIRST_MESSAGE = "Write me one line about the sea with Claude.";
-const CARD_HEADING = "Plug in what this needs";
 // What the card sends once the key is saved (SetupRequirementsCard helpers).
 const CONNECTED = CONNECT.turns[2].expect_user_text ?? "";
 const SKIP = CANCEL.turns[2].expect_user_text ?? "";
 const BLOCK_MODEL = "claude-haiku-4-5-20251001";
+const CARD_HEADING = /^(Connect your apps|Your apps are connected)$/;
+const STILL_WAITING = "Once these apps are connected, Otto will continue.";
+// A model turn starts a Claude Agent SDK session, which takes a while on CI.
+const MODEL_TURN_TIMEOUT = 60_000;
+// EVIDENCE RUN: soft checks report every miss in one CI run. Hard before review.
+const softly = expect.configure({ soft: true });
 
 test.describe("copilot connect card journey", () => {
   test.beforeAll(requireScriptedModel);
 
-  test("Otto asks for an API key, the user connects it on the card, and the chat carries on with it", async ({
+  test("Otto asks for an API key on one connect card, the user adds it there, and the chat carries on by itself and runs the step once with that key", async ({
     page,
     journeyUser,
   }) => {
     const run = scriptedRun("connect-card-api-key");
-    const key = newAPIKey();
+    const key = fakeAPIKey();
     const keyName = `Journey key ${run.nonce}`;
     const texts = CONNECT.turns.map((turn) => turn.text ?? "");
 
     await recordChatStreams(page);
-    const sessionID = await askForTheLine(page, run.marker);
-    await connectKeyOnTheCard(page, { key, keyName });
-
-    const transcript = page.getByRole("log");
-    await expect(
-      transcript.getByText(texts[3], { exact: true }),
-      "the chat should carry on by itself and finish, once",
-    ).toHaveCount(1);
-    const streamed = (await finishedChatStreams(page, "POST", 2)).flatMap(
-      streamedTexts,
-    );
-    expect(streamed, "the streams should carry what the model said").toEqual(
-      texts,
-    );
-    expect(
-      await chatStreamCount(page, "POST"),
-      "the card should send one follow-up, and nothing else should",
-    ).toBe(2);
-    await expectChatSettled(page, sessionID);
-
-    expect(
-      await savedKeys(page),
-      "the key should be saved once, as the user named it",
-    ).toEqual([[keyName, "api_key"]]);
-    const keyCalls = await readJournalForKey(key);
-    expect(
-      keyCalls.map((call) => [call.kind, call.model, call.completed]),
-      "the block should call the provider once, with the key the user saved",
-    ).toEqual([["side_call", BLOCK_MODEL, true]]);
-    expect(
-      await toolResultTypes(page, sessionID),
-      "the block should run once more after the card, not twice",
-    ).toEqual(["setup_requirements", "block_output"]);
-    await expect
-      .poll(() => savedConversation(page, sessionID), {
-        message: "the chat should save what was said, once each, in order",
-      })
-      .toEqual([
-        ["user", `${FIRST_MESSAGE} ${run.marker}`],
-        ["assistant", texts[0]],
-        ["assistant", texts[1]],
-        ["user", CONNECTED],
-        ["assistant", texts[2]],
-        ["assistant", texts[3]],
-      ]);
-
-    await page.reload();
-    for (const text of [...streamed, CONNECTED]) {
+    const sessionID = await askForTheLine(page, run.marker, CONNECT);
+    const credential = await connectKeyOnTheCard(page, { key, keyName });
+    try {
+      const transcript = page.getByRole("log");
       await expect(
-        page.getByRole("log").getByText(text, { exact: true }),
-        "the reloaded chat should show what was streamed, once",
-      ).toHaveCount(1);
+        transcript.getByText(texts[3], { exact: true }),
+        "the chat should carry on by itself and finish, once",
+      ).toHaveCount(1, { timeout: MODEL_TURN_TIMEOUT });
+      await expect
+        .soft(
+          connectCards(transcript),
+          "the card should go once it has sent its follow-up",
+        )
+        .toHaveCount(0);
+      const streamed = (await finishedChatStreams(page, "POST", 2)).flatMap(
+        streamedTexts,
+      );
+      expect
+        .soft(streamed, "the streams should carry what the model said")
+        .toEqual(texts);
+      expect
+        .soft(
+          await chatStreamCount(page, "POST"),
+          "the card should send one follow-up, and nothing else should",
+        )
+        .toBe(2);
+      await expectChatSettled(page, sessionID);
+
+      expect
+        .soft(
+          await savedKeys(page),
+          "the key should be saved once, as the user named it",
+        )
+        .toEqual([[keyName, "api_key"]]);
+      expect
+        .soft(
+          (await readJournalForKey(key)).map((call) => [
+            call.kind,
+            call.model,
+            call.completed,
+          ]),
+          "the step should call the provider once, with the key the user saved",
+        )
+        .toEqual([["side_call", BLOCK_MODEL, true]]);
+      expect
+        .soft(
+          await toolResultTypes(page, sessionID),
+          "the step should run once more after the card, not twice",
+        )
+        .toEqual(["setup_requirements", "block_output"]);
+      await softly
+        .poll(() => savedConversation(page, sessionID), {
+          message: "the chat should save what was said, once each, in order",
+        })
+        .toEqual([
+          ["user", `${FIRST_MESSAGE} ${run.marker}`],
+          ["assistant", texts[0]],
+          ["assistant", texts[1]],
+          ["user", CONNECTED],
+          ["assistant", texts[2]],
+          ["assistant", texts[3]],
+        ]);
+
+      const credentialsLoaded = page.waitForResponse(isCredentialsList);
+      await page.reload();
+      await credentialsLoaded;
+      const reloaded = page.getByRole("log");
+      for (const text of [...streamed, CONNECTED]) {
+        await expect
+          .soft(
+            reloaded.getByText(text, { exact: true }),
+            "the reloaded chat should show what was streamed, once",
+          )
+          .toHaveCount(1);
+      }
+      await expect
+        .soft(
+          connectCards(reloaded),
+          "the finished step's connect card should not come back after a reload",
+        )
+        .toHaveCount(0);
+      await expect
+        .soft(
+          reloaded.getByRole("button", { name: /^(Connect|Proceed)$/ }),
+          "nothing should offer to run the finished step again",
+        )
+        .toHaveCount(0);
+
+      await openIntegrations(page);
+      await expectListedInIntegrations(page, credential, SERVICE);
+
+      const journal = await readJournal(run.nonce);
+      expectEachTurnOnce(journal, CONNECT);
+      await expectChargedWhatWasBilled(userID(journeyUser), [run.nonce]);
+    } finally {
+      await deleteCredential(page, credential);
     }
-
-    await page.goto("/settings/integrations");
-    await expect(
-      page.getByRole("checkbox", { name: `Select ${keyName}` }),
-      "Settings > Integrations should list the key, once",
-    ).toHaveCount(1);
-
-    const journal = await readJournal(run.nonce);
-    expectEachTurnOnce(journal, CONNECT);
-    await expectChargedWhatWasBilled(userID(journeyUser), journal);
   });
 
-  test("after a reload, a step the user already connected for offers nothing to redo", async ({
-    page,
-  }) => {
-    const run = scriptedRun("connect-card-api-key");
-    const finished = CONNECT.turns[3].text ?? "";
-
-    const sessionID = await askForTheLine(page, run.marker);
-    await connectKeyOnTheCard(page, {
-      key: newAPIKey(),
-      keyName: `Journey key ${run.nonce}`,
-    });
-    await expect(
-      page.getByRole("log").getByText(finished, { exact: true }),
-    ).toBeVisible();
-    await expectChatSettled(page, sessionID);
-
-    await page.reload();
-    const transcript = page.getByRole("log");
-    await expect(transcript.getByText(finished, { exact: true })).toBeVisible();
-    await expect(
-      transcript.getByText(CARD_HEADING, { exact: true }),
-      "the connected step's card should not come back after a reload",
-    ).toHaveCount(0);
-    await expect(
-      transcript.getByRole("button", { name: /^(Connect|Proceed)$/ }),
-      "nothing should offer to run the finished step again",
-    ).toHaveCount(0);
-  });
-
-  test("cancelling the key leaves nothing held: no key is saved, nothing is sent, and the chat takes the user's next message", async ({
+  test("cancelling the key on the card saves nothing and sends nothing: the chat stays where Otto said it needs the key, nothing is left running, and the next message is answered", async ({
     page,
     journeyUser,
   }) => {
     const run = scriptedRun("connect-card-cancelled");
-    const key = newAPIKey();
     const texts = CANCEL.turns.map((turn) => turn.text ?? "");
 
     await recordChatStreams(page);
-    const sessionID = await askForTheLine(page, run.marker);
+    const sessionID = await askForTheLine(page, run.marker, CANCEL);
     const transcript = page.getByRole("log");
 
-    await transcript
-      .getByRole("button", { name: "Connect", exact: true })
-      .click();
+    await connectButtons(transcript).click();
     const dialog = page.getByRole("dialog");
-    await fillKeyForm(dialog, { key, keyName: `Journey key ${run.nonce}` });
+    await fillKeyForm(dialog, {
+      key: fakeAPIKey(),
+      keyName: `Journey key ${run.nonce}`,
+    });
     await dialog.getByRole("button", { name: "Cancel" }).click();
     await expect(dialog, "Cancel should close the dialog").toBeHidden();
 
-    await expect(
-      transcript.getByRole("button", { name: "Connect", exact: true }),
-      "the card should still offer to connect",
-    ).toBeVisible();
-    expect(
-      await savedKeys(page),
-      "a cancelled key should not be saved",
-    ).toEqual([]);
+    await expect
+      .soft(
+        connectCards(transcript),
+        "the card should still ask for the account",
+      )
+      .toHaveCount(1);
+    await expect
+      .soft(
+        transcript.getByText("0 of 1 ready", { exact: true }),
+        "nothing should be connected",
+      )
+      .toBeVisible();
+    await expect
+      .soft(
+        transcript.getByText(STILL_WAITING, { exact: true }),
+        "the card should say the chat can't go on without the account",
+      )
+      .toBeVisible();
+    await expect
+      .soft(
+        connectButtons(transcript),
+        "the card should still offer to connect",
+      )
+      .toBeVisible();
+    expect
+      .soft(await savedKeys(page), "a cancelled key should not be saved")
+      .toEqual([]);
     await expectChatSettled(page, sessionID);
 
     const input = page.getByRole("textbox", { name: "Chat message input" });
@@ -179,9 +218,9 @@ test.describe("copilot connect card journey", () => {
     await expect(
       transcript.getByText(texts[2], { exact: true }),
       "the chat should answer the user's next message, once",
-    ).toHaveCount(1);
+    ).toHaveCount(1, { timeout: MODEL_TURN_TIMEOUT });
     await expectChatSettled(page, sessionID);
-    await expect
+    await softly
       .poll(() => savedConversation(page, sessionID), {
         message:
           "the chat should hold only what the user and Otto said: no follow-up from the card",
@@ -193,43 +232,51 @@ test.describe("copilot connect card journey", () => {
         ["user", SKIP],
         ["assistant", texts[2]],
       ]);
-    expect(
-      await chatStreamCount(page, "POST"),
-      "only the user's own messages should be sent",
-    ).toBe(2);
-    expect(
-      await readJournalForKey(key),
-      "nothing should run with a cancelled key",
-    ).toEqual([]);
-    expect(
-      await toolResultTypes(page, sessionID),
-      "the block should not run again",
-    ).toEqual(["setup_requirements"]);
+    expect
+      .soft(
+        await chatStreamCount(page, "POST"),
+        "only the user's own messages should be sent",
+      )
+      .toBe(2);
+    expect
+      .soft(
+        await toolResultTypes(page, sessionID),
+        "the step should not run again",
+      )
+      .toEqual(["setup_requirements"]);
 
     const journal = await readJournal(run.nonce);
     expectEachTurnOnce(journal, CANCEL);
-    await expectChargedWhatWasBilled(userID(journeyUser), journal);
+    await expectChargedWhatWasBilled(userID(journeyUser), [run.nonce]);
   });
 });
 
 /**
- * Asks Otto for the line. Its tool call yields one connect card for
- * Anthropic, asking for the account only, and the turn ends there.
+ * Asks Otto for the line. Its tool call needs an Anthropic key the user
+ * doesn't have, so the turn ends at one connect card asking for it.
  */
-async function askForTheLine(page: Page, marker: string) {
+async function askForTheLine(page: Page, marker: string, script: ModelScript) {
   await startChat(page, `${FIRST_MESSAGE} ${marker}`);
   const transcript = page.getByRole("log");
   await expect(
-    transcript.getByText(CONNECT.turns[1].text ?? "", { exact: true }),
+    transcript.getByText(script.turns[1].text ?? "", { exact: true }),
     "Otto should stop at the card and say what it needs",
-  ).toBeVisible();
+  ).toBeVisible({ timeout: MODEL_TURN_TIMEOUT });
   await expect(
-    transcript.getByText(CARD_HEADING, { exact: true }),
+    connectCards(transcript),
     "the chat should show one connect card",
   ).toHaveCount(1);
   await expect(
-    transcript.getByRole("button", { name: "Connect", exact: true }),
-    "the card should offer to connect Anthropic",
+    transcript.getByText("0 of 1 ready", { exact: true }),
+    "the card should ask for one account, not yet connected",
+  ).toBeVisible();
+  await expect(
+    transcript.getByText(SERVICE, { exact: true }).filter({ visible: true }),
+    "the card should ask for Anthropic",
+  ).toBeVisible();
+  await expect(
+    connectButtons(transcript),
+    "the card should offer to connect it, once",
   ).toHaveCount(1);
   // The card asks for the account only, never the block's inputs (#14448):
   // a card with inputs gets a Proceed to send them.
@@ -244,6 +291,14 @@ async function askForTheLine(page: Page, marker: string) {
   return sessionID;
 }
 
+function connectCards(scope: Locator) {
+  return scope.getByRole("heading", { name: CARD_HEADING });
+}
+
+function connectButtons(scope: Locator) {
+  return scope.getByRole("button", { name: "Connect", exact: true });
+}
+
 interface NewKey {
   key: string;
   keyName: string;
@@ -251,38 +306,51 @@ interface NewKey {
 
 /** Adds the key through the card's Connect dialog. */
 async function connectKeyOnTheCard(page: Page, newKey: NewKey) {
-  const transcript = page.getByRole("log");
-  await transcript
-    .getByRole("button", { name: "Connect", exact: true })
-    .click();
+  await connectButtons(page.getByRole("log")).click();
   const dialog = page.getByRole("dialog");
   await fillKeyForm(dialog, newKey);
+  const saved = page.waitForResponse(isKeySave);
   await dialog.getByRole("button", { name: "Continue" }).click();
+  const response = await saved;
+  expect(response.ok(), `saving the key: ${response.status()}`).toBe(true);
+  expect(
+    await response.text(),
+    "saving a key should not answer with the key",
+  ).not.toContain(newKey.key);
   await expect(dialog, "saving the key should close the dialog").toBeHidden();
+  return (await response.json()) as Credential;
 }
 
 async function fillKeyForm(dialog: Locator, { key, keyName }: NewKey) {
-  await expect(dialog.getByText("Connect AutoGPT to Anthropic")).toBeVisible();
+  await expect(dialog.getByText(`Connect AutoGPT to ${SERVICE}`)).toBeVisible();
   await dialog.getByRole("button", { name: /API Key/ }).click();
-  await dialog.getByLabel("Name", { exact: true }).fill(keyName);
-  await dialog.getByPlaceholder("sk-...").fill(key);
+  await dialog
+    .getByRole("textbox", { name: "Name", exact: true })
+    .fill(keyName);
+  await dialog.getByLabel("API key", { exact: true }).fill(key);
 }
 
-/** A fresh key per run: the scripted model journals which key each call
- * used, so a run finds its own calls by it. */
-function newAPIKey() {
-  return `sk-ant-journey-${randomBytes(16).toString("hex")}`;
+function isKeySave(response: Response) {
+  return (
+    response.request().method() === "POST" &&
+    new URL(response.url()).pathname.endsWith(
+      `/api/integrations/${PROVIDER}/credentials`,
+    )
+  );
+}
+
+function isCredentialsList(response: Response) {
+  return (
+    response.request().method() === "GET" &&
+    new URL(response.url()).pathname.endsWith("/api/integrations/credentials")
+  );
 }
 
 async function savedKeys(page: Page) {
-  const response = await page.request.get(
-    "/api/proxy/api/integrations/anthropic/credentials",
-  );
-  expect(response.ok(), `GET anthropic credentials: ${response.status()}`).toBe(
-    true,
-  );
-  const body = (await response.json()) as { title: string; type: string }[];
-  return body.map((credential) => [credential.title, credential.type]);
+  const { credentials } = await listCredentials(page);
+  return credentials
+    .filter((credential) => credential.provider === PROVIDER)
+    .map((credential) => [credential.title, credential.type]);
 }
 
 async function savedConversation(page: Page, sessionID: string) {

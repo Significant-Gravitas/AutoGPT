@@ -1,5 +1,5 @@
 {
-  "description": "AutoPilot runs the AI Text Generator with Claude, but the user has no Anthropic key, so the block answers with its sign-in card and AutoPilot stops. The user starts adding a key, cancels, and asks AutoPilot to skip it instead; AutoPilot answers that message once and nothing else runs. copilot-connect-card-journey.spec.ts follows it.",
+  "description": "AutoPilot runs the AI Text Generator with Claude, but the user has no Anthropic key, so the block answers with a sign-in card and AutoPilot stops. The user starts adding a key on the connect card, cancels, and asks AutoPilot to skip it instead; AutoPilot answers that message once, saying it couldn't go on, and nothing else runs. copilot-connect-card-journey.spec.ts follows it.",
   "title": "A line about the sea",
   "turns": [
     {
@@ -36,10 +36,10 @@
     },
     {
       "expect_user_text": "Never mind, skip that line.",
-      "text": "No problem, I've left it. Ask me again whenever you want it.",
+      "text": "I couldn't write that line without an Anthropic key, so I've left it. Connect one whenever you want it.",
       "usage": {
         "input_tokens": 650,
-        "output_tokens": 18,
+        "output_tokens": 22,
         "cache_read_input_tokens": 26400
       }
     }

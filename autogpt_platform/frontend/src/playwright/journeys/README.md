@@ -109,6 +109,10 @@ AutoPilot at it, in place of `CHAT_TEST_MODE`'s canned reply.
   seen, every reply delivered in full) and `expectChargedWhatWasBilled` (the
   copilot's cost ledger charged exactly what the model billed). They read the
   scripted model's journal at `localhost:4010`.
+- **A block run with the user's own key:** the stack points Anthropic clients
+  at the scripted model too, so an AI block run with an Anthropic key the
+  journey's user saved lands there. `readJournalForKey` lists the calls made
+  with that key, as `copilot-connect-card-journey.spec.ts` does.
 
 - **Chat helpers** are in `copilot-chat.ts`. `recordChatStreams` records the
   body of every chat stream as the browser received it (Chromium keeps no
@@ -207,5 +211,5 @@ Differences from hosted that are still open:
 | Pods               | One `executor`, one `copilot_executor`                                                                                                                                               | Many                                                                           |
 | Frontend runtime   | Next.js standalone server in Docker                                                                                                                                                  | Vercel (body size limits, edge routing)                                        |
 | External services  | No Stripe, OAuth providers, Postmark or E2B; ClamAV, Redis, RabbitMQ and FalkorDB are real                                                                                           | Real                                                                           |
-| LLM keys           | None; blocks that need platform credentials fail                                                                                                                                     | Platform keys                                                                  |
+| LLM keys           | None; blocks that need platform credentials fail. Anthropic clients point at the scripted model, so a block run with the user's own Anthropic key reaches it                         | Platform keys                                                                  |
 | Origin             | `http://localhost:3000`                                                                                                                                                              | HTTPS                                                                          |
