@@ -891,12 +891,17 @@ describe("copilot Connect card, already satisfied", () => {
       await settle({ connectedRows: 1 });
       const user = userEvent.setup();
 
-      await user.click(await screen.findByRole("button", { name: "Proceed" }));
-      await waitFor(() => expect(pickSaves.started).toBe(1));
-      // A newer answer lands before the picks are saved, so the card's own
-      // answer is now an earlier one.
-      showMessages(chat);
-      release.resolve();
+      try {
+        await user.click(
+          await screen.findByRole("button", { name: "Proceed" }),
+        );
+        await waitFor(() => expect(pickSaves.started).toBe(1));
+        // A newer answer lands before the picks are saved, so the card's own
+        // answer is now an earlier one.
+        showMessages(chat);
+      } finally {
+        release.resolve();
+      }
       await waitFor(() => expect(pickSaves.answered).toBe(1));
 
       // The newest card's send goes out after that save is answered, so a

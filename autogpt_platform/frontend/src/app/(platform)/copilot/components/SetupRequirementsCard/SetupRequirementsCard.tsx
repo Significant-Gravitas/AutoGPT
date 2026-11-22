@@ -265,7 +265,9 @@ export function SetupRequirementsCard({
 
   // Saves go out one at a time, each after the last: the backend keeps
   // whichever pick it writes last, so a quick second pick must not land
-  // before the first. A failed save never holds the next one back.
+  // before the first. A failed save never holds the next one back, and isn't
+  // retried (as on dev): the row then names an account the chat isn't using
+  // until the next pick or send.
   const lastSave = useRef<Promise<void> | null>(null);
   const savePicks = useStableCallback(() => {
     savedPicks.current = picks;
