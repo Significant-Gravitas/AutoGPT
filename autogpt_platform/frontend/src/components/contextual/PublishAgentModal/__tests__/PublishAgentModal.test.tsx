@@ -46,6 +46,11 @@ vi.mock("@/components/contextual/CronScheduler/cron-scheduler-dialog", () => ({
   CronExpressionDialog: () => null,
 }));
 
+// The success screen's confetti draws on a canvas, which jsdom doesn't have.
+vi.mock("@/components/molecules/Confetti/Confetti", () => ({
+  Confetti: () => null,
+}));
+
 // Lists the images the form starts with, so a test can see them.
 vi.mock(
   "@/components/contextual/PublishAgentModal/components/AgentInfoStep/components/ThumbnailImages",
@@ -641,6 +646,7 @@ describe("PublishAgentModal opened pre-scoped to a workflow", () => {
       recommended_schedule_cron: LIVE_SCHEDULE,
       image_urls: LISTING_IMAGES,
     });
+    expect(await screen.findByText("Submission received")).toBeDefined();
   });
 
   test("a workflow past the creator's first page of workflows opens the new-listing form with its own details, at the version being published", async () => {
