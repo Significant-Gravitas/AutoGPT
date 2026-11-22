@@ -496,10 +496,10 @@ async def get_live_submission(
     graph_id: str,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
     ctx: autogpt_libs.auth.RequestContext = Security(_view_submissions),
-) -> store_model.StoreSubmission | None:
+) -> store_model.LiveStoreSubmission | None:
     """The version of your listing for this workflow that the Marketplace
-    shows, or null when the workflow has no listing of yours or none of it
-    is live."""
+    shows, with its recommended schedule, or null when the workflow has no
+    listing of yours or none of it is live."""
     return await live_submission.get_live_submission(
         user_id=user_id,
         graph_id=graph_id,

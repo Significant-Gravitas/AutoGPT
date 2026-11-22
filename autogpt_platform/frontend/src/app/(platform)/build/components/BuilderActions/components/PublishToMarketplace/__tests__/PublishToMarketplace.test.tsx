@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
-  getGetV2GetMyAgentsMockHandler,
+  getGetV1GetSpecificGraphMockHandler,
+  getGetV1GetSpecificGraphResponseMock,
+} from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
+import {
+  getGetV2GetLibraryAgentByGraphIdMockHandler,
+  getGetV2GetLibraryAgentByGraphIdResponseMock,
+} from "@/app/api/__generated__/endpoints/library/library.msw";
+import {
   getGetV2GetMyLiveSubmissionMockHandler,
   getGetV2ListMySubmissionsResponseMock,
 } from "@/app/api/__generated__/endpoints/store/store.msw";
-import type { MyUnpublishedAgent } from "@/app/api/__generated__/models/myUnpublishedAgent";
-import type { MyUnpublishedAgentsResponse } from "@/app/api/__generated__/models/myUnpublishedAgentsResponse";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { server } from "@/mocks/mock-server";
 import {
@@ -59,52 +64,46 @@ const FLOW_ID = "graph-1";
 const FLOW_VERSION = 3;
 const AGENT_NAME = "My Builder Agent";
 
-function makeAgent(
-  overrides: Partial<MyUnpublishedAgent> = {},
-): MyUnpublishedAgent {
-  return {
-    graph_id: FLOW_ID,
-    graph_version: FLOW_VERSION,
-    agent_name: AGENT_NAME,
-    description: "An agent created in the builder",
-    last_edited: new Date("2026-04-01T00:00:00Z"),
-    ...overrides,
-  };
-}
-
-function makeAgentsResponse(
-  agents: MyUnpublishedAgent[],
-): MyUnpublishedAgentsResponse {
-  return {
-    agents,
-    pagination: {
-      total_items: agents.length,
-      total_pages: 1,
-      current_page: 1,
-      page_size: agents.length || 20,
-    },
-  };
+// The workflow open in the builder, read the way the dialog reads it: the
+// graph at this version and its Library entry. It has no schedule of its own.
+function serveBuilderWorkflow() {
+  server.use(
+    getGetV1GetSpecificGraphMockHandler(
+      getGetV1GetSpecificGraphResponseMock({
+        id: FLOW_ID,
+        version: FLOW_VERSION,
+        name: AGENT_NAME,
+        description: "A workflow created in the builder",
+        recommended_schedule_cron: null,
+      }),
+    ),
+    getGetV2GetLibraryAgentByGraphIdMockHandler(
+      getGetV2GetLibraryAgentByGraphIdResponseMock({
+        graph_id: FLOW_ID,
+        image_url: "https://example.com/builder-workflow.png",
+      }),
+    ),
+  );
 }
 
 function installScopedHandlers() {
-  server.use(
-    getGetV2GetMyAgentsMockHandler(makeAgentsResponse([makeAgent()])),
-    getGetV2GetMyLiveSubmissionMockHandler(null),
-  );
+  serveBuilderWorkflow();
+  server.use(getGetV2GetMyLiveSubmissionMockHandler(null));
 }
 
 const LIVE_DESCRIPTION = "Finds the decision-makers at any company.";
 
 function installListedAgentHandlers() {
   const [listing] = getGetV2ListMySubmissionsResponseMock().submissions;
+  serveBuilderWorkflow();
   server.use(
-    getGetV2GetMyAgentsMockHandler(makeAgentsResponse([makeAgent()])),
     getGetV2GetMyLiveSubmissionMockHandler({
       ...listing,
       graph_id: FLOW_ID,
       status: SubmissionStatus.APPROVED,
       description: LIVE_DESCRIPTION,
       changes_summary: "Initial Submission",
+      recommended_schedule_cron: "0 9 * * 1",
     }),
   );
 }
@@ -135,7 +134,7 @@ describe("PublishToMarketplace (builder)", () => {
     expect(await screen.findByDisplayValue(AGENT_NAME)).toBeDefined();
   });
 
-  test("opens an update to a listed workflow with the live description, and says leaving it empty keeps it", async () => {
+  test("opens an update to a listed workflow with the live description and schedule, and says leaving the description empty keeps it", async () => {
     installListedAgentHandlers();
 
     render(
@@ -157,6 +156,7 @@ describe("PublishToMarketplace (builder)", () => {
     expect(document.getElementById(hintId)?.textContent).toBe(
       "Leave empty to keep the current description.",
     );
+    expect(screen.getByText("Every Monday at 09:00")).toBeDefined();
     const changesSummary = screen.getByRole("textbox", {
       name: "What changed?",
     });
