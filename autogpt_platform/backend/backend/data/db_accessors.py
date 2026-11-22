@@ -200,6 +200,16 @@ def execution_db():
     return execution_db
 
 
+def collections_db():
+    if db.is_connected():
+        from backend.data.collections import db as _collections_db
+
+        return _collections_db
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
 def pages_db():
     if db.is_connected():
         from backend.api.features.pages import db as _pages_db

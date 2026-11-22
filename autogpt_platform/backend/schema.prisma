@@ -253,6 +253,8 @@ model User {
   PushSubscriptions     PushSubscription[]
   FeedbackPrompts       FeedbackPrompt[]
   Pages                 Page[]
+  Collections           Collection[]
+  CollectionRows        CollectionRow[]
   PendingHumanReviews   PendingHumanReview[]
   Workspace             UserWorkspace?
   PlatformCostLogs      PlatformCostLog[]
@@ -1518,6 +1520,60 @@ model Page {
   chatSessionId String?
   ChatSession   ChatSession? @relation(fields: [chatSessionId], references: [id], onDelete: SetNull)
 
+  @@index([userId])
+}
+
+// A table the user owns: named, typed fields and rows, behind `collections`.
+// Workflows write it with blocks, experts and Otto with a tool; pages show it.
+model Collection {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name     String
+  // The name lowercased: names are unique per user, compared without case.
+  nameKey  String
+  // Ordered list of {name, type, options, unit, aliases}.
+  fields   Json    @default("[]")
+  keyField String?
+  // Bumped on every schema change.
+  revision Int     @default(1)
+
+  Rows CollectionRow[]
+
+  @@unique([userId, nameKey])
+}
+
+model CollectionRow {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  collectionId String
+  Collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  // Copied from the collection, so every row query is scoped without a join.
+  userId       String
+  User         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  key          String?
+  // The workflow step that added a keyless row, so a retried add writes once.
+  writeId      String?
+  data         Json     @default("{}")
+  // Per field, the value an automated write last brought, applied or held back.
+  sourceData   Json     @default("{}")
+  // Per field, a newer automated value held back because a person edited the cell.
+  pending      Json     @default("{}")
+  manualFields String[] @default([])
+  // "workflow:<graph id>", "expert:<expert id>", "otto" or "user".
+  writtenBy    String
+  revision     Int      @default(1)
+
+  @@unique([collectionId, key])
+  @@unique([collectionId, writeId])
+  @@index([collectionId, updatedAt])
   @@index([userId])
 }
 

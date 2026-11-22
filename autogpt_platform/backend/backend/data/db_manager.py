@@ -131,6 +131,23 @@ from backend.data.briefing_data import (
     get_briefing_credit_balance,
     get_top_scored_runs,
 )
+from backend.data.collections.db import (
+    accept_pending_values,
+    add_row,
+    aggregate_rows,
+    change_schema,
+    create_collection,
+    delete_collection,
+    delete_rows,
+    edit_row,
+    get_collection,
+    get_row,
+    graph_created_by,
+    list_collections,
+    query_rows,
+    update_row,
+    write_rows,
+)
 from backend.data.credit import (
     UsageTransactionMetadata,
     get_recent_daily_spend,
@@ -615,6 +632,23 @@ class DatabaseManager(AppService):
     # ============ Feedback Prompts ============ #
     claim_feedback_prompt = _(claim_feedback_prompt)
     count_feedback_prompts = _(count_feedback_prompts)
+
+    # ============ Collections ============ #
+    list_collections = _(list_collections)
+    get_collection = _(get_collection)
+    create_collection = _(create_collection)
+    write_rows = _(write_rows)
+    update_row = _(update_row)
+    get_row = _(get_row)
+    delete_rows = _(delete_rows)
+    query_rows = _(query_rows)
+    aggregate_rows = _(aggregate_rows)
+    add_row = _(add_row)
+    edit_row = _(edit_row)
+    accept_pending_values = _(accept_pending_values)
+    delete_collection = _(delete_collection)
+    change_schema = _(change_schema)
+    graph_created_by = _(graph_created_by)
 
     # ============ Pages ============ #
     get_page = _(get_page)
@@ -1253,6 +1287,23 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Feedback Prompts ============ #
     claim_feedback_prompt = d.claim_feedback_prompt
     count_feedback_prompts = d.count_feedback_prompts
+
+    # ============ Collections ============ #
+    list_collections = d.list_collections
+    get_collection = d.get_collection
+    create_collection = d.create_collection
+    write_rows = d.write_rows
+    update_row = d.update_row
+    get_row = d.get_row
+    delete_rows = d.delete_rows
+    query_rows = d.query_rows
+    aggregate_rows = d.aggregate_rows
+    add_row = d.add_row
+    edit_row = d.edit_row
+    accept_pending_values = d.accept_pending_values
+    delete_collection = d.delete_collection
+    change_schema = d.change_schema
+    graph_created_by = d.graph_created_by
 
     # ============ Pages ============ #
     get_page = d.get_page

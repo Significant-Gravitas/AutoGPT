@@ -13,6 +13,12 @@ from backend.copilot.tools.render_ui_models import (
     TableBlock,
     TimelineBlock,
 )
+from backend.data.collections.model import (
+    CollectionRowRecord,
+    Condition,
+    FieldType,
+    Sort,
+)
 from backend.data.execution import ExecutionStatus
 
 from .design import StoredCard
@@ -189,6 +195,39 @@ class PageWaiting(BaseModel):
     reviews: list[PendingHumanReviewModel]
 
 
+class _CollectionSourced(BaseModel):
+    index: int
+    collection_id: str
+    collection_name: str
+
+
+class PageTableColumn(BaseModel):
+    field: str
+    type: FieldType
+    options: list[str] = Field(default_factory=list)
+    unit: str | None = None
+
+
+class PageCollectionTable(_CollectionSourced):
+    kind: Literal["collection_table"]
+    title: str | None = None
+    columns: list[PageTableColumn]
+    dropped_columns: list[str] = Field(
+        default_factory=list, description="Columns the collection no longer has."
+    )
+    rows: list[CollectionRowRecord]
+    total: int
+    filter: list[Condition] = Field(default_factory=list)
+    sort: Sort | None = None
+    read_only: bool
+    key_field: str | None = None
+
+
+class PageCollectionNumbers(_CollectionSourced):
+    kind: Literal["collection_numbers"]
+    block: StatsBlock
+
+
 class PageNotice(BaseModel):
     """A section left out: its source no longer fits, or it could not be read."""
 
@@ -215,6 +254,8 @@ PageSection = Annotated[
     | PageExpertLearned
     | PageExpertActivity
     | PageWaiting
+    | PageCollectionTable
+    | PageCollectionNumbers
     | PageNotice,
     Field(discriminator="kind"),
 ]

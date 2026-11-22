@@ -62,6 +62,7 @@ const TITLES: Record<string, string> = {
   expert_learned: "What it has learned",
   expert_activity: "Activity",
   waiting: "Waiting on you",
+  collection_numbers: "Numbers",
 };
 
 /** The heading a section shows: its kind, and the workflow or expert it reads. */
@@ -69,6 +70,9 @@ export function sectionTitle(section: PageSection): string | null {
   if (section.kind === "text") return section.heading ?? null;
   if (section.kind === "cards" || section.kind === "notice") return null;
   if (section.kind === "run_form") return section.workflow_name;
+  if (section.kind === "collection_table") {
+    return section.title ?? section.collection_name;
+  }
   const base = TITLES[section.kind] ?? null;
   const source = sectionSource(section);
   return base && source ? `${base} · ${source}` : base;
@@ -78,6 +82,7 @@ function sectionSource(section: PageSection) {
   if ("workflow_name" in section) return section.workflow_name;
   if ("expert_name" in section) return section.expert_name;
   if (section.kind === "waiting") return section.scope_name ?? null;
+  if ("collection_name" in section) return section.collection_name;
   return null;
 }
 

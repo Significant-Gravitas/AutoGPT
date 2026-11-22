@@ -104,6 +104,7 @@ ToolName = Literal[
     "browser_act",
     "browser_navigate",
     "browser_screenshot",
+    "collections",
     "confirm_expert_change",
     "confirm_expert_soul_update",
     "connect_integration",

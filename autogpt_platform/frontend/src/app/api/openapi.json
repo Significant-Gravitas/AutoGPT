@@ -6166,6 +6166,476 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/collections": {
+      "get": {
+        "tags": ["collections"],
+        "summary": "List Collections",
+        "operationId": "list_collections",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/collections/{collection_id}": {
+      "delete": {
+        "tags": ["collections"],
+        "summary": "Delete Collection",
+        "operationId": "delete_collection",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "title": "Collection Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["collections"],
+        "summary": "Get Collection",
+        "operationId": "get_collection",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "title": "Collection Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CollectionResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["collections"],
+        "summary": "Update Collection",
+        "operationId": "update_collection",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "title": "Collection Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CollectionResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collections/{collection_id}/rows": {
+      "get": {
+        "tags": ["collections"],
+        "summary": "List Rows",
+        "operationId": "list_collection_rows",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "title": "Collection Id"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 200 },
+                { "type": "null" }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 60 },
+                { "type": "null" }
+              ],
+              "title": "Sort"
+            }
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["asc", "desc"],
+              "type": "string",
+              "default": "asc",
+              "title": "Direction"
+            }
+          },
+          {
+            "name": "where",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 4000 },
+                { "type": "null" }
+              ],
+              "description": "A RowFilterRequest as JSON.",
+              "title": "Where"
+            },
+            "description": "A RowFilterRequest as JSON."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 5000,
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RowPage" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["collections"],
+        "summary": "Add Row",
+        "operationId": "add_collection_row",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "title": "Collection Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RowAddRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CollectionRowRecord" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collections/{collection_id}/rows/{row_id}": {
+      "delete": {
+        "tags": ["collections"],
+        "summary": "Delete Row",
+        "operationId": "delete_collection_row",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "title": "Collection Id"
+            }
+          },
+          {
+            "name": "row_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "maxLength": 64, "title": "Row Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["collections"],
+        "summary": "Edit Row",
+        "operationId": "edit_collection_row",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "title": "Collection Id"
+            }
+          },
+          {
+            "name": "row_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "maxLength": 64, "title": "Row Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RowEditRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CollectionRowRecord" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StaleRow" }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collections/{collection_id}/rows/{row_id}/accept": {
+      "post": {
+        "tags": ["collections"],
+        "summary": "Accept Pending",
+        "operationId": "accept_collection_row_values",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "title": "Collection Id"
+            }
+          },
+          {
+            "name": "row_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "maxLength": 64, "title": "Row Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AcceptPendingRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CollectionRowRecord" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StaleRow" }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/copilot/admin/rate_limit": {
       "get": {
         "tags": ["v2", "admin", "copilot", "admin"],
@@ -21169,6 +21639,21 @@
         "enum": ["ACTIVE", "REVOKED", "SUSPENDED"],
         "title": "APIKeyStatus"
       },
+      "AcceptPendingRequest": {
+        "properties": {
+          "fields": {
+            "items": { "type": "string", "maxLength": 60, "minLength": 1 },
+            "type": "array",
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Fields"
+          },
+          "based_on": { "type": "integer", "title": "Based On" }
+        },
+        "type": "object",
+        "required": ["fields", "based_on"],
+        "title": "AcceptPendingRequest"
+      },
       "AccessBlock": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -24012,6 +24497,174 @@
         "type": "object",
         "title": "CodexRateLimitsSnapshot"
       },
+      "CollectionField": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "type": { "$ref": "#/components/schemas/FieldType" },
+          "options": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Options"
+          },
+          "unit": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Unit"
+          },
+          "aliases": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Aliases"
+          }
+        },
+        "type": "object",
+        "required": ["name", "type"],
+        "title": "CollectionField"
+      },
+      "CollectionInfo": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "fields": {
+            "items": { "$ref": "#/components/schemas/CollectionField" },
+            "type": "array",
+            "title": "Fields"
+          },
+          "key_field": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Key Field"
+          },
+          "revision": { "type": "integer", "title": "Revision" },
+          "row_count": {
+            "type": "integer",
+            "title": "Row Count",
+            "default": 0
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "fields", "revision", "updated_at"],
+        "title": "CollectionInfo"
+      },
+      "CollectionLimits": {
+        "properties": {
+          "collections": { "type": "integer", "title": "Collections" },
+          "rows": { "type": "integer", "title": "Rows" },
+          "fields": { "type": "integer", "title": "Fields" },
+          "row_bytes": { "type": "integer", "title": "Row Bytes" }
+        },
+        "type": "object",
+        "required": ["collections", "rows", "fields", "row_bytes"],
+        "title": "CollectionLimits"
+      },
+      "CollectionListResponse": {
+        "properties": {
+          "collections": {
+            "items": { "$ref": "#/components/schemas/CollectionInfo" },
+            "type": "array",
+            "title": "Collections"
+          },
+          "limits": { "$ref": "#/components/schemas/CollectionLimits" }
+        },
+        "type": "object",
+        "required": ["collections"],
+        "title": "CollectionListResponse"
+      },
+      "CollectionResponse": {
+        "properties": {
+          "collection": { "$ref": "#/components/schemas/CollectionInfo" },
+          "limits": { "$ref": "#/components/schemas/CollectionLimits" }
+        },
+        "type": "object",
+        "required": ["collection"],
+        "title": "CollectionResponse"
+      },
+      "CollectionRowRecord": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "key": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Key"
+          },
+          "values": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Values"
+          },
+          "pending": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Pending"
+          },
+          "manual_fields": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Manual Fields"
+          },
+          "written_by": { "type": "string", "title": "Written By" },
+          "revision": { "type": "integer", "title": "Revision" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "values",
+          "written_by",
+          "revision",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CollectionRowRecord"
+      },
+      "CollectionUpdateRequest": {
+        "properties": {
+          "rename": {
+            "anyOf": [
+              { "type": "string", "maxLength": 80, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Rename"
+          },
+          "add_fields": {
+            "items": { "$ref": "#/components/schemas/FieldSpec" },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Add Fields"
+          },
+          "remove_fields": {
+            "items": { "type": "string", "maxLength": 60 },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Remove Fields"
+          },
+          "key_field": {
+            "anyOf": [
+              { "type": "string", "maxLength": 60 },
+              { "type": "null" }
+            ],
+            "title": "Key Field"
+          },
+          "clear_key": {
+            "type": "boolean",
+            "title": "Clear Key",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "CollectionUpdateRequest"
+      },
       "CommunityListResponse": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
@@ -24195,6 +24848,43 @@
         "type": "object",
         "required": ["computer_use_consent"],
         "title": "ComputerUseConsentResponse"
+      },
+      "Condition": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Field"
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "is",
+              "is_not",
+              "contains",
+              "gt",
+              "lt",
+              "gte",
+              "lte",
+              "empty",
+              "not_empty"
+            ],
+            "title": "Op"
+          },
+          "value": {
+            "anyOf": [
+              { "type": "string", "maxLength": 500 },
+              { "type": "number" },
+              { "type": "boolean" },
+              { "type": "null" }
+            ],
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": ["field", "op"],
+        "title": "Condition"
       },
       "ConfirmLinkRequest": {
         "properties": {
@@ -28737,6 +29427,48 @@
         "title": "FeedbackPromptToolResponse",
         "description": "A work check or mistake card, or the news that none will appear."
       },
+      "FieldSpec": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "type": { "$ref": "#/components/schemas/FieldType" },
+          "options": {
+            "items": { "type": "string", "maxLength": 100, "minLength": 1 },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Options"
+          },
+          "unit": {
+            "anyOf": [
+              { "type": "string", "maxLength": 12 },
+              { "type": "null" }
+            ],
+            "title": "Unit"
+          }
+        },
+        "type": "object",
+        "required": ["name", "type"],
+        "title": "FieldSpec",
+        "description": "A field a writer declares up front."
+      },
+      "FieldType": {
+        "type": "string",
+        "enum": [
+          "text",
+          "number",
+          "date",
+          "select",
+          "multi_select",
+          "checkbox",
+          "url",
+          "email"
+        ],
+        "title": "FieldType"
+      },
       "FinalizeRequest": {
         "properties": {
           "recording_id": {
@@ -28980,7 +29712,8 @@
           "copilot-stream-shadow",
           "copilot-stream-runtime",
           "onboarding-step-order",
-          "pages"
+          "pages",
+          "collections"
         ],
         "title": "FrontendFlag",
         "description": "Every flag the frontend reads; the frontend's `Flag` is generated from this.\n\nA key the backend reads too comes from the backend's `Flag`, so it is written once.",
@@ -29003,7 +29736,8 @@
           "COPILOT_STREAM_SHADOW",
           "COPILOT_STREAM_RUNTIME",
           "ONBOARDING_STEP_ORDER",
-          "PAGES"
+          "PAGES",
+          "COLLECTIONS"
         ]
       },
       "FrontendFlagValues": {
@@ -33851,6 +34585,89 @@
         "required": ["kind", "index", "blocks"],
         "title": "PageCards"
       },
+      "PageCollectionNumbers": {
+        "properties": {
+          "index": { "type": "integer", "title": "Index" },
+          "collection_id": { "type": "string", "title": "Collection Id" },
+          "collection_name": { "type": "string", "title": "Collection Name" },
+          "kind": {
+            "type": "string",
+            "const": "collection_numbers",
+            "title": "Kind"
+          },
+          "block": { "$ref": "#/components/schemas/StatsBlock" }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "collection_id",
+          "collection_name",
+          "kind",
+          "block"
+        ],
+        "title": "PageCollectionNumbers"
+      },
+      "PageCollectionTable": {
+        "properties": {
+          "index": { "type": "integer", "title": "Index" },
+          "collection_id": { "type": "string", "title": "Collection Id" },
+          "collection_name": { "type": "string", "title": "Collection Name" },
+          "kind": {
+            "type": "string",
+            "const": "collection_table",
+            "title": "Kind"
+          },
+          "title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Title"
+          },
+          "columns": {
+            "items": { "$ref": "#/components/schemas/PageTableColumn" },
+            "type": "array",
+            "title": "Columns"
+          },
+          "dropped_columns": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Dropped Columns",
+            "description": "Columns the collection no longer has."
+          },
+          "rows": {
+            "items": { "$ref": "#/components/schemas/CollectionRowRecord" },
+            "type": "array",
+            "title": "Rows"
+          },
+          "total": { "type": "integer", "title": "Total" },
+          "filter": {
+            "items": { "$ref": "#/components/schemas/Condition" },
+            "type": "array",
+            "title": "Filter"
+          },
+          "sort": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Sort" },
+              { "type": "null" }
+            ]
+          },
+          "read_only": { "type": "boolean", "title": "Read Only" },
+          "key_field": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Key Field"
+          }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "collection_id",
+          "collection_name",
+          "kind",
+          "columns",
+          "rows",
+          "total",
+          "read_only"
+        ],
+        "title": "PageCollectionTable"
+      },
       "PageEdit": {
         "properties": {
           "title": {
@@ -34364,6 +35181,24 @@
           "is_scheduled"
         ],
         "title": "PageSchedule"
+      },
+      "PageTableColumn": {
+        "properties": {
+          "field": { "type": "string", "title": "Field" },
+          "type": { "$ref": "#/components/schemas/FieldType" },
+          "options": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Options"
+          },
+          "unit": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Unit"
+          }
+        },
+        "type": "object",
+        "required": ["field", "type"],
+        "title": "PageTableColumn"
       },
       "PageTemplate": {
         "properties": {
@@ -36869,12 +37704,16 @@
                 { "$ref": "#/components/schemas/PageExpertLearned" },
                 { "$ref": "#/components/schemas/PageExpertActivity" },
                 { "$ref": "#/components/schemas/PageWaiting" },
+                { "$ref": "#/components/schemas/PageCollectionTable" },
+                { "$ref": "#/components/schemas/PageCollectionNumbers" },
                 { "$ref": "#/components/schemas/PageNotice" }
               ],
               "discriminator": {
                 "propertyName": "kind",
                 "mapping": {
                   "cards": "#/components/schemas/PageCards",
+                  "collection_numbers": "#/components/schemas/PageCollectionNumbers",
+                  "collection_table": "#/components/schemas/PageCollectionTable",
                   "expert_activity": "#/components/schemas/PageExpertActivity",
                   "expert_learned": "#/components/schemas/PageExpertLearned",
                   "expert_status": "#/components/schemas/PageExpertStatus",
@@ -36992,6 +37831,7 @@
           "expert_onboarding",
           "ui_blocks",
           "page",
+          "collections",
           "feedback_prompt",
           "team_consult",
           "session_list",
@@ -37162,6 +38002,53 @@
         "type": "object",
         "required": ["store_listing_version_id", "is_approved", "comments"],
         "title": "ReviewSubmissionRequest"
+      },
+      "RowAddRequest": {
+        "properties": {
+          "values": {
+            "additionalProperties": true,
+            "propertyNames": { "maxLength": 60, "minLength": 1 },
+            "type": "object",
+            "maxProperties": 30,
+            "title": "Values"
+          }
+        },
+        "type": "object",
+        "required": ["values"],
+        "title": "RowAddRequest"
+      },
+      "RowEditRequest": {
+        "properties": {
+          "values": {
+            "additionalProperties": true,
+            "propertyNames": { "maxLength": 60, "minLength": 1 },
+            "type": "object",
+            "maxProperties": 30,
+            "minProperties": 1,
+            "title": "Values"
+          },
+          "based_on": {
+            "type": "integer",
+            "title": "Based On",
+            "description": "The row's revision the edit was made on."
+          }
+        },
+        "type": "object",
+        "required": ["values", "based_on"],
+        "title": "RowEditRequest"
+      },
+      "RowPage": {
+        "properties": {
+          "rows": {
+            "items": { "$ref": "#/components/schemas/CollectionRowRecord" },
+            "type": "array",
+            "title": "Rows"
+          },
+          "total": { "type": "integer", "title": "Total" }
+        },
+        "type": "object",
+        "required": ["rows", "total"],
+        "title": "RowPage"
       },
       "RowRun": {
         "properties": {
@@ -38700,6 +39587,25 @@
         "title": "SkippedWebhookPreset",
         "description": "A webhook preset that was left pinned to its old version because the\nnewly activated version swaps or reconfigures the trigger block. The user\nneeds to reconfigure the trigger on the new version for it to fire."
       },
+      "Sort": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Field"
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["asc", "desc"],
+            "title": "Direction",
+            "default": "asc"
+          }
+        },
+        "type": "object",
+        "required": ["field"],
+        "title": "Sort"
+      },
       "SoulFieldChange": {
         "properties": {
           "field": {
@@ -38749,6 +39655,20 @@
         "type": "object",
         "required": ["text"],
         "title": "SpeechRequest"
+      },
+      "StaleRow": {
+        "properties": {
+          "detail": { "type": "string", "title": "Detail" },
+          "row": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CollectionRowRecord" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["detail"],
+        "title": "StaleRow"
       },
       "StatItem": {
         "properties": {

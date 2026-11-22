@@ -36,6 +36,9 @@ EAGER_CORE: frozenset[str] = frozenset(
         "render_ui",
         # Its preview is a chat card, which a deferred call does not draw.
         "design_page",
+        # Otto keeps a list when the user mentions one in passing, so it must
+        # know the tool is there without searching for it.
+        "collections",
         "web_search",
         "web_fetch",
         # The three go together: read and write take a file id or path that

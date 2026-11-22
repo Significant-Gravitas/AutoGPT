@@ -62,6 +62,7 @@ class FrontendFlag(str, Enum):
     # steps lead and the rest keep their default order (frontend `resolveStepOrder`).
     ONBOARDING_STEP_ORDER = "onboarding-step-order"
     PAGES = Flag.PAGES.value
+    COLLECTIONS = Flag.COLLECTIONS.value
 
     @classmethod
     def __get_pydantic_json_schema__(

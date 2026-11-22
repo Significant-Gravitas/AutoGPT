@@ -119,6 +119,8 @@ _PLATFORM = frozenset(
         "enter_agent_building_mode",
         # A save; a preview is a no-op subject (``gate_subject``).
         "design_page",
+        # Deletes and shape changes; reads and row writes say so (``gate_subject``).
+        "collections",
         "fix_agent_graph",
         "create_folder",
         "delete_folder",
@@ -244,6 +246,8 @@ _IRREVERSIBLE = frozenset({"delete_schedule", "delete_skill", "delete_workspace_
 
 
 def is_irreversible(tool_name: str, args: dict[str, Any]) -> bool:
+    if tool_name == "collections":
+        return args.get("action") in ("delete_rows", "delete_collection")
     if tool_name == "memory_forget_confirm":
         # The default retracts the memory; only a hard delete destroys it.
         return args.get("hard_delete") is True

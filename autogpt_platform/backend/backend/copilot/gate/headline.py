@@ -18,6 +18,7 @@ _ASK: dict[str, tuple[str, tuple[str, ...]]] = {
     "customize_agent": ("Customize a workflow", ()),
     "edit_agent": ("Edit a workflow", ()),
     "design_page": ("Save a page", ()),
+    "collections": ("Change a collection", ("collection",)),
     "fix_agent_graph": ("Fix a workflow", ()),
     "enter_agent_building_mode": ("Start building a workflow", ()),
     "create_folder": ("Create library folder", ("name",)),

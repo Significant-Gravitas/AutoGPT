@@ -42,6 +42,7 @@ import backend.api.features.chat.feedback as chat_feedback
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
 import backend.api.features.chat.speech as chat_speech
+import backend.api.features.collections.routes as collections_routes
 import backend.api.features.desktop_preview
 import backend.api.features.experiments
 import backend.api.features.experts.routes as experts_routes
@@ -528,6 +529,7 @@ app.include_router(
 )
 app.include_router(home_routes.router, prefix="/api")
 app.include_router(pages_routes.router, prefix="/api")
+app.include_router(collections_routes.router, prefix="/api")
 app.include_router(feature_flags_routes.router, prefix="/api")
 app.include_router(platform_config_routes.router, prefix="/api")
 app.include_router(

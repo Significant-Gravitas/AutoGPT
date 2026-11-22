@@ -335,8 +335,13 @@ from ._test_data import make_session
 # dev e8f6ffc2881 (93 tools):
 #     merged tree                                 84,528
 #     + headroom                       +300       84,828
+# Raised for collections (SECRT-3756), stacked on design_page; only sessions
+# with the collections flag on declare it. Measured on that branch at its
+# base 8df02d4371b plus the tool:
+#     tree                                        86,108
+#     + headroom                       +300       86,408
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_CHAR_BUDGET = 84_828
+_CHAR_BUDGET = 86_408
 
 
 @pytest.fixture(scope="module")
@@ -588,8 +593,11 @@ def test_total_schema_char_budget() -> None:
 #     dev e8f6ffc2881                             75,385
 #     + design_page                  +1,067       76,452
 #     + headroom                       +300       76,752
+# collections (SECRT-3756) rides it too, eager like design_page:
+#     base 8df02d4371b + collections              77,926
+#     + headroom                       +300       78,226
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_SESSION_WIRE_BUDGET = 76_752
+_SESSION_WIRE_BUDGET = 78_226
 
 
 def test_largest_declared_session_wire_budget() -> None:

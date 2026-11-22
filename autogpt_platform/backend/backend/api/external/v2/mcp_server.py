@@ -96,6 +96,7 @@ EXTERNAL_USE_EXCLUSIONS: dict[str, str] = {
     "expert_onboarding": "renders the expert intake card in a chat session",
     "render_ui": "renders visual cards in the copilot UI",
     "design_page": "previews a page as a chat card",
+    "collections": "collections are not in the external API yet",
     "request_work_check": "renders a feedback card in a chat session",
     "flag_mistake": "Otto's report on its own mistake in a chat session",
     "consult_teammate": "teammate checks run inside a chat session",
