@@ -83,9 +83,9 @@ export function SetupRequirementsCard({
   const [hasSent, setHasSent] = useState(false);
   const [justConnected, setJustConnected] = useState(false);
   // Accounts the user picked or connected on this card during this page
-  // life, and how many of those picks have been saved for the chat.
+  // life, and the credential fields picked since the card last saved.
   const [picks, setPicks] = useState(0);
-  const savedPicks = useRef(0);
+  const unsavedPicks = useRef(new Set<string>());
   // Credentials a sign-in on the chain's row reported. A renewal keeps the
   // credential's id, so this is how a renewed refused credential is told
   // apart from the refused one still being selected.
@@ -269,26 +269,41 @@ export function SetupRequirementsCard({
   // retried (as on dev): the row then names an account the chat isn't using
   // until the next pick or send.
   const lastSave = useRef<Promise<void> | null>(null);
-  const savePicks = useStableCallback(() => {
-    savedPicks.current = picks;
-    const save = (lastSave.current ?? Promise.resolve())
-      .then(() =>
-        reportCredentialPicks(sessionID, inputCredentials, credentialFields),
-      )
-      .catch(() => undefined);
-    lastSave.current = save;
-    return save;
+  const queueSave = useStableCallback(
+    (selection: Record<string, CredentialsMetaInput | undefined>) => {
+      const save = (lastSave.current ?? Promise.resolve())
+        .then(() =>
+          reportCredentialPicks(sessionID, selection, credentialFields),
+        )
+        .catch(() => undefined);
+      lastSave.current = save;
+      return save;
+    },
+  );
+  // A reply runs the tool on every account the card names, so a send saves
+  // the whole selection first, its picks included.
+  const saveSelection = useStableCallback(() => {
+    unsavedPicks.current.clear();
+    return queueSave(inputCredentials);
   });
   // An earlier answer's chain sends nothing (see ToolChain), but an account
   // picked there must still reach the chat: the row names it, and the tools
   // run on what was saved. So the card saves each pick itself, once the pick
-  // is in state. A card that only re-mounted with its account already in
-  // place has nothing to save.
+  // is in state, and only the fields picked: an account the card merely
+  // shows, as every card re-mounted from history does, must not overwrite
+  // one picked on another card.
+  const savePicked = useStableCallback(() => {
+    if (unsavedPicks.current.size === 0) return;
+    const picked = Object.fromEntries(
+      [...unsavedPicks.current].map((key) => [key, inputCredentials[key]]),
+    );
+    unsavedPicks.current.clear();
+    void queueSave(picked);
+  });
   const savesOwnPicks = chainActions !== null && !chainActions.canSend;
   useEffect(() => {
-    if (!savesOwnPicks || picks === savedPicks.current) return;
-    void savePicks();
-  }, [savesOwnPicks, picks, savePicks]);
+    if (savesOwnPicks) savePicked();
+  }, [savesOwnPicks, picks, savePicked]);
 
   // Inside a tool chain the card's own Proceed is replaced by the chain's
   // single Proceed step — register readiness + message with the chain.
@@ -303,7 +318,7 @@ export function SetupRequirementsCard({
       // A trigger's line carries the chosen credential ids, and an edit-mode
       // card's may carry run inputs; only a bare confirmation is shareable.
       credentialsOnly: needsCredentials && !needsInputs && !isTriggerMode,
-      beforeSend: savePicks,
+      beforeSend: saveSelection,
       onSent: markSent,
       connectors: needsCredentials
         ? {
@@ -311,8 +326,9 @@ export function SetupRequirementsCard({
             fields: credentialFields,
             selected: inputCredentials,
             onChange: handleCredentialChange,
-            onConnected: (credentialId) => {
+            onConnected: (key, credentialId) => {
               setJustConnected(true);
+              unsavedPicks.current.add(key);
               setPicks((count) => count + 1);
               if (credentialId) setRenewedIds((ids) => [...ids, credentialId]);
             },

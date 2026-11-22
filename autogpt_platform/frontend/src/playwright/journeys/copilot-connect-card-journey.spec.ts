@@ -186,6 +186,12 @@ test.describe("copilot connect card journey", () => {
         await expect(
           page.getByRole("textbox", { name: "Chat message input" }),
         ).toBeEnabled();
+        // The row names the saved key once it has picked it, which is when a
+        // Proceed would show if the finished step offered one.
+        await expect(
+          reloaded.getByText(newKey.keyName, { exact: true }),
+          "the reloaded card's row should name the saved key",
+        ).toBeVisible();
         await expect(
           reloaded.getByRole("button", { name: /^(Connect|Proceed)$/ }),
           "nothing should offer to run the finished step again",

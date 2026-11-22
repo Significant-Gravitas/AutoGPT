@@ -136,7 +136,8 @@ export function ToolChain({
   const canSend = !readOnly && isLatestAnswer;
   // Kept as memos with the compiler on: the cards' register effects depend on
   // this context value, and re-running them would re-register every card.
-  // `canSend` only changes when the chain's answer stops being the newest.
+  // `canSend` only changes with `readOnly`, or when the chain's answer stops
+  // being the newest.
   const register = useCallback((owner: string, entry: ChainActionEntry) => {
     setRegistrations((prev) => {
       const next = new Map(prev);

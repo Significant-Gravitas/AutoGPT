@@ -839,6 +839,52 @@ describe("copilot Connect card, already satisfied", () => {
       expect(onSend).not.toHaveBeenCalled();
     });
 
+    it("saves nothing for a card in an earlier answer that only mounted again with its account", async () => {
+      const written = recordPickSaves();
+      const { onSend } = renderTranscript([
+        ...chatAfterTheStepRan(),
+        ...aWorkflowRunAfterIt(),
+      ]);
+      const earlier = await findAnswer(`${SESSION_ID}-seq-2`);
+      const newest = await findAnswer(`${SESSION_ID}-seq-6`);
+      await within(earlier).findByText("Connected");
+      const user = userEvent.setup();
+
+      // The newest card's Proceed saves its account and then sends. A save
+      // the earlier card made as it mounted went out before that one.
+      await user.click(
+        await within(newest).findByRole("button", { name: "Proceed" }),
+      );
+
+      await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+      expect(written).toEqual([{ slack: "cred-slack" }]);
+      expect(pickSaves.started).toBe(1);
+    });
+
+    it("saves only the account picked on a card in an earlier answer, not the others it names", async () => {
+      savedCredentials = [...savedCredentials, WORK_ACCOUNT];
+      const written = recordPickSaves();
+      // One step that needs GitHub and Slack. The card names the only Slack
+      // account by itself; for GitHub the user picks one of two.
+      const chat = chatAfterTheStepRan();
+      chat[1] = {
+        ...chat[1],
+        parts: [
+          githubAndSlackRequirementsPart() as ChatMessage["parts"][number],
+        ],
+      };
+      renderTranscript(chat);
+      const earlier = await findAnswer(`${SESSION_ID}-seq-2`);
+      await within(earlier).findByText("Connected");
+
+      await pickAccount(earlier, "Choose account", /^Work/);
+
+      // Slack may since have been switched to another account on another
+      // card, and this card never asked the user about it.
+      await waitFor(() => expect(pickSaves.answered).toBe(1));
+      expect(written).toEqual([{ github: "cred-work" }]);
+    });
+
     it("saves an account picked on a card in an earlier answer, and sends nothing for it", async () => {
       savedCredentials = [...savedCredentials, WORK_ACCOUNT];
       const written = recordPickSaves();
@@ -2048,6 +2094,36 @@ function slackRequirementsPart(): MessagePart {
           has_all_credentials: false,
           missing_credentials: {
             credentials: {
+              provider: "slack",
+              types: ["oauth2"],
+              scopes: ["chat:write"],
+            },
+          },
+        },
+      },
+    },
+  } as unknown as MessagePart;
+}
+/** One block that needs both GitHub and Slack. */
+function githubAndSlackRequirementsPart(): MessagePart {
+  const base = setupRequirementsPart() as unknown as Record<string, unknown>;
+  const output = base.output as Record<string, unknown>;
+  const setup = output.setup_info as Record<string, unknown>;
+  return {
+    ...base,
+    output: {
+      ...output,
+      setup_info: {
+        ...setup,
+        user_readiness: {
+          has_all_credentials: false,
+          missing_credentials: {
+            github_credentials: {
+              provider: "github",
+              types: ["oauth2"],
+              scopes: [REQUIRED_SCOPE],
+            },
+            slack_credentials: {
               provider: "slack",
               types: ["oauth2"],
               scopes: ["chat:write"],
