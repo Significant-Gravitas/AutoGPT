@@ -9,7 +9,6 @@ import {
   createTemplate,
   createWorkflow,
   credentialRef,
-  deleteCredential,
   deleteSchedule,
   expectListedInIntegrations,
   fakeAPIKey,
@@ -22,8 +21,8 @@ import {
   observe,
   openIntegrations,
   PROVIDER,
-  readRun,
-  readSpeechStep,
+  PROVIDER_NAME,
+  readScrapeStep,
   readTemplate,
   removeKeyInIntegrations,
   runDialog,
@@ -70,7 +69,7 @@ test.describe("credentials journey", () => {
       type: "api_key",
       title,
     });
-    const service = credential.service_name ?? "Unreal Speech";
+    const service = credential.service_name ?? PROVIDER_NAME;
     await expectListedInIntegrations(page, credential, service);
     expect(
       await page.content(),
@@ -142,12 +141,12 @@ test.describe("credentials journey", () => {
     const credential = await createAPIKey(page, `Journey key ${stamp}`);
     const workflow = await createWorkflow(
       page,
-      createUniqueAgentName("Journey speaking"),
+      createUniqueAgentName("Journey scraping"),
     );
-    const before = await readSpeechStep(page, workflow);
+    const before = await readScrapeStep(page, workflow);
     expect(before.credentials, "the step starts with no key").toBeNull();
 
-    // The builder: the field offers the user's only Unreal Speech key.
+    // The builder: the field offers the user's only Firecrawl key.
     await page.goto(`/build?flowID=${workflow.graphID}`);
     await new BuildPage(page).closeTutorial();
     const step = page.locator(`[data-id="custom-node-${before.nodeID}"]`);
@@ -181,7 +180,7 @@ test.describe("credentials journey", () => {
       dialog.getByText(credential.title, { exact: true }),
       "the run dialog should offer the key",
     ).toBeVisible();
-    const note = `Speaking note ${stamp}`;
+    const note = `Scraping note ${stamp}`;
     await dialog.getByTestId("agent-input-note").fill(note);
     const started = page.waitForResponse(isRunStart(workflow));
     await dialog
@@ -202,7 +201,7 @@ test.describe("credentials journey", () => {
     const runID = ((await startedRun.json()) as { id: string }).id;
     const run = await waitForRunToEnd(page, workflow, runID);
     expect(run.status).toBe("COMPLETED");
-    expect(run.outputs, "the speech step never runs").toEqual({
+    expect(run.outputs, "the scrape step never runs").toEqual({
       reply: [note],
     });
     expect(run.credential_inputs?.[workflow.credentialsInput]).toMatchObject({
@@ -283,7 +282,7 @@ test.describe("credentials journey: removing a key in use", () => {
     const credential = await createAPIKey(page, `Journey key ${stamp}`);
     const workflow = await createWorkflow(
       page,
-      createUniqueAgentName("Journey speaking"),
+      createUniqueAgentName("Journey scraping"),
       credential,
     );
     const firstRunID = await startedRunID(
@@ -311,7 +310,7 @@ test.describe("credentials journey: removing a key in use", () => {
 
     try {
       await openIntegrations(page);
-      const service = credential.service_name ?? "Unreal Speech";
+      const service = credential.service_name ?? PROVIDER_NAME;
       await expectListedInIntegrations(page, credential, service);
       const { warning, answer } = await removeKeyInIntegrations(
         page,
@@ -394,10 +393,10 @@ test.describe("credentials journey: removing a key in use", () => {
       expect(await listRunIDs(page, workflow)).toEqual([firstRunID]);
 
       // The builder: the step names the key that was removed.
-      const speech = await readSpeechStep(page, workflow);
+      const scrape = await readScrapeStep(page, workflow);
       await page.goto(`/build?flowID=${workflow.graphID}`);
       await new BuildPage(page).closeTutorial();
-      const step = page.locator(`[data-id="custom-node-${speech.nodeID}"]`);
+      const step = page.locator(`[data-id="custom-node-${scrape.nodeID}"]`);
       await expect(step).toBeVisible({ timeout: 20_000 });
       await expect(
         step.getByText(`${credential.title} was removed.`, { exact: false }),
@@ -420,9 +419,9 @@ test.describe("credentials journey: removing a key in use", () => {
 });
 
 test.describe("credentials journey: evidence for open bugs", () => {
-  // TODO(evidence run): soft checks of bugs found by this journey, to be
-  // removed before review. #17240: Settings → Integrations doesn't notice a
-  // key deleted in a workflow step's field.
+  // TODO(evidence run): a soft check of #17240, to be removed before review:
+  // Settings → Integrations doesn't notice a key deleted in a workflow
+  // step's field, when it shows the list it read in the last minute.
   test("a key deleted in the run dialog's credentials field is gone from Settings → Integrations", async ({
     page,
     journeyUser: _user,
@@ -430,25 +429,31 @@ test.describe("credentials journey: evidence for open bugs", () => {
     const credential = await createAPIKey(page, `Journey key ${uniqueStamp()}`);
     const workflow = await createWorkflow(
       page,
-      createUniqueAgentName("Journey speaking"),
+      createUniqueAgentName("Journey scraping"),
     );
-    await openIntegrations(page);
-    await expect(keyCheckbox(page, credential.title)).toBeVisible();
+    await page.goto(`/library/agents/${workflow.libraryAgentID}`);
+    await waitForAgentPageLoad(page);
+    const setUp = page.getByRole("button", { name: "Setup your task" });
+    await expect(setUp).toBeVisible();
 
-    // Every move from here on is in-app navigation, as a person makes it.
+    // From here on, every move stays in the app: menus, links and the
+    // browser's back and forward buttons, never a reload.
+    await page.getByTestId("profile-popout-menu-trigger").click();
+    await page.getByRole("link", { name: "Settings", exact: true }).click();
     await page
-      .locator('[data-sidebar="sidebar"]')
-      .getByRole("link", { name: "Workflows", exact: true })
-      .click();
-    await page
-      .locator(
-        `[data-testid="library-agent-card"][data-agent-id="${workflow.libraryAgentID}"]`,
-      )
-      .getByRole("link")
+      .getByRole("link", { name: "Integrations", exact: true })
+      .filter({ visible: true })
       .first()
       .click();
-    await waitForAgentPageLoad(page);
-    await page.getByRole("button", { name: "Setup your task" }).click();
+    await expect(page).toHaveURL(/\/settings\/integrations$/);
+    await expect(keyCheckbox(page, credential.title)).toBeVisible();
+
+    await page.goBack();
+    await page.goBack();
+    await expect(page).toHaveURL(
+      new RegExp(`/library/agents/${workflow.libraryAgentID}`),
+    );
+    await setUp.click();
     const dialog = runDialog(page);
     const keyName = dialog.getByText(credential.title, { exact: true });
     await expect(keyName).toBeVisible();
@@ -466,12 +471,13 @@ test.describe("credentials journey: evidence for open bugs", () => {
     );
     await confirm.getByRole("button", { name: "Delete", exact: true }).click();
     expect((await deleted).ok()).toBe(true);
+    await expect(confirm).toBeHidden();
     await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
 
-    await page.getByTestId("profile-popout-menu-trigger").click();
-    await page.getByRole("link", { name: "Settings", exact: true }).click();
-    await page.getByRole("link", { name: "Integrations", exact: true }).click();
-    await expect(page).toHaveURL(/\/settings\/integrations/);
+    await page.goForward();
+    await page.goForward();
+    await expect(page).toHaveURL(/\/settings\/integrations$/);
     await expect(
       page.getByRole("heading", { name: "Integrations", exact: true }),
     ).toBeVisible();
@@ -481,62 +487,6 @@ test.describe("credentials journey: evidence for open bugs", () => {
         "#17240: the deleted key should be gone from Integrations",
       )
       .toHaveCount(0);
-  });
-
-  // TODO(evidence run): a schedule whose key was removed disappears at its
-  // next tick, with no run and no word to its owner.
-  test("a schedule whose key was removed, when it next fires", async ({
-    page,
-    journeyUser: _user,
-  }, testInfo) => {
-    // The schedule fires at the next minute boundary.
-    test.setTimeout(180_000);
-    const stamp = uniqueStamp();
-    const credential = await createAPIKey(page, `Journey key ${stamp}`);
-    const workflow = await createWorkflow(
-      page,
-      createUniqueAgentName("Journey scheduled speaking"),
-    );
-    const schedule = await createSchedule(page, workflow, {
-      name: `Every minute ${stamp}`,
-      cron: "* * * * *",
-      credential: credentialRef(credential),
-    });
-    try {
-      expect(await deleteCredential(page, credential)).toMatchObject({
-        deleted: true,
-      });
-      const scheduledAt = Date.now();
-      // Past the next tick: the schedule leaves, or a run shows up.
-      await expect
-        .poll(
-          async () =>
-            (await listSchedules(page, workflow)).length === 0 ||
-            (await listRunIDs(page, workflow)).length > 0,
-          { timeout: 90_000, intervals: [2_000] },
-        )
-        .toBe(true)
-        .catch(() => {});
-      const schedules = await listSchedules(page, workflow);
-      const runs = await listRunIDs(page, workflow);
-      observe(
-        testInfo,
-        `${Math.round((Date.now() - scheduledAt) / 1000)} s after its key was ` +
-          `removed, the schedule is ${schedules.length ? "still listed" : "gone"}, ` +
-          `and the workflow has ${runs.length} run(s)` +
-          (runs.length
-            ? `: ${JSON.stringify(await readRun(page, workflow, runs[0]))}`
-            : ""),
-      );
-      expect
-        .soft(
-          schedules.length > 0 || runs.length > 0,
-          "the owner should be shown what happened to the schedule",
-        )
-        .toBe(true);
-    } finally {
-      await deleteSchedule(page, schedule.id);
-    }
   });
 });
 
@@ -558,7 +508,7 @@ async function saveInBuilder(page: Page, workflow: Workflow) {
   expect(response.ok(), `saving in the builder: ${response.status()}`).toBe(
     true,
   );
-  return readSpeechStep(page, workflow);
+  return readScrapeStep(page, workflow);
 }
 
 async function saveRunAsTemplate(page: Page, runID: string, name: string) {

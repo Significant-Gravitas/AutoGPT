@@ -8,21 +8,22 @@ import {
 } from "@playwright/test";
 import { authHeaders, signIn, type JourneyUser } from "./journey-user";
 
-// The credentials journey's steps. Its keys are for Unreal Speech, whose text
-// to speech block takes an API key. No key is real, and the step that would
+// The credentials journey's steps. Its keys are for Firecrawl, whose scrape
+// block takes an API key and which has no platform key to fall back on, so
+// the key is always the user's own. No key is real, and the step that would
 // send one never runs: the journey's workflow only reaches it when its note
-// is a word nobody types (see `speakingGraph`), so a run checks the key is
+// is a word nobody types (see `scrapingGraph`), so a run checks the key is
 // there and usable without calling the provider.
 
-export const PROVIDER = "unreal_speech";
+export const PROVIDER = "firecrawl";
+export const PROVIDER_NAME = "Firecrawl";
 
 const BLOCK = {
   input: "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
   output: "363ae599-353e-4804-937e-b2ee3cef3da4",
   condition: "715696a0-e1da-45c8-b209-c2fa9c3b0be6",
-  textToSpeech: "4ff1ff6d-cc40-4caa-ae69-011daa20c378",
+  scrape: "ac444320-cf5e-4697-b586-2604c17a3e75",
 } as const;
-const VOICE = "Scarlett";
 const NEVER_TYPED = `never-typed-${randomBytes(6).toString("hex")}`;
 // Runs start INCOMPLETE, then QUEUED, so wait for a status a run ends in.
 const RUN_ENDED = /^(COMPLETED|FAILED|TERMINATED)$/;
@@ -40,7 +41,7 @@ export interface Workflow {
   graphID: string;
   graphVersion: number;
   libraryAgentID: string;
-  /** The key in the workflow's credentials inputs that the speech step reads. */
+  /** The key in the workflow's credentials inputs that the scrape step reads. */
   credentialsInput: string;
 }
 
@@ -120,14 +121,14 @@ export async function listCredentials(page: Page) {
   };
 }
 
-/** Saves the journey's workflow, its speech step on `credential` if given. */
+/** Saves the journey's workflow, its scrape step on `credential` if given. */
 export async function createWorkflow(
   page: Page,
   name: string,
   credential?: Credential,
 ): Promise<Workflow> {
   const response = await page.request.post("/api/proxy/api/graphs", {
-    data: { source: "upload", graph: speakingGraph(name, credential) },
+    data: { source: "upload", graph: scrapingGraph(name, credential) },
   });
   expect(response.ok(), `saving ${name}: ${response.status()}`).toBe(true);
   const graph = (await response.json()) as { id: string; version: number };
@@ -135,7 +136,7 @@ export async function createWorkflow(
   const inputs = Object.keys(agent.credentials_input_schema.properties);
   expect(
     inputs,
-    "the workflow should ask for one Unreal Speech key, for its speech step",
+    "the workflow should ask for one Firecrawl key, for its scrape step",
   ).toHaveLength(1);
   return {
     name,
@@ -160,9 +161,9 @@ async function readLibraryAgent(page: Page, graphID: string) {
   };
 }
 
-// note → reply, and note → speech only when the note is NEVER_TYPED, through
-// a text to speech step that reads the key.
-function speakingGraph(name: string, credential?: Credential) {
+// note → reply, and note → page only when the note is NEVER_TYPED, through a
+// scrape step that reads the key.
+function scrapingGraph(name: string, credential?: Credential) {
   return {
     name,
     description: "Made by the credentials journey",
@@ -178,19 +179,16 @@ function speakingGraph(name: string, credential?: Credential) {
         320,
       ),
       graphNode(
-        "speak",
-        BLOCK.textToSpeech,
-        {
-          voice_id: VOICE,
-          ...(credential ? { credentials: credentialRef(credential) } : {}),
-        },
+        "scrape",
+        BLOCK.scrape,
+        credential ? { credentials: credentialRef(credential) } : {},
         800,
         320,
       ),
       graphNode(
-        "speech",
+        "page",
         BLOCK.output,
-        { name: "speech", title: "Speech" },
+        { name: "page", title: "Page" },
         1200,
         320,
       ),
@@ -198,8 +196,8 @@ function speakingGraph(name: string, credential?: Credential) {
     links: [
       graphLink("note", "result", "reply", "value"),
       graphLink("note", "result", "gate", "value1"),
-      graphLink("gate", "yes_output", "speak", "text"),
-      graphLink("speak", "mp3_url", "speech", "value"),
+      graphLink("gate", "yes_output", "scrape", "url"),
+      graphLink("scrape", "markdown", "page", "value"),
     ],
   };
 }
@@ -235,8 +233,8 @@ function graphLink(
   };
 }
 
-/** The saved graph's speech step: its id and the key its field holds. */
-export async function readSpeechStep(page: Page, workflow: Workflow) {
+/** The saved graph's scrape step: its id and the key its field holds. */
+export async function readScrapeStep(page: Page, workflow: Workflow) {
   const response = await page.request.get(
     `/api/proxy/api/graphs/${workflow.graphID}`,
   );
@@ -251,8 +249,8 @@ export async function readSpeechStep(page: Page, workflow: Workflow) {
       input_default: Record<string, unknown>;
     }[];
   };
-  const step = graph.nodes.find((node) => node.block_id === BLOCK.textToSpeech);
-  expect(step, "the workflow should have its speech step").toBeTruthy();
+  const step = graph.nodes.find((node) => node.block_id === BLOCK.scrape);
+  expect(step, "the workflow should have its scrape step").toBeTruthy();
   return {
     version: graph.version,
     nodeID: step!.id,
@@ -296,7 +294,7 @@ export async function waitForRunToEnd(
   return readRun(page, workflow, runID);
 }
 
-export async function readRun(page: Page, workflow: Workflow, runID: string) {
+async function readRun(page: Page, workflow: Workflow, runID: string) {
   const response = await page.request.get(
     `/api/proxy/api/graphs/${workflow.graphID}/executions/${runID}`,
   );
@@ -376,17 +374,6 @@ export async function deleteSchedule(page: Page, scheduleID: string) {
   await page.request.delete(`/api/proxy/api/schedules/${scheduleID}`);
 }
 
-export async function deleteCredential(page: Page, credential: Credential) {
-  const response = await page.request.delete(
-    `/api/proxy/api/integrations/${credential.provider}/credentials/${credential.id}`,
-  );
-  expect(response.ok(), `deleting the key: ${response.status()}`).toBe(true);
-  return (await response.json()) as {
-    deleted: boolean;
-    need_confirmation?: boolean;
-  };
-}
-
 // ── Settings → Integrations ────────────────────────────────────────────
 
 export async function openIntegrations(page: Page) {
@@ -416,8 +403,8 @@ export async function addKeyInIntegrations(
   const dialog = page.getByRole("dialog", { name: "Connect a service" });
   await dialog
     .getByRole("textbox", { name: "Search services" })
-    .fill("Unreal Speech");
-  await dialog.getByRole("button", { name: /Unreal Speech/ }).click();
+    .fill(PROVIDER_NAME);
+  await dialog.getByRole("button", { name: new RegExp(PROVIDER_NAME) }).click();
   await dialog
     .getByRole("textbox", { name: "Name", exact: true })
     .fill(key.title);
