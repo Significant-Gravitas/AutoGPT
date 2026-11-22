@@ -76,9 +76,11 @@ export function useLibraryUploadAgentDialog(options?: {
         throw new Error("Invalid base64 data URL format");
       }
 
-      const base64String = base64Match[1];
-      const jsonString = atob(base64String);
-      const obj = JSON.parse(jsonString);
+      // atob gives one character per byte; the file is UTF-8.
+      const bytes = Uint8Array.from(atob(base64Match[1]), (char) =>
+        char.charCodeAt(0),
+      );
+      const obj = JSON.parse(new TextDecoder().decode(bytes));
 
       if (
         !["name", "description", "nodes", "links"].every(
