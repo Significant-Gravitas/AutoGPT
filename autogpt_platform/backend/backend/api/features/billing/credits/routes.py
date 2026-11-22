@@ -26,6 +26,7 @@ from backend.data.credit import (
     UserCreditBase,
     get_auto_top_up,
     get_credit_model,
+    latest_credited_top_up,
     set_auto_top_up,
 )
 from backend.util.product_analytics import track_checkout_started
@@ -152,6 +153,15 @@ async def configure_user_auto_top_up(
     # Past the auth cache, before a charge: closing switched auto top-up off.
     await refuse_closed_account(user_id)
     credit_model = await get_credit_model(user_id, ctx.org_id)
+    if not request.amount:
+        # Turning auto top-up off charges nothing, so it needs no lock and
+        # keeps working while Redis can't be reached.
+        await _charge_and_save_auto_top_up(
+            user_id, request, credit_model, may_charge=False
+        )
+        return "Auto top-up settings updated"
+
+    credited_before = await latest_credited_top_up(user_id)
     async with auto_top_up_setup_lock(user_id) as held:
         if not held:
             raise HTTPException(
@@ -164,21 +174,32 @@ async def configure_user_auto_top_up(
         # Waiting for another save can take a while; the account may have
         # closed meanwhile, so look again before charging.
         await refuse_closed_account(user_id)
-        await _charge_and_save_auto_top_up(user_id, request, credit_model)
+        # The balance alone can't tell this save that the one ahead of it
+        # already charged: from a negative balance one refill can still leave
+        # it under the threshold. A top-up credited while this save waited
+        # means that charge happened, so this one only saves the settings.
+        may_charge = await latest_credited_top_up(user_id) == credited_before
+        await _charge_and_save_auto_top_up(
+            user_id, request, credit_model, may_charge=may_charge
+        )
     return "Auto top-up settings updated"
 
 
 async def _charge_and_save_auto_top_up(
-    user_id: str, request: AutoTopUpConfig, credit_model: UserCreditBase
+    user_id: str,
+    request: AutoTopUpConfig,
+    credit_model: UserCreditBase,
+    *,
+    may_charge: bool,
 ) -> None:
-    """Charge now if the balance is under the new threshold, then save the
-    settings. Callers hold ``auto_top_up_setup_lock`` so the balance read here
-    already includes any charge an earlier save made."""
+    """Charge now if the balance is under the new threshold and ``may_charge``,
+    then save the settings. Callers that charge hold ``auto_top_up_setup_lock``
+    so the balance read here already includes any charge an earlier save made."""
     current_balance = await credit_model.get_credits(user_id)
 
     try:
         # An amount of 0 turns auto top-up off: nothing to charge or check.
-        if request.amount and current_balance < request.threshold:
+        if request.amount and may_charge and current_balance < request.threshold:
             await credit_model.top_up_credits(user_id, request.amount)
         elif request.amount:
             await credit_model.top_up_credits(user_id, 0)

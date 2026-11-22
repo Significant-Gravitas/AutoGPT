@@ -71,15 +71,27 @@ export function useAutoRefillCard() {
     // Backend rejects refill < threshold with 422 — gate it client-side too.
     refillValue >= thresholdValue;
 
+  // Sends the request unless one is already in flight, and frees the guard as
+  // soon as it settles, when `isSaving` re-enables the buttons.
+  async function configureOnce(data: AutoTopUpConfig) {
+    if (configuringRef.current) return false;
+    configuringRef.current = true;
+    try {
+      await configureAutoTopUp({ data });
+    } finally {
+      configuringRef.current = false;
+    }
+    return true;
+  }
+
   async function save() {
     if (!isValid) return;
     try {
-      await configureAutoTopUp({
-        data: {
-          amount: Math.round(refillValue * 100),
-          threshold: Math.round(thresholdValue * 100),
-        },
+      const sent = await configureOnce({
+        amount: Math.round(refillValue * 100),
+        threshold: Math.round(thresholdValue * 100),
       });
+      if (!sent) return;
       await refetch();
       setOpen(false);
     } catch (error) {
@@ -96,7 +108,8 @@ export function useAutoRefillCard() {
 
   async function disable() {
     try {
-      await configureAutoTopUp({ data: { amount: 0, threshold: 0 } });
+      const sent = await configureOnce({ amount: 0, threshold: 0 });
+      if (!sent) return;
       await refetch();
       setOpen(false);
     } catch (error) {
@@ -108,16 +121,6 @@ export function useAutoRefillCard() {
             : "Auto top-up couldn't be disabled. Please try again.",
         variant: "destructive",
       });
-    }
-  }
-
-  async function runOnce(action: () => Promise<void>) {
-    if (configuringRef.current) return;
-    configuringRef.current = true;
-    try {
-      await action();
-    } finally {
-      configuringRef.current = false;
     }
   }
 
@@ -133,7 +136,7 @@ export function useAutoRefillCard() {
     refillAmount,
     setRefillAmount,
     isValid,
-    save: () => void runOnce(save),
-    disable: () => void runOnce(disable),
+    save: () => void save(),
+    disable: () => void disable(),
   };
 }

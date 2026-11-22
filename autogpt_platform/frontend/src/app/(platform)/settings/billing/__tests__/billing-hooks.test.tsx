@@ -374,6 +374,45 @@ describe("useAutoRefillCard", () => {
     expect(posts).toBe(1);
   });
 
+  it("a click once the save has answered goes through while the settings reload", async () => {
+    const bodies: { amount: number; threshold: number }[] = [];
+    let gets = 0;
+    const reload = holdRequests();
+    server.use(
+      http.get("*/api/credits/auto-top-up", async () => {
+        gets += 1;
+        if (gets > 1) await reload.released;
+        return HttpResponse.json({ amount: 0, threshold: 0 });
+      }),
+      http.post("*/api/credits/auto-top-up", async ({ request }) => {
+        bodies.push((await request.json()) as (typeof bodies)[number]);
+        return HttpResponse.json({});
+      }),
+    );
+
+    const { result } = renderHook(() => useAutoRefillCard(), {
+      wrapper: makeWrapper(),
+    });
+
+    try {
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      act(() => {
+        result.current.setThreshold("5");
+        result.current.setRefillAmount("10");
+      });
+
+      act(() => result.current.save());
+      await waitFor(() => expect(gets).toBe(2));
+      await waitFor(() => expect(result.current.isSaving).toBe(false));
+
+      act(() => result.current.disable());
+      await waitFor(() => expect(bodies).toHaveLength(2));
+    } finally {
+      act(() => reload.release());
+    }
+    expect(bodies[1]).toEqual({ amount: 0, threshold: 0 });
+  });
+
   it("save() catches mutation failures and stops the spinner", async () => {
     server.use(
       jsonHandler("get", "/api/credits/auto-top-up", {

@@ -1684,6 +1684,21 @@ def _top_up_credits_for_cents(top_up: CreditTransaction, cents: int) -> int:
     return -(-top_up.amount * cents // charged)
 
 
+async def latest_credited_top_up(user_id: str) -> str | None:
+    """Key of the user's most recent top-up whose charge went through. A
+    charge stays inactive until it succeeds and then takes the payment's id,
+    so this changes exactly when a top-up is credited."""
+    top_up = await CreditTransaction.prisma().find_first(
+        where={
+            "userId": user_id,
+            "type": CreditTransactionType.TOP_UP,
+            "isActive": True,
+        },
+        order={"createdAt": "desc"},
+    )
+    return top_up.transactionKey if top_up else None
+
+
 def _auto_top_up_key(user_id: str, metadata: UsageTransactionMetadata) -> str:
     """One auto top-up per graph execution or chat. A top-up stays inactive
     until its charge succeeds, so the key is what stops a repeat charge."""

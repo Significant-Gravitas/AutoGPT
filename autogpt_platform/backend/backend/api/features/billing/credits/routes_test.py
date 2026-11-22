@@ -3,11 +3,13 @@
 import asyncio
 import contextlib
 import json
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from unittest.mock import ANY, AsyncMock, MagicMock, Mock
 
 import fastapi
 import fastapi.testclient
+import httpx
 import pytest
 import pytest_mock
 import stripe
@@ -27,6 +29,7 @@ from backend.api.utils.exceptions import add_exception_handlers
 from backend.data.credit import (
     MAX_TOP_UP_AMOUNT,
     AutoTopUpConfig,
+    CardDeclinedError,
     UserCredit,
     UserCreditBase,
 )
@@ -75,11 +78,24 @@ def track_checkout_started(mocker: pytest_mock.MockFixture) -> AsyncMock:
 
 
 @pytest.fixture(autouse=True)
-def auto_top_up_lock_redis(mocker: pytest_mock.MockFixture) -> AsyncMock:
+async def auto_top_up_lock_redis(
+    mocker: pytest_mock.MockFixture,
+) -> AsyncIterator[AsyncMock]:
     """The auto top-up route locks the save in Redis before it charges."""
-    return mocker.patch(
+    redis = FakeRedis()
+    yield mocker.patch(
         "backend.api.features.billing.credits.auto_top_up_lock.get_redis_async",
-        new=AsyncMock(return_value=FakeRedis()),
+        new=AsyncMock(return_value=redis),
+    )
+    await redis.aclose()
+
+
+@pytest.fixture(autouse=True)
+def credited_top_up(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """The latest credited top-up, which the route compares across its wait."""
+    return mocker.patch(
+        "backend.api.features.billing.credits.routes.latest_credited_top_up",
+        new=AsyncMock(return_value=None),
     )
 
 
@@ -547,14 +563,29 @@ def test_configure_auto_top_up_beyond_stripes_ceiling_is_refused(
     set_auto_top_up.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "start, threshold, amount",
+    [
+        (300, 500, 1000),
+        # From a negative balance one refill still leaves it under the
+        # threshold, so the balance alone can't stop the second charge.
+        (-100, 500, 500),
+    ],
+)
 async def test_concurrent_auto_top_up_saves_charge_the_card_once(
     mocker: pytest_mock.MockFixture,
+    credited_top_up: AsyncMock,
+    start: int,
+    threshold: int,
+    amount: int,
 ) -> None:
     """#16840: a double-click sends two saves while the balance is under the
     new threshold. Only the first may charge; the second must see its credit."""
     mocker.patch("backend.api.features.billing.credits.routes.set_auto_top_up")
-    balance = {"credits": 300}
+    balance = {"credits": start}
     charges: list[int] = []
+    credited: list[str] = []
+    credited_top_up.side_effect = lambda user_id: credited[-1] if credited else None
     both_reading = asyncio.Barrier(2)
 
     async def get_credits(user_id: str) -> int:
@@ -573,6 +604,7 @@ async def test_concurrent_auto_top_up_saves_charge_the_card_once(
             # The charge is a Stripe round trip; the balance moves after it.
             await asyncio.sleep(0)
             balance["credits"] += amount
+            credited.append(f"pi_{len(charges)}")
 
     credit_model = mocker.AsyncMock()
     credit_model.get_credits.side_effect = get_credits
@@ -582,7 +614,7 @@ async def test_concurrent_auto_top_up_saves_charge_the_card_once(
         return_value=credit_model,
     )
 
-    config = AutoTopUpConfig(threshold=500, amount=1000)
+    config = AutoTopUpConfig(threshold=threshold, amount=amount)
     ctx = RequestContext(
         user_id="user-1",
         org_id="org-1",
@@ -600,8 +632,8 @@ async def test_concurrent_auto_top_up_saves_charge_the_card_once(
     )
 
     assert results == ["Auto top-up settings updated"] * 2
-    assert charges == [1000]
-    assert balance["credits"] == 1300
+    assert charges == [amount]
+    assert balance["credits"] == start + amount
 
 
 def test_auto_top_up_is_not_charged_when_the_save_cannot_be_locked(
@@ -628,6 +660,63 @@ def test_auto_top_up_is_not_charged_when_the_save_cannot_be_locked(
     assert "Nothing was charged" in response.json()["detail"]
     credit_model.top_up_credits.assert_not_called()
     set_auto_top_up.assert_not_called()
+
+
+def test_auto_top_up_can_be_turned_off_while_redis_is_down(
+    mocker: pytest_mock.MockFixture, auto_top_up_lock_redis: AsyncMock
+) -> None:
+    """Turning it off charges nothing, so it mustn't need the lock."""
+    auto_top_up_lock_redis.side_effect = ConnectionError("redis is down")
+    set_auto_top_up = mocker.patch(
+        "backend.api.features.billing.credits.routes.set_auto_top_up"
+    )
+    credit_model = mocker.AsyncMock()
+    credit_model.get_credits.return_value = 300
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=credit_model,
+    )
+
+    response = client.post("/credits/auto-top-up", json={"threshold": 0, "amount": 0})
+
+    assert response.status_code == 200
+    credit_model.top_up_credits.assert_not_called()
+    assert set_auto_top_up.await_args_list[-1].args[1] == AutoTopUpConfig(
+        threshold=0, amount=0
+    )
+
+
+async def test_a_declined_save_frees_the_lock_for_the_retry(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Both saves share one Redis, so a lock left behind by the decline would
+    make the retry wait it out and answer 503."""
+    mocker.patch("backend.api.features.billing.credits.routes.set_auto_top_up")
+    credit_model = mocker.AsyncMock()
+    credit_model.get_credits.return_value = 300
+    credit_model.top_up_credits.side_effect = [
+        CardDeclinedError("Your card was declined."),
+        None,
+    ]
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=credit_model,
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as async_client:
+        declined = await async_client.post(
+            "/credits/auto-top-up", json={"threshold": 500, "amount": 1000}
+        )
+        retried = await asyncio.wait_for(
+            async_client.post(
+                "/credits/auto-top-up", json={"threshold": 500, "amount": 1000}
+            ),
+            timeout=5,
+        )
+
+    assert declined.status_code == 402
+    assert retried.status_code == 200
 
 
 def test_list_invoices_returns_mapped_payload(
