@@ -185,7 +185,8 @@ export default function CredentialsProvider({
   // Settings → Integrations and the chat connection lists read the user's
   // credentials through React Query, which keeps them fresh for a minute. A
   // credential added or removed here, in a workflow step's credentials field,
-  // has to mark them stale, or they keep showing the old set until a reload.
+  // has to mark them stale, or they show the old set until their stale time
+  // runs out.
   const refreshConnectionLists = useCallback(() => {
     void invalidateConnectionQueries(queryClient);
   }, [queryClient]);

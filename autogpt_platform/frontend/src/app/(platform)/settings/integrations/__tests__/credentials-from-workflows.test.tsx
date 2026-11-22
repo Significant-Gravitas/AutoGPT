@@ -197,10 +197,9 @@ describe("Settings → Integrations after a workflow step's credentials change",
     await waitFor(() => expect(stored).toEqual([]));
 
     view.rerender(<App page="integrations" />);
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("checkbox", { name: "Select Studio key" }),
-      ).toBeNull(),
-    );
+    expect(await screen.findByText("No integration connected")).toBeTruthy();
+    expect(
+      screen.queryByRole("checkbox", { name: "Select Studio key" }),
+    ).toBeNull();
   });
 });

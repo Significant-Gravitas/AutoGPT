@@ -189,7 +189,11 @@ describe("CredentialsProvider keeps the connection lists fresh", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { staleTime: 60_000, retry: false } },
     });
-    queryClient.setQueryData(getGetV1ListCredentialsQueryKey(), { data: [] });
+    const lists = [
+      getGetV1ListCredentialsQueryKey(),
+      getGetV2ListChatConnectionsQueryKey(),
+    ];
+    for (const key of lists) queryClient.setQueryData(key, { data: [] });
     renderProvider(queryClient);
     await waitFor(() =>
       expect(screen.getByTestId("loaded").textContent).toBe("yes"),
@@ -199,9 +203,34 @@ describe("CredentialsProvider keeps the connection lists fresh", () => {
       await current!.deleteCredentials("cred-old");
     });
 
-    expect(
-      queryClient.getQueryState(getGetV1ListCredentialsQueryKey())
-        ?.isInvalidated,
-    ).toBe(false);
+    for (const key of lists) {
+      expect(queryClient.getQueryState(key)?.isInvalidated).toBe(false);
+    }
+  });
+
+  it("leaves them alone when adding a key fails", async () => {
+    apiMock.createAPIKeyCredentials.mockRejectedValue(new Error("refused"));
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { staleTime: 60_000, retry: false } },
+    });
+    const lists = [
+      getGetV1ListCredentialsQueryKey(),
+      getGetV2ListChatConnectionsQueryKey(),
+    ];
+    for (const key of lists) queryClient.setQueryData(key, { data: [] });
+    renderProvider(queryClient);
+    await waitFor(() =>
+      expect(screen.getByTestId("loaded").textContent).toBe("yes"),
+    );
+
+    await act(async () => {
+      await expect(
+        current!.createAPIKeyCredentials({ api_key: "k", title: "New key" }),
+      ).rejects.toThrow("refused");
+    });
+
+    for (const key of lists) {
+      expect(queryClient.getQueryState(key)?.isInvalidated).toBe(false);
+    }
   });
 });
