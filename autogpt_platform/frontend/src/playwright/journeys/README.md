@@ -57,12 +57,13 @@ product does what the user expects.
     (`known-failure.ts`) right before the one check the bug breaks, and pass
     the message it returns to that check. Every check that must still pass
     goes above it.
-  - CI accepts the test only if it fails, and only on that check: every
-    error it reports must be that check's message
+  - CI accepts the test only if it fails once, on that check: it must
+    report exactly one error, with that check's message
     (`.github/scripts/validate_playwright_json.py --allow-known-failures`). A
     cleanup in `finally`, the guard at teardown or a soft check failing as
     well fails the run, and so does the check starting to pass. When the fix
     lands, drop the pin.
+  - One pin per test, and a one-line check message.
   - The check must fail as an assertion, not by timing out. Give it a timeout
     well inside the test's.
 - **Keep each journey under ~60 s.** The test timeout is 90 s.

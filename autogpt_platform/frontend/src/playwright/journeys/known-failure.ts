@@ -15,6 +15,13 @@ import { expect, test } from "./fixtures";
  *   expect(state, pinned).toBe("paused");
  */
 export function pinKnownFailure(bug: string, check: string) {
+  // The validator compares an error's first line, trimmed, with `check`: any
+  // other message could never match, and the pin would always be rejected.
+  if (!check || check.includes("\n") || check !== check.trim()) {
+    throw new Error(
+      `pinKnownFailure needs a one-line check message, got ${JSON.stringify(check)}`,
+    );
+  }
   // A soft check that failed earlier would otherwise end the test "failed" too.
   expect(
     test.info().errors.map((error) => error.message),

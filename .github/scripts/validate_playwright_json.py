@@ -63,8 +63,9 @@ def _pinned_check(test: dict[str, object], test_name: str) -> str:
             pinned.append(str(annotation.get("description") or "").strip())
     if len(pinned) != 1 or not pinned[0]:
         raise ValueError(
-            f"{test_name} is a known failure without one pinned check: pin it "
-            "with pinKnownFailure() right before the check it fails"
+            f"{test_name} is a known failure with {len(pinned)} pinned checks, "
+            "not one: pin it once, with pinKnownFailure() right before the "
+            "check it fails"
         )
     return pinned[0]
 
@@ -169,6 +170,11 @@ def validate_report(
                         f"{test_name} is pinned to fail on {pinned!r}, but it "
                         f"also failed on {failed!r}"
                     )
+            if len(result_errors) != 1:
+                raise ValueError(
+                    f"{test_name} failed {len(result_errors)} times on its "
+                    f"pinned check {pinned!r}; a known failure fails once"
+                )
             continue
         if result.get("status") != "passed":
             raise ValueError(

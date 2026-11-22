@@ -94,17 +94,38 @@ class ValidatePlaywrightJSONTests(unittest.TestCase):
                         known_failure_report(failure(PINNED), failure(extra)),
                         allow_known_failures=True,
                     )
-        with self.assertRaisesRegex(ValueError, "but it also failed on"):
+        # The whole first line, not a prefix: a longer message is another check.
+        for other in ("another check", f"{PINNED} (after reload)"):
+            with self.subTest(other=other):
+                with self.assertRaisesRegex(ValueError, "but it also failed on"):
+                    validate_report(
+                        known_failure_report(failure(other)),
+                        allow_known_failures=True,
+                    )
+
+    def test_a_known_failure_fails_once(self):
+        with self.assertRaisesRegex(ValueError, "failed 2 times on its pinned check"):
             validate_report(
-                known_failure_report(failure("another check")),
+                known_failure_report(failure(PINNED), failure(PINNED)),
                 allow_known_failures=True,
             )
+
+    def test_a_plain_error_message_matches_its_pinned_check(self):
+        # No ANSI colour and no "Error: " prefix, as some reporters write it.
+        report = known_failure_report(f"{PINNED}\n\nExpected: paused")
+        self.assertEqual(validate_report(report, allow_known_failures=True), 1)
 
     def test_a_known_failure_needs_one_pinned_check_and_an_error(self):
         report = known_failure_report(failure(PINNED))
         test = report["suites"][0]["specs"][0]["tests"][0]
         test["annotations"] = test["annotations"][:2]
-        with self.assertRaisesRegex(ValueError, "without one pinned check"):
+        with self.assertRaisesRegex(ValueError, "with 0 pinned checks, not one"):
+            validate_report(report, allow_known_failures=True)
+
+        report = known_failure_report(failure(PINNED))
+        test = report["suites"][0]["specs"][0]["tests"][0]
+        test["annotations"].append({"type": "known-failure", "description": PINNED})
+        with self.assertRaisesRegex(ValueError, "with 2 pinned checks, not one"):
             validate_report(report, allow_known_failures=True)
 
         with self.assertRaisesRegex(ValueError, "reported no error"):
