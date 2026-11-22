@@ -16,8 +16,10 @@ from backend.util.text_limits import (
 )
 
 # Hosts an org avatar URL may point at. Must stay in step with `images` in
-# autogpt_platform/frontend/next.config.mjs (domains + remotePatterns):
-# next/image errors at render time for hosts outside that list.
+# autogpt_platform/frontend/next.config.mjs (domains + remotePatterns) —
+# guarded by test_avatar_allowlist_matches_frontend_image_config: next/image
+# matches the configured protocol exactly, so next/image errors at render
+# time for hosts outside that list.
 # storage.googleapis.com is our own media storage — the host uploaded
 # images live on — so an avatar uploaded like other images keeps working.
 ALLOWED_AVATAR_HOSTS = frozenset(
@@ -28,6 +30,15 @@ ALLOWED_AVATAR_HOSTS = frozenset(
         "storage.googleapis.com",
         "ideogram.ai",
         "example.com",
+        "storage.cloud.google.com",
+        "lh3.googleusercontent.com",
+    }
+)
+
+# Hosts the frontend only whitelists over https (in remotePatterns but not in
+# `domains`) — an http:// avatar there would fail next/image at render time.
+HTTPS_ONLY_AVATAR_HOSTS = frozenset(
+    {
         "storage.cloud.google.com",
         "lh3.googleusercontent.com",
     }
@@ -65,21 +76,62 @@ class UpdateOrgRequest(BaseModel):
         errors at render time for hosts outside ``images`` in
         ``next.config.mjs``; serving the URL as a plain ``<img>`` instead
         would let the avatar's host see every member's IP address.
-        Relative paths are allowed — they render from our own origin.
+        Only unambiguous same-origin paths pass as relative: browsers fold
+        ``\\`` into ``/`` inside http(s) URLs (so ``/\\host/x`` and
+        ``\\\\host/x`` resolve to ``host``), and ``//host/x`` is a
+        protocol-relative URL next/image refuses to optimize.
         """
         if value is None:
             return value
+
+        # Browsers treat "\" as "/" in http(s) URLs, so "\/host/x" and
+        # "\\host/x" parse as relative paths here but resolve to an
+        # attacker-chosen host; the backslash itself disqualifies the value.
+        if "\\" in value:
+            raise ValueError(
+                "avatar_url must not contain backslashes; browsers read them "
+                "as '/' in http(s) URLs, which turns relative paths into "
+                "network paths"
+            )
+        # A leading "//" is a protocol-relative URL, not a local path.
+        if value.startswith("//"):
+            raise ValueError(
+                "avatar_url must not be a protocol-relative URL ('//host/...'); "
+                "use an absolute http(s) URL or a path starting with a single '/'"
+            )
+
         parsed = urlparse(value)
         if parsed.scheme in ("http", "https"):
             if parsed.hostname not in ALLOWED_AVATAR_HOSTS:
                 raise ValueError(
                     "avatar_url must be an http(s) URL on an allowed media host "
-                    f"({', '.join(sorted(ALLOWED_AVATAR_HOSTS))}) or a relative path"
+                    f"({', '.join(sorted(ALLOWED_AVATAR_HOSTS))}) or a path "
+                    "starting with a single '/'"
                 )
-        elif parsed.scheme:
+            # urlparse validates the port lazily; touching it rejects
+            # "https://host:invalid/..." before the URL gets persisted.
+            try:
+                parsed.port  # noqa: B018 — attribute access is the validation
+            except ValueError as exc:
+                raise ValueError(f"avatar_url has an invalid port: {exc}") from exc
+            if parsed.scheme == "http" and parsed.hostname in HTTPS_ONLY_AVATAR_HOSTS:
+                raise ValueError(
+                    f"avatar_url host {parsed.hostname} is only allowed over https"
+                )
+            return value
+        if parsed.scheme:
             # javascript:, data:, ftp:, ... — not a renderable image URL
-            raise ValueError("avatar_url must be an http(s) URL or a relative path")
-        # else: a relative path — renders from our own origin
+            raise ValueError(
+                "avatar_url must be an http(s) URL or a path starting with a single '/'"
+            )
+        if not value.startswith("/"):
+            # e.g. "a.png" — resolves against the current page's path
+            # (e.g. /settings/...), not the media prefix
+            raise ValueError(
+                "avatar_url must be an absolute http(s) URL on an allowed media "
+                "host or a path starting with a single '/'"
+            )
+        # an unambiguous same-origin path — renders from our own origin
         return value
 
 
