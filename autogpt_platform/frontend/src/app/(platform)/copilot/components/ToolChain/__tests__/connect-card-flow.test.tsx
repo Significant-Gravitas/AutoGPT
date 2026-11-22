@@ -12,8 +12,8 @@
  * unavoidable fake — no CI job can have a human approve a real OAuth grant.
  * Every component in between is the real one.
  *
- * The reload tests start one layer up, at the transcript, because whether a
- * card is in the newest answer is decided there:
+ * The reload and mid-turn tests start one layer up, at the transcript,
+ * because whether a card is in the newest answer is decided there:
  *
  *     ChatMessagesContainer → MessageRow → ChainMessageParts → ToolChain → …
  *
@@ -33,6 +33,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@/tests/integrations/test-utils";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { useConnectedProvidersStore } from "@/app/(platform)/copilot/connectedProvidersStore";
@@ -830,51 +831,99 @@ describe("copilot Connect card, already satisfied", () => {
       expect(onSend).not.toHaveBeenCalled();
     });
 
-    it("sends nothing when an account is picked again on a card in an earlier answer", async () => {
-      const { onSend } = renderTranscript(chatAfterTheStepRan());
-      await settle({ connectedRows: 1 });
+    it("saves an account picked on a card in an earlier answer, and sends nothing for it", async () => {
+      // Two accounts fit, so the card names neither until one is picked.
+      savedCredentials = [
+        ...savedCredentials,
+        { ...oauthCredential("cred-work", [REQUIRED_SCOPE]), title: "Work" },
+      ];
+      const selections: Record<string, string>[] = [];
+      server.use(
+        http.put(
+          "*/api/chat/sessions/*/credential-selection",
+          async ({ request }) => {
+            const body = (await request.json()) as {
+              selections: Record<string, string>;
+            };
+            selections.push(body.selections);
+            return HttpResponse.json({ status: "ok" });
+          },
+        ),
+      );
+      const { onSend } = renderTranscript([
+        ...chatAfterTheStepRan(),
+        ...aWorkflowRunAfterIt(),
+      ]);
+      const earlier = await findAnswer(`${SESSION_ID}-seq-2`);
+      const newest = await findAnswer(`${SESSION_ID}-seq-6`);
       const user = userEvent.setup();
 
       // Picking an account counts as connecting one, which is what sends a
       // card's follow-up in the newest answer.
-      await user.click(screen.getByRole("button", { name: "Change account" }));
-      await user.click(await screen.findByRole("radio", { name: /GitHub/ }));
+      await user.click(
+        await within(earlier).findByRole("button", { name: "Choose account" }),
+      );
+      await user.click(await screen.findByRole("radio", { name: /^Work/ }));
       await user.click(
         screen.getByRole("button", { name: "Use this account" }),
       );
-      // The dialog closes once the pick is saved; in the newest answer the
-      // card would then send, after saving its picks for the turn.
-      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-      await waitFor(() => expect(picksInFlight()).toBe(0));
 
-      expect(onSend).not.toHaveBeenCalled();
-      expect(screen.queryByRole("button", { name: "Proceed" })).toBeNull();
+      // The row names Work now, so the tools must run on Work from here on.
+      await waitFor(() => expect(pickSaves.answered).toBe(1));
+      expect(selections).toEqual([{ github: "cred-work" }]);
+      expect(
+        within(earlier).queryByRole("button", { name: "Proceed" }),
+      ).toBeNull();
+
+      // The newest card's Proceed saves its own account and then sends. That
+      // save is answered after the one above, so a send the earlier card
+      // made after saving would already have gone out by then.
+      await user.click(
+        await within(newest).findByRole("button", { name: "Proceed" }),
+      );
+      await waitFor(() => expect(onSend).toHaveBeenCalled());
+      expect(onSend).toHaveBeenCalledOnce();
+      expect(onSend.mock.calls[0][0]).toContain(
+        "proceed with running the workflow",
+      );
+      expect(selections).toEqual([
+        { github: "cred-work" },
+        { slack: "cred-slack" },
+      ]);
     });
 
     it("sends nothing when the chat moves on while the newest card saves its picks", async () => {
       const release = Promise.withResolvers<void>();
-      let saved = 0;
       server.use(
         http.put("*/api/chat/sessions/*/credential-selection", async () => {
           await release.promise;
-          saved += 1;
           return HttpResponse.json({ status: "ok" });
         }),
       );
-      const chat = chatAfterTheStepRan();
+      const chat = [...chatAfterTheStepRan(), ...aWorkflowRunAfterIt()];
       const { onSend, showMessages } = renderTranscript(chat.slice(0, 2));
       await settle({ connectedRows: 1 });
       const user = userEvent.setup();
 
       await user.click(await screen.findByRole("button", { name: "Proceed" }));
+      await waitFor(() => expect(pickSaves.started).toBe(1));
       // A newer answer lands before the picks are saved, so the card's own
       // answer is now an earlier one.
       showMessages(chat);
       release.resolve();
-      await waitFor(() => expect(saved).toBe(1));
-      await waitFor(() => expect(picksInFlight()).toBe(0));
+      await waitFor(() => expect(pickSaves.answered).toBe(1));
 
-      expect(onSend).not.toHaveBeenCalled();
+      // The newest card's send goes out after that save is answered, so a
+      // send the earlier card made once it was saved would already be here.
+      const newest = await findAnswer(`${SESSION_ID}-seq-6`);
+      await user.click(
+        await within(newest).findByRole("button", { name: "Proceed" }),
+      );
+      await waitFor(() => expect(onSend).toHaveBeenCalled());
+      expect(onSend).toHaveBeenCalledOnce();
+      expect(onSend.mock.calls[0][0]).toContain(
+        "proceed with running the workflow",
+      );
     });
 
     it("still offers Proceed on the same card in the newest answer", async () => {
@@ -889,6 +938,63 @@ describe("copilot Connect card, already satisfied", () => {
       await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
       expect(onSend.mock.calls[0][0]).toContain(
         "I've configured the required credentials.",
+      );
+    });
+  });
+
+  // The newest answer is still the newest while Otto writes it, and a
+  // follow-up the user sends meanwhile only splits it on screen: the work
+  // above the follow-up, the follow-up, the work below.
+  describe("in the newest answer, mid-turn", () => {
+    it("still offers Proceed while the answer streams", async () => {
+      const { onSend } = renderTranscript(chatAfterTheStepRan().slice(0, 2), {
+        status: "streaming",
+      });
+      const user = userEvent.setup();
+
+      // No tool call is pending, so the chain may send mid-turn.
+      await user.click(await screen.findByRole("button", { name: "Proceed" }));
+
+      await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+    });
+
+    it("still sends from a card above a follow-up the user sent mid-turn", async () => {
+      const { onSend } = renderTranscript(
+        answerSplitByAFollowUp(setupRequirementsPart()),
+        { status: "streaming" },
+      );
+      const above = await findAnswer(`${SESSION_ID}-seq-2#seg0`);
+      const user = userEvent.setup();
+
+      await user.click(
+        await within(above).findByRole("button", { name: "Proceed" }),
+      );
+
+      await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+      expect(onSend.mock.calls[0][0]).toContain(
+        "I've configured the required credentials.",
+      );
+    });
+
+    it("sends the answers to a question asked above a follow-up the user sent mid-turn", async () => {
+      const { onSend } = renderTranscript(
+        answerSplitByAFollowUp(
+          questionPart([{ question: "Which region?", keyword: "region" }]),
+        ),
+        { status: "streaming" },
+      );
+      const above = await findAnswer(`${SESSION_ID}-seq-2#seg0`);
+      const user = userEvent.setup();
+
+      await user.type(await within(above).findByRole("textbox"), "Europe");
+      await user.click(
+        within(above).getByRole("button", { name: "Send answers" }),
+      );
+
+      await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+      expect(onSend.mock.calls[0][0]).toContain("> Which region?\n\nEurope");
+      await waitFor(() =>
+        expect(screen.queryByText("Answer a few questions")).toBeNull(),
       );
     });
   });
@@ -1260,8 +1366,8 @@ describe("copilot Connect card, a saved credential the provider refused", () => 
       expect(screen.queryByText("Connected")).toBeNull();
       // Only the account that still works is offered; the refused one is
       // renewed through Add new.
-      expect(screen.queryByRole("radio", { name: /GitHub/ })).toBeNull();
-      await user.click(await screen.findByRole("radio", { name: /Work/ }));
+      expect(screen.queryByRole("radio", { name: /^GitHub/ })).toBeNull();
+      await user.click(await screen.findByRole("radio", { name: /^Work/ }));
       await user.click(
         screen.getByRole("button", { name: "Use this account" }),
       );
@@ -1591,8 +1697,9 @@ function renderChain(parts: MessagePart[] = [setupRequirementsPart()]) {
   return { onSend, ...utils };
 }
 
-// Saves of the turn's credential picks that have started but not been
-// answered: a card saves them just before it sends its follow-up.
+// Saves of the chat's credential picks, counted as they start and as they are
+// answered. A card saves its picks just before it sends its follow-up, or on
+// their own in an earlier answer, which sends nothing.
 const pickSaves = { started: 0, answered: 0 };
 
 function isPickSave(request: Request) {
@@ -1622,13 +1729,24 @@ function stopTrackingPickSaves() {
   server.events.removeListener("request:end", onRequestEnd);
 }
 
-function picksInFlight() {
-  return pickSaves.started - pickSaves.answered;
+/** One answer's row in the transcript, or one part of an answer a mid-turn
+ *  follow-up split. */
+async function findAnswer(messageID: string): Promise<HTMLElement> {
+  return waitFor(() => {
+    const row = document.querySelector<HTMLElement>(
+      `[data-message-id="${messageID}"]`,
+    );
+    if (!row) throw new Error(`No transcript row for ${messageID}`);
+    return row;
+  });
 }
 
-/** The chat as it loads from history: every row, and the card wherever its
- *  answer falls among them. */
-function renderTranscript(messages: ChatMessage[]) {
+/** The chat as it loads from history, or as it streams: every row, and the
+ *  card wherever its answer falls among them. */
+function renderTranscript(
+  messages: ChatMessage[],
+  { status = "ready" }: { status?: "ready" | "streaming" } = {},
+) {
   const onSend = vi.fn();
   function transcript(shown: ChatMessage[]) {
     return (
@@ -1636,7 +1754,7 @@ function renderTranscript(messages: ChatMessage[]) {
         <CopilotChatActionsProvider onSend={onSend}>
           <ChatMessagesContainer
             messages={shown}
-            status="ready"
+            status={status}
             error={undefined}
             isLoading={false}
             sessionID={SESSION_ID}
@@ -1687,6 +1805,59 @@ function chatAfterTheStepRan(): ChatMessage[] {
       id: `${SESSION_ID}-seq-4`,
       role: "assistant",
       parts: [{ type: "text", text: "Your latest pull request adds a page." }],
+    },
+  ];
+}
+
+/** The next ask, and the newest answer: a workflow run with a card for
+ *  Slack, which the user already has connected. */
+function aWorkflowRunAfterIt(): ChatMessage[] {
+  return [
+    {
+      id: `${SESSION_ID}-seq-5`,
+      role: "user",
+      parts: [{ type: "text", text: "Now post it to Slack." }],
+    },
+    {
+      id: `${SESSION_ID}-seq-6`,
+      role: "assistant",
+      parts: [
+        {
+          ...(slackRequirementsPart() as unknown as Record<string, unknown>),
+          type: "tool-run_agent",
+          toolCallId: "call-run_agent-slack",
+          input: { username_agent_slug: "me/post-to-slack" },
+        } as unknown as ChatMessage["parts"][number],
+      ],
+    },
+  ];
+}
+
+/** The newest answer while Otto still writes it, split on screen by a
+ *  follow-up the user sent meanwhile: `above` drew before the follow-up was
+ *  taken in, and the reply goes on below it. */
+function answerSplitByAFollowUp(above: MessagePart): ChatMessage[] {
+  return [
+    {
+      id: `${SESSION_ID}-seq-1`,
+      role: "user",
+      parts: [{ type: "text", text: "Read my latest pull request." }],
+    },
+    {
+      id: `${SESSION_ID}-seq-2`,
+      role: "assistant",
+      parts: [
+        above,
+        {
+          type: "data-pending-drained",
+          id: "hint-1",
+          data: {
+            drainedCount: 1,
+            messages: [{ id: "pending-1", content: "Check its CI too." }],
+          },
+        },
+        { type: "text", text: "Checking the CI as well.", state: "streaming" },
+      ] as ChatMessage["parts"],
     },
   ];
 }

@@ -53,6 +53,9 @@ export interface ChainActionEntry {
 export interface ChainActions {
   register: (owner: string, entry: ChainActionEntry) => void;
   unregister: (owner: string) => void;
+  /** The chain can send its reply. False in an earlier answer, which sends
+   *  nothing, so a card there saves what the user picks on its own. */
+  canSend: boolean;
 }
 
 export const ChainActionsContext = createContext<ChainActions | null>(null);

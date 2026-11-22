@@ -7,7 +7,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
-import { useContext, useEffect, useId, useState } from "react";
+import { useContext, useEffect, useId, useRef, useState } from "react";
 import {
   ChainActionsContext,
   type ChainActions,
@@ -82,6 +82,10 @@ export function SetupRequirementsCard({
   >({});
   const [hasSent, setHasSent] = useState(false);
   const [justConnected, setJustConnected] = useState(false);
+  // Accounts the user picked or connected on this card during this page
+  // life, and how many of those picks have been saved for the chat.
+  const [picks, setPicks] = useState(0);
+  const savedPicks = useRef(0);
   // Credentials a sign-in on the chain's row reported. A renewal keeps the
   // credential's id, so this is how a renewed refused credential is told
   // apart from the refused one still being selected.
@@ -259,6 +263,21 @@ export function SetupRequirementsCard({
     (isRejectionRenewed ||
       !isRejectedCredentialSelected(rejection, inputCredentials));
 
+  const savePicks = useStableCallback(() => {
+    savedPicks.current = picks;
+    return reportCredentialPicks(sessionID, inputCredentials, credentialFields);
+  });
+  // An earlier answer's chain sends nothing (see ToolChain), but an account
+  // picked there must still reach the chat: the row names it, and the tools
+  // run on what was saved. So the card saves each pick itself, once the pick
+  // is in state. A card that only re-mounted with its account already in
+  // place has nothing to save.
+  const savesOwnPicks = chainActions !== null && !chainActions.canSend;
+  useEffect(() => {
+    if (!savesOwnPicks || picks === savedPicks.current) return;
+    void savePicks();
+  }, [savesOwnPicks, picks, savePicks]);
+
   // Inside a tool chain the card's own Proceed is replaced by the chain's
   // single Proceed step — register readiness + message with the chain.
   const registerWithChain = useStableCallback((actions: ChainActions) => {
@@ -272,8 +291,7 @@ export function SetupRequirementsCard({
       // A trigger's line carries the chosen credential ids, and an edit-mode
       // card's may carry run inputs; only a bare confirmation is shareable.
       credentialsOnly: needsCredentials && !needsInputs && !isTriggerMode,
-      beforeSend: () =>
-        reportCredentialPicks(sessionID, inputCredentials, credentialFields),
+      beforeSend: savePicks,
       onSent: markSent,
       connectors: needsCredentials
         ? {
@@ -283,6 +301,7 @@ export function SetupRequirementsCard({
             onChange: handleCredentialChange,
             onConnected: (credentialId) => {
               setJustConnected(true);
+              setPicks((count) => count + 1);
               if (credentialId) setRenewedIds((ids) => [...ids, credentialId]);
             },
             rejectedCredentialId: rejection?.credential_id ?? undefined,

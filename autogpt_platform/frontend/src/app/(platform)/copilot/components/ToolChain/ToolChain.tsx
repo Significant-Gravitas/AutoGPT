@@ -58,21 +58,31 @@ import { ToolResult } from "./ToolResult";
 
 const COLLAPSED_WINDOW = 2;
 
+/** Answers to a pending clarifying question go out under that question's own
+ *  rule (see getPendingQuestions), never the chain's latest-answer gate. */
+function answersAQuestion(entry: ChainActionEntry) {
+  return entry.questions !== undefined;
+}
+
 async function sendOnce(
   sending: { current: boolean },
   entries: ChainActionEntry[],
-  message: string,
   sendReply: (message: string) => void,
   canStillSend: () => boolean,
 ) {
-  if (sending.current) return;
+  if (sending.current || !buildChainReply(entries)) return;
   sending.current = true;
   try {
     await Promise.all(entries.map((entry) => entry.beforeSend?.()));
     // A new message may have arrived while the picks were saved, leaving
-    // this chain in an earlier answer, which sends nothing.
-    if (!canStillSend()) return;
-    entries.forEach((entry) => entry.onSent?.());
+    // this chain in an earlier answer, whose cards send nothing.
+    const stillLatest = canStillSend();
+    const sent = entries.filter(
+      (entry) => stillLatest || answersAQuestion(entry),
+    );
+    const message = buildChainReply(sent);
+    if (!message) return;
+    sent.forEach((entry) => entry.onSent?.());
     sendReply(message);
   } finally {
     sending.current = false;
@@ -86,11 +96,13 @@ interface Props {
    *  cards and Proceed are the owner's work — a reader gets no Connect
    *  prompt and no way to send a follow-up turn. */
   readOnly?: boolean;
-  /** The chain belongs to the newest answer. An earlier answer's step has
-   *  already run or been passed over, so its cards stay on screen but offer
-   *  no Proceed and send nothing: after a reload every finished card mounts
-   *  again with its accounts connected, and a Proceed there asked Otto to
-   *  run the step a second time. */
+  /** The chain belongs to the newest answer. Only its cards send: an
+   *  earlier answer's step has already run or been passed over, and a send
+   *  from it would ask Otto to run that step again. So an earlier answer's
+   *  cards offer no Proceed, though an account picked on one is still saved
+   *  for the chat (see SetupRequirementsCard). Answering a pending question
+   *  is not gated by this. The default is for direct renders only; the
+   *  transcript always passes it. */
   isLatestAnswer?: boolean;
 }
 
@@ -121,8 +133,10 @@ export function ToolChain({
   const [registrations, setRegistrations] = useState<
     ReadonlyMap<string, ChainActionEntry>
   >(new Map());
+  const canSend = !readOnly && isLatestAnswer;
   // Kept as memos with the compiler on: the cards' register effects depend on
   // this context value, and re-running them would re-register every card.
+  // `canSend` only changes when the chain's answer stops being the newest.
   const register = useCallback((owner: string, entry: ChainActionEntry) => {
     setRegistrations((prev) => {
       const next = new Map(prev);
@@ -139,8 +153,8 @@ export function ToolChain({
     });
   }, []);
   const chainActions = useMemo(
-    () => ({ register, unregister }),
-    [register, unregister],
+    () => ({ register, unregister, canSend }),
+    [register, unregister, canSend],
   );
 
   const pendingActions = uniqueChainEntries(registrations);
@@ -174,7 +188,6 @@ export function ToolChain({
   // send is once-only — spending it now leaves that card unsendable. A stopped
   // stream owes no more results, however its calls ended.
   const awaitingToolResult = isStreaming && parts.some(isToolCallPending);
-  const canSend = !readOnly && isLatestAnswer;
   const canAutoSend =
     canSend &&
     !awaitingToolResult &&
@@ -214,17 +227,15 @@ export function ToolChain({
   // Proceed stays clickable while beforeSend runs, and a second click would
   // send the same reply again. The ref is set before the first await, so the
   // second click sees it in time.
-  function sendAfter(entries: ChainActionEntry[], message: string) {
-    return sendOnce(sendingRef, entries, message, sendReply, canStillSend);
+  function sendAfter(entries: ChainActionEntry[]) {
+    return sendOnce(sendingRef, entries, sendReply, canStillSend);
   }
 
   const autoSendOnce = useStableCallback(() => {
     if (!canAutoSend || autoSentRef.current) return;
     autoSentRef.current = true;
     setAutoSent(true);
-    const message = buildChainReply(pendingActions);
-    if (!message) return;
-    void sendAfter(pendingActions, message);
+    void sendAfter(pendingActions);
   });
   // pendingActions is rebuilt every render; the ref makes this once-per-chain.
   useEffect(
@@ -315,11 +326,13 @@ export function ToolChain({
   // Proceed sends the combined reply of every READY card as one message,
   // and their onSent callbacks fire at that moment. Unready cards (e.g. an
   // unconnected MCP server) are left out instead of blocking the ready ones.
+  // In an earlier answer only a pending question's answers go.
   function handleProceed() {
-    const readyActions = pendingActions.filter((entry) => entry.ready);
-    const message = buildChainReply(readyActions);
-    if (!message) return;
-    void sendAfter(readyActions, message);
+    void sendAfter(
+      pendingActions.filter(
+        (entry) => entry.ready && (canSend || answersAQuestion(entry)),
+      ),
+    );
   }
 
   return (
@@ -490,8 +503,9 @@ export function ToolChain({
         )}
 
         {/* Cards with nothing to connect, fill in or answer (confirm-only)
-            still need somewhere to send from. */}
-        {!readOnly && pendingActions.length > 0 && !hasCardWork && (
+            still need somewhere to send from. An earlier answer's send
+            nothing, so they get no step at all. */}
+        {canSend && pendingActions.length > 0 && !hasCardWork && (
           <div className="mt-1 flex flex-col items-start gap-2">
             <span className="flex items-center gap-1.5 text-body text-foreground-secondary">
               <Icon icon={SentIcon} size={16} tone="subtle" />
@@ -499,16 +513,14 @@ export function ToolChain({
                 ? "Everything's filled in"
                 : "Complete the steps above to continue"}
             </span>
-            {canSend && (
-              <Button
-                variant="primary"
-                size="small"
-                disabled={!allActionsReady}
-                onClick={handleProceed}
-              >
-                Proceed
-              </Button>
-            )}
+            <Button
+              variant="primary"
+              size="small"
+              disabled={!allActionsReady}
+              onClick={handleProceed}
+            >
+              Proceed
+            </Button>
           </div>
         )}
       </div>

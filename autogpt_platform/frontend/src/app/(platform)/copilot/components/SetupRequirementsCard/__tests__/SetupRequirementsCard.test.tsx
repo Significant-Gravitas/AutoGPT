@@ -767,6 +767,7 @@ describe("SetupRequirementsCard (rejected credential)", () => {
           value={{
             register: (_owner, entry) => entries.push(entry),
             unregister: vi.fn(),
+            canSend: true,
           }}
         >
           <SetupRequirementsCard

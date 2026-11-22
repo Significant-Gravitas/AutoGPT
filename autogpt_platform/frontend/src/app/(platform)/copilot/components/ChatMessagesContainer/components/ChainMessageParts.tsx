@@ -18,8 +18,9 @@ interface Props {
   messageID: string;
   isCurrentlyStreaming: boolean;
   canActOnCards?: boolean;
-  /** The newest answer. Its chain's cards can send, mid-turn included; an
-   *  earlier answer's offer no Proceed and send nothing (see ToolChain). */
+  /** Rendered from the newest answer, any row of it. Its chains' cards can
+   *  send, mid-turn included; an earlier answer's send nothing (see
+   *  ToolChain). */
   isLatestAnswer?: boolean;
   onRetry?: () => void;
   fileUrlBuilder?: (fileId: string) => string;
