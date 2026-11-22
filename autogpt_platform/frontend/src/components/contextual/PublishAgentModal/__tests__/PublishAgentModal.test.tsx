@@ -1,7 +1,16 @@
 import { useState } from "react";
 import { QueryClient } from "@tanstack/react-query";
+import { http, HttpResponse } from "msw";
 import { describe, expect, onTestFinished, test, vi } from "vitest";
 
+import {
+  getGetV1GetSpecificGraphMockHandler,
+  getGetV1GetSpecificGraphResponseMock,
+} from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
+import {
+  getGetV2GetLibraryAgentByGraphIdMockHandler,
+  getGetV2GetLibraryAgentByGraphIdResponseMock,
+} from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV2GetMyLiveSubmissionQueryKey } from "@/app/api/__generated__/endpoints/store/store";
 import {
   getGetV2GetMyAgentsMockHandler,
@@ -9,9 +18,13 @@ import {
   getGetV2GetMyLiveSubmissionMockHandler422,
   getGetV2ListMySubmissionsMockHandler,
   getGetV2ListStoreCategoriesMockHandler,
+  getPostV2CreateStoreSubmissionMockHandler,
 } from "@/app/api/__generated__/endpoints/store/store.msw";
+import type { GraphModel } from "@/app/api/__generated__/models/graphModel";
+import type { LiveStoreSubmission } from "@/app/api/__generated__/models/liveStoreSubmission";
 import type { MyUnpublishedAgent } from "@/app/api/__generated__/models/myUnpublishedAgent";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
+import type { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { server } from "@/mocks/mock-server";
 import {
@@ -33,10 +46,17 @@ vi.mock("@/components/contextual/CronScheduler/cron-scheduler-dialog", () => ({
   CronExpressionDialog: () => null,
 }));
 
+// Lists the images the form starts with, so a test can see them.
 vi.mock(
   "@/components/contextual/PublishAgentModal/components/AgentInfoStep/components/ThumbnailImages",
   () => ({
-    ThumbnailImages: () => <div data-testid="thumbnail-images-mock" />,
+    ThumbnailImages: ({ initialImages }: { initialImages: string[] }) => (
+      <ul data-testid="thumbnail-images-mock">
+        {initialImages.map((src) => (
+          <li key={src}>{src}</li>
+        ))}
+      </ul>
+    ),
   }),
 );
 
@@ -63,7 +83,14 @@ const UNLISTED_AGENT: MyUnpublishedAgent = {
   recommended_schedule_cron: null,
 };
 
-const LIVE_LISTING: StoreSubmission = {
+const LIVE_SCHEDULE = "0 9 * * 1";
+const LISTING_IMAGES = [
+  "https://example.com/listed-thumbnail.png",
+  "https://example.com/listed-screenshot.png",
+];
+const LIBRARY_IMAGE = "https://example.com/library-image.png";
+
+const LIVE_LISTING: LiveStoreSubmission = {
   listing_id: "listing-1",
   user_id: "user-1",
   slug: "listed-slug",
@@ -76,13 +103,136 @@ const LIVE_LISTING: StoreSubmission = {
   description: "Listed description",
   instructions: null,
   categories: ["marketing"],
-  image_urls: [],
+  image_urls: LISTING_IMAGES,
   video_url: null,
   agent_output_demo_url: null,
   submitted_at: new Date("2026-10-01T00:00:00Z"),
   changes_summary: null,
   status: SubmissionStatus.APPROVED,
+  recommended_schedule_cron: LIVE_SCHEDULE,
 };
+
+// A workflow on the second page of the creator's workflows, opened on an
+// older version than its newest.
+const DEEP_WORKFLOW = {
+  graphId: "g3",
+  version: 4,
+  name: "Deep workflow",
+  description: "Sorts the inbox every morning",
+  schedule: "0 6 * * *",
+  image: "https://example.com/deep-workflow.png",
+};
+
+function workflowVersion(
+  graphId: string,
+  version: number,
+  fields: Partial<GraphModel>,
+): GraphModel {
+  return getGetV1GetSpecificGraphResponseMock({
+    id: graphId,
+    version,
+    recommended_schedule_cron: null,
+    ...fields,
+  });
+}
+
+const WORKFLOW_VERSIONS: GraphModel[] = [
+  workflowVersion(LISTED_AGENT.graph_id, 1, {
+    name: LIVE_LISTING.name,
+    description: LIVE_LISTING.description,
+    recommended_schedule_cron: LIVE_SCHEDULE,
+  }),
+  // A version saved after the listing went live: it has no schedule.
+  workflowVersion(LISTED_AGENT.graph_id, LISTED_AGENT.graph_version, {
+    name: LISTED_AGENT.agent_name,
+    description: LISTED_AGENT.description,
+  }),
+  workflowVersion(UNLISTED_AGENT.graph_id, UNLISTED_AGENT.graph_version, {
+    name: UNLISTED_AGENT.agent_name,
+    description: UNLISTED_AGENT.description,
+  }),
+  workflowVersion(DEEP_WORKFLOW.graphId, DEEP_WORKFLOW.version, {
+    name: DEEP_WORKFLOW.name,
+    description: DEEP_WORKFLOW.description,
+    recommended_schedule_cron: DEEP_WORKFLOW.schedule,
+  }),
+  workflowVersion(DEEP_WORKFLOW.graphId, DEEP_WORKFLOW.version + 1, {
+    name: "Deep workflow, renamed later",
+    description: "A newer version's description",
+  }),
+];
+
+const LIBRARY_IMAGES: Record<string, string> = {
+  [LISTED_AGENT.graph_id]: LIBRARY_IMAGE,
+  [UNLISTED_AGENT.graph_id]: LIBRARY_IMAGE,
+  [DEEP_WORKFLOW.graphId]: DEEP_WORKFLOW.image,
+};
+
+// The requested version of a workflow, or its newest with no version asked.
+function serveWorkflowVersions() {
+  server.use(
+    getGetV1GetSpecificGraphMockHandler(({ params, request }) => {
+      const asked = new URL(request.url).searchParams.get("version");
+      const versions = WORKFLOW_VERSIONS.filter(
+        (graph) => graph.id === params.graphId,
+      );
+      return (
+        versions.find((graph) => String(graph.version) === asked) ??
+        versions.reduce((newest, graph) =>
+          (graph.version ?? 0) > (newest.version ?? 0) ? graph : newest,
+        )
+      );
+    }),
+    getGetV2GetLibraryAgentByGraphIdMockHandler(({ params }) =>
+      getGetV2GetLibraryAgentByGraphIdResponseMock({
+        graph_id: String(params.graphId),
+        image_url: LIBRARY_IMAGES[String(params.graphId)] ?? null,
+      }),
+    ),
+  );
+}
+
+// The creator's first page of workflows: 20 they edited more recently.
+function serveFirstPageWithoutDeepWorkflow() {
+  const agents: MyUnpublishedAgent[] = Array.from(
+    { length: 20 },
+    (_, index) => ({
+      ...UNLISTED_AGENT,
+      graph_id: `newer-graph-${index}`,
+      agent_name: `Newer workflow ${index}`,
+    }),
+  );
+  server.use(
+    getGetV2GetMyAgentsMockHandler({
+      agents,
+      pagination: {
+        total_items: agents.length + 1,
+        total_pages: 2,
+        current_page: 1,
+        page_size: 20,
+      },
+    }),
+  );
+}
+
+// Records each submission the dialog sends, and answers it as filed.
+function recordSubmissions() {
+  const submissions: StoreSubmissionRequest[] = [];
+  server.use(
+    getPostV2CreateStoreSubmissionMockHandler(async ({ request }) => {
+      const body = (await request.json()) as StoreSubmissionRequest;
+      submissions.push(body);
+      return {
+        ...LIVE_LISTING,
+        listing_version_id: "listing-version-2",
+        listing_version: 2,
+        graph_version: body.graph_version,
+        status: SubmissionStatus.PENDING,
+      };
+    }),
+  );
+  return submissions;
+}
 
 // The creator's 20 newest submissions, all for other workflows: the listed
 // agent's approved one is on the second page.
@@ -99,12 +249,13 @@ const NEWER_SUBMISSIONS: StoreSubmission[] = Array.from(
   }),
 );
 
-function liveListingOf(graphId: string): StoreSubmission | null {
+function liveListingOf(graphId: string): LiveStoreSubmission | null {
   return graphId === LISTED_AGENT.graph_id ? LIVE_LISTING : null;
 }
 
 function installHandlers() {
   const agents = [LISTED_AGENT, UNLISTED_AGENT];
+  serveWorkflowVersions();
   server.use(
     getGetV2GetMyAgentsMockHandler({
       agents,
@@ -215,7 +366,13 @@ function MarketplacePublishDialog({
 }
 
 // Opened the way the builder opens it: on the listing form, for one workflow.
-function PreScopedPublishDialog() {
+function PreScopedPublishDialog({
+  graphId = LISTED_AGENT.graph_id,
+  version = LISTED_AGENT.graph_version,
+}: {
+  graphId?: string;
+  version?: number;
+}) {
   const [publishState, setPublishState] = useState<PublishState>({
     isOpen: true,
     step: "info",
@@ -226,8 +383,8 @@ function PreScopedPublishDialog() {
       showTrigger={false}
       targetState={publishState}
       onStateChange={setPublishState}
-      preSelectedAgentId={LISTED_AGENT.graph_id}
-      preSelectedAgentVersion={LISTED_AGENT.graph_version}
+      preSelectedAgentId={graphId}
+      preSelectedAgentVersion={version}
     />
   );
 }
@@ -274,6 +431,24 @@ async function expectUpdateFormFromLiveListing() {
     ),
   );
   expect(screen.queryByDisplayValue("Agent name")).toBeNull();
+}
+
+// The form's sections are an accordion: opening one closes the others.
+async function openFormSection(name: string) {
+  fireEvent.click(await screen.findByRole("button", { name }));
+}
+
+async function expectScheduleField(text: string) {
+  await openFormSection("Experience details");
+  expect(await screen.findByText(text)).toBeDefined();
+}
+
+async function expectStartingImages(images: string[]) {
+  await openFormSection("Thumbnails");
+  const list = await screen.findByTestId("thumbnail-images-mock");
+  expect(
+    Array.from(list.querySelectorAll("li"), (item) => item.textContent),
+  ).toEqual(images);
 }
 
 const LOOKUP_FAILED =
@@ -442,6 +617,73 @@ describe("PublishAgentModal opened pre-scoped to a workflow", () => {
 
     await expectUpdateFormFromLiveListing();
     expect(lookups).toHaveBeenCalledOnce();
+  });
+
+  test("an update keeps the live listing's schedule and images when the workflow's newer version has neither", async () => {
+    installHandlers();
+    const submissions = recordSubmissions();
+    renderDialog(<PreScopedPublishDialog />);
+
+    await expectUpdateFormFromLiveListing();
+    fireEvent.change(screen.getByRole("textbox", { name: "What changed?" }), {
+      target: { value: "Clearer instructions" },
+    });
+    await expectStartingImages(LISTING_IMAGES);
+    await expectScheduleField("Every Monday at 09:00");
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
+
+    await waitFor(() => expect(submissions).toHaveLength(1));
+    expect(submissions[0]).toMatchObject({
+      graph_id: LISTED_AGENT.graph_id,
+      graph_version: LISTED_AGENT.graph_version,
+      changes_summary: "Clearer instructions",
+      recommended_schedule_cron: LIVE_SCHEDULE,
+      image_urls: LISTING_IMAGES,
+    });
+  });
+
+  test("a workflow past the creator's first page of workflows opens the new-listing form with its own details, at the version being published", async () => {
+    installHandlers();
+    serveFirstPageWithoutDeepWorkflow();
+    renderDialog(
+      <PreScopedPublishDialog
+        graphId={DEEP_WORKFLOW.graphId}
+        version={DEEP_WORKFLOW.version}
+      />,
+    );
+
+    expect(await screen.findByText("Build the store listing")).toBeDefined();
+    expect(await screen.findByDisplayValue(DEEP_WORKFLOW.name)).toBeDefined();
+    expect(screen.getByDisplayValue("deep-workflow")).toBeDefined();
+    await expectStartingImages([DEEP_WORKFLOW.image]);
+    await expectScheduleField("Every day at 06:00");
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Description",
+        }) as HTMLTextAreaElement
+      ).value,
+    ).toBe(DEEP_WORKFLOW.description);
+  });
+
+  test("a workflow with no Library entry still opens the new-listing form, with no image to start from", async () => {
+    installHandlers();
+    server.use(
+      http.get("/api/proxy/api/library/agents/by-graph/:graphId", () =>
+        HttpResponse.json({ detail: "Not found" }, { status: 404 }),
+      ),
+    );
+    renderDialog(
+      <PreScopedPublishDialog
+        graphId={DEEP_WORKFLOW.graphId}
+        version={DEEP_WORKFLOW.version}
+      />,
+    );
+
+    expect(await screen.findByDisplayValue(DEEP_WORKFLOW.name)).toBeDefined();
+    expect(screen.queryByText(LOOKUP_FAILED)).toBeNull();
+    await expectStartingImages([]);
   });
 
   test("shows an error instead of the new-listing form when the lookup fails, and tries again", async () => {
