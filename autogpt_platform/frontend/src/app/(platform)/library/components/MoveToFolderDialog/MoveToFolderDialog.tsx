@@ -116,7 +116,23 @@ export function MoveToFolderDialog({
             onChange={(e) => setSearch(e.target.value)}
             className="w-full"
           />
-          <div className="max-h-[280px] overflow-y-auto">
+          <div className="flex max-h-[280px] flex-col gap-1 overflow-y-auto">
+            {currentFolderId && (
+              <Button
+                variant="ghost"
+                className="w-full justify-start"
+                disabled={isPending}
+                onClick={() => handleMoveToFolder(null)}
+              >
+                <span className="text-lead">📂</span>
+                <div className="flex flex-col items-start">
+                  <Text variant="small-medium">My Library (root)</Text>
+                  <Text variant="small" tone="subtle">
+                    Remove from folder
+                  </Text>
+                </div>
+              </Button>
+            )}
             {folders.length === 0 ? (
               <div className="flex h-20 items-center justify-center">
                 <Text variant="small" tone="subtle">
@@ -125,22 +141,6 @@ export function MoveToFolderDialog({
               </div>
             ) : (
               <div className="flex flex-col gap-1">
-                {currentFolderId && (
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start"
-                    disabled={isPending}
-                    onClick={() => handleMoveToFolder(null)}
-                  >
-                    <span className="text-lead">📂</span>
-                    <div className="flex flex-col items-start">
-                      <Text variant="small-medium">My Library (root)</Text>
-                      <Text variant="small" tone="subtle">
-                        Remove from folder
-                      </Text>
-                    </div>
-                  </Button>
-                )}
                 {folders.map(({ folder, depth }) => (
                   <Button
                     key={folder.id}
