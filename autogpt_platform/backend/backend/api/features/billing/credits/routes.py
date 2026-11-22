@@ -12,7 +12,10 @@ from autogpt_libs.auth.permissions import OrgAction
 from fastapi import APIRouter, Header, HTTPException, Query, Response, Security
 
 from backend.api.features.billing.client_country import ClientCountry
-from backend.api.features.billing.credits.auto_top_up_lock import auto_top_up_setup_lock
+from backend.api.features.billing.credits.auto_top_up_lock import (
+    AutoTopUpSetupLock,
+    auto_top_up_setup_lock,
+)
 from backend.api.model import RequestTopUp
 from backend.data.account_deletion import refuse_closed_account
 from backend.data.checkout_audience import schedule_checkout_opened
@@ -26,7 +29,6 @@ from backend.data.credit import (
     UserCreditBase,
     get_auto_top_up,
     get_credit_model,
-    latest_credited_top_up,
     set_auto_top_up,
 )
 from backend.util.product_analytics import track_checkout_started
@@ -156,14 +158,11 @@ async def configure_user_auto_top_up(
     if not request.amount:
         # Turning auto top-up off charges nothing, so it needs no lock and
         # keeps working while Redis can't be reached.
-        await _charge_and_save_auto_top_up(
-            user_id, request, credit_model, may_charge=False
-        )
+        await _charge_and_save_auto_top_up(user_id, request, credit_model, None)
         return "Auto top-up settings updated"
 
-    credited_before = await latest_credited_top_up(user_id)
-    async with auto_top_up_setup_lock(user_id) as held:
-        if not held:
+    async with auto_top_up_setup_lock(user_id) as setup_lock:
+        if not setup_lock.held:
             raise HTTPException(
                 status_code=503,
                 detail=(
@@ -174,14 +173,12 @@ async def configure_user_auto_top_up(
         # Waiting for another save can take a while; the account may have
         # closed meanwhile, so look again before charging.
         await refuse_closed_account(user_id)
-        # The balance alone can't tell this save that the one ahead of it
-        # already charged: from a negative balance one refill can still leave
-        # it under the threshold. A top-up credited while this save waited
-        # means that charge happened, so this one only saves the settings.
-        may_charge = await latest_credited_top_up(user_id) == credited_before
-        await _charge_and_save_auto_top_up(
-            user_id, request, credit_model, may_charge=may_charge
-        )
+        if setup_lock.queued_behind_charge:
+            # The save ahead already charged for this; the balance alone can't
+            # show it, since from a negative balance one refill can still be
+            # under the threshold. Pass that on to any save queued behind this.
+            await setup_lock.record_charge()
+        await _charge_and_save_auto_top_up(user_id, request, credit_model, setup_lock)
     return "Auto top-up settings updated"
 
 
@@ -189,18 +186,21 @@ async def _charge_and_save_auto_top_up(
     user_id: str,
     request: AutoTopUpConfig,
     credit_model: UserCreditBase,
-    *,
-    may_charge: bool,
+    setup_lock: AutoTopUpSetupLock | None,
 ) -> None:
-    """Charge now if the balance is under the new threshold and ``may_charge``,
-    then save the settings. Callers that charge hold ``auto_top_up_setup_lock``
-    so the balance read here already includes any charge an earlier save made."""
+    """Charge now if the balance is under the new threshold, then save the
+    settings. Only a save holding ``setup_lock`` charges, and not one queued
+    behind a save that charged; the balance read here already includes any
+    charge an earlier save made."""
     current_balance = await credit_model.get_credits(user_id)
+    may_charge = setup_lock is not None and not setup_lock.queued_behind_charge
 
     try:
         # An amount of 0 turns auto top-up off: nothing to charge or check.
         if request.amount and may_charge and current_balance < request.threshold:
+            assert setup_lock is not None
             await credit_model.top_up_credits(user_id, request.amount)
+            await setup_lock.record_charge()
         elif request.amount:
             await credit_model.top_up_credits(user_id, 0)
     except NotImplementedError as e:

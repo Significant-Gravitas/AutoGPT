@@ -19,6 +19,7 @@ from fakeredis.aioredis import FakeRedis
 from fastapi.routing import APIRoute
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api.features.billing.credits import auto_top_up_lock
 from backend.api.features.billing.credits.routes import (
     configure_user_auto_top_up,
     get_credit_history,
@@ -88,15 +89,6 @@ async def auto_top_up_lock_redis(
         new=AsyncMock(return_value=redis),
     )
     await redis.aclose()
-
-
-@pytest.fixture(autouse=True)
-def credited_top_up(mocker: pytest_mock.MockFixture) -> AsyncMock:
-    """The latest credited top-up, which the route compares across its wait."""
-    return mocker.patch(
-        "backend.api.features.billing.credits.routes.latest_credited_top_up",
-        new=AsyncMock(return_value=None),
-    )
 
 
 @pytest.fixture(autouse=True)
@@ -574,7 +566,6 @@ def test_configure_auto_top_up_beyond_stripes_ceiling_is_refused(
 )
 async def test_concurrent_auto_top_up_saves_charge_the_card_once(
     mocker: pytest_mock.MockFixture,
-    credited_top_up: AsyncMock,
     start: int,
     threshold: int,
     amount: int,
@@ -584,8 +575,6 @@ async def test_concurrent_auto_top_up_saves_charge_the_card_once(
     mocker.patch("backend.api.features.billing.credits.routes.set_auto_top_up")
     balance = {"credits": start}
     charges: list[int] = []
-    credited: list[str] = []
-    credited_top_up.side_effect = lambda user_id: credited[-1] if credited else None
     both_reading = asyncio.Barrier(2)
 
     async def get_credits(user_id: str) -> int:
@@ -604,7 +593,6 @@ async def test_concurrent_auto_top_up_saves_charge_the_card_once(
             # The charge is a Stripe round trip; the balance moves after it.
             await asyncio.sleep(0)
             balance["credits"] += amount
-            credited.append(f"pi_{len(charges)}")
 
     credit_model = mocker.AsyncMock()
     credit_model.get_credits.side_effect = get_credits
@@ -634,6 +622,88 @@ async def test_concurrent_auto_top_up_saves_charge_the_card_once(
     assert results == ["Auto top-up settings updated"] * 2
     assert charges == [amount]
     assert balance["credits"] == start + amount
+
+
+async def test_a_save_queued_after_the_charge_landed_does_not_charge_again(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The second save queues after the first save's charge is credited but
+    before it lets go of the lock. From -$1 the balance is then $4, still under
+    $5, so only knowing it queued behind a charge stops a second charge. A later
+    save that finds the lock free is a separate save and still charges."""
+    balance = {"credits": -100}
+    charges: list[int] = []
+    first_charged = asyncio.Event()
+    second_queued = asyncio.Event()
+    saves = 0
+
+    async def get_credits(user_id: str) -> int:
+        return balance["credits"]
+
+    async def top_up_credits(user_id: str, amount: int) -> None:
+        if amount:
+            charges.append(amount)
+            balance["credits"] += amount
+
+    async def set_auto_top_up(user_id: str, config: AutoTopUpConfig) -> None:
+        nonlocal saves
+        saves += 1
+        if saves == 1:
+            # The first save's charge has landed; it keeps the lock until the
+            # second save has queued on it.
+            first_charged.set()
+            async with asyncio.timeout(5):
+                await second_queued.wait()
+
+    real_holder_token = auto_top_up_lock._holder_token
+
+    async def holder_token(redis: FakeRedis, key: str) -> str | None:
+        token = await real_holder_token(redis, key)
+        second_queued.set()
+        return token
+
+    credit_model = mocker.AsyncMock()
+    credit_model.get_credits.side_effect = get_credits
+    credit_model.top_up_credits.side_effect = top_up_credits
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=credit_model,
+    )
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.set_auto_top_up",
+        side_effect=set_auto_top_up,
+    )
+    mocker.patch(
+        "backend.api.features.billing.credits.auto_top_up_lock._holder_token",
+        side_effect=holder_token,
+    )
+    config = AutoTopUpConfig(threshold=500, amount=500)
+    ctx = RequestContext(
+        user_id="user-1",
+        org_id="org-1",
+        team_id=None,
+        is_org_owner=True,
+        is_org_admin=True,
+        is_org_billing_manager=False,
+        is_team_admin=True,
+        is_team_billing_manager=False,
+        seat_status="ACTIVE",
+    )
+
+    first = asyncio.create_task(
+        configure_user_auto_top_up(request=config, user_id="user-1", ctx=ctx)
+    )
+    async with asyncio.timeout(5):
+        await first_charged.wait()
+    await configure_user_auto_top_up(request=config, user_id="user-1", ctx=ctx)
+    await first
+
+    assert charges == [500]
+    assert balance["credits"] == 400
+
+    await configure_user_auto_top_up(request=config, user_id="user-1", ctx=ctx)
+
+    assert charges == [500, 500]
 
 
 def test_auto_top_up_is_not_charged_when_the_save_cannot_be_locked(
