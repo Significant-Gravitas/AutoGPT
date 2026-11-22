@@ -6,13 +6,17 @@ export function findPublishedSubmission(
   submissions: StoreSubmission[] | undefined,
   graphId: string,
 ): StoreSubmission | undefined {
-  return submissions
-    ?.filter(
-      (submission) =>
-        submission.status === SubmissionStatus.APPROVED &&
-        submission.graph_id === graphId,
-    )
-    .sort((a, b) => b.graph_version - a.graph_version)[0];
+  return (
+    submissions
+      ?.filter(
+        (submission) =>
+          submission.status === SubmissionStatus.APPROVED &&
+          submission.graph_id === graphId,
+      )
+      // The newest approved listing version is the live one; it can point at
+      // an older graph version than an earlier approved listing version.
+      .sort((a, b) => b.listing_version - a.listing_version)[0]
+  );
 }
 
 export const emptyModalState = {

@@ -145,16 +145,26 @@ describe("PublishAgentModal helpers", () => {
       };
     }
 
-    it("returns the graph's approved submission with the highest graph version", () => {
-      const newest = makeSubmission({ graph_version: 3 });
+    it("returns the graph's newest approved listing version, the live one", () => {
+      // Listing version 3 relisted an older graph version than version 2 did.
+      const live = makeSubmission({ listing_version: 3, graph_version: 1 });
       const submissions = [
-        makeSubmission({ graph_version: 1 }),
-        newest,
-        makeSubmission({ graph_version: 4, status: SubmissionStatus.PENDING }),
-        makeSubmission({ graph_id: "g2", graph_version: 5 }),
+        makeSubmission({ listing_version: 1, graph_version: 1 }),
+        makeSubmission({ listing_version: 2, graph_version: 2 }),
+        live,
+        makeSubmission({
+          listing_version: 4,
+          graph_version: 3,
+          status: SubmissionStatus.PENDING,
+        }),
+        makeSubmission({
+          graph_id: "g2",
+          listing_version: 5,
+          graph_version: 5,
+        }),
       ];
 
-      expect(findPublishedSubmission(submissions, "g1")).toBe(newest);
+      expect(findPublishedSubmission(submissions, "g1")).toBe(live);
     });
 
     it("returns undefined when the graph has no approved submission", () => {
