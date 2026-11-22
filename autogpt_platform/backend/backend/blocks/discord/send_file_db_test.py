@@ -8,6 +8,7 @@ what the channel was sent."""
 import base64
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from contextlib import AsyncExitStack
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -148,20 +149,21 @@ def chat(workspace: UserWorkspace, local_files: None) -> ExecutionContext:
 
 @pytest_asyncio.fixture(loop_scope="session")
 async def workspace() -> AsyncIterator[UserWorkspace]:
-    owned_connection = not db.is_connected()
-    if owned_connection:
-        await db.connect()
-    user_id = str(uuid.uuid4())
-    await db.prisma.user.create(
-        data={"id": user_id, "email": f"discord-file-{user_id}@example.com"}
-    )
-    workspace = await db.prisma.userworkspace.create(data={"userId": user_id})
-    try:
-        yield workspace
-    finally:
-        await db.prisma.user.delete(where={"id": user_id})
-        if owned_connection:
-            await db.disconnect()
+    """A user with a workspace in the real database.
+
+    Each undo is registered as soon as what it undoes exists, and every one
+    runs even if another fails: a failed step leaves no row or connection
+    behind. Deleting the user takes its workspace and files with it."""
+    async with AsyncExitStack() as cleanup:
+        if not db.is_connected():
+            await db.connect()
+            cleanup.push_async_callback(db.disconnect)
+        user_id = str(uuid.uuid4())
+        await db.prisma.user.create(
+            data={"id": user_id, "email": f"discord-file-{user_id}@example.com"}
+        )
+        cleanup.push_async_callback(db.prisma.user.delete_many, where={"id": user_id})
+        yield await db.prisma.userworkspace.create(data={"userId": user_id})
 
 
 @pytest.fixture
