@@ -25,7 +25,9 @@ from backend.copilot.tools.render_ui_models import (
 from .collection_design import (
     MAX_COLLECTIONS_PER_PAGE,
     CollectionSection,
+    RowButton,
     collection_problems,
+    section_buttons,
     section_collection,
 )
 from .design_base import Ref
@@ -339,7 +341,9 @@ def _section_problems(
             return []
         if found is None:
             return [f"its collection is {UNAVAILABLE}"]
-        return collection_problems(section, found)
+        return collection_problems(section, found) + _button_problems(
+            section_buttons(section), sources, on_page
+        )
     agent = sources.workflows.get(workflow or "")
     if agent is None:
         return []
@@ -436,6 +440,22 @@ def _row_action_problems(
         problems.append(
             f"the row button's workflow has no input named '{action.input}'"
         )
+    return problems
+
+
+def _button_problems(
+    buttons: list[RowButton], sources: "PageSources", on_page: set[str]
+) -> list[str]:
+    problems: list[str] = []
+    for button in buttons:
+        problems += _ref_problems(button.workflow, on_page, sources)
+        target = sources.workflows.get(button.workflow)
+        inputs = (target.input_schema.get("properties") or {}) if target else {}
+        problems += [
+            f"the '{button.label}' button's workflow has no input named '{name}'"
+            for name in button.inputs
+            if target is not None and name not in inputs
+        ]
     return problems
 
 

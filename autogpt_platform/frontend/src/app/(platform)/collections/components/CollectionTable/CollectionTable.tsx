@@ -3,20 +3,15 @@
 import type { Condition } from "@/app/api/__generated__/models/condition";
 import type { Sort } from "@/app/api/__generated__/models/sort";
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { Delete02Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
-import { EditableCell } from "./components/EditableCell";
+import type { PageButton } from "@/app/api/__generated__/models/pageButton";
+import { useRowButtons } from "../RowButtons/useRowButtons";
+import { TableRowView } from "./components/TableRowView";
 import { NewRowForm } from "./components/NewRowForm";
-import {
-  cellText,
-  isNumeric,
-  type TableColumn,
-  type TableRow,
-} from "./helpers";
+import { isNumeric, type TableColumn, type TableRow } from "./helpers";
 import { useCollectionTable } from "./useCollectionTable";
 
 interface Props {
@@ -27,6 +22,9 @@ interface Props {
   filter?: Condition[];
   sort?: Sort | null;
   readOnly: boolean;
+  buttons?: PageButton[];
+  /** Absent where nothing runs, as in a chat preview. */
+  onRunStarted?(libraryAgentID: string, runID: string): void;
 }
 
 export function CollectionTable({
@@ -37,6 +35,8 @@ export function CollectionTable({
   filter = [],
   sort = null,
   readOnly,
+  buttons = [],
+  onRunStarted,
 }: Props) {
   const table = useCollectionTable({
     collectionID,
@@ -47,6 +47,12 @@ export function CollectionTable({
     sort,
   });
   const [adding, setAdding] = useState(false);
+  const runs = useRowButtons({
+    onRunStarted,
+    onRunFinished: () => void table.refresh(),
+  });
+  const runnable = onRunStarted ? buttons : [];
+  const hasActions = !readOnly || runnable.length > 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -111,11 +117,11 @@ export function CollectionTable({
                   </Text>
                 </th>
               ))}
-              {readOnly ? null : (
+              {hasActions ? (
                 <th scope="col" className="w-10 px-2">
                   <span className="sr-only">Actions</span>
                 </th>
-              )}
+              ) : null}
             </tr>
           </thead>
           <tbody>
@@ -126,6 +132,8 @@ export function CollectionTable({
                 columns={columns}
                 readOnly={readOnly}
                 table={table}
+                buttons={runnable}
+                runs={runs}
               />
             ))}
           </tbody>
@@ -144,54 +152,5 @@ export function CollectionTable({
         </Text>
       ) : null}
     </div>
-  );
-}
-
-function TableRowView({
-  row,
-  columns,
-  readOnly,
-  table,
-}: {
-  row: TableRow;
-  columns: TableColumn[];
-  readOnly: boolean;
-  table: ReturnType<typeof useCollectionTable>;
-}) {
-  const rowLabel =
-    cellText(columns[0], row.values[columns[0]?.field ?? ""]) || "this row";
-  return (
-    <tr className="border-t border-separator">
-      {columns.map((column) => (
-        <td
-          key={column.field}
-          className={cn(
-            "px-4 py-2 align-middle",
-            isNumeric(column) ? "text-right" : "min-w-32",
-          )}
-        >
-          <EditableCell
-            column={column}
-            row={row}
-            rowLabel={rowLabel}
-            readOnly={readOnly}
-            onSave={(value) => table.saveCell(row, column.field, value)}
-            onAccept={() => table.acceptPending(row, column.field)}
-          />
-        </td>
-      ))}
-      {readOnly ? null : (
-        <td className="px-2 py-1.5 text-right align-middle">
-          <Button
-            size="icon-xs"
-            variant="ghost"
-            aria-label={`Delete ${rowLabel}`}
-            onClick={() => table.deleteRow(row)}
-          >
-            <Icon icon={Delete02Icon} size={16} />
-          </Button>
-        </td>
-      )}
-    </tr>
   );
 }

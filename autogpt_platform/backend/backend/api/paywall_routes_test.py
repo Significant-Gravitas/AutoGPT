@@ -230,6 +230,7 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/collections",
     "GET /api/collections/{collection_id}",
     "GET /api/collections/{collection_id}/rows",
+    "GET /api/collections/{collection_id}/export",
     "GET /api/library/agents",
     "GET /api/library/agents/batch",
     "GET /api/library/agents/by-graph/{graph_id}",

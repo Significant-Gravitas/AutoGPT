@@ -333,7 +333,8 @@ def catalogue() -> dict[str, Any]:
             "{field, direction}, limit}",
             "delete_rows": "collection, row_ids; asks the user first",
             "change_schema": "collection, change {rename?, add_fields?, "
-            "remove_fields?, key_field?, clear_key?}; asks the user first",
+            "remove_fields?, rename_fields [{field, to}]?, change_types "
+            "[{field, type}]?, key_field?, clear_key?}; asks the user first",
             "delete_collection": "collection; asks the user first",
         },
         "field_types": [t.value for t in FieldType],
@@ -347,6 +348,10 @@ def catalogue() -> dict[str, Any]:
             "lte",
             "empty",
             "not_empty",
+            "today",
+            "last_days",
+            "next_days",
+            "this_month",
         ],
         "limits": {
             "collections": MAX_COLLECTIONS_PER_USER,
@@ -356,7 +361,8 @@ def catalogue() -> dict[str, Any]:
             "rows_per_call": MAX_ROWS_PER_CALL,
         },
         "notes": [
-            "Dates are 2026-11-22 or 2026-11-22T14:00:00Z.",
+            "Dates are 2026-11-22 or 2026-11-22T14:00:00Z; last_days and "
+            "next_days take a number of days as value.",
             "A person's edit to a cell stands over a different value you write; "
             "the page offers them yours.",
         ],

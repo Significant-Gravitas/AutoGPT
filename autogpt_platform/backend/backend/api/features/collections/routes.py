@@ -1,5 +1,7 @@
 """The owner's view of their collections: read, edit, add, delete and reshape."""
 
+import csv
+import io
 from typing import Annotated, Any, Literal
 
 import autogpt_libs.auth as autogpt_auth_lib
@@ -142,6 +144,36 @@ async def list_rows(
     return await db.query_rows(user_id, owned.id, query)
 
 
+@router.get(
+    "/{collection_id}/export",
+    operation_id="export_collection",
+    response_class=Response,
+    responses={200: {"content": {"text/csv": {}}}},
+)
+async def export_collection(
+    collection_id: CollectionID,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> Response:
+    """Every row as CSV, one column per field, in the collection's order."""
+    await _require_flag(user_id)
+    owned = await _owned(user_id, collection_id)
+    rows = []
+    while len(rows) < owned.row_count:
+        page = await db.query_rows(
+            user_id, owned.id, RowQuery(limit=200, offset=len(rows))
+        )
+        if not page.rows:
+            break
+        rows += page.rows
+    return Response(
+        content=rows_csv(owned, rows),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{_file_name(owned.name)}.csv"'
+        },
+    )
+
+
 @router.post(
     "/{collection_id}/rows",
     operation_id="add_collection_row",
@@ -247,6 +279,39 @@ def _stale(error: StaleRowError) -> JSONResponse:
     """409 with the row as it is now, so the page shows the new values."""
     body = StaleRow(detail=str(error), row=error.current)
     return JSONResponse(status_code=409, content=body.model_dump(mode="json"))
+
+
+def rows_csv(collection: CollectionInfo, rows: list[CollectionRowRecord]) -> str:
+    out = io.StringIO()
+    writer = csv.writer(out)
+    names = [field.name for field in collection.fields]
+    writer.writerow(names)
+    for row in rows:
+        writer.writerow([_csv_cell(row.values.get(name)) for name in names])
+    return out.getvalue()
+
+
+def _csv_cell(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, list):
+        text = ", ".join(str(v) for v in value)
+    else:
+        text = str(value)
+    # A spreadsheet runs a cell that starts like a formula; this one is data.
+    return f"'{text}" if text[:1] in _FORMULA_STARTS else text
+
+
+_FORMULA_STARTS = {"=", "+", "-", "@", "\t", "\r"}
+
+
+def _file_name(name: str) -> str:
+    safe = "".join(c if c.isalnum() or c in " -_" else "_" for c in name).strip()
+    return safe or "collection"
 
 
 async def _owned(user_id: str, collection_id: str) -> CollectionInfo:

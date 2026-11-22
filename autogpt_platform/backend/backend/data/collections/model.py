@@ -1,6 +1,6 @@
 """What a collection holds, the limits on it, and the errors a write can meet."""
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Annotated, Any, Literal
 
@@ -88,7 +88,20 @@ class CollectionRowRecord(BaseModel):
 
 
 ConditionOp = Literal[
-    "is", "is_not", "contains", "gt", "lt", "gte", "lte", "empty", "not_empty"
+    "is",
+    "is_not",
+    "contains",
+    "gt",
+    "lt",
+    "gte",
+    "lte",
+    "empty",
+    "not_empty",
+    # Dates against the reader's own day; last_days and next_days take a count.
+    "today",
+    "last_days",
+    "next_days",
+    "this_month",
 ]
 Scalar = Annotated[str, Field(max_length=500)] | float | bool | None
 
@@ -112,6 +125,9 @@ class RowQuery(BaseModel):
     chips: dict[str, list[Option]] = Field(default_factory=dict)
     limit: int = Field(default=50, ge=1, le=MAX_QUERY_LIMIT)
     offset: int = Field(default=0, ge=0, le=MAX_ROWS)
+    today: date | None = Field(
+        default=None, description="The reader's date; UTC's when not given."
+    )
 
 
 class RowPage(BaseModel):
@@ -125,6 +141,14 @@ AggregateOp = Literal["count", "sum", "average", "min", "max"]
 class Aggregate(BaseModel):
     op: AggregateOp
     field: str | None = Field(default=None, max_length=MAX_FIELD_NAME_CHARS)
+
+
+Bucket = Literal["day", "week", "month"]
+
+
+class GroupValue(BaseModel):
+    label: str | None
+    value: float | None
 
 
 class WriteResult(BaseModel):

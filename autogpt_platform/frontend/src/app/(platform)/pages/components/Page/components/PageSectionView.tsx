@@ -83,7 +83,10 @@ function SectionBody({
       return <WaitingSection section={section} live={live} />;
     case "collection_table":
     case "collection_numbers":
-      return <CollectionSection section={section} canEdit={Boolean(live)} />;
+    case "collection_board":
+    case "collection_cards":
+    case "collection_chart":
+      return <CollectionSection section={section} live={live} />;
     case "notice":
       return <NoticeSection section={section} editing={editing} />;
   }

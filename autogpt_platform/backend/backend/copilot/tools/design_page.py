@@ -8,6 +8,9 @@ from pydantic import ValidationError
 from backend.api.features.pages.design import MAX_SECTIONS, PageDesign
 from backend.api.features.pages.resolve import resolve_page
 from backend.api.features.pages.resolved import (
+    PageCollectionBoard,
+    PageCollectionCards,
+    PageCollectionChart,
     PageCollectionNumbers,
     PageCollectionTable,
     PageExpertLearned,
@@ -235,9 +238,11 @@ def catalogue() -> dict[str, Any]:
             "A row button or a from_output field names a workflow that has its own "
             "section on the page.",
             "'cards' holds fixed content you write; everything else is read live.",
-            "collection_table and collection_numbers show one of the user's "
-            "collections (the collections tool lists them): source "
-            "{type: 'collection', id}, naming its fields exactly.",
+            "collection_table, _board, _cards, _numbers and _chart show one of "
+            "the user's collections (the collections tool lists them): source "
+            "{type: 'collection', id}, naming its fields exactly. A board groups "
+            "by a select field. A row button runs a workflow on this page with "
+            "the row's fields as its inputs.",
         ],
         "page": compact_schema(PageDesign),
     }
@@ -268,9 +273,11 @@ def _outside_parts(page: ResolvedPage) -> list[Any]:
             parts.append([fact.fact for fact in s.facts])
         elif isinstance(s, PageWaiting):
             parts.append([review.payload for review in s.reviews])
-        elif isinstance(s, PageCollectionTable):
+        elif isinstance(s, (PageCollectionTable, PageCollectionCards)):
             parts.append([[row.values, row.pending] for row in s.rows])
-        elif isinstance(s, PageCollectionNumbers):
+        elif isinstance(s, PageCollectionBoard):
+            parts.append([[r.values, r.pending] for c in s.columns for r in c.rows])
+        elif isinstance(s, (PageCollectionNumbers, PageCollectionChart)):
             parts.append(s.block)
     return parts
 
