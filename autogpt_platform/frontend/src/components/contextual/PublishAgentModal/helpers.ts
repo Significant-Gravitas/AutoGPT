@@ -1,4 +1,10 @@
+import type { MyUnpublishedAgent } from "@/app/api/__generated__/models/myUnpublishedAgent";
+import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
+import type { PublishAgentInfoInitialData } from "./components/AgentInfoStep/helpers";
+
+export const LISTING_CHECK_FAILED_MESSAGE =
+  "We couldn't check whether this workflow is already in the Marketplace.";
 
 export const emptyModalState = {
   agent_id: "",
@@ -15,6 +21,64 @@ export const emptyModalState = {
   changesSummary: "",
   additionalImages: [],
 };
+
+export interface AgentFormSource {
+  name: string;
+  description: string;
+  imageSrc: string;
+  recommendedScheduleCron: string | null;
+}
+
+export function toAgentFormSource(
+  agent: MyUnpublishedAgent | undefined,
+): AgentFormSource {
+  return {
+    name: agent?.agent_name ?? "",
+    description: agent?.description || "",
+    imageSrc: agent?.agent_image || "",
+    recommendedScheduleCron: agent?.recommended_schedule_cron || null,
+  };
+}
+
+/**
+ * The info step's starting values: the live listing's when the workflow
+ * already has one (an update), otherwise the workflow's own (a new listing).
+ * Both ways into the dialog build them here, so they can't drift apart.
+ */
+export function buildInitialFormData(
+  agentId: string,
+  agent: AgentFormSource,
+  submission: StoreSubmission | undefined,
+): PublishAgentInfoInitialData {
+  if (!submission) {
+    return {
+      ...emptyModalState,
+      agent_id: agentId,
+      title: agent.name,
+      description: agent.description,
+      thumbnailSrc: agent.imageSrc,
+      slug: agent.name.replace(/ /g, "-"),
+      recommendedScheduleCron: agent.recommendedScheduleCron || "",
+    };
+  }
+  return {
+    agent_id: agentId,
+    title: submission.name,
+    subheader: submission.sub_heading || "",
+    description: submission.description,
+    instructions: submission.instructions || "",
+    youtubeLink: submission.video_url || "",
+    agentOutputDemo: submission.agent_output_demo_url || "",
+    additionalImages: [...new Set(submission.image_urls || [])].filter(
+      Boolean,
+    ) as string[],
+    category: submission.categories?.[0] || "",
+    thumbnailSrc: agent.imageSrc,
+    slug: submission.slug,
+    recommendedScheduleCron: agent.recommendedScheduleCron || "",
+    changesSummary: submission.changes_summary || "",
+  };
+}
 
 export interface SubmissionMetaItem {
   label: string;

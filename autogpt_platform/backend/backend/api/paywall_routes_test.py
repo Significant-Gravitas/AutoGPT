@@ -255,6 +255,7 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/internal/store/my-unpublished-agents",
     "GET /api/internal/store/skills/submissions",
     "GET /api/internal/store/submissions",
+    "GET /api/internal/store/submissions/live/{graph_id}",
     "GET /api/internal/store/submissions/media/{owner_user_id}/{media_type}/{filename}",
     "GET /api/internal/workspace/files",
     "GET /api/internal/workspace/files/{file_id}/download",

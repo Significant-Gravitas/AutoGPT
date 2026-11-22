@@ -19626,6 +19626,50 @@
         }
       }
     },
+    "/api/internal/store/submissions/live/{graph_id}": {
+      "get": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Get my live submission",
+        "description": "The version of your listing for this workflow that the Marketplace\nshows, or null when the workflow has no listing of yours or none of it\nis live.",
+        "operationId": "getV2Get my live submission",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/StoreSubmission" },
+                    { "type": "null" }
+                  ],
+                  "title": "Response Getv2Get My Live Submission"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/internal/store/submissions/media": {
       "post": {
         "tags": ["v2", "store", "private"],
