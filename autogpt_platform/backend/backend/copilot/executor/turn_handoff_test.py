@@ -26,8 +26,13 @@ from prisma.enums import ReviewStatus
 
 from backend.copilot import stream_registry
 from backend.copilot.active_turns import acquire_turn_slot
+from backend.copilot.executor import manager as executor_manager
 from backend.copilot.executor.manager import CoPilotExecutor
-from backend.copilot.executor.utils import CoPilotExecutionEntry, dispatch_turn
+from backend.copilot.executor.utils import (
+    CoPilotExecutionEntry,
+    dispatch_turn,
+    get_session_released_key,
+)
 from backend.copilot.gate import held
 from backend.copilot.gate.held_db_test import _answer, _hold, _new_session, _Post
 from backend.copilot.model import get_chat_session
@@ -166,6 +171,50 @@ async def test_a_message_naming_no_turn_closes_nothing():
     assert still is not None and (still.turn_id, still.status) == (running, "running")
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_turn_sent_once_the_chat_reads_released_is_not_dropped():
+    """A message waiting out a Stop starts the next turn the moment the stopped
+    one's release is written, so by then this pod must have let go of the chat."""
+    session_id, first, second = (str(uuid.uuid4()) for _ in range(3))
+    await stream_registry.create_session(session_id, None, "", "", turn_id=first)
+    released: list[str] = []
+    mark_released = executor_manager._mark_released
+
+    async def stopped(entry: CoPilotExecutionEntry) -> None:
+        await stream_registry.mark_session_completed(
+            entry.session_id,
+            error_message=stream_registry.CANCELLED_MESSAGE,
+            skip_error_publish=True,
+            turn_id=entry.turn_id,
+        )
+
+    async with _Pod.running(stopped) as pod:
+
+        def release_then_send(released_session: str, turn_id: str) -> None:
+            mark_released(released_session, turn_id)
+            released.append(turn_id)
+            if turn_id == first:
+                asyncio.run_coroutine_threadsafe(
+                    stream_registry.create_session(
+                        session_id, None, "", "", turn_id=second
+                    ),
+                    pod.loop,
+                ).result(10)
+                pod.deliver(_body(session_id, second))
+
+        with patch(f"{_MANAGER}._mark_released", release_then_send):
+            pod.deliver(_body(session_id, first))
+            for _ in range(300):
+                if len(released) == 2 or pod.dropped:
+                    break
+                await asyncio.sleep(0.1)
+
+    assert pod.dropped == []
+    assert [entry.turn_id for entry in pod.turns] == [first, second]
+    redis = await get_redis_async()
+    assert as_str(await redis.get(get_session_released_key(session_id))) == second
+
+
 class _Pod:
     """One executor whose queue delivers every turn published back to itself."""
 
@@ -290,6 +339,16 @@ async def _chunks_until_finish(turn_id: str) -> list[dict[str, Any]]:
             break
         await asyncio.sleep(0.1)
     return chunks
+
+
+def _body(session_id: str, turn_id: str) -> bytes:
+    return (
+        CoPilotExecutionEntry(
+            session_id=session_id, turn_id=turn_id, user_id=None, message="hi"
+        )
+        .model_dump_json()
+        .encode()
+    )
 
 
 async def _never_runs(_entry: CoPilotExecutionEntry) -> None:

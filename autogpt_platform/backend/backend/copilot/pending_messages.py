@@ -400,7 +400,6 @@ async def push_pending_message_if_session_running(
         closed_by_field=_FOLLOW_UPS_CLOSED_BY_FIELD,
         owner_field=_SESSION_TURN_FIELD,
         hold_field=hold_field,
-        now=time.time(),
     )
     if new_length is None:
         logger.info(

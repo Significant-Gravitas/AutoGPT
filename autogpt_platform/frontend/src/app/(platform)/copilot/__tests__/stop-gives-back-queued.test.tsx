@@ -4,7 +4,7 @@ import {
   createStreamHold,
   streamSseResponse,
 } from "@/tests/integrations/copilot-sse";
-import { act, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UIMessageChunk } from "ai";
 import { delay, http, HttpResponse } from "msw";
@@ -154,15 +154,19 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
   it("a Stop that can't tell what it discarded leaves the queued follow-up shown", async () => {
     const { buffer } = await queueAFollowUpWhileOttoAnswers(0);
     buffer.discardsKnown = false;
+    // The Stop raises this toast just before it hands the page what it
+    // discarded, so the page has settled its chips once it shows.
+    buffer.cancelReason = "cancel_published_not_confirmed";
 
     await clickStop();
 
-    await waitFor(() => expect(buffer.cancelsAnswered).toBe(1), {
-      timeout: 5000,
-    });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    });
+    await waitFor(
+      () =>
+        expect(toast).toHaveBeenCalledWith(
+          expect.objectContaining({ title: "Stop may take a moment" }),
+        ),
+      { timeout: 5000 },
+    );
     expect(screen.getByText("Queued")).toBeDefined();
     expect(composer().value).toBe("");
     expect(toast).not.toHaveBeenCalledWith(
@@ -284,6 +288,7 @@ function serverPendingBuffer(peekDelayMs: number, cancelDelayMs: number) {
     cancelsAnswered: 0,
     // False when the cancel's own step failed and it can't say what it took.
     discardsKnown: true,
+    cancelReason: null as string | null,
     // A follow-up send is answered once this resolves, and the cancel a
     // moment after it: a test holds it to keep a send in flight at the Stop.
     sendGate: Promise.resolve(),
@@ -313,7 +318,7 @@ function serverPendingBuffer(peekDelayMs: number, cancelDelayMs: number) {
       buffer.cancelsAnswered += 1;
       return HttpResponse.json({
         cancelled: true,
-        reason: null,
+        reason: buffer.cancelReason,
         discarded_messages: buffer.discardsKnown ? discarded : null,
       });
     }),

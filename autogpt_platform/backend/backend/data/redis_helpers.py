@@ -22,6 +22,7 @@ application code, add a helper here first — callers should not touch
 this module can cover.
 """
 
+import time
 from enum import IntEnum
 from typing import Any, cast
 
@@ -432,7 +433,6 @@ async def capped_rpush_if_hash_field(
     closed_by_field: str | None = None,
     owner_field: str | None = None,
     hold_field: str = "",
-    now: float = 0.0,
 ) -> int | None:
     """Atomically RPUSH to a bounded list iff a hash field matches.
 
@@ -440,7 +440,7 @@ async def capped_rpush_if_hash_field(
     hash field does not currently match ``expected``, when
     ``closed_by_field`` holds the hash's current ``owner_field`` value (the
     owner closed the list with :func:`pop_or_close_list`), or when
-    ``hold_field`` holds a deadline later than ``now``. With a receipt
+    ``hold_field`` holds a deadline still to come. With a receipt
     key, retries return the current length without pushing. A matching JSON
     ``id`` in the list restores an expired receipt. Full lists raise
     ``RedisListCapacityExceeded`` without evicting an accepted item.
@@ -466,7 +466,7 @@ async def capped_rpush_if_hash_field(
             closed_by_field or "",
             owner_field or "",
             hold_field,
-            repr(now),
+            repr(time.time()),
         ),
     )
     length = int(result)

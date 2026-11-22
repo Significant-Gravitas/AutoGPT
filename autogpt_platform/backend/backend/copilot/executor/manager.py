@@ -38,11 +38,13 @@ from .processor import execute_copilot_turn, init_worker
 from .utils import (
     COPILOT_EXECUTION_QUEUE_NAME,
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
+    SESSION_RELEASED_TTL_SECONDS,
     CancelCoPilotEvent,
     CoPilotExecutionEntry,
     create_copilot_queue_config,
     declare_pod_cancel_queue,
     get_session_lock_key,
+    get_session_released_key,
     start_legacy_cancel_queue_reaper,
 )
 
@@ -555,6 +557,7 @@ class CoPilotExecutor(AppProcess):
                     self._task_locks[session_id].release()
                     del self._task_locks[session_id]
                 self._cleanup_completed_tasks()
+                _mark_released(session_id, entry.turn_id)
                 _dispatch_after_turn(session_id, entry.turn_id, error_msg)
 
         future.add_done_callback(on_run_done)
@@ -790,6 +793,20 @@ _REJECTED_TURN_MESSAGE = "This reply could not start. Please try again."
 class _TurnIds(BaseModel):
     session_id: str
     turn_id: str
+
+
+def _mark_released(session_id: str, turn_id: str) -> None:
+    """Tell a message waiting out a Stop that this pod no longer holds the chat."""
+    if not turn_id:
+        return
+    try:
+        redis.get_redis().set(
+            get_session_released_key(session_id),
+            turn_id,
+            ex=SESSION_RELEASED_TTL_SECONDS,
+        )
+    except Exception as e:
+        logger.warning(f"Could not mark {session_id} released by {turn_id}: {e}")
 
 
 def _close_rejected_turn(session_id: str, turn_id: str) -> None:

@@ -21,6 +21,7 @@ from backend.copilot import pending_message_helpers
 from backend.copilot import pending_messages as pending_messages_module
 from backend.copilot import stream_registry
 from backend.copilot.active_turns import SessionNotIdle
+from backend.copilot.executor.utils import get_session_released_key
 from backend.copilot.pending_message_helpers import queue_user_message, stop_follow_ups
 from backend.copilot.pending_messages import (
     PendingMessage,
@@ -30,6 +31,7 @@ from backend.copilot.pending_messages import (
     push_pending_message,
 )
 from backend.data import redis_client
+from backend.data.redis_helpers import as_str
 from backend.util.testing import is_tcp_port_reachable
 
 pytestmark = pytest.mark.skipif(
@@ -55,6 +57,7 @@ async def session_id():
     yield session_id
     redis = await redis_client.get_redis_async()
     await redis.delete(stream_registry.get_session_meta_key(session_id))
+    await redis.delete(get_session_released_key(session_id))
     await clear_pending_messages_unsafe(session_id)
 
 
@@ -88,6 +91,7 @@ async def test_a_message_sent_while_a_stop_settles_runs_as_the_next_turn(
             skip_error_publish=True,
             turn_id=stopped_turn,
         )
+        await _executor_lets_go(session_id, stopped_turn)
 
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
@@ -114,6 +118,60 @@ async def test_a_message_sent_while_a_stop_settles_runs_as_the_next_turn(
     assert await peek_pending_messages(session_id) == []
 
 
+@pytest.mark.parametrize("sent_before_the_cancel_gives_up", [True, False])
+async def test_a_message_sent_while_a_stop_settles_waits_for_the_executor_to_let_go(
+    mocker: pytest_mock.MockerFixture,
+    session_id: str,
+    test_user_id: str,
+    sent_before_the_cancel_gives_up: bool,
+) -> None:
+    stopped_turn = f"stopped-{uuid.uuid4().hex}"
+    await stream_registry.create_session(
+        session_id, test_user_id, "chat_stream", "chat", turn_id=stopped_turn
+    )
+    world = _stub_boundaries(mocker)
+    # The cancel gives up waiting and completes the turn itself, while the
+    # executor is still draining it and would drop a turn sent to the chat.
+    mocker.patch.object(chat_routes, "_CANCEL_CONFIRM_TIMEOUT_SECONDS", 0.5)
+    released_at_start: list[bool] = []
+    started = asyncio.Event()
+    admit = world.schedule.side_effect
+
+    async def start_turn(**kwargs) -> str:
+        released_at_start.append(await _released_turn(session_id) == stopped_turn)
+        started.set()
+        return await admit(**kwargs)
+
+    world.schedule.side_effect = start_turn
+
+    async with _client() as client:
+        cancel = asyncio.create_task(client.post(f"/sessions/{session_id}/cancel"))
+        await asyncio.wait_for(world.cancel_published.wait(), timeout=10)
+        if not sent_before_the_cancel_gives_up:
+            await asyncio.wait_for(cancel, timeout=10)
+        send = asyncio.create_task(
+            client.post(
+                f"/sessions/{session_id}/stream", json={"message": "do this instead"}
+            )
+        )
+        if sent_before_the_cancel_gives_up:
+            await asyncio.wait_for(world.send_reached_gate.wait(), timeout=10)
+        cancelled = await asyncio.wait_for(cancel, timeout=10)
+        # The drain ends once a turn has started without it, or 2 s on.
+        try:
+            await asyncio.wait_for(started.wait(), timeout=2)
+        except TimeoutError:
+            pass
+        await _executor_lets_go(session_id, stopped_turn)
+        sent = await asyncio.wait_for(send, timeout=30)
+
+    assert cancelled.json()["reason"] == "cancel_published_not_confirmed"
+    assert sent.status_code == 200
+    assert "data-follow-up-queued" not in sent.text
+    assert released_at_start == [True]
+    assert world.started == ["do this instead"]
+
+
 async def test_a_message_that_loses_the_next_turn_to_another_send_follows_that_turn(
     mocker: pytest_mock.MockerFixture, session_id: str, test_user_id: str
 ) -> None:
@@ -132,6 +190,7 @@ async def test_a_message_that_loses_the_next_turn_to_another_send_follows_that_t
             skip_error_publish=True,
             turn_id=stopped_turn,
         )
+        await _executor_lets_go(session_id, stopped_turn)
 
     async with _client() as client:
         cancel = asyncio.create_task(client.post(f"/sessions/{session_id}/cancel"))
@@ -320,6 +379,16 @@ async def _last_look(session_id: str, turn_id: str) -> None:
         )
         == []
     )
+
+
+async def _executor_lets_go(session_id: str, turn_id: str) -> None:
+    redis = await redis_client.get_redis_async()
+    await redis.set(get_session_released_key(session_id), turn_id, ex=60)
+
+
+async def _released_turn(session_id: str) -> str | None:
+    redis = await redis_client.get_redis_async()
+    return as_str(await redis.get(get_session_released_key(session_id)))
 
 
 def _client() -> AsyncClient:

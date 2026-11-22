@@ -18,6 +18,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 from redis.exceptions import RedisClusterException, RedisError
 
+from backend.copilot.executor.utils import get_session_released_key
 from backend.copilot.limit_tracking import LimitReading, track_chat_blocked
 from backend.copilot.model import (
     CHAT_STATUS_QUEUED,
@@ -54,7 +55,11 @@ from backend.copilot.stream_registry import get_session as get_active_session_me
 from backend.copilot.stream_registry import get_session_meta_key
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
-from backend.data.redis_helpers import RedisListCapacityExceeded, incr_with_ttl
+from backend.data.redis_helpers import (
+    RedisListCapacityExceeded,
+    as_str,
+    incr_with_ttl,
+)
 from backend.data.workspace import build_files_block, resolve_attachable_workspace_files
 from backend.data.workspace_folder import resolve_attachable_workspace_folders
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
@@ -162,11 +167,12 @@ async def stop_follow_ups(session_id: str) -> list[PendingMessage]:
 async def wait_for_stopped_turn(session_id: str) -> bool:
     """Wait while a turn the user stopped still holds the session.
 
-    A message sent meanwhile starts the next turn, which the turn slot admits
-    only once the stopped one has left both the stream registry and the
-    session's ``chatStatus``. The wait ends there, or when the Stop's hold
-    lapses because its cancel failed and the turn runs on. Returns whether a
-    stopped turn held the session.
+    A message sent meanwhile starts the next turn once the stopped one has
+    left the stream registry, the session's ``chatStatus`` and its executor,
+    which drops a turn sent to a chat it still holds. The wait ends there, or
+    when the Stop's hold lapses: the cancel failed and the turn runs on, or no
+    executor reports letting go (one that died, or predates the marker).
+    Returns whether a stopped turn held the session.
     """
     held = False
     while True:
@@ -175,7 +181,9 @@ async def wait_for_stopped_turn(session_id: str) -> bool:
             return held
         if active.status != "running":
             status = await chat_db().get_chat_session_status(session_id)
-            if status != CHAT_STATUS_RUNNING:
+            if status != CHAT_STATUS_RUNNING and await _executor_released(
+                session_id, active.turn_id
+            ):
                 return True
         held = True
         await asyncio.sleep(_STOPPED_TURN_POLL_SECONDS)
@@ -200,6 +208,12 @@ async def wait_for_next_turn(session_id: str) -> bool:
         if time.monotonic() >= deadline:
             return False
         await asyncio.sleep(_STOPPED_TURN_POLL_SECONDS)
+
+
+async def _executor_released(session_id: str, turn_id: str) -> bool:
+    redis = await get_redis_async()
+    released = await redis.get(get_session_released_key(session_id))
+    return as_str(released) == turn_id
 
 
 class QueuePendingMessageResponse(BaseModel):

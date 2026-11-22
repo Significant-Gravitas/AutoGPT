@@ -729,7 +729,7 @@ class CancelSessionResponse(BaseModel):
     cancelled: bool
     reason: str | None = None
     discarded_messages: list[str] | None = Field(
-        default_factory=list,
+        default=None,
         description="The user's follow-ups the Stop discarded unread, oldest "
         "first; null when the server could not tell.",
     )
@@ -2674,6 +2674,9 @@ async def stream_chat_post(
             turn_was_ending = True
             if not await wait_for_stopped_turn(session_id):
                 break
+    else:
+        # A Stop's cancel can end the turn before its executor lets go of it.
+        await wait_for_stopped_turn(session_id)
 
     if request.expert_kickoff and persisted_kickoff_has_reply is not None:
         if persisted_kickoff_has_reply:

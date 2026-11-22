@@ -135,6 +135,17 @@ def get_session_lock_key(session_id: str) -> str:
     return f"copilot:session:{session_id}:lock"
 
 
+# Outlasts any wait on it: a Stop's hold ends within seconds.
+SESSION_RELEASED_TTL_SECONDS = 60
+
+
+def get_session_released_key(session_id: str) -> str:
+    """Redis key naming the last turn an executor let go of for this chat. The
+    lock key is no such signal: completing a turn deletes it while the pod
+    still holds the chat, and a later turn sent to that pod is dropped."""
+    return f"copilot:session:{session_id}:released"
+
+
 # CoPilot operations can include extended thinking and agent generation
 # which may take several hours to complete. Matches the pod's
 # terminationGracePeriodSeconds in the helm chart so a rolling deploy can let
