@@ -112,7 +112,9 @@ AutoPilot at it, in place of `CHAT_TEST_MODE`'s canned reply.
 - **A block run with the user's own key:** the stack points Anthropic clients
   at the scripted model too, so an AI block run with an Anthropic key the
   journey's user saved lands there. `readJournalForKey` lists the calls made
-  with that key, as `copilot-connect-card-journey.spec.ts` does.
+  with that key, as `copilot-connect-card-journey.spec.ts` does. Its connect
+  card steps (ask, add a key on the card, check the save) are in
+  `connect-card.ts`.
 
 - **Chat helpers** are in `copilot-chat.ts`. `recordChatStreams` records the
   body of every chat stream as the browser received it (Chromium keeps no

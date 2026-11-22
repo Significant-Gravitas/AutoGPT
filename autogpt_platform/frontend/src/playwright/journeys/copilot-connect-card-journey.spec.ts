@@ -1,19 +1,29 @@
-import type { Locator, Page, Response } from "@playwright/test";
+import {
+  askForTheLine,
+  connectButtons,
+  connectCards,
+  connectKeyOnTheCard,
+  expectKeySaved,
+  FIRST_MESSAGE,
+  fillKeyForm,
+  isCredentialsList,
+  MODEL_TURN_TIMEOUT,
+  SERVICE,
+  savedConversation,
+  savedKeys,
+  toolResultTypes,
+  userID,
+} from "./connect-card";
 import {
   chatStreamCount,
-  currentSessionID,
   expectChatSettled,
   finishedChatStreams,
   recordChatStreams,
-  savedMessages,
-  startChat,
 } from "./copilot-chat";
 import {
-  type Credential,
   deleteCredential,
   expectListedInIntegrations,
   fakeAPIKey,
-  listCredentials,
   openIntegrations,
 } from "./credentials";
 import { expect, test } from "./fixtures";
@@ -30,27 +40,19 @@ import {
   streamedTexts,
 } from "./scripted-model";
 
-// AutoPilot runs the AI Text Generator with Claude. The stack has no platform
-// LLM keys, so the block needs the user's own Anthropic key and answers with a
-// sign-in card, which the chat shows as one connect card under the step. The
-// journeys stack points Anthropic clients at the scripted model, which
-// journals which key each request presented.
+// The journeys stack points Anthropic clients at the scripted model, which
+// journals which key each request presented (see connect-card.ts).
 const CONNECT: ModelScript = connectScript;
 const CANCEL: ModelScript = cancelScript;
-const PROVIDER = "anthropic";
-const SERVICE = "Anthropic";
-const FIRST_MESSAGE = "Write me one line about the sea with Claude.";
 // What the card sends once the key is saved (SetupRequirementsCard helpers).
 const CONNECTED = CONNECT.turns[2].expect_user_text ?? "";
 const SKIP = CANCEL.turns[2].expect_user_text ?? "";
 const BLOCK_MODEL = "claude-haiku-4-5-20251001";
-const CARD_HEADING = /^(Connect your apps|Your apps are connected)$/;
 const STILL_WAITING = "Once these apps are connected, Otto will continue.";
-// A model turn starts a Claude Agent SDK session, which takes a while on CI.
-const MODEL_TURN_TIMEOUT = 60_000;
-// On dev the card is back as soon as the chat renders. A known failure must
-// end as a failed assertion, not a timeout, so this stays well under the
-// test's budget.
+// Two model turns, a reload and the Integrations page.
+const TWO_TURN_TEST_TIMEOUT = 150_000;
+// A known failure must end as a failed assertion, not a timeout, so this
+// stays well under the test's budget.
 const REDO_CHECK_TIMEOUT = 5_000;
 
 test.describe("copilot connect card journey", () => {
@@ -60,15 +62,16 @@ test.describe("copilot connect card journey", () => {
     page,
     journeyUser,
   }) => {
+    test.setTimeout(TWO_TURN_TEST_TIMEOUT);
     const run = scriptedRun("connect-card-api-key");
-    const key = fakeAPIKey();
-    const keyName = `Journey key ${run.nonce}`;
+    const newKey = { key: fakeAPIKey(), keyName: `Journey key ${run.nonce}` };
     const texts = CONNECT.turns.map((turn) => turn.text ?? "");
 
     await recordChatStreams(page);
     const sessionID = await askForTheLine(page, run.marker, CONNECT);
-    const credential = await connectKeyOnTheCard(page, { key, keyName });
+    const save = await connectKeyOnTheCard(page, newKey);
     try {
+      const credential = await expectKeySaved(save, newKey);
       const transcript = page.getByRole("log");
       await expect(
         transcript.getByText(texts[3], { exact: true }),
@@ -84,18 +87,18 @@ test.describe("copilot connect card journey", () => {
       expect(streamed, "the streams should carry what the model said").toEqual(
         texts,
       );
+      await expectChatSettled(page, sessionID);
       expect(
         await chatStreamCount(page, "POST"),
         "the card should send one follow-up, and nothing else should",
       ).toBe(2);
-      await expectChatSettled(page, sessionID);
 
       expect(
         await savedKeys(page),
         "the key should be saved once, as the user named it",
-      ).toEqual([[keyName, "api_key"]]);
+      ).toEqual([[newKey.keyName, "api_key"]]);
       expect(
-        (await readJournalForKey(key)).map((call) => [
+        (await readJournalForKey(newKey.key)).map((call) => [
           call.kind,
           call.model,
           call.completed,
@@ -134,7 +137,7 @@ test.describe("copilot connect card journey", () => {
       expectEachTurnOnce(journal, CONNECT);
       await expectChargedWhatWasBilled(userID(journeyUser), [run.nonce]);
     } finally {
-      await deleteCredential(page, credential);
+      if (save.credential) await deleteCredential(page, save.credential);
     }
   });
 
@@ -148,15 +151,19 @@ test.describe("copilot connect card journey", () => {
       },
     },
     async ({ page, journeyUser: _user }) => {
+      test.setTimeout(TWO_TURN_TEST_TIMEOUT);
       const run = scriptedRun("connect-card-api-key");
+      const atTheCard = CONNECT.turns[1].text ?? "";
       const finished = CONNECT.turns[3].text ?? "";
-
-      const sessionID = await askForTheLine(page, run.marker, CONNECT);
-      const credential = await connectKeyOnTheCard(page, {
+      const newKey = {
         key: fakeAPIKey(),
         keyName: `Journey key ${run.nonce}`,
-      });
+      };
+
+      const sessionID = await askForTheLine(page, run.marker, CONNECT);
+      const save = await connectKeyOnTheCard(page, newKey);
       try {
+        await expectKeySaved(save, newKey);
         await expect(
           page.getByRole("log").getByText(finished, { exact: true }),
           "the chat should carry on by itself and finish",
@@ -168,9 +175,17 @@ test.describe("copilot connect card journey", () => {
         await page.reload();
         await keysLoaded;
         const reloaded = page.getByRole("log");
+        // Settled first, the card's own answer included, so an absent card
+        // means it stayed gone rather than that it hasn't drawn yet.
+        await expect(
+          reloaded.getByText(atTheCard, { exact: true }),
+        ).toHaveCount(1);
         await expect(reloaded.getByText(finished, { exact: true })).toHaveCount(
           1,
         );
+        await expect(
+          page.getByRole("textbox", { name: "Chat message input" }),
+        ).toBeEnabled();
         await expect(
           connectCards(reloaded),
           "the finished step's connect card should not come back after a reload",
@@ -180,7 +195,7 @@ test.describe("copilot connect card journey", () => {
           "nothing should offer to run the finished step again",
         ).toHaveCount(0, { timeout: REDO_CHECK_TIMEOUT });
       } finally {
-        await deleteCredential(page, credential);
+        if (save.credential) await deleteCredential(page, save.credential);
       }
     },
   );
@@ -261,134 +276,3 @@ test.describe("copilot connect card journey", () => {
     await expectChargedWhatWasBilled(userID(journeyUser), [run.nonce]);
   });
 });
-
-/**
- * Asks Otto for the line. Its tool call needs an Anthropic key the user
- * doesn't have, so the turn ends at one connect card asking for it.
- */
-async function askForTheLine(page: Page, marker: string, script: ModelScript) {
-  await startChat(page, `${FIRST_MESSAGE} ${marker}`);
-  const transcript = page.getByRole("log");
-  await expect(
-    transcript.getByText(script.turns[1].text ?? "", { exact: true }),
-    "Otto should stop at the card and say what it needs",
-  ).toBeVisible({ timeout: MODEL_TURN_TIMEOUT });
-  await expect(
-    connectCards(transcript),
-    "the chat should show one connect card",
-  ).toHaveCount(1);
-  await expect(
-    transcript.getByText("0 of 1 ready", { exact: true }),
-    "the card should ask for one account, not yet connected",
-  ).toBeVisible();
-  await expect(
-    transcript.getByText(SERVICE, { exact: true }).filter({ visible: true }),
-    "the card should ask for Anthropic",
-  ).toBeVisible();
-  await expect(
-    connectButtons(transcript),
-    "the card should offer to connect it, once",
-  ).toHaveCount(1);
-  // The card asks for the account only, never the block's inputs (#14448):
-  // a card with inputs gets a Proceed to send them.
-  await expect(transcript.getByRole("button", { name: "Proceed" })).toHaveCount(
-    0,
-  );
-  const sessionID = await currentSessionID(page);
-  await expectChatSettled(page, sessionID);
-  expect(await savedKeys(page), "the user has no Anthropic key yet").toEqual(
-    [],
-  );
-  return sessionID;
-}
-
-function connectCards(scope: Locator) {
-  return scope.getByRole("heading", { name: CARD_HEADING });
-}
-
-function connectButtons(scope: Locator) {
-  return scope.getByRole("button", { name: "Connect", exact: true });
-}
-
-interface NewKey {
-  key: string;
-  keyName: string;
-}
-
-/** Adds the key through the card's Connect dialog. */
-async function connectKeyOnTheCard(page: Page, newKey: NewKey) {
-  await connectButtons(page.getByRole("log")).click();
-  const dialog = page.getByRole("dialog");
-  await fillKeyForm(dialog, newKey);
-  const saved = page.waitForResponse(isKeySave);
-  await dialog.getByRole("button", { name: "Continue" }).click();
-  const response = await saved;
-  expect(response.ok(), `saving the key: ${response.status()}`).toBe(true);
-  expect(
-    await response.text(),
-    "saving a key should not answer with the key",
-  ).not.toContain(newKey.key);
-  await expect(dialog, "saving the key should close the dialog").toBeHidden();
-  return (await response.json()) as Credential;
-}
-
-async function fillKeyForm(dialog: Locator, { key, keyName }: NewKey) {
-  await expect(dialog.getByText(`Connect AutoGPT to ${SERVICE}`)).toBeVisible();
-  await dialog.getByRole("button", { name: /API Key/ }).click();
-  await dialog
-    .getByRole("textbox", { name: "Name", exact: true })
-    .fill(keyName);
-  await dialog.getByLabel("API key", { exact: true }).fill(key);
-}
-
-function isKeySave(response: Response) {
-  return (
-    response.request().method() === "POST" &&
-    new URL(response.url()).pathname.endsWith(
-      `/api/integrations/${PROVIDER}/credentials`,
-    )
-  );
-}
-
-function isCredentialsList(response: Response) {
-  return (
-    response.request().method() === "GET" &&
-    new URL(response.url()).pathname.endsWith("/api/integrations/credentials")
-  );
-}
-
-async function savedKeys(page: Page) {
-  const { credentials } = await listCredentials(page);
-  return credentials
-    .filter((credential) => credential.provider === PROVIDER)
-    .map((credential) => [credential.title, credential.type]);
-}
-
-async function savedConversation(page: Page, sessionID: string) {
-  return (await savedMessages(page, sessionID))
-    .filter(
-      (message) =>
-        ["user", "assistant"].includes(message.role) && message.content,
-    )
-    .map((message) => [message.role, message.content]);
-}
-
-/** What each saved tool result was: the sign-in card, the block's output. */
-async function toolResultTypes(page: Page, sessionID: string) {
-  return (await savedMessages(page, sessionID))
-    .filter((message) => message.role === "tool" && message.content)
-    .map((message) => parseJSON(message.content as string)?.type);
-}
-
-function userID(user: { id?: string }) {
-  if (!user.id) throw new Error("the journey user should have an id");
-  return user.id;
-}
-
-function parseJSON(text: string) {
-  try {
-    return JSON.parse(text) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}

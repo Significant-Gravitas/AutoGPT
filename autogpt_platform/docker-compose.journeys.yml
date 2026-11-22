@@ -21,9 +21,10 @@ x-scripted-model-env: &scripted-model-env
   CHAT_BASE_URL: http://scripted_model:4010/api/v1
   CHAT_API_KEY: "scripted-model-accepts-any-key" # pragma: allowlist secret
   # The stack has no platform LLM keys, so an AI block asks the user for one.
-  # Run with the key they save, its Anthropic client (which reads this when no
-  # base URL is passed) calls the fake too, which journals which key it was
-  # sent. The SDK engine's CLI gets its own ANTHROPIC_BASE_URL either way.
+  # Every Anthropic client built without a base URL reads this, platform-key
+  # ones included, so an AI block run with the key the user saves calls the
+  # fake too, which journals which key each request presented. The SDK
+  # engine's CLI gets its own ANTHROPIC_BASE_URL either way.
   ANTHROPIC_BASE_URL: http://scripted_model:4010/api
   # Keep memory inside the stack. The fake returns schema-valid empty
   # extractions and deterministic embeddings so journeys exercise memory
