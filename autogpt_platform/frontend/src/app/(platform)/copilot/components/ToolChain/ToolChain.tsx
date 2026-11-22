@@ -82,9 +82,20 @@ interface Props {
    *  cards and Proceed are the owner's work — a reader gets no Connect
    *  prompt and no way to send a follow-up turn. */
   readOnly?: boolean;
+  /** The chain belongs to the newest answer. An earlier answer's step has
+   *  already run or been passed over, so its cards stay on screen but offer
+   *  no Proceed and send nothing: after a reload every finished card mounts
+   *  again with its accounts connected, and a Proceed there asked Otto to
+   *  run the step a second time. */
+  isLatestAnswer?: boolean;
 }
 
-export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
+export function ToolChain({
+  parts,
+  isStreaming,
+  readOnly = false,
+  isLatestAnswer = true,
+}: Props) {
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null);
   const panelId = useId();
   const reducedMotion = useReducedMotion();
@@ -159,8 +170,9 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // send is once-only — spending it now leaves that card unsendable. A stopped
   // stream owes no more results, however its calls ended.
   const awaitingToolResult = isStreaming && parts.some(isToolCallPending);
+  const canSend = !readOnly && isLatestAnswer;
   const canAutoSend =
-    !readOnly &&
+    canSend &&
     !awaitingToolResult &&
     !autoSent &&
     allActionsReady &&
@@ -171,7 +183,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // included. Only asks that build a message qualify — an MCP row builds none,
   // so offering one there is a button that does nothing.
   const offerProceed =
-    !readOnly &&
+    canSend &&
     !awaitingToolResult &&
     !canAutoSend &&
     allActionsReady &&
@@ -465,6 +477,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
             inputs={inputRequests}
             questions={questionRequests}
             manualProceed={needsManualProceed || offerProceed}
+            canProceed={canSend}
             isReady={allActionsReady}
             onProceed={handleProceed}
           />
@@ -480,14 +493,16 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                 ? "Everything's filled in"
                 : "Complete the steps above to continue"}
             </span>
-            <Button
-              variant="primary"
-              size="small"
-              disabled={!allActionsReady}
-              onClick={handleProceed}
-            >
-              Proceed
-            </Button>
+            {canSend && (
+              <Button
+                variant="primary"
+                size="small"
+                disabled={!allActionsReady}
+                onClick={handleProceed}
+              >
+                Proceed
+              </Button>
+            )}
           </div>
         )}
       </div>

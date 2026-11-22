@@ -11,11 +11,21 @@
  * The API is MSW rather than a live backend, and the consent screen is the one
  * unavoidable fake — no CI job can have a human approve a real OAuth grant.
  * Every component in between is the real one.
+ *
+ * The reload tests start one layer up, at the transcript, because whether a
+ * card is in the newest answer is decided there:
+ *
+ *     ChatMessagesContainer → MessageRow → ChainMessageParts → ToolChain → …
+ *
+ * Only the transcript's scroll container and the chrome around its rows are
+ * stubbed for them.
  */
 
 import CredentialsProvider from "@/providers/agent-credentials/credentials-provider";
 import userEvent from "@testing-library/user-event";
+import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { HttpResponse, http } from "msw";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
 import {
@@ -27,6 +37,7 @@ import {
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { useConnectedProvidersStore } from "@/app/(platform)/copilot/connectedProvidersStore";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
+import { ChatMessagesContainer } from "../../ChatMessagesContainer/ChatMessagesContainer";
 import type { MessagePart } from "../../ChatMessagesContainer/helpers";
 import { ToolChain } from "../ToolChain";
 import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
@@ -57,7 +68,40 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToastOnFail: () => () => () => {},
 }));
 
+// The transcript's scroll container and the chrome around its rows, which the
+// reload tests do not exercise.
+vi.mock("use-stick-to-bottom", () => ({
+  useStickToBottomContext: () => ({
+    scrollRef: {
+      current: { scrollHeight: 100, scrollTop: 0, clientHeight: 500 },
+    },
+  }),
+}));
+vi.mock("@/components/organisms/Conversation/Conversation", () => ({
+  Conversation: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  ConversationContent: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  ConversationScrollButton: () => null,
+}));
+vi.mock(
+  "../../ChatMessagesContainer/components/AssistantMessageActions",
+  () => ({ AssistantMessageActions: () => null }),
+);
+vi.mock("../../JobStatsBar/TurnStatsBar", () => ({ TurnStatsBar: () => null }));
+vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
+  CopilotPendingReviews: () => null,
+}));
+vi.mock("../../ChatMinimap/ChatMinimap", () => ({ ChatMinimap: () => null }));
+vi.mock("../../DrawnLineLoader/DrawnLineLoader", () => ({
+  DrawnLineLoader: () => null,
+}));
+
 import { toast } from "@/components/molecules/Toast/use-toast";
+
+type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
 
 const REQUIRED_SCOPE = "repo";
 const SESSION_ID = "session-1";
@@ -769,6 +813,60 @@ describe("copilot Connect card, already satisfied", () => {
     // claims — each would fire its own message on mount.
     expect(onSend).not.toHaveBeenCalled();
   });
+
+  // #17253: a reloaded chat mounts every finished card again, connected. In
+  // an earlier answer its step has already run, so a Proceed there, or a
+  // send of any kind, asks Otto to run that step a second time.
+  describe("after a reload", () => {
+    it("offers no Proceed on a card in an earlier answer", async () => {
+      const { onSend } = renderTranscript(chatAfterTheStepRan());
+
+      await settle({ connectedRows: 1 });
+
+      expect(screen.queryByRole("button", { name: "Proceed" })).toBeNull();
+      expect(onSend).not.toHaveBeenCalled();
+    });
+
+    it("sends nothing when an account is picked again on a card in an earlier answer", async () => {
+      const { onSend } = renderTranscript(chatAfterTheStepRan());
+      await settle({ connectedRows: 1 });
+      const user = userEvent.setup();
+
+      // Picking an account counts as connecting one, which is what sends a
+      // card's follow-up in the newest answer.
+      await user.click(screen.getByRole("button", { name: "Change account" }));
+      await user.click(await screen.findByRole("radio", { name: /GitHub/ }));
+      await user.click(
+        screen.getByRole("button", { name: "Use this account" }),
+      );
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("button", { name: "Use this account" }),
+        ).toBeNull(),
+      );
+
+      // The follow-up would go out only after the account pick is saved, a
+      // request away.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(onSend).not.toHaveBeenCalled();
+      expect(screen.queryByRole("button", { name: "Proceed" })).toBeNull();
+    });
+
+    it("still offers Proceed on the same card in the newest answer", async () => {
+      const { onSend } = renderTranscript(chatAfterTheStepRan().slice(0, 2));
+      await settle({ connectedRows: 1 });
+      const user = userEvent.setup();
+
+      // The card is still the latest thing Otto asked for, and it has no
+      // other way to continue.
+      await user.click(await screen.findByRole("button", { name: "Proceed" }));
+
+      await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+      expect(onSend.mock.calls[0][0]).toContain(
+        "I've configured the required credentials.",
+      );
+    });
+  });
 });
 
 describe("copilot Connect card, one tool needing several providers", () => {
@@ -1466,6 +1564,63 @@ function renderChain(parts: MessagePart[] = [setupRequirementsPart()]) {
     </CredentialsProvider>,
   );
   return { onSend, ...utils };
+}
+
+/** The chat as it loads from history: every row, and the card wherever its
+ *  answer falls among them. */
+function renderTranscript(messages: ChatMessage[]) {
+  const onSend = vi.fn();
+  const utils = render(
+    <CredentialsProvider>
+      <CopilotChatActionsProvider onSend={onSend}>
+        <ChatMessagesContainer
+          messages={messages}
+          status="ready"
+          error={undefined}
+          isLoading={false}
+          sessionID={SESSION_ID}
+          queuedMessages={[]}
+          hasMoreMessages={false}
+          isLoadingMore={false}
+          onLoadMore={vi.fn()}
+          onRetry={vi.fn()}
+        />
+      </CopilotChatActionsProvider>
+    </CredentialsProvider>,
+  );
+  return { onSend, ...utils };
+}
+
+/** The ask, the answer with the card, the follow-up the card sent once the
+ *  account was connected, and the answer that ran the step. */
+function chatAfterTheStepRan(): ChatMessage[] {
+  return [
+    {
+      id: `${SESSION_ID}-seq-1`,
+      role: "user",
+      parts: [{ type: "text", text: "Read my latest pull request." }],
+    },
+    {
+      id: `${SESSION_ID}-seq-2`,
+      role: "assistant",
+      parts: [setupRequirementsPart() as ChatMessage["parts"][number]],
+    },
+    {
+      id: `${SESSION_ID}-seq-3`,
+      role: "user",
+      parts: [
+        {
+          type: "text",
+          text: "I've configured the required credentials. Please re-run this step now.",
+        },
+      ],
+    },
+    {
+      id: `${SESSION_ID}-seq-4`,
+      role: "assistant",
+      parts: [{ type: "text", text: "Your latest pull request adds a page." }],
+    },
+  ];
 }
 
 async function completeConnectFlow() {

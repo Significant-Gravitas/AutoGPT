@@ -194,6 +194,7 @@ export const MessageRow = memo(function MessageRow({
             messageID={message.id}
             isCurrentlyStreaming={isCurrentlyStreaming}
             canActOnCards={isLastAssistant && !isTurnSettling}
+            isLatestAnswer={isLastAssistant}
             onRetry={isLastAssistant ? onRetry : undefined}
             fileUrlBuilder={fileUrlBuilder}
             readOnly={readOnly}

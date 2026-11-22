@@ -18,6 +18,9 @@ interface Props {
   messageID: string;
   isCurrentlyStreaming: boolean;
   canActOnCards?: boolean;
+  /** The newest answer. Its chain's cards can send, mid-turn included; an
+   *  earlier answer's offer no Proceed and send nothing (see ToolChain). */
+  isLatestAnswer?: boolean;
   onRetry?: () => void;
   fileUrlBuilder?: (fileId: string) => string;
   readOnly?: boolean;
@@ -32,6 +35,7 @@ export function ChainMessageParts({
   messageID,
   isCurrentlyStreaming,
   canActOnCards,
+  isLatestAnswer,
   onRetry,
   fileUrlBuilder,
   readOnly,
@@ -63,6 +67,7 @@ export function ChainMessageParts({
             isCurrentlyStreaming && segmentIndex === lastChainSegmentIndex
           }
           readOnly={readOnly}
+          isLatestAnswer={isLatestAnswer}
         />
       );
     }
