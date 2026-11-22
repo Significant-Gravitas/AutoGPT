@@ -123,8 +123,10 @@ test("Move to folder lists a subfolder under its parent and moves a workflow int
   const listed = within(dialog)
     .getAllByRole("button", { name: /^📁/ })
     .map((button) => button.textContent ?? "");
-  expect(listed.findIndex((name) => name.includes("Clients"))).toBeLessThan(
-    listed.findIndex((name) => name.includes("Acme")),
+  const parentAt = listed.findIndex((name) => name.includes("Clients"));
+  expect(parentAt).toBeGreaterThanOrEqual(0);
+  expect(listed.findIndex((name) => name.includes("Acme"))).toBeGreaterThan(
+    parentAt,
   );
   expect(subfolder.style.getPropertyValue("--folder-depth")).toBe("1");
   await user.click(subfolder);
