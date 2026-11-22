@@ -26,7 +26,15 @@ import userEvent from "@testing-library/user-event";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { server } from "@/mocks/mock-server";
 import {
   cleanup,
@@ -832,24 +840,8 @@ describe("copilot Connect card, already satisfied", () => {
     });
 
     it("saves an account picked on a card in an earlier answer, and sends nothing for it", async () => {
-      // Two accounts fit, so the card names neither until one is picked.
-      savedCredentials = [
-        ...savedCredentials,
-        { ...oauthCredential("cred-work", [REQUIRED_SCOPE]), title: "Work" },
-      ];
-      const selections: Record<string, string>[] = [];
-      server.use(
-        http.put(
-          "*/api/chat/sessions/*/credential-selection",
-          async ({ request }) => {
-            const body = (await request.json()) as {
-              selections: Record<string, string>;
-            };
-            selections.push(body.selections);
-            return HttpResponse.json({ status: "ok" });
-          },
-        ),
-      );
+      savedCredentials = [...savedCredentials, WORK_ACCOUNT];
+      const written = recordPickSaves();
       const { onSend } = renderTranscript([
         ...chatAfterTheStepRan(),
         ...aWorkflowRunAfterIt(),
@@ -860,17 +852,11 @@ describe("copilot Connect card, already satisfied", () => {
 
       // Picking an account counts as connecting one, which is what sends a
       // card's follow-up in the newest answer.
-      await user.click(
-        await within(earlier).findByRole("button", { name: "Choose account" }),
-      );
-      await user.click(await screen.findByRole("radio", { name: /^Work/ }));
-      await user.click(
-        screen.getByRole("button", { name: "Use this account" }),
-      );
+      await pickAccount(earlier, "Choose account", /^Work/);
 
       // The row names Work now, so the tools must run on Work from here on.
       await waitFor(() => expect(pickSaves.answered).toBe(1));
-      expect(selections).toEqual([{ github: "cred-work" }]);
+      expect(written).toEqual([{ github: "cred-work" }]);
       expect(
         within(earlier).queryByRole("button", { name: "Proceed" }),
       ).toBeNull();
@@ -886,7 +872,7 @@ describe("copilot Connect card, already satisfied", () => {
       expect(onSend.mock.calls[0][0]).toContain(
         "proceed with running the workflow",
       );
-      expect(selections).toEqual([
+      expect(written).toEqual([
         { github: "cred-work" },
         { slack: "cred-slack" },
       ]);
@@ -924,6 +910,77 @@ describe("copilot Connect card, already satisfied", () => {
       expect(onSend.mock.calls[0][0]).toContain(
         "proceed with running the workflow",
       );
+    });
+
+    it("saves an account picked on the newest card but never sent, once its answer is an earlier one", async () => {
+      savedCredentials = [...savedCredentials, WORK_ACCOUNT];
+      const written = recordPickSaves();
+      // A trigger card waits for its Proceed, so a pick there sends nothing
+      // by itself.
+      const chat = chatAfterTheStepRan();
+      chat[1] = {
+        ...chat[1],
+        parts: [triggerPart() as ChatMessage["parts"][number]],
+      };
+      const { showMessages } = renderTranscript(chat.slice(0, 2));
+      const card = await findAnswer(`${SESSION_ID}-seq-2`);
+
+      await pickAccount(card, "Choose account", /^Work/);
+      await waitFor(() =>
+        expect(
+          within(card)
+            .getByRole("button", { name: "Proceed" })
+            .hasAttribute("disabled"),
+        ).toBe(false),
+      );
+      // The user moves on without Proceed, and the row still names Work.
+      showMessages(chat);
+
+      await waitFor(() => expect(pickSaves.answered).toBe(1));
+      expect(written).toEqual([{ github: "cred-work" }]);
+    });
+
+    it("saves two quick picks on a card in an earlier answer in the order they were made", async () => {
+      savedCredentials = [...savedCredentials, WORK_ACCOUNT];
+      // The backend keeps whichever pick it writes last. The first pick's
+      // save is slow, so a second save sent beside it is written first.
+      const firstSaveHeld = Promise.withResolvers<void>();
+      const written = recordPickSaves({
+        hold: { account: "cred-work", until: firstSaveHeld.promise },
+      });
+      renderTranscript(chatAfterTheStepRan());
+      const earlier = await findAnswer(`${SESSION_ID}-seq-2`);
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+      try {
+        await pickAccount(earlier, "Choose account", /^Work/);
+        await waitFor(() => expect(pickSaves.started).toBe(1));
+        await pickAccount(earlier, "Change account", /^GitHub/);
+        // Every save the page has sent, except the held one, is written.
+        await waitFor(() =>
+          expect(pickSaves.answered).toBe(pickSavesSent(fetchSpy) - 1),
+        );
+      } finally {
+        fetchSpy.mockRestore();
+        firstSaveHeld.resolve();
+      }
+
+      await waitFor(() => expect(pickSaves.answered).toBe(2));
+      expect(written).toEqual([{ github: "cred-work" }, { github: "cred-ok" }]);
+    });
+
+    it("keeps saving picks on a card in an earlier answer after a save fails", async () => {
+      savedCredentials = [...savedCredentials, WORK_ACCOUNT];
+      const written = recordPickSaves({ failing: "cred-work" });
+      renderTranscript(chatAfterTheStepRan());
+      const earlier = await findAnswer(`${SESSION_ID}-seq-2`);
+
+      await pickAccount(earlier, "Choose account", /^Work/);
+      await waitFor(() => expect(pickSaves.answered).toBe(1));
+      await pickAccount(earlier, "Change account", /^GitHub/);
+
+      await waitFor(() => expect(pickSaves.answered).toBe(2));
+      expect(written).toEqual([{ github: "cred-ok" }]);
     });
 
     it("still offers Proceed on the same card in the newest answer", async () => {
@@ -1727,6 +1784,66 @@ function trackPickSaves() {
 function stopTrackingPickSaves() {
   server.events.removeListener("request:start", onRequestStart);
   server.events.removeListener("request:end", onRequestEnd);
+}
+
+/** A second GitHub account that also fits the card, so the card names
+ *  neither until one is picked. */
+const WORK_ACCOUNT = {
+  ...oauthCredential("cred-work", [REQUIRED_SCOPE]),
+  title: "Work",
+};
+
+/** The picks the backend writes, `{provider: credential id}` each, in the
+ *  order it writes them. A save for `hold.account` waits for `hold.until`;
+ *  one for `failing` is answered with an error and writes nothing. */
+function recordPickSaves({
+  hold,
+  failing,
+}: {
+  hold?: { account: string; until: Promise<void> };
+  failing?: string;
+} = {}) {
+  const written: Record<string, string>[] = [];
+  server.use(
+    http.put(
+      "*/api/chat/sessions/*/credential-selection",
+      async ({ request }) => {
+        const { selections } = (await request.json()) as {
+          selections: Record<string, string>;
+        };
+        const accounts = Object.values(selections);
+        if (failing && accounts.includes(failing)) {
+          return HttpResponse.json({ detail: "Save failed" }, { status: 500 });
+        }
+        if (hold && accounts.includes(hold.account)) await hold.until;
+        written.push(selections);
+        return HttpResponse.json({ status: "ok" });
+      },
+    ),
+  );
+  return written;
+}
+
+/** Picks `account` on the card in `answer`, opening its account picker with
+ *  the button named `opener`. */
+async function pickAccount(
+  answer: HTMLElement,
+  opener: string,
+  account: RegExp,
+) {
+  const user = userEvent.setup();
+  await user.click(await within(answer).findByRole("button", { name: opener }));
+  await user.click(await screen.findByRole("radio", { name: account }));
+  await user.click(screen.getByRole("button", { name: "Use this account" }));
+}
+
+/** Saves of the chat's credential picks the page has sent so far, counted as
+ *  it calls `fetch`, before the mock server sees them. */
+function pickSavesSent(fetchSpy: MockInstance<typeof fetch>) {
+  return fetchSpy.mock.calls.filter(
+    ([input, init]) =>
+      init?.method === "PUT" && String(input).endsWith("/credential-selection"),
+  ).length;
 }
 
 /** One answer's row in the transcript, or one part of an answer a mid-turn

@@ -263,9 +263,19 @@ export function SetupRequirementsCard({
     (isRejectionRenewed ||
       !isRejectedCredentialSelected(rejection, inputCredentials));
 
+  // Saves go out one at a time, each after the last: the backend keeps
+  // whichever pick it writes last, so a quick second pick must not land
+  // before the first. A failed save never holds the next one back.
+  const lastSave = useRef<Promise<void> | null>(null);
   const savePicks = useStableCallback(() => {
     savedPicks.current = picks;
-    return reportCredentialPicks(sessionID, inputCredentials, credentialFields);
+    const save = (lastSave.current ?? Promise.resolve())
+      .then(() =>
+        reportCredentialPicks(sessionID, inputCredentials, credentialFields),
+      )
+      .catch(() => undefined);
+    lastSave.current = save;
+    return save;
   });
   // An earlier answer's chain sends nothing (see ToolChain), but an account
   // picked there must still reach the chat: the row names it, and the tools
