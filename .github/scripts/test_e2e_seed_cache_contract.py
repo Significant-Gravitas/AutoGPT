@@ -214,25 +214,35 @@ class E2EMatrixContractTests(unittest.TestCase):
             Path(__file__).resolve().parents[1]
             / "workflows/scripts/check_actions_status.py"
         ).read_text(encoding="utf-8")
-        advisory = next(
-            ast.literal_eval(node.value)
-            for node in ast.parse(checker).body
-            if isinstance(node, ast.Assign)
-            and any(
-                isinstance(target, ast.Name) and target.id == "ADVISORY_CHECK_RUNS"
-                for target in node.targets
+
+        def literal(target: str):
+            return next(
+                ast.literal_eval(node.value)
+                for node in ast.parse(checker).body
+                if isinstance(node, ast.Assign)
+                and any(
+                    isinstance(each, ast.Name) and each.id == target
+                    for each in node.targets
+                )
             )
-        )
+
+        names = literal("ADVISORY_CHECK_RUNS")
+        prefixes = literal("ADVISORY_CHECK_RUN_PREFIXES")
+
+        # check_actions_status.is_advisory, without importing its requests.
+        def is_advisory(check: str) -> bool:
+            return check in names or check.startswith(prefixes)
+
         name = re.search(
             r"^    name: (.+)$", workflow.split("\n  e2e_test:\n", 1)[1], re.M
         )
         assert name
-        e2e_advisory = {check for check in advisory if check.startswith("end-to-end")}
-        self.assertEqual(
-            e2e_advisory,
-            {_render(name[1], leg) for leg in _matrix_legs(workflow, "journeys")},
-        )
-        self.assertNotIn(_render(name[1], _matrix_leg(workflow, "smoke")), advisory)
+        for leg in _matrix_legs(workflow, "journeys"):
+            with self.subTest(leg=_render(name[1], leg)):
+                self.assertTrue(is_advisory(_render(name[1], leg)))
+        self.assertFalse(is_advisory(_render(name[1], _matrix_leg(workflow, "smoke"))))
+        # A shard added later is advisory with no checker edit.
+        self.assertTrue(is_advisory("end-to-end tests (journeys 3/3)"))
 
 
 class E2ESeedCacheContractTests(unittest.TestCase):
@@ -583,6 +593,7 @@ if [[ -n $FAKE_FAIL ]]; then
   exit 1
 fi
 echo "Listing tests:"
+if [[ -n $FAKE_NO_TOTAL ]]; then exit 0; fi
 if [[ " $* " == *" --shard="* ]]; then n=$FAKE_SHARD; else n=$FAKE_TOTAL; fi
 if (( n == 1 )); then echo "Total: 1 test in 1 file"; else echo "Total: $n tests in 3 files"; fi
 """
@@ -592,7 +603,12 @@ class E2EShardInventoryTests(unittest.TestCase):
     """Runs the "Count the shard's tests" step's script against a fake pnpm."""
 
     def _count(
-        self, total: int, shard: int, min_tests: int, fail: bool = False
+        self,
+        total: int,
+        shard: int,
+        min_tests: int | str,
+        fail: bool = False,
+        no_total: bool = False,
     ) -> tuple[subprocess.CompletedProcess[str], str, list[str]]:
         workflow = (
             Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
@@ -622,11 +638,13 @@ class E2EShardInventoryTests(unittest.TestCase):
                     "FAKE_TOTAL": str(total),
                     "FAKE_SHARD": str(shard),
                     "FAKE_FAIL": "1" if fail else "",
+                    "FAKE_NO_TOTAL": "1" if no_total else "",
                 },
                 capture_output=True,
                 text=True,
             )
-            calls = (folder / "calls").read_text(encoding="utf-8").splitlines()
+            log = folder / "calls"
+            calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
             return result, output.read_text(encoding="utf-8"), calls
 
     def test_outputs_the_shards_own_count(self):
@@ -660,6 +678,22 @@ class E2EShardInventoryTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("::error title=Empty shard::", result.stdout)
         self.assertEqual(output, "")
+
+    def test_fails_when_the_listing_has_no_total(self):
+        result, output, _ = self._count(total=41, shard=21, min_tests=41, no_total=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("::error title=No test count::", result.stdout)
+        self.assertEqual(output, "")
+
+    def test_fails_when_min_tests_is_not_a_number(self):
+        # An empty pin would make every comparison false and skip the floor.
+        for pin in ("", "forty"):
+            with self.subTest(pin=pin):
+                result, output, calls = self._count(total=41, shard=21, min_tests=pin)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("::error title=No pinned min_tests::", result.stdout)
+                self.assertEqual(output, "")
+                self.assertEqual(calls, [])
 
     def test_fails_and_shows_why_when_listing_fails(self):
         result, output, _ = self._count(total=41, shard=21, min_tests=41, fail=True)

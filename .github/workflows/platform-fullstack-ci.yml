@@ -570,6 +570,12 @@ jobs:
           E2E_SHARD: ${{ matrix.shard_index }}/${{ matrix.shard_total }}
           E2E_REPEAT_EACH: ${{ matrix.suite == 'journeys' && inputs.journeys_repeat_each || 1 }}
         run: |
+          # An empty or non-numeric pin would make the floor check below
+          # silently pass.
+          if [[ ! $E2E_MIN_TESTS =~ ^[0-9]+$ ]]; then
+            echo "::error title=No pinned min_tests::min_tests ('$E2E_MIN_TESTS') on this leg in platform-fullstack-ci.yml isn't a number."
+            exit 1
+          fi
           read -r -a suite <<< "--config $E2E_CONFIG $E2E_PLAYWRIGHT_ARGS"
           # The listing ends "Total: N tests in M files"; this prints N.
           count_tests() {

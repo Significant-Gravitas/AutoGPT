@@ -175,15 +175,17 @@ Journeys run as two Playwright shards, jobs `end-to-end tests (journeys 1/2)`
 and `end-to-end tests (journeys 2/2)` in
 `.github/workflows/platform-fullstack-ci.yml`. Each is a matrix leg beside the
 smoke suite with its own runner and stack, so they add no wall clock. They're
-**advisory** for now (`ADVISORY_CHECK_RUNS` in
+**advisory** for now (`ADVISORY_CHECK_RUN_PREFIXES` in
 `.github/workflows/scripts/check_actions_status.py`): a failure shows on the
 PR but doesn't block merging. They become blocking once they have proven
 stable.
 
 - **Shards:** the two legs are identical except `shard_index`; Playwright
-  gets `--shard=<shard_index>/<shard_total>`. It cuts the listed tests, in
-  file order, into slices of equal count, so shard 1 runs the first half of
-  the list. The slices hold equal counts, not equal times: the long journeys
+  gets `--shard=<shard_index>/<shard_total>`. The journeys config inherits
+  `fullyParallel: true` from `playwright.config.ts`, so Playwright cuts the
+  listed tests, not files, in file order, into slices of equal count: shard 1
+  runs the first half of the list. The slices hold equal counts, not equal
+  times: the long journeys
   aren't spread evenly through the list.
 - **The floor:** `min_tests` on the journeys legs is the pinned inventory of
   the whole suite, the same number on every leg, not a per-shard count. Raise
@@ -209,10 +211,14 @@ stable.
   times across the shards.
 - **When to add a shard:** keep each shard's Playwright step under ~200 s at
   4 workers. When the slower one goes past that, add a shard rather than
-  lengthening it: copy a journeys leg with the next `shard_index`, set
-  `shard_total` on every leg to the new count, and replace the names in
-  `ADVISORY_CHECK_RUNS`. Every leg's name changes (`journeys 1/2` becomes
-  `journeys 1/3`). Each shard costs a runner that builds its own stack, about
+  lengthening it: copy a journeys leg with the next `shard_index`, and set
+  `shard_total` on every leg to the new count. Every leg's name changes
+  (`journeys 1/2` becomes `journeys 1/3`); the status check treats any
+  `end-to-end tests (journeys …` check as advisory, so it needs no edit. Then
+  update `.github/scripts/test_e2e_seed_cache_contract.py`, which pins the
+  shard legs and their arguments (`test_journeys_run_as_identical_shards`)
+  and their job and artifact names
+  (`test_each_leg_has_its_own_job_and_artifact_names`). Each shard costs a runner that builds its own stack, about
   10 minutes before the first test.
 
 ## Hosted vs self-hosted configuration
