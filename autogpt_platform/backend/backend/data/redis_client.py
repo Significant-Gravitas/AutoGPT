@@ -386,6 +386,10 @@ def _remap_moved_slot_owner(nodes_manager, slot_id: int) -> None:
         return
     nodes_manager.nodes_cache.pop(node.name, None)
     node.host, node.port, node.name = host, port, new_name
+    # redis-py 8.1 builds each new connection from connection_kwargs in
+    # ClusterNode.acquire_connection(): leave the redirect's announced address
+    # here and keyed commands keep dialling it until a full topology refresh.
+    node.connection_kwargs["host"], node.connection_kwargs["port"] = host, port
     nodes_manager.nodes_cache[new_name] = node
 
 

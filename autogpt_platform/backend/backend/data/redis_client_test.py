@@ -7,6 +7,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from redis.asyncio.cluster import ClusterNode as AsyncClusterNode
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.asyncio.retry import Retry as AsyncRetry
 from redis.cluster import RedisCluster
@@ -679,6 +680,41 @@ async def test_follow_moved_slot_async_rewrites_node_when_no_remap_peer() -> Non
     assert moved.name == "127.0.0.1:7001"
     assert "redis-1:7001" not in nm.nodes_cache
     assert nm.nodes_cache["127.0.0.1:7001"] is moved
+
+
+@pytest.mark.asyncio
+async def test_follow_moved_slot_async_rewrite_updates_connection_kwargs() -> None:
+    """redis-py 8.1's ``ClusterNode.acquire_connection()`` dials
+    ``connection_kwargs["host"]``, not ``node.host`` — the in-place rewrite
+    must update the transport address too, or keyed commands keep dialling
+    the redirect's announced host until a full topology refresh."""
+    moved = AsyncClusterNode("redis-1", 7001)
+    nm = MagicMock()
+    nm.move_slot = AsyncMock()
+    nm.slots_cache = {31: [moved]}
+    nm.nodes_cache = {"redis-1:7001": moved}
+    nm.default_node = None
+    nm.remap_host_port = lambda h, p: redis_client._address_remap((h, p))
+    client = MagicMock()
+    client.nodes_manager = nm
+    error = MagicMock()
+    error.slot_id = 31
+
+    with (
+        patch.object(redis_client, "get_redis_async", AsyncMock(return_value=client)),
+        patch.object(redis_client, "USE_ANNOUNCED_ADDRESS", False),
+        patch.object(redis_client, "HOST", "localhost"),
+    ):
+        await redis_client.follow_moved_slot_async(error)
+
+    assert moved.connection_kwargs["host"] == "127.0.0.1"
+    assert moved.connection_kwargs["port"] == 7001
+    conn = moved.acquire_connection()
+    try:
+        assert conn.host == "127.0.0.1"
+        assert conn.port == 7001
+    finally:
+        await conn.disconnect()
 
 
 @pytest.mark.asyncio
