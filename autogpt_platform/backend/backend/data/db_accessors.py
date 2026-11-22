@@ -200,11 +200,11 @@ def execution_db():
     return execution_db
 
 
-def workflow_pages_db():
+def pages_db():
     if db.is_connected():
-        from backend.api.features.workflow_pages import db as _workflow_pages_db
+        from backend.api.features.pages import db as _pages_db
 
-        return _workflow_pages_db
+        return _pages_db
     from backend.util.clients import get_database_manager_async_client
 
     return get_database_manager_async_client()

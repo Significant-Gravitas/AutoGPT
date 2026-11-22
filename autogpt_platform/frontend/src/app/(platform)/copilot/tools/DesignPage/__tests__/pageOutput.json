@@ -1,0 +1,64 @@
+{
+  "type": "page",
+  "message": "Preview shown to the user.",
+  "page": {
+    "title": "Posts",
+    "has_previous": false,
+    "sections": [
+      {
+        "kind": "text",
+        "index": 0,
+        "body": "Pick a keyword to draft."
+      },
+      {
+        "index": 1,
+        "library_agent_id": "ideas",
+        "workflow_name": "Ideas",
+        "kind": "latest_result",
+        "run_id": "ideas-1",
+        "run_status": "COMPLETED",
+        "finished_at": "2026-11-21T12:00:30Z",
+        "blocks": [
+          {
+            "type": "table",
+            "columns": ["Keyword"],
+            "rows": [["remote work"], ["four-day week"]]
+          }
+        ],
+        "row_runs": [
+          {
+            "block_index": 0,
+            "label": "Draft",
+            "library_agent_id": "draft",
+            "graph_id": "graph-draft",
+            "graph_version": 1,
+            "input": "keyword",
+            "values": ["remote work", "four-day week"]
+          }
+        ],
+        "other_outputs": {
+          "topic": ["work"]
+        }
+      },
+      {
+        "index": 2,
+        "library_agent_id": "draft",
+        "workflow_name": "Draft",
+        "kind": "run_form",
+        "fields": [
+          {
+            "input": "keyword",
+            "label": "keyword",
+            "default": "work",
+            "input_schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "button_label": "Run"
+      }
+    ]
+  },
+  "saved": false
+}

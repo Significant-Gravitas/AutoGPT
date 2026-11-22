@@ -17,7 +17,7 @@ _ASK: dict[str, tuple[str, tuple[str, ...]]] = {
     "create_agent": ("Create a workflow", ()),
     "customize_agent": ("Customize a workflow", ()),
     "edit_agent": ("Edit a workflow", ()),
-    "design_workflow_page": ("Save a workflow page", ()),
+    "design_page": ("Save a page", ()),
     "fix_agent_graph": ("Fix a workflow", ()),
     "enter_agent_building_mode": ("Start building a workflow", ()),
     "create_folder": ("Create library folder", ("name",)),
@@ -54,7 +54,7 @@ _ASK: dict[str, tuple[str, tuple[str, ...]]] = {
 # Tool -> the id whose resolved name is the object when no argument names one.
 _OBJECT_ID: dict[str, str] = {
     "edit_agent": "agent_id",
-    "design_workflow_page": "library_agent_id",
+    "design_page": "pin_to_workflow",
     "update_folder": "folder_id",
     "move_folder": "folder_id",
     "delete_folder": "folder_id",

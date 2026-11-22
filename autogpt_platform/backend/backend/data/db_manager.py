@@ -49,6 +49,14 @@ from backend.api.features.orgs.db import (
     resolve_default_tenancy,
     resolve_member_tenancy,
 )
+from backend.api.features.pages.db import (
+    create_page,
+    get_page,
+    get_pinned_page,
+    list_pages,
+    save_page_design,
+    set_page_pin,
+)
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
     delete_content_embedding,
@@ -66,7 +74,6 @@ from backend.api.features.store.db import (
     get_store_agents,
 )
 from backend.api.features.store.embeddings import backfill_missing_embeddings
-from backend.api.features.workflow_pages.db import get_workflow_page, save_workflow_page
 from backend.blocks import get_blocks
 from backend.copilot import background_task_db
 from backend.copilot import db as chat_db
@@ -609,9 +616,13 @@ class DatabaseManager(AppService):
     claim_feedback_prompt = _(claim_feedback_prompt)
     count_feedback_prompts = _(count_feedback_prompts)
 
-    # ============ Workflow Pages ============ #
-    get_workflow_page = _(get_workflow_page)
-    save_workflow_page = _(save_workflow_page)
+    # ============ Pages ============ #
+    get_page = _(get_page)
+    get_pinned_page = _(get_pinned_page)
+    list_pages = _(list_pages)
+    create_page = _(create_page)
+    save_page_design = _(save_page_design)
+    set_page_pin = _(set_page_pin)
 
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = _(get_user_push_subscriptions)
@@ -694,6 +705,8 @@ class DatabaseManager(AppService):
     # Exposed so the Prisma-less copilot executor can resolve expert
     # identity/team context via db_accessors.experts_db().
     get_expert = _(experts_db.get_expert)
+    list_expert_runs = _(experts_db.list_expert_runs)
+    get_expert_activity = _(experts_db.get_expert_activity)
     expert_row_exists = _(experts_db.expert_row_exists)
     resolve_attributable_expert = _(experts_db.resolve_attributable_expert)
     list_experts = _(experts_db.list_experts)
@@ -1241,9 +1254,13 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     claim_feedback_prompt = d.claim_feedback_prompt
     count_feedback_prompts = d.count_feedback_prompts
 
-    # ============ Workflow Pages ============ #
-    get_workflow_page = d.get_workflow_page
-    save_workflow_page = d.save_workflow_page
+    # ============ Pages ============ #
+    get_page = d.get_page
+    get_pinned_page = d.get_pinned_page
+    list_pages = d.list_pages
+    create_page = d.create_page
+    save_page_design = d.save_page_design
+    set_page_pin = d.set_page_pin
 
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = d.get_user_push_subscriptions
@@ -1307,6 +1324,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Experts ============ #
     get_expert = d.get_expert
+    list_expert_runs = d.list_expert_runs
+    get_expert_activity = d.get_expert_activity
     expert_row_exists = d.expert_row_exists
     resolve_attributable_expert = d.resolve_attributable_expert
     list_experts = d.list_experts

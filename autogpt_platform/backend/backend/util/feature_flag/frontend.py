@@ -61,7 +61,7 @@ class FrontendFlag(str, Enum):
     # The onboarding steps in the order an experiment wants them: the named
     # steps lead and the rest keep their default order (frontend `resolveStepOrder`).
     ONBOARDING_STEP_ORDER = "onboarding-step-order"
-    WORKFLOW_PAGES = Flag.WORKFLOW_PAGES.value
+    PAGES = Flag.PAGES.value
 
     @classmethod
     def __get_pydantic_json_schema__(

@@ -28,7 +28,7 @@ import { useSchedulerQueryOptions } from "@/services/schedules/useSchedulerQuery
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useRunsReadAfterReconnect } from "./useRunsReadAfterReconnect";
-import { useHasWorkflowPage } from "../../WorkflowPage/useHasWorkflowPage";
+import { useHasPinnedPage } from "@/app/(platform)/pages/components/PinnedPageMount/useHasPinnedPage";
 
 function parseTab(
   value: string | null,
@@ -73,9 +73,9 @@ export function useSidebarRunsList({
   });
 
   const tabValue = useMemo(() => parseTab(activeTabRaw), [activeTabRaw]);
-  const workflowPage = useHasWorkflowPage(libraryAgentID);
+  const pinnedPage = useHasPinnedPage(libraryAgentID);
   // A workflow with a page opens on it, with no run or schedule picked.
-  const keepPage = workflowPage.pending || workflowPage.hasPage;
+  const keepPage = pinnedPage.pending || pinnedPage.hasPage;
   const queryClient = useQueryClient();
 
   const runsQuery = useGetV1ListGraphExecutionsInfinite(

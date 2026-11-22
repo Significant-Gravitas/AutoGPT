@@ -32,7 +32,7 @@ from .customize_agent import CustomizeAgentTool
 from .decompose_goal import DecomposeGoalTool
 from .delegate_to_expert import DelegateToExpertTool
 from .describe_capability import DescribeCapabilityTool
-from .design_workflow_page import DesignWorkflowPageTool, workflow_pages_disabled_tools
+from .design_page import DesignPageTool, pages_disabled_tools
 from .edit_agent import EditAgentTool
 from .enter_building_mode import EnterAgentBuildingModeTool
 from .expert_chats import ListExpertChatsTool, ReadExpertChatTool
@@ -116,7 +116,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "add_understanding": AddUnderstandingTool(),
     "ask_question": AskQuestionTool(),
     "render_ui": RenderUITool(),
-    "design_workflow_page": DesignWorkflowPageTool(),
+    "design_page": DesignPageTool(),
     "create_agent": CreateAgentTool(),
     "customize_agent": CustomizeAgentTool(),
     "decompose_goal": DecomposeGoalTool(),
@@ -368,9 +368,7 @@ def origin_disabled_tools(origin: "ChatSessionOrigin | None") -> frozenset[str]:
 
 async def flag_disabled_tools(session: "ChatSession") -> frozenset[str]:
     """Tools a per-user flag keeps out of this turn; both engines hide them."""
-    return await render_ui_disabled_tools(
-        session
-    ) | await workflow_pages_disabled_tools(session)
+    return await render_ui_disabled_tools(session) | await pages_disabled_tools(session)
 
 
 def tool_names_in_groups(groups: Iterable[ToolGroup]) -> frozenset[str]:

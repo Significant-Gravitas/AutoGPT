@@ -111,7 +111,7 @@ class Flag(str, Enum):
 
     # Workflow pages: Otto composes a page for one library workflow, shown in
     # its library view. Off: no tool, the routes answer 404. Default off.
-    WORKFLOW_PAGES = "workflow-pages"
+    PAGES = "pages"
 
     # --- Dream-system gates (P0) ---
     #

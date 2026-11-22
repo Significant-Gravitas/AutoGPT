@@ -33,7 +33,7 @@ import {
 } from "./helpers";
 import { useMarketplaceUpdate } from "./hooks/useMarketplaceUpdate";
 import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
-import { WorkflowPageMount } from "./components/WorkflowPage/WorkflowPageMount";
+import { PinnedPageMount } from "@/app/(platform)/pages/components/PinnedPageMount/PinnedPageMount";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -231,14 +231,14 @@ export function NewAgentLibraryView() {
             </div>
           </div>
           <div className="flex min-h-0 flex-1">
-            <WorkflowPageMount agent={agent}>
+            <PinnedPageMount agent={agent}>
               <EmptyTasks
                 agent={agent}
                 onRun={onRunInitiated}
                 onTriggerSetup={onTriggerSetup}
                 onScheduleCreated={onScheduleCreated}
               />
-            </WorkflowPageMount>
+            </PinnedPageMount>
           </div>
         </div>
         {renderPublishAgentModal()}
@@ -372,17 +372,14 @@ export function NewAgentLibraryView() {
             agent={agent}
             banner={renderMarketplaceUpdateBanner()}
           >
-            <WorkflowPageMount
-              agent={agent}
-              onSelectRun={(id) => handleSelectRun(id, "runs")}
-            >
+            <PinnedPageMount agent={agent}>
               <EmptyTasks
                 agent={agent}
                 onRun={onRunInitiated}
                 onTriggerSetup={onTriggerSetup}
                 onScheduleCreated={onScheduleCreated}
               />
-            </WorkflowPageMount>
+            </PinnedPageMount>
           </SelectedViewLayout>
         )}
       </div>

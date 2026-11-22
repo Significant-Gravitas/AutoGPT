@@ -4619,7 +4619,7 @@
                     },
                     { "$ref": "#/components/schemas/ExpertOnboardingResponse" },
                     { "$ref": "#/components/schemas/UIBlocksResponse" },
-                    { "$ref": "#/components/schemas/WorkflowPageResponse" },
+                    { "$ref": "#/components/schemas/PageResponse" },
                     {
                       "$ref": "#/components/schemas/FeedbackPromptToolResponse"
                     }
@@ -15672,6 +15672,289 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/pages": {
+      "get": {
+        "tags": ["pages"],
+        "summary": "List Pages",
+        "operationId": "list_pages",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PageListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/pages/pinned/{library_agent_id}": {
+      "get": {
+        "tags": ["pages"],
+        "summary": "Get Pinned Page",
+        "operationId": "get_pinned_page",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "library_agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "title": "Library Agent Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": { "type": "string" },
+              "maxItems": 6,
+              "description": "Runs started from the page, to follow.",
+              "default": [],
+              "title": "Run Id"
+            },
+            "description": "Runs started from the page, to follow."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ResolvedPage" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pages/{page_id}": {
+      "delete": {
+        "tags": ["pages"],
+        "summary": "Delete Page",
+        "operationId": "delete_page",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "page_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "maxLength": 64, "title": "Page Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["pages"],
+        "summary": "Get Page",
+        "operationId": "get_page",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "page_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "maxLength": 64, "title": "Page Id" }
+          },
+          {
+            "name": "run_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": { "type": "string" },
+              "maxItems": 6,
+              "description": "Runs started from the page, to follow.",
+              "default": [],
+              "title": "Run Id"
+            },
+            "description": "Runs started from the page, to follow."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ResolvedPage" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["pages"],
+        "summary": "Edit Page",
+        "operationId": "edit_page",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "page_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "maxLength": 64, "title": "Page Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PageEdit" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ResolvedPage" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pages/{page_id}/restore": {
+      "post": {
+        "tags": ["pages"],
+        "summary": "Restore Page",
+        "operationId": "restore_page",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "page_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "maxLength": 64, "title": "Page Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ResolvedPage" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pages/{page_id}/sections/{index}": {
+      "delete": {
+        "tags": ["pages"],
+        "summary": "Remove Page Section",
+        "operationId": "remove_page_section",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "page_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "maxLength": 64, "title": "Page Id" }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 0,
+              "title": "Index"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ResolvedPage" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/platform-config": {
       "get": {
         "tags": ["platform-config"],
@@ -20018,192 +20301,6 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/TransferResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/workflow-pages/{library_agent_id}": {
-      "delete": {
-        "tags": ["workflow-pages"],
-        "summary": "Delete Workflow Page",
-        "operationId": "delete_workflow_page",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "library_agent_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 64,
-              "title": "Library Agent Id"
-            }
-          }
-        ],
-        "responses": {
-          "204": { "description": "Successful Response" },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      },
-      "get": {
-        "tags": ["workflow-pages"],
-        "summary": "Get Workflow Page",
-        "operationId": "get_workflow_page",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "library_agent_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 64,
-              "title": "Library Agent Id"
-            }
-          },
-          {
-            "name": "run_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                { "type": "string", "maxLength": 64 },
-                { "type": "null" }
-              ],
-              "description": "Feed the result from this run.",
-              "title": "Run Id"
-            },
-            "description": "Feed the result from this run."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ResolvedWorkflowPage"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/workflow-pages/{library_agent_id}/restore": {
-      "post": {
-        "tags": ["workflow-pages"],
-        "summary": "Restore Workflow Page",
-        "operationId": "restore_workflow_page",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "library_agent_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 64,
-              "title": "Library Agent Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ResolvedWorkflowPage"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/workflow-pages/{library_agent_id}/sections/{index}": {
-      "delete": {
-        "tags": ["workflow-pages"],
-        "summary": "Remove Workflow Page Section",
-        "operationId": "remove_workflow_page_section",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "library_agent_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 64,
-              "title": "Library Agent Id"
-            }
-          },
-          {
-            "name": "index",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "maximum": 20,
-              "minimum": 0,
-              "title": "Index"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ResolvedWorkflowPage"
-                }
               }
             }
           },
@@ -28883,7 +28980,7 @@
           "copilot-stream-shadow",
           "copilot-stream-runtime",
           "onboarding-step-order",
-          "workflow-pages"
+          "pages"
         ],
         "title": "FrontendFlag",
         "description": "Every flag the frontend reads; the frontend's `Flag` is generated from this.\n\nA key the backend reads too comes from the backend's `Flag`, so it is written once.",
@@ -28906,7 +29003,7 @@
           "COPILOT_STREAM_SHADOW",
           "COPILOT_STREAM_RUNTIME",
           "ONBOARDING_STEP_ORDER",
-          "WORKFLOW_PAGES"
+          "PAGES"
         ]
       },
       "FrontendFlagValues": {
@@ -29991,6 +30088,27 @@
         "required": ["expert"],
         "title": "HireResult"
       },
+      "HistoryRow": {
+        "properties": {
+          "run_id": { "type": "string", "title": "Run Id" },
+          "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "cells": {
+            "items": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+            "type": "array",
+            "title": "Cells"
+          }
+        },
+        "type": "object",
+        "required": ["run_id", "status", "cells"],
+        "title": "HistoryRow"
+      },
       "HomeAction": {
         "properties": {
           "label": { "type": "string", "title": "Label" },
@@ -30901,6 +31019,18 @@
         "title": "JobTriggerResponse",
         "description": "202 response from a fire-and-forget admin trigger.\n\nFrontend captures ``job_id`` and polls ``GET .../{job_id}`` for\nprogress. ``state`` is always ``\"queued\"`` at this point — the\nscheduler picks the job up within sub-second and flips it to\n``running``."
       },
+      "LearnedFact": {
+        "properties": {
+          "fact": { "type": "string", "title": "Fact" },
+          "created_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": ["fact"],
+        "title": "LearnedFact"
+      },
       "LearningActionResult": {
         "properties": {
           "status": { "type": "string", "title": "Status" },
@@ -31098,16 +31228,6 @@
           "source_kinds"
         ],
         "title": "LearningStatus"
-      },
-      "LeftOutSection": {
-        "properties": {
-          "index": { "type": "integer", "title": "Index" },
-          "kind": { "type": "string", "title": "Kind" },
-          "problem": { "type": "string", "title": "Problem" }
-        },
-        "type": "object",
-        "required": ["index", "kind", "problem"],
-        "title": "LeftOutSection"
       },
       "LibraryAgent": {
         "properties": {
@@ -33690,6 +33810,171 @@
         "required": ["version_id", "outcome"],
         "title": "OutcomeReportRequest"
       },
+      "PageCards": {
+        "properties": {
+          "kind": { "type": "string", "const": "cards", "title": "Kind" },
+          "index": { "type": "integer", "title": "Index" },
+          "blocks": {
+            "items": {
+              "oneOf": [
+                { "$ref": "#/components/schemas/StatsBlock" },
+                { "$ref": "#/components/schemas/ChartBlock" },
+                { "$ref": "#/components/schemas/TableBlock" },
+                { "$ref": "#/components/schemas/GalleryBlock" },
+                { "$ref": "#/components/schemas/TimelineBlock" },
+                { "$ref": "#/components/schemas/WorkflowDiagramBlock" }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "chart": "#/components/schemas/ChartBlock",
+                  "gallery": "#/components/schemas/GalleryBlock",
+                  "stats": "#/components/schemas/StatsBlock",
+                  "table": "#/components/schemas/TableBlock",
+                  "timeline": "#/components/schemas/TimelineBlock",
+                  "workflow_diagram": "#/components/schemas/WorkflowDiagramBlock"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Blocks"
+          },
+          "written_on": {
+            "anyOf": [
+              { "type": "string", "format": "date" },
+              { "type": "null" }
+            ],
+            "title": "Written On"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "index", "blocks"],
+        "title": "PageCards"
+      },
+      "PageEdit": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "items": { "type": "integer" },
+                "type": "array",
+                "maxItems": 12
+              },
+              { "type": "null" }
+            ],
+            "title": "Order",
+            "description": "Section indices, new order."
+          },
+          "pin_to": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ],
+            "title": "Pin To",
+            "description": "A library workflow id."
+          },
+          "unpin": { "type": "boolean", "title": "Unpin", "default": false }
+        },
+        "type": "object",
+        "title": "PageEdit"
+      },
+      "PageExpertActivity": {
+        "properties": {
+          "index": { "type": "integer", "title": "Index" },
+          "expert_id": { "type": "string", "title": "Expert Id" },
+          "expert_name": { "type": "string", "title": "Expert Name" },
+          "kind": {
+            "type": "string",
+            "const": "expert_activity",
+            "title": "Kind"
+          },
+          "block": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ChartBlock" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["index", "expert_id", "expert_name", "kind"],
+        "title": "PageExpertActivity"
+      },
+      "PageExpertLearned": {
+        "properties": {
+          "index": { "type": "integer", "title": "Index" },
+          "expert_id": { "type": "string", "title": "Expert Id" },
+          "expert_name": { "type": "string", "title": "Expert Name" },
+          "kind": {
+            "type": "string",
+            "const": "expert_learned",
+            "title": "Kind"
+          },
+          "facts": {
+            "items": { "$ref": "#/components/schemas/LearnedFact" },
+            "type": "array",
+            "title": "Facts"
+          }
+        },
+        "type": "object",
+        "required": ["index", "expert_id", "expert_name", "kind", "facts"],
+        "title": "PageExpertLearned"
+      },
+      "PageExpertStatus": {
+        "properties": {
+          "index": { "type": "integer", "title": "Index" },
+          "expert_id": { "type": "string", "title": "Expert Id" },
+          "expert_name": { "type": "string", "title": "Expert Name" },
+          "kind": {
+            "type": "string",
+            "const": "expert_status",
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["ready", "working", "needs_setup", "paused", "failed"],
+            "title": "Status"
+          },
+          "detail": { "type": "string", "title": "Detail" },
+          "spend_cents": {
+            "type": "integer",
+            "title": "Spend Cents",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "expert_id",
+          "expert_name",
+          "kind",
+          "status",
+          "detail"
+        ],
+        "title": "PageExpertStatus"
+      },
+      "PageExpertWork": {
+        "properties": {
+          "index": { "type": "integer", "title": "Index" },
+          "expert_id": { "type": "string", "title": "Expert Id" },
+          "expert_name": { "type": "string", "title": "Expert Name" },
+          "kind": { "type": "string", "const": "expert_work", "title": "Kind" },
+          "items": {
+            "items": { "$ref": "#/components/schemas/WorkItem" },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["index", "expert_id", "expert_name", "kind", "items"],
+        "title": "PageExpertWork"
+      },
       "PageField": {
         "properties": {
           "input": { "type": "string", "title": "Input" },
@@ -33720,12 +34005,14 @@
       },
       "PageLatestResult": {
         "properties": {
+          "index": { "type": "integer", "title": "Index" },
+          "library_agent_id": { "type": "string", "title": "Library Agent Id" },
+          "workflow_name": { "type": "string", "title": "Workflow Name" },
           "kind": {
             "type": "string",
             "const": "latest_result",
             "title": "Kind"
           },
-          "index": { "type": "integer", "title": "Index" },
           "run_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Run Id"
@@ -33748,19 +34035,28 @@
               "oneOf": [
                 { "$ref": "#/components/schemas/StatsBlock" },
                 { "$ref": "#/components/schemas/TableBlock" },
-                { "$ref": "#/components/schemas/ChartBlock" }
+                { "$ref": "#/components/schemas/ChartBlock" },
+                { "$ref": "#/components/schemas/GalleryBlock" },
+                { "$ref": "#/components/schemas/TimelineBlock" }
               ],
               "discriminator": {
                 "propertyName": "type",
                 "mapping": {
                   "chart": "#/components/schemas/ChartBlock",
+                  "gallery": "#/components/schemas/GalleryBlock",
                   "stats": "#/components/schemas/StatsBlock",
-                  "table": "#/components/schemas/TableBlock"
+                  "table": "#/components/schemas/TableBlock",
+                  "timeline": "#/components/schemas/TimelineBlock"
                 }
               }
             },
             "type": "array",
             "title": "Blocks"
+          },
+          "row_runs": {
+            "items": { "$ref": "#/components/schemas/RowRun" },
+            "type": "array",
+            "title": "Row Runs"
           },
           "other_outputs": {
             "additionalProperties": { "items": {}, "type": "array" },
@@ -33770,13 +34066,94 @@
           }
         },
         "type": "object",
-        "required": ["kind", "index"],
+        "required": ["index", "library_agent_id", "workflow_name", "kind"],
         "title": "PageLatestResult"
+      },
+      "PageListItem": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title" },
+          "revision": { "type": "integer", "title": "Revision" },
+          "workflow_count": { "type": "integer", "title": "Workflow Count" },
+          "expert_count": { "type": "integer", "title": "Expert Count" },
+          "pinned_library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Pinned Library Agent Id"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "revision",
+          "workflow_count",
+          "expert_count",
+          "updated_at"
+        ],
+        "title": "PageListItem"
+      },
+      "PageListResponse": {
+        "properties": {
+          "pages": {
+            "items": { "$ref": "#/components/schemas/PageListItem" },
+            "type": "array",
+            "title": "Pages"
+          }
+        },
+        "type": "object",
+        "required": ["pages"],
+        "title": "PageListResponse"
+      },
+      "PageNotice": {
+        "properties": {
+          "kind": { "type": "string", "const": "notice", "title": "Kind" },
+          "index": { "type": "integer", "title": "Index" },
+          "section_kind": { "type": "string", "title": "Section Kind" },
+          "reason": {
+            "type": "string",
+            "enum": ["stale", "failed"],
+            "title": "Reason"
+          },
+          "message": { "type": "string", "title": "Message" }
+        },
+        "type": "object",
+        "required": ["kind", "index", "section_kind", "reason", "message"],
+        "title": "PageNotice",
+        "description": "A section left out: its source no longer fits, or it could not be read."
+      },
+      "PageQuickRuns": {
+        "properties": {
+          "index": { "type": "integer", "title": "Index" },
+          "library_agent_id": { "type": "string", "title": "Library Agent Id" },
+          "workflow_name": { "type": "string", "title": "Workflow Name" },
+          "kind": { "type": "string", "const": "quick_runs", "title": "Kind" },
+          "templates": {
+            "items": { "$ref": "#/components/schemas/PageTemplate" },
+            "type": "array",
+            "title": "Templates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "library_agent_id",
+          "workflow_name",
+          "kind",
+          "templates"
+        ],
+        "title": "PageQuickRuns"
       },
       "PageRecentRuns": {
         "properties": {
-          "kind": { "type": "string", "const": "recent_runs", "title": "Kind" },
           "index": { "type": "integer", "title": "Index" },
+          "library_agent_id": { "type": "string", "title": "Library Agent Id" },
+          "workflow_name": { "type": "string", "title": "Workflow Name" },
+          "kind": { "type": "string", "const": "recent_runs", "title": "Kind" },
           "runs": {
             "items": { "$ref": "#/components/schemas/PageRun" },
             "type": "array",
@@ -33784,8 +34161,52 @@
           }
         },
         "type": "object",
-        "required": ["kind", "index", "runs"],
+        "required": [
+          "index",
+          "library_agent_id",
+          "workflow_name",
+          "kind",
+          "runs"
+        ],
         "title": "PageRecentRuns"
+      },
+      "PageResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "page"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "page": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ResolvedPage" },
+              { "type": "null" }
+            ]
+          },
+          "design": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Design"
+          },
+          "catalogue": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Catalogue"
+          },
+          "saved": { "type": "boolean", "title": "Saved", "default": false }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "PageResponse",
+        "description": "A page for the chat to draw, its stored design, or the section catalogue."
       },
       "PageRun": {
         "properties": {
@@ -33809,6 +34230,10 @@
             "type": "integer",
             "title": "Cost Cents",
             "default": 0
+          },
+          "summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Summary"
           }
         },
         "type": "object",
@@ -33817,8 +34242,10 @@
       },
       "PageRunForm": {
         "properties": {
-          "kind": { "type": "string", "const": "run_form", "title": "Kind" },
           "index": { "type": "integer", "title": "Index" },
+          "library_agent_id": { "type": "string", "title": "Library Agent Id" },
+          "workflow_name": { "type": "string", "title": "Workflow Name" },
+          "kind": { "type": "string", "const": "run_form", "title": "Kind" },
           "fields": {
             "items": { "$ref": "#/components/schemas/PageField" },
             "type": "array",
@@ -33827,13 +34254,92 @@
           "button_label": { "type": "string", "title": "Button Label" }
         },
         "type": "object",
-        "required": ["kind", "index", "fields", "button_label"],
+        "required": [
+          "index",
+          "library_agent_id",
+          "workflow_name",
+          "kind",
+          "fields",
+          "button_label"
+        ],
         "title": "PageRunForm"
+      },
+      "PageRunHistory": {
+        "properties": {
+          "index": { "type": "integer", "title": "Index" },
+          "library_agent_id": { "type": "string", "title": "Library Agent Id" },
+          "workflow_name": { "type": "string", "title": "Workflow Name" },
+          "kind": { "type": "string", "const": "run_history", "title": "Kind" },
+          "columns": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Columns"
+          },
+          "rows": {
+            "items": { "$ref": "#/components/schemas/HistoryRow" },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "library_agent_id",
+          "workflow_name",
+          "kind",
+          "columns",
+          "rows"
+        ],
+        "title": "PageRunHistory"
+      },
+      "PageRunNumbers": {
+        "properties": {
+          "index": { "type": "integer", "title": "Index" },
+          "library_agent_id": { "type": "string", "title": "Library Agent Id" },
+          "workflow_name": { "type": "string", "title": "Workflow Name" },
+          "kind": { "type": "string", "const": "run_numbers", "title": "Kind" },
+          "period": {
+            "type": "string",
+            "enum": ["today", "7d", "30d"],
+            "title": "Period"
+          },
+          "block": { "$ref": "#/components/schemas/StatsBlock" }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "library_agent_id",
+          "workflow_name",
+          "kind",
+          "period",
+          "block"
+        ],
+        "title": "PageRunNumbers"
+      },
+      "PageRunTrend": {
+        "properties": {
+          "index": { "type": "integer", "title": "Index" },
+          "library_agent_id": { "type": "string", "title": "Library Agent Id" },
+          "workflow_name": { "type": "string", "title": "Workflow Name" },
+          "kind": { "type": "string", "const": "run_trend", "title": "Kind" },
+          "block": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ChartBlock" },
+              { "type": "null" }
+            ],
+            "description": "None until there are two runs."
+          }
+        },
+        "type": "object",
+        "required": ["index", "library_agent_id", "workflow_name", "kind"],
+        "title": "PageRunTrend"
       },
       "PageSchedule": {
         "properties": {
-          "kind": { "type": "string", "const": "schedule", "title": "Kind" },
           "index": { "type": "integer", "title": "Index" },
+          "library_agent_id": { "type": "string", "title": "Library Agent Id" },
+          "workflow_name": { "type": "string", "title": "Workflow Name" },
+          "kind": { "type": "string", "const": "schedule", "title": "Kind" },
           "is_scheduled": { "type": "boolean", "title": "Is Scheduled" },
           "next_run": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -33846,8 +34352,23 @@
           }
         },
         "type": "object",
-        "required": ["kind", "index", "is_scheduled"],
+        "required": [
+          "index",
+          "library_agent_id",
+          "workflow_name",
+          "kind",
+          "is_scheduled"
+        ],
         "title": "PageSchedule"
+      },
+      "PageTemplate": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" }
+        },
+        "type": "object",
+        "required": ["id", "name"],
+        "title": "PageTemplate"
       },
       "PageText": {
         "properties": {
@@ -33857,11 +34378,37 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Heading"
           },
-          "body": { "type": "string", "title": "Body" }
+          "body": { "type": "string", "title": "Body" },
+          "tone": {
+            "anyOf": [
+              { "type": "string", "enum": ["takeaway", "warning"] },
+              { "type": "null" }
+            ],
+            "title": "Tone"
+          }
         },
         "type": "object",
         "required": ["kind", "index", "body"],
         "title": "PageText"
+      },
+      "PageWaiting": {
+        "properties": {
+          "kind": { "type": "string", "const": "waiting", "title": "Kind" },
+          "index": { "type": "integer", "title": "Index" },
+          "scope_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Scope Name",
+            "description": "The workflow or expert, if one."
+          },
+          "reviews": {
+            "items": { "$ref": "#/components/schemas/PendingHumanReviewModel" },
+            "type": "array",
+            "title": "Reviews"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "index", "reviews"],
+        "title": "PageWaiting"
       },
       "Pagination": {
         "properties": {
@@ -36275,49 +36822,80 @@
         "title": "RequeueExecutionResponse",
         "description": "Response model for requeue execution operations"
       },
-      "ResolvedWorkflowPage": {
+      "ResolvedPage": {
         "properties": {
-          "library_agent_id": { "type": "string", "title": "Library Agent Id" },
-          "graph_id": { "type": "string", "title": "Graph Id" },
-          "title": { "type": "string", "title": "Title" },
-          "sections": {
-            "items": {
-              "oneOf": [
-                { "$ref": "#/components/schemas/PageText" },
-                { "$ref": "#/components/schemas/PageRunForm" },
-                { "$ref": "#/components/schemas/PageLatestResult" },
-                { "$ref": "#/components/schemas/PageRecentRuns" },
-                { "$ref": "#/components/schemas/PageSchedule" }
-              ],
-              "discriminator": {
-                "propertyName": "kind",
-                "mapping": {
-                  "latest_result": "#/components/schemas/PageLatestResult",
-                  "recent_runs": "#/components/schemas/PageRecentRuns",
-                  "run_form": "#/components/schemas/PageRunForm",
-                  "schedule": "#/components/schemas/PageSchedule",
-                  "text": "#/components/schemas/PageText"
-                }
-              }
-            },
-            "type": "array",
-            "title": "Sections"
+          "id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Id",
+            "description": "None for a preview not yet saved."
           },
-          "left_out": {
-            "items": { "$ref": "#/components/schemas/LeftOutSection" },
-            "type": "array",
-            "title": "Left Out",
-            "description": "Sections that no longer fit the workflow."
+          "title": { "type": "string", "title": "Title" },
+          "revision": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Revision"
+          },
+          "pinned_library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Pinned Library Agent Id"
+          },
+          "chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Chat Session Id"
           },
           "has_previous": {
             "type": "boolean",
             "title": "Has Previous",
             "default": false
+          },
+          "sections": {
+            "items": {
+              "oneOf": [
+                { "$ref": "#/components/schemas/PageText" },
+                { "$ref": "#/components/schemas/PageCards" },
+                { "$ref": "#/components/schemas/PageRunForm" },
+                { "$ref": "#/components/schemas/PageQuickRuns" },
+                { "$ref": "#/components/schemas/PageLatestResult" },
+                { "$ref": "#/components/schemas/PageRecentRuns" },
+                { "$ref": "#/components/schemas/PageRunHistory" },
+                { "$ref": "#/components/schemas/PageRunNumbers" },
+                { "$ref": "#/components/schemas/PageSchedule" },
+                { "$ref": "#/components/schemas/PageRunTrend" },
+                { "$ref": "#/components/schemas/PageExpertStatus" },
+                { "$ref": "#/components/schemas/PageExpertWork" },
+                { "$ref": "#/components/schemas/PageExpertLearned" },
+                { "$ref": "#/components/schemas/PageExpertActivity" },
+                { "$ref": "#/components/schemas/PageWaiting" },
+                { "$ref": "#/components/schemas/PageNotice" }
+              ],
+              "discriminator": {
+                "propertyName": "kind",
+                "mapping": {
+                  "cards": "#/components/schemas/PageCards",
+                  "expert_activity": "#/components/schemas/PageExpertActivity",
+                  "expert_learned": "#/components/schemas/PageExpertLearned",
+                  "expert_status": "#/components/schemas/PageExpertStatus",
+                  "expert_work": "#/components/schemas/PageExpertWork",
+                  "latest_result": "#/components/schemas/PageLatestResult",
+                  "notice": "#/components/schemas/PageNotice",
+                  "quick_runs": "#/components/schemas/PageQuickRuns",
+                  "recent_runs": "#/components/schemas/PageRecentRuns",
+                  "run_form": "#/components/schemas/PageRunForm",
+                  "run_history": "#/components/schemas/PageRunHistory",
+                  "run_numbers": "#/components/schemas/PageRunNumbers",
+                  "run_trend": "#/components/schemas/PageRunTrend",
+                  "schedule": "#/components/schemas/PageSchedule",
+                  "text": "#/components/schemas/PageText",
+                  "waiting": "#/components/schemas/PageWaiting"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Sections"
           }
         },
         "type": "object",
-        "required": ["library_agent_id", "graph_id", "title", "sections"],
-        "title": "ResolvedWorkflowPage"
+        "required": ["title", "sections"],
+        "title": "ResolvedPage"
       },
       "ResponseType": {
         "type": "string",
@@ -36409,7 +36987,7 @@
           "expert_chat_transcript",
           "expert_onboarding",
           "ui_blocks",
-          "workflow_page",
+          "page",
           "feedback_prompt",
           "team_consult",
           "session_list",
@@ -36580,6 +37158,33 @@
         "type": "object",
         "required": ["store_listing_version_id", "is_approved", "comments"],
         "title": "ReviewSubmissionRequest"
+      },
+      "RowRun": {
+        "properties": {
+          "block_index": { "type": "integer", "title": "Block Index" },
+          "label": { "type": "string", "title": "Label" },
+          "library_agent_id": { "type": "string", "title": "Library Agent Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
+          "input": { "type": "string", "title": "Input" },
+          "values": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Values"
+          }
+        },
+        "type": "object",
+        "required": [
+          "block_index",
+          "label",
+          "library_agent_id",
+          "graph_id",
+          "graph_version",
+          "input",
+          "values"
+        ],
+        "title": "RowRun",
+        "description": "A table's per-row button: run another workflow with each row's value."
       },
       "RunningExecutionDetail": {
         "properties": {
@@ -42719,6 +43324,31 @@
         "title": "WebhookWithoutSecrets",
         "description": "Webhook variant that excludes the signing secret and the provider's webhook\nid from serialization (GHSA-4m2w-qfr5-9f3v).\n\nUsed where a webhook leaves the backend: API responses and the\ndatabase-manager RPC. The defaults let the payload validate back on the\nother side, so a preset survives the trip instead of arriving as a dict."
       },
+      "WorkItem": {
+        "properties": {
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "workflow_name": { "type": "string", "title": "Workflow Name" },
+          "status": { "type": "string", "title": "Status" },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Summary"
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": ["execution_id", "workflow_name", "status"],
+        "title": "WorkItem"
+      },
       "WorkflowDiagramBlock": {
         "properties": {
           "type": {
@@ -42746,25 +43376,6 @@
         "required": ["type", "steps"],
         "title": "WorkflowDiagramBlock",
         "description": "Steps of a workflow in order, showing where things stand."
-      },
-      "WorkflowPageResponse": {
-        "properties": {
-          "type": {
-            "$ref": "#/components/schemas/ResponseType",
-            "default": "workflow_page"
-          },
-          "message": { "type": "string", "title": "Message" },
-          "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Id"
-          },
-          "page": { "$ref": "#/components/schemas/ResolvedWorkflowPage" },
-          "saved": { "type": "boolean", "title": "Saved", "default": false }
-        },
-        "type": "object",
-        "required": ["message", "page"],
-        "title": "WorkflowPageResponse",
-        "description": "A workflow page for the chat to draw, previewed or saved."
       },
       "WorkflowRecording": {
         "properties": {

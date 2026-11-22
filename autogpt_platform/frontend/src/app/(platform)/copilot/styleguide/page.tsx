@@ -37,6 +37,7 @@ import { ThinkingIndicator } from "../components/ChatMessagesContainer/component
 import { ReasoningCollapse } from "../components/ChatMessagesContainer/components/ReasoningCollapse";
 import { GenericTool } from "../tools/GenericTool/GenericTool";
 import { ViewAgentOutputTool } from "../tools/ViewAgentOutput/ViewAgentOutput";
+import { PageSamples } from "./PageSamples";
 import { RenderUISamples } from "./RenderUISamples";
 
 // ---------------------------------------------------------------------------
@@ -1369,6 +1370,10 @@ export default function StyleguidePage() {
               <SubSection label="Every block type">
                 <RenderUISamples />
               </SubSection>
+            </Section>
+
+            <Section title="Tool: Pages">
+              <PageSamples />
             </Section>
 
             <Section title="Tool: View Agent Output">

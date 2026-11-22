@@ -330,13 +330,13 @@ from ._test_data import make_session
 # Measured on PR #16677 merged with latest dev:
 #     merged tree                                 83,410
 #     + headroom                       +300       83,710
-# Raised for design_workflow_page (SECRT-3755), whose page schema counts here;
-# only sessions with workflow-pages on declare it. Measured on dev 465bc7a4505
-# plus that PR (93 tools):
-#     merged tree                                 87,090
-#     + headroom                       +300       87,390
+# Raised for design_page (SECRT-3755), whose schema counts here; only
+# sessions with the pages flag on declare it. Measured on that PR merged with
+# dev e8f6ffc2881 (93 tools):
+#     merged tree                                 84,528
+#     + headroom                       +300       84,828
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_CHAR_BUDGET = 87_390
+_CHAR_BUDGET = 84_828
 
 
 @pytest.fixture(scope="module")
@@ -583,13 +583,13 @@ def test_total_schema_char_budget() -> None:
 # Measured on PR #16677 merged with latest dev:
 #     merged tree                                 75,382
 #     + headroom                       +300       75,682
-# design_workflow_page (SECRT-3755) rides the largest session. Measured on
-# dev 465bc7a4505 plus that PR:
-#     dev 465bc7a4505                             75,385
-#     + design_workflow_page         +3,335       78,720
-#     + headroom                       +300       79,020
+# design_page (SECRT-3755) rides the largest session. Measured on that PR
+# merged with dev e8f6ffc2881:
+#     dev e8f6ffc2881                             75,385
+#     + design_page                  +1,067       76,452
+#     + headroom                       +300       76,752
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_SESSION_WIRE_BUDGET = 79_020
+_SESSION_WIRE_BUDGET = 76_752
 
 
 def test_largest_declared_session_wire_budget() -> None:

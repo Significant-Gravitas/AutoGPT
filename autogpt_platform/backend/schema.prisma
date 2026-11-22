@@ -252,6 +252,7 @@ model User {
   AlertConditions       AlertCondition[]
   PushSubscriptions     PushSubscription[]
   FeedbackPrompts       FeedbackPrompt[]
+  Pages                 Page[]
   PendingHumanReviews   PendingHumanReview[]
   Workspace             UserWorkspace?
   PlatformCostLogs      PlatformCostLog[]
@@ -994,6 +995,7 @@ model ChatSession {
 
   SharedChatFiles  SharedChatFile[]
   ChatLinkedShares ChatLinkedShare[]
+  Pages            Page[]
 
   // Single compound index covers (a) the cap-count (count by userId +
   // chatStatus), (b) the queue-list ORDER BY updatedAt asc, AND (c) the
@@ -1478,7 +1480,7 @@ model LibraryAgent {
   settings Json @default("{}")
 
   ExpertWorkflows ExpertWorkflow[]
-  WorkflowPage    WorkflowPage?
+  PinnedPage      Page?
 
   // Tenancy
   organizationId String?
@@ -1494,19 +1496,29 @@ model LibraryAgent {
   @@index([organizationId])
 }
 
-// A page Otto composed for one library workflow, behind `workflow-pages`. It
-// holds no results: the design is checked against the workflow on every read.
-model WorkflowPage {
+// A page Otto composed from the user's workflows and experts, behind `pages`.
+// It holds no results: every section's source is checked for the owner on read.
+model Page {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  libraryAgentId String       @unique
-  LibraryAgent   LibraryAgent @relation(fields: [libraryAgentId], references: [id], onDelete: Cascade)
-  userId         String
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  title          String
   design         Json
   previousDesign Json?
+  // Incremented on every save; a save names the revision it was based on.
+  revision       Int    @default(1)
+
+  pinnedLibraryAgentId String?       @unique
+  PinnedLibraryAgent   LibraryAgent? @relation(fields: [pinnedLibraryAgentId], references: [id], onDelete: SetNull)
+
+  chatSessionId String?
+  ChatSession   ChatSession? @relation(fields: [chatSessionId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
 }
 
 model LibraryFolder {
