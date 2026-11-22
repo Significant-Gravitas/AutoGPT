@@ -8,6 +8,7 @@ import {
   sendEvent,
   stripeEvents,
   stripeRequestCursor,
+  type StripeEvent,
   unservedStripeRequests,
 } from "./fake-stripe";
 import { expect, test } from "./fixtures";
@@ -42,19 +43,40 @@ test.describe("billing journey", () => {
       await expect(balance(page, before)).toBeVisible();
 
       const sessionID = await checkOut(page);
-      await payAndReturn(page);
+      // The return page also fulfils the checkout itself, so hold that call
+      // until the purchase is credited: only the webhook can have done it.
+      let releaseFulfilment = () => {};
+      const fulfilmentHeld = new Promise<void>((resolve) => {
+        releaseFulfilment = resolve;
+      });
+      await page.route(`**${CREDITS_PATH}`, async (route) => {
+        if (route.request().method() === "PATCH") await fulfilmentHeld;
+        await route.fallback();
+      });
+      let completed: StripeEvent;
+      try {
+        await payAndReturn(page);
 
-      // The fake sends checkout.session.completed before it sends the user back.
-      const events = await stripeEvents(sessionID);
-      expect(events.map((event) => event.type)).toEqual([
-        "checkout.session.completed",
-      ]);
-      const [completed] = events;
-      expect(
-        completed.deliveries.map((delivery) => delivery.status),
-        "the platform should acknowledge the payment",
-      ).toEqual([200]);
-      await expectAddedOnce(page, before, paymentIntent(completed));
+        // The fake sends checkout.session.completed before the user is back.
+        const events = await stripeEvents(sessionID);
+        expect(events.map((event) => event.type)).toEqual([
+          "checkout.session.completed",
+        ]);
+        completed = events[0];
+        expect(
+          completed.deliveries.map((delivery) => delivery.status),
+          "the platform should acknowledge the payment",
+        ).toEqual([200]);
+        await expectAddedOnce(page, before, paymentIntent(completed));
+      } finally {
+        releaseFulfilment();
+      }
+      const fulfilled = await page.waitForResponse(isFulfilment, {
+        timeout: 15_000,
+      });
+      expect(fulfilled.ok(), "PATCH credits from the return page").toBe(true);
+      await page.unroute(`**${CREDITS_PATH}`);
+      await expectInLedgerOnce(page, before, paymentIntent(completed));
 
       // Stripe sends an event again when it doesn't hear back in time.
       const retried = await deliverEvent(completed.id);
