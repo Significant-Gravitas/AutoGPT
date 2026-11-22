@@ -65,8 +65,11 @@ def _matrix_legs(workflow: str, suite: str) -> list[dict[str, str]]:
 
 
 def _matrix_leg(workflow: str, suite: str) -> dict[str, str]:
-    (leg,) = _matrix_legs(workflow, suite)
-    return leg
+    legs = _matrix_legs(workflow, suite)
+    assert (
+        len(legs) == 1
+    ), f"expected one {suite} leg in the e2e matrix, found {len(legs)}"
+    return legs[0]
 
 
 def _render(template: str, leg: dict[str, str]) -> str:
