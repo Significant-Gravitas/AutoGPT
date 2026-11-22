@@ -98,9 +98,10 @@ const purchase: CreditTransactionItem = {
   user_id: buyer.id,
 };
 
-// Answers for the fulfil calls tests hold. Teardown unmounts the page, then
-// sends any a failed test left unanswered, so the call can't outlive its test.
-const heldFulfilments: Array<() => Promise<void>> = [];
+// Answers for the calls tests hold: the page's fulfil call and sign-in's
+// start-up lookup. Teardown unmounts the page, then sends any a failed test
+// left unanswered, so none outlives its test.
+const heldAnswers: Array<() => Promise<void>> = [];
 
 beforeEach(() => {
   address.search = new URLSearchParams({
@@ -116,10 +117,15 @@ beforeEach(() => {
 
 afterEach(async () => {
   cleanup();
-  await Promise.all(heldFulfilments.splice(0).map((answer) => answer()));
+  // A new epoch makes a start-up a failed test left waiting drop its answer
+  // instead of signing the next test out.
+  useAuthStore.setState({
+    sessionEpoch: useAuthStore.getState().sessionEpoch + 1,
+  });
+  await Promise.all(heldAnswers.splice(0).map((answer) => answer()));
   useAuthStore.getState().cleanup();
   vi.mocked(getCurrentUser).mockReset();
-  useAuthStore.setState({ user: null });
+  useAuthStore.setState({ user: null, initializationPromise: null });
   address.search = new URLSearchParams();
   resetClientRequestFailureLog();
 });
@@ -188,9 +194,7 @@ describe("returning from a top-up Checkout", () => {
   it("keeps a tab picked while sign-in loads when the return cleans up the address", async () => {
     const platform = mockTopUpReturn();
     mockNoTrial();
-    const signIn =
-      Promise.withResolvers<Awaited<ReturnType<typeof getCurrentUser>>>();
-    vi.mocked(getCurrentUser).mockReturnValue(signIn.promise);
+    const signIn = holdSignIn();
     useAuthStore.setState({
       user: null,
       isUserLoading: true,
@@ -255,7 +259,7 @@ function mockTopUpReturn({ fulfilFails = false }: Options = {}) {
   const ledger = { credited: false, balanceReads: 0, fulfilCalls: 0 };
   const release = Promise.withResolvers<void>();
   const answered = Promise.withResolvers<void>();
-  heldFulfilments.push(async () => {
+  heldAnswers.push(async () => {
     release.resolve();
     if (ledger.fulfilCalls > 0) await answered.promise;
   });
@@ -295,6 +299,18 @@ function mockTopUpReturn({ fulfilFails = false }: Options = {}) {
       ledger.credited = true;
     },
   };
+}
+
+// Holds sign-in's start-up lookup until the test answers it.
+function holdSignIn() {
+  const lookup =
+    Promise.withResolvers<Awaited<ReturnType<typeof getCurrentUser>>>();
+  vi.mocked(getCurrentUser).mockReturnValue(lookup.promise);
+  heldAnswers.push(async () => {
+    lookup.resolve({ user: null });
+    await useAuthStore.getState().initializationPromise;
+  });
+  return lookup;
 }
 
 // Signed in, the Subscription tab reads the trial; this buyer has none.
