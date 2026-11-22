@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { v4 as uuidv4 } from "uuid";
 
 import {
   useGetV1GetAutoTopUp,
@@ -25,8 +26,13 @@ export function useAutoRefillCard() {
     },
   });
 
+  // Names this save, so a retry after a lost response can't charge again.
+  // Kept through retries, replaced once it succeeds or the values change.
+  const [saveKey, setSaveKey] = useState(newSaveKey);
   const { mutateAsync: configureAutoTopUp, isPending: isSaving } =
-    usePostV1ConfigureAutoTopUp();
+    usePostV1ConfigureAutoTopUp({
+      request: { headers: { "Idempotency-Key": saveKey } },
+    });
 
   const isEnabled = Boolean(config && (config.amount || config.threshold));
 
@@ -92,6 +98,7 @@ export function useAutoRefillCard() {
         threshold: Math.round(thresholdValue * 100),
       });
       if (!sent) return;
+      setSaveKey(newSaveKey());
       await refetch();
       setOpen(false);
     } catch (error) {
@@ -124,6 +131,17 @@ export function useAutoRefillCard() {
     }
   }
 
+  // Different values are a different save.
+  function changeThreshold(value: string) {
+    setThreshold(value);
+    setSaveKey(newSaveKey());
+  }
+
+  function changeRefillAmount(value: string) {
+    setRefillAmount(value);
+    setSaveKey(newSaveKey());
+  }
+
   return {
     config,
     isEnabled,
@@ -132,11 +150,16 @@ export function useAutoRefillCard() {
     open,
     setOpen,
     threshold,
-    setThreshold,
+    setThreshold: changeThreshold,
     refillAmount,
-    setRefillAmount,
+    setRefillAmount: changeRefillAmount,
     isValid,
     save: () => void save(),
     disable: () => void disable(),
   };
+}
+
+function newSaveKey() {
+  // uuidv4({}) rather than crypto.randomUUID, which Chrome added only in 92.
+  return uuidv4({});
 }

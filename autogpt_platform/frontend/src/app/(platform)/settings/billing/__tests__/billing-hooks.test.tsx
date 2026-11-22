@@ -413,6 +413,50 @@ describe("useAutoRefillCard", () => {
     expect(bodies[1]).toEqual({ amount: 0, threshold: 0 });
   });
 
+  it("names each save, keeping the name through a retry so it can't charge twice", async () => {
+    const keys: (string | null)[] = [];
+    let failNext = true;
+    server.use(
+      jsonHandler("get", "/api/credits/auto-top-up", {
+        amount: 0,
+        threshold: 0,
+      }),
+      http.post("*/api/credits/auto-top-up", ({ request }) => {
+        keys.push(request.headers.get("Idempotency-Key"));
+        if (failNext) {
+          failNext = false;
+          return HttpResponse.json({ detail: "timed out" }, { status: 504 });
+        }
+        return HttpResponse.json({});
+      }),
+    );
+
+    const { result } = renderHook(() => useAutoRefillCard(), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    act(() => {
+      result.current.setThreshold("5");
+      result.current.setRefillAmount("10");
+    });
+
+    // The first try fails, the retry succeeds, then a fresh save.
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      act(() => result.current.save());
+      await waitFor(() => expect(keys).toHaveLength(attempt));
+      await waitFor(() => expect(result.current.isSaving).toBe(false));
+    }
+    // Then the same values again after an edit away and back.
+    act(() => result.current.setRefillAmount("20"));
+    act(() => result.current.save());
+    await waitFor(() => expect(keys).toHaveLength(4));
+
+    expect(keys[0]).toBeTruthy();
+    expect(keys[1]).toBe(keys[0]);
+    expect(keys[2]).not.toBe(keys[1]);
+    expect(keys[3]).not.toBe(keys[2]);
+  });
+
   it("save() catches mutation failures and stops the spinner", async () => {
     server.use(
       jsonHandler("get", "/api/credits/auto-top-up", {

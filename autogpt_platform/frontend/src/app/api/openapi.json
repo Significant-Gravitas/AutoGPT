@@ -7044,7 +7044,7 @@
             "required": false,
             "schema": {
               "anyOf": [
-                { "type": "string", "maxLength": 200 },
+                { "type": "string", "minLength": 1, "maxLength": 200 },
                 { "type": "null" }
               ],
               "description": "Identifies this save. A repeat with the same key charges at most once; without one, every request is a separate save.",

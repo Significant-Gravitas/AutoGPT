@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import logging
 import time
 from abc import ABC, abstractmethod
@@ -1742,13 +1743,13 @@ def _stripe_idempotency(
 ) -> stripe.RequestOptions:
     """Stripe's own idempotency key for one card's charge of this request.
     The amount and card are part of it: Stripe refuses a key reused with
-    different parameters, and each card is a separate attempt."""
+    different parameters, and each card is a separate attempt. Hashed to a
+    fixed length, since Stripe caps keys at 255 characters."""
     if idempotency_key is None:
         return {}
+    identity = dumps([user_id, idempotency_key, amount, payment_method_id])
     return {
-        "idempotency_key": (
-            f"top-up-{user_id}-{idempotency_key}-{amount}-{payment_method_id}"
-        )
+        "idempotency_key": f"top-up-{hashlib.sha256(identity.encode()).hexdigest()}"
     }
 
 

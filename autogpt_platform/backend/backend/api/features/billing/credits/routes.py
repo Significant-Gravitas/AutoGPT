@@ -132,6 +132,7 @@ async def configure_user_auto_top_up(
         str | None,
         Header(
             alias="Idempotency-Key",
+            min_length=1,
             max_length=200,
             description=(
                 "Identifies this save. A repeat with the same key charges at "

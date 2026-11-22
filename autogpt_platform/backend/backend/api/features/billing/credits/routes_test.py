@@ -693,6 +693,37 @@ def test_auto_top_up_charges_under_the_request_key(
     assert keys[1] and keys[2] and keys[1] != keys[2]
 
 
+def test_an_empty_request_key_is_refused(mocker: pytest_mock.MockFixture) -> None:
+    """An empty key can't name a save, and replacing it with a fresh one would
+    let two saves that sent it both charge."""
+    credit_model = _use_ledger(mocker, _Ledger(-100))
+
+    response = client.post(
+        "/credits/auto-top-up",
+        json={"threshold": 500, "amount": 500},
+        headers={"Idempotency-Key": ""},
+    )
+
+    assert response.status_code == 422
+    credit_model.top_up_credits.assert_not_called()
+
+
+async def test_saves_without_a_key_are_separate_saves(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Without a key nothing says two saves are the same one, so each charges
+    while the balance is under the threshold: from -$1 one $5 refill leaves $4.
+    The app sends a key per save; this is what a client that doesn't gets."""
+    ledger = _Ledger(-100)
+    _use_ledger(mocker, ledger)
+    config = AutoTopUpConfig(threshold=500, amount=500)
+
+    await asyncio.gather(_save(config, None), _save(config, None))
+
+    assert ledger.charges == [500, 500]
+    assert ledger.balance == 900
+
+
 def test_auto_top_up_is_not_charged_when_the_save_cannot_be_locked(
     mocker: pytest_mock.MockFixture, auto_top_up_lock_redis: AsyncMock
 ) -> None:
