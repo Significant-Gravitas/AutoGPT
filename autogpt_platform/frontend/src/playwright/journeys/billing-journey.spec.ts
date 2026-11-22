@@ -10,6 +10,7 @@ import {
   unservedStripeRequests,
 } from "./fake-stripe";
 import { expect, test } from "./fixtures";
+import { watchForUnexpectedErrors } from "./guard";
 
 // Buying credits on Settings → Billing, paid on the fake Stripe's checkout
 // page (fake-stripe.ts). One credit is one cent, so $7 buys 700.
@@ -33,6 +34,7 @@ test.describe("billing journey", () => {
     },
     async ({ page, journeyUser: _user }) => {
       await requireFakeStripe();
+      const unexpected = watchForUnexpectedErrors(page.context(), []);
       const before = await getCreditBalance(page);
       await openAutomationCredits(page);
       await expect(balance(page, before)).toBeVisible();
@@ -79,6 +81,7 @@ test.describe("billing journey", () => {
 
       // A known failure from here on, so anything above failing still fails
       // the run.
+      await expectNoUnexpectedErrors(unexpected);
       test.fail(
         true,
         "#17270: a reload after buying credits opens the Subscription tab",
@@ -101,6 +104,7 @@ test.describe("billing journey", () => {
     },
     async ({ page, journeyUser: _user }) => {
       await requireFakeStripe();
+      const unexpected = watchForUnexpectedErrors(page.context(), []);
       const before = await getCreditBalance(page);
       await openAutomationCredits(page);
       const sessionID = await checkOut(page);
@@ -133,6 +137,7 @@ test.describe("billing journey", () => {
 
       // A known failure from here on, so anything above failing still fails
       // the run.
+      await expectNoUnexpectedErrors(unexpected);
       test.fail(
         true,
         "#17269: the page keeps the old balance after its return from checkout credits the top-up",
@@ -148,6 +153,21 @@ test.describe("billing journey", () => {
     },
   );
 });
+
+/**
+ * The journey guard's check, made before a known failure is pinned. The
+ * guard's own check runs after the test, where test.fail() would take an
+ * unexpected error for the known failure.
+ */
+async function expectNoUnexpectedErrors(
+  guard: ReturnType<typeof watchForUnexpectedErrors>,
+) {
+  const problems = await guard.collect();
+  expect(
+    problems,
+    `unexpected error(s) before the known failure:\n\n${problems.join("\n\n")}`,
+  ).toEqual([]);
+}
 
 async function openAutomationCredits(page: Page) {
   await page.goto("/settings/billing?tab=automation-credits");
