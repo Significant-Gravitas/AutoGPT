@@ -46,6 +46,9 @@ class _Hire(BaseModel):
 async def hire(server: SpinTestServer) -> AsyncIterator[_Hire]:
     """An owner who has hired an expert with no schedules yet, and a workflow
     of their own to schedule for it. Everything is deleted afterwards."""
+    # The scheduler service may still be starting when the session's first
+    # test gets here, and nothing under test retries a call to it.
+    await get_scheduler_client(should_retry=True).health_check_async()
     suffix = uuid.uuid4().hex[:8]
     owner = await get_or_create_user(
         {
