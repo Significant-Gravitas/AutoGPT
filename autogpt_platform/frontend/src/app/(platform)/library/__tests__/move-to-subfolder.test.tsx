@@ -118,8 +118,15 @@ test("Move to folder lists a subfolder under its parent and moves a workflow int
   const dialog = await openMoveDialog();
   await within(dialog).findByText("Clients");
   const subfolder = await within(dialog).findByRole("button", {
-    name: /Acme/,
+    name: /^📁\s*Acme\b/,
   });
+  const listed = within(dialog)
+    .getAllByRole("button", { name: /^📁/ })
+    .map((button) => button.textContent ?? "");
+  expect(listed.findIndex((name) => name.includes("Clients"))).toBeLessThan(
+    listed.findIndex((name) => name.includes("Acme")),
+  );
+  expect(subfolder.style.getPropertyValue("--folder-depth")).toBe("1");
   await user.click(subfolder);
 
   await waitFor(() =>
@@ -148,7 +155,7 @@ test("Move to folder opens on the folders as they are, with the app's stale time
   folders.push(folder("f-acme", "Acme", "f-clients"));
   dialog = await openMoveDialog();
   expect(
-    await within(dialog).findByRole("button", { name: /Acme/ }),
+    await within(dialog).findByRole("button", { name: /^📁\s*Acme\b/ }),
   ).toBeDefined();
 });
 

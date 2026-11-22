@@ -35,8 +35,8 @@ export function MoveToFolderDialog({
   const { toast } = useToast();
   const [search, setSearch] = useState("");
 
-  // The whole tree, subfolders included. No folder change invalidates it, so
-  // it is read each time the dialog opens.
+  // The whole tree, subfolders included, read fresh on every open: folder
+  // changes (and Otto's) don't invalidate the tree's query key.
   const { data: folderTree, isLoading: isLoadingFolders } =
     useGetV2GetFolderTree({
       query: { select: okData, enabled: isOpen, staleTime: 0 },
