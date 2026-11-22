@@ -78,6 +78,21 @@ test("a Library opened without a sort names its default, Last Modified", async (
   expect(sortMenu().textContent).toBe("Last Modified");
 });
 
+test("a Library opened at an unknown sort lists and names Last Modified", async () => {
+  const sorts = serveLibrary();
+
+  render(
+    <NuqsTestingAdapter searchParams="?sort=bogus">
+      <LibraryPage />
+    </NuqsTestingAdapter>,
+  );
+
+  await screen.findByText("Weekly report");
+  expect(sorts).toContain("updatedAt");
+  expect(sorts).not.toContain("bogus");
+  expect(sortMenu().textContent).toBe("Last Modified");
+});
+
 test("a sort picked in the menu goes into the URL and stays named", async () => {
   const sorts = serveLibrary();
   const onUrlUpdate = vi.fn<(event: UrlUpdateEvent) => void>();
@@ -98,10 +113,12 @@ test("a sort picked in the menu goes into the URL and stays named", async () => 
   await user.click(await screen.findByRole("option", { name: "Last Run" }));
 
   await waitFor(() => expect(sorts).toContain("lastRunAt"));
-  expect(
-    onUrlUpdate.mock.calls.some(
-      ([event]) => event.searchParams.get("sort") === "lastRunAt",
-    ),
-  ).toBe(true);
+  await waitFor(() =>
+    expect(
+      onUrlUpdate.mock.calls.some(
+        ([event]) => event.searchParams.get("sort") === "lastRunAt",
+      ),
+    ).toBe(true),
+  );
   expect(sortMenu().textContent).toBe("Last Run");
 });
