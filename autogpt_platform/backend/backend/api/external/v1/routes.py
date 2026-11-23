@@ -17,7 +17,7 @@ from backend.api.external.middleware import (
     require_resource_permission,
 )
 from backend.api.external.rate_limit import EXECUTION_LIMIT, READ_LIMIT
-from backend.blocks._base import AnyBlockSchema
+from backend.api.features.blocks.direct_run import run_block_directly
 from backend.copilot.capabilities.block_meta import is_graph_only_block
 from backend.copilot.rate_limit import UserPaywalledError, enforce_payment_paywall
 from backend.data import execution as execution_db
@@ -30,17 +30,10 @@ from backend.data.execution import ExecutionContext, ExecutionTrigger
 from backend.executor.direct_block_execution import (
     DirectBlockExecutionBusyError,
     DirectBlockExecutionLimitError,
-    DirectBlockExecutionSlot,
-    DirectBlockExecutionTimeoutError,
     claim_direct_block_execution_slot,
-    run_block_off_loop,
 )
-from backend.executor.utils import (
-    add_graph_execution,
-    charge_for_direct_block_execution,
-)
+from backend.executor.utils import add_graph_execution
 from backend.integrations.webhooks.graph_lifecycle_hooks import before_graph_activate
-from backend.util.exceptions import InsufficientBalanceError
 from backend.util.models import MAX_PAGE
 from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -157,44 +150,24 @@ async def execute_graph_block(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e)
         ) from e
 
-    with slot:
-        return await _run_direct_block(obj, data, auth, user.timezone, slot)
-
-
-async def _run_direct_block(
-    obj: AnyBlockSchema,
-    data: BlockInput,
-    auth: APIAuthorizationInfo,
-    user_timezone: str,
-    slot: DirectBlockExecutionSlot,
-) -> CompletedBlockOutput:
-    try:
-        await charge_for_direct_block_execution(
-            user_id=auth.user_id, block=obj, input_data=data, source="external"
-        )
-    except InsufficientBalanceError as e:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(e)
-        ) from e
-
     # Direct block execution has no graph; build a minimal ExecutionContext
     # carrying the caller's identity, the key's org/team scope and the
     # timezone, so blocks that depend on those get correct data.
     execution_context = ExecutionContext(
         user_id=auth.user_id,
-        user_timezone=get_user_timezone_or_utc(user_timezone),
+        user_timezone=get_user_timezone_or_utc(user.timezone),
         organization_id=auth.organization_id,
         team_id=auth.team_id_restriction,
     )
-
-    try:
-        return await run_block_off_loop(
-            obj.execute(data, execution_context=execution_context), slot
+    with slot:
+        return await run_block_directly(
+            obj,
+            data,
+            user_id=auth.user_id,
+            execution_context=execution_context,
+            source="external",
+            slot=slot,
         )
-    except DirectBlockExecutionTimeoutError as e:
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(e)
-        ) from e
 
 
 @v1_router.post(

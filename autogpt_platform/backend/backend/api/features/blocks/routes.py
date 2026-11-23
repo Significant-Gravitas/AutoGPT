@@ -1,5 +1,4 @@
 import base64
-import time
 from typing import Annotated
 
 from autogpt_libs.auth import get_request_context, get_user_id, requires_user
@@ -15,33 +14,22 @@ from fastapi import (
 )
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
-from starlette.status import (
-    HTTP_402_PAYMENT_REQUIRED,
-    HTTP_429_TOO_MANY_REQUESTS,
-    HTTP_503_SERVICE_UNAVAILABLE,
-    HTTP_504_GATEWAY_TIMEOUT,
-)
+from starlette.status import HTTP_429_TOO_MANY_REQUESTS, HTTP_503_SERVICE_UNAVAILABLE
 
+from backend.api.features.blocks.direct_run import run_block_directly
 from backend.api.model import CloudStorageUploadResponse
 from backend.blocks import get_block, get_blocks
-from backend.blocks._base import AnyBlockSchema
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.execution import ExecutionContext
 from backend.data.user import get_user_by_id
-from backend.executor import utils as execution_utils
 from backend.executor.direct_block_execution import (
     DirectBlockExecutionBusyError,
     DirectBlockExecutionLimitError,
-    DirectBlockExecutionSlot,
-    DirectBlockExecutionTimeoutError,
     claim_direct_block_execution_slot,
-    run_block_off_loop,
 )
-from backend.monitoring.instrumentation import record_block_execution
 from backend.util.cache import cached
 from backend.util.cloud_storage import get_cloud_storage_handler
-from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import dumps
 from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -154,58 +142,22 @@ async def execute_graph_block(
             status_code=HTTP_429_TOO_MANY_REQUESTS, detail=str(e)
         ) from e
 
-    with slot:
-        return await _run_direct_block(obj, data, user_id, user.timezone, slot)
-
-
-async def _run_direct_block(
-    obj: AnyBlockSchema,
-    data: BlockInput,
-    user_id: str,
-    user_timezone: str,
-    slot: DirectBlockExecutionSlot,
-) -> CompletedBlockOutput:
-    try:
-        await execution_utils.charge_for_direct_block_execution(
-            user_id=user_id, block=obj, input_data=data, source="internal"
-        )
-    except InsufficientBalanceError as e:
-        raise HTTPException(status_code=HTTP_402_PAYMENT_REQUIRED, detail=str(e)) from e
-
     # Direct block execution has no graph; build a minimal ExecutionContext
     # carrying the caller's identity + timezone so blocks that depend on
     # those (e.g. time blocks) get correct data.
     execution_context = ExecutionContext(
         user_id=user_id,
-        user_timezone=get_user_timezone_or_utc(user_timezone),
+        user_timezone=get_user_timezone_or_utc(user.timezone),
     )
-
-    start_time = time.time()
-    try:
-        output = await run_block_off_loop(
-            obj.execute(data, user_id=user_id, execution_context=execution_context),
-            slot,
+    with slot:
+        return await run_block_directly(
+            obj,
+            data,
+            user_id=user_id,
+            execution_context=execution_context,
+            source="internal",
+            slot=slot,
         )
-
-        # Record successful block execution with duration
-        duration = time.time() - start_time
-        block_type = obj.__class__.__name__
-        record_block_execution(
-            block_type=block_type, status="success", duration=duration
-        )
-
-        return output
-    except DirectBlockExecutionTimeoutError as e:
-        duration = time.time() - start_time
-        block_type = obj.__class__.__name__
-        record_block_execution(block_type=block_type, status="error", duration=duration)
-        raise HTTPException(status_code=HTTP_504_GATEWAY_TIMEOUT, detail=str(e)) from e
-    except Exception:
-        # Record failed block execution
-        duration = time.time() - start_time
-        block_type = obj.__class__.__name__
-        record_block_execution(block_type=block_type, status="error", duration=duration)
-        raise
 
 
 @router.post(

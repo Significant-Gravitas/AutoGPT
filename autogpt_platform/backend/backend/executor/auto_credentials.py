@@ -1,8 +1,9 @@
 """Auto-credential resolution for picker-style block inputs (e.g. Google Drive).
 
-Shared between the graph executor (``backend/executor/manager.py``) and the
-CoPilot direct-block-execution path (``backend/copilot/tools/helpers.py``)
-so both handle ``_credentials_id`` payloads identically.
+Shared between the graph executor and the block-execute routes (through
+``backend/executor/block_credentials.py``) and the CoPilot
+direct-block-execution path (``backend/copilot/tools/helpers.py``), so all
+handle ``_credentials_id`` payloads identically.
 """
 
 import logging
@@ -33,11 +34,13 @@ async def acquire_auto_credentials(
     creds_manager: IntegrationCredentialsManager,
     user_id: str,
     expert_id: str | None = None,
+    lock: bool = True,
 ) -> tuple[dict[str, Any], list[AsyncRedisLock]]:
     """Resolve ``auto_credentials`` from ``GoogleDriveFileField``-style inputs.
 
     ``expert_id`` holds the picker credentials to that expert's grants, the same
-    allow-list the explicit credential fields go through.
+    allow-list the explicit credential fields go through. ``lock=False`` only
+    checks them, without locking them or waiting on another run that has.
 
     Returns:
         (extra_exec_kwargs, locks): kwargs to inject into block execution,
@@ -90,10 +93,17 @@ async def acquire_auto_credentials(
                                 f"on the expert's Integrations page."
                             )
                     try:
-                        credentials, lock = await creds_manager.acquire(
-                            user_id, cred_id
-                        )
-                        locks.append(lock)
+                        if lock:
+                            credentials, cred_lock = await creds_manager.acquire(
+                                user_id, cred_id
+                            )
+                            locks.append(cred_lock)
+                        else:
+                            credentials = await creds_manager.get(
+                                user_id, cred_id, lock=False
+                            )
+                            if credentials is None:
+                                raise ValueError(cred_id)
                         extra_exec_kwargs[kwarg_name] = credentials
                     except ValueError:
                         raise ValueError(
@@ -136,9 +146,9 @@ async def acquire_auto_credentials(
     except BaseException:
         # Release any locks already acquired so failures on later fields
         # don't strand earlier credentials until Redis TTL expires them.
-        for lock in locks:
+        for acquired_lock in locks:
             try:
-                await lock.release()
+                await acquired_lock.release()
             except Exception as release_exc:
                 logger.warning(
                     "Failed to release auto-credential lock after "

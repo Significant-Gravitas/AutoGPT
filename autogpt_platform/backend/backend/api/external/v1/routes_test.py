@@ -228,7 +228,7 @@ def test_execute_block_over_the_run_cap_returns_429_before_charging(
     monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
     charge = AsyncMock()
     monkeypatch.setattr(
-        "backend.api.external.v1.routes.charge_for_direct_block_execution", charge
+        "backend.executor.utils.charge_for_direct_block_execution", charge
     )
 
     response = client.post(f"/blocks/{block.id}/execute", json={})
@@ -249,7 +249,7 @@ def test_execute_block_at_the_retired_worker_cap_returns_503_before_charging(
     monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
     charge = AsyncMock()
     monkeypatch.setattr(
-        "backend.api.external.v1.routes.charge_for_direct_block_execution", charge
+        "backend.executor.utils.charge_for_direct_block_execution", charge
     )
 
     response = client.post(f"/blocks/{block.id}/execute", json={})
@@ -284,7 +284,9 @@ def test_registry_blocks_needing_a_workflow_are_refused(
         yield "result", "ok"
 
     charge_mock = AsyncMock()
-    monkeypatch.setattr(routes_mod, "charge_for_direct_block_execution", charge_mock)
+    monkeypatch.setattr(
+        "backend.executor.utils.charge_for_direct_block_execution", charge_mock
+    )
 
     outcomes: dict[str, tuple[int, str]] = {}
     for block_id, block_cls in backend.blocks.get_blocks().items():

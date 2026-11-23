@@ -12,6 +12,7 @@ import pytest_mock
 from httpx import ASGITransport, AsyncClient
 
 from backend.api.features.blocks.routes import router
+from backend.blocks._base import BlockSchemaInput
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -35,6 +36,7 @@ def setup_app_auth(mock_jwt_user):
 
 def _serve_block(mocker: pytest_mock.MockFixture, execute: Callable) -> None:
     block = Mock()
+    block.input_schema = BlockSchemaInput
     block.disabled = False
     block.name = "TestBlock"
     block.execute = execute
@@ -43,7 +45,7 @@ def _serve_block(mocker: pytest_mock.MockFixture, execute: Callable) -> None:
     user.timezone = "UTC"
     mocker.patch("backend.api.features.blocks.routes.get_user_by_id", return_value=user)
     mocker.patch(
-        "backend.api.features.blocks.routes.execution_utils.block_usage_cost",
+        "backend.executor.utils.block_usage_cost",
         return_value=(0, {}),
     )
 
@@ -153,9 +155,7 @@ async def test_user_over_the_run_cap_gets_a_429_before_any_charge(
         yield "output", "done"
 
     _serve_block(mocker, execute)
-    charge = mocker.patch(
-        "backend.api.features.blocks.routes.execution_utils.charge_for_direct_block_execution"
-    )
+    charge = mocker.patch("backend.executor.utils.charge_for_direct_block_execution")
 
     async with _client() as client:
         response = await client.post("/blocks/test-block/execute", json={})
@@ -181,9 +181,7 @@ async def test_retired_worker_cap_gets_a_503_before_any_charge(
         yield "output", "done"
 
     _serve_block(mocker, execute)
-    charge = mocker.patch(
-        "backend.api.features.blocks.routes.execution_utils.charge_for_direct_block_execution"
-    )
+    charge = mocker.patch("backend.executor.utils.charge_for_direct_block_execution")
 
     async with _client() as client:
         response = await client.post("/blocks/test-block/execute", json={})

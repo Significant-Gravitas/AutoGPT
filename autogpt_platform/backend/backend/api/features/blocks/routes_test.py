@@ -16,6 +16,7 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.blocks.routes import router, upload_file
 from backend.api.rest_api import app as real_app
+from backend.blocks._base import BlockSchemaInput
 from backend.util.exceptions import InsufficientBalanceError
 
 
@@ -166,6 +167,7 @@ def test_execute_graph_block(
     """Test execute block endpoint"""
     # Mock block
     mock_block = Mock()
+    mock_block.input_schema = BlockSchemaInput
     mock_block.disabled = False
     mock_block.name = "TestBlock"
 
@@ -194,7 +196,7 @@ def test_execute_graph_block(
     # charging test below patches the same target — so "not awaited" is a
     # claim about the code path rather than about an unrelated mock.
     cost_mock = mocker.patch(
-        "backend.api.features.blocks.routes.execution_utils.block_usage_cost",
+        "backend.executor.utils.block_usage_cost",
         return_value=(0, {}),
     )
     mock_credit_model = mocker.AsyncMock()
@@ -234,6 +236,7 @@ def test_execute_graph_block_forwards_execution_context(
     captured_kwargs: dict = {}
 
     mock_block = Mock()
+    mock_block.input_schema = BlockSchemaInput
     mock_block.disabled = False
     mock_block.name = "TestBlock"
 
@@ -256,7 +259,7 @@ def test_execute_graph_block_forwards_execution_context(
     )
 
     mocker.patch(
-        "backend.api.features.blocks.routes.execution_utils.block_usage_cost",
+        "backend.executor.utils.block_usage_cost",
         return_value=(0, {}),
     )
 
@@ -274,6 +277,7 @@ def test_execute_graph_block_charges_when_cost_positive(
 ) -> None:
     """Paid blocks must charge credits before executing."""
     mock_block = Mock()
+    mock_block.input_schema = BlockSchemaInput
     mock_block.disabled = False
     mock_block.id = "paid-block"
     mock_block.name = "PaidBlock"
@@ -326,6 +330,7 @@ def test_execute_graph_block_returns_402_on_insufficient_balance(
 ) -> None:
     """If spend_credits raises InsufficientBalanceError, endpoint returns 402."""
     mock_block = Mock()
+    mock_block.input_schema = BlockSchemaInput
     mock_block.disabled = False
     mock_block.id = "paid-block"
     mock_block.name = "PaidBlock"
