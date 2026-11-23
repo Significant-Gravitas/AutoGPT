@@ -77,18 +77,7 @@ export const INTERMITTENT_BUGS: IntermittentBug[] = [
   },
 ];
 
-export const KNOWN_BUGS: KnownBug[] = [
-  {
-    route: "/marketplace/skills/[slug]",
-    issue: 17313,
-    who: "visitor",
-    what: "a skill whose first service is an MCP server asks for a logo public/ doesn't have",
-    problem: /asks for the image \/integrations\/mcp_/,
-    // Its card does the same on /marketplace and /marketplace/skills, when
-    // it is among the skills they list.
-    showsElsewhere: true,
-  },
-];
+export const KNOWN_BUGS: KnownBug[] = [];
 
 export function hasKnownBug(route: string) {
   return KNOWN_BUGS.some((bug) => bug.route === route);

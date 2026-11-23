@@ -343,6 +343,19 @@ test.describe("route crawl journey", () => {
     });
   }
 
+  // A skill names the MCP service it needs by the catalog entry's name, and
+  // its page shows that service's logo, which public/ has (#17313).
+  test("a skill whose first service is an MCP server loads with that service's logo", async ({
+    browser,
+    baseURL,
+    flagOverrides,
+    page,
+  }) => {
+    const env = { browser, baseURL, flagOverrides };
+    const { skillWithMCPService } = await sampleMarketplace(page);
+    await expectAllClean(await visitAsVisitor(env, skillWithMCPService));
+  });
+
   for (const bug of KNOWN_BUGS) {
     const { route, who, issue } = bug;
     test(
@@ -413,12 +426,7 @@ function reproductionKey({ route, issue }: KnownBug) {
 const REPRODUCTIONS: Record<
   string,
   (env: CrawlEnv, page: Page) => Promise<VisitResult[]>
-> = {
-  // A skill whose first service is an MCP server asks for its logo under the
-  // server's name.
-  "/marketplace/skills/[slug] #17313": async (env, page) =>
-    visitAsVisitor(env, (await sampleMarketplace(page)).skillWithMCPService),
-};
+> = {};
 
 /** The Marketplace's `sample`, opened signed out, the browser's clock
  *  `clockAheadMs` ahead of the server's. */
