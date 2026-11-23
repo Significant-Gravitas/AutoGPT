@@ -6,6 +6,7 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ConnectServiceDialog } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/ConnectServiceDialog";
 import { formatProviderList } from "@/components/contextual/IntegrationsPanel/helpers";
@@ -14,7 +15,6 @@ import { SkillPackageFileList } from "@/components/contextual/SkillPackage/Skill
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import { cn } from "@/lib/utils";
-import { formatTimeAgo } from "@/lib/utils/time";
 import { ArrowLeft02Icon, BookOpen01Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -153,7 +153,9 @@ export function SkillPage({ slug }: Props) {
           {skill.updated_at ? (
             <>
               <span aria-hidden>·</span>
-              <span>Updated {formatTimeAgo(String(skill.updated_at))}</span>
+              <span>
+                Updated <RelativeTime date={skill.updated_at} variant="short" />
+              </span>
             </>
           ) : null}
           {skill.source_repo ? (

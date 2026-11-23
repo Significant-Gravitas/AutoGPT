@@ -2,9 +2,9 @@
 
 import { SkillVersionSummary } from "@/app/api/__generated__/models/skillVersionSummary";
 import { Button } from "@/components/atoms/Button/Button";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Text } from "@/components/atoms/Text/Text";
 import { canRestore } from "@/services/skill-learning/helpers";
-import { formatDistanceToNow } from "date-fns";
 
 interface Props {
   versions: SkillVersionSummary[];
@@ -53,9 +53,7 @@ export function HistoryView({
                 </Text>
                 <Text variant="small" tone="muted">
                   {version.state_label} ·{" "}
-                  {formatDistanceToNow(new Date(version.created_at), {
-                    addSuffix: true,
-                  })}
+                  <RelativeTime date={version.created_at} />
                   {version.summary ? ` · ${version.summary}` : ""}
                 </Text>
               </div>

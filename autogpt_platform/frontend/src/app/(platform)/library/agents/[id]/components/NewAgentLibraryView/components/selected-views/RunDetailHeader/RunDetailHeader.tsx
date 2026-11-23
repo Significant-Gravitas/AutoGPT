@@ -2,9 +2,9 @@
 
 import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Text } from "@/components/atoms/Text/Text";
 import { useNowSecond } from "@/hooks/useNowSecond";
-import { formatDistanceToNow } from "date-fns";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { RunStatusBadge } from "../SelectedRunView/components/RunStatusBadge";
 import { formatRunDuration, isLiveRun } from "./helpers";
@@ -62,9 +62,7 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
             <div className="mt-1 flex flex-wrap items-center gap-2 gap-y-1 text-foreground-subtle">
               <Text variant="small" tone="muted">
                 Started{" "}
-                {run.started_at
-                  ? formatDistanceToNow(run.started_at, { addSuffix: true })
-                  : "—"}
+                {run.started_at ? <RelativeTime date={run.started_at} /> : "—"}
               </Text>
               <span className="mx-1 inline-block text-border-base">|</span>
               <Text variant="small" tone="muted">

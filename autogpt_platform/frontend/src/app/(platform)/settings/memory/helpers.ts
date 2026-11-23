@@ -1,5 +1,4 @@
 import type { Expert } from "@/app/api/__generated__/models/expert";
-import { formatDistanceToNow } from "date-fns";
 
 export const RECENT_FACTS_LIMIT = 6;
 
@@ -66,13 +65,6 @@ export function learningSheetScope(
     avatarUrl: expert ? expert.avatar_url : null,
     color: expert ? expert.color : null,
   };
-}
-
-export function formatWhen(createdAt: string | null | undefined) {
-  if (!createdAt) return "";
-  const parsed = new Date(createdAt);
-  if (Number.isNaN(parsed.getTime())) return "";
-  return formatDistanceToNow(parsed, { addSuffix: true });
 }
 
 /** The Soul drawer links here with ?expert=<id>. An id the caller no longer
