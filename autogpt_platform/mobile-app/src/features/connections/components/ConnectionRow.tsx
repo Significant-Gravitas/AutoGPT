@@ -18,11 +18,13 @@ interface Props {
   detail: string | null;
   logoID?: string | null;
   error?: string | null;
+  /** A short state on the right, such as "Connected", for a row with no button. */
+  status?: string;
   action?: Action | null;
 }
 
 /** A service in a list: its tile, name, a line under it, and one button. */
-export function ConnectionRow({ name, detail, logoID, error, action }: Props) {
+export function ConnectionRow({ name, detail, logoID, error, status, action }: Props) {
   const styles = useStyles();
   return (
     <View style={styles.row}>
@@ -39,6 +41,12 @@ export function ConnectionRow({ name, detail, logoID, error, action }: Props) {
           </Text>
         ) : null}
       </View>
+      {status && !action ? (
+        <View style={styles.status}>
+          <View style={styles.statusDot} />
+          <Text style={styles.statusText}>{status}</Text>
+        </View>
+      ) : null}
       {action ? (
         <Button
           label={action.label}
@@ -67,4 +75,7 @@ const useStyles = createStyles((colors) => ({
   name: { ...type.label, color: colors.text },
   detail: { ...type.small, color: colors.textTertiary },
   error: { ...type.small, color: colors.error },
+  status: { flexDirection: "row", alignItems: "center", gap: 5 },
+  statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success },
+  statusText: { fontSize: 12.5, lineHeight: 16, fontWeight: "600", color: colors.success },
 }));
