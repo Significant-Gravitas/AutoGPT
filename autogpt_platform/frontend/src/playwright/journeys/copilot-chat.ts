@@ -22,7 +22,8 @@ export async function startChat(page: Page, message: string) {
   await input.press("Enter");
 }
 
-interface RecordedStream {
+/** A chat stream's body as recordChatStreams saw it. */
+export interface RecordedStream {
   method: string;
   text: string;
   done: boolean;

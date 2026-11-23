@@ -1,5 +1,10 @@
 import { expect, type Page, type Response } from "@playwright/test";
-import { firstWords, isChatStream, savedMessages } from "./copilot-chat";
+import {
+  firstWords,
+  isChatStream,
+  type RecordedStream,
+  savedMessages,
+} from "./copilot-chat";
 
 /** Starts every error the backend writes into a reply, a stopped turn's
  *  "Operation cancelled" among them. */
@@ -131,15 +136,8 @@ export async function expectOnceEachInOrder(
 export async function sendOutcome(page: Page, index: number) {
   return page.evaluate((index) => {
     const streams =
-      (
-        window as unknown as {
-          __journeyChatStreams?: {
-            method: string;
-            text: string;
-            done: boolean;
-          }[];
-        }
-      ).__journeyChatStreams ?? [];
+      (window as unknown as { __journeyChatStreams?: RecordedStream[] })
+        .__journeyChatStreams ?? [];
     const sent = streams.filter((stream) => stream.method === "POST")[index];
     if (!sent) return "no stream";
     if (sent.text.includes("data-follow-up-queued")) {
