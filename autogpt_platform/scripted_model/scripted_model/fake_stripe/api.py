@@ -247,6 +247,17 @@ class StripeApi:
             raise ApiError(400, "Invalid mode: must be payment, subscription or setup.")
         if mode == "subscription" and not params.get("customer"):
             raise NotModelled("a subscription checkout without a customer")
+        # Only the subscription's metadata is modelled: a trial or anything
+        # else there would start a plan the fake bills differently.
+        subscription_data = params.get("subscription_data")
+        unmodelled = (
+            sorted(set(subscription_data) - {"metadata"})
+            if isinstance(subscription_data, dict)
+            else []
+        )
+        if unmodelled:
+            fields = ", ".join(f"subscription_data[{name}]" for name in unmodelled)
+            raise NotModelled(f"a checkout with {fields}")
         if not params.get("success_url"):
             raise ApiError(400, "Missing required param: success_url.")
         items = [

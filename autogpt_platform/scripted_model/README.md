@@ -190,7 +190,8 @@ Anything else gets Stripe's 404 for an unknown URL and is listed at
 fake serves with parameters it doesn't model, refused with a 400 that says
 so: a subscription's price change (`items`) or trial end, a final invoice on
 cancelling, an inline price or a one-time price on a subscription checkout,
-a subscription checkout without a customer. Subscription schedules (paid
+a subscription checkout without a customer or with `subscription_data`
+beyond its metadata (a trial). Subscription schedules (paid
 downgrades) aren't modelled at all. That list is never trimmed. A journey
 reads `GET /__stripe__/requests/cursor` when it starts and checks that nothing
 after that is unserved. A request needs a test key (`sk_test_…`); a live key
@@ -224,7 +225,9 @@ platform has the webhooks by the time the user is back. If either is unset,
 nothing is sent: each delivery is recorded as failed ("no webhook endpoint").
 **Cancel** links to `cancel_url`.
 
-**Webhook order.** Events go out one at a time, in the order they happened.
+**Webhook order.** Events go out one at a time, in the order they happened;
+one the platform never answers (refused, timed out, cut short) is recorded as
+a failed delivery and the next goes out.
 What the fake's own pages and controls do waits for its events to be
 delivered. What the platform asks for through the API doesn't: as with
 Stripe, the API answers first and the webhook follows a moment later.

@@ -7,6 +7,7 @@ checkout only works if the SDK reads what the fake sends back.
 
 import asyncio
 import json
+import queue
 import threading
 import time
 import urllib.error
@@ -18,6 +19,7 @@ from typing import Any
 
 import pytest
 import stripe
+from scripted_model.fake_stripe.events import Events
 from scripted_model.fake_stripe.fake import FakeStripe
 from scripted_model.server import ScriptedModelServer
 
@@ -589,6 +591,7 @@ def test_a_held_checkout_holds_the_plan_s_events_too(stack: Stack) -> None:
 
 def test_what_the_fake_doesn_t_model_is_refused_and_journaled(stack: Stack) -> None:
     sub_id = subscribe(stack)["subscription"]
+    customer = stack.control("GET", f"objects/{sub_id}")["customer"]
     cursor = stack.control("GET", "requests/cursor")["cursor"]
 
     async def unmodelled() -> None:
@@ -608,6 +611,14 @@ def test_what_the_fake_doesn_t_model_is_refused_and_journaled(stack: Stack) -> N
                 line_items=[{"price": PRO, "quantity": 1}],
                 success_url=f"{APP}/billing",
             )
+        # A trial would start a plan the fake bills at once.
+        trial = _plan_checkout(customer, PRO, "user-1")
+        trial["subscription_data"] = {
+            **trial["subscription_data"],
+            "trial_period_days": 7,
+        }
+        with pytest.raises(stripe.InvalidRequestError, match="trial_period_days"):
+            await stripe.checkout.Session.create_async(**trial)
         # Stripe's own refusal, which the fake models.
         with pytest.raises(stripe.InvalidRequestError, match="recurring price"):
             await stripe.checkout.Session.create_async(
@@ -625,7 +636,89 @@ def test_what_the_fake_doesn_t_model_is_refused_and_journaled(stack: Stack) -> N
         ("POST", f"/v1/subscriptions/{sub_id}"),
         ("DELETE", f"/v1/subscriptions/{sub_id}"),
         ("POST", "/v1/checkout/sessions"),
+        ("POST", "/v1/checkout/sessions"),
     ]
+
+
+def test_a_delivery_cut_short_is_recorded_and_the_next_one_still_goes_out() -> None:
+    """A webhook answer that ends before its Content-Length is a failed
+    delivery, and the deliveries after it still go out."""
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _ShortBody)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        host, port = server.server_address[:2]
+        events = Events(f"http://{host!s}:{port}/webhook", SECRET)
+        customer = {"id": "cus_short", "object": "customer"}
+        records: list[dict[str, Any]] = []
+
+        def emit_two() -> None:
+            for event_type in ("customer.updated", "customer.deleted"):
+                records.append(events.emit(event_type, customer))
+
+        sender = threading.Thread(target=emit_two, daemon=True)
+        sender.start()
+        sender.join(timeout=30)
+        assert not sender.is_alive(), "an emit waited forever: deliveries stopped"
+        assert [r["deliveries"][0]["status"] for r in records] == [None, None]
+        assert all("IncompleteRead" in r["deliveries"][0]["error"] for r in records)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_events_go_out_in_the_order_they_are_recorded(
+    stack: Stack, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An event paused between being recorded and being queued can't be
+    overtaken by one recorded after it."""
+    host, port = stack.receiver.server_address[:2]
+    events = Events(f"http://{host!s}:{port}/webhook", SECRET)
+    paused = threading.Event()
+    monkeypatch.setattr(events, "_queue", _FirstPutPauses(paused))
+    first = threading.Thread(
+        target=events.emit,
+        args=("customer.updated", {"id": "cus_first", "object": "customer"}),
+        kwargs={"wait": False},
+    )
+    first.start()
+    assert paused.wait(5)
+    events.emit("customer.updated", {"id": "cus_second", "object": "customer"})
+    first.join(5)
+    received = _wait_for(
+        lambda: [e.data.object["id"] for e in stack.receiver.events],
+        lambda ids: len(ids) >= 2,
+    )
+    assert received == ["cus_first", "cus_second"]
+    assert [r["object"] for r in events.find()] == ["cus_first", "cus_second"]
+
+
+class _ShortBody(BaseHTTPRequestHandler):
+    """Answers with fewer bytes than its Content-Length says, then hangs up."""
+
+    def do_POST(self) -> None:
+        self.rfile.read(int(self.headers["Content-Length"]))
+        self.wfile.write(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nshort")
+        self.close_connection = True
+
+    def log_message(self, format: str, *args: Any) -> None:
+        pass
+
+
+class _FirstPutPauses:
+    """The events' queue, whose first ``put`` stalls for half a second."""
+
+    def __init__(self, paused: threading.Event) -> None:
+        self._inner: queue.SimpleQueue[Any] = queue.SimpleQueue()
+        self._paused = paused
+
+    def put(self, item: Any) -> None:
+        if not self._paused.is_set():
+            self._paused.set()
+            time.sleep(0.5)
+        self._inner.put(item)
+
+    def get(self) -> Any:
+        return self._inner.get()
 
 
 def subscribe(stack: Stack, price: str = PRO, user_id: str = "user-1") -> Any:

@@ -18,7 +18,9 @@ the idempotency lock that call needs (``StripeApi._idempotent``).
 import copy
 import hashlib
 import hmac
+import http.client
 import json
+import logging
 import queue
 import threading
 import time
@@ -27,6 +29,8 @@ import urllib.request
 from typing import Any
 
 from .store import StripeObject, new_id, now, public
+
+logger = logging.getLogger("scripted_model.fake_stripe")
 
 # The platform's Stripe SDK (stripe 11) pins this version, and the fake's
 # objects take its shapes: a subscription's period on the subscription, an
@@ -96,6 +100,9 @@ class Events:
             "type": event_type,
         }
         customer = obj["id"] if obj.get("object") == "customer" else obj.get("customer")
+        sent = threading.Event()
+        # Recorded and queued in one step, so concurrent events go out in the
+        # order they are recorded.
         with self._lock:
             held = holdable and obj["id"] in self._held
             self._records[event["id"]] = {
@@ -107,20 +114,26 @@ class Events:
                 "event": event,
                 "deliveries": [],
             }
-        if not held:
-            sent = self._send_in_turn(event["id"])
-            if wait:
-                sent.wait()
+            if not held:
+                self._queue.put((event["id"], sent))
+                self._start_sender()
+        if not held and wait:
+            sent.wait()
         return self.get(event["id"]) or {}
 
     def deliver(self, event_id: str) -> dict[str, Any] | None:
-        """Sends the event (again) and records the platform's answer."""
+        """Sends the event (again) and records the platform's answer, or why
+        it got none."""
         with self._lock:
             record = self._records.get(event_id)
             if record is None:
                 return None
             payload = json.dumps(record["event"]).encode()
-        delivery = self._post(payload)
+        at = time.time()
+        try:
+            delivery = self._post(payload, at)
+        except Exception as error:
+            delivery = _failure(at, error)
         with self._lock:
             record["deliveries"].append(delivery)
         return copy.deepcopy(delivery)
@@ -142,27 +155,29 @@ class Events:
                 and (customer is None or record["customer"] == customer)
             ]
 
-    def _send_in_turn(self, event_id: str) -> threading.Event:
-        sent = threading.Event()
-        with self._lock:
-            if self._sender is None:
-                self._sender = threading.Thread(
-                    target=self._send_queued, name="fake-stripe-webhooks", daemon=True
-                )
-                self._sender.start()
-        self._queue.put((event_id, sent))
-        return sent
+    def _start_sender(self) -> None:
+        """Starts the thread that delivers the queue, or a new one if it
+        died. Called under ``self._lock``."""
+        if self._sender is None or not self._sender.is_alive():
+            self._sender = threading.Thread(
+                target=self._send_queued, name="fake-stripe-webhooks", daemon=True
+            )
+            self._sender.start()
 
     def _send_queued(self) -> None:
+        """Delivers queued events one by one for as long as the fake runs. A
+        delivery that fails is recorded as failed and the next one goes out,
+        and whoever waits for one is let go either way."""
         while True:
             event_id, sent = self._queue.get()
             try:
                 self.deliver(event_id)
+            except Exception:
+                logger.exception("fake Stripe: delivering %s failed", event_id)
             finally:
                 sent.set()
 
-    def _post(self, payload: bytes) -> dict[str, Any]:
-        at = time.time()
+    def _post(self, payload: bytes, at: float) -> dict[str, Any]:
         if not self._webhook_url or not self._secret:
             return {
                 "at": at,
@@ -188,11 +203,17 @@ class Events:
                 return _delivery(at, reply.status, reply.read())
         except urllib.error.HTTPError as error:
             return _delivery(at, error.code, error.read())
-        except OSError as error:
-            # Refused, unreachable or timed out: Stripe would retry later.
-            return {"at": at, "status": None, "body": "", "error": repr(error)}
+        except (OSError, http.client.HTTPException) as error:
+            # Refused, unreachable, timed out or cut short (a body shorter
+            # than its Content-Length): Stripe would retry later.
+            return _failure(at, error)
 
 
 def _delivery(at: float, status: int, body: bytes) -> dict[str, Any]:
     snippet = body[:BODY_SNIPPET_LENGTH].decode(errors="replace")
     return {"at": at, "status": status, "body": snippet, "error": None}
+
+
+def _failure(at: float, error: Exception) -> dict[str, Any]:
+    """A delivery the platform never answered."""
+    return {"at": at, "status": None, "body": "", "error": repr(error)}
