@@ -328,15 +328,25 @@ test.describe("route crawl journey", () => {
     );
   });
 
-  test("marketplace agent and skill pages hydrate cleanly with a skewed browser clock", async ({
+  test("marketplace agent page hydrates cleanly with a skewed browser clock", async ({
     browser,
     baseURL,
     flagOverrides,
     page,
   }) => {
     const env = { browser, baseURL, flagOverrides };
-    const { agent, skill } = await sampleMarketplace(page);
+    const { agent } = await sampleMarketplace(page);
     await expectAllClean(await visitAsVisitor(env, agent, 2 * DAY_MS));
+  });
+
+  test("marketplace skill page hydrates cleanly with a skewed browser clock", async ({
+    browser,
+    baseURL,
+    flagOverrides,
+    page,
+  }) => {
+    const env = { browser, baseURL, flagOverrides };
+    const { skill } = await sampleMarketplace(page);
     await expectAllClean(await visitAsVisitor(env, skill, 2 * DAY_MS));
   });
 
