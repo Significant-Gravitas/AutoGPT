@@ -11,14 +11,19 @@ It creates:
 Usage:
     cd backend
     poetry run load-store-agents
+    # Images served by the stack itself instead of production media on GCS
+    # (see test/store_media_fixtures.py); the e2e stack loads them this way.
+    poetry run load-store-agents --local-media
 """
 
+import argparse
 import asyncio
 import csv
 import json
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
+from test import store_media_fixtures
 
 import prisma.enums
 from prisma import Json, Prisma
@@ -42,6 +47,7 @@ CSV_FILE = AGENTS_DIR / "StoreAgent_rows.csv"
 AUTOGPT_USER_ID = "79d96c73-e6f5-4656-a83a-185b41ee0d06"
 AUTOGPT_EMAIL = "autogpt-test@agpt.co"
 AUTOGPT_USERNAME = "autogpt"
+AUTOGPT_AVATAR_URL = "https://storage.googleapis.com/agpt-prod-public-site-media/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/4b5781a6-49e1-433c-9a75-65af1be5c02d.png"
 
 
 async def initialize_blocks(db: Prisma) -> set[str]:
@@ -146,7 +152,9 @@ def sanitize_slug(slug: str) -> str:
     return re.sub(r"[^a-z0-9-]", "", slug.lower())
 
 
-async def create_user_and_profile(db: Prisma) -> None:
+async def create_user_and_profile(
+    db: Prisma, avatar_url: str = AUTOGPT_AVATAR_URL
+) -> None:
     """Create the autogpt user and profile if they don't exist."""
     # Check if user exists
     existing_user = await db.user.find_unique(where={"id": AUTOGPT_USER_ID})
@@ -179,7 +187,7 @@ async def create_user_and_profile(db: Prisma) -> None:
                 username=AUTOGPT_USERNAME,
                 description="Official AutoGPT agents and templates",
                 links=["https://agpt.co"],
-                avatarUrl="https://storage.googleapis.com/agpt-prod-public-site-media/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/4b5781a6-49e1-433c-9a75-65af1be5c02d.png",
+                avatarUrl=avatar_url,
             )
         )
 
@@ -362,7 +370,16 @@ async def create_store_listing(
         )
 
 
-async def main():
+async def use_local_images(csv_metadata: dict[str, dict]) -> None:
+    """Point every listing at images saved to the stack's own media storage,
+    as many as the CSV gives it, instead of the CSV's production URLs."""
+    for metadata in csv_metadata.values():
+        metadata["agent_image"] = await store_media_fixtures.store_listing_images(
+            AUTOGPT_USER_ID, metadata["slug"], len(metadata["agent_image"])
+        )
+
+
+async def main(local_media: bool = False):
     """Main function to load all store agents."""
     print("=" * 60)
     print("Loading Store Agents into Test Database")
@@ -378,12 +395,22 @@ async def main():
 
         # Step 1: Create user and profile
         print("\n[Step 1] Creating user and profile...")
-        await create_user_and_profile(db)
+        # Files are saved before any row points at them.
+        avatar_url = (
+            await store_media_fixtures.store_avatar(AUTOGPT_USER_ID)
+            if local_media
+            else AUTOGPT_AVATAR_URL
+        )
+        await create_user_and_profile(db, avatar_url)
 
         # Step 2: Load CSV metadata
         print("\n[Step 2] Loading CSV metadata...")
         csv_metadata = await load_csv_metadata()
         print(f"  Found {len(csv_metadata)} store listing entries in CSV")
+        if local_media:
+            await use_local_images(csv_metadata)
+            saved = sum(len(m["agent_image"]) for m in csv_metadata.values())
+            print(f"  Saved {saved} listing images and the avatar to local media")
 
         # Step 3: Find all JSON files and match with CSV
         print("\n[Step 3] Processing agent JSON files...")
@@ -449,7 +476,14 @@ async def main():
 
 def run():
     """Entry point for poetry script."""
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description="Load the official store agents.")
+    parser.add_argument(
+        "--local-media",
+        action="store_true",
+        help="Give the listings and their creator placeholder images saved to "
+        "the stack's own media storage, not the CSV's production image URLs.",
+    )
+    asyncio.run(main(local_media=parser.parse_args().local_media))
 
 
 if __name__ == "__main__":

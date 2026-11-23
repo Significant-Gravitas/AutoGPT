@@ -667,11 +667,14 @@ jobs:
       # publish_skills starts with the services below and resolves each
       # roster workflow to its listing then, so they must exist first: the
       # order a deploy and platform-preview-seed-fixture.yml use.
+      # --local-media: their images go to the stack's own media storage
+      # (rest_server's store-media volume), not production media on GCS, which
+      # every Marketplace page had the image optimizer fetch.
       - name: Set up tests - Load the official marketplace agents
         if: matrix.store_agents
         run: |
           docker compose -f ../docker-compose.resolved.yml run --rm --no-deps \
-            rest_server python -m test.load_store_agents
+            rest_server python -m test.load_store_agents --local-media
 
       - name: Set up Platform - Start (all other services)
         run: |
