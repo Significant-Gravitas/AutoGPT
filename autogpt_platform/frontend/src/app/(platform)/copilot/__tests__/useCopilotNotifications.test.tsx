@@ -5,7 +5,9 @@ import type { ReactNode } from "react";
 
 import { getPostV2MarkSessionReadMockHandler } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { server } from "@/mocks/mock-server";
+import { http, HttpResponse } from "msw";
 import { COPILOT_COMPLETION_NOTIFICATION } from "../helpers";
+import { SESSION_GROUPS_QUERY_KEY } from "../sessionGroups";
 
 type WSHandler = (notification: unknown) => void;
 let capturedHandler: WSHandler | null = null;
@@ -33,10 +35,13 @@ class FakeNotification {
   }
 }
 
+let lastQueryClient: QueryClient;
+
 function makeWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  lastQueryClient = queryClient;
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -141,6 +146,16 @@ describe("useCopilotNotifications — OS notification dispatch", () => {
     await waitFor(() => expect(NotificationCtor).toHaveBeenCalledTimes(2));
   });
 
+  it("tells a chat's next turn from a replay by its turn id", async () => {
+    renderHook(() => useCopilotNotifications(null), { wrapper: makeWrapper() });
+
+    act(() => capturedHandler!({ ...completion("sess-1"), turn_id: "t1" }));
+    act(() => capturedHandler!({ ...completion("sess-1"), turn_id: "t1" }));
+    act(() => capturedHandler!({ ...completion("sess-1"), turn_id: "t2" }));
+
+    await waitFor(() => expect(NotificationCtor).toHaveBeenCalledTimes(2));
+  });
+
   it("notifies again for a chat's next finished turn", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
@@ -198,6 +213,59 @@ describe("useCopilotNotifications — marking the open chat read", () => {
     await act(async () => {});
 
     expect(markedRead).toEqual(["sess-1"]);
+  });
+});
+
+describe("useCopilotNotifications — a completion this tab never heard", () => {
+  it("marks the open chat read when a list shows it unread", async () => {
+    setVisibility("visible");
+    setFocused(true);
+    renderHook(() => useCopilotNotifications("sess-1"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(markedRead).toEqual(["sess-1"]));
+
+    // A turn ended while the socket was down: only the list's next read
+    // shows it.
+    act(() => {
+      lastQueryClient.setQueryData([...SESSION_GROUPS_QUERY_KEY, {}], {
+        status: 200,
+        data: {
+          groups: [
+            {
+              expert_id: null,
+              total: 1,
+              sessions: [{ id: "sess-1", attention: "unread" }],
+            },
+          ],
+          pinned: [],
+        },
+      });
+    });
+
+    await waitFor(() => expect(markedRead).toEqual(["sess-1", "sess-1"]));
+  });
+});
+
+describe("useCopilotNotifications — a read that fails", () => {
+  it("sends it again rather than dropping it", async () => {
+    let attempts = 0;
+    server.use(
+      http.post("*/api/chat/sessions/:sessionId/read", () => {
+        attempts += 1;
+        return attempts < 2
+          ? HttpResponse.json({ detail: "unavailable" }, { status: 503 })
+          : new HttpResponse(null, { status: 204 });
+      }),
+    );
+    setVisibility("visible");
+    setFocused(true);
+
+    renderHook(() => useCopilotNotifications("sess-1"), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(attempts).toBe(2), { timeout: 4_000 });
   });
 });
 

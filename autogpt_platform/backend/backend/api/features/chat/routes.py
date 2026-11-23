@@ -720,7 +720,11 @@ class SessionGroupResponse(BaseModel):
     )
     unread_count: int = Field(
         default=0,
-        description="Of `total`, the `error` and `unread` chats marking read clears.",
+        description=(
+            "Of `total`, the chats with a turn their owner hasn't seen, which "
+            "marking read clears. It includes a chat shown as `needs_you` that "
+            "also has one; marking it read keeps its `needs_you` marker."
+        ),
     )
     sessions: list[SessionSummaryResponse] = Field(
         description="The group's newest chats, newest first."
@@ -743,6 +747,14 @@ class MarkSessionsReadRequest(BaseModel):
     expert_id: str | None = Field(default=None, min_length=1, max_length=128)
     autopilot_only: bool = Field(
         default=False, description="Only Otto's own chats, those with no expert."
+    )
+    pinned: bool | None = Field(
+        default=None,
+        description=(
+            "Only pinned (true) or only unpinned (false) chats; both when left "
+            "out. Matches the grouped read's `pinned_separately`, whose counts "
+            "leave pinned chats out."
+        ),
     )
 
 
@@ -1060,7 +1072,7 @@ async def list_sessions(
             autopilot_only=autopilot_only,
             pinned=pinned,
         ),
-        chat_db().get_chats_awaiting_review(user_id),
+        _chats_awaiting_review(user_id),
     )
     running = await _running_session_ids(sessions)
     return ListSessionsResponse(
@@ -1117,7 +1129,7 @@ async def list_session_groups(
             organization_id=ctx.org_id,
             pinned_separately=pinned_separately,
         ),
-        chat_db().get_chats_awaiting_review(user_id),
+        _chats_awaiting_review(user_id),
     )
     running = await _running_session_ids(
         [*pinned, *(session for group in groups for session in group.sessions)]
@@ -1163,6 +1175,7 @@ async def mark_sessions_read(
         ctx.org_id,
         expert_id=request.expert_id,
         autopilot_only=request.autopilot_only,
+        pinned=request.pinned,
     )
     return MarkSessionsReadResponse(marked=marked)
 
@@ -1183,6 +1196,17 @@ async def mark_session_read(
     """
     await chat_db().mark_sessions_read(user_id, ctx.org_id, session_id=session_id)
     return Response(status_code=204)
+
+
+async def _chats_awaiting_review(user_id: str) -> set[str]:
+    """The user's chats with an approval waiting. A failed read only costs
+    those chats their `needs_you` marker until the next poll; it must not
+    take the chat list down with it."""
+    try:
+        return await chat_db().get_chats_awaiting_review(user_id)
+    except Exception:
+        logger.warning("Failed to read chats awaiting review", exc_info=True)
+        return set()
 
 
 async def _running_session_ids(sessions: list[ChatSessionInfo]) -> set[str]:

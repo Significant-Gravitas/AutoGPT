@@ -27,6 +27,8 @@ interface Args {
   previewSessions: SessionSummaryResponse[];
   pinnedSeparately: boolean;
   activeSessionId: string | null;
+  /** The polled count of the group's marked chats, loaded or not. */
+  attentionCount: number;
 }
 
 export function useExpertChatGroup({
@@ -35,6 +37,7 @@ export function useExpertChatGroup({
   previewSessions,
   pinnedSeparately,
   activeSessionId,
+  attentionCount,
 }: Args) {
   const [isOpen, setIsOpen] = useState(() => !isGroupCollapsed(expertId));
   // Chats asked for past the ones the group opens on. The grouped read
@@ -63,6 +66,7 @@ export function useExpertChatGroup({
     total,
     isDeleting: deletingIds.length > 0,
   });
+  useRereadMarkedPages(olderPages, attentionCount);
 
   function changeOpen(open: boolean) {
     setIsOpen(open);
@@ -146,6 +150,19 @@ function useRereadShiftedPages({
     total,
     refetch,
   ]);
+}
+
+/** Re-reads the older pages when the group's count of marked chats changes:
+ *  a chat read or finished on another device changes its marker, but not the
+ *  order or the total that the check above compares. */
+function useRereadMarkedPages(olderPages: OlderPages, attentionCount: number) {
+  const { data, refetch } = olderPages;
+  const readFor = useRef(attentionCount);
+  useEffect(() => {
+    if (readFor.current === attentionCount) return;
+    readFor.current = attentionCount;
+    if (data) void refetch();
+  }, [attentionCount, data, refetch]);
 }
 
 interface OlderPagesArgs {

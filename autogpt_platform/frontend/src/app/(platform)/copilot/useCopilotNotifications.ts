@@ -4,14 +4,19 @@ import type { WebSocketNotification } from "@/lib/autogpt-server-api/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useInsertionEffect, useRef, useState } from "react";
 import { COPILOT_COMPLETION_NOTIFICATION } from "./helpers";
+import { cachedSessionAttention } from "./sessionGroups";
 import { useCopilotUIStore } from "./store";
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 
 const NOTIFICATION_SOUND_PATH = "/notification.mp3";
 const SEEN_RECHECK_MS = 2_000;
-// The same chat finishing again this soon is the same event delivered twice
-// (a WebSocket replay), so it doesn't sound or pop up again.
+// Without a turn id, the same chat finishing again this soon is taken for the
+// same event delivered twice (a WebSocket replay).
 const RENOTIFY_AFTER_MS = 10_000;
+const NOTIFIED_TURNS_KEPT = 200;
+// Failed acknowledgements of one chat before this tab stops re-sending them
+// until the user opens a chat again.
+const MAX_FAILED_READS = 3;
 
 /**
  * Show a browser notification with click-to-navigate behaviour.
@@ -72,20 +77,69 @@ export function useCopilotNotifications(activeSessionID: string | null) {
     activeSessionRef.current = activeSessionID;
   });
   const notifiedAtRef = useRef(new Map<string, number>());
+  const notifiedTurnsRef = useRef(new Set<string>());
+  const failedReadsRef = useRef({ sessionID: "", count: 0 });
+  const readInFlightRef = useRef(false);
   // The open chat while it has a finished turn the user hasn't seen here yet:
-  // opening it, or a turn ending in it, puts it here until they are present.
-  const [unseenSessionID, setUnseenSessionID] = useState<string | null>(null);
+  // opening it, a turn ending in it, or a list showing it unread puts it here
+  // until they are present.
+  const [unseenSessionID, setUnseenSessionID] = useState(activeSessionID);
+  const [openedSessionID, setOpenedSessionID] = useState(activeSessionID);
+  if (openedSessionID !== activeSessionID) {
+    setOpenedSessionID(activeSessionID);
+    setUnseenSessionID(activeSessionID);
+  }
 
   const { mutate: markRead } = usePostV2MarkSessionRead({
     mutation: {
-      onSettled: () =>
-        queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY }),
+      retry: 2,
+      onSuccess: () => {
+        failedReadsRef.current = { sessionID: "", count: 0 };
+      },
+      onError: (_error, { sessionId }) => {
+        const failed = failedReadsRef.current;
+        failedReadsRef.current = {
+          sessionID: sessionId,
+          count: failed.sessionID === sessionId ? failed.count + 1 : 1,
+        };
+      },
+      // A read that still failed shows the chat unread again, which re-arms
+      // it below while the user is here.
+      // Held until the lists have re-read the chat, so their stale copy
+      // doesn't send the read again.
+      onSettled: async () => {
+        await queryClient.invalidateQueries({
+          queryKey: SESSION_LIST_QUERY_KEY,
+        });
+        readInFlightRef.current = false;
+      },
     },
   });
 
+  // A turn can end without its completion event reaching this tab (the
+  // socket was down, or the event was lost), so a list showing the open chat
+  // unread arms it too.
   useEffect(() => {
-    setUnseenSessionID(activeSessionID);
-  }, [activeSessionID]);
+    if (!activeSessionID) return;
+    const sessionID = activeSessionID;
+    function armIfUnread() {
+      if (readInFlightRef.current) return;
+      const failed = failedReadsRef.current;
+      if (failed.sessionID === sessionID && failed.count >= MAX_FAILED_READS) {
+        return;
+      }
+      const attention = cachedSessionAttention(queryClient, sessionID);
+      if (attention === "unread" || attention === "error") {
+        setUnseenSessionID(sessionID);
+      }
+    }
+    armIfUnread();
+    return queryClient.getQueryCache().subscribe((event) => {
+      if (event.type === "updated" && event.action.type === "success") {
+        armIfUnread();
+      }
+    });
+  }, [activeSessionID, queryClient]);
 
   // Seeing the chat marks it read on the server, so its marker clears in every
   // browser and on every device. Only a tab the user is in counts: a tab that
@@ -97,6 +151,7 @@ export function useCopilotNotifications(activeSessionID: string | null) {
     function markIfSeen() {
       if (isUserAway()) return;
       setUnseenSessionID(null);
+      readInFlightRef.current = true;
       markRead({ sessionId: sessionID });
     }
 
@@ -140,12 +195,7 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       // Skip if viewing the active session and it's in focus
       if (isActiveSession && !userAway) return;
 
-      const now = Date.now();
-      const notifiedAt = notifiedAtRef.current.get(sessionID);
-      if (notifiedAt !== undefined && now - notifiedAt < RENOTIFY_AFTER_MS) {
-        return;
-      }
-      notifiedAtRef.current.set(sessionID, now);
+      if (isRepeatedCompletion(sessionID, notification)) return;
 
       // Sound and browser notifications are gated by the user setting
       const state = useCopilotUIStore.getState();
@@ -168,6 +218,32 @@ export function useCopilotNotifications(activeSessionID: string | null) {
           sessionID,
         });
       }
+    }
+
+    // The same turn's completion delivered twice (a WebSocket replay) sounds
+    // once; the chat's next turn sounds again.
+    function isRepeatedCompletion(
+      sessionID: string,
+      notification: WebSocketNotification,
+    ) {
+      const turnID = (notification as Record<string, unknown>).turn_id;
+      if (typeof turnID === "string" && turnID) {
+        const key = `${sessionID}:${turnID}`;
+        const notified = notifiedTurnsRef.current;
+        if (notified.has(key)) return true;
+        notified.add(key);
+        if (notified.size > NOTIFIED_TURNS_KEPT) {
+          notified.delete(notified.values().next().value as string);
+        }
+        return false;
+      }
+      const now = Date.now();
+      const notifiedAt = notifiedAtRef.current.get(sessionID);
+      if (notifiedAt !== undefined && now - notifiedAt < RENOTIFY_AFTER_MS) {
+        return true;
+      }
+      notifiedAtRef.current.set(sessionID, now);
+      return false;
     }
 
     const detach = api.onWebSocketMessage("notification", handleNotification);

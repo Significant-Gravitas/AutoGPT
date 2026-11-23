@@ -8,6 +8,15 @@ export interface SidebarChat {
   is_processing?: boolean;
   is_pinned?: boolean;
   attention?: "needs_you" | "error" | "unread" | null;
+  /** A turn the user hasn't seen. Implied by an unread or error marker; a
+   *  chat that needs the user can have one too, as on the server. */
+  unread?: boolean;
+}
+
+function isUnread(chat: SidebarChat) {
+  return (
+    chat.unread ?? (chat.attention === "unread" || chat.attention === "error")
+  );
 }
 
 export interface SidebarRequest {
@@ -42,12 +51,13 @@ export function sidebarBackend(
       requests.push({ path: "sessions", params });
       return HttpResponse.json(listRead(chats(), params));
     }),
-    // Clears the unread and error markers of the chats asked for, as the
-    // server does; a chat that needs the user keeps its marker.
+    // Marks the chats asked for read, as the server does: their unread and
+    // error markers clear, and a chat that needs the user keeps its marker.
     http.post("*/api/chat/sessions/read", async ({ request }) => {
       const body = (await request.json()) as {
         expert_id?: string | null;
         autopilot_only?: boolean;
+        pinned?: boolean | null;
       };
       requests.push({
         path: "sessions/read",
@@ -56,14 +66,14 @@ export function sidebarBackend(
       });
       let marked = 0;
       for (const chat of chats()) {
-        const inScope = body.expert_id
-          ? chat.expert_id === body.expert_id
-          : !body.autopilot_only || !chat.expert_id;
-        if (
-          inScope &&
-          (chat.attention === "unread" || chat.attention === "error")
-        ) {
-          chat.attention = null;
+        const inScope =
+          (body.expert_id
+            ? chat.expert_id === body.expert_id
+            : !body.autopilot_only || !chat.expert_id) &&
+          (body.pinned == null || !!chat.is_pinned === body.pinned);
+        if (inScope && isUnread(chat)) {
+          chat.unread = false;
+          if (chat.attention !== "needs_you") chat.attention = null;
           marked += 1;
         }
       }
@@ -110,8 +120,8 @@ export function groupedRead(chats: SidebarChat[], params: URLSearchParams) {
       expert_id: expertId,
       total: groupChats.length,
       attention_count: groupChats.filter((chat) => chat.attention).length,
-      unread_count: groupChats.filter(
-        (chat) => chat.attention === "unread" || chat.attention === "error",
+      unread_count: groupChats.filter((summary) =>
+        chats.some((chat) => chat.id === summary.id && isUnread(chat)),
       ).length,
       sessions: groupChats.filter((chat) => kept.has(chat.id)),
     })),

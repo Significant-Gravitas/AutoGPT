@@ -4944,6 +4944,30 @@ def test_chat_lists_carry_each_chats_marker_and_each_groups_counts(
     ]
 
 
+def test_chat_list_survives_a_failed_approval_lookup(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    ended = datetime.now(UTC)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+        return_value=([_make_session_info("sess-1", last_turn_ended_at=ended)], 1),
+    )
+    chat_routes.chat_db.return_value.get_chats_awaiting_review = AsyncMock(
+        side_effect=RuntimeError("database unavailable")
+    )
+    mocker.patch.object(
+        chat_routes, "_running_session_ids", AsyncMock(return_value=set())
+    )
+
+    response = client.get("/sessions")
+
+    assert response.status_code == 200
+    assert [(s["id"], s["attention"]) for s in response.json()["sessions"]] == [
+        ("sess-1", "unread")
+    ]
+
+
 def test_opening_a_chat_marks_it_read_for_its_owner() -> None:
     response = client.post("/sessions/sess-1/read")
 
@@ -4957,9 +4981,15 @@ def test_opening_a_chat_marks_it_read_for_its_owner() -> None:
 @pytest.mark.parametrize(
     "body, scope",
     [
-        ({}, {"expert_id": None, "autopilot_only": False}),
-        ({"expert_id": "maria"}, {"expert_id": "maria", "autopilot_only": False}),
-        ({"autopilot_only": True}, {"expert_id": None, "autopilot_only": True}),
+        ({}, {"expert_id": None, "autopilot_only": False, "pinned": None}),
+        (
+            {"expert_id": "maria", "pinned": False},
+            {"expert_id": "maria", "autopilot_only": False, "pinned": False},
+        ),
+        (
+            {"autopilot_only": True},
+            {"expert_id": None, "autopilot_only": True, "pinned": None},
+        ),
     ],
 )
 def test_marking_chats_read_in_bulk_is_scoped_like_the_list(body, scope) -> None:

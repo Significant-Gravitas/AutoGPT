@@ -26,7 +26,7 @@ import {
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
 import Link, { useLinkStatus } from "next/link";
-import { type ReactNode, useId } from "react";
+import { type ReactNode, useId, useRef } from "react";
 import { useExpertChatGroup } from "./useExpertChatGroup";
 
 // The chevron, the slot the header reserves next to it, and the new-chat link
@@ -86,6 +86,8 @@ export function ExpertChatGroup({
   renderItem,
 }: Props) {
   const countID = useId();
+  const attentionID = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const {
     isOpen,
     setIsOpen,
@@ -101,7 +103,15 @@ export function ExpertChatGroup({
     previewSessions,
     pinnedSeparately,
     activeSessionId,
+    attentionCount,
   });
+
+  // The button goes once nothing is left to clear, so focus moves to the
+  // group's own button rather than falling back to the page.
+  function markAllRead() {
+    triggerRef.current?.focus();
+    onMarkAllRead?.();
+  }
 
   return (
     <CollapsibleRoot
@@ -114,8 +124,11 @@ export function ExpertChatGroup({
           long labels then truncate against the link rather than under it. */}
       <div className="group/expert-header relative mb-1 flex items-center rounded-md hover:bg-surface-hover">
         <CollapsibleTrigger
+          ref={triggerRef}
           aria-label={`${label} chats`}
-          aria-describedby={countID}
+          aria-describedby={
+            attentionCount > 0 ? `${countID} ${attentionID}` : countID
+          }
           // The size and weight reach ManagedExpertImage's fallback initials (a
           // span that sets its colour, not its size or weight), and the weight
           // ExpertAvatar's initial; every other piece of copy is a toned Text.
@@ -131,7 +144,7 @@ export function ExpertChatGroup({
               <>
                 <SessionCount id={countID} count={total} />
                 {attentionCount > 0 && (
-                  <AttentionCount count={attentionCount} />
+                  <AttentionCount id={attentionID} count={attentionCount} />
                 )}
               </>
             }
@@ -172,7 +185,7 @@ export function ExpertChatGroup({
             offsetClass={
               newChatHref ? MARK_READ_OFFSET_CLASS : NEW_CHAT_LINK_OFFSET_CLASS
             }
-            onClick={onMarkAllRead}
+            onClick={markAllRead}
           />
         )}
         {newChatHref && <NewChatLink href={newChatHref} label={label} />}
@@ -296,9 +309,12 @@ function SessionCount({ id, count }: { id: string; count: number }) {
   );
 }
 
-function AttentionCount({ count }: { count: number }) {
+function AttentionCount({ id, count }: { id: string; count: number }) {
   return (
-    <span className="flex shrink-0 items-center gap-1 rounded-full bg-brand/10 px-1.5 text-caption-sm leading-4.5 font-semibold text-brand tabular-nums">
+    <span
+      id={id}
+      className="flex shrink-0 items-center gap-1 rounded-full bg-brand/10 px-1.5 text-caption-sm leading-4.5 font-semibold text-brand tabular-nums"
+    >
       <span aria-hidden className="size-1.5 rounded-full bg-brand" />
       <span className="sr-only">Needs attention:</span>
       {count}

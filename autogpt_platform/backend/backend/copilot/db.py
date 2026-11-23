@@ -894,23 +894,29 @@ async def mark_sessions_read(
     session_id: str | None = None,
     expert_id: str | None = None,
     autopilot_only: bool = False,
+    pinned: bool | None = None,
 ) -> int:
     """Marks the user's unread sessions read: one, one expert's, Otto's own
-    or all of them, among those the session list shows. Returns how many
-    changed. Raw SQL so the sidebar's order doesn't move. The time is this
-    process's, like a turn's end in ``update_chat_session_status``."""
+    or all of them, among those the session list shows (``pinned`` as there).
+    Returns how many changed. Raw SQL so the sidebar's order doesn't move.
+
+    A turn's end is stamped by the executor's clock and the read by this
+    process's, so the read never goes below the turn end it acknowledges:
+    a clock running behind must not leave a chat its owner opened unread."""
     where, params = _visible_sessions_where(
         user_id,
         organization_id,
         expert_id=expert_id,
         autopilot_only=autopilot_only,
+        pinned=pinned,
     )
     if session_id is not None:
         params.append(session_id)
         where += f' AND "id" = ${len(params)}'
     params.append(datetime.now(UTC))
     return await db.execute_raw_with_schema(
-        f'UPDATE {{schema_prefix}}"ChatSession" SET "lastReadAt" = ${len(params)} '
+        'UPDATE {schema_prefix}"ChatSession" SET "lastReadAt" = '
+        f'GREATEST(${len(params)}, "lastTurnEndedAt") '
         "WHERE " + where + f" AND {_UNREAD_SQL}",
         *params,
     )

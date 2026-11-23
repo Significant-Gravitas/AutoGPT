@@ -220,7 +220,7 @@ async def test_an_ended_turn_marks_the_chat_unread_unless_the_user_stopped_it(
     )
     release = mocker.patch.object(registry, "release_turn_slot", AsyncMock())
     # The owner's queue, held calls and notifications are outside this test.
-    mocker.patch.object(registry, "_notification_bus")
+    mocker.patch.object(registry._notification_bus, "publish", AsyncMock())
     mocker.patch.object(registry, "dispatch_next_for_user", AsyncMock())
     mocker.patch.object(registry.after_turn, "run_after_turn", AsyncMock())
     async with FakeRedis(decode_responses=True) as redis:

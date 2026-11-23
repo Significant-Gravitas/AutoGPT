@@ -1,6 +1,11 @@
 import type { getV2ListSessionGroupsResponse } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { QueryClient } from "@tanstack/react-query";
-import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
+import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
+import {
+  SESSION_LIST_QUERY_KEY,
+  type SessionListInfiniteData,
+  flattenSessions,
+} from "./useSessionList";
 
 // Both live under the list's key, so every invalidation of the session list
 // (a new chat, a rename, a delete, a WebSocket event) refreshes them too.
@@ -20,6 +25,36 @@ export const SESSION_GROUP_PAGES_QUERY_KEY = [
 ] as const;
 
 export type SessionGroupsResult = getV2ListSessionGroupsResponse;
+
+/** The chat's marker as the cached chat lists last read it, the grouped read
+ *  and any plain list alike; null when no list holds the chat. */
+export function cachedSessionAttention(
+  queryClient: QueryClient,
+  sessionId: string,
+) {
+  for (const [, data] of queryClient.getQueriesData<unknown>({
+    queryKey: SESSION_LIST_QUERY_KEY,
+  })) {
+    const session = cachedSessions(data).find(
+      (candidate) => candidate.id === sessionId,
+    );
+    if (session) return session.attention ?? null;
+  }
+  return null;
+}
+
+function cachedSessions(data: unknown): SessionSummaryResponse[] {
+  if (!data || typeof data !== "object") return [];
+  if ("pages" in data) {
+    return flattenSessions(data as SessionListInfiniteData);
+  }
+  const grouped = data as SessionGroupsResult;
+  if (grouped.status !== 200 || !("groups" in grouped.data)) return [];
+  return [
+    ...(grouped.data.pinned ?? []),
+    ...grouped.data.groups.flatMap((group) => group.sessions),
+  ];
+}
 
 /** Whether the sidebar's grouped read already holds a title for this chat. */
 export function hasGroupedSessionTitle(

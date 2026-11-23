@@ -58,9 +58,14 @@ export function useRecentChats({ pinnedSeparately = false }: Args = {}) {
     },
   });
 
+  // With pinned chats in their own section, a group's counts leave them out,
+  // so marking the group read does too.
   function markGroupRead(expertId: string | null) {
     markChatsRead({
-      data: expertId ? { expert_id: expertId } : { autopilot_only: true },
+      data: {
+        ...(expertId ? { expert_id: expertId } : { autopilot_only: true }),
+        ...(pinnedSeparately ? { pinned: false } : {}),
+      },
     });
   }
 

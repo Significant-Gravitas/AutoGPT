@@ -134,7 +134,9 @@ async def test_marking_read_touches_only_unread_chats_the_list_shows():
     assert '"lastReadAt" < "lastTurnEndedAt"' in query
     *scope, read_at = params
     assert scope == ["u1", "org-1", "maria"]
-    assert '"lastReadAt" = $4' in query and isinstance(read_at, datetime)
+    # Never below the stored turn end, whatever this process's clock says.
+    assert 'GREATEST($4, "lastTurnEndedAt")' in query
+    assert isinstance(read_at, datetime)
 
 
 @pytest.mark.asyncio
@@ -204,6 +206,10 @@ async def _markers(user_id: str) -> dict[str, str | None]:
     }
 
 
+async def _order(user_id: str) -> list[str]:
+    return [s.session_id for s in await get_user_chat_sessions(user_id)]
+
+
 async def _counts(user_id: str) -> dict[str | None, tuple[int, int, int]]:
     groups = await get_user_chat_session_groups(user_id, 3, 30)
     return {
@@ -220,20 +226,20 @@ async def test_markers_follow_turns_questions_approvals_and_visits(server):
     await get_or_create_user_with_status(
         {"sub": user_id, "email": f"{user_id}@example.com"}
     )
-    expert = await Expert.prisma().create(
-        data={
-            "ownerUserId": user_id,
-            "name": "Maria",
-            "role": "Marketing",
-            "identity": "Grows the brand.",
-        }
-    )
     try:
+        expert = await Expert.prisma().create(
+            data={
+                "ownerUserId": user_id,
+                "name": "Maria",
+                "role": "Marketing",
+                "identity": "Grows the brand.",
+            }
+        )
         await _run_markers_scenario(user_id, expert.id)
     finally:
         await PendingHumanReview.prisma().delete_many(where={"userId": user_id})
         await PrismaChatSession.prisma().delete_many(where={"userId": user_id})
-        await Expert.prisma().delete(where={"id": expert.id})
+        await Expert.prisma().delete_many(where={"ownerUserId": user_id})
 
 
 async def _run_markers_scenario(user_id: str, maria: str) -> None:
@@ -242,7 +248,6 @@ async def _run_markers_scenario(user_id: str, maria: str) -> None:
     campaign = await _chat(user_id, maria, minutes_ago=10)
     launch = await _chat(user_id, maria, minutes_ago=20)
     newsletter = await _chat(user_id, maria, minutes_ago=25)
-    order_before = [s.session_id for s in await get_user_chat_sessions(user_id)]
 
     # Every chat here predates the markers: nothing is flagged.
     assert set((await _markers(user_id)).values()) == {None}
@@ -269,6 +274,8 @@ async def _run_markers_scenario(user_id: str, maria: str) -> None:
     }
     # (total, attention, unread) per group.
     assert await _counts(user_id) == {None: (2, 2, 1), maria: (3, 3, 2)}
+    # Ending a turn moves a chat up the sidebar; reading one must not.
+    order_before_reads = await _order(user_id)
 
     # Marking Maria's chats read clears her unread and failed chats, not the
     # question still waiting on the owner, and leaves Otto's alone.
@@ -287,6 +294,7 @@ async def _run_markers_scenario(user_id: str, maria: str) -> None:
     assert await mark_sessions_read(user_id, session_id=summary) == 1
     assert await mark_sessions_read(user_id, session_id=summary) == 0
     assert (await _markers(user_id))[summary] is None
+    assert await _order(user_id) == order_before_reads
 
     # A new turn ending makes a read chat unread again.
     await _end_turn(newsletter, failed=False)
@@ -294,8 +302,4 @@ async def _run_markers_scenario(user_id: str, maria: str) -> None:
 
     # Another user can't mark these chats read.
     assert await mark_sessions_read(str(uuid4()), session_id=newsletter) == 0
-
-    # None of it moved the sidebar's order.
-    assert [s.session_id for s in await get_user_chat_sessions(user_id)] == (
-        order_before
-    )
+    assert (await _markers(user_id))[newsletter] == "unread"

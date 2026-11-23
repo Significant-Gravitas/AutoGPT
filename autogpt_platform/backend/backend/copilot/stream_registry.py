@@ -1336,6 +1336,7 @@ async def mark_session_completed(
                             event="session_completed",
                             session_id=session_id,
                             status=status,
+                            turn_id=turn_id,
                         ),
                     )
                 )

@@ -32116,6 +32116,11 @@
             "title": "Autopilot Only",
             "description": "Only Otto's own chats, those with no expert.",
             "default": false
+          },
+          "pinned": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Pinned",
+            "description": "Only pinned (true) or only unpinned (false) chats; both when left out. Matches the grouped read's `pinned_separately`, whose counts leave pinned chats out."
           }
         },
         "type": "object",
@@ -37084,7 +37089,7 @@
           "unread_count": {
             "type": "integer",
             "title": "Unread Count",
-            "description": "Of `total`, the `error` and `unread` chats marking read clears.",
+            "description": "Of `total`, the chats with a turn their owner hasn't seen, which marking read clears. It includes a chat shown as `needs_you` that also has one; marking it read keeps its `needs_you` marker.",
             "default": 0
           },
           "sessions": {
