@@ -29,4 +29,12 @@ describe("integration logo assets", () => {
     expect(entry.mcp_server.icon_id).toBeTruthy();
     expectPNG(entry.mcp_server.icon_id!);
   });
+
+  // A skill names the MCP service it needs by the entry's name (#17313).
+  test.each(catalog)("$name, named as a provider, shows that logo", (entry) => {
+    expect(integrationIconSrc(entry.name)).toBe(
+      integrationIconSrc(entry.mcp_server.icon_id!),
+    );
+    expectPNG(entry.name);
+  });
 });
