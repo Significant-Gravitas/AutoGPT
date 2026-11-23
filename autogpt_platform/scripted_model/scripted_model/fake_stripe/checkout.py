@@ -125,6 +125,7 @@ class Checkout:
 
         def complete(current: StripeObject) -> None:
             _require_open(current)
+            self._subscriptions.number_invoice(invoice)
             current.update(
                 status="complete",
                 payment_status="paid",

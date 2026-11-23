@@ -32,7 +32,9 @@ def public(obj: StripeObject) -> StripeObject:
 class Store:
     def __init__(self) -> None:
         self._objects: dict[str, StripeObject] = {}
-        self._lock = threading.Lock()
+        # Re-entrant, so a change ``update`` applies can read the store,
+        # e.g. to number an invoice it adds.
+        self._lock = threading.RLock()
 
     def add(self, obj: StripeObject) -> StripeObject:
         with self._lock:

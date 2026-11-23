@@ -194,6 +194,7 @@ class Subscriptions:
                 raise ApiError(
                     409, "It was set to cancel while renewing; end it again."
                 )
+            self.number_invoice(invoice)
             subscription.update(
                 current_period_start=renewed["current_period_start"],
                 current_period_end=renewed["current_period_end"],
@@ -210,13 +211,17 @@ class Subscriptions:
         ]
         return public(updated), events
 
+    def number_invoice(self, invoice: StripeObject) -> None:
+        """Gives an invoice the next number in its customer's sequence. Call
+        it inside the ``Store.update`` that adds the invoice, so two invoices
+        made at once can't take the same number."""
+        customer = invoice["customer"]
+        taken = self._store.find("invoice", lambda other: other["customer"] == customer)
+        invoice["number"] = invoices.invoice_number(customer, len(taken) + 1)
+
     def _invoice(
         self, subscription: StripeObject, billing_reason: str, created: int
     ) -> tuple[StripeObject, StripeObject]:
-        customer = subscription["customer"]
-        sequence = 1 + len(
-            self._store.find("invoice", lambda invoice: invoice["customer"] == customer)
-        )
         describe = {
             item["price"]["id"]: catalog.product_name(self._store, item["price"])
             for item in subscription["items"]["data"]
@@ -225,7 +230,6 @@ class Subscriptions:
             subscription,
             billing_reason,
             created,
-            number=invoices.invoice_number(customer, sequence),
             describe=describe,
             public_url=self._public_url,
         )

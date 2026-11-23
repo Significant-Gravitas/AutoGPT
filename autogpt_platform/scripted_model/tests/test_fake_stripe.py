@@ -416,6 +416,7 @@ def test_the_sdk_subscribes_on_the_fake_checkout(stack: Stack) -> None:
         assert invoice.billing_reason == "subscription_create"
         assert invoice.subscription == sub_id and invoice.status_transitions.paid_at
         [line] = invoice.lines.data
+        assert line.price is not None
         assert (line.type, line.subscription, line.price.id, line.amount) == (
             "subscription",
             sub_id,
@@ -423,6 +424,7 @@ def test_the_sdk_subscribes_on_the_fake_checkout(stack: Stack) -> None:
             2300,
         )
         assert line.period.end == sub.current_period_end and not line.proration
+        assert isinstance(sub.customer, str)
         live = await stripe.Subscription.list_async(
             customer=sub.customer, status="active"
         )
@@ -672,29 +674,33 @@ def test_a_delivery_cut_short_is_recorded_and_the_next_one_still_goes_out() -> N
 def test_events_go_out_in_the_order_they_are_recorded(
     stack: Stack, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An event is recorded and queued in one step under the events' lock,
-    so one recorded after it can't be queued, and sent, before it."""
+    """An event held between being recorded and being queued can't be
+    overtaken: one recorded after it waits its turn."""
     host, port = stack.receiver.server_address[:2]
     events = Events(f"http://{host!s}:{port}/webhook", SECRET)
-    paused, release = threading.Event(), threading.Event()
-    monkeypatch.setattr(events, "_queue", _FirstPutWaits(paused, release))
-    first = threading.Thread(
-        target=events.emit,
-        args=("customer.updated", {"id": "cus_first", "object": "customer"}),
-        kwargs={"wait": False},
-    )
+    held = _FirstPutWaits()
+    monkeypatch.setattr(events, "_queue", held)
+    first, second = [
+        threading.Thread(
+            target=events.emit,
+            args=("customer.updated", {"id": customer_id, "object": "customer"}),
+            kwargs={"wait": False},
+        )
+        for customer_id in ("cus_first", "cus_second")
+    ]
     first.start()
     try:
-        assert paused.wait(5)
-        # The first event is recorded and held in its put: the lock must
-        # still be taken, or another event could be queued ahead of it.
-        free = events._lock.acquire(blocking=False)
-        if free:
-            events._lock.release()
-        assert not free, "an event was recorded, then queued in a separate step"
-        release.set()
+        assert held.paused.wait(5)
+        second.start()
+        # Code that queues an event apart from recording it lets the second
+        # one in now; correct code holds it until the first is queued.
+        held.overtaken.wait(1)
+    finally:
+        held.release.set()
         first.join(5)
-        events.emit("customer.updated", {"id": "cus_second", "object": "customer"})
+        if second.ident is not None:
+            second.join(5)
+    try:
         received = _wait_for(
             lambda: [e.data.object["id"] for e in stack.receiver.events],
             lambda ids: len(ids) >= 2,
@@ -702,9 +708,47 @@ def test_events_go_out_in_the_order_they_are_recorded(
         assert received == ["cus_first", "cus_second"]
         assert [r["object"] for r in events.find()] == ["cus_first", "cus_second"]
     finally:
-        release.set()
-        first.join(5)
         events.close()
+
+
+def test_closing_never_leaves_two_senders_delivering_at_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An event emitted while ``close`` waits for the sender goes out from
+    that sender, after the ones queued before it, and the sender then stops:
+    no second sender ever delivers beside it."""
+    receiver = _GatedReceiver()
+    threading.Thread(target=receiver.serve_forever, daemon=True).start()
+    events = Events("http://%s:%d/webhook" % receiver.server_address[:2], SECRET)
+    queued = _NotesStop()
+    monkeypatch.setattr(events, "_queue", queued)
+    closing = threading.Thread(target=events.close, kwargs={"timeout": 15})
+    try:
+        events.emit("customer.updated", _customer(1), wait=False)
+        assert receiver.first_arrived.wait(5), "the first delivery never arrived"
+        events.emit("customer.updated", _customer(2), wait=False)
+        closing.start()
+        assert queued.stopped.wait(5), "close() never queued its stop"
+        events.emit("customer.updated", _customer(3), wait=False)
+        # A second sender started now would send cus_2 while cus_1 is open.
+        assert not receiver.overlapped.wait(1), "two deliveries were open at once"
+    finally:
+        receiver.release.set()
+        if closing.ident is not None:
+            closing.join(20)
+        try:
+            assert not closing.is_alive(), "close() never returned"
+            assert receiver.received == ["cus_1", "cus_2", "cus_3"]
+            assert not [
+                t for t in threading.enumerate() if t.name == "fake-stripe-webhooks"
+            ], "a sender outlived close()"
+        finally:
+            receiver.shutdown()
+            receiver.server_close()
+
+
+def _customer(number: int) -> dict[str, Any]:
+    return {"id": f"cus_{number}", "object": "customer"}
 
 
 class _ShortBody(BaseHTTPRequestHandler):
@@ -720,23 +764,86 @@ class _ShortBody(BaseHTTPRequestHandler):
 
 
 class _FirstPutWaits:
-    """The events' queue, whose first ``put`` waits until ``release``."""
+    """The events' queue, whose first ``put`` waits for ``release``. A put
+    that comes in meanwhile sets ``overtaken``."""
 
-    def __init__(self, paused: threading.Event, release: threading.Event) -> None:
+    def __init__(self) -> None:
         self._inner: queue.SimpleQueue[Any] = queue.SimpleQueue()
-        self._paused = paused
-        self._release = release
+        self.paused = threading.Event()
+        self.release = threading.Event()
+        self.overtaken = threading.Event()
 
     def put(self, item: Any) -> None:
-        if not self._paused.is_set():
-            self._paused.set()
-            # Until the test lets it go, however long that takes: its
-            # ``finally`` always does.
-            self._release.wait()
+        if not self.paused.is_set():
+            self.paused.set()
+            # However long a slow runner takes: the test always releases it.
+            self.release.wait()
+        elif not self.release.is_set():
+            self.overtaken.set()
         self._inner.put(item)
 
     def get(self) -> Any:
         return self._inner.get()
+
+    def empty(self) -> bool:
+        return self._inner.empty()
+
+
+class _NotesStop:
+    """The events' queue, setting ``stopped`` once ``close`` queues its stop."""
+
+    def __init__(self) -> None:
+        self._inner: queue.SimpleQueue[Any] = queue.SimpleQueue()
+        self.stopped = threading.Event()
+
+    def put(self, item: Any) -> None:
+        self._inner.put(item)
+        if item is None:
+            self.stopped.set()
+
+    def get(self) -> Any:
+        return self._inner.get()
+
+    def empty(self) -> bool:
+        return self._inner.empty()
+
+
+class _GatedReceiver(ThreadingHTTPServer):
+    """The webhook route. It holds the first delivery until ``release`` and
+    sets ``overlapped`` when a delivery arrives while another is still open."""
+
+    def __init__(self) -> None:
+        super().__init__(("127.0.0.1", 0), _GatedHandler)
+        self.lock = threading.Lock()
+        self.open = 0
+        self.received: list[str] = []
+        self.first_arrived = threading.Event()
+        self.release = threading.Event()
+        self.overlapped = threading.Event()
+
+
+class _GatedHandler(BaseHTTPRequestHandler):
+    def do_POST(self) -> None:
+        receiver = self.server
+        assert isinstance(receiver, _GatedReceiver)
+        payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        with receiver.lock:
+            receiver.open += 1
+            if receiver.open > 1:
+                receiver.overlapped.set()
+            first = not receiver.received
+            receiver.received.append(payload["data"]["object"]["id"])
+        if first:
+            receiver.first_arrived.set()
+            receiver.release.wait(30)
+        with receiver.lock:
+            receiver.open -= 1
+        self.send_response(200)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def log_message(self, format: str, *args: Any) -> None:
+        pass
 
 
 def subscribe(stack: Stack, price: str = PRO, user_id: str = "user-1") -> Any:
@@ -789,12 +896,19 @@ def _events(stack: Stack, object_id: str, event_type: str) -> list[dict[str, Any
     return [event for event in events if event["type"] == event_type]
 
 
-def _wait_for(read: Callable[[], Any], done: Callable[[Any], bool]) -> Any:
+def _wait_for(
+    read: Callable[[], Any], done: Callable[[Any], bool], timeout: float = 10
+) -> Any:
     """``read()`` once ``done`` accepts it: a webhook the API's answer came
-    before arrives on its own."""
-    deadline = time.monotonic() + 10
+    before arrives on its own. Fails with what it last read after
+    ``timeout`` seconds."""
+    deadline = time.monotonic() + timeout
     while True:
         value = read()
-        if done(value) or time.monotonic() > deadline:
+        if done(value):
             return value
+        if time.monotonic() > deadline:
+            raise AssertionError(
+                f"still waiting after {timeout} s; last read {value!r}"
+            )
         time.sleep(0.05)

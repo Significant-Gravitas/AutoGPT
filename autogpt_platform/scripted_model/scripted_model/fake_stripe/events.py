@@ -61,12 +61,16 @@ class Events:
         self._sender: threading.Thread | None = None
 
     def close(self, timeout: float = DELIVERY_TIMEOUT_S) -> None:
-        """Stops the sender once the events already queued are delivered, so
-        a test leaves no thread behind. An event emitted later starts a new
-        one."""
+        """Stops the sender once every queued event is delivered, so a test
+        leaves no thread behind.
+
+        The sender stays the only one until it has stopped: an event emitted
+        while it closes is queued behind the stop marker, and it delivers
+        that too before stopping. Only an event emitted after it stopped
+        starts a new one."""
         with self._lock:
-            sender, self._sender = self._sender, None
-            if sender is None:
+            sender = self._sender
+            if sender is None or not sender.is_alive():
                 return
             self._queue.put(None)
         sender.join(timeout)
@@ -177,13 +181,23 @@ class Events:
             self._sender.start()
 
     def _send_queued(self) -> None:
-        """Delivers queued events one by one until ``close``. A delivery that
-        fails is recorded as failed and the next one goes out, and whoever
-        waits for one is let go either way."""
+        """Delivers queued events one by one until ``close`` and an empty
+        queue. A delivery that fails is recorded as failed and the next one
+        goes out, and whoever waits for one is let go either way."""
+        stopping = False
         while True:
+            with self._lock:
+                # Events are queued under this lock, so an empty queue here
+                # stays empty until this sender is gone; an emit after that
+                # starts a new one.
+                if stopping and self._queue.empty():
+                    if self._sender is threading.current_thread():
+                        self._sender = None
+                    return
             item = self._queue.get()
             if item is None:
-                return
+                stopping = True
+                continue
             event_id, sent = item
             try:
                 self.deliver(event_id)

@@ -20,14 +20,14 @@ def subscription_invoice(
     billing_reason: str,
     created: int,
     *,
-    number: str,
     describe: dict[str, str],
     public_url: str,
 ) -> tuple[StripeObject, StripeObject]:
     """The paid invoice for the subscription's current period, and its payment.
 
-    ``describe`` names each price (its product's name); ``number`` is the
-    invoice's number in the customer's sequence.
+    ``describe`` names each price (its product's name). The invoice has no
+    number yet: ``Subscriptions.number_invoice`` gives it one as it is
+    stored.
     """
     invoice_id = new_id("in")
     lines = [
@@ -64,7 +64,7 @@ def subscription_invoice(
         "livemode": False,
         "metadata": {},
         "next_payment_attempt": None,
-        "number": number,
+        "number": None,
         "paid": True,
         "paid_out_of_band": False,
         "payment_intent": payment["id"],

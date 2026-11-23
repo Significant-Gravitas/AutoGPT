@@ -182,7 +182,7 @@ on purpose: a price on a page is the one Stripe charges.
 | `Subscription.list`/`retrieve` | the subscriptions checkouts started; a list leaves out cancelled ones unless `status` asks |
 | `Subscription.modify` with `cancel_at_period_end`, `metadata`, `cancellation_details` | changes it, then sends `customer.subscription.updated` with `previous_attributes` |
 | `Subscription.cancel` (`cancellation_details`, no final invoice) | ends it now, then sends `customer.subscription.deleted` |
-| `Invoice.list`/`retrieve` | the paid invoices of subscriptions, each with a hosted page |
+| `Invoice.list`/`retrieve` | the paid invoices of subscriptions, each with a hosted page and the next number in its customer's sequence (`<prefix>-0001`, `-0002`) |
 | `billing_portal.Session.create` | the fake's billing portal for the customer |
 
 Anything else gets Stripe's 404 for an unknown URL and is listed at
@@ -227,7 +227,9 @@ nothing is sent: each delivery is recorded as failed ("no webhook endpoint").
 
 **Webhook order.** Events go out one at a time, in the order they happened;
 one the platform never answers (refused, timed out, cut short) is recorded as
-a failed delivery and the next goes out.
+a failed delivery and the next goes out. One thread sends them, and only one:
+`FakeStripe.close()`, which the tests call, stops it once the queue is out,
+and an event after that starts a new one.
 What the fake's own pages and controls do waits for its events to be
 delivered. What the platform asks for through the API doesn't: as with
 Stripe, the API answers first and the webhook follows a moment later.
