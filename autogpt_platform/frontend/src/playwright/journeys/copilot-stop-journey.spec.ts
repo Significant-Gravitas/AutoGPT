@@ -4,7 +4,6 @@ import {
   firstWords,
   recordChatStreams,
   runningTurnID,
-  savedMessages,
   startChat,
 } from "./copilot-chat";
 import {
@@ -46,15 +45,12 @@ const AFTER_STOP: ModelScript = afterStopScript;
 const CORRECTION = AFTER_STOP.turns[0].expect_user_text ?? "";
 const CORRECTION_ANSWER = AFTER_STOP.turns[0].text ?? "";
 
-// A Countdown Timer block the model runs; its second turn answers the
+// A Countdown Timer block the model runs, set far longer than any test
+// waits, so the Stop always lands while it runs. Its second turn answers the
 // timer's result, which a stopped turn must never ask for.
 const TOOL: ModelScript = stopDuringToolScript;
 const TOOL_INTRO = TOOL.turns[0].text ?? "";
 const TOOL_ANSWER = TOOL.turns[1].text ?? "";
-const TIMER = stopDuringToolScript.turns[0].tool_calls?.[0]?.input.input;
-if (!TIMER) throw new Error("stop-during-tool.json should run a timer");
-const TIMER_MS = TIMER.seconds * 1000;
-const TIMER_MESSAGE = TIMER.input_message;
 
 const STOPPED_CARD = "Task stopped";
 
@@ -75,9 +71,9 @@ const STOPPED_REPLY_CUT_WITHIN_MS = 10_000;
 // seconds on CI; an unanswered message fails here, well inside the test's
 // 90 s.
 const ANSWERED_WITHIN_MS = 30_000;
-// wall-clock: once the timer would have gone off, time for its result to
-// reach the model and an answer to be saved, had the Stop not ended it.
-const TIMER_RESULT_LANDS_WITHIN_MS = 8_000;
+// wall-clock: on dev, a stopped turn's CLI asks the model for its next step
+// about 1.5 s after the Stop; this is ten times that.
+const STOPPED_TURN_QUIET_FOR_MS = 15_000;
 // The reloaded chat has drawn the stopped card below the timer's row by
 // then; this only gives a row that shouldn't be there time to go.
 const STOPPED_TOOL_CHECK_MS = 5_000;
@@ -135,14 +131,12 @@ test.describe("copilot stop journey", () => {
         wordsAtStop + WORDS_AFTER_STOP,
         "the Stop should land with most of the reply still to come",
       ).toBeLessThan(ANSWER_WORDS);
-      await expect
-        .poll(() => runningTurnID(page, sessionID), {
-          message: "the server should end the stopped turn",
-          timeout: STOPPED_TURN_ENDS_WITHIN_MS,
-          intervals: [100],
-        })
-        .not.toBe(stoppedTurn);
-      const turnEndedAt = Date.now();
+      const turnEndedAt = await expectStoppedTurnEnds(
+        page,
+        sessionID,
+        stoppedTurn,
+        stoppedAt,
+      );
       const cancelled = await cancel;
       expect(cancelled.status, "the Stop should reach the server").toBe(200);
 
@@ -175,10 +169,7 @@ test.describe("copilot stop journey", () => {
           () => true,
           () => false,
         );
-      const replyEnd = await stoppedReplyEnd(
-        run.nonce,
-        stoppedAt + STOPPED_REPLY_CUT_WITHIN_MS,
-      );
+      const replyEnd = await stoppedReplyEnd(run.nonce, stoppedAt);
       test.info().annotations.push({
         type: "stop timing",
         description: [
@@ -268,7 +259,7 @@ test.describe("copilot stop journey", () => {
       const nextMessage = `${CORRECTION} ${after.marker}`;
       const transcript = page.getByRole("log");
 
-      const timerStartedBy = await startTheTimer(page, firstMessage, run.nonce);
+      await startTheTimer(page, firstMessage, run.nonce);
       const sessionID = await currentSessionID(page);
       const stoppedTurn = await runningTurnID(page, sessionID);
       expect(stoppedTurn, "the timer's turn should be running").toBeTruthy();
@@ -279,14 +270,12 @@ test.describe("copilot stop journey", () => {
         transcript.getByText(STOPPED_CARD, { exact: true }).first(),
         "the turn should show it was stopped",
       ).toBeVisible();
-      await expect
-        .poll(() => runningTurnID(page, sessionID), {
-          message: "the server should end the stopped turn",
-          timeout: STOPPED_TURN_ENDS_WITHIN_MS,
-          intervals: [100],
-        })
-        .not.toBe(stoppedTurn);
-      const turnEndedAt = Date.now();
+      const turnEndedAt = await expectStoppedTurnEnds(
+        page,
+        sessionID,
+        stoppedTurn,
+        stoppedAt,
+      );
       const cancelled = await cancel;
       expect(cancelled.status, "the Stop should reach the server").toBe(200);
       test.info().annotations.push({
@@ -306,16 +295,15 @@ test.describe("copilot stop journey", () => {
         0,
       );
 
-      // Watched until the timer's result, had the Stop not ended its turn,
-      // would have reached the model and its answer the chat.
-      const watchUntil =
-        timerStartedBy + TIMER_MS + TIMER_RESULT_LANDS_WITHIN_MS;
+      // The timer never goes off in a test. What a stopped turn that carries
+      // on does is ask the model for its next step, soon after the Stop.
+      const watchUntil = stoppedAt + STOPPED_TURN_QUIET_FOR_MS;
       let added = "watching";
       await expect
         .poll(
           async () => {
             added =
-              (await whatTheStoppedTurnAdded(page, sessionID, run.nonce)) ??
+              (await whatTheStoppedTurnAdded(page, run.nonce)) ??
               (Date.now() >= watchUntil ? "nothing" : "watching");
             return added;
           },
@@ -330,7 +318,7 @@ test.describe("copilot stop journey", () => {
       // cancelled timer: it asks the model for the next step (#16729).
       const pinned = pinKnownFailure(
         "#16729: a turn stopped during a tool call carries on, its CLI asking the model for the next step",
-        "nothing of the stopped turn should arrive by the time its timer would have gone off",
+        "nothing of the stopped turn should arrive after the Stop",
       );
       expect(added, pinned).toBe("nothing");
       await expect
@@ -390,14 +378,8 @@ test.describe("copilot stop journey", () => {
       const stoppedTurn = await runningTurnID(page, sessionID);
       expect(stoppedTurn, "the timer's turn should be running").toBeTruthy();
       const cancel = watchCancel(page, STOPPED_TURN_ENDS_WITHIN_MS);
-      await clickStop(page);
-      await expect
-        .poll(() => runningTurnID(page, sessionID), {
-          message: "the server should end the stopped turn",
-          timeout: STOPPED_TURN_ENDS_WITHIN_MS,
-          intervals: [100],
-        })
-        .not.toBe(stoppedTurn);
+      const stoppedAt = await clickStop(page);
+      await expectStoppedTurnEnds(page, sessionID, stoppedTurn, stoppedAt);
       // A reload would cut off the Stop's own request.
       expect((await cancel).status, "the Stop should reach the server").toBe(
         200,
@@ -456,9 +438,36 @@ async function expectReplySavedAsStopped(
 }
 
 /**
+ * Waits for the server to stop running `turn`, which must happen within
+ * STOPPED_TURN_ENDS_WITHIN_MS of the Stop at `stoppedAt`, however long the
+ * steps since the Stop took. Returns when it saw the turn end.
+ */
+async function expectStoppedTurnEnds(
+  page: Page,
+  sessionID: string,
+  turn: string | null,
+  stoppedAt: number,
+) {
+  const deadline = stoppedAt + STOPPED_TURN_ENDS_WITHIN_MS;
+  await expect
+    .poll(() => runningTurnID(page, sessionID), {
+      message: "the server should end the stopped turn",
+      timeout: Math.max(1, deadline - Date.now()),
+      intervals: [100],
+    })
+    .not.toBe(turn);
+  const endedAt = Date.now();
+  expect(
+    endedAt,
+    `the server should end the stopped turn within ${STOPPED_TURN_ENDS_WITHIN_MS} ms of the Stop`,
+  ).toBeLessThanOrEqual(deadline);
+  return endedAt;
+}
+
+/**
  * Starts a chat whose model runs the Countdown Timer, and returns once the
  * timer is running: the model has finished asking for it and its card says
- * so. The timer can't go off before the time returned plus TIMER_MS.
+ * so.
  */
 async function startTheTimer(page: Page, message: string, nonce: string) {
   const transcript = page.getByRole("log");
@@ -476,7 +485,6 @@ async function startTheTimer(page: Page, message: string, nonce: string) {
     transcript.getByText(/^Running "/).first(),
     "the timer should show as running",
   ).toBeVisible();
-  return Date.now();
 }
 
 /** The model requests a run made, as [turn, dialect], side calls left out. */
@@ -487,24 +495,20 @@ function modelTurns(journal: JournalEntry[]) {
 }
 
 /**
- * How the stopped reply's model stream ended, by `deadline`: "cut" when the
- * platform dropped it, "read to its end" when a CLI kept reading it, "still
- * being read" when one still is. The scripted model sees a dropped stream at
- * its next word.
+ * How the stopped reply's model stream ended: "cut" when the platform dropped
+ * it within STOPPED_REPLY_CUT_WITHIN_MS of the Stop at `stoppedAt`, else what
+ * happened instead. The scripted model sees a dropped stream at its next word
+ * and records when; it runs on this machine's clock, as the stack does. That
+ * time decides, so a late look can't pass a late cut.
  */
-async function stoppedReplyEnd(nonce: string, deadline: number) {
-  let end = "still being read";
+async function stoppedReplyEnd(nonce: string, stoppedAt: number) {
+  const deadline = stoppedAt + STOPPED_REPLY_CUT_WITHIN_MS;
+  let reply: JournalEntry | undefined;
   await expect
     .poll(
       async () => {
-        const completed = firstReplyCompleted(await readJournal(nonce));
-        end =
-          completed === false
-            ? "cut"
-            : completed === true
-              ? "read to its end"
-              : "still being read";
-        return completed !== null || Date.now() >= deadline;
+        reply = firstReply(await readJournal(nonce));
+        return reply?.completed != null || Date.now() >= deadline;
       },
       {
         message: "the stopped reply's model stream should end or be checked",
@@ -513,32 +517,30 @@ async function stoppedReplyEnd(nonce: string, deadline: number) {
       },
     )
     .toBe(true);
-  return end;
+  if (reply?.completed === true) return "read to its end";
+  if (reply?.completed !== false) return "still being read";
+  const cutAfter = (reply.finished_at ?? Infinity) * 1000 - stoppedAt;
+  return cutAfter <= STOPPED_REPLY_CUT_WITHIN_MS
+    ? "cut"
+    : `cut ${Math.round(cutAfter)} ms after the Stop`;
+}
+
+/** The run's first model reply, as the scripted model journaled it. */
+function firstReply(journal: JournalEntry[]) {
+  return journal.find((entry) => entry.kind === "turn");
 }
 
 /** Whether the run's first model reply reached the platform in full; null
  *  while it is still being sent. */
 function firstReplyCompleted(journal: JournalEntry[]) {
-  return journal.find((entry) => entry.kind === "turn")?.completed ?? null;
+  return firstReply(journal)?.completed ?? null;
 }
 
 /** Anything the stopped timer's turn added after the Stop, or null. */
-async function whatTheStoppedTurnAdded(
-  page: Page,
-  sessionID: string,
-  nonce: string,
-) {
+async function whatTheStoppedTurnAdded(page: Page, nonce: string) {
   const asked = modelTurns(await readJournal(nonce));
   if (asked.length !== 1) {
     return `the model was asked again: ${JSON.stringify(asked)}`;
-  }
-  // The call's own arguments name the message too; only a result says it
-  // went off.
-  const results = (await savedMessages(page, sessionID)).filter(
-    (message) => message.role === "tool",
-  );
-  if (results.some((result) => result.content?.includes(TIMER_MESSAGE))) {
-    return "the timer's result was saved";
   }
   const shown = await page.getByRole("log").innerText();
   if (shown.includes(TOOL_ANSWER)) {

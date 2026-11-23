@@ -1,5 +1,5 @@
 {
-  "description": "AutoPilot runs a Countdown Timer block, which copilot-stop-journey.spec.ts stops while the timer runs. The second turn answers the timer's result: a stopped turn must never ask for it.",
+  "description": "AutoPilot runs a Countdown Timer block, which copilot-stop-journey.spec.ts stops while the timer runs. The timer is set to ten minutes, far longer than any test waits, so the Stop always lands before it goes off. The second turn answers the timer's result: a stopped turn must never ask for it.",
   "title": "Stopped timer",
   "turns": [
     {
@@ -10,7 +10,7 @@
           "input": {
             "id": "block:d67a9c52-5e4e-11e2-bcfd-0800200c9a71",
             "input": {
-              "seconds": 15,
+              "minutes": 10,
               "input_message": "The timer for the stopped turn went off."
             }
           }
