@@ -413,6 +413,12 @@ describe("the admin check behind a proxy that ends TLS", () => {
 
   beforeEach(async () => {
     buildMode.production = true;
+    // The lookup's three-second deadline is the product's. A runner that
+    // pauses past it would send the admin Home on correct code, so these
+    // tests own the lookup's signal; the timeout has its own test below.
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(
+      () => new AbortController().signal,
+    );
     server = await startAuthServer("https://platform.example.com");
     arrived = [];
     const handle = toNodeHandler(server.handler);
@@ -440,6 +446,7 @@ describe("the admin check behind a proxy that ends TLS", () => {
     listener.closeAllConnections();
     await new Promise((resolve) => listener.close(resolve));
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
   // Only the session cookie: the five-minute cookie cache has lapsed.
@@ -474,5 +481,25 @@ describe("the admin check behind a proxy that ends TLS", () => {
 
     expect(redirectPath(response)).toBe("/");
     expect(arrived).toEqual(["/api/auth/get-session"]);
+  });
+
+  // A lookup that runs out its deadline counts as "not an admin", the safe
+  // default, rather than holding the page.
+  it("sends an admin Home when the session lookup times out", async () => {
+    vi.stubEnv("BETTER_AUTH_INTERNAL_URL", `http://127.0.0.1:${port}`);
+    const admin = await signIn(server, "admin");
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(() =>
+      AbortSignal.abort(
+        new DOMException(
+          "The operation was aborted due to timeout",
+          "TimeoutError",
+        ),
+      ),
+    );
+
+    const response = await authMiddleware(adminPage(admin.sessionCookie));
+
+    expect(redirectPath(response)).toBe("/");
+    expect(vi.mocked(AbortSignal.timeout)).toHaveBeenCalled();
   });
 });
