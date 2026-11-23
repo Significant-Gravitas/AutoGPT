@@ -1,10 +1,10 @@
 import { useDeleteV1DeleteExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
+import { useRelativeTime } from "@/components/atoms/RelativeTime/useRelativeTime";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
 import { describeFollowup, formatNextRunTitle } from "./helpers";
 
@@ -23,13 +23,8 @@ export function useFollowupListItem({ followup }: Args) {
 
   const { messagePreview, sessionHref } = describeFollowup(followup);
 
-  const nextRunDate = followup.next_run_time
-    ? new Date(followup.next_run_time)
-    : null;
-  const nextRunLabel =
-    nextRunDate && !Number.isNaN(nextRunDate.valueOf())
-      ? `Next ${formatDistanceToNow(nextRunDate, { addSuffix: true })}`
-      : "Pending";
+  const nextRun = useRelativeTime(followup.next_run_time);
+  const nextRunLabel = nextRun ? `Next ${nextRun}` : "Pending";
   const nextRunTitle = formatNextRunTitle(
     followup.next_run_time,
     followup.user_timezone ?? followup.timezone,
