@@ -92,7 +92,7 @@ from backend.util.exceptions import (
     UserPaywalledError,
     get_execution_failure_reason,
 )
-from backend.util.file import clean_exec_files
+from backend.util.file import clean_exec_files, remove_staged_copies_on_exit
 from backend.util.llm.saturation import set_executor_id
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import AppProcess, freeze_startup_heap, set_service_name
@@ -1431,15 +1431,18 @@ class ExecutionProcessor:
             )
 
         async def _drive_execution() -> None:
-            async for output_name, output_data in execute_node(
-                node=node,
-                data=node_exec,
-                execution_processor=self,
-                execution_stats=stats,
-                nodes_input_masks=nodes_input_masks,
-                nodes_to_skip=nodes_to_skip,
-            ):
-                await persist_output(output_name, output_data)
+            # The local copies the block makes of its input files go when
+            # it's done; the run's folder goes when the run is.
+            with remove_staged_copies_on_exit():
+                async for output_name, output_data in execute_node(
+                    node=node,
+                    data=node_exec,
+                    execution_processor=self,
+                    execution_stats=stats,
+                    nodes_input_masks=nodes_input_masks,
+                    nodes_to_skip=nodes_to_skip,
+                ):
+                    await persist_output(output_name, output_data)
 
         try:
             log_metadata.info(f"Start node execution {node_exec.node_exec_id}")

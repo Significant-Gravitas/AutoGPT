@@ -230,7 +230,8 @@ local_path = await store_media_file(
     execution_context=ctx,
     return_format="for_local_processing"
 )
-# Returns: "image.png" (relative path in exec_file dir)
+# Returns: "3f2a…/image.png" (relative path in exec_file dir; each file
+# stored locally keeps its name, in a folder of its own)
 
 # For external APIs (Replicate, OpenAI, etc.)
 data_uri = await store_media_file(
