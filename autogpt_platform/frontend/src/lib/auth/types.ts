@@ -10,7 +10,8 @@ export interface User {
   email: string;
   // Snake_case to match the Supabase shape. Lets the change-email UI branch:
   // verified users get a confirmation link to their current address, unverified
-  // users have the change applied immediately (see lib/auth/auth.ts changeEmail).
+  // users a link to the new one, or with email verification off an immediate
+  // change (see lib/auth/auth.ts changeEmail).
   email_verified?: boolean;
   role?: string;
   created_at?: string;
