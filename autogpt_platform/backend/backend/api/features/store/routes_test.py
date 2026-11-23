@@ -994,6 +994,51 @@ def test_get_submissions_malformed_request(mocker: pytest_mock.MockFixture):
     mock_db_call.assert_not_called()
 
 
+_LIVE_SUBMISSION = store_model.LiveStoreSubmission(
+    listing_id="listing-1",
+    user_id="test-user-id",
+    slug="listed-agent",
+    listing_version_id="listing-version-1",
+    listing_version=1,
+    graph_id="graph-1",
+    graph_version=1,
+    name="Listed Agent",
+    sub_heading="Listed subheading",
+    description="Listed description",
+    instructions=None,
+    categories=["marketing"],
+    image_urls=[],
+    video_url=None,
+    agent_output_demo_url=None,
+    submitted_at=FIXED_NOW,
+    changes_summary=None,
+    status=prisma.enums.SubmissionStatus.APPROVED,
+    recommended_schedule_cron="0 9 * * 1",
+)
+
+
+@pytest.mark.parametrize(
+    "live", [_LIVE_SUBMISSION, None], ids=["listed", "nothing-live"]
+)
+def test_get_live_submission_reads_the_callers_listing_in_their_org(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+    live: store_model.LiveStoreSubmission | None,
+) -> None:
+    lookup = mocker.patch(
+        "backend.api.features.store.live_submission.get_live_submission",
+        return_value=live,
+    )
+
+    response = client.get("/submissions/live/graph-1")
+
+    assert response.status_code == 200
+    assert response.json() == (live.model_dump(mode="json") if live else None)
+    lookup.assert_called_once_with(
+        user_id=test_user_id, graph_id="graph-1", organization_id=TEST_ORG_ID
+    )
+
+
 class _DownloadedGraph(BaseModel):
     id: str
     version: int

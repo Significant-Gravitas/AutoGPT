@@ -71,6 +71,7 @@ export interface ExpertSetupItem {
 export const integrationKeys = {
   credentials: ["integrations", "credentials"] as const,
   providers: ["integrations", "providers"] as const,
+  systemProviders: ["integrations", "providers", "system"] as const,
   expertCredentials: (expertID: string) =>
     ["experts", expertID, "credentials"] as const,
   expertSetup: ["experts", "setup"] as const,
@@ -336,6 +337,11 @@ export function parseProviders(value: unknown): ProviderInfo[] {
 
 export async function listProviders() {
   return parseProviders(await apiRequest<unknown>("/api/integrations/providers"));
+}
+
+/** The services the platform pays for, which nobody has to connect. */
+export async function listSystemProviders() {
+  return strings(await apiRequest<unknown>("/api/integrations/providers/system"));
 }
 
 const SETUP_RESOLUTIONS = ["connect", "allow", "inputs", "workflow"] as const;

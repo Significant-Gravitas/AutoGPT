@@ -7,7 +7,12 @@ import posthog from "posthog-js";
 import { resetAnonymousID } from "./anonymous-id";
 import { getPostHogBaseProperties } from "./posthog-base-properties";
 
-export function resetAnalyticsIdentity(): void {
+// keepLanding: the new identity is for the visitor who loaded this page (a
+// spent id rotated once the session is known), not the next account after a
+// sign-out or switch, so this page's landing stays as its first.
+export function resetAnalyticsIdentity({
+  keepLanding = false,
+}: { keepLanding?: boolean } = {}): void {
   let anonymousID: string | undefined;
   let didReset = false;
   try {
@@ -20,7 +25,7 @@ export function resetAnalyticsIdentity(): void {
     anonymousID = undefined;
   }
   if (didReset) restoreBaseProperties();
-  resetAnonymousID(anonymousID);
+  resetAnonymousID({ nextID: anonymousID, keepLanding });
   // With consent reset() rewrote PostHog's storage with the new identity;
   // without it (declined or still pending) the old one would stay stored.
   if (!hasConsentFor("analytics")) {

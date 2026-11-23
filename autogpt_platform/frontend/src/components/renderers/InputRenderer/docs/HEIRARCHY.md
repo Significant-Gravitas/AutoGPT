@@ -20,6 +20,7 @@ FormRenderer2 → Form (RJSF) → ObjectFieldTemplate → FieldTemplate → Widg
 
 - RJSF themed form
 - Combines: templates + widgets + fields
+- Builds the theme on first render, never when the module loads, so the renderer's modules load in any order (`__tests__/module-load-order.test.ts`)
 
 ### 3. Templates (decide layout/structure)
 

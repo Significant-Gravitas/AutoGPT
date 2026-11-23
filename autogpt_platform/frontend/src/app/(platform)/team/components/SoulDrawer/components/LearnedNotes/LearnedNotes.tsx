@@ -1,9 +1,9 @@
 "use client";
 
-import { formatWhen } from "@/app/(platform)/settings/memory/helpers";
 import type { MemoryFact } from "@/app/api/__generated__/models/memoryFact";
 import { Button } from "@/components/atoms/Button/Button";
 import { Link } from "@/components/atoms/Link/Link";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { SoulSectionTitle } from "../../SoulSectionTitle";
@@ -72,7 +72,7 @@ function NotesList({
                 {fact.fact || `${fact.source} → ${fact.target}`}
               </Text>
               <Text variant="small" as="span" tone="subtle">
-                {formatWhen(fact.created_at)}
+                <RelativeTime date={fact.created_at} />
               </Text>
             </div>
             <Button

@@ -47,6 +47,11 @@ class MissingConfigError(Exception):
     """The attempted operation requires configuration which is not available"""
 
 
+class CredentialsExpiredError(ValueError):
+    """A stored API key is past its ``expires_at``. A ``ValueError``, so the
+    executor counts it as the user's to fix, like a credential that is gone."""
+
+
 class NotFoundError(ValueError):
     """The requested record was not found, resulting in an error condition"""
 

@@ -100,6 +100,13 @@ class ModelMetadata(NamedTuple):
     price_tier: Literal[1, 2, 3]
 
 
+# Far more "/" than any spelling of a model has: an id has at most one, and a
+# provider prefix adds one ("openrouter/openai/gpt-oss-120b"). A value with
+# more names no model. ``LLMModel._missing_`` strips one prefix per recursion,
+# so the enum and llm_model_named both refuse such a value up front.
+_MAX_INPUT_SLASHES = 16
+
+
 class LLMModelMeta(EnumMeta):
     pass
 
@@ -120,7 +127,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
         2. Generic provider prefix strip — e.g.
            ``anthropic/claude-sonnet-4-6`` → ``claude-sonnet-4-6``.
         """
-        if not isinstance(value, str):
+        if not isinstance(value, str) or value.count("/") > _MAX_INPUT_SLASHES:
             return None
         alias = _OPENROUTER_ALIASES.get(value)
         if alias is not None:
@@ -438,6 +445,9 @@ def _picker_hidden_slugs(payload: "CatalogPayload") -> frozenset[str]:
 
 
 _PICKER_HIDDEN_SLUGS = _picker_hidden_slugs(get_catalog())
+_SWITCHED_OFF_SLUGS = frozenset(
+    m.slug for m in get_catalog().models if not m.is_enabled
+)
 
 
 def _retired_model_fallbacks(
@@ -478,31 +488,52 @@ def is_llm_model_field(field: "FieldInfo") -> bool:
 
 
 def _today() -> date:
-    """Today in UTC, against which a model's shutdown date is read."""
+    """Today in UTC, against which a model's shutdown date is read: when a
+    run starts (``Block._execute``), and by a charge or an estimate made
+    before one does. A run that has started settles on the model it recorded
+    then (``NodeExecutionStats.resolved_model``), whatever the date."""
     return datetime.now(timezone.utc).date()
+
+
+# The most "/" in any model id or OpenRouter alias. ``_missing_`` strips one
+# provider prefix per recursion and stops at the first part it knows, and no
+# part with more "/" than this can be one.
+_MAX_KNOWN_NAME_SLASHES = max(
+    name.count("/")
+    for name in (*(model.value for model in LLMModel), *_OPENROUTER_ALIASES)
+)
+
+
+def llm_model_named(value: object) -> "LLMModel | None":
+    """The ``LLMModel`` *value* names, in any spelling the enum takes
+    (``openai/gpt-5-2025-08-07`` too); None when it names none."""
+    if not isinstance(value, str) or value.count("/") > _MAX_INPUT_SLASHES:
+        return None
+    # The enum resolves *value* as it resolves its end with _MAX_KNOWN_NAME_SLASHES
+    # "/", since every longer part names nothing. Handing it only that end
+    # keeps a chain of prefixes from costing one recursion each.
+    _, *end = value.rsplit("/", _MAX_KNOWN_NAME_SLASHES + 1)
+    if len(end) > _MAX_KNOWN_NAME_SLASHES:
+        value = "/".join(end)
+    try:
+        return LLMModel(value)
+    except ValueError:
+        return None
 
 
 def scheduled_model_fallback(value: object) -> "tuple[LLMModel, date | None] | None":
     """*value*'s catalog fallback and the day blocks start running it (None:
     at once), whether or not that day has come; None when it has none. Takes
     any spelling the enum takes (``openai/gpt-5-2025-08-07`` too)."""
-    if not isinstance(value, str):
-        return None
-    try:
-        return RETIRED_MODEL_FALLBACKS.get(LLMModel(value))
-    except (ValueError, RecursionError):
-        # Hundreds of provider prefixes recurse through ``_missing_``. Such a
-        # value is unknown, and the block's input check refuses it as before.
-        return None
+    model = llm_model_named(value)
+    return None if model is None else RETIRED_MODEL_FALLBACKS.get(model)
 
 
 def resolved_model_value(value: object) -> str:
     """The ``LLMModel`` value *value* resolves to, as a log names it: the
     enum's spelling, not the stored one. Its text when it resolves to none."""
-    try:
-        return LLMModel(value).value
-    except (ValueError, RecursionError):
-        return str(value)
+    model = llm_model_named(value)
+    return str(value) if model is None else model.value
 
 
 def retired_model_fallback(value: object) -> "LLMModel | None":
@@ -517,6 +548,14 @@ def retired_model_fallback(value: object) -> "LLMModel | None":
     if shutdown_at is not None and _today() < shutdown_at:
         return None
     return fallback
+
+
+def is_switched_off(value: object) -> bool:
+    """Whether *value* names, in any spelling the enum takes, a model the
+    catalog has switched off (``is_enabled=False``). A block still runs one,
+    so stored workflows keep working, but new work must not pick one."""
+    model = llm_model_named(value)
+    return model is not None and model.value in _SWITCHED_OFF_SLUGS
 
 
 def _default_model_from_catalog() -> LLMModel:
@@ -588,9 +627,10 @@ LEGACY_MODEL_MAPPINGS: dict[str, LLMModel] = {
     # Shut down by OpenAI. These graphs move unasked at the next start, so
     # each goes to the current model at its price, not to OpenAI's listed
     # GPT-5.6 replacement, which can cost several times more; o1 keeps its
-    # listed gpt-5.6-sol, which costs less than o1 did. Codex's own list also
-    # offers gpt-5.1-codex: the boot pass rewrites only LLMModel fields and
-    # presets' overrides of those nodes, so Codex nodes keep it.
+    # listed gpt-5.6-sol, which costs less than o1 did. The boot pass rewrites
+    # only LLMModel fields and presets' overrides of those nodes, so Codex
+    # nodes keep a stored gpt-5.1-codex, which the Codex block reads as its
+    # own gpt-5.3-codex.
     "o1": LLMModel.GPT5_6_SOL,
     "o1-mini": LLMModel.GPT6_1_TERRA,
     "o3-mini": LLMModel.GPT6_1_TERRA,

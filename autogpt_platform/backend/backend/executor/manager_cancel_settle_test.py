@@ -2,6 +2,9 @@
 bookkeeping short: the post-flight charge, the node's final status and the
 run's totals are still written before the run's cleanup returns, and the
 cancel is not reported as an error.
+
+A stop must also end an Orchestrator that is waiting for one of its tool
+nodes, and each run keeps its state on a processor of its own.
 """
 
 import asyncio
@@ -10,6 +13,7 @@ import re
 import threading
 import time
 import uuid
+from collections import defaultdict
 from concurrent.futures import Future
 from contextlib import ExitStack, contextmanager
 from types import SimpleNamespace
@@ -18,6 +22,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.blocks._base import BlockType
+from backend.blocks.orchestrator import ExecutionParams, OrchestratorBlock, ToolInfo
 from backend.data.execution import ExecutionContext, ExecutionStatus, NodeExecutionEntry
 from backend.data.graph import Node
 from backend.data.model import GraphExecutionStats
@@ -169,6 +174,78 @@ def _start_node(loop, run: _Run, processor, progress: NodeExecutionProgress):
     future = asyncio.run_coroutine_threadsafe(run.node_run(processor, progress), loop)
     progress.add_task("node-exec-1", future)
     return future
+
+
+def _processor_in_a_run(run: _Run) -> ExecutionProcessor:
+    """A processor holding a run's state, as _on_graph_execution leaves it."""
+    processor = ExecutionProcessor()
+    processor.running_node_execution = defaultdict(NodeExecutionProgress)
+    processor.execution_stats = run.graph_stats
+    processor.execution_stats_lock = threading.Lock()
+    return processor
+
+
+async def _orchestrator_tool_call(processor: ExecutionProcessor) -> dict:
+    """An Orchestrator's call of its tool ``node-1``, which the processor runs
+    as ``node-exec-1``. Returns the tool response for the agent loop."""
+    db_client = MagicMock(
+        get_node=AsyncMock(return_value=Node(id="node-1", block_id="block-1")),
+        upsert_execution_input=AsyncMock(
+            return_value=(SimpleNamespace(node_exec_id="node-exec-1"), {"url": "x"})
+        ),
+        get_execution_outputs_by_node_exec_id=AsyncMock(return_value={}),
+    )
+    tool_info = ToolInfo(
+        tool_call=SimpleNamespace(id="call-1"),
+        tool_name="fetch",
+        tool_def={"function": {"name": "fetch", "_sink_node_id": "node-1"}},
+        input_data={"url": "x"},
+        field_mapping={},
+    )
+    params = ExecutionParams(
+        user_id="user-1",
+        graph_id="graph-1",
+        node_id="orchestrator",
+        graph_version=1,
+        graph_exec_id=GRAPH_EXEC_ID,
+        node_exec_id="orchestrator-exec",
+        execution_context=ExecutionContext(root_execution_id=GRAPH_EXEC_ID),
+    )
+    with (
+        patch(
+            "backend.blocks.orchestrator.get_database_manager_async_client",
+            return_value=db_client,
+        ),
+        patch.object(processor, "charge_node_usage", AsyncMock(return_value=(0, 0))),
+    ):
+        return await OrchestratorBlock()._execute_single_tool_with_manager(
+            tool_info, params, processor
+        )
+
+
+def _start_orchestrator(loop, processor: ExecutionProcessor):
+    """Start an Orchestrator node that makes one tool call, tracked by its run.
+    Returns what the call handed back to the agent loop, if anything, and an
+    event set when the Orchestrator ends."""
+    handed_back: list[dict] = []
+    ended = threading.Event()
+
+    async def orchestrator():
+        try:
+            handed_back.append(await _orchestrator_tool_call(processor))
+        finally:
+            ended.set()
+
+    processor.running_node_execution["orchestrator"].add_task(
+        "orchestrator-exec", asyncio.run_coroutine_threadsafe(orchestrator(), loop)
+    )
+    return handed_back, ended
+
+
+def _stop_the_run(processor: ExecutionProcessor) -> None:
+    """Cancel the run's nodes, as _cleanup_graph_execution does."""
+    for progress in processor.running_node_execution.values():
+        progress.stop()
 
 
 @pytest.mark.asyncio
@@ -331,10 +408,10 @@ def test_a_stopped_run_keeps_its_worker_until_its_blocked_node_ends():
     processor = ExecutionProcessor()
     progress = NodeExecutionProgress()
 
-    def stopped_run(*_args):
+    def stopped_run(run_processor: ExecutionProcessor, *_args):
         # What a stop does: cancel the node, wait out the grace, end the run
-        processor.running_node_execution = {"node-1": progress}
-        _start_node(loop, run, processor, progress)
+        run_processor.running_node_execution = {"node-1": progress}
+        _start_node(loop, run, run_processor, progress)
         assert block_started.wait(timeout=5)
         progress.stop(stop_requested=True)
         progress.wait_for_done(timeout=5)
@@ -352,7 +429,7 @@ def test_a_stopped_run_keeps_its_worker_until_its_blocked_node_ends():
             )
         )
         stack.enter_context(
-            patch.object(processor, "on_graph_execution", new=stopped_run)
+            patch.object(ExecutionProcessor, "on_graph_execution", new=stopped_run)
         )
         stack.enter_context(
             patch("backend.executor.utils.NODE_UNWIND_GRACE_SECONDS", 0.1)
@@ -508,6 +585,142 @@ def test_a_tool_node_run_inline_holds_the_cleanup_only_for_itself():
 
         orchestrator_ends.set()
         orchestrator_run.result(timeout=5)
+
+
+def test_a_stop_during_a_tool_call_ends_the_orchestrator():
+    """The tool node's own task takes the stop's cancel and settles as
+    TERMINATED; the Orchestrator must end with the stop rather than read it as
+    a failed tool call and carry on after its run has ended."""
+    block_started = threading.Event()
+
+    async def waiting_block(**kwargs):
+        block_started.set()
+        await asyncio.Event().wait()
+        yield  # pragma: no cover - makes this an async generator
+
+    run = _Run(threading.Event())
+    processor = _processor_in_a_run(run)
+    with _node_loop() as loop, ExitStack() as stack:
+        run.patches(stack)
+        stack.enter_context(
+            patch("backend.executor.manager.execute_node", new=waiting_block)
+        )
+        handed_back, ended = _start_orchestrator(loop, processor)
+        assert block_started.wait(timeout=5)
+
+        _stop_the_run(processor)
+
+        assert ended.wait(timeout=5)
+        assert handed_back == []
+        assert run.settle_call()["status"] == ExecutionStatus.TERMINATED
+
+
+def test_a_stop_while_a_tool_node_settles_ends_the_orchestrator():
+    """A stop that lands once the tool node's block has finished ends in
+    on_node_execution's error logger, which returns None; the Orchestrator
+    must still end with it."""
+    charge_answers = threading.Event()
+    run = _Run(threading.Event(), _until(charge_answers))
+    processor = _processor_in_a_run(run)
+    with _node_loop() as loop, ExitStack() as stack:
+        run.patches(stack)
+        stack.enter_context(
+            patch.object(processor, "_on_node_execution", new=_completed_block)
+        )
+        handed_back, ended = _start_orchestrator(loop, processor)
+        assert run.charge_started.wait(timeout=5)
+
+        _stop_the_run(processor)
+        charge_answers.set()
+
+        assert ended.wait(timeout=5)
+        assert handed_back == []
+        assert run.settle_call()["status"] == ExecutionStatus.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_a_stopped_tool_node_ends_a_call_whose_task_was_not_cancelled():
+    """In extended-thinking mode the tool call runs in the SDK's own task,
+    which a stop does not cancel: the stopped tool node alone ends the call."""
+    charge_answers = asyncio.Event()
+    run = _Run(asyncio.Event(), charge_answers.wait)
+    processor = _processor_in_a_run(run)
+    with ExitStack() as stack:
+        run.patches(stack)
+        stack.enter_context(
+            patch.object(processor, "_on_node_execution", new=_completed_block)
+        )
+        tool_call = asyncio.ensure_future(_orchestrator_tool_call(processor))
+        await run.charge_started.wait()
+
+        processor.running_node_execution["node-1"].stop()
+        charge_answers.set()
+        with pytest.raises(asyncio.CancelledError):
+            await tool_call
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_tool_call_releases_the_tool_nodes_future():
+    """The block's time limit cancels the Orchestrator's task with its run
+    still going: the tool call ends with that cancel, and leaves the future
+    the run tracks the tool node by done, so the run doesn't wait on it."""
+    block_started = asyncio.Event()
+
+    async def waiting_block(**kwargs):
+        block_started.set()
+        await asyncio.Event().wait()
+        yield  # pragma: no cover - makes this an async generator
+
+    run = _Run(asyncio.Event())
+    processor = _processor_in_a_run(run)
+    with ExitStack() as stack:
+        run.patches(stack)
+        stack.enter_context(
+            patch("backend.executor.manager.execute_node", new=waiting_block)
+        )
+        tool_call = asyncio.ensure_future(_orchestrator_tool_call(processor))
+        await block_started.wait()
+
+        tool_call.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await tool_call
+
+    assert run.settle_call()["status"] == ExecutionStatus.TERMINATED
+    assert processor.running_node_execution["node-1"].is_done()
+
+
+def test_each_run_keeps_its_state_on_a_processor_of_its_own():
+    """A tool call made after its run has ended lands in that run's state."""
+    runs: list[ExecutionProcessor] = []
+
+    def on_graph_execution(self, graph_exec, cancel, cluster_lock):
+        self.running_node_execution = defaultdict(NodeExecutionProgress)
+        self.execution_stats = GraphExecutionStats()
+        self.execution_stats_lock = threading.Lock()
+        runs.append(self)
+
+    with (
+        patch.object(
+            manager_module._tls, "processor", ExecutionProcessor(), create=True
+        ),
+        patch.object(ExecutionProcessor, "on_graph_execution", on_graph_execution),
+    ):
+        for _ in range(2):
+            manager_module.execute_graph(MagicMock(), threading.Event(), MagicMock())
+    ended_run, next_run = runs
+
+    run = _Run(threading.Event())
+    with _node_loop() as loop, ExitStack() as stack:
+        run.patches(stack)
+        stack.enter_context(
+            patch("backend.executor.manager.execute_node", new=_block_with_no_outputs)
+        )
+        asyncio.run_coroutine_threadsafe(
+            _orchestrator_tool_call(ended_run), loop
+        ).result(timeout=5)
+
+    assert "node-1" in ended_run.running_node_execution
+    assert not next_run.running_node_execution
 
 
 def test_the_unwind_grace_is_one_deadline_for_the_whole_cleanup():

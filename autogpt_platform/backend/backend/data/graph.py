@@ -2974,18 +2974,95 @@ def _legacy_value_aliases(legacy_value: str, replacement: LLMModel) -> set[str]:
     return {legacy_value, f"{replacement.metadata.provider}/{legacy_value}"}
 
 
+# What ``migrate_llm_models`` logs as the source of a catch-all move.
+_OUTSIDE_LLM_MODEL = "a value outside LLMModel"
+# Where a table's rows go in the boot log's [nodes, preset overrides] counts.
+_NODES, _PRESETS = 0, 1
+
+# The boot pass's statements. $1 is the field as a JSON path; $2 is the
+# ``{stored value: replacement}`` object of ``_legacy_rewrites`` (targeted
+# statements) or the fallback model (catch-alls); the next ones scope a
+# statement to the blocks with that field, and a catch-all's last one holds
+# every LLMModel value, the values it leaves alone. A targeted statement moves
+# every legacy spelling at once and returns the rows it moved per (stored
+# value, replacement), which the boot log reports.
+_NODE_MOVES = """
+    WITH moved AS (
+        UPDATE {schema_prefix}"AgentNode" AS n
+        SET "constantInput" = jsonb_set(
+            n."constantInput", $1, to_jsonb(m."replacement"), true
+        )
+        FROM jsonb_each_text(($2)::jsonb) AS m("stored", "replacement")
+        WHERE n."agentBlockId" = ANY(($3)::text[])
+        AND n."constantInput" ? ($4)::text
+        AND n."constantInput"->>($4)::text = m."stored"
+        RETURNING m."stored", m."replacement"
+    )
+    SELECT "stored", "replacement", COUNT(*)::int AS "rows"
+    FROM moved
+    GROUP BY "stored", "replacement"
+    """
+_NODE_CATCH_ALL = """
+    UPDATE {schema_prefix}"AgentNode"
+    SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
+    WHERE "agentBlockId" = ANY(($3)::text[])
+    AND "constantInput" ? ($4)::text
+    AND "constantInput"->>($4)::text <> ALL(($5)::text[])
+    """
+# ``io."agentPresetId" IS NOT NULL`` bounds both preset statements to preset
+# rows. Without it the planner walks the whole execution-I/O table, every row
+# run outputs included, at every boot. Unlike the node statements, the preset
+# statements take the block ids as a JSON array: with ``= ANY($4::text[])``
+# the planner can compare every matching preset row with every LLM node,
+# where this form keeps the lookup through the preset's graph.
+_PRESET_MOVES = """
+    WITH moved AS (
+        UPDATE {schema_prefix}"AgentNodeExecutionInputOutput" AS io
+        SET "data" = jsonb_set(io."data"::jsonb, $1, to_jsonb(m."replacement"), true)
+        FROM {schema_prefix}"AgentPreset" AS p, {schema_prefix}"AgentNode" AS n,
+            jsonb_each_text(($2)::jsonb) AS m("stored", "replacement")
+        WHERE io."agentPresetId" IS NOT NULL
+        AND io."agentPresetId" = p."id"
+        AND n."agentGraphId" = p."agentGraphId"
+        AND n."agentGraphVersion" = p."agentGraphVersion"
+        AND io."name" = ($3)::text || split_part(n."id", '-', 1)
+        AND n."agentBlockId" IN (SELECT jsonb_array_elements_text(($4)::jsonb))
+        AND io."data"::jsonb ? ($5)::text
+        AND io."data"::jsonb->>($5)::text = m."stored"
+        RETURNING m."stored", m."replacement"
+    )
+    SELECT "stored", "replacement", COUNT(*)::int AS "rows"
+    FROM moved
+    GROUP BY "stored", "replacement"
+    """
+_PRESET_CATCH_ALL = """
+    UPDATE {schema_prefix}"AgentNodeExecutionInputOutput" AS io
+    SET "data" = jsonb_set(io."data"::jsonb, $1, to_jsonb($2), true)
+    FROM {schema_prefix}"AgentPreset" AS p, {schema_prefix}"AgentNode" AS n
+    WHERE io."agentPresetId" IS NOT NULL
+    AND io."agentPresetId" = p."id"
+    AND n."agentGraphId" = p."agentGraphId"
+    AND n."agentGraphVersion" = p."agentGraphVersion"
+    AND io."name" = ($3)::text || split_part(n."id", '-', 1)
+    AND n."agentBlockId" IN (SELECT jsonb_array_elements_text(($4)::jsonb))
+    AND io."data"::jsonb ? ($5)::text
+    AND io."data"::jsonb->>($5)::text <> ALL(($6)::text[])
+    """
+
+
 async def migrate_llm_models(fallback: LLMModel):
     """
     Rewrite legacy LLM model values to in-enum equivalents.
 
-    Runs in two passes per LLMModel field:
-      1. Family-aware: for each (legacy_value, replacement) in
-         LEGACY_MODEL_MAPPINGS, rewrite that exact legacy value to its mapped
-         replacement so e.g. Claude Opus lands on a newer Opus, not the global
-         GPT default.
+    Runs two statements per table and LLMModel field name, each over every
+    block with that field:
+      1. Family-aware: rewrite every stored spelling of a
+         LEGACY_MODEL_MAPPINGS key to its mapped replacement, all of them in
+         one statement, so e.g. Claude Opus lands on a newer Opus, not the
+         global GPT default.
       2. Catch-all: any value still out-of-enum gets ``fallback``.
 
-    Both passes run against two tables:
+    Both run against two tables:
       * ``AgentNode.constantInput`` — saved graph definitions (scoped by
         ``agentBlockId`` because we know the LLMModel field name per block).
       * ``AgentNodeExecutionInputOutput.data`` where ``agentPresetId`` is set —
@@ -2993,6 +3070,10 @@ async def migrate_llm_models(fallback: LLMModel):
         node's ``NODE_INPUT_MASK_PREFIX`` key. A row is rewritten only when its
         node is a block with that LLMModel field: other blocks' own ``model``
         lists (Codex, Stagehand) share values with ``LLMModel``.
+
+    Every API pod awaits this before it serves, so the number of statements
+    depends only on the number of LLMModel field names, not on the map or the
+    blocks.
 
     Logs, at INFO, how many nodes and preset overrides moved from each stored
     value to its replacement, so an install's log shows what changed.
@@ -3004,109 +3085,28 @@ async def migrate_llm_models(fallback: LLMModel):
     if not llm_model_fields:
         return
 
-    enum_values = [v.value for v in LLMModel]
-    escaped_enum_values = repr(tuple(enum_values))  # hack but works
-
-    node_targeted_query = """
-        UPDATE {schema_prefix}"AgentNode"
-        SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
-        WHERE "agentBlockId" = $3
-        AND "constantInput" ? ($4)::text
-        AND "constantInput"->>($4)::text = $5
-        """
-    node_fallback_query = f"""
-        UPDATE {{schema_prefix}}"AgentNode"
-        SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
-        WHERE "agentBlockId" = $3
-        AND "constantInput" ? ($4)::text
-        AND "constantInput"->>($4)::text NOT IN {escaped_enum_values}
-        """
-    # ``io."agentPresetId" IS NOT NULL`` bounds both preset statements to
-    # preset rows. Without it the planner walks the whole execution-I/O table,
-    # every row run outputs included, once per statement at every boot.
-    preset_targeted_query = """
-        UPDATE {schema_prefix}"AgentNodeExecutionInputOutput" AS io
-        SET "data" = jsonb_set(io."data"::jsonb, $1, to_jsonb($2), true)
-        FROM {schema_prefix}"AgentPreset" AS p, {schema_prefix}"AgentNode" AS n
-        WHERE io."agentPresetId" IS NOT NULL
-        AND io."agentPresetId" = p."id"
-        AND n."agentGraphId" = p."agentGraphId"
-        AND n."agentGraphVersion" = p."agentGraphVersion"
-        AND io."name" = ($3)::text || split_part(n."id", '-', 1)
-        AND n."agentBlockId" IN (SELECT jsonb_array_elements_text(($4)::jsonb))
-        AND io."data"::jsonb ? ($5)::text
-        AND io."data"::jsonb->>($5)::text = $6
-        """
-    preset_fallback_query = f"""
-        UPDATE {{schema_prefix}}"AgentNodeExecutionInputOutput" AS io
-        SET "data" = jsonb_set(io."data"::jsonb, $1, to_jsonb($2), true)
-        FROM {{schema_prefix}}"AgentPreset" AS p, {{schema_prefix}}"AgentNode" AS n
-        WHERE io."agentPresetId" IS NOT NULL
-        AND io."agentPresetId" = p."id"
-        AND n."agentGraphId" = p."agentGraphId"
-        AND n."agentGraphVersion" = p."agentGraphVersion"
-        AND io."name" = ($3)::text || split_part(n."id", '-', 1)
-        AND n."agentBlockId" IN (SELECT jsonb_array_elements_text(($4)::jsonb))
-        AND io."data"::jsonb ? ($5)::text
-        AND io."data"::jsonb->>($5)::text NOT IN {escaped_enum_values}
-        """
-
-    # (stored value, replacement) -> [nodes moved, preset overrides moved]
-    moved: dict[tuple[str, str], list[int]] = {}
-    outside_enum = "a value outside LLMModel"
-
-    def count(source: str, target: str, kind: int, rows: int) -> None:
-        moved.setdefault((source, target), [0, 0])[kind] += rows
-
-    # AgentNode pass — per (block_id, field_name).
-    for block_id, path in llm_model_fields.items():
-        for legacy_value, replacement in LEGACY_MODEL_MAPPINGS.items():
-            for stored_value in _legacy_value_aliases(legacy_value, replacement):
-                rows = await execute_raw_with_schema(
-                    node_targeted_query,
-                    [path],
-                    replacement.value,
-                    block_id,
-                    path,
-                    stored_value,
-                )
-                count(repr(stored_value), replacement.value, 0, rows)
-        rows = await execute_raw_with_schema(
-            node_fallback_query,
-            [path],
-            fallback.value,
-            block_id,
-            path,
+    rewrites = dumps(_legacy_rewrites())
+    llm_model_values = [model.value for model in LLMModel]
+    # (stored value, replacement) -> rows moved, indexed by _NODES and _PRESETS
+    moved: defaultdict[tuple[str, str], list[int]] = defaultdict(lambda: [0, 0])
+    for path in sorted(set(llm_model_fields.values())):
+        block_ids = sorted(b for b, field in llm_model_fields.items() if field == path)
+        tables = (
+            (_NODES, _NODE_MOVES, _NODE_CATCH_ALL, (block_ids, path)),
+            (
+                _PRESETS,
+                _PRESET_MOVES,
+                _PRESET_CATCH_ALL,
+                (NODE_INPUT_MASK_PREFIX, dumps(block_ids), path),
+            ),
         )
-        count(outside_enum, fallback.value, 0, rows)
-
-    # AgentPreset pass — per unique field name, over the node overrides whose
-    # node is a block with that field.
-    for path in set(llm_model_fields.values()):
-        block_ids = dumps(
-            sorted(block for block, field in llm_model_fields.items() if field == path)
-        )
-        for legacy_value, replacement in LEGACY_MODEL_MAPPINGS.items():
-            for stored_value in _legacy_value_aliases(legacy_value, replacement):
-                rows = await execute_raw_with_schema(
-                    preset_targeted_query,
-                    [path],
-                    replacement.value,
-                    NODE_INPUT_MASK_PREFIX,
-                    block_ids,
-                    path,
-                    stored_value,
-                )
-                count(repr(stored_value), replacement.value, 1, rows)
-        rows = await execute_raw_with_schema(
-            preset_fallback_query,
-            [path],
-            fallback.value,
-            NODE_INPUT_MASK_PREFIX,
-            block_ids,
-            path,
-        )
-        count(outside_enum, fallback.value, 1, rows)
+        for kind, moves, catch_all, scope in tables:
+            for row in await query_raw_with_schema(moves, [path], rewrites, *scope):
+                moved[repr(row["stored"]), row["replacement"]][kind] += row["rows"]
+            caught = await execute_raw_with_schema(
+                catch_all, [path], fallback.value, *scope, llm_model_values
+            )
+            moved[_OUTSIDE_LLM_MODEL, fallback.value][kind] += caught
 
     for (source, target), (nodes, presets) in sorted(moved.items()):
         if nodes or presets:
@@ -3114,6 +3114,19 @@ async def migrate_llm_models(fallback: LLMModel):
                 f"LLM model migration moved {nodes} node(s) and {presets} "
                 f"preset override(s) from {source} to '{target}'"
             )
+
+
+def _legacy_rewrites() -> dict[str, str]:
+    """``{stored value: replacement}`` for every stored spelling of a
+    LEGACY_MODEL_MAPPINGS key. A spelling two keys share keeps the first key's
+    replacement. No replacement may itself be a stored spelling: a statement
+    matches each row's value as it was before the statement, so a chain would
+    move a row only one step per boot."""
+    rewrites: dict[str, str] = {}
+    for legacy_value, replacement in LEGACY_MODEL_MAPPINGS.items():
+        for stored_value in _legacy_value_aliases(legacy_value, replacement):
+            rewrites.setdefault(stored_value, replacement.value)
+    return rewrites
 
 
 def find_llm_model_fields() -> dict[str, str]:

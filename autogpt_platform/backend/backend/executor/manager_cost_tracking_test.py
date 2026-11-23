@@ -186,7 +186,9 @@ def _make_db_client() -> MagicMock:
 def _make_block(has_credentials: bool = True) -> MagicMock:
     block = MagicMock()
     block.name = "TestBlock"
-    block.with_retired_models_replaced.side_effect = lambda input_data: input_data
+    block.with_retired_models_replaced.side_effect = lambda input_data, _model: (
+        input_data
+    )
     input_schema = MagicMock()
     if has_credentials:
         input_schema.get_credentials_fields.return_value = {"credentials": MagicMock()}
@@ -605,6 +607,14 @@ class TestMergeStats:
         assert stats.auth_provider == "codex"
         assert stats.execution_path == "codex_app_server"
         assert stats.resolved_model == "gpt-live"
+
+    def test_a_merge_keeps_the_model_the_run_started_on(self):
+        """A run is billed for the model it recorded first: merging in stats
+        that name another model, an inner run's say, doesn't change it."""
+        stats = NodeExecutionStats()
+        stats += NodeExecutionStats(resolved_model="gpt-5-mini-2025-08-07")
+        stats += NodeExecutionStats(resolved_model="gpt-6.1-terra")
+        assert stats.resolved_model == "gpt-5-mini-2025-08-07"
 
 
 # ---------------------------------------------------------------------------

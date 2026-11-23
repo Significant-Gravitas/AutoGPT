@@ -24,6 +24,7 @@ from . import exceptions as store_exceptions
 from . import submission_review_state
 from .model import MyAgentsSortBy, ProfileUpdateRequest, SubmissionStats
 from .submission_deletion_test_helpers import mock_submission_deletion
+from .submission_description import VersionHistoryRow
 
 
 @pytest.fixture(autouse=True)
@@ -417,14 +418,20 @@ def _patch_submission(
         "query_raw_with_schema",
         AsyncMock(return_value=[existing_listing] if existing_listing else []),
     )
-    mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
-    mock_slv.return_value.find_first = AsyncMock(
-        return_value=(
-            max(existing_listing.Versions or [], key=lambda v: v.version, default=None)
-            if existing_listing
-            else None
-        )
+    versions = (existing_listing.Versions or []) if existing_listing else []
+    mock_history = mocker.patch.object(VersionHistoryRow, "prisma")
+    mock_history.return_value.find_many = AsyncMock(
+        return_value=[
+            VersionHistoryRow(
+                id=v.id,
+                version=v.version,
+                description=v.description,
+                submissionStatus=v.submissionStatus,
+            )
+            for v in sorted(versions, key=lambda v: v.version, reverse=True)
+        ]
     )
+    mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
     mock_slv.return_value.create = AsyncMock(return_value=mock_version)
     mock_slv.return_value.update_many = AsyncMock()
     return mock_agent_graph.return_value, mock_slv.return_value

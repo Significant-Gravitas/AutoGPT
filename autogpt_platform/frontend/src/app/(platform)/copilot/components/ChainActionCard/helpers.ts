@@ -73,10 +73,11 @@ export interface ConnectorRequest {
   fields: CredentialField[];
   selected: Record<string, CredentialsMetaInput | undefined>;
   onChange: (key: string, value?: CredentialsMetaInput) => void;
-  /** The user finished a sign-in on this row. Distinct from a credential
-   *  merely being present, which is also true of a card re-rendered from
-   *  chat history. Carries the credential the sign-in reported, if it did. */
-  onConnected: (credentialId?: string) => void;
+  /** The user picked or signed in to an account for the field `key` on this
+   *  row. Distinct from a credential merely being present, which is also true
+   *  of a card re-rendered from chat history. Carries the credential the
+   *  sign-in reported, if it did. */
+  onConnected: (key: string, credentialId?: string) => void;
   /** A saved credential the provider refused when the tool ran. It stays on
    *  file, so without this the row would auto-select it and read Connected
    *  with nothing to click. */
@@ -185,7 +186,9 @@ export function toConnectorRows(
       select: (value?: CredentialsMetaInput) =>
         row.targets.forEach(({ request, key }) => request.onChange(key, value)),
       onConnected: (credentialId?: string) =>
-        row.targets.forEach(({ request }) => request.onConnected(credentialId)),
+        row.targets.forEach(({ request, key }) =>
+          request.onConnected(key, credentialId),
+        ),
     };
   });
 }
