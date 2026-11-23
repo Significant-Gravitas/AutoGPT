@@ -5,13 +5,16 @@ through the real processor; these pin the helper's other cases.
 """
 
 import asyncio
+import logging
 
 import pytest
 
+from backend.copilot import deferred_cancel
 from backend.copilot.deferred_cancel import DeferredCancel
 
 # The longest any one wait here may take. The tests wait on events, never on
-# time, so this only ends a run that hangs.
+# time, so this only ends a run that hangs. They wait through asyncio.shield:
+# a task running DeferredCancel would hold back the timeout's own cancel.
 _HANG_SECONDS = 30
 
 
@@ -32,7 +35,7 @@ async def test_a_step_on_its_own_task_finishes(cancelled: bool):
         if cancelled:
             cleanup.cancel()
         release.set()
-        assert await cleanup == "done"
+        assert await asyncio.shield(cleanup) == "done"
 
     assert (deferred.held is not None) is cancelled
 
@@ -53,7 +56,7 @@ async def test_a_steps_error_still_reaches_the_cleanup_after_a_cancel():
         cleanup.cancel()
         release.set()
         with pytest.raises(RuntimeError, match="redis down"):
-            await cleanup
+            await asyncio.shield(cleanup)
 
     assert isinstance(deferred.held, asyncio.CancelledError)
 
@@ -88,7 +91,35 @@ async def test_a_cancel_cuts_a_step_on_this_task_short_but_not_the_next():
     async with asyncio.timeout(_HANG_SECONDS):
         await started.wait()
         task.cancel()
-        await task
+        await asyncio.shield(task)
 
     assert ran == ["next step"]
     assert isinstance(deferred.held, asyncio.CancelledError)
+
+
+@pytest.mark.asyncio
+async def test_a_step_that_outlasts_a_held_cancel_is_given_up(monkeypatch, caplog):
+    """A hung step can't hold the turn's task for good once a cancel is held."""
+    monkeypatch.setattr(deferred_cancel, "HELD_CANCEL_STEP_LIMIT_SECONDS", 0.05)
+    deferred = DeferredCancel()
+    started, step_cancelled = asyncio.Event(), asyncio.Event()
+
+    async def hung_step() -> str:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            step_cancelled.set()
+            raise
+        return "never"
+
+    cleanup = asyncio.create_task(deferred.finish(hung_step()))
+    with caplog.at_level(logging.WARNING, logger=deferred_cancel.__name__):
+        async with asyncio.timeout(_HANG_SECONDS):
+            await started.wait()
+            cleanup.cancel()
+            assert await asyncio.shield(cleanup) is None
+            await step_cancelled.wait()
+
+    assert isinstance(deferred.held, asyncio.CancelledError)
+    assert "still running 0.05s after a cancel was held" in caplog.text

@@ -20,7 +20,7 @@ from autogpt_libs.auth.closed_accounts import ACCOUNT_CLOSED_DETAIL
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 
 from backend.api.features.experts.models import CheckedExpert
-from backend.copilot import stream_registry
+from backend.copilot import after_turn, stream_registry
 from backend.copilot.ai_spans import set_turn_span, trace_id_for
 from backend.copilot.background_execution import (
     background_timeout,
@@ -78,7 +78,10 @@ from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.copilot.service import strip_user_context_tags
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
-from backend.copilot.tools.agent_browser import close_browser_daemon
+from backend.copilot.tools.agent_browser import (
+    browser_daemon_may_run,
+    close_browser_daemon,
+)
 from backend.copilot.trial_cost_context import trial_cost_context
 from backend.copilot.trial_reads import SharedTrialReads, trial_reads_shared
 from backend.copilot.turn_pause import TurnPause, pause_from_part
@@ -382,6 +385,28 @@ async def _closing_at_model_output(
         # ``async for`` doesn't close the engine's stream on cancel or
         # GeneratorExit; its cleanup (the SDK stream lock) must still run.
         await stream.aclose()
+
+
+async def _newer_turn_runs_here(entry: CoPilotExecutionEntry) -> bool:
+    """Whether a newer turn of *entry*'s chat runs on this pod, which makes
+    the chat's browser daemon here that turn's to close, not *entry*'s.
+
+    A stopped turn's cleanup can outlast the worker's grace, after which the
+    chat's next turn may start (#17293). A newer turn on another pod leaves
+    this pod's daemon *entry*'s, and skipping its close would leave it
+    running. When the chat's turn can't be read, the daemon is closed. A chat
+    with no daemon here has nothing to leave, so its turn isn't read at all.
+    """
+    if not browser_daemon_may_run(entry.session_id):
+        return False
+    try:
+        active = await stream_registry.get_session(entry.session_id)
+    except Exception:
+        logger.warning("Could not read the chat's current turn", exc_info=True)
+        return False
+    if active is None or active.turn_id in ("", entry.turn_id):
+        return False
+    return after_turn.running_here(active.turn_id)
 
 
 async def _refuse_turn(
@@ -1223,8 +1248,13 @@ class CoPilotProcessor:
                         # A browser turn leaves a Chromium tree on this pod
                         # that nothing else ever stops; state is already
                         # persisted, so the next turn restores it wherever it
-                        # lands.
-                        if await deferred.finish(
+                        # lands. Read right before the close: a newer turn of
+                        # the chat on this pod owns the tree by then.
+                        if await deferred.finish(_newer_turn_runs_here(entry)):
+                            log.info(
+                                "A newer turn of this chat runs here; its browser stays"
+                            )
+                        elif await deferred.finish(
                             close_browser_daemon(entry.session_id)
                         ):
                             log.info("Browser daemon teardown attempted for this turn")

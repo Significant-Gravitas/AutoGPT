@@ -1,13 +1,13 @@
-"""A Stop's second cancel that lands in the turn's cleanup (#17286).
+"""A Stop's second cancel must not cut a turn's cleanup short (#17286).
 
 A Stop cancels the turn's task. When the turn hasn't ended within
 ``_CANCEL_GRACE_SECONDS``, the worker cancels it again and fails the session
-itself (``CoPilotProcessor._execute``). By then the turn can already be
-cleaning up, and the second cancel used to cut that cleanup short where it
-landed: the background subtasks the turn launched kept running, its exit
-stack was left for the garbage collector to close in another context (which
-also skipped a credit-billed turn's last charge), and a browser turn's
-Chromium tree outlived it.
+itself (``CoPilotProcessor._execute``), and that second cancel can land in
+the turn's cleanup. Every cleanup step must still run to its end: the
+subtasks the turn launched are stopped, its completion and scheduled run are
+recorded, a credit-billed turn is charged, its context variables are reset on
+its own task, and its browser is closed, unless a newer turn of the chat runs
+on this pod by then (#17293). The turn still ends cancelled.
 """
 
 import asyncio
@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, call
 import pytest
 
 from backend.copilot import (
+    after_turn,
     background_execution,
     credit_billing,
     stream_registry,
@@ -40,9 +41,14 @@ from backend.copilot.trial_cost_context import TrialCostContext, get_trial_cost_
 from backend.copilot.trial_reads import SharedTrialReads
 from backend.copilot.turn_pause import TurnPause
 
-# The longest any one wait here may take. The test waits on events, never on
+# The longest any one wait here may take. The tests wait on events, never on
 # time, so this only ends a run that hangs.
 _HANG_SECONDS = 30
+_USER_ID = "user-stop"
+_SESSION_ID = "session-stop"
+_TURN_ID = "turn-stop"
+_NEWER_TURN_ID = "turn-newer"
+_SUBTASK = "the turn's background subtask"
 
 
 @pytest.fixture
@@ -69,22 +75,164 @@ def exec_loop():
         # The reply ends at the Stop on its own, so both of the worker's
         # cancels land in the cleanup, with no cancel already on its way out.
         pytest.param(True, "subtasks", id="both-cancels-reach-the-cleanup"),
-        # The second cancel lands while the turn is charged its credits.
         pytest.param(False, "charge", id="second-cancel-during-the-charge"),
+        pytest.param(False, "record", id="second-cancel-during-the-record"),
     ],
 )
 def test_a_cancel_in_the_cleanup_waits_for_every_step(
     exec_loop, mocker, reply_sees_the_stop: bool, held_at: str
 ):
-    """The worker's grace runs out while the cleanup of a credit-billed turn
-    waits on a step: ``finish_background_execution``'s first await, or the
-    debit that charges the turn."""
-    user_id = "user-stop"
-    cost = TrialCostContext(user_id=user_id, trial_id="trial-1")
+    """The worker's grace runs out while the cleanup of a credit-billed,
+    scheduled browser turn waits on one of its steps."""
+    seen = _stop_a_turn(
+        exec_loop, mocker, reply_sees_the_stop=reply_sees_the_stop, held_at=held_at
+    )
+
+    assert seen == _expected(reply_sees_the_stop=reply_sees_the_stop, held_at=held_at)
+
+
+@pytest.mark.parametrize(
+    "newer_turn_runs_here, browser_closes",
+    [
+        # The browser is the newer turn's now, mid-step perhaps.
+        pytest.param(True, [], id="newer-turn-on-this-pod"),
+        # This pod's browser is still the stopped turn's: left open, nothing
+        # would ever close it.
+        pytest.param(False, [call(_SESSION_ID)], id="newer-turn-on-another-pod"),
+    ],
+)
+def test_a_stopped_turn_leaves_the_browser_of_a_newer_turn_here(
+    exec_loop, mocker, newer_turn_runs_here: bool, browser_closes: list
+):
+    """The chat's next turn starts while the stopped turn still cleans up."""
+    seen = _stop_a_turn(
+        exec_loop,
+        mocker,
+        chat_turn_at_close=_NEWER_TURN_ID,
+        newer_turn_runs_here=newer_turn_runs_here,
+    )
+
+    assert seen == _expected(browser_closes=browser_closes)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "daemon_here, chat_turn, newer_turn_runs_here, leaves_it",
+    [
+        # Nothing of the chat's on this pod: its turn isn't even read.
+        pytest.param(False, _NEWER_TURN_ID, True, False, id="no-daemon-here"),
+        pytest.param(True, _TURN_ID, False, False, id="still-this-turns"),
+        pytest.param(True, None, False, False, id="no-turn-recorded"),
+        pytest.param(True, _NEWER_TURN_ID, True, True, id="newer-turn-here"),
+        pytest.param(True, _NEWER_TURN_ID, False, False, id="newer-turn-elsewhere"),
+        pytest.param(True, RuntimeError("redis down"), True, False, id="unreadable"),
+    ],
+)
+async def test_only_a_newer_turn_here_keeps_the_stopped_turns_browser(
+    mocker,
+    daemon_here: bool,
+    chat_turn: "str | None | Exception",
+    newer_turn_runs_here: bool,
+    leaves_it: bool,
+):
     entry = CoPilotExecutionEntry(
-        session_id="session-stop",
-        turn_id="turn-stop",
-        user_id=user_id,
+        session_id=_SESSION_ID, turn_id=_TURN_ID, user_id=_USER_ID, message="hi"
+    )
+    mocker.patch.object(processor, "browser_daemon_may_run", return_value=daemon_here)
+    get_session = mocker.patch.object(
+        stream_registry,
+        "get_session",
+        AsyncMock(
+            side_effect=chat_turn if isinstance(chat_turn, Exception) else None,
+            return_value=(
+                None
+                if chat_turn is None or isinstance(chat_turn, Exception)
+                else _active_session(chat_turn)
+            ),
+        ),
+    )
+    mocker.patch.object(
+        processor.after_turn, "running_here", return_value=newer_turn_runs_here
+    )
+
+    assert await processor._newer_turn_runs_here(entry) is leaves_it
+    assert get_session.await_count == (1 if daemon_here else 0)
+
+
+def _expected(
+    *,
+    reply_sees_the_stop: bool = False,
+    held_at: str = "subtasks",
+    browser_closes: list | None = None,
+) -> dict:
+    """What a stopped turn's cleanup must have done (see _stop_a_turn)."""
+    fail_close = call(
+        _SESSION_ID, error_message=processor.SHUTDOWN_ERROR_MESSAGE, turn_id=_TURN_ID
+    )
+    turns_own = call(
+        _SESSION_ID,
+        error_message=stream_registry.CANCELLED_MESSAGE,
+        error_code=None,
+        skip_error_publish=True,
+        turn_id=_TURN_ID,
+    )
+    return {
+        "cancels in flight when the cleanup was held": 0 if reply_sees_the_stop else 1,
+        "subtasks stopped": [call([_SUBTASK])],
+        # The worker fails the session while the cleanup is held: before the
+        # turn's own completion when the subtasks are held, after it when a
+        # later step is.
+        "session completions": (
+            [fail_close, turns_own]
+            if held_at == "subtasks"
+            else [turns_own, fail_close]
+        ),
+        # Half a credit spent, rounded up when the turn ends.
+        "credits charged by the turn's end": [1],
+        "credits charged in all": [1],
+        "scheduled run recorded": [stream_registry.CANCELLED_MESSAGE],
+        "browser closes": (
+            [call(_SESSION_ID)] if browser_closes is None else browser_closes
+        ),
+        "turn's context after its cleanup": {
+            "shared trial reads": None,
+            "trial cost context": None,
+            "credit-billed turn": None,
+        },
+        "turn cancelled": True,
+        "different-Context errors": [],
+    }
+
+
+def _active_session(turn_id: str) -> stream_registry.ActiveSession:
+    """The chat's stream as the registry has it, on turn *turn_id*."""
+    return stream_registry.ActiveSession(
+        session_id=_SESSION_ID,
+        user_id=_USER_ID,
+        tool_call_id="chat_stream",
+        tool_name="chat",
+        turn_id=turn_id,
+    )
+
+
+def _stop_a_turn(
+    exec_loop: asyncio.AbstractEventLoop,
+    mocker,
+    *,
+    reply_sees_the_stop: bool = False,
+    held_at: str = "subtasks",
+    chat_turn_at_close: str = _TURN_ID,
+    newer_turn_runs_here: bool = False,
+) -> dict:
+    """Run a credit-billed, scheduled turn through the worker and Stop it.
+    The worker's grace runs out while its cleanup is held at *held_at*: the
+    subtasks' cancellation, the debit that charges the turn, or the record of
+    its scheduled run. Returns what the turn and its cleanup did."""
+    cost = TrialCostContext(user_id=_USER_ID, trial_id="trial-1")
+    entry = CoPilotExecutionEntry(
+        session_id=_SESSION_ID,
+        turn_id=_TURN_ID,
+        user_id=_USER_ID,
         message="hi",
         is_user_message=True,
         request_arrival_at=0.0,
@@ -92,25 +240,27 @@ def test_a_cancel_in_the_cleanup_waits_for_every_step(
     )
     pause = TurnPause(reason="daily")
     billed = CreditBilledTurn(
-        user_id=user_id, session_id=entry.session_id, cap_credits=10, refusal=pause
+        user_id=_USER_ID, session_id=_SESSION_ID, cap_credits=10, refusal=pause
     )
     cancel = threading.Event()
     replying = threading.Event()
     cleanup_held = threading.Event()
+    stop_seen = asyncio.Event()
     release_cleanup = asyncio.Event()
-    subtask = MagicMock(name="background subtask")
     charged: list[int] = []
+    recorded: list[str | None] = []
     turn: dict[str, asyncio.Task] = {}
     seen: dict = {}
 
     def turn_context() -> dict:
         return {
             "shared trial reads": trial_reads._shared_reads.get(),
-            "trial cost context": get_trial_cost_context(user_id),
-            "credit-billed turn": credit_billed_turn(user_id),
+            "trial cost context": get_trial_cost_context(_USER_ID),
+            "credit-billed turn": credit_billed_turn(_USER_ID),
         }
 
     async def hold() -> None:
+        seen["cancels in flight"] = turn["task"].cancelling()
         cleanup_held.set()
         await release_cleanup.wait()
 
@@ -120,23 +270,28 @@ def test_a_cancel_in_the_cleanup_waits_for_every_step(
         turn["task"] = task
         seen["context while replying"] = turn_context()
         # Half a credit: nothing is charged until the turn ends.
-        await record_credit_billed_cost(user_id, MICRODOLLARS_PER_CREDIT // 2)
+        await record_credit_billed_cost(_USER_ID, MICRODOLLARS_PER_CREDIT // 2)
         replying.set()
         if reply_sees_the_stop:
-            cancel.set()  # the user's Stop, which the turn sees at this chunk
-            yield StreamStatus(message="Working")
+            await stop_seen.wait()
+            yield StreamStatus(message="Working")  # the turn sees the Stop here
         await asyncio.Event().wait()  # until the Stop's cancel ends the reply
         yield StreamStatus(message="never reached")
 
     async def cancel_background_tasks(*_args):
         if held_at == "subtasks":
             await hold()
-        return [subtask]
+        return [_SUBTASK]
 
     async def spend_credits(*, cost: int, **_kwargs) -> None:
         if held_at == "charge":
             await hold()
         charged.append(cost)
+
+    async def record(turn_error: str | None) -> None:
+        if held_at == "record":
+            await hold()
+        recorded.append(turn_error)
 
     real_turn_transaction = processor.turn_transaction
 
@@ -154,12 +309,20 @@ def test_a_cancel_in_the_cleanup_waits_for_every_step(
         """The worker calls this once a second while it waits on the turn."""
         if not cancel.is_set():
             if replying.is_set():
-                cancel.set()  # the user's Stop: the next poll cancels the turn
+                cancel.set()  # the user's Stop
+                if reply_sees_the_stop:
+                    # The reply sees the Stop at its next chunk and ends on its
+                    # own. Held here until the cleanup is, the worker sees the
+                    # Stop only after that, so both its cancels land there.
+                    exec_loop.call_soon_threadsafe(stop_seen.set)
+                    cleanup_held.wait(_HANG_SECONDS)
             return
         # That poll cancelled the turn, and the next finds the grace run out:
         # by then, the turn's cleanup must be waiting where production's was.
         cleanup_held.wait(_HANG_SECONDS)
 
+    # What earlier tests left for the garbage collector is not this turn's.
+    gc.collect()
     errors: list[str] = []
     mocker.patch.object(
         sys,
@@ -177,19 +340,30 @@ def test_a_cancel_in_the_cleanup_waits_for_every_step(
     mocker.patch.object(processor, "refusal_for", AsyncMock(return_value=pause))
     mocker.patch.object(processor, "bill_to_credits", AsyncMock(return_value=billed))
     mocker.patch.object(
-        credit_billing,
-        "credit_db",
-        return_value=MagicMock(spend_credits=spend_credits),
+        credit_billing, "credit_db", return_value=MagicMock(spend_credits=spend_credits)
+    )
+    mocker.patch.object(
+        processor.ScheduledTurnWatch,
+        "for_entry",
+        return_value=MagicMock(record=record),
     )
     mocker.patch.object(processor, "ChatConfig", return_value=MagicMock(test_mode=True))
     mocker.patch.object(processor, "stream_chat_completion_dummy", return_value=None)
     mocker.patch.object(processor, "turn_transaction", watched_turn_transaction)
     mocker.patch(
         "backend.copilot.model.get_chat_session",
-        AsyncMock(return_value=ChatSession.new(user_id, dry_run=False)),
+        AsyncMock(return_value=ChatSession.new(_USER_ID, dry_run=False)),
     )
     mocker.patch.object(stream_registry, "publish_chunk", AsyncMock())
     mocker.patch.object(stream_registry, "stream_and_publish", reply)
+    # The turn used the browser, and the chat is on *chat_turn_at_close* when
+    # its cleanup reaches the close.
+    mocker.patch.object(processor, "browser_daemon_may_run", return_value=True)
+    mocker.patch.object(
+        stream_registry,
+        "get_session",
+        AsyncMock(return_value=_active_session(chat_turn_at_close)),
+    )
     mocker.patch.object(
         background_execution,
         "background_task_db",
@@ -209,6 +383,8 @@ def test_a_cancel_in_the_cleanup_waits_for_every_step(
     proc = processor.CoPilotProcessor()
     proc.execution_loop = exec_loop
 
+    if newer_turn_runs_here:
+        after_turn.turn_started(_NEWER_TURN_ID)
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             worker = pool.submit(proc.execute, entry, cancel, cluster_lock)
@@ -220,6 +396,7 @@ def test_a_cancel_in_the_cleanup_waits_for_every_step(
                 # Then the held step goes on. When the wait above fails, the
                 # Stop also has the worker give up before the pool shuts down.
                 cancel.set()
+                exec_loop.call_soon_threadsafe(stop_seen.set)
                 exec_loop.call_soon_threadsafe(release_cleanup.set)
     finally:
         # Nothing of the turn outlives the test, even when it fails above.
@@ -227,6 +404,8 @@ def test_a_cancel_in_the_cleanup_waits_for_every_step(
             asyncio.run_coroutine_threadsafe(_ended(turn["task"]), exec_loop).result(
                 timeout=_HANG_SECONDS
             )
+        if newer_turn_runs_here:
+            after_turn.turn_finished(_NEWER_TURN_ID)
     turn_task = turn["task"]
     turn_cancelled = turn_task.cancelled()
     # In production the garbage collector closed the abandoned exit stack,
@@ -243,50 +422,19 @@ def test_a_cancel_in_the_cleanup_waits_for_every_step(
     assert isinstance(while_replying["shared trial reads"], SharedTrialReads)
     assert while_replying["trial cost context"] == cost
     assert while_replying["credit-billed turn"] is billed
-    fail_close = call(
-        entry.session_id,
-        error_message=processor.SHUTDOWN_ERROR_MESSAGE,
-        turn_id=entry.turn_id,
-    )
-    turns_own = call(
-        entry.session_id,
-        error_message=stream_registry.CANCELLED_MESSAGE,
-        error_code=None,
-        skip_error_publish=True,
-        turn_id=entry.turn_id,
-    )
-    assert {
+    return {
+        "cancels in flight when the cleanup was held": seen.get("cancels in flight"),
         "subtasks stopped": stopped.await_args_list,
         "session completions": completed.await_args_list,
         "credits charged by the turn's end": seen.get(
             "credits charged by the turn's end"
         ),
         "credits charged in all": charged,
+        "scheduled run recorded": recorded,
         "browser closes": browser.await_args_list,
         "turn's context after its cleanup": seen.get("context after the cleanup"),
         "turn cancelled": turn_cancelled,
-        "errors": errors,
-    } == {
-        "subtasks stopped": [call([subtask])],
-        # The worker fails the session while the cleanup is held, which is
-        # before the turn's own completion when the subtasks are held, and
-        # after it when the charge, which comes later, is.
-        "session completions": (
-            [fail_close, turns_own]
-            if held_at == "subtasks"
-            else [turns_own, fail_close]
-        ),
-        # Half a credit spent, rounded up when the turn ends.
-        "credits charged by the turn's end": [1],
-        "credits charged in all": [1],
-        "browser closes": [call(entry.session_id)],
-        "turn's context after its cleanup": {
-            "shared trial reads": None,
-            "trial cost context": None,
-            "credit-billed turn": None,
-        },
-        "turn cancelled": True,
-        "errors": [],
+        "different-Context errors": [e for e in errors if "different Context" in e],
     }
 
 
