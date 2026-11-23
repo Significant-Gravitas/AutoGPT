@@ -149,9 +149,9 @@ export function RunAgentInputs({
       break;
 
     case DataType.DATE:
-      // The day picked, as the field holds it (yyyy-MM-dd). As a timestamp its
-      // local midnight is the day before in UTC east of Greenwich, and the
-      // Date input block refuses a timestamp that isn't midnight (#17305).
+      // Keep the day picked as the field holds it, yyyy-MM-dd, never as a
+      // timestamp: local midnight east of Greenwich is the day before in UTC,
+      // and the Date input block refuses a timestamp that isn't midnight.
       innerInputElement = (
         <DSInput
           id={`${baseId}-date`}
