@@ -52,8 +52,10 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 
 ACCOUNT_BANNED_CLOSE_CODE = 4004
-# Clients send only subscribe, unsubscribe and heartbeat messages of ~100 bytes.
-WS_MAX_MESSAGE_BYTES = 4096
+# Clients send subscribe, unsubscribe and heartbeat messages of ~100 bytes, and
+# a first message with the session token, whose name and email claims the
+# auth service doesn't bound tightly.
+WS_MAX_MESSAGE_BYTES = 16384
 # The per-message account check reads the cache in milliseconds. A Redis shard
 # that stops answering costs each of its two cache reads the cache's own bound,
 # ``REDIS_OP_TIMEOUT_S``, before the database answers instead. This bounds the
@@ -64,7 +66,8 @@ ACCOUNT_CHECK_TIMEOUT_S = 5.0
 # refuse a socket whose account can't be read, decide.
 ACCOUNT_CHECK_TIMED_OUT_CLOSE_CODE = 1013
 # The client sends its token as soon as the socket opens, so this only bounds
-# how long a socket that never signs in holds a connection.
+# how long a socket that never signs in holds a connection. It is closed with
+# 1013, which the client retries.
 AUTH_MESSAGE_TIMEOUT_S = 5.0
 
 
@@ -121,7 +124,8 @@ async def authenticate_websocket(websocket: WebSocket) -> str | None:
 
 async def _receive_auth_token(websocket: WebSocket) -> str | None:
     """Accept the socket and read the token from its first message, or close
-    it with 4001 when that message doesn't come in time or carries none."""
+    it: with 4001 when that message carries none, with 1013 when it doesn't
+    come in time."""
     try:
         await websocket.accept()
     except (WebSocketDisconnect, OSError):
@@ -131,9 +135,15 @@ async def _receive_auth_token(websocket: WebSocket) -> str | None:
         async with asyncio.timeout(AUTH_MESSAGE_TIMEOUT_S):
             frame = await websocket.receive_text()
         token = WSAuthenticateRequest.model_validate_json(frame).data.token
-    except (TimeoutError, KeyError, pydantic.ValidationError):
-        # Before OSError, which TimeoutError is. Neither the frame nor the
-        # error is logged: both can carry the token.
+    except TimeoutError:
+        # Before OSError, which TimeoutError is. A sign-in that comes late,
+        # from a tab that paused or a server that stalled, is retried.
+        await _close_authentication_failure(
+            websocket, code=1013, reason="Try again later"
+        )
+        return None
+    except (KeyError, pydantic.ValidationError):
+        # Neither the frame nor the error is logged: both can carry the token.
         await _close_authentication_failure(
             websocket, code=4001, reason="Missing authentication token"
         )

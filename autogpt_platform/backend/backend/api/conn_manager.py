@@ -39,6 +39,7 @@ def _is_ws_close_race(exc: BaseException, websocket: WebSocket) -> bool:
 
 async def accept_once(websocket: WebSocket) -> None:
     """Accept the socket, unless reading its sign-in message already has."""
+    # getattr: test doubles of WebSocket may not define the state.
     if getattr(websocket, "application_state", None) != WebSocketState.CONNECTED:
         await websocket.accept()
 

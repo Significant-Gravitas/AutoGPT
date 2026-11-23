@@ -9,6 +9,7 @@ import pytest
 from annotated_types import MaxLen
 from fastapi import WebSocket, WebSocketDisconnect
 from pytest_snapshot.plugin import Snapshot
+from starlette.websockets import WebSocketState
 
 from backend.api import model as api_model
 from backend.api import ws_api
@@ -103,7 +104,7 @@ def test_websocket_server_limits_incoming_message_size(mocker) -> None:
     with override_config(settings, "app_env", AppEnvironment.LOCAL):
         WebsocketServer().run()
 
-    assert serve_websockets.call_args.kwargs["ws_max_size"] <= 4096
+    assert serve_websockets.call_args.kwargs["ws_max_size"] <= 16384
 
 
 def test_websocket_server_trusts_x_forwarded_for_from_trusted_proxies(
@@ -639,6 +640,19 @@ def _auth_frame(token: str = "first-message-token") -> str:
     return json.dumps({"method": "authenticate", "data": {"token": token}})
 
 
+def _unsigned_socket() -> AsyncMock:
+    """A socket with no token in its URL, whose accept moves it to CONNECTED
+    as a real one's does."""
+    ws = AsyncMock(spec=WebSocket)
+    ws.query_params = {}
+
+    async def accepted() -> None:
+        ws.application_state = WebSocketState.CONNECTED
+
+    ws.accept.side_effect = accepted
+    return ws
+
+
 @pytest.mark.asyncio
 async def test_authenticate_websocket_reads_the_token_from_the_first_message(
     mocker,
@@ -650,8 +664,7 @@ async def test_authenticate_websocket_reads_the_token_from_the_first_message(
         new=AsyncMock(return_value={"sub": "user-X", "sid": "session-X"}),
     )
     mocker.patch("backend.api.ws_api.require_active_auth_session", new=AsyncMock())
-    ws = AsyncMock(spec=WebSocket)
-    ws.query_params = {}
+    ws = _unsigned_socket()
     ws.receive_text.return_value = _auth_frame()
 
     user_id = await authenticate_websocket(ws)
@@ -681,12 +694,12 @@ async def test_authenticate_websocket_without_a_token_message_closes_4001(
     from backend.api.ws_api import authenticate_websocket
 
     parse = mocker.patch("backend.api.ws_api.parse_jwt_token_async", new=AsyncMock())
-    ws = AsyncMock(spec=WebSocket)
-    ws.query_params = {}
+    ws = _unsigned_socket()
     ws.receive_text.return_value = frame
 
     user_id = await authenticate_websocket(ws)
 
+    ws.accept.assert_awaited_once()
     ws.close.assert_awaited_once_with(code=4001, reason="Missing authentication token")
     assert user_id is None
     parse.assert_not_awaited()
@@ -698,18 +711,20 @@ async def test_authenticate_websocket_closes_4001_on_a_binary_first_message(
 ) -> None:
     from backend.api.ws_api import authenticate_websocket
 
-    ws = AsyncMock(spec=WebSocket)
-    ws.query_params = {}
+    ws = _unsigned_socket()
     ws.receive_text.side_effect = KeyError("text")
 
     assert await authenticate_websocket(ws) is None
+    ws.accept.assert_awaited_once()
     ws.close.assert_awaited_once_with(code=4001, reason="Missing authentication token")
 
 
 @pytest.mark.asyncio
-async def test_authenticate_websocket_closes_4001_when_no_message_comes(
+async def test_authenticate_websocket_asks_for_a_retry_when_no_message_comes(
     mocker,
 ) -> None:
+    """A tab that paused before it could sign in reconnects; 4001 would stop
+    it for good."""
     from backend.api.ws_api import authenticate_websocket
 
     mocker.patch("backend.api.ws_api.AUTH_MESSAGE_TIMEOUT_S", 0.01)
@@ -718,15 +733,15 @@ async def test_authenticate_websocket_closes_4001_when_no_message_comes(
         await asyncio.sleep(_HANG_SECONDS)
         return _auth_frame()
 
-    ws = AsyncMock(spec=WebSocket)
-    ws.query_params = {}
+    ws = _unsigned_socket()
     ws.receive_text.side_effect = never
 
     assert (
         await asyncio.wait_for(authenticate_websocket(ws), timeout=_HANG_SECONDS)
         is None
     )
-    ws.close.assert_awaited_once_with(code=4001, reason="Missing authentication token")
+    ws.accept.assert_awaited_once()
+    ws.close.assert_awaited_once_with(code=1013, reason="Try again later")
 
 
 @pytest.mark.asyncio
@@ -773,22 +788,14 @@ async def test_authenticate_websocket_still_reads_a_token_in_the_url(mocker) -> 
 async def test_a_refusal_after_the_first_message_does_not_accept_again(
     mocker,
 ) -> None:
-    from starlette.websockets import WebSocketState
-
     from backend.api.ws_api import authenticate_websocket
 
     mocker.patch(
         "backend.api.ws_api.parse_jwt_token_async",
         new=AsyncMock(side_effect=ValueError("bad token")),
     )
-    ws = AsyncMock(spec=WebSocket)
-    ws.query_params = {}
+    ws = _unsigned_socket()
     ws.receive_text.return_value = _auth_frame()
-
-    async def accepted() -> None:
-        ws.application_state = WebSocketState.CONNECTED
-
-    ws.accept.side_effect = accepted
 
     assert await authenticate_websocket(ws) is None
     ws.accept.assert_awaited_once()

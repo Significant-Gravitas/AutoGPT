@@ -1,7 +1,7 @@
 """Masking for credentials that travel in request URLs and headers.
 
-The browser opens its WebSocket with the user's session JWT in ``?token=``,
-email links carry one-click tokens in the query, and some path segments are
+Tabs on an older frontend open their WebSocket with the user's session JWT in
+``?token=``, email links carry one-click tokens in the query, and some path segments are
 bearer secrets themselves: whoever holds one can post to a webhook, claim a
 platform link, read a shared chat or run, or accept an org invitation. uvicorn
 logs the path and query of every request and Sentry attaches both to every

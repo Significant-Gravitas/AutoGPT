@@ -32,6 +32,9 @@ const MAX_RETRY_DELAY_MS = 30_000;
 const HEALTHY_AFTER_MS = 10_000;
 const HEARTBEAT_INTERVAL_MS = 100_000;
 const HEARTBEAT_TIMEOUT_MS = 10_000;
+// The first pong waits for the server to check the token as well as to open
+// the socket's event stream.
+const SIGN_IN_TIMEOUT_MS = 30_000;
 // The server answers the ordering ping only after every resubscription, and
 // opening a shard's event stream for one can take it up to 15 s (OPEN_TIMEOUT_S
 // in backend/data/sharded_pubsub.py); each answer to a subscribe restarts this.
@@ -175,7 +178,7 @@ export class BackendWebSocket {
       // The token goes in the first message, never in the URL. The server
       // handles messages in order, so the pong to this ping confirms it.
       socket.send(JSON.stringify({ method: "authenticate", data: { token } }));
-      this.ping(socket, generation);
+      this.ping(socket, generation, SIGN_IN_TIMEOUT_MS);
     };
     socket.onmessage = (event) => this.receive(socket, generation, event);
     socket.onclose = (event) => this.closed(socket, generation, event);

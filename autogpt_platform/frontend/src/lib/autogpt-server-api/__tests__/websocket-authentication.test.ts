@@ -38,7 +38,21 @@ describe("WebSocket authentication and recovery", () => {
     return FakeWebSocket.instances[index];
   }
 
-  it.each([4001, 4002, 4003, 4004])(
+  it("connects again after a 4001 from a backend that expects the token in the URL", async () => {
+    const connected = vi.fn();
+    api.onWebSocketConnect(connected);
+    void api.connectWebSocket();
+    const first = await socketAt();
+    first.open();
+    first.serverClose(4001);
+    await vi.advanceTimersByTimeAsync(2000);
+    const second = await socketAt(1);
+    second.open();
+    second.pong();
+    expect(connected).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([4002, 4003, 4004])(
     "does not report authenticated connection or retry after close %s",
     async (code) => {
       const connected = vi.fn();

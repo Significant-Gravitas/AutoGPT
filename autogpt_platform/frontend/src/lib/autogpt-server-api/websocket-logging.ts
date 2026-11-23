@@ -115,8 +115,10 @@ function stripQuery(url: string): string {
   return queryStart === -1 ? url : url.slice(0, queryStart);
 }
 
+// Not 4001: this client always sends its token, so a 4001 comes from a
+// backend that still expects it in the URL, until that backend is updated.
 export function isAuthenticationClose(code: number): boolean {
-  return [4001, 4002, 4003, 4004].includes(code);
+  return [4002, 4003, 4004].includes(code);
 }
 
 export function logWebSocketClose(

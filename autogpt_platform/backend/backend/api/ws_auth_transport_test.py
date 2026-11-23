@@ -60,7 +60,7 @@ def _auth_frame() -> str:
     return json.dumps({"method": "authenticate", "data": {"token": "wire-test"}})
 
 
-async def test_a_socket_that_never_signs_in_is_closed_with_4001(
+async def test_a_socket_that_never_signs_in_is_closed_for_a_retry(
     websocket_server: tuple[str, ConnectionManager],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -70,7 +70,7 @@ async def test_a_socket_that_never_signs_in_is_closed_with_4001(
         with pytest.raises(ConnectionClosedError) as closed:
             await asyncio.wait_for(websocket.recv(), timeout=_HANG_SECONDS)
         assert closed.value.rcvd is not None
-        assert closed.value.rcvd.code == 4001
+        assert closed.value.rcvd.code == 1013
     assert not manager.active_connections
 
 
@@ -89,6 +89,7 @@ def _stub_account_closed(monkeypatch: pytest.MonkeyPatch, *, closed: bool) -> No
         ("invalid-token", 4003, "Invalid token"),
         ("missing-sub", 4002, "Invalid token"),
         ("missing-token", 4001, "Missing authentication token"),
+        ("binary-frame", 4001, "Missing authentication token"),
     ],
 )
 async def test_auth_failure_reaches_the_client_as_a_close_frame(
@@ -115,11 +116,12 @@ async def test_auth_failure_reaches_the_client_as_a_close_frame(
     monkeypatch.setattr(ws_api, "update_websocket_connections", track_connection)
 
     async with connect(url, open_timeout=3, close_timeout=1) as websocket:
-        await websocket.send(
-            json.dumps({"method": "heartbeat", "data": "ping"})
-            if failure == "missing-token"
-            else _auth_frame()
-        )
+        if failure == "missing-token":
+            await websocket.send(json.dumps({"method": "heartbeat", "data": "ping"}))
+        elif failure == "binary-frame":
+            await websocket.send(_auth_frame().encode())
+        else:
+            await websocket.send(_auth_frame())
         with pytest.raises(ConnectionClosedError) as closed:
             await asyncio.wait_for(websocket.recv(), timeout=3)
         assert closed.value.rcvd is not None

@@ -449,7 +449,10 @@ describe("WebSocket recovery and logout", () => {
     api.onWebSocketConnect(connected);
     const socket = await socketAt();
     socket.open();
-    await vi.advanceTimersByTimeAsync(10_000);
+    // Signing in gets longer than a heartbeat: the server checks the token.
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(socket.close).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
     expect(socket.close).toHaveBeenCalledTimes(1);
     expect(connected).not.toHaveBeenCalled();
     socket.serverClose(1006);
