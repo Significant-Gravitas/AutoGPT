@@ -150,6 +150,9 @@ describe("integrationIconSrc", () => {
     expect(integrationIconSrc("mcp_agentmail")).toBe(
       "/integrations/agent_mail.png",
     );
+    expect(integrationIconSrc("constructor")).toBe(
+      "/integrations/constructor.png",
+    );
     expect(integrationIconSrc("mcp_")).toBeNull();
   });
 });

@@ -1,15 +1,15 @@
 /** MCP catalog provider slugs whose icon filename differs from `<name without mcp_>`. */
-const MCP_PROVIDER_ICONS: Record<string, string> = {
-  mcp_agentmail: "agent_mail",
-  mcp_aimlapi: "aiml_api",
-  mcp_algolia_productivity: "algolia",
-  mcp_apollo_io: "apollo",
-  mcp_atlassian_forge: "atlassian",
-  mcp_aws_databases: "aws",
-  mcp_customer_io_eu: "customer_io",
-  mcp_gojiberry_ai: "gojiberry",
-  mcp_intercom_eu: "intercom",
-};
+const MCP_PROVIDER_ICONS = new Map<string, string>([
+  ["mcp_agentmail", "agent_mail"],
+  ["mcp_aimlapi", "aiml_api"],
+  ["mcp_algolia_productivity", "algolia"],
+  ["mcp_apollo_io", "apollo"],
+  ["mcp_atlassian_forge", "atlassian"],
+  ["mcp_aws_databases", "aws"],
+  ["mcp_customer_io_eu", "customer_io"],
+  ["mcp_gojiberry_ai", "gojiberry"],
+  ["mcp_intercom_eu", "intercom"],
+]);
 
 /** Map a provider slug to its logo in `public/integrations`.
  *
@@ -24,7 +24,8 @@ export function integrationIconSrc(provider: string): string | null {
     .toLowerCase()
     .replace(/[\s-]+/g, "_")
     .replace(/[^a-z0-9_]/g, "");
-  const slug = MCP_PROVIDER_ICONS[scrubbed] ?? scrubbed.replace(/^mcp_/, "");
+  const slug =
+    MCP_PROVIDER_ICONS.get(scrubbed) ?? scrubbed.replace(/^mcp_/, "");
   if (slug === "microsoft" || slug === "microsoft_365_copilot")
     return "/integrations/microsoft.webp";
   return slug ? `/integrations/${slug}.png` : null;
