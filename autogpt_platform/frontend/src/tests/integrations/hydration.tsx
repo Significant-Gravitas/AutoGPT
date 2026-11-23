@@ -41,7 +41,8 @@ export function hydrateAcrossClocks({ ui, serverNow, browserNow }: Args) {
 
 // The server and the browser each get their own query client, as in the app.
 // Nothing goes stale, so the browser keeps what the server sent even with its
-// clock days ahead.
+// clock days ahead. Unlike the app's client, it never refetches or retries, so
+// text that changes because of a refetch right after hydration won't show here.
 function PageProviders({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
     () =>

@@ -12,7 +12,7 @@ interface Props {
 
 export function ReferenceCard({ reference }: Props) {
   const hasFacts = reference.kind
-    ? reference.meta.length > 0
+    ? reference.meta.some((fact) => Boolean(factTime(fact) || factText(fact)))
     : Boolean(reference.summary);
   const hasAvatar = Boolean(reference.avatarURL || reference.avatarColor);
   return (

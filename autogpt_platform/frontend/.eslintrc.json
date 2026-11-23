@@ -86,6 +86,9 @@
             "message": "It reads the clock, which differs between the server and the browser hydrating its HTML (React error #418). Render <RelativeTime date={…} /> or call useRelativeTime() from @/components/atoms/RelativeTime instead."
           }
         ],
+        // Static imports only: require("date-fns"), import("date-fns") and a
+        // relative ./time import from inside lib/utils aren't caught. No code
+        // uses those shapes today.
         "patterns": [
           {
             "group": ["date-fns/**/formatDistanceToNow*"],
