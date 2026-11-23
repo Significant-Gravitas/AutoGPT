@@ -765,7 +765,7 @@ assert_frontend_outlasts_nginx_keep_alive() {
   )"
   nginx_seconds="$(
     docker exec "${CONTAINER_NAME}" \
-      sed -n '/upstream autogpt_frontend {/,/}/s/^ *keepalive_timeout \([0-9][0-9]*\)s;$/\1/p' \
+      sed -n '/upstream autogpt_frontend {/,/}/s/^ *keepalive_timeout \([0-9][0-9]*\)s\{0,1\};$/\1/p' \
       /opt/autogpt/single-container/nginx/nginx.conf
   )"
   if [[ ! "${next_seconds}" =~ ^[0-9]+$ || ! "${nginx_seconds}" =~ ^[0-9]+$ ]] ||
