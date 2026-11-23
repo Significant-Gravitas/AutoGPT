@@ -765,6 +765,22 @@ async def test_authenticate_websocket_client_gone_before_its_token(
 
 
 @pytest.mark.asyncio
+async def test_a_short_first_message_token_is_not_kept_for_masking(mocker) -> None:
+    """Masking a few characters would hide ordinary text in later reports."""
+    from backend.api.ws_api import authenticate_websocket
+
+    mocker.patch(
+        "backend.api.ws_api.parse_jwt_token_async",
+        new=AsyncMock(side_effect=ValueError("bad token")),
+    )
+    ws = _unsigned_socket()
+    ws.receive_text.return_value = _auth_frame(" ")
+
+    assert await authenticate_websocket(ws) is None
+    assert " " not in request_credentials()
+
+
+@pytest.mark.asyncio
 async def test_authenticate_websocket_still_reads_a_token_in_the_url(mocker) -> None:
     """Tabs open on an older frontend send it there."""
     from backend.api.ws_api import authenticate_websocket

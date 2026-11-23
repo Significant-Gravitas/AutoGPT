@@ -46,7 +46,11 @@ from backend.util.request_credentials import (
 from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
 from backend.util.trusted_proxies import uvicorn_forwarded_allow_ips
-from backend.util.url_redaction import keep_request_credentials, request_credentials
+from backend.util.url_redaction import (
+    MIN_CREDENTIAL_LENGTH,
+    keep_request_credentials,
+    request_credentials,
+)
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -151,8 +155,12 @@ async def _receive_auth_token(websocket: WebSocket) -> str | None:
     except (WebSocketDisconnect, OSError):
         logger.debug("WebSocket client disconnected before authenticating")
         return None
-    # Kept with the connection's credentials, as a token in its URL is.
-    keep_request_credentials(select_credentials({token}, set(request_credentials())))
+    # Kept with the connection's credentials, as a token in its URL is, and on
+    # the same terms: long enough that masking it can't hide ordinary text.
+    if len(token) >= MIN_CREDENTIAL_LENGTH:
+        keep_request_credentials(
+            select_credentials({token}, set(request_credentials()))
+        )
     return token
 
 

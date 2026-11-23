@@ -12,7 +12,7 @@ from fastapi import HTTPException, WebSocket
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosedError
 
-from backend.api import ws_api
+from backend.api import conn_manager, ws_api
 from backend.api.conn_manager import ConnectionManager
 
 # Only a step that never comes keeps a wait going this long.
@@ -221,3 +221,28 @@ async def test_valid_socket_is_accepted_once_and_serves_heartbeats(
             await asyncio.sleep(0.01)
 
     await asyncio.wait_for(wait_until_disconnected(), timeout=3)
+
+
+async def test_a_full_server_refuses_a_first_message_sign_in_with_1013(
+    websocket_server: tuple[str, ConnectionManager],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The socket is already accepted when it signs in, so the refusal only
+    closes it."""
+    url, manager = websocket_server
+    monkeypatch.setattr(conn_manager, "MAX_SOCKETS_PER_USER", 1)
+    monkeypatch.setattr(
+        ws_api, "parse_jwt_token_async", AsyncMock(return_value={"sub": "user"})
+    )
+    monkeypatch.setattr(ws_api, "require_active_auth_session", AsyncMock())
+    async with connect(url, open_timeout=_HANG_SECONDS) as first:
+        await first.send(_auth_frame())
+        await first.send(json.dumps({"method": "heartbeat", "data": "ping"}))
+        await asyncio.wait_for(first.recv(), timeout=_HANG_SECONDS)
+        async with connect(url, open_timeout=_HANG_SECONDS, close_timeout=1) as second:
+            await second.send(_auth_frame())
+            with pytest.raises(ConnectionClosedError) as closed:
+                await asyncio.wait_for(second.recv(), timeout=_HANG_SECONDS)
+            assert closed.value.rcvd is not None
+            assert closed.value.rcvd.code == 1013
+        assert len(manager.active_connections) == 1
