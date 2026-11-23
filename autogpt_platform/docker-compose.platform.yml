@@ -36,6 +36,11 @@ x-backend-env:
   DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?run make init-env in autogpt_platform/ to generate it}@db:5432/postgres?connect_timeout=60&schema=platform
   DIRECT_URL: postgresql://postgres:${POSTGRES_PASSWORD:?run make init-env in autogpt_platform/ to generate it}@db:5432/postgres?connect_timeout=60&schema=platform
   FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
+  # Where x-workspace-volume is mounted (Marketplace media sits beside it, in
+  # x-store-media-volume). Set here so backend/.env can't move the files out
+  # of the shared volumes; to keep them elsewhere on the host, change the
+  # volumes, not this path.
+  WORKSPACE_STORAGE_DIR: /app/autogpt_platform/backend/workspaces
 
 # Common env_file configuration for backend services
 x-backend-env-files: &backend-env-files
