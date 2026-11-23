@@ -23,6 +23,9 @@ from backend.integrations.oauth.stripe_link import (  # noqa: E402
     LINK_API_BASE_URL,
     LINK_HTTP_TIMEOUT,
 )
+from backend.integrations.oauth.stripe_link_hosted import (
+    STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED,
+)
 from backend.integrations.providers import ProviderName
 
 LINK_DEFAULT_SCOPES = ["userinfo:read", "payment_methods.agentic"]
@@ -40,10 +43,16 @@ StripeLinkCredentials = OAuth2Credentials
 # token pair — so the block has to accept `oauth2` (or saved credentials stop
 # matching) while still advertising `device_code` so connect UIs offer the
 # device flow instead of an authorization-code redirect the provider has no
-# client secret for.
+# client secret for. A deployment with a registered confidential client does
+# have one, and advertises the redirect alone (device credentials connected
+# earlier are still `oauth2` and keep matching).
 StripeLinkCredentialsInput = CredentialsMetaInput[
     Literal[ProviderName.STRIPE_LINK],  # type: ignore[index]
-    Literal["oauth2", "device_code"],
+    (
+        Literal["oauth2"]
+        if STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED
+        else Literal["oauth2", "device_code"]
+    ),
 ]
 
 
@@ -131,25 +140,19 @@ async def link_api_request(
                 detail = None
 
             if detail:
-                # Bounded like the raw-body log below: this string becomes a
-                # persisted block output, and a multi-KB message from Link or
-                # an intercepting gateway has no business there either.
+                # Bounded: this string becomes a persisted block output, and a
+                # multi-KB message from Link or an intercepting gateway has no
+                # business there.
                 raise RuntimeError(
                     f"Link API error ({response.status_code}): "
                     f"{str(detail)[:MAX_ERROR_DETAIL_CHARS]}"
                 )
 
-            # No usable message. The raw body goes to the logs rather than
-            # into the exception, because that string becomes a block `error`
-            # output — persisted with the execution and surfaced in agent
-            # transcripts — and an arbitrary upstream body has no business
-            # there.
+            # No usable message. Only the status leaves here: an upstream body
+            # can carry wallet or account data, and the logs are no place for
+            # it any more than a persisted block output is.
             logger.error(
-                "Link API %s %s failed: %s %s",
-                method,
-                path,
-                response.status_code,
-                response.text[:500],
+                "Link API %s %s failed: %s", method, path, response.status_code
             )
             raise RuntimeError(f"Link API error ({response.status_code})")
 
