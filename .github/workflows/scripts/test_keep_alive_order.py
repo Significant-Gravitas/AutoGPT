@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import ast
 import re
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 from typing import NamedTuple, Optional
@@ -28,10 +30,9 @@ import yaml
 PLATFORM = Path(__file__).resolve().parents[3] / "autogpt_platform"
 NGINX_CONF = PLATFORM / "single-container" / "nginx" / "nginx.conf"
 RUN_FRONTEND = PLATFORM / "single-container" / "run-frontend.sh"
-COMPOSE_FILES = (
-    PLATFORM / "docker-compose.yml",
-    PLATFORM / "docker-compose.platform.yml",
-)
+# The file `docker compose up` reads, and the one its services extend.
+COMPOSE = PLATFORM / "docker-compose.yml"
+PLATFORM_COMPOSE = PLATFORM / "docker-compose.platform.yml"
 BACKEND = PLATFORM / "backend" / "backend"
 SETTINGS = BACKEND / "util" / "settings.py"
 # Where each backend server hands the setting to uvicorn.
@@ -111,12 +112,7 @@ def backend_keep_alive(server_file: Path, override: Optional[str]) -> KeepAlive:
         "settings.py)"
     )
     default = settings_default("server_keep_alive_timeout_seconds")
-    passed = (
-        server_file.is_file()
-        and "server_keep_alive_timeout_seconds"
-        in server_file.read_text(encoding="utf-8")
-    )
-    if default is None or not passed:
+    if default is None or not passes_keep_alive_setting(server_file):
         return KeepAlive(
             UVICORN_DEFAULT_SECONDS,
             f"timeout_keep_alive on the uvicorn server {server_file.name} configures "
@@ -125,9 +121,33 @@ def backend_keep_alive(server_file: Path, override: Optional[str]) -> KeepAlive:
     return KeepAlive(float(override) if override else default, setting)
 
 
+def passes_keep_alive_setting(server_file: Path) -> bool:
+    """Whether the file gives uvicorn's timeout_keep_alive the setting, as a
+    keyword argument or a dict entry (a comment that names it doesn't count)."""
+    if not server_file.is_file():
+        return False
+    for node in ast.walk(python_tree(server_file)):
+        values = []
+        if isinstance(node, ast.keyword) and node.arg == "timeout_keep_alive":
+            values.append(node.value)
+        elif isinstance(node, ast.Dict):
+            values += [
+                value
+                for key, value in zip(node.keys, node.values)
+                if isinstance(key, ast.Constant) and key.value == "timeout_keep_alive"
+            ]
+        for value in values:
+            if any(
+                getattr(name, "attr", None) == "server_keep_alive_timeout_seconds"
+                for name in ast.walk(value)
+            ):
+                return True
+    return False
+
+
 def settings_default(field: str) -> Optional[float]:
     """A Field(default=...) number in backend/util/settings.py."""
-    for node in ast.walk(ast.parse(SETTINGS.read_text(encoding="utf-8"))):
+    for node in ast.walk(python_tree(SETTINGS)):
         if (
             isinstance(node, ast.AnnAssign)
             and getattr(node.target, "id", None) == field
@@ -137,6 +157,17 @@ def settings_default(field: str) -> Optional[float]:
                 if keyword.arg == "default" and isinstance(keyword.value, ast.Constant):
                     return float(keyword.value.value)
     return None
+
+
+def python_tree(path: Path) -> ast.Module:
+    try:
+        return ast.parse(path.read_text(encoding="utf-8"))
+    except SyntaxError as error:
+        raise AssertionError(
+            f"{path.name} doesn't parse on Python {sys.version_info[0]}."
+            f"{sys.version_info[1]}, which runs this check ({error}). Read the "
+            "keep-alive setting another way, or run the check on a newer Python."
+        ) from error
 
 
 def parse_nginx(text: str) -> list:
@@ -185,7 +216,7 @@ def _nginx_block(tokens: list, index: int, nested: bool) -> tuple:
 
 def nginx_seconds(value: str) -> float:
     parts = re.findall(r"(\d+)(ms|[smhd]?)", value)
-    if not re.fullmatch(r"(?:\d+(?:ms|[smhd])?)+", value):
+    if not value or not re.fullmatch(r"(?:\d+(?:ms|[smhd]))*\d*", value):
         raise ValueError(f"nginx.conf: {value!r} is not a time")
     return sum(int(number) * NGINX_TIME_UNITS[unit] for number, unit in parts)
 
@@ -206,6 +237,9 @@ def nginx_problems(nginx_conf: str, upstream_servers: dict) -> list:
     for upstream in (d for d in http.block if d.name == "upstream"):
         name = upstream.args[0]
         settings = {d.name: d.args for d in upstream.block}
+        # An upstream without `keepalive` is checked too: nginx 1.29.7 and later
+        # pool upstream connections by default, and so would this one if
+        # `keepalive` were added. Only `keepalive 0` turns pooling off.
         if settings.get("keepalive", ["1"])[0] == "0":
             continue
         if "keepalive" in settings and "keepalive_timeout" not in settings:
@@ -279,13 +313,53 @@ def run_frontend_keep_alive() -> KeepAlive:
     )
 
 
-def compose_services() -> dict:
-    services = {}
-    for path in COMPOSE_FILES:
-        services.update(
-            yaml.safe_load(path.read_text(encoding="utf-8")).get("services") or {}
-        )
-    return services
+def compose_services(path: Path = COMPOSE) -> dict:
+    """The services `docker compose up` runs from path, each one that extends
+    another merged over it the way Compose merges them."""
+    files = {}
+
+    def services(file: Path) -> dict:
+        if file not in files:
+            text = file.read_text(encoding="utf-8")
+            files[file] = yaml.safe_load(text).get("services") or {}
+        return files[file]
+
+    def resolve(file: Path, name: str) -> dict:
+        service = dict(services(file)[name])
+        extends = service.pop("extends", None)
+        if extends is None:
+            return service
+        if isinstance(extends, str):
+            extends = {"service": extends}
+        base_file = file.parent / extends.get("file", file.name)
+        return _merge(resolve(base_file, extends["service"]), service)
+
+    return {name: resolve(path, name) for name in services(path)}
+
+
+def _merge(base: dict, local: dict) -> dict:
+    """Compose's merge: local keys win, environment merges by name, and the
+    port, expose and env_file lists add up."""
+    merged = {**base, **local}
+    merged["environment"] = {
+        **_mapping(base.get("environment")),
+        **_mapping(local.get("environment")),
+    }
+    for key in ("ports", "expose", "env_file"):
+        merged[key] = _sequence(base.get(key)) + _sequence(local.get(key))
+    return merged
+
+
+def _mapping(values) -> dict:
+    if isinstance(values, list):
+        return dict(item.partition("=")[::2] for item in values)
+    return dict(values or {})
+
+
+def _sequence(values) -> list:
+    if values is None:
+        return []
+    return values if isinstance(values, list) else [values]
 
 
 def compose_environment(service: dict) -> dict:
@@ -295,17 +369,14 @@ def compose_environment(service: dict) -> dict:
     one doesn't count here.
     """
     environment = {}
-    env_files = service.get("env_file") or []
-    for entry in [env_files] if isinstance(env_files, (str, dict)) else env_files:
+    for entry in _sequence(service.get("env_file")):
         path = PLATFORM / (entry["path"] if isinstance(entry, dict) else entry)
         if path.name.endswith(".env.default"):
             for line in path.read_text(encoding="utf-8").splitlines():
                 key, equals, value = line.partition("=")
                 if equals and not key.lstrip().startswith("#"):
                     environment[key.strip()] = value.strip().strip("\"'")
-    values = service.get("environment") or {}
-    if isinstance(values, list):
-        values = dict(item.partition("=")[::2] for item in values)
+    values = _mapping(service.get("environment"))
     environment.update(
         {key: str(value) for key, value in values.items() if value is not None}
     )
@@ -363,7 +434,7 @@ def single_container_servers() -> dict:
 
 class KeepAliveOrderTest(unittest.TestCase):
     def test_compose_servers_outlast_the_proxies_in_front(self):
-        services = compose_services()
+        services = {**compose_services(PLATFORM_COMPOSE), **compose_services(COMPOSE)}
         servers = compose_servers(services)
         self.assertEqual(
             published_services(services),
@@ -405,8 +476,10 @@ class ReaderTest(unittest.TestCase):
             [nginx_seconds(v) for v in ("65", "60s", "1m30s", "500ms")],
             [65, 60, 90, 0.5],
         )
-        with self.assertRaises(ValueError):
-            nginx_seconds("60 s")
+        self.assertEqual(nginx_seconds("1m30"), 90)
+        for value in ("60 s", "", "s", "1" * 40 + "x"):
+            with self.assertRaises(ValueError):
+                nginx_seconds(value)
 
     def test_next_keeps_nodes_default_unless_given_a_positive_number(self):
         self.assertEqual(next_keep_alive("620000", "x").seconds, 620)
@@ -460,6 +533,37 @@ class ReaderTest(unittest.TestCase):
             "location = /x {", "location = /x { keepalive_timeout 65;"
         )
         self.assertIn("after 65 s", nginx_problems(location, servers)[0])
+
+    def test_merges_a_service_over_the_one_it_extends(self):
+        with tempfile.TemporaryDirectory() as folder:
+            base, top = Path(folder) / "base.yml", Path(folder) / "top.yml"
+            base.write_text(
+                "services:\n  frontend:\n    ports: ['3000:3000']\n"
+                "    environment: {KEEP_ALIVE_TIMEOUT: '620000', PORT: '3000'}\n"
+            )
+            top.write_text(
+                "services:\n  frontend:\n    extends: {file: base.yml, service: frontend}\n"
+                "    ports: ['9000:9000']\n"
+                "    environment: [KEEP_ALIVE_TIMEOUT=65000]\n"
+            )
+            frontend = compose_services(top)["frontend"]
+        self.assertEqual(frontend["ports"], ["3000:3000", "9000:9000"])
+        self.assertEqual(
+            frontend["environment"], {"KEEP_ALIVE_TIMEOUT": "65000", "PORT": "3000"}
+        )
+
+    def test_counts_only_the_setting_passed_to_uvicorn(self):
+        cases = {
+            "uvicorn.run(app, timeout_keep_alive=config.server_keep_alive_timeout_seconds)": True,
+            'options = {"timeout_keep_alive": config.server_keep_alive_timeout_seconds}': True,
+            "# timeout_keep_alive=config.server_keep_alive_timeout_seconds\nuvicorn.run(app)": False,
+            "uvicorn.run(app, timeout_keep_alive=5)  # server_keep_alive_timeout_seconds": False,
+        }
+        with tempfile.TemporaryDirectory() as folder:
+            server = Path(folder) / "server.py"
+            for source, passes in cases.items():
+                server.write_text(source)
+                self.assertEqual(passes_keep_alive_setting(server), passes, source)
 
     def test_flags_an_upstream_it_does_not_know(self):
         conf = self.CONF % ("620s", "keepalive_timeout 60s;")

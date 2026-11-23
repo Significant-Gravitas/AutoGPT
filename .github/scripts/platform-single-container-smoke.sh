@@ -770,7 +770,7 @@ assert_frontend_outlasts_nginx_keep_alive() {
   )"
   if [[ ! "${next_seconds}" =~ ^[0-9]+$ || ! "${nginx_seconds}" =~ ^[0-9]+$ ]] ||
     ((next_seconds <= nginx_seconds)); then
-    printf 'Next keeps an idle connection for %s s and nginx keeps its idle connections to Next for %s s; Next must keep them longer (KEEP_ALIVE_TIMEOUT in run-frontend.sh, keepalive_timeout in nginx.conf).\nNext response headers:\n%s\n' \
+    printf 'Next keeps an idle connection for %s s and nginx keeps its idle connections to Next for %s s; Next must keep them longer (KEEP_ALIVE_TIMEOUT in run-frontend.sh, keepalive_timeout in nginx.conf). This check reads Next'"'"'s Keep-Alive: timeout=N header, and a "keepalive_timeout <seconds>[s];" line in the autogpt_frontend upstream.\nNext response headers:\n%s\n' \
       "${next_seconds:-?}" "${nginx_seconds:-?}" "${headers}" >&2
     exit 1
   fi
