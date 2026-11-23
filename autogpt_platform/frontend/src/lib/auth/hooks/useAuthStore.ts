@@ -27,6 +27,7 @@ import { forgetConnectAttempt } from "../connect-attempt";
 import { reloadForNewDeployment } from "../deployment-reload";
 import {
   broadcastLogout,
+  clearWebSocketDisconnectIntent,
   navigateWithFullLoad,
   reloadPage,
   setupSessionEventListeners,
@@ -120,7 +121,12 @@ interface AuthStoreState {
   // rejected session, another account or role). An auth request started in
   // an earlier epoch has its answer dropped rather than applied.
   sessionEpoch: number;
+  // The user the page's layout read on the server (seedFromServer): "none"
+  // until one is offered, "unchecked" once taken and until this tab's own
+  // session check runs, then "settled". Offered once per page load.
+  serverSeed: "none" | "unchecked" | "settled";
   initialize: (params: InitializeParams) => Promise<void>;
+  seedFromServer: (user: User) => void;
   setCurrentRequestContext: (params: InitializeParams) => void;
   logOut: (params?: LogOutParams) => Promise<void>;
   validateSession: (params?: ValidateParams) => Promise<boolean>;
@@ -270,6 +276,35 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     } finally {
       set({ initializationPromise: null });
     }
+
+    // A user taken from the server still gets this tab's own check, which
+    // signs it out and redirects if the session has ended since.
+    if (get().serverSeed === "unchecked") {
+      set({ serverSeed: "settled" });
+      await validateSessionInternal({
+        force: true,
+        path: params.path,
+        router: params.router,
+      });
+    }
+  }
+
+  // The layout read the session on the server for this very request, with the
+  // same Better Auth lookup the start-up check makes, so the page can render
+  // from it instead of waiting for that check. Only before this tab has an
+  // answer of its own, which would be newer.
+  function seedFromServer(user: User): void {
+    if (get().serverSeed !== "none") return;
+    if (get().user || !get().isUserLoading) {
+      set({ serverSeed: "settled" });
+      return;
+    }
+    // A start-up lookup already on its way is dropped: initialize() checks the
+    // session again once it has ended.
+    if (checkRunning()) endSessionEpoch();
+    clearWebSocketDisconnectIntent();
+    adoptUser(user);
+    set({ hasLoadedUser: true, isUserLoading: false, serverSeed: "unchecked" });
   }
 
   async function logOut(params?: LogOutParams): Promise<void> {
@@ -600,7 +635,9 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     retryTimer: null,
     retryAttempt: 0,
     sessionEpoch: 0,
+    serverSeed: "none",
     initialize,
+    seedFromServer,
     setCurrentRequestContext,
     logOut,
     validateSession: validateSessionInternal,

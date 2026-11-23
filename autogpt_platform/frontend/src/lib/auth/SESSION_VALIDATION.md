@@ -152,6 +152,10 @@ Every other failure leaves the user signed in:
 - **Action call failed** (offline, aborted fetch, 5xx): the client keeps the current user and retries with backoff (1 s doubling to 30 s, six attempts). The next focus or `online` event also retries.
 - **Deploy skew** (the server no longer recognises this bundle's server action IDs after a deploy): the page reloads once to load the new deployment. If the reloaded page is rejected too within a minute, reloading can't help, so the tab stops reloading and asks the user to refresh.
 
+## First Render
+
+`(platform)/layout.tsx` and `(no-navbar)/onboarding/layout.tsx` read the session on the server (`getServerUser`) and hand the user to the auth store through `ServerUserSeed`, before any effect of the page runs. The page then renders without waiting for the browser's start-up lookup. The store takes that user only once per page load and only while it has no answer of its own, and the tab still checks the session itself right after (`validateSession`), which signs the user out and redirects if the session has ended since. When the server finds no session or can't read it, the store starts up exactly as before.
+
 ## Internal Architecture
 
 ### Request Flow
