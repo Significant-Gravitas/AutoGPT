@@ -116,11 +116,15 @@ a page links to aren't rendered alongside it.
   and crawled in a test of its own per bug, pinned to it. Any other problem
   on the page still fails that test. A bug a plain visit shows only now and
   then, or a page with a dynamic segment, needs a visit that shows it every
-  time, in the spec's `REPRODUCTIONS`: the hydration bugs open their page
-  with the browser's clock ahead. A pinned test tries its visit up to three
-  times, until the bug shows, so a busy runner can't make it pass. A bug other pages show too, depending on
-  what they list, is `showsElsewhere`: their groups note it rather than
-  fail on it.
+  time, in the spec's `REPRODUCTIONS`; a hydration bug can open its page
+  with the browser's clock ahead (`clockAheadMs`). A pinned test tries its
+  visit up to three times, until the bug shows, so a busy runner can't make
+  it pass. A bug other pages show too, depending on what they list, is
+  `showsElsewhere`: their groups note it rather than fail on it.
+- **When the fix lands,** drop the bug from `KNOWN_BUGS` and its visit from
+  `REPRODUCTIONS`, and keep a visit that showed it every time as a test of
+  its own that must load cleanly: the pages that show an age (#17309,
+  #17310) still open with the browser's clock ahead.
 - **A bug that shows only now and then**, with no visit that shows it every
   time, can't be pinned: CI accepts a pinned test only if it fails every
   run. Add it to `INTERMITTENT_BUGS` with its issue. The crawl then notes it

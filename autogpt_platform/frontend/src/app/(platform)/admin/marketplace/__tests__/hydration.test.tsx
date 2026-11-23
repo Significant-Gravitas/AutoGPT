@@ -3,7 +3,7 @@ import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/st
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { server } from "@/mocks/mock-server";
 import { hydrateAcrossClocks } from "@/tests/integrations/hydration";
-import { cleanup, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AdminAgentsDataTable } from "../components/AdminAgentsDataTable";
 
@@ -67,7 +67,6 @@ describe("admin Marketplace page, server-rendered", () => {
     );
   });
   afterEach(() => {
-    cleanup();
     vi.useRealTimers();
   });
 
