@@ -732,11 +732,25 @@ def test_a_side_call_gets_the_script_title(scripted_model):
         model="anthropic/claude-haiku-4-5",
         messages=[{"role": "user", "content": "Title this chat."}],
     )
+    # The platform's title request quotes the chat's first message in a tag.
+    quoted = client.chat.completions.create(
+        model="anthropic/claude-haiku-4-5",
+        messages=[
+            {
+                "role": "user",
+                "content": "Here is the conversation that you need to generate a "
+                "title for. \n\n<conversation>\n[[script:lookup#quoted]] Any haiku "
+                "agent?\n</conversation>\n\nRespond only with a 1-4 word title.",
+            }
+        ],
+    )
 
     assert titled.choices[0].message.content == "Haiku lookup"
     assert untitled.choices[0].message.content == "Scripted reply"
+    assert quoted.choices[0].message.content == "Haiku lookup"
     assert titled.usage.model_extra["cost"] == pytest.approx((200 * 1 + 10 * 5) / 1e6)
     assert scripted_model.journal(nonce="side")[0]["kind"] == "side_call"
+    assert scripted_model.journal(nonce="quoted")[0]["kind"] == "side_call"
 
 
 def test_the_journal_names_the_key_a_request_used_but_never_keeps_it(

@@ -56,11 +56,17 @@ class Conversation:
 
     def marker(self) -> Marker | None:
         """The marker that picks the script: the newest one in the user's own
-        words, else one in the system prompt. A turn the platform sends
-        itself (an expert's kickoff) has no user-typed marker, so a journey
-        puts one in text the user controls that the system prompt carries (an
-        expert's writing sample)."""
-        return typed_marker(self.user_text) or find_marker(self.system_text)
+        words; with none there, the first in the user's messages (a title
+        request quotes the chat inside a ``<conversation>`` tag), else one in
+        the system prompt. A turn the platform sends itself (an expert's
+        kickoff) has no user-typed marker, so a journey puts one in text the
+        user controls that the system prompt carries (an expert's writing
+        sample)."""
+        return (
+            typed_marker(self.user_text)
+            or find_marker(self.user_text)
+            or find_marker(self.system_text)
+        )
 
 
 def assistant_messages_before_marker(messages: Sequence[tuple[str, str]]) -> int:

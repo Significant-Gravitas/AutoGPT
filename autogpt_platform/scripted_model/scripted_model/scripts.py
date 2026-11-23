@@ -18,10 +18,13 @@ new message (a turn after a stopped one can do either); the new marker comes
 after that text, and no assistant message follows it yet, so both land on the
 new script's first turn.
 
-Only a marker in the user's own words counts. The platform adds tagged blocks
-to a user message, such as recalled memories (``<memory_context>``) or the
-earlier chat passed on as text (``<conversation_history>``), and these can
-quote earlier messages, markers and all, from this chat or the user's others.
+That newest marker is read from the user's own words only. The platform adds
+tagged blocks to a user message, such as recalled memories
+(``<memory_context>``) or the earlier chat passed on as text
+(``<conversation_history>``), and these can quote earlier messages, markers
+and all, from this chat or the user's others. A request with no marker in
+the user's own words, such as a title request that quotes the chat inside a
+``<conversation>`` tag, takes the first marker in its user messages.
 
 A tool call's input can read a value from a result the platform sent back,
 as a model reads an id out of what a tool returned: in place of the value,
