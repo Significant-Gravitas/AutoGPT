@@ -74,23 +74,14 @@ end
 return redis.call('DEL', KEYS[1])
 """
 
-# Push to a capped list only when a hash field currently matches the expected
-# value. Returns the new list length, or -1 when the guard fails.
-#
-#   KEYS[1]  hash key
-#   KEYS[2]  list key
-#   ARGV[1]  hash field
-#   ARGV[2]  expected current value
-#   ARGV[3]  list value
-#   ARGV[4]  max list length
-#   ARGV[5]  list TTL seconds
 # Compare-and-set on a string key.  Returns 1 if swapped, 0 otherwise.
 #
 #   KEYS[1]  key
 #   ARGV[1]  expected current value
 #   ARGV[2]  new value, or "" to delete the key
-#   ARGV[3]  TTL in seconds for the new value
+#   ARGV[3]  expiry value for the new value
 #   ARGV[4]  "1" to also swap when the key is missing
+#   ARGV[5]  "EX" for relative seconds or "PXAT" for an absolute millisecond deadline
 _STRING_CAS_LUA = """
 local current = redis.call('GET', KEYS[1])
 if current ~= ARGV[1] and not (current == false and ARGV[4] == '1') then
@@ -99,7 +90,7 @@ end
 if ARGV[2] == '' then
     redis.call('DEL', KEYS[1])
 else
-    redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+    redis.call('SET', KEYS[1], ARGV[2], ARGV[5], ARGV[3])
 end
 return 1
 """
@@ -114,16 +105,101 @@ redis.call('LTRIM', KEYS[1], #ARGV, -1)
 return current
 """
 
+# Push to a capped list only when a hash field currently matches the expected
+# value, and the list is not closed to the hash's current owner. Returns the
+# list length, -1 on a failed guard, or -2 at capacity. A queued ID with an
+# expired receipt restores that receipt from the list's PTTL.
+#
+#   KEYS[1]  hash key
+#   KEYS[2]  list key
+#   KEYS[3]  optional receipt key, retained after the list is drained
+#   ARGV[1]  hash field
+#   ARGV[2]  expected current value
+#   ARGV[3]  list value
+#   ARGV[4]  max list length
+#   ARGV[5]  list TTL seconds
+#   ARGV[6]  message ID used to recover an expired receipt
+#   ARGV[7]  optional closed-by field (see _POP_OR_CLOSE_LUA), "" for none
+#   ARGV[8]  owner field the closed-by field must match to refuse
 _GATED_CAPPED_RPUSH_LUA = """
+if #KEYS == 3 and redis.call('EXISTS', KEYS[3]) == 1 then
+    return redis.call('LLEN', KEYS[2])
+end
+if #KEYS == 3 then
+    for _, entry in ipairs(redis.call('LRANGE', KEYS[2], 0, -1)) do
+        local ok, decoded = pcall(cjson.decode, entry)
+        if ok and type(decoded) == 'table' and decoded.id == ARGV[6] then
+            local remaining = redis.call('PTTL', KEYS[2])
+            if remaining > 0 then
+                redis.call('SET', KEYS[3], '1', 'PX', remaining)
+            end
+            return redis.call('LLEN', KEYS[2])
+        end
+    end
+end
 local current = redis.call('HGET', KEYS[1], ARGV[1])
 if current ~= ARGV[2] then
     return -1
 end
+if ARGV[7] and ARGV[7] ~= '' then
+    local closed_by = redis.call('HGET', KEYS[1], ARGV[7])
+    if closed_by and closed_by ~= ''
+        and closed_by == redis.call('HGET', KEYS[1], ARGV[8]) then
+        return -1
+    end
+end
+if redis.call('LLEN', KEYS[2]) >= tonumber(ARGV[4]) then
+    return -2
+end
 redis.call('RPUSH', KEYS[2], ARGV[3])
-redis.call('LTRIM', KEYS[2], -tonumber(ARGV[4]), -1)
 redis.call('EXPIRE', KEYS[2], tonumber(ARGV[5]))
+if #KEYS == 3 then
+    redis.call('SET', KEYS[3], '1', 'EX', tonumber(ARGV[5]))
+end
 return redis.call('LLEN', KEYS[2])
 """
+
+# Pop up to ARGV[1] items off a list; when there are none, the hash's gate
+# field still holds the expected value and the hash still names the caller as
+# its owner, close the list to that owner instead, by writing the owner into
+# the closed-by field. The gated push above then refuses that owner. A new
+# owner value reopens it, and a caller that is no longer the owner changes
+# nothing. Returns the popped items, empty when it closed or found nothing.
+#
+#   KEYS[1]  hash key
+#   KEYS[2]  list key
+#   ARGV[1]  max items to pop
+#   ARGV[2]  hash gate field
+#   ARGV[3]  expected gate value
+#   ARGV[4]  closed-by field
+#   ARGV[5]  owner field
+#   ARGV[6]  the caller's owner value
+_POP_OR_CLOSE_LUA = """
+local items = redis.call('LPOP', KEYS[2], tonumber(ARGV[1]))
+if items then
+    return items
+end
+if ARGV[6] ~= ''
+    and redis.call('HGET', KEYS[1], ARGV[2]) == ARGV[3]
+    and redis.call('HGET', KEYS[1], ARGV[5]) == ARGV[6] then
+    redis.call('HSET', KEYS[1], ARGV[4], ARGV[6])
+end
+return {}
+"""
+
+_BOUNDED_RPUSH_LUA = """
+if redis.call('LLEN', KEYS[1]) >= tonumber(ARGV[2]) then
+    return -2
+end
+local length = redis.call('RPUSH', KEYS[1], ARGV[1])
+redis.call('EXPIRE', KEYS[1], tonumber(ARGV[3]))
+return length
+"""
+
+
+class RedisListCapacityExceeded(Exception):
+    """The list is at capacity; the new item was not admitted."""
+
 
 # Exactly-once batch-dispatch claim. Used by the BatchExecutor's walk
 # to transition a finished provider batch from ``pending → dispatched``
@@ -303,6 +379,25 @@ async def capped_rpush(
     return int(results[-1])
 
 
+async def bounded_rpush(
+    redis: AsyncRedisClient,
+    key: str,
+    value: str,
+    *,
+    max_len: int,
+    ttl_seconds: int,
+) -> int:
+    """Push without evicting accepted items; reject a full list atomically."""
+    length = int(
+        await cast(
+            "Any", redis.eval(_BOUNDED_RPUSH_LUA, 1, key, value, max_len, ttl_seconds)
+        )
+    )
+    if length == -2:
+        raise RedisListCapacityExceeded("Pending buffer is at capacity")
+    return length
+
+
 async def capped_rpush_if_hash_field(
     redis: AsyncRedisClient,
     *,
@@ -313,28 +408,87 @@ async def capped_rpush_if_hash_field(
     value: str,
     max_len: int,
     ttl_seconds: int,
+    receipt_key: str | None = None,
+    message_id: str | None = None,
+    closed_by_field: str | None = None,
+    owner_field: str | None = None,
 ) -> int | None:
     """Atomically RPUSH to a bounded list iff a hash field matches.
 
     Returns the new list length when the push happens, or ``None`` when the
-    hash field does not currently match ``expected``.
+    hash field does not currently match ``expected``, or when
+    ``closed_by_field`` holds the hash's current ``owner_field`` value (the
+    owner closed the list with :func:`pop_or_close_list`). With a receipt
+    key, retries return the current length without pushing. A matching JSON
+    ``id`` in the list restores an expired receipt. Full lists raise
+    ``RedisListCapacityExceeded`` without evicting an accepted item.
+    All keys must share a Redis Cluster hash tag.
     """
+    if (closed_by_field is None) != (owner_field is None):
+        raise ValueError("closed_by_field and owner_field are checked together")
+    keys = [hash_key, list_key]
+    if receipt_key is not None:
+        keys.append(receipt_key)
     result = await cast(
         "Any",
         redis.eval(
             _GATED_CAPPED_RPUSH_LUA,
-            2,
-            hash_key,
-            list_key,
+            len(keys),
+            *keys,
             hash_field,
             expected,
             value,
             str(max_len),
             str(ttl_seconds),
+            message_id or "",
+            closed_by_field or "",
+            owner_field or "",
         ),
     )
     length = int(result)
+    if length == -2:
+        raise RedisListCapacityExceeded("Pending buffer is at capacity")
     return None if length < 0 else length
+
+
+async def pop_or_close_list(
+    redis: AsyncRedisClient,
+    *,
+    hash_key: str,
+    list_key: str,
+    max_items: int,
+    gate_field: str,
+    expected: str,
+    closed_by_field: str,
+    owner_field: str,
+    owner: str,
+) -> list[Any]:
+    """Atomically pop up to ``max_items`` off a list, or close it when empty.
+
+    With nothing to pop, ``gate_field`` still equal to ``expected`` and
+    ``owner_field`` still equal to ``owner``, ``owner`` is written into
+    ``closed_by_field``, and :func:`capped_rpush_if_hash_field` given the
+    same two fields refuses every push until the owner changes. A caller the
+    hash no longer names as its owner closes nothing. One script, so no push
+    can land between finding the list empty and closing it. Both keys must
+    share a Redis Cluster hash tag.
+    """
+    result = await cast(
+        "Any",
+        redis.eval(
+            _POP_OR_CLOSE_LUA,
+            2,
+            hash_key,
+            list_key,
+            str(max_items),
+            gate_field,
+            expected,
+            closed_by_field,
+            owner_field,
+            owner,
+        ),
+    )
+    return list(result or [])
 
 
 async def claim_batch_dispatch_atomic(
@@ -538,13 +692,15 @@ async def string_compare_and_set(
     new: str | None,
     ttl_seconds: int = 0,
     or_missing: bool = False,
+    expires_at_ms: int | None = None,
 ) -> bool:
     """Atomically replace *key* with *new* (``None`` deletes it) iff it still
     holds *expected*, or is missing and *or_missing* is set.
 
     Returns ``True`` if the swap happened.  Use it when a value names its
     owner, so a holder whose key expired and was taken over cannot overwrite
-    or delete its successor's value.
+    or delete its successor's value. An absolute ``expires_at_ms`` overrides
+    ``ttl_seconds`` without extending the deadline by the request latency.
     """
     result = await cast(
         "Any",
@@ -554,8 +710,9 @@ async def string_compare_and_set(
             key,
             expected,
             new or "",
-            ttl_seconds,
+            expires_at_ms if expires_at_ms is not None else ttl_seconds,
             "1" if or_missing else "0",
+            "PXAT" if expires_at_ms is not None else "EX",
         ),
     )
     return int(result) == 1

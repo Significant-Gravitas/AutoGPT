@@ -1,13 +1,19 @@
 """A dry run's block that runs for real on the platform's key is checked and metered."""
 
+from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
+from backend.blocks.llm import AITextGeneratorBlock, LLMModel
 from backend.data.execution import ExecutionContext, NodeExecutionEntry
+from backend.data.llm_registry import llm_models
 from backend.data.model import NodeExecutionStats
 from backend.executor.manager import execute_node
+from backend.integrations.credentials_store import openai_credentials
+from backend.util.llm.providers import ProviderResponse
 
 _MOD = "backend.executor.manager"
 
@@ -38,6 +44,47 @@ async def test_what_the_block_spent_is_recorded_against_the_user(dry_run_boundar
     assert track.await_args.args == (block.execution_stats,)
     assert track.await_args.kwargs["user_id"] == "user-1"
     assert track.await_args.kwargs["model"] == "sim-model"
+
+
+@pytest.mark.asyncio
+async def test_the_record_names_the_model_the_block_started_on(
+    dry_run_boundaries, monkeypatch: pytest.MonkeyPatch
+):
+    """A block the dry run runs for real starts at 23:59:50 on the eve of its
+    model's shutdown date, and midnight passes while the provider has its
+    request. The record names the model it ran, not the fallback a block
+    starting after midnight runs."""
+    _, track = dry_run_boundaries
+    clock = {"today": date(2026, 12, 10)}
+    monkeypatch.setattr(llm_models, "_today", lambda: clock["today"])
+    asked: list[str] = []
+
+    async def provider(*, model: str, **_: object) -> ProviderResponse:
+        asked.append(model)
+        clock["today"] = date(2026, 12, 11)
+        return ProviderResponse(content="Hello.", prompt_tokens=10, completion_tokens=1)
+
+    platform_key = openai_credentials.model_copy(
+        update={"api_key": SecretStr("mock-key")}
+    )
+    with (
+        patch(
+            f"{_MOD}.prepare_dry_run",
+            side_effect=lambda _block, data: {
+                **data,
+                "prompt": "Say hello.",
+                "model": LLMModel.GPT5_MINI.value,
+            },
+        ),
+        patch(f"{_MOD}.get_dry_run_credentials", return_value=platform_key),
+        patch("backend.util.llm.providers.call_provider", provider),
+    ):
+        outputs = [item async for item in execute_node(*_args(AITextGeneratorBlock()))]
+
+    assert ("response", "Hello.") in outputs
+    assert asked == [LLMModel.GPT5_MINI.value]
+    track.assert_awaited_once()
+    assert track.await_args.kwargs["model"] == LLMModel.GPT5_MINI.value
 
 
 @pytest.fixture
@@ -73,6 +120,9 @@ def _block() -> MagicMock:
     block.disabled = False
     block.input_schema = input_schema
     block.execution_stats = NodeExecutionStats(input_token_count=10)
+    block.with_retired_models_replaced.side_effect = lambda input_data, _model: (
+        input_data
+    )
     block.ran = MagicMock()
 
     async def execute(_input_data, **_kwargs):
@@ -83,7 +133,7 @@ def _block() -> MagicMock:
     return block
 
 
-def _args(block: MagicMock):
+def _args(block: object):
     node = MagicMock()
     node.block = block
     node.input_default = {}

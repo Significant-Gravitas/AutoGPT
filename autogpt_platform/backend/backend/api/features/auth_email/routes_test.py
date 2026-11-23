@@ -309,6 +309,95 @@ def test_rejects_account_deleted_type(send_mock):
     send_mock.assert_not_called()
 
 
+def test_sign_in_code_email_sends_without_a_link(send_mock):
+    res = _post(
+        {
+            "type": "sign_in_code",
+            "to": "user@example.com",
+            "code": "042917",
+            "provider": "microsoft",
+        }
+    )
+
+    assert res.status_code == 204
+    to, subject, body, text = send_mock.call_args.args
+    assert to == "user@example.com"
+    assert subject == "Your AutoGPT sign-in code"
+    assert "042917" in body and "042917" in text
+    assert "Microsoft" in text
+    assert send_mock.call_args.kwargs == {
+        "reply_to": auth_email_routes.settings.config.billing_reply_to_email
+    }
+
+
+def test_sign_in_method_added_email_sends_without_a_link(send_mock):
+    res = _post(
+        {
+            "type": "sign_in_method_added",
+            "to": "user@example.com",
+            "provider": "google",
+        }
+    )
+
+    assert res.status_code == 204
+    _, subject, _, _ = send_mock.call_args.args
+    assert subject == "Google sign-in was added to your AutoGPT account"
+    # Its reader is asked to reply if it wasn't them.
+    assert send_mock.call_args.kwargs == {
+        "reply_to": auth_email_routes.settings.config.billing_reply_to_email
+    }
+
+
+def test_link_emails_keep_the_default_reply_address(send_mock):
+    _post()
+
+    assert send_mock.call_args.kwargs == {}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # A sign-in email carries no link, so none can be smuggled into it.
+        {
+            "type": "sign_in_code",
+            "to": "user@example.com",
+            "code": "042917",
+            "provider": "google",
+            "url": "https://platform.agpt.co/login",
+        },
+        {"type": "sign_in_code", "to": "user@example.com", "provider": "google"},
+        {
+            "type": "sign_in_code",
+            "to": "user@example.com",
+            "code": "<b>hi</b>",
+            "provider": "google",
+        },
+        {
+            "type": "sign_in_code",
+            "to": "user@example.com",
+            "code": "042917",
+            "provider": "lenovo",
+        },
+        {"type": "sign_in_code", "to": "user@example.com", "code": "042917"},
+        {
+            "type": "sign_in_method_added",
+            "to": "user@example.com",
+            "provider": "google",
+            "code": "042917",
+        },
+        # A link email still needs its link, and takes nothing else.
+        {"type": "reset_password", "to": "user@example.com"},
+        {**VALID_BODY, "code": "042917"},
+        {**VALID_BODY, "provider": "google"},
+    ],
+)
+def test_rejects_fields_that_dont_match_the_type(send_mock, body):
+    res = _post(body)
+
+    assert res.status_code == 422
+    send_mock.assert_not_called()
+
+
 def test_unauthenticated_request_is_401(mocker: MockerFixture, monkeypatch):
     """Without a frontend service token the route must refuse — proves the
     Security dependency is actually wired to the endpoint."""
@@ -528,3 +617,42 @@ def test_link_email_html_keeps_ignore_line_button_and_link(send_mock, email_type
     )
     assert body.count(f'<a href="{LINK}"') == 2
     assert f">{LINK}</a>" in body
+
+
+def test_ban_record_lookup_answers_from_the_records(monkeypatch):
+    app.dependency_overrides[auth_email_routes.requires_sign_up_check_service] = (
+        lambda: None
+    )
+
+    async def is_banned(email):
+        return email == "banned@example.com"
+
+    monkeypatch.setattr(auth_email_routes, "is_banned_address", is_banned)
+    try:
+        answers = [
+            client.post("/api/auth/email/ban-record", json={"email": e}).json()
+            for e in ("banned@example.com", "user@example.com")
+        ]
+    finally:
+        app.dependency_overrides.clear()
+
+    assert answers == [{"banned": True}, {"banned": False}]
+
+
+def test_ban_record_lookup_needs_the_frontend_service_token(
+    mocker: MockerFixture, monkeypatch
+):
+    """Without it the route would tell anyone which addresses were banned."""
+    mocker.patch.dict(
+        os.environ,
+        {"JWT_JWKS_URL": "http://localhost:3000/api/auth/jwks"},
+        clear=False,
+    )
+    mocker.patch.object(auth_config, "_settings", AuthSettings())
+    lookup = mocker.AsyncMock(return_value=True)
+    monkeypatch.setattr(auth_email_routes, "is_banned_address", lookup)
+
+    res = client.post("/api/auth/email/ban-record", json={"email": "a@example.com"})
+
+    assert res.status_code == 401
+    lookup.assert_not_called()

@@ -221,7 +221,7 @@ async def _resolve_for(expert_id: str | None, allowed: list[str]):
     from backend.copilot.tools.helpers import resolve_block_credentials
 
     experts = MagicMock()
-    experts.expert_allowed_credential_ids = AsyncMock(return_value=allowed)
+    experts.seeded_expert_credential_ids = AsyncMock(return_value=allowed)
     with (
         patch(
             "backend.copilot.tools.utils.IntegrationCredentialsManager"

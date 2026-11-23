@@ -18,11 +18,12 @@ def idle_chat(monkeypatch):
     """A chat with one answered card, idle and free of open questions."""
     call = SimpleNamespace(
         review_id="review-1",
+        generation=None,
         held_at=datetime(2026, 11, 10, tzinfo=UTC),
         envelope=MagicMock(),
         cost_context=SimpleNamespace(user_id="user-1"),
     )
-    info = MagicMock(user_id="user-1", chat_status="idle")
+    info = MagicMock(user_id="user-1", chat_status="idle", archived_at=None)
     info.metadata.pending_question = None
     info.metadata.delegated_by_session_id = None
     db = MagicMock(get_chat_session_metadata=AsyncMock(return_value=info))

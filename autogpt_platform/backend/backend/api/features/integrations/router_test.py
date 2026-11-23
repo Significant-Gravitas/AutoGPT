@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
 import fastapi.testclient
+import httpx
 import pytest
 from pydantic import SecretStr
 
@@ -34,6 +35,14 @@ async def _not_found_handler(
 ) -> fastapi.responses.JSONResponse:
     """Mirror the production NotFoundError → 404 mapping from the REST app."""
     return fastapi.responses.JSONResponse(status_code=404, content={"detail": str(exc)})
+
+
+@app.exception_handler(ValueError)
+async def _value_error_handler(
+    request: fastapi.Request, exc: ValueError
+) -> fastapi.responses.JSONResponse:
+    """Mirror the production ValueError → 400 mapping from the REST app."""
+    return fastapi.responses.JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
 client = fastapi.testclient.TestClient(app)
@@ -220,7 +229,11 @@ class TestGetCredentialReturnsMetaOnly:
 
 
 class TestSdkDefaultCredentialsNotAccessible:
-    """SDK default credentials (ID ending in '-default') must be hidden."""
+    """A refused SDK default credential stays hidden.
+
+    ``openai-default`` is the SDK key of a provider whose shared key may not
+    run (not in ``RUNNABLE_SDK_DEFAULT_PROVIDERS``), so nothing may offer it.
+    """
 
     def test_get_sdk_default_returns_404(self):
         with patch(
@@ -273,6 +286,61 @@ class TestSdkDefaultCredentialsNotAccessible:
 
         assert resp.status_code == 404
         mock_mgr.store.get_creds_by_id.assert_not_called()
+
+
+class TestRunnableSdkDefaultIsAPlatformKey:
+    """A runnable SDK default (``firecrawl-default``) is one of the platform's
+    keys, listed and protected exactly like a built-in system credential, so
+    every view can offer it the way it offers "Use Credits for OpenAI"
+    (SECRT-3207)."""
+
+    def test_list_includes_it_marked_as_system(self):
+        user_cred = _make_api_key_cred()
+        platform_key = _make_sdk_default_cred("firecrawl")
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.store.get_all_creds = AsyncMock(
+                return_value=[user_cred, platform_key]
+            )
+            resp = client.get("/credentials")
+
+        assert resp.status_code == 200
+        by_id = {c["id"]: c for c in resp.json()}
+        assert by_id["firecrawl-default"]["is_system"] is True
+        assert by_id["cred-123"]["is_system"] is False
+        assert "sk-platform-secret-key" not in resp.text
+
+    def test_get_returns_its_metadata(self):
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.get = AsyncMock(return_value=_make_sdk_default_cred("firecrawl"))
+            resp = client.get("/firecrawl/credentials/firecrawl-default")
+
+        assert resp.status_code == 200
+        assert resp.json()["is_system"] is True
+        assert "sk-platform-secret-key" not in resp.text
+
+    def test_delete_is_refused_like_a_system_credential(self):
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.store.get_creds_by_id = AsyncMock()
+            resp = client.request("DELETE", "/firecrawl/credentials/firecrawl-default")
+
+        assert resp.status_code == 403
+        mock_mgr.store.get_creds_by_id.assert_not_called()
+
+    def test_system_providers_include_it(self):
+        with patch(
+            "backend.sdk.registry.AutoRegistry.get_all_credentials",
+            return_value=[_make_sdk_default_cred("firecrawl")],
+        ):
+            resp = client.get("/providers/system")
+
+        assert resp.status_code == 200
+        assert "firecrawl" in resp.json()
 
 
 class TestCreateCredentialNoSecretInResponse:
@@ -385,6 +453,58 @@ class TestCreateScopedUserPasswordCredential:
 
         assert resp.status_code == 201
         assert resp.json()["scope"] is None
+
+
+class TestCreateCredentialRejectsBlankSecrets:
+    """POST /{provider}/credentials must reject blank secrets and strip padding
+    before anything is stored (#15727)."""
+
+    @staticmethod
+    def _post(body: dict) -> tuple[httpx.Response, AsyncMock]:
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.create = AsyncMock()
+            resp = client.post("/openai/credentials", json=body)
+        return resp, mock_mgr.create
+
+    @pytest.mark.parametrize(
+        "secret, detail",
+        [
+            ({"type": "api_key", "api_key": "   "}, "API key must not be empty"),
+            (
+                {"type": "user_password", "username": " ", "password": "hunter2-pw"},
+                "Username must not be empty",
+            ),
+        ],
+    )
+    def test_blank_secret_rejected(self, secret: dict, detail: str):
+        # credential_input_test.py covers each rule; this checks the route
+        # applies them before storing, and quotes no secret back.
+        resp, create = self._post({"provider": "openai", "title": "K", **secret})
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == detail
+        assert "hunter2-pw" not in resp.text
+        create.assert_not_called()
+
+    def test_padded_api_key_stored_stripped(self):
+        resp, create = self._post(
+            {
+                "provider": "openai",
+                "type": "api_key",
+                "title": "  My key  ",
+                "api_key": "  sk-padded \n",
+            }
+        )
+
+        assert resp.status_code == 201
+        create.assert_awaited_once()
+        stored = create.await_args.args[1]
+        assert isinstance(stored, APIKeyCredentials)
+        assert stored.api_key.get_secret_value() == "sk-padded"
+        assert stored.title == "My key"
+        assert "sk-padded" not in resp.text
 
 
 class TestManagedCredentials:
@@ -1676,3 +1796,36 @@ class TestAyrshareSSOURL:
 
         assert response.status_code == 502
         assert response.json()["detail"] == "Failed to generate JWT"
+
+
+class TestNativeLogin:
+    def _login(self, params: dict):
+        handler = MagicMock()
+        handler.get_login_url.return_value = "https://github.com/login/oauth/authorize"
+        with (
+            patch(
+                "backend.api.features.integrations.router._get_provider_oauth_handler",
+                return_value=handler,
+            ),
+            patch("backend.api.features.integrations.router.creds_manager") as mock_mgr,
+        ):
+            mock_mgr.store.store_state_token = AsyncMock(return_value=("tok", "v"))
+            response = client.get("/github/login", params=params)
+        return response, mock_mgr.store.store_state_token.await_args
+
+    def test_native_client_asks_for_a_native_state(self):
+        response, call = self._login({"client": "native"})
+
+        assert response.status_code == 200
+        assert call.kwargs["native"] is True
+
+    def test_web_login_keeps_the_plain_state(self):
+        response, call = self._login({})
+
+        assert response.status_code == 200
+        assert call.kwargs["native"] is False
+
+    def test_unknown_client_is_rejected(self):
+        response, _ = self._login({"client": "desktop"})
+
+        assert response.status_code == 422

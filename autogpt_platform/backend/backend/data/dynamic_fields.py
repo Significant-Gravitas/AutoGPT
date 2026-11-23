@@ -7,6 +7,8 @@ Dynamic fields allow graphs to connect complex data structures using special del
 - _@_ for object attributes (e.g., "obj_@_attr" → obj.attr)
 """
 
+import copy
+import json
 from typing import Any
 
 from backend.util.mock import MockObject
@@ -65,31 +67,145 @@ def get_dynamic_field_description(field_name: str) -> str:
     Returns:
         A descriptive string explaining what this dynamic field represents
     """
-    base_name = extract_base_field_name(field_name)
+    try:
+        parsed = parse_dynamic_field(field_name)
+    except ValueError:
+        parsed = None
+    if not parsed or not parsed[1]:
+        return f"Value for {field_name}"
 
-    if DICT_SPLIT in field_name:
-        # Extract the key part after _#_
-        parts = field_name.split(DICT_SPLIT)
-        if len(parts) > 1:
-            key = parts[1].split("_")[0] if "_" in parts[1] else parts[1]
-            return f"Dictionary field '{key}' for base field '{base_name}' ({base_name}['{key}'])"
-    elif LIST_SPLIT in field_name:
-        # Extract the index part after _$_
-        parts = field_name.split(LIST_SPLIT)
-        if len(parts) > 1:
-            index = parts[1].split("_")[0] if "_" in parts[1] else parts[1]
-            return (
-                f"List item {index} for base field '{base_name}' ({base_name}[{index}])"
-            )
-    elif OBJC_SPLIT in field_name:
-        # Extract the attribute part after _@_
-        parts = field_name.split(OBJC_SPLIT)
-        if len(parts) > 1:
-            # Get the full attribute name (everything after _@_)
-            attr = parts[1]
-            return f"Object attribute '{attr}' for base field '{base_name}' ({base_name}.{attr})"
+    base_name, tokens = parsed
+    path = base_name
+    for delim, ident in tokens:
+        if delim == DICT_SPLIT:
+            path += f"['{ident}']"
+        elif delim == LIST_SPLIT:
+            path += f"[{ident}]"
+        else:
+            path += f".{ident}"
 
-    return f"Value for {field_name}"
+    delim, ident = tokens[-1]
+    if delim == DICT_SPLIT:
+        return f"Dictionary field '{ident}' for base field '{base_name}' ({path})"
+    if delim == LIST_SPLIT:
+        return f"List item {ident} for base field '{base_name}' ({path})"
+    return f"Object attribute '{ident}' for base field '{base_name}' ({path})"
+
+
+# Keys that make a JSON schema say something about the value it accepts.
+_SCHEMA_TYPE_KEYS = frozenset(
+    {"type", "anyOf", "oneOf", "allOf", "enum", "const", "properties", "items"}
+)
+
+
+def get_dynamic_field_schema(
+    base_field_schema: dict[str, Any], field_name: str
+) -> dict[str, Any] | None:
+    """
+    Find the JSON schema of the value a dynamic pin writes into its base field,
+    e.g. the `duration_minutes` schema for "timing_#_duration_minutes" when
+    `timing` is a union of models. A key found in several `anyOf`/`oneOf`
+    variants with different schemas gets an `anyOf` of them; one constrained by
+    several `allOf` members gets an `allOf`.
+
+    `base_field_schema` must have its `$ref`s resolved, as
+    `BlockSchema.jsonschema()` does; a `$ref` leaf counts as unconstrained.
+
+    Returns None when the path is invalid or leads to a value the base schema
+    leaves unconstrained (e.g. a `dict[str, Any]` value, or a union with an
+    untyped variant).
+    """
+    try:
+        parsed = parse_dynamic_field(field_name)
+    except ValueError:
+        return None
+    if not parsed or not parsed[1]:
+        return None
+
+    current: dict[str, Any] | None = base_field_schema
+    for delim, ident in parsed[1]:
+        current = _leaf_schema(current, delim, ident)
+        if current is None:
+            return None
+    if _is_unconstrained(current):
+        return None
+    return copy.deepcopy(current)
+
+
+def _leaf_schema(
+    schema: dict[str, Any], delim: str, ident: str
+) -> dict[str, Any] | None:
+    """The schema of `schema`'s child at one path step, or None if it has none."""
+    parts: list[dict[str, Any]] = []
+    if (own := _child_schema(schema, delim, ident)) is not None:
+        parts.append(own)
+    for member in schema.get("allOf") or []:
+        if isinstance(member, dict):
+            if (child := _leaf_schema(member, delim, ident)) is not None:
+                parts.append(child)
+    for key in ("anyOf", "oneOf"):
+        alternatives = [
+            child
+            for member in schema.get(key) or []
+            if isinstance(member, dict)
+            and (child := _leaf_schema(member, delim, ident)) is not None
+        ]
+        if alternatives:
+            parts.append(_combine("anyOf", alternatives))
+    if not parts:
+        return None
+    return _combine("allOf", parts)
+
+
+def _combine(keyword: str, schemas: list[dict[str, Any]]) -> dict[str, Any]:
+    """
+    One schema for `schemas` joined by `anyOf` (any may match: an unconstrained
+    one makes the whole unconstrained) or `allOf` (all must match: unconstrained
+    ones add nothing).
+    """
+    if keyword == "anyOf" and any(_is_unconstrained(s) for s in schemas):
+        return {}
+    unique: dict[str, dict[str, Any]] = {}
+    for schema in schemas:
+        if not _is_unconstrained(schema):
+            unique.setdefault(json.dumps(schema, sort_keys=True, default=str), schema)
+    if not unique:
+        return {}
+    if len(unique) == 1:
+        return next(iter(unique.values()))
+    return {keyword: list(unique.values())}
+
+
+def _is_unconstrained(schema: dict[str, Any]) -> bool:
+    return not (_SCHEMA_TYPE_KEYS & schema.keys())
+
+
+def _child_schema(
+    schema: dict[str, Any], delim: str, ident: str
+) -> dict[str, Any] | None:
+    if delim == LIST_SPLIT:
+        try:
+            index = _parse_list_index(ident)
+        except ValueError:
+            return None  # the executor can't merge this pin either
+        prefix_items = schema.get("prefixItems")
+        if isinstance(prefix_items, list) and index < len(prefix_items):
+            return _subschema(prefix_items[index])
+        return _subschema(schema.get("items"))
+
+    properties = schema.get("properties")
+    if isinstance(properties, dict) and isinstance(properties.get(ident), dict):
+        return properties[ident]
+    if delim == DICT_SPLIT:
+        return _subschema(schema.get("additionalProperties"))
+    return None
+
+
+def _subschema(value: Any) -> dict[str, Any] | None:
+    """`items`/`additionalProperties` as a schema: `true` accepts anything."""
+    if value is True:
+        return {}
+    return value if isinstance(value, dict) else None
 
 
 def is_tool_pin(name: str) -> bool:

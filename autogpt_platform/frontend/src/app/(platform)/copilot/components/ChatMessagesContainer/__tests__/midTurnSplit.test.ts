@@ -8,6 +8,7 @@ import {
   isMidTurnFallbackRow,
   isMidTurnSegmentRow,
   messagesCarryDrainedText,
+  sourceMessageID,
   splitMessagesAtDrainHints,
   turnMessagesForRow,
 } from "../midTurnSplit";
@@ -456,6 +457,30 @@ describe("splitMessagesAtDrainHints — row identity", () => {
       second.slice(0, first.length).map((row) => row.id),
     );
     first.forEach((row, i) => expect(second[i]).toBe(row));
+  });
+});
+
+describe("sourceMessageID", () => {
+  it("names the message each row of a split turn was rendered from", () => {
+    const rows = splitMessagesAtDrainHints([
+      PROMPT,
+      assistant("a1", [
+        toolPart("read"),
+        hintPart([{ id: "pm-1", content: "one" }]),
+        toolPart("write"),
+        hintPart([{ id: "pm-2", content: "two" }]),
+        textPart("done"),
+      ]),
+    ]);
+
+    expect(rows.map(sourceMessageID)).toEqual([
+      "user-1",
+      "a1",
+      "midturn-pm-1",
+      "a1",
+      "midturn-pm-2",
+      "a1",
+    ]);
   });
 });
 

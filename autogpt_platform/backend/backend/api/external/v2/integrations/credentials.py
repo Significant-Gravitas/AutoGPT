@@ -20,6 +20,10 @@ from backend.data.model import (
     UserPasswordCredentials,
     is_sdk_default,
 )
+from backend.integrations.credential_input import (
+    InvalidCredentialInputError,
+    normalize_user_supplied_credentials,
+)
 from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NeedConfirmation
@@ -103,6 +107,13 @@ async def create_credential(
             headers={k: SecretStr(v) for k, v in request.headers.items()},
         )
 
+    try:
+        normalize_user_supplied_credentials(credentials)
+    except InvalidCredentialInputError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)
+        )
+
     await creds_manager.create(auth.user_id, credentials)
     return CredentialInfo.from_internal(credentials)
 
@@ -138,8 +149,14 @@ async def delete_credential(
     Platform-provided credentials cannot be deleted. Any agents using this
     credential will fail on their next run.
     """
-    # An SDK default is not the caller's credential at all, so it is not there
-    # to find; a system or AutoGPT-managed one is, and refusing says so.
+    # A refused SDK default is not usable by anyone, so it is not there to find.
+    # The platform's own keys (system credentials, including runnable SDK
+    # defaults) and AutoGPT-managed ones are, and refusing says so.
+    if is_system_credential(credential_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Platform-managed credentials cannot be deleted",
+        )
     if is_sdk_default(credential_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

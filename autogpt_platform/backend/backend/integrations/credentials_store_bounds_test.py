@@ -9,7 +9,12 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import SecretStr
 
-from backend.data.model import APIKeyCredentials, OAuthState, UserIntegrations
+from backend.data.model import (
+    APIKeyCredentials,
+    OAuthState,
+    UserIntegrations,
+    platform_funded_managed_id,
+)
 from backend.integrations.credentials_store import (
     MAX_CREDENTIALS_PER_USER,
     MAX_PENDING_OAUTH_STATES_PER_USER,
@@ -168,6 +173,24 @@ async def test_adding_a_credential_marked_managed_is_refused(store, mocker):
 
     with pytest.raises(InvalidInputError, match="user-owned"):
         await store.add_creds("user-1", _credentials(is_managed=True))
+    store._set_user_integration_creds.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_adding_a_credential_with_a_platform_funded_id_is_refused(store, mocker):
+    mocker.patch.object(
+        store,
+        "_get_persisted_user_creds_unlocked",
+        mocker.AsyncMock(return_value=[]),
+    )
+    reserved = _credentials(
+        id=platform_funded_managed_id("agent_mail"), provider="agent_mail"
+    )
+
+    with pytest.raises(InvalidInputError, match="reserved ID"):
+        await store.add_creds("user-1", reserved)
+    with pytest.raises(ValueError, match="user-owned"):
+        await store.upsert_single_provider_creds("user-1", reserved)
     store._set_user_integration_creds.assert_not_awaited()
 
 

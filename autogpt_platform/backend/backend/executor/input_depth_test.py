@@ -76,7 +76,29 @@ async def test_storable_graph_inputs_are_preserved(graph_source, depth, kind):
     )
     assert dict(starting)["input-node"]["value"] == value
     graph_source.validate_graph_execution_permissions.assert_awaited_once_with(
-        user_id="user-1", graph_id="graph-1", graph_version=1, is_sub_graph=False
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_version=1,
+        parent_graph_exec_id=None,
+        is_sub_graph=False,
+    )
+
+
+async def test_a_sub_graph_is_checked_with_the_run_that_starts_it(graph_source):
+    """`is_sub_graph` goes too, for a database manager that predates
+    `parent_graph_exec_id` and drops it."""
+    await validate_and_construct_node_execution_input(
+        graph_id="graph-1",
+        user_id="user-1",
+        graph_inputs={"topic": "news"},
+        parent_graph_exec_id="parent-exec",
+    )
+    graph_source.validate_graph_execution_permissions.assert_awaited_once_with(
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_version=1,
+        parent_graph_exec_id="parent-exec",
+        is_sub_graph=True,
     )
 
 
