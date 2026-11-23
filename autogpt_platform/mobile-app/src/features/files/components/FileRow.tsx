@@ -1,7 +1,10 @@
+import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { Icon } from "@/components/Icon";
+
 import type { WorkspaceFile } from "@/lib/api/workspace";
-import { createStyles, spacing } from "@/lib/theme";
+import { createStyles, spacing, useColors } from "@/lib/theme";
 
 import { fileDetailLine } from "../listHelpers";
 import { FileThumbnail } from "./FileThumbnail";
@@ -16,6 +19,7 @@ export function FileRow({ file, isFirst, onPress }: Props) {
   // "Today" and "Yesterday" move with the clock, so the row is never cached.
   "use no memo";
   const styles = useStyles();
+  const colors = useColors();
 
   function handlePress() {
     onPress(file);
@@ -40,6 +44,7 @@ export function FileRow({ file, isFirst, onPress }: Props) {
           {fileDetailLine(file)}
         </Text>
       </View>
+      <Icon icon={ArrowRight01Icon} size={16} color={colors.textTertiary} />
     </Pressable>
   );
 }
@@ -52,7 +57,7 @@ const useStyles = createStyles((colors) => ({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.panelDivider },
   pressed: { backgroundColor: colors.surfacePressed },
   text: { flex: 1, minWidth: 0 },
   name: { fontSize: 15, lineHeight: 20, fontWeight: "500", color: colors.text },

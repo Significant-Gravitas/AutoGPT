@@ -13,7 +13,7 @@ describe("area colours", () => {
     expect(seatTint("sales", "dark")).toBe("#2D2A29");
   });
 
-  it("starts the profile's wash at 22% of the area over the page grey", () => {
-    expect(washTint("sales", "light")).toBe("#EAE1D2");
+  it("starts the profile's wash at 12% of the area over the page grey", () => {
+    expect(washTint("sales", "light")).toBe("#EEE9E2");
   });
 });
