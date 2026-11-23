@@ -1,4 +1,5 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RelativeTime } from "../RelativeTime";
 
@@ -61,5 +62,15 @@ describe("RelativeTime", () => {
     expect(vi.getTimerCount()).toBe(1);
     expect(label("b")).toBe("about 1 hour ago");
     expect(label("c")).toBe("1 day ago");
+  });
+
+  it("renders a deterministic UTC date on the server regardless of system clock", () => {
+    const target = new Date("2026-04-23T09:55:30.000Z");
+    const htmlEarly = renderToString(<RelativeTime date={target} />);
+    vi.setSystemTime(new Date("2026-04-25T10:00:30.000Z"));
+    const htmlLater = renderToString(<RelativeTime date={target} />);
+
+    expect(htmlEarly).toBe("2026-04-23");
+    expect(htmlLater).toBe("2026-04-23");
   });
 });
