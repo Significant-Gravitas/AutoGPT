@@ -23,6 +23,7 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWA
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset, split_trigger_inputs
 from backend.api.middleware.body_limit import MiB, request_body_limit
+from backend.blocks.mcp.helpers import is_manual_mcp_credential
 from backend.copilot.rate_limit import enforce_payment_paywall, is_user_paywalled
 from backend.copilot.scheduled_chats.reconnect import (
     resume_after_reconnect_in_background,
@@ -1350,6 +1351,13 @@ async def delete_and_revoke_credentials(
     await creds_manager.delete(user_id, creds.id)
 
     if not isinstance(creds, OAuth2Credentials):
+        return None
+    if provider_matches(
+        provider.value, ProviderName.MCP.value
+    ) and is_manual_mcp_credential(creds):
+        # A token the user pasted is stored like an OAuth grant but was never
+        # issued through one: there is no endpoint to revoke it at, and no
+        # metadata to build an OAuth handler from.
         return None
     return await _revocation_handler(creds, provider).revoke_tokens(creds)
 
