@@ -19,10 +19,18 @@ const TOP_UP_DOLLARS = 7;
 const TOP_UP = TOP_UP_DOLLARS * 100;
 const CREDITS_PATH = "/api/proxy/api/credits";
 const HISTORY_PATH = "/api/proxy/api/credits/transactions";
-// Page time the refresh check may run while it waits. The clock is paused
-// before the fulfil call answers, so the 10 s backup read is armed on page
-// time the test runs: this budget plus the 1 s for the answers, 4 s at most.
-const REFRESH_CLOCK_BUDGET_MS = 3_000;
+// Page time the second test runs. The page's backup read comes 10 s after its
+// fulfil call (LATE_WEBHOOK_MS in useTopupCheckoutReturn.ts), and the clock is
+// paused before that call answers, so the backup is armed on page time the
+// test runs: the refresh steps plus the run for the answers, kept far below.
+const BACKUP_READ_MS = 10_000;
+const PAUSE_JUMP_MS = 1_000;
+// One step per poll (every 100 ms), so the budget lasts the 15 s the poll
+// waits: a runner that stalls before the page handles the answer still gets
+// its timers run, and the steps only fire due timers, at most 1.5 s of them.
+const REFRESH_STEP_MS = 10;
+const REFRESH_CLOCK_BUDGET_MS = 1_500;
+const ANSWER_RUN_MS = 1_000;
 const USD = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
@@ -105,6 +113,10 @@ test.describe("billing journey", () => {
     page,
     journeyUser: _user,
   }) => {
+    expect(
+      PAUSE_JUMP_MS + REFRESH_CLOCK_BUDGET_MS + ANSWER_RUN_MS,
+      "the page time this test runs should stay far below the backup read",
+    ).toBeLessThanOrEqual(BACKUP_READ_MS / 2);
     await requireFakeStripe();
     const stripeCursor = await stripeRequestCursor();
     const before = await getCreditBalance(page);
@@ -125,7 +137,7 @@ test.describe("billing journey", () => {
         // Freeze the page's clock before its fulfil call answers. The page
         // handles the answer, and arms its 10 s backup read, only as this
         // test runs the clock, so time the test doesn't run never counts.
-        await page.clock.pauseAt(Date.now() + 1_000);
+        await page.clock.pauseAt(Date.now() + PAUSE_JUMP_MS);
       }
       await route.fallback();
     });
@@ -150,9 +162,9 @@ test.describe("billing journey", () => {
         "the return page should have read the balance before its fulfil call",
       ).toBe(true);
       // The page handles the answer on timers, which the paused clock fires
-      // only when run. Run it a tenth of a second at a time while waiting,
-      // and never more than REFRESH_CLOCK_BUDGET_MS in all, far short of the
-      // 10 s read, which therefore can't stand in for the first.
+      // only when run. Run it a step at a time while waiting, within
+      // REFRESH_CLOCK_BUDGET_MS, far short of the backup read, which
+      // therefore can't stand in for the first.
       let clockRun = 0;
       await expect
         .poll(
@@ -162,8 +174,8 @@ test.describe("billing journey", () => {
               paths.includes(path),
             );
             if (!bothRead && clockRun < REFRESH_CLOCK_BUDGET_MS) {
-              await page.clock.runFor(100);
-              clockRun += 100;
+              await page.clock.runFor(REFRESH_STEP_MS);
+              clockRun += REFRESH_STEP_MS;
             }
             return paths;
           },
@@ -182,8 +194,8 @@ test.describe("billing journey", () => {
           .map((request) => request.response()),
       );
       // Their answers reach the page on its zero-delay timers: run a second
-      // of its time, far short of the 10 s read.
-      await page.clock.runFor(1_000);
+      // of its time, far short of the backup read.
+      await page.clock.runFor(ANSWER_RUN_MS);
       await expect(
         balance(page, before + TOP_UP),
         "the page should show the credits its own fulfil call added",
