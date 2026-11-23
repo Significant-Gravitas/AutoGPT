@@ -1,9 +1,11 @@
 import asyncio
+import time
 from datetime import datetime, timezone
 from typing import Optional, cast
 
 import pytest
 from prisma.enums import ReviewStatus
+from pydantic import SecretStr
 from pytest_mock import MockerFixture
 
 from backend.blocks import get_blocks
@@ -24,7 +26,7 @@ from backend.data.execution import (
     GraphExecutionWithNodes,
 )
 from backend.data.graph import GraphSettings, Node
-from backend.data.model import User
+from backend.data.model import APIKeyCredentials, User
 from backend.executor.utils import (
     CRED_ERR_INVALID_PREFIX,
     CRED_ERR_INVALID_TYPE_MISMATCH,
@@ -33,6 +35,8 @@ from backend.executor.utils import (
     CRED_ERR_UNKNOWN_PREFIX,
     ExecutionNotRequeuedError,
     _is_optional_picker,
+    _user_timezone,
+    _validate_node_input_credentials,
     add_graph_execution,
     is_credential_validation_error_message,
     validate_exec,
@@ -4681,6 +4685,85 @@ def test_validate_exec_rejects_unset_required_credentials():
     assert "'id' is a required property" in msg
 
 
+# ============ _validate_node_input_credentials: API key expiry ============ #
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "offset, expired",
+    [(-60, True), (0, True), (86400, False), (None, False)],
+    ids=["past", "now", "future", "none"],
+)
+async def test_validate_node_input_credentials_rejects_expired_api_key(
+    mocker: MockerFixture, offset: int | None, expired: bool
+):
+    """#16234: a key past its expiry fails the pre-run check with a marker
+    Copilot reads as "reconnect"."""
+    now = int(time.time())
+    key = APIKeyCredentials(
+        id="cred-1",
+        provider="github",
+        api_key=SecretStr("k"),
+        title="GitHub key",
+        expires_at=None if offset is None else now + offset,
+    )
+    store = mocker.MagicMock()
+    store.get_all_creds = mocker.AsyncMock(return_value=[key])
+    mocker.patch(
+        "backend.executor.utils.get_integration_credentials_store",
+        return_value=store,
+    )
+    user_timezone = mocker.patch(
+        "backend.executor.utils._user_timezone",
+        new=mocker.AsyncMock(return_value="America/Chicago"),
+    )
+    node = Node(
+        block_id=GithubCommentBlock().id,
+        input_default={
+            "credentials": {"id": "cred-1", "provider": "github", "type": "api_key"}
+        },
+    )
+
+    errors, _ = await _validate_node_input_credentials(
+        graph=mocker.MagicMock(nodes=[node], links=[]),
+        user_id="user-1",
+        nodes_input_masks=None,
+    )
+
+    if expired:
+        message = errors[node.id]["credentials"]
+        assert message.startswith(CRED_ERR_NOT_AVAILABLE_PREFIX)
+        assert "API key 'GitHub key' expired on" in message
+        assert is_credential_validation_error_message(message)
+        # Dated in the user's own zone, so it names the day they picked.
+        assert message.endswith(str(key.expired_error("America/Chicago")))
+        user_timezone.assert_awaited_once_with("user-1")
+    else:
+        assert node.id not in errors
+        # Nothing to date, so the user isn't read.
+        user_timezone.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "lookup, zone",
+    [
+        ({"return_value": MockObject(timezone="Europe/Paris")}, "Europe/Paris"),
+        ({"side_effect": ValueError("User not found")}, "UTC"),
+    ],
+    ids=["set", "no-such-user"],
+)
+async def test_user_timezone_reads_the_users_setting(
+    mocker: MockerFixture, lookup: dict, zone: str
+):
+    mocker.patch("backend.executor.utils.prisma.is_connected", return_value=True)
+    mocker.patch(
+        "backend.executor.utils.user_db.get_user_by_id",
+        new=mocker.AsyncMock(**lookup),
+    )
+
+    assert await _user_timezone("user-1") == zone
+
+
 @pytest.mark.parametrize(
     "block_cls, schema_key, values_key",
     [
@@ -4716,8 +4799,14 @@ def test_only_reviewed_blocks_override_the_input_check():
     }
     assert overriders == {
         ("AgentExecutorBlock", "get_mismatch_error"),
+        # Read a saved gpt-5.1-codex as gpt-5.3-codex, on a copy (#17138).
+        ("CodeGenerationBlock", "validate_data"),
         ("MCPToolBlock", "get_mismatch_error"),
         ("PerplexityBlock", "validate_data"),
+        # Read a saved Claude Sonnet 4.5 as Sonnet 4.6, on a copy (#17103).
+        ("StagehandActBlock", "validate_data"),
+        ("StagehandExtractBlock", "validate_data"),
+        ("StagehandObserveBlock", "validate_data"),
     }
 
 

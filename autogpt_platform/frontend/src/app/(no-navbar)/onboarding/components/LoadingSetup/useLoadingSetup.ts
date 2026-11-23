@@ -1,17 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import type { SetupInput } from "../../helpers";
 
 // The wizard's other reads each give up on their own; the signed-in account
 // has no deadline, and it is what #16965 stalled on.
 export const SETUP_LOAD_DEADLINE_MS = 15_000;
 
 interface Args {
-  waitingFor: string[];
+  waitingFor: SetupInput[];
   onSlow: () => void;
 }
 
 export function useLoadingSetup({ waitingFor, onSlow }: Args) {
   const [timedOut, setTimedOut] = useState(false);
   const noticeRef = useRef<HTMLDivElement>(null);
+  const titleID = useId();
   const latestOnSlow = useRef(onSlow);
   const isWaitingForAccount = waitingFor.includes("account");
 
@@ -25,7 +27,11 @@ export function useLoadingSetup({ waitingFor, onSlow }: Args) {
       setTimedOut(true);
       latestOnSlow.current();
     }, SETUP_LOAD_DEADLINE_MS);
-    return () => clearTimeout(timer);
+    // Once the wait ends, a later wait gets a full deadline of its own.
+    return () => {
+      clearTimeout(timer);
+      setTimedOut(false);
+    };
   }, [isWaitingForAccount]);
 
   const isSlow = timedOut && isWaitingForAccount;
@@ -39,5 +45,5 @@ export function useLoadingSetup({ waitingFor, onSlow }: Args) {
     window.location.reload();
   }
 
-  return { isSlow, noticeRef, reload };
+  return { isSlow, noticeRef, titleID, reload };
 }

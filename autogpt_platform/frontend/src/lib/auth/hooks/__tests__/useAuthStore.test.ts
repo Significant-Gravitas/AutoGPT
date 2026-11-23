@@ -508,6 +508,20 @@ describe("useAuthStore onboarding handoff", () => {
     expect(window.sessionStorage.getItem(WELCOME)).toBeNull();
   });
 
+  it("forgets a connecting sign-in this tab started once it signs in", () => {
+    // Noted when "Continue with Google" set off (connect-attempt.ts).
+    window.sessionStorage.setItem(
+      "autogpt:connect-attempt",
+      JSON.stringify({ provider: "google", at: Date.now() }),
+    );
+
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+
+    // Signing out later doesn't offer "without connecting" for a sign-in
+    // that worked.
+    expect(window.sessionStorage.getItem("autogpt:connect-attempt")).toBeNull();
+  });
+
   it("is cleared when the next account signs in after a session ended some other way", () => {
     // A sign-out in another tab or a failed session check drops the user
     // without logOut(); the next sign-in still must not inherit the flags.

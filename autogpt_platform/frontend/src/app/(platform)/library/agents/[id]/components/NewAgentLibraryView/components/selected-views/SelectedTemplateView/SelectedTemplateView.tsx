@@ -58,6 +58,8 @@ export function SelectedTemplateView({
   } = useSelectedTemplateView({
     templateId,
     graphId: agent.graph_id,
+    inputSchema: agent.input_schema,
+    triggerConfigSchema: agent.trigger_setup_info?.config_schema,
     onRunCreated,
   });
 

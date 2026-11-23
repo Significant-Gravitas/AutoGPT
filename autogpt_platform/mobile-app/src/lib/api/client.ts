@@ -19,6 +19,20 @@ export class ApiError extends Error {
   }
 }
 
+const planRequiredListeners = new Set<() => void>();
+
+/** Called whenever the server answers 402: this account has no plan (any more). */
+export function onPlanRequired(listener: () => void) {
+  planRequiredListeners.add(listener);
+  return () => {
+    planRequiredListeners.delete(listener);
+  };
+}
+
+export function reportPlanRequired() {
+  planRequiredListeners.forEach((listener) => listener());
+}
+
 interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
@@ -49,6 +63,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
     assertSameSession(mark);
   }
   if (!response.ok) {
+    if (response.status === 402) reportPlanRequired();
     const { message, code } = await readError(response);
     // Reading the body can outlast the session; a stale 401 must not reach
     // a handler that signs out whoever signed in meanwhile.

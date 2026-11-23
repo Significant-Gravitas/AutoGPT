@@ -552,7 +552,7 @@
       "block_id": "9c0b0450-d199-458b-a731-072189dd6593",
       "input_default": {
         "focus": "List the top 5 YouTube video urls results in this data.\n\nThe urls look like this:\n```https://www.youtube.com/watch?v=.....```",
-        "model": "claude-sonnet-4-5-20250929"
+        "model": "claude-sonnet-5-5"
       },
       "metadata": {
         "position": {
