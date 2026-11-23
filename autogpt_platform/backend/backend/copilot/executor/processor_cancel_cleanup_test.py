@@ -209,17 +209,25 @@ def test_a_cancel_in_the_cleanup_waits_for_every_step(
     proc = processor.CoPilotProcessor()
     proc.execution_loop = exec_loop
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        # Returns once the worker has given up on the turn and failed the
-        # session itself, as production's did.
-        pool.submit(proc.execute, entry, cancel, cluster_lock).result(
-            timeout=_HANG_SECONDS
-        )
-    exec_loop.call_soon_threadsafe(release_cleanup.set)
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            worker = pool.submit(proc.execute, entry, cancel, cluster_lock)
+            try:
+                # Returns once the worker has given up on the turn and failed
+                # the session itself, as production's did.
+                worker.result(timeout=_HANG_SECONDS)
+            finally:
+                # Then the held step goes on. When the wait above fails, the
+                # Stop also has the worker give up before the pool shuts down.
+                cancel.set()
+                exec_loop.call_soon_threadsafe(release_cleanup.set)
+    finally:
+        # Nothing of the turn outlives the test, even when it fails above.
+        if "task" in turn:
+            asyncio.run_coroutine_threadsafe(_ended(turn["task"]), exec_loop).result(
+                timeout=_HANG_SECONDS
+            )
     turn_task = turn["task"]
-    asyncio.run_coroutine_threadsafe(_ended(turn_task), exec_loop).result(
-        timeout=_HANG_SECONDS
-    )
     turn_cancelled = turn_task.cancelled()
     # In production the garbage collector closed the abandoned exit stack,
     # in another context, twelve minutes later.
