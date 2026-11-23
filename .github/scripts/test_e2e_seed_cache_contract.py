@@ -175,7 +175,9 @@ class E2EMatrixContractTests(unittest.TestCase):
             ],
             ["if: matrix.store_agents"],
         )
-        self.assertIn("python -m test.load_store_agents", load)
+        # With images the stack serves itself: the CSV's production images on
+        # GCS had the image optimizer fetch from outside the stack (#17298).
+        self.assertIn("python -m test.load_store_agents --local-media", load)
         steps = _e2e_step_names(workflow)
         self.assertLess(steps.index(FRONTEND_WAIT_STEP), steps.index(STORE_AGENTS_STEP))
         self.assertLess(
@@ -551,7 +553,7 @@ class E2ECoverageContractTests(unittest.TestCase):
         self.assertEqual(_matrix_leg(workflow, "smoke")["min_tests"], "37")
         # The whole journeys suite's inventory, one total on every shard.
         self.assertEqual(
-            {leg["min_tests"] for leg in _matrix_legs(workflow, "journeys")}, {"58"}
+            {leg["min_tests"] for leg in _matrix_legs(workflow, "journeys")}, {"61"}
         )
         # Smoke stays strict: no test.fail() known failures.
         self.assertEqual(_matrix_leg(workflow, "smoke")["known_failures"], "false")

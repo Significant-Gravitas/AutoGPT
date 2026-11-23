@@ -231,9 +231,9 @@ jobs:
             # self-hosted stack (TODO in src/playwright/journeys/README.md).
             playwright_args: --project hosted
             # Pinned inventory of the whole suite, the same on every shard:
-            # 58 tests in 25 files; raise when adding journeys. Each shard's
+            # 61 tests in 26 files; raise when adding journeys. Each shard's
             # own floor is counted at run time ("Count the shard's tests").
-            min_tests: 58
+            min_tests: 61
             embeddings: false
             # Journeys sign up their own users and need no seeded data.
             seed: false
@@ -254,7 +254,7 @@ jobs:
             shard_total: 2
             config: playwright.journeys.config.ts
             playwright_args: --project hosted
-            min_tests: 58
+            min_tests: 61
             embeddings: false
             seed: false
             hosted: true
@@ -667,11 +667,14 @@ jobs:
       # publish_skills starts with the services below and resolves each
       # roster workflow to its listing then, so they must exist first: the
       # order a deploy and platform-preview-seed-fixture.yml use.
+      # --local-media: their images go to the stack's own media storage
+      # (rest_server's store-media volume), so no Marketplace page fetches
+      # production media from GCS.
       - name: Set up tests - Load the official marketplace agents
         if: matrix.store_agents
         run: |
           docker compose -f ../docker-compose.resolved.yml run --rm --no-deps \
-            rest_server python -m test.load_store_agents
+            rest_server python -m test.load_store_agents --local-media
 
       - name: Set up Platform - Start (all other services)
         run: |
