@@ -43,6 +43,7 @@ from backend.copilot.constants import (
     AUTOPILOT_BLOCK_TOOL_NAME,
     PER_TURN_SPEND_FLOOR_USD,
 )
+from backend.copilot.deferred_cancel import DeferredCancel
 from backend.copilot.limit_tracking import turn_surface
 from backend.copilot.rate_limit import RateLimitUnavailable, platform_spend_refusal
 from backend.copilot.tree import MICRODOLLARS_PER_CREDIT
@@ -287,7 +288,12 @@ async def credit_billing(turn: CreditBilledTurn) -> AsyncIterator[None]:
         yield
     finally:
         _credit_billed_turn.reset(token)
-        await turn.end()
+        # On a task of its own: a cancel that lands while the turn is charged
+        # (a Stop's second one, #17286) waits for the charge, then goes on.
+        deferred = DeferredCancel()
+        await deferred.finish(turn.end())
+        if deferred.held is not None:
+            raise deferred.held
 
 
 async def tool_spend_refusal(user_id: str | None) -> str | None:

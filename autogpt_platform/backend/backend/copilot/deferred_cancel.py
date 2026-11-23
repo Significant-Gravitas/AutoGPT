@@ -3,7 +3,9 @@
 A Stop cancels the turn's task. When the turn hasn't ended within the
 worker's grace, the worker cancels it again (``CoPilotProcessor._execute``),
 and that second cancel can land in the turn's cleanup. Let through where it
-lands, it cuts that step short and skips every step after it (#17286).
+lands, it cuts that step short and skips every step after it (#17286). The
+executor's cleanup and a credit-billed turn's charge (``credit_billing``) run
+their steps through this.
 """
 
 import asyncio

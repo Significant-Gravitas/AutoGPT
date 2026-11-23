@@ -1,14 +1,14 @@
 """A cancel that reaches a turn's cleanup waits for each step (#17286).
 
-``processor_cancel_cleanup_test.py`` runs the Stop that hits this through the
-real processor; these pin the helper's other cases.
+``executor/processor_cancel_cleanup_test.py`` runs the Stop that hits this
+through the real processor; these pin the helper's other cases.
 """
 
 import asyncio
 
 import pytest
 
-from backend.copilot.executor.deferred_cancel import DeferredCancel
+from backend.copilot.deferred_cancel import DeferredCancel
 
 # The longest any one wait here may take. The tests wait on events, never on
 # time, so this only ends a run that hangs.

@@ -38,6 +38,7 @@ from backend.copilot.credit_billing import (
     bill_to_credits,
     credit_billing,
 )
+from backend.copilot.deferred_cancel import DeferredCancel
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.expert_check import (
     checked_expert,
@@ -109,7 +110,6 @@ from backend.util.retry import func_retry
 from backend.util.service import RETRYABLE_SERVICE_ERRORS
 from backend.util.workspace_storage import shutdown_workspace_storage
 
-from .deferred_cancel import DeferredCancel
 from .scheduled_turn_alert import ScheduledTurnWatch
 from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
 
