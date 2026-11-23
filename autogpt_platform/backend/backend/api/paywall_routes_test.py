@@ -30,9 +30,25 @@ CHECKED_IN_HANDLER = {
     "GET /api/integrations/codex/credentials/{credential_id}/account",
     "GET /api/integrations/codex/credentials/{credential_id}/rate-limits",
     "GET /api/search/global",
+    # Starting a task opens a chat and runs a turn in it.
+    "POST /api/tasks/{task_id}/run",
 }
 
 OPEN_WHILE_PAYWALLED = {
+    # The user's tasks: reading them, tidying them and stopping their work
+    # cost nothing. Starting one (run) checks in its handler, and drafting
+    # suggestions checks through its dependency.
+    "GET /api/tasks",
+    "POST /api/tasks",
+    "GET /api/tasks/suggestions",
+    "GET /api/tasks/{task_id}",
+    "PATCH /api/tasks/{task_id}",
+    "DELETE /api/tasks/{task_id}",
+    "POST /api/tasks/{task_id}/cancel",
+    "POST /api/tasks/{task_id}/dismiss",
+    "GET /api/tasks/{task_id}/record",
+    "POST /api/tasks/{task_id}/sessions/{session_id}",
+    "DELETE /api/tasks/{task_id}/sessions/{session_id}",
     # Signing in and managing the account, its organisations and its links.
     # The paywall offers Delete account, so its routes stay open, and so do
     # the screen and the button that keep a closed account.

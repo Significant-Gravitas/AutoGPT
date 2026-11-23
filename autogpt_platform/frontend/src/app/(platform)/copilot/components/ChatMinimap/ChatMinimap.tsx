@@ -71,7 +71,7 @@ export const ChatMinimap = memo(function ChatMinimap({
           >
             <motion.div
               className={cn(
-                "h-[4px] w-[32px] origin-left rounded-full transition-colors duration-150",
+                "h-[4px] w-[20px] origin-left rounded-full transition-colors duration-150",
                 tickColor(hovered === null ? null : Math.abs(index - hovered)),
               )}
               initial={{ scale: 0.6 }}
@@ -87,7 +87,7 @@ export const ChatMinimap = memo(function ChatMinimap({
                 }
                 animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
                 transition={reducedMotion ? { duration: 0 } : CARD_TRANSITION}
-                className="absolute top-1/2 left-[40px] z-30 w-80 origin-left -translate-y-1/2 rounded-2xl bg-surface p-3.5 smooth-shadow-ring-sm"
+                className="absolute top-1/2 left-[28px] z-30 w-80 origin-left -translate-y-1/2 rounded-2xl bg-surface p-3.5 smooth-shadow-ring-sm"
               >
                 <p className="truncate text-body-md leading-inherit text-foreground-strong">
                   {entry.title}

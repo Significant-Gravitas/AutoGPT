@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal, Self
+from typing import Any, Literal, Self, get_args
 
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
@@ -103,6 +103,17 @@ class ResponseType(str, Enum):
     FOLDER_MOVED = "folder_moved"
     FOLDER_DELETED = "folder_deleted"
     AGENTS_MOVED_TO_FOLDER = "agents_moved_to_folder"
+
+    # Tasks
+    TASK_CREATED = "task_created"
+    TASK_LIST = "task_list"
+    TASK_DETAILS = "task_details"
+    TASK_UPDATED = "task_updated"
+    TASK_ARCHIVED = "task_archived"
+    TASK_STARTED = "task_started"
+    TASK_PROGRESS = "task_progress"
+    TASK_EVIDENCE_ADDED = "task_evidence_added"
+    TASK_FINISHED = "task_finished"
 
     # Browser automation
     BROWSER_NAVIGATE = "browser_navigate"
@@ -877,6 +888,20 @@ class ExpertChangeAppliedResponse(ToolResponseBase):
     handoff: ExpertHandoffOutcome | None = None
 
 
+# Why a question blocks the work. Every reason but ``preference`` means no
+# tool, card or default can answer it; a preference only matters in Ask First.
+QuestionReason = Literal[
+    "goal_ambiguous",
+    "user_only_fact",
+    "irreversible_choice",
+    "conflict",
+    "preference",
+    # The user told Otto, in this chat, to ask them this.
+    "user_requested",
+]
+QUESTION_REASONS: tuple[QuestionReason, ...] = get_args(QuestionReason)
+
+
 # Agent generation models
 class ClarifyingQuestion(BaseModel):
     """A question that needs user clarification."""
@@ -888,6 +913,17 @@ class ClarifyingQuestion(BaseModel):
     # Several of `options` may be picked. Only ever set alongside options:
     # there is nothing to multi-select in a free-text question.
     allow_multiple: bool = False
+    reason: QuestionReason | None = Field(
+        default=None, description="Why the work cannot go on without the answer."
+    )
+    default_guess: str | None = Field(
+        default=None,
+        description="What the assistant does if the user says to use its best guess.",
+    )
+    recommended: str | None = Field(
+        default=None,
+        description="The option the default guess picks, shown as Recommended.",
+    )
 
 
 class AgentPreviewResponse(ToolResponseBase):

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from collections import deque
 from typing import TYPE_CHECKING, Any, Literal, Sequence
 
@@ -10,6 +11,7 @@ from openai.types.chat import ChatCompletionToolParam
 from prisma.enums import APIKeyPermission
 from prisma.errors import ClientNotConnectedError
 
+from backend.copilot import call_account, task_recorder, tool_timing, turn_end
 from backend.copilot.ai_spans import mark_tool_failed, mark_tool_raised, tool_span
 from backend.copilot.context import args_already_bound, get_current_envelope
 from backend.copilot.google_data_redaction import (
@@ -25,6 +27,7 @@ from backend.copilot.tool_call_context import tool_call_context
 from backend.copilot.tool_image import HeldImage, parse_held_image
 from backend.copilot.trial_reads import trial_reads_fresh
 from backend.copilot.turn_tracing import tool_transaction
+from backend.copilot.untrusted_text import flag_output
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import activity_event_db, workspace_db
 from backend.data.workspace_internal import TOOL_OUTPUT_PURPOSE
@@ -566,6 +569,7 @@ class BaseTool:
         with (
             tool_transaction(self.name, tool_call_id, session.session_id) as span,
             tool_call_context(tool_call_id),
+            call_account.collect() as accounts,
             trial_reads_fresh(),
             tool_span(
                 self.name,
@@ -574,13 +578,19 @@ class BaseTool:
                 tool_call_id=tool_call_id,
             ) as outcome,
         ):
+            turn_end.note_call(session.session_id)
+            started = time.monotonic()
             output = await self._execute_checked(
                 user_id, session, tool_call_id, **kwargs
+            )
+            tool_timing.note(tool_call_id, (time.monotonic() - started) * 1000)
+            await task_recorder.record(
+                session, self.name, tool_call_id, kwargs, output, accounts
             )
             span.set_tag("copilot.tool.success", "true" if output.success else "false")
             if not output.success and not _awaits_the_user(output):
                 outcome.is_error = True
-            return output
+            return flag_output(output)
 
     async def _execute_checked(
         self,

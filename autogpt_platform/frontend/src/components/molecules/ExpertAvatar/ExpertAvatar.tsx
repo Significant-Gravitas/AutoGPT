@@ -8,7 +8,12 @@ import { StatusDot } from "@/components/molecules/NotionAvatar/StatusDot";
 import { expertPastel } from "./colors";
 import { cn } from "@/lib/utils";
 import type { CSSProperties } from "react";
-import { getManagedAvatar, resolveExpertAvatarUrl } from "./helpers";
+import {
+  AVATAR_SHAPES,
+  type AvatarShape,
+  getManagedAvatar,
+  resolveExpertAvatarUrl,
+} from "./helpers";
 
 import { ManagedExpertImage } from "./components/ManagedExpertImage";
 
@@ -18,6 +23,8 @@ interface Props {
   color?: string | null;
   status?: AvatarStatus;
   size?: number;
+  /** Corner radius over the avatar's own (see AVATAR_SHAPES). */
+  shape?: AvatarShape;
   className?: string;
   /** Pastel wash behind a custom upload or generated image. A managed
    *  identity ignores it: its opaque studio tile is the artwork. */
@@ -32,6 +39,7 @@ export function ExpertAvatar({
   avatarUrl,
   status = "idle",
   size = 40,
+  shape,
   className,
   backgroundColor,
 }: Props) {
@@ -47,6 +55,7 @@ export function ExpertAvatar({
         pngMaxPixels={managed.pngMaxPixels}
         size={size}
         isOtto={managed.assetID === "otto"}
+        shape={shape}
         className={className}
       />
     );
@@ -65,6 +74,7 @@ export function ExpertAvatar({
       className={cn(
         "relative inline-flex shrink-0",
         backgroundColor && "rounded-full",
+        shape && AVATAR_SHAPES[shape],
         className,
         "size-(--avatar-size)",
         backgroundColor && "bg-(--avatar-bg)",

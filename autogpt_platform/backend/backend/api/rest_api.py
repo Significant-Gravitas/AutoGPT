@@ -20,6 +20,7 @@ import backend.api.features.admin.block_cost_admin_routes
 import backend.api.features.admin.bot_analytics_routes
 import backend.api.features.admin.credit_admin_routes
 import backend.api.features.admin.diagnostics_admin_routes
+import backend.api.features.admin.eval_admin_routes
 import backend.api.features.admin.execution_analytics_routes
 import backend.api.features.admin.impersonation_admin_routes
 import backend.api.features.admin.memory_admin_routes
@@ -70,6 +71,7 @@ import backend.api.features.platform_linking.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.push.routes as push_routes
 import backend.api.features.schedules.routes as schedules_routes
+import backend.api.features.schedules.upcoming_routes as schedule_upcoming_routes
 import backend.api.features.search.routes as search_routes
 import backend.api.features.skill_learning.routes as skill_learning_routes
 import backend.api.features.skills.routes as skills_routes
@@ -78,6 +80,8 @@ import backend.api.features.store.routes
 import backend.api.features.store.skill_routes
 import backend.api.features.subscription_activation_routes as subscription_activation_routes
 import backend.api.features.subscription_trial_routes as subscription_trial_routes
+import backend.api.features.tasks.routes as tasks_routes
+import backend.api.features.tasks.suggestion_routes as task_suggestion_routes
 import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.user.routes as user_routes
 import backend.api.features.workspace.folder_routes as workspace_folder_routes
@@ -368,6 +372,11 @@ app.include_router(
     prefix="/api",
 )
 app.include_router(
+    schedule_upcoming_routes.router,
+    tags=["v2", "schedules"],
+    prefix="/api",
+)
+app.include_router(
     graph_executions_routes.router,
     tags=["v1"],
     prefix="/api",
@@ -489,6 +498,11 @@ app.include_router(
     prefix="/api",
 )
 app.include_router(
+    backend.api.features.admin.eval_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api",
+)
+app.include_router(
     backend.api.features.admin.user_admin_routes.router,
     tags=["admin"],
     prefix="/api",
@@ -522,6 +536,9 @@ app.include_router(
 app.include_router(experts_routes.public_router, tags=["v2", "experts"], prefix="/api")
 app.include_router(experts_routes.router, tags=["v2", "experts"], prefix="/api")
 app.include_router(memory_routes.router, tags=["v2", "memory"], prefix="/api")
+# Before the task routes: /tasks/suggestions would read as /tasks/{task_id}.
+app.include_router(task_suggestion_routes.router, tags=["v2", "tasks"], prefix="/api")
+app.include_router(tasks_routes.router, tags=["v2", "tasks"], prefix="/api")
 app.include_router(
     skill_learning_routes.router, tags=["v2", "skill-learning"], prefix="/api"
 )

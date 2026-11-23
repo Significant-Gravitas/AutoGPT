@@ -78,6 +78,7 @@ from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.copilot.service import strip_user_context_tags
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
+from backend.copilot.task_run_settle import note_task_run_started, settle_task_run_turn
 from backend.copilot.tools.agent_browser import (
     browser_daemon_may_run,
     close_browser_daemon,
@@ -863,6 +864,7 @@ class CoPilotProcessor:
             )
 
             session = await _normalize_private_expert_session_tenancy(session)
+            await note_task_run_started(session, session.user_id)
             # The allowance, budget and tier checks that set up the turn share
             # one read of the trial and one of the usage state; closed at the
             # model's first output, so tools running after it read afresh.
@@ -1217,6 +1219,9 @@ class CoPilotProcessor:
                     await deferred.finish(finish_background_execution(entry, error_msg))
                 except Exception as finish_err:
                     log.error(f"Failed to save background completion: {finish_err}")
+                # After the background record, so a wake that just came back
+                # no longer counts as work still out.
+                await settle_task_run_turn(entry, error_msg)
                 try:
                     await deferred.finish(
                         stream_registry.mark_session_completed(

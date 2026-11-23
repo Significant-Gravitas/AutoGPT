@@ -44,25 +44,21 @@ const TAB_DESCRIPTIONS: Record<ContextPanelTab, string> = {
   integrations: "The tools this chat's expert can use.",
 };
 
-export function ContextPanel({ sessionId, mobile }: Props) {
+interface BodyProps {
+  sessionId: string | null;
+  /** The host names the face itself (a sheet header, a tab). */
+  showTitle?: boolean;
+}
+
+/** What the chat's Files, Artifacts or Integrations face shows, without a
+ *  shell: the work area hosts it as a tab, the mobile sheet as its content. */
+export function ContextPanelBody({ sessionId, showTitle = false }: BodyProps) {
   const expert = useCopilotUIStore((s) => s.contextPanelExpert);
-  const {
-    activeTab,
-    showExpanded,
-    closeArtifactPanel,
-    contextPanelWidth,
-    setContextPanelWidth,
-  } = useContextPanel();
-  const [isResizing, setIsResizing] = useState(false);
-  const shouldReduceMotion = useReducedMotion();
+  const { activeTab } = useContextPanel();
 
-  // The mobile sheet titles itself in its header; the artifacts library
-  // brings its own toolbar.
-  const showTitle = !mobile && activeTab !== "artifacts";
-
-  const content = (
+  return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {showTitle && (
+      {showTitle && activeTab !== "artifacts" && (
         <Text
           variant="large-semibold-tight"
           as="h2"
@@ -84,6 +80,23 @@ export function ContextPanel({ sessionId, mobile }: Props) {
         </div>
       )}
     </div>
+  );
+}
+
+export function ContextPanel({ sessionId, mobile }: Props) {
+  const {
+    activeTab,
+    showExpanded,
+    closeArtifactPanel,
+    contextPanelWidth,
+    setContextPanelWidth,
+  } = useContextPanel();
+  const [isResizing, setIsResizing] = useState(false);
+  const shouldReduceMotion = useReducedMotion();
+
+  // The mobile sheet titles itself in its header.
+  const content = (
+    <ContextPanelBody sessionId={sessionId} showTitle={!mobile} />
   );
 
   if (mobile) {

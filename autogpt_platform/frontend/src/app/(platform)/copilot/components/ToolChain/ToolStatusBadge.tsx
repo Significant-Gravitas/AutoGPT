@@ -23,17 +23,15 @@ export function ToolStatusBadge({ state, label, children }: Props) {
         className="relative flex size-[22px] shrink-0 items-center justify-center"
       >
         {/* -inset-[3px] lands the 1px ring exactly on the size-7 circle edge.
-            Appearance is delayed so sub-150ms tools never flash the spinner;
-            hiding is immediate. */}
+            The ring shows the moment a call starts: a fast call holds its
+            running look for a minimum time instead (useMinimumRunning), so
+            it reads as having run rather than popping in finished. */}
         <m.span
           aria-hidden="true"
           className="absolute -inset-[3px] rounded-full border border-border-base"
-          initial={{ opacity: 0 }}
+          initial={{ opacity: running ? 1 : 0 }}
           animate={{ opacity: running ? 1 : 0 }}
-          transition={{
-            duration: reducedMotion ? 0 : 0.16,
-            delay: running && !reducedMotion ? 0.15 : 0,
-          }}
+          transition={{ duration: reducedMotion ? 0 : 0.12, ease: "easeOut" }}
         />
         <m.span
           aria-hidden="true"
@@ -41,12 +39,9 @@ export function ToolStatusBadge({ state, label, children }: Props) {
             "absolute -inset-[3px] rounded-full border border-transparent border-t-foreground-tertiary",
             running && "animate-spin motion-reduce:animate-none",
           )}
-          initial={{ opacity: 0 }}
+          initial={{ opacity: running ? 1 : 0 }}
           animate={{ opacity: running ? 1 : 0 }}
-          transition={{
-            duration: reducedMotion ? 0 : 0.12,
-            delay: running && !reducedMotion ? 0.15 : 0,
-          }}
+          transition={{ duration: reducedMotion ? 0 : 0.12, ease: "easeOut" }}
         />
         <span
           aria-hidden="true"

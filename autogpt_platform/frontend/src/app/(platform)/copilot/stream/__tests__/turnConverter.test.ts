@@ -8,6 +8,7 @@ import {
   seedTurnLog,
   type TurnLog,
 } from "../turnLog";
+import { hasOpenParts } from "../turnTail";
 
 const TURN = "turn-1";
 
@@ -392,9 +393,90 @@ describe("the converter table", () => {
   });
 
   it("an unknown chunk type is a protocol error", () => {
-    expect(reasons(fold([{ type: "tool-input-delta" }]))).toEqual([
-      "tool-input-delta: unknown chunk type",
+    expect(reasons(fold([{ type: "tool-input-wobble" }]))).toEqual([
+      "tool-input-wobble: unknown chunk type",
     ]);
+  });
+});
+
+describe("a tool call's streaming input", () => {
+  const start: WireChunk = {
+    type: "tool-input-start",
+    toolCallId: "c1",
+    toolName: "bash_exec",
+  };
+  const delta = (inputTextDelta: string): WireChunk => ({
+    type: "tool-input-delta",
+    toolCallId: "c1",
+    inputTextDelta,
+  });
+
+  it("tool-input-delta grows the call's partial input and adds no row", () => {
+    const log = fold([start, delta('{"cmd": "l'), delta('s"}')]);
+    expect(log.tools.c1).toEqual({
+      name: "bash_exec",
+      phase: "input-streaming",
+      inputText: '{"cmd": "ls"}',
+    });
+    expect(log.rows).toEqual([]);
+    expect(reasons(log)).toEqual([]);
+  });
+
+  it("tool-input-available after deltas adds the call with its whole input", () => {
+    const log = fold([
+      start,
+      delta('{"cmd"'),
+      { ...call("c1", { cmd: "ls" })[1] },
+    ]);
+    expect(log.tools.c1).toEqual({
+      name: "bash_exec",
+      phase: "input-available",
+    });
+    expect(log.rows[0].toolCalls[0].input).toEqual({ cmd: "ls" });
+    expect(reasons(log)).toEqual([]);
+  });
+
+  it("a delta for a call that never started is a protocol error", () => {
+    expect(reasons(fold([delta("{")]))).toEqual([
+      "tool-input-delta: unknown tool call",
+    ]);
+  });
+
+  it("a delta after the input arrived is a protocol error and changes nothing", () => {
+    const log = fold([...call("c1"), delta("{")]);
+    expect(log.tools.c1.phase).toBe("input-available");
+    expect(reasons(log)).toEqual(["tool-input-delta: input closed"]);
+  });
+
+  it("tool-input-error closes the call as errored, without a row, and not as open", () => {
+    const log = fold([
+      start,
+      delta('{"cmd"'),
+      {
+        type: "tool-input-error",
+        toolCallId: "c1",
+        toolName: "bash_exec",
+        errorText: "cut off",
+      },
+    ]);
+    expect(log.tools.c1).toEqual({
+      name: "bash_exec",
+      phase: "input-error",
+      inputText: '{"cmd"',
+      errorText: "cut off",
+    });
+    expect(log.rows).toEqual([]);
+    expect(reasons(log)).toEqual([]);
+    expect(hasOpenParts(log)).toBe(false);
+  });
+
+  it("tool-input-error for a call that already has its input is a protocol error", () => {
+    const log = fold([
+      ...call("c1"),
+      { type: "tool-input-error", toolCallId: "c1", errorText: "x" },
+    ]);
+    expect(log.tools.c1.phase).toBe("input-available");
+    expect(reasons(log)).toEqual(["tool-input-error: input closed"]);
   });
 });
 

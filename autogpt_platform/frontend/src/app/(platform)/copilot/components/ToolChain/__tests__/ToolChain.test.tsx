@@ -381,7 +381,7 @@ describe("ToolChain", () => {
       </CopilotChatActionsProvider>,
     );
 
-    expect(screen.getByText("Answer a few questions")).toBeDefined();
+    expect(screen.getByText("A question for you")).toBeDefined();
     expect(screen.getByText("Which region?")).toBeDefined();
 
     const submit = screen.getByRole("button", { name: "Send answers" });
@@ -400,14 +400,14 @@ describe("ToolChain", () => {
       "**Here are my answers:**\n\n> Which region?\n\nWestern Europe\n\nPlease proceed.",
     );
     await waitFor(() => {
-      expect(screen.queryByText("Answer a few questions")).toBeNull();
+      expect(screen.queryByText("A question for you")).toBeNull();
     });
   });
 
   // Two ask_question calls in one message are one card. Each lifted row used
-  // to host its own form, so Skip dismissed one copy and the other brought the
-  // card straight back.
-  it("skips the questions of every ask_question call in the message", async () => {
+  // to host its own form, so putting it off dismissed one copy and the other
+  // brought the card straight back.
+  it("puts off the questions of every ask_question call in the message", async () => {
     const user = userEvent.setup();
     const questions = [
       { question: "Which region?", keyword: "region" },
@@ -436,15 +436,15 @@ describe("ToolChain", () => {
       </PendingQuestionsContext.Provider>,
     );
 
-    expect(screen.getAllByText("Answer a few questions")).toHaveLength(1);
+    expect(screen.getAllByText("Questions for you")).toHaveLength(1);
 
-    await user.click(screen.getByRole("button", { name: "Skip" }));
+    await user.click(screen.getByRole("button", { name: "Later" }));
 
     await waitFor(() =>
-      expect(screen.queryByText("Answer a few questions")).toBeNull(),
+      expect(screen.queryByText("Questions for you")).toBeNull(),
     );
     await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(screen.queryByText("Answer a few questions")).toBeNull();
+    expect(screen.queryByText("Questions for you")).toBeNull();
   });
 
   it("keeps the caret where the user is editing an answer", async () => {
@@ -486,7 +486,7 @@ describe("ToolChain", () => {
     await expectTypingKept(field, " 日本語");
   });
 
-  it("keeps an answered question and its answer on screen once the chain settles", () => {
+  it("keeps an answered question on screen once the chain settles", () => {
     render(
       <AnsweredQuestionsContext.Provider
         value={
@@ -517,12 +517,18 @@ describe("ToolChain", () => {
       </AnsweredQuestionsContext.Provider>,
     );
 
-    // The chain is collapsed, yet the question and the answer stay visible.
+    // The chain is collapsed, yet the question stays as a quiet line; the
+    // answer itself is the user's message below it.
     expect(
       getChainHeader(/searched the web/i).getAttribute("aria-expanded"),
     ).toBe("false");
-    expect(screen.getByText("Which region?")).toBeDefined();
-    expect(screen.getByText("Europe")).toBeDefined();
+    expect(
+      screen.getByText((_, element) =>
+        element?.tagName === "P"
+          ? element.textContent === "Asked: Which region? · answered below"
+          : false,
+      ),
+    ).toBeDefined();
   });
 
   it("reports a rejected send without bringing the card back", async () => {

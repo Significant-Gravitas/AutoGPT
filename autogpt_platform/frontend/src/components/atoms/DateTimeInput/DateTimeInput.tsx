@@ -48,6 +48,8 @@ export interface DateTimeInputProps {
   "aria-label"?: string;
   "aria-labelledby"?: string;
   "aria-describedby"?: string;
+  /** Days before this one can't be picked. */
+  minDate?: Date;
 }
 
 export const DateTimeInput = ({
@@ -68,6 +70,7 @@ export const DateTimeInput = ({
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
   "aria-describedby": ariaDescribedBy,
+  minDate,
 }: DateTimeInputProps) => {
   const selected = React.useMemo(() => parseISODateTimeString(value), [value]);
   const [open, setOpen] = React.useState(false);
@@ -221,6 +224,7 @@ export const DateTimeInput = ({
               mode="single"
               selected={selected}
               onSelect={setDate}
+              disabled={minDate ? { before: minDate } : undefined}
               showOutsideDays
               modifiersClassNames={{
                 disabled: "pointer-events-none opacity-50",

@@ -32,6 +32,10 @@ INHERITED_NAMES = frozenset(
         "PATH",
         "PATHEXT",
         "HOME",
+        # macOS keeps the CLI's login in the keychain under the account name:
+        # without it a logged-in host reads as "not authenticated".
+        "USER",
+        "LOGNAME",
         "USERPROFILE",
         "SYSTEMROOT",
         "WINDIR",

@@ -103,6 +103,104 @@ describe("rendering a turn log", () => {
     ]);
   });
 
+  it("shows a call whose input streams as input-streaming, after the text, under the turn's key", () => {
+    const streaming = fold([
+      { type: "text-start", id: "a" },
+      { type: "text-delta", id: "a", delta: "Let me look." },
+      { type: "tool-input-start", toolCallId: "c1", toolName: "web_fetch" },
+      {
+        type: "tool-input-delta",
+        toolCallId: "c1",
+        inputTextDelta: '{"url": "a.com", "format": "m',
+      },
+    ]);
+    const [bubble] = render(streaming);
+    expect(bubble.id).toBe("turn:t");
+    expect(bubble.parts).toEqual([
+      expect.objectContaining({ type: "text", text: "Let me look." }),
+      expect.objectContaining({
+        type: "tool-web_fetch",
+        toolCallId: "c1",
+        state: "input-streaming",
+        input: { url: "a.com", format: "m" },
+      }),
+    ]);
+    const available = fold(
+      [
+        { type: "text-end", id: "a" },
+        {
+          type: "tool-input-available",
+          toolCallId: "c1",
+          toolName: "web_fetch",
+          input: { url: "a.com", format: "md" },
+        },
+      ],
+      streaming,
+    );
+    const parts = render(available)[0].parts;
+    expect(parts).toHaveLength(2);
+    expect(parts[1]).toEqual(
+      expect.objectContaining({
+        type: "tool-web_fetch",
+        state: "input-available",
+        input: { url: "a.com", format: "md" },
+      }),
+    );
+  });
+
+  it("opens a bubble for a call that starts the turn, and ends it as errored when its input never completes", () => {
+    const started = fold([
+      { type: "tool-input-start", toolCallId: "c1", toolName: "bash_exec" },
+    ]);
+    expect(render(started)[0].parts).toEqual([
+      expect.objectContaining({ state: "input-streaming", input: undefined }),
+    ]);
+    const failed = fold(
+      [
+        {
+          type: "tool-input-error",
+          toolCallId: "c1",
+          toolName: "bash_exec",
+          errorText: "The tool call was cut off.",
+        },
+      ],
+      started,
+    );
+    expect(render(failed)[0].parts).toEqual([
+      expect.objectContaining({
+        type: "tool-bash_exec",
+        state: "output-error",
+        errorText: "The tool call was cut off.",
+      }),
+    ]);
+  });
+
+  it("ends a call whose input is still streaming as interrupted once the turn fails", () => {
+    const cut = fold([
+      { type: "tool-input-start", toolCallId: "c1", toolName: "bash_exec" },
+      { type: "error", errorText: "boom" },
+    ]);
+    expect(cut.status).toBe("failed");
+    expect(render(cut)[0].parts).toContainEqual(
+      expect.objectContaining({
+        state: "output-error",
+        errorText: "Interrupted",
+      }),
+    );
+  });
+
+  it("leaves out a call that never got its input when the turn ends well", () => {
+    const done = fold([
+      { type: "text-start", id: "a" },
+      { type: "text-delta", id: "a", delta: "Hi" },
+      { type: "text-end", id: "a" },
+      { type: "tool-input-start", toolCallId: "c1", toolName: "bash_exec" },
+      { type: "finish" },
+    ]);
+    const parts = render(done).flatMap((message) => message.parts);
+    expect(parts.some((part) => part.type.startsWith("tool-"))).toBe(false);
+  });
+
   it("puts a status that arrives before any content in the turn's own bubble, under one key throughout", () => {
     const status = fold([
       { type: "data-status", data: { message: "Message received…" } },

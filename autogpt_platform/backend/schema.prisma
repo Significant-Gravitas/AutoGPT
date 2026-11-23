@@ -181,10 +181,10 @@ model User {
   // Consent captured at signup. termsVersion names the terms and privacy
   // policy text the account agreed to (frontend lib/legal.ts TERMS_VERSION).
   // A set marketingOptOutAt keeps the account out of MailerLite entirely.
-  termsAcceptedAt       DateTime?
-  termsVersion          String?
-  marketingOptOutAt     DateTime?
-  marketingOptOutSource String? // "signup" | "email_unsubscribe" | "settings"
+  termsAcceptedAt          DateTime?
+  termsVersion             String?
+  marketingOptOutAt        DateTime?
+  marketingOptOutSource    String? // "signup" | "email_unsubscribe" | "settings"
   // The first Iranian or Russian country a checkout saw for the account (its
   // IP or billing country). Like an opt-out, it keeps the account out of
   // MailerLite for good (backend/notifications/consent.py).
@@ -198,13 +198,13 @@ model User {
   defaultChatAuthProvider String?
   defaultChatCredentialId String?
 
-  subscriptionTier  SubscriptionTier   @default(NO_TIER)
+  subscriptionTier     SubscriptionTier      @default(NO_TIER)
   // When the tier last dropped from a plan or trial to NO_TIER, through
   // set_subscription_tier or the trial reconcile, which clear it when they set
   // a tier again. Product mail keeps reaching the account for 7 days.
-  subscriptionEndedAt DateTime?
-  subscriptionTrial SubscriptionTrial?
-  paidUsageActivation PaidUsageActivation?
+  subscriptionEndedAt  DateTime?
+  subscriptionTrial    SubscriptionTrial?
+  paidUsageActivation  PaidUsageActivation?
   proActivationAttempt ProActivationAttempt?
 
   // Relations
@@ -215,6 +215,7 @@ model User {
   AnalyticsMetrics     AnalyticsMetrics[]
   UserBalance          UserBalance?
   ChatSessions         ChatSession[]
+  Tasks                Task[]
   ChatMessageFeedback  ChatMessageFeedback[]
   UserBriefings        UserBriefing[]
   ActivityEvents       ActivityEvent[]
@@ -229,7 +230,6 @@ model User {
   SkillVersions        SkillVersion[]
   SkillSuppressions    SkillSuppression[]
   SkillUseEvents       SkillUseEvent[]
-
 
   ExpertRoutines       ExpertRoutine[]
   DreamPasses          DreamPass[]
@@ -344,34 +344,34 @@ enum SubscriptionTier {
 
 // One immutable generation for the first settled trial-to-Pro/Max conversion. Never reset on replay.
 model PaidUsageActivation {
-  id                   String @id @default(uuid())
-  userId               String @unique
-  user                 User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  stripeSubscriptionId String @unique
-  stripeInvoiceId      String @unique
+  id                   String    @id @default(uuid())
+  userId               String    @unique
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String    @unique
+  stripeInvoiceId      String    @unique
   readyAt              DateTime?
-  createdAt            DateTime @default(now())
+  createdAt            DateTime  @default(now())
 }
 
 // Cutover fence: old settled payments cannot become new activation resets on replay.
 model PaidUsageActivationPolicy {
-  id        String @id
-  startsAt  DateTime @default(now())
+  id       String   @id
+  startsAt DateTime @default(now())
 }
 
 model ProActivationAttempt {
-  id                   String @id @default(uuid())
-  userId               String @unique
-  user                 User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  stripeSubscriptionId String @unique
+  id                   String    @id @default(uuid())
+  userId               String    @unique
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String    @unique
   stripeCustomerId     String
   terms                Json
   returnTo             String
-  status               String @default("quoted")
+  status               String    @default("quoted")
   confirmedAt          DateTime?
   invoiceId            String?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 }
 
 model SubscriptionTrial {
@@ -995,6 +995,10 @@ model ChatSession {
   SharedChatFiles  SharedChatFile[]
   ChatLinkedShares ChatLinkedShare[]
 
+  // The tasks worked on in this chat. A chat can carry several tasks, and a
+  // task can span several chats (delegations, sub-sessions).
+  TaskSessions TaskSession[]
+
   // Single compound index covers (a) the cap-count (count by userId +
   // chatStatus), (b) the queue-list ORDER BY updatedAt asc, AND (c) the
   // sidebar list (find_many WHERE userId ORDER BY updatedAt desc).
@@ -1067,6 +1071,270 @@ model ChatBackgroundTask {
 
   @@index([followupState, updatedAt])
   @@index([userId, parentSessionId, launchTurnId])
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  NEEDS_INPUT
+  DONE
+  FAILED
+  CANCELLED
+}
+
+enum TaskCreator {
+  USER
+  OTTO
+  EXPERT
+}
+
+// One piece of work: its own record of what was asked, who owns it and where
+// it stands, apart from the chat it was asked in. A chat can carry several
+// tasks and a task can span several chats, through TaskSession.
+model Task {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+  status      TaskStatus @default(TODO)
+
+  // The expert who does the work; null = Otto owns it.
+  ownerExpertId String?
+  OwnerExpert   Expert? @relation("TaskOwnerExpert", fields: [ownerExpertId], references: [id], onDelete: SetNull)
+
+  createdBy         TaskCreator
+  // Set when createdBy is EXPERT.
+  createdByExpertId String?
+  CreatedByExpert   Expert?     @relation("TaskCreatorExpert", fields: [createdByExpertId], references: [id], onDelete: SetNull)
+
+  // Stamped on the first move to IN_PROGRESS, and on reaching DONE, FAILED or
+  // CANCELLED; cleared when the task goes back to TODO.
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  // Soft delete: an archived task keeps its history.
+  isArchived Boolean @default(false)
+  metadata   Json    @default("{}")
+
+  // Tenancy
+  organizationId String?
+  teamId         String?
+  visibility     ResourceVisibility @default(PRIVATE)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  // A subtask's parent. One level only: a subtask has no subtasks.
+  parentTaskId String?
+  Parent       Task?   @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  Subtasks     Task[]  @relation("TaskSubtasks")
+
+  // The chat doing the work right now: the worker's, or the chat that kept
+  // the task when it could not run in the background.
+  workSessionId String?
+
+  // What it is for and what done looks like, in words for the user; the
+  // description stays the brief the worker reads.
+  goal          String?
+  doneWhen      String?
+  // Where it is and what comes next, one line each.
+  statusText    String?
+  nextStep      String?
+  result        String?
+  failureReason String?
+  // 1, then one more on each retry after a failure.
+  attempt       Int     @default(1)
+
+  // A task Otto drafted for the user to start or dismiss; it stays off the
+  // board until started.
+  isSuggested     Boolean   @default(false)
+  suggestedReason String?
+  dismissedAt     DateTime?
+
+  // When a TODO task starts by itself (the due-task sweep); cleared once it
+  // starts, is cancelled or misses its start. Set only while TODO.
+  startAt DateTime?
+
+  Sessions   TaskSession[]
+  Activities TaskActivity[]
+  Asks       TaskAsk[]
+  Artifacts  TaskArtifact[]
+  Evidence   TaskEvidence[]
+
+  @@index([userId, isArchived, updatedAt])
+  @@index([userId, status])
+  @@index([ownerExpertId])
+  @@index([parentTaskId])
+  @@index([workSessionId])
+  @@index([teamId, updatedAt])
+  @@index([organizationId])
+  // The sweep's query: status = TODO and startAt <= now, oldest first.
+  @@index([status, startAt])
+}
+
+enum TaskActor {
+  OTTO
+  EXPERT
+  USER
+  SYSTEM
+}
+
+enum TaskActivityKind {
+  CREATED
+  STARTED
+  PROGRESS
+  TOOL
+  DELEGATED
+  ASKED
+  ANSWERED
+  ARTIFACT
+  EVIDENCE
+  STATUS
+  RETRIED
+  FAILED
+  DONE
+}
+
+enum TaskAskKind {
+  QUESTION
+  DECISION
+  PICK
+  APPROVAL
+  SETUP
+}
+
+enum TaskAskStatus {
+  OPEN
+  ANSWERED
+  EXPIRED
+  WITHDRAWN
+}
+
+enum TaskArtifactKind {
+  FILE
+  DOCUMENT
+  LINK
+  WORKFLOW
+  MESSAGE
+}
+
+enum TaskEvidenceKind {
+  TOOL_RESULT
+  FILE
+  LINK
+  QUOTE
+  CHECK
+}
+
+// Who did what on a task, one plain line each, append-only.
+model TaskActivity {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  taskId String
+  Task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  actorType     TaskActor
+  actorExpertId String?
+  chatSessionId String?
+
+  kind        TaskActivityKind
+  // Written by the harness or the worker, never raw tool output.
+  text        String
+  // Shown under "What happened so far".
+  isMilestone Boolean          @default(false)
+  data        Json             @default("{}")
+
+  @@index([taskId, createdAt])
+}
+
+// Something a task waits on the user for, and what they answered.
+model TaskAsk {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  taskId String
+  Task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  chatSessionId   String?
+  askedByExpertId String?
+
+  kind         TaskAskKind   @default(QUESTION)
+  question     String
+  options      String[]      @default([])
+  defaultGuess String?
+  status       TaskAskStatus @default(OPEN)
+  answer       String?
+  answeredAt   DateTime?
+  // The held tool call an approval card belongs to.
+  heldCallId   String?
+
+  @@index([taskId, status])
+  @@index([chatSessionId, status])
+}
+
+// Something a task made.
+model TaskArtifact {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  taskId String
+  Task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  kind              TaskArtifactKind @default(FILE)
+  title             String
+  workspaceFileId   String?
+  url               String?
+  createdByExpertId String?
+  chatSessionId     String?
+  // The file was deleted later; the row stays so the history reads true.
+  isMissing         Boolean          @default(false)
+
+  Evidence TaskEvidence[]
+
+  @@index([taskId, createdAt])
+  @@index([workspaceFileId])
+}
+
+// Proof that something a task claims really happened.
+model TaskEvidence {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  taskId String
+  Task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  claim String
+  kind  TaskEvidenceKind
+
+  toolCallId    String?
+  chatSessionId String?
+  artifactId    String?
+  Artifact      TaskArtifact? @relation(fields: [artifactId], references: [id], onDelete: SetNull)
+  url           String?
+  excerpt       String?
+  // True only when the harness found the tool call, file or page itself.
+  verified      Boolean       @default(false)
+  addedBy       TaskActor     @default(SYSTEM)
+
+  @@index([taskId, createdAt])
+}
+
+// Which chats a task was worked on in, many to many.
+model TaskSession {
+  createdAt DateTime @default(now())
+
+  taskId String
+  Task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  chatSessionId String
+  ChatSession   ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, chatSessionId])
+  @@index([chatSessionId])
 }
 
 model ChatMessage {
@@ -1613,6 +1881,8 @@ model Expert {
   Routines        ExpertRoutine[]
   DreamPasses     DreamPass[]
   MemorySchedule  MemoryScopeSchedule?
+  OwnedTasks      Task[]                @relation("TaskOwnerExpert")
+  CreatedTasks    Task[]                @relation("TaskCreatorExpert")
 
   // Owner-scoped grouping into named "pods" (distinct from org-tenancy Team).
   podId String?
@@ -1804,14 +2074,14 @@ model ScheduledChatStreak {
   sessionId   String?
 
   // What the runs have in common: compared by key, explained by the rest.
-  failureKey  String
-  failureKind String
-  provider    String?
-  tool        String?
+  failureKey       String
+  failureKind      String
+  provider         String?
+  tool             String?
   // Runs in a row that failed this way, and how many of the latest of those
   // failed outright, in a row.
-  failures         Int @default(1)
-  wholeRunFailures Int @default(0)
+  failures         Int     @default(1)
+  wholeRunFailures Int     @default(0)
 
   notifiedAt DateTime?
   pausedAt   DateTime?
@@ -1894,17 +2164,17 @@ model SkillLearningSource {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  userId String
-  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId   String
+  User     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   // Scope owner: an expert id, or null for the personal (AutoPilot) scope.
   expertId String?
   // "personal" or the expert id — makes the owner part of unique keys.
   ownerKey String
 
-  sourceKind String // e.g. "chat_session"
-  sourceId   String // adapter-specific id (session id)
+  sourceKind        String // e.g. "chat_session"
+  sourceId          String // adapter-specific id (session id)
   // Latest observed immutable revision (message sequence for chats).
-  revision   String
+  revision          String
   // Last revision with a durable review disposition; the learner only
   // considers revisions newer than this cursor.
   processedRevision String?
@@ -1916,11 +2186,11 @@ model SkillLearningSource {
   eligibility String @default("eligible")
   // Bumped on exclusion / revocation so a queued review can detect that
   // its eligibility snapshot is stale.
-  epoch Int @default(0)
+  epoch       Int    @default(0)
 
   // Approval checkpoint (adapters with a review lifecycle only).
-  approvalEventId String?
-  approvalActorId String?
+  approvalEventId  String?
+  approvalActorId  String?
   approvedRevision String?
 
   // Bounded evidence references and deterministic outcome signals
@@ -1946,8 +2216,8 @@ model SkillLearningReview {
   updatedAt   DateTime  @default(now()) @updatedAt
   completedAt DateTime?
 
-  userId String
-  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId   String
+  User     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   expertId String?
   ownerKey String
 
@@ -1956,19 +2226,19 @@ model SkillLearningReview {
   sourceRevision String
   policyVersion  Int
   // Correlates every review of one nightly (or requested) run.
-  runId String
+  runId          String
 
   // "applied" | "skipped" | "deferred" | "conflict" | "needs_decision" |
   // "blocked_content" | "provider_error" | "budget_exhausted" |
   // "stale_eligibility" | "inaccessible_evidence" | "no_novel_procedure" |
   // "suppressed" | "paused"
-  disposition String
-  reason      String @default("")
-  attempts    Int    @default(1)
+  disposition       String
+  reason            String  @default("")
+  attempts          Int     @default(1)
   // Model-call reservations also bound retries after an ambiguous crash.
-  modelAttempts Int  @default(0)
+  modelAttempts     Int     @default(0)
   // Validated publication input only; cleared when the review settles.
-  reviewReplay Json?
+  reviewReplay      Json?
   // Normalised fingerprint of the proposed behaviour (see fingerprint.py).
   changeFingerprint String?
   skillName         String?
@@ -1992,25 +2262,25 @@ model SkillHead {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  userId String
-  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expertId String?
-  ownerKey String
+  userId    String
+  User      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId  String?
+  ownerKey  String
   skillName String
 
   currentVersion   Int     @default(0)
   currentVersionId String?
   // sha256 of the SKILL.md the head last wrote; a differing workspace file
   // means a write bypassed version tracking and is treated as a human edit.
-  contentHash String?
+  contentHash      String?
 
   // "Automatic improvements": when false, automated changes become
   // proposals that need the owner's decision.
-  autoImprove Boolean @default(true)
+  autoImprove      Boolean   @default(true)
   // "Pause learning" for this skill (future automated changes stop).
   learningPausedAt DateTime?
   // "Stop using this skill" (excluded from retrieval; history kept).
-  usePausedAt DateTime?
+  usePausedAt      DateTime?
 
   Versions SkillVersion[]
 
@@ -2026,31 +2296,31 @@ model SkillVersion {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
 
-  userId String
-  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expertId String?
-  ownerKey String
+  userId    String
+  User      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId  String?
+  ownerKey  String
   skillName String
 
   headId String
   Head   SkillHead @relation(fields: [headId], references: [id], onDelete: Cascade)
 
-  version Int
+  version          Int
   // Full rendered SKILL.md for this version (frontmatter + body).
-  content     String
-  contentHash String
+  content          String
+  contentHash      String
   // Null for legacy Markdown-only versions; [] is an explicitly empty package.
-  packageFiles Json?
-  contentApprovals Json @default("[]")
-  description String
-  triggers    String[] @default([])
+  packageFiles     Json?
+  contentApprovals Json     @default("[]")
+  description      String
+  triggers         String[] @default([])
 
   // "saved_overnight" | "saved_during_work" | "requested" | "edited" |
   // "restored" | "imported"
   origin      String
   actorUserId String?
   // Plain explanation of what changed and why.
-  summary String @default("")
+  summary     String  @default("")
 
   baseVersionId         String?
   restoredFromVersionId String?
@@ -2058,15 +2328,15 @@ model SkillVersion {
 
   // [{source_id, source_kind, source_ref, revision}] — contributing source
   // revisions (inherited by descendants until independently re-authored).
-  sources Json @default("[]")
+  sources  Json     @default("[]")
   // [{kind, label, ref}] — concrete evidence labels and limits.
-  evidence Json @default("[]")
+  evidence Json     @default("[]")
   limits   String[] @default([])
 
   // "ready" | "pending_write" | "candidate" | "needs_decision" |
   // "blocked_content" | "paused" | "archived" | "invalidated" | "stale"
-  state       String @default("ready")
-  stateReason String @default("")
+  state               String  @default("ready")
+  stateReason         String  @default("")
   // Content-check outcome for blocked versions: pattern class + step only.
   blockedPatternClass String?
   blockedStep         String?
@@ -2083,10 +2353,10 @@ model SkillSuppression {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
 
-  userId String
-  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expertId String?
-  ownerKey String
+  userId    String
+  User      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId  String?
+  ownerKey  String
   skillName String
 
   behaviorFingerprint  String
@@ -2107,10 +2377,10 @@ model SkillUseEvent {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
 
-  userId String
-  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expertId String?
-  ownerKey String
+  userId    String
+  User      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId  String?
+  ownerKey  String
   skillName String
   versionId String?
   sessionId String?
@@ -2773,7 +3043,7 @@ model Profile {
 }
 
 view Creator {
-  username    String @unique
+  username    String  @unique
   name        String
   avatar_url  String?
   description String
@@ -2878,7 +3148,7 @@ view StoreSubmission {
 
 // StoreCreator view — like Creator but with org_name for org-owned listings
 view StoreCreator {
-  username    String @unique
+  username    String  @unique
   name        String
   avatar_url  String?
   description String
@@ -3629,6 +3899,7 @@ model Team {
   AgentGraphs    AgentGraph[]
   Executions     AgentGraphExecution[]
   ChatSessions   ChatSession[]
+  Tasks          Task[]
   Presets        AgentPreset[]
   LibraryAgents  LibraryAgent[]
   LibraryFolders LibraryFolder[]

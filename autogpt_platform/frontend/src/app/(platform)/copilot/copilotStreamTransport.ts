@@ -29,12 +29,20 @@ interface CreateTransportArgs {
 }
 
 /**
- * `DefaultChatTransport` with typewriter smoothing on live sends.
+ * A resume replays the turn so far in one burst before the live chunks; the
+ * first gap this long between chunks marks where the replay ended. Replayed
+ * chunks arrive back to back; live text that never pauses this long stays
+ * unpaced until its first pause, as every resume was before.
+ */
+const RESUME_REPLAY_QUIET_MS = 200;
+
+/**
+ * `DefaultChatTransport` with typewriter smoothing.
  *
  * POST streams (new user turns) are piped through the word-pacing transform
- * so bursty backend deltas render as steady text. GET-resume streams are
- * deliberately left raw — they replay the whole turn from `0-0`, and slow-
- * typing already-produced history would be worse than a single jump.
+ * so bursty backend deltas render as steady text. GET-resume streams replay
+ * the whole turn from `0-0`: that history passes through at once, and only
+ * what arrives live after it is paced like a POST.
  */
 class SmoothedCopilotChatTransport extends DefaultChatTransport<UIMessage> {
   // A resume replays the turn from its first chunk (see
@@ -47,6 +55,19 @@ class SmoothedCopilotChatTransport extends DefaultChatTransport<UIMessage> {
   ) {
     const stream = await super.sendMessages(options);
     return stream.pipeThrough(createSmoothingTransform());
+  }
+
+  async reconnectToStream(
+    options: Parameters<ChatTransport<UIMessage>["reconnectToStream"]>[0],
+  ) {
+    const stream = await super.reconnectToStream(options);
+    return (
+      stream?.pipeThrough(
+        createSmoothingTransform({
+          replayUntilQuietMs: RESUME_REPLAY_QUIET_MS,
+        }),
+      ) ?? null
+    );
   }
 }
 

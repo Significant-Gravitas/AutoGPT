@@ -17,6 +17,12 @@
     "ui": "@/components/atoms"
   },
   "registries": {
-    "@aceternity": "https://ui.aceternity.com/registry/{name}.json"
+    "@aceternity": "https://ui.aceternity.com/registry/{name}.json",
+    "@affectui": {
+      "url": "https://www.affectui.com/r/{name}.json",
+      "headers": {
+        "Authorization": "Bearer ${AFFECTUI_TOKEN}"
+      }
+    }
   }
 }

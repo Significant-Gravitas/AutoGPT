@@ -20,7 +20,7 @@ export function useQuietRows({
   const quietByIDRef = useRef(new Map<string, boolean>());
   const quietByID = quietByIDRef.current;
   for (const index of indexes) {
-    const id = rows[index].message.id;
+    const id = rows[index].key;
     if (!quietByID.has(id)) quietByID.set(id, seenIDsRef.current.has(id));
   }
 
@@ -51,9 +51,9 @@ function rememberMountedRows({
   seenIDs: Set<string>;
   quietByID: Map<string, boolean>;
 }) {
-  const mounted = new Set(indexes.map((index) => rows[index]?.message.id));
+  const mounted = new Set(indexes.map((index) => rows[index]?.key));
   for (const id of Array.from(quietByID.keys())) {
     if (!mounted.has(id)) quietByID.delete(id);
   }
-  for (const row of rows) seenIDs.add(row.message.id);
+  for (const row of rows) seenIDs.add(row.key);
 }

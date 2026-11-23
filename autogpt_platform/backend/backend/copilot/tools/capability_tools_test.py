@@ -541,11 +541,12 @@ async def test_a_skill_id_never_resolves_to_the_platform_tool_of_that_name(skill
 
 async def test_describe_tool_returns_parameters_without_the_card_hints():
     result = await DescribeCapabilityTool()._execute(
-        USER, make_session(USER), id="tool:schedule_followup"
+        USER, make_session(USER), id="tool:delete_schedule"
     )
     assert isinstance(result, CapabilityDetailsResponse)
-    assert result.capability["id"] == "tool:schedule_followup"
-    assert result.parameters == TOOL_REGISTRY["schedule_followup"].model_parameters
+    assert result.capability["id"] == "tool:delete_schedule"
+    assert result.parameters == TOOL_REGISTRY["delete_schedule"].model_parameters
+    assert result.parameters != TOOL_REGISTRY["delete_schedule"].parameters
 
 
 async def test_describe_block_collapses_large_enums_unless_expanded():

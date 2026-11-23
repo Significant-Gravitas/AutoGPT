@@ -1,4 +1,4 @@
-import { memo, type ReactNode } from "react";
+import { memo } from "react";
 import type { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import {
   Message,
@@ -13,6 +13,8 @@ import {
 } from "../../../../tools/FeedbackPrompts/helpers";
 import type { ExpertIdentity } from "../../../../useExpertMap";
 import { TurnStatsBar } from "../../../JobStatsBar/TurnStatsBar";
+import { AnswerBubbles } from "../../../AnsweredQuestions/AnsweredQuestions";
+import { parseAnswersFrame } from "../../../QuestionDock/answeredQuestions";
 import { ScheduledChatNoticeCard } from "../../../ScheduledChatNoticeCard/ScheduledChatNoticeCard";
 import { WorkCard } from "../../../WorkCard/WorkCard";
 import { ChainMessageParts } from "../ChainMessageParts";
@@ -41,6 +43,9 @@ interface Props {
   /** The rendered row: a message, or one segment of a turn split at a
    *  mid-turn follow-up. */
   message: ChatMessage;
+  /** The row's React key, which outlives `message.id` (see
+   *  `useStableRowKeys`); the parts are keyed by it so none remount. */
+  rowKey: string;
   /** Last rendered row and an assistant one. Only this row gets `onRetry`
    *  and keeps its actions visible without hover. */
   isLastAssistant: boolean;
@@ -65,8 +70,6 @@ interface Props {
   turnMessages?: ChatMessage[];
   /** Live elapsed seconds; only the last row gets them. */
   elapsedSeconds?: number;
-  /** Thinking indicator rendered at the bottom of the last assistant row. */
-  indicator?: ReactNode;
   /** User row while the session is queued; the queue badge shows on the
    *  latest user message. */
   isSessionQueued: boolean;
@@ -87,6 +90,7 @@ interface Props {
 // streaming row renders again.
 export const MessageRow = memo(function MessageRow({
   message,
+  rowKey,
   isLastAssistant,
   isLatestAnswer,
   isCurrentlyStreaming,
@@ -97,7 +101,6 @@ export const MessageRow = memo(function MessageRow({
   turnStat,
   turnMessages,
   elapsedSeconds,
-  indicator,
   isSessionQueued,
   sessionSentFrom,
   sessionID,
@@ -164,6 +167,26 @@ export const MessageRow = memo(function MessageRow({
     );
   }
 
+  // Answers sent from the question card read as "Answered: ..." over the
+  // answer, instead of the frame the stored message carries.
+  const answers = message.role === "user" ? parseAnswersFrame(copyText) : null;
+  if (answers) {
+    return (
+      <Message from={message.role} data-message-id={message.id}>
+        <AnswerBubbles answers={answers} />
+        <UserRowActions
+          showQueueBadge={
+            !readOnly && isSessionQueued && !!turnStat?.isLatestUserMessage
+          }
+          showCopy
+          createdAt={turnStat?.createdAt}
+          copyText={answers.map((line) => line.answer).join("\n")}
+          sessionID={sessionID}
+        />
+      </Message>
+    );
+  }
+
   const isAssistant = message.role === "assistant";
   const feedbackTarget = getFeedbackCardTarget({
     isLastAssistant,
@@ -196,7 +219,7 @@ export const MessageRow = memo(function MessageRow({
         {isAssistant ? (
           <ChainMessageParts
             parts={renderableParts}
-            messageID={message.id}
+            messageID={rowKey}
             isCurrentlyStreaming={isCurrentlyStreaming}
             canActOnCards={isLastAssistant && !isTurnSettling}
             isLatestAnswer={isLatestAnswer}
@@ -214,9 +237,9 @@ export const MessageRow = memo(function MessageRow({
           >
             {renderableParts.map((part, i) => (
               <MessagePartRenderer
-                key={`${message.id}-${i}`}
+                key={`${rowKey}-${i}`}
                 part={part}
-                messageID={message.id}
+                messageID={rowKey}
                 partIndex={i}
                 fileUrlBuilder={fileUrlBuilder}
                 readOnly={readOnly}
@@ -238,7 +261,6 @@ export const MessageRow = memo(function MessageRow({
             isSettling={isTurnSettling}
           />
         )}
-        {indicator}
       </MessageContent>
       {message.role === "user" && (
         <UserRowActions

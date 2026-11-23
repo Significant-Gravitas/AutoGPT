@@ -69,6 +69,7 @@ _READ = frozenset(
         "get_doc_page",
         "get_platform_info",
         "get_sub_session_result",
+        "get_task",
         "list_agent_triggers",
         "list_chat_platform_channels",
         "list_expert_chats",
@@ -79,6 +80,7 @@ _READ = frozenset(
         "list_routines",
         "list_schedules",
         "list_skills",
+        "list_tasks",
         "list_team",
         "list_workspace_files",
         "memory_forget_search",
@@ -104,6 +106,16 @@ _WORKSPACE = frozenset(
     {
         "TodoWrite",
         "add_understanding",
+        # Tasks are the user's own bookkeeping, like TodoWrite's list.
+        "archive_task",
+        "create_task",
+        # Starts the user's own work; the worker's calls are gated themselves.
+        "start_task",
+        "update_task",
+        # A worker's notes on its own task.
+        "report_progress",
+        "add_evidence",
+        "finish_task",
         "memory_store",
         "start_desktop",
         "store_skill",

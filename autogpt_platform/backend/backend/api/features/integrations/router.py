@@ -50,6 +50,7 @@ from backend.data.model import (
     is_sdk_default,
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
+from backend.data.task_watch import deliver_webhook_event
 from backend.data.user import is_user_refused
 from backend.executor.utils import add_graph_execution
 from backend.integrations.codex.access import (
@@ -1507,8 +1508,16 @@ async def webhook_ingress_generic(
     )
     await publish_webhook_event(webhook_event)
 
-    if not has_triggers:
-        return
+    if has_triggers:
+        await _run_webhook_triggers(webhook, webhook_id, event_type, payload)
+    await _deliver_to_watching_tasks(user_id, webhook_id, event_type, payload)
+
+
+async def _run_webhook_triggers(
+    webhook: WebhookWithRelations, webhook_id: str, event_type: str, payload: dict
+) -> None:
+    """Start the workflow runs the webhook's trigger nodes and presets take."""
+    user_id = webhook.user_id
 
     await complete_onboarding_step(user_id, OnboardingStep.TRIGGER_WEBHOOK)
 
@@ -1527,6 +1536,17 @@ async def webhook_ingress_generic(
 
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def _deliver_to_watching_tasks(
+    user_id: str, webhook_id: str, event_type: str, payload: dict
+) -> None:
+    """Queue the event on the owner's tasks that watch this webhook; the
+    due-task sweep starts them. A failure here never fails the delivery."""
+    try:
+        await deliver_webhook_event(user_id, webhook_id, event_type, payload)
+    except Exception:
+        logger.exception(f"Could not hand webhook #{webhook_id} event to tasks")
 
 
 @router.post(

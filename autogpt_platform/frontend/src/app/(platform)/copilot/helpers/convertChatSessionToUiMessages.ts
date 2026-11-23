@@ -1,3 +1,4 @@
+import { noteToolDuration } from "./toolDurations";
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { FileUIPart, UIMessage, UIDataTypes, UITools } from "ai";
 import type { LogRow, OverlayPart, TurnLog } from "../stream/turnLog";
@@ -7,7 +8,13 @@ import {
   type TurnPause,
 } from "../turnPause";
 import { toolDisplayName } from "./toolDisplay";
-import { backgroundNotice } from "./backgroundSubtasks";
+import { pendingToolPart, pendingTools } from "./pendingToolParts";
+import {
+  backgroundNotice,
+  TASK_HANDOFF_PART_TYPE,
+  taskHandoffOf,
+  taskHandoffSnapshotOf,
+} from "./backgroundSubtasks";
 import { getStandaloneBubbleMetadata } from "./standaloneMessages";
 import {
   WORKSPACE_FOLDER_PART_TYPE,
@@ -375,6 +382,7 @@ export function convertChatSessionMessagesToUiMessages(
     if (msg.role !== "tool") continue;
     const toolCallId = msg.tool_call_id?.trim();
     if (!toolCallId) continue;
+    if (msg.duration_ms != null) noteToolDuration(toolCallId, msg.duration_ms);
     if (msg.content == null) continue;
     toolOutputsByCallId.set(toolCallId, msg.content);
   }
@@ -442,11 +450,16 @@ export function convertChatSessionMessagesToUiMessages(
     const uiRole: "user" | "assistant" =
       msg.role === "reasoning" || notice ? "assistant" : msg.role;
 
-    const parts = buildRowParts(notice ? { ...msg, content: notice } : msg, {
-      toolOutputsByCallId,
-      fileUrlBuilder,
-      unanswered: options?.isComplete ? "completed" : "input-available",
-    });
+    // A follow-up that hands over a finished task draws that task's result
+    // in place of the plain "following up" line.
+    const handoff = notice ? taskHandoffOf(msg.metadata) : null;
+    const parts = handoff
+      ? [handoffPart(msg, handoff)]
+      : buildRowParts(notice ? { ...msg, content: notice } : msg, {
+          toolOutputsByCallId,
+          fileUrlBuilder,
+          unanswered: options?.isComplete ? "completed" : "input-available",
+        });
     if (parts.length === 0) return;
 
     // Merge consecutive assistant messages (including reasoning rows) into a
@@ -615,6 +628,15 @@ function pausePart(msg: SessionChatMessage, pause: TurnPause): UiPart {
   } as UiPart;
 }
 
+function handoffPart(msg: SessionChatMessage, taskID: string): UiPart {
+  const id = msg.sequence != null ? `seq-${msg.sequence}` : msg.id;
+  return {
+    type: TASK_HANDOFF_PART_TYPE,
+    ...(id ? { id } : {}),
+    data: { taskID, snapshot: taskHandoffSnapshotOf(msg.metadata) },
+  } as UiPart;
+}
+
 function toolCallPart(rawToolCall: unknown, ctx: RowPartsContext) {
   if (!rawToolCall || typeof rawToolCall !== "object") return null;
   const toolCall = rawToolCall as {
@@ -689,10 +711,17 @@ export function createTurnLogRenderer(
       unanswered: turnOver ? "interrupted" : "input-available",
     };
 
-    const groups = groupTurnRows(log);
+    // A call the model opened but never finished writing did not run, so a
+    // turn that ended well leaves it out instead of calling it interrupted.
+    const pending = pendingTools(log).filter(
+      (p) => log.status !== "finished" || p.tool.phase === "input-error",
+    );
+    const groups = groupTurnRows(log, pending.length > 0);
     const next = new Map<string, { deps: unknown[]; message: UiMessage }>();
     const messages = groups.map((group, index) => {
-      const trailingStep = stepIsEmpty && index === groups.length - 1;
+      const isLast = index === groups.length - 1;
+      const trailingStep = stepIsEmpty && isLast;
+      const ownPending = isLast ? pending : [];
       const rows = group.rows.map((i) => log.rows[i]);
       const deps: unknown[] = [
         ctx.unanswered,
@@ -700,6 +729,7 @@ export function createTurnLogRenderer(
         ...group.rows.flatMap((i) => [log.rows[i], streamingRows.has(i)]),
         ...rows.flatMap((row) => row.toolCalls.map((c) => outputs.get(c.id))),
         ...group.overlay,
+        ...ownPending.flatMap((p) => [p.tool, p.displayName]),
       ];
       const cached = memo.get(group.key);
       const message =
@@ -711,6 +741,7 @@ export function createTurnLogRenderer(
               streamingRows,
               trailingStep,
               ctx,
+              ownPending.map((p) => pendingToolPart(p, turnOver)),
             );
       next.set(group.key, { deps, message });
       return message;
@@ -753,7 +784,7 @@ interface TurnGroup {
  * keys never depend on sequences: the first assistant bubble is the turn's,
  * and a later one is keyed by the drained follow-up it answers.
  */
-function groupTurnRows(log: TurnLog): TurnGroup[] {
+function groupTurnRows(log: TurnLog, hasPendingTools = false): TurnGroup[] {
   const turn = log.turnId ?? "";
   const groups: TurnGroup[] = [];
   const groupOfRow: number[] = [];
@@ -797,6 +828,15 @@ function groupTurnRows(log: TurnLog): TurnGroup[] {
     }
     groups[target].overlay.push(part);
   }
+  // A call with no row yet joins the bubble its row will land in.
+  if (hasPendingTools && groups[groups.length - 1]?.role !== "assistant") {
+    groups.push({
+      key: assistantKey(),
+      role: "assistant",
+      rows: [],
+      overlay: [],
+    });
+  }
   return groups;
 }
 
@@ -806,6 +846,7 @@ function buildGroupMessage(
   streamingRows: Set<number | null>,
   trailingStep: boolean,
   ctx: RowPartsContext,
+  pendingParts: UiPart[],
 ): UiMessage {
   const parts: UiPart[] = [];
   let overlayIndex = 0;
@@ -828,6 +869,7 @@ function buildGroupMessage(
     );
   }
   flushOverlayBefore(Infinity);
+  parts.push(...pendingParts);
   if (trailingStep) parts.push({ type: "step-start" });
   const metadata = group.rows.length ? rows[group.rows[0]].metadata : null;
   return {

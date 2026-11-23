@@ -8,7 +8,7 @@ from openai.types.chat import ChatCompletionToolParam
 
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.capabilities.registry import configure_tools
-from backend.copilot.capabilities.sources import EAGER_CORE
+from backend.copilot.capabilities.sources import EAGER_CORE, RETIRED_TOOLS
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tracking import track_tool_called
 
@@ -92,6 +92,15 @@ from .search_docs import SearchDocsTool
 from .setup_agent_webhook_trigger import SetupAgentWebhookTriggerTool
 from .skills import DeleteSkillTool, ListSkillsTool, ReadSkillTool, StoreSkillTool
 from .start_desktop import StartDesktopTool
+from .start_task import StartTaskTool
+from .task_progress import AddEvidenceTool, FinishTaskTool, ReportProgressTool
+from .tasks import (
+    ArchiveTaskTool,
+    CreateTaskTool,
+    GetTaskTool,
+    ListTasksTool,
+    UpdateTaskTool,
+)
 from .todo_write import TodoWriteTool
 from .update_expert import UpdateExpertTool
 from .update_soul import ConfirmExpertSoulUpdateTool, UpdateExpertSoulTool
@@ -139,6 +148,17 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "move_folder": MoveFolderTool(),
     "delete_folder": DeleteFolderTool(),
     "move_agents_to_folder": MoveAgentsToFolderTool(),
+    # Tasks: one record per piece of work, linked to the chats it ran in
+    "create_task": CreateTaskTool(),
+    "list_tasks": ListTasksTool(),
+    "get_task": GetTaskTool(),
+    "update_task": UpdateTaskTool(),
+    "archive_task": ArchiveTaskTool(),
+    "start_task": StartTaskTool(),
+    # What a task's worker says about its own work; the rest is recorded.
+    "report_progress": ReportProgressTool(),
+    "add_evidence": AddEvidenceTool(),
+    "finish_task": FinishTaskTool(),
     "run_agent": RunAgentTool(),
     # Schedule management
     "list_schedules": ListSchedulesTool(),
@@ -438,7 +458,11 @@ def reachable_tool_names(
     session still do X" want this, not ``get_available_tools``; asking the
     schema list alone reads every deferred tool as removed.
     """
-    hidden = tool_names_in_groups(disabled_groups) | frozenset(disabled_tools)
+    hidden = (
+        tool_names_in_groups(disabled_groups)
+        | frozenset(disabled_tools)
+        | RETIRED_TOOLS
+    )
     declared = {
         name
         for name, tool in TOOL_REGISTRY.items()

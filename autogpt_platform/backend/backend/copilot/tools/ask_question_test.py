@@ -1,17 +1,49 @@
 """Tests for AskQuestionTool."""
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from prisma.enums import TaskStatus
 
+from backend.copilot import turn_end
 from backend.copilot.model import ChatSession, clear_pending_question
 from backend.copilot.tools.ask_question import (
+    MAX_DEFAULT_GUESS_LENGTH,
     MAX_OPTION_LENGTH,
     MAX_OPTIONS,
     MAX_QUESTIONS,
     AskQuestionTool,
 )
-from backend.copilot.tools.models import ClarificationNeededResponse
+from backend.copilot.tools.models import QUESTION_REASONS, ClarificationNeededResponse
+
+
+@pytest.fixture(autouse=True)
+def task_store() -> Iterator[MagicMock]:
+    """Stand in for the task-status writes that asking and replying make."""
+    store = MagicMock(move_session_tasks=AsyncMock(return_value=1))
+    with (
+        patch(
+            "backend.copilot.tools.ask_question.task_db",
+            MagicMock(return_value=store),
+        ),
+        patch("backend.copilot.model.task_db", MagicMock(return_value=store)),
+    ):
+        yield store
+
+
+@pytest.fixture(autouse=True)
+def any_question_allowed(request: pytest.FixtureRequest) -> Iterator[None]:
+    """These tests cover parsing; ``question_rules_test`` covers which
+    questions may be asked. A test marked ``question_rules`` keeps the rules."""
+    if request.node.get_closest_marker("question_rules"):
+        yield
+        return
+    with patch(
+        "backend.copilot.tools.ask_question.question_rules.refusal",
+        MagicMock(return_value=None),
+    ):
+        yield
 
 
 @pytest.fixture()
@@ -517,3 +549,158 @@ async def test_clearing_a_session_with_no_question_touches_nothing(
         await clear_pending_question(session)
 
     db.clear_session_pending_question.assert_not_called()
+
+
+# ── Reason and default guess ─────────────────────────────────────────
+
+
+@pytest.fixture()
+def quiet_db():
+    """Stand in for the pending-question write, so these tests need no DB."""
+    with patch(
+        "backend.copilot.tools.ask_question.chat_db",
+        MagicMock(return_value=MagicMock(set_session_pending_question=AsyncMock())),
+    ):
+        yield
+
+
+@pytest.mark.asyncio
+async def test_reason_and_default_guess_reach_the_card(
+    tool: AskQuestionTool, session: ChatSession, quiet_db
+):
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        questions=[
+            {
+                "question": "Which team gets the report?",
+                "reason": " Goal_Ambiguous ",
+                "default_guess": "  The sales team  ",
+            }
+        ],
+    )
+
+    assert isinstance(result, ClarificationNeededResponse)
+    question = result.questions[0]
+    assert question.reason == "goal_ambiguous"
+    assert question.default_guess == "The sales team"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reason, default_guess",
+    [(None, None), ("because", "   "), (7, ["x"])],
+)
+async def test_unknown_reason_and_blank_guess_read_as_missing(
+    tool: AskQuestionTool, session: ChatSession, quiet_db, reason, default_guess
+):
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        questions=[
+            {
+                "question": "Which team?",
+                "reason": reason,
+                "default_guess": default_guess,
+            }
+        ],
+    )
+
+    assert isinstance(result, ClarificationNeededResponse)
+    assert result.questions[0].reason is None
+    assert result.questions[0].default_guess is None
+
+
+@pytest.mark.asyncio
+async def test_default_guess_is_capped(
+    tool: AskQuestionTool, session: ChatSession, quiet_db
+):
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        questions=[{"question": "Which team?", "default_guess": "x" * 1000}],
+    )
+
+    assert isinstance(result, ClarificationNeededResponse)
+    assert result.questions[0].default_guess == "x" * MAX_DEFAULT_GUESS_LENGTH
+
+
+def test_schema_requires_a_reason_and_a_default_guess(tool: AskQuestionTool):
+    item = tool.parameters["properties"]["questions"]["items"]
+
+    assert item["required"] == ["question", "reason", "default_guess"]
+    assert set(item["properties"]["reason"]["enum"]) == set(QUESTION_REASONS)
+
+
+@pytest.mark.asyncio
+async def test_a_valid_question_ends_the_turn(
+    tool: AskQuestionTool, session: ChatSession, quiet_db
+):
+    try:
+        await tool._execute(
+            user_id=None, session=session, questions=[{"question": "Which team?"}]
+        )
+        assert turn_end.is_ending(session.session_id)
+    finally:
+        turn_end.clear(session.session_id)
+
+
+@pytest.mark.asyncio
+async def test_an_invalid_question_does_not_end_the_turn(
+    tool: AskQuestionTool, session: ChatSession, quiet_db
+):
+    with pytest.raises(ValueError):
+        await tool._execute(user_id=None, session=session, questions=[])
+    assert not turn_end.is_ending(session.session_id)
+
+
+@pytest.mark.asyncio
+async def test_asking_parks_the_chats_tasks_and_replying_resumes_them(
+    tool: AskQuestionTool, session: ChatSession, quiet_db, task_store: MagicMock
+):
+    db = MagicMock(clear_session_pending_question=AsyncMock())
+    try:
+        await tool._execute(
+            user_id=None, session=session, questions=[{"question": "Which team?"}]
+        )
+        with patch("backend.copilot.model.chat_db", MagicMock(return_value=db)):
+            await clear_pending_question(session)
+    finally:
+        turn_end.clear(session.session_id)
+
+    assert [c.args for c in task_store.move_session_tasks.await_args_list] == [
+        (
+            session.session_id,
+            session.user_id,
+            [TaskStatus.TODO, TaskStatus.IN_PROGRESS],
+            TaskStatus.NEEDS_INPUT,
+        ),
+        (
+            session.session_id,
+            session.user_id,
+            [TaskStatus.NEEDS_INPUT],
+            TaskStatus.IN_PROGRESS,
+        ),
+    ]
+
+
+@pytest.mark.question_rules
+@pytest.mark.asyncio
+async def test_a_question_that_does_not_block_is_refused_and_parks_nothing(
+    tool: AskQuestionTool, session: ChatSession, quiet_db, task_store: MagicMock
+):
+    with pytest.raises(ValueError, match="preference is not asked"):
+        await tool._execute(
+            user_id=None,
+            session=session,
+            questions=[
+                {
+                    "question": "Formal or casual tone?",
+                    "reason": "preference",
+                    "default_guess": "Casual",
+                }
+            ],
+        )
+
+    assert not turn_end.is_ending(session.session_id)
+    task_store.move_session_tasks.assert_not_awaited()

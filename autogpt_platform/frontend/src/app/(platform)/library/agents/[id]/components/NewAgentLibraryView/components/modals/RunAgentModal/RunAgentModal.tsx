@@ -285,7 +285,7 @@ export function RunAgentModal({
                                   !allRequiredInputsAreSet
                                 }
                               >
-                                Schedule Task
+                                Schedule Run
                               </Button>
                             </span>
                           </TooltipTrigger>
@@ -303,7 +303,7 @@ export function RunAgentModal({
                         onClick={handleOpenScheduleModal}
                         disabled={isExecuting || isSettingUpTrigger}
                       >
-                        Schedule Task
+                        Schedule Run
                       </Button>
                     )
                   }

@@ -2,17 +2,12 @@
 
 import { useStableCallback } from "@/hooks/useStableCallback";
 import {
+  Alert02Icon,
   ArrowDown01Icon,
   SentIcon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
-import {
-  AnimatePresence,
-  domAnimation,
-  LazyMotion,
-  m,
-  useReducedMotion,
-} from "framer-motion";
+import { domAnimation, LazyMotion, m, useReducedMotion } from "framer-motion";
 import {
   useCallback,
   useContext,
@@ -40,7 +35,11 @@ import {
 } from "./chainActions";
 import { useCredentialFailureCounters } from "./useCredentialFailureCounters";
 import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
-import { ChainRowView } from "./ChainRowView";
+import { ChainRows } from "./ChainRows";
+import {
+  formatToolDuration,
+  totalToolDuration,
+} from "../../helpers/toolDurations";
 import { useNoteRunningSteps } from "./StepClock";
 import { applyHeldOutcome } from "./heldRow";
 import { useHeldAnswersStore } from "../ApprovalQueue/heldAnswersStore";
@@ -55,8 +54,14 @@ import {
 } from "./helpers";
 import { SwapText } from "./SwapText";
 import { ToolResult } from "./ToolResult";
+import { startedTaskOf, uniqueTasks } from "../TaskStatusLine/helpers";
+import { TaskStatusLine } from "../TaskStatusLine/TaskStatusLine";
 
 const COLLAPSED_WINDOW = 2;
+// A burst of fast tools changes the live heading faster than it can be read:
+// each heading stays up at least this long, then the newest one shows.
+const HEADING_HOLD_MS = 500;
+const EASE_OUT_QUINT = [0.22, 1, 0.36, 1] as const;
 
 /** Answers to a pending clarifying question go out under that question's own
  *  rule (see getPendingQuestions), never the chain's latest-answer gate. */
@@ -294,9 +299,20 @@ export function ToolChain({
       !row.lifted && !askedRecords.some((record) => record.key === row.key),
   );
   const liftedRows = rows.filter((row) => row.lifted);
+  // A public transcript can't read the owner's tasks, so it shows none.
+  const startedTasks = readOnly
+    ? []
+    : uniqueTasks(
+        rows.flatMap((row) => {
+          const task = row.state === "done" ? startedTaskOf(row.output) : null;
+          return task ? [task] : [];
+        }),
+      );
 
   const expanded = manualExpanded === true;
   const heading = getChainHeading(rows, isStreaming && !expanded);
+  // How long the chain's steps took together, once it has stopped.
+  const chainTime = totalToolDuration(rows.map((row) => row.key));
   const hasError = rows.some((row) => row.state === "error");
   const hasRequiredAction = shownRows.some((row) => row.requiresAction);
   // Auto-open only while streaming; once the chain finishes (or on reload)
@@ -340,7 +356,16 @@ export function ToolChain({
     <LazyMotion features={domAnimation} strict>
       <div className="my-2">
         {shownRows.length > 0 && (
-          <>
+          // A chain that starts while the reply streams comes in as one
+          // piece, header and first row together. Read at mount only, so
+          // neither a re-render nor a reloaded transcript plays it again.
+          <m.div
+            initial={
+              isStreaming && !reducedMotion ? { opacity: 0, y: 4 } : false
+            }
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2, ease: EASE_OUT_QUINT }}
+          >
             <button
               type="button"
               onClick={() => setManualExpanded(!open)}
@@ -348,9 +373,13 @@ export function ToolChain({
               aria-controls={panelId}
               className="group/chain -mx-2 flex w-fit max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left transition-colors duration-100 hover:bg-surface-hover"
             >
+              <ChainGlyph
+                state={isStreaming ? "running" : hasError ? "failed" : "done"}
+              />
               <SwapText
                 text={heading}
                 shimmer={isStreaming && !expanded}
+                minHoldMs={HEADING_HOLD_MS}
                 className={
                   "min-w-0 text-body font-normal " +
                   (hasError && !isStreaming
@@ -358,6 +387,11 @@ export function ToolChain({
                     : "text-foreground-body")
                 }
               />
+              {chainTime !== null && !isStreaming ? (
+                <span className="shrink-0 text-body-sm text-foreground-faint tabular-nums">
+                  · {formatToolDuration(chainTime)}
+                </span>
+              ) : null}
               <Icon
                 icon={ArrowDown01Icon}
                 size={12}
@@ -380,88 +414,20 @@ export function ToolChain({
                     (panelOpen && !windowMode ? " " + PANEL_REVEAL : "")
                   }
                 >
-                  <AnimatePresence mode="popLayout">
-                    {visible.map((row, i) => {
-                      // While streaming the window slides on every tool, so
-                      // rows enter without stagger and leave quickly — the
-                      // stagger is for the settled list revealed on expand.
-                      // Post-stream mounts (manual expand) skip per-row
-                      // animation entirely; PANEL_REVEAL fades the panel.
-                      const stagger =
-                        reducedMotion || windowMode
-                          ? 0
-                          : Math.min(i, 6) * 0.035;
-                      const animateIn = !reducedMotion && isStreaming;
-                      return (
-                        <m.div
-                          key={row.key}
-                          layout={!reducedMotion}
-                          initial={
-                            animateIn
-                              ? { opacity: 0, y: 8, scale: 0.985 }
-                              : false
-                          }
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={
-                            reducedMotion
-                              ? undefined
-                              : {
-                                  opacity: 0,
-                                  y: -6,
-                                  scale: 0.985,
-                                  transition: {
-                                    duration: 0.12,
-                                    ease: [0.22, 1, 0.36, 1],
-                                  },
-                                }
-                          }
-                          transition={{
-                            opacity: {
-                              duration: reducedMotion ? 0 : 0.18,
-                              delay: stagger,
-                              ease: [0.22, 1, 0.36, 1],
-                            },
-                            y: {
-                              duration: reducedMotion ? 0 : 0.22,
-                              delay: stagger,
-                              ease: [0.22, 1, 0.36, 1],
-                            },
-                            scale: {
-                              duration: reducedMotion ? 0 : 0.22,
-                              delay: stagger,
-                              ease: [0.22, 1, 0.36, 1],
-                            },
-                            layout: {
-                              duration: reducedMotion ? 0 : 0.22,
-                              ease: [0.22, 1, 0.36, 1],
-                            },
-                          }}
-                        >
-                          <ChainActionsContext.Provider value={chainActions}>
-                            <ChainRowView
-                              row={row}
-                              isLast={i === visible.length - 1 && !showDone}
-                              readOnly={readOnly}
-                            />
-                          </ChainActionsContext.Provider>
-                        </m.div>
-                      );
-                    })}
-                  </AnimatePresence>
-                  {showDone && (
-                    <div className="flex items-stretch gap-2.5">
-                      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-                        <Icon icon={Tick02Icon} size={14} tone="secondary" />
-                      </div>
-                      <div className="flex h-7 items-center text-body text-foreground-secondary">
-                        Done
-                      </div>
-                    </div>
-                  )}
+                  <ChainRows
+                    rows={visible}
+                    isStreaming={isStreaming}
+                    windowMode={windowMode}
+                    showDone={showDone}
+                    reducedMotion={!!reducedMotion}
+                    newestLiveKey={isStreaming ? rows.at(-1)?.key : undefined}
+                    chainActions={chainActions}
+                    readOnly={readOnly}
+                  />
                 </div>
               </div>
             </div>
-          </>
+          </m.div>
         )}
 
         {/* Questions the user has moved past stay where their card was,
@@ -472,6 +438,18 @@ export function ToolChain({
               <AnsweredQuestions key={record.key} items={record.items} />
             ))}
           </div>
+        )}
+
+        {/* Tasks started here keep a line under the chain, so work that
+            runs in the background stays visible once the steps fold away. */}
+        {startedTasks.length > 0 && (
+          <ul className="mt-1 flex flex-col gap-2">
+            {startedTasks.map((task) => (
+              <li key={task.id}>
+                <TaskStatusLine task={task} />
+              </li>
+            ))}
+          </ul>
         )}
 
         {/* Lifted rows render off-screen: their cards must stay mounted so
@@ -526,5 +504,31 @@ export function ToolChain({
         )}
       </div>
     </LazyMotion>
+  );
+}
+
+interface ChainGlyphProps {
+  state: "running" | "done" | "failed";
+}
+
+// The small mark before the chain's line: turning while its steps run, a
+// green tick once they are done, red when one failed.
+function ChainGlyph({ state }: ChainGlyphProps) {
+  if (state === "running") {
+    return (
+      <span
+        aria-hidden
+        className="size-3 shrink-0 animate-spin rounded-full border-2 border-foreground-faint border-t-transparent motion-reduce:animate-none"
+      />
+    );
+  }
+  return (
+    <Icon
+      icon={state === "failed" ? Alert02Icon : Tick02Icon}
+      size={13}
+      tone={state === "failed" ? "error" : "ok"}
+      className="shrink-0"
+      aria-hidden
+    />
   );
 }

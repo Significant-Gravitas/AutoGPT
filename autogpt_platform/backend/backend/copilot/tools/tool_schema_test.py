@@ -331,7 +331,48 @@ from ._test_data import make_session
 #     merged tree                                 83,410
 #     + headroom                       +300       83,710
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_CHAR_BUDGET = 83_710
+# Raised for the five task tools (create_task, list_tasks, get_task,
+# update_task, archive_task): a task is a new record the user's work is
+# tracked in, so the tools are new surface rather than description bloat.
+# They are deferred, reached through run_capability. Measured on this branch:
+#     dev 4c59c1c4b2                              77,899 (89 tools)
+#     + task tools                    +2,528      80,427 (94 tools)
+#     + headroom                      +300        80,727
+# Raised again for ask_question's per-question `reason` and `default_guess`,
+# which every question needs so the card can offer "use your best guess":
+#     task tools tree                             80,427 (94 tools)
+#     + reason / default_guess        +386        80,813 (94 tools)
+#     + headroom                      +300        81,113
+# Raised for start_task, the tool every multi-step request goes through
+# (eager, so it is in every chat's list):
+#     reason / default_guess tree                 80,813 (94 tools)
+#     + start_task                    +734        81,547 (95 tools)
+#     + headroom                      +300        81,847
+# Raised for the task record: start_task's goal, done_when and task_id, and
+# the two things a task's worker says about its own work:
+#     start_task tree                             81,547 (95 tools)
+#     + goal / done_when / task_id    +778        82,325
+#     + report_progress, add_evidence +1,150      83,475 (97 tools)
+#     + headroom                      +300        83,775
+# Raised for short task results: finish_task (a worker's summary and the file
+# holding the full result), and the length caps the three worker tools and
+# start_task now state:
+#     task record tree                            83,475 (97 tools)
+#     + finish_task, stated caps      +566        84,041 (98 tools)
+#     + headroom                      +300        84,341
+# Re-measured after merging dev 6ba9456067 (2026-11-14) into the task
+# branch: dev's render_ui, request_work_check and flag_mistake now sit beside
+# the task tools.
+#     merged tree                                 89,743 (101 tools)
+#     + headroom                      +300        90,043
+# start_task's repeat_crons, for repeating tasks (2026-11-17):
+#     merged tree                                 90,202
+#     + headroom                      +300        90,502
+# finish_task's outcome (done/blocked/failed), so a task that delivered
+# nothing settles Failed, not Done (QA A1, 2026-11-19):
+#     merged tree                                 90,617
+#     + headroom                      +300        90,917
+_CHAR_BUDGET = 90_917
 
 
 @pytest.fixture(scope="module")
@@ -579,7 +620,38 @@ def test_total_schema_char_budget() -> None:
 #     merged tree                                 75,382
 #     + headroom                       +300       75,682
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_SESSION_WIRE_BUDGET = 75_682
+# The five task tools ride the largest session, as for ``_CHAR_BUDGET``:
+#     dev 4c59c1c4b2                              70,214
+#     + task tools                    +2,213      72,427
+#     + headroom                      +300        72,727
+# And for ask_question's `reason` and `default_guess`, as above:
+#     task tools tree                             72,427
+#     + reason / default_guess        +368        72,795
+#     + headroom                      +300        73,095
+# And for start_task, as above:
+#     reason / default_guess tree                 72,795
+#     + start_task                    +658        73,453
+#     + headroom                      +300        73,753
+# And for the task record, as above: start_task's goal, done_when and
+# task_id, plus report_progress and add_evidence:
+#     start_task tree                             73,453
+#     + task record                   +1,767      75,220
+#     + headroom                      +300        75,520
+# And for short task results, as above (finish_task and the stated caps):
+#     task record tree                            75,220
+#     + finish_task, stated caps      +508        75,728
+#     + headroom                      +300        76,028
+# And re-measured after the same merge with dev 6ba9456067 (2026-11-14):
+#     merged tree                                 81,081
+#     + headroom                      +300        81,381
+# start_task's repeat_crons, for repeating tasks (2026-11-17):
+#     merged tree                                 81,522
+#     + headroom                      +300        81,822
+# schedule_followup and schedule_routine retired from the model (2026-11-19):
+# the measure leaves RETIRED_TOOLS out, as no session declares them.
+#     merged tree                                 76,835
+#     + headroom                      +300        77,135
+_SESSION_WIRE_BUDGET = 77_135
 
 
 def test_largest_declared_session_wire_budget() -> None:
@@ -599,6 +671,7 @@ def test_largest_declared_session_wire_budget() -> None:
 
 def _largest_session_wire_chars() -> int:
     """Wire chars an Otto chat declares with both flags on, E2B, interactive."""
+    from backend.copilot.capabilities.sources import RETIRED_TOOLS
     from backend.copilot.sdk.e2b_file_tools import E2B_FILE_TOOLS
     from backend.copilot.sdk.tool_adapter import (
         _READ_TOOL_DESCRIPTION,
@@ -629,6 +702,9 @@ def _largest_session_wire_chars() -> int:
     )
     hidden |= set(BASELINE_ONLY_MCP_TOOLS) | {"get_agent_building_guide"}
     hidden |= origin_disabled_tools("interactive")
+    # Retired tools stay in the registry but no session declares, finds or
+    # describes them.
+    hidden |= RETIRED_TOOLS
 
     total = sum(
         wire(name, tool.description, _build_input_schema(tool))
@@ -735,12 +811,12 @@ def test_automation_origin_declares_no_interactive_origin_tools() -> None:
             f"{sorted(INTERACTIVE_ORIGIN_TOOLS & reachable)}"
         )
         # The gate is narrow on purpose: an automation still does its work,
-        # still reports through a chat platform, still wakes itself up.
+        # still reports through a chat platform, still sets up work for later.
         assert {
             "run_agent",
             "run_capability",
             "run_sub_session",
-            "schedule_followup",
+            "start_task",
             "ask_question",
         } <= reachable
 
@@ -825,4 +901,32 @@ def test_set_matches_the_tools_that_call_the_origin_guard() -> None:
         "INTERACTIVE_ORIGIN_TOOLS is out of step with the runtime guard: "
         f"guarded but declared {sorted(guarded - INTERACTIVE_ORIGIN_TOOLS)}, "
         f"hidden but unguarded {sorted(INTERACTIVE_ORIGIN_TOOLS - guarded)}"
+    )
+
+
+def test_the_old_scheduling_tools_are_retired_from_the_model() -> None:
+    """Later work is a task now. Both tools stay in the code, for follow-ups
+    and routines already set up and for calls stored in old chats, but no
+    session declares them, finds them, runs them by id or calls them by
+    name."""
+    from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
+    from backend.copilot.tools import (
+        DEFERRED_TOOL_NAMES,
+        get_available_tools,
+        reachable_tool_names,
+    )
+
+    retired = {"schedule_followup", "schedule_routine"}
+    assert retired <= set(TOOL_REGISTRY)
+    # Deferred, so a call naming one directly is refused (see the test above).
+    assert retired <= DEFERRED_TOOL_NAMES
+    declared = {t["function"]["name"] for t in get_available_tools()}
+    assert not retired & declared
+    assert not retired & reachable_tool_names()
+    for name in retired:
+        call = {"id": f"tool:{name}", "input": {}}
+        assert resolve_tool_dispatch("run_capability", call) is None
+    # What lets the user see and remove what already exists stays reachable.
+    assert {"list_schedules", "delete_schedule", "list_routines"} <= (
+        reachable_tool_names()
     )

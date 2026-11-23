@@ -19,8 +19,9 @@ interface Props {
 }
 
 /** The transcript's rows, windowed: only the rows on screen, a few either
- *  side and the newest turn are mounted. Rows keep `key={message.id}`, so a
- *  row's state survives for as long as it stays in the window. */
+ *  side and the newest turn are mounted. Rows keep `key={row.key}`, so a
+ *  row's state survives for as long as it stays in the window, and across
+ *  the id swap a stream's end brings. */
 export function VirtualTranscript({
   rows,
   renderRow,
@@ -52,7 +53,7 @@ export function VirtualTranscript({
           );
         }
         const row = rows[segment.index];
-        const id = row.message.id;
+        const id = row.key;
         return (
           <div
             key={id}

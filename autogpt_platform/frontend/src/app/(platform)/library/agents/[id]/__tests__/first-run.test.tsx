@@ -115,16 +115,16 @@ test("selects the first created run while the sidebar still has an empty cached 
     </NuqsTestingAdapter>,
   );
   await userEvent.click(
-    await screen.findByRole("button", { name: "Setup your task" }),
+    await screen.findByRole("button", { name: "Set up your run" }),
   );
   await userEvent.click(
-    await screen.findByRole("button", { name: "Start Task" }),
+    await screen.findByRole("button", { name: "Start Run" }),
   );
   await waitFor(() => expect(executionRequests).toHaveBeenCalledOnce());
 
   await waitFor(() => expect(detailRequests).toHaveBeenCalled());
   expect(await screen.findByRole("button", { name: "Output" })).toBeDefined();
-  expect(screen.queryByRole("button", { name: "Setup your task" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Set up your run" })).toBeNull();
 });
 
 interface Props {

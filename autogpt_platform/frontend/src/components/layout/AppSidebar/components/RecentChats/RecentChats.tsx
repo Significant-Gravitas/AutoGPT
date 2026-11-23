@@ -15,6 +15,7 @@ import { useState } from "react";
 import { ExpertChatGroup } from "./components/ExpertChatGroup/ExpertChatGroup";
 import { NewExpertGroup } from "./components/NewExpertGroup/NewExpertGroup";
 import { RecentChatItem } from "./components/RecentChatItem/RecentChatItem";
+import { useWorkingExperts } from "../ExpertsNavSection/useWorkingExperts";
 import { getNewChatHref, getNewExpertsWithoutChats } from "./helpers";
 import { useRecentChats } from "./useRecentChats";
 
@@ -27,6 +28,7 @@ export function RecentChats() {
   // mounted: an expert who joins later counts as new, and one only ages out
   // on a later visit.
   const [mountedAt] = useState(() => Date.now());
+  const { workingCount } = useWorkingExperts();
   const {
     groups,
     pinnedSessions,
@@ -141,6 +143,7 @@ export function RecentChats() {
         color={expert?.color ?? null}
         newChatHref={getNewChatHref(expertId, activeExpertIds)}
         isAutopilot={!expertId}
+        workingCount={workingCount(expertId)}
         total={group.total}
         previewSessions={group.sessions}
         pinnedSeparately={chatPinningEnabled}

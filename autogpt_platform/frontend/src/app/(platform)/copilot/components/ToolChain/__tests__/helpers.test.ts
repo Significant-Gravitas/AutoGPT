@@ -246,6 +246,79 @@ describe("toChainRow", () => {
     });
   });
 
+  it("names a streaming call's subject once its argument is finished", () => {
+    function streamingRow(input: unknown) {
+      return toChainRow(
+        {
+          type: "tool-web_search",
+          state: "input-streaming",
+          toolCallId: "call-stream",
+          input,
+        } as MessagePart,
+        0,
+      );
+    }
+
+    expect(streamingRow({ query: "paris hot" })?.text).toBe(
+      "Searching the web for…",
+    );
+    const finished = streamingRow({ query: "paris hotels", max_res: 3 });
+    expect(finished).toMatchObject({
+      key: "call-stream",
+      state: "running",
+      text: 'Searching the web for "paris hotels"…',
+    });
+    // The row keeps no input until the call completes.
+    expect(finished?.input).toBeUndefined();
+  });
+
+  it.each([undefined, null, "", '{"query": "pa', 42, ["a", "b"], {}])(
+    "shows the running label for a streaming call whose input is %j",
+    (input) => {
+      const row = toChainRow(
+        {
+          type: "tool-web_search",
+          state: "input-streaming",
+          toolCallId: "call-stream",
+          input,
+        } as MessagePart,
+        0,
+      );
+
+      expect(row).toMatchObject({
+        state: "running",
+        text: "Searching the web for…",
+      });
+    },
+  );
+
+  it("labels a streaming non-catalog call without reading its input", () => {
+    const row = toChainRow(
+      {
+        type: "tool-Grep",
+        state: "input-streaming",
+        toolCallId: "call-grep",
+        input: '{"pattern": "TO',
+      } as MessagePart,
+      0,
+    );
+
+    expect(row).toMatchObject({ state: "running", category: "search" });
+  });
+
+  it("keeps the running label on a finished row for its minimum running look", () => {
+    const row = toChainRow(
+      toolPart("web_search", { query: "hotels" }, { results: [1] }),
+      0,
+    );
+
+    expect(row).toMatchObject({
+      state: "done",
+      text: 'Searched the web for "hotels"',
+      runningText: 'Searching the web for "hotels"…',
+    });
+  });
+
   it("falls back to generic categorization for non-catalog tools", () => {
     const grep = toChainRow(
       toolPart("Grep", { pattern: "TODO" }, "3 matches"),
@@ -549,6 +622,48 @@ describe("buildChainSegments edge cases", () => {
     ]);
   });
 
+  // The live stream keeps text parts a reload drops: one that has started but
+  // has no words yet, and whitespace the model wrote between tool calls (the
+  // stored row's content is blank, so hydration makes no part of it). They
+  // must not split a chain or hide the tool ahead, or the same narration is
+  // prose live and a chain row after a reload.
+  it("segments a live turn the way its reload does, whatever blank text it holds", () => {
+    const answer = textPart("Answer. ".repeat(40));
+    const reload = [
+      toolPart("web_search"),
+      textPart("Now fetching the page."),
+      toolPart("web_fetch"),
+      answer,
+    ];
+    const live = [
+      reload[0],
+      textPart("\n\n"),
+      reload[1],
+      textPart(""),
+      { type: "step-start" } as MessagePart,
+      reload[2],
+      textPart(" \n"),
+      answer,
+    ];
+
+    expect(segmentShape(buildChainSegments(live, isChainableToolPart))).toEqual(
+      segmentShape(buildChainSegments(reload, isChainableToolPart)),
+    );
+    expect(
+      segmentShape(buildChainSegments(reload, isChainableToolPart)),
+    ).toEqual([
+      ["chain", [reload[0], reload[1], reload[2]]],
+      ["part", answer],
+    ]);
+  });
+
+  it("drops a blank text part that ends a streaming message", () => {
+    const parts = [toolPart("web_search"), textPart("")];
+    expect(buildChainSegments(parts, isChainableToolPart)).toEqual([
+      { kind: "chain", parts: [parts[0]], index: 0 },
+    ]);
+  });
+
   it("emits leading text before any chain as its own part", () => {
     const parts = [textPart("Intro."), toolPart("web_search")];
 
@@ -663,3 +778,11 @@ describe("isToolCallPending", () => {
     },
   );
 });
+
+function segmentShape(segments: ReturnType<typeof buildChainSegments>) {
+  return segments.map((segment) =>
+    segment.kind === "part"
+      ? ["part", segment.part]
+      : [segment.kind, segment.parts],
+  );
+}

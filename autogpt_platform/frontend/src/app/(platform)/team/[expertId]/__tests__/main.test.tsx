@@ -433,7 +433,7 @@ describe("ExpertDetailPage", () => {
         .getByRole("link", { name: "Edit workflow" })
         .getAttribute("href"),
     ).toBe("/build?flowID=graph-1");
-    expect(within(calendar).queryByText("See tasks")).toBeNull();
+    expect(within(calendar).queryByText("See runs")).toBeNull();
   });
 
   test("opens the run dialog from the card's Run button", async () => {

@@ -19,12 +19,19 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
     ChatCompletionMessageToolCallParam,
     Function,
 )
-from prisma.enums import APIKeyPermission
+from prisma.enums import APIKeyPermission, TaskStatus
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from pydantic import BaseModel, Field, PrivateAttr
 
-from backend.data.db_accessors import chat_db, chat_db_is_local, experts_db, library_db
+from backend.data.db_accessors import (
+    chat_db,
+    chat_db_is_local,
+    experts_db,
+    library_db,
+    task_db,
+    task_record_db,
+)
 from backend.data.graph import GraphSettings
 from backend.data.redis_client import get_redis_async
 from backend.util import json
@@ -209,6 +216,11 @@ class ChatSessionMetadata(BaseModel):
     # when they reply. Drives the Home "Needs You" question item; one per
     # session, latest wins.
     pending_question: PendingQuestion | None = None
+
+    # The task this chat was opened to run from the task's own page (``POST
+    # /tasks/{id}/run``). Nothing waits on such a chat, so the end of each of
+    # its turns settles the task (``copilot/task_run_settle.py``).
+    work_task_id: str | None = None
 
 
 def child_session_origin(parent: ChatSessionMetadata) -> ChatSessionOrigin:
@@ -459,7 +471,9 @@ def is_message_duplicate(
     return False
 
 
-async def clear_pending_question(session: "ChatSession") -> None:
+async def clear_pending_question(
+    session: "ChatSession", answer: str | None = None
+) -> None:
     """Resolve the session's Home "Needs You" question — the user replied.
 
     Answering in chat is the only resolution path, so this runs on every
@@ -487,6 +501,22 @@ async def clear_pending_question(session: "ChatSession") -> None:
         logger.warning(
             f"Could not clear pending question for {session.session_id}: {e}"
         )
+    try:
+        await task_db().move_session_tasks(
+            session.session_id,
+            session.user_id,
+            [TaskStatus.NEEDS_INPUT],
+            TaskStatus.IN_PROGRESS,
+        )
+    except Exception as e:
+        logger.warning(f"Could not resume tasks for {session.session_id}: {e}")
+    if answer and answer.strip():
+        try:
+            await task_record_db().answer_session_asks(
+                session.session_id, session.user_id, answer
+            )
+        except Exception as e:
+            logger.warning(f"Could not record the answer for {session.session_id}: {e}")
 
 
 def maybe_append_user_message(
@@ -692,6 +722,7 @@ class ChatSession(ChatSessionInfo):
         handed_off_from_expert_id: str | None = None,
         autopilot_mode: AutopilotMode | None = None,
         text_only_result: bool = False,
+        work_task_id: str | None = None,
     ) -> Self:
         return cls(
             session_id=session_id or str(uuid.uuid4()),
@@ -715,6 +746,7 @@ class ChatSession(ChatSessionInfo):
                 handed_off_from_expert_id=handed_off_from_expert_id,
                 autopilot_mode=autopilot_mode,
                 text_only_result=text_only_result,
+                work_task_id=work_task_id,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -1607,6 +1639,7 @@ async def create_chat_session(
     autopilot_mode: AutopilotMode | None = None,
     inherited_autopilot_mode: AutopilotMode | None = None,
     text_only_result: bool = False,
+    work_task_id: str | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1674,6 +1707,7 @@ async def create_chat_session(
         handed_off_from_expert_id=handed_off_from_expert_id,
         autopilot_mode=autopilot_mode,
         text_only_result=text_only_result,
+        work_task_id=work_task_id,
     )
 
     # Create in database first - fail fast if this fails

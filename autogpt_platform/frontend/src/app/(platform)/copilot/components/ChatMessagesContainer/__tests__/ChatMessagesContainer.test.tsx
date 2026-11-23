@@ -342,7 +342,7 @@ describe("ChatMessagesContainer — assistant rendering", () => {
     ],
   ])(
     "keeps the thinking indicator through %s, until the model writes",
-    (_label, parts) => {
+    async (_label, parts) => {
       render(
         <ChatMessagesContainer
           {...baseProps}
@@ -351,7 +351,8 @@ describe("ChatMessagesContainer — assistant rendering", () => {
         />,
       );
 
-      expect(screen.getByTestId("thinking-indicator")).toBeDefined();
+      // Mid-turn, the indicator waits out a short gap between steps.
+      expect(await screen.findByTestId("thinking-indicator")).toBeDefined();
     },
   );
 

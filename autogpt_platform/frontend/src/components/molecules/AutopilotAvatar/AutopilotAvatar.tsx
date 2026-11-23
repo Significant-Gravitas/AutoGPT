@@ -1,4 +1,8 @@
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import {
+  AVATAR_SHAPES,
+  type AvatarShape,
+} from "@/components/molecules/ExpertAvatar/helpers";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import {
@@ -10,6 +14,8 @@ import {
 interface Props {
   size?: number;
   transparent?: boolean;
+  /** Corner radius over the avatar's own (see AVATAR_SHAPES). */
+  shape?: AvatarShape;
   className?: string;
   backgroundColor?: string;
 }
@@ -17,6 +23,7 @@ interface Props {
 export function AutopilotAvatar({
   size = 24,
   transparent = false,
+  shape,
   className,
   backgroundColor,
 }: Props) {
@@ -29,7 +36,11 @@ export function AutopilotAvatar({
         height={size}
         sizes={`${size}px`}
         data-slot="autopilot-avatar"
-        className={cn("shrink-0 object-contain", className)}
+        className={cn(
+          "shrink-0 object-contain",
+          shape && AVATAR_SHAPES[shape],
+          className,
+        )}
       />
     );
   }
@@ -40,6 +51,7 @@ export function AutopilotAvatar({
       avatarUrl={AUTOPILOT_AVATAR_URL}
       size={size}
       backgroundColor={backgroundColor}
+      shape={shape}
       className={className}
     />
   );

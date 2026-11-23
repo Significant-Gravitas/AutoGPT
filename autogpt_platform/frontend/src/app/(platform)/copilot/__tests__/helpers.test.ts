@@ -18,6 +18,8 @@ import {
   getSendSuppressionReason,
   hasVisibleAssistantContent,
   parseSessionIDs,
+  resolveInProgressTools,
+  resolveInterruptedMessage,
   isEngineSwitchPart,
   resolveSessionDryRun,
   shouldDebounceReconnect,
@@ -693,26 +695,42 @@ describe("deduplicateMessages", () => {
       stringify.mockRestore();
     });
 
-    it("fingerprints an unchanged assistant message once, and the newest one on every call", () => {
-      const older = makeMsgWithId("a1", "assistant", "answer 1");
+    it("never serialises a reply that has no possible duplicate, however often it streams", () => {
       const msgs = [
         makeMsgWithId("u1", "user", "question 1"),
-        older,
+        makeMsgWithId("a1", "assistant", "answer 1"),
         makeMsgWithId("u2", "user", "question 2"),
         makeMsgWithId("a2", "assistant", "answer 2"),
+      ];
+
+      deduplicateMessages(msgs);
+      expect(stringify).not.toHaveBeenCalled();
+
+      for (const text of ["answer 2, longer", "answer 2, longer still"]) {
+        const streamed = {
+          ...msgs[3],
+          parts: [{ type: "text" as const, text: "x".repeat(10_000) + text }],
+        };
+        deduplicateMessages([...msgs.slice(0, 3), streamed]);
+      }
+      expect(stringify).not.toHaveBeenCalled();
+    });
+
+    it("fingerprints an unchanged older message once, and the newest one on every call", () => {
+      const older = makeMsgWithId("a1", "assistant", "answer");
+      const msgs = [
+        makeMsgWithId("u1", "user", "question"),
+        older,
+        makeMsgWithId("a2", "assistant", "other!"),
       ];
 
       deduplicateMessages(msgs);
       expect(stringify).toHaveBeenCalledTimes(2);
 
       stringify.mockClear();
-      const streamed = {
-        ...msgs[3],
-        parts: [{ type: "text" as const, text: "answer 2, longer" }],
-      };
-      deduplicateMessages([...msgs.slice(0, 3), streamed]);
+      deduplicateMessages([...msgs.slice(0, 2), { ...msgs[2] }]);
       expect(stringify).toHaveBeenCalledTimes(1);
-      expect(stringify.mock.calls[0][0]).toEqual(["answer 2, longer"]);
+      expect(stringify.mock.calls[0][0]).toEqual(["other!"]);
     });
 
     it("fingerprints a message again once it gets new parts", () => {
@@ -750,6 +768,56 @@ describe("deduplicateMessages", () => {
       ]);
     });
   });
+});
+
+describe("closing a tool call whose input was still streaming", () => {
+  function streamingTurn(input: unknown): UIMessage[] {
+    return [
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-web_search",
+            toolCallId: "call-1",
+            state: "input-streaming",
+            input,
+          },
+        ] as UIMessage["parts"],
+      },
+    ];
+  }
+
+  function closedInput(messages: UIMessage[]) {
+    return (messages[0].parts[0] as { input?: unknown }).input;
+  }
+
+  it("keeps only the finished arguments when the turn is stopped", () => {
+    const input = { query: "paris", max_res: 3 };
+
+    expect(
+      closedInput(resolveInProgressTools(streamingTurn(input), "cancelled")),
+    ).toEqual({ query: "paris" });
+    expect(
+      closedInput(resolveInProgressTools(streamingTurn(input), "completed")),
+    ).toEqual({ query: "paris" });
+    expect(
+      closedInput(resolveInterruptedMessage(streamingTurn(input))),
+    ).toEqual({ query: "paris" });
+  });
+
+  it.each([undefined, '{"query": "pa', { query: "pa" }])(
+    "closes a call with no finished argument (%j) without throwing",
+    (input) => {
+      const [message] = resolveInterruptedMessage(streamingTurn(input));
+
+      expect(message.parts[0]).toMatchObject({
+        state: "output-error",
+        errorText: "Interrupted",
+      });
+      expect(closedInput([message])).toBeUndefined();
+    },
+  );
 });
 
 describe("shouldDebounceReconnect", () => {

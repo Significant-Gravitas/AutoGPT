@@ -28,7 +28,7 @@ from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolPara
 from pydantic import BaseModel
 
 from backend.blocks.desktop._common import workspace_volume_mounts
-from backend.copilot import engine_switch
+from backend.copilot import engine_switch, turn_end
 from backend.copilot.ai_spans import stamp_turn_trace_id
 from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
@@ -40,7 +40,7 @@ from backend.copilot.baseline.reasoning import (
     anthropic_thinking_extra_body,
     reasoning_extra_body,
 )
-from backend.copilot.baseline.tool_order import writes_files
+from backend.copilot.baseline.tool_order import runs_alone
 from backend.copilot.baseline.tool_persistence import BaselineToolPersistence
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.builder_context import (
@@ -135,8 +135,6 @@ from backend.copilot.response_model import (
     StreamTextEnd,
     StreamTextStart,
     StreamToolDisplayAvailable,
-    StreamToolInputAvailable,
-    StreamToolInputStart,
     StreamToolOutputAvailable,
     StreamUsage,
     ToolDisplayData,
@@ -162,6 +160,7 @@ from backend.copilot.token_tracking import (
     persist_and_record_usage,
 )
 from backend.copilot.tool_display import tool_calls_for_provider, tool_display_context
+from backend.copilot.tool_input_stream import ToolInputStreams
 from backend.copilot.tools import (
     ToolGroup,
     execute_tool,
@@ -583,6 +582,8 @@ class _BaselineStreamState:
     tool_persistence: BaselineToolPersistence = field(
         default_factory=BaselineToolPersistence
     )
+    # Tool parts opened while the model streams a call's arguments.
+    tool_inputs: ToolInputStreams = field(default_factory=ToolInputStreams)
     # Tracks how much of ``assistant_text`` has already been flushed to
     # ``session.messages`` via mid-loop pending drains, so the ``finally``
     # block only appends the *new* assistant text (avoiding duplication of
@@ -949,6 +950,7 @@ async def _baseline_llm_caller(
     state.thinking_stripper = _ThinkingStripper()
 
     round_text = ""
+    stream_finished = False
     try:
         prune_image_context(messages)
         client = _get_main_client()
@@ -1167,8 +1169,10 @@ async def _baseline_llm_caller(
                             entry["id"] = tc.id
                         if tc.function and tc.function.name:
                             entry["name"] = tc.function.name
-                        if tc.function and tc.function.arguments:
-                            entry["arguments"] += tc.function.arguments
+                        piece = (tc.function and tc.function.arguments) or ""
+                        entry["arguments"] += piece
+                        _stream_tool_call_delta(state, entry, piece)
+            stream_finished = True
         except Exception as error:
             # A request that failed before the model wrote anything is not
             # charged.
@@ -1228,6 +1232,16 @@ async def _baseline_llm_caller(
             _emit(state, StreamTextEnd(id=state.text_block_id))
             state.text_started = False
             state.text_block_id = str(uuid.uuid4())
+        # A call the round finished keeps its part open for the executor's
+        # input; one an aborted round cut off never runs, so its part ends.
+        _emit_all(
+            state,
+            (
+                state.tool_inputs.flush()
+                if stream_finished
+                else state.tool_inputs.abandon()
+            ),
+        )
         # Always persist partial text so the session history stays consistent,
         # even when the stream is interrupted by an exception.
         state.assistant_text += round_text
@@ -1255,6 +1269,46 @@ async def _baseline_llm_caller(
     if response.tool_calls:
         _begin_baseline_tool_round(state, response)
     return response
+
+
+def _stream_tool_call_delta(
+    state: _BaselineStreamState, entry: dict[str, str], piece: str
+) -> None:
+    """Open the call's part once its id and name are in, then relay *piece*.
+
+    The part opens with the arguments so far, in case they came first.
+    """
+    if not entry["id"]:
+        return
+    started = state.tool_inputs.start(entry["id"], entry["name"])
+    _emit_all(state, started)
+    text = entry["arguments"] if started else piece
+    _emit_all(state, state.tool_inputs.append(entry["id"], text))
+
+
+def _refuse_after_question(
+    state: _BaselineStreamState, tool_call_id: str, tool_name: str, reason: str
+) -> ToolCallResult:
+    """Refuse a call that starts once the turn is closing (``turn_end``)."""
+    logger.info("[Baseline] Refusing %s: the turn is closing", tool_name)
+    _emit_all(state, state.tool_inputs.settle(tool_call_id, tool_name))
+    _emit(
+        state,
+        StreamToolOutputAvailable(
+            toolCallId=tool_call_id,
+            toolName=tool_name,
+            output=reason,
+            success=False,
+        ),
+    )
+    return state.tool_persistence.record_result(
+        ToolCallResult(
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            content=reason,
+            is_error=True,
+        )
+    )
 
 
 class _PricedRequest(BaseModel):
@@ -1383,11 +1437,15 @@ async def _baseline_tool_executor(
     tool_name = tool_call.name
     raw_args = tool_call.arguments or "{}"
 
+    if ended := turn_end.refusal(session.session_id, tool_name):
+        return _refuse_after_question(state, tool_call_id, tool_name, ended)
+
     try:
         tool_args = orjson.loads(raw_args)
     except orjson.JSONDecodeError as parse_err:
         parse_error = f"Invalid JSON arguments for tool '{tool_name}': {parse_err}"
         logger.warning("[Baseline] %s", parse_error)
+        _emit_all(state, state.tool_inputs.settle(tool_call_id, tool_name))
         _emit(
             state,
             StreamToolOutputAvailable(
@@ -1414,18 +1472,7 @@ async def _baseline_tool_executor(
     if dispatch := resolve_tool_dispatch(tool_name, tool_args):
         called_name, called_args = dispatch.name, dispatch.args
 
-    _emit(
-        state,
-        StreamToolInputStart(toolCallId=tool_call_id, toolName=called_name),
-    )
-    _emit(
-        state,
-        StreamToolInputAvailable(
-            toolCallId=tool_call_id,
-            toolName=called_name,
-            input=called_args,
-        ),
-    )
+    _emit_all(state, state.tool_inputs.complete(tool_call_id, called_name, called_args))
 
     def on_display_name(name: str) -> None:
         state.tool_persistence.set_display_name(tool_call_id, name)
@@ -2038,6 +2085,7 @@ async def stream_chat_completion_baseline(
 
     Flow: stream response -> if tool_calls, execute them -> feed results back -> repeat.
     """
+    turn_end.clear(session_id)
     if session is None:
         session = await get_chat_session(session_id, user_id)
 
@@ -2086,7 +2134,7 @@ async def stream_chat_completion_baseline(
     # Unconditional on the append result: the HTTP path pre-saves the user
     # message, so the append is a no-op dedup there.
     if is_user_message and message and message.strip():
-        await clear_pending_question(session)
+        await clear_pending_question(session, message)
 
     persisted_invocation = (
         get_persisted_skill_invocation(message, session.messages)
@@ -2948,7 +2996,7 @@ async def stream_chat_completion_baseline(
                 update_conversation=_bound_conversation_updater,
                 max_iterations=max_tool_rounds,
                 last_iteration_message=_LAST_ITERATION_HINT,
-                runs_alone=writes_files,
+                runs_alone=runs_alone,
             ):
                 loop_result_holder[0] = loop_result
                 # Engine switch requested (enter_agent_building_mode): end
@@ -2961,6 +3009,14 @@ async def stream_chat_completion_baseline(
                     logger.info(
                         f"[Baseline] Engine switch pending for "
                         f"{session_id[:12]} — ending tool loop"
+                    )
+                    break
+                # A question for the user ends the turn (turn_end): no model
+                # call after it, so no text or tool call follows the card.
+                if turn_end.is_ending(session_id):
+                    logger.info(
+                        f"[Baseline] Question asked in {session_id[:12]}; "
+                        f"ending tool loop"
                     )
                     break
                 # Inject any messages the user queued while the turn was
@@ -3439,6 +3495,9 @@ async def stream_chat_completion_baseline(
     # aclose() — doing so raises RuntimeError on client disconnect.
     # On GeneratorExit the client is already gone, so unreachable yields
     # are harmless; on normal completion they reach the SSE stream.
+    # A call whose part opened but never reached the executor did not run.
+    for event in state.tool_inputs.abandon():
+        yield event
     if final_checkpoint is not None:
         yield final_checkpoint
     if state.turn_prompt_tokens > 0 or state.turn_completion_tokens > 0:

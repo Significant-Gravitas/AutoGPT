@@ -390,18 +390,38 @@ class TestSchedulingGuidance:
         assert "call `enter_agent_building_mode` first" in result
         assert "tool:enter_agent_building_mode" not in result
 
-    def test_supplement_names_schedule_followup_by_capability_id(self):
+    def test_supplement_sends_all_later_work_to_a_task(self):
+        # Both old scheduling tools are retired from the model, so the prompt
+        # must not name either, and a reminder must not send it looking for
+        # a reminder tool.
         result = prompting.get_sdk_supplement(use_e2b=False)
-        assert "### Scheduling future work — use `tool:schedule_followup`" in result
-        assert "`tool:schedule_followup` schedules a future Otto turn" in result
-
-    def test_supplement_sends_standing_work_to_a_routine_without_naming_it(self):
-        # Routines ride the flag-gated ``expert_resources`` group, so this
-        # ungated supplement points at the block that appears alongside them
-        # rather than at a tool the session may not be able to call.
-        result = prompting.get_sdk_supplement(use_e2b=False)
-        assert "set up a routine for it rather than a" in result
+        assert "### Scheduling future work — always a task" in result
+        assert "`start_in_seconds` or `start_at`" in result
+        assert "there is no separate reminder tool" in result
+        assert "schedule_followup" not in result
         assert "schedule_routine" not in result
+
+    def test_supplement_sends_repeating_work_to_a_repeating_task(self):
+        # "Every morning, brief me" is one task with a rhythm.
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "`repeat_crons`, one task that runs again and again" in result
+        assert "under 15 minutes, tell the user each run uses" in result
+
+    def test_supplement_sends_event_work_to_a_watching_task(self):
+        # "When a PR is opened, review it" is one task that watches, not a
+        # workflow Otto builds; a service with no trigger gets a repeating check.
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "`on_event` (provider, event, config), not a workflow you build" in (
+            result
+        )
+        assert "offer a repeating check instead" in result
+
+    def test_supplement_finds_and_cancels_what_is_scheduled(self):
+        # Tasks through the task tools; follow-ups made before tasks existed
+        # still through the schedule tools that list and delete them.
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "`tool:list_tasks` and `tool:update_task` for tasks" in result
+        assert "`tool:delete_schedule`" in result
 
     def test_supplement_keeps_agent_schedules_on_run_agent(self):
         # "Run my report agent every morning" must stay a graph schedule, not
@@ -686,7 +706,7 @@ class TestBuilderBlockRoles:
         assert "calls to the graph id in that `<graph>` tag" in context_rule
 
     def test_greeting_offers_one_thing_like_the_reply_style(self):
-        assert "offer one concrete thing you could do" in CACHEABLE_SYSTEM_PROMPT
+        assert "Offer the one most useful thing you could do" in CACHEABLE_SYSTEM_PROMPT
         assert "one thing you can do" in prompting.SHARED_TOOL_NOTES
 
 

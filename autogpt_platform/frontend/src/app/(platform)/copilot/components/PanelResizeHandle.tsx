@@ -1,6 +1,5 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import { useEffect, useInsertionEffect, useRef, useState } from "react";
 import { PANEL_RESERVED_WIDTH } from "../store";
 
@@ -157,17 +156,11 @@ export function PanelResizeHandle({
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize panel"
-      className="group absolute top-0 left-0 z-10 flex h-full w-3 -translate-x-1/2 cursor-col-resize touch-none items-stretch justify-center"
+      // No line is drawn: the resize cursor alone says the edge can be dragged.
+      className="absolute top-0 left-0 z-10 h-full w-3 -translate-x-1/2 cursor-col-resize touch-none"
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
-    >
-      <div
-        className={cn(
-          "h-full w-px bg-transparent transition-colors group-hover:w-0.5 group-hover:bg-brand/60",
-          isDragging && "w-0.5 bg-brand",
-        )}
-      />
-    </div>
+    />
   );
 }

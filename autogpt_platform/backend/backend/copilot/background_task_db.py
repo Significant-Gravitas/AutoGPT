@@ -11,6 +11,7 @@ from pydantic.alias_generators import to_camel
 
 from backend.copilot.background_task import (
     BACKGROUND_TIMEOUT_MESSAGE,
+    SCHEDULED_LAUNCH_PREFIX,
     BackgroundChildResult,
     BackgroundOutcome,
     BackgroundSessionState,
@@ -79,11 +80,15 @@ async def create_background_task(
         child = await _lock_session(tx, task.child_session_id)
         if not _matches(parent, task) or not _matches(child, task):
             raise ValueError("The subtask's owner or scope changed.")
-        if (
-            parent is None
-            or parent.chatStatus != "running"
-            or _parse_json_field(parent.metadata, default={}).get("_active_turn_id")
-            != task.launch_turn_id
+        # A task started at its scheduled time has no launching turn to check.
+        scheduled = task.launch_turn_id.startswith(SCHEDULED_LAUNCH_PREFIX)
+        if parent is None or (
+            not scheduled
+            and (
+                parent.chatStatus != "running"
+                or _parse_json_field(parent.metadata, default={}).get("_active_turn_id")
+                != task.launch_turn_id
+            )
         ):
             raise ValueError("The launching turn is no longer running.")
         if child is None or child.chatStatus != "idle":
@@ -212,6 +217,19 @@ async def has_open_handoffs(user_id: str, session_id: str) -> bool:
         session_id,
     )
     return bool(rows)
+
+
+async def child_launch_turn(user_id: str, session_id: str) -> str | None:
+    """The turn that launched this chat as background work (its first turn
+    as a child), or None when the chat is not one. A later turn there is the
+    user's: an answer to a question the worker asked."""
+    rows = await db.query_raw_with_schema(
+        """SELECT "childTurnId" FROM {schema_prefix}"ChatBackgroundTask"
+        WHERE "userId"=$1 AND "childSessionId"=$2 LIMIT 1""",
+        user_id,
+        session_id,
+    )
+    return str(rows[0]["childTurnId"]) if rows else None
 
 
 async def _complete_child_whose_work_is_back(

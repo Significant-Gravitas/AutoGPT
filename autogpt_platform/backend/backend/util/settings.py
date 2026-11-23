@@ -374,6 +374,21 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "slot is always left for the user's own message."
         ),
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
+    max_scheduled_tasks_per_user: int = Field(
+        default=50,
+        ge=1,
+        le=10_000,
+        description="Most tasks one user may have waiting for a start time.",
+    )
+    scheduled_task_late_window_seconds: int = Field(
+        default=6 * 60 * 60,
+        ge=60,
+        description=(
+            "How late a scheduled task may start; later than this it is marked "
+            "missed and waits for the user to start or cancel it."
+        ),
+    )
 
     block_error_rate_threshold: float = Field(
         default=0.5,

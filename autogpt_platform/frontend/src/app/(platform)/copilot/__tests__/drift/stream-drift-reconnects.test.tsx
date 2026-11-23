@@ -58,9 +58,10 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importActual) => {
 
 const toolTurn = loadRecordedTurn("baseline-tool-turn");
 const textTurn = loadRecordedTurn("dummy-text-turn");
-// Frames 0-8 end the first text block; 10-11 open the tool call.
-const FIRST_TEXT_BLOCK_DONE = 9;
-const TOOL_CALL_OPEN = 12;
+// Frame 8 starts the tool call and 9 ends the first text block; 10-12 stream
+// the call's input and give it whole.
+const FIRST_TEXT_BLOCK_DONE = 10;
+const TOOL_CALL_OPEN = 13;
 
 beforeEach(() => {
   resetChatState();
@@ -165,17 +166,23 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
         renderAgainst(sim);
         await sendPrompt(sim, toolTurn);
         const painted = sampleTranscripts();
+        // The tool part opens before the first text block ends, so the clock
+        // is faked first: the watchdog arms on that part under fake timers.
+        vi.useFakeTimers({ shouldAdvanceTime: true });
         sim.publish(FIRST_TEXT_BLOCK_DONE);
         await screen.findByText("Let me fetch that page.", undefined, {
           timeout: 5000,
         });
 
-        vi.useFakeTimers({ shouldAdvanceTime: true });
         sim.publish(TOOL_CALL_OPEN - FIRST_TEXT_BLOCK_DONE);
         // The tool call is on screen before the silence starts. Under fake
         // timers React renders only when a timer runs, so jumping the clock
         // first would draw it at the first heartbeat, 10 s into the silence.
-        await screen.findAllByText(/Fetching/, undefined, { timeout: 5000 });
+        // The call's row names its page only once its input is whole; while
+        // the input streams it already reads "Fetching".
+        await screen.findAllByText(/Fetching.*example\.com/, undefined, {
+          timeout: 5000,
+        });
         // The route writes a heartbeat comment every 10 s; the parser drops them.
         await vi.advanceTimersByTimeAsync(70_000);
         sim.publish();

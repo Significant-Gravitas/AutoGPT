@@ -27,6 +27,7 @@ import {
   reportCorruptedToolOutput,
 } from "../../helpers/toolOutput";
 import { Text } from "@/components/atoms/Text/Text";
+import { OpenWorkflowRun } from "../../components/OpenWorkflowRun/OpenWorkflowRun";
 
 export interface RunAgentToolPart {
   type: string;
@@ -176,6 +177,22 @@ export function RunAgentTool({ part }: Props) {
 
           {isRunAgentErrorOutput(output) && <ErrorCard output={output} />}
         </ToolAccordion>
+      )}
+
+      {startedOutput && startedOutput.status?.toUpperCase() !== "SCHEDULED" && (
+        <OpenWorkflowRun
+          graphID={startedOutput.graph_id}
+          executionID={startedOutput.execution_id}
+          title={startedOutput.graph_name}
+        />
+      )}
+
+      {agentOutputResponse && (
+        <OpenWorkflowRun
+          graphID={agentOutputResponse.agent_id}
+          executionID={agentOutputResponse.execution?.execution_id}
+          title={agentOutputResponse.agent_name}
+        />
       )}
     </div>
   );

@@ -65,6 +65,9 @@ EAGER_CORE: frozenset[str] = frozenset(
         # the card it exists to open is unreachable, and so is the
         # ``run_capability`` that would reach it.
         "expert_onboarding",
+        # Multi-step work runs as a background task: the prompt routes every
+        # request bigger than a quick answer here by name, every turn.
+        "start_task",
         # Both open a chat card, and a deferred tool renders as a generic
         # tool row instead of its card.
         "request_work_check",
@@ -72,10 +75,24 @@ EAGER_CORE: frozenset[str] = frozenset(
     }
 )
 
-# Legacy discovery/execution tools the registry replaces.  They get no entry:
-# a search for "run a block" should land on the block, not on run_block.
+# Tools kept in the registry that the model can no longer reach: not eager,
+# so never declared or callable by name, and no entry here, so never found,
+# described or run by id (``reachable_tool_names`` leaves them out too).
 RETIRED_TOOLS: frozenset[str] = frozenset(
-    {"find_block", "run_block", "run_mcp_tool", "get_mcp_guide"}
+    {
+        # Legacy discovery/execution tools the registry replaces: a search
+        # for "run a block" should land on the block, not on run_block.
+        "find_block",
+        "run_block",
+        "run_mcp_tool",
+        "get_mcp_guide",
+        # Work for later is a task now (``start_task`` with a start time,
+        # ``repeat_crons`` or ``on_event``). Follow-ups and routines already
+        # set up keep firing, and ``list_schedules`` / ``delete_schedule``
+        # still reach them.
+        "schedule_followup",
+        "schedule_routine",
+    }
 )
 
 

@@ -175,7 +175,7 @@ export function SelectedTemplateView({
             )}
 
             {credentialFields.length > 0 && (
-              <RunDetailCard title="Task Credentials">
+              <RunDetailCard title="Run Credentials">
                 <div className="flex flex-col gap-6">
                   {credentialFields.map(([key, inputSubSchema]) => (
                     <CredentialsInput

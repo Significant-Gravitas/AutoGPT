@@ -48,6 +48,7 @@ from backend.api.features.local_executor.gating import is_computer_use_enabled
 from backend.copilot.local_executor import build_local_pc_env_context
 from backend.copilot.sdk.computer_use_policy import guard_scope, local_pc_tool_names
 from backend.blocks.desktop._common import workspace_volume_mounts
+from backend.copilot import tool_timing, turn_end
 from backend.copilot.graphiti import context_refresh
 from backend.copilot.model_router import (
     ResolvedModel,
@@ -1079,8 +1080,10 @@ def _intermediate_flush_blocked(
 
 
 def _has_open_block(adapter: SDKResponseAdapter) -> bool:
-    return (adapter.has_started_text and not adapter.has_ended_text) or (
-        adapter.has_started_reasoning and not adapter.has_ended_reasoning
+    return (
+        (adapter.has_started_text and not adapter.has_ended_text)
+        or (adapter.has_started_reasoning and not adapter.has_ended_reasoning)
+        or adapter.has_open_tool_input
     )
 
 
@@ -1590,7 +1593,11 @@ class _RetryState:
 
 def _fresh_adapter(state: _RetryState, message_id: str, session_id: str) -> None:
     """Replace the adapter for a new attempt, keeping the turn's governor."""
-    state.adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
+    state.adapter = SDKResponseAdapter(
+        message_id=message_id,
+        session_id=session_id,
+        stream_tool_inputs=state.adapter.stream_tool_inputs,
+    )
     state.adapter.governor = state.governor
 
 
@@ -4161,6 +4168,7 @@ def _dispatch_response(
                 name=_resolve_tool_result_name(
                     ctx.session, response.toolCallId, response.toolName
                 ),
+                duration_ms=tool_timing.take(response.toolCallId),
             )
         )
         if not entries_replaced:
@@ -5265,6 +5273,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             model the CLI talks to instead of the deployment's provider
             (``backend/copilot/load_test.py``).
     """
+    turn_end.clear(session_id)
     if session is None:
         session = await get_chat_session(session_id, user_id)
 
@@ -5333,7 +5342,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Unconditional on the append result: the HTTP path pre-saves the user
     # message, so the append is a no-op dedup there.
     if is_user_message and message and message.strip():
-        await clear_pending_question(session)
+        await clear_pending_question(session, message)
 
     persisted_invocation = (
         get_persisted_skill_invocation(message, session.messages)
@@ -6122,6 +6131,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         adapter = SDKResponseAdapter(
             message_id=message_id,
             session_id=session_id,
+            # The Codex gateway hands the CLI each call's arguments whole.
+            stream_tool_inputs=not is_codex_transport,
         )
         adapter.governor = governor
 

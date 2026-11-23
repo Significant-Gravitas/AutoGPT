@@ -306,21 +306,16 @@ export function ConnectorRow({ row }: Props) {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3 border-b border-separator px-4 py-5 last:border-b-0">
-      <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-separator bg-surface p-1.5">
+    <div className="flex flex-wrap items-center gap-2.5 border-b border-border-hairline px-3 py-2 last:border-b-0">
+      <span className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-tray p-1">
         <ProviderAvatar
           id={row.iconId ?? row.provider}
           name={row.displayName}
         />
       </span>
 
-      <div className="flex min-w-32 flex-1 flex-col gap-1">
-        <Text
-          variant="body-medium-tight"
-          as="span"
-          tone="primary"
-          className="truncate"
-        >
+      <div className="flex min-w-32 flex-1 flex-col">
+        <Text variant="inbox-medium" as="span" tone="ink" className="truncate">
           {row.displayName}
         </Text>
         {grantError && !isDialogOpen ? (
@@ -368,16 +363,16 @@ export function ConnectorRow({ row }: Props) {
       </div>
 
       {isSatisfied && !linksOnAyrshare ? (
-        <div className="flex shrink-0 flex-col items-end gap-2">
-          <span className="flex items-center gap-1.5 text-body font-medium text-foreground-tertiary">
-            <Icon icon={CheckmarkCircle02Icon} size={16} />
+        <div className="flex shrink-0 items-center gap-2.5">
+          <span className="flex items-center gap-1 text-body-sm font-medium text-foreground-quiet">
+            <Icon icon={CheckmarkCircle02Icon} size={14} tone="ok" />
             {expertGrant ? "Granted" : "Connected"}
           </span>
           {!expertGrant && (
             <button
               type="button"
               onClick={openDialog}
-              className="text-caption text-foreground-tertiary underline underline-offset-2"
+              className="rounded-sm text-caption text-foreground-quiet underline underline-offset-2 outline-none hover:text-foreground-ink focus-visible:ring-2 focus-visible:ring-focus-inbox"
             >
               Change account
             </button>
@@ -386,7 +381,7 @@ export function ConnectorRow({ row }: Props) {
       ) : (
         <Button
           variant="primary"
-          size="small"
+          size="xs"
           className="shrink-0"
           disabled={
             isGranting ||

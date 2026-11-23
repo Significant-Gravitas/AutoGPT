@@ -67,7 +67,7 @@ export function SelectedScheduleActions({
             as="NextLink"
             href={openInBuilderHref}
             target="_blank"
-            aria-label="View scheduled task details"
+            aria-label="View scheduled run details"
           >
             <Icon icon={EyeIcon} size={18} />
           </Button>

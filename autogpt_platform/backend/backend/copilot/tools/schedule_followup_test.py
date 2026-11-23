@@ -1,10 +1,13 @@
 """Tests for ScheduleFollowupTool."""
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
+from backend.copilot import turn_end
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.schedule_followup import (
     ScheduleCreatedResponse,
@@ -41,7 +44,10 @@ def tool():
 
 @pytest.fixture
 def session():
-    return make_session(_USER, guide_read=True)
+    session = make_session(_USER, guide_read=True)
+    yield session
+    # A scheduled follow-up wraps the turn up; no test's state outlives it.
+    turn_end.clear(session.session_id)
 
 
 @pytest.mark.asyncio
@@ -531,6 +537,91 @@ async def test_schedule_created_is_attributed_to_the_scheduling_chat(
         target_chat_session_id=target,
         is_recurring=False,
     )
+
+
+# ── The chat never waits long on the scheduler, and the turn wraps up ──
+
+
+def _users() -> MagicMock:
+    users = MagicMock()
+    users.get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
+    return users
+
+
+@pytest.mark.asyncio
+async def test_a_scheduler_that_does_not_answer_gives_a_readable_error_fast(
+    tool, session
+):
+    hung = asyncio.Event()
+
+    async def never_answers(**_: object) -> CopilotTurnJobInfo:
+        await hung.wait()
+        raise AssertionError("unreachable")
+
+    client = MagicMock()
+    client.get_execution_schedules = AsyncMock(return_value=[])
+    client.add_copilot_turn_schedule = never_answers
+    with (
+        patch(f"{_TOOL_PATH}.user_db", return_value=_users()),
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=client),
+        patch(f"{_TOOL_PATH}.SCHEDULER_CALL_TIMEOUT_SECONDS", 0.05),
+    ):
+        result = await asyncio.wait_for(
+            tool._execute(
+                user_id=_USER, session=session, message="check CI", delay_seconds=600
+            ),
+            timeout=5,
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "scheduler_unavailable"
+    assert result.message.startswith("Couldn't schedule that just now")
+    # Nothing was scheduled, so the turn carries on and can say so.
+    assert turn_end.refusal(session.session_id, "web_search") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        ConnectionError("refused"),
+        httpx.ConnectError("refused"),
+    ],
+)
+async def test_an_unreachable_scheduler_gives_a_readable_error(tool, session, error):
+    client = MagicMock()
+    client.get_execution_schedules = AsyncMock(return_value=[])
+    client.add_copilot_turn_schedule = AsyncMock(side_effect=error)
+    with (
+        patch(f"{_TOOL_PATH}.user_db", return_value=_users()),
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=client),
+    ):
+        result = await tool._execute(
+            user_id=_USER, session=session, message="check CI", delay_seconds=600
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "scheduler_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_after_scheduling_the_turn_wraps_up(tool, session):
+    client = MagicMock()
+    client.get_execution_schedules = AsyncMock(return_value=[])
+    client.add_copilot_turn_schedule = AsyncMock(return_value=_info(run_at=None))
+    with (
+        patch(f"{_TOOL_PATH}.user_db", return_value=_users()),
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=client),
+    ):
+        result = await tool._execute(
+            user_id=_USER, session=session, message="check CI", delay_seconds=600
+        )
+
+    assert isinstance(result, ScheduleCreatedResponse)
+    assert turn_end.refusal(session.session_id, "web_search") is not None
+    # A task can still be started, or another follow-up set, after it.
+    assert turn_end.refusal(session.session_id, "start_task") is None
+    assert turn_end.refusal(session.session_id, "schedule_followup") is None
 
 
 @pytest.mark.asyncio
