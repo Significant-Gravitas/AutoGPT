@@ -5,12 +5,15 @@ import { useParams, useRouter } from "next/navigation";
 import { AgentInfo } from "@/app/(platform)/marketplace/components/AgentInfo/AgentInfo";
 import { AgentImages } from "@/app/(platform)/marketplace/components/AgentImages/AgentImage";
 import type { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
-import { previewAsAdmin, addToLibraryAsAdmin } from "../../actions";
+import {
+  previewAsAdmin,
+  addToLibraryAsAdmin,
+} from "@/app/(platform)/admin/marketplace/actions";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-export default function AdminPreviewPage() {
+export function AdminAgentPreview() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { toast } = useToast();
