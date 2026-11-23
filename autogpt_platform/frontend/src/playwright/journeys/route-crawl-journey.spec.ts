@@ -23,6 +23,7 @@ import {
   type VisitResult,
 } from "./route-crawl";
 import {
+  catalogName,
   hireAnExpert,
   letGo,
   makeWorkflow,
@@ -356,14 +357,25 @@ test.describe("route crawl journey", () => {
     });
   }
 
-  // A skill names the MCP service it needs by the catalog entry's name, and
-  // its page shows that service's logo, which public/ has (#17313).
-  test("a skill whose first service is an MCP server loads with that service's logo", async ({
+  // A skill names the MCP service it needs by the catalog entry's name. Its
+  // page shows that service's logo, which public/ has (#17313), and calls the
+  // service what the catalog does, not "Mcp Amplitude" (#17336).
+  test("a skill whose first service is an MCP server loads with that service's logo and name", async ({
     crawlEnv,
     page,
   }) => {
-    const { skillWithMCPService } = await sampleMarketplace(page);
-    await expectAllClean(await visitAsVisitor(crawlEnv, skillWithMCPService));
+    const { skillWithMCPService: skill } = await sampleMarketplace(page);
+    await expectAllClean(await visitAsVisitor(crawlEnv, skill));
+    // visitAsVisitor has skipped the test if the stack has no such skill.
+    if (!skill) return;
+    const name = await catalogName(page, skill.service);
+    await page.goto(skill.path, { waitUntil: "domcontentloaded" });
+    const worksWith = page
+      .getByRole("main")
+      .locator("header")
+      .getByText(/^Works with/);
+    await expect(worksWith).toContainText(name);
+    await expect(worksWith).not.toContainText("Mcp ");
   });
 
   for (const bug of KNOWN_BUGS) {

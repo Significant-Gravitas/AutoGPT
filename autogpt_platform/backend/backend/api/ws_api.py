@@ -611,4 +611,7 @@ class WebsocketServer(AppProcess):
             forwarded_allow_ips=uvicorn_forwarded_allow_ips(
                 settings.config.trusted_proxies
             ),
+            # Its handshakes come through the same proxies as the API's
+            # requests, which can send one on a connection they kept open.
+            timeout_keep_alive=settings.config.server_keep_alive_timeout_seconds,
         )

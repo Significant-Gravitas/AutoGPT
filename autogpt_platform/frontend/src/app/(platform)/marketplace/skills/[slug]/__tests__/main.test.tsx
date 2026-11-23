@@ -152,11 +152,14 @@ describe("Marketplace skill page", () => {
     expect(await screen.findByText("License: MIT")).toBeDefined();
   });
 
-  test("shows the logo of an MCP service it works with", async () => {
+  test("names the MCP services it works with as the catalog does, with the first one's logo", async () => {
+    // Added already, so the page also offers to connect them.
+    userSkills.push({ name: "outreach-playbook", description: "Installed" });
     server.use(
       getGetV2GetMarketplaceSkillMockHandler200({
         ...outreach,
-        required_providers: ["mcp_amplitude"],
+        // The catalog calls mcp_apollo_io "Apollo.io", not "Apollo Io".
+        required_providers: ["mcp_amplitude", "mcp_apollo_io"],
       }),
       // No "More skills" shelf, whose cards say "Works with" too.
       getGetV2ListMarketplaceSkillsMockHandler200(
@@ -168,11 +171,17 @@ describe("Marketplace skill page", () => {
     render(<SkillPage slug="outreach-playbook" />);
 
     const worksWith = await screen.findByText(/^Works with/);
+    expect(worksWith.textContent).toMatch(
+      /^Works with\s*Amplitude and Apollo\.io$/,
+    );
     expect(
       worksWith
         .querySelector('[data-slot="integration-logo"]')
         ?.getAttribute("src"),
     ).toBe("/integrations/amplitude.png");
+    expect(
+      (await screen.findByTestId("skill-connect-step")).textContent,
+    ).toContain("Its steps use Amplitude and Apollo.io.");
   });
 
   test("shows a creator skill license without a source repo", async () => {
