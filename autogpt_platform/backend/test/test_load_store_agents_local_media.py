@@ -3,6 +3,8 @@ listings: every image they and their creator show is one the stack serves
 itself, so no Marketplace page fetches production media from GCS."""
 
 from test import load_store_agents, store_media_fixtures
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from urllib.parse import urlsplit
 
 import fastapi
@@ -72,3 +74,65 @@ async def test_the_creator_avatar_is_served_by_the_stack(media_settings, client)
     url = await store_media_fixtures.store_avatar(load_store_agents.AUTOGPT_USER_ID)
 
     assert _served(client, url) == fixture.read_bytes()
+
+
+def _earlier_load() -> AsyncMock:
+    """A database a load without --local-media already filled: the official
+    profile and listings exist, with the CSV's production image URLs."""
+    db = AsyncMock()
+    db.user.find_unique.return_value = SimpleNamespace(
+        id=load_store_agents.AUTOGPT_USER_ID
+    )
+    db.profile.find_first.return_value = SimpleNamespace(
+        id="profile-1", avatarUrl=load_store_agents.AUTOGPT_AVATAR_URL
+    )
+    db.storelisting.find_unique.return_value = SimpleNamespace(id="listing-1")
+    return db
+
+
+async def _a_listing_with_local_images() -> dict:
+    metadata = await load_store_agents.load_csv_metadata()
+    await load_store_agents.use_local_images(metadata)
+    return next(meta for meta in metadata.values() if meta["agent_image"])
+
+
+async def test_loading_again_with_local_media_repoints_an_earlier_load(
+    media_settings, client
+):
+    db = _earlier_load()
+    listing = await _a_listing_with_local_images()
+    avatar = await store_media_fixtures.store_avatar(load_store_agents.AUTOGPT_USER_ID)
+
+    await load_store_agents.create_user_and_profile(db, avatar, local_media=True)
+    await load_store_agents.create_store_listing(
+        db, "graph-1", 1, listing, local_media=True
+    )
+
+    db.profile.update.assert_awaited_once_with(
+        where={"id": "profile-1"}, data={"avatarUrl": avatar}
+    )
+    db.storelistingversion.update_many.assert_awaited_once_with(
+        where={"id": listing["store_listing_version_id"]},
+        data={"imageUrls": listing["agent_image"]},
+    )
+    for url in [avatar, *listing["agent_image"]]:
+        _served(client, url)
+    # Nothing is created twice.
+    db.profile.create.assert_not_awaited()
+    db.storelisting.create.assert_not_awaited()
+    db.storelistingversion.create.assert_not_awaited()
+
+
+async def test_loading_again_without_local_media_leaves_an_earlier_load_alone(
+    media_settings,
+):
+    db = _earlier_load()
+    listing = (await load_store_agents.load_csv_metadata()).popitem()[1]
+
+    await load_store_agents.create_user_and_profile(db)
+    await load_store_agents.create_store_listing(db, "graph-1", 1, listing)
+
+    db.profile.update.assert_not_awaited()
+    db.storelistingversion.update_many.assert_not_awaited()
+    db.profile.create.assert_not_awaited()
+    db.storelisting.create.assert_not_awaited()

@@ -153,9 +153,11 @@ def sanitize_slug(slug: str) -> str:
 
 
 async def create_user_and_profile(
-    db: Prisma, avatar_url: str = AUTOGPT_AVATAR_URL
+    db: Prisma, avatar_url: str = AUTOGPT_AVATAR_URL, *, local_media: bool = False
 ) -> None:
-    """Create the autogpt user and profile if they don't exist."""
+    """Create the autogpt user and profile if they don't exist. With
+    `local_media`, an existing profile (from a load without it) is pointed at
+    the local avatar too."""
     # Check if user exists
     existing_user = await db.user.find_unique(where={"id": AUTOGPT_USER_ID})
     if existing_user:
@@ -174,7 +176,14 @@ async def create_user_and_profile(
 
     # Check if profile exists
     existing_profile = await db.profile.find_first(where={"userId": AUTOGPT_USER_ID})
-    if existing_profile:
+    if existing_profile and local_media:
+        print(
+            f"Profile for user {AUTOGPT_USER_ID} exists, pointing its avatar at local media"
+        )
+        await db.profile.update(
+            where={"id": existing_profile.id}, data={"avatarUrl": avatar_url}
+        )
+    elif existing_profile:
         print(
             f"Profile for user {AUTOGPT_USER_ID} already exists, skipping profile creation"
         )
@@ -307,13 +316,25 @@ async def create_store_listing(
     graph_id: str,
     graph_version: int,
     metadata: dict,
+    *,
+    local_media: bool = False,
 ) -> None:
-    """Create StoreListing and StoreListingVersion for an agent."""
+    """Create StoreListing and StoreListingVersion for an agent. With
+    `local_media`, an existing listing's version (from a load without it) is
+    pointed at the local images in `metadata` too."""
     listing_id = metadata["listing_id"]
     version_id = metadata["store_listing_version_id"]
 
     # Check if listing already exists
     existing_listing = await db.storelisting.find_unique(where={"id": listing_id})
+    if existing_listing and local_media:
+        print(
+            f"  Store listing {listing_id} exists, pointing its images at local media"
+        )
+        await db.storelistingversion.update_many(
+            where={"id": version_id}, data={"imageUrls": metadata["agent_image"]}
+        )
+        return
     if existing_listing:
         print(f"  Store listing {listing_id} already exists, skipping")
         return
@@ -401,7 +422,7 @@ async def main(local_media: bool = False):
             if local_media
             else AUTOGPT_AVATAR_URL
         )
-        await create_user_and_profile(db, avatar_url)
+        await create_user_and_profile(db, avatar_url, local_media=local_media)
 
         # Step 2: Load CSV metadata
         print("\n[Step 2] Loading CSV metadata...")
@@ -448,7 +469,9 @@ async def main(local_media: bool = False):
                     loaded_graphs[graph_id] = (graph_id, graph_version)
 
                     # Create store listing
-                    await create_store_listing(tx, graph_id, graph_version, metadata)
+                    await create_store_listing(
+                        tx, graph_id, graph_version, metadata, local_media=local_media
+                    )
             except Exception as e:
                 print(f"  Error loading agent '{agent_name}': {e}")
                 failed_agents.append(agent_name)
@@ -481,7 +504,8 @@ def run():
         "--local-media",
         action="store_true",
         help="Give the listings and their creator placeholder images saved to "
-        "the stack's own media storage, not the CSV's production image URLs.",
+        "the stack's own media storage, not the CSV's production image URLs. "
+        "Listings and the profile an earlier load created are pointed at them too.",
     )
     asyncio.run(main(local_media=parser.parse_args().local_media))
 
