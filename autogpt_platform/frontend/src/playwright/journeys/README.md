@@ -76,6 +76,56 @@ product does what the user expects.
   balance alone. Onboarding rewards (e.g. +100 for a first Library run) land
   mid-journey.
 
+## The route crawl
+
+`route-crawl-journey.spec.ts` opens every page in `src/app` as the person it
+is for, each in a tab of its own watched by the guard on that tab alone
+(`watchPageForUnexpectedErrors`), and fails with each page that didn't load
+cleanly and why. A session's tabs share a browser context. Before checking a
+page, the crawl waits, each wait capped, for its scripts to have run, its API
+calls to go quiet and the browser to go idle. That is a heuristic for
+"hydrated", not proof of it. A page loads cleanly when:
+
+- the server answers it below 400;
+- it ends up where it should;
+- it shows content of its own;
+- no error UI shows: the error card, the error page, or Next's not-found or
+  exception page;
+- every image under `public/`'s folders that it asks Next's image optimizer
+  for exists there and is served (the crawl answers a missing one itself, so
+  the server logs no error for it);
+- none of its API requests stays open longer than 15 s;
+- the guard sees no failed API call, page error or `console.error`.
+
+The pages are read from `src/app` when the tests are listed, so a new page is
+crawled as soon as it exists. It is crawled signed in, or as an admin under
+`/admin`. Pages for anyone are crawled signed out too. Each page is opened on
+its own: the crawl answers Next's link prefetches with nothing, so the pages
+a page links to aren't rendered alongside it.
+
+- **A page that sends the user on, needs query parameters, or is public**
+  gets an entry in `ROUTE_RULES` (`route-table.ts`), with the reason. Say
+  where it lands, what it shows, or which error response it gets by design.
+- **A page with a dynamic segment** (`[id]`) is crawled only with data a test
+  samples (`route-samples.ts`). Until it has one, the crawl annotates it
+  "unsampled route" and doesn't fail. Add the sample, and the route to
+  `DYNAMIC_ROUTES`.
+- **A page with an open bug:** add it to `KNOWN_BUGS` (`route-table.ts`):
+  the page, the issue, whom it shows for, what goes wrong, and a pattern
+  matching the problems it causes. The page is then left out of its group
+  and crawled in a test of its own per bug, pinned to it. Any other problem
+  on the page still fails that test. A bug a plain visit shows only now and
+  then, or a page with a dynamic segment, needs a visit that shows it every
+  time, in the spec's `REPRODUCTIONS`: the hydration bugs open their page
+  with the browser's clock ahead. A pinned test tries its visit up to three
+  times, until the bug shows, so a busy runner can't make it pass. A bug other pages show too, depending on
+  what they list, is `showsElsewhere`: their groups note it rather than
+  fail on it.
+- **A bug that shows only now and then**, with no visit that shows it every
+  time, can't be pinned: CI accepts a pinned test only if it fails every
+  run. Add it to `INTERMITTENT_BUGS` with its issue. The crawl then notes it
+  on any page it shows on, with an annotation, rather than fail.
+
 ## Run locally
 
 Start a full stack in the journeys configuration, then point Playwright at it.
