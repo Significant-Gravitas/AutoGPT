@@ -147,11 +147,18 @@ test.describe("copilot stop journey", () => {
         sessionID,
         wordsAtStop,
       );
-      await expect
-        .poll(async () => answerWordsIn(await transcript.innerText(), ANSWER), {
-          message: "the chat should show the reply as it was saved",
-        })
-        .toBe(wordsSaved);
+      // Live, the chat keeps the reply as it stood at the Stop, or catches up
+      // with the saved one if it reads the chat before the next turn starts.
+      // The reload below shows the saved one.
+      const wordsShown = answerWordsIn(await transcript.innerText(), ANSWER);
+      expect(
+        wordsShown,
+        "the chat should keep every word of the reply it showed at the Stop",
+      ).toBeGreaterThanOrEqual(wordsAtStop);
+      expect(
+        wordsShown,
+        "the chat should show no more of the reply than was saved",
+      ).toBeLessThanOrEqual(wordsSaved);
       expect(
         modelTurns(await readJournal(run.nonce)),
         "the answer should be asked for once, by the SDK engine's CLI",
@@ -162,7 +169,7 @@ test.describe("copilot stop journey", () => {
           `composer took a new message ${composerReadyAt - stoppedAt} ms after Stop`,
           `server let go of the stopped turn ${turnEndedAt - stoppedAt} ms after Stop`,
           `cancel answered ${cancelled.at - stoppedAt} ms after Stop (${cancelled.reason ?? "confirmed"})`,
-          `${wordsAtStop} words shown at Stop, ${wordsSaved} saved`,
+          `${wordsAtStop} words shown at Stop, ${wordsSaved} saved, ${wordsShown} shown once the turn ended`,
           `correction: ${await sendOutcome(page, 1)}`,
         ].join("; "),
       });
