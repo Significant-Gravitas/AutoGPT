@@ -352,15 +352,6 @@ test.describe("copilot stop journey", () => {
 
   test(
     "a tool stopped while it runs shows as stopped, not as run, after a reload",
-    {
-      annotation: [
-        {
-          type: "issue",
-          description:
-            "https://github.com/Significant-Gravitas/AutoGPT/issues/17294",
-        },
-      ],
-    },
     async ({ page, journeyUser: _user }) => {
       const run = scriptedRun("stop-during-tool");
       await startTheTimer(
@@ -385,15 +376,9 @@ test.describe("copilot stop journey", () => {
         transcript.getByText(STOPPED_CARD, { exact: true }).first(),
         "the reloaded chat should show the turn was stopped",
       ).toBeVisible();
-      // The stopped call is saved with an empty result, so its row reads
-      // `Ran "Countdown Timer"` and the chain's heading "Ran blocks" (#17294).
-      const pinned = pinKnownFailure(
-        "#17294: a tool stopped by Stop is saved as an empty successful result and shows as Ran",
-        "the stopped timer should not show as run after a reload",
-      );
       await expect(
         transcript.getByText(/^Ran( blocks$| ")/),
-        pinned,
+        "the stopped timer should not show as run after a reload",
       ).toHaveCount(0, { timeout: STOPPED_TOOL_CHECK_MS });
     },
   );

@@ -50,7 +50,8 @@ def _adapter_with_unresolved(responses: list[StreamToolOutputAvailable]):
     adapter = MagicMock()
     adapter.has_unresolved_tool_calls = bool(responses)
 
-    def _flush(out: list, **_kwargs) -> None:
+    def _flush(out: list, *, interrupted: bool = False) -> None:
+        assert interrupted is True
         out.extend(responses)
         adapter.has_unresolved_tool_calls = False
 
