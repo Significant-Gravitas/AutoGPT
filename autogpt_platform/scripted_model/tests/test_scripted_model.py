@@ -33,7 +33,7 @@ from scripted_model.journal import fingerprint
 from scripted_model.planner import Reply
 from scripted_model.responses import ResponseError
 from scripted_model.responses import response as structured_response
-from scripted_model.scripts import ScriptError, Usage, parse_script
+from scripted_model.scripts import ScriptError, Usage, parse_script, typed_marker
 
 from backend.copilot.graphiti.llm_client import GraphitiOpenAIClient
 
@@ -519,6 +519,182 @@ def test_a_follow_up_message_gets_the_next_turn(scripted_model):
     ]
 
 
+def test_a_message_with_its_own_marker_starts_that_script(scripted_model):
+    """After a stopped turn the platform either resumes the conversation or
+    passes it on as text inside the next message. A message with a marker of
+    its own starts that script's first turn either way, and the script's tool
+    rounds count from that message."""
+    scripted_model.add_script(
+        "stopped",
+        {
+            "turns": [
+                {
+                    "text": "A long answer that was stopped.",
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                }
+            ]
+        },
+    )
+    scripted_model.add_script(
+        "lookup",
+        {
+            **LOOKUP,
+            "turns": [
+                {**LOOKUP["turns"][0], "expect_user_text": "Shorter"},
+                LOOKUP["turns"][1],
+            ],
+        },
+    )
+    client = _anthropic(scripted_model)
+    first_message = "[[script:stopped#first]] Tell me everything."
+    resumed = [
+        {"role": "user", "content": first_message},
+        {"role": "assistant", "content": "A long answer"},
+        {
+            "role": "user",
+            "content": "[[script:lookup#resumed]] Shorter, please."
+            + _recalled(first_message),
+        },
+    ]
+    as_text = [
+        {
+            "role": "user",
+            "content": (
+                "<conversation_history>\n"
+                f"User: {first_message}\n"
+                "You responded: A long answer\n"
+                "</conversation_history>\n\n"
+                "Now, the user says:\n[[script:lookup#as-text]] Shorter, please."
+                + _recalled(first_message)
+            ),
+        }
+    ]
+
+    first = _stream(client, resumed)
+    assert first.content[0].text == "Let me check your library first."
+    assert _stream(client, as_text).content[0].text == (
+        "Let me check your library first."
+    )
+    text, calls, _ = _stream_chat(
+        _openai(scripted_model),
+        [{**as_text[0], "content": as_text[0]["content"].replace("as-text", "chat")}],
+    )
+    assert (text, [c["name"] for c in calls]) == (
+        "Let me check your library first.",
+        ["find_library_agent"],
+    )
+    tool_round = [
+        {"role": "assistant", "content": [b.model_dump() for b in first.content]},
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": first.content[1].id,
+                    "content": "No agents match 'haiku'.",
+                }
+            ],
+        },
+    ]
+    assert [b.text for b in _stream(client, resumed + tool_round).content] == [
+        "You have none yet."
+    ]
+
+    assert [
+        (e["script"], e["turn"], [c["ok"] for c in e["checks"]])
+        for nonce in ("resumed", "as-text", "chat")
+        for e in scripted_model.journal(nonce=nonce)
+    ] == [
+        ("lookup", 1, [True]),
+        ("lookup", 2, [True]),
+        ("lookup", 1, [True]),
+        ("lookup", 1, [True]),
+    ]
+    assert scripted_model.journal(nonce="first") == []
+
+
+def test_a_marker_the_platform_quotes_into_a_message_does_not_count(scripted_model):
+    """The platform appends recalled memories to a user message in a
+    <memory_context> block. They can quote an earlier message, of this chat
+    or another, marker and all; only the user's own words pick the script."""
+    scripted_model.add_script(
+        "follow-up",
+        {
+            "turns": [
+                {
+                    "text": "First answer.",
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
+                {
+                    "text": "Second answer.",
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
+            ]
+        },
+    )
+    scripted_model.add_script(
+        "quick",
+        {
+            "turns": [
+                {"text": "Hello.", "usage": {"input_tokens": 1, "output_tokens": 1}}
+            ]
+        },
+    )
+    client = _anthropic(scripted_model)
+    first_message = "[[script:follow-up#own]] Tell me about today."
+    follow_up = [
+        {"role": "user", "content": first_message},
+        {"role": "assistant", "content": "First answer."},
+        {"role": "user", "content": "And tomorrow?" + _recalled(first_message)},
+    ]
+    other_chat = [
+        {
+            "role": "user",
+            "content": "[[script:quick#mine]] Hi"
+            + _recalled("[[script:follow-up#other]] Tell me about today."),
+        }
+    ]
+
+    assert [b.text for b in _stream(client, follow_up).content] == ["Second answer."]
+    assert [b.text for b in _stream(client, other_chat).content] == ["Hello."]
+    assert [(e["script"], e["turn"]) for e in scripted_model.journal(nonce="own")] == [
+        ("follow-up", 2)
+    ]
+    assert [(e["script"], e["turn"]) for e in scripted_model.journal(nonce="mine")] == [
+        ("quick", 1)
+    ]
+    assert scripted_model.journal(nonce="other") == []
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # A recalled message holding the very tag that recalls it.
+        (
+            "[[script:quick]] <memory_context><memory_context>quoted"
+            "</memory_context> [[script:other]]</memory_context>",
+            "quick",
+        ),
+        # Blocks side by side, and one inside a block of another name.
+        (
+            "[[script:quick]] <memory_context>[[script:a]]</memory_context> "
+            "<session_context><memory_context>[[script:b]]</memory_context> "
+            "[[script:c]]</session_context>",
+            "quick",
+        ),
+        # Typed after a block, the user's marker is still the newest.
+        ("<memory_context>[[script:a]]</memory_context> [[script:quick]]", "quick"),
+        # A tag that never closes is text, and so is a stray closing tag.
+        ("[[script:a]] <memory_context> [[script:quick]]", "quick"),
+        ("[[script:a]] </memory_context> [[script:quick]]", "quick"),
+        ("<memory_context>[[script:a]]</memory_context>", None),
+    ],
+)
+def test_a_marker_counts_only_outside_the_platform_s_tagged_blocks(text, expected):
+    marker = typed_marker(text)
+    assert (marker.script if marker else None) == expected
+
+
 def test_a_request_the_script_cannot_answer_fails_with_the_reason(scripted_model):
     scripted_model.add_script("lookup", LOOKUP)
     client = _anthropic(scripted_model)
@@ -585,11 +761,25 @@ def test_a_side_call_gets_the_script_title(scripted_model):
         model="anthropic/claude-haiku-4-5",
         messages=[{"role": "user", "content": "Title this chat."}],
     )
+    # The platform's title request quotes the chat's first message in a tag.
+    quoted = client.chat.completions.create(
+        model="anthropic/claude-haiku-4-5",
+        messages=[
+            {
+                "role": "user",
+                "content": "Here is the conversation that you need to generate a "
+                "title for. \n\n<conversation>\n[[script:lookup#quoted]] Any haiku "
+                "agent?\n</conversation>\n\nRespond only with a 1-4 word title.",
+            }
+        ],
+    )
 
     assert titled.choices[0].message.content == "Haiku lookup"
     assert untitled.choices[0].message.content == "Scripted reply"
+    assert quoted.choices[0].message.content == "Haiku lookup"
     assert titled.usage.model_extra["cost"] == pytest.approx((200 * 1 + 10 * 5) / 1e6)
     assert scripted_model.journal(nonce="side")[0]["kind"] == "side_call"
+    assert scripted_model.journal(nonce="quoted")[0]["kind"] == "side_call"
 
 
 def test_the_journal_names_the_key_a_request_used_but_never_keeps_it(
@@ -932,6 +1122,16 @@ def test_a_capture_never_reads_an_earlier_turns_result(scripted_model):
 )
 def test_every_journey_script_is_valid(path: Path):
     parse_script(path.stem, json.loads(path.read_text(encoding="utf-8")))
+
+
+def _recalled(earlier_message: str) -> str:
+    """A <memory_context> block, as the platform appends recalled memories to
+    a user message, quoting an earlier message."""
+    return (
+        "\n\n<memory_context>\n<temporal_context>\n"
+        f"Earlier, the user said: {earlier_message}\n"
+        "</temporal_context>\n</memory_context>"
+    )
 
 
 def _anthropic(server) -> anthropic.Anthropic:
