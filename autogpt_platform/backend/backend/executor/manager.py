@@ -45,6 +45,7 @@ from backend.data.execution import (
 )
 from backend.data.graph import Link, Node
 from backend.data.model import (
+    APIKeyCredentials,
     Credentials,
     CredentialsMetaInput,
     GraphExecutionStats,
@@ -688,6 +689,9 @@ async def execute_node(
     # Check for dry-run platform credentials (OrchestratorBlock uses the
     # platform's OpenRouter key instead of user credentials).
     _dry_run_creds = get_dry_run_credentials(input_data) if _dry_run_input else None
+    # The dry run simulates every other block, which never uses its credentials;
+    # its pre-run check drops credential errors for the same reason.
+    simulate = execution_context.dry_run and _dry_run_input is None
     # A dry run skips credits, so a block it runs for real on the platform's
     # key is bounded by the user's allowance instead.
     if _dry_run_creds is not None and (
@@ -799,6 +803,14 @@ async def execute_node(
                 raise ValueError(
                     f"Credentials #{credentials_meta.id} for user #{user_id} not found"
                 )
+            if (
+                not simulate
+                and isinstance(credentials, APIKeyCredentials)
+                and credentials.is_expired()
+            ):
+                # Outside the `except ValueError` above, so a field with a
+                # default can't fall back to running without the key.
+                raise credentials.expired_error(execution_context.user_timezone)
             if provider_matches(credentials.provider, "codex"):
                 await enforce_codex_access(user_id)
             extra_exec_kwargs[field_name] = credentials
@@ -841,7 +853,7 @@ async def execute_node(
         scope.set_tag(f"execution_context.{k}", v)
 
     try:
-        if execution_context.dry_run and _dry_run_input is None:
+        if simulate:
             block_iter = simulate_block(node_block, input_data, user_id=user_id)
         else:
             block_iter = node_block.execute(input_data, **extra_exec_kwargs)

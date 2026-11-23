@@ -46,7 +46,11 @@ from backend.data.db_accessors import (
 )
 from backend.data.execution import ExecutionContext
 from backend.data.expert_spend import add_weekly_spend
-from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
+from backend.data.model import (
+    APIKeyCredentials,
+    CredentialsFieldInfo,
+    CredentialsMetaInput,
+)
 from backend.executor.auto_credentials import (
     MissingAutoCredentialsError,
     acquire_auto_credentials,
@@ -507,6 +511,21 @@ async def execute_block(
                         message=f"Failed to retrieve credentials for {field_name}",
                         session_id=session_id,
                     ).from_outside()
+                if (
+                    isinstance(credentials, APIKeyCredentials)
+                    and credentials.is_expired()
+                ):
+                    await _release_credential_leases(credential_leases)
+                    return _credential_rejected_response(
+                        block=block,
+                        block_id=block_id,
+                        input_data=input_data,
+                        matched_credentials={field_name: cred_meta},
+                        session_id=session_id,
+                        status_code=None,
+                        exc=credentials.expired_error(user_timezone),
+                        expired=True,
+                    )
                 exec_kwargs[field_name] = credentials
         except ValueError:
             await _release_credential_leases(credential_leases)
@@ -980,8 +999,10 @@ def _credential_rejected_response(
     session_id: str,
     status_code: int | None,
     exc: BaseException,
+    expired: bool = False,
 ) -> SetupRequirementsResponse | ErrorResponse:
-    """The answer when the provider refused a stored credential.
+    """The answer when the provider refused a stored credential, or when
+    ``expired``, an API key is past the expiry its owner set.
 
     A watched turn gets the reconnect card. A scheduled turn's card would go
     unanswered (SECRT-2804), so it gets an error naming the account instead,
@@ -996,6 +1017,7 @@ def _credential_rejected_response(
             session_id=session_id,
             status_code=status_code,
             exc=exc,
+            expired=expired,
         )
     rejected, provider = _rejected_credential(block, matched_credentials)
     provider_name = provider.replace("_", " ").title() or "The provider"
@@ -1010,6 +1032,8 @@ def _credential_rejected_response(
             f"{provider_name} rejected the saved credential{named} "
             f"(HTTP {status_code})"
         )
+    elif expired:
+        refused = f"The saved {provider_name} credential{named} has expired"
     else:
         refused = f"The saved {provider_name} credential{named} could not be refreshed"
     logger.warning(
@@ -1018,9 +1042,11 @@ def _credential_rejected_response(
         block.name,
         refused,
     )
+    # An expired key's error names the date and what to do about it.
+    expiry = f" {exc}" if expired else ""
     return ErrorResponse(
         message=(
-            f"{refused}, so block '{block.name}' did not run. Nobody is "
+            f"{refused}, so block '{block.name}' did not run.{expiry} Nobody is "
             "watching this turn (it was scheduled), so there is no one to "
             "reconnect it now, and it did not switch to a different account. "
             "Say plainly in your reply that this step was skipped, name that "
@@ -1061,8 +1087,10 @@ def _build_credential_rejected_card(
     session_id: str,
     status_code: int | None,
     exc: BaseException,
+    expired: bool = False,
 ) -> SetupRequirementsResponse:
-    """Setup card for a credential the provider refused mid-execution.
+    """Setup card for a credential the provider refused mid-execution, or an
+    API key past its expiry.
 
     The rejected row is kept — a 401 is not proof the secret is wrong — so
     the ``rejection`` field is what stops the card re-offering it as ready.
@@ -1084,6 +1112,11 @@ def _build_credential_rejected_card(
         message = (
             f"{provider_name} rejected the saved credential{named} "
             f"(HTTP {status_code}). Connect or pick a different one, then re-run."
+        )
+    elif expired:
+        message = (
+            f"The saved {provider_name} credential{named} has expired. "
+            "Add a new key or pick a different one, then re-run."
         )
     else:
         message = (
