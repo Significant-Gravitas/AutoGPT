@@ -29,16 +29,22 @@ def _clean(line: str) -> str:
 def server_errors(lines: list[str]) -> list[tuple[str, list[str]]]:
     """Each error Next.js logged: its message and the stack lines under it."""
     errors: list[tuple[str, list[str]]] = []
+    # Only the stack lines right under an error belong to it: any other line
+    # (another component's log entry) ends that error's stack.
+    collecting = False
     for raw in lines:
         line = _clean(raw)
         stripped = line.strip()
         if stripped.startswith(_ERROR_MARK):
             message = stripped.removeprefix(_ERROR_MARK).strip()
             errors.append((message or "(no message)", []))
-        elif errors and _STACK_LINE.match(line):
+            collecting = True
+        elif collecting and _STACK_LINE.match(line):
             stack = errors[-1][1]
             if len(stack) < _MAX_STACK_LINES:
                 stack.append(line.rstrip())
+        else:
+            collecting = False
     return errors
 
 
@@ -64,16 +70,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("log", type=Path, help="the frontend container's log")
     args = parser.parse_args(argv)
+    # Messages name the log by its file name only.
+    name = args.log.name
     try:
         text = args.log.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
-        print(f"{args.log}: {exc}")
+        print(f"{name}: could not read the log: {exc.strerror or type(exc).__name__}")
         return 1
     errors = server_errors(text.splitlines())
     if errors:
-        print(report(errors, str(args.log)))
+        print(report(errors, name))
         return 1
-    print(f"{args.log}: no Next.js server errors")
+    print(f"{name}: no Next.js server errors")
     return 0
 
 

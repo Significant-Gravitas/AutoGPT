@@ -78,10 +78,30 @@ class CheckFrontendServerErrorsTests(unittest.TestCase):
             [("TypeError: boom", ["    at handler (.next/server/app/page.js:1:2)"])],
         )
 
-    def test_a_missing_log_fails(self):
+    def test_a_stack_ends_at_an_unrelated_log_entry(self):
+        errors = server_errors(
+            [
+                " ⨯ image failed",
+                "Error: authentication failed",
+                "    at authenticate (auth.js:1:2)",
+                " ⨯ TypeError: boom",
+                "    at handler (page.js:1:2)",
+            ]
+        )
+        self.assertEqual(
+            errors,
+            [
+                ("image failed", []),
+                ("TypeError: boom", ["    at handler (page.js:1:2)"]),
+            ],
+        )
+
+    def test_a_missing_log_fails_naming_only_the_file(self):
         out = StringIO()
         with redirect_stdout(out):
-            self.assertEqual(main(["/nonexistent/frontend.log"]), 1)
+            self.assertEqual(main(["/nonexistent/private/frontend.log"]), 1)
+        self.assertIn("frontend.log: could not read the log", out.getvalue())
+        self.assertNotIn("/nonexistent/private", out.getvalue())
 
 
 if __name__ == "__main__":
