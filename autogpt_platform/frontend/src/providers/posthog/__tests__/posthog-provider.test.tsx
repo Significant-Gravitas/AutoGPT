@@ -77,7 +77,7 @@ describe("PostHogProvider", () => {
     );
     const { dropWithoutConsent } = await import("../posthog-consent");
     const { stripURLCredentials } = await import(
-      "@/services/analytics/posthog-url-credentials"
+      "@/services/analytics/url-credentials"
     );
 
     render(<PostHogProvider>app</PostHogProvider>);

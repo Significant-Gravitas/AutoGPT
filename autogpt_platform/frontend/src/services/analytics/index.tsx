@@ -12,6 +12,7 @@ import { environment } from "../environment";
 import { GoogleConsentModeSync } from "./GoogleConsentModeSync";
 import { DATA_LAYER_NAME, gtag } from "./gtag";
 import { DATAFAST_SCRIPT_SRC } from "./loading-policy";
+import { stripCredentialsFromURL } from "./url-credentials";
 import { useSetupAnalytics } from "./useSetupAnalytics";
 
 type DatafastEvent = [name: string, metadata: Record<string, unknown>];
@@ -48,6 +49,7 @@ export function SetupAnalytics(props: SetupProps) {
                 GAID: gaId,
                 adsID,
                 debugMode,
+                page: getStrippedPageFields(),
               }),
             }}
             nonce={nonce}
@@ -82,6 +84,7 @@ interface InitScriptArgs {
   GAID: string;
   adsID: string;
   debugMode?: boolean;
+  page: Record<string, string>;
 }
 
 // The root layout queued the Consent Mode defaults before anything else, and
@@ -90,6 +93,7 @@ function buildGoogleTagInitScript({
   GAID,
   adsID,
   debugMode,
+  page,
 }: InitScriptArgs): string {
   // The IDs come from env vars and go into a nonce-bearing inline script, so
   // they are escaped rather than interpolated raw: a stray quote in a misfilled
@@ -98,6 +102,11 @@ function buildGoogleTagInitScript({
     `window['${DATA_LAYER_NAME}'] = window['${DATA_LAYER_NAME}'] || [];`,
     `function gtag(){window['${DATA_LAYER_NAME}'].push(arguments);}`,
     `gtag('js', new Date());`,
+    // Ahead of config, whose page view reads the URL itself. Any link can set
+    // the URL, so `<` is escaped too.
+    Object.keys(page).length
+      ? `gtag('set', ${JSON.stringify(page).replace(/</g, "\\u003c")});`
+      : "",
     GAID
       ? `gtag('config', ${JSON.stringify(GAID)}${debugMode ? ", { 'debug_mode': true }" : ""});`
       : "",
@@ -105,6 +114,18 @@ function buildGoogleTagInitScript({
       ? `gtag('config', ${JSON.stringify(adsID)}, { 'allow_enhanced_conversions': true });`
       : "",
   ].join("\n");
+}
+
+// Only where the page URL or its referrer holds a credential: once set, the
+// stripped location stays on the tag's later client-side page views too.
+function getStrippedPageFields(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const fields: Record<string, string> = {};
+  const location = stripCredentialsFromURL(window.location.href);
+  if (location !== window.location.href) fields.page_location = location;
+  const referrer = stripCredentialsFromURL(document.referrer);
+  if (referrer !== document.referrer) fields.page_referrer = referrer;
+  return fields;
 }
 
 export const analytics = {

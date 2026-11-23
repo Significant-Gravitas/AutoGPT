@@ -26,6 +26,7 @@ const CORS_HEADERS = {
 
 let pageLoads = 0;
 let captured: CaptureResult[] = [];
+let flagsBodies: FlagsBody[] = [];
 let clients: PostHog[] = [];
 let captureQueueResets: (() => void)[] = [];
 
@@ -38,14 +39,18 @@ beforeEach(() => {
   // PostHog drops events from browsers it takes for bots, HappyDOM included.
   vi.spyOn(navigator, "webdriver", "get").mockReturnValue(false);
   captured = [];
+  flagsBodies = [];
   server.use(
     http.options(
       `${POSTHOG_ORIGIN}/*`,
       () => new HttpResponse(null, { status: 204, headers: CORS_HEADERS }),
     ),
-    http.all(`${POSTHOG_ORIGIN}/*`, () =>
-      HttpResponse.json({}, { headers: CORS_HEADERS }),
-    ),
+    http.all(`${POSTHOG_ORIGIN}/*`, async ({ request }) => {
+      if (new URL(request.url).pathname.endsWith("/flags/")) {
+        flagsBodies.push(await readFlagsBody(request));
+      }
+      return HttpResponse.json({}, { headers: CORS_HEADERS });
+    }),
   );
   configureCookiebot();
   installCookiebot({ statistics: true });
@@ -152,6 +157,31 @@ describe("analytics events from a page whose URL carries a credential", () => {
     expectNoSecret(heatmap);
   });
 
+  it("strip it from the first page PostHog stores for its flag requests", async () => {
+    const posthog = await loadPage("/reset-password?token=SECRET&next=%2Fhome");
+    const key = `phc_test_${pageLoads}`;
+    // posthog-js stores the first page on its first event; identify and the
+    // consent grant reload the flags with it.
+    await waitForEvent("$pageview");
+    posthog.reloadFeatureFlags();
+
+    await vi.waitFor(() =>
+      expect(
+        flagsBodies.some(
+          (body) =>
+            body.token === key && body.person_properties?.$initial_current_url,
+        ),
+      ).toBe(true),
+    );
+
+    const ownBodies = flagsBodies.filter((body) => body.token === key);
+    const firstPage = ownBodies.find(
+      (body) => body.person_properties?.$initial_current_url,
+    )?.person_properties?.$initial_current_url;
+    expect(firstPage).toMatch(/\/reset-password\?token=<masked>&next=%2Fhome$/);
+    expect(JSON.stringify(ownBodies)).not.toContain(LINK_VALUE);
+  });
+
   // Every page whose URL holds a credential, and a parameter that must survive.
   it.each([
     [
@@ -185,6 +215,11 @@ describe("analytics events from a page whose URL carries a credential", () => {
       "next=%2Fsettings%2Faccount%3Ff%3Doff%26t%3D",
     ],
     ["the chat platform linking page", "/link/SECRET", "/link/"],
+    [
+      "the linking page's Telegram return",
+      "/link/SECRET?id=42&auth_date=1700000000&hash=SECRET",
+      "auth_date=1700000000",
+    ],
     ["a shared run", "/share/SECRET", "/share/"],
     ["a shared chat", "/share/chat/SECRET", "/share/chat/"],
     [
@@ -290,6 +325,18 @@ async function waitForEvent(name: string, timeout?: number) {
 
 function expectNoSecret(event: CaptureResult) {
   expect(JSON.stringify(event)).not.toContain(LINK_VALUE);
+}
+
+interface FlagsBody {
+  token?: string;
+  person_properties?: Record<string, string>;
+}
+
+async function readFlagsBody(request: Request): Promise<FlagsBody> {
+  const body = await request.text();
+  const data = new URLSearchParams(body).get("data");
+  const json = data ? Buffer.from(data, "base64").toString("utf8") : body;
+  return JSON.parse(json) as FlagsBody;
 }
 
 function withSecret(text: string) {

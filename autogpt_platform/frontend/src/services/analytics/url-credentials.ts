@@ -18,7 +18,7 @@ export function stripURLCredentials(
 }
 
 /** Mask credential query and fragment values, and credential path segments. */
-function stripCredentialsFromText(text: string, depth = 0): string {
+export function stripCredentialsFromURL(text: string, depth = 0): string {
   if (!text.includes("=") && !text.includes("/")) return text;
   const stripped = text.replace(
     QUERY_PARAM,
@@ -32,15 +32,31 @@ function stripCredentialsFromText(text: string, depth = 0): string {
 }
 
 // /reset-password's `token`, the preference links' signed `t`, the OAuth
-// pages' `code` and `state`, and the names a new link's secret would get.
-const CREDENTIAL_PARAM =
-  /^(?:t|code|state|sig|.*(?:token|secret|password|signature|credential).*)$/i;
-const QUERY_PARAM = /([?&#])([^=&#?/\s"'<>]+)=([^&#\s"'<>]*)/g;
+// pages' `code` and `state`, Telegram's signed `hash` on the linking page.
+// posthog-js masks these exact names in the first page it stores.
+export const CREDENTIAL_PARAMS = [
+  "token",
+  "t",
+  "code",
+  "state",
+  "sig",
+  "hash",
+  "access_token",
+  "refresh_token",
+  "id_token",
+];
+// The names a new link's secret would get.
+const CREDENTIAL_PARAM_PART = /token|secret|password|signature|credential/i;
+// A value runs to the next separator, so posthog-js's `<masked>` goes whole.
+const QUERY_PARAM = /([?&#])([^=&#?/\s"'<>]+)=([^&#\s"']*)/g;
 const MAX_NESTING = 3;
 const SNAPSHOT_DATA = "$snapshot_data";
 
 function isCredentialParam(name: string) {
-  return CREDENTIAL_PARAM.test(name);
+  return (
+    CREDENTIAL_PARAMS.includes(name.toLowerCase()) ||
+    CREDENTIAL_PARAM_PART.test(name)
+  );
 }
 
 // The login redirect carries the page it came from, credentials and all,
@@ -53,14 +69,14 @@ function stripEncodedURL(value: string, depth: number) {
   } catch {
     return value;
   }
-  const stripped = stripCredentialsFromText(decoded, depth + 1);
+  const stripped = stripCredentialsFromURL(decoded, depth + 1);
   return stripped === decoded ? value : encodeURIComponent(stripped);
 }
 
 function stripObject(object: Record<string, unknown>) {
   const stripped: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(object)) {
-    stripped[stripCredentialsFromText(key)] =
+    stripped[stripCredentialsFromURL(key)] =
       key === SNAPSHOT_DATA && Array.isArray(value)
         ? value.map(stripSnapshotEvent)
         : stripValue(value);
@@ -74,7 +90,7 @@ function stripSnapshotEvent(event: unknown) {
 }
 
 function stripValue(value: unknown): unknown {
-  if (typeof value === "string") return stripCredentialsFromText(value);
+  if (typeof value === "string") return stripCredentialsFromURL(value);
   if (Array.isArray(value)) return value.map(stripValue);
   if (isRecord(value)) return stripObject(value);
   return value;
