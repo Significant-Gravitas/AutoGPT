@@ -24,6 +24,9 @@ async def websocket_server(
     monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[tuple[str, ConnectionManager]]:
     manager = ConnectionManager()
+    # A runner that stalls must not run out the sign-in wait; the test of that
+    # wait sets its own.
+    monkeypatch.setattr(ws_api, "AUTH_MESSAGE_TIMEOUT_S", _HANG_SECONDS)
     monkeypatch.setattr(ws_api, "is_user_banned", AsyncMock(return_value=False))
     _stub_account_closed(monkeypatch, closed=False)
     monkeypatch.setattr(manager, "_start_notification_subscription", AsyncMock())
