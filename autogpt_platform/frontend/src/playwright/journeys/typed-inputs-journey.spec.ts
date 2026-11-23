@@ -54,25 +54,14 @@ const LOOKS_LIKE_DATA = {
   exponent_text: "1e5",
   price_text: "1.50",
 };
-// A known failure must end as a failed assertion, not a timeout, so its
-// check waits well inside the test's budget.
-const PINNED_CHECK_TIMEOUT = 5_000;
-
-// Optional: a picked date never counts as filled in the run form, so a
-// required one keeps Start Task disabled (#17304). A test of its own pins
-// that; the others still get to run a date through.
-const OPTIONAL_DATE: TypedInput = {
-  name: "date",
-  kind: "date",
-  settings: { advanced: true },
-};
+const DATE_INPUT: TypedInput = { name: "date", kind: "date" };
 
 const EVERY_INPUT: TypedInput[] = [
   { name: "short_text", kind: "short text" },
   { name: "long_text", kind: "long text" },
   { name: "zero", kind: "number" },
   { name: "negative", kind: "number" },
-  OPTIONAL_DATE,
+  DATE_INPUT,
   { name: "time", kind: "time" },
   {
     name: "shipping",
@@ -228,9 +217,7 @@ test.describe("typed inputs journey", () => {
       "a task whose workflow needs a date can start once the date is picked",
       { annotation: issue(17304) },
       async ({ page, journeyUser: _user }) => {
-        const agent = await createTypedInputsAgent(page, [
-          { name: "date", kind: "date" },
-        ]);
+        const agent = await createTypedInputsAgent(page, [DATE_INPUT]);
         const dialog = await openRunDialog(page, agent);
         await inputField(dialog, "date").fill(DATE);
         await expect(
@@ -238,14 +225,10 @@ test.describe("typed inputs journey", () => {
           "the form should show the date picked",
         ).toHaveValue(DATE);
 
-        const pinned = pinKnownFailure(
-          "#17304: a picked date doesn't count as filled, so Start Task stays disabled",
-          "Start Task should be enabled once the date is picked",
-        );
         await expect(
           dialog.getByRole("button", { name: "Start Task", exact: true }),
-          pinned,
-        ).toBeEnabled({ timeout: PINNED_CHECK_TIMEOUT });
+          "Start Task should be enabled once the date is picked",
+        ).toBeEnabled();
       },
     );
   });
@@ -291,7 +274,7 @@ test.describe("typed inputs journey", () => {
         { annotation: issue(17305) },
         async ({ page, journeyUser: _user }, testInfo) => {
           const agent = await createTypedInputsAgent(page, [
-            OPTIONAL_DATE,
+            DATE_INPUT,
             { name: "time", kind: "time" },
           ]);
           const dialog = await openRunDialog(page, agent);
@@ -319,14 +302,9 @@ test.describe("typed inputs journey", () => {
             })
             .toBe(TIME_GOT);
           const shown = await readShownOutputs(page);
-
-          const pinned = pinKnownFailure(
-            "#17305: a date picked outside UTC is sent as a UTC timestamp, which the Date input refuses",
-            "the workflow should get the date picked, and the run view show it",
-          );
           expect(
             { status: run.status, got: run.outputs.date, shown: shown.date },
-            pinned,
+            "the workflow should get the date picked, and the run view show it",
           ).toEqual({ status: "COMPLETED", got: [DATE], shown: DATE });
         },
       );
