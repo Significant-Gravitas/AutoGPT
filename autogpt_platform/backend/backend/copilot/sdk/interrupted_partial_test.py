@@ -368,9 +368,9 @@ class TestRetryableStreamErrorCodes:
 
 
 def test_flush_unresolved_tool_calls_without_stash_marks_interrupted():
-    from backend.copilot.sdk.response_adapter import ClaudeSDKResponseAdapter
+    from backend.copilot.sdk.response_adapter import SDKResponseAdapter
 
-    adapter = ClaudeSDKResponseAdapter(session_id="sess-test")
+    adapter = SDKResponseAdapter(session_id="sess-test")
     adapter.current_tool_calls["call_1"] = {
         "name": "run_capability",
         "input": {"capability": "countdown"},
