@@ -106,6 +106,9 @@ class StripeApi:
         if key is None:
             return self._run(match, params, handler)
         fingerprint = json.dumps([path, params], sort_keys=True)
+        # The lock is held across the handler, so a retry waits for the first
+        # answer. No handler may make an outbound call under it: one that
+        # called back into the fake would wait on itself.
         with self._replies_lock:
             seen = self._replies.get(key)
             if seen is None:
