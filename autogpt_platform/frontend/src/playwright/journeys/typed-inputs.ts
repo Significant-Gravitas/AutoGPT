@@ -261,29 +261,39 @@ async function readRun(page: Page, agent: Agent, runID: string) {
   return (await response.json()) as Run;
 }
 
+// The run view's Output tab shows each output as an item: its label, and the
+// value shown beside it.
+const OUTPUT_LABEL = "output-item-label";
+const OUTPUT_VALUE = "output-item-value";
+
 /**
  * What the run view's Output tab shows: each output's label, with the text
  * of what is shown for it.
  */
 export function readShownOutputs(page: Page) {
   return page
-    .locator("p.capitalize:visible")
-    .evaluateAll((labels) =>
-      Object.fromEntries(
-        labels.map((label) => [
-          label.textContent ?? "",
-          label.nextElementSibling?.textContent ?? "",
-        ]),
-      ),
+    .getByTestId(OUTPUT_LABEL)
+    .filter({ visible: true })
+    .evaluateAll(
+      (labels, value) =>
+        Object.fromEntries(
+          labels.map((label) => [
+            label.textContent ?? "",
+            label.parentElement?.querySelector(`[data-testid="${value}"]`)
+              ?.textContent ?? "",
+          ]),
+        ),
+      OUTPUT_VALUE,
     );
 }
 
 /** What the run view's Output tab shows for one output. */
 export function shownOutput(page: Page, name: string) {
   return page
-    .locator("p.capitalize:visible")
-    .filter({ hasText: new RegExp(`^${escapeRegExp(name)}$`) })
-    .locator("xpath=following-sibling::*[1]");
+    .getByTestId(OUTPUT_LABEL)
+    .filter({ visible: true, hasText: new RegExp(`^${escapeRegExp(name)}$`) })
+    .locator("..")
+    .getByTestId(OUTPUT_VALUE);
 }
 
 /** Text in `scope` matching `pattern` that shows within a few seconds. */
