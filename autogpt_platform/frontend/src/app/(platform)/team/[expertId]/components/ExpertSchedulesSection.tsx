@@ -4,6 +4,7 @@ import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflow
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { EditScheduleModal } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/SelectedScheduleView/components/EditScheduleModal/EditScheduleModal";
 import { Button } from "@/components/atoms/Button/Button";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Text } from "@/components/atoms/Text/Text";
 import { GraphScheduleListItem } from "@/components/contextual/SchedulesPanel/components/GraphScheduleListItem/GraphScheduleListItem";
 import {
@@ -17,6 +18,7 @@ import { SectionEmptyState } from "../../components/SectionEmptyState";
 import { useState } from "react";
 import {
   filterExpertSchedules,
+  getLastRun,
   SCHEDULE_FILTERS,
   ScheduleFilter,
   ACTION_BUTTON_CLASS,
@@ -32,7 +34,7 @@ interface Props {
   workflows?: ExpertWorkflowRef[];
   accentClassName?: string;
   schedules: GraphExecutionJobInfo[];
-  lastRunLabel: string | null;
+  lastRun: ReturnType<typeof getLastRun>;
 }
 
 export function ExpertSchedulesSection({
@@ -42,7 +44,7 @@ export function ExpertSchedulesSection({
   workflows,
   accentClassName,
   schedules,
-  lastRunLabel,
+  lastRun,
 }: Props) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ScheduleFilter>("all");
@@ -56,9 +58,9 @@ export function ExpertSchedulesSection({
           <Text variant="large-medium" tone="primary">
             {title}
           </Text>
-          {lastRunLabel ? (
+          {lastRun ? (
             <Text variant="small" as="span" tone="muted">
-              {lastRunLabel}
+              {lastRun.label} <RelativeTime date={lastRun.at} />
             </Text>
           ) : null}
         </div>

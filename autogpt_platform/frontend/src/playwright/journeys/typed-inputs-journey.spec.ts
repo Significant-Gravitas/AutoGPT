@@ -16,8 +16,8 @@ import {
   readShownOutputs,
   rerunTask,
   setToggle,
-  showsText,
   shownOutput,
+  showsWithin,
   startTask,
   type TypedInput,
   uploadFile,
@@ -235,6 +235,12 @@ test.describe("typed inputs journey", () => {
 
         const outcome = await startWithDecimal(page, agent, dialog);
         observe(testInfo, `1180.5 in a Number input: ${outcome}`);
+        // Only the cut is the known bug: anything else, such as a refusal
+        // that says nothing, fails here rather than under the pin.
+        expect(
+          outcome,
+          "1180.5 should be kept, refused with an error the user sees, or, as #17259 does, cut to a whole number",
+        ).toMatch(/^(kept|refused|cut to a whole number)\b/);
         const pinned = pinKnownFailure(
           "#17259: a Number input cuts 1180.5 to 1180 and says nothing",
           "1180.5 should reach the workflow as typed, or be refused with an error the user sees",
@@ -362,31 +368,52 @@ function tableCells(rows: Record<string, string>[]) {
 
 // An error a refusal of 1180.5 would name: the value, or why it was refused.
 const DECIMAL_REFUSED = /1180\.5|\bint(eger)?\b|whole number|decimal|fraction/i;
+// How long the app may take to answer Start Task, by starting the run or
+// saying why it won't, on a loaded runner.
+const ANSWER_TIMEOUT = 30_000;
+// How long a step of the form, or a message once the app has answered, may
+// take to show: the journeys' expect timeout.
+const SHOW_TIMEOUT = 15_000;
 
 /**
  * Starts a task with 1180.5 in the Number input, and says what became of it:
- * "kept", "refused ..." with an error the user sees, or what happened instead.
+ * "kept", "refused ..." with an error the user sees, "cut to a whole number"
+ * (#17259), or what happened instead.
  */
 async function startWithDecimal(page: Page, agent: Agent, dialog: Locator) {
-  const everywhere = page.locator("body");
+  const refusal = decimalRefusal(page, dialog);
   const start = dialog.getByRole("button", { name: "Start Task", exact: true });
-  if (await start.isDisabled()) {
-    return (await showsText(dialog, DECIMAL_REFUSED))
-      ? "refused in the form"
-      : "Start Task is disabled, and nothing says why";
+  // A check of the number may disable Start Task a render after the typing:
+  // wait for the form to settle on Start Task enabled, or a refusal shown.
+  const enabled = dialog.getByRole("button", {
+    name: "Start Task",
+    exact: true,
+    disabled: false,
+  });
+  if (!(await showsWithin(enabled.or(refusal).first(), SHOW_TIMEOUT))) {
+    return "Start Task is disabled, and nothing says why";
   }
+  if (await refusal.isVisible()) return "refused in the form";
+
   const response = page
-    .waitForResponse(isRunStart(agent.graphID), { timeout: 10_000 })
+    .waitForResponse(isRunStart(agent.graphID), { timeout: ANSWER_TIMEOUT })
     .catch(() => null);
-  await start.click();
-  const started = await response;
-  if (!started) {
-    return (await showsText(everywhere, DECIMAL_REFUSED))
+  if (!(await clicks(start))) {
+    return (await showsWithin(refusal, SHOW_TIMEOUT))
       ? "refused in the form"
-      : "Start Task started nothing, and nothing says why";
+      : "Start Task can't be pressed, and nothing says why";
   }
+  // The form may refuse the number without starting anything.
+  const started = await Promise.race([
+    response,
+    showsWithin(refusal, ANSWER_TIMEOUT).then((shown) =>
+      shown ? ("refused in the form" as const) : null,
+    ),
+  ]);
+  if (!started) return "Start Task started nothing, and nothing says why";
+  if (typeof started === "string") return started;
   if (!started.ok()) {
-    return (await showsText(everywhere, DECIMAL_REFUSED))
+    return (await showsWithin(refusal, SHOW_TIMEOUT))
       ? "refused as the task started"
       : `the task returned ${started.status()}, and nothing says why`;
   }
@@ -394,7 +421,7 @@ async function startWithDecimal(page: Page, agent: Agent, dialog: Locator) {
   const run = await waitForRunToEnd(page, agent, runID);
   const got = run.outputs.amount;
   if (got === undefined) {
-    return (await showsText(page.getByTestId("run-failures"), DECIMAL_REFUSED))
+    return (await showsWithin(refusal, SHOW_TIMEOUT))
       ? "refused as the run reached it"
       : `the run ended ${run.status} without the number, and nothing says why`;
   }
@@ -405,7 +432,41 @@ async function startWithDecimal(page: Page, agent: Agent, dialog: Locator) {
     .toBeDefined();
   const shown = (await readShownOutputs(page)).amount;
   if (JSON.stringify(got) === "[1180.5]" && shown === "1180.5") return "kept";
+  const [number] = got;
+  if (
+    got.length === 1 &&
+    isWholeNumberCut(number) &&
+    shown === String(number)
+  ) {
+    return `cut to a whole number: the workflow got ${number}, and the run view shows it`;
+  }
   return `the workflow got ${JSON.stringify(got)} and the run view shows ${JSON.stringify(shown)}`;
+}
+
+// A refusal the user sees: in the run form, an alert or a toast, or the run's
+// failed steps, never text elsewhere on the page.
+function decimalRefusal(page: Page, dialog: Locator) {
+  return dialog
+    .or(page.getByRole("alert"))
+    .or(page.getByRole("status"))
+    .or(page.locator("[data-sonner-toast]"))
+    .or(page.getByTestId("run-failures"))
+    .getByText(DECIMAL_REFUSED)
+    .filter({ visible: true })
+    .first();
+}
+
+// Clicks `button`, or gives up once it has stayed disabled for a while.
+function clicks(button: Locator) {
+  return button.click({ timeout: SHOW_TIMEOUT }).then(
+    () => true,
+    () => false,
+  );
+}
+
+// 1180.5 without its decimals: 1180, or 1181 if rounded.
+function isWholeNumberCut(value: unknown) {
+  return value === 1180 || value === 1181;
 }
 
 function issue(number: number) {

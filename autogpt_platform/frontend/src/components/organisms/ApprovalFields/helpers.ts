@@ -1,4 +1,3 @@
-import { formatDistanceToNow } from "date-fns";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 
 export const REDACTED = "[redacted]";
@@ -54,12 +53,19 @@ export interface Fact {
 
 export function factText(fact: Fact) {
   if (fact.cron) return cronText(fact.cron) ?? fact.text;
-  if (fact.label && fact.at) {
-    const at = new Date(fact.at);
-    if (!Number.isNaN(at.getTime()))
-      return `${fact.label} ${formatDistanceToNow(at, { addSuffix: true })}`;
-  }
   return fact.text;
+}
+
+// The time a labelled fact names, which the card words relative to now.
+export function factTime(fact: Fact) {
+  if (fact.cron || !fact.label || !fact.at) return null;
+  const at = new Date(fact.at);
+  return Number.isNaN(at.getTime()) ? null : at;
+}
+
+// The facts a card shows: those with a time or some text to read.
+export function shownFacts(facts: Fact[]) {
+  return facts.filter((fact) => Boolean(factTime(fact) || factText(fact)));
 }
 
 function cronText(cron: string) {
