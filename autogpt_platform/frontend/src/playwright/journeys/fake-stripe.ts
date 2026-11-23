@@ -22,9 +22,37 @@ export interface StripeEvent {
   type: string;
   /** The id of the object the event is about, e.g. the checkout session. */
   object: string;
+  /** The customer whose object it is. */
+  customer: string | null;
   held: boolean;
-  event: { data: { object: Record<string, unknown> } };
+  event: {
+    data: {
+      object: Record<string, unknown>;
+      /** What an `*.updated` event's object had before the change. */
+      previous_attributes?: Record<string, unknown>;
+    };
+  };
   deliveries: StripeDelivery[];
+}
+
+/** A subscription as the fake Stripe holds it, the fields journeys read. */
+export interface StripeSubscription {
+  id: string;
+  customer: string;
+  status: string;
+  cancel_at_period_end: boolean;
+  current_period_start: number;
+  current_period_end: number;
+  latest_invoice: string | null;
+  items: { data: { price: { id: string; unit_amount: number } }[] };
+}
+
+export interface StripeInvoice {
+  id: string;
+  number: string;
+  status: string;
+  total: number;
+  billing_reason: string;
 }
 
 /**
@@ -76,6 +104,37 @@ export async function stripeEvents(objectID: string): Promise<StripeEvent[]> {
     `events?object=${encodeURIComponent(objectID)}`,
   );
   return body.events;
+}
+
+/** Every webhook event about the customer's objects, oldest first. */
+export async function customerStripeEvents(
+  customerID: string,
+): Promise<StripeEvent[]> {
+  const body = await control<{ events: StripeEvent[] }>(
+    "GET",
+    `events?customer=${encodeURIComponent(customerID)}`,
+  );
+  return body.events;
+}
+
+/**
+ * An object as the fake Stripe holds it, as its API shows it: what Stripe
+ * says about a subscription or invoice, to hold the app's page against.
+ */
+export async function stripeObject<T>(objectID: string): Promise<T> {
+  return control<T>("GET", `objects/${encodeURIComponent(objectID)}`);
+}
+
+/**
+ * Ends a subscription's current period now, as if the clock had reached it.
+ * One set to cancel at the period's end is cancelled; any other renews with a
+ * new paid invoice. Returns once the platform has had the webhooks.
+ */
+export async function endSubscriptionPeriod(subscriptionID: string) {
+  return control<{ subscription: StripeSubscription; events: StripeEvent[] }>(
+    "POST",
+    `subscriptions/${encodeURIComponent(subscriptionID)}/end_period`,
+  );
 }
 
 /** Delivers an event again, as Stripe retries one, or a held one at last. */

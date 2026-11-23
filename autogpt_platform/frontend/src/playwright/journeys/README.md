@@ -35,6 +35,9 @@ product does what the user expects.
     user also gets that plan without Stripe (`subscription-tier.ts` writes the
     tier to the stack's database: a paid tier with no Stripe customer, the
     same shape as an admin grant), so the hosted paywall lets them run agents.
+    A journey about buying a plan opts out with
+    `test.use({ grantJourneyTier: false })`: its user starts with no plan,
+    as a new hosted user does (`subscription-journey.spec.ts`).
     A journey never shares a user with another one and never depends on CI's
     seeded accounts.
 - **More than one person.** Give each other person (an admin, a second user)
@@ -134,7 +137,7 @@ NEXT_PUBLIC_PW_TEST=true docker compose -f docker-compose.yml \
   -f docker-compose.journeys.yml up -d --build
 # The expert roster's workflows, then the roster again (see below):
 docker compose -f docker-compose.yml -f docker-compose.journeys.yml run --rm \
-  --no-deps rest_server python -m test.load_store_agents
+  --no-deps rest_server python -m test.load_store_agents --local-media
 docker compose -f docker-compose.yml -f docker-compose.journeys.yml up publish_skills
 cd frontend
 PLAYWRIGHT_JOURNEY_COST_PER_NODE=1 PLAYWRIGHT_JOURNEY_TIER=PRO \
@@ -151,7 +154,9 @@ The expert roster's workflows are the official marketplace listings
 (`backend/agents`), and `publish_skills` installs the roster when the stack
 starts, skipping any workflow whose listing isn't there yet. CI loads the
 listings before the stack starts; the commands above load them into the
-running stack instead, then publish the roster again.
+running stack instead, then publish the roster again. `--local-media` gives the
+listings and their creator placeholder images in the stack's own media storage,
+as CI does, so no page fetches the production images the CSV points at.
 
 The frontend must be built with `NEXT_PUBLIC_PW_TEST=true`; only that build
 reads the hosted flag values the fixtures hand it.
@@ -215,8 +220,16 @@ The hosted configuration points the backend's Stripe at the scripted model
 too (its "Fake Stripe" section), so a journey pays the way a user does: the
 app opens the fake's checkout page, **Pay** sends the platform a signed
 `checkout.session.completed` webhook and then returns to `success_url`.
-`billing-journey.spec.ts` buys credits this way. The helpers are in
-`fake-stripe.ts`:
+`billing-journey.spec.ts` buys credits this way.
+
+Plans work the same way. The fake sells Pro and Max at its own prices
+(`scripted_model/scripted_model/fake_stripe/catalog.json`), and the hosted
+configuration builds the platform's price flag from that file.
+**Subscribe** starts the subscription and pays its first invoice, the billing
+portal's **Cancel plan** sets it to cancel at the period's end, and the
+journey ends a period with `endSubscriptionPeriod`.
+`subscription-journey.spec.ts` buys Pro, cancels or resumes it, and lets the
+period end. The helpers are in `fake-stripe.ts`:
 
 - `checkoutSessionID` reads the session from the checkout page's URL.
 - `holdWebhooks` keeps the payment's webhook until `deliverEvent` sends it,
@@ -227,6 +240,12 @@ app opens the fake's checkout page, **Pay** sends the platform a signed
 - `unservedStripeRequests` lists Stripe calls the fake doesn't model since a
   `stripeRequestCursor` the journey took when it started; a journey that buys
   something checks it's empty.
+- `customerStripeEvents` lists every event about a customer's objects, to
+  check the platform acknowledged each one; an event the platform's own API
+  call raised arrives a moment after that call's answer.
+- `stripeObject` reads an object as the fake holds it (a subscription's
+  period, an invoice's number), and `endSubscriptionPeriod` ends a
+  subscription's period now: it renews, or ends if it was set to cancel.
 
 They skip against a deployed app, whose Stripe is real (test mode on
 previews).
@@ -332,7 +351,13 @@ allows. Flag values live in `hosted-flags.json`, read by both sides:
 
 - **Backend:** `.github/scripts/hosted_journeys_env.py` turns them into
   `FORCE_FLAG_<NAME>` lines in `backend/.env`, plus `ENABLE_CREDIT=true`
-  and `ENABLE_PLATFORM_PAYMENT=true`.
+  and `ENABLE_PLATFORM_PAYMENT=true`. It also sets the one JSON flag the
+  stack needs, which only the backend reads: `copilot-tier-stripe-prices`,
+  built from the fake Stripe's catalogue. `FORCE_FLAG_<NAME>` holding a JSON
+  object or array sets a JSON-valued flag (`_NON_BOOLEAN_FLAG_VALUES` in
+  `backend/util/feature_flag/__init__.py`), and the backend logs a warning
+  naming the variable the first time it reads one.
+  `NEXT_PUBLIC_FORCE_FLAG_<NAME>` never sets a JSON-valued flag.
 - **Frontend:** the fixtures write them to local storage before the app
   loads, and a `NEXT_PUBLIC_PW_TEST=true` build serves them
   (`services/feature-flags/pw-flag-overrides.ts`). That lets both legs share
@@ -343,10 +368,10 @@ Differences from hosted that are still open:
 
 | Area               | Journeys leg                                                                                                                                                                                                                              | Hosted                                                                         |
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Payments           | `ENABLE_PLATFORM_PAYMENT` **on**; journey users get a paid tier without Stripe. Credit top-ups go through the fake Stripe's checkout and webhooks; plan checkout and trials go untested, since their prices come from a PostHog JSON flag | On, with Stripe: NO_TIER users get a 402 until they subscribe or start a trial |
+| Payments           | `ENABLE_PLATFORM_PAYMENT` **on**; most journey users get a paid tier without Stripe. Plans and credit top-ups go through the fake Stripe's checkout, billing portal and webhooks; trials and paid plan changes (Pro to Max) stay untested | On, with Stripe: NO_TIER users get a 402 until they subscribe or start a trial |
 | Node execution fee | 1 credit per node (`EXECUTION_COST_COUNT_THRESHOLD=1`), so a run's cost is visible                                                                                                                                                        | 1 credit per 100 node executions                                               |
 | Copilot            | The scripted model: the real engine (Claude Agent SDK), tools, persistence, streaming and cost, with scripted model turns. Memory (Graphiti) calls fail, so turns run without memory                                                      | Real models                                                                    |
-| Flag source        | Fixed values from `hosted-flags.json`; JSON flags (model routing, tier limits) at code defaults                                                                                                                                           | PostHog with targeting                                                         |
+| Flag source        | Fixed values from `hosted-flags.json`; plan prices from the fake Stripe's catalogue; other JSON flags (model routing, tier limits) at code defaults                                                                                       | PostHog with targeting                                                         |
 | `BEHAVE_AS`        | `LOCAL` on both sides; the frontend's is build time                                                                                                                                                                                       | `CLOUD`                                                                        |
 | Pods               | One `executor`, one `copilot_executor`                                                                                                                                                                                                    | Many                                                                           |
 | Frontend runtime   | Next.js standalone server in Docker                                                                                                                                                                                                       | Vercel (body size limits, edge routing)                                        |
