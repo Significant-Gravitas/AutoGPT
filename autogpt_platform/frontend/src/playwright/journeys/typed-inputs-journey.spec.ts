@@ -431,7 +431,7 @@ async function startWithDecimal(page: Page, agent: Agent, dialog: Locator) {
   if (!started.ok()) {
     return (await showsText(everywhere, DECIMAL_REFUSED))
       ? "refused as the task started"
-      : `refused with a ${started.status()}, and nothing says why`;
+      : `the task returned ${started.status()}, and nothing says why`;
   }
   const { id: runID } = (await started.json()) as { id: string };
   const run = await waitForRunToEnd(page, agent, runID);
