@@ -194,13 +194,7 @@ def nginx_problems(nginx_conf: str, upstream_servers: dict) -> list:
     """The hops in front of nginx and behind it that close in the wrong order."""
     http = next(d for d in parse_nginx(nginx_conf) if d.name == "http")
     problems = []
-    timeouts = [d for d in _walk(http.block) if d.name == "keepalive_timeout"]
-    if not any(d in http.block for d in timeouts):
-        timeouts.append(
-            Directive("keepalive_timeout", [str(NGINX_DEFAULT_SECONDS)], None)
-        )
-    for directive in timeouts:
-        seconds = nginx_seconds(directive.args[0])
+    for seconds in client_idle_timeouts(http):
         if seconds:  # 0 turns keep-alive off: nothing idles
             problems += closes_first(
                 "The single-container image's nginx",
@@ -236,10 +230,30 @@ def nginx_problems(nginx_conf: str, upstream_servers: dict) -> list:
     return problems
 
 
+def client_idle_timeouts(http: Directive) -> list:
+    """How long nginx keeps idle client connections, for each place it can differ.
+
+    Each server block uses its own keepalive_timeout, or else the http block's,
+    or else nginx's default; a location can set its own as well.
+    """
+    inherited = _scoped_timeout(http.block, NGINX_DEFAULT_SECONDS)
+    timeouts = []
+    for server in (d for d in http.block if d.name == "server"):
+        timeouts.append(_scoped_timeout(server.block, inherited))
+        nested = [d for child in server.block for d in _walk(child.block or [])]
+        timeouts += [
+            nginx_seconds(d.args[0]) for d in nested if d.name == "keepalive_timeout"
+        ]
+    return timeouts or [inherited]
+
+
+def _scoped_timeout(block: list, inherited: float) -> float:
+    own = [d for d in block if d.name == "keepalive_timeout"]
+    return nginx_seconds(own[-1].args[0]) if own else inherited
+
+
 def _walk(directives: list):
     for directive in directives:
-        if directive.name == "upstream":
-            continue
         yield directive
         yield from _walk(directive.block or [])
 
@@ -432,6 +446,20 @@ class ReaderTest(unittest.TestCase):
         self.assertEqual(
             published_services(services), {"public", "ephemeral", "long_syntax"}
         )
+
+    def test_reads_each_server_blocks_own_client_timeout(self):
+        long = KeepAlive(620, "x")
+        servers = {"app": long, "ws": long}
+        conf = self.CONF.replace("keepalive_timeout %s;", "") % "keepalive_timeout 60s;"
+        scoped = conf.replace("server {", "server { keepalive_timeout 620s;")
+        self.assertEqual(nginx_problems(scoped, servers), [])
+        inherits = nginx_problems(conf, servers)
+        self.assertEqual(len(inherits), 1, inherits)
+        self.assertIn(f"after {NGINX_DEFAULT_SECONDS} s", inherits[0])
+        location = scoped.replace(
+            "location = /x {", "location = /x { keepalive_timeout 65;"
+        )
+        self.assertIn("after 65 s", nginx_problems(location, servers)[0])
 
     def test_flags_an_upstream_it_does_not_know(self):
         conf = self.CONF % ("620s", "keepalive_timeout 60s;")
