@@ -45,9 +45,9 @@ from .streaming import held_chunk, text_chunks
 
 MARKER = re.compile(r"\[\[script:([a-z0-9][a-z0-9-]*)(?:#([A-Za-z0-9_.-]+))?\]\]")
 
-# A block the platform adds to a user message, e.g. <memory_context>...
-# </memory_context>, with whatever it nests.
-TAGGED_BLOCK = re.compile(r"<([A-Za-z][\w-]*)(?:\s[^>]*)?>.*?</\1>", re.DOTALL)
+# An opening or closing tag of the blocks the platform adds to a user
+# message, e.g. <memory_context> and </memory_context>.
+TAG = re.compile(r"<(/?)([A-Za-z][\w-]*)(?:\s[^>]*)?>")
 
 DEFAULT_TITLE = "Scripted chat"
 
@@ -131,10 +131,42 @@ def find_marker(text: str) -> Marker | None:
 def typed_marker(text: str) -> Marker | None:
     """The newest marker in the user's own words in ``text``: the last one
     outside the tagged blocks the platform adds."""
-    matches = list(MARKER.finditer(TAGGED_BLOCK.sub("", text)))
+    matches = list(MARKER.finditer(own_words(text)))
     if not matches:
         return None
     return Marker(script=matches[-1].group(1), nonce=matches[-1].group(2))
+
+
+def own_words(text: str) -> str:
+    """``text`` without its tagged blocks. Each closed block goes whole, with
+    whatever it nests: a recalled message can hold the very tag that recalls
+    it. A tag that never closes stays, as text."""
+    blocks: list[tuple[int, int]] = []
+    open_tags: list[tuple[str, int]] = []
+    for tag in TAG.finditer(text):
+        closing, name = tag.group(1), tag.group(2)
+        if not closing:
+            open_tags.append((name, tag.start()))
+            continue
+        # It closes the innermost open block of its name, and any block left
+        # open inside that one; a closing tag with none open is text.
+        depth = next(
+            (i for i in reversed(range(len(open_tags))) if open_tags[i][0] == name),
+            None,
+        )
+        if depth is None:
+            continue
+        start = open_tags[depth][1]
+        del open_tags[depth:]
+        while blocks and blocks[-1][0] >= start:
+            blocks.pop()
+        blocks.append((start, tag.end()))
+    kept, last = [], 0
+    for start, end in blocks:
+        kept.append(text[last:start])
+        last = end
+    kept.append(text[last:])
+    return "".join(kept)
 
 
 def load_script(scripts_dir: Path, name: str) -> Script:

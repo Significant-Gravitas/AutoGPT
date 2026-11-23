@@ -33,7 +33,7 @@ from scripted_model.journal import fingerprint
 from scripted_model.planner import Reply
 from scripted_model.responses import ResponseError
 from scripted_model.responses import response as structured_response
-from scripted_model.scripts import ScriptError, Usage, parse_script
+from scripted_model.scripts import ScriptError, Usage, parse_script, typed_marker
 
 from backend.copilot.graphiti.llm_client import GraphitiOpenAIClient
 
@@ -664,6 +664,35 @@ def test_a_marker_the_platform_quotes_into_a_message_does_not_count(scripted_mod
         ("quick", 1)
     ]
     assert scripted_model.journal(nonce="other") == []
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # A recalled message holding the very tag that recalls it.
+        (
+            "[[script:quick]] <memory_context><memory_context>quoted"
+            "</memory_context> [[script:other]]</memory_context>",
+            "quick",
+        ),
+        # Blocks side by side, and one inside a block of another name.
+        (
+            "[[script:quick]] <memory_context>[[script:a]]</memory_context> "
+            "<session_context><memory_context>[[script:b]]</memory_context> "
+            "[[script:c]]</session_context>",
+            "quick",
+        ),
+        # Typed after a block, the user's marker is still the newest.
+        ("<memory_context>[[script:a]]</memory_context> [[script:quick]]", "quick"),
+        # A tag that never closes is text, and so is a stray closing tag.
+        ("[[script:a]] <memory_context> [[script:quick]]", "quick"),
+        ("[[script:a]] </memory_context> [[script:quick]]", "quick"),
+        ("<memory_context>[[script:a]]</memory_context>", None),
+    ],
+)
+def test_a_marker_counts_only_outside_the_platform_s_tagged_blocks(text, expected):
+    marker = typed_marker(text)
+    assert (marker.script if marker else None) == expected
 
 
 def test_a_request_the_script_cannot_answer_fails_with_the_reason(scripted_model):
