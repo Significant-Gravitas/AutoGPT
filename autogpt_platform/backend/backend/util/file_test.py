@@ -11,6 +11,7 @@ from backend.data.execution import ExecutionContext
 from backend.data.workspace_scope import WorkspaceAccessDeniedError, WorkspaceScope
 from backend.util import file as file_module
 from backend.util.file import (
+    decode_data_uri,
     get_exec_file_path,
     is_media_file_ref,
     parse_data_uri,
@@ -374,6 +375,29 @@ class TestParseDataUri:
         result = parse_data_uri("data:image/png;base64,")
         assert result is not None
         assert result[1] == ""
+
+
+class TestDecodeDataUri:
+    def test_plain_percent_encoded_and_default_mime(self):
+        assert decode_data_uri("data:,Hello%20World%21") == (
+            "text/plain",
+            b"Hello World!",
+        )
+        assert decode_data_uri("data:text/csv,a%2Cb%0A1%2C2") == (
+            "text/csv",
+            b"a,b\n1,2",
+        )
+
+    def test_base64_with_parameters_and_missing_mime(self):
+        assert decode_data_uri("data:text/plain;charset=utf-8;base64,SGVsbG8=") == (
+            "text/plain",
+            b"Hello",
+        )
+        assert decode_data_uri("data:;base64,SGVsbG8=") == ("text/plain", b"Hello")
+
+    def test_invalid_returns_none(self):
+        assert decode_data_uri("https://example.com") is None
+        assert decode_data_uri("data:text/plain") is None
 
 
 # ---------------------------------------------------------------------------

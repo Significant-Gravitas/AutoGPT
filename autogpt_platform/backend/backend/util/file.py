@@ -10,7 +10,7 @@ from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Literal
-from urllib.parse import urlparse
+from urllib.parse import unquote_to_bytes, urlparse
 
 from pydantic import BaseModel
 
@@ -374,18 +374,17 @@ async def store_media_file(
     # Process file
     elif file.startswith("data:"):
         # Data URI
-        parsed_uri = parse_data_uri(file)
-        if parsed_uri is None:
+        decoded = decode_data_uri(file)
+        if decoded is None:
             raise ValueError(
                 "Invalid data URI format. Expected data:<mime>;base64,<data>"
             )
-        mime_type, b64_content = parsed_uri
+        mime_type, content = decoded
 
-        # Generate filename and decode
+        # Generate filename
         extension = _extension_from_mime(mime_type)
         filename = f"{uuid.uuid4()}{extension}"
         target_path = _new_copy_path(filename)
-        content = base64.b64decode(b64_content)
 
         # Check file size limit
         if len(content) > MAX_FILE_SIZE_BYTES:
@@ -585,13 +584,32 @@ def parse_data_uri(value: str) -> tuple[str, str] | None:
     return match.group(1).strip().lower(), match.group(2).strip()
 
 
+def decode_data_uri(value: str) -> tuple[str, bytes] | None:
+    """Decode an RFC 2397 ``data:`` URI into ``(mime_type, content_bytes)``.
+
+    Per RFC 2397 the payload is percent-encoded, and base64-decoded when
+    ``;base64`` ends the header; a URI without an explicit media type defaults
+    to ``text/plain``. Returns ``None`` if *value* is not a ``data:`` URI.
+    """
+    if not value.startswith("data:"):
+        return None
+    header, sep, data = value.removeprefix("data:").partition(",")
+    if not sep:
+        return None
+    mime_type, *parameters = header.split(";")
+    content = unquote_to_bytes(data)
+    if parameters and parameters[-1].strip().lower() == "base64":
+        content = base64.b64decode(content)
+    return mime_type.strip().lower() or "text/plain", content
+
+
 def get_mime_type(file: str) -> str:
     """
     Get the MIME type of a file, whether it's a data URI, URL, or local path.
     """
     if file.startswith("data:"):
-        parsed_uri = parse_data_uri(file)
-        return parsed_uri[0] if parsed_uri else "application/octet-stream"
+        decoded = decode_data_uri(file)
+        return decoded[0] if decoded else "application/octet-stream"
 
     elif file.startswith(("http://", "https://")):
         parsed_url = urlparse(file)

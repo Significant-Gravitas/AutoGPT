@@ -1,10 +1,9 @@
-import base64
 import io
 import mimetypes
 from enum import Enum
 from pathlib import Path
 from typing import Any, Literal, cast
-from urllib.parse import unquote_to_bytes, urlparse
+from urllib.parse import urlparse
 
 import discord
 from pydantic import SecretStr
@@ -19,9 +18,15 @@ from backend.blocks._base import (
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import APIKeyCredentials, SchemaField
-from backend.util.file import get_exec_file_path, store_media_file
+from backend.util.file import (
+    MAX_FILE_SIZE_BYTES,
+    decode_data_uri,
+    get_exec_file_path,
+    store_media_file,
+)
 from backend.util.request import Requests
 from backend.util.type import MediaFileType
+from backend.util.virus_scanner import scan_content_safe
 
 from ._auth import (
     TEST_BOT_CREDENTIALS,
@@ -757,12 +762,23 @@ class SendDiscordFileBlock(Block):
                 detected_filename = filename
 
                 if file.startswith("data:"):
-                    mime_type, file_bytes = _decode_data_uri(file)
+                    decoded = decode_data_uri(file)
+                    if decoded is None:
+                        raise ValueError("Invalid data URI format")
+                    mime_type, file_bytes = decoded
 
                     # Suggest a filename from the MIME type if not provided
                     if not filename:
                         ext = mimetypes.guess_extension(mime_type) or ".bin"
                         detected_filename = f"file{ext}"
+
+                    if len(file_bytes) > MAX_FILE_SIZE_BYTES:
+                        raise ValueError(
+                            f"File too large: {len(file_bytes)} bytes > {MAX_FILE_SIZE_BYTES} bytes"
+                        )
+                    await scan_content_safe(
+                        file_bytes, filename=detected_filename or "file"
+                    )
 
                 elif file.startswith(("http://", "https://")):
                     # URL - download the file
@@ -773,6 +789,14 @@ class SendDiscordFileBlock(Block):
                     if not filename:
                         path = urlparse(file).path
                         detected_filename = Path(path).name or "download"
+
+                    if len(file_bytes) > MAX_FILE_SIZE_BYTES:
+                        raise ValueError(
+                            f"File too large: {len(file_bytes)} bytes > {MAX_FILE_SIZE_BYTES} bytes"
+                        )
+                    await scan_content_safe(
+                        file_bytes, filename=detected_filename or "download"
+                    )
                 else:
                     # A workspace://, cloud or local file. store_media_file
                     # names its local copy after the file itself, which a
@@ -857,20 +881,6 @@ class SendDiscordFileBlock(Block):
             raise ValueError(f"Login error occurred: {login_err}")
         except Exception as e:
             raise ValueError(f"An error occurred: {e}")
-
-
-def _decode_data_uri(data_uri: str) -> tuple[str, bytes]:
-    """The MIME type and the bytes of a ``data:`` URI.
-
-    Per RFC 2397 the data is percent-encoded, and base64 under that when
-    ``;base64`` ends the header; a URI that names no MIME type holds text/plain.
-    """
-    header, _, data = data_uri.removeprefix("data:").partition(",")
-    mime_type, *parameters = header.split(";")
-    content = unquote_to_bytes(data)
-    if parameters and parameters[-1].strip().lower() == "base64":
-        content = base64.b64decode(content)
-    return mime_type.strip().lower() or "text/plain", content
 
 
 class ReplyToDiscordMessageBlock(Block):

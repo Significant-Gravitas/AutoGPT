@@ -15,8 +15,10 @@ from backend.blocks.discord.bot_blocks import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     ReadDiscordMessagesBlock,
+    SendDiscordFileBlock,
     SendDiscordMessageBlock,
 )
+from backend.data.execution import ExecutionContext
 from backend.util.request import Requests
 
 
@@ -279,3 +281,62 @@ async def _read_message_with_attachment(
     finally:
         await runner.cleanup()
     return dict(outputs)["message_content"]
+
+
+@pytest.mark.asyncio
+async def test_send_discord_file_scans_data_uri_and_url_and_caps_data_uri(mocker):
+    channel = MagicMock()
+    channel.send = AsyncMock(return_value=SimpleNamespace(id=99))
+    mocker.patch(
+        "backend.blocks.discord.bot_blocks.discord.Client",
+        side_effect=lambda **kw: _FakeClient(channel=channel, **kw),
+    )
+    scan_mock = mocker.patch(
+        "backend.blocks.discord.bot_blocks.scan_content_safe",
+        new_callable=AsyncMock,
+    )
+    req_instance = MagicMock()
+    req_instance.get = AsyncMock(return_value=SimpleNamespace(content=b"url-bytes"))
+    mocker.patch(
+        "backend.blocks.discord.bot_blocks.Requests",
+        return_value=req_instance,
+    )
+
+    block = SendDiscordFileBlock()
+    ctx = ExecutionContext(user_id="u1", graph_exec_id="g1")
+
+    res_data = await block.send_file(
+        token="tok",
+        channel_identifier="123",
+        server_name=None,
+        file="data:text/plain;charset=utf-8;base64,SGVsbG8=",
+        filename="",
+        message_content="",
+        execution_context=ctx,
+    )
+    assert res_data["status"] == "File sent successfully"
+    scan_mock.assert_awaited_with(b"Hello", filename="file.txt")
+
+    res_url = await block.send_file(
+        token="tok",
+        channel_identifier="123",
+        server_name=None,
+        file="https://example.com/report.csv",
+        filename="",
+        message_content="",
+        execution_context=ctx,
+    )
+    assert res_url["status"] == "File sent successfully"
+    scan_mock.assert_awaited_with(b"url-bytes", filename="report.csv")
+
+    mocker.patch("backend.blocks.discord.bot_blocks.MAX_FILE_SIZE_BYTES", 4)
+    res_big = await block.send_file(
+        token="tok",
+        channel_identifier="123",
+        server_name=None,
+        file="data:text/plain,hello",
+        filename="",
+        message_content="",
+        execution_context=ctx,
+    )
+    assert "File too large" in res_big["status"]
