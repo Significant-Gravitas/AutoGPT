@@ -759,6 +759,22 @@ jobs:
             exit 1
           }
 
+      # TEMPORARY evidence for #17298, reverted before merge: what the
+      # frontend container sends outside the stack while the tests run.
+      - name: Diagnostics - Watch the frontend's traffic outside the stack
+        run: |
+          mkdir -p /tmp/egress
+          frontend=$(docker compose -f ../docker-compose.resolved.yml ps -q frontend)
+          pid=$(docker inspect -f '{{.State.Pid}}' "$frontend")
+          sudo nohup nsenter -t "$pid" -n python3 \
+            "$GITHUB_WORKSPACE/.github/scripts/frontend_egress_sniffer.py" \
+            eth0 /tmp/egress/summary.json /tmp/egress/stop \
+            > /tmp/egress/sniffer.log 2>&1 < /dev/null &
+          timeout 30 sh -c 'until [ -f /tmp/egress/sniffer.ready ]; do sleep 0.5; done' || {
+            echo "::warning title=egress-diagnostic::the sniffer did not start"
+            cat /tmp/egress/sniffer.log
+          }
+
       # On a fresh database, parallel logins can each create a signing key.
       # Publish one first, before PyJWT's refresh cooldown caches a partial set.
       - name: Set up Platform - Initialize auth signing keys
@@ -794,6 +810,42 @@ jobs:
           # Payments are on in the hosted leg; journey users get a paid tier
           # without Stripe (src/playwright/journeys/subscription-tier.ts).
           PLAYWRIGHT_JOURNEY_TIER: ${{ matrix.hosted && 'PRO' || '' }}
+
+      # TEMPORARY evidence for #17298, reverted before merge.
+      - name: Diagnostics - Report the frontend's traffic outside the stack
+        if: ${{ !cancelled() && steps.e2e-playwright.outcome != 'skipped' }}
+        continue-on-error: true
+        run: |
+          touch /tmp/egress/stop
+          timeout 30 sh -c 'until [ -f /tmp/egress/summary.json ]; do sleep 0.5; done' || cat /tmp/egress/sniffer.log
+          echo "== The frontend container's traffic outside the private ranges"
+          cat /tmp/egress/summary.json
+          python3 - <<'PY'
+          import json
+
+          summary = json.load(open("/tmp/egress/summary.json"))
+          for host, entry in sorted(summary["hosts"].items()):
+              print(f"::notice title=Frontend egress: {host}::{json.dumps(entry, sort_keys=True)}")
+          if not summary["hosts"]:
+              print("::notice title=Frontend egress::none")
+          PY
+          upstream=$(docker compose -f ../docker-compose.resolved.yml logs --no-color frontend | grep -c 'upstream image' || true)
+          echo "::notice title=Frontend log::${upstream} 'upstream image' line(s)"
+          echo "== Image URLs in the database at the end of the run"
+          docker compose -f ../docker-compose.resolved.yml exec -T db psql -X -U postgres -d postgres -c "
+            SET search_path TO platform;
+            SELECT source,
+              count(*) FILTER (WHERE url ~ '^https?://' AND url !~ '^https?://(localhost|127\.0\.0\.1)([:/]|\$)') AS outside_the_stack,
+              count(*) AS total
+            FROM (
+              SELECT 'StoreListingVersion.imageUrls' AS source, unnest(\"imageUrls\") AS url FROM \"StoreListingVersion\"
+              UNION ALL SELECT 'Profile.avatarUrl', \"avatarUrl\" FROM \"Profile\" WHERE \"avatarUrl\" <> ''
+              UNION ALL SELECT 'LibraryAgent.imageUrl', \"imageUrl\" FROM \"LibraryAgent\" WHERE \"imageUrl\" <> ''
+              UNION ALL SELECT 'Expert.avatarUrl', \"avatarUrl\" FROM \"Expert\" WHERE \"avatarUrl\" <> ''
+              UNION ALL SELECT 'Organization.avatarUrl', \"avatarUrl\" FROM \"Organization\" WHERE \"avatarUrl\" <> ''
+              UNION ALL SELECT 'OrganizationProfile.avatarUrl', \"avatarUrl\" FROM \"OrganizationProfile\" WHERE \"avatarUrl\" <> ''
+              UNION ALL SELECT 'OAuthApplication.logoUrl', \"logoUrl\" FROM \"OAuthApplication\" WHERE \"logoUrl\" <> ''
+            ) urls GROUP BY source ORDER BY source;" || true
 
       - name: Export Next.js build cache from BuildKit
         id: next-build-cache-export
