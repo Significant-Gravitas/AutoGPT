@@ -296,17 +296,12 @@ export function shownOutput(page: Page, name: string) {
     .getByTestId(OUTPUT_VALUE);
 }
 
-/** Text in `scope` matching `pattern` that shows within a few seconds. */
-export function showsText(scope: Locator, pattern: RegExp) {
-  return scope
-    .getByText(pattern)
-    .filter({ visible: true })
-    .first()
-    .waitFor({ timeout: 5_000 })
-    .then(
-      () => true,
-      () => false,
-    );
+/** Whether `locator` shows within `timeout` ms. */
+export function showsWithin(locator: Locator, timeout: number) {
+  return locator.waitFor({ timeout }).then(
+    () => true,
+    () => false,
+  );
 }
 
 export function escapeRegExp(text: string) {
