@@ -7078,8 +7078,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # on paths where the retry loop's own post-loop finalize() already ran,
         # so this is a no-op for those and only kicks in for unhandled errors
         # that bypass the retry-loop handlers entirely.
+        finalize_events: list[StreamBaseResponse] = []
         if not ended_with_stream_error:
-            interrupted.finalize(
+            finalize_events = interrupted.finalize(
                 session,
                 state,
                 display_msg,
@@ -7102,6 +7103,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             e, asyncio.CancelledError
         ) or _is_sdk_disconnect_error(e)
         if not is_cancellation:
+            for ev in finalize_events:
+                yield ev
             # An open pre-query row (emit_pre_query_start already yielded,
             # but the matching emit_pre_query_end/abort_pre_query never ran
             # because the error hit between the two) must be closed here —
