@@ -1,0 +1,399 @@
+import type {
+  Browser,
+  BrowserContext,
+  Locator,
+  Page,
+  Request,
+} from "@playwright/test";
+import { markChangelogSeen } from "../utils/changelog";
+import { serveHostedFlags } from "./fixtures";
+import { type ExpectedResponse, watchForUnexpectedErrors } from "./guard";
+import { authHeaders, type JourneyUser } from "./journey-user";
+import { ROUTE_RULES, type Who } from "./route-table";
+import { JOURNEY_USER_AGENT } from "./user-agent";
+
+// The route crawl's visits. Each page gets a browser context of its own,
+// watched by the journey guard, so everything wrong is put down to the page
+// that did it; the crawl reports every page's problems rather than stopping
+// at the first.
+
+type StorageState = Awaited<ReturnType<BrowserContext["storageState"]>>;
+
+export interface Session {
+  who: Who;
+  /** The signed-in browser's cookies; a visitor has none. */
+  storageState?: StorageState;
+  /** Signs in again for a page that ends the session it is opened with. */
+  user?: JourneyUser;
+}
+
+/** A dynamic route filled in with data the journey has. */
+export interface Sample {
+  path: string;
+  shows?: string;
+  expectedResponses?: ExpectedResponse[];
+}
+
+export interface Visit {
+  route: string;
+  path: string;
+  session: Session;
+  landsOn: string;
+  shows?: string;
+  showsErrorCard: boolean;
+  expectedResponses: ExpectedResponse[];
+  ownSession: boolean;
+}
+
+export interface VisitResult {
+  visit: Visit;
+  problems: string[];
+  ms: number;
+}
+
+export interface CrawlEnv {
+  browser: Browser;
+  baseURL: string | undefined;
+  flagOverrides: Record<string, unknown>;
+}
+
+// Pages loaded at once, each in its own context. The journeys run four
+// workers on a 4-vCPU runner beside the whole stack, so a crawl keeps to two.
+const TABS = 2;
+// No visit starts after this, so a slow runner gets a report of what's left
+// rather than the test's timeout.
+const CRAWL_BUDGET_MS = 60_000;
+const GOTO_TIMEOUT_MS = 30_000;
+const LANDING_TIMEOUT_MS = 20_000;
+// A page's own requests have settled once none has been open for this long.
+const API_QUIET_MS = 750;
+const API_SETTLE_TIMEOUT_MS = 10_000;
+const CONTENT_TIMEOUT_MS = 15_000;
+const SHOWS_TIMEOUT_MS = 10_000;
+const POLL_MS = 150;
+
+export function planVisit(
+  route: string,
+  session: Session,
+  sample?: Sample,
+): Visit {
+  const rule = ROUTE_RULES[route];
+  const path = sample?.path ?? rule?.visit ?? route;
+  const signedIn = session.who !== "visitor";
+  return {
+    route,
+    path,
+    session,
+    landsOn:
+      (signedIn ? rule?.signedInLandsOn : undefined) ??
+      rule?.landsOn ??
+      pathnameOf(path),
+    shows: sample?.shows ?? rule?.shows,
+    showsErrorCard: rule?.showsErrorCard ?? false,
+    expectedResponses: [
+      ...(rule?.expectedResponses ?? []),
+      ...(sample?.expectedResponses ?? []),
+    ],
+    ownSession: rule?.ownSession ?? false,
+  };
+}
+
+/** Visits every page, a few at a time, and returns what each one got wrong. */
+export async function crawl(
+  env: CrawlEnv,
+  visits: Visit[],
+): Promise<VisitResult[]> {
+  const stopStartingAt = Date.now() + CRAWL_BUDGET_MS;
+  const results: VisitResult[] = new Array(visits.length);
+  let next = 0;
+  async function tab() {
+    while (next < visits.length) {
+      const index = next++;
+      const visit = visits[index];
+      results[index] =
+        Date.now() < stopStartingAt
+          ? await visitOnce(env, visit)
+          : {
+              visit,
+              problems: ["not visited: the crawl ran out of time"],
+              ms: 0,
+            };
+    }
+  }
+  await Promise.all(Array.from({ length: TABS }, tab));
+  return results;
+}
+
+/** Each page that didn't load cleanly, with what went wrong on it. */
+export function describeFailures(results: VisitResult[]) {
+  return results
+    .filter((result) => result.problems.length > 0)
+    .map(
+      ({ visit, problems }) =>
+        `${visit.path} (${visit.session.who}):\n` +
+        problems.map((problem) => `  - ${indent(problem)}`).join("\n"),
+    );
+}
+
+/** Each visit's page, whom it was for, how long it took and what it got wrong. */
+export function summarize(results: VisitResult[]) {
+  return results.map(({ visit, problems, ms }) => ({
+    route: visit.route,
+    path: visit.path,
+    who: visit.session.who,
+    ms,
+    problems,
+  }));
+}
+
+async function visitOnce(env: CrawlEnv, visit: Visit): Promise<VisitResult> {
+  const started = Date.now();
+  const context = await env.browser.newContext({
+    baseURL: env.baseURL,
+    bypassCSP: true,
+    userAgent: JOURNEY_USER_AGENT,
+    storageState: visit.session.storageState ?? { cookies: [], origins: [] },
+  });
+  const guard = watchForUnexpectedErrors(context, visit.expectedResponses);
+  const problems: string[] = [];
+  try {
+    await markChangelogSeen(context);
+    await serveHostedFlags(context, env.flagOverrides);
+    const page = await context.newPage();
+    if (visit.ownSession) await signInAgain(page, visit);
+    problems.push(...(await checkPage(page, visit)));
+  } catch (error) {
+    problems.push(`the visit broke off: ${firstLine(error)}`);
+  }
+  try {
+    problems.push(...(await guard.collect()));
+  } finally {
+    await context.close();
+  }
+  return { visit, problems, ms: Date.now() - started };
+}
+
+// What "loads cleanly" means, in order: the document answers, the page ends
+// up where it should, its requests settle, its content shows, and none of
+// the app's error UI does. The guard adds what the browser saw.
+async function checkPage(page: Page, visit: Visit) {
+  const problems: string[] = [];
+  const failedDocuments = recordFailedDocuments(page);
+  const requests = trackAPIRequests(page);
+
+  await page.goto(visit.path, {
+    waitUntil: "domcontentloaded",
+    timeout: GOTO_TIMEOUT_MS,
+  });
+  // Only the URL: an image that never loads would hold back "load".
+  const landed = await page
+    .waitForURL((url) => url.pathname === visit.landsOn, {
+      timeout: LANDING_TIMEOUT_MS,
+      waitUntil: "commit",
+    })
+    .then(
+      () => true,
+      () => false,
+    );
+  if (!landed) {
+    problems.push(
+      `it should end up on ${visit.landsOn}, but it is on ${pathnameOf(page.url())}`,
+    );
+  }
+  await requests.settle();
+
+  const content = await waitForContent(page);
+  if (content !== "ready")
+    problems.push(`its content never showed: ${content}`);
+  if (visit.shows && !(await isShown(page.getByText(visit.shows).first()))) {
+    problems.push(`it doesn't show "${visit.shows}"`);
+  }
+  problems.push(...(await errorUIProblems(page, visit)));
+
+  if (landed && pathnameOf(page.url()) !== visit.landsOn) {
+    problems.push(
+      `it reached ${visit.landsOn}, then moved on to ${pathnameOf(page.url())}`,
+    );
+  }
+  problems.push(...failedDocuments);
+  return problems;
+}
+
+async function signInAgain(page: Page, visit: Visit) {
+  const user = visit.session.user;
+  if (!user) {
+    throw new Error(`${visit.route} needs a session of its own: no user given`);
+  }
+  const response = await page.request.post("/api/auth/sign-in/email", {
+    headers: authHeaders(),
+    data: { email: user.email, password: user.password },
+  });
+  if (!response.ok()) {
+    throw new Error(`signing in again failed: ${response.status()}`);
+  }
+}
+
+// A page or redirect the server answered with an error, such as notFound()'s
+// 404. Each is reported once the visit's checks are done.
+function recordFailedDocuments(page: Page) {
+  const failed: string[] = [];
+  page.on("response", (response) => {
+    const request = response.request();
+    if (!request.isNavigationRequest() || response.status() < 400) return;
+    if (!isMainFrame(page, request)) return;
+    failed.push(
+      `the server answered ${response.status()} for ${pathnameOf(response.url())}`,
+    );
+  });
+  return failed;
+}
+
+function isMainFrame(page: Page, request: Request) {
+  try {
+    return request.frame() === page.mainFrame();
+  } catch {
+    // A service worker's request has no frame.
+    return false;
+  }
+}
+
+// The page's own API calls, so the checks run once its data has arrived (or
+// failed). Streams stay open by design and are left out.
+function trackAPIRequests(page: Page) {
+  const open = new Set<Request>();
+  let lastChange = Date.now();
+  function isTracked(request: Request) {
+    const { pathname } = new URL(request.url());
+    return pathname.startsWith("/api/") && !/\/stream\/?$/.test(pathname);
+  }
+  function close(request: Request) {
+    if (open.delete(request)) lastChange = Date.now();
+  }
+  page.on("request", (request) => {
+    if (!isTracked(request)) return;
+    open.add(request);
+    lastChange = Date.now();
+  });
+  page.on("requestfinished", close);
+  page.on("requestfailed", close);
+  return {
+    // Not a check: a page that polls may never go quiet. It only times them.
+    async settle() {
+      const giveUpAt = Date.now() + API_SETTLE_TIMEOUT_MS;
+      while (Date.now() < giveUpAt) {
+        if (open.size === 0 && Date.now() - lastChange >= API_QUIET_MS) return;
+        await delay(POLL_MS);
+      }
+    },
+  };
+}
+
+async function waitForContent(page: Page) {
+  const giveUpAt = Date.now() + CONTENT_TIMEOUT_MS;
+  let state = await contentState(page);
+  while (state !== "ready" && Date.now() < giveUpAt) {
+    await delay(POLL_MS);
+    state = await contentState(page);
+  }
+  return state;
+}
+
+async function contentState(page: Page) {
+  try {
+    return await page.evaluate(readContentState);
+  } catch (error) {
+    // Mid-navigation the page has no document to read.
+    return `the page couldn't be read (${firstLine(error)})`;
+  }
+}
+
+// Runs in the page, so it uses nothing from this file. "ready" once the page
+// shows text of its own, outside the sidebars and navigation, that isn't a
+// loading message, and no full-page spinner covers it.
+function readContentState() {
+  const notContent =
+    'aside, nav, [data-slot="sidebar"], [data-sidebar="sidebar"], ' +
+    "[data-sonner-toaster], script, style, noscript, template";
+  const visible = {
+    checkOpacity: true,
+    checkVisibilityCSS: true,
+  };
+  const cover = document.querySelector('[data-slot="loading-spinner-cover"]');
+  if (cover && cover.checkVisibility(visible)) return "a full-page spinner";
+  const texts: string[] = [];
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node.textContent?.trim();
+    const parent = node.parentElement;
+    if (!text || !parent || parent.closest(notContent)) continue;
+    if (parent.checkVisibility(visible)) texts.push(text);
+  }
+  const content = texts.join(" ");
+  if (!content) return "no text outside the navigation";
+  if (/^loading\W*$/i.test(content)) return `only "${content}"`;
+  return "ready";
+}
+
+const ERROR_CARD = '[data-slot="error-card"]';
+
+// The app's error UI: the error card (the error boundaries, global-error and
+// the platform's error.tsx all show it, as do pages whose data failed), the
+// root error.tsx, Next's not-found page and its last-resort exception page.
+const ERROR_PAGES: { what: string; find: (page: Page) => Locator }[] = [
+  {
+    what: "the error page",
+    find: (page) => page.getByText("Oops, something went wrong!"),
+  },
+  {
+    what: "the not-found page",
+    find: (page) => page.getByText("This page could not be found."),
+  },
+  {
+    what: "Next.js's exception page",
+    find: (page) =>
+      page.getByText(/Application error: a (client|server)-side exception/),
+  },
+];
+
+async function errorUIProblems(page: Page, visit: Visit) {
+  const problems: string[] = [];
+  const card = page.locator(ERROR_CARD).first();
+  if (visit.showsErrorCard) {
+    if (!(await isShown(card))) problems.push("it doesn't show its error card");
+  } else if (await card.isVisible()) {
+    problems.push(`it shows the error card: ${await textOf(card)}`);
+  }
+  for (const { what, find } of ERROR_PAGES) {
+    if (await find(page).first().isVisible()) problems.push(`it shows ${what}`);
+  }
+  return problems;
+}
+
+function isShown(locator: Locator) {
+  return locator.waitFor({ state: "visible", timeout: SHOWS_TIMEOUT_MS }).then(
+    () => true,
+    () => false,
+  );
+}
+
+async function textOf(locator: Locator) {
+  const text = await locator.innerText().catch(() => "");
+  return JSON.stringify(text.replace(/\s+/g, " ").trim().slice(0, 300));
+}
+
+function pathnameOf(url: string) {
+  return new URL(url, "http://localhost").pathname;
+}
+
+function firstLine(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.split("\n")[0];
+}
+
+function indent(text: string) {
+  return text.replace(/\n/g, "\n    ");
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

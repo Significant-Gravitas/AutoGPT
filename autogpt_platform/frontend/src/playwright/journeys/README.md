@@ -73,6 +73,35 @@ product does what the user expects.
   balance alone. Onboarding rewards (e.g. +100 for a first Library run) land
   mid-journey.
 
+## The route crawl
+
+`route-crawl-journey.spec.ts` opens every page in `src/app` as the person it
+is for, each in a browser context of its own with the guard, and fails with
+each page that didn't load cleanly and why. A page loads cleanly when:
+
+- the server answers it below 400;
+- it ends up where it should;
+- it shows content of its own;
+- no error UI shows: the error card, the error page, or Next's not-found or
+  exception page;
+- the guard sees no failed API call, page error or `console.error`.
+
+The pages are read from `src/app` when the tests are listed, so a new page is
+crawled as soon as it exists. It is crawled signed in, or as an admin under
+`/admin`. Pages for anyone are crawled signed out too.
+
+- **A page that sends the user on, needs query parameters, or is public**
+  gets an entry in `ROUTE_RULES` (`route-table.ts`), with the reason. Say
+  where it lands, what it shows, or which error response it gets by design.
+- **A page with a dynamic segment** (`[id]`) is crawled only with data a test
+  samples (`route-samples.ts`). Until it has one, the crawl annotates it
+  "unsampled route" and doesn't fail. Add the sample, and the route to
+  `DYNAMIC_ROUTES`.
+- **A page with an open bug:** give its entry a `bug` (issue, whom it shows
+  for, what goes wrong, and a pattern matching the problems it causes). It is
+  then crawled in a test of its own, pinned to the bug. Any other problem on
+  the page still fails that test.
+
 ## Run locally
 
 Start a full stack in the journeys configuration, then point Playwright at it.
