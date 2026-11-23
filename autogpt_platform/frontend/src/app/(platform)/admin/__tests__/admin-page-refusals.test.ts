@@ -1,14 +1,21 @@
 import { readdirSync } from "node:fs";
 import path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { getServerSession } from "@/lib/auth/server/getServerSession";
 
 // Every admin page turns away a visitor who is not an admin, on the server,
-// before it returns anything to render. The middleware's check comes first,
-// but it never sees a path ending in an image extension (src/middleware.ts),
-// so the page's own check is the only one a dynamic admin route always gets.
-// Calling each page shows the check runs; reading its source would only show
-// that the check is mentioned.
+// before it returns anything to render. Each page checks for itself and never
+// relies on the middleware's check, whatever paths the middleware's matcher
+// covers. Calling each page shows the check runs; reading its source would
+// only show that the check is mentioned.
 
 class SentAway extends Error {
   constructor(readonly to: string) {
@@ -55,6 +62,14 @@ function filesUnderAdmin(kind: "page" | "route") {
 
 const adminPages = filesUnderAdmin("page");
 
+// The pages that render nothing and only send an admin on, and where to.
+const REDIRECT_ONLY: Record<string, RegExp> = {
+  [path.join("(platform)", "admin", "impersonation", "page.tsx")]:
+    /^\/admin\/users\b/,
+  [path.join("(platform)", "admin", "rate-limits", "page.tsx")]:
+    /^\/admin\/users\b/,
+};
+
 function signedInAs(role: string | null) {
   const session =
     role === null
@@ -72,11 +87,23 @@ function signedInAs(role: string | null) {
   vi.mocked(getServerSession).mockResolvedValue(session as never);
 }
 
+const pages = new Map<string, Page>();
+
+// Importing a page module cold takes a while; do it once, up front, rather
+// than inside the first test's timeout.
+beforeAll(async () => {
+  for (const file of adminPages) {
+    const specifier = path.join(APP_DIR, file);
+    const { default: page } = (await import(/* @vite-ignore */ specifier)) as {
+      default: Page;
+    };
+    pages.set(file, page);
+  }
+}, 120_000);
+
 async function visit(file: string) {
-  const specifier = path.join(APP_DIR, file);
-  const { default: page } = (await import(/* @vite-ignore */ specifier)) as {
-    default: Page;
-  };
+  const page = pages.get(file);
+  if (!page) throw new Error(`${file} wasn't imported`);
   return Promise.resolve()
     .then(() =>
       page({
@@ -87,6 +114,10 @@ async function visit(file: string) {
     .catch((error: unknown) => error);
 }
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 beforeEach(() => {
   // The test-data page answers "not found" off a local stack, to anyone.
   vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
@@ -94,6 +125,12 @@ beforeEach(() => {
 });
 
 describe("admin pages", () => {
+  it("include each redirect-only page", () => {
+    expect(adminPages).toEqual(
+      expect.arrayContaining(Object.keys(REDIRECT_ONLY)),
+    );
+  });
+
   it("are found, the dynamic preview page among them", () => {
     expect(adminPages).toContain(
       path.join(
@@ -129,17 +166,22 @@ describe("admin pages", () => {
       ).toBeInstanceOf(SentAway);
     });
 
-    it("does not turn an admin away as unauthorized", async () => {
+    it("lets an admin in", async () => {
       signedInAs("admin");
 
       const outcome = await visit(file);
 
-      if (outcome instanceof SentAway) {
-        expect(outcome.to).not.toBe("/unauthorized");
-      } else {
-        expect(outcome).not.toBeInstanceOf(Error);
-        expect(outcome).toBeTruthy();
+      const destination = REDIRECT_ONLY[file];
+      if (destination) {
+        expect(outcome).toBeInstanceOf(SentAway);
+        expect((outcome as SentAway).to).toMatch(destination);
+        return;
       }
+      // Sent anywhere, Home included, an admin never sees the page (#17308).
+      expect(outcome, "an admin should get the page itself").not.toBeInstanceOf(
+        Error,
+      );
+      expect(outcome).toBeTruthy();
     });
   });
 });

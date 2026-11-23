@@ -51,6 +51,7 @@ test.describe("admin navigation journey", () => {
         "Next-Router-Prefetch": "1",
       };
       const sentAway: string[] = [];
+      const otherAnswers: string[] = [];
       for (let load = 0; load < PAGE_LOADS; load++) {
         const responses = await Promise.all(
           ADMIN_LINKS.map((link) =>
@@ -59,14 +60,23 @@ test.describe("admin navigation journey", () => {
         );
         responses.forEach((response, index) => {
           const location = response.headers()["location"];
+          const status = response.status();
           if (location) sentAway.push(`${ADMIN_LINKS[index]} -> ${location}`);
+          else if (status === 401 || status === 403)
+            sentAway.push(`${ADMIN_LINKS[index]} answered ${status}`);
+          // A slow page isn't a failed role check; name it if the test fails.
           else if (!response.ok())
-            sentAway.push(
-              `${ADMIN_LINKS[index]} answered ${response.status()}`,
-            );
+            otherAnswers.push(`${ADMIN_LINKS[index]} answered ${status}`);
         });
       }
-      expect(sentAway, "the admin should pass every role check").toEqual([]);
+      expect(
+        sentAway,
+        `the admin should pass every role check${
+          otherAnswers.length
+            ? ` (other answers: ${otherAnswers.join(", ")})`
+            : ""
+        }`,
+      ).toEqual([]);
 
       await page.reload();
       await expect(

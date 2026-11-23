@@ -2,11 +2,14 @@ import {
   getCookieCache,
   getSessionCookie,
   parseCookies,
-  SECURE_COOKIE_PREFIX,
 } from "better-auth/cookies";
 import { constantTimeEqual, makeSignature } from "better-auth/crypto";
 import { NextResponse, type NextRequest } from "next/server";
-import { AUTH_COOKIE_PREFIX, usesSecureCookies } from "./base-url";
+import {
+  AUTH_COOKIE_PREFIX,
+  sessionTokenCookieName,
+  usesSecureCookies,
+} from "./base-url";
 import { IP_ADDRESS_HEADERS } from "./ip-address-headers";
 import { isAdminPage, isProtectedPage } from "./helpers";
 import { canConsumeLegacyCookies } from "./legacy-cookies";
@@ -115,7 +118,7 @@ async function getSignedSessionToken({
   secret,
   isSecure,
 }: SignedCookieArgs) {
-  const name = `${isSecure ? SECURE_COOKIE_PREFIX : ""}${AUTH_COOKIE_PREFIX}.session_token`;
+  const name = sessionTokenCookieName(isSecure);
   const value = parseCookies(cookies.get("cookie") ?? "").get(name);
   const separator = value?.lastIndexOf(".") ?? -1;
   if (!value || separator < 1) return null;
