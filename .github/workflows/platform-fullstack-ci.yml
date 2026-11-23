@@ -830,15 +830,6 @@ jobs:
           ${{ matrix.known_failures && '--allow-known-failures' || '' }}
           test-results/results.json
 
-      # Next.js logs every error it catches on the server with a "⨯". The tests
-      # can pass while it happens (a retried request, a broken image), so any
-      # such line fails the leg.
-      - name: Check the frontend server logged no errors
-        if: ${{ !cancelled() && steps.e2e-playwright.outcome != 'skipped' }}
-        run: |
-          docker compose -f ../docker-compose.resolved.yml logs --no-color --no-log-prefix frontend > "$RUNNER_TEMP/frontend-server.log"
-          python ../../.github/scripts/check_frontend_server_errors.py "$RUNNER_TEMP/frontend-server.log"
-
       # The seed logs and skips some failed inserts (graphs, store, fixtures),
       # so only a dump the whole suite passed on is published. Pull requests
       # only read it.
@@ -907,3 +898,13 @@ jobs:
         with:
           path: /tmp/next-build-cache
           key: ${{ steps.next-build-cache.outputs.cache-primary-key }}
+
+      # Next.js logs every error it catches on the server with a "⨯". The tests
+      # can pass while it happens (a retried request, a broken image), so any
+      # such line fails the leg. It runs last: steps without a status check in
+      # their `if` (the GHCR push, the cache-export wait) skip after any failure.
+      - name: Check the frontend server logged no errors
+        if: ${{ !cancelled() && steps.e2e-playwright.outcome != 'skipped' }}
+        run: |
+          docker compose -f ../docker-compose.resolved.yml logs --no-color --no-log-prefix frontend > "$RUNNER_TEMP/frontend-server.log"
+          python ../../.github/scripts/check_frontend_server_errors.py "$RUNNER_TEMP/frontend-server.log"
