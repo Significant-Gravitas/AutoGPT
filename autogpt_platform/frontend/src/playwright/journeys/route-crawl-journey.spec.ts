@@ -53,31 +53,32 @@ const ISSUES = "https://github.com/Significant-Gravitas/AutoGPT/issues";
 // No setup link looks like this: the page's state for a lapsed one.
 const UNKNOWN_LINK_TOKEN = "route-crawl-unknown-link";
 
-const STATIC_ROUTES = listAppRoutes().filter((route) => !isDynamic(route));
-const DYNAMIC = listAppRoutes().filter(isDynamic);
+const ROUTES = listAppRoutes();
+const STATIC_ROUTES = ROUTES.filter((route) => !isDynamic(route));
+const DYNAMIC = ROUTES.filter(isDynamic);
 
-// A page pinned to an open bug is crawled in its own test, as whom the bug
-// shows for, and left out of its group.
-function crawledInGroup(route: string, who: Who) {
-  const bug = ROUTE_RULES[route]?.bug;
-  return !bug || bug.who !== who;
+// A page pinned to an open bug is crawled only in its own test, as whom the
+// bug shows for: its group would fail on the bug, or now and then on it.
+function crawledInGroup(route: string) {
+  return !ROUTE_RULES[route]?.bug;
 }
 
 const PUBLIC_PAGES = STATIC_ROUTES.filter(
-  (route) => accessOf(route) === "public" && crawledInGroup(route, "visitor"),
+  (route) => accessOf(route) === "public" && crawledInGroup(route),
 );
 const SIGNED_IN_SLICES = slices(
   STATIC_ROUTES.filter(
-    (route) => accessOf(route) !== "admin" && crawledInGroup(route, "user"),
+    (route) => accessOf(route) !== "admin" && crawledInGroup(route),
   ),
 );
 const ADMIN_PAGES = STATIC_ROUTES.filter(
-  (route) => accessOf(route) === "admin" && crawledInGroup(route, "admin"),
+  (route) => accessOf(route) === "admin" && crawledInGroup(route),
 );
-const PINNED = STATIC_ROUTES.flatMap((route) => {
+const PINNED = ROUTES.flatMap((route) => {
   const bug = ROUTE_RULES[route]?.bug;
   return bug ? [{ route, bug }] : [];
 });
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Dynamic routes nothing here samples: a page added later lands here, with
 // an annotation, until it gets a sample.
@@ -145,7 +146,7 @@ test.describe("route crawl journey", () => {
     });
   });
 
-  test("the Marketplace's listing, creator, expert and skill pages load, signed out and signed in", async ({
+  test("the Marketplace's pages for one listing's creator and an expert load, signed out and signed in", async ({
     browser,
     baseURL,
     flagOverrides,
@@ -160,10 +161,12 @@ test.describe("route crawl journey", () => {
     await expectAllClean(
       await crawl(
         env,
-        samples.flatMap((sample) => [
-          planVisit(sample.route, visitor, sample),
-          planVisit(sample.route, user, sample),
-        ]),
+        samples
+          .filter((sample) => crawledInGroup(sample.route))
+          .flatMap((sample) => [
+            planVisit(sample.route, visitor, sample),
+            planVisit(sample.route, user, sample),
+          ]),
       ),
     );
   });
@@ -275,6 +278,11 @@ test.describe("route crawl journey", () => {
         test.skip(Boolean(noAdmin), noAdmin || undefined);
         const env = { browser, baseURL, flagOverrides };
         const reproduce = REPRODUCTIONS[route];
+        if (!reproduce && isDynamic(route)) {
+          throw new Error(
+            `${route} has a dynamic segment: give its pin a visit in REPRODUCTIONS`,
+          );
+        }
         const [result] = reproduce
           ? await reproduce(env, page)
           : await crawlAs(env, page, bug.who, [route]);
@@ -314,7 +322,29 @@ const REPRODUCTIONS: Record<
         }),
       ]);
     }),
+  // The same for "Last updated" and "Updated" (#17310). Two days ahead
+  // changes what any age reads.
+  "/marketplace/agent/[creator]/[slug]": (env, page) =>
+    visitAheadOfTheServer(env, page, "/marketplace/agent/[creator]/[slug]"),
+  "/marketplace/skills/[slug]": (env, page) =>
+    visitAheadOfTheServer(env, page, "/marketplace/skills/[slug]"),
 };
+
+/** The Marketplace's sample for `route`, opened signed out, the browser's
+ *  clock two days ahead of the server's. */
+async function visitAheadOfTheServer(env: CrawlEnv, page: Page, route: string) {
+  const { samples } = await sampleMarketplace(page);
+  const sample = samples.find((candidate) => candidate.route === route);
+  test.skip(!sample, `nothing on this stack to open at ${route}`);
+  if (!sample) return [];
+  return crawl(env, [
+    planVisit(
+      route,
+      { who: "visitor" },
+      { ...sample, clockAheadMs: 2 * DAY_MS },
+    ),
+  ]);
+}
 
 /** Crawls the pages as `who`, in a session the test makes and ends. */
 async function crawlAs(env: CrawlEnv, page: Page, who: Who, routes: string[]) {

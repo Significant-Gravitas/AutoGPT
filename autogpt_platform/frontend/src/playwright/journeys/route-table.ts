@@ -45,9 +45,14 @@ export interface RouteRule {
   ownSession?: boolean;
   /** Only a local stack serves it; anywhere else it is a 404. */
   localOnly?: boolean;
-  /** An open bug it fails on: crawled in a test of its own, pinned to it. */
+  /** An open bug it fails on. The page is then crawled only in a test of
+   *  its own, pinned to the bug, and left out of its group. */
   bug?: KnownBug;
 }
+
+// What a page shows as "… ago" is worked out on the server and again in the
+// browser; it reads differently when the age crosses a boundary in between.
+const TIME_AGO_MISMATCH = /Minified React error #418\b/;
 
 const MISSING_OAUTH_PARAMETERS = {
   showsErrorCard: true,
@@ -112,13 +117,30 @@ export const ROUTE_RULES: Record<string, RouteRule> = {
     ...MISSING_OAUTH_PARAMETERS,
   },
   "/admin/marketplace": {
-    reason:
-      "its submissions' ages are worked out on the server and again in the browser",
+    reason: "shows how long ago each listing was submitted",
     bug: {
       issue: 17309,
       who: "admin",
       what: "the review page throws React error #418 when a submission's age reads differently in the browser",
-      problem: /Minified React error #418\b/,
+      problem: TIME_AGO_MISMATCH,
+    },
+  },
+  "/marketplace/agent/[creator]/[slug]": {
+    reason: "shows how long ago the listing was updated",
+    bug: {
+      issue: 17310,
+      who: "visitor",
+      what: 'the page throws React error #418 when "Last updated" reads differently in the browser',
+      problem: TIME_AGO_MISMATCH,
+    },
+  },
+  "/marketplace/skills/[slug]": {
+    reason: "shows how long ago the skill was updated",
+    bug: {
+      issue: 17310,
+      who: "visitor",
+      what: 'the page throws React error #418 when "Updated" reads differently in the browser',
+      problem: TIME_AGO_MISMATCH,
     },
   },
   "/admin/impersonation": {

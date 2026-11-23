@@ -101,8 +101,11 @@ a page links to aren't rendered alongside it.
   `DYNAMIC_ROUTES`.
 - **A page with an open bug:** give its entry a `bug` (issue, whom it shows
   for, what goes wrong, and a pattern matching the problems it causes). It is
-  then crawled in a test of its own, pinned to the bug. Any other problem on
-  the page still fails that test.
+  then left out of its group and crawled only in a test of its own, pinned to
+  the bug. Any other problem on the page still fails that test. A bug a plain
+  visit shows only now and then, or a page with a dynamic segment, needs a
+  visit that shows it every time, in the spec's `REPRODUCTIONS`: the
+  hydration bugs open their page with the browser's clock ahead.
 
 ## Run locally
 
