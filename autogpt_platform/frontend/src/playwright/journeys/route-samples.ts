@@ -6,7 +6,6 @@ import {
   hireThroughAPI,
   listTemplates,
   MODEL_TURN_TIMEOUT,
-  waitForSetup,
 } from "./experts";
 import { isLocalStack } from "./journey-user";
 import { ADD_34, createAgent, newListing, submitDirectly } from "./marketplace";
@@ -130,15 +129,15 @@ export async function makeWorkflow(page: Page) {
 
 /**
  * Hires the roster expert with the least to install and nothing scheduled,
- * so no schedule of its fires into later journeys, and waits for its setup.
+ * so no schedule of its fires into later journeys. Wait for its setup
+ * (waitForSetup) inside the scope that lets it go.
  */
 export async function hireAnExpert(page: Page): Promise<Expert | null> {
   const [template] = (await listTemplates(page))
     .filter((t) => !t.workflows.some((workflow) => workflow.schedule_cron))
     .sort((a, b) => a.workflows.length - b.workflows.length);
   if (!template) return null;
-  const hired = await hireThroughAPI(page, template.id);
-  return waitForSetup(page, hired.id);
+  return hireThroughAPI(page, template.id);
 }
 
 /** Lets the expert go, as Team's Let go does. */
@@ -228,7 +227,9 @@ export async function submitAListing(page: Page) {
 
 async function scriptedModelIsUp() {
   if (!isLocalStack()) return false;
-  return fetch(`${SCRIPTED_MODEL_URL}/healthz`)
+  return fetch(`${SCRIPTED_MODEL_URL}/healthz`, {
+    signal: AbortSignal.timeout(3_000),
+  })
     .then((response) => response.ok)
     .catch(() => false);
 }

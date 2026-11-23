@@ -81,18 +81,20 @@ product does what the user expects.
 `route-crawl-journey.spec.ts` opens every page in `src/app` as the person it
 is for, each in a tab of its own watched by the guard on that tab alone
 (`watchPageForUnexpectedErrors`), and fails with each page that didn't load
-cleanly and why. A session's tabs share a browser context, so the app's
-scripts load once per session. The checks run once the page has hydrated:
-its scripts have run, its API calls have gone quiet and the browser is idle.
-A page loads cleanly when:
+cleanly and why. A session's tabs share a browser context. Before checking a
+page, the crawl waits, each wait capped, for its scripts to have run, its API
+calls to go quiet and the browser to go idle. That is a heuristic for
+"hydrated", not proof of it. A page loads cleanly when:
 
 - the server answers it below 400;
 - it ends up where it should;
 - it shows content of its own;
 - no error UI shows: the error card, the error page, or Next's not-found or
   exception page;
-- every image it asks Next's image optimizer for is in `public/` (the crawl
-  answers the others itself, so the server logs no error for them);
+- every image under `public/`'s folders that it asks Next's image optimizer
+  for exists there and is served (the crawl answers a missing one itself, so
+  the server logs no error for it);
+- none of its API requests stays open longer than 15 s;
 - the guard sees no failed API call, page error or `console.error`.
 
 The pages are read from `src/app` when the tests are listed, so a new page is

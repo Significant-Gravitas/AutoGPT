@@ -101,12 +101,31 @@ function startWatching(expected: ExpectedResponse[]) {
         ),
       );
     },
+    // Until nothing is left pending: an error can arrive while an earlier
+    // one is still being described.
     async collect() {
-      return (await Promise.all(pending)).filter(
-        (problem): problem is string => problem !== null,
-      );
+      let settled = 0;
+      const problems: (string | null)[] = [];
+      while (settled < pending.length) {
+        const batch = pending.slice(settled);
+        settled = pending.length;
+        problems.push(...(await Promise.all(batch)));
+      }
+      return problems.filter((problem): problem is string => problem !== null);
     },
   };
+}
+
+// A body that never finishes mustn't hold the guard up: the status, method
+// and URL say enough.
+const BODY_READ_TIMEOUT_MS = 5_000;
+
+function withinBodyReadTimeout<T>(read: Promise<T>, fallback: T) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), BODY_READ_TIMEOUT_MS);
+  });
+  return Promise.race([read, timedOut]).finally(() => clearTimeout(timer));
 }
 
 function isApiResponse(response: Response) {
@@ -157,7 +176,10 @@ async function isMissingActivation(response: Response) {
       "/api/proxy/api/credits/pro-activation/current"
   )
     return false;
-  const body: unknown = await response.json().catch(() => null);
+  const body: unknown = await withinBodyReadTimeout(
+    response.json().catch(() => null),
+    null,
+  );
   return (
     body !== null &&
     typeof body === "object" &&
@@ -168,10 +190,13 @@ async function isMissingActivation(response: Response) {
 }
 
 async function describeResponse(response: Response) {
-  const body = await response
-    .text()
-    .then((text) => text.slice(0, BODY_SNIPPET_LENGTH))
-    .catch(() => "<body unavailable>");
+  const body = await withinBodyReadTimeout(
+    response
+      .text()
+      .then((text) => text.slice(0, BODY_SNIPPET_LENGTH))
+      .catch(() => "<body unavailable>"),
+    "<body still arriving>",
+  );
   return (
     `${response.status()} ${response.request().method()} ${response.url()}\n` +
     `  body: ${body}`

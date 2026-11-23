@@ -18,8 +18,8 @@ import { JOURNEY_USER_AGENT } from "./user-agent";
 // The route crawl's visits. Each page opens in a tab of its own, watched by
 // the journey guard on that tab alone, so everything wrong is put down to the
 // page that did it; the crawl reports every page's problems rather than
-// stopping at the first. A session's tabs share one browser context, so the
-// app's scripts load once per session rather than once per page.
+// stopping at the first. A session's tabs share one browser context, so a
+// test opens two or three contexts rather than one per page.
 
 type StorageState = Awaited<ReturnType<BrowserContext["storageState"]>>;
 
@@ -67,9 +67,10 @@ export interface CrawlEnv {
 // Pages loaded at once. The journeys run four workers on a 4-vCPU runner
 // beside the whole stack, so a crawl keeps to two.
 const TABS = 2;
-// No visit starts after this, so a slow runner gets a report of what's left
-// rather than the test's timeout.
-const CRAWL_BUDGET_MS = 60_000;
+// No visit starts after this, and none runs longer than VISIT_TIMEOUT_MS,
+// so even a slow runner reports every page well inside the test's 90 s.
+const CRAWL_BUDGET_MS = 45_000;
+const VISIT_TIMEOUT_MS = 30_000;
 const GOTO_TIMEOUT_MS = 30_000;
 const LANDING_TIMEOUT_MS = 20_000;
 const LOAD_TIMEOUT_MS = 15_000;
@@ -77,6 +78,7 @@ const IDLE_TIMEOUT_MS = 3_000;
 // A page's own requests have settled once none has been open for this long.
 const API_QUIET_MS = 750;
 const API_SETTLE_TIMEOUT_MS = 10_000;
+const STALLED_REQUEST_MS = 15_000;
 const CONTENT_TIMEOUT_MS = 15_000;
 const SHOWS_TIMEOUT_MS = 10_000;
 const POLL_MS = 150;
@@ -188,13 +190,27 @@ async function visitOnce(
     page = await context.newPage();
     guard = watchPageForUnexpectedErrors(page, visit.expectedResponses);
     if (visit.ownSession) await signInAgain(page, visit);
-    problems.push(...(await checkPage(page, visit)));
+    problems.push(...(await withinVisitTimeout(checkPage(page, visit))));
   } catch (error) {
     problems.push(`the visit broke off: ${firstLine(error)}`);
   }
   if (guard) problems.push(...(await guard.collect()));
   await (ownContext ? context?.close() : page?.close());
   return { visit, problems, ms: Date.now() - started };
+}
+
+async function withinVisitTimeout(checks: Promise<string[]>) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(new Error(`its checks took over ${VISIT_TIMEOUT_MS / 1000} s`)),
+      VISIT_TIMEOUT_MS,
+    );
+  });
+  // Closing the page ends the checks left running.
+  checks.catch(() => {});
+  return Promise.race([checks, timedOut]).finally(() => clearTimeout(timer));
 }
 
 async function openContext(
@@ -229,6 +245,7 @@ async function openContext(
 async function checkPage(page: Page, visit: Visit) {
   const problems: string[] = [];
   const failedDocuments = recordFailedDocuments(page);
+  const failedImages = recordFailedImages(page);
   const requests = trackAPIRequests(page);
 
   await page.goto(visit.path, {
@@ -265,9 +282,14 @@ async function checkPage(page: Page, visit: Visit) {
       `it reached ${visit.landsOn}, then moved on to ${pathnameOf(page.url())}`,
     );
   }
-  problems.push(...failedDocuments);
+  problems.push(...failedDocuments, ...failedImages);
   for (const image of missingImages.get(page) ?? []) {
     problems.push(`it asks for the image ${image}, which public/ doesn't have`);
+  }
+  for (const request of requests.stalled()) {
+    problems.push(
+      `its request ${request} was still open after ${STALLED_REQUEST_MS / 1000} s`,
+    );
   }
   return problems;
 }
@@ -276,8 +298,9 @@ async function checkPage(page: Page, visit: Visit) {
 // what breaks in hydration (a mismatch, an error thrown while rendering) only
 // shows after. So the checks wait for the page's scripts to have run ("load",
 // which async chunks hold back), its API calls to go quiet, and the browser
-// to be idle, React's render work done. None of these waits fails a visit:
-// each is capped, and the checks after them report what's wrong.
+// to be idle. That usually means React's render work is done, but it's a
+// heuristic, not a hydration signal. No wait fails a visit: each is capped,
+// and the checks after them report what's wrong.
 async function settle(
   page: Page,
   requests: ReturnType<typeof trackAPIRequests>,
@@ -387,6 +410,23 @@ function recordFailedDocuments(page: Page) {
   return failed;
 }
 
+// An image public/ has that the optimizer still refused, e.g. at a width it
+// doesn't allow. The browser only logs it, which the guard leaves out.
+function recordFailedImages(page: Page) {
+  const failed: string[] = [];
+  page.on("response", (response) => {
+    if (response.status() < 400) return;
+    const { pathname, searchParams } = new URL(response.url());
+    const image = searchParams.get("url");
+    if (pathname !== "/_next/image" || !image) return;
+    if (!inAPublicFolder(image) || !existsInPublic(image)) return;
+    failed.push(
+      `the image optimizer answered ${response.status()} for ${image}`,
+    );
+  });
+  return failed;
+}
+
 function isMainFrame(page: Page, request: Request) {
   try {
     return request.frame() === page.mainFrame();
@@ -399,7 +439,8 @@ function isMainFrame(page: Page, request: Request) {
 // The page's own API calls, so the checks run once its data has arrived (or
 // failed). Streams stay open by design and are left out.
 function trackAPIRequests(page: Page) {
-  const open = new Set<Request>();
+  // Each open request, and when it started.
+  const open = new Map<Request, number>();
   let lastChange = Date.now();
   function isTracked(request: Request) {
     const { pathname } = new URL(request.url());
@@ -410,7 +451,7 @@ function trackAPIRequests(page: Page) {
   }
   page.on("request", (request) => {
     if (!isTracked(request)) return;
-    open.add(request);
+    open.set(request, Date.now());
     lastChange = Date.now();
   });
   page.on("requestfinished", close);
@@ -423,6 +464,14 @@ function trackAPIRequests(page: Page) {
         if (open.size === 0 && Date.now() - lastChange >= API_QUIET_MS) return;
         await delay(POLL_MS);
       }
+    },
+    /** The requests open longer than STALLED_REQUEST_MS: whatever waits on
+     *  them never got its data, though the page may look loaded. */
+    stalled() {
+      const now = Date.now();
+      return [...open]
+        .filter(([, since]) => now - since > STALLED_REQUEST_MS)
+        .map(([request]) => `${request.method()} ${pathnameOf(request.url())}`);
     },
   };
 }

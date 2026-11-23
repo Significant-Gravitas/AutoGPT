@@ -20,6 +20,7 @@ import {
   summarize,
   type VisitResult,
 } from "./route-crawl";
+import { waitForSetup } from "./experts";
 import {
   hireAnExpert,
   letGo,
@@ -85,8 +86,10 @@ const ADMIN_SLICES = slices(
   ),
 );
 const DAY_MS = 24 * 60 * 60 * 1000;
-// Tries at a pinned bug's visit before its pin counts it as fixed.
+// Tries at a pinned bug's visit before its pin counts it as fixed, started
+// only within RETRY_WINDOW_MS so the last one ends inside the test's 90 s.
 const REPRODUCE_TRIES = 3;
+const RETRY_WINDOW_MS = 40_000;
 
 // Dynamic routes nothing here samples: a page added later lands here, with
 // an annotation, until it gets a sample.
@@ -201,11 +204,9 @@ test.describe("route crawl journey", () => {
     },
     async ({ browser, baseURL, flagOverrides, page, journeyUser }) => {
       const env = { browser, baseURL, flagOverrides };
-      const [workflow, expert] = await Promise.all([
-        makeWorkflow(page),
-        hireAnExpert(page),
-      ]);
-      if (!expert) {
+      const workflow = await makeWorkflow(page);
+      const hired = await hireAnExpert(page);
+      if (!hired) {
         annotateUnsampled([
           {
             route: "/team/[expertId]",
@@ -216,6 +217,7 @@ test.describe("route crawl journey", () => {
       const user = await sessionOf(page, "user", journeyUser);
       let results: VisitResult[];
       try {
+        const expert = hired && (await waitForSetup(page, hired.id));
         results = await crawl(env, [
           planVisit("/library/agents/[id]", user, {
             path: `/library/agents/${workflow.libraryAgentID}`,
@@ -242,7 +244,7 @@ test.describe("route crawl journey", () => {
           }),
         ]);
       } finally {
-        const leftOver = expert ? await letGo(page, expert) : null;
+        const leftOver = hired ? await letGo(page, hired) : null;
         expect.soft(leftOver, "cleaning up the hired expert").toBeNull();
       }
       await expectAllClean(results);
@@ -307,16 +309,20 @@ test.describe("route crawl journey", () => {
         // A visit can miss a timing bug on a busy runner, so it is tried
         // again until the bug shows: the pin then fails every run while the
         // bug is there, and passes every run once it is fixed.
-        const problems: string[] = [];
+        const startedAt = Date.now();
+        const results: VisitResult[] = [];
         for (let tries = 0; tries < REPRODUCE_TRIES; tries++) {
+          if (tries > 0 && Date.now() - startedAt > RETRY_WINDOW_MS) break;
           const [result] = reproduce
             ? await reproduce(env, page)
             : await crawlAs(env, page, who, [route]);
-          problems.push(...result.problems);
+          results.push(result);
           if (result.problems.some((problem) => bug.problem.test(problem))) {
             break;
           }
         }
+        await attachPages(results);
+        const problems = results.flatMap((result) => result.problems);
         // The page's other known bugs have pins of their own, or none can.
         const others = [
           ...KNOWN_BUGS.filter(
@@ -463,11 +469,15 @@ function annotateUnsampled(unsampled: Unsampled[]) {
   }
 }
 
-async function expectAllClean(results: VisitResult[]) {
+async function attachPages(results: VisitResult[]) {
   await test.info().attach("pages.json", {
     body: JSON.stringify(summarize(results), null, 2),
     contentType: "application/json",
   });
+}
+
+async function expectAllClean(results: VisitResult[]) {
+  await attachPages(results);
   const failures = describeFailures(results.map(noteKnownBugs));
   expect(
     failures.length,

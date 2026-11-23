@@ -286,7 +286,8 @@ const PAGE_FILE = /^page\.(tsx|ts|jsx|js|mdx)$/;
 export function listAppRoutes(appDir = APP_DIR): string[] {
   const routes: string[] = [];
   collectPages(appDir, [], routes);
-  return routes.sort();
+  // A slot's page and its parent's are served at one URL.
+  return [...new Set(routes)].sort();
 }
 
 function collectPages(dir: string, segments: string[], routes: string[]) {

@@ -85,6 +85,8 @@ describe("listAppRoutes", () => {
       "(platform)/library/agents/[id]/page.tsx",
       "(group)/(nested)/docs/[[...slug]]/page.mdx",
       "dashboard/@modal/settings/page.tsx",
+      "reports/page.tsx",
+      "reports/@chart/page.tsx",
       "_private/page.tsx",
       "feed/(.)photo/[id]/page.tsx",
       "feed/components/Card.tsx",
@@ -99,6 +101,7 @@ describe("listAppRoutes", () => {
       "/docs/[[...slug]]",
       "/library",
       "/library/agents/[id]",
+      "/reports",
     ]);
   });
 });
