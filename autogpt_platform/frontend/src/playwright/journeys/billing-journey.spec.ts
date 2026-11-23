@@ -19,8 +19,9 @@ const TOP_UP_DOLLARS = 7;
 const TOP_UP = TOP_UP_DOLLARS * 100;
 const CREDITS_PATH = "/api/proxy/api/credits";
 const HISTORY_PATH = "/api/proxy/api/credits/transactions";
-// Page time the refresh check may run while it waits: with the 1 s jump of
-// the pause and the 1 s for the answers, 5 s in all, half the 10 s backup.
+// Page time the refresh check may run while it waits. The clock is paused
+// before the fulfil call answers, so the 10 s backup read is armed on page
+// time the test runs: this budget plus the 1 s for the answers, 4 s at most.
 const REFRESH_CLOCK_BUDGET_MS = 3_000;
 const USD = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -119,7 +120,13 @@ test.describe("billing journey", () => {
       .waitForResponse(isBalanceRead, { timeout: 15_000 })
       .catch(() => null);
     await page.route(`**${CREDITS_PATH}`, async (route) => {
-      if (route.request().method() === "PATCH") await balanceRead;
+      if (route.request().method() === "PATCH") {
+        await balanceRead;
+        // Freeze the page's clock before its fulfil call answers. The page
+        // handles the answer, and arms its 10 s backup read, only as this
+        // test runs the clock, so time the test doesn't run never counts.
+        await page.clock.pauseAt(Date.now() + 1_000);
+      }
       await route.fallback();
     });
     let completed: StripeEvent;
@@ -128,14 +135,13 @@ test.describe("billing journey", () => {
       const fulfilled = page.waitForResponse(isFulfilment);
       // Once its fulfil call is done, the page reads the credits again
       // (#17269), and a second time 10 s later for a webhook still on its
-      // way. On the page's own clock, paused as the call answers, that
+      // way. On the page's own clock, paused before the call answers, that
       // second read can never stand in for the first.
       await page.clock.install();
       await payAndReturn(page);
       expect((await fulfilled).ok(), "PATCH credits from the return page").toBe(
         true,
       );
-      await page.clock.pauseAt(Date.now() + 1_000);
       // The wait's timeout still lets the call go, but without the read
       // first this test proves nothing about the page, so it fails here.
       const read = await balanceRead;
@@ -143,11 +149,10 @@ test.describe("billing journey", () => {
         read?.ok(),
         "the return page should have read the balance before its fulfil call",
       ).toBe(true);
-      // Playwright sees the fulfil answer before the page has handled it, so
-      // the page can schedule its reads after the pause, on timers that a
-      // paused clock never fires. Run its clock a tenth of a second at a time
-      // while waiting, and never more than REFRESH_CLOCK_BUDGET_MS in all, far
-      // short of the 10 s read, which therefore can't stand in for the first.
+      // The page handles the answer on timers, which the paused clock fires
+      // only when run. Run it a tenth of a second at a time while waiting,
+      // and never more than REFRESH_CLOCK_BUDGET_MS in all, far short of the
+      // 10 s read, which therefore can't stand in for the first.
       let clockRun = 0;
       await expect
         .poll(
