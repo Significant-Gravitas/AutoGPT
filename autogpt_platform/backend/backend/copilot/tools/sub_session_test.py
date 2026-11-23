@@ -25,6 +25,7 @@ from backend.copilot.model import ChatMessage
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
+from backend.copilot.tools import execute_tool
 from backend.data.workspace import WorkspaceFile
 
 from .get_sub_session_result import GetSubSessionResultTool
@@ -808,9 +809,19 @@ class TestGetSubSessionResult:
         assert r.sub_session_id == "inner-7"
         mock_waiter.result_mock.assert_awaited_once()
 
+    @pytest.mark.parametrize(
+        "sub_session_id, alias, expected",
+        [
+            ("", " inner-7 ", "inner-7"),
+            # A blank sub_session_id doesn't hide a valid alias.
+            ("   ", "inner-7", "inner-7"),
+            # Given both, sub_session_id wins.
+            ("inner-7", "inner-other", "inner-7"),
+        ],
+    )
     @pytest.mark.asyncio
     async def test_the_sub_can_be_named_the_way_run_sub_session_returns_it(
-        self, monkeypatch, mock_waiter
+        self, monkeypatch, mock_waiter, sub_session_id, alias, expected
     ):
         """#17260: run_sub_session hands the id back as sub_autopilot_session_id,
         and the description says that name works here too, so a model copying
@@ -838,13 +849,57 @@ class TestGetSubSessionResult:
         r = await GetSubSessionResultTool()._execute(
             user_id="alice",
             session=_session("alice"),
-            sub_autopilot_session_id=" inner-7 ",
+            sub_session_id=sub_session_id,
+            sub_autopilot_session_id=alias,
             wait_if_running=30,
         )
 
         assert isinstance(r, SubSessionStatusResponse)
-        assert r.sub_session_id == "inner-7"
+        assert r.sub_session_id == expected
+        assert looked_up == [expected]
+
+    @pytest.mark.asyncio
+    async def test_the_alias_reaches_the_sub_through_run_capability(
+        self, monkeypatch, mock_waiter
+    ):
+        """The tool is deferred, so the model polls it through run_capability
+        with only the id run_sub_session returned (#17260)."""
+        sub = MagicMock(user_id="alice", expert_id=None, messages=[])
+        sub.metadata.delegated_by_session_id = None
+        looked_up: list[str] = []
+
+        async def fake_get(sid):
+            looked_up.append(sid)
+            return sub
+
+        async def no_active_session(_sid):
+            return None
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            fake_get,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            no_active_session,
+        )
+
+        result = await execute_tool(
+            tool_name="run_capability",
+            parameters={
+                "id": "tool:get_sub_session_result",
+                "input": {"sub_autopilot_session_id": "inner-7", "wait_if_running": 0},
+            },
+            user_id="alice",
+            session=_session("alice"),
+            tool_call_id="call-1",
+            disabled_groups=(),
+            disabled_tools=(),
+        )
+
+        assert result.success is True
         assert looked_up == ["inner-7"]
+        assert "sub_session_id is required" not in result.output
 
     @pytest.mark.asyncio
     async def test_progress_reads_an_old_sub_without_its_stored_memory_block(
