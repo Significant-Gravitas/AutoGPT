@@ -1224,6 +1224,9 @@ async def delete_library_agent(
             data={"isDeleted": True},
         )
     else:
+        await prisma.models.ExpertWorkflow.prisma().delete_many(
+            where={"libraryAgentId": library_agent_id}
+        )
         deleted_count = await prisma.models.LibraryAgent.prisma().delete_many(
             where={"id": library_agent_id, "userId": user_id}
         )

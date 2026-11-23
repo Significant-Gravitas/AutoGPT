@@ -26,6 +26,7 @@ from prisma.models import (
     AgentNodeExecutionInputOutput,
     AgentNodeLink,
     AgentPreset,
+    ExpertWorkflow,
     LibraryAgent,
     StoreListingVersion,
 )
@@ -2436,6 +2437,11 @@ async def delete_graph_permanently(
                 where={"AgentPreset": {"is": version_filter}}
             )
             await AgentPreset.prisma(tx).delete_many(where=version_filter)
+            # An expert workflow's library agent only loses its link (ON DELETE SET
+            # NULL), so delete user expert workflows pointing to these agents.
+            await ExpertWorkflow.prisma(tx).delete_many(
+                where={"LibraryAgent": {"is": version_filter}}
+            )
             await LibraryAgent.prisma(tx).delete_many(where=version_filter)
             return await delete_graph(graph_id, user_id, organization_id, tx=tx)
     except ForeignKeyViolationError as e:
