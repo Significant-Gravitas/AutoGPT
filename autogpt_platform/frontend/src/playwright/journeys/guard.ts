@@ -101,15 +101,22 @@ function startWatching(expected: ExpectedResponse[]) {
         ),
       );
     },
-    // Until nothing is left pending: an error can arrive while an earlier
-    // one is still being described.
-    async collect() {
+    // Until nothing is left pending (an error can arrive while an earlier one
+    // is still being described), or for at most `withinMs`: a page that keeps
+    // failing would otherwise keep it collecting.
+    async collect(withinMs = Infinity) {
+      const giveUpAt = Date.now() + withinMs;
       let settled = 0;
       const problems: (string | null)[] = [];
-      while (settled < pending.length) {
+      while (settled < pending.length && Date.now() < giveUpAt) {
         const batch = pending.slice(settled);
         settled = pending.length;
         problems.push(...(await Promise.all(batch)));
+      }
+      if (pending.length > settled) {
+        problems.push(
+          `${pending.length - settled} more error(s) arrived after the guard stopped collecting`,
+        );
       }
       return problems.filter((problem): problem is string => problem !== null);
     },

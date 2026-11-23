@@ -87,7 +87,7 @@ const ADMIN_SLICES = slices(
 );
 const DAY_MS = 24 * 60 * 60 * 1000;
 // Tries at a pinned bug's visit before its pin counts it as fixed, started
-// only within RETRY_WINDOW_MS so the last one ends inside the test's 90 s.
+// only within RETRY_WINDOW_MS so the last one ends inside the test's timeout.
 const REPRODUCE_TRIES = 3;
 const RETRY_WINDOW_MS = 40_000;
 
@@ -96,6 +96,11 @@ const RETRY_WINDOW_MS = 40_000;
 const NO_SAMPLE = DYNAMIC.filter((route) => !(route in DYNAMIC_ROUTES));
 
 test.describe("route crawl journey", () => {
+  // A crawl takes 10 to 55 s. Its budgets (no visit starts after 45 s, a
+  // visit's checks get 30 s and its guard 10 s) bound the worst case near
+  // 100 s, past the journeys' 90 s, which would lose the report.
+  test.describe.configure({ timeout: 120_000 });
+
   for (const [index, pages] of PUBLIC_SLICES.entries()) {
     test(`public pages load for a signed-out visitor (${index + 1}/${PUBLIC_SLICES.length}): ${pages[0]} to ${pages.at(-1)}`, async ({
       browser,

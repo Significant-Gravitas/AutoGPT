@@ -154,6 +154,16 @@ describe("the guard on one page", () => {
     );
   });
 
+  it("stops collecting at its deadline, and says what it left", async () => {
+    const { page, emit } = fakePage();
+    const guard = watchPageForUnexpectedErrors(page, []);
+    emit("pageerror", new Error("Minified React error #418"));
+
+    expect(await guard.collect(0)).toEqual([
+      "1 more error(s) arrived after the guard stopped collecting",
+    ]);
+  });
+
   it("leaves out what it would leave out for a whole context", async () => {
     const { page, emit } = fakePage();
     const guard = watchPageForUnexpectedErrors(page, [

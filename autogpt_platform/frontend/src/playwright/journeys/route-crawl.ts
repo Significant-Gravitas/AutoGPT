@@ -68,9 +68,10 @@ export interface CrawlEnv {
 // beside the whole stack, so a crawl keeps to two.
 const TABS = 2;
 // No visit starts after this, and none runs longer than VISIT_TIMEOUT_MS,
-// so even a slow runner reports every page well inside the test's 90 s.
+// so even a slow runner reports every page inside the test's timeout.
 const CRAWL_BUDGET_MS = 45_000;
 const VISIT_TIMEOUT_MS = 30_000;
+const GUARD_COLLECT_MS = 10_000;
 const GOTO_TIMEOUT_MS = 30_000;
 const LANDING_TIMEOUT_MS = 20_000;
 const LOAD_TIMEOUT_MS = 15_000;
@@ -190,27 +191,30 @@ async function visitOnce(
     page = await context.newPage();
     guard = watchPageForUnexpectedErrors(page, visit.expectedResponses);
     if (visit.ownSession) await signInAgain(page, visit);
-    problems.push(...(await withinVisitTimeout(checkPage(page, visit))));
+    problems.push(...(await checkWithinTimeout(page, visit)));
   } catch (error) {
     problems.push(`the visit broke off: ${firstLine(error)}`);
   }
-  if (guard) problems.push(...(await guard.collect()));
+  if (guard) problems.push(...(await guard.collect(GUARD_COLLECT_MS)));
   await (ownContext ? context?.close() : page?.close());
   return { visit, problems, ms: Date.now() - started };
 }
 
-async function withinVisitTimeout(checks: Promise<string[]>) {
+// Checks that run past VISIT_TIMEOUT_MS are stopped by closing the page,
+// and waited for, so none outlives its visit.
+async function checkWithinTimeout(page: Page, visit: Visit) {
+  const checks = checkPage(page, visit);
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const timedOut = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () =>
-        reject(new Error(`its checks took over ${VISIT_TIMEOUT_MS / 1000} s`)),
-      VISIT_TIMEOUT_MS,
-    );
+  const timedOut = new Promise<"timed out">((resolve) => {
+    timer = setTimeout(() => resolve("timed out"), VISIT_TIMEOUT_MS);
   });
-  // Closing the page ends the checks left running.
-  checks.catch(() => {});
-  return Promise.race([checks, timedOut]).finally(() => clearTimeout(timer));
+  const outcome = await Promise.race([checks, timedOut]).finally(() =>
+    clearTimeout(timer),
+  );
+  if (outcome !== "timed out") return outcome;
+  await page.close();
+  await checks.catch(() => {});
+  return [`its checks took over ${VISIT_TIMEOUT_MS / 1000} s`];
 }
 
 async function openContext(
@@ -460,7 +464,7 @@ function trackAPIRequests(page: Page) {
     // Not a check: a page that polls may never go quiet. It only times them.
     async settle() {
       const giveUpAt = Date.now() + API_SETTLE_TIMEOUT_MS;
-      while (Date.now() < giveUpAt) {
+      while (Date.now() < giveUpAt && !page.isClosed()) {
         if (open.size === 0 && Date.now() - lastChange >= API_QUIET_MS) return;
         await delay(POLL_MS);
       }
@@ -479,7 +483,7 @@ function trackAPIRequests(page: Page) {
 async function waitForContent(page: Page) {
   const giveUpAt = Date.now() + CONTENT_TIMEOUT_MS;
   let state = await contentState(page);
-  while (state !== "ready" && Date.now() < giveUpAt) {
+  while (state !== "ready" && Date.now() < giveUpAt && !page.isClosed()) {
     await delay(POLL_MS);
     state = await contentState(page);
   }
