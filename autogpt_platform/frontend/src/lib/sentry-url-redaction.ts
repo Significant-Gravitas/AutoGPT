@@ -12,13 +12,15 @@ export const REDACTED = "[REDACTED]";
  */
 export function redactURL(url: string): string {
   const start = url.search(/[?#]/);
-  if (start < 0) return redactPath(url);
-  return redactPath(url.slice(0, start) + redactQuery(url.slice(start)));
+  if (start < 0) return redactCredentialPaths(url);
+  return redactCredentialPaths(
+    url.slice(0, start) + redactQuery(url.slice(start)),
+  );
 }
 
 /** Mask the credentials in every URL inside a span description or message. */
 export function redactURLsInText(text: string): string {
-  return redactPath(text.replace(QUERY_IN_TEXT, redactQuery));
+  return redactCredentialPaths(text.replace(QUERY_IN_TEXT, redactQuery));
 }
 
 /**
@@ -137,7 +139,7 @@ function redactQuery(query: string) {
 }
 
 // Built from the spans, as the backend does, so overlapping matches merge.
-function redactPath(text: string) {
+export function redactCredentialPaths(text: string) {
   let redacted = "";
   let done = 0;
   for (const match of text.matchAll(API_CREDENTIAL_SEGMENT)) {
