@@ -10,7 +10,8 @@ import {
 import { isLocalStack } from "./journey-user";
 import { ADD_34, createAgent, newListing, submitDirectly } from "./marketplace";
 import quickAnswer from "./model-scripts/quick-answer.json";
-import { existsInPublic, type Sample } from "./route-crawl";
+import { existsInPublic } from "./public-images";
+import type { Sample } from "./route-crawl";
 import { scriptedRun } from "./scripted-model";
 
 // Data for the route crawl's dynamic routes: what is already on the stack
@@ -74,8 +75,8 @@ export async function sampleMarketplace(page: Page) {
     skill: skillSample(
       skills.find((skill) => hasItsLogo(skill.required_providers[0])),
     ),
-    // A skill whose first service is an MCP server (#17313).
-    skillWithMCPService: skillSample(
+    // A skill whose first service is an MCP server (#17313), and that server.
+    skillWithMCPService: withFirstService(
       skills.find((skill) => skill.required_providers[0]?.startsWith("mcp_")),
     ),
   };
@@ -110,6 +111,23 @@ function skillSample(skill: StoreSkill | undefined): RouteSample | undefined {
       shows: skill.title,
     }
   );
+}
+
+/** A skill's sample, with the service it names first, as it names it. */
+function withFirstService(skill: StoreSkill | undefined) {
+  const sample = skillSample(skill);
+  const service = skill?.required_providers[0];
+  return sample && service ? { ...sample, service } : undefined;
+}
+
+/** What the backend's MCP catalog calls one of its servers (#17336). */
+export async function catalogName(page: Page, provider: string) {
+  const providers = await getJSON<
+    { name: string; display_name?: string | null }[]
+  >(page, "/api/proxy/api/integrations/providers");
+  const name = providers.find((entry) => entry.name === provider)?.display_name;
+  if (!name) throw new Error(`the MCP catalog has no name for ${provider}`);
+  return name;
 }
 
 function hasItsLogo(provider: string | undefined) {
