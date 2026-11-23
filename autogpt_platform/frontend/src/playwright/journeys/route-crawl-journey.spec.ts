@@ -171,7 +171,7 @@ test.describe("route crawl journey", () => {
     }
   });
 
-  test("the Marketplace's pages for one listing's creator and an expert load, signed out and signed in", async ({
+  test("the Marketplace's listing, creator, expert and skill pages load, signed out and signed in", async ({
     browser,
     baseURL,
     flagOverrides,
@@ -179,13 +179,20 @@ test.describe("route crawl journey", () => {
     journeyUser,
   }) => {
     const env = { browser, baseURL, flagOverrides };
-    const { creator, expert } = await sampleMarketplace(page);
+    const { agent, creator, expert, skill } = await sampleMarketplace(page);
     const samples = [
+      agent ??
+        unsampled("/marketplace/agent/[creator]/[slug]", "no approved listing"),
       creator ??
         unsampled("/marketplace/creator/[creator]", "no approved listing"),
       expert ??
         unsampled("/marketplace/experts/[expertId]", "no roster published"),
-    ].filter((sample): sample is RouteSample => sample !== null);
+      skill ?? unsampled("/marketplace/skills/[slug]", "no skill"),
+    ]
+      .filter((sample): sample is RouteSample => sample !== null)
+      // A page with an open bug is crawled in its pinned test instead, and
+      // here again once the bug is fixed and its pin dropped.
+      .filter((sample) => crawledInGroup(sample.route));
     const user = await sessionOf(page, "user", journeyUser);
     const visitor: Session = { who: "visitor" };
     await expectAllClean(
