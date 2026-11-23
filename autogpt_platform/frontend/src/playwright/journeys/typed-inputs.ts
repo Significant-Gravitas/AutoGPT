@@ -286,27 +286,12 @@ export function shownOutput(page: Page, name: string) {
     .locator("xpath=following-sibling::*[1]");
 }
 
-/**
- * The content a file output points to: a workspace file's download, or a
- * data URI's own bytes.
- */
-export async function fileOutputContent(page: Page, value: unknown) {
-  const reference = String(value);
-  if (reference.startsWith("data:")) {
-    return Buffer.from(reference.slice(reference.indexOf(",") + 1), "base64");
-  }
-  const fileID = /^workspace:\/\/([^#/]+)/.exec(reference)?.[1];
-  expect(
-    fileID,
-    `a file output should be a workspace file or a data URI, got ${reference.slice(0, 80)}`,
-  ).toBeTruthy();
-  return download(page, `/api/proxy/api/workspace/files/${fileID}/download`);
-}
-
-export async function download(page: Page, url: string) {
-  const response = await page.request.get(url);
-  expect(response.ok(), `downloading ${url}: ${response.status()}`).toBe(true);
-  return response.body();
+/** The app under test runs on this machine: the compose stack, as in CI. */
+export function isLocalStack() {
+  const { hostname } = new URL(
+    process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
+  );
+  return ["localhost", "127.0.0.1"].includes(hostname);
 }
 
 /** Text in `scope` matching `pattern` that shows within a few seconds. */

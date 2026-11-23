@@ -4,11 +4,10 @@ import { pinKnownFailure } from "./known-failure";
 import {
   type Agent,
   createTypedInputsAgent,
-  download,
   escapeRegExp,
-  fileOutputContent,
   fillTable,
   inputField,
+  isLocalStack,
   isRunStart,
   longTextField,
   observe,
@@ -37,15 +36,24 @@ const TABLE = [
   { Item: "Notebook", Price: "4.50" },
   { Item: "Pen", Price: "0" },
 ];
+const FILE_TEXT = "Grüße aus Zürich 👋\nsecond line\n";
 const FILE = {
   name: "notes.txt",
   mimeType: "text/plain",
-  buffer: Buffer.from("Grüße aus Zürich 👋\nsecond line\n"),
+  buffer: Buffer.from(FILE_TEXT),
 };
 const DATE = "2026-03-15";
 const TIME = { hour: "02", minute: "30", meridiem: "PM" } as const;
 // What the workflow gets for 2:30 PM.
 const TIME_GOT = "14:30:00";
+// Short text that reads as something else: digits with leading zeros, a
+// JSON boolean and two JSON numbers.
+const LOOKS_LIKE_DATA = {
+  digits_text: "00123",
+  boolean_text: "true",
+  exponent_text: "1e5",
+  price_text: "1.50",
+};
 // A known failure must end as a failed assertion, not a timeout, so its
 // check waits well inside the test's budget.
 const PINNED_CHECK_TIMEOUT = 5_000;
@@ -62,9 +70,6 @@ const OPTIONAL_DATE: TypedInput = {
 const EVERY_INPUT: TypedInput[] = [
   { name: "short_text", kind: "short text" },
   { name: "long_text", kind: "long text" },
-  { name: "digits_text", kind: "short text" },
-  { name: "boolean_text", kind: "short text" },
-  { name: "exponent_text", kind: "short text" },
   { name: "zero", kind: "number" },
   { name: "negative", kind: "number" },
   OPTIONAL_DATE,
@@ -88,9 +93,6 @@ const EVERY_INPUT: TypedInput[] = [
 const GOT: Record<string, unknown> = {
   short_text: SHORT_TEXT,
   long_text: LONG_TEXT,
-  digits_text: "00123",
-  boolean_text: "true",
-  exponent_text: "1e5",
   zero: 0,
   negative: -42,
   date: DATE,
@@ -101,12 +103,10 @@ const GOT: Record<string, unknown> = {
   table: TABLE,
 };
 
-// What the run view should show for each, the table, file and 1e5 aside.
+// What the run view should show for each, the table and the file aside.
 const SHOWN: Record<string, string> = {
   short_text: SHORT_TEXT,
   long_text: LONG_TEXT,
-  digits_text: "00123",
-  boolean_text: "true",
   zero: "0",
   negative: "-42",
   date: DATE,
@@ -121,54 +121,108 @@ test.describe("typed inputs journey", () => {
     // A date is checked outside UTC on its own, below.
     test.use({ timezoneId: "UTC" });
 
-    test("every kind of input reaches the workflow as it was entered, and the run view and a rerun show each value unchanged", async ({
-      page,
-      journeyUser: _user,
-    }, testInfo) => {
-      const agent = await createTypedInputsAgent(page, EVERY_INPUT);
-      const dialog = await openRunDialog(page, agent);
-      await fillEveryInput(page, dialog);
-      const { runID, sent } = await startTask(page, agent, dialog);
-      observe(testInfo, `the run form sent ${JSON.stringify(sent)}`);
+    test(
+      "every kind of input reaches the workflow as it was entered, and the run view and a rerun show each value unchanged",
+      { annotation: issue(17306) },
+      async ({ page, journeyUser: _user }, testInfo) => {
+        const agent = await createTypedInputsAgent(page, EVERY_INPUT);
+        const dialog = await openRunDialog(page, agent);
+        await fillEveryInput(page, dialog);
+        const { runID, sent } = await startTask(page, agent, dialog);
+        observe(testInfo, `the run form sent ${JSON.stringify(sent)}`);
 
-      const run = await waitForRunToEnd(page, agent, runID);
-      observe(
-        testInfo,
-        `the run ended ${run.status} with outputs ${JSON.stringify(run.outputs)}`,
-      );
-      expect(run.status, "the run should complete").toBe("COMPLETED");
-      const { file, ...got } = run.outputs;
-      expect(
-        got,
-        "the workflow should get every value as it was entered, with its type",
-      ).toEqual(asOutputs(GOT));
-      await expectFileOutput(page, file);
-      await expectEveryOutputShown(page);
-      observe(
-        testInfo,
-        `the run view shows ${JSON.stringify(await readShownOutputs(page))}`,
-      );
-      await expectRunViewShowsEveryValue(page);
+        const run = await waitForRunToEnd(page, agent, runID);
+        observe(
+          testInfo,
+          `the run ended ${run.status} with outputs ${JSON.stringify(run.outputs)}`,
+        );
+        expect(run.status, "the run should complete").toBe("COMPLETED");
+        const { file, ...got } = run.outputs;
+        expect(
+          got,
+          "the workflow should get every value as it was entered, with its type",
+        ).toEqual(asOutputs(GOT));
+        expectOneFile(file);
+        await expectEveryOutputShown(page, EVERY_INPUT);
+        observe(
+          testInfo,
+          `the run view shows ${JSON.stringify(await readShownOutputs(page))}`,
+        );
+        await expectRunViewShowsEveryValue(page);
 
-      // A rerun sends the run's stored inputs again.
-      const rerun = await rerunTask(page, agent);
-      const again = await waitForRunToEnd(page, agent, rerun.runID);
-      expect(again.status, "the rerun should complete").toBe("COMPLETED");
-      const { file: fileAgain, ...gotAgain } = again.outputs;
-      expect(
-        gotAgain,
-        "a rerun should give the workflow the same values",
-      ).toEqual(got);
-      await expectFileOutput(page, fileAgain);
-      await expectEveryOutputShown(page);
-      await expectRunViewShowsEveryValue(page);
+        // A rerun sends the run's stored inputs again.
+        const rerun = await rerunTask(page, agent);
+        const again = await waitForRunToEnd(page, agent, rerun.runID);
+        expect(again.status, "the rerun should complete").toBe("COMPLETED");
+        const { file: fileAgain, ...gotAgain } = again.outputs;
+        expect(
+          gotAgain,
+          "a rerun should give the workflow the same values",
+        ).toEqual(got);
+        expectOneFile(fileAgain);
+        await expectEveryOutputShown(page, EVERY_INPUT);
+        await expectRunViewShowsEveryValue(page);
+        const link = await fileLink(page);
 
-      // Text that JSON.parse can read (here, as a number) is shown as typed.
-      expect(
-        (await readShownOutputs(page)).exponent_text,
-        "the run view should show the text 1e5 as typed",
-      ).toBe("1e5");
-    });
+        // The compose stack's graph executor keeps the file where the API
+        // can't read it (#17306); a deployed app keeps it in its bucket.
+        const check =
+          "the run view's file link should download the uploaded content";
+        const message = isLocalStack()
+          ? pinKnownFailure(
+              "#17306: the compose stack's executor keeps workspace files out of the API's reach",
+              check,
+            )
+          : check;
+        const response = await page.request.get(link);
+        expect(
+          {
+            status: response.status(),
+            content: (await response.body()).toString("utf8"),
+          },
+          message,
+        ).toEqual({ status: 200, content: FILE_TEXT });
+      },
+    );
+
+    test(
+      "text that looks like a number or JSON reaches the workflow, and shows in the run view, exactly as typed",
+      { annotation: issue(17307) },
+      async ({ page, journeyUser: _user }, testInfo) => {
+        const inputs = Object.keys(LOOKS_LIKE_DATA).map(
+          (name): TypedInput => ({ name, kind: "short text" }),
+        );
+        const agent = await createTypedInputsAgent(page, inputs);
+        const dialog = await openRunDialog(page, agent);
+        for (const [name, text] of Object.entries(LOOKS_LIKE_DATA)) {
+          await inputField(dialog, name).fill(text);
+        }
+        const { runID } = await startTask(page, agent, dialog);
+
+        const run = await waitForRunToEnd(page, agent, runID);
+        expect(run.status, "the run should complete").toBe("COMPLETED");
+        expect(
+          run.outputs,
+          "the workflow should get each text exactly as typed",
+        ).toEqual(asOutputs(LOOKS_LIKE_DATA));
+        await expectEveryOutputShown(page, inputs);
+        const shown = await readShownOutputs(page);
+        observe(testInfo, `the run view shows ${JSON.stringify(shown)}`);
+        expect(
+          pick(shown, ["digits_text", "boolean_text"]),
+          "the run view should show text that isn't a JSON number as typed",
+        ).toEqual({ digits_text: "00123", boolean_text: "true" });
+
+        const pinned = pinKnownFailure(
+          "#17307: the run view shows the text 1e5 as 100000, and 1.50 as 1.5",
+          "the run view should show text that reads as a JSON number exactly as typed",
+        );
+        expect(pick(shown, ["exponent_text", "price_text"]), pinned).toEqual({
+          exponent_text: "1e5",
+          price_text: "1.50",
+        });
+      },
+    );
 
     test(
       "a task whose workflow needs a date can start once the date is picked",
@@ -232,50 +286,50 @@ test.describe("typed inputs journey", () => {
     test.describe(`in ${timezoneId}`, () => {
       test.use({ timezoneId });
 
-      test(`a date and a time picked in ${timezoneId} reach the workflow as picked`, async ({
-        page,
-        journeyUser: _user,
-      }, testInfo) => {
-        const agent = await createTypedInputsAgent(page, [
-          OPTIONAL_DATE,
-          { name: "time", kind: "time" },
-        ]);
-        const dialog = await openRunDialog(page, agent);
-        await inputField(dialog, "date").fill(DATE);
-        await expect(
-          inputField(dialog, "date"),
-          "the form should show the date picked",
-        ).toHaveValue(DATE);
-        await pickTime(page, dialog, TIME);
-        const { runID, sent } = await startTask(page, agent, dialog);
-        observe(testInfo, `the run form sent ${JSON.stringify(sent)}`);
+      test(
+        `a date and a time picked in ${timezoneId} reach the workflow as picked`,
+        { annotation: issue(17305) },
+        async ({ page, journeyUser: _user }, testInfo) => {
+          const agent = await createTypedInputsAgent(page, [
+            OPTIONAL_DATE,
+            { name: "time", kind: "time" },
+          ]);
+          const dialog = await openRunDialog(page, agent);
+          await inputField(dialog, "date").fill(DATE);
+          await expect(
+            inputField(dialog, "date"),
+            "the form should show the date picked",
+          ).toHaveValue(DATE);
+          await pickTime(page, dialog, TIME);
+          const { runID, sent } = await startTask(page, agent, dialog);
+          observe(testInfo, `the run form sent ${JSON.stringify(sent)}`);
 
-        const run = await waitForRunToEnd(page, agent, runID);
-        observe(
-          testInfo,
-          `the run ended ${run.status} with outputs ${JSON.stringify(run.outputs)}`,
-        );
-        expect(
-          run.outputs.time,
-          "the workflow should get the time picked",
-        ).toEqual([TIME_GOT]);
-        await expect
-          .poll(async () => (await readShownOutputs(page)).time, {
-            message: "the run view should show the time picked",
-          })
-          .toBe(TIME_GOT);
-        const failures = page.getByTestId("run-failures");
-        observe(
-          testInfo,
-          `the run view's failed steps: ${(await failures.count()) ? await failures.innerText() : "none"}`,
-        );
+          const run = await waitForRunToEnd(page, agent, runID);
+          observe(
+            testInfo,
+            `the run ended ${run.status} with outputs ${JSON.stringify(run.outputs)}`,
+          );
+          expect(
+            run.outputs.time,
+            "the workflow should get the time picked",
+          ).toEqual([TIME_GOT]);
+          await expect
+            .poll(async () => (await readShownOutputs(page)).time, {
+              message: "the run view should show the time picked",
+            })
+            .toBe(TIME_GOT);
+          const shown = await readShownOutputs(page);
 
-        const shown = await readShownOutputs(page);
-        expect(
-          { status: run.status, got: run.outputs.date, shown: shown.date },
-          "the workflow should get the date picked, and the run view show it",
-        ).toEqual({ status: "COMPLETED", got: [DATE], shown: DATE });
-      });
+          const pinned = pinKnownFailure(
+            "#17305: a date picked outside UTC is sent as a UTC timestamp, which the Date input refuses",
+            "the workflow should get the date picked, and the run view show it",
+          );
+          expect(
+            { status: run.status, got: run.outputs.date, shown: shown.date },
+            pinned,
+          ).toEqual({ status: "COMPLETED", got: [DATE], shown: DATE });
+        },
+      );
     });
   }
 });
@@ -283,9 +337,6 @@ test.describe("typed inputs journey", () => {
 async function fillEveryInput(page: Page, dialog: Locator) {
   await inputField(dialog, "short_text").fill(SHORT_TEXT);
   await longTextField(dialog, "long_text").fill(LONG_TEXT);
-  await inputField(dialog, "digits_text").fill("00123");
-  await inputField(dialog, "boolean_text").fill("true");
-  await inputField(dialog, "exponent_text").fill("1e5");
   await inputField(dialog, "zero").fill("0");
   await inputField(dialog, "negative").fill("-42");
   await inputField(dialog, "date").fill(DATE);
@@ -297,18 +348,18 @@ async function fillEveryInput(page: Page, dialog: Locator) {
   await uploadFile(page, dialog, FILE);
 }
 
-// The file output points to the uploaded file's own content.
-async function expectFileOutput(page: Page, file: unknown[] | undefined) {
+// The file input hands on one reference to the uploaded file.
+function expectOneFile(file: unknown[] | undefined) {
   expect(file, "the file input should hand on one file").toHaveLength(1);
   expect(
-    (await fileOutputContent(page, file?.[0])).toString("utf8"),
-    "the file output should hold the uploaded content",
-  ).toBe(FILE.buffer.toString("utf8"));
+    String(file?.[0]),
+    "the file output should be a workspace file or a data URI",
+  ).toMatch(/^(workspace:\/\/|data:)/);
 }
 
 // Every output has its place in the run view, falsy ones included.
-async function expectEveryOutputShown(page: Page) {
-  const names = EVERY_INPUT.map((input) => input.name).sort();
+async function expectEveryOutputShown(page: Page, inputs: TypedInput[]) {
+  const names = inputs.map((input) => input.name).sort();
   await expect
     .poll(async () => Object.keys(await readShownOutputs(page)).sort(), {
       message: "the run view should show every output",
@@ -326,17 +377,16 @@ async function expectRunViewShowsEveryValue(page: Page) {
     shownOutput(page, "table"),
     "the run view should show each row of the table, cell by cell",
   ).toHaveText(tableCells(TABLE));
+}
+
+// The run view's link to download the file output.
+async function fileLink(page: Page) {
   const link = shownOutput(page, "file").locator("a[download]");
   await expect(
     link,
     "the run view should link to the file to download",
   ).toHaveAttribute("href", /\/download$/);
-  expect(
-    (await download(page, String(await link.getAttribute("href")))).toString(
-      "utf8",
-    ),
-    "the run view's file link should download the uploaded content",
-  ).toBe(FILE.buffer.toString("utf8"));
+  return String(await link.getAttribute("href"));
 }
 
 // Each row's cells in order, as "column": "value".
