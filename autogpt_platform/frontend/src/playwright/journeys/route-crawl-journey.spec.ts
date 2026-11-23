@@ -109,15 +109,27 @@ interface CrawlFixtures {
   hiredExpert: Expert | null;
 }
 
+// Playwright sets up the journeys' own automatic fixtures before crawlEnv,
+// on the test's time: a browser context and page with JS coverage, the
+// changelog route and the guard. They took about 1 s on CI, a worker's first
+// test launching the browser too, so the crawl takes the test as started
+// this much earlier.
+const SET_UP_BEFORE_CRAWL_ENV_MS = 5_000;
+
 // What a test changes on the stack (an admin role, a hire) is undone in a
 // fixture's teardown, which runs even after the test times out: Playwright
 // abandons a finally in the test's body.
 const test = journeyTest.extend<CrawlFixtures>({
-  // Auto, so it is set up before the test's other fixtures: the test's
-  // timeout runs from about then.
+  // Auto, so it is set up before the test's own fixtures, such as the
+  // journey user's sign-up.
   crawlEnv: [
     async ({ browser, baseURL, flagOverrides }, provide) => {
-      await provide({ browser, baseURL, flagOverrides, startedAt: Date.now() });
+      await provide({
+        browser,
+        baseURL,
+        flagOverrides,
+        startedAt: Date.now() - SET_UP_BEFORE_CRAWL_ENV_MS,
+      });
     },
     { auto: true },
   ],

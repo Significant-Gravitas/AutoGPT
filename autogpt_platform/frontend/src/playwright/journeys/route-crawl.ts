@@ -68,7 +68,7 @@ export interface CrawlEnv {
   browser: Browser;
   baseURL: string | undefined;
   flagOverrides: Record<string, unknown>;
-  /** When the test started: its timeout runs from about then. */
+  /** When the test started, or a little before: its timeout runs from then. */
   startedAt: number;
 }
 
@@ -77,9 +77,10 @@ export interface CrawlEnv {
 const TABS = 2;
 const VISIT_TIMEOUT_MS = 30_000;
 const GUARD_COLLECT_MS = 10_000;
-// The longest a visit runs once it has started: its checks; its guard, which
-// checks its deadline only between batches of body reads, so it can run one
-// batch (10 s) over it (guard.ts); and opening and closing its tab.
+// The longest a visit runs once it has started: its checks, signing in again
+// included; its guard, which checks its deadline only between batches of
+// body reads, so it can run one batch (10 s) over it (guard.ts); and opening
+// and closing its tab.
 const VISIT_MAX_MS = VISIT_TIMEOUT_MS + GUARD_COLLECT_MS + 10_000 + 5_000;
 // What the test does after its last visit: closing the crawl's browser
 // contexts and attaching its report. Fixtures tear down on a timeout of
@@ -214,7 +215,6 @@ async function visitOnce(
       : await sharedContext(visit.session);
     page = await context.newPage();
     guard = watchPageForUnexpectedErrors(page, visit.expectedResponses);
-    if (visit.ownSession) await signInAgain(page, visit);
     problems.push(...(await checkWithinTimeout(page, visit)));
   } catch (error) {
     problems.push(`the visit broke off: ${firstLine(error)}`);
@@ -224,10 +224,11 @@ async function visitOnce(
   return { visit, problems, ms: Date.now() - started, reached: true };
 }
 
-// Checks that run past VISIT_TIMEOUT_MS are stopped by closing the page,
-// and waited for, so none outlives its visit.
+// The checks, after signing in again for a page that ends its session, are
+// stopped by closing the page once they run past VISIT_TIMEOUT_MS, and
+// waited for, so none outlives its visit.
 async function checkWithinTimeout(page: Page, visit: Visit) {
-  const checks = checkPage(page, visit);
+  const checks = signInAndCheck(page, visit);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timedOut = new Promise<"timed out">((resolve) => {
     timer = setTimeout(() => resolve("timed out"), VISIT_TIMEOUT_MS);
@@ -239,6 +240,11 @@ async function checkWithinTimeout(page: Page, visit: Visit) {
   await page.close();
   await checks.catch(() => {});
   return [`its checks took over ${VISIT_TIMEOUT_MS / 1000} s`];
+}
+
+async function signInAndCheck(page: Page, visit: Visit) {
+  if (visit.ownSession) await signInAgain(page, visit);
+  return checkPage(page, visit);
 }
 
 async function openContext(
@@ -393,9 +399,12 @@ async function signInAgain(page: Page, visit: Visit) {
   if (!user) {
     throw new Error(`${visit.route} needs a session of its own: no user given`);
   }
+  // Closing the page doesn't end a request of its context, so it ends by
+  // itself within the time its visit has.
   const response = await page.request.post("/api/auth/sign-in/email", {
     headers: authHeaders(),
     data: { email: user.email, password: user.password },
+    timeout: VISIT_TIMEOUT_MS,
   });
   if (!response.ok()) {
     throw new Error(`signing in again failed: ${response.status()}`);
