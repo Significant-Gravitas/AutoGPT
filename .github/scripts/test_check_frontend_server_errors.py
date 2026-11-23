@@ -117,6 +117,39 @@ class CheckFrontendServerErrorsTests(unittest.TestCase):
                 self.assertEqual(code, 1)
                 self.assertIn("the log is empty", out)
 
+    def test_an_external_image_timing_out_is_a_warning_not_a_failure(self):
+        timeout = (
+            " ⨯ upstream image response timed out for https://storage.googleapis"
+            ".com/agpt-prod-public-site-media/users/u/images/i.png"
+        )
+        code, out = run(STARTUP + [timeout, timeout])
+        self.assertEqual(code, 0)
+        self.assertIn("::warning title=External image timed out (2x)::", out)
+        self.assertIn("no Next.js server errors", out)
+
+    def test_a_local_timeout_or_a_failed_fetch_still_fails(self):
+        for line in (
+            " ⨯ upstream image response timed out for http://localhost:3000/a.png",
+            " ⨯ upstream image response timed out for http://rest_server:8006/a.png",
+            " ⨯ upstream image response timed out for http://172.18.0.4/a.png",
+            " ⨯ upstream image response failed for https://example.com/a.png 404",
+        ):
+            with self.subTest(line=line):
+                code, out = run(STARTUP + [line])
+                self.assertEqual(code, 1)
+                self.assertIn("::error title=Next.js server error (1x)::", out)
+
+    def test_an_external_timeout_doesnt_hide_a_real_error(self):
+        timeout = (
+            " ⨯ upstream image response timed out for https://images.unsplash"
+            ".com/photo.jpg"
+        )
+        code, out = run(STARTUP + [timeout] + MODULE_ERROR)
+        self.assertEqual(code, 1)
+        self.assertIn("::warning title=External image timed out (1x)::", out)
+        self.assertIn("ReferenceError: Cannot access 's' before initialization", out)
+        self.assertIn("logged 1 error(s)", out)
+
     def test_a_missing_log_fails_naming_only_the_file(self):
         out = StringIO()
         with redirect_stdout(out):

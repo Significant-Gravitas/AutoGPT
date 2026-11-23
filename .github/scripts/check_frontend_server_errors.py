@@ -50,6 +50,27 @@ def server_errors(lines: list[str]) -> list[tuple[str, list[str]]]:
     return errors
 
 
+# The image optimizer timing out on a host outside the stack: the e2e seed's
+# Marketplace listings point at production media on GCS, so a slow network
+# between the runner and that host, not the platform, makes this one. It is
+# reported, but doesn't fail the leg. A failed (rather than timed-out) fetch,
+# or any local URL, still fails it.
+_EXTERNAL_IMAGE_TIMEOUT = re.compile(
+    r"^upstream image response timed out for https?://(?P<host>[^/:\s]+)"
+)
+
+
+def is_external_image_timeout(message: str) -> bool:
+    match = _EXTERNAL_IMAGE_TIMEOUT.match(message)
+    if not match:
+        return False
+    host = match["host"].lower()
+    # Docker service names have no dot; loopback and private hosts are ours.
+    return "." in host and not re.match(
+        r"^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)", host
+    )
+
+
 def report(errors: list[tuple[str, list[str]]], source: str) -> str:
     counts = Counter(message for message, _ in errors)
     summary = (
@@ -86,6 +107,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{name}: the log is empty, so the server's errors can't be checked")
         return 1
     errors = server_errors(lines)
+    external = Counter(
+        message for message, _ in errors if is_external_image_timeout(message)
+    )
+    for message, count in external.most_common():
+        print(f"::warning title=External image timed out ({count}x)::{message}")
+    errors = [error for error in errors if not is_external_image_timeout(error[0])]
     if errors:
         print(report(errors, name))
         return 1
