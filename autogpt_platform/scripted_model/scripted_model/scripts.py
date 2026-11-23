@@ -6,9 +6,17 @@ requests in the journal later. The script is ``<scripts dir>/<name>.json``.
 It is read on every request, so an edit applies without a restart.
 
 Turn ``n`` answers the model request whose conversation already holds ``n``
-assistant messages. Every request carries the whole conversation, so this
-needs no state: concurrent runs of one script, a platform retry and a resumed
-session all land on the right turn.
+assistant messages after the user message that carries the marker. Every
+request carries the whole conversation, so this needs no state: concurrent
+runs of one script, a platform retry and a resumed session all land on the
+right turn.
+
+When several user messages carry a marker, the newest one picks the script,
+so a message the user sends with a marker of its own starts that script. The
+platform may resume the earlier conversation or pass it on as text inside the
+new message (a turn after a stopped one can do either); the new marker comes
+after that text, and no assistant message follows it yet, so both land on the
+new script's first turn.
 
 A tool call's input can read a value from a result the platform sent back,
 as a model reads an id out of what a tool returned: in place of the value,
@@ -102,10 +110,11 @@ class Marker:
 
 
 def find_marker(text: str) -> Marker | None:
-    match = MARKER.search(text)
-    if match is None:
+    """The newest marker in ``text``: the last one."""
+    matches = list(MARKER.finditer(text))
+    if not matches:
         return None
-    return Marker(script=match.group(1), nonce=match.group(2))
+    return Marker(script=matches[-1].group(1), nonce=matches[-1].group(2))
 
 
 def load_script(scripts_dir: Path, name: str) -> Script:

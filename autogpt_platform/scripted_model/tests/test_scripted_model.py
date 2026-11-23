@@ -519,6 +519,94 @@ def test_a_follow_up_message_gets_the_next_turn(scripted_model):
     ]
 
 
+def test_a_message_with_its_own_marker_starts_that_script(scripted_model):
+    """After a stopped turn the platform either resumes the conversation or
+    passes it on as text inside the next message. A message with a marker of
+    its own starts that script's first turn either way, and the script's tool
+    rounds count from that message."""
+    scripted_model.add_script(
+        "stopped",
+        {
+            "turns": [
+                {
+                    "text": "A long answer that was stopped.",
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                }
+            ]
+        },
+    )
+    scripted_model.add_script(
+        "lookup",
+        {
+            **LOOKUP,
+            "turns": [
+                {**LOOKUP["turns"][0], "expect_user_text": "Shorter"},
+                LOOKUP["turns"][1],
+            ],
+        },
+    )
+    client = _anthropic(scripted_model)
+    resumed = [
+        {"role": "user", "content": "[[script:stopped#first]] Tell me everything."},
+        {"role": "assistant", "content": "A long answer"},
+        {"role": "user", "content": "[[script:lookup#resumed]] Shorter, please."},
+    ]
+    as_text = [
+        {
+            "role": "user",
+            "content": (
+                "<conversation_history>\n"
+                "User: [[script:stopped#first]] Tell me everything.\n"
+                "You responded: A long answer\n"
+                "</conversation_history>\n\n"
+                "Now, the user says:\n[[script:lookup#as-text]] Shorter, please."
+            ),
+        }
+    ]
+
+    first = _stream(client, resumed)
+    assert first.content[0].text == "Let me check your library first."
+    assert _stream(client, as_text).content[0].text == (
+        "Let me check your library first."
+    )
+    text, calls, _ = _stream_chat(
+        _openai(scripted_model),
+        [{**as_text[0], "content": as_text[0]["content"].replace("as-text", "chat")}],
+    )
+    assert (text, [c["name"] for c in calls]) == (
+        "Let me check your library first.",
+        ["find_library_agent"],
+    )
+    tool_round = [
+        {"role": "assistant", "content": [b.model_dump() for b in first.content]},
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": first.content[1].id,
+                    "content": "No agents match 'haiku'.",
+                }
+            ],
+        },
+    ]
+    assert [b.text for b in _stream(client, resumed + tool_round).content] == [
+        "You have none yet."
+    ]
+
+    assert [
+        (e["script"], e["turn"], [c["ok"] for c in e["checks"]])
+        for nonce in ("resumed", "as-text", "chat")
+        for e in scripted_model.journal(nonce=nonce)
+    ] == [
+        ("lookup", 1, [True]),
+        ("lookup", 2, [True]),
+        ("lookup", 1, [True]),
+        ("lookup", 1, [True]),
+    ]
+    assert scripted_model.journal(nonce="first") == []
+
+
 def test_a_request_the_script_cannot_answer_fails_with_the_reason(scripted_model):
     scripted_model.add_script("lookup", LOOKUP)
     client = _anthropic(scripted_model)
