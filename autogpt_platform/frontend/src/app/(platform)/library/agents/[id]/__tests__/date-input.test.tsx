@@ -306,6 +306,34 @@ test.each(SAVED_DATES)(
   },
 );
 
+test.each(["2026-02-30", "soon"])(
+  "the run form opened on a template whose date %s can't be shown starts with it empty, and waits for a date",
+  async (stored) => {
+    const sent = mockLibrary({
+      dateRequired: true,
+      presets: [makePreset({ date: stored })],
+    });
+    const user = renderPage("activeTab=templates&activeItem=tpl-1");
+    await screen.findByDisplayValue("Trip template");
+    const open = screen.getByRole("button", { name: "New workflow task" });
+    await waitFor(() => expect(open).toHaveProperty("disabled", false));
+    await user.click(open);
+
+    const dialog = await screen.findByRole("dialog");
+    const field = await within(dialog).findByTestId("agent-input-date");
+    expect(field).toHaveProperty("value", "");
+    const start = within(dialog).getByRole("button", { name: "Start Task" });
+    expect(start).toHaveProperty("disabled", true);
+
+    fireEvent.change(field, { target: { value: PICKED } });
+    await waitFor(() => expect(start).toHaveProperty("disabled", false));
+    await user.click(start);
+    await waitFor(() =>
+      expect(sent.task).toHaveBeenCalledWith({ date: PICKED }),
+    );
+  },
+);
+
 test("a webhook trigger's date stored as a timestamp shows as the day picked, and saving the trigger stores that day", async () => {
   process.env.TZ = "Pacific/Auckland";
   const sent = mockLibrary({
