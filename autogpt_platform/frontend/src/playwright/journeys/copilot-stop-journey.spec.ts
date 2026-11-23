@@ -269,21 +269,32 @@ test.describe("copilot stop journey", () => {
     ).toBeVisible({ timeout: ANSWERED_WITHIN_MS });
     await expect(errorCards(page), "no error card should show").toHaveCount(0);
 
-    const timerWouldHaveLandedAt =
-      timerStartedBy + TIMER_MS + TIMER_RESULT_LANDS_WITHIN_MS;
+    // Watched until the timer's result, had the Stop not ended its turn,
+    // would have reached the model and its answer the chat.
+    const watchUntil = timerStartedBy + TIMER_MS + TIMER_RESULT_LANDS_WITHIN_MS;
+    let added = "watching";
     await expect
       .poll(
-        async () =>
-          (await whatTheStoppedTurnAdded(page, sessionID, run.nonce)) ??
-          (Date.now() >= timerWouldHaveLandedAt ? "nothing" : "watching"),
+        async () => {
+          added =
+            (await whatTheStoppedTurnAdded(page, sessionID, run.nonce)) ??
+            (Date.now() >= watchUntil ? "nothing" : "watching");
+          return added;
+        },
         {
-          message:
-            "nothing of the stopped turn should arrive by the time its timer would have gone off",
-          timeout: Math.max(0, timerWouldHaveLandedAt - Date.now()) + 10_000,
+          message: "the watch on the stopped turn should end",
+          timeout: Math.max(0, watchUntil - Date.now()) + 10_000,
           intervals: [1_000],
         },
       )
-      .toBe("nothing");
+      .not.toBe("watching");
+    // The stopped turn's CLI outlives the Stop and carries on from the
+    // cancelled timer: it asks the model for the next step (#16729).
+    const pinned = pinKnownFailure(
+      "#16729: a turn stopped during a tool call carries on, its CLI asking the model for the next step",
+      "nothing of the stopped turn should arrive by the time its timer would have gone off",
+    );
+    expect(added, pinned).toBe("nothing");
     await expect
       .poll(() => savedConversation(page, sessionID), {
         message:
