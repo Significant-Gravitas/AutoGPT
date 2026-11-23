@@ -26,7 +26,8 @@ const HISTORY_PATH = "/api/proxy/api/credits/transactions";
 // Keep BACKUP_READ_MS equal to LATE_WEBHOOK_MS; the test can't import it.
 const BACKUP_READ_MS = 10_000;
 const PAUSE_JUMP_MS = 1_000;
-// One step per poll (every 100 ms), so a budget lasts the polls' 15 s: a
+// One step per poll (every 100 ms): REFRESH_CLOCK_BUDGET_MS lasts its poll's
+// 15 s, and ANSWER_RUN_MS about 10 s of the two answer polls it's shared by. A
 // runner that stalls before the page handles an answer still gets its timers
 // run, and the steps only fire due timers, at most each budget's worth.
 const REFRESH_STEP_MS = 10;
@@ -132,6 +133,8 @@ test.describe("billing journey", () => {
     const balanceRead = page
       .waitForResponse(isBalanceRead, { timeout: 15_000 })
       .catch(() => null);
+    // A route handler's error doesn't fail the test, so keep it for the body.
+    let pauseError: unknown;
     await page.route(`**${CREDITS_PATH}`, async (route) => {
       try {
         if (route.request().method() === "PATCH") {
@@ -141,9 +144,10 @@ test.describe("billing journey", () => {
           // test runs the clock, so time the test doesn't run never counts.
           await page.clock.pauseAt(Date.now() + PAUSE_JUMP_MS);
         }
+      } catch (error) {
+        pauseError = error;
       } finally {
-        // Even if the pause failed, so the test fails on that and not on a
-        // request left hanging.
+        // Even if the pause failed, so no request is left hanging.
         await route.fallback();
       }
     });
@@ -160,6 +164,12 @@ test.describe("billing journey", () => {
       expect((await fulfilled).ok(), "PATCH credits from the return page").toBe(
         true,
       );
+      // Without the pause the clock runs in real time, and the backup read
+      // could stand in for the refresh this test is about.
+      expect(
+        pauseError,
+        "the page's clock should have paused before the fulfil call answered",
+      ).toBeUndefined();
       // The wait's timeout still lets the call go, but without the read
       // first this test proves nothing about the page, so it fails here.
       const read = await balanceRead;
