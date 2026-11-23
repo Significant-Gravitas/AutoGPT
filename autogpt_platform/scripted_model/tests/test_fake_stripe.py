@@ -31,6 +31,7 @@ CATALOG = (
     Path(__file__).resolve().parents[1] / "scripted_model/fake_stripe/catalog.json"
 )
 PRO = "price_journeys_pro_monthly"
+PRO_YEARLY = "price_journeys_pro_yearly"
 MAX = "price_journeys_max_monthly"
 MONTH_S = 28 * 24 * 3600
 
@@ -61,9 +62,10 @@ class _ReceiverHandler(BaseHTTPRequestHandler):
 
 
 class Stack:
-    def __init__(self, url: str, receiver: Receiver) -> None:
+    def __init__(self, url: str, receiver: Receiver, fake: FakeStripe) -> None:
         self.url = url
         self.receiver = receiver
+        self.fake = fake
 
     def control(self, method: str, path: str, body: Any = None) -> Any:
         data = json.dumps(body).encode() if body is not None else None
@@ -125,7 +127,7 @@ def stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Stack]:
     # A client of this test's own, closed with its event loop.
     monkeypatch.setattr(stripe, "default_http_client", None)
     try:
-        yield Stack(url, receiver)
+        yield Stack(url, receiver, server.stripe)
     finally:
         # Its webhooks still queued go out to the receiver, then its sender
         # stops: no thread outlives the test.
@@ -441,6 +443,34 @@ def test_the_sdk_subscribes_on_the_fake_checkout(stack: Stack) -> None:
     asyncio.run(_with_closed_client(read()))
 
 
+def test_a_subscription_checkout_takes_one_billing_interval(stack: Stack) -> None:
+    """Stripe bills a subscription's prices on one cycle: a checkout mixing
+    monthly and yearly prices is refused, in either order, and nothing is
+    stored. Prices that share an interval still go together."""
+
+    def plans(customer_id: str, *prices: str) -> dict[str, Any]:
+        return {
+            **_plan_checkout(customer_id, PRO, "user-1"),
+            "line_items": [{"price": price, "quantity": 1} for price in prices],
+        }
+
+    async def checkouts() -> stripe.checkout.Session:
+        customer = await stripe.Customer.create_async(email="user-1@example.com")
+        for prices in ((PRO, PRO_YEARLY), (PRO_YEARLY, PRO)):
+            with pytest.raises(stripe.InvalidRequestError, match="billing interval"):
+                await stripe.checkout.Session.create_async(
+                    **plans(customer.id, *prices)
+                )
+        stored = await stripe.checkout.Session.list_async(customer=customer.id)
+        assert stored.data == []
+        return await stripe.checkout.Session.create_async(
+            **plans(customer.id, PRO, MAX)
+        )
+
+    both = asyncio.run(_with_closed_client(checkouts()))
+    assert both.status == "open" and both.amount_total == 2300 + 9700
+
+
 def test_a_plan_set_to_cancel_at_the_period_end_and_back(stack: Stack) -> None:
     """``Subscription.modify`` answers first, then the webhook follows, with
     what changed in ``previous_attributes``."""
@@ -484,6 +514,68 @@ def test_a_plan_set_to_cancel_at_the_period_end_and_back(stack: Stack) -> None:
         },
     ]
     assert [d["status"] for e in updates for d in e["deliveries"]] == [200, 200]
+
+
+def test_one_update_that_cancels_and_comments_reports_the_details_before_it(
+    stack: Stack,
+) -> None:
+    """``previous_attributes`` holds what changed as it was before the
+    update, even when the update changes it twice (the cancel sets a reason,
+    then the comment is added)."""
+    sub_id = subscribe(stack)["subscription"]
+    before = stack.control("GET", f"objects/{sub_id}")["cancellation_details"]
+
+    async def cancel() -> stripe.Subscription:
+        return await stripe.Subscription.modify_async(
+            sub_id,
+            cancel_at_period_end=True,
+            cancellation_details={"comment": "too pricey"},
+        )
+
+    cancelled = asyncio.run(_with_closed_client(cancel()))
+    assert cancelled.cancellation_details.reason == "cancellation_requested"
+    assert cancelled.cancellation_details.comment == "too pricey"
+    [update] = _events(stack, sub_id, "customer.subscription.updated")
+    previous = update["event"]["data"]["previous_attributes"]
+    assert previous["cancellation_details"] == before
+    assert previous["cancel_at_period_end"] is False
+
+
+def test_changes_to_one_subscription_are_announced_in_the_order_they_were_made(
+    stack: Stack, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A change made first is announced first, even when another change to the
+    same subscription is made between its write and its webhook: the platform
+    takes the last event it hears as Stripe's latest state."""
+    sub_id = subscribe(stack)["subscription"]
+    fake = stack.fake
+    write = _PausesAfterFirstWrite(fake.store.update)
+    monkeypatch.setattr(fake.store, "update", write)
+    cancel, resume = [
+        threading.Thread(
+            target=fake.subscriptions.update,
+            args=(sub_id, {"cancel_at_period_end": cancels}),
+            kwargs={"wait": False},
+        )
+        for cancels in (True, False)
+    ]
+    cancel.start()
+    try:
+        assert write.paused.wait(5), "the cancel was never written"
+        # Code that records a change's event apart from its write lets the
+        # resume be written and announced now, ahead of the cancel.
+        resume.start()
+        resume.join(10)
+    finally:
+        write.release.set()
+        cancel.join(10)
+        if resume.ident is not None:
+            resume.join(10)
+    assert not cancel.is_alive() and not resume.is_alive()
+    updates = _events(stack, sub_id, "customer.subscription.updated")
+    announced = [u["event"]["data"]["object"]["cancel_at_period_end"] for u in updates]
+    assert announced == [True, False]
+    assert stack.control("GET", f"objects/{sub_id}")["cancel_at_period_end"] is False
 
 
 def test_a_period_ends_in_a_renewal_or_with_the_cancelled_plan(stack: Stack) -> None:
@@ -717,12 +809,13 @@ def test_closing_never_leaves_two_senders_delivering_at_once(
     """An event emitted while ``close`` waits for the sender goes out from
     that sender, after the ones queued before it, and the sender then stops:
     no second sender ever delivers beside it."""
+    before = set(threading.enumerate())
     receiver = _GatedReceiver()
     threading.Thread(target=receiver.serve_forever, daemon=True).start()
     events = Events("http://%s:%d/webhook" % receiver.server_address[:2], SECRET)
     queued = _NotesStop()
     monkeypatch.setattr(events, "_queue", queued)
-    closing = threading.Thread(target=events.close, kwargs={"timeout": 15})
+    closing = threading.Thread(target=events.close)
     try:
         events.emit("customer.updated", _customer(1), wait=False)
         assert receiver.first_arrived.wait(5), "the first delivery never arrived"
@@ -732,23 +825,39 @@ def test_closing_never_leaves_two_senders_delivering_at_once(
         events.emit("customer.updated", _customer(3), wait=False)
         # A second sender started now would send cus_2 while cus_1 is open.
         assert not receiver.overlapped.wait(1), "two deliveries were open at once"
+        receiver.release.set()
+        # close() stops waiting after its timeout, which a paused runner can
+        # outlast: wait for the deliveries and the sender themselves.
+        delivered = _wait_for(
+            lambda: list(receiver.received), lambda ids: len(ids) >= 3, timeout=30
+        )
+        assert delivered == ["cus_1", "cus_2", "cus_3"]
+        _wait_for(lambda: _senders(before), lambda alive: not alive, timeout=30)
+        closing.join(30)
+        assert not closing.is_alive(), "close() never returned"
     finally:
         receiver.release.set()
-        if closing.ident is not None:
-            closing.join(20)
-        try:
-            assert not closing.is_alive(), "close() never returned"
-            assert receiver.received == ["cus_1", "cus_2", "cus_3"]
-            assert not [
-                t for t in threading.enumerate() if t.name == "fake-stripe-webhooks"
-            ], "a sender outlived close()"
-        finally:
-            receiver.shutdown()
-            receiver.server_close()
+        if closing.ident is None:
+            # Stopped before close() was asked for: the sender still waits
+            # for its stop.
+            events.close()
+        else:
+            closing.join(30)
+        receiver.shutdown()
+        receiver.server_close()
 
 
 def _customer(number: int) -> dict[str, Any]:
     return {"id": f"cus_{number}", "object": "customer"}
+
+
+def _senders(before: set[threading.Thread]) -> list[threading.Thread]:
+    """The webhook senders started since ``before`` that are still alive."""
+    return [
+        thread
+        for thread in threading.enumerate()
+        if thread.name == "fake-stripe-webhooks" and thread not in before
+    ]
 
 
 class _ShortBody(BaseHTTPRequestHandler):
@@ -787,6 +896,24 @@ class _FirstPutWaits:
 
     def empty(self) -> bool:
         return self._inner.empty()
+
+
+class _PausesAfterFirstWrite:
+    """``Store.update``, whose first call waits for ``release`` once it has
+    written."""
+
+    def __init__(self, update: Callable[..., Any]) -> None:
+        self._update = update
+        self.paused = threading.Event()
+        self.release = threading.Event()
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        result = self._update(*args, **kwargs)
+        if not self.paused.is_set():
+            self.paused.set()
+            # However long a slow runner takes: the test always releases it.
+            self.release.wait()
+        return result
 
 
 class _NotesStop:

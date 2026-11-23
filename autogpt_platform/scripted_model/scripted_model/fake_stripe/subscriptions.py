@@ -9,9 +9,10 @@
   cancelled if it was set to cancel then, and renewed with a new paid invoice
   otherwise.
 
-Each change sends the events Stripe sends for it. A price change (``items``),
-a trial or a schedule isn't modelled: such a call is refused and journaled as
-unserved (``NotModelled``).
+Each change sends the events Stripe sends for it, recorded in the store step
+that makes the change, so two changes made at once are announced in the order
+they were made. A price change (``items``), a trial or a schedule isn't
+modelled: such a call is refused and journaled as unserved (``NotModelled``).
 """
 
 import calendar
@@ -98,14 +99,20 @@ class Subscriptions:
             if "cancellation_details" in params:
                 _merge_details(subscription, params["cancellation_details"], previous)
 
-        updated = self._update(subscription_id, change)
-        if previous:
-            self._events.emit(
-                "customer.subscription.updated",
-                updated,
-                previous_attributes=previous,
-                wait=wait,
-            )
+        def announce(updated: StripeObject) -> list[str]:
+            if not previous:
+                return []
+            return [
+                self._events.record(
+                    "customer.subscription.updated",
+                    updated,
+                    previous_attributes=previous,
+                )
+            ]
+
+        updated, events = self._update(subscription_id, change, announce=announce)
+        if wait:
+            self._events.wait(*events)
         return public(updated)
 
     def cancel(
@@ -138,8 +145,15 @@ class Subscriptions:
                 },
             )
 
-        canceled = self._update(subscription_id, change)
-        self._events.emit("customer.subscription.deleted", canceled, wait=wait)
+        canceled, events = self._update(
+            subscription_id,
+            change,
+            announce=lambda canceled: [
+                self._events.record("customer.subscription.deleted", canceled)
+            ],
+        )
+        if wait:
+            self._events.wait(*events)
         return public(canceled)
 
     def end_period(self, subscription_id: str) -> tuple[StripeObject, list[Params]]:
@@ -170,10 +184,14 @@ class Subscriptions:
                 ended_at=moment,
             )
 
-        ended = self._update(subscription_id, change)
-        return public(ended), [
-            self._events.emit("customer.subscription.deleted", ended)
-        ]
+        ended, events = self._update(
+            subscription_id,
+            change,
+            announce=lambda ended: [
+                self._events.record("customer.subscription.deleted", ended)
+            ],
+        )
+        return public(ended), self._delivered(events)
 
     def _renew(self, current: StripeObject) -> tuple[StripeObject, list[Params]]:
         moment = now()
@@ -201,15 +219,21 @@ class Subscriptions:
                 latest_invoice=invoice["id"],
             )
 
-        updated = self._update(current["id"], change, also_add=(invoice, payment))
-        events = [
-            self._events.emit(
-                "customer.subscription.updated", updated, previous_attributes=previous
-            ),
-            self._events.emit("invoice.paid", invoice),
-            self._events.emit("invoice.payment_succeeded", invoice),
-        ]
-        return public(updated), events
+        def announce(updated: StripeObject) -> list[str]:
+            return [
+                self._events.record(
+                    "customer.subscription.updated",
+                    updated,
+                    previous_attributes=previous,
+                ),
+                self._events.record("invoice.paid", invoice),
+                self._events.record("invoice.payment_succeeded", invoice),
+            ]
+
+        updated, events = self._update(
+            current["id"], change, also_add=(invoice, payment), announce=announce
+        )
+        return public(updated), self._delivered(events)
 
     def number_invoice(self, invoice: StripeObject) -> None:
         """Gives an invoice the next number in its customer's sequence. Call
@@ -256,12 +280,27 @@ class Subscriptions:
         subscription_id: str,
         change: Callable[[StripeObject], None],
         also_add: tuple[StripeObject, ...] = (),
-    ) -> StripeObject:
+        announce: Callable[[StripeObject], list[str]] | None = None,
+    ) -> tuple[StripeObject, list[str]]:
+        """Applies ``change``, and ``announce`` records the events it raises
+        for the result in the same store step. Returns the subscription and
+        those events' ids, to wait for outside the store's lock."""
         self._require(subscription_id)
-        updated = self._store.update(subscription_id, change, also_add)
+        recorded: list[str] = []
+
+        def committed(updated: StripeObject) -> None:
+            if announce is not None:
+                recorded.extend(announce(updated))
+
+        updated = self._store.update(subscription_id, change, also_add, committed)
         if updated is None:
             raise ApiError(404, f"No such subscription: '{subscription_id}'")
-        return updated
+        return updated, recorded
+
+    def _delivered(self, event_ids: list[str]) -> list[Params]:
+        """These events, once each has been delivered."""
+        self._events.wait(*event_ids)
+        return [self._events.get(event_id) or {} for event_id in event_ids]
 
 
 def period_end(start: int, interval: str) -> int:
@@ -332,8 +371,10 @@ def _merge_details(subscription: StripeObject, values: Any, previous: Params) ->
         )
     details = {**subscription["cancellation_details"], **values}
     if details != subscription["cancellation_details"]:
-        previous["cancellation_details"] = copy.deepcopy(
-            subscription["cancellation_details"]
+        # A cancel in the same update may have set them already: what the
+        # event reports is what they were before the update.
+        previous.setdefault(
+            "cancellation_details", copy.deepcopy(subscription["cancellation_details"])
         )
         subscription["cancellation_details"] = details
 

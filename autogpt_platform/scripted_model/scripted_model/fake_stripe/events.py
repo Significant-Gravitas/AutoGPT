@@ -13,6 +13,12 @@ for through the API never waits: as with Stripe, the API answers first and the
 webhook follows. It must not wait either way, since the platform's webhook
 handler calls the API back, and the call that raised the event may be holding
 the idempotency lock that call needs (``StripeApi._idempotent``).
+
+A change to a subscription records its events in the store step that makes it
+(``record``, from ``Store.update``'s ``committed``), so two changes made at
+once are announced in the order they were made. Waiting for a delivery comes
+after that step, never under the store's lock, which the platform's handler
+needs to read anything back.
 """
 
 import copy
@@ -59,6 +65,8 @@ class Events:
             queue.SimpleQueue()
         )
         self._sender: threading.Thread | None = None
+        # The queued events' delivery signals, until each is delivered.
+        self._sent: dict[str, threading.Event] = {}
 
     def close(self, timeout: float = DELIVERY_TIMEOUT_S) -> None:
         """Stops the sender once every queued event is delivered, so a test
@@ -101,7 +109,26 @@ class Events:
         """A new event about ``obj`` as it is now, delivered in turn unless
         ``holdable`` and the object is held. ``wait`` returns only once it
         has been delivered; never wait from an API call (see above)."""
-        data: dict[str, Any] = {"object": public(obj)}
+        event_id = self.record(
+            event_type, obj, holdable=holdable, previous_attributes=previous_attributes
+        )
+        if wait:
+            self.wait(event_id)
+        return self.get(event_id) or {}
+
+    def record(
+        self,
+        event_type: str,
+        obj: StripeObject,
+        *,
+        holdable: bool = True,
+        previous_attributes: dict[str, Any] | None = None,
+    ) -> str:
+        """``emit`` without the wait: records the event, queues it unless
+        ``holdable`` and the object is held, and returns its id."""
+        # A copy: the caller may hand ``obj`` on, and the API expands what it
+        # returns in place.
+        data: dict[str, Any] = {"object": copy.deepcopy(public(obj))}
         if previous_attributes is not None:
             data["previous_attributes"] = previous_attributes
         event = {
@@ -116,7 +143,6 @@ class Events:
             "type": event_type,
         }
         customer = obj["id"] if obj.get("object") == "customer" else obj.get("customer")
-        sent = threading.Event()
         # Recorded and queued in one step, so concurrent events go out in the
         # order they are recorded.
         with self._lock:
@@ -131,11 +157,22 @@ class Events:
                 "deliveries": [],
             }
             if not held:
+                sent = threading.Event()
+                self._sent[event["id"]] = sent
                 self._queue.put((event["id"], sent))
                 self._start_sender()
-        if not held and wait:
-            sent.wait()
-        return self.get(event["id"]) or {}
+        return event["id"]
+
+    def wait(self, *event_ids: str) -> None:
+        """Returns once each of these events has been delivered; one held, or
+        already delivered, doesn't wait. Never call it under the store's
+        lock: a delivery waits for the platform, whose handler reads the
+        store."""
+        for event_id in event_ids:
+            with self._lock:
+                sent = self._sent.get(event_id)
+            if sent is not None:
+                sent.wait()
 
     def deliver(self, event_id: str) -> dict[str, Any] | None:
         """Sends the event (again) and records the platform's answer, or why
@@ -205,6 +242,8 @@ class Events:
                 logger.exception("fake Stripe: delivering %s failed", event_id)
             finally:
                 sent.set()
+                with self._lock:
+                    self._sent.pop(event_id, None)
 
     def _post(self, payload: bytes, at: float) -> dict[str, Any]:
         if not self._webhook_url or not self._secret:

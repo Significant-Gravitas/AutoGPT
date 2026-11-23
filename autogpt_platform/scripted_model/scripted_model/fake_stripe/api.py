@@ -266,6 +266,8 @@ class StripeApi:
         ]
         if params["mode"] != "setup" and not items:
             raise ApiError(400, "Missing required param: line_items.")
+        if mode == "subscription":
+            _require_one_interval(items)
         session = resources.checkout_session(params, items, self._public_url)
         return public(self._store.add(session))
 
@@ -351,6 +353,21 @@ class StripeApi:
         self._require(str(params.get("customer")), "customer", "customer")
         session = resources.portal_session(params, self._public_url)
         return public(self._store.add(session))
+
+
+def _require_one_interval(items: list[dict[str, Any]]) -> None:
+    """Stripe bills a subscription's prices on one cycle, so they must recur
+    alike. Mixing intervals takes flexible billing, which the API version the
+    fake models doesn't have. (The catalogue's prices all recur every one
+    month or year.)"""
+    intervals = sorted({str(item["interval"]) for item in items})
+    if len(intervals) > 1:
+        raise ApiError(
+            400,
+            "All of a subscription's prices must have the same billing"
+            f" interval; these recur by {' and '.join(intervals)}.",
+            param="line_items",
+        )
 
 
 def _test_key(authorization: str) -> bool:

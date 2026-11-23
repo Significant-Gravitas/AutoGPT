@@ -212,8 +212,10 @@ reads `GET /__stripe__/requests/cursor` when it starts and checks that nothing
 after that is unserved. A request needs a test key (`sk_test_…`); a live key
 is refused. As Stripe does, the fake refuses an inline price (`price_data`)
 without a product (`product` or `product_data`) or an amount (`unit_amount`
-or `unit_amount_decimal`), and a recurring price in payment mode, and keeps no
-result under an idempotency key for a request it refused. It totals a line as
+or `unit_amount_decimal`), a recurring price in payment mode, and a
+subscription checkout whose prices recur on different intervals (that takes
+flexible billing, which this API version lacks). It keeps no result under an
+idempotency key for a request it refused. It totals a line as
 Stripe does: the unit price times the quantity, rounded up to a whole minor
 unit.
 
@@ -247,7 +249,9 @@ a failed delivery and the next goes out. One thread sends them, and only one:
 and an event after that starts a new one.
 What the fake's own pages and controls do waits for its events to be
 delivered. What the platform asks for through the API doesn't: as with
-Stripe, the API answers first and the webhook follows a moment later.
+Stripe, the API answers first and the webhook follows a moment later. A
+change to a subscription records its events in the same step as the change,
+so two changes made at once are announced in the order they were made.
 
 **Billing portal.** A portal session's `url` is
 `$FAKE_STRIPE_PUBLIC_URL/stripe/billing_portal/<id>`. It lists the customer's
