@@ -74,8 +74,8 @@ export async function sampleMarketplace(page: Page) {
     skill: skillSample(
       skills.find((skill) => hasItsLogo(skill.required_providers[0])),
     ),
-    // A skill whose first service is an MCP server (#17313).
-    skillWithMCPService: skillSample(
+    // A skill whose first service is an MCP server (#17313), and that server.
+    skillWithMCPService: withFirstService(
       skills.find((skill) => skill.required_providers[0]?.startsWith("mcp_")),
     ),
   };
@@ -110,6 +110,23 @@ function skillSample(skill: StoreSkill | undefined): RouteSample | undefined {
       shows: skill.title,
     }
   );
+}
+
+/** A skill's sample, with the service it names first, as it names it. */
+function withFirstService(skill: StoreSkill | undefined) {
+  const sample = skillSample(skill);
+  const service = skill?.required_providers[0];
+  return sample && service ? { ...sample, service } : undefined;
+}
+
+/** What the backend's MCP catalog calls one of its servers (#17336). */
+export async function catalogName(page: Page, provider: string) {
+  const providers = await getJSON<
+    { name: string; display_name?: string | null }[]
+  >(page, "/api/proxy/api/integrations/providers");
+  const name = providers.find((entry) => entry.name === provider)?.display_name;
+  if (!name) throw new Error(`the MCP catalog has no name for ${provider}`);
+  return name;
 }
 
 function hasItsLogo(provider: string | undefined) {

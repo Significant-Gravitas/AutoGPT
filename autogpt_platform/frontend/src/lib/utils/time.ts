@@ -4,8 +4,11 @@ const MINUTES_PER_HOUR = 60;
 const HOURS_PER_DAY = 24;
 const MILLISECONDS_PER_MINUTE = SECONDS_PER_MINUTE * MILLISECONDS_PER_SECOND;
 
-export function formatTimeAgo(dateStr: string): string {
-  const date = new Date(dateStr);
+// Reads the clock, so the server and the browser word it differently. Render
+// <RelativeTime variant="short"> instead; ESLint allows this import only in
+// the files on the relative-time allow-list in .eslintrc.json.
+export function formatTimeAgo(input: Date | string | number): string {
+  const date = new Date(input);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / MILLISECONDS_PER_MINUTE);
