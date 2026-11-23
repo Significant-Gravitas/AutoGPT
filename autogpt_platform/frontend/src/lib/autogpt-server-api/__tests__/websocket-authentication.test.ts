@@ -39,12 +39,19 @@ describe("WebSocket authentication and recovery", () => {
   }
 
   it("connects again after a 4001 from a backend that expects the token in the URL", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
     const connected = vi.fn();
     api.onWebSocketConnect(connected);
     void api.connectWebSocket();
     const first = await socketAt();
     first.open();
     first.serverClose(4001);
+    // Expected while such a backend is still deployed, so not reported.
+    expect(error).not.toHaveBeenCalled();
+    expect(info).toHaveBeenCalledWith(
+      expect.stringContaining("WebSocket sign-in not read; retrying"),
+    );
     await vi.advanceTimersByTimeAsync(2000);
     const second = await socketAt(1);
     second.open();

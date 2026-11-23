@@ -52,6 +52,28 @@ describe("pending subscriptions share connection retries", () => {
     },
   );
 
+  it("sends a pending subscribe once a socket signs in after a 4001", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const outcome = api.subscribeToGraphExecution(executionID).then(
+      () => "sent",
+      () => "rejected",
+    );
+    const first = await socketAt();
+    first.open();
+    first.serverClose(4001);
+    await vi.advanceTimersByTimeAsync(1000);
+    const next = await socketAt(1);
+    next.open();
+    next.pong();
+    expect(await outcome).toBe("sent");
+    expect(next.send).toHaveBeenLastCalledWith(
+      JSON.stringify({
+        method: "subscribe_graph_execution",
+        data: { graph_exec_id: executionID },
+      }),
+    );
+  });
+
   it("waits for the shared backoff and authenticated pong before sending", async () => {
     const sent = vi.fn();
     const outcome = api.subscribeToGraphExecution(executionID).then(sent);
