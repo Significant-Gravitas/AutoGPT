@@ -72,11 +72,26 @@ script to know what to expect.
   platform starts later included. Give such a turn its own marker in a user
   message, or expect it to run past the script's end.
 - **Which turn answers a request:** turn `n` answers the request whose
-  conversation already holds `n` assistant messages. Requests carry the whole
-  conversation, so the server keeps no state: concurrent runs of one script,
-  a retried turn and a resumed session all land on the right turn. A
-  follow-up the user queued during a turn reaches the model after that turn's
-  answer, so it gets the next turn.
+  conversation already holds `n` assistant messages after the user message
+  that carries the marker. Requests carry the whole conversation, so the
+  server keeps no state: concurrent runs of one script, a retried turn and a
+  resumed session all land on the right turn. A follow-up the user queued
+  during a turn reaches the model after that turn's answer, so it gets the
+  next turn.
+- **A message with a marker of its own** starts that script: when several
+  user messages carry one, the newest picks the script. After a stopped
+  turn, the platform may resume the conversation or hand it to the model as
+  text inside the next message, so a journey that sends a message after a
+  Stop gives it its own marker; either way it gets that script's first turn
+  (`copilot-stop-journey.spec.ts`).
+- **The newest marker is read from the user's own words.** The platform
+  adds tagged blocks to a user message, such as recalled memories
+  (`<memory_context>`) or the earlier chat passed on as text
+  (`<conversation_history>`). These can quote earlier messages of the chat,
+  or of the user's other chats, markers and all, so a marker inside a tagged
+  block never outranks one the user typed. A request with no marker in the
+  user's own words, such as a title request that quotes the chat inside a
+  `<conversation>` tag, takes the first marker in its user messages.
 - **Tools:** name them as the baseline engine does (`find_library_agent`).
   The SDK engine offers them as `mcp__copilot__find_library_agent`; the server
   calls whichever the request offers. Most platform tools (`create_agent`,
