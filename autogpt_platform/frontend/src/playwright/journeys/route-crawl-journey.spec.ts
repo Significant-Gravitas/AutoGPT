@@ -111,9 +111,8 @@ interface CrawlFixtures {
 
 // Playwright sets up the journeys' own automatic fixtures before crawlEnv,
 // on the test's time: a browser context and page with JS coverage, the
-// changelog route and the guard. They took about 1 s on CI, a worker's first
-// test launching the browser too, so the crawl takes the test as started
-// this much earlier.
+// changelog route and the guard, and for a worker's first test the browser
+// itself. So the crawl takes the test as started this much earlier.
 const SET_UP_BEFORE_CRAWL_ENV_MS = 5_000;
 
 // What a test changes on the stack (an admin role, a hire) is undone in a
@@ -156,7 +155,10 @@ const test = journeyTest.extend<CrawlFixtures>({
       await provide(hired);
     } finally {
       const leftOver = hired ? await letGo(page, hired) : null;
-      expect(leftOver, "cleaning up the hired expert").toBeNull();
+      expect(
+        leftOver,
+        `cleaning up the hired expert ${hired?.id ?? ""}`.trim(),
+      ).toBeNull();
     }
   },
 });
@@ -620,6 +622,12 @@ async function expectAllClean(results: VisitResult[]) {
     );
   }
   const reached = results.filter((result) => result.reached);
+  // Notes on unreached pages are fine; a test that reached none checked
+  // nothing, so a slow set-up mustn't turn it into a pass.
+  expect(
+    results.length === 0 || reached.length > 0,
+    `the crawl ran out of time before any of its ${results.length} pages`,
+  ).toBe(true);
   const failures = describeFailures(reached.map(noteKnownBugs));
   expect(
     failures.length,

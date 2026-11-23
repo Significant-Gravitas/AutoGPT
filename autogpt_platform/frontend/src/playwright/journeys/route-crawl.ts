@@ -8,7 +8,11 @@ import type {
 } from "@playwright/test";
 import { markChangelogSeen } from "../utils/changelog";
 import { serveHostedFlags, test } from "./fixtures";
-import { type ExpectedResponse, watchPageForUnexpectedErrors } from "./guard";
+import {
+  BODY_READ_TIMEOUT_MS,
+  type ExpectedResponse,
+  watchPageForUnexpectedErrors,
+} from "./guard";
 import { authHeaders, type JourneyUser } from "./journey-user";
 import {
   existsInPublic,
@@ -77,11 +81,16 @@ export interface CrawlEnv {
 const TABS = 2;
 const VISIT_TIMEOUT_MS = 30_000;
 const GUARD_COLLECT_MS = 10_000;
+// One batch of the guard's body reads past its deadline: the guard checks
+// the deadline only between batches, and a batch's reads run together, each
+// giving up after BODY_READ_TIMEOUT_MS. Twice that leaves room for
+// describing what they read.
+const GUARD_BATCH_OVERRUN_MS = 2 * BODY_READ_TIMEOUT_MS;
 // The longest a visit runs once it has started: its checks, signing in again
-// included; its guard, which checks its deadline only between batches of
-// body reads, so it can run one batch (10 s) over it (guard.ts); and opening
-// and closing its tab.
-const VISIT_MAX_MS = VISIT_TIMEOUT_MS + GUARD_COLLECT_MS + 10_000 + 5_000;
+// included; its guard, which can run one batch over its deadline; and
+// opening and closing its tab.
+const VISIT_MAX_MS =
+  VISIT_TIMEOUT_MS + GUARD_COLLECT_MS + GUARD_BATCH_OVERRUN_MS + 5_000;
 // What the test does after its last visit: closing the crawl's browser
 // contexts and attaching its report. Fixtures tear down on a timeout of
 // their own.
