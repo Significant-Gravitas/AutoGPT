@@ -28,5 +28,6 @@ describe("integration logo assets", () => {
   test.each(catalog)("$name has a bundled brand logo", (entry) => {
     expect(entry.mcp_server.icon_id).toBeTruthy();
     expectPNG(entry.mcp_server.icon_id!);
+    expectPNG(entry.name);
   });
 });
