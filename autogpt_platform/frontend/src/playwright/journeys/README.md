@@ -76,8 +76,10 @@ product does what the user expects.
 ## The route crawl
 
 `route-crawl-journey.spec.ts` opens every page in `src/app` as the person it
-is for, each in a browser context of its own with the guard, and fails with
-each page that didn't load cleanly and why. A page loads cleanly when:
+is for, each in a tab of its own watched by the guard on that tab alone
+(`watchPageForUnexpectedErrors`), and fails with each page that didn't load
+cleanly and why. A session's tabs share a browser context, so the app's
+scripts load once per session. A page loads cleanly when:
 
 - the server answers it below 400;
 - it ends up where it should;
