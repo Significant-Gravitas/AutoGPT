@@ -22,6 +22,7 @@ import {
 } from "react";
 import { getSystemCredentials } from "../../../../../../../../../../components/contextual/CredentialsInput/helpers";
 import { getVisibleFields } from "../AgentInputsReadOnly/helpers";
+import { withCalendarDates } from "../RunAgentInputs/helpers";
 import { showExecutionErrorToast } from "./errorHelpers";
 
 export type RunVariant =
@@ -45,8 +46,8 @@ export function useAgentRunModal(
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
-  const [inputValues, setInputValues] = useState<Record<string, any>>(
-    callbacks?.initialInputValues || {},
+  const [inputValues, setInputValues] = useState<Record<string, any>>(() =>
+    withCalendarDates(agent.input_schema, callbacks?.initialInputValues),
   );
   const [inputCredentials, setInputCredentials] = useState<Record<string, any>>(
     callbacks?.initialInputCredentials || {},
@@ -57,7 +58,12 @@ export function useAgentRunModal(
   // `trigger_config`). Seeded from `initialTriggerConfigValues` when editing.
   const [triggerConfigValues, setTriggerConfigValues] = useState<
     Record<string, any>
-  >(callbacks?.initialTriggerConfigValues || {});
+  >(() =>
+    withCalendarDates(
+      agent.trigger_setup_info?.config_schema,
+      callbacks?.initialTriggerConfigValues,
+    ),
+  );
 
   const [presetName, setPresetName] = useState<string>("");
   const [presetDescription, setPresetDescription] = useState<string>("");
@@ -72,10 +78,19 @@ export function useAgentRunModal(
 
   // Update input values/credentials if template is selected/unselected
   useEffect(() => {
-    setInputValues(callbacks?.initialInputValues || {});
+    setInputValues(
+      withCalendarDates(agent.input_schema, callbacks?.initialInputValues),
+    );
     setInputCredentials(callbacks?.initialInputCredentials || {});
-    setTriggerConfigValues(callbacks?.initialTriggerConfigValues || {});
+    setTriggerConfigValues(
+      withCalendarDates(
+        agent.trigger_setup_info?.config_schema,
+        callbacks?.initialTriggerConfigValues,
+      ),
+    );
   }, [
+    agent.input_schema,
+    agent.trigger_setup_info?.config_schema,
     callbacks?.initialInputValues,
     callbacks?.initialTriggerConfigValues,
     callbacks?.initialInputCredentials,
