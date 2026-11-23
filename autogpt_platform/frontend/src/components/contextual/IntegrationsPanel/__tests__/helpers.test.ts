@@ -56,6 +56,20 @@ describe("formatProviderName", () => {
     expect(formatProviderName("hello-world")).toBe("Hello World");
   });
 
+  // scripts/integration-logos.test.ts checks every MCP catalog entry.
+  test("names an MCP catalog server without its mcp_ prefix", () => {
+    expect(formatProviderName("mcp_amplitude")).toBe("Amplitude");
+    expect(formatProviderName("mcp_apollo_io")).toBe("Apollo.io");
+    expect(formatProviderName("mcp_hubspot")).toBe("HubSpot");
+    expect(formatProviderName("mcp")).toBe("Mcp");
+    expect(formatProviderName("mcp_")).toBe("Mcp");
+  });
+
+  test("reads no name off Object.prototype", () => {
+    expect(formatProviderName("constructor")).toBe("Constructor");
+    expect(formatProviderName("mcp_constructor")).toBe("Constructor");
+  });
+
   test("returns empty string for non-string input — guards against provider.split TypeError", () => {
     expect(formatProviderName(undefined)).toBe("");
     expect(formatProviderName(null)).toBe("");

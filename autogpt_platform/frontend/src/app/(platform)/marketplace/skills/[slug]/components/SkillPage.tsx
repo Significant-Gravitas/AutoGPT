@@ -8,7 +8,7 @@ import {
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ConnectServiceDialog } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/ConnectServiceDialog";
-import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
+import { formatProviderList } from "@/components/contextual/IntegrationsPanel/helpers";
 import { SkillFileViewer } from "@/components/contextual/SkillPackage/SkillFileViewer";
 import { SkillPackageFileList } from "@/components/contextual/SkillPackage/SkillPackageFileList";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
@@ -195,7 +195,7 @@ export function SkillPage({ slug }: Props) {
         </div>
 
         {isAdded && pendingConnections.length > 0 ? (
-          <ConnectStep names={pendingConnections} onConnect={openConnect} />
+          <ConnectStep providers={pendingConnections} onConnect={openConnect} />
         ) : null}
       </header>
 
@@ -311,12 +311,4 @@ function SkillPageSkeleton() {
       </div>
     </main>
   );
-}
-
-function formatProviderList(providers: string[]): string {
-  const names = providers.map(formatProviderName).filter(Boolean);
-  return new Intl.ListFormat("en", {
-    style: "long",
-    type: "conjunction",
-  }).format(names);
 }
