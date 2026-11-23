@@ -2630,7 +2630,8 @@ async def update_preset(
             update_data["teamId"] = team_id
         if name:
             update_data["name"] = name
-        if description:
+        # "" empties the description; only None leaves it as it was.
+        if description is not None:
             update_data["description"] = description
         if is_active is not None:
             update_data["isActive"] = is_active

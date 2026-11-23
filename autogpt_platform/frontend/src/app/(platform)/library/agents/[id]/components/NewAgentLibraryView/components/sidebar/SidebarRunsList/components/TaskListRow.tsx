@@ -11,9 +11,16 @@ interface Props {
   agent: LibraryAgent;
   selected: boolean;
   onSelectRun: (id: string, tab: "runs") => void;
+  onRunDeleted: (id: string) => void;
 }
 
-function TaskListRowComponent({ run, agent, selected, onSelectRun }: Props) {
+function TaskListRowComponent({
+  run,
+  agent,
+  selected,
+  onSelectRun,
+  onRunDeleted,
+}: Props) {
   return (
     <div className="w-[15rem] lg:w-full">
       <TaskListItem
@@ -22,6 +29,7 @@ function TaskListRowComponent({ run, agent, selected, onSelectRun }: Props) {
         agent={agent}
         selected={selected}
         onClick={() => onSelectRun(run.id, "runs")}
+        onDeleted={() => onRunDeleted(run.id)}
       />
     </div>
   );
@@ -34,6 +42,7 @@ function areRowPropsEqual(prev: Props, next: Props) {
     prev.agent === next.agent &&
     prev.selected === next.selected &&
     prev.onSelectRun === next.onSelectRun &&
+    prev.onRunDeleted === next.onRunDeleted &&
     isEqual(prev.run, next.run)
   );
 }

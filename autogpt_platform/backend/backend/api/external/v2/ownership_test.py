@@ -85,7 +85,11 @@ async def test_a_colleagues_run_is_not_cancelled(
     stopped = await _call("POST", f"/runs/{colleagues.run_id}/stop", colleagues.owner)
 
     assert stopped.status_code == 202, stopped.text
-    queue.publish_message.assert_awaited_once()
+    # No executor has started the run, so the stop ends it itself and sends
+    # the cancel again after that write (#17178): two cancels, both for it.
+    cancels = [call.kwargs["message"] for call in queue.publish_message.await_args_list]
+    assert len(cancels) == 2
+    assert all(colleagues.run_id in message for message in cancels)
 
 
 @pytest.mark.asyncio(loop_scope="session")
