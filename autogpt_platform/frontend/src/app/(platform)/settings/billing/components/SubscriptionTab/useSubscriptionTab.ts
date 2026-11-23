@@ -4,7 +4,7 @@ import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/cred
 import { useTrialStatus } from "@/services/trials/useTrialStatus";
 import { usePaymentRecovery } from "@/services/usageExperience/usePaymentRecovery";
 
-import { isFirstReadInFlight, isPaidTier, readTier } from "./helpers";
+import { isAwaitingFirstAnswer, isPaidTier, readTier } from "./helpers";
 import { getCancelPendingOffer } from "./TrialPlanChoices/helpers";
 import { usePlanCheckoutReturn } from "./usePlanCheckoutReturn";
 
@@ -13,7 +13,7 @@ export function useSubscriptionTab(isPlanCheckoutReturn: boolean) {
   const trial = trialStatus.data;
   // The cards this gates read the trial too and refetch a failed read on
   // mount, so gate only on the first answer.
-  const isLoading = isFirstReadInFlight(trialStatus);
+  const isLoading = isAwaitingFirstAnswer(trialStatus);
   const tier = useGetSubscriptionStatus({ query: { select: readTier } });
   const { isConfirmingPlan } = usePlanCheckoutReturn(isPlanCheckoutReturn);
   const { paymentFailed, payment } = usePaymentRecovery(tier.data);

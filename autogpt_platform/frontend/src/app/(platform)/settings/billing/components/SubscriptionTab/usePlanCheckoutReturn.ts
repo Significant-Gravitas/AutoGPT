@@ -6,7 +6,7 @@ import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/cred
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { useTrialStatus } from "@/services/trials/useTrialStatus";
 
-import { isFirstReadInFlight, readTier } from "./helpers";
+import { isAwaitingFirstAnswer, readTier } from "./helpers";
 
 const POLL_MS = 2_000;
 const GIVE_UP_MS = 30_000;
@@ -39,7 +39,7 @@ export function usePlanCheckoutReturn(isCheckoutReturn: boolean) {
   // on mount, so gate only on the first answer.
   return {
     isConfirmingPlan:
-      isWatching && (isFirstReadInFlight(tier) || tier.data === "TRIAL"),
+      isWatching && (isAwaitingFirstAnswer(tier) || tier.data === "TRIAL"),
   };
 }
 
