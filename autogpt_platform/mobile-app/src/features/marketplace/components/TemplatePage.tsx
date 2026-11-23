@@ -1,4 +1,4 @@
-import { ArrowLeft01Icon } from "@hugeicons/core-free-icons";
+import { ArrowLeft01Icon, Share08Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { ActivityIndicator, type LayoutChangeEvent, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,8 +15,9 @@ import { AreaWash } from "./AreaWash";
 import { HireCta } from "./HireCta";
 import { TemplateProfile } from "./TemplateProfile";
 
-// How far the wash reaches below the status bar.
-const WASH_HEIGHT = 190;
+// How far the wash reaches below the status bar: past the portrait, so the
+// fade ends behind the name.
+const WASH_HEIGHT = 240;
 
 interface Props {
   templateID: string;
@@ -44,7 +45,7 @@ export function TemplatePage({ templateID }: Props) {
           <ScrollView
             contentContainerStyle={{ paddingTop: headerHeight, paddingBottom: ctaHeight + spacing.sm }}
           >
-            <TemplateProfile template={page.template} />
+            <TemplateProfile template={page.template} services={page.services} />
           </ScrollView>
           <HireCta
             name={page.template.name}
@@ -94,6 +95,11 @@ export function TemplatePage({ templateID }: Props) {
       <FloatingHeader
         left={
           <IconButton icon={ArrowLeft01Icon} label="Back" onPress={page.back} variant="floating" />
+        }
+        right={
+          page.template ? (
+            <IconButton icon={Share08Icon} label="Share" onPress={page.share} variant="floating" />
+          ) : null
         }
         fadeColor={wash ?? colors.panelBackground}
       />
