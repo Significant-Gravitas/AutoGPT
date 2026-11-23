@@ -72,7 +72,7 @@ describe("parseDelimited", () => {
 
 describe("tableFromText", () => {
   it("takes the first row as headings and spots number columns", () => {
-    const table = tableFromText("Account,Value\nAcme,\"48,000\"\nGlobex,125500\n\n", "pipeline.csv");
+    const table = tableFromText("Account,Value\nAcme,\"48,000\"\nGlobex,125500\n\n", { name: "pipeline.csv" });
     expect(table.header).toEqual(["Account", "Value"]);
     expect(table.rows).toHaveLength(2);
     expect(table.totalRows).toBe(2);
@@ -81,9 +81,23 @@ describe("tableFromText", () => {
 
   it("keeps the first 500 rows but counts them all", () => {
     const text = ["n", ...Array.from({ length: 600 }, (_, index) => String(index))].join("\n");
-    const table = tableFromText(text, "big.csv");
+    const table = tableFromText(text, { name: "big.csv" });
     expect(table.rows).toHaveLength(500);
     expect(table.totalRows).toBe(600);
+  });
+
+  it("splits on tabs for a TSV named without its extension", () => {
+    const table = tableFromText("name\tvalue\nAcme\t12", {
+      name: "report",
+      mime_type: "text/tab-separated-values",
+    });
+    expect(table.header).toEqual(["name", "value"]);
+    expect(table.rows).toEqual([["Acme", "12"]]);
+  });
+
+  it("reads a file with more rows than a call takes arguments", () => {
+    const text = ["id", ...Array.from({ length: 200_000 }, () => "1")].join("\n");
+    expect(tableFromText(text, { name: "ids.csv" }).totalRows).toBe(200_000);
   });
 });
 
@@ -91,5 +105,15 @@ describe("formatJson", () => {
   it("lays JSON out and leaves anything else alone", () => {
     expect(formatJson('{"a":[1,2]}')).toBe('{\n  "a": [\n    1,\n    2\n  ]\n}');
     expect(formatJson("not json")).toBe("not json");
+  });
+
+  it("keeps the file's own numbers, keys and escapes", () => {
+    expect(formatJson('{"id": 12345678901234567890, "a": 1, "a": "\\u00e9\\"}"}')).toBe(
+      '{\n  "id": 12345678901234567890,\n  "a": 1,\n  "a": "\\u00e9\\"}"\n}',
+    );
+  });
+
+  it("keeps empty objects and lists on one line", () => {
+    expect(formatJson('{"a": {}, "b": [ ]}')).toBe('{\n  "a": {},\n  "b": []\n}');
   });
 });

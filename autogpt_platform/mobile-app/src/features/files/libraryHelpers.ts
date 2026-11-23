@@ -103,13 +103,25 @@ export interface TableData {
   numeric: boolean[];
 }
 
+/** Tab for a TSV: by its extension, else by its MIME type when the name has none. */
+function delimiterFor(file: { name: string; mime_type?: string | null }) {
+  if (/\.tsv$/i.test(file.name)) return "\t";
+  if (/\.csv$/i.test(file.name)) return ",";
+  const mime = (file.mime_type ?? "").toLowerCase().split(";")[0].trim();
+  return mime === "text/tab-separated-values" ? "\t" : ",";
+}
+
 /** A CSV or TSV ready for the table viewer: the first row as headings, columns sized to their text. */
-export function tableFromText(text: string, name: string): TableData {
-  const delimiter = /\.tsv$/i.test(name) ? "\t" : ",";
-  const [header = [], ...body] = parseDelimited(text, delimiter).filter(
+export function tableFromText(
+  text: string,
+  file: { name: string; mime_type?: string | null },
+): TableData {
+  const [header = [], ...body] = parseDelimited(text, delimiterFor(file)).filter(
     (row) => !(row.length === 1 && row[0] === ""),
   );
-  const columns = Math.max(header.length, ...body.map((row) => row.length));
+  // A loop, not a spread: a long file has more rows than a call takes arguments.
+  let columns = header.length;
+  for (const row of body) columns = Math.max(columns, row.length);
   const rows = body.slice(0, TABLE_ROW_LIMIT);
   const widths = Array.from({ length: columns }, (_, column) => {
     const longest = Math.max(
@@ -125,11 +137,57 @@ export function tableFromText(text: string, name: string): TableData {
   return { header, rows, totalRows: body.length, widths, numeric };
 }
 
-/** JSON laid out two spaces deep; anything that doesn't parse comes back as it was. */
+const JSON_SPACE = " \t\n\r";
+
+/**
+ * JSON laid out two spaces deep; anything that doesn't parse comes back as it was.
+ * It re-indents the file's own text rather than re-serialising it, so a number past
+ * 2^53, a duplicate key or an escape shows exactly as written.
+ */
 export function formatJson(text: string) {
   try {
-    return JSON.stringify(JSON.parse(text), null, 2);
+    JSON.parse(text);
   } catch {
     return text;
   }
+  let out = "";
+  let depth = 0;
+  let inString = false;
+  const newline = () => "\n" + "  ".repeat(depth);
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      out += char;
+      if (char === "\\") {
+        index += 1;
+        out += text[index];
+      } else if (char === '"') {
+        inString = false;
+      }
+    } else if (JSON_SPACE.includes(char)) {
+      continue;
+    } else if (char === "{" || char === "[") {
+      const close = char === "{" ? "}" : "]";
+      let next = index + 1;
+      while (next < text.length && JSON_SPACE.includes(text[next])) next += 1;
+      if (text[next] === close) {
+        out += char + close;
+        index = next;
+      } else {
+        depth += 1;
+        out += char + newline();
+      }
+    } else if (char === "}" || char === "]") {
+      depth -= 1;
+      out += newline() + char;
+    } else if (char === ",") {
+      out += "," + newline();
+    } else if (char === ":") {
+      out += ": ";
+    } else {
+      if (char === '"') inString = true;
+      out += char;
+    }
+  }
+  return out;
 }

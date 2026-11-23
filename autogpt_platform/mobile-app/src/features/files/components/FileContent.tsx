@@ -74,7 +74,7 @@ export function FileContent({ file, isSharing, onOpenIn }: Props) {
     );
   }
   if (viewer.kind === "table") {
-    return <TableView table={tableFromText(viewer.text, file.name)} cappedNotice={viewer.cappedNotice} />;
+    return <TableView table={tableFromText(viewer.text, file)} cappedNotice={viewer.cappedNotice} />;
   }
   if (viewer.kind === "text") {
     const text = /\.json$/i.test(file.name) ? formatJson(viewer.text) : viewer.text;
