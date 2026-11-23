@@ -6,7 +6,7 @@ import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/cred
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { useTrialStatus } from "@/services/trials/useTrialStatus";
 
-import { readTier } from "./helpers";
+import { isFirstReadInFlight, readTier } from "./helpers";
 
 const POLL_MS = 2_000;
 const GIVE_UP_MS = 30_000;
@@ -35,8 +35,11 @@ export function usePlanCheckoutReturn(isCheckoutReturn: boolean) {
     return () => clearTimeout(timer);
   }, [isCheckoutReturn]);
 
+  // The plan choices it holds back read the plan too, and so retry a failed
+  // read.
   return {
-    isConfirmingPlan: isWatching && (tier.isPending || tier.data === "TRIAL"),
+    isConfirmingPlan:
+      isWatching && (isFirstReadInFlight(tier) || tier.data === "TRIAL"),
   };
 }
 

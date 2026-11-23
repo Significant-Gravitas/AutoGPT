@@ -33,3 +33,16 @@ export function isPaidTier(tier: SubscriptionStatusResponseTier | undefined) {
 export function readTier(response: getSubscriptionStatusResponse | undefined) {
   return response?.status === 200 ? response.data.tier : undefined;
 }
+
+interface Read {
+  isLoading: boolean;
+  isFetched: boolean;
+}
+
+// Whether a read's first answer is still on its way. React Query puts a read
+// that holds no data back to loading on each retry, so isLoading alone also
+// hides what a failed read decides. A card that reads it retries it as it
+// mounts, and would then mount and unmount in a loop, one read per round trip.
+export function isFirstReadInFlight(read: Read) {
+  return read.isLoading && !read.isFetched;
+}

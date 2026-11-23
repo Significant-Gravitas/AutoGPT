@@ -4,12 +4,15 @@ import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/cred
 import { useTrialStatus } from "@/services/trials/useTrialStatus";
 import { usePaymentRecovery } from "@/services/usageExperience/usePaymentRecovery";
 
-import { isPaidTier, readTier } from "./helpers";
+import { isFirstReadInFlight, isPaidTier, readTier } from "./helpers";
 import { getCancelPendingOffer } from "./TrialPlanChoices/helpers";
 import { usePlanCheckoutReturn } from "./usePlanCheckoutReturn";
 
 export function useSubscriptionTab(isPlanCheckoutReturn: boolean) {
-  const { data: trial, isLoading } = useTrialStatus();
+  const trialStatus = useTrialStatus();
+  const trial = trialStatus.data;
+  // The cards it holds back read the trial too, and so retry a failed read.
+  const isLoading = isFirstReadInFlight(trialStatus);
   const tier = useGetSubscriptionStatus({ query: { select: readTier } });
   const { isConfirmingPlan } = usePlanCheckoutReturn(isPlanCheckoutReturn);
   const { paymentFailed, payment } = usePaymentRecovery(tier.data);
