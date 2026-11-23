@@ -55,6 +55,14 @@ function filesUnderAdmin(kind: "page" | "route") {
 
 const adminPages = filesUnderAdmin("page");
 
+// The pages that render nothing and only send an admin on, and where to.
+const REDIRECT_ONLY: Record<string, RegExp> = {
+  [path.join("(platform)", "admin", "impersonation", "page.tsx")]:
+    /^\/admin\/users\b/,
+  [path.join("(platform)", "admin", "rate-limits", "page.tsx")]:
+    /^\/admin\/users\b/,
+};
+
 function signedInAs(role: string | null) {
   const session =
     role === null
@@ -94,6 +102,12 @@ beforeEach(() => {
 });
 
 describe("admin pages", () => {
+  it("include each redirect-only page", () => {
+    expect(adminPages).toEqual(
+      expect.arrayContaining(Object.keys(REDIRECT_ONLY)),
+    );
+  });
+
   it("are found, the dynamic preview page among them", () => {
     expect(adminPages).toContain(
       path.join(
@@ -129,17 +143,22 @@ describe("admin pages", () => {
       ).toBeInstanceOf(SentAway);
     });
 
-    it("does not turn an admin away as unauthorized", async () => {
+    it("lets an admin in", async () => {
       signedInAs("admin");
 
       const outcome = await visit(file);
 
-      if (outcome instanceof SentAway) {
-        expect(outcome.to).not.toBe("/unauthorized");
-      } else {
-        expect(outcome).not.toBeInstanceOf(Error);
-        expect(outcome).toBeTruthy();
+      const destination = REDIRECT_ONLY[file];
+      if (destination) {
+        expect(outcome).toBeInstanceOf(SentAway);
+        expect((outcome as SentAway).to).toMatch(destination);
+        return;
       }
+      // Sent anywhere, Home included, an admin never sees the page (#17308).
+      expect(outcome, "an admin should get the page itself").not.toBeInstanceOf(
+        Error,
+      );
+      expect(outcome).toBeTruthy();
     });
   });
 });

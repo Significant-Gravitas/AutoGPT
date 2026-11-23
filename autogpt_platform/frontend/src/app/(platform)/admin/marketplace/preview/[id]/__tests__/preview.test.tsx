@@ -1,3 +1,9 @@
+import { getGetV2AdminPreviewSubmissionListingUrl } from "@/app/api/__generated__/endpoints/admin/admin";
+import {
+  getGetV2AdminPreviewSubmissionListingMockHandler,
+  getPostV2AdminAddPendingAgentToLibraryMockHandler,
+  getPostV2AdminAddPendingAgentToLibraryResponseMock,
+} from "@/app/api/__generated__/endpoints/admin/admin.msw";
 import type { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
@@ -8,8 +14,6 @@ import { expect, test, vi } from "vitest";
 import { AdminAgentPreview } from "../components/AdminAgentPreview/AdminAgentPreview";
 
 const VERSION_ID = "version-1";
-const PREVIEW = `*/api/store/admin/submissions/${VERSION_ID}/preview`;
-const ADD_TO_LIBRARY = `*/api/store/admin/submissions/${VERSION_ID}/add-to-library`;
 
 const goBack = vi.fn();
 
@@ -54,7 +58,7 @@ function submission(overrides: Partial<StoreAgentDetails> = {}) {
 }
 
 function servePreview(listing: StoreAgentDetails) {
-  server.use(http.get(PREVIEW, () => HttpResponse.json(listing)));
+  server.use(getGetV2AdminPreviewSubmissionListingMockHandler(listing));
 }
 
 function renderPreview() {
@@ -97,9 +101,9 @@ test("adding a submission to the admin's library adds that version and says so",
   servePreview(submission());
   const added: string[] = [];
   server.use(
-    http.post(ADD_TO_LIBRARY, ({ request }) => {
-      added.push(new URL(request.url).pathname);
-      return HttpResponse.json({ id: "library-agent-1" });
+    getPostV2AdminAddPendingAgentToLibraryMockHandler(({ params }) => {
+      added.push(String(params.storeListingVersionId));
+      return getPostV2AdminAddPendingAgentToLibraryResponseMock();
     }),
   );
   renderPreview();
@@ -109,10 +113,7 @@ test("adding a submission to the admin's library adds that version and says so",
   );
 
   expect(await screen.findByText("Added to Library")).toBeDefined();
-  expect(added).toHaveLength(1);
-  expect(added[0]).toMatch(
-    new RegExp(`/submissions/${VERSION_ID}/add-to-library$`),
-  );
+  expect(added).toEqual([VERSION_ID]);
   expect(
     screen.getByRole("button", { name: "Add to My Library" }),
   ).toBeDefined();
@@ -120,7 +121,8 @@ test("adding a submission to the admin's library adds that version and says so",
 
 test("a submission the backend can't find shows the backend's reason and offers a way back", async () => {
   server.use(
-    http.get(PREVIEW, () =>
+    // The generated handlers answer only with the API's documented codes.
+    http.get(`*${getGetV2AdminPreviewSubmissionListingUrl(VERSION_ID)}`, () =>
       HttpResponse.json(
         { detail: "Store listing version not found" },
         { status: 404 },
