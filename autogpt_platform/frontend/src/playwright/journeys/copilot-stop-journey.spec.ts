@@ -170,6 +170,7 @@ test.describe("copilot stop journey", () => {
           () => false,
         );
       const replyEnd = await stoppedReplyEnd(run.nonce, stoppedAt);
+      const errorCardsShown = await errorCards(page).count();
       test.info().annotations.push({
         type: "stop timing",
         description: [
@@ -177,28 +178,27 @@ test.describe("copilot stop journey", () => {
           `server let go of the stopped turn ${turnEndedAt - stoppedAt} ms after Stop`,
           `cancel answered ${cancelled.at - stoppedAt} ms after Stop (${cancelled.reason ?? "confirmed"})`,
           `${wordsAtStop} words shown at Stop, ${wordsSaved} saved, ${wordsShown} shown once the turn ended`,
-          `correction: ${await sendOutcome(page, 1)}, ${answered ? "answered" : "not answered"}`,
+          `correction: ${await sendOutcome(page, 1)}, ${answered ? "answered" : "not answered"}, ${errorCardsShown} error card(s)`,
           `stopped reply: ${replyEnd}`,
         ].join("; "),
       });
-      // Neither pinned bug draws one: a queued correction is dropped quietly,
-      // and a CLI still reading the stopped reply doesn't stop the next turn.
-      await expect(errorCards(page), "no error card should show").toHaveCount(
-        0,
-      );
 
       // Which bug shows depends on how fast the stopped turn ends. A slow
       // Stop leaves it running when the correction arrives: the correction is
       // queued behind it and deleted with its queue (#16673). A fast one cuts
-      // its CLI's close short: the CLI keeps reading the stopped reply and
-      // can hold the session the correction's turn needs (#16729).
+      // its CLI's close short, so the CLI keeps reading the stopped reply
+      // (#16729), and the correction's turn can be dropped while the
+      // executor still holds the chat, under an error card ("This reply
+      // could not start", #16673). So the error card check is part of the
+      // pinned one: it runs on dev, where it is one of the bugs' own marks.
       const pinned = pinKnownFailure(
-        "#16673, #16729: a correction sent right after Stop is never answered, or a CLI keeps reading the stopped reply",
-        "the correction should be answered and the stopped reply's model stream ended",
+        "#16673, #16729: a correction sent right after Stop is never answered or can't start, or a CLI keeps reading the stopped reply",
+        "the correction should be answered with no error card, and the stopped reply's model stream ended",
       );
       expect(
         [
           answered ? null : "the correction was never answered",
+          errorCardsShown === 0 ? null : `${errorCardsShown} error card(s)`,
           replyEnd === "cut" ? null : `the stopped reply was ${replyEnd}`,
         ].filter(Boolean),
         pinned,
