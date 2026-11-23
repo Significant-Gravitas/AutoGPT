@@ -62,6 +62,22 @@ async def test_systematic_sampling_returns_empty_result_for_zero_size(
     assert out == {"sampled_data": [], "sample_indices": []}
 
 
+async def test_systematic_sampling_returns_evenly_spaced_seeded_samples():
+    data = [{"id": i} for i in range(10)]
+
+    out = await _sample(
+        data=data,
+        sample_size=3,
+        sampling_method=SamplingMethod.SYSTEMATIC,
+        random_seed=5,
+    )
+
+    assert out == {
+        "sampled_data": [{"id": 2}, {"id": 5}, {"id": 8}],
+        "sample_indices": [2, 5, 8],
+    }
+
+
 async def test_sample_larger_than_the_data_is_refused():
     with pytest.raises(ValueError, match="cannot be larger"):
         await _sample(data=[{"g": 1}], sample_size=2)
