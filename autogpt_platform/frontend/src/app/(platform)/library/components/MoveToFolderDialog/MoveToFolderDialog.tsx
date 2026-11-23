@@ -6,15 +6,15 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
-  useGetV2ListLibraryFolders,
+  useGetV2GetFolderTree,
   usePostV2BulkMoveAgents,
   getGetV2ListLibraryFoldersQueryKey,
 } from "@/app/api/__generated__/endpoints/folders/folders";
 import { getGetV2ListLibraryAgentsQueryKey } from "@/app/api/__generated__/endpoints/library/library";
 import { okData } from "@/app/api/helpers";
 import { useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
-import type { LibraryFolder } from "@/app/api/__generated__/models/libraryFolder";
+import { useState } from "react";
+import { flattenFolderTree } from "./helpers";
 
 interface Props {
   agentId: string;
@@ -35,9 +35,12 @@ export function MoveToFolderDialog({
   const { toast } = useToast();
   const [search, setSearch] = useState("");
 
-  const { data: foldersData } = useGetV2ListLibraryFolders(undefined, {
-    query: { select: okData },
-  });
+  // The whole tree, subfolders included, read fresh on every open: folder
+  // changes (and Otto's) don't invalidate the tree's query key.
+  const { data: folderTree, isLoading: isLoadingFolders } =
+    useGetV2GetFolderTree({
+      query: { select: okData, enabled: isOpen, staleTime: 0 },
+    });
 
   const { mutate: moveAgent, isPending } = usePostV2BulkMoveAgents({
     mutation: {
@@ -65,24 +68,7 @@ export function MoveToFolderDialog({
     },
   });
 
-  const hierarchicalFolders = useMemo(() => {
-    const allFolders = foldersData?.folders ?? [];
-    const result: { folder: LibraryFolder; depth: number }[] = [];
-
-    function addChildren(parentId: string | null, depth: number) {
-      for (const f of allFolders) {
-        if ((f.parent_id ?? null) === parentId) {
-          result.push({ folder: f, depth });
-          addChildren(f.id, depth + 1);
-        }
-      }
-    }
-
-    addChildren(null, 0);
-    return result;
-  }, [foldersData]);
-
-  const folders = hierarchicalFolders.filter(
+  const folders = flattenFolderTree(folderTree?.tree ?? []).filter(
     ({ folder: f }) =>
       f.id !== currentFolderId &&
       f.name.toLowerCase().includes(search.toLowerCase()),
@@ -136,7 +122,7 @@ export function MoveToFolderDialog({
             {folders.length === 0 ? (
               <div className="flex h-20 items-center justify-center">
                 <Text variant="small" tone="subtle">
-                  No folders found
+                  {isLoadingFolders ? "Loading folders…" : "No folders found"}
                 </Text>
               </div>
             ) : (

@@ -26,8 +26,8 @@ interface KnownNoise {
 }
 
 // Reviewed, app-wide noise that is NOT a bug. Every entry needs a reason a
-// reviewer can check. A real defect never goes here: fix it, or mark the
-// journey with test.fail() and a link to the issue.
+// reviewer can check. A real defect never goes here: fix it, or pin the
+// journey to its issue with pinKnownFailure() (known-failure.ts).
 const KNOWN_BENIGN: KnownNoise[] = [
   {
     kind: "console",

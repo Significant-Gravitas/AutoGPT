@@ -1,11 +1,11 @@
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  getGetV2GetMyAgentsQueryOptions,
-  getGetV2GetMyLiveSubmissionQueryOptions,
-} from "@/app/api/__generated__/endpoints/store/store";
-import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
+import { getV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { getV2GetLibraryAgentByGraphId } from "@/app/api/__generated__/endpoints/library/library";
+import { getGetV2GetMyLiveSubmissionQueryOptions } from "@/app/api/__generated__/endpoints/store/store";
+import type { LiveStoreSubmission } from "@/app/api/__generated__/models/liveStoreSubmission";
 import { okData } from "@/app/api/helpers";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { type AgentFormSource, toAgentFormSource } from "./helpers";
 
 type CheckStatus = "idle" | "checking" | "failed";
@@ -49,27 +49,54 @@ export function useLiveListingCheck() {
     return response.data;
   }
 
-  async function fetchAgent(graphId: string) {
-    const response = await queryClient.fetchQuery(
-      getGetV2GetMyAgentsQueryOptions(undefined, { query: { staleTime: 0 } }),
-    );
-    const agents = okData(response)?.agents;
-    return toAgentFormSource(agents?.find((a) => a.graph_id === graphId));
+  // Read directly, not from the creator's list of workflows: that list leaves
+  // out a version that's already listed, and comes a page at a time. Fetched
+  // outside the query cache, so the builder's copy of the graph isn't touched.
+  async function fetchAgent(graphId: string, version: number | undefined) {
+    const [graph, libraryAgent] = await Promise.all([
+      getV1GetSpecificGraph(
+        graphId,
+        version === undefined ? undefined : { version },
+      ),
+      fetchLibraryAgent(graphId),
+    ]);
+    const workflow = okData(graph);
+    if (!workflow) throw new Error(`Workflow lookup answered ${graph.status}`);
+    return toAgentFormSource(workflow, libraryAgent);
+  }
+
+  // An archived or removed Library entry answers 404. The workflow can still
+  // be published; it just has no image to start from.
+  async function fetchLibraryAgent(graphId: string) {
+    try {
+      return okData(await getV2GetLibraryAgentByGraphId(graphId)) ?? null;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) return null;
+      throw error;
+    }
   }
 
   function checkPickedAgent(
     graphId: string,
-    onChecked: (live: StoreSubmission | null) => void,
+    onChecked: (live: LiveStoreSubmission | null) => void,
   ) {
     void run(() => fetchLiveSubmission(graphId), onChecked);
   }
 
   function checkPreSelectedAgent(
     graphId: string,
-    onChecked: (live: StoreSubmission | null, agent: AgentFormSource) => void,
+    version: number | undefined,
+    onChecked: (
+      live: LiveStoreSubmission | null,
+      agent: AgentFormSource,
+    ) => void,
   ) {
     void run(
-      () => Promise.all([fetchLiveSubmission(graphId), fetchAgent(graphId)]),
+      () =>
+        Promise.all([
+          fetchLiveSubmission(graphId),
+          fetchAgent(graphId, version),
+        ]),
       ([live, agent]) => onChecked(live, agent),
     );
   }

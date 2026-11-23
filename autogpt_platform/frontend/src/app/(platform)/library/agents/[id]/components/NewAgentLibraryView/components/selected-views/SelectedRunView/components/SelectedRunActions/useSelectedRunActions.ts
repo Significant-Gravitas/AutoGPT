@@ -84,8 +84,6 @@ export function useSelectedRunActions({
     }
 
     try {
-      toast({ title: "Run started" });
-
       const res = await executeRun({
         graphId: run.graph_id,
         graphVersion: run.graph_version,
@@ -95,6 +93,7 @@ export function useSelectedRunActions({
           source: "library",
         },
       });
+      toast({ title: "Run started" });
 
       const newRunId = okData(res)?.id;
 

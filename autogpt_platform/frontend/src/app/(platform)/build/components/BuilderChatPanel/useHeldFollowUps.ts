@@ -11,6 +11,8 @@ import { useEffect, useRef, useState } from "react";
 export interface HeldFollowUp {
   id: number;
   sessionId: string;
+  /** Where its copy waits in sessionStorage. */
+  heldKey: string;
   text: string;
 }
 
@@ -18,35 +20,58 @@ interface Entry extends HeldFollowUp {
   isQueuing: boolean;
 }
 
+/** The session of the chat on screen under each `heldKey`, while one is. */
+const shownUnderKey = new Map<string, string>();
+
 /**
- * Follow-ups the builder chat holds until its stream has settled (see
- * `useBuilderChatSend`), shown as queued chips. Each also waits in
- * sessionStorage, because the panel unmounts when the user leaves the
- * builder and is gone on a reload: one left behind that way goes back to the
- * composer the next time its chat opens.
+ * The chat on screen under `heldKey`, whichever panel shows it: a refusal
+ * that lands after its own panel moved on or unmounted belongs in its
+ * composer.
  */
-export function useHeldFollowUps(sessionId: string | null) {
+export function chatShownUnder(heldKey: string) {
+  return shownUnderKey.get(heldKey);
+}
+
+/**
+ * Follow-ups a chat panel holds until its stream has settled (see
+ * `useBuilderChatSend`), shown as queued chips. Each also waits in
+ * sessionStorage, because the panel unmounts when the user leaves the page
+ * and is gone on a reload: one left behind that way goes back to the
+ * composer the next time a chat under its `heldKey` opens.
+ *
+ * `heldKey` defaults to the session. A caller that starts a new session on
+ * every open passes a key its chats share instead, so a copy goes back to
+ * the next chat opened under it. An explicit null keeps copies under their
+ * own session, and no chat takes them back when it opens.
+ */
+export function useHeldFollowUps(
+  sessionId: string | null,
+  heldKey: string | null = sessionId,
+) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const nextIdRef = useRef(0);
 
   useEffect(() => {
-    if (!sessionId) return;
-    const leftBehind = takeHeldFollowUps(sessionId);
-    if (leftBehind.length === 0) return;
-    returnToComposer(
-      leftBehind.join("\n\n"),
-      "You left the chat before it could go out.",
-    );
-  }, [sessionId]);
+    if (!sessionId || !heldKey) return;
+    shownUnderKey.set(heldKey, sessionId);
+    const leftBehind = takeHeldFollowUps(heldKey);
+    if (leftBehind.length > 0) returnLeftBehind(leftBehind.join("\n\n"));
+    return () => {
+      if (shownUnderKey.get(heldKey) === sessionId) {
+        shownUnderKey.delete(heldKey);
+      }
+    };
+  }, [sessionId, heldKey]);
 
   function hold(forSessionId: string, text: string) {
     const followUp: HeldFollowUp = {
       id: nextIdRef.current++,
       sessionId: forSessionId,
+      heldKey: heldKey ?? forSessionId,
       text,
     };
     setEntries((prev) => [...prev, { ...followUp, isQueuing: false }]);
-    rememberHeldFollowUp(forSessionId, text);
+    rememberHeldFollowUp(followUp.heldKey, text);
     return followUp;
   }
 
@@ -62,12 +87,13 @@ export function useHeldFollowUps(sessionId: string | null) {
   /** It went out, was queued, or went back to the composer. */
   function release(followUp: HeldFollowUp) {
     drop(followUp);
-    forgetHeldFollowUp(followUp.sessionId, followUp.text);
+    forgetHeldFollowUp(followUp.heldKey, followUp.text);
   }
 
   /**
    * Another workflow's chat is on screen, so the composer is not its own: it
-   * keeps its stored copy, which goes back when its own chat opens again.
+   * keeps its stored copy, which goes back when a chat under its `heldKey`
+   * opens again.
    */
   function setAside(followUp: HeldFollowUp) {
     drop(followUp);
@@ -86,6 +112,11 @@ export function useHeldFollowUps(sessionId: string | null) {
     release,
     setAside,
   };
+}
+
+/** For a follow-up whose chat went away before it could go out. */
+export function returnLeftBehind(text: string) {
+  returnToComposer(text, "You left the chat before it could go out.");
 }
 
 /** For a follow-up that never went out: its text goes back in the composer. */
