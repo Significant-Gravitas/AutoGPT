@@ -118,9 +118,10 @@ async def test_a_run_ending_leaves_a_concurrent_run_s_files_alone(
         second_done.set()
         return path
 
-    (first_path, first_text), second_path = await asyncio.wait_for(
-        asyncio.gather(first_run(), second_run()), timeout=30
-    )
+    async with asyncio.timeout(30), asyncio.TaskGroup() as runs:
+        first = runs.create_task(first_run())
+        second = runs.create_task(second_run())
+    (first_path, first_text), second_path = first.result(), second.result()
 
     assert first_text == "first"
     assert first_path != second_path
@@ -181,9 +182,11 @@ async def test_a_block_call_ending_leaves_a_running_one_s_copies_alone(
         second_done.set()
         return copy
 
-    (first_copy, first_text), second_copy = await asyncio.wait_for(
-        asyncio.gather(first_call(), second_call()), timeout=30
-    )
+    # A task group cancels and joins the other call if one fails.
+    async with asyncio.timeout(30), asyncio.TaskGroup() as calls:
+        first = calls.create_task(first_call())
+        second = calls.create_task(second_call())
+    (first_copy, first_text), second_copy = first.result(), second.result()
 
     assert first_text == "first"
     assert not first_copy.exists() and not second_copy.exists()

@@ -7,7 +7,7 @@ import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlparse
 
@@ -425,12 +425,17 @@ async def store_media_file(
         _write_copy(target_path, resp.content)
 
     else:
-        # Local path - sanitize the filename part to prevent long filename errors
-        sanitized_file = sanitize_filename(file)
+        # A local path relative to the run's folder, such as the
+        # "<folder>/name.mp4" a staging returns. Its folders are kept and only
+        # the file's name is sanitized, against long names; the containment
+        # check keeps the resolved path inside the run's folder.
+        local_path = PurePath(file)
+        filename = sanitize_filename(local_path.name)
+        relative_path = local_path.parent / filename
         try:
-            target_path = _ensure_inside_base(base_path / sanitized_file, base_path)
+            target_path = _ensure_inside_base(base_path / relative_path, base_path)
         except OSError as e:
-            raise ValueError(f"Invalid file path '{sanitized_file}': {e}") from e
+            raise ValueError(f"Invalid file path '{relative_path}': {e}") from e
         if not target_path.is_file():
             raise ValueError(f"Local file does not exist: {target_path}")
 
@@ -440,7 +445,7 @@ async def store_media_file(
             raise ValueError(
                 f"File too large: {len(local_content)} bytes > {MAX_FILE_SIZE_BYTES} bytes"
             )
-        await scan_content_safe(local_content, filename=sanitized_file)
+        await scan_content_safe(local_content, filename=filename)
 
     # Return based on requested format
     if return_format == "for_local_processing":
