@@ -751,6 +751,10 @@ SQL
 # Keep-Alive header, so this shows the launcher's KEEP_ALIVE_TIMEOUT reached the
 # running server (without it, Node's default is 5 s).
 assert_frontend_outlasts_nginx_keep_alive() {
+  # The headroom .github/workflows/scripts/test_keep_alive_order.py requires
+  # (HEADROOM_SECONDS): Next starts its idle clock when it hands a response to
+  # the kernel, nginx once it has read it, which can be later.
+  local -r headroom_seconds=5
   local headers next_seconds nginx_seconds
   headers="$(
     docker exec "${CONTAINER_NAME}" \
@@ -769,9 +773,9 @@ assert_frontend_outlasts_nginx_keep_alive() {
       /opt/autogpt/single-container/nginx/nginx.conf
   )"
   if [[ ! "${next_seconds}" =~ ^[0-9]+$ || ! "${nginx_seconds}" =~ ^[0-9]+$ ]] ||
-    ((next_seconds <= nginx_seconds)); then
-    printf 'Next keeps an idle connection for %s s and nginx keeps its idle connections to Next for %s s; Next must keep them longer (KEEP_ALIVE_TIMEOUT in run-frontend.sh, keepalive_timeout in nginx.conf). This check reads Next'"'"'s Keep-Alive: timeout=N header, and a "keepalive_timeout <seconds>[s];" line in the autogpt_frontend upstream.\nNext response headers:\n%s\n' \
-      "${next_seconds:-?}" "${nginx_seconds:-?}" "${headers}" >&2
+    ((next_seconds < nginx_seconds + headroom_seconds)); then
+    printf 'Next keeps an idle connection for %s s and nginx keeps its idle connections to Next for %s s; Next must keep them at least %s s longer (KEEP_ALIVE_TIMEOUT in run-frontend.sh, keepalive_timeout in nginx.conf). This check reads Next'"'"'s Keep-Alive: timeout=N header, and a "keepalive_timeout <seconds>[s];" line in the autogpt_frontend upstream.\nNext response headers:\n%s\n' \
+      "${next_seconds:-?}" "${nginx_seconds:-?}" "${headroom_seconds}" "${headers}" >&2
     exit 1
   fi
 }
