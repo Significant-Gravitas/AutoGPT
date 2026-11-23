@@ -88,7 +88,9 @@ each page that didn't load cleanly and why. A page loads cleanly when:
 
 The pages are read from `src/app` when the tests are listed, so a new page is
 crawled as soon as it exists. It is crawled signed in, or as an admin under
-`/admin`. Pages for anyone are crawled signed out too.
+`/admin`. Pages for anyone are crawled signed out too. Each page is opened on
+its own: the crawl answers Next's link prefetches with nothing, so the pages
+a page links to aren't rendered alongside it.
 
 - **A page that sends the user on, needs query parameters, or is public**
   gets an entry in `ROUTE_RULES` (`route-table.ts`), with the reason. Say

@@ -271,8 +271,13 @@ test.describe("route crawl journey", () => {
       `${route} loads for ${bug.who === "visitor" ? "a signed-out visitor" : `the ${bug.who}`} (known bug #${bug.issue})`,
       { annotation: { type: "issue", description: `${ISSUES}/${bug.issue}` } },
       async ({ browser, baseURL, flagOverrides, page }) => {
+        const noAdmin = bug.who === "admin" && adminGrantUnavailable();
+        test.skip(Boolean(noAdmin), noAdmin || undefined);
         const env = { browser, baseURL, flagOverrides };
-        const [result] = await crawlAs(env, page, bug.who, [route]);
+        const reproduce = REPRODUCTIONS[route];
+        const [result] = reproduce
+          ? await reproduce(env, page)
+          : await crawlAs(env, page, bug.who, [route]);
         const unrelated = result.problems.filter(
           (problem) => !bug.problem.test(problem),
         );
@@ -288,6 +293,28 @@ test.describe("route crawl journey", () => {
     );
   }
 });
+
+// A pinned bug that a plain visit doesn't show every time gets the visit
+// that does. Any other is crawled as whom the bug shows for.
+const REPRODUCTIONS: Record<
+  string,
+  (env: CrawlEnv, page: Page) => Promise<VisitResult[]>
+> = {
+  // A submission's age is worked out on the server and again in the
+  // browser. With the browser's clock ahead, one submitted moments ago reads
+  // differently in each, every time (#17309).
+  "/admin/marketplace": (env, page) =>
+    asAnAdmin(page, async (admin) => {
+      const listing = await submitAListing(page);
+      return crawl(env, [
+        planVisit("/admin/marketplace", admin, {
+          path: `/admin/marketplace?search=${encodeURIComponent(listing.title)}`,
+          shows: listing.title,
+          clockAheadMs: 5 * 60_000,
+        }),
+      ]);
+    }),
+};
 
 /** Crawls the pages as `who`, in a session the test makes and ends. */
 async function crawlAs(env: CrawlEnv, page: Page, who: Who, routes: string[]) {

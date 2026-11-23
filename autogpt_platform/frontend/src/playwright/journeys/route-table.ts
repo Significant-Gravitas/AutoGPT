@@ -76,6 +76,10 @@ export const ROUTE_RULES: Record<string, RouteRule> = {
     reason: "sends a user who finished onboarding on to Home",
     landsOn: "/home",
   },
+  "/copilot": {
+    reason: "AutoPilot moved to Home: an old link goes there, query and all",
+    landsOn: "/home",
+  },
   "/link/slack/installed": {
     reason:
       "hands a new Slack install to the Slack app, then goes back to bot settings",
@@ -106,6 +110,16 @@ export const ROUTE_RULES: Record<string, RouteRule> = {
     reason:
       "an OAuth app's integrations setup: opened without the app's request, it says what's missing",
     ...MISSING_OAUTH_PARAMETERS,
+  },
+  "/admin/marketplace": {
+    reason:
+      "its submissions' ages are worked out on the server and again in the browser",
+    bug: {
+      issue: 17309,
+      who: "admin",
+      what: "the review page throws React error #418 when a submission's age reads differently in the browser",
+      problem: /Minified React error #418\b/,
+    },
   },
   "/admin/impersonation": {
     reason: "opens Users, where an admin starts impersonating",

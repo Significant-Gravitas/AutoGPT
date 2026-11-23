@@ -4,6 +4,7 @@ import type {
   Locator,
   Page,
   Request,
+  Route,
 } from "@playwright/test";
 import { markChangelogSeen } from "../utils/changelog";
 import { serveHostedFlags } from "./fixtures";
@@ -32,6 +33,8 @@ export interface Sample {
   path: string;
   shows?: string;
   expectedResponses?: ExpectedResponse[];
+  /** The browser's clock runs this far ahead of the server's. */
+  clockAheadMs?: number;
 }
 
 export interface Visit {
@@ -43,6 +46,7 @@ export interface Visit {
   showsErrorCard: boolean;
   expectedResponses: ExpectedResponse[];
   ownSession: boolean;
+  clockAheadMs?: number;
 }
 
 export interface VisitResult {
@@ -95,6 +99,7 @@ export function planVisit(
       ...(sample?.expectedResponses ?? []),
     ],
     ownSession: rule?.ownSession ?? false,
+    clockAheadMs: sample?.clockAheadMs,
   };
 }
 
@@ -159,6 +164,10 @@ async function visitOnce(env: CrawlEnv, visit: Visit): Promise<VisitResult> {
   try {
     await markChangelogSeen(context);
     await serveHostedFlags(context, env.flagOverrides);
+    await context.route(/[?&]_rsc=/, answerPrefetchesEmpty);
+    if (visit.clockAheadMs) {
+      await context.clock.install({ time: Date.now() + visit.clockAheadMs });
+    }
     const page = await context.newPage();
     if (visit.ownSession) await signInAgain(page, visit);
     problems.push(...(await checkPage(page, visit)));
@@ -205,7 +214,7 @@ async function checkPage(page: Page, visit: Visit) {
   const content = await waitForContent(page);
   if (content !== "ready")
     problems.push(`its content never showed: ${content}`);
-  if (visit.shows && !(await isShown(page.getByText(visit.shows).first()))) {
+  if (visit.shows && !(await isShown(page.getByText(visit.shows)))) {
     problems.push(`it doesn't show "${visit.shows}"`);
   }
   problems.push(...(await errorUIProblems(page, visit)));
@@ -217,6 +226,20 @@ async function checkPage(page: Page, visit: Visit) {
   }
   problems.push(...failedDocuments);
   return problems;
+}
+
+// Next prefetches the pages a page links to, rendering each on the server.
+// The crawl opens every page itself, so it answers prefetches with nothing,
+// which Next takes as "load that page in full if it's opened". That spares
+// the stack a dozen renders per visit and, on /admin, a dozen session
+// lookups that share one rate limit (#17308). Aborting them instead would
+// have Next log a console.error for each.
+async function answerPrefetchesEmpty(route: Route) {
+  if (route.request().headers()["next-router-prefetch"]) {
+    await route.fulfill({ status: 204 });
+  } else {
+    await route.fallback();
+  }
 }
 
 async function signInAgain(page: Page, visit: Visit) {
@@ -357,23 +380,36 @@ const ERROR_PAGES: { what: string; find: (page: Page) => Locator }[] = [
 
 async function errorUIProblems(page: Page, visit: Visit) {
   const problems: string[] = [];
-  const card = page.locator(ERROR_CARD).first();
+  const card = page.locator(ERROR_CARD);
   if (visit.showsErrorCard) {
     if (!(await isShown(card))) problems.push("it doesn't show its error card");
-  } else if (await card.isVisible()) {
-    problems.push(`it shows the error card: ${await textOf(card)}`);
+  } else if (await isVisibleNow(card)) {
+    problems.push(
+      `it shows the error card: ${await textOf(visibleOnly(card))}`,
+    );
   }
   for (const { what, find } of ERROR_PAGES) {
-    if (await find(page).first().isVisible()) problems.push(`it shows ${what}`);
+    if (await isVisibleNow(find(page))) problems.push(`it shows ${what}`);
   }
   return problems;
 }
 
+// A copy of the text kept hidden (a phone layout's, say) doesn't count.
+function visibleOnly(locator: Locator) {
+  return locator.filter({ visible: true }).first();
+}
+
 function isShown(locator: Locator) {
-  return locator.waitFor({ state: "visible", timeout: SHOWS_TIMEOUT_MS }).then(
-    () => true,
-    () => false,
-  );
+  return visibleOnly(locator)
+    .waitFor({ state: "visible", timeout: SHOWS_TIMEOUT_MS })
+    .then(
+      () => true,
+      () => false,
+    );
+}
+
+function isVisibleNow(locator: Locator) {
+  return visibleOnly(locator).isVisible();
 }
 
 async function textOf(locator: Locator) {
