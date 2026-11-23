@@ -19,13 +19,18 @@ export function ConfirmEmail({ email }: Props) {
         className="flex w-full max-w-md flex-col items-center rounded-large border border-border-base bg-surface p-6 text-center"
       >
         <div className="mb-6 flex size-14 items-center justify-center rounded-full bg-accent-surface">
-          <Icon icon={MailValidation01Icon} tone="brand" className="size-7" />
+          <Icon
+            icon={MailValidation01Icon}
+            tone="brand"
+            className="size-7"
+            aria-hidden
+          />
         </div>
         <Text variant="h3" as="h1">
           Confirm your email
         </Text>
         <Text variant="body" tone="secondary" className="mt-3">
-          Continue to verify{" "}
+          We&apos;ll verify{" "}
           {email ? (
             <span className="font-medium break-all text-foreground-base">
               {email}
@@ -33,19 +38,19 @@ export function ConfirmEmail({ email }: Props) {
           ) : (
             "your email"
           )}{" "}
-          and sign in to AutoGPT.
+          and sign you in to AutoGPT.
         </Text>
-        <ContinueButton />
+        <VerifyButton />
       </form>
     </main>
   );
 }
 
-function ContinueButton() {
+function VerifyButton() {
   const { pending } = useFormStatus();
   return (
     <Button type="submit" loading={pending} className="mt-8 w-full">
-      Continue
+      Verify and sign in
     </Button>
   );
 }

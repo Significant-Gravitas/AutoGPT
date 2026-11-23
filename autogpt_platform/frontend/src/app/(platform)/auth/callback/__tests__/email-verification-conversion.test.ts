@@ -72,7 +72,15 @@ vi.mock("next/headers", () => ({
         ? { value: mocks.heldLink }
         : undefined,
     ),
-    delete: vi.fn(),
+    // Clears the held link only as a browser would: same name, same path.
+    delete: vi.fn((cookie: { name: string; path?: string }) => {
+      if (
+        cookie.name === "email_verification_link" &&
+        cookie.path === "/auth/verify-email"
+      ) {
+        mocks.heldLink = "";
+      }
+    }),
   })),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -95,9 +103,10 @@ import { GET } from "../route";
 const origin = "http://localhost:3000";
 const password = "ValidPassword123!"; // pragma: allowlist secret
 
-// The confirm page's Continue button: Better Auth verifies the address and
-// signs the user in, and the action sends them to the link's callbackURL.
-async function clickContinue(callbackURL: string) {
+// The confirm page's button: Better Auth verifies the address and signs the
+// user in, the held link is cleared, and the action sends them on to the
+// link's callbackURL.
+async function clickVerify(callbackURL: string) {
   mocks.heldLink = new URLSearchParams({
     token: "link-token",
     callbackURL,
@@ -111,6 +120,7 @@ async function clickContinue(callbackURL: string) {
   expect(mocks.verifyEmail).toHaveBeenCalledWith(
     expect.objectContaining({ query: { token: "link-token" } }),
   );
+  expect(mocks.heldLink).toBe("");
   return GET(new Request(`${origin}${signal.url}`));
 }
 
@@ -132,7 +142,7 @@ describe("sign_up conversion across email verification", () => {
 
     const callbackURL = mocks.signUpEmail.mock.calls[0][0].body.callbackURL;
 
-    const landing = await clickContinue(callbackURL);
+    const landing = await clickVerify(callbackURL);
 
     expect(landing.headers.get("location")).toBe(`${origin}/onboarding`);
     expect(mocks.scheduleAccountCreatedGoal).toHaveBeenCalledOnce();
@@ -163,7 +173,7 @@ describe("sign_up conversion across email verification", () => {
       // No cookie travels with it: only the link the email carries.
       const callbackURL = mocks.signUpEmail.mock.calls[0][0].body.callbackURL;
 
-      await clickContinue(callbackURL);
+      await clickVerify(callbackURL);
 
       expect(mocks.recordUserConsent).toHaveBeenCalledOnce();
       expect(mocks.recordUserConsent).toHaveBeenCalledWith(

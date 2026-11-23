@@ -37,17 +37,22 @@ describe("the email confirm page", () => {
     mocks.heldLink = undefined;
   });
 
-  it("names the address the link verifies and offers Continue", async () => {
+  it("names the address the link verifies and offers to verify and sign in", async () => {
     const token = new UnsecuredJWT({ email: "jamie@example.com" }).encode();
     mocks.heldLink = new URLSearchParams({ token }).toString();
 
-    render(await VerifyEmailPage());
+    const { container } = render(await VerifyEmailPage());
 
     expect(
       screen.getByRole("heading", { name: "Confirm your email" }),
     ).toBeDefined();
     expect(screen.getByText("jamie@example.com")).toBeDefined();
-    expect(screen.getByRole("button", { name: "Continue" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Verify and sign in" }),
+    ).toBeDefined();
+    expect(container.querySelector("svg")?.getAttribute("aria-hidden")).toBe(
+      "true",
+    );
   });
 
   it("sends a visit without a waiting link to the login page's expired notice", async () => {
