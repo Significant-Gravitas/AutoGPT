@@ -167,13 +167,17 @@ proxy, so rate limits, the sign-in history and IP blocks see each visitor
 rather than the proxy. [Client IP Addresses](client-ip.md) says which
 addresses to list on each, and which older settings it replaces.
 
-The frontend keeps an idle connection open for 620 seconds, longer than nginx
-(60 seconds), Traefik (90 seconds) and Caddy (2 minutes) keep one by default,
-so the proxy is the one that closes it. A proxy that keeps idle connections to
-the frontend longer would now and then send a request on a connection the
-frontend is closing, and answer 502, which it doesn't retry for a POST: set
-`KEEP_ALIVE_TIMEOUT` on the `frontend` service in `docker-compose.platform.yml`
-(in milliseconds) above its idle timeout.
+The frontend, the API and the WebSocket server keep an idle connection open
+for 620 seconds, longer than nginx (60 seconds), Traefik (90 seconds) and Caddy
+(2 minutes) keep one by default, so the proxy is the one that closes it. A proxy
+that keeps idle connections longer would now and then send a request on a
+connection a server is closing, and answer 502, which it doesn't retry for a
+POST: set `SERVER_KEEP_ALIVE_TIMEOUT_SECONDS` in `backend/.env`, and
+`KEEP_ALIVE_TIMEOUT` (in milliseconds) on the `frontend` service in
+`docker-compose.platform.yml`, above its idle timeout. With no proxy in front,
+a connection a browser leaves idle holds one of a server's file descriptors for
+that long; on a server that clients reach directly, a shorter setting such as
+75 seconds is enough.
 
 ## 4. Decide who can sign up
 
