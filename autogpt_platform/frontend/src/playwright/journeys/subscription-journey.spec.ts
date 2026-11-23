@@ -14,7 +14,7 @@ import { expect, test } from "./fixtures";
 
 // The Pro plan on Settings → Billing → Subscription, bought on the fake
 // Stripe's checkout page and cancelled in its billing portal, as a customer
-// does both (fake-stripe.ts). The fake's prices
+// does both (fake-stripe.ts), or through the platform's API. The fake's prices
 // (scripted_model/scripted_model/fake_stripe/catalog.json) differ from the
 // frontend's marketing prices, so a price on the page is the one Stripe charges.
 const PRO_PRICE = "$23.00";
@@ -95,11 +95,11 @@ test.describe("subscription journey", () => {
     const stripeCursor = await stripeRequestCursor();
     const { customer, subscription } = await buyPro(page);
     await cancelInBillingPortal(page);
-    const renews = await shortDate(page, subscription.current_period_end);
+    const periodEnd = await shortDate(page, subscription.current_period_end);
     await expectPlan(page, {
       label: "Pro",
       badge: "Cancellation scheduled",
-      summary: `${PRO_PRICE} / month · Ends on ${renews}`,
+      summary: `${PRO_PRICE} / month · Ends on ${periodEnd}`,
     });
 
     const resume = planCard(page, "Pro").getByRole("button", {
@@ -111,7 +111,7 @@ test.describe("subscription journey", () => {
     await expectPlan(page, {
       label: "Pro",
       badge: "Active",
-      summary: `${PRO_PRICE} / month · Renews on ${renews}`,
+      summary: `${PRO_PRICE} / month · Renews on ${periodEnd}`,
     });
     const resumed = await stripeObject<StripeSubscription>(subscription.id);
     expect(resumed.cancel_at_period_end, "resumed in Stripe too").toBe(false);
@@ -150,6 +150,53 @@ test.describe("subscription journey", () => {
       "customer.subscription.updated",
       "invoice.paid",
       "invoice.payment_succeeded",
+    ]);
+    expect(await unservedStripeRequests(stripeCursor)).toEqual([]);
+  });
+
+  test("a plan cancelled through the app lasts until its period ends", async ({
+    page,
+    journeyUser: _user,
+  }) => {
+    await requireNewAccountAndFakeStripe();
+    const stripeCursor = await stripeRequestCursor();
+    const { customer, subscription } = await buyPro(page);
+
+    // The Pro plan card has no cancel of its own: "Manage subscription"
+    // opens Stripe's billing portal (above). So this sends the cancel the
+    // platform's API takes, a change to no plan, from the signed-in page.
+    // The platform sets the subscription to cancel when its period ends.
+    expect(await changePlan(page, "NO_TIER")).toMatchObject({
+      tier: "PRO",
+      pending_tier: "NO_TIER",
+      current_period_end: subscription.current_period_end,
+    });
+    const inStripe = await stripeObject<StripeSubscription>(subscription.id);
+    expect(inStripe.cancel_at_period_end, "set to cancel in Stripe").toBe(true);
+    await page.reload();
+    const periodEnd = await shortDate(page, subscription.current_period_end);
+    await expectPlan(page, {
+      label: "Pro",
+      badge: "Cancellation scheduled",
+      summary: `${PRO_PRICE} / month · Ends on ${periodEnd}`,
+    });
+    await expectPaywalled(page, false);
+
+    const ended = await endSubscriptionPeriod(subscription.id);
+    expect(ended.subscription.status).toBe("canceled");
+    await page.reload();
+    await expectPlan(page, NO_PLAN);
+    expect(await planStatus(page)).toMatchObject({
+      tier: "NO_TIER",
+      has_active_stripe_subscription: false,
+      pending_tier: null,
+    });
+    await expectPaywalled(page, true);
+
+    await expectWebhooksAcknowledged(customer, [
+      ...SUBSCRIBED,
+      "customer.subscription.updated",
+      "customer.subscription.deleted",
     ]);
     expect(await unservedStripeRequests(stripeCursor)).toEqual([]);
   });
@@ -266,6 +313,18 @@ function planCard(page: Page, label: string) {
   return page.locator("section").filter({
     has: page.getByRole("heading", { level: 2, name: label, exact: true }),
   });
+}
+
+/** Asks the platform for a plan change, as the billing page's buttons do. */
+async function changePlan(page: Page, tier: string) {
+  const response = await page.request.post(SUBSCRIPTION_PATH, {
+    data: { tier },
+  });
+  expect(
+    response.ok(),
+    `changing the plan to ${tier}: ${response.status()} ${await response.text()}`,
+  ).toBe(true);
+  return (await response.json()) as Record<string, unknown>;
 }
 
 async function planStatus(page: Page) {
