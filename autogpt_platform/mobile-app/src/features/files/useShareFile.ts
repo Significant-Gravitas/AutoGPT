@@ -1,14 +1,17 @@
-import { File, Paths } from "expo-file-system";
+import { File } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { useRef, useState } from "react";
-import { Alert } from "react-native";
+import { Alert, Platform } from "react-native";
 
 import { authHeaders } from "@/lib/api/client";
 import { fileDownloadURL, type WorkspaceFile } from "@/lib/api/workspace";
+import { assertSameSession, sessionMark } from "@/lib/auth/token";
+import { clearSharedFiles, freshShareTarget } from "@/lib/sharedFiles";
 
 /**
- * Downloads a file into the cache and hands it to the phone's share sheet,
- * which is also where "Open in" another app lives.
+ * Downloads a fresh copy of a file and hands it to the phone's share sheet,
+ * which is also where "Open in" another app lives. The copy is deleted after
+ * the share (iOS), at the next share, and at sign-out.
  */
 export function useShareFile() {
   const [sharingID, setSharingID] = useState<string | null>(null);
@@ -19,14 +22,28 @@ export function useShareFile() {
     if (isBusy.current) return;
     isBusy.current = true;
     setSharingID(file.id);
+    const mark = sessionMark();
     try {
-      const local = await cachedCopy(file);
+      const local = await File.downloadFileAsync(
+        fileDownloadURL(file.id),
+        freshShareTarget(file.id, file.name),
+        { headers: await authHeaders() },
+      );
+      // Signed out while it came down: the copy goes, unshared.
+      assertSameSession(mark);
       await Sharing.shareAsync(local.uri, {
         mimeType: file.mime_type || undefined,
         dialogTitle: file.name,
       });
+      // iOS has handed the file over by the time the sheet closes; Android
+      // may still be reading it, so there it goes at the next share or sign-out.
+      if (Platform.OS === "ios") clearSharedFiles();
     } catch {
-      Alert.alert("Couldn't share this file", "Check your connection and try again.");
+      clearSharedFiles();
+      // After a sign-out there is nothing to tell.
+      if (sessionMark() === mark) {
+        Alert.alert("Couldn't share this file", "Check your connection and try again.");
+      }
     } finally {
       isBusy.current = false;
       setSharingID(null);
@@ -34,13 +51,4 @@ export function useShareFile() {
   }
 
   return { share, sharingID };
-}
-
-async function cachedCopy(file: WorkspaceFile) {
-  // The id keeps two files of the same name apart; the name is what the other app shows.
-  const target = new File(Paths.cache, `${file.id}-${file.name.replace(/[/\\]/g, "_")}`);
-  if (target.exists) return target;
-  return File.downloadFileAsync(fileDownloadURL(file.id), target, {
-    headers: await authHeaders(),
-  });
 }
