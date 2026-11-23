@@ -45,7 +45,7 @@ export function TaskBoard({
     <div className="relative flex min-h-0 flex-1 flex-col palette-classic">
       <div
         ref={scrollerRef}
-        className="scrollbar-none min-h-0 flex-1 overflow-x-auto overscroll-x-contain pb-1"
+        className="scrollbar-none min-h-0 flex-1 overflow-x-auto overscroll-x-contain pb-1 [container-type:inline-size]"
       >
         <LayoutGroup id="task-board">
           <div className="flex h-full w-max min-w-full animate-inbox-enter items-stretch gap-2">

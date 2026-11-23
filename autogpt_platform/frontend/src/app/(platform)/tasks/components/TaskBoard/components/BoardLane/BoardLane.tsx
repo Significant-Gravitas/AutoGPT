@@ -31,7 +31,7 @@ export function BoardLane({
     <section
       aria-labelledby={headingID}
       data-testid="board-lane"
-      className="flex min-h-56 min-w-64 flex-1 basis-0 flex-col rounded-tray bg-surface-tray p-1.5"
+      className="flex min-h-56 w-[calc((100cqw-1.5rem)/4)] min-w-60 shrink-0 flex-col rounded-tray bg-surface-tray p-1.5"
     >
       <header className="flex h-9 shrink-0 items-center gap-2 px-2.5">
         <Text as="h2" id={headingID} variant="inbox-medium" tone="ink">
