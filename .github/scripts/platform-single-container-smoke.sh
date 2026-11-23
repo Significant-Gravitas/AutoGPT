@@ -745,6 +745,37 @@ SQL
     http://127.0.0.1:3001/api/auth/jwks >/dev/null
 }
 
+# nginx keeps idle connections to Next for its autogpt_frontend upstream's
+# keepalive_timeout, and Next has to keep them longer: a request nginx sends on
+# one just as Next closes it gets a 502. Next states its idle timeout in the
+# Keep-Alive header, so this shows the launcher's KEEP_ALIVE_TIMEOUT reached the
+# running server (without it, Node's default is 5 s).
+assert_frontend_outlasts_nginx_keep_alive() {
+  local headers next_seconds nginx_seconds
+  headers="$(
+    docker exec "${CONTAINER_NAME}" \
+      curl --fail --silent --show-error --max-time 30 \
+      --output /dev/null --dump-header - \
+      http://127.0.0.1:3001/api/auth/jwks
+  )"
+  next_seconds="$(
+    printf '%s\n' "${headers}" |
+      tr -d '\r' |
+      sed -n 's/^[Kk]eep-[Aa]live:.*timeout=\([0-9][0-9]*\).*/\1/p'
+  )"
+  nginx_seconds="$(
+    docker exec "${CONTAINER_NAME}" \
+      sed -n '/upstream autogpt_frontend {/,/}/s/^ *keepalive_timeout \([0-9][0-9]*\)s;$/\1/p' \
+      /opt/autogpt/single-container/nginx/nginx.conf
+  )"
+  if [[ ! "${next_seconds}" =~ ^[0-9]+$ || ! "${nginx_seconds}" =~ ^[0-9]+$ ]] ||
+    ((next_seconds <= nginx_seconds)); then
+    printf 'Next keeps an idle connection for %s s and nginx keeps its idle connections to Next for %s s; Next must keep them longer (KEEP_ALIVE_TIMEOUT in run-frontend.sh, keepalive_timeout in nginx.conf).\nNext response headers:\n%s\n' \
+      "${next_seconds:-?}" "${nginx_seconds:-?}" "${headers}" >&2
+    exit 1
+  fi
+}
+
 assert_email_auth_flow() {
   local email="single-container-${RUN_TOKEN}@example.com"
   local password=single-container-smoke-password # pragma: allowlist secret
@@ -1283,6 +1314,7 @@ first_hash="$(runtime_config_hash)"
 }
 assert_runtime_config_mode
 assert_frontend_database_isolation
+assert_frontend_outlasts_nginx_keep_alive
 
 record_timing "phase-one-contracts"
 assert_clean_stop "after docker stop"
