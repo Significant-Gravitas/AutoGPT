@@ -59,6 +59,8 @@ Everything on the sign-in path reads the visitor's address through Better Auth, 
 | The sign-in history under **Admin → Users**                                                         | Yes                      | No address is recorded                                     |
 | IP blocks                                                                                           | Yes                      | No address to match; blocks on an email domain still apply |
 
+Opening an admin page reads the visitor's role from the signed session cookie, with no address. Once that cookie has expired (it lasts five minutes), the frontend asks the authentication API for the session on the visitor's behalf. It passes on the request's `X-Forwarded-For` as it arrived, so the lookup counts against the [authentication API's limits](rate-limits.md#the-authentication-api) the same way as the visitor's own requests.
+
 **List your proxies in `TRUSTED_PROXIES` on the frontend.** Without it, three of the five uses above get no address at all, and the other two find one only when the header carries exactly one entry, which goes wrong two ways:
 
 - nginx's `$proxy_add_x_forwarded_for` appends the visitor's address to whatever arrived. A browser sends no `X-Forwarded-For`, so one nginx gives exactly one entry — but a second proxy in the chain, or a request that already carried the header, makes it two, and then no use finds an address (see the table's last column).

@@ -1,5 +1,7 @@
 import { getCookieCache, getSessionCookie } from "better-auth/cookies";
 import { NextResponse, type NextRequest } from "next/server";
+import { usesSecureCookies } from "./base-url";
+import { IP_ADDRESS_HEADERS } from "./client-ip";
 import { isAdminPage, isProtectedPage } from "./helpers";
 import { canConsumeLegacyCookies } from "./legacy-cookies";
 
@@ -18,6 +20,10 @@ async function getSessionUserRole(
   try {
     const cached = await getCookieCache(request, {
       secret: process.env.BETTER_AUTH_SECRET,
+      // Under the name auth.ts gives it. Left to guess, Better Auth looks for
+      // the `__Secure-` name in any production build, which a server whose
+      // base URL is http never sets (#17308).
+      isSecure: usesSecureCookies(),
     });
     if (cached?.user) {
       return (cached.user as { role?: string }).role ?? null;
@@ -34,7 +40,7 @@ async function getSessionUserRole(
     const response = await fetch(
       new URL("/api/auth/get-session", request.url),
       {
-        headers: { cookie: request.headers.get("cookie") || "" },
+        headers: sessionLookupHeaders(request),
         signal: AbortSignal.timeout(3000),
       },
     );
@@ -44,6 +50,19 @@ async function getSessionUserRole(
   } catch {
     return null;
   }
+}
+
+// The visitor's cookies, and the headers Better Auth reads their IP address
+// from, as they arrived. Better Auth then counts the lookup against the
+// visitor, by the same rules as their own requests to /api/auth, rather than
+// putting every visitor's lookups in one shared rate-limit bucket.
+function sessionLookupHeaders(request: NextRequest) {
+  const headers = new Headers({ cookie: request.headers.get("cookie") || "" });
+  for (const name of IP_ADDRESS_HEADERS) {
+    const value = request.headers.get(name);
+    if (value !== null) headers.set(name, value);
+  }
+  return headers;
 }
 
 /**

@@ -20,7 +20,12 @@ import { PostgresDialect } from "kysely";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
 import { authDbPool } from "./auth-db-pool";
 import { assertNotBannedAddress } from "./ban-record";
-import { getTrustedClientIP, trustedProxies } from "./client-ip";
+import { getAuthBaseURL, usesSecureCookies } from "./base-url";
+import {
+  getTrustedClientIP,
+  IP_ADDRESS_HEADERS,
+  trustedProxies,
+} from "./client-ip";
 import { DISABLED_AUTH_PATHS } from "./disabled-paths";
 import { assertNotDisposableEmail } from "./disposable-email";
 import { runAfterResponse } from "./background-tasks";
@@ -83,10 +88,7 @@ import { assertMicrosoftSignUpAllowed } from "./microsoft-sign-up-policy";
 import { assertTeamEmailUsesGoogle } from "./team-email-policy";
 import { sendVerificationLink } from "./verification-link";
 
-const baseURL =
-  process.env.BETTER_AUTH_URL ||
-  process.env.NEXT_PUBLIC_FRONTEND_BASE_URL ||
-  "http://localhost:3000";
+const baseURL = getAuthBaseURL();
 
 function getSocialProviders() {
   const providers: NonNullable<BetterAuthOptions["socialProviders"]> = {};
@@ -391,9 +393,15 @@ export const auth = betterAuth({
     },
   },
   advanced: {
+    // Better Auth's own choice, made explicit: the middleware looks the
+    // session cookie cache up under the name this gives it.
+    useSecureCookies: usesSecureCookies(baseURL),
     // Behind a proxy chain the client IP is only resolvable from the hops the
     // operator lists; without them every such caller shares one rate-limit bucket.
-    ipAddress: { trustedProxies: trustedProxies() },
+    ipAddress: {
+      ipAddressHeaders: IP_ADDRESS_HEADERS,
+      trustedProxies: trustedProxies(),
+    },
     database: {
       // Keep UUID ids: platform User rows reuse the auth user id, and all
       // pre-migration ids are Supabase UUIDs.
