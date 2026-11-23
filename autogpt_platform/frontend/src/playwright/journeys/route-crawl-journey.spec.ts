@@ -305,36 +305,40 @@ test.describe("route crawl journey", () => {
 
   // Relative timestamps render deterministically on the server and hydrate
   // cleanly even when the browser's clock is ahead (#17309, #17310).
-  test(
-    "/admin/marketplace hydrates cleanly with a skewed browser clock",
-    async ({ browser, baseURL, flagOverrides, page }) => {
-      const noAdmin = adminGrantUnavailable();
-      test.skip(Boolean(noAdmin), noAdmin || undefined);
-      const env = { browser, baseURL, flagOverrides };
-      await expectAllClean(
-        await asAnAdmin(page, async (admin) => {
-          const listing = await submitAListing(page);
-          return crawl(env, [
-            planVisit("/admin/marketplace", admin, {
-              path: `/admin/marketplace?search=${encodeURIComponent(listing.title)}`,
-              shows: listing.title,
-              clockAheadMs: 5 * 60_000,
-            }),
-          ]);
-        }),
-      );
-    },
-  );
+  test("/admin/marketplace hydrates cleanly with a skewed browser clock", async ({
+    browser,
+    baseURL,
+    flagOverrides,
+    page,
+  }) => {
+    const noAdmin = adminGrantUnavailable();
+    test.skip(Boolean(noAdmin), noAdmin || undefined);
+    const env = { browser, baseURL, flagOverrides };
+    await expectAllClean(
+      await asAnAdmin(page, async (admin) => {
+        const listing = await submitAListing(page);
+        return crawl(env, [
+          planVisit("/admin/marketplace", admin, {
+            path: `/admin/marketplace?search=${encodeURIComponent(listing.title)}`,
+            shows: listing.title,
+            clockAheadMs: 5 * 60_000,
+          }),
+        ]);
+      }),
+    );
+  });
 
-  test(
-    "marketplace agent and skill pages hydrate cleanly with a skewed browser clock",
-    async ({ browser, baseURL, flagOverrides, page }) => {
-      const env = { browser, baseURL, flagOverrides };
-      const { agent, skill } = await sampleMarketplace(page);
-      await expectAllClean(await visitAsVisitor(env, agent, 2 * DAY_MS));
-      await expectAllClean(await visitAsVisitor(env, skill, 2 * DAY_MS));
-    },
-  );
+  test("marketplace agent and skill pages hydrate cleanly with a skewed browser clock", async ({
+    browser,
+    baseURL,
+    flagOverrides,
+    page,
+  }) => {
+    const env = { browser, baseURL, flagOverrides };
+    const { agent, skill } = await sampleMarketplace(page);
+    await expectAllClean(await visitAsVisitor(env, agent, 2 * DAY_MS));
+    await expectAllClean(await visitAsVisitor(env, skill, 2 * DAY_MS));
+  });
 
   for (const bug of KNOWN_BUGS) {
     const { route, who, issue } = bug;
