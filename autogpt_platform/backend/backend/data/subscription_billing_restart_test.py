@@ -846,6 +846,36 @@ async def test_a_debit_settling_after_its_plan_was_ended_as_replaced_needs_a_ref
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("reason", ["subscription_cycle", "subscription_update"])
+@pytest.mark.parametrize(
+    ("newer_plan", "outcome"),
+    [(True, RestartOutcome.NEEDS_REFUND), (False, RestartOutcome.NOT_APPLICABLE)],
+)
+async def test_an_older_bill_paid_while_a_newer_plan_replaced_its_plan_needs_a_refund(
+    fake, reason, newer_plan, outcome
+):
+    """March and April are both charged by bank debit. March's debit settles
+    on 5 April while April's bill is still open, so the plan stays past due
+    and never revives, and it is ended as replaced only when April's debit
+    fails on 8 April: by then March's payment events are delivered, and a
+    redelivery sees it paid before the cancel. So the refund is asked for
+    when the payment lands. With no newer plan it is an ordinary late
+    payment of an older bill, which needs nothing."""
+    fake.add_subscription(period_start=_ts(2026, 3, 3), status="past_due")
+    fake.add_invoice("in_march", paid_at=None, billing_reason=reason)
+    fake.pause("in_march", at=_ts(2026, 3, 3) + HOUR)
+    if newer_plan:
+        _replaced(fake)
+    fake.add_invoice("in_april", paid_at=None)
+    fake.pay("in_march", _ts(2026, 4, 5))
+
+    assert await restart_period_after_late_payment("in_march") == outcome
+    assert fake.credit_notes == []
+    assert fake.balance_transactions == []
+    assert fake.subscriptions[SUB]["current_period_start"] == _ts(2026, 3, 3)
+
+
+@pytest.mark.asyncio
 async def test_a_plan_paid_before_it_was_ended_as_replaced_is_not_reported_again(
     fake,
 ):
