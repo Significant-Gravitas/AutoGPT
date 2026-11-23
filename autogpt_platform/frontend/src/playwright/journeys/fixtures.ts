@@ -10,6 +10,12 @@ interface JourneyOptions {
   expectedResponses: ExpectedResponse[];
   /** Flag values to change from the hosted defaults; the rest are kept. */
   flagOverrides: Record<string, unknown>;
+  /**
+   * Whether `journeyUser` gets PLAYWRIGHT_JOURNEY_TIER's plan (true). A
+   * journey about buying a plan sets it false, so its user starts on the tier
+   * a new hosted user really has.
+   */
+  grantJourneyTier: boolean;
 }
 
 interface JourneyFixtures {
@@ -21,6 +27,7 @@ interface JourneyFixtures {
 export const test = base.extend<JourneyOptions & JourneyFixtures>({
   expectedResponses: [[], { option: true }],
   flagOverrides: [{}, { option: true }],
+  grantJourneyTier: [true, { option: true }],
 
   journeyGuard: [
     async ({ context, expectedResponses, flagOverrides }, use) => {
@@ -40,8 +47,10 @@ export const test = base.extend<JourneyOptions & JourneyFixtures>({
     { auto: true },
   ],
 
-  journeyUser: async ({ page }, provide) => {
-    await provide(await provisionJourneyUser(page));
+  journeyUser: async ({ page, grantJourneyTier }, provide) => {
+    await provide(
+      await provisionJourneyUser(page, { grantTier: grantJourneyTier }),
+    );
   },
 });
 

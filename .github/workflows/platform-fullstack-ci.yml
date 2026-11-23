@@ -231,9 +231,9 @@ jobs:
             # self-hosted stack (TODO in src/playwright/journeys/README.md).
             playwright_args: --project hosted
             # Pinned inventory of the whole suite, the same on every shard:
-            # 49 tests in 23 files; raise when adding journeys. Each shard's
+            # 55 tests in 25 files; raise when adding journeys. Each shard's
             # own floor is counted at run time ("Count the shard's tests").
-            min_tests: 49
+            min_tests: 55
             embeddings: false
             # Journeys sign up their own users and need no seeded data.
             seed: false
@@ -254,7 +254,7 @@ jobs:
             shard_total: 2
             config: playwright.journeys.config.ts
             playwright_args: --project hosted
-            min_tests: 49
+            min_tests: 55
             embeddings: false
             seed: false
             hosted: true
@@ -667,11 +667,14 @@ jobs:
       # publish_skills starts with the services below and resolves each
       # roster workflow to its listing then, so they must exist first: the
       # order a deploy and platform-preview-seed-fixture.yml use.
+      # --local-media: their images go to the stack's own media storage
+      # (rest_server's store-media volume), so no Marketplace page fetches
+      # production media from GCS.
       - name: Set up tests - Load the official marketplace agents
         if: matrix.store_agents
         run: |
           docker compose -f ../docker-compose.resolved.yml run --rm --no-deps \
-            rest_server python -m test.load_store_agents
+            rest_server python -m test.load_store_agents --local-media
 
       - name: Set up Platform - Start (all other services)
         run: |
@@ -901,8 +904,9 @@ jobs:
 
       # Next.js logs every error it catches on the server with a "⨯". The tests
       # can pass while it happens (a retried request, a broken image), so any
-      # such line fails the leg. It runs last: steps without a status check in
-      # their `if` (the GHCR push, the cache-export wait) skip after any failure.
+      # such line fails the leg, except an image host outside the stack timing
+      # out, which is only a warning. It runs last: steps without a status check
+      # in their `if` (the GHCR push, the cache-export wait) skip after any failure.
       - name: Check the frontend server logged no errors
         if: ${{ !cancelled() && steps.e2e-playwright.outcome != 'skipped' }}
         run: |
