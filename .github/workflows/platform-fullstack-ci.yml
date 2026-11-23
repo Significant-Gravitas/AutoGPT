@@ -668,8 +668,8 @@ jobs:
       # roster workflow to its listing then, so they must exist first: the
       # order a deploy and platform-preview-seed-fixture.yml use.
       # --local-media: their images go to the stack's own media storage
-      # (rest_server's store-media volume), not production media on GCS, which
-      # every Marketplace page had the image optimizer fetch.
+      # (rest_server's store-media volume), so no Marketplace page fetches
+      # production media from GCS.
       - name: Set up tests - Load the official marketplace agents
         if: matrix.store_agents
         run: |

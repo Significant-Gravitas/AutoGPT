@@ -33,7 +33,8 @@ def media_settings(monkeypatch, tmp_path):
 def client():
     app = fastapi.FastAPI()
     app.include_router(routes.router, prefix="/api/store")
-    return fastapi.testclient.TestClient(app)
+    with fastapi.testclient.TestClient(app) as test_client:
+        yield test_client
 
 
 def _served(client: fastapi.testclient.TestClient, url: str) -> bytes:
@@ -45,14 +46,11 @@ def _served(client: fastapi.testclient.TestClient, url: str) -> bytes:
 
 
 async def test_every_listing_image_is_served_by_the_stack(media_settings, client):
-    csv_counts = {
-        meta["slug"]: len(meta["agent_image"])
-        for meta in (await load_store_agents.load_csv_metadata()).values()
-    }
+    metadata = await load_store_agents.load_csv_metadata()
+    csv_counts = {meta["slug"]: len(meta["agent_image"]) for meta in metadata.values()}
     # The CSV's own images, which the e2e stack must not fetch.
     assert sum(csv_counts.values()) > 0
 
-    metadata = await load_store_agents.load_csv_metadata()
     await load_store_agents.use_local_images(metadata)
 
     fixtures = {
