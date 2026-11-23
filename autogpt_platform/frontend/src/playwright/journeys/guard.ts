@@ -125,7 +125,7 @@ function startWatching(expected: ExpectedResponse[]) {
 
 // A body that never finishes mustn't hold the guard up: the status, method
 // and URL say enough.
-const BODY_READ_TIMEOUT_MS = 5_000;
+export const BODY_READ_TIMEOUT_MS = 5_000;
 
 function withinBodyReadTimeout<T>(read: Promise<T>, fallback: T) {
   let timer: ReturnType<typeof setTimeout> | undefined;

@@ -331,6 +331,11 @@ class CredentialsMetaResponse(BaseModel):
     service: str = ""
     service_name: str | None = None
     service_icon: str | None = None
+    mcp_catalog_entry: str | None = Field(
+        default=None,
+        description="The MCP catalog entry (e.g. mcp_linear) whose server this "
+        "sign-in connects; null for other credentials and uncatalogued servers",
+    )
     microsoft_identity: MicrosoftIdentity | None = None
 
     @model_validator(mode="before")
@@ -389,6 +394,7 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         service=identity.service,
         service_name=identity.name,
         service_icon=identity.icon,
+        mcp_catalog_entry=identity.catalog_entry,
         microsoft_identity=(
             microsoft_identity(cred)
             if isinstance(cred, OAuth2Credentials)

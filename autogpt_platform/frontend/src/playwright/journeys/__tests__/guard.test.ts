@@ -154,6 +154,25 @@ describe("the guard on one page", () => {
     );
   });
 
+  it("collects an error that arrives while it is collecting an earlier one", async () => {
+    const { page, emit } = fakePage();
+    const guard = watchPageForUnexpectedErrors(page, []);
+    emit("pageerror", new Error("Minified React error #418"));
+
+    // collect() is waiting on the first error when the second comes in.
+    const collecting = guard.collect(10_000);
+    emit("pageerror", new Error("Minified React error #423"));
+
+    expect(await collecting).toEqual([
+      expect.stringContaining(
+        "pageerror on http://localhost:3000/library: Minified React error #418",
+      ),
+      expect.stringContaining(
+        "pageerror on http://localhost:3000/library: Minified React error #423",
+      ),
+    ]);
+  });
+
   it("stops collecting at its deadline, and says what it left", async () => {
     const { page, emit } = fakePage();
     const guard = watchPageForUnexpectedErrors(page, []);
