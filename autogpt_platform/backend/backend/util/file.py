@@ -608,8 +608,11 @@ def get_mime_type(file: str) -> str:
     Get the MIME type of a file, whether it's a data URI, URL, or local path.
     """
     if file.startswith("data:"):
-        decoded = decode_data_uri(file)
-        return decoded[0] if decoded else "application/octet-stream"
+        header, sep, _ = file.removeprefix("data:").partition(",")
+        if not sep:
+            return "application/octet-stream"
+        mime_type = header.split(";", 1)[0].strip().lower()
+        return mime_type or "text/plain"
 
     elif file.startswith(("http://", "https://")):
         parsed_url = urlparse(file)
