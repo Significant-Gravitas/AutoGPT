@@ -1,0 +1,145 @@
+import { readdirSync } from "node:fs";
+import path from "node:path";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getServerSession } from "@/lib/auth/server/getServerSession";
+
+// Every admin page turns away a visitor who is not an admin, on the server,
+// before it returns anything to render. The middleware's check comes first,
+// but it never sees a path ending in an image extension (src/middleware.ts),
+// so the page's own check is the only one a dynamic admin route always gets.
+// Calling each page shows the check runs; reading its source would only show
+// that the check is mentioned.
+
+class SentAway extends Error {
+  constructor(readonly to: string) {
+    super(`sent to ${to}`);
+  }
+}
+
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
+  redirect: (to: string) => {
+    throw new SentAway(to);
+  },
+  notFound: () => {
+    throw new SentAway("not found");
+  },
+}));
+
+type Page = (props: {
+  params: Promise<Record<string, string>>;
+  searchParams: Promise<Record<string, string>>;
+}) => unknown;
+
+const APP_DIR = path.resolve(__dirname, "../../..");
+
+// The files of one kind (page or route, under any name Next takes for it)
+// whose URL is under /admin. Route groups and slots leave no trace in a URL.
+function filesUnderAdmin(kind: "page" | "route") {
+  const name = new RegExp(`^${kind}\\.(ts|tsx|js|jsx)$`);
+  return readdirSync(APP_DIR, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && name.test(entry.name))
+    .map((entry) =>
+      path.relative(APP_DIR, path.join(entry.parentPath, entry.name)),
+    )
+    .filter((file) => {
+      const [first] = file
+        .split(path.sep)
+        .filter(
+          (segment) => !/^\(.*\)$/.test(segment) && !segment.startsWith("@"),
+        );
+      return first === "admin";
+    })
+    .sort();
+}
+
+const adminPages = filesUnderAdmin("page");
+
+function signedInAs(role: string | null) {
+  const session =
+    role === null
+      ? null
+      : {
+          session: { id: "session-1", token: "token-1" },
+          user: {
+            id: "user-1",
+            email: "visitor@example.com",
+            name: "Visitor",
+            role,
+            createdAt: new Date(0),
+          },
+        };
+  vi.mocked(getServerSession).mockResolvedValue(session as never);
+}
+
+async function visit(file: string) {
+  const specifier = path.join(APP_DIR, file);
+  const { default: page } = (await import(/* @vite-ignore */ specifier)) as {
+    default: Page;
+  };
+  return Promise.resolve()
+    .then(() =>
+      page({
+        params: Promise.resolve({ id: "listing-1" }),
+        searchParams: Promise.resolve({}),
+      }),
+    )
+    .catch((error: unknown) => error);
+}
+
+beforeEach(() => {
+  // The test-data page answers "not found" off a local stack, to anyone.
+  vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
+  vi.stubEnv("NEXT_PUBLIC_APP_ENV", "local");
+});
+
+describe("admin pages", () => {
+  it("are found, the dynamic preview page among them", () => {
+    expect(adminPages).toContain(
+      path.join(
+        "(platform)",
+        "admin",
+        "marketplace",
+        "preview",
+        "[id]",
+        "page.tsx",
+      ),
+    );
+    expect(adminPages.length).toBeGreaterThanOrEqual(14);
+  });
+
+  it("have no route handlers beside them", () => {
+    // A route handler gets no page check. One added under /admin needs its
+    // own session check, and a test of it listed here.
+    expect(filesUnderAdmin("route")).toEqual([]);
+  });
+
+  describe.each(adminPages)("%s", (file) => {
+    it.each([
+      ["a signed-out visitor", null],
+      ["a signed-in member", "user"],
+    ])("turns %s away without rendering", async (_visitor, role) => {
+      signedInAs(role);
+
+      const outcome = await visit(file);
+
+      expect(
+        outcome,
+        'Run the check before returning: `await (await withRoleAccess(["admin"]))(Component)`',
+      ).toBeInstanceOf(SentAway);
+    });
+
+    it("does not turn an admin away as unauthorized", async () => {
+      signedInAs("admin");
+
+      const outcome = await visit(file);
+
+      if (outcome instanceof SentAway) {
+        expect(outcome.to).not.toBe("/unauthorized");
+      } else {
+        expect(outcome).not.toBeInstanceOf(Error);
+        expect(outcome).toBeTruthy();
+      }
+    });
+  });
+});

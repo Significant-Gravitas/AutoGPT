@@ -62,9 +62,12 @@ async function getOwnCookieCache(request: NextRequest) {
   // looks for the `__Secure-` names in any production build, which a server
   // whose base URL is http never sets (#17308).
   const isSecure = usesSecureCookies();
-  const token = await getSignedSessionToken({ request, secret, isSecure });
+  const cookies = new Headers({
+    cookie: firstOfEachCookie(request.headers.get("cookie") ?? ""),
+  });
+  const token = await getSignedSessionToken({ cookies, secret, isSecure });
   if (!token) return null;
-  const cached = await getCookieCache(request, {
+  const cached = await getCookieCache(cookies, {
     secret,
     isSecure,
     cookiePrefix: AUTH_COOKIE_PREFIX,
@@ -72,8 +75,26 @@ async function getOwnCookieCache(request: NextRequest) {
   return cached?.session.token === token ? cached : null;
 }
 
+// Sent two cookies of one name, Better Auth's server reads the first and the
+// cookie helpers used here read the last. Keeping only the first of each has
+// both read the same session.
+function firstOfEachCookie(header: string) {
+  const seen = new Set<string>();
+  return header
+    .split(";")
+    .filter((pair) => {
+      const separator = pair.indexOf("=");
+      if (separator === -1) return true;
+      const name = pair.slice(0, separator).trim();
+      if (seen.has(name)) return false;
+      seen.add(name);
+      return true;
+    })
+    .join(";");
+}
+
 interface SignedCookieArgs {
-  request: NextRequest;
+  cookies: Headers;
   secret: string;
   isSecure: boolean;
 }
@@ -82,12 +103,12 @@ interface SignedCookieArgs {
 // cookie holds `<token>.<signature>`: better-call's signCookieValue signs the
 // token with this same makeSignature (HMAC-SHA256, base64).
 async function getSignedSessionToken({
-  request,
+  cookies,
   secret,
   isSecure,
 }: SignedCookieArgs) {
   const name = `${isSecure ? SECURE_COOKIE_PREFIX : ""}${AUTH_COOKIE_PREFIX}.session_token`;
-  const value = parseCookies(request.headers.get("cookie") ?? "").get(name);
+  const value = parseCookies(cookies.get("cookie") ?? "").get(name);
   const separator = value?.lastIndexOf(".") ?? -1;
   if (!value || separator < 1) return null;
   const token = value.slice(0, separator);

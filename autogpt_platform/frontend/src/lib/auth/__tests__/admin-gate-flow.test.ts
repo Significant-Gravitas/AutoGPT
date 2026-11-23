@@ -254,6 +254,27 @@ describe.each([
     expect(lookups).toHaveLength(1);
   });
 
+  it("goes by the first of two sessions' cookies, as the session lookup does", async () => {
+    const admin = await signIn(server, "admin");
+    const member = await signIn(server, "user");
+    const cookies = [
+      member.sessionCookie,
+      member.cacheCookie,
+      admin.sessionCookie,
+      admin.cacheCookie,
+    ];
+
+    const response = await authMiddleware(adminPage(server, cookies, nextIP()));
+    const lookup = await server.handler(
+      new Request(`${server.baseURL}/api/auth/get-session`, {
+        headers: { cookie: cookies.join("; "), "x-forwarded-for": nextIP() },
+      }),
+    );
+
+    expect((await lookup.json()).user.role).toBe("user");
+    expect(redirectPath(response)).toBe("/");
+  });
+
   it.each<{
     session: string;
     cookie: (server: AuthServer, cachedToken: string) => string;

@@ -166,4 +166,49 @@ describe("authMiddleware", () => {
     expect(response.headers.get("location")).toBeNull();
     fetchSpy.mockRestore();
   });
+
+  it.each([
+    ["is turned down for too many requests", 429],
+    ["fails on the server", 500],
+  ])(
+    "sends the visitor Home when the session lookup %s",
+    async (_how, status) => {
+      getSessionCookie.mockReturnValue("session-token");
+      // Whatever the body says: only an answered lookup names the visitor.
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify({ user: { role: "admin" } }), {
+          status,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+      const response = await authMiddleware(makeRequest("/admin"));
+
+      expect(response.headers.get("location")).toBe("http://localhost:3000/");
+    },
+  );
+
+  it("sends the visitor Home when the session lookup cannot be made", async () => {
+    getSessionCookie.mockReturnValue("session-token");
+    const lookups = refuseSessionLookups();
+
+    const response = await authMiddleware(makeRequest("/admin"));
+
+    expect(lookups).toHaveBeenCalledOnce();
+    expect(response.headers.get("location")).toBe("http://localhost:3000/");
+  });
+
+  it("sends the visitor Home when the session lookup answers with no session", async () => {
+    getSessionCookie.mockReturnValue("session-token");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("null", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const response = await authMiddleware(makeRequest("/admin"));
+
+    expect(response.headers.get("location")).toBe("http://localhost:3000/");
+  });
 });
