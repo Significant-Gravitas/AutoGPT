@@ -14,10 +14,17 @@ function hasLegacySupabaseSession(request: NextRequest): boolean {
 async function getSessionUserRole(
   request: NextRequest,
 ): Promise<string | null> {
+  const configuredBaseUrl =
+    process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_FRONTEND_BASE_URL;
+  const isSecure = configuredBaseUrl
+    ? configuredBaseUrl.startsWith("https://")
+    : request.nextUrl.protocol === "https:";
+
   // Fast path: the signed cookie cache carries the user without a DB hit.
   try {
     const cached = await getCookieCache(request, {
       secret: process.env.BETTER_AUTH_SECRET,
+      isSecure,
     });
     if (cached?.user) {
       return (cached.user as { role?: string }).role ?? null;
@@ -31,10 +38,18 @@ async function getSessionUserRole(
     // (including this timeout) we fall through to null = "not admin", the safe
     // default. Edge runtime here has no pg access, so this stays an HTTP call
     // rather than the in-process auth API used elsewhere.
+    const headers: Record<string, string> = {
+      cookie: request.headers.get("cookie") || "",
+    };
+    const forwardedFor = request.headers.get("x-forwarded-for");
+    if (forwardedFor) headers["x-forwarded-for"] = forwardedFor;
+    const realIp = request.headers.get("x-real-ip");
+    if (realIp) headers["x-real-ip"] = realIp;
+
     const response = await fetch(
       new URL("/api/auth/get-session", request.url),
       {
-        headers: { cookie: request.headers.get("cookie") || "" },
+        headers,
         signal: AbortSignal.timeout(3000),
       },
     );

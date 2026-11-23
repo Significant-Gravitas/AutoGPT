@@ -141,4 +141,53 @@ describe("authMiddleware", () => {
     expect(response.headers.get("location")).toBeNull();
     fetchSpy.mockRestore();
   });
+
+  it("passes isSecure=false to getCookieCache on http deployments and isSecure=true on https", async () => {
+    getSessionCookie.mockReturnValue("session-token");
+    getCookieCache.mockResolvedValue({ user: { role: "admin" } });
+
+    await authMiddleware(makeRequest("/admin"));
+    expect(getCookieCache).toHaveBeenLastCalledWith(
+      expect.any(NextRequest),
+      expect.objectContaining({ isSecure: false }),
+    );
+
+    vi.stubEnv("BETTER_AUTH_URL", "https://app.example.com");
+    await authMiddleware(makeRequest("/admin"));
+    expect(getCookieCache).toHaveBeenLastCalledWith(
+      expect.any(NextRequest),
+      expect.objectContaining({ isSecure: true }),
+    );
+  });
+
+  it("forwards client IP headers when falling back to get-session", async () => {
+    getSessionCookie.mockReturnValue("session-token");
+    getCookieCache.mockResolvedValue(null);
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ user: { role: "admin" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const request = new NextRequest(new URL("http://localhost:3000/admin"), {
+      headers: {
+        "x-forwarded-for": "203.0.113.10",
+        "x-real-ip": "203.0.113.10",
+      },
+    });
+    const response = await authMiddleware(request);
+
+    expect(response.headers.get("location")).toBeNull();
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "x-forwarded-for": "203.0.113.10",
+          "x-real-ip": "203.0.113.10",
+        }),
+      }),
+    );
+    fetchSpy.mockRestore();
+  });
 });
