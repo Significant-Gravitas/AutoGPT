@@ -75,7 +75,11 @@ describe("RelativeTime", () => {
   });
 
   it("falls back to raw string without throwing for invalid dates", () => {
-    render(<Row id="bad" date="not-a-date" as unknown as Date />);
+    render(
+      <span data-testid="bad">
+        <RelativeTime date="not-a-date" />
+      </span>,
+    );
     expect(label("bad")).toBe("not-a-date");
   });
 });
