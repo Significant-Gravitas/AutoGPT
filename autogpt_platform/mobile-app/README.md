@@ -51,7 +51,7 @@ A web app from before that contract answers a sign-in with a cookie only, and th
 
 ### Connecting services
 
-Sign-ins open in the phone's own browser sheet (never a WebView, which Google refuses) and come back to the app's own link: `autogpt-app-dev://integrations/oauth` in AutoGPT Dev, `autogpt-app://integrations/oauth` in the store app (see [Builds](#builds)). The web app answers with the link for its own environment, so a build only finishes a sign-in against the environment it was built for. That needs a web app whose `/auth/integrations/oauth_callback` and `/auth/integrations/mcp_callback` routes send sign-ins started from the app back to it; with an older web app the sheet stays on its own page until you close it. Keys, logins and MCP tokens need no web change.
+Sign-ins open in the phone's own browser sheet (never a WebView, which Google refuses) and come back to `autogpt-app://integrations/oauth`. That needs a web app whose `/auth/integrations/oauth_callback` and `/auth/integrations/mcp_callback` routes send sign-ins started from the app back to it; with an older web app the sheet stays on its own page until you close it. Keys, logins and MCP tokens need no web change.
 
 On iOS the system asks before every sign-in whether the app may use the web app's domain; that prompt can't be changed. On Android, Expo Go can't receive these links, so test sign-ins in a development build (`npx expo run:android`). A sign-in on a physical phone comes back to the web app's address, so `localhost` only works on a simulator.
 
@@ -66,23 +66,19 @@ Set these in `.env.local` (see `.env.example`). Trailing slashes are dropped.
 
 ## Builds
 
-One codebase builds two apps (`app.config.ts`). They have different IDs and link schemes, so both fit on one phone.
+There is one app, AutoGPT (`co.agpt.autogpt.app`, link scheme `autogpt-app://`). The two EAS profiles build it against different servers. The server addresses come from the profile's `env` in `eas.json` and are fixed when the app is built.
 
-| | AutoGPT Dev | AutoGPT |
-| --- | --- | --- |
-| Built when | `APP_VARIANT` is anything but `production`: local runs and the `dev` EAS profile | `APP_VARIANT=production`: the `production` EAS profile |
-| App ID | `co.agpt.autogpt.app.dev` | `co.agpt.autogpt.app` |
-| Link scheme | `autogpt-app-dev://` | `autogpt-app://` |
-| Web app | `https://dev-builder.agpt.co` (`dev` profile) | `https://platform.agpt.co` |
-| Backend | `https://dev-server.agpt.co` (`dev` profile) | `https://backend.agpt.co` |
-| Goes to | The team, as an internal build | TestFlight and Play internal testing, then the stores |
+| Profile | Web app | Backend | Goes to |
+| --- | --- | --- | --- |
+| `dev` | `https://dev-builder.agpt.co` | `https://dev-server.agpt.co` | The team: an APK link on Android, an internal build on iOS |
+| `production` | `https://platform.agpt.co` | `https://backend.agpt.co` | TestFlight and Play internal testing, then the same build to the stores |
 
 ```sh
-eas build --profile dev --platform all
+eas build --profile dev --platform android
 eas build --profile production --platform all
 ```
 
-`app.json` holds the store app's name, ID and scheme; `app.config.ts` adds the Dev suffixes. The server addresses come from the profile's `env` in `eas.json` and are fixed when the app is built.
+Both builds share one app ID, so a phone holds one of them at a time. On Android, moving between a `dev` APK and the Play build means uninstalling first, because the two are signed with different keys. Only submit builds from the `production` profile to the stores.
 
 ## Scripts
 
