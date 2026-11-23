@@ -16,10 +16,12 @@ test("marketplace happy path: a missing skill shows the 404 page, not an applica
 }) => {
   test.setTimeout(90000);
 
-  // notFound() while a Server Action was in flight left the router with a
-  // truncated hook list, so its next update replaced the whole app with
-  // "Application error" (#17278). Holding every Server Action until the
-  // skill read gives up puts notFound() in that window on every run.
+  // notFound() during an in-flight Server Action must still let the router's
+  // next update render (#17278). Every Server Action is held until the 404
+  // page shows, so notFound() runs while one is in flight. React holds that
+  // 404 back until the page renders again, which the session check's 10 s
+  // deadline (SESSION_CHECK_DEADLINE_MS) forces while its action is held.
+  let heldServerActions = 0;
   let releaseServerActions = () => {};
   const serverActionsReleased = new Promise<void>((resolve) => {
     releaseServerActions = resolve;
@@ -28,25 +30,24 @@ test("marketplace happy path: a missing skill shows the 404 page, not an applica
     `**/marketplace/skills/${MISSING_SKILL_SLUG}`,
     async (route) => {
       if (route.request().headers()["next-action"]) {
+        heldServerActions += 1;
         await serverActionsReleased;
       }
       await route.fallback();
     },
   );
-  let failedReads = 0;
-  page.on("requestfinished", async (request) => {
-    if (!request.url().endsWith(`/store/skills/${MISSING_SKILL_SLUG}`)) return;
-    if ((await request.response())?.status() === 404) failedReads += 1;
-  });
+  const notFoundPage = page.getByText("This page could not be found.");
 
-  await page.goto(`/marketplace/skills/${MISSING_SKILL_SLUG}`);
-  // The first read and React Query's three retries.
-  await expect.poll(() => failedReads, { timeout: 30000 }).toBe(4);
-  releaseServerActions();
+  try {
+    await page.goto(`/marketplace/skills/${MISSING_SKILL_SLUG}`);
+    await expect(notFoundPage).toBeVisible({ timeout: 30000 });
+    expect(heldServerActions).toBeGreaterThan(0);
+  } finally {
+    releaseServerActions();
+  }
 
-  await expect(page.getByText("This page could not be found.")).toBeVisible({
-    timeout: 15000,
-  });
+  await expect(page.getByText("Application error")).toHaveCount(0);
+  await expect(notFoundPage).toBeVisible();
   // A client-side navigation is the router's next update.
   await page
     .getByRole("link", { name: "Marketplace", exact: true })
