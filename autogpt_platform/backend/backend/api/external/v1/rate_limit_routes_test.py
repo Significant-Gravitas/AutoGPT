@@ -6,9 +6,9 @@ from fastapi.routing import APIRoute
 from redis.exceptions import RedisError
 
 from backend.api.external import rate_limit
-from backend.api.external.v1 import routes
 from backend.api.external.v1.app import v1_app
 from backend.blocks._base import BlockType
+from backend.executor import utils as execution_utils
 
 ROUTES = [
     ("GET", "/me", "read"),
@@ -82,7 +82,7 @@ async def test_execution_cap_blocks_work_without_consuming_the_read_budget(
         id="test-block", block_type=BlockType.STANDARD, disabled=False, execute=execute
     )
     get_block = mocker.patch("backend.blocks.get_block", return_value=block)
-    charge = mocker.patch.object(routes, "charge_for_direct_block_execution")
+    charge = mocker.patch.object(execution_utils, "charge_for_direct_block_execution")
     headers = {"Authorization": "Bearer agpt_xt_test-0"}
     for index in range(rate_limit.EXECUTION_MAX_REQUESTS):
         response = await v1_client.post(
