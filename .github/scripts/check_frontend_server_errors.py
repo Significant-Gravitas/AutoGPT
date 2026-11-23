@@ -18,7 +18,9 @@ _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 # `docker compose logs` without --no-log-prefix: "frontend-1  | <line>".
 _COMPOSE_PREFIX = re.compile(r"^[\w.-]+\s+\|\s?")
 _ERROR_MARK = "⨯"
-_STACK_LINE = re.compile(r"^\s+(at |digest:|\{|\})")
+# What Node prints under an error: its frames, Next's digest, and the
+# `[cause]:` of a wrapped error.
+_STACK_LINE = re.compile(r"^\s+(at |digest:|\[cause\]:)")
 _MAX_STACK_LINES = 8
 
 
@@ -77,7 +79,13 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as exc:
         print(f"{name}: could not read the log: {exc.strerror or type(exc).__name__}")
         return 1
-    errors = server_errors(text.splitlines())
+    lines = text.splitlines()
+    # The server always logs its startup, so an empty log means the capture
+    # broke (a renamed service, a recreated container), not a clean run.
+    if not any(line.strip() for line in lines):
+        print(f"{name}: the log is empty, so the server's errors can't be checked")
+        return 1
+    errors = server_errors(lines)
     if errors:
         print(report(errors, name))
         return 1

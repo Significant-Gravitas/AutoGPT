@@ -96,6 +96,27 @@ class CheckFrontendServerErrorsTests(unittest.TestCase):
             ],
         )
 
+    def test_a_wrapped_errors_cause_stays_in_its_stack(self):
+        errors = server_errors(
+            [
+                " ⨯ Error: request failed",
+                "    at fetchUser (page.js:1:2) {",
+                "  [cause]: TypeError: fetch failed",
+                "}",
+            ]
+        )
+        self.assertEqual(
+            errors[0][1],
+            ["    at fetchUser (page.js:1:2) {", "  [cause]: TypeError: fetch failed"],
+        )
+
+    def test_an_empty_log_fails(self):
+        for lines in ([], ["", "   "]):
+            with self.subTest(lines=lines):
+                code, out = run(lines)
+                self.assertEqual(code, 1)
+                self.assertIn("the log is empty", out)
+
     def test_a_missing_log_fails_naming_only_the_file(self):
         out = StringIO()
         with redirect_stdout(out):
