@@ -11,7 +11,7 @@ import {
   startProviderLogin,
   type CredentialMeta,
 } from "@/lib/api/integrations";
-import { queryClient } from "@/lib/session";
+import { queryClient, sessionGeneration } from "@/lib/session";
 
 import {
   parseOAuthReturn,
@@ -170,11 +170,14 @@ async function exchange(returned: OAuthReturn, target: OAuthTarget): Promise<OAu
     );
     return message ? failed(message) : { status: "cancelled" };
   }
+  const startedIn = sessionGeneration();
   try {
     const credential =
       target.kind === "mcp"
         ? await finishMCPLogin(returned.code, returned.state, returned.iss)
         : await finishProviderLogin(target.provider, returned.code, returned.state);
+    // Signed out meanwhile: the account belongs to whoever started this.
+    if (startedIn !== sessionGeneration()) return { status: "cancelled" };
     rememberCredential(credential);
     return { status: "connected", credential };
   } catch (error) {

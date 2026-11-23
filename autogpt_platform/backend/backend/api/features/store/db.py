@@ -32,6 +32,7 @@ from backend.util.exceptions import (
     PreconditionFailed,
 )
 from backend.util.settings import Settings
+from backend.util.sql import escape_like
 
 from . import exceptions as store_exceptions
 from . import model as store_model
@@ -40,6 +41,8 @@ from .categories import category_filter_values
 from .embeddings import ensure_embedding
 from .hybrid_search import hybrid_search
 from .store_listing_versions import installable_store_version_where
+from .submission_description import VersionHistoryRow, kept_description
+from .submission_review_state import lock_review_target, withdraw_store_version
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -93,6 +96,10 @@ async def get_store_agents(
     agents: list[dict[str, Any]] = []
     total = 0
     total_pages = 0
+
+    # Before the try below, which would turn this 400 into a DatabaseError.
+    if search_query and "\x00" in search_query:
+        raise ValueError("Search text must not contain NUL characters")
 
     try:
         # If search_query is provided, use hybrid search (embeddings + tsvector)
@@ -548,23 +555,10 @@ async def get_store_creators(
         where["is_featured"] = featured
 
     # Add search filter if provided, using parameterized queries
-    sanitized_query = (search_query or "").strip()[:MAX_CREATOR_SEARCH_QUERY_LENGTH]
+    sanitized_query = escape_like(
+        (search_query or "").strip()[:MAX_CREATOR_SEARCH_QUERY_LENGTH]
+    )
     if sanitized_query:
-        # Escape special SQL characters
-        sanitized_query = (
-            sanitized_query.replace("\\", "\\\\")
-            .replace("%", "\\%")
-            .replace("_", "\\_")
-            .replace("[", "\\[")
-            .replace("]", "\\]")
-            .replace("'", "\\'")
-            .replace('"', '\\"')
-            .replace(";", "\\;")
-            .replace("--", "\\--")
-            .replace("/*", "\\/*")
-            .replace("*/", "\\*/")
-        )
-
         where["OR"] = [
             {"username": {"contains": sanitized_query, "mode": "insensitive"}},
             {"name": {"contains": sanitized_query, "mode": "insensitive"}},
@@ -767,7 +761,7 @@ async def get_store_submissions(
         else:
             where["user_id"] = user_id
 
-        normalized_query = (search_query or "").strip()
+        normalized_query = escape_like((search_query or "").strip())
         if normalized_query:
             where["OR"] = [
                 {"name": {"contains": normalized_query, "mode": "insensitive"}},
@@ -825,22 +819,6 @@ async def get_store_submissions(
         raise
 
 
-async def delete_store_submission(
-    user_id: str,
-    store_listing_version_id: str,
-    organization_id: str | None = None,
-) -> bool:
-    """`delete_store_submission_or_raise`, answering False for any failure."""
-    try:
-        await delete_store_submission_or_raise(
-            user_id, store_listing_version_id, organization_id
-        )
-        return True
-    except Exception as e:
-        logger.error(f"Error deleting store submission: {e}")
-        return False
-
-
 async def delete_store_submission_or_raise(
     user_id: str,
     store_listing_version_id: str,
@@ -860,34 +838,34 @@ async def delete_store_submission_or_raise(
         SubmissionNotFoundError: no such submission, or not the caller's
         InvalidOperationError: the submission is approved
     """
-    # Find the submission version with ownership check
-    version = await prisma.models.StoreListingVersion.prisma().find_unique(
-        where={"id": store_listing_version_id}, include={"StoreListing": True}
-    )
-
-    if not version or not version.StoreListing:
-        raise store_exceptions.SubmissionNotFoundError("Submission not found")
-
-    if not _owns_listing(version.StoreListing, user_id, organization_id):
-        raise store_exceptions.SubmissionNotFoundError("Submission not found")
-
-    # Prevent deletion of approved submissions
-    if version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
-        raise store_exceptions.InvalidOperationError(
-            "Cannot delete approved store listings"
+    async with transaction() as tx:
+        # Hold the listing until empty-listing cleanup finishes. Otherwise the
+        # cascading delete can remove a replacement that just committed.
+        listings = await query_raw_with_schema(
+            'SELECT l.* FROM {schema_prefix}"StoreListing" l '
+            'JOIN {schema_prefix}"StoreListingVersion" v ON v."storeListingId" = l.id '
+            "WHERE v.id = $1 FOR UPDATE OF l, v",
+            store_listing_version_id,
+            model=prisma.models.StoreListing,
+            client=tx,
         )
+        if not listings or not _owns_listing(listings[0], user_id, organization_id):
+            raise store_exceptions.SubmissionNotFoundError("Submission not found")
 
-    # Delete the version
-    await prisma.models.StoreListingVersion.prisma().delete(where={"id": version.id})
+        versions = prisma.models.StoreListingVersion.prisma(tx)
+        if not await versions.delete_many(
+            where={
+                "id": store_listing_version_id,
+                "submissionStatus": {"not": prisma.enums.SubmissionStatus.APPROVED},
+            }
+        ):
+            raise store_exceptions.InvalidOperationError(
+                "Cannot delete approved store listings"
+            )
 
-    # Clean up empty listing if this was the last version
-    remaining = await prisma.models.StoreListingVersion.prisma().count(
-        where={"storeListingId": version.storeListingId}
-    )
-    if remaining == 0:
-        await prisma.models.StoreListing.prisma().delete(
-            where={"id": version.storeListingId}
-        )
+        listing_id = listings[0].id
+        if not await versions.count(where={"storeListingId": listing_id}):
+            await prisma.models.StoreListing.prisma(tx).delete(where={"id": listing_id})
 
 
 async def create_store_submission(
@@ -918,7 +896,9 @@ async def create_store_submission(
         name: Name of the agent
         video_url: Optional URL to video demo
         image_urls: List of image URLs for the listing
-        description: Description of the agent
+        description: Description of the agent; an update to an existing
+            listing that leaves it blank keeps the live version's, or else
+            the newest one that no review rejected
         sub_heading: Short CTA line shown under the agent name
         categories: List of categories for the agent
         changes_summary: Summary of changes made in this submission
@@ -1006,18 +986,16 @@ async def create_store_submission(
             )
 
         async with transaction() as tx:
-            # Determine next version number for this listing
-            existing_listing = await prisma.models.StoreListing.prisma(tx).find_unique(
-                where={"agentGraphId": graph_id},
-                include={
-                    "Versions": {
-                        # We just need the latest version and one of each status:
-                        "order_by": {"version": "desc"},
-                        "distinct": ["submissionStatus"],
-                        "where": {"isDeleted": False},
-                    }
-                },
+            # Take the insert's foreign-key lock before touching the pending version.
+            # A concurrent withdrawal also locks the listing before the version.
+            listings = await query_raw_with_schema(
+                'SELECT * FROM {schema_prefix}"StoreListing" '
+                'WHERE "agentGraphId" = $1 FOR KEY SHARE',
+                graph_id,
+                model=prisma.models.StoreListing,
+                client=tx,
             )
+            existing_listing = listings[0] if listings else None
             # A listing belongs to its creator: never withdraw or extend another's.
             if existing_listing and not _owns_listing(
                 existing_listing, user_id, organization_id
@@ -1027,32 +1005,36 @@ async def create_store_submission(
                     "by another creator"
                 )
 
+            versions = prisma.models.StoreListingVersion.prisma(tx)
             next_version = 1
-            graph_has_pending_submissions = False
-            if existing_listing and existing_listing.Versions:
-                current_latest_version = max(
-                    (slv.version for slv in existing_listing.Versions), default=0
+            if existing_listing:
+                keep_description = not description.strip()
+                # Newest first. Superseded versions still occupy their number in
+                # the unique index, so the newest numbers the new one; only a
+                # blank update reads the rest.
+                history = await VersionHistoryRow.prisma(tx).find_many(
+                    where={"storeListingId": existing_listing.id},
+                    order={"version": "desc"},
+                    take=None if keep_description else 1,
                 )
-                next_version = current_latest_version + 1
-
-                graph_has_pending_submissions = any(
-                    slv.submissionStatus == prisma.enums.SubmissionStatus.PENDING
-                    for slv in existing_listing.Versions
-                )
-
-            # Delete any currently PENDING submissions for the same graph
-            # in favor of the new submission
-            if graph_has_pending_submissions:
-                await prisma.models.StoreListingVersion.prisma(tx).update_many(
+                if history:
+                    next_version = history[0].version + 1
+                # A blank description keeps the live version's, or else the
+                # newest one that no review rejected.
+                if keep_description:
+                    description = kept_description(
+                        history, existing_listing.activeVersionId, description
+                    )
+                await versions.update_many(
                     where={
-                        "agentGraphId": graph.id,
+                        "storeListingId": existing_listing.id,
                         "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
                         "isDeleted": False,
                     },
                     data={"isDeleted": True},
                 )
 
-            new_submission = await prisma.models.StoreListingVersion.prisma(tx).create(
+            new_submission = await versions.create(
                 data={
                     "AgentGraph": {
                         "connect": {
@@ -1456,6 +1438,8 @@ async def get_my_agents(
         search_query,
     )
 
+    # Outside the try below, so a NUL in the query is a 400, not a DatabaseError.
+    normalized_query = escape_like((search_query or "").strip())
     try:
         agent_graph_filter: prisma.types.AgentGraphWhereInput = {
             "StoreListingVersions": {
@@ -1467,7 +1451,6 @@ async def get_my_agents(
             }
         }
 
-        normalized_query = (search_query or "").strip()
         if normalized_query:
             agent_graph_filter["OR"] = [
                 {"name": {"contains": normalized_query, "mode": "insensitive"}},
@@ -1599,14 +1582,12 @@ async def review_store_submission(
         assert submission.AgentGraph is not None
         creator_user_id = submission.AgentGraph.userId
 
-        # Check if we're rejecting an already approved agent
-        is_rejecting_approved = (
-            not is_approved
-            and submission.submissionStatus == prisma.enums.SubmissionStatus.APPROVED
-        )
-
-        # If approving, update the listing to indicate it has an approved version
+        sub_graphs = []
         if is_approved:
+            if submission.isDeleted:
+                raise ConflictError(
+                    "This submission has been superseded. Review its replacement instead."
+                )
             if foreign_refs := await foreign_sub_graph_refs(submission.AgentGraph):
                 raise PreconditionFailed(
                     "This workflow runs sub-workflows that are neither its "
@@ -1614,126 +1595,21 @@ async def review_store_submission(
                     f"{_format_graph_refs(foreign_refs)}, so it can't be approved."
                 )
             sub_graphs = await get_sub_graphs(submission.AgentGraph)
-            async with transaction() as tx:
-                # Handle sub-agent approvals in transaction
-                await asyncio.gather(
-                    *[
-                        _approve_sub_agent(
-                            tx,
-                            sub_graph,
-                            submission.name,
-                            submission.agentGraphVersion,
-                            creator_user_id,
-                        )
-                        for sub_graph in sub_graphs
-                    ]
-                )
 
-                # Update the AgentGraph with store listing data
-                await prisma.models.AgentGraph.prisma(tx).update(
-                    where={
-                        "graphVersionId": {
-                            "id": submission.agentGraphId,
-                            "version": submission.agentGraphVersion,
-                        }
-                    },
-                    data={
-                        "name": submission.name,
-                        "description": submission.description,
-                        "recommendedScheduleCron": submission.recommendedScheduleCron,
-                        "instructions": submission.instructions,
-                    },
-                )
-
-                # Generate embedding for approved listing (best-effort)
-                try:
-                    await ensure_embedding(
-                        version_id=store_listing_version_id,
-                        name=submission.name,
-                        description=submission.description,
-                        sub_heading=submission.subHeading,
-                        categories=submission.categories,
-                        tx=tx,
-                    )
-                except Exception as emb_err:
-                    logger.warning(
-                        f"Could not generate embedding for listing "
-                        f"{store_listing_version_id}: {emb_err}"
-                    )
-
-                await prisma.models.StoreListing.prisma(tx).update(
-                    where={"id": submission.storeListingId},
-                    data={
-                        "hasApprovedVersion": True,
-                        "ActiveVersion": {"connect": {"id": store_listing_version_id}},
-                    },
-                )
-
-        # If rejecting an approved agent, update the StoreListing accordingly
-        if is_rejecting_approved:
-            # Check if there are other approved versions
-            other_approved = (
-                await prisma.models.StoreListingVersion.prisma().find_first(
-                    where={
-                        "storeListingId": submission.storeListingId,
-                        "id": {"not": store_listing_version_id},
-                        "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
-                    }
-                )
-            )
-
-            if not other_approved:
-                # No other approved versions, update hasApprovedVersion to False
-                await prisma.models.StoreListing.prisma().update(
-                    where={"id": submission.storeListingId},
-                    data={
-                        "hasApprovedVersion": False,
-                        "ActiveVersion": {"disconnect": True},
-                    },
-                )
-            else:
-                # Set the most recent other approved version as active
-                await prisma.models.StoreListing.prisma().update(
-                    where={"id": submission.storeListingId},
-                    data={
-                        "ActiveVersion": {"connect": {"id": other_approved.id}},
-                    },
-                )
-                if public_media.publishing_enabled():
-                    await _publish_reactivated_media(other_approved.id)
-
-        submission_status = (
-            prisma.enums.SubmissionStatus.APPROVED
-            if is_approved
-            else prisma.enums.SubmissionStatus.REJECTED
+        reviewed_submission, reactivated_id = await _record_submission_review(
+            submission,
+            submission.AgentGraph,
+            sub_graphs,
+            is_approved=is_approved,
+            external_comments=external_comments,
+            internal_comments=internal_comments,
+            reviewer_id=reviewer_id,
         )
-
-        # Update the version with review information
-        update_data: prisma.types.StoreListingVersionUpdateInput = {
-            "submissionStatus": submission_status,
-            "reviewedAt": datetime.now(tz=timezone.utc),
-            "Reviewer": {"connect": {"id": reviewer_id}},
-            "reviewComments": external_comments,
-            "internalComments": internal_comments,
-        }
-
-        # Update the version
-        reviewed_submission = await prisma.models.StoreListingVersion.prisma().update(
-            where={"id": store_listing_version_id},
-            data=update_data,
-            include={
-                "StoreListing": True,  # required for StoreSubmissionAdminView
-                "Reviewer": True,  # used in _send_submission_review_notification
-            },
-        )
-
-        if not reviewed_submission:
-            raise DatabaseError(
-                f"Failed to update store listing version {store_listing_version_id}"
-            )
 
         if is_approved:
             reviewed_submission = await _publish_approved_media(reviewed_submission)
+        elif reactivated_id and public_media.publishing_enabled():
+            await _publish_reactivated_media(reactivated_id)
 
         if notify_creator:
             try:
@@ -1751,21 +1627,129 @@ async def review_store_submission(
             reviewed_submission
         )
 
-    except (NotFoundError, PreconditionFailed):
+    except (NotFoundError, PreconditionFailed, ConflictError):
         raise
     except Exception as e:
         logger.error(f"Could not create store submission review: {e}")
         raise DatabaseError("Failed to create store submission review") from e
 
 
+async def _record_submission_review(
+    submission: prisma.models.StoreListingVersion,
+    root_graph: prisma.models.AgentGraph,
+    sub_graphs: list[prisma.models.AgentGraph],
+    *,
+    is_approved: bool,
+    external_comments: str,
+    internal_comments: str,
+    reviewer_id: str,
+) -> tuple[prisma.models.StoreListingVersion, str | None]:
+    reactivated_id = None
+    async with transaction() as tx:
+        if is_approved:
+            # Direct and parent reviews may write the same listings. Include the
+            # review target in the order in which dependencies are approved.
+            for graph in sorted([root_graph, *sub_graphs], key=lambda graph: graph.id):
+                if graph.id == submission.agentGraphId:
+                    await _approve_direct_submission(tx, submission)
+                else:
+                    await _approve_sub_agent(
+                        tx,
+                        graph,
+                        submission.name,
+                        submission.agentGraphVersion,
+                        root_graph.userId,
+                    )
+
+        else:
+            reactivated_id = await withdraw_store_version(tx, submission)
+
+        reviewed_submission = await prisma.models.StoreListingVersion.prisma(tx).update(
+            where={"id": submission.id},
+            data={
+                "submissionStatus": (
+                    prisma.enums.SubmissionStatus.APPROVED
+                    if is_approved
+                    else prisma.enums.SubmissionStatus.REJECTED
+                ),
+                "reviewedAt": datetime.now(tz=timezone.utc),
+                "Reviewer": {"connect": {"id": reviewer_id}},
+                "reviewComments": external_comments,
+                "internalComments": internal_comments,
+            },
+            include={"StoreListing": True, "Reviewer": True},
+        )
+        if not reviewed_submission:
+            raise DatabaseError(
+                f"Failed to update store listing version {submission.id}"
+            )
+    return reviewed_submission, reactivated_id
+
+
+async def _approve_direct_submission(
+    tx: prisma.Prisma, submission: prisma.models.StoreListingVersion
+) -> None:
+    # Update the AgentGraph with store listing data
+    await prisma.models.AgentGraph.prisma(tx).update(
+        where={
+            "graphVersionId": {
+                "id": submission.agentGraphId,
+                "version": submission.agentGraphVersion,
+            }
+        },
+        data={
+            "name": submission.name,
+            "description": submission.description,
+            "recommendedScheduleCron": submission.recommendedScheduleCron,
+            "instructions": submission.instructions,
+        },
+    )
+
+    # Generate embedding for approved listing (best-effort)
+    try:
+        await ensure_embedding(
+            version_id=submission.id,
+            name=submission.name,
+            description=submission.description,
+            sub_heading=submission.subHeading,
+            categories=submission.categories,
+            tx=tx,
+        )
+    except Exception as emb_err:
+        logger.warning(
+            f"Could not generate embedding for listing {submission.id}: {emb_err}"
+        )
+
+    target = await lock_review_target(tx, submission.id)
+    if target.is_deleted:
+        raise ConflictError(
+            "This submission was replaced or removed. "
+            "Refresh the listing before approving it."
+        )
+    await prisma.models.StoreListing.prisma(tx).update(
+        where={"id": submission.storeListingId},
+        data={
+            "hasApprovedVersion": True,
+            "ActiveVersion": {"connect": {"id": submission.id}},
+        },
+    )
+
+
 async def _publish_approved_media(
     version: prisma.models.StoreListingVersion,
+    *,
+    reactivation_filter: prisma.types.StoreListingVersionWhereInput | None = None,
 ) -> prisma.models.StoreListingVersion:
     """
     Copy an approved version's media and its creator's avatar to the public site
     media bucket, and point the rows at the copies. Never fails the review. The
     profile and the version are written separately on purpose: each copy is
     valid on its own, so a failed version write keeps the published avatar.
+
+    On reactivation, the eligibility read authorizes the copy. The URL update
+    succeeds only while the version remains eligible and its source URLs match.
+    A successful approval returns the updated row. A successful reactivation
+    returns a copy with the published URLs. An unchanged version is returned as-is.
     """
     if not public_media.publishing_enabled():
         return version
@@ -1773,16 +1757,26 @@ async def _publish_approved_media(
         assert version.StoreListing is not None
         owner_id = version.StoreListing.owningUserId
         await publish_creator_avatar(owner_id)
+        owner_ids = await _listing_media_owner_ids(version.StoreListing)
+        versions = prisma.models.StoreListingVersion.prisma()
+        if reactivation_filter is not None and not await versions.count(
+            where=reactivation_filter
+        ):
+            return version
         published = await public_media.publish_urls(
             [*version.imageUrls, version.videoUrl, version.agentOutputDemoUrl],
-            await _listing_media_owner_ids(version.StoreListing),
+            owner_ids,
         )
 
         media_update = _published_media_update(version, published)
         if not media_update:
             return version
 
-        updated = await prisma.models.StoreListingVersion.prisma().update(
+        if reactivation_filter is not None:
+            if await versions.update_many(where=reactivation_filter, data=media_update):
+                return version.model_copy(update=dict(media_update))
+            return version
+        updated = await versions.update(
             where={"id": version.id},
             data=media_update,
             include={"StoreListing": True, "Reviewer": True},
@@ -1804,8 +1798,17 @@ async def _publish_reactivated_media(version_id: str) -> None:
     except Exception:
         logger.exception(f"Failed to load store listing version {version_id}")
         return
-    if version:
-        await _publish_approved_media(version)
+    if version and version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
+        await _publish_approved_media(
+            version,
+            reactivation_filter={
+                **installable_store_version_where(),
+                "id": version.id,
+                "imageUrls": {"equals": version.imageUrls},
+                "videoUrl": version.videoUrl,
+                "agentOutputDemoUrl": version.agentOutputDemoUrl,
+            },
+        )
 
 
 def _published_media_update(
@@ -1956,32 +1959,51 @@ async def _approve_sub_agent(
         )
         return
 
-    # Find version matching this sub-graph
-    matching_version = next(
-        (
-            v
-            for v in listing.Versions or []
-            if v.agentGraphId == sub_graph.id
-            and v.agentGraphVersion == sub_graph.version
-        ),
-        None,
-    )
+    matching_versions = [
+        v
+        for v in listing.Versions or []
+        if not v.isDeleted
+        and v.agentGraphId == sub_graph.id
+        and v.agentGraphVersion == sub_graph.version
+    ]
+    # Several submissions can refer to the same workflow version. Any existing
+    # approval satisfies the dependency, including one for a hidden listing.
+    if any(
+        v.submissionStatus == prisma.enums.SubmissionStatus.APPROVED
+        for v in matching_versions
+    ):
+        return
 
-    # Early return: Approve existing version if found and not already approved
-    if matching_version:
-        if matching_version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
-            return  # Already approved, nothing to do
-
-        await prisma.models.StoreListingVersion.prisma(tx).update(
-            where={"id": matching_version.id},
+    if matching_versions:
+        matching_version = matching_versions[0]
+        # Parent approval can also approve a previously rejected dependency.
+        # Take the listing lock before its version, just as withdrawal does.
+        await prisma.models.StoreListing.prisma(tx).update(
+            where={"id": listing.id}, data={"hasApprovedVersion": True}
+        )
+        versions = prisma.models.StoreListingVersion.prisma(tx)
+        changed = await versions.update_many(
+            where={
+                "id": matching_version.id,
+                "isDeleted": False,
+                "submissionStatus": {"not": prisma.enums.SubmissionStatus.APPROVED},
+            },
             data={
                 "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
                 "reviewedAt": datetime.now(tz=timezone.utc),
             },
         )
-        await prisma.models.StoreListing.prisma(tx).update(
-            where={"id": listing.id}, data={"hasApprovedVersion": True}
-        )
+        if not changed and not await versions.count(
+            where={
+                "id": matching_version.id,
+                "isDeleted": False,
+                "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+            }
+        ):
+            raise ConflictError(
+                f"The submission for sub-workflow #{sub_graph.id} v{sub_graph.version} "
+                "changed during review. Retry the parent review."
+            )
         return
 
     # Create new version if no matching version found
@@ -2129,14 +2151,7 @@ async def get_admin_listings_with_versions(
         store_listing_filter["Versions"] = {"some": {"submissionStatus": status}}
 
     if search_query:
-        # Find users with matching email
-        matching_users = await prisma.models.User.prisma().find_many(
-            where={"email": {"contains": search_query, "mode": "insensitive"}},
-        )
-
-        user_ids = [user.id for user in matching_users]
-
-        # Set up OR conditions
+        search_query = escape_like(search_query)
         store_listing_filter["OR"] = [
             {"slug": {"contains": search_query, "mode": "insensitive"}},
             {
@@ -2164,11 +2179,14 @@ async def get_admin_listings_with_versions(
                     }
                 }
             },
+            # A join, not a prefetch of matching user IDs: every owner whose
+            # email matches counts, however many there are.
+            {
+                "OwningUser": {
+                    "is": {"email": {"contains": search_query, "mode": "insensitive"}}
+                }
+            },
         ]
-
-        # Add user_id condition if any users matched
-        if user_ids:
-            store_listing_filter["OR"].append({"owningUserId": {"in": user_ids}})
 
     # Calculate pagination
     skip = (page - 1) * page_size
@@ -2236,27 +2254,6 @@ async def get_admin_listings_with_versions(
             page_size=page_size,
         ),
     )
-
-
-async def check_submission_already_approved(
-    store_listing_version_id: str,
-) -> bool:
-    """Check the submission status of a store listing version."""
-    try:
-        store_listing_version = (
-            await prisma.models.StoreListingVersion.prisma().find_unique(
-                where={"id": store_listing_version_id}
-            )
-        )
-        if not store_listing_version:
-            return False
-        return (
-            store_listing_version.submissionStatus
-            == prisma.enums.SubmissionStatus.APPROVED
-        )
-    except Exception as e:
-        logger.error(f"Error checking submission status: {e}")
-        return False
 
 
 async def get_agent_as_admin(

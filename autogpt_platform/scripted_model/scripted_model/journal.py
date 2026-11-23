@@ -2,9 +2,12 @@
 
 ``GET /__scripted__/journal?nonce=<nonce>`` returns one run's entries. A
 journey reads it to wait for a reply to finish streaming, or to print what a
-tool really returned when a check failed.
+tool really returned when a check failed. ``?credential=<fingerprint>``
+returns the requests made with one API key, e.g. a block run with a key the
+journey's user saved.
 """
 
+import hashlib
 import threading
 import time
 from collections import deque
@@ -12,7 +15,6 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from .planner import Conversation, Plan
-from .scripts import find_marker
 
 # Enough for a CI run's journeys; the oldest entries go first.
 MAX_ENTRIES = 1000
@@ -24,6 +26,14 @@ MAX_RESULT_CHARS = 2000
 class Request:
     dialect: str
     path: str
+    # The API key the request presented, as its fingerprint().
+    credential: str | None = None
+
+
+def fingerprint(api_key: str) -> str:
+    """How the journal names an API key: the start of its SHA-256, so a
+    journey can tell which key a request used without the key being kept."""
+    return hashlib.sha256(api_key.encode()).hexdigest()[:16]
 
 
 class Journal:
@@ -72,6 +82,7 @@ class Journal:
                 "at": time.time(),
                 "dialect": request.dialect,
                 "path": request.path,
+                "credential": request.credential,
                 "model": model,
                 "script": None,
                 "nonce": None,
@@ -103,7 +114,10 @@ class Journal:
             entry["finished_at"] = time.time()
 
     def find(
-        self, script: str | None = None, nonce: str | None = None
+        self,
+        script: str | None = None,
+        nonce: str | None = None,
+        credential: str | None = None,
     ) -> list[dict[str, Any]]:
         with self._lock:
             return [
@@ -111,18 +125,20 @@ class Journal:
                 for entry in self._entries
                 if (script is None or entry.get("script") == script)
                 and (nonce is None or entry.get("nonce") == nonce)
+                and (credential is None or entry.get("credential") == credential)
             ]
 
     def _add(
         self, request: Request, conversation: Conversation, **fields: Any
     ) -> dict[str, Any]:
-        marker = find_marker(conversation.user_text)
+        marker = conversation.marker()
         with self._lock:
             entry: dict[str, Any] = {
                 "id": self._take_id(),
                 "at": time.time(),
                 "dialect": request.dialect,
                 "path": request.path,
+                "credential": request.credential,
                 "model": conversation.model,
                 "script": marker.script if marker else None,
                 "nonce": marker.nonce if marker else None,

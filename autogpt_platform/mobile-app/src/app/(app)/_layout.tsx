@@ -35,6 +35,7 @@ export default function AppLayout() {
         <Drawer.Screen name="marketplace/index" />
         <Drawer.Screen name="marketplace/[templateId]" />
         <Drawer.Screen name="settings" />
+        <Drawer.Screen name="plan" />
       </Drawer>
     </View>
   );

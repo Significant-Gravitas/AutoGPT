@@ -9,13 +9,22 @@ import pytest
 
 from backend.data.execution import ExecutionContext
 from backend.data.workspace_scope import WorkspaceAccessDeniedError, WorkspaceScope
+from backend.util import file as file_module
 from backend.util.file import (
+    get_exec_file_path,
     is_media_file_ref,
     parse_data_uri,
     resolve_media_content,
     store_media_file,
 )
 from backend.util.type import MediaFileType
+
+
+@pytest.fixture
+def exec_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The exec_file folder, under ``tmp_path``."""
+    monkeypatch.setattr(file_module, "TEMP_DIR", tmp_path.resolve())
+    return tmp_path.resolve() / "exec_file"
 
 
 def make_test_context(
@@ -33,7 +42,7 @@ class TestFileCloudIntegration:
     """Test cases for cloud storage integration in file utilities."""
 
     @pytest.mark.asyncio
-    async def test_store_media_file_cloud_path(self):
+    async def test_store_media_file_cloud_path(self, exec_files: Path):
         """Test storing a file from cloud storage path."""
         graph_exec_id = "test-exec-123"
         cloud_path = "gcs://test-bucket/uploads/456/source.txt"
@@ -42,7 +51,6 @@ class TestFileCloudIntegration:
         with (
             patch("backend.util.file.get_cloud_storage_handler") as mock_handler_getter,
             patch("backend.util.file.scan_content_safe") as mock_scan,
-            patch("backend.util.file.Path") as mock_path_class,
         ):
 
             # Mock cloud storage handler
@@ -57,33 +65,6 @@ class TestFileCloudIntegration:
 
             # Mock virus scanner
             mock_scan.return_value = None
-
-            # Mock file system operations
-            mock_base_path = MagicMock()
-            mock_target_path = MagicMock()
-            mock_resolved_path = MagicMock()
-
-            mock_path_class.return_value = mock_base_path
-            mock_base_path.mkdir = MagicMock()
-            mock_base_path.__truediv__ = MagicMock(return_value=mock_target_path)
-            mock_target_path.resolve.return_value = mock_resolved_path
-            mock_resolved_path.is_relative_to.return_value = True
-            mock_resolved_path.write_bytes = MagicMock()
-            mock_resolved_path.relative_to.return_value = Path("source.txt")
-
-            # Configure the main Path mock to handle filename extraction
-            # When Path(path_part) is called, it should return a mock with .name = "source.txt"
-            mock_path_for_filename = MagicMock()
-            mock_path_for_filename.name = "source.txt"
-
-            # The Path constructor should return different mocks for different calls
-            def path_constructor(*args, **kwargs):
-                if len(args) == 1 and "source.txt" in str(args[0]):
-                    return mock_path_for_filename
-                else:
-                    return mock_base_path
-
-            mock_path_class.side_effect = path_constructor
 
             result = await store_media_file(
                 file=MediaFileType(cloud_path),
@@ -101,11 +82,11 @@ class TestFileCloudIntegration:
             # Verify virus scan
             mock_scan.assert_called_once_with(cloud_content, filename="source.txt")
 
-            # Verify file operations
-            mock_resolved_path.write_bytes.assert_called_once_with(cloud_content)
-
-            # Result should be the relative path
-            assert str(result) == "source.txt"
+        # The result is a path in the run's folder, to a copy under the file's name
+        stored = Path(get_exec_file_path(graph_exec_id, result))
+        assert stored.is_relative_to(exec_files / graph_exec_id)
+        assert stored.name == "source.txt"
+        assert stored.read_bytes() == cloud_content
 
     @pytest.mark.asyncio
     async def test_store_media_file_cloud_path_return_content(self):
@@ -164,7 +145,7 @@ class TestFileCloudIntegration:
             assert str(result).startswith("data:image/png;base64,")
 
     @pytest.mark.asyncio
-    async def test_store_media_file_non_cloud_path(self):
+    async def test_store_media_file_non_cloud_path(self, exec_files: Path):
         """Test that non-cloud paths are handled normally."""
         graph_exec_id = "test-exec-123"
         data_uri = "data:text/plain;base64,SGVsbG8gd29ybGQ="
@@ -172,9 +153,6 @@ class TestFileCloudIntegration:
         with (
             patch("backend.util.file.get_cloud_storage_handler") as mock_handler_getter,
             patch("backend.util.file.scan_content_safe") as mock_scan,
-            patch("backend.util.file.base64.b64decode") as mock_b64decode,
-            patch("backend.util.file.uuid.uuid4") as mock_uuid,
-            patch("backend.util.file.Path") as mock_path_class,
         ):
 
             # Mock cloud storage handler
@@ -187,23 +165,8 @@ class TestFileCloudIntegration:
 
             # Mock other operations
             mock_scan.return_value = None
-            mock_b64decode.return_value = b"Hello world"
-            mock_uuid.return_value = "test-uuid-789"
 
-            # Mock file system operations
-            mock_base_path = MagicMock()
-            mock_target_path = MagicMock()
-            mock_resolved_path = MagicMock()
-
-            mock_path_class.return_value = mock_base_path
-            mock_base_path.mkdir = MagicMock()
-            mock_base_path.__truediv__ = MagicMock(return_value=mock_target_path)
-            mock_target_path.resolve.return_value = mock_resolved_path
-            mock_resolved_path.is_relative_to.return_value = True
-            mock_resolved_path.write_bytes = MagicMock()
-            mock_resolved_path.relative_to.return_value = Path("test-uuid-789.txt")
-
-            await store_media_file(
+            result = await store_media_file(
                 file=MediaFileType(data_uri),
                 execution_context=make_test_context(graph_exec_id=graph_exec_id),
                 return_format="for_local_processing",
@@ -213,9 +176,11 @@ class TestFileCloudIntegration:
             mock_handler.is_cloud_path.assert_called_once_with(data_uri)
             mock_handler.retrieve_file.assert_not_called()
 
-            # Verify normal data URI processing occurred
-            mock_b64decode.assert_called_once()
-            mock_resolved_path.write_bytes.assert_called_once_with(b"Hello world")
+        # Verify normal data URI processing occurred
+        stored = Path(get_exec_file_path(graph_exec_id, result))
+        assert stored.is_relative_to(exec_files / graph_exec_id)
+        assert stored.suffix == ".txt"
+        assert stored.read_bytes() == b"Hello world"
 
     @pytest.mark.asyncio
     async def test_store_media_file_cloud_retrieval_error(self):

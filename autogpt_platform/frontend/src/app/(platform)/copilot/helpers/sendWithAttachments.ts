@@ -1,5 +1,6 @@
 import { isPaywallError } from "@/components/contextual/PaywallToast/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { uploadFileDirect } from "@/lib/direct-upload";
 import type { FileUIPart, UIMessage } from "ai";
 import {
@@ -161,6 +162,28 @@ export function describePendingUpload(
   return { text: message.text, attachments: [...stored, ...local] };
 }
 
+const MAX_UPLOAD_FAILURE_REASON = 300;
+// What the upload route answers about the file itself: too large, over the
+// quota, a refused type or name. Anything else (a 5xx, an expired session, a
+// dropped connection) is not the user's to fix, and its text can name
+// internals, so the toast names only the file then.
+const UPLOAD_REFUSAL_STATUSES = new Set([400, 409, 413]);
+
+function describeUploadFailure(fileName: string, err: unknown): string {
+  if (
+    !(err instanceof ApiError) ||
+    !UPLOAD_REFUSAL_STATUSES.has(err.status) ||
+    !err.message
+  ) {
+    return fileName;
+  }
+  const reason =
+    err.message.length > MAX_UPLOAD_FAILURE_REASON
+      ? `${err.message.slice(0, MAX_UPLOAD_FAILURE_REASON)}…`
+      : err.message;
+  return `${fileName}: ${reason}`;
+}
+
 async function uploadFiles(
   files: File[],
   sessionId: string,
@@ -181,7 +204,7 @@ async function uploadFiles(
         console.error("File upload failed:", err);
         toast({
           title: "File upload failed",
-          description: file.name,
+          description: describeUploadFailure(file.name, err),
           variant: "destructive",
         });
         throw err;

@@ -31,6 +31,7 @@ interface Props {
     tab?: "runs" | "scheduled" | "templates" | "triggers",
   ) => void;
   onClearSelectedRun?: () => void;
+  onItemDeleted?: (deletedID: string) => void;
   onScheduleDeleted?: (deletedScheduleId: string) => void;
   onTabChange?: (tab: "runs" | "scheduled" | "templates" | "triggers") => void;
   onCountsChange?: (info: {
@@ -48,6 +49,7 @@ export function SidebarRunsList({
   selectedRunId,
   onSelectRun,
   onClearSelectedRun,
+  onItemDeleted,
   onScheduleDeleted,
   onTabChange,
   onCountsChange,
@@ -55,6 +57,11 @@ export function SidebarRunsList({
   // Stable, so the memoised run rows and the auto-select effects in
   // useSidebarRunsList do not re-run on every parent render.
   const selectRun = useStableCallback(onSelectRun);
+  // Stable too, so a delete that finishes after the selection changed checks
+  // the current selection, not the one from when it started.
+  const handleItemDeleted = useStableCallback((id: string) =>
+    onItemDeleted?.(id),
+  );
   const {
     runs,
     schedules,
@@ -178,6 +185,7 @@ export function SidebarRunsList({
                 agent={agent}
                 selected={selectedRunId === run.id}
                 onSelectRun={selectRun}
+                onRunDeleted={handleItemDeleted}
               />
             )}
           />
@@ -240,6 +248,7 @@ export function SidebarRunsList({
                               "triggers",
                             )
                           }
+                          onDeleted={() => handleItemDeleted(trigger.id)}
                         />
                       </div>
                     ))}
@@ -270,6 +279,7 @@ export function SidebarRunsList({
                               "triggers",
                             )
                           }
+                          onDeleted={() => handleItemDeleted(triggerAgent.id)}
                         />
                       </div>
                     ))}
@@ -303,6 +313,7 @@ export function SidebarRunsList({
                     agent={agent}
                     selected={selectedRunId === template.id}
                     onClick={() => onSelectRun(template.id, "templates")}
+                    onDeleted={() => handleItemDeleted(template.id)}
                   />
                 </div>
               ))

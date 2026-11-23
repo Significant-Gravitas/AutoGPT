@@ -170,6 +170,11 @@ export function useNewAgentLibraryView() {
     });
   }
 
+  // A trigger's selection carries a kind prefix, so compare the parsed ID.
+  function handleItemDeleted(deletedID: string) {
+    if (activeItemId === deletedID) handleClearSelectedRun();
+  }
+
   const schedulerRetryOptions = useSchedulerRetryOptions();
   const schedulesQuery = useGetV1ListExecutionSchedulesForAGraph(
     agent?.graph_id || "",
@@ -317,6 +322,7 @@ export function useNewAgentLibraryView() {
     sidebarHasError,
     setActiveTab: handleSetActiveTab,
     handleClearSelectedRun,
+    handleItemDeleted,
     handleScheduleDeleted,
     handleCountsChange,
     handleSelectRun,

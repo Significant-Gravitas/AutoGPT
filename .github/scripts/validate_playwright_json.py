@@ -2,8 +2,14 @@
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Iterator
+
+# What pinKnownFailure() (src/playwright/journeys/known-failure.ts) records:
+# the one check a known failure is allowed to fail on.
+KNOWN_FAILURE_ANNOTATION = "known-failure"
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def _require_mapping(value: object, name: str) -> dict[str, object]:
@@ -43,6 +49,32 @@ def _iter_tests(
             _require_list(suite.get("suites", []), f"{suite_name}.suites"),
             f"{suite_name}.suites",
         )
+
+
+def _pinned_check(test: dict[str, object], test_name: str) -> str:
+    """The check a known failure is pinned to fail on: its one
+    ``known-failure`` annotation, which pinKnownFailure() adds."""
+    pinned: list[str] = []
+    for index, raw in enumerate(
+        _require_list(test.get("annotations", []), f"{test_name}.annotations")
+    ):
+        annotation = _require_mapping(raw, f"{test_name}.annotations[{index}]")
+        if annotation.get("type") == KNOWN_FAILURE_ANNOTATION:
+            pinned.append(str(annotation.get("description") or "").strip())
+    if len(pinned) != 1 or not pinned[0]:
+        raise ValueError(
+            f"{test_name} is a known failure with {len(pinned)} pinned checks, "
+            "not one: pin it once, with pinKnownFailure() right before the "
+            "check it fails"
+        )
+    return pinned[0]
+
+
+def _failed_check(error: dict[str, object]) -> str:
+    """The check an error failed: the first line of its message, which is the
+    message `expect(value, message)` was given."""
+    lines = _ANSI_ESCAPE.sub("", str(error.get("message") or "")).strip().splitlines()
+    return lines[0].removeprefix("Error: ").strip() if lines else ""
 
 
 def validate_report(
@@ -115,6 +147,33 @@ def validate_report(
                 raise ValueError(
                     f"{test_name}.results[0].status must be failed for a known "
                     f"failure, got {result.get('status')!r}"
+                )
+            # Only on the pinned check: anything else that failed (a cleanup,
+            # the journey guard at teardown, an earlier soft check) is a new
+            # failure, not the known bug.
+            pinned = _pinned_check(test, test_name)
+            result_errors = _require_list(
+                result.get("errors"), f"{test_name}.results[0].errors"
+            )
+            if not result_errors:
+                raise ValueError(
+                    f"{test_name} is a known failure that reported no error"
+                )
+            for error_index, raw_error in enumerate(result_errors):
+                failed = _failed_check(
+                    _require_mapping(
+                        raw_error, f"{test_name}.results[0].errors[{error_index}]"
+                    )
+                )
+                if failed != pinned:
+                    raise ValueError(
+                        f"{test_name} is pinned to fail on {pinned!r}, but it "
+                        f"also failed on {failed!r}"
+                    )
+            if len(result_errors) != 1:
+                raise ValueError(
+                    f"{test_name} failed {len(result_errors)} times on its "
+                    f"pinned check {pinned!r}; a known failure fails once"
                 )
             continue
         if result.get("status") != "passed":

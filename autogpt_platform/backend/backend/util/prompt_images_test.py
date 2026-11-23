@@ -28,10 +28,10 @@ def test_image_estimate_does_not_tokenize_pixels(
 ) -> None:
     encoding = encoding_for_model("gpt-4o")
 
-    def encode_text(text: str) -> list[int]:
+    def encode_text(text: str, **kwargs: Any) -> list[int]:
         if "data:image/" in text or "YQ==" in text:
             raise AssertionError("Image payload reached the text tokenizer")
-        return encoding.encode(text)
+        return encoding.encode(text, **kwargs)
 
     guarded_encoding = MagicMock()
     guarded_encoding.encode.side_effect = encode_text
@@ -73,7 +73,7 @@ def test_image_estimate_does_not_tokenize_pixels(
     tokens = prompt.estimate_token_count(messages)
 
     assert guarded_encoding.encode.call_args_list == [
-        call(text) for text in expected_text
+        call(text, disallowed_special=()) for text in expected_text
     ]
     assert tokens == (
         6
