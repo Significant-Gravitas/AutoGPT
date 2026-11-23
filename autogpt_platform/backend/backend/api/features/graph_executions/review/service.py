@@ -38,7 +38,6 @@ from backend.data.human_review import (
     has_pending_reviews_for_graph_exec,
     process_all_reviews_for_execution,
 )
-from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.data.user import get_user_by_id
 from backend.data.workspace import get_or_create_workspace
 from backend.executor.utils import add_graph_execution
@@ -386,9 +385,7 @@ async def _resume(
             execution_context=ExecutionContext(
                 human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
                 sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
-                user_timezone=(
-                    user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
-                ),
+                user_timezone=user.timezone,
                 workspace_id=workspace.id,
             ),
             organization_id=organization_id,

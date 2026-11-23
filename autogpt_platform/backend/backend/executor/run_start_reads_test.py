@@ -9,7 +9,7 @@ from pytest_mock import MockerFixture
 
 from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
 from backend.data.graph import GraphSettings
-from backend.data.model import User
+from backend.data.model import USER_TIMEZONE_NOT_SET, User
 from backend.executor.utils import add_graph_execution
 from backend.util.testing import Rendezvous
 
@@ -70,8 +70,10 @@ def _database_manager(mocker: MockerFixture, run: MagicMock) -> MagicMock:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("profile_timezone", ["Europe/Paris", USER_TIMEZONE_NOT_SET])
 async def test_a_new_run_reads_its_user_and_settings_side_by_side_then_its_workspace(
     mocker: MockerFixture,
+    profile_timezone: str,
 ) -> None:
     meeting = Rendezvous(2)
     answered: list[str] = []
@@ -89,7 +91,7 @@ async def test_a_new_run_reads_its_user_and_settings_side_by_side_then_its_works
             updated_at=now,
             stripe_customer_id=None,
             top_up_config=None,
-            timezone="Europe/Paris",
+            timezone=profile_timezone,
         )
 
     async def read_settings(*_args: object, **_kwargs: object) -> GraphSettings:
@@ -113,7 +115,7 @@ async def test_a_new_run_reads_its_user_and_settings_side_by_side_then_its_works
 
     assert sorted(answered_before_the_workspace) == ["settings", "user"]
     context = run.to_graph_execution_entry.call_args.kwargs["execution_context"]
-    assert context.user_timezone == "Europe/Paris"
+    assert context.user_timezone == profile_timezone
     assert context.workspace_id == "workspace-1"
     assert context.human_in_the_loop_safe_mode is False
     assert context.sensitive_action_safe_mode is True

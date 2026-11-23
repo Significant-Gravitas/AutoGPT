@@ -60,7 +60,6 @@ from backend.data.execution import (
 from backend.data.graph import GraphModel, Node
 from backend.data.model import (
     PLATFORM_FUNDED_COST_KEY,
-    USER_TIMEZONE_NOT_SET,
     CredentialsMetaInput,
     GraphInput,
     NodeExecutionStats,
@@ -2096,9 +2095,10 @@ async def _add_graph_execution(
             sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
             dry_run=dry_run,
             # User settings
-            user_timezone=(
-                user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
-            ),
+            # Pass the raw value through: blocks that opt into the user's
+            # timezone must be able to tell "not set" apart from UTC so they
+            # can fall back to their own timezone instead.
+            user_timezone=user.timezone,
             # Execution hierarchy
             root_execution_id=graph_exec.id,
             # File-storage workspace (UserWorkspace) — enables

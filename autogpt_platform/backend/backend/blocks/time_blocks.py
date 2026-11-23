@@ -16,7 +16,7 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.data.execution import ExecutionContext
-from backend.data.model import SchemaField
+from backend.data.model import USER_TIMEZONE_NOT_SET, SchemaField
 
 # Shared timezone literal type for all time/date blocks
 TimezoneLiteral = Literal[
@@ -77,7 +77,14 @@ def _get_timezone(
     Returns:
         ZoneInfo object for the determined timezone
     """
-    if format_type.use_user_timezone and user_timezone:
+    # A profile that never set a timezone carries the "not-set" sentinel; the
+    # callers used to swap it for "UTC" before the block saw it, which made
+    # this fallback unreachable and silently overrode the block's timezone.
+    if (
+        format_type.use_user_timezone
+        and user_timezone
+        and user_timezone != USER_TIMEZONE_NOT_SET
+    ):
         tz = ZoneInfo(user_timezone)
         logger.debug(f"Using user timezone: {user_timezone}")
     else:

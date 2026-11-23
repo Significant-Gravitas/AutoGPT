@@ -13,9 +13,11 @@ import backend.api.external.v1.routes as routes_mod
 import backend.blocks
 from backend.api.external.middleware import require_auth
 from backend.api.external.v1.routes import v1_router
+from backend.blocks.time_blocks import GetCurrentTimeBlock
 from backend.copilot.capabilities.block_meta import is_graph_only_block
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.util.exceptions import InsufficientBalanceError
 
 app = fastapi.FastAPI()
@@ -186,6 +188,52 @@ def test_execute_block_forwards_execution_context(
     ctx = captured["execution_context"]
     assert ctx.user_id == test_user_id
     assert ctx.user_timezone == "Europe/Amsterdam"
+
+
+@pytest.mark.parametrize(
+    ("profile_timezone", "use_user_timezone", "expected_offset"),
+    [
+        (USER_TIMEZONE_NOT_SET, True, "+0900"),
+        ("UTC", True, "+0000"),
+        ("Invalid/Timezone", True, "+0000"),
+        (None, True, "+0000"),
+        ("UTC", False, "+0900"),
+    ],
+)
+def test_execute_time_block_uses_the_profile_or_configured_timezone(
+    monkeypatch: pytest.MonkeyPatch,
+    test_user_id: str,
+    profile_timezone: str | None,
+    use_user_timezone: bool,
+    expected_offset: str,
+) -> None:
+    """Unset profiles reach the real block without losing its timezone fallback."""
+    block = GetCurrentTimeBlock()
+    monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
+    monkeypatch.setattr(
+        "backend.executor.utils.block_usage_cost", lambda *_a, **_k: (0, {})
+    )
+    user = MagicMock(id=test_user_id, timezone=profile_timezone)
+    monkeypatch.setattr(
+        "backend.api.external.v1.routes.user_db.get_user_by_id",
+        AsyncMock(return_value=user),
+    )
+
+    response = client.post(
+        f"/blocks/{block.id}/execute",
+        json={
+            "trigger": "timezone regression",
+            "format_type": {
+                "discriminator": "strftime",
+                "format": "%z",
+                "timezone": "Asia/Tokyo",
+                "use_user_timezone": use_user_timezone,
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"time": [expected_offset]}
 
 
 def test_execute_block_runs_off_the_server_loop_under_the_time_budget(

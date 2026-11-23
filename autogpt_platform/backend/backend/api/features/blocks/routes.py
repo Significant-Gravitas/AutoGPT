@@ -44,7 +44,6 @@ from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import dumps
 from backend.util.settings import Settings
-from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.virus_scanner import scan_content_safe
 
 settings = Settings()
@@ -174,10 +173,12 @@ async def _run_direct_block(
 
     # Direct block execution has no graph; build a minimal ExecutionContext
     # carrying the caller's identity + timezone so blocks that depend on
-    # those (e.g. time blocks) get correct data.
+    # those (e.g. time blocks) get correct data. The raw value flows through:
+    # a "not-set" profile must stay distinguishable from UTC so blocks that
+    # opt into the user's timezone can fall back to their own.
     execution_context = ExecutionContext(
         user_id=user_id,
-        user_timezone=get_user_timezone_or_utc(user_timezone),
+        user_timezone=user_timezone,
     )
 
     start_time = time.time()
