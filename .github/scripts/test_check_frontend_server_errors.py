@@ -127,6 +127,14 @@ class CheckFrontendServerErrorsTests(unittest.TestCase):
         self.assertIn("::warning title=External image timed out (2x)::", out)
         self.assertIn("no Next.js server errors", out)
 
+    def test_a_dns_name_with_a_numeric_first_label_is_external(self):
+        for host in ("169.254.images.example.com", "10.cdn.example.com"):
+            with self.subTest(host=host):
+                line = f" ⨯ upstream image response timed out for https://{host}/a.png"
+                code, out = run(STARTUP + [line])
+                self.assertEqual(code, 0)
+                self.assertIn("::warning title=External image timed out (1x)::", out)
+
     def test_a_local_timeout_or_a_failed_fetch_still_fails(self):
         for line in (
             " ⨯ upstream image response timed out for http://localhost:3000/a.png",

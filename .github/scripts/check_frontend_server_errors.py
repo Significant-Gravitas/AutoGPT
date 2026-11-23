@@ -9,6 +9,7 @@ the frontend container's log after the tests and fail on any such line.
 """
 
 import argparse
+import ipaddress
 import re
 import sys
 from collections import Counter
@@ -62,19 +63,26 @@ _EXTERNAL_IMAGE_TIMEOUT = re.compile(
 
 def is_external_image_timeout(message: str) -> bool:
     match = _EXTERNAL_IMAGE_TIMEOUT.match(message)
-    if not match:
+    return bool(match) and not _is_local_host(match["host"].lower())
+
+
+def _is_local_host(host: str) -> bool:
+    """A host inside the stack or on the runner. Docker service names have no
+    dot (nor does a bracketed IPv6 host as matched here); an IP literal is
+    local if it's loopback, unspecified, link-local or private. A DNS name is
+    local only if it's localhost or Docker's host alias, whatever its labels."""
+    if "." not in host or host in ("localhost", "host.docker.internal"):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
         return False
-    host = match["host"].lower()
-    # Docker service names have no dot (nor does a bracketed IPv6 host as
-    # matched here); loopback, unspecified, link-local, private and Docker's
-    # host alias are ours too.
-    return "." in host and not _LOCAL_HOST.match(host)
-
-
-_LOCAL_HOST = re.compile(
-    r"^(localhost|0\.0\.0\.0$|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\."
-    r"|169\.254\.|host\.docker\.internal$)"
-)
+    return (
+        address.is_loopback
+        or address.is_unspecified
+        or address.is_link_local
+        or address.is_private
+    )
 
 
 def report(errors: list[tuple[str, list[str]]], source: str) -> str:
