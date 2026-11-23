@@ -321,15 +321,26 @@ const missingImages = new WeakMap<Page, Set<string>>();
 // the page that asked.
 async function answerMissingImages(route: Route) {
   const image = new URL(route.request().url()).searchParams.get("url");
-  if (!image?.startsWith("/") || image.startsWith("//")) {
+  if (!image || !inAPublicFolder(image) || existsInPublic(image)) {
     return route.fallback();
   }
-  if (existsInPublic(image)) return route.fallback();
   const page = pageOf(route.request());
   if (page) {
     missingImages.set(page, (missingImages.get(page) ?? new Set()).add(image));
   }
   await route.fulfill({ status: 404 });
+}
+
+// A local path under one of public/'s folders (/integrations/…). Anything
+// else, such as a route handler's (/avatars/…) or another host's image, is
+// none of this check's business.
+function inAPublicFolder(image: string) {
+  const [, folder, file] = image.split("/");
+  return (
+    image.startsWith("/") &&
+    Boolean(folder && file) &&
+    fs.existsSync(path.join(PUBLIC_DIR, folder))
+  );
 }
 
 /** Whether public/ has the file the app serves at `image`. */

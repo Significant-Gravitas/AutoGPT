@@ -51,10 +51,7 @@ export async function sampleMarketplace(page: Page) {
       page,
       "/api/proxy/api/experts/templates",
     ),
-    getJSON<{ skills: StoreSkill[] }>(
-      page,
-      "/api/proxy/api/store/skills?page_size=100",
-    ),
+    listAllSkills(page),
   ]);
   const [agent] = agents.agents;
   const [expert] = experts;
@@ -76,15 +73,34 @@ export async function sampleMarketplace(page: Page) {
     },
     // A skill whose logo, if it shows one, public/ has.
     skill: skillSample(
-      skills.skills.find((skill) => hasItsLogo(skill.required_providers[0])),
+      skills.find((skill) => hasItsLogo(skill.required_providers[0])),
     ),
     // A skill whose first service is an MCP server (#17313).
     skillWithMCPService: skillSample(
-      skills.skills.find((skill) =>
-        skill.required_providers[0]?.startsWith("mcp_"),
-      ),
+      skills.find((skill) => skill.required_providers[0]?.startsWith("mcp_")),
     ),
   };
+}
+
+// Every skill in the Marketplace, by slug, so a run picks the same ones
+// whatever order the stack published them in. A page holds at most 100.
+async function listAllSkills(page: Page) {
+  const path = "/api/proxy/api/store/skills?page_size=100";
+  const first = await getJSON<SkillsPage>(page, `${path}&page=1`);
+  const rest = await Promise.all(
+    Array.from(
+      { length: Math.max(0, first.pagination.total_pages - 1) },
+      (_, index) => getJSON<SkillsPage>(page, `${path}&page=${index + 2}`),
+    ),
+  );
+  return [first, ...rest]
+    .flatMap((skillsPage) => skillsPage.skills)
+    .sort((a, b) => a.slug.localeCompare(b.slug));
+}
+
+interface SkillsPage {
+  skills: StoreSkill[];
+  pagination: { total_pages: number };
 }
 
 function skillSample(skill: StoreSkill | undefined): RouteSample | undefined {
