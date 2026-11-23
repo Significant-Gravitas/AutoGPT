@@ -1141,33 +1141,44 @@ async function linkGoogle(email: string) {
 describe("password reset links", () => {
   // kcze's attack: the reset link goes to an address the attacker holds,
   // then the account takes the victim's address before the link is opened.
-  it("do not verify an address the link was not mailed to", async () => {
-    const { handler, api, db } = await createAuthHandler(false);
-    const session = await signUpSignedIn(api, "attacker@example.com");
-    await requestReset(handler, "attacker@example.com");
-    await emailsSent();
-    const token = lastResetToken("attacker@example.com", "reset_password");
+  it.each([false, true])(
+    "do not verify an address the link was not mailed to (verification %s)",
+    async (requireVerification) => {
+      const { api: signUpAPI, db } = await createAuthHandler(false);
+      const session = await signUpSignedIn(signUpAPI, "attacker@example.com");
+      const { handler, api } = await createAuthHandler(requireVerification, db);
+      await requestReset(handler, "attacker@example.com");
+      await emailsSent();
+      const token = lastResetToken("attacker@example.com", "reset_password");
 
-    // Applied on the spot: the account is unverified and verification is off.
-    await api.changeEmail({
-      body: { newEmail: "victim@gmail.com" },
-      headers: session,
-    });
-    await post(handler, "/reset-password", {
-      token,
-      newPassword: "the-attackers-new-password", // pragma: allowlist secret
-    });
+      // Applied on the spot with verification off; with it on, once the new
+      // address's link is opened, as a mail scanner would.
+      await api.changeEmail({
+        body: { newEmail: "victim@gmail.com" },
+        headers: session,
+      });
+      if (requireVerification) {
+        await emailsSent();
+        await handler(
+          new Request(lastNewAddressLink("victim@gmail.com") ?? ""),
+        );
+      }
+      await post(handler, "/reset-password", {
+        token,
+        newPassword: "the-attackers-new-password", // pragma: allowlist secret
+      });
 
-    expect(db.UserAuthIdentity).toEqual([
-      expect.objectContaining({
-        email: "victim@gmail.com",
-        emailVerified: false,
-      }),
-    ]);
-    expect(await linkGoogle("victim@gmail.com")).toEqual(
-      expect.objectContaining({ error: "account not linked" }),
-    );
-  });
+      expect(db.UserAuthIdentity).toEqual([
+        expect.objectContaining({
+          email: "victim@gmail.com",
+          emailVerified: false,
+        }),
+      ]);
+      expect(await linkGoogle("victim@gmail.com")).toEqual(
+        expect.objectContaining({ error: "account not linked" }),
+      );
+    },
+  );
 
   it("stop working once the account's address changes", async () => {
     const { handler, api, db } = await createAuthHandler(false);

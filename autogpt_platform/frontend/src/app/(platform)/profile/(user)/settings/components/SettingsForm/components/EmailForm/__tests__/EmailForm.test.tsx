@@ -74,17 +74,18 @@ describe("EmailForm", () => {
 
     // Toast reflects the pending confirmation, not a completed change.
     await waitFor(() => {
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "Confirm your new email",
-        }),
-      );
+      expect(mockToast).toHaveBeenCalledWith({
+        title: "Confirm your new email",
+        description:
+          "If updated@example.com can be used, we've sent a confirmation link to your current email address. Your email changes once you click it.",
+      });
     });
   });
 
   test.each([
     {
       server: "applied the change",
+      typed: "updated@example.com",
       emailNow: "updated@example.com",
       toast: {
         title: "Email updated",
@@ -92,17 +93,28 @@ describe("EmailForm", () => {
       },
     },
     {
+      server: "applied the change, lowercased",
+      typed: "Updated@Example.com",
+      emailNow: "updated@example.com",
+      toast: {
+        title: "Email updated",
+        description: "Your email is now Updated@Example.com.",
+      },
+    },
+    {
+      // Also its answer when another account holds the address: nothing is sent.
       server: "left the change waiting for its link",
+      typed: "updated@example.com",
       emailNow: "user@example.com",
       toast: {
         title: "Confirm your new email",
         description:
-          "We sent a link to updated@example.com. Your email changes once you click it.",
+          "If updated@example.com can be used, we've sent a link there. Your email changes once you click it.",
       },
     },
   ])(
     "tells an unverified user what happened when the server $server",
-    async ({ emailNow, toast }) => {
+    async ({ typed, emailNow, toast }) => {
       // Whether an unverified user's change applies at once depends on the
       // server's email verification setting, so the response decides.
       const fetchMock = vi.fn().mockResolvedValue({
@@ -115,7 +127,7 @@ describe("EmailForm", () => {
       render(<EmailForm user={unverifiedUser} />);
 
       fireEvent.change(screen.getByLabelText("Email"), {
-        target: { value: "updated@example.com" },
+        target: { value: typed },
       });
       fireEvent.click(screen.getByRole("button", { name: "Update email" }));
 
