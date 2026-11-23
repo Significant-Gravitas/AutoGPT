@@ -4,7 +4,6 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-
 from scripted_model.server import ScriptedModelServer
 
 
