@@ -251,8 +251,9 @@ def _sets_keep_alive(
 def _functions_called_by_name(
     name: str, path: str, tree: ast.Module
 ) -> dict[str, tuple[str, str]]:
-    """What each bare name the module calls refers to, as (module, function):
-    its own functions, and those it imports by name."""
+    """Where each bare name in the module comes from, as (module, name): its
+    own functions, and every name it imports by name, function or not. Only
+    the builders among them matter to the scan."""
     package = name if path.endswith("__init__.py") else name.rpartition(".")[0]
     functions = {
         alias.asname or alias.name: (_imported_module(package, node), alias.name)

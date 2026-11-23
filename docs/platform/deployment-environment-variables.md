@@ -172,7 +172,9 @@ longer than nginx, Caddy and Traefik keep one by default, so the proxy is the
 one that closes it. A proxy that keeps idle connections to the backend longer
 would now and then send a request on a connection the backend is closing, and
 answer 502: set `SERVER_KEEP_ALIVE_TIMEOUT_SECONDS` in `backend/.env` above its
-idle timeout.
+idle timeout. With no proxy in front, a connection a browser leaves idle holds
+one of the backend's file descriptors for that long; on a backend that clients
+reach directly, a shorter setting such as 75 seconds is enough.
 
 ## 4. Decide who can sign up
 

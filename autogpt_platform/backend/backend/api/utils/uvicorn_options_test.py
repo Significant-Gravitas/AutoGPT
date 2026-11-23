@@ -20,13 +20,17 @@ from backend.util.serve_app_test import serve_app
 from backend.util.settings import Config
 
 # Longer than uvicorn keeps an idle connection without the API's setting.
+_DEFAULT_KEEP_ALIVE = Config.model_fields["server_keep_alive_timeout_seconds"].default
+
 _IDLE_SECONDS = (
     inspect.signature(uvicorn.Config).parameters["timeout_keep_alive"].default + 1
 )
 
 
 async def test_a_connection_left_idle_past_uvicorns_default_still_answers():
-    async with serve_app(_ok, **rest_api_uvicorn_options(Config())) as host:
+    # The default, not whatever backend/.env or the environment sets.
+    config = Config(server_keep_alive_timeout_seconds=_DEFAULT_KEEP_ALIVE)
+    async with serve_app(_ok, **rest_api_uvicorn_options(config)) as host:
         address, port = host.rsplit(":", 1)
         reader, writer = await asyncio.open_connection(address, int(port))
         try:
