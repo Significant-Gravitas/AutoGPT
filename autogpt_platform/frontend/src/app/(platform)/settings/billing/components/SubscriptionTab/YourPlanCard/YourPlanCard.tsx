@@ -243,7 +243,9 @@ export function YourPlanCard({
           }
         >
           <AutopilotUsageCard index={1} />
-          {!hideUpgradeActions ? <BillingOffer controller={controller} /> : null}
+          {!hideUpgradeActions ? (
+            <BillingOffer controller={controller} />
+          ) : null}
         </div>
       ) : null}
 
