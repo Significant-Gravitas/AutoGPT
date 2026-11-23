@@ -40,18 +40,20 @@ const WINDOW_MS = 5_000;
 
 let reads: Record<string, number>;
 
+function countRead({ request }: { request: Request }) {
+  const path = new URL(request.url).pathname.replace("/api/proxy", "");
+  reads[path] = (reads[path] ?? 0) + 1;
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   setTrialUser();
   reads = {};
-  server.events.on("request:start", ({ request }) => {
-    const path = new URL(request.url).pathname.replace("/api/proxy", "");
-    reads[path] = (reads[path] ?? 0) + 1;
-  });
+  server.events.on("request:start", countRead);
 });
 
 afterEach(() => {
-  server.events.removeAllListeners();
+  server.events.removeListener("request:start", countRead);
   vi.useRealTimers();
   setTrialUser(null);
   mockSearchParams.current = new URLSearchParams();
@@ -95,7 +97,7 @@ it.each([401, 403, 429, 500, 502, 503, 504])(
     await openBillingFor(WINDOW_MS);
 
     expect(reads["/api/credits/trial"]).toBe(2);
-    expect(reads["/api/credits/subscription"]).toBeLessThanOrEqual(2);
+    expect(reads["/api/credits/subscription"]).toBe(2);
     expect(reads["/api/chat/usage"]).toBe(1);
     expect(
       screen.getByText(
@@ -116,6 +118,7 @@ it("keeps the plan to pick when the trial status of an account with no plan fail
   await openBillingFor(WINDOW_MS);
 
   expect(reads["/api/credits/trial"]).toBe(2);
+  expect(reads["/api/credits/subscription"]).toBe(2);
   expect(
     screen.getByText("Pick a plan to continue using AutoGPT."),
   ).toBeDefined();
@@ -132,7 +135,7 @@ it("reads a failing plan once more when a checkout return shows the trial's plan
   );
   await openBillingFor(WINDOW_MS);
 
-  expect(reads["/api/credits/subscription"]).toBeLessThanOrEqual(3);
+  expect(reads["/api/credits/subscription"]).toBe(2);
   expect(screen.getByRole("button", { name: "Resume trial" })).toBeDefined();
   expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull();
 });

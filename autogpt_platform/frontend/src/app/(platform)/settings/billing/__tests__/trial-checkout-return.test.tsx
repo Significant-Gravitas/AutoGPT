@@ -1,8 +1,12 @@
+import { getGetSubscriptionStatusQueryKey } from "@/app/api/__generated__/endpoints/credits/credits";
+import { server } from "@/mocks/mock-server";
 import { act, render, screen } from "@/tests/integrations/test-utils";
 import {
   setTrialUser,
   trialResponse,
 } from "@/tests/integrations/trial-fixtures";
+import { QueryClient } from "@tanstack/react-query";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SettingsBillingPage from "../page";
 import {
@@ -82,6 +86,36 @@ describe("returning from a plan Checkout while the trial is cancel-pending", () 
     await advance(10_000);
     expect(hits.trial).toBe(settled.trial);
     expect(hits.subscription).toBe(settled.subscription);
+  });
+
+  it("offers no second purchase while the first plan read is on its way", async () => {
+    const { state } = mockBilling();
+    let answerPlan!: () => void;
+    const planAnswered = new Promise<void>((resolve) => {
+      answerPlan = resolve;
+    });
+    server.use(
+      http.get("*/api/credits/subscription", async () => {
+        await planAnswered;
+        return HttpResponse.json(state.subscription);
+      }),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(<SettingsBillingPage />, { queryClient });
+
+    expect(await screen.findByText(FINISHING)).toBeDefined();
+    expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Upgrade to Max" })).toBeNull();
+
+    answerPlan();
+    await advance(500);
+    expect(
+      queryClient.getQueryState(getGetSubscriptionStatusQueryKey())?.status,
+    ).toBe("success");
+    expect(screen.getByText(FINISHING)).toBeDefined();
+    expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull();
   });
 
   it("offers the plan choices again when the plan takes too long", async () => {

@@ -35,8 +35,8 @@ export function usePlanCheckoutReturn(isCheckoutReturn: boolean) {
     return () => clearTimeout(timer);
   }, [isCheckoutReturn]);
 
-  // The plan choices it holds back read the plan too, and so retry a failed
-  // read.
+  // The plan choices this gates read the plan too and refetch a failed read
+  // on mount, so gate only on the first answer.
   return {
     isConfirmingPlan:
       isWatching && (isFirstReadInFlight(tier) || tier.data === "TRIAL"),

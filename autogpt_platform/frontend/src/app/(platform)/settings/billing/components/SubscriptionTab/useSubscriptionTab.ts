@@ -11,7 +11,8 @@ import { usePlanCheckoutReturn } from "./usePlanCheckoutReturn";
 export function useSubscriptionTab(isPlanCheckoutReturn: boolean) {
   const trialStatus = useTrialStatus();
   const trial = trialStatus.data;
-  // The cards it holds back read the trial too, and so retry a failed read.
+  // The cards this gates read the trial too and refetch a failed read on
+  // mount, so gate only on the first answer.
   const isLoading = isFirstReadInFlight(trialStatus);
   const tier = useGetSubscriptionStatus({ query: { select: readTier } });
   const { isConfirmingPlan } = usePlanCheckoutReturn(isPlanCheckoutReturn);
