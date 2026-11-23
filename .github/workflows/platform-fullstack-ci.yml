@@ -59,6 +59,11 @@ on:
         required: false
         default: 1
         type: number
+      diagnostic_production_images:
+        description: TEMPORARY (#17298) - load the official listings with their production images first, for a before/after comparison
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: ${{ github.event_name == 'workflow_dispatch' && format('{0}-dispatch-{1}', github.workflow, github.run_id) || format('{0}-{1}', github.workflow, github.event_name == 'merge_group' && format('merge-queue-{0}', github.ref) || github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
@@ -667,6 +672,15 @@ jobs:
       # publish_skills starts with the services below and resolves each
       # roster workflow to its listing then, so they must exist first: the
       # order a deploy and platform-preview-seed-fixture.yml use.
+      # TEMPORARY evidence for #17298, reverted before merge: the "before"
+      # side. The rows it creates first are kept by the load below, which
+      # skips listings and a profile that already exist.
+      - name: Diagnostics - Load the listings with their production images
+        if: matrix.store_agents && inputs.diagnostic_production_images
+        run: |
+          docker compose -f ../docker-compose.resolved.yml run --rm --no-deps \
+            rest_server python -m test.load_store_agents
+
       # --local-media: their images go to the stack's own media storage
       # (rest_server's store-media volume), not production media on GCS, which
       # every Marketplace page had the image optimizer fetch.
@@ -769,9 +783,10 @@ jobs:
           mkdir -p /tmp/egress
           frontend=$(docker compose -f ../docker-compose.resolved.yml ps -q frontend)
           pid=$(docker inspect -f '{{.State.Pid}}' "$frontend")
+          sudo nsenter -t "$pid" -n ip -br addr
           sudo nohup nsenter -t "$pid" -n python3 \
             "$GITHUB_WORKSPACE/.github/scripts/frontend_egress_sniffer.py" \
-            eth0 /tmp/egress/summary.json /tmp/egress/stop \
+            /tmp/egress/summary.json /tmp/egress/stop \
             > /tmp/egress/sniffer.log 2>&1 < /dev/null &
           timeout 30 sh -c 'until [ -f /tmp/egress/sniffer.ready ]; do sleep 0.5; done' || {
             echo "::warning title=egress-diagnostic::the sniffer did not start"

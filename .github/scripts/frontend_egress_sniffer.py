@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """TEMPORARY evidence for #17298; removed before merge.
 
-Watches one network interface (run it as root inside the frontend container's
-network namespace, `nsenter -t <pid> -n`) until a stop file appears, then
-writes a JSON summary of the traffic that left for addresses outside the
-private ranges: each TCP connection, named by its TLS ClientHello's SNI or its
-HTTP Host header, the bytes received back, and the DNS questions sent out.
+Watches every network interface of the namespace it runs in (run it as root
+inside the frontend container's, `nsenter -t <pid> -n`: the container sits on
+two networks) until a stop file appears, then writes a JSON summary of the
+traffic that left for addresses outside the private ranges: each TCP
+connection, named by its TLS ClientHello's SNI or its HTTP Host header, the
+bytes received back, and the DNS questions sent out.
 
-    frontend_egress_sniffer.py <interface> <summary.json> <stop-file>
+    frontend_egress_sniffer.py <summary.json> <stop-file>
 """
 
 import collections
@@ -78,9 +79,9 @@ def dns_question(payload: bytes) -> str | None:
 
 
 def main() -> None:
-    interface, summary_path, stop_path = sys.argv[1:4]
+    summary_path, stop_path = sys.argv[1:3]
+    # Not bound to an interface: it receives from all of them.
     sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(ETH_P_ALL))
-    sock.bind((interface, 0))
     sock.settimeout(1.0)
 
     connections: dict[tuple[str, int], set[int]] = collections.defaultdict(set)
@@ -88,15 +89,15 @@ def main() -> None:
     http_requests: collections.Counter[str] = collections.Counter()
     bytes_in: collections.Counter[str] = collections.Counter()
     dns: collections.Counter[str] = collections.Counter()
-    frames = 0
+    frames: collections.Counter[str] = collections.Counter()
     with open(os.path.join(os.path.dirname(summary_path), "sniffer.ready"), "w"):
         pass
     while not os.path.exists(stop_path):
         try:
-            frame = sock.recv(65535)
+            frame, address = sock.recvfrom(65535)
         except socket.timeout:
             continue
-        frames += 1
+        frames[address[0]] += 1
         if len(frame) < 34 or frame[12:14] != b"\x08\x00":
             continue
         l4 = 14 + (frame[14] & 0x0F) * 4
@@ -138,7 +139,7 @@ def main() -> None:
         hosts[host]["bytes_in"] = hosts[host].get("bytes_in", 0) + count
     with open(summary_path, "w", encoding="utf-8") as out:
         json.dump(
-            {"frames_seen": frames, "hosts": hosts, "dns_questions": dict(dns)},
+            {"frames_seen": dict(frames), "hosts": hosts, "dns_questions": dict(dns)},
             out,
             indent=2,
             sort_keys=True,
