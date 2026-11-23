@@ -582,43 +582,45 @@ def _env_flag_override(flag_key: Flag | str) -> bool | None:
     return None
 
 
-# The flags whose ignored env value has been warned about, so each warns once.
+# The flags whose env value has been logged, so each warns once.
 _warned_value_overrides: set[str] = set()
 
 
 def _env_value_override(flag_key: str) -> dict | list | None:
     """A JSON object or array forced from the environment for a non-boolean flag.
 
-    For a flag in ``_NON_BOOLEAN_FLAG_VALUES``, ``FORCE_FLAG_<NAME>`` (or
-    ``NEXT_PUBLIC_FORCE_FLAG_<NAME>``) holding a JSON object or array is the
-    flag's value, and PostHog is not asked: a stack without PostHog, such as
-    the journeys' compose stack, gets its Stripe price map this way. As on the
-    boolean path, ``FORCE_FLAG_`` wins when both are set. Any other value
-    (``true``, a string, invalid JSON) is ignored with one warning per flag,
-    and PostHog answers as it would with nothing set.
+    For a flag in ``_NON_BOOLEAN_FLAG_VALUES``, ``FORCE_FLAG_<NAME>`` holding a
+    JSON object or array is the flag's value, and PostHog is not asked: a
+    stack without PostHog, such as the journeys' compose stack, gets its
+    Stripe price map this way. These values are the backend's alone, so
+    ``NEXT_PUBLIC_FORCE_FLAG_<NAME>``, which is meant for the browser bundle,
+    doesn't set one. Any other value (``true``, a string, invalid JSON) is
+    ignored, and PostHog answers as it would with nothing set.
+
+    Either way the first read of each flag logs a warning that names the
+    variable, never its value: a forced price map, cost limit or model route
+    left in a deployed environment must not go unnoticed.
     """
     if flag_key not in _NON_BOOLEAN_FLAG_VALUES:
         return None
-    suffix = flag_key.upper().replace("-", "_")
-    for prefix in ("FORCE_FLAG_", "NEXT_PUBLIC_FORCE_FLAG_"):
-        name = prefix + suffix
-        raw = os.environ.get(name)
-        if raw is None:
-            continue
-        try:
-            value = json.loads(raw)
-        except ValueError:
-            value = None
-        if isinstance(value, (dict, list)):
-            return value
-        if flag_key not in _warned_value_overrides:
-            _warned_value_overrides.add(flag_key)
-            logger.warning(
-                f"{name} is ignored: {flag_key} takes a JSON object or array,"
-                " so PostHog answers it"
-            )
+    name = "FORCE_FLAG_" + flag_key.upper().replace("-", "_")
+    raw = os.environ.get(name)
+    if raw is None:
         return None
-    return None
+    try:
+        value = json.loads(raw)
+    except ValueError:
+        value = None
+    forced = isinstance(value, (dict, list))
+    if flag_key not in _warned_value_overrides:
+        _warned_value_overrides.add(flag_key)
+        logger.warning(
+            f"{name} sets {flag_key}, so PostHog is not asked for it"
+            if forced
+            else f"{name} is ignored: {flag_key} takes a JSON object or array,"
+            " so PostHog answers it"
+        )
+    return value if forced else None
 
 
 async def is_feature_enabled(

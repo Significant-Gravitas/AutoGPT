@@ -306,7 +306,9 @@ allows. Flag values live in `hosted-flags.json`, read by both sides:
   stack needs, which only the backend reads: `copilot-tier-stripe-prices`,
   built from the fake Stripe's catalogue. `FORCE_FLAG_<NAME>` holding a JSON
   object or array sets a JSON-valued flag (`_NON_BOOLEAN_FLAG_VALUES` in
-  `backend/util/feature_flag/__init__.py`).
+  `backend/util/feature_flag/__init__.py`), and the backend logs a warning
+  naming the variable the first time it reads one.
+  `NEXT_PUBLIC_FORCE_FLAG_<NAME>` never sets a JSON-valued flag.
 - **Frontend:** the fixtures write them to local storage before the app
   loads, and a `NEXT_PUBLIC_PW_TEST=true` build serves them
   (`services/feature-flags/pw-flag-overrides.ts`). That lets both legs share

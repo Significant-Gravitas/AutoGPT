@@ -965,32 +965,44 @@ class TestJsonEnvOverride:
         )
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "prefix,value",
-        [
-            ("FORCE_FLAG_", PRICES),
-            ("NEXT_PUBLIC_FORCE_FLAG_", PRICES),
-            ("FORCE_FLAG_", [{"tier": "PRO"}]),
-        ],
-    )
+    @pytest.mark.parametrize("value", [PRICES, [{"tier": "PRO"}]])
     async def test_a_json_object_or_array_answers_without_posthog(
-        self, monkeypatch: pytest.MonkeyPatch, no_posthog, prefix, value
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        no_posthog,
+        caplog: pytest.LogCaptureFixture,
+        value,
     ):
-        monkeypatch.setenv(prefix + "COPILOT_TIER_STRIPE_PRICES", json.dumps(value))
-        assert await get_feature_flag_value(self.FLAG, "system") == value
+        monkeypatch.setenv(self.ENV, json.dumps(value))
+        with caplog.at_level(logging.WARNING, logger="backend.util.feature_flag"):
+            for _ in range(2):
+                assert await get_feature_flag_value(self.FLAG, "system") == value
         # The same answer reaches callers that ask whether it was authoritative.
         assert await feature_flag_module._evaluate_flag_value(self.FLAG, "system") == (
             value,
             True,
         )
+        # Replacing PostHog's answer is announced once per flag, never the value.
+        warnings = [
+            r.getMessage() for r in caplog.records if self.ENV in r.getMessage()
+        ]
+        assert len(warnings) == 1, warnings
+        assert json.dumps(value) not in warnings[0]
+        assert "price_pro_monthly" not in warnings[0]
 
     @pytest.mark.asyncio
-    async def test_force_flag_wins_over_next_public(
-        self, monkeypatch: pytest.MonkeyPatch, no_posthog
+    async def test_next_public_does_not_set_a_json_flag(
+        self, monkeypatch: pytest.MonkeyPatch, posthog_client
     ):
-        monkeypatch.setenv(self.ENV, json.dumps(self.PRICES))
-        monkeypatch.setenv("NEXT_PUBLIC_" + self.ENV, json.dumps({"PRO": "other"}))
-        assert await get_feature_flag_value(self.FLAG, "system") == self.PRICES
+        """NEXT_PUBLIC_ values are meant for the browser bundle; a JSON flag's
+        value is the backend's alone."""
+        posthog_client.get_feature_flag_result.return_value = served(
+            True, payload={"PRO": "price_from_posthog"}
+        )
+        monkeypatch.setenv("NEXT_PUBLIC_" + self.ENV, json.dumps(self.PRICES))
+        assert await get_feature_flag_value(self.FLAG, "system") == {
+            "PRO": "price_from_posthog"
+        }
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("raw", ["true", "{not json", '"price_pro"', "7"])
