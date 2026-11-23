@@ -80,6 +80,7 @@ test.describe("copilot stop journey", () => {
 
   test("a correction sent right after Stop is answered, after the reply as it stopped", async ({
     page,
+    journeyUser: _user,
   }) => {
     const run = scriptedRun("stop-mid-reply");
     const after = scriptedRun("after-stop");
@@ -103,7 +104,7 @@ test.describe("copilot stop journey", () => {
     const composerReadyAt = await sendAsNewMessage(page, correction);
 
     await expect(
-      transcript.getByText(STOPPED_CARD, { exact: true }),
+      transcript.getByText(STOPPED_CARD, { exact: true }).first(),
       "the reply should show it was stopped",
     ).toBeVisible();
     expect(
@@ -158,7 +159,7 @@ test.describe("copilot stop journey", () => {
       "the correction sent right after Stop should be answered",
     );
     await expect(
-      transcript.getByText(CORRECTION_ANSWER, { exact: true }),
+      transcript.getByText(CORRECTION_ANSWER, { exact: true }).first(),
       pinned,
     ).toBeVisible({ timeout: ANSWERED_WITHIN_MS });
     await expect(errorCards(page), "no error card should show").toHaveCount(0);
@@ -175,7 +176,10 @@ test.describe("copilot stop journey", () => {
       ]);
     await page.reload();
     await expect(
-      page.getByRole("log").getByText(CORRECTION_ANSWER, { exact: true }),
+      page
+        .getByRole("log")
+        .getByText(CORRECTION_ANSWER, { exact: true })
+        .first(),
     ).toBeVisible();
     await expectOnceEachInOrder(
       page,
@@ -206,6 +210,7 @@ test.describe("copilot stop journey", () => {
 
   test("Stop while a tool runs ends the turn there, and the next message is answered", async ({
     page,
+    journeyUser: _user,
   }) => {
     const run = scriptedRun("stop-during-tool");
     const after = scriptedRun("after-stop");
@@ -225,7 +230,7 @@ test.describe("copilot stop journey", () => {
       })
       .toBe(true);
     await expect(
-      transcript.getByText(/^Running "/),
+      transcript.getByText(/^Running "/).first(),
       "the timer should show as running",
     ).toBeVisible();
     const timerStartedBy = Date.now();
@@ -236,7 +241,7 @@ test.describe("copilot stop journey", () => {
     const cancel = watchCancel(page, STOPPED_TURN_ENDS_WITHIN_MS);
     const stoppedAt = await clickStop(page);
     await expect(
-      transcript.getByText(STOPPED_CARD, { exact: true }),
+      transcript.getByText(STOPPED_CARD, { exact: true }).first(),
       "the turn should show it was stopped",
     ).toBeVisible();
     await expect
@@ -259,7 +264,7 @@ test.describe("copilot stop journey", () => {
 
     await sendAsNewMessage(page, nextMessage);
     await expect(
-      transcript.getByText(CORRECTION_ANSWER, { exact: true }),
+      transcript.getByText(CORRECTION_ANSWER, { exact: true }).first(),
       "the message after the Stop should be answered",
     ).toBeVisible({ timeout: ANSWERED_WITHIN_MS });
     await expect(errorCards(page), "no error card should show").toHaveCount(0);
@@ -292,7 +297,10 @@ test.describe("copilot stop journey", () => {
       ]);
     await page.reload();
     await expect(
-      page.getByRole("log").getByText(CORRECTION_ANSWER, { exact: true }),
+      page
+        .getByRole("log")
+        .getByText(CORRECTION_ANSWER, { exact: true })
+        .first(),
     ).toBeVisible();
     await expectOnceEachInOrder(
       page,

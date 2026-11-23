@@ -7,8 +7,19 @@ const ERROR_MARKER = "[__COPILOT_ERROR_";
 
 /** Clicks Stop on the turn being written; returns when it was clicked. */
 export async function clickStop(page: Page) {
-  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await composer(page)
+    .getByRole("button", { name: "Stop", exact: true })
+    .click();
   return Date.now();
+}
+
+/** The chat's composer: its message box and the buttons beside it. */
+function composer(page: Page) {
+  return page.locator("form").filter({ has: messageBox(page) });
+}
+
+function messageBox(page: Page) {
+  return page.getByRole("textbox", { name: "Chat message input" });
 }
 
 /**
@@ -45,10 +56,10 @@ function isCancel(response: Response) {
  * not Stop or Queue. Returns when Send was ready.
  */
 export async function sendAsNewMessage(page: Page, text: string) {
-  const input = page.getByRole("textbox", { name: "Chat message input" });
+  const input = messageBox(page);
   await input.fill(text);
   await expect(
-    page.getByRole("button", { name: "Submit", exact: true }),
+    composer(page).getByRole("button", { name: "Submit", exact: true }),
     "the composer should take a new message",
   ).toBeEnabled();
   const ready = Date.now();
