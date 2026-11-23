@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, useNavigation } from "expo-router";
 import { useRef, useState } from "react";
 import { BackHandler, type NativeEventSubscription } from "react-native";
@@ -11,6 +11,7 @@ import {
   listFolders,
   listLibraryPage,
   type WorkspaceFile,
+  type WorkspaceFolder,
   workspaceKeys,
 } from "@/lib/api/workspace";
 import { useMountEffect } from "@/lib/useMountEffect";
@@ -30,6 +31,7 @@ export function useFilesPage(folderID: string | null) {
   const [chip, setChip] = useState<OwnerChip>({ kind: "all" });
   const [openFile, setOpenFile] = useState<WorkspaceFile | null>(null);
   const navigation = useNavigation();
+  const queryClient = useQueryClient();
 
   const filter = libraryFilter(chip, folderID, query);
   const files = useInfiniteQuery({
@@ -51,7 +53,6 @@ export function useFilesPage(folderID: string | null) {
 
   const allFolders = folders.data ?? [];
   const path = folderID ? folderPath(allFolders, folderID) : [];
-  const parentID = path.length > 1 ? path[path.length - 2].id : null;
   const team = [...(experts.data ?? [])].sort((a, b) => a.name.localeCompare(b.name));
   const owners = new Map<string, FileOwner>(
     team.map((expert) => [
@@ -61,6 +62,7 @@ export function useFilesPage(folderID: string | null) {
   );
 
   // On Android the back button goes up a folder while a folder is in front.
+  // `goUp` reads the folders at press time, so this mount-time listener stays current.
   useMountEffect(() => {
     let backPress: NativeEventSubscription | null = null;
     function handleFocus() {
@@ -97,6 +99,9 @@ export function useFilesPage(folderID: string | null) {
   }
 
   function goUp() {
+    const latest = queryClient.getQueryData<WorkspaceFolder[]>(workspaceKeys.folders) ?? [];
+    const trail = folderID ? folderPath(latest, folderID) : [];
+    const parentID = trail.length > 1 ? trail[trail.length - 2].id : null;
     router.navigate(parentID ? `/files/${encodeURIComponent(parentID)}` : "/files");
   }
 
@@ -123,8 +128,10 @@ export function useFilesPage(folderID: string | null) {
     setChip,
     team,
     files: visibleFiles((files.data?.pages ?? []).flatMap((page) => page.files)),
-    isLoading: files.isPending,
+    isLoading: files.isPending || folders.isPending,
     hasFailed: files.isError && !files.data,
+    // Folders hide during a search, so their failure only matters outside one.
+    haveFoldersFailed: !query.trim() && folders.isError && !folders.data,
     isRefreshing: files.isRefetching && !files.isFetchingNextPage,
     hasMore: !!files.hasNextPage,
     isLoadingMore: files.isFetchingNextPage,

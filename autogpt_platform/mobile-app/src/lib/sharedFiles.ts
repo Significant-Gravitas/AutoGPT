@@ -15,12 +15,19 @@ export function freshShareTarget(fileID: string, name: string) {
   return new File(dir, `${fileID}-${name.replace(/[/\\]/g, "_")}`);
 }
 
-/** Deletes every shared copy. Called after a share and at sign-out. */
+// On iOS, expo-sharing links or copies a file here when its name lacks the
+// extension its MIME type declares, and only clears it on a later share or launch.
+function sharingStage() {
+  return new Directory(Paths.cache, "expo-sharing-tmp");
+}
+
+/** Deletes every shared copy, expo-sharing's included. Called after a share and at sign-out. */
 export function clearSharedFiles() {
-  try {
-    const dir = folder();
-    if (dir.exists) dir.delete();
-  } catch {
-    // Nothing to remove, or the cache is already being cleared by the system.
+  for (const dir of [folder(), sharingStage()]) {
+    try {
+      if (dir.exists) dir.delete();
+    } catch {
+      // Nothing to remove, or the cache is already being cleared by the system.
+    }
   }
 }

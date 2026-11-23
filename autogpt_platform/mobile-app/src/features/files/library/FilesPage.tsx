@@ -53,7 +53,7 @@ export function FilesPage({ folderID }: Props) {
       );
     }
     if (page.hasFailed) return <RetryNotice message="Couldn't load your files." onRetry={page.refresh} />;
-    if (page.folders.length > 0) return undefined;
+    if (page.folders.length > 0 || page.haveFoldersFailed) return undefined;
     return (
       <Text style={styles.empty}>
         {page.search.trim() ? `No files match “${page.search.trim()}”.` : "No files here yet."}
@@ -103,6 +103,11 @@ export function FilesPage({ folderID }: Props) {
               placeholder={folderName ? `Search in ${folderName}` : "Search files"}
             />
             <OwnerChips chip={page.chip} team={page.team} onChange={page.setChip} />
+            {page.haveFoldersFailed ? (
+              <View style={styles.folderNotice}>
+                <RetryNotice message="Couldn't load your folders." onRetry={page.refresh} />
+              </View>
+            ) : null}
             <FolderList folders={page.folders} allFolders={page.allFolders} onOpen={page.openFolder} />
             {page.files.length > 0 ? (
               <SectionHeading title="Files" count={page.hasMore ? null : page.files.length} />
@@ -137,6 +142,7 @@ const useStyles = createStyles((colors) => ({
   placeholderLine: { height: 14, width: "60%", borderRadius: 7, backgroundColor: colors.surfacePressed },
   empty: { fontSize: 14, lineHeight: 20, color: colors.textTertiary, paddingHorizontal: 18 },
   more: { marginTop: spacing.lg },
+  folderNotice: { marginBottom: spacing.lg },
   missing: { alignItems: "center", gap: spacing.lg, padding: spacing.xl },
   missingText: { fontSize: 16, lineHeight: 23, color: colors.textSecondary, textAlign: "center" },
 }));
