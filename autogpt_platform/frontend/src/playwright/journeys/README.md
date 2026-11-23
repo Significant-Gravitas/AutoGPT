@@ -164,6 +164,28 @@ platform didn't offer) fails the turn with the reason, which shows in the
 scripted model's container log and journal. These journeys skip against a
 deployed app, whose AutoPilot uses real models.
 
+### Paying: the fake Stripe
+
+The hosted configuration points the backend's Stripe at the scripted model
+too (its "Fake Stripe" section), so a journey pays the way a user does: the
+app opens the fake's checkout page, **Pay** sends the platform a signed
+`checkout.session.completed` webhook and then returns to `success_url`.
+`billing-journey.spec.ts` buys credits this way. The helpers are in
+`fake-stripe.ts`:
+
+- `checkoutSessionID` reads the session from the checkout page's URL.
+- `holdWebhooks` keeps the payment's webhook until `deliverEvent` sends it,
+  for a webhook that arrives after the user is back.
+- `stripeEvents` lists the events about a session with each delivery's HTTP
+  status from the platform; `deliverEvent` sends one again, as Stripe
+  retries, and `sendEvent` sends a new event type about it.
+- `unservedStripeRequests` lists Stripe calls the fake doesn't model since a
+  `stripeRequestCursor` the journey took when it started; a journey that buys
+  something checks it's empty.
+
+They skip against a deployed app, whose Stripe is real (test mode on
+previews).
+
 ### Projects: `hosted` and `selfhost`
 
 `selfhost-journey.spec.ts` asserts that nothing hosted-only exists (no
@@ -274,15 +296,15 @@ allows. Flag values live in `hosted-flags.json`, read by both sides:
 
 Differences from hosted that are still open:
 
-| Area               | Journeys leg                                                                                                                                                                         | Hosted                                                                         |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
-| Payments           | `ENABLE_PLATFORM_PAYMENT` **on**; journey users get a paid tier without Stripe, so checkout, trials and Stripe webhooks go untested                                                  | On, with Stripe: NO_TIER users get a 402 until they subscribe or start a trial |
-| Node execution fee | 1 credit per node (`EXECUTION_COST_COUNT_THRESHOLD=1`), so a run's cost is visible                                                                                                   | 1 credit per 100 node executions                                               |
-| Copilot            | The scripted model: the real engine (Claude Agent SDK), tools, persistence, streaming and cost, with scripted model turns. Memory (Graphiti) calls fail, so turns run without memory | Real models                                                                    |
-| Flag source        | Fixed values from `hosted-flags.json`; JSON flags (model routing, tier limits) at code defaults                                                                                      | PostHog with targeting                                                         |
-| `BEHAVE_AS`        | `LOCAL` on both sides; the frontend's is build time                                                                                                                                  | `CLOUD`                                                                        |
-| Pods               | One `executor`, one `copilot_executor`                                                                                                                                               | Many                                                                           |
-| Frontend runtime   | Next.js standalone server in Docker                                                                                                                                                  | Vercel (body size limits, edge routing)                                        |
-| External services  | No Stripe, OAuth providers, Postmark or E2B; ClamAV, Redis, RabbitMQ and FalkorDB are real                                                                                           | Real                                                                           |
-| LLM keys           | None; blocks that need platform credentials fail. Anthropic clients point at the scripted model, so a block run with the user's own Anthropic key reaches it                         | Platform keys                                                                  |
-| Origin             | `http://localhost:3000`                                                                                                                                                              | HTTPS                                                                          |
+| Area               | Journeys leg                                                                                                                                                                                                                              | Hosted                                                                         |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Payments           | `ENABLE_PLATFORM_PAYMENT` **on**; journey users get a paid tier without Stripe. Credit top-ups go through the fake Stripe's checkout and webhooks; plan checkout and trials go untested, since their prices come from a PostHog JSON flag | On, with Stripe: NO_TIER users get a 402 until they subscribe or start a trial |
+| Node execution fee | 1 credit per node (`EXECUTION_COST_COUNT_THRESHOLD=1`), so a run's cost is visible                                                                                                                                                        | 1 credit per 100 node executions                                               |
+| Copilot            | The scripted model: the real engine (Claude Agent SDK), tools, persistence, streaming and cost, with scripted model turns. Memory (Graphiti) calls fail, so turns run without memory                                                      | Real models                                                                    |
+| Flag source        | Fixed values from `hosted-flags.json`; JSON flags (model routing, tier limits) at code defaults                                                                                                                                           | PostHog with targeting                                                         |
+| `BEHAVE_AS`        | `LOCAL` on both sides; the frontend's is build time                                                                                                                                                                                       | `CLOUD`                                                                        |
+| Pods               | One `executor`, one `copilot_executor`                                                                                                                                                                                                    | Many                                                                           |
+| Frontend runtime   | Next.js standalone server in Docker                                                                                                                                                                                                       | Vercel (body size limits, edge routing)                                        |
+| External services  | No OAuth providers, Postmark or E2B; Stripe is the fake in the scripted model; ClamAV, Redis, RabbitMQ and FalkorDB are real                                                                                                              | Real                                                                           |
+| LLM keys           | None; blocks that need platform credentials fail. Anthropic clients point at the scripted model, so a block run with the user's own Anthropic key reaches it                                                                              | Platform keys                                                                  |
+| Origin             | `http://localhost:3000`                                                                                                                                                                                                                   | HTTPS                                                                          |
