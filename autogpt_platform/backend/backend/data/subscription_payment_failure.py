@@ -341,8 +341,9 @@ async def end_plans_replaced_by(customer_id: str, new_sub_id: str) -> None:
     settle later on a cancelled plan, and nothing would ask for its refund.
     An old plan a retry already revived during the Checkout is cancelled by
     the stale-plan cleanup with the other active plans; its payment needs a
-    refund, so that raises an alert. A failure here raises an alert too,
-    since nothing retries this cleanup.
+    refund, so that raises an alert. Any failure here, Stripe's or not, is
+    logged and raises an alert instead of escaping, since nothing retries this
+    cleanup and the stale-plan cleanup after it must still run.
     """
     try:
         new = dict(await stripe_call(stripe.Subscription.retrieve_async, new_sub_id))
@@ -380,9 +381,11 @@ async def end_plans_replaced_by(customer_id: str, new_sub_id: str) -> None:
                         " cancelled as replaced. Its last payment needs a manual"
                         " refund"
                     )
-    except stripe.StripeError:
+    except Exception:
         # A replay of the activation skips this cleanup, and a cancelled plan
-        # gets no more failed retries to finish it, so a person must.
+        # gets no more failed retries to finish it, so a person must. Not only
+        # Stripe's errors: a failed restart lookup or a broken list page would
+        # otherwise skip the stale-plan cleanup, which a replay never reruns.
         logger.exception(
             f"Could not end the plans that subscription {new_sub_id} of customer"
             f" {customer_id} replaced"
