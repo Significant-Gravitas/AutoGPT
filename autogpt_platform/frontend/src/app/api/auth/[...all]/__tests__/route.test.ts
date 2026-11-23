@@ -34,7 +34,17 @@ import { GET, POST } from "../route";
 describe("auth catch-all route", () => {
   it("exposes the Better Auth Next.js handlers built from the auth instance", () => {
     expect(toNextJsHandlerMock).toHaveBeenCalledWith(authInstance);
-    expect(GET).toBe(getHandlerSentinel);
     expect(POST).toBe(postHandlerSentinel);
+  });
+
+  // The emailed verify link's own GET is covered in verify-email-confirm-flow.
+  it("hands any other GET to Better Auth", async () => {
+    const request = new Request("http://localhost:3000/api/auth/get-session");
+    getHandlerSentinel.mockResolvedValue(new Response("session"));
+
+    const response = await GET(request);
+
+    expect(getHandlerSentinel).toHaveBeenCalledWith(request);
+    expect(await response.text()).toBe("session");
   });
 });

@@ -5,8 +5,9 @@ import { sanitizeAuthNext } from "@/lib/auth-redirect";
  *
  * Better Auth then creates no session at email/password sign-up and answers a
  * sign-in by an unverified account with 403 EMAIL_NOT_VERIFIED; both email a
- * link to `/api/auth/verify-email`, which marks the address verified, signs
- * the user in and redirects to the callbackURL built here. `/auth/callback`
+ * link to `/api/auth/verify-email`, whose confirm page marks the address
+ * verified, signs the user in and redirects to the callbackURL built here
+ * (verify-email-confirm.ts). `/auth/callback`
  * then provisions the platform user and fires the sign-up conversion, exactly
  * as it does after Google sign-in, so neither happens for an address nobody
  * has proven they own.

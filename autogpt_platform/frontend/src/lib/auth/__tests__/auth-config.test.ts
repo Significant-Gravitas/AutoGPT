@@ -336,6 +336,8 @@ describe("email verification", () => {
     // Without sendOnSignIn, accounts created before the flag was flipped
     // would hit a 403 with no way to get a link.
     expect(options.emailVerification.sendOnSignIn).toBe(true);
+    // Applied by the confirm page's click, never by the link's own GET
+    // (verify-email-confirm-flow.test.ts).
     expect(options.emailVerification.autoSignInAfterVerification).toBe(true);
     expect(options.emailVerification.expiresIn).toBe(60 * 60 * 24);
     // Sign-up sends the link only when verification is required (Better
