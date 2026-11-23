@@ -56,11 +56,6 @@ export interface RouteRule {
   localOnly?: boolean;
 }
 
-// What a page shows as "… ago" is worked out on the server and again in the
-// browser; it reads differently when the age crosses a boundary in between.
-const TIME_AGO_MISMATCH =
-  /Minified React error #418; visit https:\/\/react\.dev\/errors\/418\?args\[\]=text/;
-
 /**
  * An open bug that shows now and then on pages that are otherwise fine, with
  * no visit that shows it every time, so no test can pin it: CI accepts a
@@ -83,27 +78,6 @@ export const INTERMITTENT_BUGS: IntermittentBug[] = [
 ];
 
 export const KNOWN_BUGS: KnownBug[] = [
-  {
-    route: "/admin/marketplace",
-    issue: 17309,
-    who: "admin",
-    what: "the review page throws React error #418 when a submission's age reads differently in the browser",
-    problem: TIME_AGO_MISMATCH,
-  },
-  {
-    route: "/marketplace/agent/[creator]/[slug]",
-    issue: 17310,
-    who: "visitor",
-    what: 'the page throws React error #418 when "Last updated" reads differently in the browser',
-    problem: TIME_AGO_MISMATCH,
-  },
-  {
-    route: "/marketplace/skills/[slug]",
-    issue: 17310,
-    who: "visitor",
-    what: 'the page throws React error #418 when "Updated" reads differently in the browser',
-    problem: TIME_AGO_MISMATCH,
-  },
   {
     route: "/marketplace/skills/[slug]",
     issue: 17313,
