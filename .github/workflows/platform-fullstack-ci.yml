@@ -10,6 +10,8 @@ on:
       - ".github/scripts/test_validate_playwright_json.py"
       - ".github/scripts/validate_cobertura.py"
       - ".github/scripts/test_validate_cobertura.py"
+      - ".github/scripts/check_frontend_server_errors.py"
+      - ".github/scripts/test_check_frontend_server_errors.py"
       - ".github/scripts/test_e2e_seed_cache_contract.py"
       - ".github/scripts/test_frontend_build_context.py"
       - ".github/scripts/hosted_journeys_env.py"
@@ -30,6 +32,8 @@ on:
       - ".github/scripts/test_validate_playwright_json.py"
       - ".github/scripts/validate_cobertura.py"
       - ".github/scripts/test_validate_cobertura.py"
+      - ".github/scripts/check_frontend_server_errors.py"
+      - ".github/scripts/test_check_frontend_server_errors.py"
       - ".github/scripts/test_e2e_seed_cache_contract.py"
       - ".github/scripts/test_frontend_build_context.py"
       - ".github/scripts/hosted_journeys_env.py"
@@ -112,6 +116,7 @@ jobs:
           poetry run pytest \
             ../../.github/scripts/test_validate_playwright_json.py \
             ../../.github/scripts/test_validate_cobertura.py \
+            ../../.github/scripts/test_check_frontend_server_errors.py \
             ../../.github/scripts/test_e2e_seed_cache_contract.py \
             ../../.github/scripts/test_frontend_build_context.py \
             ../../.github/scripts/test_hosted_journeys_env.py \
@@ -824,6 +829,15 @@ jobs:
           --min-tests "$MIN_TESTS"
           ${{ matrix.known_failures && '--allow-known-failures' || '' }}
           test-results/results.json
+
+      # Next.js logs every error it catches on the server with a "⨯". The tests
+      # can pass while it happens (a retried request, a broken image), so any
+      # such line fails the leg.
+      - name: Check the frontend server logged no errors
+        if: ${{ !cancelled() && steps.e2e-playwright.outcome != 'skipped' }}
+        run: |
+          docker compose -f ../docker-compose.resolved.yml logs --no-color --no-log-prefix frontend > "$RUNNER_TEMP/frontend-server.log"
+          python ../../.github/scripts/check_frontend_server_errors.py "$RUNNER_TEMP/frontend-server.log"
 
       # The seed logs and skips some failed inserts (graphs, store, fixtures),
       # so only a dump the whole suite passed on is published. Pull requests

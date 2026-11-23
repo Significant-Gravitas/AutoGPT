@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""Fail when the frontend's Next.js server logged an error during the e2e run.
+
+Next.js prints every error it catches on the server with a leading "⨯": a
+render or route handler that threw, a module that failed to load, an image the
+optimizer couldn't read. The browser tests can still pass while it happens (a
+retried request, a broken image, a fallback page), so the full-stack legs read
+the frontend container's log after the tests and fail on any such line.
+"""
+
+import argparse
+import re
+import sys
+from collections import Counter
+from pathlib import Path
+
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+# `docker compose logs` without --no-log-prefix: "frontend-1  | <line>".
+_COMPOSE_PREFIX = re.compile(r"^[\w.-]+\s+\|\s?")
+_ERROR_MARK = "⨯"
+_STACK_LINE = re.compile(r"^\s+(at |digest:|\{|\})")
+_MAX_STACK_LINES = 8
+
+
+def _clean(line: str) -> str:
+    return _COMPOSE_PREFIX.sub("", _ANSI_ESCAPE.sub("", line.rstrip("\n")), count=1)
+
+
+def server_errors(lines: list[str]) -> list[tuple[str, list[str]]]:
+    """Each error Next.js logged: its message and the stack lines under it."""
+    errors: list[tuple[str, list[str]]] = []
+    for raw in lines:
+        line = _clean(raw)
+        stripped = line.strip()
+        if stripped.startswith(_ERROR_MARK):
+            message = stripped.removeprefix(_ERROR_MARK).strip()
+            errors.append((message or "(no message)", []))
+        elif errors and _STACK_LINE.match(line):
+            stack = errors[-1][1]
+            if len(stack) < _MAX_STACK_LINES:
+                stack.append(line.rstrip())
+    return errors
+
+
+def report(errors: list[tuple[str, list[str]]], source: str) -> str:
+    counts = Counter(message for message, _ in errors)
+    summary = (
+        f"{source}: the Next.js server logged {len(errors)} error(s), "
+        f"{len(counts)} distinct. Fix the cause; the tests passing doesn't make "
+        "these harmless."
+    )
+    out = [summary]
+    first_stack: dict[str, list[str]] = {}
+    for message, stack in errors:
+        first_stack.setdefault(message, stack)
+    for message, count in counts.most_common():
+        title = f"Next.js server error ({count}x)"
+        out.append(f"::error title={title}::{message}")
+        out.extend(f"    {line.strip()}" for line in first_stack[message])
+    return "\n".join(out)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("log", type=Path, help="the frontend container's log")
+    args = parser.parse_args(argv)
+    try:
+        text = args.log.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        print(f"{args.log}: {exc}")
+        return 1
+    errors = server_errors(text.splitlines())
+    if errors:
+        print(report(errors, str(args.log)))
+        return 1
+    print(f"{args.log}: no Next.js server errors")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
