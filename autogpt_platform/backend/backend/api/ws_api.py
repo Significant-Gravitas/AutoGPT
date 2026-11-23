@@ -133,7 +133,7 @@ async def _receive_auth_token(websocket: WebSocket) -> str | None:
         token = WSAuthenticateRequest.model_validate_json(frame).data.token
     except (TimeoutError, KeyError, pydantic.ValidationError):
         # Before OSError, which TimeoutError is. Neither the frame nor the
-        # validation error is logged: either may hold the token.
+        # error is logged: both can carry the token.
         await _close_authentication_failure(
             websocket, code=4001, reason="Missing authentication token"
         )
@@ -141,8 +141,7 @@ async def _receive_auth_token(websocket: WebSocket) -> str | None:
     except (WebSocketDisconnect, OSError):
         logger.debug("WebSocket client disconnected before authenticating")
         return None
-    # Masked in the logs and error reports of this connection, as a token in
-    # its URL is.
+    # Kept with the connection's credentials, as a token in its URL is.
     keep_request_credentials(select_credentials({token}, set(request_credentials())))
     return token
 
