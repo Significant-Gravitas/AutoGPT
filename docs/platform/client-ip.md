@@ -49,7 +49,7 @@ Browsers reach the backend through the frontend's server, so the backend sees th
 
 ## Signing in
 
-Everything on the sign-in path reads the visitor's address through Better Auth, the frontend's sign-in library (1.7.16), which parses `X-Forwarded-For` itself. **Without `TRUSTED_PROXIES` it finds an address only when the header carries exactly one**; with several it finds none and logs a warning. With `TRUSTED_PROXIES` set, it takes the first address from the right that the list doesn't cover. Three of these five uses also need the frontend to trust the header (Vercel or `TRUSTED_PROXIES`), as [the frontend](#the-frontend) describes.
+Everything on the sign-in path reads the visitor's address through Better Auth, the frontend's sign-in library (1.7.25), which parses `X-Forwarded-For` itself. **Without `TRUSTED_PROXIES` it finds an address only when the header carries exactly one**; with several it finds none and logs a warning. With `TRUSTED_PROXIES` set, it takes the first address from the right that the list doesn't cover. Three of these five uses also need the frontend to trust the header (Vercel or `TRUSTED_PROXIES`), as [the frontend](#the-frontend) describes.
 
 | What reads the address                                                                              | Needs the header trusted | With no address                                            |
 | --------------------------------------------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------- |
