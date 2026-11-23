@@ -109,6 +109,7 @@ from backend.util.retry import func_retry
 from backend.util.service import RETRYABLE_SERVICE_ERRORS
 from backend.util.workspace_storage import shutdown_workspace_storage
 
+from .deferred_cancel import DeferredCancel
 from .scheduled_turn_alert import ScheduledTurnWatch
 from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
 
@@ -1165,10 +1166,14 @@ class CoPilotProcessor:
                 error_msg = BACKGROUND_TIMEOUT_MESSAGE
             elif not error_msg and cancel.is_set():
                 error_msg = stream_registry.CANCELLED_MESSAGE
+            # A Stop's second cancel can land in here once the worker's grace
+            # runs out. Each step still runs to its end, and the cancel is
+            # passed on after the last one.
+            deferred = DeferredCancel()
             try:
                 if credential_lease is not None:
                     try:
-                        await credential_lease.release()
+                        await deferred.finish(credential_lease.release())
                     except CodexCredentialIntegrityError as release_err:
                         error_msg = error_msg or "codex_credential_checkpoint_failed"
                         log.error(
@@ -1184,19 +1189,21 @@ class CoPilotProcessor:
                 if scheduled_watch is not None:
                     scheduled_watch.report(error_msg)
                 try:
-                    await finish_background_execution(entry, error_msg)
+                    await deferred.finish(finish_background_execution(entry, error_msg))
                 except Exception as finish_err:
                     log.error(f"Failed to save background completion: {finish_err}")
                 try:
-                    await stream_registry.mark_session_completed(
-                        entry.session_id,
-                        error_message=error_msg,
-                        error_code=error_code,
-                        skip_error_publish=(
-                            cancel.is_set()
-                            and error_msg == stream_registry.CANCELLED_MESSAGE
-                        ),
-                        turn_id=entry.turn_id,
+                    await deferred.finish(
+                        stream_registry.mark_session_completed(
+                            entry.session_id,
+                            error_message=error_msg,
+                            error_code=error_code,
+                            skip_error_publish=(
+                                cancel.is_set()
+                                and error_msg == stream_registry.CANCELLED_MESSAGE
+                            ),
+                            turn_id=entry.turn_id,
+                        )
                     )
                 except Exception as mark_err:
                     log.error(f"Failed to mark session completed: {mark_err}")
@@ -1204,16 +1211,23 @@ class CoPilotProcessor:
                     try:
                         # After the turn is marked done, so the owner never
                         # waits on it: counts the run toward its schedule's
-                        # failure streak. It can be cancelled while it waits,
-                        # so the cleanups below still run.
+                        # failure streak.
                         if scheduled_watch is not None:
-                            await scheduled_watch.record(error_msg)
+                            await deferred.finish(scheduled_watch.record(error_msg))
                     finally:
                         set_turn_surface(None)
-                        await cost_context_stack.aclose()
+                        # On this task: the stack resets context variables
+                        # the turn set, and a task of its own would hold only
+                        # a copy of them.
+                        await deferred.run_here(cost_context_stack.aclose())
                         # A browser turn leaves a Chromium tree on this pod
                         # that nothing else ever stops; state is already
                         # persisted, so the next turn restores it wherever it
                         # lands.
-                        if await close_browser_daemon(entry.session_id):
+                        if await deferred.finish(
+                            close_browser_daemon(entry.session_id)
+                        ):
                             log.info("Browser daemon teardown attempted for this turn")
+                        if deferred.held is not None:
+                            log.info("Turn cleanup done; passing on the cancel it held")
+                            raise deferred.held
