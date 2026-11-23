@@ -1367,6 +1367,57 @@ async def test_a_child_stop_waits_at_most_briefly(
 
 
 @pytest.mark.asyncio
+async def test_a_queued_child_stopped_by_its_parent_is_cancelled_again_once_written(
+    mocker: MockerFixture,
+):
+    """A child the cascade stops gets the same stop as a run stopped directly:
+    written TERMINATED, then cancelled again, before the parent's cancel."""
+    from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+    from backend.executor import utils
+
+    statuses = {"parent": ExecutionStatus.TERMINATED, "child": ExecutionStatus.QUEUED}
+    events: list[tuple[str, str]] = []
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
+    mocker.patch(
+        "backend.executor.utils._get_unfinished_child_execution_ids",
+        side_effect=lambda parent_id: ["child"] if parent_id == "parent" else [],
+    )
+
+    async def publish_message(*, message: str, **_: object) -> None:
+        run_id = utils.CancelExecutionEvent.model_validate_json(message).graph_exec_id
+        events.append(("cancel", run_id))
+
+    queue = mocker.AsyncMock()
+    queue.publish_message.side_effect = publish_message
+    mocker.patch("backend.executor.utils.get_async_execution_queue", return_value=queue)
+
+    def read(*, execution_id: str, user_id: str) -> GraphExecutionMeta:
+        run = mocker.MagicMock(spec=GraphExecutionMeta)
+        run.id = execution_id
+        run.status = statuses[execution_id]
+        return run
+
+    def write(*, graph_exec_id: str, status: ExecutionStatus) -> None:
+        statuses[graph_exec_id] = status
+        events.append((status.value, graph_exec_id))
+
+    execution_db = mocker.patch("backend.executor.utils.execution_db")
+    execution_db.get_graph_execution_meta = mocker.AsyncMock(side_effect=read)
+    execution_db.update_graph_execution_stats = mocker.AsyncMock(side_effect=write)
+    bus = mocker.patch("backend.executor.utils.get_async_execution_event_bus")
+    bus.return_value.publish = mocker.AsyncMock()
+
+    await utils.stop_graph_execution(user_id="u", graph_exec_id="parent")
+
+    assert events == [
+        ("cancel", "child"),
+        ("TERMINATED", "child"),
+        ("cancel", "child"),
+        ("cancel", "parent"),
+    ]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("prisma_connected", [True, False])
 async def test_the_child_lookup_goes_through_the_database_manager_without_prisma(
     mocker: MockerFixture, prisma_connected: bool
