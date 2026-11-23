@@ -14,11 +14,11 @@ function hasLegacySupabaseSession(request: NextRequest): boolean {
 async function getSessionUserRole(
   request: NextRequest,
 ): Promise<string | null> {
-  const configuredBaseUrl =
-    process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_FRONTEND_BASE_URL;
-  const isSecure = configuredBaseUrl
-    ? configuredBaseUrl.startsWith("https://")
-    : request.nextUrl.protocol === "https:";
+  const baseURL =
+    process.env.BETTER_AUTH_URL ||
+    process.env.NEXT_PUBLIC_FRONTEND_BASE_URL ||
+    "http://localhost:3000";
+  const isSecure = baseURL.startsWith("https://");
 
   // Fast path: the signed cookie cache carries the user without a DB hit.
   try {

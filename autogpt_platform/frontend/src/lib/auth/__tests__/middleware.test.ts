@@ -145,6 +145,8 @@ describe("authMiddleware", () => {
   it("passes isSecure=false to getCookieCache on http deployments and isSecure=true on https", async () => {
     getSessionCookie.mockReturnValue("session-token");
     getCookieCache.mockResolvedValue({ user: { role: "admin" } });
+    vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3000");
+    vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "");
 
     await authMiddleware(makeRequest("/admin"));
     expect(getCookieCache).toHaveBeenLastCalledWith(
