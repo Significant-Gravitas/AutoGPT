@@ -1,4 +1,5 @@
 import json
+import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Any
@@ -54,6 +55,7 @@ from backend.data.graph import (
 from backend.data.graph import create_graph as db_create_graph
 from backend.data.graph import (
     delete_graph,
+    find_llm_model_fields,
     foreign_sub_graph_refs,
     fork_graph,
     get_copied_graph_ids,
@@ -2189,7 +2191,8 @@ async def test_get_graph_version_none_ignores_unsubmitted_newer_version() -> Non
 @pytest.mark.asyncio
 async def test_get_graph_version_none_picks_latest_submitted_version() -> None:
     """With several submitted versions in the library and no version pinned,
-    the newest wins — same as the owner path's `order={"version": "desc"}`."""
+    the newest wins. Unlike the owner path, this one ignores `isActive`: the
+    owner's active version says nothing about what this reader may open."""
     requester_id = "library-user-id"
     graph_id = "graph-id"
     submitted_v2 = _make_mock_db_graph("original-creator-id", version=2)
@@ -3680,26 +3683,160 @@ def test_auto_credentials_non_str_non_dict_value_rejected(bad_value):
     assert "AgentGoogleDriveFileInputBlock" in msg
 
 
+async def _run_boot_pass_with_sql_mocked() -> tuple[AsyncMock, AsyncMock]:
+    """Run ``migrate_llm_models`` with both raw-SQL helpers mocked and nothing
+    to move. Returns the (execute, query) mocks: the catch-alls go through the
+    first, the targeted statements, which return their counts, the second."""
+    with (
+        patch(
+            "backend.data.graph.execute_raw_with_schema",
+            new_callable=AsyncMock,
+            return_value=0,
+        ) as mock_execute,
+        patch(
+            "backend.data.graph.query_raw_with_schema",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as mock_query,
+    ):
+        await migrate_llm_models(next(iter(LLMModel)))
+    return mock_execute, mock_query
+
+
+async def _boot_pass_rewrites() -> set[tuple[bool, str, str]]:
+    """(is a preset statement, replacement, stored value) for every rewrite
+    the boot pass's targeted statements carry."""
+    _, mock_query = await _run_boot_pass_with_sql_mocked()
+    # A targeted statement's $2 is its {stored value: replacement} object.
+    return {
+        ('"agentPresetId"' in call.args[0], replacement, stored_value)
+        for call in mock_query.await_args_list
+        for stored_value, replacement in json.loads(call.args[2]).items()
+    }
+
+
 @pytest.mark.asyncio
 async def test_migrate_llm_models_uses_schema_prefix_placeholder():
     """Regression: migrate_llm_models must use the {schema_prefix} placeholder
     so environments where the Prisma datasource lands in `public` (no
     ?schema=platform on DATABASE_URL) don't blow up with
     `relation "platform.AgentNode" does not exist`."""
-    with patch(
-        "backend.data.graph.execute_raw_with_schema",
-        new_callable=AsyncMock,
-    ) as mock_execute:
-        await migrate_llm_models(next(iter(LLMModel)))
+    mock_execute, mock_query = await _run_boot_pass_with_sql_mocked()
 
-    for call in mock_execute.await_args_list:
+    calls = mock_execute.await_args_list + mock_query.await_args_list
+    assert calls
+    for call in calls:
         query_template = call.args[0]
         assert "{schema_prefix}" in query_template, (
             "migrate_llm_models must pass the {schema_prefix} placeholder "
-            "to execute_raw_with_schema; hardcoding 'platform.' breaks when "
+            "to the raw-SQL helpers; hardcoding 'platform.' breaks when "
             "DATABASE_URL has no ?schema= param."
         )
         assert 'platform."AgentNode"' not in query_template
+
+
+@pytest.mark.asyncio
+async def test_migrate_llm_models_runs_four_statements_however_many_slugs():
+    """Every API pod runs the boot pass before it serves. Per LLMModel field
+    name it runs a targeted statement and a catch-all on each of the two
+    tables, so the count does not grow with the map or the blocks: one
+    statement per legacy spelling, block and table made it 424 per boot."""
+    more_slugs = {
+        **LEGACY_MODEL_MAPPINGS,
+        **{f"retired-model-{i}": LLMModel.GPT41 for i in range(40)},
+    }
+    field_names = set(find_llm_model_fields().values())
+
+    for mappings in (LEGACY_MODEL_MAPPINGS, more_slugs):
+        with patch("backend.data.graph.LEGACY_MODEL_MAPPINGS", mappings):
+            mock_execute, mock_query = await _run_boot_pass_with_sql_mocked()
+
+        statements = mock_execute.await_count + mock_query.await_count
+        assert statements == 4 * len(field_names)
+        # The map in use reached the statements.
+        for call in mock_query.await_args_list:
+            assert json.loads(call.args[2]).keys() >= mappings.keys()
+
+
+@pytest.mark.asyncio
+async def test_migrate_llm_models_moves_each_value_in_one_step():
+    """One statement moves every legacy spelling, matching each row's value
+    as it was before the statement. A replacement that is itself a legacy
+    spelling would move a row one step per boot, so no replacement is one."""
+    rewrites = await _boot_pass_rewrites()
+
+    replacement_of = {stored: replacement for _, replacement, stored in rewrites}
+    assert replacement_of
+    chains = sorted(
+        f"{stored!r} -> {replacement!r}, itself mapped to "
+        f"{replacement_of[replacement]!r}"
+        for stored, replacement in replacement_of.items()
+        if replacement in replacement_of
+    )
+    assert not chains, (
+        "LEGACY_MODEL_MAPPINGS sends these spellings to a replacement that is "
+        "itself a key, so a boot moves them only one step: "
+        + "; ".join(chains)
+        + ". Repoint each such key to the final replacement in the same change."
+    )
+
+
+@pytest.mark.asyncio
+async def test_migrate_llm_models_logs_what_each_statement_moved(caplog):
+    """The boot log adds up what the statements report: a targeted statement
+    its rows per (stored value, replacement), a catch-all one count."""
+
+    async def targeted(query: str, *args: Any) -> list[dict[str, Any]]:
+        rows = 1 if '"agentPresetId"' in query else 2
+        return [{"stored": "o3-mini", "replacement": "gpt-6.1-terra", "rows": rows}]
+
+    async def catch_all(query: str, *args: Any) -> int:
+        return 3 if '"agentPresetId"' in query else 4
+
+    fallback = LLMModel.GPT41
+    with (
+        patch(
+            "backend.data.graph.query_raw_with_schema",
+            new_callable=AsyncMock,
+            side_effect=targeted,
+        ),
+        patch(
+            "backend.data.graph.execute_raw_with_schema",
+            new_callable=AsyncMock,
+            side_effect=catch_all,
+        ),
+        caplog.at_level(logging.INFO, logger="backend.data.graph"),
+    ):
+        await migrate_llm_models(fallback)
+
+    assert {
+        record.getMessage()
+        for record in caplog.records
+        if record.getMessage().startswith("LLM model migration moved")
+    } == {
+        "LLM model migration moved 2 node(s) and 1 preset override(s) from "
+        "'o3-mini' to 'gpt-6.1-terra'",
+        "LLM model migration moved 4 node(s) and 3 preset override(s) from "
+        f"a value outside LLMModel to '{fallback.value}'",
+    }
+
+
+@pytest.mark.asyncio
+async def test_migrate_llm_models_keeps_the_first_keys_replacement_for_a_shared_spelling():
+    """A spelling two keys share goes to the first key's replacement, as it did
+    when each spelling had its own statement."""
+    mappings = {
+        "o3-mini": LLMModel.GPT6_1_TERRA,
+        "openai/o3-mini": LLMModel.GPT6_1_SOL,
+    }
+    with patch("backend.data.graph.LEGACY_MODEL_MAPPINGS", mappings):
+        _, mock_query = await _run_boot_pass_with_sql_mocked()
+
+    sent = [json.loads(call.args[2]) for call in mock_query.await_args_list]
+    assert sent
+    assert {rewrites["openai/o3-mini"] for rewrites in sent} == {
+        LLMModel.GPT6_1_TERRA.value
+    }
 
 
 @pytest.mark.asyncio
@@ -3714,25 +3851,13 @@ async def test_migrate_llm_models_matches_provider_prefixed_legacy_values():
     expected_replacement = LEGACY_MODEL_MAPPINGS[bare_legacy_value].value
     prefixed_legacy_value = f"anthropic/{bare_legacy_value}"
 
-    with patch(
-        "backend.data.graph.execute_raw_with_schema",
-        new_callable=AsyncMock,
-    ) as mock_execute:
-        await migrate_llm_models(next(iter(LLMModel)))
+    rewrites = await _boot_pass_rewrites()
 
-    # Targeted query has 5 SQL params ($1..$5), so its call has 6 positional
-    # args: (query, [path], replacement, block_id, path, stored_value).
-    targeted_pairs = {
-        (call.args[2], call.args[5])  # (replacement, stored_value)
-        for call in mock_execute.await_args_list
-        if len(call.args) == 6
-    }
-
-    assert (expected_replacement, bare_legacy_value) in targeted_pairs, (
+    assert (False, expected_replacement, bare_legacy_value) in rewrites, (
         f"bare legacy slug {bare_legacy_value!r} not rewritten to "
         f"{expected_replacement!r}"
     )
-    assert (expected_replacement, prefixed_legacy_value) in targeted_pairs, (
+    assert (False, expected_replacement, prefixed_legacy_value) in rewrites, (
         f"provider-prefixed legacy slug {prefixed_legacy_value!r} not "
         f"rewritten to {expected_replacement!r} — prefixed forms must hit the "
         "family-aware pass, not the global fallback."
@@ -3761,20 +3886,49 @@ async def test_migrate_llm_models_maps_retired_claude_aliases_to_their_family(
     with pytest.raises(ValueError):
         LLMModel(stored_value)
 
-    with patch(
-        "backend.data.graph.execute_raw_with_schema",
-        new_callable=AsyncMock,
-    ) as mock_execute:
-        await migrate_llm_models(next(iter(LLMModel)))
+    rewrites = await _boot_pass_rewrites()
 
-    # (is_preset_query, replacement, stored_value) for each targeted rewrite.
-    rewrites = {
-        ('"agentPresetId"' in call.args[0], call.args[2], call.args[-1])
-        for call in mock_execute.await_args_list
-        if "NOT IN" not in call.args[0]
-    }
     assert (False, replacement.value, stored_value) in rewrites
     assert (True, replacement.value, stored_value) in rewrites
+
+
+@pytest.mark.parametrize(
+    "stored_value, replacement",
+    [
+        ("o3-mini", LLMModel.GPT6_1_TERRA),
+        ("openai/o3-mini", LLMModel.GPT6_1_TERRA),
+        ("o1", LLMModel.GPT5_6_SOL),
+        ("openai/o1", LLMModel.GPT5_6_SOL),
+        ("o1-mini", LLMModel.GPT6_1_TERRA),
+        ("openai/o1-mini", LLMModel.GPT6_1_TERRA),
+        ("o4-mini", LLMModel.GPT6_1_TERRA),
+        ("openai/o4-mini", LLMModel.GPT6_1_TERRA),
+        ("gpt-4.1-nano", LLMModel.GPT6_LUNA),
+        ("openai/gpt-4.1-nano", LLMModel.GPT6_LUNA),
+        ("gpt-5-chat-latest", LLMModel.GPT6_1_SOL),
+        ("openai/gpt-5-chat-latest", LLMModel.GPT6_1_SOL),
+        ("gpt-5.1-codex", LLMModel.GPT6_1_SOL),
+        ("openai/gpt-5.1-codex", LLMModel.GPT6_1_SOL),
+        ("gpt-5.3-chat-latest", LLMModel.GPT6_1_SOL),
+        ("openai/gpt-5.3-chat-latest", LLMModel.GPT6_1_SOL),
+    ],
+)
+@pytest.mark.asyncio
+async def test_migrate_llm_models_moves_shut_down_openai_models_to_their_replacement(
+    stored_value: str, replacement: LLMModel
+):
+    """OpenAI has shut these models down, so a node or preset still naming one
+    fails on every run. The boot pass moves it, in either stored spelling, to
+    the current model at its price (o1 to its listed gpt-5.6-sol)."""
+    rewrites = await _boot_pass_rewrites()
+
+    assert (False, replacement.value, stored_value) in rewrites
+    assert (True, replacement.value, stored_value) in rewrites
+    assert not {
+        target
+        for _, target, value in rewrites
+        if value == stored_value and target != replacement.value
+    }
 
 
 @pytest.mark.asyncio
@@ -3784,20 +3938,24 @@ async def test_migrate_llm_models_covers_preset_overrides():
     migration handles that table, but the boot-time safety net used to skip
     it — leaving stale model values in presets when the SQL migration hadn't
     yet run."""
-    with patch(
-        "backend.data.graph.execute_raw_with_schema",
-        new_callable=AsyncMock,
-    ) as mock_execute:
-        await migrate_llm_models(next(iter(LLMModel)))
+    mock_execute, mock_query = await _run_boot_pass_with_sql_mocked()
 
-    queries = [call.args[0] for call in mock_execute.await_args_list]
+    queries = [
+        call.args[0]
+        for call in mock_execute.await_args_list + mock_query.await_args_list
+    ]
     assert any(
-        '"AgentNodeExecutionInputOutput"' in q and '"agentPresetId" IS NOT NULL' in q
+        '"AgentNodeExecutionInputOutput"' in q and 'io."agentPresetId" = p."id"' in q
         for q in queries
     ), (
         "migrate_llm_models must run UPDATEs against AgentNodeExecutionInputOutput "
         "for preset rows, not just AgentNode.constantInput."
     )
+    # Both preset statements are bounded to preset rows: without the bound
+    # the planner walks the whole execution-I/O table at every boot.
+    preset_statements = {q for q in queries if '"AgentNodeExecutionInputOutput"' in q}
+    assert len(preset_statements) == 2
+    assert all('io."agentPresetId" IS NOT NULL' in q for q in preset_statements)
 
 
 def test_graph_meta_from_db_carries_org_team():

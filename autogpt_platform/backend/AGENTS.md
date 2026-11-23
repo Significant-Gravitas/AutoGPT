@@ -98,7 +98,7 @@ poetry run pytest path/to/test.py --snapshot-update
 - **No tight bounds on elapsed time** — assert the outcome, and bound real time only with ~10× margin or through a clock the test advances, because a full garbage collection on a CI runner can take seconds.
 - **Pin the clock for code keyed to a time window** (a rate-limit minute, a daily counter), set mid-window, because a run that crosses the boundary splits the test's calls across two windows.
 - **Never patch `time.sleep`, `asyncio.sleep`, `time.time` or `time.monotonic` on the shared module**, including through `backend.x.y.asyncio.sleep` when `y` does `import asyncio`; patch a name the module bound itself (`from asyncio import sleep`) or inject the clock, because the stub reaches every coroutine in the event loop. `backend/util/architecture_test.py` refuses new ones.
-- **Close what a test opens, and never call `asyncio.run` in a test** — it unsets the thread's event loop, and a client left bound to a closed loop fails a later test with `Event loop is closed`.
+- **Close what a test opens, and never call `asyncio.run` in a test** — it unsets the thread's event loop, and a client left bound to a closed loop fails a later test with `Event loop is closed`. `backend/conftest.py` fails the test that leaves an OpenAI, Anthropic or Groq client open with connections on a loop that has closed: garbage-collected later, such a client runs `aclose()` on another test's loop.
 - **Test a race by forcing the bad order** — to prove two concurrent calls can't both pass a check-then-act (both read "unclaimed", then both claim), patch the call the check makes so each task then waits on a shared `asyncio.Barrier(2)` before acting, with a timeout, since correct code blocks the second task. `asyncio.gather` alone switches tasks only where they await, so one task can check and act before the other checks, and the test passes with the bug still there.
 
 ### Test-Driven Development (TDD)
@@ -182,7 +182,7 @@ When blocks need to work with files (images, videos, documents), use `store_medi
 
 | Format | Use When | Returns |
 |--------|----------|---------|
-| `"for_local_processing"` | Processing with local tools (ffmpeg, MoviePy, PIL) | Local file path (e.g., `"image.png"`) |
+| `"for_local_processing"` | Processing with local tools (ffmpeg, MoviePy, PIL) | Local file path, in a folder of its own (e.g., `"3f2a…/image.png"`) |
 | `"for_external_api"` | Sending content to external APIs (Replicate, OpenAI) | Data URI (e.g., `"data:image/png;base64,..."`) |
 | `"for_block_output"` | Returning output from your block | Smart: `workspace://` in CoPilot, data URI in graphs |
 
@@ -195,7 +195,7 @@ local_path = await store_media_file(
     execution_context=execution_context,
     return_format="for_local_processing",
 )
-# local_path = "video.mp4" - use with Path/ffmpeg/etc
+# local_path = "3f2a…/video.mp4" - resolve it with get_exec_file_path; the file keeps its own name
 
 # INPUT: Need to send to external API like Replicate
 image_b64 = await store_media_file(

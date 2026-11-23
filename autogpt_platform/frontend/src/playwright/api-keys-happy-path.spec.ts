@@ -1,12 +1,18 @@
 import { randomUUID } from "crypto";
 import { expect, test } from "./coverage-fixture";
-import { E2E_AUTH_STATES } from "./credentials/accounts";
+import { E2E_AUTH_STATES, SEEDED_TEST_ACCOUNTS } from "./credentials/accounts";
+
+// The backend, where the external API lives; the browser only talks to the
+// frontend.
+const BACKEND_URL =
+  process.env.PLAYWRIGHT_BACKEND_URL ?? "http://localhost:8006";
 
 test.use({ storageState: E2E_AUTH_STATES.parallelB });
 
-test("api keys happy path: user can create, copy, and revoke an API key", async ({
+test("api keys happy path: user can create, copy, use and revoke an API key, which then stops working", async ({
   page,
   context,
+  playwright,
 }) => {
   test.setTimeout(120000);
 
@@ -40,6 +46,15 @@ test("api keys happy path: user can create, copy, and revoke an API key", async 
     await executeGraphCheckbox.click();
   }
   await expect(executeGraphCheckbox).toHaveAttribute("aria-checked", "true");
+  // Lets the key read who it belongs to, which the external API is checked
+  // with below.
+  const identityCheckbox = createDialog.getByRole("checkbox", {
+    name: "Identity",
+  });
+  if ((await identityCheckbox.getAttribute("aria-checked")) !== "true") {
+    await identityCheckbox.click();
+  }
+  await expect(identityCheckbox).toHaveAttribute("aria-checked", "true");
 
   await createDialog.getByRole("button", { name: "Create Key" }).click();
 
@@ -85,21 +100,45 @@ test("api keys happy path: user can create, copy, and revoke an API key", async 
     })
     .toBe(createdSecret);
 
-  // Both the header "X" and the footer button are labelled "Close"; either one
-  // closes the dialog and resets the form.
-  await secretDialog.getByRole("button", { name: "Close" }).first().click();
-
-  const deleteCreatedKeyButton = page.getByRole("button", {
-    name: `Delete ${keyName}`,
+  // The key works against the external API, on its own: this context starts
+  // with no stored session, so no cookie can stand in for the key.
+  const externalAPI = await playwright.request.newContext({
+    storageState: { cookies: [], origins: [] },
+    extraHTTPHeaders: { "X-API-Key": createdSecret },
   });
-  await expect(deleteCreatedKeyButton).toBeVisible({ timeout: 15000 });
+  const whoAmI = `${BACKEND_URL}/external-api/v1/me`;
+  try {
+    const accepted = await externalAPI.get(whoAmI);
+    expect(accepted.status(), "the new key should authenticate").toBe(200);
+    // As the account that created it.
+    expect((await accepted.json()).email).toBe(
+      SEEDED_TEST_ACCOUNTS.parallelB.email,
+    );
 
-  await deleteCreatedKeyButton.click();
-  const revokeDialog = page.getByRole("dialog", { name: "Revoke API key?" });
-  await revokeDialog.getByRole("button", { name: "Revoke key" }).click();
+    // Both the header "X" and the footer button are labelled "Close"; either one
+    // closes the dialog and resets the form.
+    await secretDialog.getByRole("button", { name: "Close" }).first().click();
 
-  await expect(page.getByText("API key revoked")).toBeVisible({
-    timeout: 15000,
-  });
-  await expect(deleteCreatedKeyButton).toHaveCount(0);
+    const deleteCreatedKeyButton = page.getByRole("button", {
+      name: `Delete ${keyName}`,
+    });
+    await expect(deleteCreatedKeyButton).toBeVisible({ timeout: 15000 });
+
+    await deleteCreatedKeyButton.click();
+    const revokeDialog = page.getByRole("dialog", { name: "Revoke API key?" });
+    await revokeDialog.getByRole("button", { name: "Revoke key" }).click();
+
+    await expect(page.getByText("API key revoked")).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(deleteCreatedKeyButton).toHaveCount(0);
+
+    // A revoked key stops working at once.
+    expect(
+      (await externalAPI.get(whoAmI)).status(),
+      "the revoked key should be refused",
+    ).toBe(401);
+  } finally {
+    await externalAPI.dispose();
+  }
 });

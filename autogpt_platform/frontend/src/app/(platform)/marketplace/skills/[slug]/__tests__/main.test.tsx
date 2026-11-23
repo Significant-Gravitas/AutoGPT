@@ -1,5 +1,7 @@
 import {
   getGetV2GetMarketplaceSkillMockHandler200,
+  getGetV2ListMarketplaceSkillsMockHandler200,
+  getGetV2ListMarketplaceSkillsResponseMock,
   getPostV2InstallMarketplaceSkillMockHandler200,
   getGetV2GetMarketplaceSkillMockHandler404,
   getPostV2InstallMarketplaceSkillMockHandler401,
@@ -148,6 +150,38 @@ describe("Marketplace skill page", () => {
       "https://github.com/coreyhaines31/marketingskills/tree/abc/skills/cold-email",
     );
     expect(await screen.findByText("License: MIT")).toBeDefined();
+  });
+
+  test("names the MCP services it works with as the catalog does, with the first one's logo", async () => {
+    // Added already, so the page also offers to connect them.
+    userSkills.push({ name: "outreach-playbook", description: "Installed" });
+    server.use(
+      getGetV2GetMarketplaceSkillMockHandler200({
+        ...outreach,
+        // The catalog calls mcp_apollo_io "Apollo.io", not "Apollo Io".
+        required_providers: ["mcp_amplitude", "mcp_apollo_io"],
+      }),
+      // No "More skills" shelf, whose cards say "Works with" too.
+      getGetV2ListMarketplaceSkillsMockHandler200(
+        getGetV2ListMarketplaceSkillsResponseMock({ skills: [] }),
+      ),
+      getGetV1ListCredentialsMockHandler200([]),
+      userSkillsHandler(),
+    );
+    render(<SkillPage slug="outreach-playbook" />);
+
+    const worksWith = await screen.findByText(/^Works with/);
+    expect(worksWith.textContent).toMatch(
+      /^Works with\s*Amplitude and Apollo\.io$/,
+    );
+    expect(
+      worksWith
+        .querySelector('[data-slot="integration-logo"]')
+        ?.getAttribute("src"),
+    ).toBe("/integrations/amplitude.png");
+    expect(
+      (await screen.findByTestId("skill-connect-step")).textContent,
+    ).toContain("Its steps use Amplitude and Apollo.io.");
   });
 
   test("shows a creator skill license without a source repo", async () => {

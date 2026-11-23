@@ -1,45 +1,31 @@
-import { FRONTEND_URL } from "@/lib/env";
+// No native imports, so tests can load this without a phone.
 
-export function cookieScript(cookieHeader: string, frontendURL: string) {
-  const { origin, protocol } = new URL(frontendURL);
-  const flags = `; path=/; SameSite=Lax${protocol === "https:" ? "; Secure" : ""}`;
-  const assignments = cookieHeader
-    .split(";")
-    .map((pair) => pair.trim())
-    .flatMap((pair) => {
-      const split = pair.indexOf("=");
-      if (split <= 0) return [];
-      const name = pair.slice(0, split).trim();
-      const value = pair.slice(split + 1).trim();
-      if (!name) return [];
-      return [
-        `  document.cookie = ${JSON.stringify(`${name}=${value}${flags}`)};`,
-      ];
-    });
-  // Android lets a navigation through when JS is slow to answer
-  // onShouldStartLoadWithRequest, so this script can run on any page.
-  return [
-    `if (location.origin === ${JSON.stringify(origin)}) {`,
-    ...assignments,
-    "}",
-    "true;",
-  ].join("\n");
-}
+export const HELP_URL = "https://agpt.co/docs";
+// The same pages as frontend/src/lib/legal.ts.
+export const TERMS_OF_USE_URL = "https://agpt.co/legal/platform-terms-of-use";
+export const PRIVACY_POLICY_URL = "https://agpt.co/legal/platform-privacy-policy";
 
-export function isAllowedSettingsURL(url: string) {
-  if (!isFrontendOrigin(url)) return false;
-  const { pathname } = new URL(url);
-  return pathname === "/settings" || pathname.startsWith("/settings/");
-}
+const DELETE_FALLBACK = "We couldn't delete your account. Try again.";
+// The deletion route's own words: a wrong email (400), impersonation (403)
+// and a plan Stripe wouldn't cancel (502). Anything else is not for people.
+const PHRASED_STATUSES = new Set([400, 403, 502]);
 
-export function isFrontendOrigin(url: string) {
-  try {
-    return new URL(url).origin === new URL(FRONTEND_URL).origin;
-  } catch {
-    return false;
+export function deleteErrorCopy(error: unknown) {
+  const { status, message } = (error ?? {}) as { status?: unknown; message?: unknown };
+  if (typeof status === "number" && PHRASED_STATUSES.has(status) && typeof message === "string" && message) {
+    return message;
   }
+  return DELETE_FALLBACK;
 }
 
-export function isWebURL(url: string) {
-  return /^https?:\/\//i.test(url);
+/** The line shown once the account is closed, as the web words it. */
+export function closedCopy(eraseAfter: string | null) {
+  if (!eraseAfter) {
+    return "Changed your mind? Sign in on the web within 14 days and choose Keep my account.";
+  }
+  const day = new Date(eraseAfter).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+  return `Changed your mind? Sign in on the web before ${day} and choose Keep my account.`;
 }

@@ -767,6 +767,7 @@ describe("SetupRequirementsCard (rejected credential)", () => {
           value={{
             register: (_owner, entry) => entries.push(entry),
             unregister: vi.fn(),
+            canSend: true,
           }}
         >
           <SetupRequirementsCard
@@ -794,7 +795,9 @@ describe("SetupRequirementsCard (rejected credential)", () => {
     it("stays unready when the sign-in reported a different credential", () => {
       const latest = renderInChain();
 
-      act(() => latest().connectors!.onConnected("cred-someone-else"));
+      act(() =>
+        latest().connectors!.onConnected("api_key", "cred-someone-else"),
+      );
 
       expect(latest().justConnected).toBe(true);
       expect(latest().ready).toBe(false);
@@ -804,7 +807,7 @@ describe("SetupRequirementsCard (rejected credential)", () => {
       const latest = renderInChain();
       expect(latest().ready).toBe(false);
 
-      act(() => latest().connectors!.onConnected("cred-api_key"));
+      act(() => latest().connectors!.onConnected("api_key", "cred-api_key"));
 
       expect(latest().ready).toBe(true);
     });

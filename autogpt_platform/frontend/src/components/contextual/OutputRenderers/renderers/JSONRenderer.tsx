@@ -20,15 +20,21 @@ function canRenderJSON(value: unknown, _metadata?: OutputMetadata): boolean {
   }
 
   if (typeof value === "string") {
-    try {
-      JSON.parse(value);
-      return true;
-    } catch {
-      return false;
-    }
+    return holdsJSONObjectOrArray(value);
   }
 
   return false;
+}
+
+// Text that parses to a number, boolean or null stays text: shown parsed, 1e5
+// would read 100000 and 1.50 would read 1.5 (#17307).
+function holdsJSONObjectOrArray(text: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return typeof parsed === "object" && parsed !== null;
+  } catch {
+    return false;
+  }
 }
 
 function renderJSON(

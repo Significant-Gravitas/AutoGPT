@@ -56,9 +56,9 @@ def test_subscription_effort_mapping_includes_none_and_high():
 def test_openai_api_costs_are_model_specific():
     assert (
         CodeGenerationBlock._compute_token_usd(
-            CodexModel.GPT5_1_CODEX, 1_000_000, 1_000_000
+            CodexModel.GPT5_6_LUNA, 1_000_000, 1_000_000
         )
-        == 11.25
+        == 7.0
     )
     assert (
         CodeGenerationBlock._compute_token_usd(

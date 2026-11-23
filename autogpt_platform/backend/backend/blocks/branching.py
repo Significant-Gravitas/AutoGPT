@@ -1,4 +1,5 @@
 import json
+import math
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Any
@@ -22,6 +23,52 @@ class ComparisonOperator(Enum):
     LESS_THAN = "<"
     GREATER_THAN_OR_EQUAL = ">="
     LESS_THAN_OR_EQUAL = "<="
+
+
+def _normalize_operand(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    # int() first: float() keeps only 53 bits, so big integer strings would round.
+    try:
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        number = float(text)
+    except ValueError:
+        return text
+    try:
+        decimal = Decimal(text)
+    except InvalidOperation:
+        return number
+    if not math.isfinite(number):
+        # inf and nan stay floats. A finite number too big for a float, such
+        # as an integer past int()'s 4300-digit limit, stays an exact Decimal,
+        # never an int: comparing Decimals costs no more than reading them.
+        return decimal if decimal.is_finite() else number
+    # A float steps by 1 from 2**52 and by 2 from 2**53, so it can't hold a
+    # fraction from 2**52 or every whole value from 2**53. Decimal keeps both
+    # exact; a whole value becomes an int, of at most 309 digits here.
+    if decimal == decimal.to_integral_value():
+        if abs(decimal) >= 2**53:
+            return int(decimal)
+        return number
+    if abs(number) >= 2**52:
+        return decimal
+    return number
+
+
+def _passthrough(raw: Any, value: Any) -> Any:
+    # Block outputs are serialized with orjson, which rejects ints outside
+    # the 64-bit range and does not encode Decimal; emit the float such
+    # inputs produced before.
+    if isinstance(value, Decimal):
+        return float(value)
+    out_of_range = isinstance(value, int) and not -(2**63) <= value < 2**64
+    if isinstance(raw, str) and out_of_range:
+        return float(raw.strip())
+    return value
 
 
 class ConditionBlock(Block):
@@ -84,22 +131,16 @@ class ConditionBlock(Block):
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         operator = input_data.operator
 
-        value1 = input_data.value1
-        if isinstance(value1, str):
-            try:
-                value1 = float(value1.strip())
-            except ValueError:
-                value1 = value1.strip()
+        value1 = _normalize_operand(input_data.value1)
+        value2 = _normalize_operand(input_data.value2)
 
-        value2 = input_data.value2
-        if isinstance(value2, str):
-            try:
-                value2 = float(value2.strip())
-            except ValueError:
-                value2 = value2.strip()
-
-        yes_value = input_data.yes_value if input_data.yes_value is not None else value1
-        no_value = input_data.no_value if input_data.no_value is not None else value1
+        passthrough = _passthrough(input_data.value1, value1)
+        yes_value = (
+            input_data.yes_value if input_data.yes_value is not None else passthrough
+        )
+        no_value = (
+            input_data.no_value if input_data.no_value is not None else passthrough
+        )
 
         comparison_funcs = {
             ComparisonOperator.EQUAL: lambda a, b: a == b,
@@ -112,6 +153,10 @@ class ConditionBlock(Block):
 
         try:
             result = comparison_funcs[operator](value1, value2)
+        except InvalidOperation:
+            # A number a float can't hold is kept as a Decimal, and ordering
+            # a Decimal against NaN raises where a float compares False.
+            result = False
         except Exception as e:
             raise ValueError(f"Comparison failed: {e}") from e
 

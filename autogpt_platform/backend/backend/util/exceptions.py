@@ -47,6 +47,11 @@ class MissingConfigError(Exception):
     """The attempted operation requires configuration which is not available"""
 
 
+class CredentialsExpiredError(ValueError):
+    """A stored API key is past its ``expires_at``. A ``ValueError``, so the
+    executor counts it as the user's to fix, like a credential that is gone."""
+
+
 class NotFoundError(ValueError):
     """The requested record was not found, resulting in an error condition"""
 
@@ -410,6 +415,11 @@ class ExpertRunPausedError(ValueError):
 class ConflictError(Exception):
     """The request conflicts with the resource's current state (HTTP 409): a name
     already taken, or a lost race with a concurrent change, which a retry may win."""
+
+
+class ScheduleLimitError(ValueError):
+    """The account already holds the most schedules it may (HTTP 400), so a
+    new one is refused until one is deleted."""
 
 
 class EmailUndeliverableError(ValueError):

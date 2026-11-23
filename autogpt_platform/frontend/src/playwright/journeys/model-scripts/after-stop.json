@@ -1,0 +1,15 @@
+{
+  "description": "The answer to the message the user sends after stopping a turn in copilot-stop-journey.spec.ts. That message carries this script's marker, so the scripted model answers it on this script's first turn whether the platform resumes the stopped conversation or passes it on as text.",
+  "title": "After a Stop",
+  "turns": [
+    {
+      "expect_user_text": "Forget that. Just give me the short version.",
+      "text": "Sure. In short, the garden grew well, fed the whole street and is now resting until spring.",
+      "usage": {
+        "input_tokens": 2700,
+        "output_tokens": 22,
+        "cache_read_input_tokens": 24300
+      }
+    }
+  ]
+}

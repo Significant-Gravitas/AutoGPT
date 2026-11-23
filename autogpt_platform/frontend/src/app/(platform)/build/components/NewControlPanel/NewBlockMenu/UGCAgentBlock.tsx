@@ -1,3 +1,4 @@
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { blockMenuButtonBase } from "./style";
@@ -6,7 +7,6 @@ import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import React, { ButtonHTMLAttributes } from "react";
 import { highlightText } from "./helpers";
-import { formatTimeAgo } from "@/lib/utils/time";
 import { Loading03Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useImageFallback } from "@/hooks/useImageFallback";
@@ -79,7 +79,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
               tone={rest.disabled ? "subtle" : "muted"}
               className="line-clamp-1"
             >
-              Edited {formatTimeAgo(edited_time.toISOString())}
+              Edited <RelativeTime date={edited_time} variant="short" />
             </Text>
           )}
 
