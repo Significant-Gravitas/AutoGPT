@@ -640,6 +640,11 @@ services:
       # directly; tables live in the platform schema (Prisma migrations).
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?run make init-env in autogpt_platform/ to generate it}@db:5432/postgres
       AUTH_DB_SCHEMA: platform
+      # Where this server calls its own login service: the admin pages' session
+      # check, the server-side token mint and impersonation. Behind a proxy that
+      # ends TLS, the address Next gives a request is https on this plain-http
+      # port, and the public URL may not resolve or be trusted in here (#17339).
+      BETTER_AUTH_INTERNAL_URL: http://localhost:3000
       # Node closes an idle keep-alive socket after 5 s (+1 s buffer); a client reusing one right then
       # gets "socket hang up". Keep idle sockets longer than clients and proxies leave them unused.
       KEEP_ALIVE_TIMEOUT: "65000"

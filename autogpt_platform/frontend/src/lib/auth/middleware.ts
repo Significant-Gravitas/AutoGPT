@@ -37,19 +37,27 @@ async function getSessionUserRole(
     // (including this timeout) we fall through to null = "not admin", the safe
     // default. Edge runtime here has no pg access, so this stays an HTTP call
     // rather than the in-process auth API used elsewhere.
-    const response = await fetch(
-      new URL("/api/auth/get-session", request.url),
-      {
-        headers: sessionLookupHeaders(request),
-        signal: AbortSignal.timeout(3000),
-      },
-    );
+    const response = await fetch(sessionLookupURL(request), {
+      headers: sessionLookupHeaders(request),
+      signal: AbortSignal.timeout(3000),
+    });
     if (!response.ok) return null;
     const session = await response.json();
     return session?.user?.role ?? null;
   } catch {
     return null;
   }
+}
+
+// This server's own session endpoint. Behind a proxy that ends TLS, Next
+// builds request.url from its own address but the proxy's X-Forwarded-Proto:
+// https, for a port that serves plain http. BETTER_AUTH_INTERNAL_URL, where
+// set, is the address the server reaches itself at (#17339).
+function sessionLookupURL(request: NextRequest) {
+  return new URL(
+    "/api/auth/get-session",
+    process.env.BETTER_AUTH_INTERNAL_URL || request.url,
+  );
 }
 
 // The signed cookie cache, if it belongs to the request's session. As Better

@@ -2,8 +2,13 @@
 // The browser environment's Response drops Set-Cookie, which carries the
 // cookie cache from the server to the visitor.
 import { createHmac, randomUUID } from "node:crypto";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { toNodeHandler } from "better-auth/node";
+import { http, passthrough } from "msw";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { server as mockServer } from "@/mocks/mock-server";
 import { authMiddleware } from "../middleware";
 
 // The middleware's admin check against the real Better Auth server from
@@ -394,4 +399,80 @@ describe.each([
       });
     },
   );
+});
+
+// The server on a port of its own, over plain http, as Next serves behind a
+// proxy that ends TLS (#17339). There Next builds request.url from its own
+// address and the proxy's X-Forwarded-Proto: https, which that port doesn't
+// speak. The public URL is https, so the cookies carry `__Secure-` names.
+describe("the admin check behind a proxy that ends TLS", () => {
+  let server: AuthServer;
+  let listener: Server;
+  let port: number;
+  let arrived: string[];
+
+  beforeEach(async () => {
+    buildMode.production = true;
+    server = await startAuthServer("https://platform.example.com");
+    arrived = [];
+    const handle = toNodeHandler(server.handler);
+    listener = createServer((request, response) => {
+      arrived.push(request.url ?? "");
+      void handle(request, response);
+    });
+    await new Promise<void>((resolve) =>
+      listener.listen(0, "127.0.0.1", resolve),
+    );
+    port = (listener.address() as AddressInfo).port;
+    // NextRequest names a loopback address `localhost`, as Next does.
+    mockServer.use(
+      ...["http", "https"].flatMap((scheme) =>
+        ["127.0.0.1", "localhost"].map((host) =>
+          http.get(`${scheme}://${host}:${port}/api/auth/get-session`, () =>
+            passthrough(),
+          ),
+        ),
+      ),
+    );
+  });
+
+  afterEach(async () => {
+    listener.closeAllConnections();
+    await new Promise((resolve) => listener.close(resolve));
+    vi.unstubAllEnvs();
+  });
+
+  // Only the session cookie: the five-minute cookie cache has lapsed.
+  function adminPage(sessionCookie: string) {
+    return new NextRequest(`https://localhost:${port}/admin/users`, {
+      headers: { cookie: sessionCookie, "x-forwarded-for": nextIP() },
+    });
+  }
+
+  it("lets an admin through by looking their session up at BETTER_AUTH_INTERNAL_URL", async () => {
+    vi.stubEnv("BETTER_AUTH_INTERNAL_URL", `http://127.0.0.1:${port}`);
+    const admin = await signIn(server, "admin");
+    const request = adminPage(admin.sessionCookie);
+
+    // The request's own address meets a TLS handshake on a plain-http port.
+    await expect(
+      fetch(new URL("/api/auth/get-session", request.url)),
+    ).rejects.toMatchObject({
+      cause: { code: expect.stringMatching(/^ERR_SSL_/) },
+    });
+    const response = await authMiddleware(request);
+
+    expect(redirectPath(response)).toBeNull();
+    expect(arrived).toEqual(["/api/auth/get-session"]);
+  });
+
+  it("sends a non-admin Home", async () => {
+    vi.stubEnv("BETTER_AUTH_INTERNAL_URL", `http://127.0.0.1:${port}`);
+    const member = await signIn(server, "user");
+
+    const response = await authMiddleware(adminPage(member.sessionCookie));
+
+    expect(redirectPath(response)).toBe("/");
+    expect(arrived).toEqual(["/api/auth/get-session"]);
+  });
 });
