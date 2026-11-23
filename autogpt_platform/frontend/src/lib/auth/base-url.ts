@@ -8,6 +8,10 @@ export function getAuthBaseURL(): string {
   );
 }
 
+// The prefix of Better Auth's cookie names. auth.ts sets it, and the
+// middleware builds the session cookie's and its cache's names from it.
+export const AUTH_COOKIE_PREFIX = "better-auth";
+
 // Whether Better Auth's cookies are Secure, which also prefixes their names
 // with `__Secure-`: only over https, as a browser drops a Secure cookie that
 // reaches it over plain http.

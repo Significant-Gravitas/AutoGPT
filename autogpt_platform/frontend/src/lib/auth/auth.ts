@@ -20,7 +20,11 @@ import { PostgresDialect } from "kysely";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
 import { authDbPool } from "./auth-db-pool";
 import { assertNotBannedAddress } from "./ban-record";
-import { getAuthBaseURL, usesSecureCookies } from "./base-url";
+import {
+  AUTH_COOKIE_PREFIX,
+  getAuthBaseURL,
+  usesSecureCookies,
+} from "./base-url";
 import { getTrustedClientIP, trustedProxies } from "./client-ip";
 import { DISABLED_AUTH_PATHS } from "./disabled-paths";
 import { IP_ADDRESS_HEADERS } from "./ip-address-headers";
@@ -390,8 +394,9 @@ export const auth = betterAuth({
     },
   },
   advanced: {
-    // Better Auth's own choice, made explicit: the middleware looks the
-    // session cookie cache up under the name this gives it.
+    // Better Auth's own choices, made explicit: the middleware looks the
+    // session cookie and its cache up under the names these give them.
+    cookiePrefix: AUTH_COOKIE_PREFIX,
     useSecureCookies: usesSecureCookies(baseURL),
     // Behind a proxy chain the client IP is only resolvable from the hops the
     // operator lists; without them every such caller shares one rate-limit bucket.

@@ -193,8 +193,8 @@ describe.each([
     vi.restoreAllMocks();
   });
 
-  // Both take the same path now; they differ only on the old cookie name,
-  // which followed the build mode, so they guard against going back to it.
+  // Better Auth's default cookie name follows the build mode; the
+  // middleware's must follow the base URL in both.
   it.each(["production", "development"])(
     "lets an admin through on their own session's cookie cache, with no session lookup, in a %s build",
     async (mode) => {
@@ -271,6 +271,17 @@ describe.each([
       session: "the cached session's token signed with another secret",
       cookie: (server, cachedToken) =>
         sessionCookie(server, cachedToken, OTHER_SECRET),
+    },
+    {
+      // Well formed and signed with the right secret, but over another
+      // token, so the signature comparison itself refuses it.
+      session: "the cached session's token with another token's signature",
+      cookie: (server, cachedToken) => {
+        const signature = createHmac("sha256", SECRET)
+          .update(`${cachedToken}-other`)
+          .digest("base64");
+        return `${server.sessionCookieName}=${encodeURIComponent(`${cachedToken}.${signature}`)}`;
+      },
     },
   ])("refuses a cookie cache alongside $session", async ({ cookie }) => {
     const admin = await signIn(server, "admin");

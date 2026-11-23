@@ -20,8 +20,11 @@ function adminPages() {
     .sort();
 }
 
+// A page's code without its comments, so a mention in one doesn't count.
 function source(page: string) {
-  return readFileSync(path.join(ADMIN_DIR, page), "utf8");
+  return readFileSync(path.join(ADMIN_DIR, page), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
 
 describe("admin pages", () => {

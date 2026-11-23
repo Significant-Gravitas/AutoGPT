@@ -6,7 +6,7 @@ import {
 } from "better-auth/cookies";
 import { constantTimeEqual, makeSignature } from "better-auth/crypto";
 import { NextResponse, type NextRequest } from "next/server";
-import { usesSecureCookies } from "./base-url";
+import { AUTH_COOKIE_PREFIX, usesSecureCookies } from "./base-url";
 import { IP_ADDRESS_HEADERS } from "./ip-address-headers";
 import { isAdminPage, isProtectedPage } from "./helpers";
 import { canConsumeLegacyCookies } from "./legacy-cookies";
@@ -64,7 +64,11 @@ async function getOwnCookieCache(request: NextRequest) {
   const isSecure = usesSecureCookies();
   const token = await getSignedSessionToken({ request, secret, isSecure });
   if (!token) return null;
-  const cached = await getCookieCache(request, { secret, isSecure });
+  const cached = await getCookieCache(request, {
+    secret,
+    isSecure,
+    cookiePrefix: AUTH_COOKIE_PREFIX,
+  });
   return cached?.session.token === token ? cached : null;
 }
 
@@ -82,7 +86,7 @@ async function getSignedSessionToken({
   secret,
   isSecure,
 }: SignedCookieArgs) {
-  const name = `${isSecure ? SECURE_COOKIE_PREFIX : ""}better-auth.session_token`;
+  const name = `${isSecure ? SECURE_COOKIE_PREFIX : ""}${AUTH_COOKIE_PREFIX}.session_token`;
   const value = parseCookies(request.headers.get("cookie") ?? "").get(name);
   const separator = value?.lastIndexOf(".") ?? -1;
   if (!value || separator < 1) return null;
@@ -123,7 +127,9 @@ export async function authMiddleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const sessionCookie = getSessionCookie(request);
+  const sessionCookie = getSessionCookie(request, {
+    cookiePrefix: AUTH_COOKIE_PREFIX,
+  });
 
   // A logged-in Supabase user from before the auth migration: upgrade their
   // legacy session into a Better Auth session. The bridge endpoint clears the
