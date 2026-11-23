@@ -319,6 +319,41 @@ test.describe("route crawl journey", () => {
     await expectAllClean(await crawl(crawlEnv, visits));
   });
 
+  // How long ago something happened reads the same in the server's HTML and
+  // in the browser hydrating it, whatever the visitor's clock says (#17309,
+  // #17310): these pages show an age and open with the browser's clock ahead
+  // of the server's, which changes what any age reads.
+  test("the admin Marketplace page loads with the admin's clock ahead of the server's", async ({
+    crawlEnv,
+    page,
+    asAdmin,
+  }) => {
+    const noAdmin = adminGrantUnavailable();
+    test.skip(Boolean(noAdmin), noAdmin || undefined);
+    const admin = await asAdmin();
+    // Submitted moments ago, so its age changes within the five minutes.
+    const listing = await submitAListing(page);
+    await expectAllClean(
+      await crawl(crawlEnv, [
+        planVisit("/admin/marketplace", admin, {
+          path: `/admin/marketplace?search=${encodeURIComponent(listing.title)}`,
+          shows: listing.title,
+          clockAheadMs: 5 * 60_000,
+        }),
+      ]),
+    );
+  });
+
+  for (const which of ["agent", "skill"] as const) {
+    test(`a Marketplace ${which} page loads with the visitor's clock days ahead of the server's`, async ({
+      crawlEnv,
+      page,
+    }) => {
+      const sample = (await sampleMarketplace(page))[which];
+      await expectAllClean(await visitAsVisitor(crawlEnv, sample, 2 * DAY_MS));
+    });
+  }
+
   // A skill names the MCP service it needs by the catalog entry's name, and
   // its page shows that service's logo, which public/ has (#17313).
   test("a skill whose first service is an MCP server loads with that service's logo", async ({
@@ -414,28 +449,7 @@ function reproductionKey({ route, issue }: KnownBug) {
 const REPRODUCTIONS: Record<
   string,
   (fixtures: PinFixtures) => Promise<VisitResult[]>
-> = {
-  // A submission's age is worked out on the server and again in the
-  // browser. With the browser's clock ahead, one submitted moments ago reads
-  // differently in each, every time.
-  "/admin/marketplace #17309": async ({ crawlEnv, page, asAdmin }) => {
-    const admin = await asAdmin();
-    const listing = await submitAListing(page);
-    return crawl(crawlEnv, [
-      planVisit("/admin/marketplace", admin, {
-        path: `/admin/marketplace?search=${encodeURIComponent(listing.title)}`,
-        shows: listing.title,
-        clockAheadMs: 5 * 60_000,
-      }),
-    ]);
-  },
-  // The same for "Last updated" and "Updated". Two days ahead changes what
-  // any age reads.
-  "/marketplace/agent/[creator]/[slug] #17310": async ({ crawlEnv, page }) =>
-    visitAsVisitor(crawlEnv, (await sampleMarketplace(page)).agent, 2 * DAY_MS),
-  "/marketplace/skills/[slug] #17310": async ({ crawlEnv, page }) =>
-    visitAsVisitor(crawlEnv, (await sampleMarketplace(page)).skill, 2 * DAY_MS),
-};
+> = {};
 
 /** The Marketplace's `sample`, opened signed out, the browser's clock
  *  `clockAheadMs` ahead of the server's. */
