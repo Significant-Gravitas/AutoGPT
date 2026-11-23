@@ -6,6 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { Toaster } from "@/components/molecules/Toast/toaster";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CopilotChatActionsContext } from "../../CopilotChatActionsProvider/useCopilotChatActions";
 import {
@@ -245,6 +246,31 @@ describe("SuggestedGoalCard", () => {
     const message =
       "Please create a workflow with this goal: Summarize weekly sales";
     expect(onSend.mock.calls).toEqual([[message], [message]]);
+  });
+
+  it("shows paywall recovery copy when sending requires an active plan", async () => {
+    const onSend = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError("Payment required", 402, {}));
+    render(
+      <CopilotChatActionsContext.Provider
+        value={{ onSend, chatSurface: "copilot" }}
+      >
+        <SuggestedGoalCard
+          output={{ suggested_goal: "Summarize weekly sales" }}
+        />
+        <Toaster />
+      </CopilotChatActionsContext.Provider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Use this goal" }));
+
+    expect(
+      await screen.findByText("Sending needs an active plan"),
+    ).toBeDefined();
+    expect(
+      screen.getByText(/the suggested goal is still on the card/i),
+    ).toBeDefined();
   });
 
   it("renders nothing without a goal", () => {

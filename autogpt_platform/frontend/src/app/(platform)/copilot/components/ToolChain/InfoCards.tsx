@@ -240,6 +240,8 @@ export function SuggestedGoalCard({ output }: OutputProps) {
     try {
       await actions.onSend(`Please create a workflow with this goal: ${goal}`);
     } catch (error) {
+      // `onSend` may have already updated the chat before rejecting, so ask
+      // the user to check the chat before sending the same goal again.
       toastSendFailure({
         title: "Couldn't send message",
         error,
