@@ -8,7 +8,6 @@ import { useQueryClient } from "@tanstack/react-query";
 export function useScheduleDetailHeader(
   agentGraphId: string,
   scheduleId?: string,
-  agentGraphVersion?: number | string,
 ) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -33,11 +32,8 @@ export function useScheduleDetailHeader(
     deleteMutation.mutate({ scheduleId });
   }
 
-  const openInBuilderHref = `/build?flowID=${agentGraphId}&flowVersion=${agentGraphVersion}`;
-
   return {
     deleteSchedule,
     isDeleting: deleteMutation.isPending,
-    openInBuilderHref,
   } as const;
 }

@@ -6,6 +6,7 @@ import { CircleAlertGlyph } from "@/components/atoms/Icon/drawnIcons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { reloadForChunkLoadError } from "@/lib/chunk-load-reload";
+import * as Sentry from "@sentry/nextjs";
 import Link from "next/link";
 
 export default function Error({
@@ -16,7 +17,10 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error(error);
+    // Tagged, so the transient-failure filter keeps it: the user saw this page.
+    Sentry.captureException(error, {
+      tags: { errorBoundary: "true", context: "error-page" },
+    });
     reloadForChunkLoadError(error, "error_boundary");
   }, [error]);
 

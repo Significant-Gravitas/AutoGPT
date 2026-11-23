@@ -1,26 +1,30 @@
+import type { OrgResponse } from "@/app/api/__generated__/models/orgResponse";
 import { useOrgTeamStore } from "@/services/org-team/store";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { AccountMenuOrgList } from "../AccountMenuOrgList";
 
-const PERSONAL_ORG = {
+const PERSONAL_ORG: OrgResponse = {
   id: "org-personal",
   name: "Jane's Org",
   slug: "jane",
-  avatarUrl: null,
-  isPersonal: true,
-  memberCount: 1,
+  avatar_url: null,
+  description: null,
+  is_personal: true,
+  member_count: 1,
+  created_at: new Date("2026-01-05T00:00:00Z"),
 };
 
-const COMPANY_ORG = {
+const COMPANY_ORG: OrgResponse = {
+  ...PERSONAL_ORG,
   id: "org-company",
   name: "Acme Inc",
   slug: "acme",
-  avatarUrl: null,
-  isPersonal: false,
-  memberCount: 12,
+  avatar_url: "https://example.com/acme.png",
+  is_personal: false,
+  member_count: 12,
 };
 
 const DEFAULT_TEAM = {
@@ -74,6 +78,19 @@ describe("AccountMenuOrgList", () => {
     expect(screen.getByText(PERSONAL_ORG.name)).toBeDefined();
     expect(screen.getByText(COMPANY_ORG.name)).toBeDefined();
     expect(screen.getByText("Personal")).toBeDefined();
+  });
+
+  it("shows each org's avatar", async () => {
+    seedStore();
+
+    render(<AccountMenuOrgList />);
+
+    const companyRow = screen.getByText(COMPANY_ORG.name).closest("button");
+    await waitFor(() => {
+      expect(companyRow?.querySelector("img")?.getAttribute("src")).toBe(
+        COMPANY_ORG.avatar_url,
+      );
+    });
   });
 
   it("lists teams with a Private badge and a manage-teams link", () => {

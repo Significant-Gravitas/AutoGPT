@@ -5,6 +5,8 @@ pipeline (engine, tool routing and execution, persistence, streaming and
 resume, cost accounting) while this server plays the model, turn by turn, from
 a script. `CHAT_TEST_MODE`'s canned reply skips all of that.
 
+It is also the journeys stack's Stripe: see [Fake Stripe](#fake-stripe).
+
 It only runs where `docker-compose.journeys.yml` is added: CI's journeys leg
 and local test stacks. Self-hosted and hosted deployments never start it.
 
@@ -60,6 +62,15 @@ script to know what to expect.
 }
 ```
 
+- **A turn the platform sends itself**, such as an expert's kickoff, has no
+  message the journey can type a marker into. When no user message holds
+  one, the marker is looked for in the system prompt, so a journey puts it in
+  text the user sets that the system prompt carries: an expert's writing
+  sample (`<voice_preferences>`). A marker in a user message still wins.
+  The sample stays in that expert's system prompt, so every later request
+  of that hire with no marker of its own goes to the same script, a turn the
+  platform starts later included. Give such a turn its own marker in a user
+  message, or expect it to run past the script's end.
 - **Which turn answers a request:** turn `n` answers the request whose
   conversation already holds `n` assistant messages. Requests carry the whole
   conversation, so the server keeps no state: concurrent runs of one script,
@@ -74,11 +85,29 @@ script to know what to expect.
   and `create_agent` needs the building guide read first
   (`{"id": "skill:agent_building_guide"}`). See
   `model-scripts/build-doubler-agent.json`.
+- **An argument read from a tool's result:** a model passes on an id it read
+  from what a tool returned (`list_schedules`, then `pause_schedule`). In a
+  tool call's input, write
+  `{"$from_tool_result": {"tool": "run_capability", "pattern": "\"schedule_id\": \"([^\"]+)\""}}`
+  in place of the value: it becomes the pattern's first group in that
+  tool's results the request sends back, which are only the last turn's:
+  of several calls to the tool in that turn, the last one with a match
+  whose first group took part (an optional group can match empty-handed).
+  An earlier turn's result is never read. No match fails the turn, naming
+  the results it saw.
 - **Checks** are logged, and a journey asserts on them through the journal:
   `expect_tool_results` against the tool results the platform sends back,
   `expect_user_text` against what the user said since the last answer.
 - **Streaming:** text goes out `chunk_words` words at a time, `delay_ms`
-  apart. Slow it down to give a journey time to cut the connection.
+  apart.
+- **Holding a reply open:** with `"hold_after_words": n` in `stream`, the
+  reply stops after `n` words until the journey releases its run with
+  `POST /__scripted__/release?nonce=<nonce>` (`releaseHeldReply` in
+  `scripted-model.ts`), for example once it has cut the connection. The script
+  needs a marker with a nonce. Each release lets one held reply through: one
+  sent early lets the reply straight through, and a second held reply in the
+  same run waits for a second release. A reply nobody releases finishes after
+  two minutes and fails its journal check.
 
 A request the script can't answer fails the turn with a 400 that says why:
 no marker, an unknown script, a turn past the script's end (an extra tool
@@ -118,6 +147,71 @@ there with their reason. Unfiltered reads also include memory side calls and
 unexpected requests; memory calls deliberately have no script or nonce, usage,
 or billed cost. The container log has one line per request.
 
+Each entry also names the API key the request presented (`x-api-key`, or a
+bearer token) as `credential`: the first 16 hex digits of its SHA-256, never
+the key itself. `?credential=<fingerprint>` lists the requests made with one
+key. The journeys stack points Anthropic clients at this server
+(`ANTHROPIC_BASE_URL`), so an AI block run with a key the journey's user saved
+lands here too, and a journey can check the block ran once, with that key.
+
+## Fake Stripe
+
+The hosted configuration (`.github/scripts/hosted_journeys_env.py`) points
+the backend's Stripe SDK here (`STRIPE_API_BASE=http://scripted_model:4010/stripe`,
+a `sk_test_` key and a webhook secret), so a journey buys credits through
+checkout and webhooks without a Stripe account. Objects live in memory for
+the stack's lifetime, so ids stay the same across create, retrieve and list:
+the backend reads Stripe back often.
+
+| Platform call | What the fake does |
+| --- | --- |
+| `Customer.create` (its idempotency key too), `retrieve`, `modify`, `list` | keeps customers |
+| `checkout.Session.create`, `retrieve` (with `expand`), `list`, `expire` | keeps sessions; a session's `url` is the fake's checkout page |
+| `PaymentIntent.retrieve`, `PaymentMethod.list` | the payment a checkout took, and the card it saved |
+| `Subscription.list`/`retrieve`, `Invoice.list`/`retrieve`, `Price.retrieve` | answers from what it holds: no plans or invoices yet |
+| `billing_portal.Session.create` | a page on the fake that links back |
+
+Anything else gets Stripe's 404 for an unknown URL and is listed at
+`GET /__stripe__/requests?unserved=true&after=<n>`. That list is never
+trimmed. A journey reads `GET /__stripe__/requests/cursor` when it starts and
+checks that nothing after that is unserved. A request needs a test key
+(`sk_test_…`); a live key is refused. As Stripe does, the fake refuses an
+inline price (`price_data`) without a product (`product` or `product_data`)
+or an amount (`unit_amount` or `unit_amount_decimal`), and keeps no result
+under an idempotency key for a request it refused. It totals a line as
+Stripe does: the unit price times the quantity, rounded up to a whole minor
+unit.
+
+**Checkout.** A session's `url` is
+`$FAKE_STRIPE_PUBLIC_URL/stripe/checkout/<id>` (the host port, for the
+browser). **Pay** completes a payment-mode session the way a card that needs
+no extra step does: a payment intent, the card saved to the customer when the
+session asked to keep it, the session `complete` and `paid`. When both
+`FAKE_STRIPE_WEBHOOK_URL` and `FAKE_STRIPE_WEBHOOK_SECRET` are set, the fake
+then POSTs `checkout.session.completed` to that URL, signed with that secret
+as Stripe signs (`Stripe-Signature: t=<ts>,v1=<HMAC-SHA256 of
+"<ts>.<payload>">`), and only then redirects to `success_url`. So unless a
+journey held it, the platform has the webhook by the time the user is back.
+If either is unset, nothing is sent: each delivery is recorded as failed
+("no webhook endpoint").
+**Cancel** links to `cancel_url`. Subscription
+checkout isn't modelled: the platform reads plan prices from a PostHog JSON
+flag (`copilot-tier-stripe-prices`) that the journeys stack can't set.
+
+**Webhook controls** (`frontend/src/playwright/journeys/fake-stripe.ts` wraps
+them):
+
+- `POST /__stripe__/hold?object=<id>`: keep the events the object's changes
+  raise (paying for a session) until the journey delivers them, as when the
+  webhook reaches the platform after the user is back.
+- `GET /__stripe__/events?object=<id>`: the events about an object, each with
+  every delivery and the platform's status and body.
+- `POST /__stripe__/events/<event id>/deliver`: send an event again, as Stripe
+  retries one (same id and body, new signature), or a held one at last.
+- `POST /__stripe__/events` with `{"type": ..., "object": "<id>"}`: a new
+  event about the object as it is now, e.g.
+  `checkout.session.async_payment_succeeded` for a paid session.
+
 ## Run it
 
 With the stack, add the override file:
@@ -134,6 +228,10 @@ cd autogpt_platform/scripted_model
 SCRIPTED_MODEL_SCRIPTS_DIR=../frontend/src/playwright/journeys/model-scripts \
   SCRIPTED_MODEL_PORT=4010 python -m scripted_model
 ```
+
+The fake Stripe sends webhooks only when `FAKE_STRIPE_WEBHOOK_URL` and
+`FAKE_STRIPE_WEBHOOK_SECRET` are set; `FAKE_STRIPE_PUBLIC_URL` (default
+`http://localhost:4010`) is where the browser reaches its pages.
 
 Tests, with the backend's environment (they use the real `anthropic` and
 `openai` clients):

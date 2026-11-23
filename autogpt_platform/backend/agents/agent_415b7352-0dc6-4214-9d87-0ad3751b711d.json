@@ -1769,7 +1769,7 @@
           "id": "9b870197-d821-4397-8ac5-58a5b140a8b4",
           "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
           "input_default": {
-            "model": "claude-sonnet-4-20250514",
+            "model": "claude-sonnet-4-6",
             "retry": 3,
             "prompt": "You are tasked with creating an executive preparation brief for The User (\"{{user_email | safe}}\") regarding an upcoming meeting. This email should provide an overview of the key individuals attending the meeting, highlighting their relevant experience, current roles, and any significant achievements or areas of expertise, along with reminding The User of any prior relationship they have with the attendees and briefing them on key information that you think they should know.\n\nHere is the attendee information:\n\n<attendee_info>\n{{ATTENDEE_INFO}}\n</attendee_info>\n\nAnalyze the provided information carefully. Focus on extracting the most relevant and current details about each attendee. Pay particular attention to information that you think it is important for The User to know before this meetiing.\n\nStructure your executive briefing as follows:\n0. Do not include a subject or title, you are providing the email body only.\n1. A brief introduction stating the purpose of the briefing\n2. For each attendee:\n   a. Name and current position\n   b. Brief professional background\n   c. Key achievements or contributions in their field\n   d. Any recent notable activities or publications\n   e. Areas of expertise relevant to the meeting\n   f. Relationship notes and important relevant reminders/info.\n3. A concise conclusion highlighting the collective expertise of the attendees\n\nInclude the following content in your briefing:\n- Current roles and responsibilities\n- Significant past positions or experiences\n- Major contributions to their field\n- Recent publications or projects\n- Awards or recognition\n- Areas of specialization or expert knowledge\n\nFormat your briefing in a clear, professional manner, using plaintext only (no markdown). Use bullet points or short paragraphs for easy, quick readability. Ensure that the information is presented in a logical order, typically starting with the most important or relevant details.\n\nRemember to focus on the most pertinent information for the meeting context. Maintain a professional tone throughout the briefing, avoiding personal opinions or unnecessary details. Keep it short and dense in genuine value for the receiver.\n\nProvide your final executive briefing within <executive_briefing> tags. Your output should consist of only the executive briefing; do not include any additional commentary or notes.\n\nFormat only in plaintext as the result will be sent as an email body which doesn't support any formatting languages.\n\nIMPORTANT NOTE: If ALL attendees are internal, skip everything and instead respond with: <internal_meeting>All attendees are internal, no prep required.</internal_meeting>",
             "sys_prompt": "",
@@ -2776,7 +2776,7 @@
           "id": "87e23432-e584-4418-ad9a-a42dafd72f28",
           "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
           "input_default": {
-            "model": "claude-sonnet-4-20250514",
+            "model": "claude-sonnet-4-6",
             "retry": 3,
             "prompt": "Make this into a high-quality html email report. \n\nThe user made the following design style request:\n```\n{{design | safe}}\n```\nDo not mention or reference this style design request in the rendered html report.\n\n\nHere is the report. do not change any of it's written content, your job is just to present it exactly as written:\n```\n{{report | safe}}\n```\n\nDo not include any functional buttons, animations, or any elements that would be non functional or out of place in a static offline report.\n\nRespond with just the html, no additional commentary or decoration. No code blocks, just the html.\n",
             "sys_prompt": "",
@@ -3397,7 +3397,7 @@
           "id": "e007dd2d-6b22-42d6-b1d7-f955017e0830",
           "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
           "input_default": {
-            "model": "gpt-5-2025-08-07",
+            "model": "gpt-6.1-sol",
             "retry": 3,
             "prompt": "Identify the owner of \"{{target_email | safe}}\" from the following data. \n\nProvide their full name and any additional information that can be gleaned about their identity from the data (i.e role, company, skills/characteristics, accounts/online profile links etc). \n\nDo not make any assumptions when doing this, provide only what you can verify. \n\nIf there are any meeting notes or written emails present, use them to provide notes on the relationship between me (\"{{user_email | safe}}\") and \"{{target_email | safe}}\", and to remind me of things that it would be beneficial for me to remember regarding them and things they've told me.\n\n<raw_gmail_search_data>\n{{RAW_DATA | safe}}\n</raw_gmail_search_data>",
             "ollama_host": "localhost:11434",
@@ -3576,7 +3576,7 @@
           "id": "f26280fe-3296-4ce6-83ab-3c5213a43716",
           "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
           "input_default": {
-            "model": "gpt-5-2025-08-07",
+            "model": "gpt-6.1-sol",
             "retry": 3,
             "prompt": "You are a brilliant prompt-writer. \nYour job is to WRITE a Deep Research prompt for Perplexity\u2019s Deep Research Agent in order to identify the owner of \"email\" that will only produce a dossier if identity is verified to a high bar.\n\nWHAT WE KNOW SO FAR (FROM THE USER'S INBOX)\n<email_research_results>\n{{research | safe}}\n</email_research_results>\n\nGOAL\nFrom the research above, extract {{target_email | safe}}'s identity, then GENERATE a ready-to-send Perplexity request that:\n1) Forces identity confirmation first (no guessing; return AMBIGUOUS if unsure).\n2) Avoids revealing or using private emails/meeting links in the public search.\n3) Pins the search to the correct human (disambiguates homonyms).\n4) If verified, finds out as much VERIFIABLY accurate information about the person as possible.\n\nDO NOT do any web research yourself. Only WRITE the Perplexity request.\n\nDISAMBIGUATION HEURISTICS (for the request you write)\nHave Perplexity accept a candidate ONLY if \u22652 of:\n1) The public profile is clearly software/AI/engineering related (exclude unrelated homonyms like musicians unless they ALSO meet #2).  \n2) Signals of agents/LLMs/dev tooling/startups or affiliation with a named org you infer from public sources.  \n3) Geography consistent with hints (time zone/region) \u2014 weak alone; must pair with #1 or #2.  \n4) Cross-source agreement across \u22652 reputable, independent sources (e.g., LinkedIn + GitHub, company site + conf bio).\n\nWHAT TO OUTPUT (Prompt ONLY, no prose, no markdown)\n- A single set of <prompt>...</prompt> xml tags containing your given prompt text for the deep research request.\n- DO NOT include any xml tags inside of these <prompt>...</prompt> tags. Any additional use of <tags> whatsoever will break the xml parsing setup.",
             "ollama_host": "localhost:11434",
@@ -3876,7 +3876,7 @@
           "id": "8101e732-9400-42b6-84c1-235dfcc7274c",
           "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
           "input_default": {
-            "model": "gpt-5-2025-08-07",
+            "model": "gpt-6.1-sol",
             "retry": 3,
             "prompt": "Analyse the relationship between The User (\"{{user_email | safe}}\") and the owner of \"{{target_email | safe}}\" from the following data. \n\nDo not make any assumptions when doing this, provide only what you can verify. \n\nIf there are any meeting notes or written emails present, use them to provide notes on the relationship between The User (\"{{user_email | safe}}\") and \"{{target_email | safe}}\", and to remind The User of things that it would be beneficial for them to remember regarding \"{{target_email | safe}}\" and things they've previously discussed, asked of them or informed them of.\n\nEven things like \"Last time you spoke (date), Joe said he was going on holiday to Italy on holiday_date, you could ask him how his trip was.\" are Beneficial.\n\n<raw_gmail_search_data>\n{{RAW_DATA | safe}}\n</raw_gmail_search_data>",
             "ollama_host": "localhost:11434",

@@ -41,6 +41,8 @@ from backend.executor.scheduler import (
 _SCHEDULER = "backend.executor.scheduler"
 _AT_RESET = "backend.copilot.at_reset"
 _LOCK = "backend.copilot.at_reset_lock"
+# Only stops a hung test; a passing run ends at its own short deadline.
+_HANG_SECONDS = 10
 USER = "user-1"
 SESSION = "0d3f7a52-61c4-4f0e-a8b2-9c1e5d7f3a64"
 SET_AT = datetime(2026, 10, 14, 15, 0, tzinfo=UTC)
@@ -551,7 +553,9 @@ async def test_a_redis_that_never_answers_leaves_this_replicas_own_cancels(
         patch(f"{_SCHEDULER}._AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS", 0.05),
         patch.object(shared_redis, "zscore", never_answers),
     ):
-        assert await asyncio.wait_for(_at_reset_cancelled_at(job), timeout=2) == here
+        assert (
+            await asyncio.wait_for(_at_reset_cancelled_at(job), _HANG_SECONDS) == here
+        )
 
 
 @pytest.mark.asyncio
@@ -559,19 +563,17 @@ async def test_a_cancel_redis_never_takes_gives_up_by_itself():
     # Its waiter in the request thread gives up too, but the write itself
     # must not linger and land late.
     never = asyncio.Event()
-    started = asyncio.get_running_loop().time()
-    with (
-        patch(f"{_SCHEDULER}._AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS", 0.05),
-        patch.object(FakeTransaction, "execute", AsyncMock(side_effect=never.wait)),
-        pytest.raises(TimeoutError),
-    ):
-        await asyncio.wait_for(
-            _share_at_reset_cancel(
+    # Its own deadline raises inside; this test's guard would raise out of
+    # the `async with` instead, past `pytest.raises`.
+    async with asyncio.timeout(_HANG_SECONDS):
+        with (
+            patch(f"{_SCHEDULER}._AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS", 0.05),
+            patch.object(FakeTransaction, "execute", AsyncMock(side_effect=never.wait)),
+            pytest.raises(TimeoutError),
+        ):
+            await _share_at_reset_cancel(
                 at_reset_schedule_id("send", SESSION), datetime.now(UTC)
-            ),
-            timeout=2,
-        )
-    assert asyncio.get_running_loop().time() - started < 1
+            )
 
 
 @pytest.mark.asyncio

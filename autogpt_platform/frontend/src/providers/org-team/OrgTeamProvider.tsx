@@ -1,6 +1,11 @@
 "use client";
 
+import { getV2ListUserOrganizations } from "@/app/api/__generated__/endpoints/orgs/orgs";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import {
+  selectIsSessionUnknown,
+  useAuthStore,
+} from "@/lib/auth/hooks/useAuthStore";
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useEffect, useRef } from "react";
@@ -14,13 +19,15 @@ interface Props {
  *
  * On mount (when logged in):
  * 1. Fetches the user's org list from GET /api/orgs
- * 2. If no activeOrgID is stored, sets the personal org as default
+ * 2. If no activeOrgID is stored, or the stored one isn't among them, sets
+ *    the personal org as default
  * 3. Fetches teams for the active org
  *
  * On org/team switch: clears React Query cache to force refetch.
  */
 export default function OrgTeamProvider({ children }: Props) {
   const { isLoggedIn, user, isUserLoading } = useAuth();
+  const isSessionUnknown = useAuthStore(selectIsSessionUnknown);
   const { activeOrgID, setActiveOrg, setOrgs, setLoaded, clearContext } =
     useOrgTeamStore();
 
@@ -37,33 +44,29 @@ export default function OrgTeamProvider({ children }: Props) {
     }
 
     if (!isLoggedIn || !user) {
-      clearContext();
+      // Only a session known to be gone drops the stored org and team. One
+      // nobody could check keeps them for when a retry finds the user.
+      if (!isSessionUnknown) clearContext();
       return;
     }
 
     async function loadOrgs() {
       try {
-        const res = await fetch("/api/proxy/api/orgs", {
-          headers: { "Content-Type": "application/json" },
-        });
-        if (!res.ok) {
+        const response = await getV2ListUserOrganizations();
+        if (response.status !== 200) {
           setLoaded(true);
           return;
         }
-        const data = await res.json();
-        const orgs = data.data || data;
+        const orgs = response.data;
         setOrgs(orgs);
 
-        // If no active org, set the personal org as default
-        if (!activeOrgID && orgs.length > 0) {
-          const personal = orgs.find(
-            (o: { isPersonal: boolean }) => o.isPersonal,
-          );
-          if (personal) {
-            setActiveOrg(personal.id);
-          } else {
-            setActiveOrg(orgs[0].id);
-          }
+        // No active org, or one this user isn't in (left by an earlier session
+        // on this browser): fall back to the personal org, else the first,
+        // which clears the team. Only a list fetched successfully says so, and
+        // an empty one has no org to fall back to.
+        const fallbackID = (orgs.find((o) => o.is_personal) ?? orgs.at(0))?.id;
+        if (fallbackID && !orgs.some((o) => o.id === activeOrgID)) {
+          setActiveOrg(fallbackID);
         }
 
         setLoaded(true);
@@ -73,7 +76,7 @@ export default function OrgTeamProvider({ children }: Props) {
     }
 
     loadOrgs();
-  }, [isLoggedIn, user, isUserLoading]);
+  }, [isLoggedIn, user, isUserLoading, isSessionUnknown]);
 
   // Drop org-scoped data when the org switches. resetQueries (NOT
   // clear) — clear() removes queries without notifying mounted

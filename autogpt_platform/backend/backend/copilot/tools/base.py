@@ -5,8 +5,10 @@ import logging
 from collections import deque
 from typing import TYPE_CHECKING, Any, Literal, Sequence
 
+import sentry_sdk
 from openai.types.chat import ChatCompletionToolParam
 from prisma.enums import APIKeyPermission
+from prisma.errors import ClientNotConnectedError
 
 from backend.copilot.ai_spans import mark_tool_failed, mark_tool_raised, tool_span
 from backend.copilot.context import args_already_bound, get_current_envelope
@@ -620,8 +622,10 @@ class BaseTool:
                 toolName=self.name,
                 output=ErrorResponse(
                     message=(
-                        f"{self.name} is not available in this delegated turn. "
-                        "If the task needs it, say so in your report instead."
+                        f"{self.name} is not available in this delegated turn, "
+                        "so the call did not run and nothing was created or "
+                        "changed. Say so in your report, and never report that "
+                        "it happened."
                     ),
                     session_id=session.session_id,
                 ).model_dump_json(),
@@ -735,6 +739,14 @@ class BaseTool:
                 remember_google_output(output.output)
         except Exception as e:
             logger.warning("Error in %s", self.name, exc_info=True)
+            # A tool that queried Prisma directly instead of over RPC is a bug
+            # in the tool, not a failed call, so it is reported as an error. A
+            # message, not the exception: its frames hold the tool's arguments.
+            if isinstance(e, ClientNotConnectedError):
+                sentry_sdk.capture_message(
+                    f"{self.name} queried Prisma without a connection",
+                    level="error",
+                )
             tracing.set_status("internal_error")
             mark_tool_raised(e)
             full = ErrorResponse(

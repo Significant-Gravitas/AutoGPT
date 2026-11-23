@@ -484,6 +484,11 @@ model UserOnboarding {
   completedSteps                String[]  @default([])
   wizardProgress                Json?
   wizardRevision                Int       @default(0)
+  // The wizard tab that saved the current revision, and that save's number in
+  // the tab, so a tab's own save that lands late can't refuse its next one
+  // (backend/data/onboarding.py).
+  wizardWriterId                String?
+  wizardWriteSeq                Int?
   walletShown                   Boolean   @default(false)
   notified                      String[]  @default([])
   rewardedFor                   String[]  @default([])

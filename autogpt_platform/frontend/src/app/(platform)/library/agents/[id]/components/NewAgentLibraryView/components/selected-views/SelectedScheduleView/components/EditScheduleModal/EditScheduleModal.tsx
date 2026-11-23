@@ -11,6 +11,7 @@ import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecu
 import { useEditScheduleModal } from "./useEditScheduleModal";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 
 type Props = {
   graphId: string;
@@ -107,6 +108,7 @@ export function EditScheduleModal({
                 onChange={(e) => setTime(e.target.value.trim())}
                 placeholder="00:00"
                 error={errors.time}
+                hint={`Time in ${getTimezoneDisplayName(schedule.timezone || "UTC")}`}
               />
             </>
           ) : (

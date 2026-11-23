@@ -9,6 +9,13 @@ Turn ``n`` answers the model request whose conversation already holds ``n``
 assistant messages. Every request carries the whole conversation, so this
 needs no state: concurrent runs of one script, a platform retry and a resumed
 session all land on the right turn.
+
+A tool call's input can read a value from a result the platform sent back,
+as a model reads an id out of what a tool returned: in place of the value,
+``{"$from_tool_result": {"tool": "<tool>", "pattern": "<regex>"}}`` takes the
+first group the pattern matches in a result of that tool from the last turn:
+the last such result with a match whose first group took part (an optional
+group can match empty-handed).
 """
 
 import json
@@ -18,9 +25,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .streaming import held_chunk, text_chunks
+
 MARKER = re.compile(r"\[\[script:([a-z0-9][a-z0-9-]*)(?:#([A-Za-z0-9_.-]+))?\]\]")
 
 DEFAULT_TITLE = "Scripted chat"
+
+FROM_TOOL_RESULT = "$from_tool_result"
 
 
 class ScriptError(Exception):
@@ -36,8 +47,19 @@ class Usage:
 
 
 @dataclass(frozen=True)
+class Capture:
+    """A tool call argument read from a result the platform sent back: the
+    first group ``pattern`` matches in the last turn's results of ``tool``, from
+    the last one with a match whose first group took part."""
+
+    tool: str
+    pattern: re.Pattern[str]
+
+
+@dataclass(frozen=True)
 class ToolCall:
     name: str
+    # Values may be Captures, filled in when the turn is answered.
     input: dict[str, Any]
 
 
@@ -61,6 +83,9 @@ class Turn:
     # How the text streams: this many words per delta, this long between them.
     chunk_words: int
     delay_ms: int
+    # After this many words the reply waits until the journey releases its run
+    # (holds.py); None streams the reply straight through.
+    hold_after_words: int | None = None
 
 
 @dataclass(frozen=True)
@@ -130,7 +155,12 @@ def _turn(where: str, raw: Any) -> Turn:
     if not isinstance(text, str) or not (text or calls):
         raise ScriptError(f"{where}: needs 'text', 'tool_calls' or both")
     stream = _object(
-        data.get("stream", {}), f"{where} stream", optional={"chunk_words", "delay_ms"}
+        data.get("stream", {}),
+        f"{where} stream",
+        optional={"chunk_words", "delay_ms", "hold_after_words"},
+    )
+    chunk_words = _count(
+        stream.get("chunk_words", 3), f"{where} chunk_words", minimum=1
     )
     return Turn(
         text=text,
@@ -145,18 +175,57 @@ def _turn(where: str, raw: Any) -> Turn:
             if data.get("expect_user_text") is None
             else str(data["expect_user_text"])
         ),
-        chunk_words=_count(
-            stream.get("chunk_words", 3), f"{where} chunk_words", minimum=1
-        ),
+        chunk_words=chunk_words,
         delay_ms=_count(stream.get("delay_ms", 15), f"{where} delay_ms"),
+        hold_after_words=_hold_after_words(where, stream, text, chunk_words),
     )
+
+
+def _hold_after_words(
+    where: str, stream: dict[str, Any], text: str, chunk_words: int
+) -> int | None:
+    if "hold_after_words" not in stream:
+        return None
+    words = _count(stream["hold_after_words"], f"{where} hold_after_words", minimum=1)
+    if held_chunk(chunk_words, words) >= len(text_chunks(text, chunk_words)):
+        raise ScriptError(
+            f"{where} hold_after_words: the text ends within its first {words} "
+            "words, so the reply would never hold"
+        )
+    return words
 
 
 def _tool_call(where: str, raw: Any) -> ToolCall:
     data = _object(raw, where, required={"name", "input"})
     if not isinstance(data["input"], dict):
         raise ScriptError(f"{where}: 'input' must be a JSON object")
-    return ToolCall(name=str(data["name"]), input=data["input"])
+    return ToolCall(name=str(data["name"]), input=_arguments(where, data["input"]))
+
+
+def _arguments(where: str, value: Any) -> Any:
+    """``value`` with each ``{"$from_tool_result": ...}`` read as a Capture."""
+    if isinstance(value, dict):
+        if FROM_TOOL_RESULT in value:
+            return _capture(where, value)
+        return {key: _arguments(f"{where}.{key}", v) for key, v in value.items()}
+    if isinstance(value, list):
+        return [_arguments(f"{where}[{i}]", v) for i, v in enumerate(value)]
+    return value
+
+
+def _capture(where: str, raw: dict[str, Any]) -> Capture:
+    spec = _object(
+        _object(raw, where, required={FROM_TOOL_RESULT})[FROM_TOOL_RESULT],
+        f"{where} {FROM_TOOL_RESULT}",
+        required={"tool", "pattern"},
+    )
+    try:
+        pattern = re.compile(str(spec["pattern"]))
+    except re.error as error:
+        raise ScriptError(f"{where}: 'pattern' is not a regular expression: {error}")
+    if pattern.groups < 1:
+        raise ScriptError(f"{where}: 'pattern' needs a group to read the value from")
+    return Capture(tool=str(spec["tool"]), pattern=pattern)
 
 
 def _usage(where: str, raw: Any) -> Usage:

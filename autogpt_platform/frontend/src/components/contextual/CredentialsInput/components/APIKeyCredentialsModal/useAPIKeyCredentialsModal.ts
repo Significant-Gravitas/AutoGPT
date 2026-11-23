@@ -38,8 +38,8 @@ export function useAPIKeyCredentialsModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const formSchema = z.object({
-    apiKey: z.string().min(1, "API Key is required"),
-    title: z.string().min(1, "Name is required"),
+    apiKey: z.string().trim().min(1, "API Key is required"),
+    title: z.string().trim().min(1, "Name is required"),
     expiresAt: z.string().optional(),
   });
 

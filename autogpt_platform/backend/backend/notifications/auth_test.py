@@ -17,6 +17,7 @@ from backend.notifications.auth import (
     render_auth_email,
 )
 from backend.notifications.renderer import build_urls
+from backend.notifications.sign_in_email import AuthSignInEmailType
 
 ERASE_AFTER = datetime(2026, 11, 13, 23, 30, tzinfo=timezone.utc)
 # When closing sends the email: the 14 days are still ahead.
@@ -42,7 +43,7 @@ DELETED_REASON = "You deleted your account in AutoGPT."
 ADDRESS = "3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK"
 
 
-def test_link_types_are_the_auth_types_minus_account_deleted():
+def test_auth_types_are_the_link_and_sign_in_types_and_account_deleted():
     assert set(get_args(AuthLinkEmailType)) == {
         "reset_password",
         "verify_email",
@@ -50,8 +51,13 @@ def test_link_types_are_the_auth_types_minus_account_deleted():
         "change_email",
         "set_password",
     }
+    assert set(get_args(AuthSignInEmailType)) == {
+        "sign_in_code",
+        "sign_in_method_added",
+    }
     assert set(get_args(AuthEmailType)) == {
         *get_args(AuthLinkEmailType),
+        *get_args(AuthSignInEmailType),
         "account_deleted",
     }
 

@@ -1922,7 +1922,10 @@ def _registered_jobs(
     embedding_backfill = MagicMock(return_value=None)
     at_readiness = []
     with (
-        patch(f"{_SCHEDULER_PATH}.BackgroundScheduler", return_value=mock_scheduler),
+        patch(
+            f"{_SCHEDULER_PATH}.StopSafeBackgroundScheduler",
+            return_value=mock_scheduler,
+        ),
         patch(f"{_SCHEDULER_PATH}.load_dotenv"),
         patch(f"{_SCHEDULER_PATH}.asyncio.new_event_loop", return_value=MagicMock()),
         patch(f"{_SCHEDULER_PATH}.threading.Thread", return_value=MagicMock()),

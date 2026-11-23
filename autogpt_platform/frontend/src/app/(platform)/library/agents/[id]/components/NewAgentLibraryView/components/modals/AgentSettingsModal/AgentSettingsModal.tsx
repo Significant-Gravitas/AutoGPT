@@ -2,13 +2,13 @@
 
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
-import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useAgentSafeMode } from "@/hooks/useAgentSafeMode";
 import { useState } from "react";
 import { Settings01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { SafeModeSetting } from "./components/SafeModeSetting/SafeModeSetting";
 
 interface Props {
   agent: LibraryAgent;
@@ -70,46 +70,22 @@ export function AgentSettingsModal({
       <Dialog.Content>
         <div className="space-y-6">
           {showHITLToggle && (
-            <div className="flex w-full flex-col items-start gap-4 rounded-xl border border-separator bg-surface p-6">
-              <div className="flex w-full items-start justify-between gap-4">
-                <div className="flex-1">
-                  <Text variant="large-semibold">
-                    Human-in-the-loop approval
-                  </Text>
-                  <Text variant="large" tone="primary" className="mt-1">
-                    The workflow will pause at human-in-the-loop blocks and wait
-                    for your review before continuing
-                  </Text>
-                </div>
-                <Switch
-                  checked={currentHITLSafeMode || false}
-                  onCheckedChange={handleHITLToggle}
-                  disabled={isPending}
-                  className="mt-1"
-                />
-              </div>
-            </div>
+            <SafeModeSetting
+              label="Human-in-the-loop approval"
+              description="The workflow will pause at human-in-the-loop blocks and wait for your review before continuing"
+              checked={currentHITLSafeMode || false}
+              onCheckedChange={handleHITLToggle}
+              disabled={isPending}
+            />
           )}
           {showSensitiveActionToggle && (
-            <div className="flex w-full flex-col items-start gap-4 rounded-xl border border-separator bg-surface p-6">
-              <div className="flex w-full items-start justify-between gap-4">
-                <div className="flex-1">
-                  <Text variant="large-semibold">
-                    Sensitive action approval
-                  </Text>
-                  <Text variant="large" tone="primary" className="mt-1">
-                    The workflow will pause at sensitive action blocks and wait
-                    for your review before continuing
-                  </Text>
-                </div>
-                <Switch
-                  checked={currentSensitiveActionSafeMode}
-                  onCheckedChange={handleSensitiveActionToggle}
-                  disabled={isPending}
-                  className="mt-1"
-                />
-              </div>
-            </div>
+            <SafeModeSetting
+              label="Sensitive action approval"
+              description="The workflow will pause at sensitive action blocks and wait for your review before continuing"
+              checked={currentSensitiveActionSafeMode}
+              onCheckedChange={handleSensitiveActionToggle}
+              disabled={isPending}
+            />
           )}
         </div>
       </Dialog.Content>

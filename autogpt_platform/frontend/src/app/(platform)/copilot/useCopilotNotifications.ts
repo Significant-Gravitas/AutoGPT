@@ -175,4 +175,12 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       detach();
     };
   }, [api, queryClient]);
+
+  // Completions sent while the socket was down never arrive, so re-read the
+  // session list after a reconnect, or it keeps showing those chats busy.
+  useEffect(() => {
+    return api.onWebSocketReconnect(() => {
+      queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY });
+    });
+  }, [api, queryClient]);
 }

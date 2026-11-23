@@ -295,6 +295,15 @@ async def _find_owned_personal_org(user_id: str):
     )
 
 
+async def has_personal_org(user_id: str) -> bool:
+    """Whether *user_id* owns its personal org yet.
+
+    A new account gets it from its first request (``ensure_personal_org``), and
+    nothing org-scoped can be stored before then.
+    """
+    return await _find_owned_personal_org(user_id) is not None
+
+
 async def ensure_personal_org(user_id: str) -> bool:
     """Ensure *user_id* owns a personal Organization; create one if missing.
 

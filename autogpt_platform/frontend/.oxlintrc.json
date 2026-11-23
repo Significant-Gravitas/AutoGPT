@@ -40,6 +40,12 @@
       }
     },
     {
+      "files": ["src/playwright/**"],
+      "rules": {
+        "autogpt/no-networkidle": "error"
+      }
+    },
+    {
       "files": ["src/app/(platform)/copilot/useCopilotStop.ts"],
       "rules": {
         "autogpt/no-hookless-use-function": "warn"

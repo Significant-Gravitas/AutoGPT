@@ -681,3 +681,105 @@ async def test_validation_errors_dont_pollute_conversation():
                 assert (
                     len(error_messages) == 0
                 ), "Validation error leaked into final conversation"
+
+
+@pytest.mark.asyncio
+async def test_tool_call_into_nested_union_pins_passes_the_sink_input_check():
+    """A tool linked to a block's nested pins (`timing_#_duration_minutes` on the
+    Google Calendar block, whose `timing` is a union of models) is offered with
+    each value's real type and full key, and the arguments the model sends with
+    that type pass the block's input check."""
+    from backend.blocks.google.calendar import GoogleCalendarCreateEventBlock
+    from backend.data.graph import Link, Node
+    from backend.executor.utils import validate_exec
+
+    calendar = GoogleCalendarCreateEventBlock()
+    links = [
+        Link(
+            source_id="orchestrator_node_id",
+            sink_id="calendar_node_id",
+            source_name="tools",
+            sink_name=sink_name,
+        )
+        for sink_name in (
+            "event_title",
+            "timing_#_start_datetime",
+            "timing_#_duration_minutes",
+        )
+    ]
+    node = Node(
+        id="calendar_node_id",
+        block_id=calendar.id,
+        input_default={
+            "timing": {
+                "discriminator": "duration_timing",
+                "start_datetime": "2025-01-01T09:00:00",
+                "duration_minutes": 30,
+            },
+            "credentials": {
+                "id": "cred-id",
+                "provider": "google",
+                "type": "oauth2",
+                "title": None,
+            },
+        },
+        input_links=links,
+    )
+
+    signature = await OrchestratorBlock._create_block_function_signature(node, links)
+    properties = signature["function"]["parameters"]["properties"]
+
+    duration = properties["timing___duration_minutes"]
+    assert duration["type"] == "integer"
+    assert "'duration_minutes'" in duration["description"]
+    start = properties["timing___start_datetime"]
+    assert start["type"] == "string"
+    assert start["format"] == "date-time"
+    assert "'start_datetime'" in start["description"]
+
+    tool_info = OrchestratorBlock._build_tool_info_from_args(
+        tool_call_id="call_1",
+        tool_name=signature["function"]["name"],
+        tool_args={
+            "event_title": "Planning",
+            "timing___start_datetime": "2026-01-05T14:00:00",
+            "timing___duration_minutes": 60,
+        },
+        tool_def=signature,
+    )
+    data, result = validate_exec(node, tool_info.input_data)
+
+    assert data is not None, result
+    assert data["timing"] == {
+        "discriminator": "duration_timing",
+        "start_datetime": "2026-01-05T14:00:00",
+        "duration_minutes": 60,
+    }
+
+
+@pytest.mark.asyncio
+async def test_untyped_dynamic_pins_still_ask_for_a_string():
+    """A pin into a value the block leaves untyped (`dict[str, Any]`) keeps the
+    plain string schema it had before."""
+    block = OrchestratorBlock()
+    mock_node = Mock()
+    mock_node.block = CreateDictionaryBlock()
+    mock_node.input_default = {}
+    mock_node.metadata = {}
+    mock_links = [
+        Mock(
+            source_name="tools_^_create_dict_~_values___name",
+            sink_name="values_#_name",
+            sink_id="dict_node_id",
+            source_id="orchestrator_node_id",
+        )
+    ]
+
+    signature = await block._create_block_function_signature(mock_node, mock_links)  # type: ignore
+
+    assert signature["function"]["parameters"]["properties"]["values___name"] == {
+        "type": "string",
+        "description": (
+            "Dictionary field 'name' for base field 'values' (values['name'])"
+        ),
+    }
