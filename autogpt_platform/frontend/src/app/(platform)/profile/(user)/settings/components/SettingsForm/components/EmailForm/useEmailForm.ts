@@ -6,6 +6,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { User } from "@/lib/auth/types";
+import { getEmailChangeToast } from "@/lib/auth/email-change-toast";
 
 const emailFormSchema = z.object({
   email: z
@@ -23,7 +24,8 @@ function createEmailDefaultValues(user: { email?: string }) {
 // Better Auth owns the email change. For a verified user it emails a
 // confirmation link to their CURRENT address and only applies the new email
 // once that link is clicked (anti-takeover); for an unverified user the change
-// applies immediately. Platform User.email (notifications / Stripe) then
+// applies immediately with email verification off, and from a link mailed to
+// the new address with it on. Platform User.email (notifications / Stripe) then
 // converges via the databaseHooks.user.update mirror in lib/auth/auth.ts — we
 // deliberately do NOT write the platform email here, so it can never diverge to
 // an unverified value.
@@ -61,24 +63,13 @@ export function useEmailForm({ user }: { user: User }) {
 
     setIsSubmitting(true);
     try {
-      await requestEmailChange(values.email);
+      const { user: updated } = await requestEmailChange(values.email);
       // Reset to the still-current address. On the verified path Better Auth
       // deliberately doesn't write the row until the link is clicked, so
       // `user.email` stays old — leaving the new value in the field would keep
       // the submit button enabled and fire another email on every click.
       form.reset({ email: currentEmail });
-      toast(
-        user.email_verified
-          ? {
-              title: "Confirm your new email",
-              description:
-                "We sent a confirmation link to your current email address. Your email changes once you click it.",
-            }
-          : {
-              title: "Email updated",
-              description: `Your email is now ${values.email}.`,
-            },
-      );
+      toast(getEmailChangeToast(user, values.email, updated?.email));
     } catch (error) {
       toast({
         title: "Error updating email",

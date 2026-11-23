@@ -517,12 +517,13 @@ export const auth = betterAuth({
       // confirmation link sent to their CURRENT address. That's the
       // anti-takeover protection Supabase's secure-email-change gave us, so
       // the backend mailer (Postmark) must be configured for it to work in
-      // production. Unverified users (email verification is off) have the
-      // change applied immediately with no email. `sendChangeEmailVerification`
-      // is NOT a Better Auth key; the real ones are `sendChangeEmailConfirmation`
-      // (verified path) + `updateEmailWithoutVerification` (unverified path).
+      // production. An unverified user's change applies at once only with
+      // email verification off; with it on, it waits for the link Better Auth
+      // mails the new address. `sendChangeEmailVerification` is NOT a Better
+      // Auth key; the real ones are `sendChangeEmailConfirmation` (verified
+      // path) + `updateEmailWithoutVerification` (unverified path).
       enabled: true,
-      updateEmailWithoutVerification: true,
+      updateEmailWithoutVerification: !requireEmailVerification,
       sendChangeEmailConfirmation: async ({
         user,
         newEmail,

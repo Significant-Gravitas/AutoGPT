@@ -1141,37 +1141,33 @@ async function linkGoogle(email: string) {
 describe("password reset links", () => {
   // kcze's attack: the reset link goes to an address the attacker holds,
   // then the account takes the victim's address before the link is opened.
-  it.each([false, true])(
-    "do not verify an address the link was not mailed to (verification %s)",
-    async (requireVerification) => {
-      const { api: signUpAPI, db } = await createAuthHandler(false);
-      const session = await signUpSignedIn(signUpAPI, "attacker@example.com");
-      const { handler, api } = await createAuthHandler(requireVerification, db);
-      await requestReset(handler, "attacker@example.com");
-      await emailsSent();
-      const token = lastResetToken("attacker@example.com", "reset_password");
+  it("do not verify an address the link was not mailed to", async () => {
+    const { handler, api, db } = await createAuthHandler(false);
+    const session = await signUpSignedIn(api, "attacker@example.com");
+    await requestReset(handler, "attacker@example.com");
+    await emailsSent();
+    const token = lastResetToken("attacker@example.com", "reset_password");
 
-      // Applied on the spot: the account is unverified.
-      await api.changeEmail({
-        body: { newEmail: "victim@gmail.com" },
-        headers: session,
-      });
-      await post(handler, "/reset-password", {
-        token,
-        newPassword: "the-attackers-new-password", // pragma: allowlist secret
-      });
+    // Applied on the spot: the account is unverified and verification is off.
+    await api.changeEmail({
+      body: { newEmail: "victim@gmail.com" },
+      headers: session,
+    });
+    await post(handler, "/reset-password", {
+      token,
+      newPassword: "the-attackers-new-password", // pragma: allowlist secret
+    });
 
-      expect(db.UserAuthIdentity).toEqual([
-        expect.objectContaining({
-          email: "victim@gmail.com",
-          emailVerified: false,
-        }),
-      ]);
-      expect(await linkGoogle("victim@gmail.com")).toEqual(
-        expect.objectContaining({ error: "account not linked" }),
-      );
-    },
-  );
+    expect(db.UserAuthIdentity).toEqual([
+      expect.objectContaining({
+        email: "victim@gmail.com",
+        emailVerified: false,
+      }),
+    ]);
+    expect(await linkGoogle("victim@gmail.com")).toEqual(
+      expect.objectContaining({ error: "account not linked" }),
+    );
+  });
 
   it("stop working once the account's address changes", async () => {
     const { handler, api, db } = await createAuthHandler(false);
@@ -1381,6 +1377,32 @@ describe("change-email verification emails", () => {
         newEmail: "new@example.com",
       },
       { to: "new@example.com", type: "verify_new_email", newEmail: undefined },
+    ]);
+  });
+
+  it("move an unverified account only once the new address opens its link (verification on)", async () => {
+    const { api: signUpAPI, db } = await createAuthHandler(false);
+    const session = await signUpSignedIn(signUpAPI, "old@example.com");
+    const { handler, api } = await createAuthHandler(true, db);
+    sentEmails.length = 0;
+
+    await api.changeEmail({
+      body: { newEmail: "new@example.com", callbackURL: "/" },
+      headers: session,
+    });
+    await emailsSent();
+    const addressBeforeTheLink = db.UserAuthIdentity[0].email;
+    const mailed = [...sentEmails];
+    for (const { url } of mailed) await handler(new Request(url));
+    await emailsSent();
+
+    expect(db.UserAuthSession).toHaveLength(1);
+    expect(addressBeforeTheLink).toBe("old@example.com");
+    expect(mailed.map(({ to, type }) => ({ to, type }))).toEqual([
+      { to: "new@example.com", type: "verify_new_email" },
+    ]);
+    expect(db.UserAuthIdentity).toEqual([
+      expect.objectContaining({ email: "new@example.com" }),
     ]);
   });
 

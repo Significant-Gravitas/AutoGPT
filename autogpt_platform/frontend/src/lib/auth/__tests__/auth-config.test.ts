@@ -435,8 +435,7 @@ describe("change email", () => {
 
     expect(typeof changeEmail.sendChangeEmailConfirmation).toBe("function");
     expect(changeEmail.sendChangeEmailVerification).toBeUndefined();
-    // Unverified users have no current address worth protecting, so their change
-    // applies immediately rather than being blocked behind a mail they can't get.
+    // With email verification off, an unverified user's change applies at once.
     expect(changeEmail.updateEmailWithoutVerification).toBe(true);
   });
 });

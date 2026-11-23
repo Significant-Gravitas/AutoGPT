@@ -82,32 +82,48 @@ describe("EmailForm", () => {
     });
   });
 
-  test("tells an unverified user the change already applied", async () => {
-    // Better Auth only sends the current-address confirmation when the user is
-    // verified; for an unverified user it applies the change immediately, so
-    // promising them a confirmation email would be a lie.
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({}),
-    });
+  test.each([
+    {
+      server: "applied the change",
+      emailNow: "updated@example.com",
+      toast: {
+        title: "Email updated",
+        description: "Your email is now updated@example.com.",
+      },
+    },
+    {
+      server: "left the change waiting for its link",
+      emailNow: "user@example.com",
+      toast: {
+        title: "Confirm your new email",
+        description:
+          "We sent a link to updated@example.com. Your email changes once you click it.",
+      },
+    },
+  ])(
+    "tells an unverified user what happened when the server $server",
+    async ({ emailNow, toast }) => {
+      // Whether an unverified user's change applies at once depends on the
+      // server's email verification setting, so the response decides.
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ user: { ...unverifiedUser, email: emailNow } }),
+      });
 
-    vi.stubGlobal("fetch", fetchMock);
+      vi.stubGlobal("fetch", fetchMock);
 
-    render(<EmailForm user={unverifiedUser} />);
+      render(<EmailForm user={unverifiedUser} />);
 
-    fireEvent.change(screen.getByLabelText("Email"), {
-      target: { value: "updated@example.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Update email" }));
+      fireEvent.change(screen.getByLabelText("Email"), {
+        target: { value: "updated@example.com" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Update email" }));
 
-    await waitFor(() => {
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "Email updated",
-        }),
-      );
-    });
-  });
+      await waitFor(() => {
+        expect(mockToast).toHaveBeenCalledWith(toast);
+      });
+    },
+  );
 
   test("surfaces a change failure as an error toast", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
