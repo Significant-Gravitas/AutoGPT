@@ -15,7 +15,11 @@ import {
   getPostV2ExecuteAPresetMockHandler,
   getPostV2ExecuteAPresetResponseMock,
 } from "@/app/api/__generated__/endpoints/presets/presets.msw";
-import { getGetV1ListExecutionSchedulesForAGraphMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import {
+  getGetV1ListExecutionSchedulesForAGraphMockHandler,
+  getPostV1CreateExecutionScheduleMockHandler,
+  getPostV1CreateExecutionScheduleResponseMock,
+} from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import type { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { server } from "@/mocks/mock-server";
 import {
@@ -102,14 +106,23 @@ const EMPTY_PAGE = {
 function mockLibrary({
   dateRequired = false,
   presets = [],
+  dateInTriggerConfig = false,
 }: {
   dateRequired?: boolean;
   presets?: LibraryAgentPreset[];
+  // The date is the trigger block's config, not a graph input.
+  dateInTriggerConfig?: boolean;
 } = {}) {
   const sent = {
     task: vi.fn(),
     templateTask: vi.fn(),
     savedPreset: vi.fn(),
+    schedule: vi.fn(),
+  };
+  const withDate = {
+    type: "object",
+    properties: { date: DATE_INPUT },
+    required: dateRequired ? ["date"] : [],
   };
   server.use(
     getGetV2GetLibraryAgentMockHandler(
@@ -118,14 +131,18 @@ function mockLibrary({
         graph_id: GRAPH_ID,
         graph_version: 1,
         name: "Trip planner",
-        input_schema: {
-          type: "object",
-          properties: { date: DATE_INPUT },
-          required: dateRequired ? ["date"] : [],
-        },
+        input_schema: dateInTriggerConfig
+          ? { type: "object", properties: {}, required: [] }
+          : withDate,
         credentials_input_schema: { type: "object", properties: {} },
-        has_external_trigger: false,
-        trigger_setup_info: null,
+        has_external_trigger: dateInTriggerConfig,
+        trigger_setup_info: dateInTriggerConfig
+          ? {
+              provider: "generic_webhook",
+              config_schema: withDate,
+              credentials_input_name: null,
+            }
+          : null,
         has_sensitive_action: false,
         has_human_in_the_loop: false,
         recommended_schedule_cron: null,
@@ -166,6 +183,13 @@ function mockLibrary({
     getPatchV2UpdateAnExistingPresetMockHandler(async ({ request }) => {
       sent.savedPreset(((await request.json()) as { inputs?: unknown }).inputs);
       return presets[0];
+    }),
+    getPostV1CreateExecutionScheduleMockHandler(async ({ request }) => {
+      sent.schedule(((await request.json()) as { inputs?: unknown }).inputs);
+      return getPostV1CreateExecutionScheduleResponseMock({
+        id: "new-schedule",
+        graph_id: GRAPH_ID,
+      });
     }),
   );
   return sent;
@@ -227,6 +251,63 @@ test("a task whose workflow needs a date can start once the date is picked, and 
   ).toHaveProperty("disabled", false);
   await user.click(start);
   await waitFor(() => expect(sent.task).toHaveBeenCalledWith({ date: PICKED }));
+});
+
+test("clearing a required date disables Start Task and Schedule Task again", async () => {
+  mockLibrary({ dateRequired: true });
+  const user = renderPage();
+  const dialog = await openNewTaskForm(user);
+  const field = await within(dialog).findByTestId("agent-input-date");
+  fireEvent.change(field, { target: { value: PICKED } });
+  await waitFor(() =>
+    expect(
+      within(dialog).getByRole("button", { name: "Start Task" }),
+    ).toHaveProperty("disabled", false),
+  );
+
+  fireEvent.change(field, { target: { value: "" } });
+
+  await waitFor(() =>
+    expect(
+      within(dialog).getByRole("button", { name: "Start Task" }),
+    ).toHaveProperty("disabled", true),
+  );
+  expect(
+    within(dialog).getByRole("button", { name: "Schedule Task" }),
+  ).toHaveProperty("disabled", true);
+});
+
+test("a schedule made from the run form in Pacific/Auckland gets the day picked", async () => {
+  process.env.TZ = "Pacific/Auckland";
+  const sent = mockLibrary({ dateRequired: true });
+  const user = renderPage();
+  const dialog = await openNewTaskForm(user);
+  fireEvent.change(await within(dialog).findByTestId("agent-input-date"), {
+    target: { value: PICKED },
+  });
+  await waitFor(() =>
+    expect(
+      within(dialog).getByRole("button", { name: "Schedule Task" }),
+    ).toHaveProperty("disabled", false),
+  );
+  await user.click(
+    within(dialog).getByRole("button", { name: "Schedule Task" }),
+  );
+
+  const scheduleDialog = await screen.findByRole("dialog", {
+    name: "Schedule Run",
+  });
+  await user.click(
+    within(scheduleDialog).getByRole("button", { name: "Schedule" }),
+  );
+
+  await waitFor(() =>
+    expect(sent.schedule).toHaveBeenCalledWith({ date: PICKED }),
+  );
+  // Until the create's answer is handled, so the test leaves nothing open.
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog", { name: "Schedule Run" })).toBeNull(),
+  );
 });
 
 test.each(Object.keys(LOCAL_MIDNIGHT))(
@@ -360,6 +441,33 @@ test("a webhook trigger's date stored as a timestamp shows as the day picked, an
     expect(sent.savedPreset).toHaveBeenCalledWith({
       date: PICKED,
       [TRIGGER_MASK]: { events: "push" },
+    }),
+  );
+});
+
+test("a date in a trigger's own config stored as a timestamp shows as the day picked, and saving the trigger stores that day", async () => {
+  process.env.TZ = "Pacific/Auckland";
+  const sent = mockLibrary({
+    dateRequired: true,
+    dateInTriggerConfig: true,
+    presets: [
+      makePreset(
+        { [TRIGGER_MASK]: { date: LOCAL_MIDNIGHT["Pacific/Auckland"] } },
+        { webhook: true },
+      ),
+    ],
+  });
+  const user = renderPage("activeTab=triggers&activeItem=preset:trg-1");
+
+  expect(await screen.findByDisplayValue(PICKED)).toHaveProperty(
+    "type",
+    "date",
+  );
+  await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+  await waitFor(() =>
+    expect(sent.savedPreset).toHaveBeenCalledWith({
+      [TRIGGER_MASK]: { date: PICKED },
     }),
   );
 });
