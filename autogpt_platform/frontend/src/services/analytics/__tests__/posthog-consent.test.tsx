@@ -102,7 +102,7 @@ async function renderPostHog({
   ]);
   captureQueueResets.push(resetPostHogCaptureQueueForTests);
   // What the auth store reports once the session is known.
-  if (sessionKnown) setAnalyticsIdentitySignedIn(Boolean(user));
+  if (sessionKnown) setAnalyticsIdentitySignedIn(user?.id ?? null);
   const startSessionRecording = vi.spyOn(client, "startSessionRecording");
   const identify = vi.spyOn(client, "identify");
   const { PostHogProvider, PostHogPageViewTracker, PostHogUserTracker } =
@@ -195,6 +195,25 @@ function seedEarlierVisit() {
     "true",
   );
   document.cookie = `ph_${POSTHOG_KEY}_posthog=${encodeURIComponent(earlier)}; Path=/`;
+}
+
+// What posthog-js leaves once identify() merged the anonymous id into USER
+// (checked against the real client below).
+function seedIdentifiedVisit({ storeAnonymousID = true } = {}) {
+  const saved = JSON.stringify({
+    distinct_id: USER.id,
+    $device_id: "merged-id",
+    $user_state: "identified",
+  });
+  if (storeAnonymousID) {
+    window.localStorage.setItem("agpt_anonymous_id", "merged-id");
+  }
+  window.localStorage.setItem(`ph_${POSTHOG_KEY}_posthog`, saved);
+  document.cookie = `ph_${POSTHOG_KEY}_posthog=${encodeURIComponent(saved)}; Path=/`;
+}
+
+function identifyEvent() {
+  return capturedEvents.find((event) => event.event === "$identify");
 }
 
 function cookieNames() {
@@ -485,6 +504,117 @@ describe("PostHog when analytics consent is granted", () => {
   });
 });
 
+describe("PostHog in a browser where an older account was identified", () => {
+  const OTHER_USER = {
+    id: "user-2",
+    email: "grace@example.com",
+  } as unknown as User;
+
+  beforeEach(() => {
+    configureCookiebot();
+  });
+
+  // A page load where the visitor accepts analytics.
+  async function loadAcceptedPage(options?: RenderOptions) {
+    installCookiebot();
+    const page = await renderPostHog(options);
+    act(() => answerCookiebot({ statistics: true }));
+    return page;
+  }
+
+  it("leaves the anonymous id merged into the account after identify", async () => {
+    const { posthog } = await loadAcceptedPage({ user: USER });
+    const anonymousID = identifyEvent()?.properties.$anon_distinct_id;
+
+    expect(posthog.get_distinct_id()).toBe(USER.id);
+    expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(anonymousID);
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(`ph_${POSTHOG_KEY}_posthog`) ?? "{}",
+      ),
+    ).toMatchObject({
+      distinct_id: USER.id,
+      $device_id: anonymousID,
+      $user_state: "identified",
+    });
+  });
+
+  it.each([true, false])(
+    "gives a page that loads signed out a new id (id stored: %s)",
+    async (storeAnonymousID) => {
+      seedIdentifiedVisit({ storeAnonymousID });
+
+      const { posthog } = await loadAcceptedPage();
+
+      expect(posthog.get_distinct_id()).not.toBe("merged-id");
+      expect(posthog.get_distinct_id()).not.toBe(USER.id);
+      expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(
+        posthog.get_distinct_id(),
+      );
+    },
+  );
+
+  it("merges a signed-out visit into the different account that signs in next", async () => {
+    seedIdentifiedVisit();
+    const { posthog: signedOutPage } = await loadAcceptedPage();
+    const visitorID = signedOutPage.get_distinct_id();
+
+    await loadAcceptedPage({ user: OTHER_USER });
+
+    expect(visitorID).not.toBe("merged-id");
+    expect(identifyEvent()?.properties.distinct_id).toBe(OTHER_USER.id);
+    expect(identifyEvent()?.properties.$anon_distinct_id).toBe(visitorID);
+  });
+
+  it("keeps the id for the account it was merged into", async () => {
+    seedIdentifiedVisit();
+
+    const { posthog } = await loadAcceptedPage({ user: USER });
+
+    expect(posthog.get_distinct_id()).toBe(USER.id);
+    expect(identifyEvent()?.properties.$anon_distinct_id).toBe("merged-id");
+    expect(window.localStorage.getItem("agpt_anonymous_id")).toBe("merged-id");
+  });
+
+  describe("when another account's session is known before the consent answer", () => {
+    afterEach(() => {
+      setPageURL("http://localhost:3000/");
+    });
+
+    it("attributes the new account to this page's landing, not the earlier visitor's", async () => {
+      seedIdentifiedVisit();
+      window.localStorage.setItem(
+        "agpt_first_landing",
+        JSON.stringify({
+          path: "/pricing?utm_source=earlier",
+          referrer: null,
+          utm_source: "earlier",
+          utm_medium: "email",
+          utm_campaign: "earlier-launch",
+          at: "2026-01-01T00:00:00.000Z",
+        }),
+      );
+      setPageURL(
+        "http://localhost:3000/signup?utm_source=new&utm_medium=cpc&utm_campaign=launch",
+      );
+
+      const { buildAttributionPayload } = await loadAcceptedPage({
+        user: OTHER_USER,
+      });
+
+      const payload = buildAttributionPayload();
+      expect(payload.anonymous_id).not.toBe("merged-id");
+      expect(payload).toMatchObject({
+        landing_path:
+          "/signup?utm_source=new&utm_medium=cpc&utm_campaign=launch",
+        utm_source: "new",
+        utm_medium: "cpc",
+        utm_campaign: "launch",
+      });
+    });
+  });
+});
+
 describe("PostHog storage on a parent domain", () => {
   afterEach(() => {
     Reflect.deleteProperty(document, "cookie");
@@ -757,7 +887,7 @@ describe("PostHog hand-over from the marketing site", () => {
     });
     expect(captured).toEqual([]);
 
-    act(() => setAnalyticsIdentitySignedIn(false));
+    act(() => setAnalyticsIdentitySignedIn(null));
 
     expect(posthog.get_distinct_id()).toBe(WEBSITE_ID);
     expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(WEBSITE_ID);
@@ -785,7 +915,7 @@ describe("PostHog hand-over from the marketing site", () => {
       $device_id: WEBSITE_ID,
     });
 
-    act(() => setAnalyticsIdentitySignedIn(true));
+    act(() => setAnalyticsIdentitySignedIn(USER.id));
 
     expect(posthog.config.persistence).toBe("localStorage+cookie");
     expect(posthog.get_distinct_id()).not.toBe(WEBSITE_ID);

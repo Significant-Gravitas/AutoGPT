@@ -1,6 +1,7 @@
 """Tests for the single-door Stripe helper."""
 
 import asyncio
+import logging
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -8,6 +9,7 @@ import stripe
 from prometheus_client import REGISTRY
 
 from backend.data.stripe_client import (
+    api_base_override,
     stripe_call,
     stripe_call_timeout,
     stripe_list_items,
@@ -113,3 +115,33 @@ async def test_incomplete_empty_page_is_not_treated_as_exhaustive_history():
     page = stripe.ListObject.construct_from({"data": [], "has_more": True}, "test-key")
     with pytest.raises(ValueError, match="empty page"):
         _ = [item async for item in stripe_list_items(page)]
+
+
+@pytest.mark.parametrize(
+    "api_key, applied",
+    [
+        ("sk_test_fake", True),
+        ("rk_test_fake", True),
+        ("  sk_test_fake\n", True),
+        ("", True),
+        ("   ", True),
+        ("sk_live_fake", False),
+        ("rk_live_fake", False),
+        ("sk_org_live_fake", False),
+        ("  sk_live_fake", False),
+        ('"sk_live_fake"', False),
+        ("pk_test_fake", False),
+        ("something_else", False),
+    ],
+)
+def test_api_base_is_applied_only_with_a_test_key(
+    api_key: str, applied: bool, caplog: pytest.LogCaptureFixture
+):
+    base = "http://scripted_model:4010/stripe"
+    with caplog.at_level(logging.ERROR, logger="backend.data.stripe_client"):
+        assert api_base_override(base, api_key) == (base if applied else None)
+    assert ("STRIPE_API_BASE is ignored" in caplog.text) is not applied
+
+
+def test_a_blank_api_base_keeps_stripes_own():
+    assert api_base_override("", "sk_live_fake") is None

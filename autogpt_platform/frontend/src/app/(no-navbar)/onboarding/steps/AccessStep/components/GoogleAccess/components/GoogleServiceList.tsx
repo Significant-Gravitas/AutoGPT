@@ -1,7 +1,11 @@
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { GOOGLE_SERVICES, type GoogleService, isAllowed } from "../helpers";
+import {
+  GOOGLE_SERVICES,
+  type GoogleService,
+  isAllowed,
+} from "@/lib/google-access";
 
 interface Props {
   /** The connected account; before one, the list only says what each is for. */

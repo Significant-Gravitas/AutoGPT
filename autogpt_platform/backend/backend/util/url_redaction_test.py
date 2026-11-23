@@ -564,6 +564,9 @@ def test_credential_header_filter(name: str, masked: bool) -> None:
         )
 
 
+# `_CREDENTIAL_NAME` also decides which headers `Requests` drops on a redirect
+# to another origin (`backend/util/request.py`). A change to it for masking
+# changes those too: run `request_redirect_credentials_test.py` with this file.
 @pytest.mark.parametrize(
     "name",
     [

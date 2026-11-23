@@ -248,7 +248,12 @@ describe("WebSocket recovery and logout", () => {
     // ping sent after the resubscription means the server has handled it.
     expect(
       second.send.mock.calls.map(([data]) => JSON.parse(data).method),
-    ).toEqual(["heartbeat", "subscribe_graph_executions", "heartbeat"]);
+    ).toEqual([
+      "authenticate",
+      "heartbeat",
+      "subscribe_graph_executions",
+      "heartbeat",
+    ]);
     expect(reconnected).not.toHaveBeenCalled();
     second.pong();
     expect(reconnected).toHaveBeenCalledTimes(1);
@@ -274,6 +279,7 @@ describe("WebSocket recovery and logout", () => {
     expect(
       second.send.mock.calls.map(([data]) => JSON.parse(data).method),
     ).toEqual([
+      "authenticate",
       "heartbeat",
       "subscribe_graph_executions",
       "subscribe_graph_executions",
@@ -302,6 +308,7 @@ describe("WebSocket recovery and logout", () => {
     expect(
       second.send.mock.calls.map(([data]) => JSON.parse(data).method),
     ).toEqual([
+      "authenticate",
       "heartbeat",
       "heartbeat",
       "subscribe_graph_executions",
@@ -389,9 +396,9 @@ describe("WebSocket recovery and logout", () => {
 
     // The ordering ping, and so the refetch, waits out the spread.
     await vi.advanceTimersByTimeAsync(999);
-    expect(second.send).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(1);
     expect(second.send).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(second.send).toHaveBeenCalledTimes(3);
     expect(reconnected).not.toHaveBeenCalled();
     second.pong();
     expect(reconnected).toHaveBeenCalledTimes(1);
@@ -412,7 +419,7 @@ describe("WebSocket recovery and logout", () => {
     second.pong();
 
     await vi.advanceTimersByTimeAsync(5000);
-    expect(second.send).toHaveBeenCalledTimes(1);
+    expect(second.send).toHaveBeenCalledTimes(2);
     expect(reconnected).not.toHaveBeenCalled();
   });
 
@@ -442,7 +449,10 @@ describe("WebSocket recovery and logout", () => {
     api.onWebSocketConnect(connected);
     const socket = await socketAt();
     socket.open();
-    await vi.advanceTimersByTimeAsync(10_000);
+    // Signing in gets longer than a heartbeat: the server checks the token.
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(socket.close).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
     expect(socket.close).toHaveBeenCalledTimes(1);
     expect(connected).not.toHaveBeenCalled();
     socket.serverClose(1006);

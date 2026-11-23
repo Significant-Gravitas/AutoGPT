@@ -8,6 +8,7 @@ against it — no mocking, real HTTP requests.
 import asyncio
 import json
 import threading
+from contextlib import AsyncExitStack
 from unittest.mock import patch
 
 import pytest
@@ -23,6 +24,8 @@ from backend.blocks.mcp.protocol import (
 )
 from backend.blocks.mcp.test_server import MODERN_EXTRA_TOOLS, create_test_mcp_app
 from backend.data.model import OAuth2Credentials
+from backend.util.request import HTTPClientError
+from backend.util.request_test_helpers import serve
 
 MOCK_USER_ID = "test-user-integration"
 
@@ -81,6 +84,11 @@ class _MCPTestServer:
     def deleted_sessions(self) -> list[str]:
         assert self.app is not None
         return self.app["deleted_sessions"]
+
+    @property
+    def redirected(self) -> list[str]:
+        assert self.app is not None
+        return self.app["redirected"]
 
     def stop(self):
         if self._loop and self._runner:
@@ -648,3 +656,67 @@ class TestProtocolEras:
 
         assert outputs[0][0] == "result"
         assert outputs[0][1]["city"] == "Paris"
+
+
+# ── A server that serves its endpoint only under a trailing slash ────
+
+
+class TestTrailingSlashRedirect:
+    """``normalize_mcp_url`` sends the URL without the trailing slash a user
+    may paste, so a server that serves only that form, as nginx does a
+    ``location /mcp/``, answers every call with a redirect to it."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize("status", [301, 302])
+    async def test_the_calls_reach_the_server_through_its_slash_redirect(
+        self, status: int
+    ):
+        server = _MCPTestServer(slash_redirect=status).start()
+        try:
+            client = _make_client(f"{server.url}/")
+            await asyncio.wait_for(client.initialize(), 30)
+            tools = await asyncio.wait_for(client.list_tools(), 30)
+        finally:
+            server.stop()
+
+        assert {t.name for t in tools} == {"get_weather", "add_numbers", "echo"}
+        # Each call was redirected, and went on as the POST it was: the
+        # notification, whose answer the client never reads, included.
+        assert server.redirected and set(server.redirected) == {"POST"}
+        calls = [r["method"] for r in server.requests]
+        assert "notifications/initialized" in calls
+        assert calls[-1] == "tools/list"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_redirect_to_another_origin_still_turns_the_call_into_a_get(
+        self,
+    ):
+        seen: list[str] = []
+
+        async def elsewhere(request: web.Request) -> web.Response:
+            seen.append(request.method)
+            return web.Response(status=405)
+
+        async with AsyncExitStack() as stack:
+            target = web.Application()
+            target.router.add_route("*", "/mcp/", elsewhere)
+            target_runner, target_base = await serve(target)
+            stack.push_async_callback(target_runner.cleanup)
+
+            async def moved(request: web.Request) -> web.Response:
+                return web.Response(
+                    status=301, headers={"Location": f"{target_base}/mcp/"}
+                )
+
+            origin = web.Application()
+            origin.router.add_route("*", "/mcp", moved)
+            origin_runner, origin_base = await serve(origin)
+            stack.push_async_callback(origin_runner.cleanup)
+
+            with pytest.raises(HTTPClientError) as raised:
+                await asyncio.wait_for(
+                    _make_client(f"{origin_base}/mcp").initialize(), 30
+                )
+
+        assert raised.value.status_code == 405
+        assert seen and set(seen) == {"GET"}

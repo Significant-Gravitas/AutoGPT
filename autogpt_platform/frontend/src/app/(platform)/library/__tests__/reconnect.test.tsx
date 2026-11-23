@@ -142,6 +142,27 @@ function noSpread() {
   onTestFinished(() => random.mockRestore());
 }
 
+test("the live connection sends its sign-in token in the first message, never in its URL", async () => {
+  serveLibrary(() => AgentExecutionStatus.RUNNING);
+  const live = installLiveSocket();
+
+  render(<LibraryPage />);
+  const first = await live.acceptNext();
+  await waitFor(() => expect(tile("Running now").getByText("1")).toBeDefined());
+  await live.drop(first);
+  const second = await live.acceptNext();
+  await live.caughtUp();
+
+  for (const socket of [first, second]) {
+    expect(socket.url).not.toContain("?");
+    expect(socket.url).not.toContain("test-token");
+    expect(JSON.parse(socket.send.mock.calls[0][0])).toEqual({
+      method: "authenticate",
+      data: { token: "test-token" },
+    });
+  }
+});
+
 test("a run that finished while the live connection was down counts as finished once it reconnects", async () => {
   let status: AgentExecutionStatus = AgentExecutionStatus.RUNNING;
   serveLibrary(() => status);

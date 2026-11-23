@@ -10,13 +10,19 @@ import pytest
 from annotated_types import MaxLen
 from fastapi import WebSocket, WebSocketDisconnect
 from pytest_snapshot.plugin import Snapshot
+from starlette.websockets import WebSocketState
 
 from backend.api import model as api_model
 from backend.api import ws_api
 from backend.api.conn_manager import ConnectionManager, _StreamCapacityError
 from backend.api.model import WSRequestFailed
 from backend.api.test_helpers import override_config
-from backend.api.ws_api import AppEnvironment, WebsocketServer, WSMessage, WSMethod
+from backend.api.ws_api import (
+    AppEnvironment,
+    WebsocketServer,
+    WSMessage,
+    WSMethod,
+)
 from backend.api.ws_api import app as websocket_app
 from backend.api.ws_api import (
     handle_subscribe,
@@ -27,6 +33,7 @@ from backend.api.ws_api import (
 from backend.data.sharded_pubsub import EventStreamLostError
 from backend.data.user import DEFAULT_USER_ID
 from backend.util import cache_redis
+from backend.util.url_redaction import request_credentials
 
 # Only a step that never comes keeps a wait going this long.
 _HANG_SECONDS = 10.0
@@ -98,7 +105,7 @@ def test_websocket_server_limits_incoming_message_size(mocker) -> None:
     with override_config(settings, "app_env", AppEnvironment.LOCAL):
         WebsocketServer().run()
 
-    assert serve_websockets.call_args.kwargs["ws_max_size"] <= 4096
+    assert serve_websockets.call_args.kwargs["ws_max_size"] <= 16384
 
 
 def test_websocket_server_trusts_x_forwarded_for_from_trusted_proxies(
@@ -630,18 +637,186 @@ async def test_handle_subscribe_rejects_unrelated_method(
 # ---------- authenticate_websocket branches ----------
 
 
-@pytest.mark.asyncio
-async def test_authenticate_websocket_missing_token_closes_4001() -> None:
-    from backend.api.ws_api import authenticate_websocket
+def _auth_frame(token: str = "first-message-token") -> str:
+    return json.dumps({"method": "authenticate", "data": {"token": token}})
 
+
+def _unsigned_socket() -> AsyncMock:
+    """A socket with no token in its URL, whose accept moves it to CONNECTED
+    as a real one's does."""
     ws = AsyncMock(spec=WebSocket)
     ws.query_params = {}
 
+    async def accepted() -> None:
+        ws.application_state = WebSocketState.CONNECTED
+
+    ws.accept.side_effect = accepted
+    return ws
+
+
+@pytest.mark.asyncio
+async def test_authenticate_websocket_reads_the_token_from_the_first_message(
+    mocker,
+) -> None:
+    from backend.api.ws_api import authenticate_websocket
+
+    parse = mocker.patch(
+        "backend.api.ws_api.parse_jwt_token_async",
+        new=AsyncMock(return_value={"sub": "user-X", "sid": "session-X"}),
+    )
+    mocker.patch("backend.api.ws_api.require_active_auth_session", new=AsyncMock())
+    ws = _unsigned_socket()
+    ws.receive_text.return_value = _auth_frame()
+
     user_id = await authenticate_websocket(ws)
 
-    ws.close.assert_awaited_once()
-    assert ws.close.call_args.kwargs["code"] == 4001
-    assert user_id == ""
+    assert user_id == "user-X"
+    ws.accept.assert_awaited_once()
+    ws.close.assert_not_awaited()
+    parse.assert_awaited_once_with("first-message-token")
+    # Masked in this connection's logs and error reports, as a URL's token is.
+    assert "first-message-token" in request_credentials()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "frame",
+    [
+        "not json",
+        json.dumps({"method": "heartbeat", "data": "ping"}),
+        json.dumps({"method": "authenticate", "data": {}}),
+        json.dumps({"method": "authenticate", "data": {"token": ""}}),
+        json.dumps({"method": "authenticate", "data": "a-token"}),
+    ],
+)
+async def test_authenticate_websocket_without_a_token_message_closes_4001(
+    mocker, frame: str
+) -> None:
+    from backend.api.ws_api import authenticate_websocket
+
+    parse = mocker.patch("backend.api.ws_api.parse_jwt_token_async", new=AsyncMock())
+    ws = _unsigned_socket()
+    ws.receive_text.return_value = frame
+
+    user_id = await authenticate_websocket(ws)
+
+    ws.accept.assert_awaited_once()
+    ws.close.assert_awaited_once_with(code=4001, reason="Missing authentication token")
+    assert user_id is None
+    parse.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_authenticate_websocket_closes_4001_on_a_binary_first_message(
+    mocker,
+) -> None:
+    from backend.api.ws_api import authenticate_websocket
+
+    ws = _unsigned_socket()
+    ws.receive_text.side_effect = KeyError("text")
+
+    assert await authenticate_websocket(ws) is None
+    ws.accept.assert_awaited_once()
+    ws.close.assert_awaited_once_with(code=4001, reason="Missing authentication token")
+
+
+@pytest.mark.asyncio
+async def test_authenticate_websocket_asks_for_a_retry_when_no_message_comes(
+    mocker,
+) -> None:
+    """A tab that paused before it could sign in reconnects; 4001 would stop
+    it for good."""
+    from backend.api.ws_api import authenticate_websocket
+
+    mocker.patch("backend.api.ws_api.AUTH_MESSAGE_TIMEOUT_S", 0.01)
+
+    async def never() -> str:
+        await asyncio.sleep(_HANG_SECONDS)
+        return _auth_frame()
+
+    ws = _unsigned_socket()
+    ws.receive_text.side_effect = never
+
+    assert (
+        await asyncio.wait_for(authenticate_websocket(ws), timeout=_HANG_SECONDS)
+        is None
+    )
+    ws.accept.assert_awaited_once()
+    ws.close.assert_awaited_once_with(code=1013, reason="Try again later")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("gone_on", ["accept", "receive"])
+async def test_authenticate_websocket_client_gone_before_its_token(
+    mocker, gone_on: str
+) -> None:
+    from backend.api.ws_api import authenticate_websocket
+
+    parse = mocker.patch("backend.api.ws_api.parse_jwt_token_async", new=AsyncMock())
+    ws = AsyncMock(spec=WebSocket)
+    ws.query_params = {}
+    if gone_on == "accept":
+        ws.accept.side_effect = BrokenPipeError()
+    else:
+        ws.receive_text.side_effect = WebSocketDisconnect(code=1001)
+
+    assert await authenticate_websocket(ws) is None
+    ws.close.assert_not_awaited()
+    parse.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_short_first_message_token_is_not_kept_for_masking(mocker) -> None:
+    """Masking a few characters would hide ordinary text in later reports."""
+    from backend.api.ws_api import authenticate_websocket
+
+    mocker.patch(
+        "backend.api.ws_api.parse_jwt_token_async",
+        new=AsyncMock(side_effect=ValueError("bad token")),
+    )
+    ws = _unsigned_socket()
+    ws.receive_text.return_value = _auth_frame(" ")
+
+    assert await authenticate_websocket(ws) is None
+    assert " " not in request_credentials()
+
+
+@pytest.mark.asyncio
+async def test_authenticate_websocket_still_reads_a_token_in_the_url(mocker) -> None:
+    """Tabs open on an older frontend send it there."""
+    from backend.api.ws_api import authenticate_websocket
+
+    parse = mocker.patch(
+        "backend.api.ws_api.parse_jwt_token_async",
+        new=AsyncMock(return_value={"sub": "user-X", "sid": "session-X"}),
+    )
+    mocker.patch("backend.api.ws_api.require_active_auth_session", new=AsyncMock())
+    ws = AsyncMock(spec=WebSocket)
+    ws.query_params = {"token": "url-token"}
+
+    assert await authenticate_websocket(ws) == "user-X"
+    parse.assert_awaited_once_with("url-token")
+    # The connection manager accepts it once it has room for the socket.
+    ws.accept.assert_not_awaited()
+    ws.receive_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_after_the_first_message_does_not_accept_again(
+    mocker,
+) -> None:
+    from backend.api.ws_api import authenticate_websocket
+
+    mocker.patch(
+        "backend.api.ws_api.parse_jwt_token_async",
+        new=AsyncMock(side_effect=ValueError("bad token")),
+    )
+    ws = _unsigned_socket()
+    ws.receive_text.return_value = _auth_frame()
+
+    assert await authenticate_websocket(ws) is None
+    ws.accept.assert_awaited_once()
+    ws.close.assert_awaited_once_with(code=4003, reason="Invalid token")
 
 
 @pytest.mark.asyncio
@@ -659,7 +834,7 @@ async def test_authenticate_websocket_invalid_token_closes_4003(mocker) -> None:
 
     ws.close.assert_awaited_once()
     assert ws.close.call_args.kwargs["code"] == 4003
-    assert user_id == ""
+    assert user_id is None
 
 
 @pytest.mark.asyncio
@@ -677,7 +852,7 @@ async def test_authenticate_websocket_missing_sub_closes_4002(mocker) -> None:
 
     ws.close.assert_awaited_once()
     assert ws.close.call_args.kwargs["code"] == 4002
-    assert user_id == ""
+    assert user_id is None
 
 
 @pytest.mark.asyncio
@@ -718,7 +893,7 @@ async def test_authenticate_websocket_closed_account_closes_4003(
     user_id = await authenticate_websocket(ws)
 
     ws.close.assert_awaited_once_with(code=4003, reason="This account is closed.")
-    assert user_id == ""
+    assert user_id is None
     account_db.is_account_closed.assert_awaited_once_with("user-closed")
 
 
@@ -744,7 +919,7 @@ async def test_authenticate_websocket_closed_lookup_failure_refuses_with_1011(
     user_id = await authenticate_websocket(ws)
 
     ws.close.assert_awaited_once_with(code=1011, reason="Try again")
-    assert user_id == ""
+    assert user_id is None
     banned.assert_not_awaited()
 
 
@@ -764,7 +939,7 @@ async def test_authenticate_websocket_refuses_a_banned_account(mocker) -> None:
 
     ws.close.assert_awaited_once()
     assert ws.close.call_args.kwargs["code"] == 4004
-    assert user_id == ""
+    assert user_id is None
 
 
 @pytest.mark.asyncio
@@ -790,7 +965,7 @@ async def test_authenticate_websocket_refuses_when_the_ban_is_unreadable(
 
     ws.close.assert_awaited_once()
     assert ws.close.call_args.kwargs["code"] == 1011
-    assert user_id == ""
+    assert user_id is None
 
 
 @pytest.mark.asyncio
@@ -1228,6 +1403,56 @@ async def test_a_lookup_that_hangs_after_the_first_matters_only_once_a_recheck_i
         assert lookups == 1
     else:
         assert mock_websocket.close.call_args.kwargs["code"] == close_code
+
+
+@pytest.mark.asyncio
+async def test_messages_buffered_behind_the_sign_in_are_handled_after_it_in_turns(
+    mock_manager: AsyncMock, mocker
+) -> None:
+    parse = mocker.patch(
+        "backend.api.ws_api.parse_jwt_token_async",
+        new=AsyncMock(return_value={"sub": "user-X", "sid": "session-X"}),
+    )
+    mocker.patch("backend.api.ws_api.require_active_auth_session", new=AsyncMock())
+    banned = mocker.patch(
+        "backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False)
+    )
+    ws = _unsigned_socket()
+    heartbeat = WSMessage(method=WSMethod.HEARTBEAT).model_dump_json()
+    ws.receive_text.side_effect = (
+        [_auth_frame()] + [heartbeat] * 5 + [WebSocketDisconnect()]
+    )
+    other_socket_turns = 0
+    turns_at_each_reply: list[int] = []
+
+    async def other_socket() -> None:
+        nonlocal other_socket_turns
+        while True:
+            await asyncio.sleep(0)
+            other_socket_turns += 1
+
+    async def reply(_: dict) -> None:
+        turns_at_each_reply.append(other_socket_turns)
+
+    ws.send_json.side_effect = reply
+    other = asyncio.create_task(other_socket())
+    try:
+        async with asyncio.timeout(_HANG_SECONDS):
+            await websocket_router(
+                cast(WebSocket, ws), cast(ConnectionManager, mock_manager)
+            )
+    finally:
+        other.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await other
+
+    parse.assert_awaited_once_with("first-message-token")
+    mock_manager.connect_socket.assert_awaited_once_with(ws, user_id="user-X")
+    assert len(set(turns_at_each_reply)) == 5
+    ws.send_text.assert_not_called()
+    ws.close.assert_not_called()
+    # Once at sign-in, once at the first message after it, then not until due.
+    assert banned.await_count == 2
 
 
 # ---------- get_connection_manager singleton ----------
