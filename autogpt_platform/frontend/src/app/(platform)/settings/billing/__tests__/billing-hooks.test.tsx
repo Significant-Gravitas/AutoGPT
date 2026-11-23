@@ -415,7 +415,8 @@ describe("useAutoRefillCard", () => {
 
   it("names each save, keeping the name through a retry so it can't charge twice", async () => {
     const keys: (string | null)[] = [];
-    let failNext = true;
+    // What the server answers each save, in order.
+    const answers = [504, 200, 200, 402, 200, 200, 200];
     server.use(
       jsonHandler("get", "/api/credits/auto-top-up", {
         amount: 0,
@@ -423,11 +424,10 @@ describe("useAutoRefillCard", () => {
       }),
       http.post("*/api/credits/auto-top-up", ({ request }) => {
         keys.push(request.headers.get("Idempotency-Key"));
-        if (failNext) {
-          failNext = false;
-          return HttpResponse.json({ detail: "timed out" }, { status: 504 });
-        }
-        return HttpResponse.json({});
+        const status = answers[keys.length - 1];
+        return status === 200
+          ? HttpResponse.json({})
+          : HttpResponse.json({ detail: "refused" }, { status });
       }),
     );
 
@@ -435,26 +435,38 @@ describe("useAutoRefillCard", () => {
       wrapper: makeWrapper(),
     });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    act(() => {
-      result.current.setThreshold("5");
-      result.current.setRefillAmount("10");
-    });
+    act(() => result.current.setOpen(true));
+    await waitFor(() => expect(result.current.threshold).toBe("5"));
+    act(() => result.current.setRefillAmount("10"));
 
-    // The first try fails, the retry succeeds, then a fresh save.
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    async function saveAgain() {
+      const before = keys.length;
       act(() => result.current.save());
-      await waitFor(() => expect(keys).toHaveLength(attempt));
+      await waitFor(() => expect(keys).toHaveLength(before + 1));
       await waitFor(() => expect(result.current.isSaving).toBe(false));
     }
-    // Then the same values again after an edit away and back.
+
+    // A lost response, its retry, and a second click before the dialog closes.
+    await saveAgain();
+    await saveAgain();
+    await saveAgain();
+    // A decline, then the retry after the card is fixed.
+    await saveAgain();
+    await saveAgain();
+    // Reopening the dialog starts a new save; so does changing the values.
+    act(() => result.current.setOpen(false));
+    act(() => result.current.setOpen(true));
+    await saveAgain();
     act(() => result.current.setRefillAmount("20"));
-    act(() => result.current.save());
-    await waitFor(() => expect(keys).toHaveLength(4));
+    await saveAgain();
 
     expect(keys[0]).toBeTruthy();
     expect(keys[1]).toBe(keys[0]);
-    expect(keys[2]).not.toBe(keys[1]);
-    expect(keys[3]).not.toBe(keys[2]);
+    expect(keys[2]).toBe(keys[0]);
+    expect(keys[3]).toBe(keys[0]);
+    expect(keys[4]).not.toBe(keys[3]);
+    expect(keys[5]).not.toBe(keys[4]);
+    expect(keys[6]).not.toBe(keys[5]);
   });
 
   it("save() catches mutation failures and stops the spinner", async () => {

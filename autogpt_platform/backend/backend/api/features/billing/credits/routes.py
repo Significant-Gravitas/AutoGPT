@@ -165,14 +165,12 @@ async def configure_user_auto_top_up(
     # Past the auth cache, before a charge: closing switched auto top-up off.
     await refuse_closed_account(user_id)
     credit_model = await get_credit_model(user_id, ctx.org_id)
-    if not request.amount:
-        # Turning auto top-up off charges nothing, so it needs no lock and
-        # keeps working while Redis can't be reached.
-        await _charge_and_save_auto_top_up(user_id, request, credit_model, None)
-        return "Auto top-up settings updated"
-
-    async with auto_top_up_setup_lock(user_id) as held:
-        if not held:
+    async with auto_top_up_setup_lock(user_id) as lock_state:
+        # Turning auto top-up off still waits for a save that is charging, or
+        # that save would write its settings back on after this one. It
+        # charges nothing, so it may go ahead when Redis can't be reached.
+        turning_off = not request.amount
+        if lock_state == "busy" or (lock_state != "held" and not turning_off):
             raise HTTPException(
                 status_code=503,
                 detail=(
@@ -184,7 +182,10 @@ async def configure_user_auto_top_up(
         # closed meanwhile, so look again before charging.
         await refuse_closed_account(user_id)
         await _charge_and_save_auto_top_up(
-            user_id, request, credit_model, idempotency_key or uuid.uuid4().hex
+            user_id,
+            request,
+            credit_model,
+            None if turning_off else idempotency_key or uuid.uuid4().hex,
         )
     return "Auto top-up settings updated"
 

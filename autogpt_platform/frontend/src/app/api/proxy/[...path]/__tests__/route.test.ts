@@ -257,6 +257,31 @@ describe("proxy route — handler pass-through", () => {
     expect(sentHeaders.get("x-posthog-session-id")).toBe("posthog-session-789");
   });
 
+  it("forwards the Idempotency-Key that names an auto top-up save", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("{}", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/credits/auto-top-up",
+      {
+        method: "POST",
+        body: JSON.stringify({ amount: 500, threshold: 500 }),
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": "save-123",
+        },
+      },
+    );
+    await POST(req, makeParams(["api", "credits", "auto-top-up"]));
+
+    const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
+    expect(sentHeaders.get("idempotency-key")).toBe("save-123");
+  });
+
   it("sends the edge-observed country only as a signed token", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response("{}", {

@@ -9,6 +9,7 @@ import {
 } from "@/app/api/__generated__/endpoints/credits/credits";
 import type { AutoTopUpConfig } from "@/app/api/__generated__/models/autoTopUpConfig";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 
 export function useAutoRefillCard() {
   const {
@@ -27,7 +28,8 @@ export function useAutoRefillCard() {
   });
 
   // Names this save, so a retry after a lost response can't charge again.
-  // Kept through retries, replaced once it succeeds or the values change.
+  // Kept through retries; replaced when the dialog opens, when the values
+  // change, and after a decline, which Stripe would otherwise replay for it.
   const [saveKey, setSaveKey] = useState(newSaveKey);
   const { mutateAsync: configureAutoTopUp, isPending: isSaving } =
     usePostV1ConfigureAutoTopUp({
@@ -98,10 +100,12 @@ export function useAutoRefillCard() {
         threshold: Math.round(thresholdValue * 100),
       });
       if (!sent) return;
-      setSaveKey(newSaveKey());
       await refetch();
       setOpen(false);
     } catch (error) {
+      if (error instanceof ApiError && error.status === 402) {
+        setSaveKey(newSaveKey());
+      }
       toast({
         title: "Couldn't save auto top-up",
         description:
@@ -131,6 +135,11 @@ export function useAutoRefillCard() {
     }
   }
 
+  function changeOpen(next: boolean) {
+    if (next) setSaveKey(newSaveKey());
+    setOpen(next);
+  }
+
   // Different values are a different save.
   function changeThreshold(value: string) {
     setThreshold(value);
@@ -148,7 +157,7 @@ export function useAutoRefillCard() {
     isLoading,
     isSaving,
     open,
-    setOpen,
+    setOpen: changeOpen,
     threshold,
     setThreshold: changeThreshold,
     refillAmount,

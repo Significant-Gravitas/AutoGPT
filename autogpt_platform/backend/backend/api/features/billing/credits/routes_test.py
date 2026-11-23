@@ -750,6 +750,54 @@ def test_auto_top_up_is_not_charged_when_the_save_cannot_be_locked(
     set_auto_top_up.assert_not_called()
 
 
+async def test_turning_auto_top_up_off_waits_for_a_save_that_is_charging(
+    mocker: pytest_mock.MockFixture, account_open: AsyncMock
+) -> None:
+    """Tab A saves and is charging when tab B turns auto top-up off. B must wait,
+    or A writes its settings back on after B's and auto top-up stays on."""
+    charging = asyncio.Event()
+    finish_charge = asyncio.Event()
+    saved: list[AutoTopUpConfig] = []
+
+    async def top_up_credits(
+        user_id: str, amount: int, idempotency_key: str | None = None
+    ) -> None:
+        if amount:
+            charging.set()
+            async with asyncio.timeout(5):
+                await finish_charge.wait()
+
+    async def set_auto_top_up(user_id: str, config: AutoTopUpConfig) -> None:
+        saved.append(config)
+
+    credit_model = mocker.AsyncMock()
+    credit_model.get_credits.return_value = -100
+    credit_model.top_up_credits.side_effect = top_up_credits
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=credit_model,
+    )
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.set_auto_top_up",
+        side_effect=set_auto_top_up,
+    )
+
+    save = asyncio.create_task(_save(AutoTopUpConfig(threshold=500, amount=500), "a"))
+    async with asyncio.timeout(5):
+        await charging.wait()
+    turn_off = asyncio.create_task(_save(AutoTopUpConfig(threshold=0, amount=0), None))
+    # Let the second save get as far as it can while the first is charging.
+    async with asyncio.timeout(5):
+        while account_open.await_count < 3:
+            await asyncio.sleep(0)
+    for _ in range(20):
+        await asyncio.sleep(0.01)
+    finish_charge.set()
+    await asyncio.gather(save, turn_off)
+
+    assert saved[-1] == AutoTopUpConfig(threshold=0, amount=0)
+
+
 def test_auto_top_up_can_be_turned_off_while_redis_is_down(
     mocker: pytest_mock.MockFixture, auto_top_up_lock_redis: AsyncMock
 ) -> None:

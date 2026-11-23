@@ -2,6 +2,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Literal
 
 from redis.asyncio.lock import Lock as AsyncRedisLock
 from redis.exceptions import LockNotOwnedError
@@ -21,12 +22,16 @@ _LOCK_RENEW_EVERY_SECONDS = 15
 _LOCK_WAIT_SECONDS = 12
 _REDIS_DEADLINE_SECONDS = 5
 
+# "busy": another save kept the lock past the wait.
+# "unavailable": Redis couldn't be reached.
+LockState = Literal["held", "busy", "unavailable"]
+
 # Renewals under way, held so one isn't collected before it ends.
 _renewals: set[asyncio.Task[None]] = set()
 
 
 @asynccontextmanager
-async def auto_top_up_setup_lock(user_id: str) -> AsyncIterator[bool]:
+async def auto_top_up_setup_lock(user_id: str) -> AsyncIterator[LockState]:
     """Let one auto top-up save per user run at a time, from reading the
     balance to saving the settings.
 
@@ -35,24 +40,25 @@ async def auto_top_up_setup_lock(user_id: str) -> AsyncIterator[bool]:
     would both see the old balance and both charge; one after the other, the
     second sees the topped-up balance and doesn't.
 
-    Yields whether the lock is held: not when Redis can't be reached, or when
-    another save kept it past the wait. The caller must not charge without it.
+    Yields "held", or why not: "busy" when another save kept it past the
+    wait, "unavailable" when Redis can't be reached. The caller must not
+    charge without it.
     """
-    lock = await _acquire(user_id)
+    lock, state = await _acquire(user_id)
     if lock is None:
-        yield False
+        yield state
         return
     renewal = asyncio.create_task(_keep_renewed(lock, user_id))
     _renewals.add(renewal)
     renewal.add_done_callback(_renewals.discard)
     try:
-        yield True
+        yield "held"
     finally:
         renewal.cancel()
         await _release(lock, user_id)
 
 
-async def _acquire(user_id: str) -> AsyncRedisLock | None:
+async def _acquire(user_id: str) -> tuple[AsyncRedisLock | None, LockState]:
     try:
         async with asyncio.timeout(_LOCK_WAIT_SECONDS + _REDIS_DEADLINE_SECONDS):
             redis = await get_redis_async()
@@ -62,16 +68,17 @@ async def _acquire(user_id: str) -> AsyncRedisLock | None:
                 blocking_timeout=_LOCK_WAIT_SECONDS,
             )
             if await lock.acquire():
-                return lock
+                return lock, "held"
         logger.warning(
             f"Auto top-up save for user {user_id} waited {_LOCK_WAIT_SECONDS}s "
             "for another save to finish"
         )
+        return None, "busy"
     except Exception:
         logger.warning(
             f"Could not lock auto top-up save for user {user_id}", exc_info=True
         )
-    return None
+        return None, "unavailable"
 
 
 async def _keep_renewed(lock: AsyncRedisLock, user_id: str) -> None:

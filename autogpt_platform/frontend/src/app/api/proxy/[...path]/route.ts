@@ -65,6 +65,7 @@ const FORWARDED_REQUEST_HEADERS: ReadonlyArray<string> = [
   "x-datafast-visitor-id",
   "x-datafast-session-id",
   "x-posthog-session-id",
+  "idempotency-key",
 ];
 
 // Browsers advertise `zstd` in Accept-Encoding, but undici (Node 22's fetch)
