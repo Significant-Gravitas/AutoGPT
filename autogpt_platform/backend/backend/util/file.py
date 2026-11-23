@@ -1,5 +1,6 @@
 import base64
 import mimetypes
+import os
 import re
 import shutil
 import tempfile
@@ -7,7 +8,7 @@ import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlparse
 
@@ -71,6 +72,12 @@ TEMP_DIR = Path(tempfile.gettempdir()).resolve()
 # The subfolder of the execution's folder that holds the files of the run in
 # progress; empty outside separate_exec_files.
 _run_folder: ContextVar[str] = ContextVar("exec_file_run_folder", default="")
+
+# The folders of the copies store_media_file made inside
+# remove_staged_copies_on_exit, to remove when it ends; None outside it.
+_staged_copy_folders: ContextVar[list[Path] | None] = ContextVar(
+    "exec_file_staged_copy_folders", default=None
+)
 
 
 def get_exec_file_path(graph_exec_id: str, path: str) -> str:
@@ -137,6 +144,35 @@ def separate_exec_files(graph_exec_id: str) -> Iterator[None]:
                 run_dir.parent.rmdir()
 
 
+@contextmanager
+def remove_staged_copies_on_exit() -> Iterator[None]:
+    """Remove the local copies ``store_media_file`` makes inside this block
+    once it ends, however it ends.
+
+    Each copy has a folder of its own, so that it never shares a path with
+    another file of the same name. Left until the run ends, a node that runs
+    once for each item of a list would keep a copy for every item, so the
+    executor runs each node inside this block.
+    """
+    folders: list[Path] = []
+    token = _staged_copy_folders.set(folders)
+    try:
+        yield
+    finally:
+        _staged_copy_folders.reset(token)
+        for folder in folders:
+            shutil.rmtree(folder, ignore_errors=True)
+
+
+def _write_copy(path: Path, content: bytes) -> None:
+    """Write a copy ``store_media_file`` makes into the new folder *path* is
+    in, and leave the folder for ``remove_staged_copies_on_exit`` to remove."""
+    path.parent.mkdir()
+    if (folders := _staged_copy_folders.get()) is not None:
+        folders.append(path.parent)
+    path.write_bytes(content)
+
+
 async def _expert_workspace_scope(
     execution_context: "ExecutionContext",
 ) -> "WorkspaceScope | None":
@@ -181,6 +217,9 @@ async def store_media_file(
     - URL: download and store locally
     - workspace:// reference: read from workspace, store locally
     - Local path: verify it exists in exec_file directory
+
+    A file stored locally keeps its own name, in a new folder of its own, so
+    it never shares a path with another file the run stores under that name.
 
     Return format options:
     - "for_local_processing": Returns local file path - use with ffmpeg, MoviePy, PIL, etc.
@@ -257,6 +296,15 @@ async def store_media_file(
         """
         return str(absolute_path.relative_to(base))
 
+    def _new_copy_path(filename: str) -> Path:
+        """Where a new copy named *filename* goes: a new folder of the run's
+        folder, which no other copy uses. The name must stay in that folder."""
+        folder = base_path / uuid.uuid4().hex
+        try:
+            return _ensure_inside_base(folder / filename, folder)
+        except OSError as e:
+            raise ValueError(f"Invalid file path '{filename}': {e}") from e
+
     # Get cloud storage handler for checking cloud paths
     cloud_storage = await get_cloud_storage_handler()
 
@@ -289,10 +337,7 @@ async def store_media_file(
                 file_info.name if file_info else f"{uuid.uuid4()}.bin"
             )
 
-        try:
-            target_path = _ensure_inside_base(base_path / filename, base_path)
-        except OSError as e:
-            raise ValueError(f"Invalid file path '{filename}': {e}") from e
+        target_path = _new_copy_path(filename)
 
         # Check file size limit
         if len(workspace_content) > MAX_FILE_SIZE_BYTES:
@@ -302,7 +347,7 @@ async def store_media_file(
 
         # Virus scan the workspace content before writing locally
         await scan_content_safe(workspace_content, filename=filename)
-        target_path.write_bytes(workspace_content)
+        _write_copy(target_path, workspace_content)
 
     # Check if this is a cloud storage path
     elif cloud_storage.is_cloud_path(file):
@@ -314,10 +359,7 @@ async def store_media_file(
         # Generate filename from cloud path
         _, path_part = cloud_storage.parse_cloud_path(file)
         filename = sanitize_filename(Path(path_part).name or f"{uuid.uuid4()}.bin")
-        try:
-            target_path = _ensure_inside_base(base_path / filename, base_path)
-        except OSError as e:
-            raise ValueError(f"Invalid file path '{filename}': {e}") from e
+        target_path = _new_copy_path(filename)
 
         # Check file size limit
         if len(cloud_content) > MAX_FILE_SIZE_BYTES:
@@ -327,7 +369,7 @@ async def store_media_file(
 
         # Virus scan the cloud content before writing locally
         await scan_content_safe(cloud_content, filename=filename)
-        target_path.write_bytes(cloud_content)
+        _write_copy(target_path, cloud_content)
 
     # Process file
     elif file.startswith("data:"):
@@ -342,10 +384,7 @@ async def store_media_file(
         # Generate filename and decode
         extension = _extension_from_mime(mime_type)
         filename = f"{uuid.uuid4()}{extension}"
-        try:
-            target_path = _ensure_inside_base(base_path / filename, base_path)
-        except OSError as e:
-            raise ValueError(f"Invalid file path '{filename}': {e}") from e
+        target_path = _new_copy_path(filename)
         content = base64.b64decode(b64_content)
 
         # Check file size limit
@@ -356,7 +395,7 @@ async def store_media_file(
 
         # Virus scan the base64 content before writing
         await scan_content_safe(content, filename=filename)
-        target_path.write_bytes(content)
+        _write_copy(target_path, content)
 
     elif file.startswith(("http://", "https://")):
         # URL - download first to get Content-Type header
@@ -379,22 +418,24 @@ async def store_media_file(
                 ext = _extension_from_mime(content_type)
                 filename = f"{filename}{ext}"
 
-        try:
-            target_path = _ensure_inside_base(base_path / filename, base_path)
-        except OSError as e:
-            raise ValueError(f"Invalid file path '{filename}': {e}") from e
+        target_path = _new_copy_path(filename)
 
         # Virus scan the downloaded content before writing
         await scan_content_safe(resp.content, filename=filename)
-        target_path.write_bytes(resp.content)
+        _write_copy(target_path, resp.content)
 
     else:
-        # Local path - sanitize the filename part to prevent long filename errors
-        sanitized_file = sanitize_filename(file)
+        # A local path relative to the run's folder, such as the
+        # "<folder>/name.mp4" a staging returns. Its folders are kept and only
+        # the file's name is sanitized, against long names; the containment
+        # check keeps the resolved path inside the run's folder.
+        local_path = PurePath(file)
+        filename = sanitize_filename(local_path.name)
+        relative_path = local_path.parent / filename
         try:
-            target_path = _ensure_inside_base(base_path / sanitized_file, base_path)
+            target_path = _ensure_inside_base(base_path / relative_path, base_path)
         except OSError as e:
-            raise ValueError(f"Invalid file path '{sanitized_file}': {e}") from e
+            raise ValueError(f"Invalid file path '{relative_path}': {e}") from e
         if not target_path.is_file():
             raise ValueError(f"Local file does not exist: {target_path}")
 
@@ -404,12 +445,13 @@ async def store_media_file(
             raise ValueError(
                 f"File too large: {len(local_content)} bytes > {MAX_FILE_SIZE_BYTES} bytes"
             )
-        await scan_content_safe(local_content, filename=sanitized_file)
+        await scan_content_safe(local_content, filename=filename)
 
     # Return based on requested format
     if return_format == "for_local_processing":
         # Use when processing files locally with tools like ffmpeg, MoviePy, PIL
-        # Returns: relative path in exec_file directory (e.g., "image.png")
+        # Returns: relative path in exec_file directory (e.g., "3f2a…/image.png"),
+        # for get_exec_file_path; its name is the file's own
         return MediaFileType(_strip_base_prefix(target_path, base_path))
 
     elif return_format == "for_external_api":
@@ -461,14 +503,19 @@ async def store_media_file(
 
 
 def get_dir_size(path: Path) -> int:
-    """Get total size of directory."""
+    """Get total size of directory.
+
+    Nodes of a run remove their copies' folders while other nodes still run,
+    so a folder or a file can vanish while it is counted. ``os.walk`` skips a
+    folder it can no longer list, and a file whose size can no longer be read
+    is skipped too: the rest are still counted, and nothing is raised.
+    (``Path.glob`` raises on Python 3.11 when a folder vanishes mid-walk.)
+    """
     total = 0
-    try:
-        for entry in path.glob("**/*"):
-            if entry.is_file():
-                total += entry.stat().st_size
-    except Exception:
-        pass
+    for folder, _, names in os.walk(path):
+        for name in names:
+            with suppress(OSError):
+                total += os.path.getsize(os.path.join(folder, name))
     return total
 
 

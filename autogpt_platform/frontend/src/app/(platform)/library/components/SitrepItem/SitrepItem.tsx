@@ -8,6 +8,7 @@ import { stashCopilotPrompt } from "@/services/copilot/prompt-handoff";
 import { useRouter } from "next/navigation";
 import type { SitrepItemData, SitrepPriority } from "../../types";
 import { ContextualActionButton } from "../ContextualActionButton/ContextualActionButton";
+import { RunningForMessage } from "./components/RunningForMessage";
 import { buildAutoPilotPrompt } from "./helpers";
 import {
   Alert02Icon,
@@ -129,11 +130,15 @@ export function SitrepItem({ item }: Props) {
           <Text variant="body-medium-lh-snug" tone="primary">
             {item.agentName}
           </Text>
-          <OverflowText
-            value={item.message}
-            variant="small-lh-tight"
-            tone="muted"
-          />
+          {item.runningSince ? (
+            <RunningForMessage startedAt={item.runningSince} />
+          ) : (
+            <OverflowText
+              value={item.message}
+              variant="small-lh-tight"
+              tone="muted"
+            />
+          )}
         </div>
       </div>
 

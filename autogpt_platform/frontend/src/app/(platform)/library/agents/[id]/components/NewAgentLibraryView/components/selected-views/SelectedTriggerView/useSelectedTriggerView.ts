@@ -11,6 +11,7 @@ import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { retryUnlessClientError } from "../../../helpers";
+import { withCalendarDates } from "../../modals/RunAgentInputs/helpers";
 import { mergeTriggerPresetInputs, splitTriggerPresetInputs } from "./helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -18,9 +19,17 @@ import { useEffect, useState } from "react";
 type Args = {
   triggerId: string;
   graphId: string;
+  // The schemas the form shows, so a stored date is read as the day it shows.
+  inputSchema?: unknown;
+  triggerConfigSchema?: unknown;
 };
 
-export function useSelectedTriggerView({ triggerId, graphId }: Args) {
+export function useSelectedTriggerView({
+  triggerId,
+  graphId,
+  inputSchema,
+  triggerConfigSchema,
+}: Args) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -46,12 +55,14 @@ export function useSelectedTriggerView({ triggerId, graphId }: Args) {
       setName(query.data.name || "");
       setDescription(query.data.description || "");
       const split = splitTriggerPresetInputs(query.data.inputs);
-      setInputs(split.inputs);
-      setTriggerConfig(split.triggerConfig);
+      setInputs(withCalendarDates(inputSchema, split.inputs));
+      setTriggerConfig(
+        withCalendarDates(triggerConfigSchema, split.triggerConfig),
+      );
       setMaskKey(split.maskKey);
       setCredentials(query.data.credentials || {});
     }
-  }, [query.data]);
+  }, [query.data, inputSchema, triggerConfigSchema]);
 
   const updateMutation = usePatchV2UpdateAnExistingPreset({
     mutation: {
@@ -151,12 +162,14 @@ export function useSelectedTriggerView({ triggerId, graphId }: Args) {
       setName(query.data.name || "");
       setDescription(query.data.description || "");
       const split = splitTriggerPresetInputs(query.data.inputs);
-      setInputs(split.inputs);
-      setTriggerConfig(split.triggerConfig);
+      setInputs(withCalendarDates(inputSchema, split.inputs));
+      setTriggerConfig(
+        withCalendarDates(triggerConfigSchema, split.triggerConfig),
+      );
       setMaskKey(split.maskKey);
       setCredentials(query.data.credentials || {});
     }
-  }, [updateMutation.isSuccess, query.data]);
+  }, [updateMutation.isSuccess, query.data, inputSchema, triggerConfigSchema]);
 
   return {
     trigger: query.data,

@@ -6,10 +6,15 @@ and workflows, Work IQ, and "Continue with Microsoft" on the login page.
 
 ## What a person sees
 
-**Continue with Microsoft** signs in with the account picker and asks only for
-name and email. A new account's onboarding then opens with an access step that
-offers the data connection; skipping it is fine. Existing accounts go straight
-where they were heading and can connect from Settings.
+**Continue with Microsoft** signs in with the account picker. Because sign-in
+uses the same Entra app as the connection, it also asks for mail, calendar and
+files and makes the connection itself (see
+[Connecting at sign-in](oauth-integration-flow.md#connecting-at-sign-in)).
+When it didn't (the person declined, their admin blocks it, or the
+deployment's sign-in has an app of its own and asks only for name and email),
+a new account's onboarding opens with an access step that offers the data
+connection; skipping it is fine. Existing accounts go straight where they
+were heading and can connect from Settings.
 
 **Connect Microsoft** (Settings → Integrations, the Copilot card, or the access step) creates
 one `microsoft` connection per Microsoft account:

@@ -82,9 +82,6 @@ async def review_submission(
     Returns:
         StoreSubmissionAdminView with updated review information
     """
-    already_approved = await store_db.check_submission_already_approved(
-        store_listing_version_id=store_listing_version_id,
-    )
     submission = await store_db.review_store_submission(
         store_listing_version_id=store_listing_version_id,
         is_approved=request.is_approved,
@@ -93,10 +90,7 @@ async def review_submission(
         reviewer_id=user_id,
     )
 
-    state_changed = already_approved != request.is_approved
-    # Clear caches whenever approval state changes, since store visibility can change
-    if state_changed:
-        await asyncio.to_thread(store_cache.clear_all_caches)
+    await asyncio.to_thread(store_cache.forget_store_listings)
     return submission
 
 

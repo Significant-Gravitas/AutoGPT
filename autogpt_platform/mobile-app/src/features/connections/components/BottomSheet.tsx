@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Modal, Pressable, StyleSheet, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -33,7 +33,15 @@ export function BottomSheet({ isOpen, onClose, children }: Props) {
         />
         <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.lg }]}>
           <View style={styles.handle} />
-          {children}
+          {/* A long list scrolls instead of running off the screen. */}
+          <ScrollView
+            style={styles.body}
+            contentContainerStyle={styles.content}
+            keyboardShouldPersistTaps="handled"
+            bounces={false}
+          >
+            {children}
+          </ScrollView>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -44,13 +52,15 @@ const useStyles = createStyles((colors) => ({
   screen: { flex: 1, justifyContent: "flex-end" },
   backdrop: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(0,0,0,0.5)" },
   sheet: {
-    gap: spacing.md,
+    maxHeight: "90%",
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.sm,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     backgroundColor: colors.surface,
   },
+  body: { flexGrow: 0 },
+  content: { gap: spacing.md },
   handle: {
     alignSelf: "center",
     width: 36,

@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  getGetV2ListPresetsQueryKey,
-  useDeleteV2DeleteAPreset,
-} from "@/app/api/__generated__/endpoints/presets/presets";
+import { useDeleteV2DeleteAPreset } from "@/app/api/__generated__/endpoints/presets/presets";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import type { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { Button } from "@/components/atoms/Button/Button";
@@ -20,6 +17,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { MoreVerticalIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { refetchPresets } from "../../../../helpers";
 
 interface Props {
   agent: LibraryAgent;
@@ -43,11 +41,7 @@ export function TemplateActionsDropdown({ agent, template, onDeleted }: Props) {
         title: "Template deleted",
       });
 
-      queryClient.invalidateQueries({
-        queryKey: getGetV2ListPresetsQueryKey({
-          graph_id: agent.graph_id,
-        }),
-      });
+      await refetchPresets({ queryClient, graphID: agent.graph_id });
 
       setShowDeleteDialog(false);
       onDeleted?.();

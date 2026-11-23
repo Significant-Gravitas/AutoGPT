@@ -9,6 +9,11 @@ import { expect, onTestFinished, vi } from "vitest";
  */
 export const AFTER_RECONNECT = { timeout: 6000 };
 
+export interface SentMessage {
+  method: string;
+  data?: unknown;
+}
+
 /**
  * Stands in for the backend's run-updates WebSocket. The app's real
  * BackendAPI connects through it and the fake answers every heartbeat as
@@ -24,18 +29,36 @@ export function installLiveSocket() {
   let noticesAtDrop = 0;
 
   return {
-    /** Accepts the app's next connection and keeps answering its pings. */
-    async acceptNext() {
+    /**
+     * Accepts the app's next connection and keeps answering its pings.
+     * `answer` gets every other message the app sends and replies with
+     * `socket.receive`. Like the server, the socket answers in order: each
+     * reply, pongs included, waits for those before it, so an answer that
+     * returns a promise holds every answer after it.
+     */
+    async acceptNext(
+      answer?: (
+        message: SentMessage,
+        socket: FakeWebSocket,
+      ) => void | Promise<void>,
+    ) {
       await waitFor(
         () => expect(FakeWebSocket.instances.length).toBeGreaterThan(accepted),
         { timeout: 5000 },
       );
       const socket = FakeWebSocket.instances[accepted];
       accepted += 1;
+      let answered = Promise.resolve();
       socket.send.mockImplementation((data: string) => {
-        if (JSON.parse(data).method === "heartbeat") {
-          queueMicrotask(() => socket.pong());
-        }
+        const message: SentMessage = JSON.parse(data);
+        // The sign-in message gets no answer of its own: the pong after it
+        // confirms it.
+        if (message.method === "authenticate") return;
+        answered = answered.then(() =>
+          message.method === "heartbeat"
+            ? socket.pong()
+            : answer?.(message, socket),
+        );
       });
       await act(async () => socket.open());
       return socket;

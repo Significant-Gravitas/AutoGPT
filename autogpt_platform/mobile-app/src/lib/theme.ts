@@ -40,6 +40,14 @@ const dark = {
   // The chat's round header buttons and name pill, over the thread.
   floatingButton: "#1F1F25",
   floatingRing: "#33333C",
+  // Lines between rows inside a panel card.
+  panelDivider: "#2A2A30",
+  // The marketplace's round hire button and pinned hire pill.
+  actionStrong: "#F4F4F5",
+  onActionStrong: "#141414",
+  // The tick that marks an expert already on the team.
+  hiredBadge: "#16301F",
+  onHiredBadge: "#4ADE80",
 };
 
 export type Colors = typeof dark;
@@ -80,6 +88,11 @@ const light: Colors = {
   panelTabTrack: "#E6E6E9",
   floatingButton: "#FFFFFF",
   floatingRing: "rgba(0,0,0,0.08)",
+  panelDivider: "#EFEFF1",
+  actionStrong: "#141414",
+  onActionStrong: "#FFFFFF",
+  hiredBadge: "#E7F6EC",
+  onHiredBadge: "#16A34A",
 };
 
 export const palettes: Record<Scheme, Colors> = { dark, light };
@@ -121,6 +134,7 @@ export const shadows = {
 
 export const type = {
   title: { fontSize: 28, fontWeight: "600", lineHeight: 34 },
+  headline: { fontSize: 22, fontWeight: "600", lineHeight: 28 },
   heading: { fontSize: 18, fontWeight: "600", lineHeight: 24 },
   body: { fontSize: 16, fontWeight: "400", lineHeight: 23 },
   label: { fontSize: 15, fontWeight: "500", lineHeight: 20 },

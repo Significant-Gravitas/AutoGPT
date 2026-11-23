@@ -1,5 +1,4 @@
-import { ComponentType } from "react";
-import { FormProps, withTheme, ThemeProps } from "@rjsf/core";
+import { withTheme, ThemeProps } from "@rjsf/core";
 import {
   generateBaseFields,
   generateBaseTemplates,
@@ -7,8 +6,10 @@ import {
 } from "../base/base-registry";
 import { generateCustomFields } from "../custom/custom-registry";
 
-export function generateForm(): ComponentType<FormProps> {
-  const theme: ThemeProps = {
+let theme: ThemeProps | undefined;
+
+function getTheme(): ThemeProps {
+  theme ??= {
     templates: generateBaseTemplates(),
     widgets: generateBaseWidgets(),
     fields: {
@@ -16,8 +17,20 @@ export function generateForm(): ComponentType<FormProps> {
       ...generateCustomFields(),
     },
   };
-
-  return withTheme(theme);
+  return theme;
 }
 
-export default generateForm();
+// Building the theme reads every field component, so it waits for the form's
+// first render: loaded in the middle of an import cycle, this module would run
+// before some field exists. withTheme reads the theme only while rendering.
+export default withTheme({
+  get templates() {
+    return getTheme().templates;
+  },
+  get widgets() {
+    return getTheme().widgets;
+  },
+  get fields() {
+    return getTheme().fields;
+  },
+});
