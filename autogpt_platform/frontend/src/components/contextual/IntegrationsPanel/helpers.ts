@@ -58,16 +58,58 @@ const PROVIDER_DISPLAY_NAME_OVERRIDES: Record<string, string> = {
   zerobounce: "ZeroBounce",
 };
 
+// An MCP catalog entry (backend/integrations/mcp_catalog.json) is a provider
+// named "mcp_<service>" whose display_name is what <service> formats to,
+// except for these. scripts/integration-logos.test.ts checks every entry.
+const MCP_DISPLAY_NAMES = new Map([
+  ["mcp_agentmail", "AgentMail"],
+  ["mcp_aimlapi", "AI/ML API"],
+  ["mcp_apollo_io", "Apollo.io"],
+  ["mcp_arize", "Arize Documentation"],
+  ["mcp_aws_databases", "AWS Knowledge"],
+  ["mcp_azure_cosmos_db", "Azure Cosmos DB"],
+  ["mcp_companyenrich", "CompanyEnrich"],
+  ["mcp_context_dev", "Context.dev"],
+  ["mcp_customer_io", "Customer.io (US)"],
+  ["mcp_customer_io_eu", "Customer.io (EU)"],
+  ["mcp_datarobot", "DataRobot"],
+  ["mcp_gojiberry_ai", "Gojiberry AI"],
+  ["mcp_intercom", "Intercom (US)"],
+  ["mcp_intercom_eu", "Intercom (EU)"],
+  ["mcp_monday", "monday.com"],
+  ["mcp_openseo", "OpenSEO"],
+  ["mcp_parallel", "Parallel Search"],
+  ["mcp_paypal", "PayPal"],
+  ["mcp_posthog", "PostHog"],
+  ["mcp_superme", "SuperMe"],
+]);
+
 export function formatProviderName(slug: unknown): string {
   if (typeof slug !== "string" || slug.length === 0) return "";
-  if (PROVIDER_DISPLAY_NAME_OVERRIDES[slug]) {
-    return PROVIDER_DISPLAY_NAME_OVERRIDES[slug];
+  const mcpName = MCP_DISPLAY_NAMES.get(slug);
+  if (mcpName) return mcpName;
+  // A bare "mcp_" names no service, so it keeps its prefix.
+  const name = slug.replace(/^mcp_(?=.)/, "");
+  if (Object.hasOwn(PROVIDER_DISPLAY_NAME_OVERRIDES, name)) {
+    return PROVIDER_DISPLAY_NAME_OVERRIDES[name];
   }
-  return slug
+  return name
     .split(/[_-]/g)
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+const PROVIDER_LIST = new Intl.ListFormat("en", {
+  style: "long",
+  type: "conjunction",
+});
+
+/** The services in `providers`, as one phrase: "Amplitude and Linear". A
+ * service named twice, such as `linear` and `mcp_linear`, is named once. */
+export function formatProviderList(providers: string[]): string {
+  const names = providers.map(formatProviderName).filter(Boolean);
+  return PROVIDER_LIST.format([...new Set(names)]);
 }
 
 export interface ServiceRef {

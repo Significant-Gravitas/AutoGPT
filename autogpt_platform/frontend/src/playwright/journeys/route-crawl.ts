@@ -327,9 +327,9 @@ async function settle(
 // Next prefetches the pages a page links to, rendering each on the server.
 // The crawl opens every page itself, so it answers prefetches with nothing,
 // which Next takes as "load that page in full if it's opened". That spares
-// the stack a dozen renders per visit and, on /admin, a dozen session
-// lookups that share one rate limit (#17308). Aborting them instead would
-// have Next log a console.error for each.
+// the stack a dozen renders per visit; admin-navigation-journey.spec.ts sends
+// the admin pages' prefetches through. Aborting them instead would have Next
+// log a console.error for each.
 async function answerPrefetchesEmpty(route: Route) {
   if (route.request().headers()["next-router-prefetch"]) {
     await route.fulfill({ status: 204 });

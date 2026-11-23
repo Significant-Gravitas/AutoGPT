@@ -167,6 +167,15 @@ proxy, so rate limits, the sign-in history and IP blocks see each visitor
 rather than the proxy. [Client IP Addresses](client-ip.md) says which
 addresses to list on each, and which older settings it replaces.
 
+The API and the WebSocket server keep an idle connection open for 620 seconds,
+longer than nginx, Caddy and Traefik keep one by default, so the proxy is the
+one that closes it. A proxy that keeps idle connections to the backend longer
+would now and then send a request on a connection the backend is closing, and
+answer 502: set `SERVER_KEEP_ALIVE_TIMEOUT_SECONDS` in `backend/.env` above its
+idle timeout. With no proxy in front, a connection a browser leaves idle holds
+one of the backend's file descriptors for that long; on a backend that clients
+reach directly, a shorter setting such as 75 seconds is enough.
+
 ## 4. Decide who can sign up
 
 Anyone who can reach the frontend can create an account. To limit that, set
