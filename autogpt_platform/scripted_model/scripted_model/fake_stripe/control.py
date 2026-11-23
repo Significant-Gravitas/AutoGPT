@@ -2,7 +2,7 @@
 
 - ``GET /__stripe__/events?object=<id>``: the webhook events about an object
   (a checkout session, say), each with every delivery and the platform's
-  answer to it.
+  answer to it; ``?customer=<id>`` lists those about the customer's objects.
 - ``POST /__stripe__/events/<event id>/deliver``: deliver an event again, as
   Stripe retries one, or for the first time if it was held.
 - ``POST /__stripe__/events`` with ``{"type": ..., "object": <id>}``: a new
@@ -16,14 +16,24 @@
   recent request.
 - ``GET /__stripe__/requests/cursor``: the latest request's number, for a
   journey to read at its start and pass as ``after``.
+- ``GET /__stripe__/objects/<id>``: an object as the API shows it, for a
+  journey to read what Stripe holds (a subscription's period) without a key.
+- ``POST /__stripe__/subscriptions/<id>/end_period``: end an active
+  subscription's current period now, as if the clock had reached it. One set
+  to cancel at the period's end is cancelled (``customer.subscription.deleted``);
+  any other renews, with a new paid invoice (``customer.subscription.updated``,
+  ``invoice.paid``, ``invoice.payment_succeeded``). Answers with the
+  subscription and those events, once they are delivered.
 """
 
 import json
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qs
 
+from .errors import ApiError
 from .forms import as_int
 from .responses import Response
+from .store import public
 
 if TYPE_CHECKING:
     from .fake import FakeStripe
@@ -35,7 +45,7 @@ def handle(
     params = {key: values[-1] for key, values in parse_qs(query).items()}
     match method, path.removeprefix("/__stripe__/").strip("/").split("/"):
         case "GET", ["events"]:
-            events = fake.events.find(params.get("object"))
+            events = fake.events.find(params.get("object"), params.get("customer"))
             return Response.json(200, {"events": events})
         case "POST", ["events"]:
             return _new_event(fake, body)
@@ -53,7 +63,24 @@ def handle(
             return Response.json(200, {"requests": requests})
         case "GET", ["requests", "cursor"]:
             return Response.json(200, {"cursor": fake.last_request()})
+        case "GET", ["objects", object_id]:
+            obj = fake.store.get(object_id)
+            return (
+                _missing(f"no object {object_id}")
+                if obj is None
+                else Response.json(200, public(obj))
+            )
+        case "POST", ["subscriptions", subscription_id, "end_period"]:
+            return _end_period(fake, subscription_id)
     return _missing(f"nothing serves {method} {path}")
+
+
+def _end_period(fake: "FakeStripe", subscription_id: str) -> Response:
+    try:
+        subscription, events = fake.subscriptions.end_period(subscription_id)
+    except ApiError as error:
+        return Response.json(error.status, error.body)
+    return Response.json(200, {"subscription": subscription, "events": events})
 
 
 def _hold(fake: "FakeStripe", object_id: str | None) -> Response:

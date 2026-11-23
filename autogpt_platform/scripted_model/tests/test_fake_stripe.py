@@ -8,9 +8,10 @@ checkout only works if the SDK reads what the fake sends back.
 import asyncio
 import json
 import threading
+import time
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,12 @@ KEY = "sk_test_scripted_model"  # pragma: allowlist secret
 SECRET = "whsec_scripted_model_tests"  # pragma: allowlist secret
 APP = "http://app.example"
 CREDITS = {"name": "AutoGPT Platform Credits"}
+CATALOG = (
+    Path(__file__).resolve().parents[1] / "scripted_model/fake_stripe/catalog.json"
+)
+PRO = "price_journeys_pro_monthly"
+MAX = "price_journeys_max_monthly"
+MONTH_S = 28 * 24 * 3600
 
 
 class Receiver(ThreadingHTTPServer):
@@ -66,15 +73,29 @@ class Stack:
 
     def pay(self, session: stripe.checkout.Session) -> tuple[int, str]:
         """Clicks Pay on the session's page, as a browser posts its form."""
-        request = urllib.request.Request(
-            f"{self.url}/stripe/checkout/{session.id}/pay", data=b"", method="POST"
-        )
+        return self.submit(f"/stripe/checkout/{session.id}/pay")
+
+    def submit(self, path: str) -> tuple[int, str]:
+        """Posts a page's form, as a browser does, and returns its redirect."""
+        request = urllib.request.Request(f"{self.url}{path}", data=b"", method="POST")
         opener = urllib.request.build_opener(_NoRedirect)
         try:
             opener.open(request, timeout=30)
         except urllib.error.HTTPError as error:
             return error.code, error.headers.get("Location", "")
-        raise AssertionError("paying should redirect")
+        raise AssertionError(f"posting {path} should redirect")
+
+    def page(self, path: str) -> str:
+        with urllib.request.urlopen(f"{self.url}{path}", timeout=10) as page:
+            return page.read().decode()
+
+    def received(self, object_id: str) -> list[str]:
+        """The types of the events the platform got about an object, in order."""
+        return [
+            event.type
+            for event in self.receiver.events
+            if event.data.object["id"] == object_id
+        ]
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -308,8 +329,361 @@ def test_a_decimal_price_is_totalled_before_it_is_rounded(stack: Stack) -> None:
 
 
 async def _with_closed_client(work: Any) -> Any:
+    """Runs ``work``, then closes the SDK's client and drops it, so the next
+    event loop makes its own (the fixture restores the original after)."""
     try:
         return await work
     finally:
         if stripe.default_http_client is not None:
             await stripe.default_http_client.close_async()
+            stripe.default_http_client = None
+
+
+def test_the_catalog_s_plans_are_for_sale_under_their_ids(stack: Stack) -> None:
+    """The journeys stack builds the platform's price flag from catalog.json,
+    so every price in it must be one the fake sells, as it says."""
+    catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
+
+    async def prices() -> list[stripe.Price]:
+        return [
+            await stripe.Price.retrieve_async(entry["id"])
+            for entry in catalog["prices"]
+        ]
+
+    sold = asyncio.run(_with_closed_client(prices()))
+    assert [
+        (p.id, p.lookup_key, p.unit_amount, p.recurring.interval, p.type) for p in sold
+    ] == [
+        (e["id"], e["lookup_key"], e["unit_amount"], e["interval"], "recurring")
+        for e in catalog["prices"]
+    ]
+    assert {e["lookup_key"] for e in catalog["prices"]} >= {
+        "PRO",
+        "PRO_YEARLY",
+        "MAX",
+        "MAX_YEARLY",
+    }
+
+
+def test_the_sdk_subscribes_on_the_fake_checkout(stack: Stack) -> None:
+    async def checkout() -> stripe.checkout.Session:
+        customer = await stripe.Customer.create_async(email="plan@example.com")
+        return await stripe.checkout.Session.create_async(
+            **_plan_checkout(customer.id, PRO, "user-1")
+        )
+
+    session = asyncio.run(_with_closed_client(checkout()))
+    assert session.mode == "subscription" and session.subscription is None
+    page = stack.page(f"/stripe/checkout/{session.id}")
+    assert "AutoGPT Pro" in page and "$23.00 / month" in page
+    assert ">Subscribe<" in page and "Total: <strong>$23.00" in page
+
+    started = time.time()
+    status, location = stack.pay(session)
+    assert (status, location) == (
+        303,
+        f"{APP}/settings/billing?subscription=success&session_id={session.id}",
+    )
+    # Delivered, in Stripe's order, before the redirect.
+    paid = stack.control("GET", f"objects/{session.id}")
+    sub_id, invoice_id = paid["subscription"], paid["invoice"]
+    assert stack.received(sub_id) == ["customer.subscription.created"]
+    assert stack.received(invoice_id) == ["invoice.paid", "invoice.payment_succeeded"]
+    assert [event.type for event in stack.receiver.events][-1] == (
+        "checkout.session.completed"
+    )
+
+    async def read() -> None:
+        sub = await stripe.Subscription.retrieve_async(sub_id)
+        assert sub.status == "active" and sub.latest_invoice == invoice_id
+        assert sub.metadata["user_id"] == "user-1"
+        [item] = sub["items"].data
+        assert (item.price.id, item.quantity) == (PRO, 1)
+        assert started - 5 <= sub.current_period_start <= time.time()
+        assert sub.current_period_end - sub.current_period_start >= MONTH_S
+        assert not sub.cancel_at_period_end and sub.cancel_at is None
+        invoice = await stripe.Invoice.retrieve_async(invoice_id)
+        assert (invoice.status, invoice.amount_paid, invoice.amount_remaining) == (
+            "paid",
+            2300,
+            0,
+        )
+        assert invoice.billing_reason == "subscription_create"
+        assert invoice.subscription == sub_id and invoice.status_transitions.paid_at
+        [line] = invoice.lines.data
+        assert (line.type, line.subscription, line.price.id, line.amount) == (
+            "subscription",
+            sub_id,
+            PRO,
+            2300,
+        )
+        assert line.period.end == sub.current_period_end and not line.proration
+        live = await stripe.Subscription.list_async(
+            customer=sub.customer, status="active"
+        )
+        assert [s.id for s in live.data] == [sub_id]
+        invoices = await stripe.Invoice.list_async(customer=sub.customer, status="paid")
+        assert [i.id for i in invoices.data] == [invoice_id]
+        cards = await stripe.PaymentMethod.list_async(
+            customer=sub.customer, type="card"
+        )
+        assert [(c.id, c.allow_redisplay) for c in cards.data] == [
+            (sub.default_payment_method, "limited")
+        ]
+
+    asyncio.run(_with_closed_client(read()))
+
+
+def test_a_plan_set_to_cancel_at_the_period_end_and_back(stack: Stack) -> None:
+    """``Subscription.modify`` answers first, then the webhook follows, with
+    what changed in ``previous_attributes``."""
+    sub_id = subscribe(stack)["subscription"]
+
+    async def cancel_then_resume() -> list[stripe.Subscription]:
+        return [
+            await stripe.Subscription.modify_async(sub_id, cancel_at_period_end=flag)
+            for flag in (True, True, False)
+        ]
+
+    cancelled, unchanged, resumed = asyncio.run(
+        _with_closed_client(cancel_then_resume())
+    )
+    assert cancelled.status == "active" and cancelled.cancel_at_period_end
+    assert cancelled.cancel_at == cancelled.current_period_end
+    assert cancelled.canceled_at and unchanged.canceled_at == cancelled.canceled_at
+    assert cancelled.cancellation_details.reason == "cancellation_requested"
+    assert not resumed.cancel_at_period_end and resumed.cancel_at is None
+    # Setting what was already set changed nothing, so sent nothing.
+    updates = _wait_for(
+        lambda: _events(stack, sub_id, "customer.subscription.updated"),
+        lambda events: len(events) >= 2 and all(e["deliveries"] for e in events),
+    )
+    assert [e["event"]["data"]["previous_attributes"] for e in updates] == [
+        {
+            "cancel_at": None,
+            "cancel_at_period_end": False,
+            "canceled_at": None,
+            "cancellation_details": {"comment": None, "feedback": None, "reason": None},
+        },
+        {
+            "cancel_at": cancelled.current_period_end,
+            "cancel_at_period_end": True,
+            "canceled_at": cancelled.canceled_at,
+            "cancellation_details": {
+                "comment": None,
+                "feedback": None,
+                "reason": "cancellation_requested",
+            },
+        },
+    ]
+    assert [d["status"] for e in updates for d in e["deliveries"]] == [200, 200]
+
+
+def test_a_period_ends_in_a_renewal_or_with_the_cancelled_plan(stack: Stack) -> None:
+    session = subscribe(stack)
+    sub_id = session["subscription"]
+    before = stack.control("GET", f"objects/{sub_id}")
+
+    renewed = stack.control("POST", f"subscriptions/{sub_id}/end_period")
+    sub = renewed["subscription"]
+    assert (
+        sub["status"] == "active" and sub["latest_invoice"] != before["latest_invoice"]
+    )
+    assert before["current_period_start"] <= sub["current_period_start"] <= time.time()
+    assert sub["current_period_end"] - sub["current_period_start"] >= MONTH_S
+    assert [e["type"] for e in renewed["events"]] == [
+        "customer.subscription.updated",
+        "invoice.paid",
+        "invoice.payment_succeeded",
+    ]
+    assert all(e["deliveries"][0]["status"] == 200 for e in renewed["events"])
+    invoice = stack.control("GET", f"objects/{sub['latest_invoice']}")
+    assert (invoice["billing_reason"], invoice["status"], invoice["amount_paid"]) == (
+        "subscription_cycle",
+        "paid",
+        2300,
+    )
+    assert invoice["number"].endswith("-0002")
+
+    # Cancelled in the billing portal, as a customer does it: the webhook is
+    # in before the page answers.
+    portal = asyncio.run(_with_closed_client(_portal(sub["customer"])))
+    page = stack.page(f"/stripe/billing_portal/{portal.id}")
+    assert "AutoGPT Pro" in page and "$23.00 per month" in page and "renews on" in page
+    action = f"/stripe/billing_portal/{portal.id}/subscriptions/{sub_id}/cancel"
+    assert stack.submit(action) == (303, f"/stripe/billing_portal/{portal.id}")
+    assert stack.received(sub_id)[-1] == "customer.subscription.updated"
+    page = stack.page(f"/stripe/billing_portal/{portal.id}")
+    assert "will be canceled on" in page and ">Renew plan<" in page
+
+    ended = stack.control("POST", f"subscriptions/{sub_id}/end_period")
+    assert [e["type"] for e in ended["events"]] == ["customer.subscription.deleted"]
+    assert ended["events"][0]["deliveries"][0]["status"] == 200
+    gone = ended["subscription"]
+    assert gone["status"] == "canceled" and gone["ended_at"]
+    assert gone["cancellation_details"]["reason"] == "cancellation_requested"
+    assert "You have no plans." in stack.page(f"/stripe/billing_portal/{portal.id}")
+    with pytest.raises(urllib.error.HTTPError) as again:
+        stack.control("POST", f"subscriptions/{sub_id}/end_period")
+    assert again.value.code == 409
+
+    async def after() -> None:
+        assert (
+            await stripe.Subscription.list_async(customer=gone["customer"])
+        ).data == []
+        all_ = await stripe.Subscription.list_async(
+            customer=gone["customer"], status="all"
+        )
+        assert [s.id for s in all_.data] == [sub_id]
+        with pytest.raises(stripe.InvalidRequestError, match="canceled subscription"):
+            await stripe.Subscription.modify_async(sub_id, cancel_at_period_end=False)
+
+    asyncio.run(_with_closed_client(after()))
+
+
+def test_a_subscription_cancelled_now(stack: Stack) -> None:
+    sub_id = subscribe(stack)["subscription"]
+
+    async def cancel() -> stripe.Subscription:
+        canceled = await stripe.Subscription.cancel_async(
+            sub_id, cancellation_details={"comment": "autogpt:account_deleted"}
+        )
+        with pytest.raises(stripe.InvalidRequestError, match="already canceled"):
+            await stripe.Subscription.cancel_async(sub_id)
+        return canceled
+
+    canceled = asyncio.run(_with_closed_client(cancel()))
+    assert canceled.status == "canceled" and canceled.ended_at
+    assert canceled.cancellation_details.comment == "autogpt:account_deleted"
+    [deleted] = _wait_for(
+        lambda: _events(stack, sub_id, "customer.subscription.deleted"),
+        lambda events: bool(events and events[0]["deliveries"]),
+    )
+    assert deleted["deliveries"][0]["status"] == 200
+    assert deleted["event"]["data"]["object"]["status"] == "canceled"
+
+
+def test_a_held_checkout_holds_the_plan_s_events_too(stack: Stack) -> None:
+    async def checkout() -> stripe.checkout.Session:
+        customer = await stripe.Customer.create_async(email="late@example.com")
+        return await stripe.checkout.Session.create_async(
+            **_plan_checkout(customer.id, PRO, "user-2")
+        )
+
+    session = asyncio.run(_with_closed_client(checkout()))
+    stack.control("POST", f"hold?object={session.id}")
+    assert stack.pay(session)[0] == 303
+    customer = stack.control("GET", f"objects/{session.id}")["customer"]
+    held = stack.control("GET", f"events?customer={customer}")["events"]
+    assert [(e["type"], e["held"], e["deliveries"]) for e in held] == [
+        ("customer.subscription.created", True, []),
+        ("invoice.paid", True, []),
+        ("invoice.payment_succeeded", True, []),
+        ("checkout.session.completed", True, []),
+    ]
+    assert stack.receiver.events == []
+    for event in held:
+        stack.control("POST", f"events/{event['id']}/deliver")
+    assert [e.type for e in stack.receiver.events] == [e["type"] for e in held]
+
+
+def test_what_the_fake_doesn_t_model_is_refused_and_journaled(stack: Stack) -> None:
+    sub_id = subscribe(stack)["subscription"]
+    cursor = stack.control("GET", "requests/cursor")["cursor"]
+
+    async def unmodelled() -> None:
+        sub = await stripe.Subscription.retrieve_async(sub_id)
+        item = sub["items"].data[0].id
+        with pytest.raises(stripe.InvalidRequestError, match="doesn't model"):
+            await stripe.Subscription.modify_async(
+                sub_id,
+                items=[{"id": item, "price": MAX}],
+                proration_behavior="always_invoice",
+            )
+        with pytest.raises(stripe.InvalidRequestError, match="doesn't model"):
+            await stripe.Subscription.cancel_async(sub_id, invoice_now=True)
+        with pytest.raises(stripe.InvalidRequestError, match="doesn't model"):
+            await stripe.checkout.Session.create_async(
+                mode="subscription",
+                line_items=[{"price": PRO, "quantity": 1}],
+                success_url=f"{APP}/billing",
+            )
+        # Stripe's own refusal, which the fake models.
+        with pytest.raises(stripe.InvalidRequestError, match="recurring price"):
+            await stripe.checkout.Session.create_async(
+                mode="payment",
+                line_items=[{"price": PRO, "quantity": 1}],
+                success_url=f"{APP}/billing",
+            )
+        # Nothing changed.
+        same = await stripe.Subscription.retrieve_async(sub_id)
+        assert same["items"].data[0].price.id == PRO and same.status == "active"
+
+    asyncio.run(_with_closed_client(unmodelled()))
+    unserved = stack.control("GET", f"requests?unserved=true&after={cursor}")
+    assert [(r["method"], r["path"]) for r in unserved["requests"]] == [
+        ("POST", f"/v1/subscriptions/{sub_id}"),
+        ("DELETE", f"/v1/subscriptions/{sub_id}"),
+        ("POST", "/v1/checkout/sessions"),
+    ]
+
+
+def subscribe(stack: Stack, price: str = PRO, user_id: str = "user-1") -> Any:
+    """A customer who bought ``price`` on the fake's checkout, as the platform
+    sells a plan. Returns the completed session as the fake holds it."""
+
+    async def checkout() -> stripe.checkout.Session:
+        customer = await stripe.Customer.create_async(email=f"{user_id}@example.com")
+        return await stripe.checkout.Session.create_async(
+            **_plan_checkout(customer.id, price, user_id)
+        )
+
+    session = asyncio.run(_with_closed_client(checkout()))
+    assert stack.pay(session)[0] == 303
+    return stack.control("GET", f"objects/{session.id}")
+
+
+def _plan_checkout(customer_id: str, price: str, user_id: str) -> dict[str, Any]:
+    """What ``create_subscription_checkout`` sends."""
+    return {
+        "customer": customer_id,
+        "mode": "subscription",
+        "line_items": [{"price": price, "quantity": 1}],
+        "success_url": f"{APP}/settings/billing?subscription=success"
+        "&session_id={CHECKOUT_SESSION_ID}",
+        "cancel_url": f"{APP}/settings/billing?subscription=cancelled",
+        "subscription_data": {
+            "metadata": {"user_id": user_id, "tier": "PRO", "billing_cycle": "monthly"}
+        },
+        "allow_promotion_codes": True,
+        "automatic_tax": {"enabled": True},
+        "billing_address_collection": "auto",
+        "customer_update": {"address": "auto"},
+        "saved_payment_method_options": {
+            "payment_method_save": "enabled",
+            "allow_redisplay_filters": ["always", "limited"],
+        },
+        "metadata": {},
+    }
+
+
+async def _portal(customer_id: str) -> stripe.billing_portal.Session:
+    return await stripe.billing_portal.Session.create_async(
+        customer=customer_id, return_url=f"{APP}/settings/billing"
+    )
+
+
+def _events(stack: Stack, object_id: str, event_type: str) -> list[dict[str, Any]]:
+    events = stack.control("GET", f"events?object={object_id}")["events"]
+    return [event for event in events if event["type"] == event_type]
+
+
+def _wait_for(read: Callable[[], Any], done: Callable[[Any], bool]) -> Any:
+    """``read()`` once ``done`` accepts it: a webhook the API's answer came
+    before arrives on its own."""
+    deadline = time.monotonic() + 10
+    while True:
+        value = read()
+        if done(value) or time.monotonic() > deadline:
+            return value
+        time.sleep(0.05)

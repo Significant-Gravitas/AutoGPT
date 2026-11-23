@@ -4,12 +4,22 @@ An event is delivered when it happens, unless a journey held its object, and
 again whenever a journey asks, as Stripe retries one the platform didn't
 acknowledge: the same event, with the same id and body, and a new signature.
 Every delivery is kept with the platform's answer.
+
+Deliveries go out one at a time, in the order the events happened. What the
+fake's own pages and controls do (paying, cancelling in the billing portal,
+ending a period) waits for its events to be delivered, so a journey knows the
+platform has heard of it by the time the page answers. What the platform asks
+for through the API never waits: as with Stripe, the API answers first and the
+webhook follows. It must not wait either way, since the platform's webhook
+handler calls the API back, and the call that raised the event may be holding
+the idempotency lock that call needs (``StripeApi._idempotent``).
 """
 
 import copy
 import hashlib
 import hmac
 import json
+import queue
 import threading
 import time
 import urllib.error
@@ -18,7 +28,10 @@ from typing import Any
 
 from .store import StripeObject, new_id, now, public
 
-API_VERSION = "2025-03-31.basil"
+# The platform's Stripe SDK (stripe 11) pins this version, and the fake's
+# objects take its shapes: a subscription's period on the subscription, an
+# invoice's subscription on the invoice.
+API_VERSION = "2025-02-24.acacia"
 DELIVERY_TIMEOUT_S = 30
 BODY_SNIPPET_LENGTH = 300
 
@@ -37,6 +50,10 @@ class Events:
         self._records: dict[str, dict[str, Any]] = {}
         self._held: set[str] = set()
         self._lock = threading.Lock()
+        self._queue: queue.SimpleQueue[tuple[str, threading.Event]] = (
+            queue.SimpleQueue()
+        )
+        self._sender: threading.Thread | None = None
 
     def hold(self, object_id: str) -> None:
         """Keep the events this object's changes raise from now on until a
@@ -45,34 +62,55 @@ class Events:
         with self._lock:
             self._held.add(object_id)
 
+    def hold_with(self, parent_id: str, *object_ids: str) -> None:
+        """Hold ``object_ids`` too if ``parent_id`` is held: a held checkout
+        holds the subscription and invoice paying it starts."""
+        with self._lock:
+            if parent_id in self._held:
+                self._held.update(object_ids)
+
     def emit(
-        self, event_type: str, obj: StripeObject, *, holdable: bool = True
+        self,
+        event_type: str,
+        obj: StripeObject,
+        *,
+        holdable: bool = True,
+        wait: bool = True,
+        previous_attributes: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """A new event about ``obj`` as it is now, delivered at once unless
-        ``holdable`` and the object is held."""
+        """A new event about ``obj`` as it is now, delivered in turn unless
+        ``holdable`` and the object is held. ``wait`` returns only once it
+        has been delivered; never wait from an API call (see above)."""
+        data: dict[str, Any] = {"object": public(obj)}
+        if previous_attributes is not None:
+            data["previous_attributes"] = previous_attributes
         event = {
             "id": new_id("evt"),
             "object": "event",
             "api_version": API_VERSION,
             "created": now(),
-            "data": {"object": public(obj)},
+            "data": data,
             "livemode": False,
             "pending_webhooks": 1,
             "request": {"id": None, "idempotency_key": None},
             "type": event_type,
         }
+        customer = obj["id"] if obj.get("object") == "customer" else obj.get("customer")
         with self._lock:
             held = holdable and obj["id"] in self._held
             self._records[event["id"]] = {
                 "id": event["id"],
                 "type": event_type,
                 "object": obj["id"],
+                "customer": customer,
                 "held": held,
                 "event": event,
                 "deliveries": [],
             }
         if not held:
-            self.deliver(event["id"])
+            sent = self._send_in_turn(event["id"])
+            if wait:
+                sent.wait()
         return self.get(event["id"]) or {}
 
     def deliver(self, event_id: str) -> dict[str, Any] | None:
@@ -91,14 +129,37 @@ class Events:
         with self._lock:
             return copy.deepcopy(self._records.get(event_id))
 
-    def find(self, object_id: str | None = None) -> list[dict[str, Any]]:
-        """Every event, or those about ``object_id``, oldest first."""
+    def find(
+        self, object_id: str | None = None, customer: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Every event, or those about ``object_id`` or about the objects of
+        ``customer``, oldest first."""
         with self._lock:
             return [
                 copy.deepcopy(record)
                 for record in self._records.values()
-                if object_id is None or record["object"] == object_id
+                if (object_id is None or record["object"] == object_id)
+                and (customer is None or record["customer"] == customer)
             ]
+
+    def _send_in_turn(self, event_id: str) -> threading.Event:
+        sent = threading.Event()
+        with self._lock:
+            if self._sender is None:
+                self._sender = threading.Thread(
+                    target=self._send_queued, name="fake-stripe-webhooks", daemon=True
+                )
+                self._sender.start()
+        self._queue.put((event_id, sent))
+        return sent
+
+    def _send_queued(self) -> None:
+        while True:
+            event_id, sent = self._queue.get()
+            try:
+                self.deliver(event_id)
+            finally:
+                sent.set()
 
     def _post(self, payload: bytes) -> dict[str, Any]:
         at = time.time()
