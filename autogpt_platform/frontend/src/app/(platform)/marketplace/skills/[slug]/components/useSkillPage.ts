@@ -17,7 +17,6 @@ import {
 } from "@/app/api/__generated__/endpoints/store/store";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { okData } from "@/app/api/helpers";
-import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
@@ -135,9 +134,9 @@ export function useSkillPage(slug: string) {
       install({ slug, params: { expert_id: expert.id } }),
     // Connecting is a next step, never a precondition: the list only offers
     // what is still worth setting up, after the install landed.
-    pendingConnections: requiredProviders
-      .filter((provider) => !connected.has(provider))
-      .map(formatProviderName),
+    pendingConnections: requiredProviders.filter(
+      (provider) => !connected.has(provider),
+    ),
     moreSkills: (more.data ?? []).filter((skill) => skill.slug !== slug),
     files: query.data?.files ?? [],
     openFilePath,
