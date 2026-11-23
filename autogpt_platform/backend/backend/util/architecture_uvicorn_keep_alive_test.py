@@ -105,6 +105,18 @@ def test_every_uvicorn_server_sets_its_keep_alive():
         pytest.param(
             """
             import uvicorn
+            def without_it(**kwargs):
+                return {"port": 8006}
+            def options():
+                return without_it(timeout_keep_alive=620)
+            uvicorn.run(app, **options())
+            """,
+            False,
+            id="unpacked-call-that-drops-it",
+        ),
+        pytest.param(
+            """
+            import uvicorn
             def options():
                 return {"port": 8006}
             uvicorn.run(app, **options())
@@ -291,7 +303,12 @@ def _names_keep_alive(value: ast.expr | None) -> bool:
             isinstance(key, ast.Constant) and key.value == _KEEP_ALIVE
             for key in value.keys
         )
-    if isinstance(value, ast.Call):
+    # Only `dict(...)` returns its keywords; another function's may not.
+    if (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Name)
+        and value.func.id == "dict"
+    ):
         return any(keyword.arg == _KEEP_ALIVE for keyword in value.keywords)
     return False
 
