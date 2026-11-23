@@ -461,12 +461,11 @@ describe("the admin check behind a proxy that ends TLS", () => {
     const admin = await signIn(server, "admin");
     const request = adminPage(admin.sessionCookie);
 
-    // The request's own address meets a TLS handshake on a plain-http port.
+    // The request's own address is https on a plain-http port, so a lookup
+    // there fails. How it fails depends on the TLS library and timing.
     await expect(
       fetch(new URL("/api/auth/get-session", request.url)),
-    ).rejects.toMatchObject({
-      cause: { code: expect.stringMatching(/^ERR_SSL_/) },
-    });
+    ).rejects.toThrow();
     const response = await authMiddleware(request);
 
     expect(redirectPath(response)).toBeNull();
