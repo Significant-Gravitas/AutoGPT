@@ -1,4 +1,11 @@
+import type { GraphModel } from "@/app/api/__generated__/models/graphModel";
+import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import type { LiveStoreSubmission } from "@/app/api/__generated__/models/liveStoreSubmission";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
+import type { PublishAgentInfoInitialData } from "./components/AgentInfoStep/helpers";
+
+export const LISTING_CHECK_FAILED_MESSAGE =
+  "We couldn't check whether this workflow is already in the Marketplace.";
 
 export const emptyModalState = {
   agent_id: "",
@@ -15,6 +22,72 @@ export const emptyModalState = {
   changesSummary: "",
   additionalImages: [],
 };
+
+export interface AgentFormSource {
+  name: string;
+  description: string;
+  imageSrc: string;
+  recommendedScheduleCron: string | null;
+}
+
+/**
+ * A new listing's starting values from the workflow itself: the name,
+ * description and schedule of the version being published, and the image of
+ * its Library entry, if it has one.
+ */
+export function toAgentFormSource(
+  graph: GraphModel,
+  libraryAgent: LibraryAgent | null,
+): AgentFormSource {
+  return {
+    name: graph.name,
+    description: graph.description,
+    imageSrc: libraryAgent?.image_url || "",
+    recommendedScheduleCron: graph.recommended_schedule_cron || null,
+  };
+}
+
+/**
+ * The info step's starting values: the live listing's when the workflow
+ * already has one (an update), otherwise the workflow's own (a new listing).
+ * An update submits what the form starts with, so it takes nothing from the
+ * workflow: the workflow's image or schedule would replace the listing's
+ * though the creator never touched them.
+ * Both ways into the dialog build them here, so they can't drift apart.
+ */
+export function buildInitialFormData(
+  agentId: string,
+  agent: AgentFormSource,
+  submission: LiveStoreSubmission | undefined,
+): PublishAgentInfoInitialData {
+  if (!submission) {
+    return {
+      ...emptyModalState,
+      agent_id: agentId,
+      title: agent.name,
+      description: agent.description,
+      thumbnailSrc: agent.imageSrc,
+      slug: agent.name.replace(/ /g, "-"),
+      recommendedScheduleCron: agent.recommendedScheduleCron || "",
+    };
+  }
+  const images = [...new Set(submission.image_urls || [])].filter(Boolean);
+  return {
+    agent_id: agentId,
+    title: submission.name,
+    subheader: submission.sub_heading || "",
+    description: submission.description,
+    instructions: submission.instructions || "",
+    youtubeLink: submission.video_url || "",
+    agentOutputDemo: submission.agent_output_demo_url || "",
+    additionalImages: images,
+    category: submission.categories?.[0] || "",
+    thumbnailSrc: images[0] ?? "",
+    slug: submission.slug,
+    recommendedScheduleCron: submission.recommended_schedule_cron || "",
+    changesSummary: submission.changes_summary || "",
+  };
+}
 
 export interface SubmissionMetaItem {
   label: string;

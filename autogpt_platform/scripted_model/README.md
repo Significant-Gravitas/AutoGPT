@@ -60,6 +60,15 @@ script to know what to expect.
 }
 ```
 
+- **A turn the platform sends itself**, such as an expert's kickoff, has no
+  message the journey can type a marker into. When no user message holds
+  one, the marker is looked for in the system prompt, so a journey puts it in
+  text the user sets that the system prompt carries: an expert's writing
+  sample (`<voice_preferences>`). A marker in a user message still wins.
+  The sample stays in that expert's system prompt, so every later request
+  of that hire with no marker of its own goes to the same script, a turn the
+  platform starts later included. Give such a turn its own marker in a user
+  message, or expect it to run past the script's end.
 - **Which turn answers a request:** turn `n` answers the request whose
   conversation already holds `n` assistant messages. Requests carry the whole
   conversation, so the server keeps no state: concurrent runs of one script,
@@ -74,6 +83,16 @@ script to know what to expect.
   and `create_agent` needs the building guide read first
   (`{"id": "skill:agent_building_guide"}`). See
   `model-scripts/build-doubler-agent.json`.
+- **An argument read from a tool's result:** a model passes on an id it read
+  from what a tool returned (`list_schedules`, then `pause_schedule`). In a
+  tool call's input, write
+  `{"$from_tool_result": {"tool": "run_capability", "pattern": "\"schedule_id\": \"([^\"]+)\""}}`
+  in place of the value: it becomes the pattern's first group in that
+  tool's results the request sends back, which are only the last turn's:
+  of several calls to the tool in that turn, the last one with a match
+  whose first group took part (an optional group can match empty-handed).
+  An earlier turn's result is never read. No match fails the turn, naming
+  the results it saw.
 - **Checks** are logged, and a journey asserts on them through the journal:
   `expect_tool_results` against the tool results the platform sends back,
   `expect_user_text` against what the user said since the last answer.
@@ -125,6 +144,13 @@ the whole reply reached the platform (`completed`). Refused scripted turns are
 there with their reason. Unfiltered reads also include memory side calls and
 unexpected requests; memory calls deliberately have no script or nonce, usage,
 or billed cost. The container log has one line per request.
+
+Each entry also names the API key the request presented (`x-api-key`, or a
+bearer token) as `credential`: the first 16 hex digits of its SHA-256, never
+the key itself. `?credential=<fingerprint>` lists the requests made with one
+key. The journeys stack points Anthropic clients at this server
+(`ANTHROPIC_BASE_URL`), so an AI block run with a key the journey's user saved
+lands here too, and a journey can check the block ran once, with that key.
 
 ## Run it
 

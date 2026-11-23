@@ -426,8 +426,8 @@ async def test_the_swap_log_names_the_model_not_the_stored_spelling(on_day, capl
 
 @pytest.mark.asyncio
 async def test_a_value_too_deep_to_resolve_still_fails_the_input_check(on_day):
-    """A thousand provider prefixes recurse through ``LLMModel._missing_``. The
-    value is unknown, and the block's input check refuses it, as before."""
+    """A thousand provider prefixes are more than any spelling has. The value
+    names no model, and the block's input check refuses it, as before."""
     on_day(GPT_5_SHUTDOWN)
     deep = "x/" * 1000 + "o3-mini"
     assert retired_model_fallback(deep) is None

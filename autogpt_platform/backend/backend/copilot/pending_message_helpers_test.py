@@ -628,6 +628,25 @@ async def test_drain_pending_safe_empty_buffer(monkeypatch: pytest.MonkeyPatch) 
     assert result == []
 
 
+@pytest.mark.asyncio
+async def test_drain_pending_safe_refuses_a_backlog_drain_that_also_closes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A turn's first look and its last are different drains; asking for both
+    must not quietly run just one of them."""
+    drains = {
+        name: AsyncMock(return_value=[])
+        for name in ("drain_pending_messages", "drain_pending_or_close")
+    }
+    for name, drain in drains.items():
+        monkeypatch.setattr(helpers_module, name, drain)
+
+    with pytest.raises(ValueError):
+        await drain_pending_safe("sess-1", drain_backlog=True, close_for_turn="t1")
+
+    assert [d.await_count for d in drains.values()] == [0, 0]
+
+
 # ── combine_pending_with_current ───────────────────────────────────────
 
 

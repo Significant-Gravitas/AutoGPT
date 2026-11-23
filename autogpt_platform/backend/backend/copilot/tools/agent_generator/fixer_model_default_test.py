@@ -45,10 +45,12 @@ def test_unset_model_on_orchestrator_gets_its_own_default():
 
 
 def test_model_the_user_named_is_kept():
+    """Any model the block picker offers; the enum also lists switched-off
+    models, which the fixer replaces."""
     block = AITextGeneratorBlock().get_info().model_dump()
     named = next(
         model
-        for model in block["inputSchema"]["properties"]["model"]["enum"]
+        for model in block["inputSchema"]["properties"]["model"]["llm_model_metadata"]
         if model != DEFAULT_LLM_MODEL.value
     )
     assert _fix(AITextGeneratorBlock, {"model": named})["model"] == named

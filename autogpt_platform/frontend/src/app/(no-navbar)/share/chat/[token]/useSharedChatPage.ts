@@ -4,23 +4,15 @@ import {
   useGetV2GetSharedChatMessages,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages";
+import { isDeadLinkError, retryUnlessDeadLink } from "@/lib/share/dead-link";
 import { sharedChatFileUrl } from "@/lib/share/routes";
 
 const PAGE_SIZE = 200;
 
-// Retry transient failures, but not real 404s — a missing share is a
-// permanent state and looping retries on it would just delay the error
-// UI without changing the outcome.
-function retryUnlessNotFound(failureCount: number, error: unknown): boolean {
-  const status = (error as { status?: number } | null)?.status;
-  if (status === 404) return false;
-  return failureCount < 3;
-}
-
 export function useSharedChatPage(token: string) {
   const sessionQuery = useGetV2GetSharedChat(token, {
     query: {
-      retry: retryUnlessNotFound,
+      retry: retryUnlessDeadLink,
       select: (res) => (res.status === 200 ? res.data : undefined),
     },
   });
@@ -31,23 +23,24 @@ export function useSharedChatPage(token: string) {
     {
       query: {
         enabled: !!sessionQuery.data,
-        retry: retryUnlessNotFound,
+        retry: retryUnlessDeadLink,
         select: (res) => (res.status === 200 ? res.data : undefined),
       },
     },
   );
 
-  const isLoading = sessionQuery.isLoading || messagesQuery.isLoading;
-  // Distinguish "session not found / revoked" from "messages 5xx'd
-  // mid-deploy".  The former is permanent (the share link is dead);
-  // the latter is transient and should render the chrome + an
-  // in-place retry affordance rather than the not-found card.  Bucket
-  // both errors but expose them separately so the page can switch on
-  // intent.
-  const sessionError = sessionQuery.isError;
-  const messagesError = messagesQuery.isError;
-  const rawError = sessionQuery.error || messagesQuery.error;
-  const error = rawError instanceof Error ? rawError.message : undefined;
+  // isPending, since a read paused while the viewer is offline is pending but
+  // not loading. The messages read waits for the session, so it only counts
+  // once there is one.
+  const isLoading =
+    sessionQuery.isPending || (!!sessionQuery.data && messagesQuery.isPending);
+  // Either read can find the link dead, since the owner can stop sharing
+  // between them. Any other failure (a 5xx mid-deploy, a network blip) says
+  // nothing about the link, so the page offers a retry instead.
+  const isDeadLink =
+    isDeadLinkError(sessionQuery.error) ||
+    isDeadLinkError(messagesQuery.error) ||
+    (sessionQuery.isSuccess && !sessionQuery.data);
 
   // Convert the sanitized SharedChatMessage[] into the UIMessage[] shape
   // that the owner-side ChatMessagesContainer expects.  ``isComplete``
@@ -80,6 +73,13 @@ export function useSharedChatPage(token: string) {
     return { uiMessages: converted.messages, turnStats: converted.stats };
   }, [sessionQuery.data, messagesQuery.data, token]);
 
+  // Only the read that failed: the messages read follows the session on its
+  // own once there is one.
+  function retry() {
+    if (sessionQuery.isError) sessionQuery.refetch();
+    if (messagesQuery.isError) messagesQuery.refetch();
+  }
+
   return {
     session: sessionQuery.data,
     rawMessages: messagesQuery.data?.messages ?? [],
@@ -87,12 +87,8 @@ export function useSharedChatPage(token: string) {
     turnStats: ui.turnStats,
     hasMore: messagesQuery.data?.has_more ?? false,
     isLoading,
-    sessionError,
-    messagesError,
-    error,
-    retry: () => {
-      sessionQuery.refetch();
-      messagesQuery.refetch();
-    },
+    isDeadLink,
+    messagesError: messagesQuery.isError,
+    retry,
   };
 }

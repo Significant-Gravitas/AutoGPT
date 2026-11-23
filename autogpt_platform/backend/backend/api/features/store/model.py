@@ -323,6 +323,26 @@ class StoreSubmission(pydantic.BaseModel):
         )
 
 
+class LiveStoreSubmission(StoreSubmission):
+    """The version of a listing that the Marketplace shows, with the
+    recommended schedule it carries. An update starts from it."""
+
+    recommended_schedule_cron: str | None
+
+    @classmethod
+    def from_live_version(
+        cls,
+        _sub: "prisma.models.StoreSubmission",
+        _lv: "prisma.models.StoreListingVersion",
+    ) -> Self:
+        """Construct from the live version's StoreSubmission view row and its
+        StoreListingVersion, which holds the schedule the view leaves out."""
+        return cls(
+            **StoreSubmission.from_db(_sub).model_dump(),
+            recommended_schedule_cron=_lv.recommendedScheduleCron,
+        )
+
+
 class SubmissionStats(pydantic.BaseModel):
     """Creator-wide aggregates over a user's non-deleted submissions.
 
