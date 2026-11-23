@@ -226,9 +226,9 @@ jobs:
             # self-hosted stack (TODO in src/playwright/journeys/README.md).
             playwright_args: --project hosted
             # Pinned inventory of the whole suite, the same on every shard:
-            # 47 tests in 22 files; raise when adding journeys. Each shard's
+            # 49 tests in 23 files; raise when adding journeys. Each shard's
             # own floor is counted at run time ("Count the shard's tests").
-            min_tests: 47
+            min_tests: 49
             embeddings: false
             # Journeys sign up their own users and need no seeded data.
             seed: false
@@ -249,7 +249,7 @@ jobs:
             shard_total: 2
             config: playwright.journeys.config.ts
             playwright_args: --project hosted
-            min_tests: 47
+            min_tests: 49
             embeddings: false
             seed: false
             hosted: true

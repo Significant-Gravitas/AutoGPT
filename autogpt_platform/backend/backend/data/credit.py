@@ -41,7 +41,11 @@ from backend.data.model import UserCreditTransactionAdminView
 from backend.data.notifications import NotificationEventModel, OpsData
 from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.stripe_authentication import requires_authentication
-from backend.data.stripe_client import stripe_call, stripe_list_items
+from backend.data.stripe_client import (
+    api_base_override,
+    stripe_call,
+    stripe_list_items,
+)
 from backend.data.subscription_checkout import (
     ensure_no_unconverted_trial,
     expire_all_open_checkouts,
@@ -85,6 +89,10 @@ if TYPE_CHECKING:
 
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
+if api_base := api_base_override(
+    settings.config.stripe_api_base, settings.secrets.stripe_api_key
+):
+    stripe.api_base = api_base
 logger = logging.getLogger(__name__)
 base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
