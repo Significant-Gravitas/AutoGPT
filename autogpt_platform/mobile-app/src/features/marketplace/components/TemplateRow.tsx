@@ -8,9 +8,7 @@ import { avatarSource, avatarTint, roleLine } from "@/features/team/helpers";
 import type { ExpertTemplate } from "@/lib/api/experts";
 import { createStyles, radius, useColors } from "@/lib/theme";
 
-import { whoLine } from "../helpers";
-
-const AVATAR_SIZE = 36;
+const AVATAR_SIZE = 38;
 const ACTION_SIZE = 26;
 
 interface Props {
@@ -45,6 +43,7 @@ export function TemplateRow({ template, isFirst, isOnTeam, isHiring, onOpen, onH
           name={template.name}
           source={avatarSource(template)}
           tint={avatarTint(template)}
+          background={colors.panelBackground}
           size={AVATAR_SIZE}
         />
         <View style={styles.text}>
@@ -52,7 +51,8 @@ export function TemplateRow({ template, isFirst, isOnTeam, isHiring, onOpen, onH
             {job}
           </Text>
           <Text numberOfLines={1} style={styles.who}>
-            {whoLine(template)}
+            <Text style={styles.name}>{template.name}</Text>
+            {template.tagline?.trim() ? ` · ${template.tagline.trim()}` : null}
           </Text>
         </View>
       </Pressable>
@@ -71,9 +71,9 @@ export function TemplateRow({ template, isFirst, isOnTeam, isHiring, onOpen, onH
           style={({ pressed }) => [styles.action, styles.hire, pressed && styles.hirePressed]}
         >
           {isHiring ? (
-            <ActivityIndicator size="small" color={colors.onActionStrong} />
+            <ActivityIndicator size="small" color={colors.text} />
           ) : (
-            <Icon icon={Add01Icon} size={16} color={colors.onActionStrong} />
+            <Icon icon={Add01Icon} size={16} color={colors.text} />
           )}
         </Pressable>
       )}
@@ -82,21 +82,19 @@ export function TemplateRow({ template, isFirst, isOnTeam, isHiring, onOpen, onH
 }
 
 interface CardProps {
-  background: string;
   children: ReactNode;
 }
 
 /** A rounded card of rows. */
-export function RowCard({ background, children }: CardProps) {
+export function RowCard({ children }: CardProps) {
   const styles = useStyles();
-  return <View style={[styles.card, { backgroundColor: background }]}>{children}</View>;
+  return <View style={styles.card}>{children}</View>;
 }
 
 export function PlaceholderRows() {
   const styles = useStyles();
-  const colors = useColors();
   return (
-    <RowCard background={colors.panelCard}>
+    <RowCard>
       {[0, 1, 2, 3].map((index) => (
         <View key={index} style={[styles.row, styles.placeholderRow, index > 0 && styles.divider]}>
           <View style={[styles.placeholder, styles.placeholderAvatar]} />
@@ -111,22 +109,29 @@ export function PlaceholderRows() {
 }
 
 const useStyles = createStyles((colors) => ({
-  card: { marginHorizontal: 14, marginBottom: 18, borderRadius: radius.lg, overflow: "hidden" },
+  card: {
+    marginHorizontal: 14,
+    marginBottom: 18,
+    borderRadius: radius.lg,
+    backgroundColor: colors.panelCard,
+    overflow: "hidden",
+  },
   row: { flexDirection: "row", alignItems: "center", paddingRight: 12 },
   divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.panelDivider },
   open: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingVertical: 9,
+    gap: 12,
+    paddingVertical: 10,
     paddingLeft: 12,
     paddingRight: 10,
   },
   pressed: { opacity: 0.6 },
   text: { flex: 1, minWidth: 0, gap: 1 },
-  job: { fontSize: 13, lineHeight: 17, fontWeight: "600", color: colors.text },
-  who: { fontSize: 11.5, lineHeight: 15, color: colors.textSecondary },
+  job: { fontSize: 14, lineHeight: 18, fontWeight: "600", color: colors.text },
+  who: { fontSize: 12.5, lineHeight: 16, color: colors.textSecondary },
+  name: { fontWeight: "500", color: colors.text },
   action: {
     width: ACTION_SIZE,
     height: ACTION_SIZE,
@@ -134,10 +139,11 @@ const useStyles = createStyles((colors) => ({
     alignItems: "center",
     justifyContent: "center",
   },
-  hire: { backgroundColor: colors.actionStrong },
+  // Grey, not black: a column of black buttons outweighs the experts.
+  hire: { backgroundColor: colors.panelTabTrack },
   hirePressed: { opacity: 0.7 },
   hired: { backgroundColor: colors.hiredBadge },
-  placeholderRow: { gap: 10, paddingVertical: 9, paddingLeft: 12 },
+  placeholderRow: { gap: 12, paddingVertical: 10, paddingLeft: 12 },
   placeholder: { backgroundColor: colors.panelBackground, borderRadius: radius.pill },
   placeholderAvatar: { width: AVATAR_SIZE, height: AVATAR_SIZE },
   placeholderWide: { height: 11, width: "55%", marginBottom: 5 },
