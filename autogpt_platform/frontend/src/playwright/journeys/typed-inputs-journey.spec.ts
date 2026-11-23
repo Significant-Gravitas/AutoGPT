@@ -7,7 +7,6 @@ import {
   escapeRegExp,
   fillTable,
   inputField,
-  isLocalStack,
   isRunStart,
   longTextField,
   observe,
@@ -121,69 +120,58 @@ test.describe("typed inputs journey", () => {
     // A date is checked outside UTC on its own, below.
     test.use({ timezoneId: "UTC" });
 
-    test(
-      "every kind of input reaches the workflow as it was entered, and the run view and a rerun show each value unchanged",
-      { annotation: issue(17306) },
-      async ({ page, journeyUser: _user }, testInfo) => {
-        const agent = await createTypedInputsAgent(page, EVERY_INPUT);
-        const dialog = await openRunDialog(page, agent);
-        await fillEveryInput(page, dialog);
-        const { runID, sent } = await startTask(page, agent, dialog);
-        observe(testInfo, `the run form sent ${JSON.stringify(sent)}`);
+    test("every kind of input reaches the workflow as it was entered, and the run view and a rerun show each value unchanged", async ({
+      page,
+      journeyUser: _user,
+    }, testInfo) => {
+      const agent = await createTypedInputsAgent(page, EVERY_INPUT);
+      const dialog = await openRunDialog(page, agent);
+      await fillEveryInput(page, dialog);
+      const { runID, sent } = await startTask(page, agent, dialog);
+      observe(testInfo, `the run form sent ${JSON.stringify(sent)}`);
 
-        const run = await waitForRunToEnd(page, agent, runID);
-        observe(
-          testInfo,
-          `the run ended ${run.status} with outputs ${JSON.stringify(run.outputs)}`,
-        );
-        expect(run.status, "the run should complete").toBe("COMPLETED");
-        const { file, ...got } = run.outputs;
-        expect(
-          got,
-          "the workflow should get every value as it was entered, with its type",
-        ).toEqual(asOutputs(GOT));
-        expectOneFile(file);
-        await expectEveryOutputShown(page, EVERY_INPUT);
-        observe(
-          testInfo,
-          `the run view shows ${JSON.stringify(await readShownOutputs(page))}`,
-        );
-        await expectRunViewShowsEveryValue(page);
+      const run = await waitForRunToEnd(page, agent, runID);
+      observe(
+        testInfo,
+        `the run ended ${run.status} with outputs ${JSON.stringify(run.outputs)}`,
+      );
+      expect(run.status, "the run should complete").toBe("COMPLETED");
+      const { file, ...got } = run.outputs;
+      expect(
+        got,
+        "the workflow should get every value as it was entered, with its type",
+      ).toEqual(asOutputs(GOT));
+      expectOneFile(file);
+      await expectEveryOutputShown(page, EVERY_INPUT);
+      observe(
+        testInfo,
+        `the run view shows ${JSON.stringify(await readShownOutputs(page))}`,
+      );
+      await expectRunViewShowsEveryValue(page);
 
-        // A rerun sends the run's stored inputs again.
-        const rerun = await rerunTask(page, agent);
-        const again = await waitForRunToEnd(page, agent, rerun.runID);
-        expect(again.status, "the rerun should complete").toBe("COMPLETED");
-        const { file: fileAgain, ...gotAgain } = again.outputs;
-        expect(
-          gotAgain,
-          "a rerun should give the workflow the same values",
-        ).toEqual(got);
-        expectOneFile(fileAgain);
-        await expectEveryOutputShown(page, EVERY_INPUT);
-        await expectRunViewShowsEveryValue(page);
-        const link = await fileLink(page);
+      // A rerun sends the run's stored inputs again.
+      const rerun = await rerunTask(page, agent);
+      const again = await waitForRunToEnd(page, agent, rerun.runID);
+      expect(again.status, "the rerun should complete").toBe("COMPLETED");
+      const { file: fileAgain, ...gotAgain } = again.outputs;
+      expect(
+        gotAgain,
+        "a rerun should give the workflow the same values",
+      ).toEqual(got);
+      expectOneFile(fileAgain);
+      await expectEveryOutputShown(page, EVERY_INPUT);
+      await expectRunViewShowsEveryValue(page);
+      const link = await fileLink(page);
 
-        // The compose stack's graph executor keeps the file where the API
-        // can't read it (#17306); a deployed app keeps it in its bucket.
-        const check =
-          "the run view's file link should download the uploaded content";
-        const message = isLocalStack()
-          ? pinKnownFailure(
-              "#17306: the compose stack's executor keeps workspace files out of the API's reach",
-              check,
-            )
-          : check;
-        const response = await page.request.get(link);
-        expect(
-          {
-            status: response.status(),
-            content: (await response.body()).toString("utf8"),
-          },
-          message,
-        ).toEqual({ status: 200, content: FILE_TEXT });
-      },
-    );
+      const response = await page.request.get(link);
+      expect(
+        {
+          status: response.status(),
+          content: (await response.body()).toString("utf8"),
+        },
+        "the run view's file link should download the uploaded content",
+      ).toEqual({ status: 200, content: FILE_TEXT });
+    });
 
     test(
       "text that looks like a number or JSON reaches the workflow, and shows in the run view, exactly as typed",

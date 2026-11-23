@@ -36,6 +36,11 @@ x-backend-env:
   DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?run make init-env in autogpt_platform/ to generate it}@db:5432/postgres?connect_timeout=60&schema=platform
   DIRECT_URL: postgresql://postgres:${POSTGRES_PASSWORD:?run make init-env in autogpt_platform/ to generate it}@db:5432/postgres?connect_timeout=60&schema=platform
   FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
+  # Where x-workspace-volume is mounted (Marketplace media sits beside it, in
+  # x-store-media-volume). Set here so backend/.env can't move the files out
+  # of the shared volumes; to keep them elsewhere on the host, change the
+  # volumes, not this path.
+  WORKSPACE_STORAGE_DIR: /app/autogpt_platform/backend/workspaces
 
 # Common env_file configuration for backend services
 x-backend-env-files: &backend-env-files
@@ -43,6 +48,12 @@ x-backend-env-files: &backend-env-files
     - backend/.env.default # Base defaults (always exists)
     - path: backend/.env # User overrides (optional)
       required: false
+
+# Where workspace files and Marketplace media live when no bucket is set.
+# Every service that reads, writes or erases them mounts the same volume at
+# the same path; a service without it works on files no other service sees.
+x-workspace-volume: &workspace-volume workspace-data:/app/autogpt_platform/backend/workspaces
+x-store-media-volume: &store-media-volume store-media-data:/app/autogpt_platform/backend/store-media
 
 x-codex-tmpfs: &codex-tmpfs
   - /run/autogpt-codex:rw,nosuid,nodev,noexec,mode=0700,size=128m
@@ -320,8 +331,8 @@ services:
     ports:
       - "8006:8006"
     volumes:
-      - workspace-data:/app/autogpt_platform/backend/workspaces
-      - store-media-data:/app/autogpt_platform/backend/store-media
+      - *workspace-volume
+      - *store-media-volume
     networks:
       - app-network
     logging:
@@ -361,6 +372,9 @@ services:
     # Metrics only. Reachable from the other containers, not from the host.
     expose:
       - "8002"
+    # A run's file outputs are written here, and rest_server serves them.
+    volumes:
+      - *workspace-volume
     networks:
       - app-network
     logging:
@@ -402,7 +416,7 @@ services:
     expose:
       - "8008"
     volumes:
-      - workspace-data:/app/autogpt_platform/backend/workspaces
+      - *workspace-volume
     networks:
       - app-network
     logging:
@@ -468,8 +482,10 @@ services:
     # Internal service. Reachable from the other containers, not from the host.
     expose:
       - "8005"
+    # Account erasure deletes an erased account's files from both volumes.
     volumes:
-      - store-media-data:/app/autogpt_platform/backend/store-media
+      - *workspace-volume
+      - *store-media-volume
     networks:
       - app-network
     logging:
@@ -577,6 +593,9 @@ services:
     # Internal service. Reachable from the other containers, not from the host.
     expose:
       - "8009"
+    # Files people attach in a bot chat are stored here for Otto to read.
+    volumes:
+      - *workspace-volume
     networks:
       - app-network
     logging:

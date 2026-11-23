@@ -286,14 +286,6 @@ export function shownOutput(page: Page, name: string) {
     .locator("xpath=following-sibling::*[1]");
 }
 
-/** The app under test runs on this machine: the compose stack, as in CI. */
-export function isLocalStack() {
-  const { hostname } = new URL(
-    process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
-  );
-  return ["localhost", "127.0.0.1"].includes(hostname);
-}
-
 /** Text in `scope` matching `pattern` that shows within a few seconds. */
 export function showsText(scope: Locator, pattern: RegExp) {
   return scope
