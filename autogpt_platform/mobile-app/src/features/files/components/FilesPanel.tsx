@@ -3,7 +3,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { YourConnections } from "@/features/connections/components/YourConnections/YourConnections";
 import { PanelTopBar } from "@/features/expertPanel/components/PanelTopBar";
-import { createStyles, spacing, type } from "@/lib/theme";
+import { createStyles, spacing } from "@/lib/theme";
 
 import { FileLibrary } from "./FileLibrary";
 
@@ -36,6 +36,14 @@ export function FilesPanel({ sessionID, isOpen, onClose }: Props) {
 }
 
 const useStyles = createStyles((colors) => ({
-  content: { gap: spacing.xl, paddingHorizontal: spacing.sm },
-  title: { ...type.heading, color: colors.text, paddingHorizontal: spacing.md },
+  content: { gap: spacing.xl, paddingHorizontal: spacing.md },
+  title: {
+    fontSize: 20,
+    lineHeight: 25,
+    fontWeight: "700",
+    letterSpacing: -0.2,
+    color: colors.text,
+    paddingHorizontal: spacing.xs,
+    marginBottom: -14,
+  },
 }));

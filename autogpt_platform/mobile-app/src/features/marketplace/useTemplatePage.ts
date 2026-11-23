@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { router, useNavigation } from "expo-router";
 import { useRef, useState } from "react";
-import { BackHandler, type NativeEventSubscription } from "react-native";
+import { BackHandler, type NativeEventSubscription, Share } from "react-native";
 
 import {
   expertKeys,
@@ -9,15 +9,22 @@ import {
   listTemplates,
   templateKeys,
 } from "@/lib/api/experts";
+import { integrationKeys, listSystemProviders } from "@/lib/api/integrations";
+import { FRONTEND_URL } from "@/lib/env";
 import { isSessionGone, signOut } from "@/lib/session";
 import { useMountEffect } from "@/lib/useMountEffect";
 
 import { firstChatAfterHire, latestOrNewSession } from "./openExpertChat";
+import { accessProviders } from "./profileHelpers";
 import { useHireExpert } from "./useHireExpert";
 
 export function useTemplatePage(templateID: string) {
   const templates = useQuery({ queryKey: templateKeys.list, queryFn: listTemplates });
   const experts = useQuery({ queryKey: expertKeys.list, queryFn: listExperts });
+  const systemProviders = useQuery({
+    queryKey: integrationKeys.systemProviders,
+    queryFn: listSystemProviders,
+  });
   const [error, setError] = useState<string | null>(null);
   const [isOpeningChat, setIsOpeningChat] = useState(false);
   // State lands a render late; the ref stops a second tap in the same frame.
@@ -97,8 +104,15 @@ export function useTemplatePage(templateID: string) {
     router.navigate("/marketplace");
   }
 
+  function share() {
+    void Share.share({
+      message: `${FRONTEND_URL}/marketplace/experts/${encodeURIComponent(templateID)}`,
+    });
+  }
+
   return {
     template,
+    services: accessProviders(template?.workflows, systemProviders.data),
     isLoading: templates.isPending,
     // Only when nothing is cached: a failed refetch keeps the list it had.
     isLoadError: templates.isError && !templates.data,
@@ -113,5 +127,6 @@ export function useTemplatePage(templateID: string) {
     hire: handleHire,
     openChat,
     back,
+    share,
   };
 }

@@ -102,16 +102,6 @@ export function openSeats(sections: AreaSection[]): OpenSeat[] {
   );
 }
 
-/** "Jordan, finds leads that fit…": the name, then the tagline as the rest of the sentence. */
-export function whoLine(template: Pick<ExpertTemplate, "name" | "tagline">) {
-  const tagline = template.tagline?.trim();
-  if (!tagline) return template.name;
-  // Keep words that open in capitals, such as "SEO" or "I".
-  const keepsCase = /^[A-Z]([A-Z]|\s|['’]|$)/.test(tagline);
-  const rest = keepsCase ? tagline : tagline.charAt(0).toLowerCase() + tagline.slice(1);
-  return `${template.name}, ${rest}`;
-}
-
 export function firstName(name: string) {
   return name.trim().split(/\s+/)[0] ?? name;
 }
