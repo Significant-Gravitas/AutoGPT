@@ -10,7 +10,8 @@ import {
 import { isLocalStack } from "./journey-user";
 import { ADD_34, createAgent, newListing, submitDirectly } from "./marketplace";
 import quickAnswer from "./model-scripts/quick-answer.json";
-import { existsInPublic, type Sample } from "./route-crawl";
+import { existsInPublic } from "./public-images";
+import type { Sample } from "./route-crawl";
 import { scriptedRun } from "./scripted-model";
 
 // Data for the route crawl's dynamic routes: what is already on the stack
