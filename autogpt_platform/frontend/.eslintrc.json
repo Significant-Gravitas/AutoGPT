@@ -87,8 +87,8 @@
           }
         ],
         // Static imports only: require("date-fns"), import("date-fns") and a
-        // relative ./time import from inside lib/utils aren't caught. No code
-        // uses those shapes today.
+        // relative ./time import from inside lib/utils aren't caught, so
+        // don't reach the formatters those ways.
         "patterns": [
           {
             "group": ["date-fns/**/formatDistanceToNow*"],
@@ -129,7 +129,9 @@
     {
       // The relative-time allow-list: files that may import the formatters
       // that read the clock, each with the reason it never formats one in
-      // the server's HTML or in the render that hydrates it.
+      // the server's HTML or in the render that hydrates it. This switches
+      // the whole no-restricted-imports rule off for them, so a ban added to
+      // that rule later doesn't reach them either.
       "files": [
         // The hook RelativeTime is built on: it returns the date itself until
         // the page has hydrated, and the relative time only after.

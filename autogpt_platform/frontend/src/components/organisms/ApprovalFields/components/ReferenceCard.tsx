@@ -1,7 +1,13 @@
 import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { Fragment } from "react";
-import { factText, factTime, type Fact, type Reference } from "../helpers";
+import {
+  factText,
+  factTime,
+  shownFacts,
+  type Fact,
+  type Reference,
+} from "../helpers";
 
 // Named, then a count: the marketplace expert card's skills, in a line.
 const NAMED_SKILLS = 3;
@@ -11,8 +17,9 @@ interface Props {
 }
 
 export function ReferenceCard({ reference }: Props) {
+  const facts = reference.kind ? shownFacts(reference.meta) : [];
   const hasFacts = reference.kind
-    ? reference.meta.some((fact) => Boolean(factTime(fact) || factText(fact)))
+    ? facts.length > 0
     : Boolean(reference.summary);
   const hasAvatar = Boolean(reference.avatarURL || reference.avatarColor);
   return (
@@ -61,11 +68,7 @@ export function ReferenceCard({ reference }: Props) {
           data-slot="reference-card-facts"
           className="mt-1.5 text-foreground-tertiary"
         >
-          {reference.kind ? (
-            <Facts facts={reference.meta} />
-          ) : (
-            reference.summary
-          )}
+          {reference.kind ? <Facts facts={facts} /> : reference.summary}
         </p>
       )}
       {reference.skills.length > 0 && (

@@ -18,6 +18,7 @@ import { SectionEmptyState } from "../../components/SectionEmptyState";
 import { useState } from "react";
 import {
   filterExpertSchedules,
+  getLastRun,
   SCHEDULE_FILTERS,
   ScheduleFilter,
   ACTION_BUTTON_CLASS,
@@ -33,7 +34,7 @@ interface Props {
   workflows?: ExpertWorkflowRef[];
   accentClassName?: string;
   schedules: GraphExecutionJobInfo[];
-  lastRun: { label: string; at: Date } | null;
+  lastRun: ReturnType<typeof getLastRun>;
 }
 
 export function ExpertSchedulesSection({

@@ -6,7 +6,7 @@ const MILLISECONDS_PER_MINUTE = SECONDS_PER_MINUTE * MILLISECONDS_PER_SECOND;
 
 // Reads the clock, so the server and the browser word it differently. Render
 // <RelativeTime variant="short"> instead; ESLint allows this import only in
-// useRelativeTime.ts.
+// the files on the relative-time allow-list in .eslintrc.json.
 export function formatTimeAgo(input: Date | string | number): string {
   const date = new Date(input);
   const now = new Date();

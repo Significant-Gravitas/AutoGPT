@@ -63,6 +63,11 @@ export function factTime(fact: Fact) {
   return Number.isNaN(at.getTime()) ? null : at;
 }
 
+// The facts a card shows: those with a time or some text to read.
+export function shownFacts(facts: Fact[]) {
+  return facts.filter((fact) => Boolean(factTime(fact) || factText(fact)));
+}
+
 function cronText(cron: string) {
   try {
     return humanizeCronExpression(cron);

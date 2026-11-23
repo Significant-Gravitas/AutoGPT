@@ -24,6 +24,11 @@ function subscribeToNothing() {
  * sends, and the render that hydrates it, show the date itself instead
  * ("Apr 23, 2026", in UTC); the relative time follows straight after
  * hydration. A component that mounts later shows it from its first render.
+ *
+ * The date is in UTC, not the visitor's time zone, because the server
+ * doesn't know that zone: a zone-dependent date is a hydration mismatch of
+ * its own. Far from UTC, it can read as the next or previous day until the
+ * page hydrates.
  * It re-renders on the shared minute clock, so it keeps up with time.
  */
 export function useRelativeTime(
