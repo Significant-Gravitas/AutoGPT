@@ -9,6 +9,7 @@ import { StepHeader } from "../StepHeader";
 import { StepFooter } from "../StepFooter";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { useAgentSelectStep } from "./useAgentSelectStep";
+import { LISTING_CHECK_FAILED_MESSAGE } from "../../helpers";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
 import { MyAgentsSortBy } from "@/app/api/__generated__/models/myAgentsSortBy";
@@ -35,6 +36,8 @@ interface Props {
     },
   ) => void;
   onOpenBuilder: () => void;
+  isCheckingListing?: boolean;
+  listingCheckFailed?: boolean;
 }
 
 const SORT_OPTIONS = [
@@ -47,6 +50,8 @@ export function AgentSelectStep({
   onCancel,
   onNext,
   onOpenBuilder,
+  isCheckingListing = false,
+  listingCheckFailed = false,
 }: Props) {
   const {
     myAgents,
@@ -317,6 +322,17 @@ export function AgentSelectStep({
             />
           ) : null}
 
+          {listingCheckFailed ? (
+            <Text
+              variant="small"
+              tone="error"
+              role="alert"
+              className="mt-2 sm:text-right"
+            >
+              {LISTING_CHECK_FAILED_MESSAGE}
+            </Text>
+          ) : null}
+
           <StepFooter
             secondary={
               <Button
@@ -333,6 +349,7 @@ export function AgentSelectStep({
                 size="small"
                 onClick={handleNext}
                 disabled={isNextDisabled}
+                loading={isCheckingListing}
                 className="w-full sm:w-auto"
               >
                 Continue

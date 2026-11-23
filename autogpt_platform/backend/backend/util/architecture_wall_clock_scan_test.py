@@ -7,17 +7,24 @@ An assert bounds elapsed wall-clock time from above when it requires, by
 
 - a wall clock read minus something (``clock() - started``), written out or
   through a variable, scaled by a constant (``* 1000`` for milliseconds) or
-  kept by ``round``, ``abs``, ``int`` or ``float``; or
+  kept by ``round``, ``abs``, ``int`` or ``float``, or returned by a function
+  of the same module, whole or as one item of a tuple
+  (``out, waited = await self._timed()``), unless an assignment, an import
+  or a decorator may stand in for that function; or
 - a fresh clock read below a deadline set from an earlier one
   (``clock() < deadline`` where ``deadline = clock() + 1``, or
   ``clock() < started + 1``).
 
-A name assigned more than once counts only when its assignments agree.
+A name assigned more than once counts only when its assignments agree, and a
+call's result only when the returns of the functions it may run agree.
 
 A wall clock is ``time.monotonic``, ``time.perf_counter`` or ``time.time``
-(or their ``_ns`` forms), or an event loop's ``time()``. Bounds are worked out
-from literals and constants, including module constants imported from the
-backend or autogpt_libs; anything else reads as unknown and is not reported.
+(or their ``_ns`` forms), or an event loop's ``time()``: the loop of
+``asyncio.get_running_loop()`` or ``asyncio.get_event_loop()``, a name every
+assignment binds to one, or any name or attribute ending in ``loop``. Bounds
+are worked out from literals and constants, including module constants
+imported from the backend or autogpt_libs; anything else reads as unknown and
+is not reported.
 """
 
 import ast
@@ -43,6 +50,8 @@ _WALL_CLOCKS = {
 _LOOP_GETTERS = frozenset({"get_running_loop", "get_event_loop"})
 # Calls that keep the value they are given as a time span.
 _SPAN_PRESERVING_CALLS = frozenset({"abs", "float", "int", "round"})
+# Decorators after which calling the function still runs its own body.
+_TRANSPARENT_DECORATORS = frozenset({"classmethod", "staticmethod"})
 _ARITHMETIC = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
@@ -64,8 +73,10 @@ def wall_clock_bounds(source: str, package: str) -> list[tuple[int, float, bool]
     tree = ast.parse(source)
     lines = source.splitlines()
     reasons = _reason_lines(source)
+    module = _Scope(tree, package, None)
+    _walk(tree, module)
     found: list[tuple[int, float, bool]] = []
-    for node, scope in _asserts(tree, _Scope(tree, package, None)):
+    for node, scope in module.asserts:
         bounds = [
             bound
             for small, big in _upper_bound_pairs(node.test, negated=False)
@@ -100,9 +111,23 @@ class _Scope:
     """The names one function body, or the module, assigns and imports;
     a name it does not bind is looked up in the scope around it."""
 
-    def __init__(self, node: ast.AST, package: str, outer: "_Scope | None") -> None:
+    def __init__(
+        self,
+        node: ast.AST,
+        package: str,
+        outer: "_Scope | None",
+        cls: ast.ClassDef | None = None,
+    ) -> None:
         nodes = list(_own_nodes(node))
+        self.node = node
         self.outer = outer
+        # The class whose body defines this function, if it is a method.
+        self.cls = cls
+        self.root: _Scope = self if outer is None else outer.root
+        # Filled on the module's scope (``_walk``): the scope of each function
+        # by name, and each assert with the scope it is in.
+        self.functions: dict[str, list[_Scope]] = {}
+        self.asserts: list[tuple[ast.Assert, _Scope]] = []
         self.package = package
         self.imports = _import_bindings(nodes, package)
         self.values: dict[str, list[ast.expr]] = {}
@@ -147,7 +172,7 @@ def _own_nodes(node: ast.AST) -> Iterator[ast.AST]:
 
 def _assignments(node: ast.AST) -> list[tuple[ast.Name, ast.expr]]:
     if isinstance(node, ast.Assign):
-        return [(t, node.value) for t in node.targets if isinstance(t, ast.Name)]
+        return [pair for t in node.targets for pair in _unpacked(t, node.value)]
     if isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
         if isinstance(node.target, ast.Name) and node.value is not None:
             # `x += 1` gives x a second value, so it resolves to nothing.
@@ -155,14 +180,36 @@ def _assignments(node: ast.AST) -> list[tuple[ast.Name, ast.expr]]:
     return []
 
 
-def _asserts(node: ast.AST, scope: _Scope) -> Iterator[tuple[ast.Assert, _Scope]]:
+def _unpacked(target: ast.expr, value: ast.expr) -> list[tuple[ast.Name, ast.expr]]:
+    """The names *target* binds to *value*: ``a, b = value`` as ``a =
+    value[0]`` and ``b = value[1]``. With a starred name nothing is known."""
+    if isinstance(target, ast.Name):
+        return [(target, value)]
+    if not isinstance(target, (ast.Tuple, ast.List)) or any(
+        isinstance(item, ast.Starred) for item in target.elts
+    ):
+        return []
+    return [
+        (item, ast.Subscript(value, ast.Constant(value=index), ast.Load()))
+        for index, item in enumerate(target.elts)
+        if isinstance(item, ast.Name)
+    ]
+
+
+def _walk(node: ast.AST, scope: _Scope, cls: ast.ClassDef | None = None) -> None:
+    """Gives each function inside *node* its scope, in the scopes around it,
+    and files those and each assert on the module's scope."""
+    root = scope.root
     for child in ast.iter_child_nodes(node):
         if isinstance(child, _SCOPES):
-            yield from _asserts(child, _Scope(child, scope.package, scope))
+            inner = _Scope(child, scope.package, scope, cls)
+            if not isinstance(child, ast.Lambda):
+                root.functions.setdefault(child.name, []).append(inner)
+            _walk(child, inner)
             continue
         if isinstance(child, ast.Assert):
-            yield child, scope
-        yield from _asserts(child, scope)
+            root.asserts.append((child, scope))
+        _walk(child, scope, child if isinstance(child, ast.ClassDef) else cls)
 
 
 def _upper_bound_pairs(
@@ -227,24 +274,132 @@ def _bound(small: ast.expr, big: ast.expr, scope: _Scope) -> float | None:
     return None if scale is None or offset is None else offset * scale
 
 
-def _elapsed_scale(node: ast.expr, scope: _Scope, names: bool = True) -> float | None:
+def _elapsed_scale(
+    node: ast.expr, scope: _Scope, names: bool = True, helpers: bool = True
+) -> float | None:
     """Seconds per unit if *node* is a wall clock read minus something,
-    written out or (when *names*) through a variable assigned it."""
+    written out, through a variable assigned it (when *names*), or returned
+    by a function of the module (when *helpers*)."""
     if (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
         and node.func.id in _SPAN_PRESERVING_CALLS
         and node.args
     ):
-        return _elapsed_scale(node.args[0], scope, names)
+        return _elapsed_scale(node.args[0], scope, names, helpers)
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Sub):
         return _clock_scale(node.left, scope)
     if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Mult, ast.Div)):
-        return _scaled_elapsed_scale(node, scope, names)
+        return _scaled_elapsed_scale(node, scope, names, helpers)
     if names and isinstance(node, ast.Name):
         values, _, owner = scope.lookup(node.id)
-        return _agreed(_elapsed_scale(value, owner, names=False) for value in values)
-    return None
+        return _agreed(
+            _elapsed_scale(value, owner, names=False, helpers=helpers)
+            for value in values
+        )
+    return _returned_scale(node, scope) if helpers else None
+
+
+def _returned_scale(node: ast.expr, scope: _Scope) -> float | None:
+    """Seconds per unit if *node* calls a function of the module, awaited or
+    not, that returns an elapsed time: whole, or as item ``[i]`` of a tuple.
+    Its own returns are read without following further calls."""
+    index = None
+    if isinstance(node, ast.Subscript):
+        key = node.slice
+        if not isinstance(key, ast.Constant) or type(key.value) is not int:
+            return None
+        index, node = key.value, node.value
+    if isinstance(node, ast.Await):
+        node = node.value
+    if not isinstance(node, ast.Call):
+        return None
+    return _agreed(
+        _elapsed_scale(value, function, helpers=False)
+        for function in _called_functions(node, scope)
+        for value in _returned_values(function.node, index)
+    )
+
+
+def _called_functions(call: ast.Call, scope: _Scope) -> list[_Scope]:
+    """The module's functions *call* runs, or none when that is unknown: when
+    a decorator may have replaced one (``_replaced``)."""
+    found = _defined_functions(call, scope)
+    return [] if any(_replaced(f.node) for f in found) else found
+
+
+def _defined_functions(call: ast.Call, scope: _Scope) -> list[_Scope]:
+    """The ``def``s *call* names: for ``f()`` those of the nearest scope
+    binding ``f``, for ``self.f()`` or ``cls.f()`` the caller's class's. None
+    when that scope or class body also binds the name some other way (an
+    assignment, an import), and none for any other call."""
+    functions = scope.root.functions
+    func = call.func
+    if isinstance(func, ast.Name):
+        here: _Scope | None = scope
+        while here is not None:
+            found = [
+                f
+                for f in functions.get(func.id, [])
+                if f.outer is here and f.cls is None
+            ]
+            if func.id in here.values or func.id in here.imports:
+                return []
+            if found:
+                return found
+            here = here.outer
+        return []
+    if not (isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)):
+        return []
+    if func.value.id not in ("self", "cls"):
+        return []
+    caller = scope
+    while caller.cls is None and caller.outer is not None:
+        caller = caller.outer
+    if caller.cls is None or _rebinds(caller.cls, func.attr):
+        return []
+    return [f for f in functions.get(func.attr, []) if f.cls is caller.cls]
+
+
+def _rebinds(cls: ast.ClassDef, name: str) -> bool:
+    """Whether the class body binds *name* other than by ``def``, as
+    ``timed = wrap(timed)`` does."""
+    return any(
+        isinstance(node, ast.Name)
+        and isinstance(node.ctx, ast.Store)
+        and node.id == name
+        for node in _own_nodes(cls)
+    )
+
+
+def _replaced(function: ast.AST) -> bool:
+    """Whether a decorator may replace *function*, so that a call runs
+    something other than its body."""
+    if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return False
+    return any(
+        not (isinstance(d, ast.Name) and d.id in _TRANSPARENT_DECORATORS)
+        for d in function.decorator_list
+    )
+
+
+def _returned_values(function: ast.AST, index: int | None) -> Iterator[ast.expr]:
+    """What each ``return`` of *function* gives, or its item *index* (an
+    unknown where it returns no such tuple item)."""
+    for node in _own_nodes(function):
+        if not isinstance(node, ast.Return):
+            continue
+        value = node.value or _UNKNOWN
+        if index is None:
+            yield value
+        elif (
+            isinstance(value, ast.Tuple)
+            and 0 <= index < len(value.elts)
+            and not any(isinstance(item, ast.Starred) for item in value.elts)
+        ):
+            yield value.elts[index]
+        else:
+            yield _UNKNOWN
 
 
 def _agreed(found: Iterator[float | None]) -> float | None:
@@ -253,14 +408,16 @@ def _agreed(found: Iterator[float | None]) -> float | None:
     return values.pop() if len(values) == 1 else None
 
 
-def _scaled_elapsed_scale(node: ast.BinOp, scope: _Scope, names: bool) -> float | None:
+def _scaled_elapsed_scale(
+    node: ast.BinOp, scope: _Scope, names: bool, helpers: bool
+) -> float | None:
     """An elapsed time multiplied or divided by a positive constant, such as
     ``(clock() - started) * 1000`` in milliseconds."""
     pairs = [(node.left, node.right)]
     if isinstance(node.op, ast.Mult):
         pairs.append((node.right, node.left))
     for elapsed, factor in pairs:
-        scale = _elapsed_scale(elapsed, scope, names)
+        scale = _elapsed_scale(elapsed, scope, names, helpers)
         times = _seconds(factor, scope)
         if scale is not None and times is not None and times > 0:
             return scale / times if isinstance(node.op, ast.Mult) else scale * times
@@ -292,17 +449,27 @@ def _clock_call_scale(node: ast.expr, scope: _Scope) -> float | None:
 
 
 def _is_event_loop(node: ast.expr, scope: _Scope) -> bool:
-    if isinstance(node, ast.Call):
-        func = node.func
-        if isinstance(func, ast.Attribute):
-            return func.attr in _LOOP_GETTERS
-        if not isinstance(func, ast.Name):
-            return False
-        origin = scope.lookup(func.id)[1] or func.id
-        return origin.rpartition(".")[2] in _LOOP_GETTERS
     if isinstance(node, ast.Attribute):
         return node.attr.lower().endswith("loop")
-    return isinstance(node, ast.Name) and node.id.lower().endswith("loop")
+    if not isinstance(node, ast.Name):
+        return _gets_a_loop(node, scope)
+    if node.id.lower().endswith("loop"):
+        return True
+    values, _, owner = scope.lookup(node.id)
+    return bool(values) and all(_gets_a_loop(value, owner) for value in values)
+
+
+def _gets_a_loop(node: ast.expr, scope: _Scope) -> bool:
+    """Whether *node* calls ``get_running_loop`` or ``get_event_loop``."""
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if isinstance(func, ast.Attribute):
+        return func.attr in _LOOP_GETTERS
+    if not isinstance(func, ast.Name):
+        return False
+    origin = scope.lookup(func.id)[1] or func.id
+    return origin.rpartition(".")[2] in _LOOP_GETTERS
 
 
 def _dotted_origin(node: ast.expr, scope: _Scope) -> str | None:

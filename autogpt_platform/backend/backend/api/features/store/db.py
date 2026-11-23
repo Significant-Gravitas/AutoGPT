@@ -41,6 +41,7 @@ from .categories import category_filter_values
 from .embeddings import ensure_embedding
 from .hybrid_search import hybrid_search
 from .store_listing_versions import installable_store_version_where
+from .submission_description import VersionHistoryRow, kept_description
 from .submission_review_state import lock_review_target, withdraw_store_version
 
 logger = logging.getLogger(__name__)
@@ -885,7 +886,9 @@ async def create_store_submission(
         name: Name of the agent
         video_url: Optional URL to video demo
         image_urls: List of image URLs for the listing
-        description: Description of the agent
+        description: Description of the agent; an update to an existing
+            listing that leaves it blank keeps the live version's, or else
+            the newest one that no review rejected
         sub_heading: Short CTA line shown under the agent name
         categories: List of categories for the agent
         changes_summary: Summary of changes made in this submission
@@ -993,13 +996,23 @@ async def create_store_submission(
             versions = prisma.models.StoreListingVersion.prisma(tx)
             next_version = 1
             if existing_listing:
-                # Superseded versions still occupy their number in the unique index.
-                latest = await versions.find_first(
+                keep_description = not description.strip()
+                # Newest first. Superseded versions still occupy their number in
+                # the unique index, so the newest numbers the new one; only a
+                # blank update reads the rest.
+                history = await VersionHistoryRow.prisma(tx).find_many(
                     where={"storeListingId": existing_listing.id},
                     order={"version": "desc"},
+                    take=None if keep_description else 1,
                 )
-                if latest:
-                    next_version = latest.version + 1
+                if history:
+                    next_version = history[0].version + 1
+                # A blank description keeps the live version's, or else the
+                # newest one that no review rejected.
+                if keep_description:
+                    description = kept_description(
+                        history, existing_listing.activeVersionId, description
+                    )
                 await versions.update_many(
                     where={
                         "storeListingId": existing_listing.id,

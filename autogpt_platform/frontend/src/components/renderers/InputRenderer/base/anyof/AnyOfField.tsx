@@ -6,7 +6,7 @@ import { useAnyOfField } from "./useAnyOfField";
 import { cleanUpHandleId, getHandleId, updateUiOption } from "../../helpers";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { ANY_OF_FLAG } from "../../constants";
-import { findCustomFieldId } from "../../registry";
+import { findCustomFieldId } from "../../custom/custom-registry";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { cn } from "@/lib/utils";
 
