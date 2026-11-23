@@ -87,7 +87,7 @@ NEXT_PUBLIC_PW_TEST=true docker compose -f docker-compose.yml \
   -f docker-compose.journeys.yml up -d --build
 # The expert roster's workflows, then the roster again (see below):
 docker compose -f docker-compose.yml -f docker-compose.journeys.yml run --rm \
-  --no-deps rest_server python -m test.load_store_agents
+  --no-deps rest_server python -m test.load_store_agents --local-media
 docker compose -f docker-compose.yml -f docker-compose.journeys.yml up publish_skills
 cd frontend
 PLAYWRIGHT_JOURNEY_COST_PER_NODE=1 PLAYWRIGHT_JOURNEY_TIER=PRO \
@@ -104,7 +104,9 @@ The expert roster's workflows are the official marketplace listings
 (`backend/agents`), and `publish_skills` installs the roster when the stack
 starts, skipping any workflow whose listing isn't there yet. CI loads the
 listings before the stack starts; the commands above load them into the
-running stack instead, then publish the roster again.
+running stack instead, then publish the roster again. `--local-media` gives the
+listings and their creator placeholder images in the stack's own media storage,
+as CI does, so no page fetches the production images the CSV points at.
 
 The frontend must be built with `NEXT_PUBLIC_PW_TEST=true`; only that build
 reads the hosted flag values the fixtures hand it.
