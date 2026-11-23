@@ -84,6 +84,11 @@ script to know what to expect.
   text inside the next message, so a journey that sends a message after a
   Stop gives it its own marker; either way it gets that script's first turn
   (`copilot-stop-journey.spec.ts`).
+- **Only the user's own words count.** The platform adds tagged blocks to a
+  user message, such as recalled memories (`<memory_context>`) or the
+  earlier chat passed on as text (`<conversation_history>`). These can quote
+  earlier messages of the chat, or of the user's other chats, markers and
+  all, so a marker inside a tagged block is never read.
 - **Tools:** name them as the baseline engine does (`find_library_agent`).
   The SDK engine offers them as `mcp__copilot__find_library_agent`; the server
   calls whichever the request offers. Most platform tools (`create_agent`,

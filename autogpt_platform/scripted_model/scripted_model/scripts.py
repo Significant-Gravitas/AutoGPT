@@ -18,6 +18,11 @@ new message (a turn after a stopped one can do either); the new marker comes
 after that text, and no assistant message follows it yet, so both land on the
 new script's first turn.
 
+Only a marker in the user's own words counts. The platform adds tagged blocks
+to a user message, such as recalled memories (``<memory_context>``) or the
+earlier chat passed on as text (``<conversation_history>``), and these can
+quote earlier messages, markers and all, from this chat or the user's others.
+
 A tool call's input can read a value from a result the platform sent back,
 as a model reads an id out of what a tool returned: in place of the value,
 ``{"$from_tool_result": {"tool": "<tool>", "pattern": "<regex>"}}`` takes the
@@ -36,6 +41,10 @@ from typing import Any
 from .streaming import held_chunk, text_chunks
 
 MARKER = re.compile(r"\[\[script:([a-z0-9][a-z0-9-]*)(?:#([A-Za-z0-9_.-]+))?\]\]")
+
+# A block the platform adds to a user message, e.g. <memory_context>...
+# </memory_context>, with whatever it nests.
+TAGGED_BLOCK = re.compile(r"<([A-Za-z][\w-]*)(?:\s[^>]*)?>.*?</\1>", re.DOTALL)
 
 DEFAULT_TITLE = "Scripted chat"
 
@@ -110,8 +119,16 @@ class Marker:
 
 
 def find_marker(text: str) -> Marker | None:
-    """The newest marker in ``text``: the last one."""
-    matches = list(MARKER.finditer(text))
+    match = MARKER.search(text)
+    if match is None:
+        return None
+    return Marker(script=match.group(1), nonce=match.group(2))
+
+
+def typed_marker(text: str) -> Marker | None:
+    """The newest marker in the user's own words in ``text``: the last one
+    outside the tagged blocks the platform adds."""
+    matches = list(MARKER.finditer(TAGGED_BLOCK.sub("", text)))
     if not matches:
         return None
     return Marker(script=matches[-1].group(1), nonce=matches[-1].group(2))

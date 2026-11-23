@@ -546,20 +546,26 @@ def test_a_message_with_its_own_marker_starts_that_script(scripted_model):
         },
     )
     client = _anthropic(scripted_model)
+    first_message = "[[script:stopped#first]] Tell me everything."
     resumed = [
-        {"role": "user", "content": "[[script:stopped#first]] Tell me everything."},
+        {"role": "user", "content": first_message},
         {"role": "assistant", "content": "A long answer"},
-        {"role": "user", "content": "[[script:lookup#resumed]] Shorter, please."},
+        {
+            "role": "user",
+            "content": "[[script:lookup#resumed]] Shorter, please."
+            + _recalled(first_message),
+        },
     ]
     as_text = [
         {
             "role": "user",
             "content": (
                 "<conversation_history>\n"
-                "User: [[script:stopped#first]] Tell me everything.\n"
+                f"User: {first_message}\n"
                 "You responded: A long answer\n"
                 "</conversation_history>\n\n"
                 "Now, the user says:\n[[script:lookup#as-text]] Shorter, please."
+                + _recalled(first_message)
             ),
         }
     ]
@@ -605,6 +611,59 @@ def test_a_message_with_its_own_marker_starts_that_script(scripted_model):
         ("lookup", 1, [True]),
     ]
     assert scripted_model.journal(nonce="first") == []
+
+
+def test_a_marker_the_platform_quotes_into_a_message_does_not_count(scripted_model):
+    """The platform appends recalled memories to a user message in a
+    <memory_context> block. They can quote an earlier message, of this chat
+    or another, marker and all; only the user's own words pick the script."""
+    scripted_model.add_script(
+        "follow-up",
+        {
+            "turns": [
+                {
+                    "text": "First answer.",
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
+                {
+                    "text": "Second answer.",
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
+            ]
+        },
+    )
+    scripted_model.add_script(
+        "quick",
+        {
+            "turns": [
+                {"text": "Hello.", "usage": {"input_tokens": 1, "output_tokens": 1}}
+            ]
+        },
+    )
+    client = _anthropic(scripted_model)
+    first_message = "[[script:follow-up#own]] Tell me about today."
+    follow_up = [
+        {"role": "user", "content": first_message},
+        {"role": "assistant", "content": "First answer."},
+        {"role": "user", "content": "And tomorrow?" + _recalled(first_message)},
+    ]
+    other_chat = [
+        {
+            "role": "user",
+            "content": "[[script:quick#mine]] Hi"
+            + _recalled("[[script:follow-up#other]] Tell me about today."),
+        }
+    ]
+
+    assert [b.text for b in _stream(client, follow_up).content] == ["Second answer."]
+    assert [b.text for b in _stream(client, other_chat).content] == ["Hello."]
+    assert [(e["script"], e["turn"]) for e in scripted_model.journal(nonce="own")] == [
+        ("follow-up", 2)
+    ]
+    assert [(e["script"], e["turn"]) for e in scripted_model.journal(nonce="mine")] == [
+        ("quick", 1)
+    ]
+    assert scripted_model.journal(nonce="other") == []
 
 
 def test_a_request_the_script_cannot_answer_fails_with_the_reason(scripted_model):
@@ -1020,6 +1079,16 @@ def test_a_capture_never_reads_an_earlier_turns_result(scripted_model):
 )
 def test_every_journey_script_is_valid(path: Path):
     parse_script(path.stem, json.loads(path.read_text(encoding="utf-8")))
+
+
+def _recalled(earlier_message: str) -> str:
+    """A <memory_context> block, as the platform appends recalled memories to
+    a user message, quoting an earlier message."""
+    return (
+        "\n\n<memory_context>\n<temporal_context>\n"
+        f"Earlier, the user said: {earlier_message}\n"
+        "</temporal_context>\n</memory_context>"
+    )
 
 
 def _anthropic(server) -> anthropic.Anthropic:
