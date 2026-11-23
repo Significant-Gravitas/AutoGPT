@@ -312,13 +312,10 @@ test.describe("copilot stop journey", () => {
           },
         )
         .not.toBe("watching");
-      // The stopped turn's CLI outlives the Stop and carries on from the
-      // cancelled timer: it asks the model for the next step (#16729).
-      const pinned = pinKnownFailure(
-        "#16729: a turn stopped during a tool call carries on, its CLI asking the model for the next step",
+      expect(
+        added,
         "nothing of the stopped turn should arrive after the Stop",
-      );
-      expect(added, pinned).toBe("nothing");
+      ).toBe("nothing");
       await expect
         .poll(() => savedConversation(page, sessionID), {
           message:
