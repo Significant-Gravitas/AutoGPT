@@ -24,6 +24,7 @@ from backend.monitoring.instrumentation import record_rate_limit_hit
 
 logger = logging.getLogger(__name__)
 
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 FEEDBACK_WINDOW_SECONDS = 60 * 60
 FEEDBACK_MAX_REQUESTS = 20
 FEEDBACK_RATE_LIMIT_DETAIL = "Too many answers. Try again later."

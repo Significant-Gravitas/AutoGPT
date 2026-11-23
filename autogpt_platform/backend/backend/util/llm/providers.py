@@ -44,7 +44,7 @@ import httpx
 import ollama
 import openai
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
-from openai.types.shared_params import ResponseFormatJSONObject
+from openai.types.shared_params import Reasoning, ResponseFormatJSONObject
 from pydantic import Field
 from pydantic.dataclasses import dataclass
 
@@ -132,6 +132,26 @@ _FLEX_SUPPORTED_PROVIDERS: set[str] = {"openai", "open_router"}
 # away and answer nothing (1 in 5 store categories, 7 in 9 consult verdicts).
 NO_REASONING_MAX_TOKENS = 512
 
+# The native OpenAI and Anthropic paths: the least reasoning each model that
+# workflows move onto (#17071) accepts, from its provider's page on 2026-11-19.
+# Reasoning tokens count toward OpenAI's ``max_output_tokens``. A reply they use
+# up ends ``incomplete`` with no text, so AI Condition's 16-token call answers
+# nothing. GPT-6.1 Sol rejects ``none`` and ``minimal``, so ``low`` is its least.
+_OPENAI_LEAST_REASONING_EFFORT: dict[str, str] = {
+    "gpt-6-luna": "none",
+    "gpt-6.1-terra": "none",
+    "gpt-5.6-sol": "none",
+    "gpt-6.1-sol": "low",
+}
+# A small call on a model that still reasons at its least effort is capped at
+# no less than this, so the reasoning leaves room for the answer.
+SMALL_CALL_REASONING_FLOOR = 2048
+# Claude Sonnet 5.5 thinks before it answers unless sent this, and its thinking
+# counts against ``max_tokens``; ``{"type": "disabled"}`` returns a 400 on it.
+_ANTHROPIC_NO_UPFRONT_THINKING: dict[str, dict[str, str]] = {
+    "claude-sonnet-5-5": {"type": "between_tools"},
+}
+
 # Anthropic deprecated ``temperature`` on its newest model generation —
 # the API rejects it outright with "`temperature` is deprecated for
 # this model." (verified live: opus-4-7 and opus-4-8 reject;
@@ -185,10 +205,17 @@ def _is_temperature_deprecation_error(exc: anthropic.BadRequestError) -> bool:
 # Opus 5 still honour one. Hence exact native slugs rather than family
 # prefixes (``claude-opus-5`` is a prefix of ``claude-opus-5-5``), compared
 # after the vendor prefix and any ``-YYYYMMDD`` snapshot suffix are stripped.
-# Anthropic documents the restriction for Opus/Sonnet 5.5 and the Fable 5.1 /
-# Mythos 5.1 line; add a model here when it documents the same for another.
+# Anthropic documents the restriction for Opus/Sonnet 5.5, the Fable 5.1 /
+# Mythos 5.1 line and Fable 5.2; add a model here when it documents the same
+# for another.
 _ANTHROPIC_FORCED_TOOL_CHOICE_UNSUPPORTED: frozenset[str] = frozenset(
-    {"claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-mythos-5-1"}
+    {
+        "claude-opus-5-5",
+        "claude-sonnet-5-5",
+        "claude-fable-5-1",
+        "claude-fable-5-2",
+        "claude-mythos-5-1",
+    }
 )
 
 
@@ -514,6 +541,7 @@ async def _call_openai_responses(
     service_tier: str | None = None,
 ) -> ProviderResponse:
     client = openai.AsyncOpenAI(api_key=api_key)
+    reasoning, max_tokens = small_call_openai_reasoning(model, max_tokens)
     tools_param = convert_tools_to_responses_format(tools) if tools else openai.omit
     text_config: Any = openai.omit
     if force_json_output:
@@ -532,6 +560,7 @@ async def _call_openai_responses(
         input=messages,  # type: ignore[arg-type]
         tools=tools_param,  # type: ignore[arg-type]
         max_output_tokens=max_tokens,
+        reasoning=reasoning if reasoning is not None else openai.omit,
         # Reasoning models (o-series) reject ``temperature`` — same guard
         # as the Anthropic path: only send the field when the caller set
         # one, never a default.
@@ -606,7 +635,7 @@ async def _call_anthropic_messages(
     # Cache tool definitions alongside the system prompt — placing
     # cache_control on the last tool caches all tool schemas as a
     # single prefix. Cache reads bill at a fraction of the input rate:
-    # 10% on most Claude models, 5% on Opus 5.5, 2.5% on Fable 5.1 (the
+    # 10% on most Claude models, 5% on Opus 5.5, 2.5% on Fable 5.1/5.2 (the
     # catalog's provider cache-read prices carry each model's figure).
     if isinstance(an_tools, list) and an_tools:
         an_tools[-1] = {**an_tools[-1], "cache_control": {"type": "ephemeral"}}
@@ -641,6 +670,8 @@ async def _call_anthropic_messages(
         create_kwargs["temperature"] = temperature
     if tool_choice is not None:
         create_kwargs["tool_choice"] = tool_choice
+    if (thinking := small_call_anthropic_thinking(model, max_tokens)) is not None:
+        create_kwargs["thinking"] = thinking
     if sysprompt.strip():
         # Anthropic rejects empty text blocks (HTTP 400) — only attach
         # the system field for non-whitespace prompts.
@@ -1291,6 +1322,34 @@ def small_call_reasoning(model: str, max_tokens: int) -> dict[str, Any]:
     if not strip_anthropic_vendor_prefix(model).startswith(CLAUDE_5_FAMILY_PREFIXES):
         return {}
     return {"reasoning": {"enabled": False}}
+
+
+def small_call_openai_reasoning(
+    model: str, max_tokens: int
+) -> tuple[Reasoning | None, int]:
+    """``reasoning`` and ``max_output_tokens`` for a native OpenAI call.
+
+    A call capped at ``NO_REASONING_MAX_TOKENS`` or less, on a model in
+    ``_OPENAI_LEAST_REASONING_EFFORT``, asks for that model's least effort. A
+    model that still reasons at it is also capped at no less than
+    ``SMALL_CALL_REASONING_FLOOR``. Any other call goes as it is.
+    """
+    effort = _OPENAI_LEAST_REASONING_EFFORT.get(model)
+    if effort is None or max_tokens > NO_REASONING_MAX_TOKENS:
+        return None, max_tokens
+    if effort != "none":
+        max_tokens = max(max_tokens, SMALL_CALL_REASONING_FLOOR)
+    # The API takes ``none``; this SDK's ``ReasoningEffort`` predates it.
+    return cast(Reasoning, {"effort": effort}), max_tokens
+
+
+def small_call_anthropic_thinking(model: str, max_tokens: int) -> dict[str, str] | None:
+    """``thinking`` for a native Anthropic call capped at
+    ``NO_REASONING_MAX_TOKENS`` or less, on a model that thinks first unless
+    told not to. None for any other call, which keeps the model's default."""
+    if max_tokens > NO_REASONING_MAX_TOKENS:
+        return None
+    return _ANTHROPIC_NO_UPFRONT_THINKING.get(strip_anthropic_vendor_prefix(model))
 
 
 def timeout_error(target: str, timeout_seconds: float) -> TimeoutError:

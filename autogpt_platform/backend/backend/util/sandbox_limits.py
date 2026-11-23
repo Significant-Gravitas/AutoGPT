@@ -176,6 +176,7 @@ def tagged(metadata: dict[str, str] | None, user_id: str | None) -> dict[str, st
     return tags | (metadata or {})
 
 
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 def _scopes(user_id: str | None) -> list[_Scope]:
     # Read per start, as ``deployment_env`` does: ``Settings`` holds the values
     # its process started with.

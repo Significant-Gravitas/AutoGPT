@@ -31,11 +31,14 @@ from backend.copilot.tools.base import (
     _summarize_binary_fields,
 )
 from backend.copilot.tools.models import (
+    ApprovalRequiredResponse,
     BlockDetails,
     BlockDetailsResponse,
     BlockOutputResponse,
     ErrorResponse,
+    NeedLoginResponse,
     ResponseType,
+    ReviewRequiredResponse,
     ToolResponseBase,
 )
 from backend.copilot.tools.workspace_files import (
@@ -530,6 +533,133 @@ class TestDigestThreshold:
         assert json.loads(written[start : start + length]) == ["field_0"]
 
 
+class _CardTool(_HugeOutputTool):
+    """Answers with what the client mounts a card from, however large."""
+
+    def __init__(self, response: ToolResponseBase, digest: bool = True) -> None:
+        super().__init__(0)
+        self._response = response
+        self.digest_large_output = digest
+
+    async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+        return self._response
+
+
+_HTML_BODY = "<p>" + "Hello. " * 1_400 + "</p>"
+
+
+def _gmail_review() -> ReviewRequiredResponse:
+    """A Gmail send with an HTML body: the size whose card never appeared."""
+    return ReviewRequiredResponse(
+        message="Block 'Gmail Send' requires human review.",
+        session_id="s-1",
+        block_id="gmail-send",
+        block_name="Gmail Send",
+        review_id="copilot-node-gmail-send:ab12cd34",
+        input_data={
+            "to": ["ada@example.com"],
+            "subject": "Launch notes",
+            "body": _HTML_BODY,
+            "content_type": "text/html",
+        },
+    )
+
+
+def _card(kind: ResponseType, size: int) -> ToolResponseBase:
+    """A card output *size* chars long. The review skips its own preview, which
+    would otherwise keep it short enough that nothing here gets tested."""
+    if kind == ResponseType.REVIEW_REQUIRED:
+        return ReviewRequiredResponse.model_construct(
+            type=kind,
+            message="Needs review.",
+            block_id="gmail-send",
+            block_name="Gmail Send",
+            review_id="copilot-node-gmail-send:ab12cd34",
+            input_data={"body": "b" * size},
+        )
+    if kind == ResponseType.APPROVAL_REQUIRED:
+        return ApprovalRequiredResponse(
+            message="Held for the user.",
+            tool_name="send_email",
+            reason="r" * size,
+            review_id="copilot-node-gate-send_email:1",
+        )
+    return NeedLoginResponse(message="m" * size)
+
+
+class TestCardOutputsReachTheClient:
+    """The client mounts an approval or sign-in card from the output's own
+    JSON, so a digest or preview of it is a card that never appears."""
+
+    @pytest.mark.asyncio
+    async def test_a_large_block_review_streams_as_json(self):
+        manager = AsyncMock()
+        result = await _execute_with_flag(
+            _CardTool(_gmail_review()), flag_on=True, manager=manager
+        )
+        output = str(result.output)
+
+        assert "<tool-output-truncated" not in output
+        payload = json.loads(output)
+        assert payload["type"] == "review_required"
+        assert payload["review_id"] == "copilot-node-gmail-send:ab12cd34"
+        assert payload["block_id"] == "gmail-send"
+        assert payload["block_name"] == "Gmail Send"
+        assert payload["session_id"] == "s-1"
+        manager.write_file.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_the_stream_previews_the_input_the_card_reads_whole(self):
+        result = await _execute_with_flag(_CardTool(_gmail_review()), flag_on=True)
+        payload = json.loads(str(result.output))
+
+        assert len(str(result.output)) < _DIGEST_THRESHOLD
+        assert payload["input_preview"] is True
+        assert payload["input_data"] == {
+            "to": ["ada@example.com"],
+            "subject": "Launch notes",
+            "body": f"<{len(_HTML_BODY):,} chars>",
+            "content_type": "text/html",
+        }
+
+    @pytest.mark.parametrize(
+        "digest, size",
+        [(True, _DIGEST_THRESHOLD * 2), (False, _LARGE_OUTPUT_THRESHOLD + 10_000)],
+        ids=["digest", "preview"],
+    )
+    @pytest.mark.parametrize(
+        "kind",
+        [
+            ResponseType.REVIEW_REQUIRED,
+            ResponseType.APPROVAL_REQUIRED,
+            ResponseType.NEED_LOGIN,
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_a_card_is_never_cut_however_long(
+        self, kind: ResponseType, digest: bool, size: int
+    ):
+        manager = AsyncMock()
+        result = await _execute_with_flag(
+            _CardTool(_card(kind, size), digest=digest), flag_on=True, manager=manager
+        )
+
+        assert json.loads(str(result.output))["type"] == kind.value
+        manager.write_file.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_large_block_output_is_still_digested(self):
+        response = BlockOutputResponse(
+            message="Done.",
+            block_id="b-1",
+            block_name="Wide Block",
+            outputs={"result": ["r" * (_DIGEST_THRESHOLD * 2)]},
+        )
+        result = await _execute_with_flag(_CardTool(response), flag_on=True)
+
+        assert 'format="outline"' in str(result.output)
+
+
 def _outline_of(data, budget: int) -> tuple[str, str]:
     body, parsed, offsets = _index_json(json.dumps(data))
     return body, _outline(parsed, offsets, budget)
@@ -656,6 +786,10 @@ class TestEnvelopeEnforcement:
 
         assert result.success is False
         assert tool.ran is False, "the denied tool's body executed anyway"
+        # The report goes back to the turn that delegated it, which must not
+        # pass a refused call on as done (SECRT-3224).
+        assert "did not run" in result.output
+        assert "never report that it happened" in result.output
 
     @pytest.mark.asyncio
     async def test_a_permitted_tool_still_runs(self, monkeypatch):
@@ -1044,7 +1178,7 @@ class TestGateTracesOfGoogleCalls:
     is redacted whole."""
 
     @staticmethod
-    def _block_tool(provider: str | None):
+    def _block_tool(provider: str | None, raises: bool = False):
         class _Block(BaseTool):
             @property
             def name(self) -> str:
@@ -1059,6 +1193,8 @@ class TestGateTracesOfGoogleCalls:
                 return {"type": "object", "properties": {}}
 
             async def _execute(self, user_id, session, **kwargs):
+                if raises:
+                    raise RuntimeError("could not read the email")
                 return BlockOutputResponse(
                     message="ran",
                     block_id="b",
@@ -1071,16 +1207,26 @@ class TestGateTracesOfGoogleCalls:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "names_google_block, provider, action_redacted, read_redacted",
+        "names_google_block, provider, fails, action_redacted, read_redacted",
         [
-            (True, None, True, True),
-            (False, "google", False, True),
-            (False, None, False, False),
+            (True, None, None, True, True),
+            (False, "google", None, False, True),
+            (False, None, None, False, False),
+            (True, None, "running", True, True),
+            (False, None, "running", False, False),
+            (False, "google", "after", False, True),
         ],
-        ids=["names a Google block", "returns Google data", "neither"],
+        ids=[
+            "names a Google block",
+            "returns Google data",
+            "neither",
+            "names a Google block and fails",
+            "fails",
+            "fails after returning Google data",
+        ],
     )
     async def test_redacted_while_the_gate_runs(
-        self, names_google_block, provider, action_redacted, read_redacted
+        self, names_google_block, provider, fails, action_redacted, read_redacted
     ):
         block = GmailReadBlock() if names_google_block else GetWikipediaSummaryBlock()
         traced: dict[str, object] = {}
@@ -1092,6 +1238,11 @@ class TestGateTracesOfGoogleCalls:
         async def read(*args, **kwargs):
             traced["read"] = redact_google_data({"text": "the email"})
 
+        recorded = AsyncMock(
+            side_effect=(
+                RuntimeError("could not record the email") if fails == "after" else None
+            )
+        )
         with (
             patch("backend.copilot.gate.check_action", side_effect=action),
             patch(
@@ -1099,9 +1250,9 @@ class TestGateTracesOfGoogleCalls:
                 new=AsyncMock(return_value=None),
             ),
             patch("backend.copilot.gate.reads.screen_read", side_effect=read),
-            patch("backend.copilot.tools.base._record_activity", new=AsyncMock()),
+            patch("backend.copilot.tools.base._record_activity", new=recorded),
         ):
-            await self._block_tool(provider).execute(
+            await self._block_tool(provider, raises=fails == "running").execute(
                 "u1", MagicMock(session_id="s1"), "call-1", id=block.id
             )
 

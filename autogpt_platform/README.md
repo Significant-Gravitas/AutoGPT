@@ -29,7 +29,7 @@ To run the AutoGPT Platform, follow these steps:
    make init-env
    ```
 
-   This command copies each `.env.default` file to `.env` (in `autogpt_platform`, `backend` and `frontend`) where no `.env` exists yet, and generates the secrets and passwords those files leave blank: `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY`, `INTERNAL_API_KEY`, `BETTER_AUTH_SECRET` and the passwords of the database, RabbitMQ, Redis and FalkorDB. The backend refuses to start without `ENCRYPTION_KEY`. It never overwrites an existing file or a value you set. You can then modify the `.env` files to add your own environment variables.
+   This command copies each `.env.default` file to `.env` (in `autogpt_platform`, `backend` and `frontend`) where no `.env` exists yet, and generates the secrets and passwords those files leave blank: `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY`, `INTERNAL_API_KEY`, `BAN_RECORD_HASH_KEY`, `BETTER_AUTH_SECRET` and the passwords of the database, RabbitMQ, Redis and FalkorDB. The backend refuses to start without `ENCRYPTION_KEY`. It never overwrites an existing file or a value you set. You can then modify the `.env` files to add your own environment variables.
 
    Without `make`, run `installer/setup-autogpt.sh` (Linux/macOS) or `installer\setup-autogpt.bat` (Windows) instead. They do the same and then start the services.
 
@@ -145,6 +145,25 @@ Your data already persists across restarts:
 - PostgreSQL keeps its data in `autogpt_platform/data/db/data` on the host.
 - Workspace files, marketplace media, and FalkorDB memory use the named volumes `workspace-data`, `store-media-data`, and `falkordb_data`.
 - The three Redis nodes are a cache and are not persisted; do not add volumes to them.
+
+Inside the containers, workspace files are always at `/app/autogpt_platform/backend/workspaces` (`workspace-data`) and marketplace media at `/app/autogpt_platform/backend/store-media` (`store-media-data`). `docker-compose.platform.yml` sets `WORKSPACE_STORAGE_DIR` to that path, so a value in `backend/.env` has no effect in this stack. To keep the files somewhere else on the host, change where these volumes point, not the container path.
+
+If an older install set `WORKSPACE_STORAGE_DIR` in `backend/.env` to another path and mounted a host folder there, the stack no longer reads that folder. With the stack stopped, either:
+
+- copy that folder's contents into the `workspace-data` volume, and the `store-media` folder beside it into `store-media-data`; or
+- mount your host folders at the two container paths above, in place of the named volumes.
+
+Before the `executor` service mounted `workspace-data`, files a workflow run wrote stayed inside the `executor` container, and their download links failed. Upgrading recreates that container and removes them. To keep them, copy them out before you upgrade:
+
+```
+docker compose cp -a executor:/app/autogpt_platform/backend/workspaces ./executor-workspaces
+```
+
+After the upgrade, copy them into the shared volume, alongside what is already there. Their download links then work:
+
+```
+docker compose cp -a ./executor-workspaces/. rest_server:/app/autogpt_platform/backend/workspaces
+```
 
 Back up `data/db/data` (with the stack stopped) together with your `.env` files: `backend/.env` holds the `ENCRYPTION_KEY` your stored integration credentials are encrypted with.
 

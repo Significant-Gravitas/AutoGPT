@@ -15,8 +15,8 @@ import {
   EyeIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import Link from "next/link";
-import { formatDistanceToNow } from "date-fns";
 import type { StoreListingWithVersionsAdminView } from "@/app/api/__generated__/models/storeListingWithVersionsAdminView";
 import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/storeSubmissionAdminView";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
@@ -79,11 +79,11 @@ export function ExpandableRow({
           {latestVersion?.status && getStatusBadge(latestVersion.status)}
         </TableCell>
         <TableCell onClick={() => setExpanded(!expanded)}>
-          {latestVersion?.submitted_at
-            ? formatDistanceToNow(new Date(latestVersion.submitted_at), {
-                addSuffix: true,
-              })
-            : "Unknown"}
+          {latestVersion?.submitted_at ? (
+            <RelativeTime date={latestVersion.submitted_at} />
+          ) : (
+            "Unknown"
+          )}
         </TableCell>
         <TableCell className="text-right">
           <div className="flex justify-end gap-2">
@@ -163,22 +163,18 @@ export function ExpandableRow({
                           {version.changes_summary || "No summary"}
                         </TableCell>
                         <TableCell>
-                          {version.submitted_at
-                            ? formatDistanceToNow(
-                                new Date(version.submitted_at),
-                                { addSuffix: true },
-                              )
-                            : "Unknown"}
+                          {version.submitted_at ? (
+                            <RelativeTime date={version.submitted_at} />
+                          ) : (
+                            "Unknown"
+                          )}
                         </TableCell>
                         <TableCell>
-                          {version.reviewed_at
-                            ? formatDistanceToNow(
-                                new Date(version.reviewed_at),
-                                {
-                                  addSuffix: true,
-                                },
-                              )
-                            : "Not reviewed"}
+                          {version.reviewed_at ? (
+                            <RelativeTime date={version.reviewed_at} />
+                          ) : (
+                            "Not reviewed"
+                          )}
                         </TableCell>
                         <TableCell className="max-w-xs overflow-hidden">
                           {version.review_comments ? (

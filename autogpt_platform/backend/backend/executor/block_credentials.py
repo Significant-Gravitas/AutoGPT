@@ -14,6 +14,7 @@ from backend.blocks._base import AnyBlockSchema, BlockSchema
 from backend.data.block import BlockInput
 from backend.data.db_accessors import experts_db
 from backend.data.model import (
+    APIKeyCredentials,
     Credentials,
     CredentialsMetaInput,
     OAuth2Credentials,
@@ -77,6 +78,8 @@ async def acquire_block_credentials(
     *,
     expert_id: str | None = None,
     dry_run_credentials: Credentials | None = None,
+    simulate: bool = False,
+    user_timezone: str = "UTC",
     log: TruncatedLogger = logger,
 ) -> BlockCredentials:
     """Load the credentials ``input_data`` names, as ``run()`` keyword arguments.
@@ -187,6 +190,14 @@ async def acquire_block_credentials(
                     field_name,
                     f"Credentials #{credentials_meta.id} for user #{user_id} not found",
                 )
+            if (
+                not simulate
+                and isinstance(credentials, APIKeyCredentials)
+                and credentials.is_expired()
+            ):
+                # Outside the `except ValueError` above, so a field with a
+                # default can't fall back to running without the key.
+                raise credentials.expired_error(user_timezone)
             if provider_matches(credentials.provider, "codex"):
                 await enforce_codex_access(user_id)
             exec_kwargs[field_name] = credentials
@@ -214,7 +225,7 @@ async def acquire_block_credentials(
 
 
 async def acquire_direct_block_credentials(
-    block: AnyBlockSchema, input_data: BlockInput, user_id: str
+    block: AnyBlockSchema, input_data: BlockInput, user_id: str, user_timezone: str
 ) -> BlockCredentials:
     """The caller's stored credentials for a block run outside any graph.
 
@@ -225,7 +236,11 @@ async def acquire_direct_block_credentials(
     """
     try:
         credentials = await acquire_block_credentials(
-            block.input_schema, input_data, IntegrationCredentialsManager(), user_id
+            block.input_schema,
+            input_data,
+            IntegrationCredentialsManager(),
+            user_id,
+            user_timezone=user_timezone,
         )
     except CredentialsUnavailableError as e:
         raise DirectBlockCredentialsError(

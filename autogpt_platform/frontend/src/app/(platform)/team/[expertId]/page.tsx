@@ -29,10 +29,11 @@ import { BackToTeamLink } from "../components/BackToTeamLink";
 import { ExpertChatDrawer } from "../components/ExpertChatDrawer/ExpertChatDrawer";
 import { expertToChatTarget } from "../components/ExpertChatDrawer/helpers";
 import { FireExpertDialog } from "../components/FireExpertDialog/FireExpertDialog";
+import { ExpertResetSection } from "./components/ExpertResetSection/ExpertResetSection";
 import { SoulDrawer } from "../components/SoulDrawer/SoulDrawer";
 import {
   getExpertCover,
-  getLastRunLabel,
+  getLastRun,
   PROFILE_TABS_INDICATOR_CLASS,
   PROFILE_TABS_LIST_CLASS,
   PROFILE_TABS_TRIGGER_CLASS,
@@ -210,7 +211,7 @@ export default function ExpertDetailPage() {
               expertId={expert.id}
               workflows={expert.workflows}
               schedules={schedules}
-              lastRunLabel={getLastRunLabel(expert)}
+              lastRun={getLastRun(expert)}
             />
           </TabsLineContent>
 
@@ -257,6 +258,7 @@ export default function ExpertDetailPage() {
           <TabsLineContent value="settings">
             <div className="flex flex-col gap-4">
               <ExpertModeSection expert={expert} />
+              <ExpertResetSection expert={expert} />
               <ExpertSettingsSection expert={expert} onFire={openFire} />
             </div>
           </TabsLineContent>

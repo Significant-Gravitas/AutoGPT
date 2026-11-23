@@ -44,11 +44,14 @@ def _redis_allowing_posts() -> MagicMock:
     return redis
 
 
-def _output_node(name: str, value: object) -> SimpleNamespace:
+def _output_node(
+    name: str, value: object, output: list | None = None
+) -> SimpleNamespace:
     return SimpleNamespace(
         queue_time=None,
         add_time=datetime(2026, 8, 14, tzinfo=timezone.utc),
         input_data={"name": name, "value": value},
+        output_data={"output": output} if output is not None else {},
         status=ExecutionStatus.COMPLETED,
     )
 
@@ -96,6 +99,18 @@ def test_build_message_failure_states_reason():
     )
     assert "didn't finish" in message
     assert "> missing Gmail credentials" in message
+
+
+def test_build_message_names_failed_steps_and_quotes_the_summary():
+    message = build_expert_run_message(
+        agent_name="Morning Brief",
+        succeeded=False,
+        summary="The search step could not reach Jina: invalid API key.",
+        failed_steps=1,
+    )
+    assert "but 1 step failed." in message
+    assert "> The search step could not reach Jina: invalid API key." in message
+    assert "Here's the summary it generated" not in message
 
 
 def test_build_message_truncates_oversized_error():
@@ -281,6 +296,25 @@ def test_post_attaches_run_metadata_with_output_type():
     assert output_query["block_ids"]
 
 
+def test_post_classifies_the_formatted_output_not_the_raw_value():
+    db_client = MagicMock()
+    db_client.get_graph_metadata.return_value = SimpleNamespace(name="Weekly Report")
+    db_client.get_library_agent_id_by_graph_id.return_value = "lib-1"
+    db_client.get_node_executions.return_value = [
+        _output_node("result", {"metric": "signups"}, output=["word " * 100])
+    ]
+    with patch(f"{_MODULE}.get_redis", return_value=_redis_allowing_posts()):
+        handle_expert_run_post(
+            db_client,
+            _entry(expert_id="expert-1"),
+            ExecutionStatus.COMPLETED,
+            GraphExecutionStats(),
+        )
+    metadata = db_client.append_expert_run_message.call_args.kwargs["metadata"]
+    assert metadata["output_type"] == "doc"
+    assert metadata["output_key"] == "result"
+
+
 def test_failed_post_skips_output_fetch():
     db_client = MagicMock()
     db_client.get_graph_metadata.return_value = SimpleNamespace(name="Weekly Report")
@@ -296,6 +330,29 @@ def test_failed_post_skips_output_fetch():
     assert metadata["status"] == "failed"
     assert metadata["output_type"] == "unknown"
     assert metadata["output_key"] is None
+    db_client.get_node_executions.assert_not_called()
+
+
+def test_completed_run_with_a_failed_step_posts_as_failed():
+    db_client = MagicMock()
+    db_client.get_graph_metadata.return_value = SimpleNamespace(name="Lead Finder")
+    db_client.get_library_agent_id_by_graph_id.return_value = "lib-1"
+    with patch(f"{_MODULE}.get_redis", return_value=_redis_allowing_posts()):
+        handle_expert_run_post(
+            db_client,
+            _entry(expert_id="expert-1"),
+            ExecutionStatus.COMPLETED,
+            GraphExecutionStats(
+                node_error_count=1,
+                activity_status="The search step failed: invalid API key.",
+            ),
+        )
+    kwargs = db_client.append_expert_run_message.call_args.kwargs
+    assert kwargs["metadata"]["status"] == "failed"
+    assert kwargs["metadata"]["output_type"] == "unknown"
+    assert "but 1 step failed." in kwargs["content"]
+    assert "> The search step failed: invalid API key." in kwargs["content"]
+    assert "finished without any problems" not in kwargs["content"]
     db_client.get_node_executions.assert_not_called()
 
 

@@ -400,7 +400,10 @@ async def test_the_deletion_webhook_drops_the_tier_without_touching_the_person(
     ):
         await credit.sync_subscription_from_stripe(event)
 
-    set_tier.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
+    # The tier write leaves the person's sync to the webhook, which skips it.
+    set_tier.assert_awaited_once_with(
+        "user-1", SubscriptionTier.NO_TIER, track_lifecycle=False
+    )
     person_sync.assert_not_called()
 
 

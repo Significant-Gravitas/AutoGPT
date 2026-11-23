@@ -4,6 +4,7 @@ These drive the routes against the real credential store: whose credential a run
 may use is decided there, and a mocked store would decide it for the test.
 """
 
+import time
 import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
@@ -106,6 +107,23 @@ async def test_a_credential_the_caller_cannot_use_is_refused_before_the_charge(
 
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize("route", ROUTES)
+async def test_an_expired_stored_key_is_refused_before_the_charge(
+    route: str, caller: str, spend: AsyncMock, sandbox_keys: list[str]
+):
+    credential = await _store_e2b_key(caller, expires_at=int(time.time()) - 60)
+
+    response = await _execute(
+        route, caller, ExecuteCodeBlock(), _code_input(credential)
+    )
+
+    assert response.status_code == 400, response.text
+    assert "expired" in response.json()["detail"]
+    spend.assert_not_awaited()
+    assert sandbox_keys == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("route", ROUTES)
 async def test_a_block_whose_credentials_are_optional_runs_without_any(
     route: str, caller: str, spend: AsyncMock, monkeypatch: pytest.MonkeyPatch
 ):
@@ -185,12 +203,15 @@ async def _user() -> str:
     return user.id
 
 
-async def _store_e2b_key(user_id: str) -> APIKeyCredentials:
+async def _store_e2b_key(
+    user_id: str, expires_at: int | None = None
+) -> APIKeyCredentials:
     credential = APIKeyCredentials(
         id=str(uuid.uuid4()),
         provider="e2b",
         api_key=SecretStr(f"e2b-{uuid.uuid4().hex}"),
         title="E2B",
+        expires_at=expires_at,
     )
     await IntegrationCredentialsStore().add_creds(user_id, credential)
     return credential

@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.data.credit import TRIAL_ENDED_FOR_CHECKOUT_CANCELLATION_COMMENT
 from backend.data.notifications import AudienceAction, NotificationResult
 from backend.notifications import trial as notices
 from backend.notifications import trial_audience_test
@@ -151,6 +152,25 @@ async def test_a_trial_ended_by_another_plan_still_leaves_the_trial_group(
     got = await _end_under_another_plan(trial, pending, audience=audience)
     assert got == [AudienceAction.REMOVE_TRIAL]
     assert audience.await_args.args[0].fields == {}
+
+
+@pytest.mark.asyncio
+async def test_a_trial_ended_for_checkout_sends_no_notice_but_leaves_the_trial_group(
+    trial,
+):
+    """A trial with no card to charge, ended so Checkout could sell the plan
+    the person chose: no "trial ended" email while they pay for it."""
+    ended, raw = _state(trial, "ended")
+    raw["cancellation_details"] = {
+        "comment": TRIAL_ENDED_FOR_CHECKOUT_CANCELLATION_COMMENT,
+        "reason": "cancellation_requested",
+    }
+    claim = AsyncMock(return_value=True)
+    got, notice, release = await _notify(ended, raw, "ended", claim_once=claim)
+    assert got == [AudienceAction.REMOVE_TRIAL]
+    claim.assert_not_awaited()
+    notice.assert_not_awaited()
+    release.assert_not_awaited()
 
 
 @pytest.mark.asyncio

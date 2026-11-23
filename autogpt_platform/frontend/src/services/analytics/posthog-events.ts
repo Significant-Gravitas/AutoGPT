@@ -177,6 +177,16 @@ export const VoiceModeEvent = {
   VOICE_MODE_ERROR: "voice_mode_error",
 } as const;
 
+// Dictation from the chat composer's mic, outside voice mode.
+export const DictationEvent = {
+  // The transcription API could not read a recording, so the composer offers
+  // "Record again" in place of Retry.
+  DICTATION_REJECTED: "dictation_rejected",
+  // A new recording started while that rejection was on screen. Against
+  // `dictation_rejected` this says how many users recover by speaking again.
+  DICTATION_RERECORDED: "dictation_rerecorded",
+} as const;
+
 export const CredentialConnectionFailureEvent = {
   // The provider is absent from the loaded provider map, so the card's row
   // for it never renders at all.
@@ -218,6 +228,11 @@ export const MonetizationEvent = {
   CHECKOUT_ABANDONED: "checkout_abandoned",
 } as const;
 
+export const VisualAnswerEvent = {
+  // An option card in one of Otto's visual answers was clicked.
+  VISUAL_OPTION_CLICKED: "visual_option_clicked",
+} as const;
+
 export const PostHogEvent = {
   ...PageEvent,
   ...DeploySkewEvent,
@@ -229,6 +244,8 @@ export const PostHogEvent = {
   ...FirstRunEvent,
   ...TabIntroEvent,
   ...VoiceModeEvent,
+  ...DictationEvent,
+  ...VisualAnswerEvent,
   ...CredentialConnectionFailureEvent,
   ...TrialEvent,
   ...TourEvent,

@@ -1,4 +1,3 @@
-import { format } from "date-fns";
 import React from "react";
 
 import { Input as DSInput } from "@/components/atoms/Input/Input";
@@ -21,7 +20,8 @@ import {
   resolveDataType,
   TableRow,
 } from "@/lib/autogpt-server-api/types";
-import { getSelectOptions } from "./helpers";
+import { isUnsafeIntegerText } from "@/lib/integer-input";
+import { getSelectOptions, toCalendarDate } from "./helpers";
 import { useRunAgentInputs } from "./useRunAgentInputs";
 import { Cancel01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -81,9 +81,14 @@ export function RunAgentInputs({
           value={value ?? ""}
           placeholder={placeholder || "Enter number"}
           onChange={(e) => {
-            const v = (e.target as HTMLInputElement).value;
-            if (!v || v.trim() === "") {
+            const v = (e.target as HTMLInputElement).value.trim();
+            if (!v) {
               onChange(undefined);
+            } else if (
+              valueSchema.type === "integer" &&
+              isUnsafeIntegerText(v)
+            ) {
+              onChange(v);
             } else {
               const numValue = Number(v);
               onChange(isNaN(numValue) ? undefined : numValue);
@@ -143,46 +148,25 @@ export function RunAgentInputs({
       );
       break;
 
-    case DataType.DATE: {
-      function normalizeDateValue(val: any): Date | null {
-        if (!val) return null;
-        if (val instanceof Date) {
-          return isNaN(val.getTime()) ? null : val;
-        }
-        if (typeof val === "string") {
-          if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
-            const [y, m, d] = val.split("-").map(Number);
-            const date = new Date(y, m - 1, d);
-            return isNaN(date.getTime()) ? null : date;
-          }
-          const date = new Date(val);
-          return isNaN(date.getTime()) ? null : date;
-        }
-        return null;
-      }
-
-      const dateValue = normalizeDateValue(value);
+    case DataType.DATE:
+      // Keep the day picked as the field holds it, yyyy-MM-dd, never as a
+      // timestamp: local midnight east of Greenwich is the day before in UTC,
+      // and the Date input block refuses a timestamp that isn't midnight.
       innerInputElement = (
         <DSInput
           id={`${baseId}-date`}
           label={schema.title ?? placeholder ?? "Date"}
           hideLabel
           type="date"
-          value={dateValue ? format(dateValue, "yyyy-MM-dd") : ""}
-          onChange={(e) => {
-            const v = (e.target as HTMLInputElement).value;
-            if (!v) onChange(undefined);
-            else {
-              const [y, m, d] = v.split("-").map(Number);
-              onChange(new Date(y, m - 1, d));
-            }
-          }}
+          value={toCalendarDate(value)}
+          onChange={(e) =>
+            onChange((e.target as HTMLInputElement).value || undefined)
+          }
           placeholder={placeholder || "Pick a date"}
           {...props}
         />
       );
       break;
-    }
 
     case DataType.TIME:
       innerInputElement = (

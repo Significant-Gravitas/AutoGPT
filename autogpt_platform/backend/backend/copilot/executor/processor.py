@@ -20,7 +20,7 @@ from autogpt_libs.auth.closed_accounts import ACCOUNT_CLOSED_DETAIL
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 
 from backend.api.features.experts.models import CheckedExpert
-from backend.copilot import stream_registry
+from backend.copilot import after_turn, stream_registry
 from backend.copilot.ai_spans import set_turn_span, trace_id_for
 from backend.copilot.background_execution import (
     background_timeout,
@@ -38,6 +38,7 @@ from backend.copilot.credit_billing import (
     bill_to_credits,
     credit_billing,
 )
+from backend.copilot.deferred_cancel import DeferredCancel
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.expert_check import (
     checked_expert,
@@ -65,6 +66,7 @@ from backend.copilot.llm_attribution import (
 from backend.copilot.load_test import LoadTestEngine, load_test_engine
 from backend.copilot.model import maybe_append_user_message
 from backend.copilot.rate_limit import RateLimitUnavailable
+from backend.copilot.reply_timing import describe_chat
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -74,8 +76,12 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
+from backend.copilot.service import strip_user_context_tags
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
-from backend.copilot.tools.agent_browser import close_browser_daemon
+from backend.copilot.tools.agent_browser import (
+    browser_daemon_may_run,
+    close_browser_daemon,
+)
 from backend.copilot.trial_cost_context import trial_cost_context
 from backend.copilot.trial_reads import SharedTrialReads, trial_reads_shared
 from backend.copilot.turn_pause import TurnPause, pause_from_part
@@ -241,6 +247,21 @@ def taint_for_source_platform(
 _tls = threading.local()
 
 
+def _pin_local_pc_to_sdk(
+    session: "ChatSession", use_sdk: bool, *, thinking_available: bool
+) -> bool:
+    """Run a Local PC chat on the SDK engine, the only one bound to the
+    user's machine; the baseline engine would run its tools in a cloud
+    sandbox. Where the SDK transport cannot run, the baseline engine
+    refuses the turn instead."""
+    if use_sdk or not thinking_available:
+        return use_sdk
+    if session.metadata.execution_target.kind == "local":
+        logger.info("Forcing SDK engine: the chat runs on a Local PC")
+        return True
+    return use_sdk
+
+
 async def _building_mode_forces_sdk(session_id: str) -> bool:
     """True when the session's history shows it entered agent-building mode.
 
@@ -364,6 +385,28 @@ async def _closing_at_model_output(
         # ``async for`` doesn't close the engine's stream on cancel or
         # GeneratorExit; its cleanup (the SDK stream lock) must still run.
         await stream.aclose()
+
+
+async def _newer_turn_runs_here(entry: CoPilotExecutionEntry) -> bool:
+    """Whether a newer turn of *entry*'s chat runs on this pod, which makes
+    the chat's browser daemon here that turn's to close, not *entry*'s.
+
+    A stopped turn's cleanup can outlast the worker's grace, after which the
+    chat's next turn may start (#17293). A newer turn on another pod leaves
+    this pod's daemon *entry*'s, and skipping its close would leave it
+    running. When the chat's turn can't be read, the daemon is closed. A chat
+    with no daemon here has nothing to leave, so its turn isn't read at all.
+    """
+    if not browser_daemon_may_run(entry.session_id):
+        return False
+    try:
+        active = await stream_registry.get_session(entry.session_id)
+    except Exception:
+        logger.warning("Could not read the chat's current turn", exc_info=True)
+        return False
+    if active is None or active.turn_id in ("", entry.turn_id):
+        return False
+    return after_turn.running_here(active.turn_id)
 
 
 async def _refuse_turn(
@@ -808,6 +851,16 @@ class CoPilotProcessor:
                 or session.metadata.llm_credential_id != entry.llm_credential_id
             ):
                 raise RuntimeError("codex_session_route_mismatch")
+            # The engines strip server tags before saving the turn's message.
+            describe_chat(
+                turn.span,
+                session,
+                (
+                    strip_user_context_tags(entry.message)
+                    if entry.is_user_message
+                    else None
+                ),
+            )
 
             session = await _normalize_private_expert_session_tenancy(session)
             # The allowance, budget and tier checks that set up the turn share
@@ -1007,6 +1060,11 @@ class CoPilotProcessor:
                             log.info(
                                 "Forcing SDK engine: session is in agent building mode"
                             )
+                    use_sdk = _pin_local_pc_to_sdk(
+                        session,
+                        use_sdk,
+                        thinking_available=config.thinking_available,
+                    )
                     if credit_turn is not None and not use_sdk:
                         # Only the SDK engine caps a turn's spend, and a turn
                         # on the credit balance mustn't overdraw it.
@@ -1133,10 +1191,14 @@ class CoPilotProcessor:
                 error_msg = BACKGROUND_TIMEOUT_MESSAGE
             elif not error_msg and cancel.is_set():
                 error_msg = stream_registry.CANCELLED_MESSAGE
+            # A Stop's second cancel can land in here once the worker's grace
+            # runs out. Each step still runs to its end, and the cancel is
+            # passed on after the last one.
+            deferred = DeferredCancel()
             try:
                 if credential_lease is not None:
                     try:
-                        await credential_lease.release()
+                        await deferred.finish(credential_lease.release())
                     except CodexCredentialIntegrityError as release_err:
                         error_msg = error_msg or "codex_credential_checkpoint_failed"
                         log.error(
@@ -1152,19 +1214,21 @@ class CoPilotProcessor:
                 if scheduled_watch is not None:
                     scheduled_watch.report(error_msg)
                 try:
-                    await finish_background_execution(entry, error_msg)
+                    await deferred.finish(finish_background_execution(entry, error_msg))
                 except Exception as finish_err:
                     log.error(f"Failed to save background completion: {finish_err}")
                 try:
-                    await stream_registry.mark_session_completed(
-                        entry.session_id,
-                        error_message=error_msg,
-                        error_code=error_code,
-                        skip_error_publish=(
-                            cancel.is_set()
-                            and error_msg == stream_registry.CANCELLED_MESSAGE
-                        ),
-                        turn_id=entry.turn_id,
+                    await deferred.finish(
+                        stream_registry.mark_session_completed(
+                            entry.session_id,
+                            error_message=error_msg,
+                            error_code=error_code,
+                            skip_error_publish=(
+                                cancel.is_set()
+                                and error_msg == stream_registry.CANCELLED_MESSAGE
+                            ),
+                            turn_id=entry.turn_id,
+                        )
                     )
                 except Exception as mark_err:
                     log.error(f"Failed to mark session completed: {mark_err}")
@@ -1172,16 +1236,37 @@ class CoPilotProcessor:
                     try:
                         # After the turn is marked done, so the owner never
                         # waits on it: counts the run toward its schedule's
-                        # failure streak. It can be cancelled while it waits,
-                        # so the cleanups below still run.
+                        # failure streak.
                         if scheduled_watch is not None:
-                            await scheduled_watch.record(error_msg)
+                            await deferred.finish(scheduled_watch.record(error_msg))
                     finally:
-                        set_turn_surface(None)
-                        await cost_context_stack.aclose()
-                        # A browser turn leaves a Chromium tree on this pod
-                        # that nothing else ever stops; state is already
-                        # persisted, so the next turn restores it wherever it
-                        # lands.
-                        if await close_browser_daemon(entry.session_id):
-                            log.info("Browser daemon teardown attempted for this turn")
+                        try:
+                            set_turn_surface(None)
+                            # On this task: the stack resets context variables
+                            # the turn set, and a task of its own would hold
+                            # only a copy of them.
+                            await deferred.run_here(cost_context_stack.aclose())
+                            # A browser turn leaves a Chromium tree on this pod
+                            # that nothing else ever stops; state is already
+                            # persisted, so the next turn restores it wherever
+                            # it lands. Read right before the close: a newer
+                            # turn of the chat on this pod owns the tree by then.
+                            if await deferred.finish(_newer_turn_runs_here(entry)):
+                                log.info(
+                                    "A newer turn of this chat runs here; "
+                                    "its browser stays"
+                                )
+                            elif await deferred.finish(
+                                close_browser_daemon(entry.session_id)
+                            ):
+                                log.info(
+                                    "Browser daemon teardown attempted for this turn"
+                                )
+                        finally:
+                            # Past a later step's error too, which the cancel
+                            # keeps as its context.
+                            if deferred.held is not None:
+                                log.info(
+                                    "Turn cleanup done; passing on the cancel it held"
+                                )
+                                raise deferred.held

@@ -1,12 +1,16 @@
 """Tests for block execution guards and input validation in RunBlockTool."""
 
+import time
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from backend.blocks._base import BlockType
 from backend.copilot.context import _current_permissions
 from backend.copilot.permissions import CopilotPermissions
+from backend.data.model import APIKeyCredentials
 from backend.integrations.providers import ProviderName
 
 from ._test_data import make_session
@@ -892,6 +896,80 @@ class TestRunBlockSensitiveAction:
         assert "resume_capability" in response.message
         assert response.block_name == "Delete Branch"
 
+    async def _paused(
+        self, input_data: dict, session=None
+    ) -> tuple[ReviewRequiredResponse, AsyncMock]:
+        """Gmail Send run with a review required: its output, and the mock that
+        opened the review with the input it was given."""
+        mock_block = make_mock_block_with_schema(
+            block_id="gmail-send-id",
+            name="Gmail Send",
+            input_properties={key: {"type": "string"} for key in input_data},
+            required_fields=list(input_data),
+        )
+        mock_block.is_irreversible_action = True
+        mock_block.is_block_exec_need_review = AsyncMock(
+            return_value=(True, input_data)
+        )
+        with (
+            patch("backend.copilot.tools.helpers.get_block", return_value=mock_block),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+        ):
+            response = await RunBlockTool()._execute(
+                user_id=_TEST_USER_ID,
+                session=session or make_session(user_id=_TEST_USER_ID),
+                block_id="gmail-send-id",
+                input_data=input_data,
+                dry_run=False,
+            )
+        assert isinstance(response, ReviewRequiredResponse)
+        return response, mock_block.is_block_exec_need_review
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_review_tells_the_model_where_its_card_is(self):
+        """The reply after a review points to the card in this chat and on
+        Home, never to another chat or a second call to raise it again."""
+        response, _ = await self._paused({"to": "ada@example.com"})
+
+        assert "bottom of this chat" in response.message
+        assert "Needs you on Home" in response.message
+        assert "Never say it is in another chat" in response.message
+        assert "don't repeat this call to raise it again" in response.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_on_a_chat_platform_the_review_points_to_home(self):
+        """A chat platform posts no card for a block review, so the reply must
+        not send the user to the bottom of a chat that has none."""
+        session = make_session(user_id=_TEST_USER_ID)
+        session.metadata = session.metadata.model_copy(
+            update={"source_platform": "discord"}
+        )
+
+        response, _ = await self._paused({"to": "ada@example.com"}, session)
+
+        assert "No approval card is posted on this platform" in response.message
+        assert "Needs you on Home" in response.message
+        assert "bottom of this chat" not in response.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_review_keeps_the_input_the_stream_previews(self):
+        """The card reads the input from the review, so the review is written
+        with all of it while the tool output carries a preview."""
+        body = "<p>" + "Hello. " * 1_400 + "</p>"
+        input_data = {"to": "ada@example.com", "body": body}
+
+        response, opened = await self._paused(input_data)
+
+        assert opened.await_args.args[0] == input_data
+        assert response.input_data == {
+            "to": "ada@example.com",
+            "body": f"<{len(body):,} chars>",
+        }
+        assert response.input_preview is True
+
     @pytest.mark.asyncio(loop_scope="session")
     async def test_sensitive_block_executes_after_approval(self):
         """After approval (should_pause=False), sensitive blocks execute and return outputs."""
@@ -1457,6 +1535,7 @@ class TestExecuteBlockCredentialRejection:
     async def _run(
         exc: Exception,
         load_error: Exception | None = None,
+        stored: Any = None,
         *,
         cost: int = 0,
         credit: MagicMock | None = None,
@@ -1472,9 +1551,10 @@ class TestExecuteBlockCredentialRejection:
             provider="ayrshare",  # type: ignore[arg-type]
             type="api_key",
         )
-        stored = MagicMock()
-        stored.provider = "ayrshare"
-        stored.type = "api_key"
+        if stored is None:
+            stored = MagicMock()
+            stored.provider = "ayrshare"
+            stored.type = "api_key"
 
         creds_manager = MagicMock()
         creds_manager.get = AsyncMock(return_value=stored, side_effect=load_error)
@@ -1536,6 +1616,167 @@ class TestExecuteBlockCredentialRejection:
         assert "could not be refreshed" in response.message
         assert "Work Ayrshare key" in response.message
         assert "credentials" in response.setup_info.user_readiness.missing_credentials
+
+    @staticmethod
+    def _expired_key() -> APIKeyCredentials:
+        return APIKeyCredentials(
+            id="cred-1",
+            provider="ayrshare",
+            api_key=SecretStr("sk-expired"),
+            title="Work Ayrshare key",
+            expires_at=int(time.time()) - 60,
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_expired_api_key_returns_the_card(self):
+        # #16234: the block never runs on a key past its expiry.
+        from .models import SetupRequirementsResponse
+
+        response = await self._run(
+            RuntimeError("the block must not run"), stored=self._expired_key()
+        )
+
+        assert isinstance(response, SetupRequirementsResponse)
+        assert response.rejection is not None
+        assert response.rejection.credential_id == "cred-1"
+        assert "expired on" in response.rejection.detail
+        assert "sk-expired" not in response.rejection.detail
+        assert "'Work Ayrshare key' has expired. Add a new key" in response.message
+        assert "credentials" in response.setup_info.user_readiness.missing_credentials
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_scheduled_turn_is_told_the_key_expired(self):
+        key = self._expired_key()
+        chicago = MagicMock(timezone="America/Chicago")
+        users = MagicMock(get_user_by_id=AsyncMock(return_value=chicago))
+        with (
+            patch(
+                "backend.copilot.tools.helpers.is_unattended_turn", return_value=True
+            ),
+            patch("backend.copilot.tools.helpers.user_db", return_value=users),
+        ):
+            response = await self._run(
+                RuntimeError("the block must not run"), stored=key
+            )
+
+        assert isinstance(response, ErrorResponse)
+        assert response.error == "credential_rejected"
+        assert "'Work Ayrshare key' has expired, so block" in response.message
+        assert "Work Ayrshare key' expired on " in response.message
+        # Dated in the user's own zone, so it names the day they picked.
+        assert str(key.expired_error("America/Chicago")) in response.message
+        assert "could not be refreshed" not in response.message
+        assert "sk-expired" not in response.message
+
+    @staticmethod
+    async def _match_and_run(selected: dict[str, str], *, unattended: bool):
+        """Match the block's credential as run_block does, the chat's picks
+        included, then run the block. ``cred-1`` is an expired key stored
+        before ``cred-2``, which works."""
+        from backend.copilot.tools.helpers import (
+            execute_block,
+            resolve_block_credentials,
+        )
+
+        expired = TestExecuteBlockCredentialRejection._expired_key()
+        valid = expired.model_copy(
+            update={"id": "cred-2", "title": "Spare key", "expires_at": None}
+        )
+        stored = {c.id: c for c in (expired, valid)}
+        ran_with: list[str] = []
+
+        async def _post(_input, **kwargs):
+            ran_with.append(kwargs["credentials"].id)
+            yield "post_id", "posted"
+
+        block = TestExecuteBlockCredentialRejection._block(RuntimeError("unused"))
+        block.execute = _post
+        creds_manager = MagicMock()
+        creds_manager.get = AsyncMock(side_effect=lambda _u, cid, **_: stored[cid])
+        workspace = MagicMock()
+        workspace.get_or_create_workspace = AsyncMock(return_value=MagicMock(id="ws-1"))
+        with (
+            patch(
+                "backend.copilot.tools.utils.get_user_credentials",
+                AsyncMock(return_value=list(stored.values())),
+            ),
+            patch(
+                "backend.copilot.tools.utils.selected_credentials",
+                AsyncMock(return_value=selected),
+            ),
+            patch(
+                "backend.copilot.tools.utils.is_unattended_turn",
+                return_value=unattended,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.is_unattended_turn",
+                return_value=unattended,
+            ),
+            patch("backend.copilot.tools.helpers.workspace_db", return_value=workspace),
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=creds_manager,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.acquire_auto_credentials",
+                new_callable=AsyncMock,
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})
+            ),
+            patch(
+                "backend.copilot.tools.helpers.credit_db", return_value=_StubCreditDB()
+            ),
+        ):
+            matched, missing = await resolve_block_credentials(
+                "u-1", block, {}, session_id="s-1"
+            )
+            assert missing == []
+            response = await execute_block(
+                block=block,
+                block_id="ayrshare-block-id",
+                input_data={},
+                user_id="u-1",
+                session_id="s-1",
+                node_exec_id="n-1",
+                matched_credentials=matched,
+                dry_run=False,
+            )
+        return response, ran_with
+
+    @pytest.mark.parametrize("unattended", [False, True], ids=["watched", "unattended"])
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_expired_key_the_user_picked_is_refused_not_swapped(
+        self, unattended
+    ):
+        # Picked in the chat, the expired key is refused and named; the run
+        # never moves to the other key, which could be another account.
+        from .models import SetupRequirementsResponse
+
+        response, ran_with = await self._match_and_run(
+            {"ayrshare": "cred-1"}, unattended=unattended
+        )
+
+        assert ran_with == []
+        if unattended:
+            assert isinstance(response, ErrorResponse), response
+            assert "'Work Ayrshare key' has expired, so block" in response.message
+        else:
+            assert isinstance(response, SetupRequirementsResponse), response
+            assert response.rejection is not None
+            assert response.rejection.credential_id == "cred-1"
+            assert "'Work Ayrshare key' has expired. Add a new key" in response.message
+
+    @pytest.mark.parametrize("unattended", [False, True], ids=["watched", "unattended"])
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_expired_key_nobody_picked_gives_way_to_one_that_works(
+        self, unattended
+    ):
+        response, ran_with = await self._match_and_run({}, unattended=unattended)
+
+        assert isinstance(response, BlockOutputResponse), response
+        assert ran_with == ["cred-2"]
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_a_failure_that_is_not_the_providers_is_not_a_reconnect_card(self):

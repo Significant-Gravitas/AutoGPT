@@ -19,6 +19,15 @@ class Reply(BaseModel):
     text: str = ""
 
 
+def written(delta: dict[str, Any]) -> str:
+    """What the model wrote in a chat-completion delta, all billed as output:
+    its text and each tool call's name and arguments."""
+    return (delta.get("content") or "") + "".join(
+        call["function"]["name"] + call["function"]["arguments"]
+        for call in delta.get("tool_calls", [])
+    )
+
+
 def anthropic_messages(
     *,
     message_id: str,

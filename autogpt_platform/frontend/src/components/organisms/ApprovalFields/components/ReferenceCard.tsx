@@ -1,5 +1,13 @@
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
-import { factText, type Reference } from "../helpers";
+import { Fragment } from "react";
+import {
+  factText,
+  factTime,
+  shownFacts,
+  type Fact,
+  type Reference,
+} from "../helpers";
 
 // Named, then a count: the marketplace expert card's skills, in a line.
 const NAMED_SKILLS = 3;
@@ -9,9 +17,10 @@ interface Props {
 }
 
 export function ReferenceCard({ reference }: Props) {
-  const facts = reference.kind
-    ? reference.meta.map(factText).join(" · ")
-    : reference.summary;
+  const facts = reference.kind ? shownFacts(reference.meta) : [];
+  const hasFacts = reference.kind
+    ? facts.length > 0
+    : Boolean(reference.summary);
   const hasAvatar = Boolean(reference.avatarURL || reference.avatarColor);
   return (
     <div data-slot="reference-card">
@@ -54,12 +63,12 @@ export function ReferenceCard({ reference }: Props) {
           {reference.description}
         </p>
       )}
-      {facts && (
+      {hasFacts && (
         <p
           data-slot="reference-card-facts"
           className="mt-1.5 text-foreground-tertiary"
         >
-          {facts}
+          {reference.kind ? <Facts facts={facts} /> : reference.summary}
         </p>
       )}
       {reference.skills.length > 0 && (
@@ -84,6 +93,25 @@ export function ReferenceCard({ reference }: Props) {
         {reference.id}
       </p>
     </div>
+  );
+}
+
+function Facts({ facts }: { facts: Fact[] }) {
+  return facts.map((fact, index) => (
+    <Fragment key={index}>
+      {index > 0 ? " · " : null}
+      <FactText fact={fact} />
+    </Fragment>
+  ));
+}
+
+function FactText({ fact }: { fact: Fact }) {
+  const at = factTime(fact);
+  if (!at) return factText(fact);
+  return (
+    <>
+      {fact.label} <RelativeTime date={at} />
+    </>
   );
 }
 

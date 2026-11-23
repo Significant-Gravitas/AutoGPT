@@ -144,7 +144,9 @@ async def execute_graph_block(
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
-    credentials = await acquire_direct_block_credentials(obj, data, user_id)
+    credentials = await acquire_direct_block_credentials(
+        obj, data, user_id, get_user_timezone_or_utc(user.timezone)
+    )
     try:
         try:
             slot = claim_direct_block_execution_slot(user_id)

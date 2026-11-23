@@ -3,6 +3,7 @@
 import pytest
 
 from backend.copilot.gate.policy import (
+    MCP_COMPUTER_READ_TOOLS,
     MCP_FILE_READ_TOOLS,
     MCP_FILE_WRITE_TOOLS,
     Effect,
@@ -21,7 +22,13 @@ def test_every_registry_tool_has_an_effect():
 
 def test_the_table_names_no_tool_that_does_not_exist():
     stale = classified_tools() - set(TOOL_REGISTRY)
-    assert stale == MCP_FILE_READ_TOOLS | MCP_FILE_WRITE_TOOLS
+    assert stale == MCP_FILE_READ_TOOLS | MCP_FILE_WRITE_TOOLS | MCP_COMPUTER_READ_TOOLS
+
+
+def test_reading_the_local_pc_tool_list_is_a_read():
+    from backend.copilot.sdk.computer_use_policy import LOCAL_PC_COMPUTER_TOOLS_TOOL
+
+    assert effect_for(LOCAL_PC_COMPUTER_TOOLS_TOOL) is Effect.READ
 
 
 # One tool per effect, each mode's column. Swapping any cell must go red.

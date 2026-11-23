@@ -1069,6 +1069,7 @@ describe("MCPSetupCard", () => {
         registeredEntry = entry;
       }),
       unregister: vi.fn((_owner: string) => {}),
+      canSend: true,
     };
 
     function setupCard(
@@ -1135,6 +1136,7 @@ describe("MCPSetupCard", () => {
         registeredEntry = entry;
       }),
       unregister: vi.fn(),
+      canSend: true,
     };
     render(
       <ChainActionsContext.Provider value={chainActions}>

@@ -31,9 +31,14 @@ from backend.data.model import (
     CredentialsType,
     HostScopedCredentials,
     UserPasswordCredentials,
+    is_refused_sdk_default,
     is_sdk_default,
 )
 from backend.integrations.codex.access import has_codex_access_for_discovery
+from backend.integrations.credential_input import (
+    InvalidCredentialInputError,
+    normalize_user_supplied_credentials,
+)
 from backend.integrations.credentials_store import (
     is_system_credential,
     provider_matches,
@@ -514,7 +519,9 @@ async def list_credentials(
     """
     credentials = await creds_manager.store.get_all_creds(auth.user_id)
     return [
-        to_meta_response(cred) for cred in credentials if not is_sdk_default(cred.id)
+        to_meta_response(cred)
+        for cred in credentials
+        if not is_refused_sdk_default(cred.id)
     ]
 
 
@@ -536,7 +543,9 @@ async def list_credentials_by_provider(
         auth.user_id, provider
     )
     return [
-        to_meta_response(cred) for cred in credentials if not is_sdk_default(cred.id)
+        to_meta_response(cred)
+        for cred in credentials
+        if not is_refused_sdk_default(cred.id)
     ]
 
 
@@ -615,6 +624,11 @@ async def create_credential(
             detail=f"Unsupported credential type: {request.type}",
         )
 
+    try:
+        normalize_user_supplied_credentials(credentials)
+    except InvalidCredentialInputError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
     # Store credentials
     try:
         await creds_manager.create(auth.user_id, credentials)
@@ -663,14 +677,14 @@ async def delete_credential(
     use the main API's delete endpoint which handles webhook cleanup and
     token revocation.
     """
-    if is_sdk_default(cred_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
-        )
     if is_system_credential(cred_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="System-managed credentials cannot be deleted",
+        )
+    if is_sdk_default(cred_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
         )
     creds = await creds_manager.store.get_creds_by_id(auth.user_id, cred_id)
     if not creds:

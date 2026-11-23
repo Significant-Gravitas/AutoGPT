@@ -6,12 +6,15 @@ import logging
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Any
 
+from pydantic import BaseModel
 from pydantic_core import PydanticUndefined
 
 from backend.blocks import BlockType, get_block
 from backend.blocks._base import AnyBlockSchema
+from backend.blocks.helpers.review import ReviewReadError
 from backend.copilot.capabilities import block_meta
 from backend.copilot.capabilities.block_meta import get_block_provider
 from backend.copilot.constants import (
@@ -25,7 +28,8 @@ from backend.copilot.credential_selection import (
     host_selection_key,
     turn_credential_pins,
 )
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatSession, ChatSessionMetadata
+from backend.copilot.pending_messages import finish_despite_cancellation
 from backend.copilot.permissions import denied_block_providers
 from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.copilot.sdk.env import config as chat_config
@@ -42,11 +46,16 @@ from backend.data.db_accessors import (
 )
 from backend.data.execution import ExecutionContext
 from backend.data.expert_spend import add_weekly_spend
-from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
+from backend.data.model import (
+    APIKeyCredentials,
+    CredentialsFieldInfo,
+    CredentialsMetaInput,
+)
 from backend.executor.auto_credentials import (
     MissingAutoCredentialsError,
     acquire_auto_credentials,
 )
+from backend.executor.billing import _block_has_paid_cost_entry, _with_stop_estimate
 from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
 from backend.integrations.codex.access import enforce_codex_access
@@ -64,7 +73,7 @@ from backend.util.exceptions import (
     InsufficientBalanceError,
 )
 from backend.util.file import separate_exec_files
-from backend.util.json import same_json
+from backend.util.json import same_json, to_dict
 from backend.util.request import HTTPClientError
 from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -92,6 +101,7 @@ from .models import (
     ToolResponseBase,
     UserReadiness,
 )
+from .review_card import review_card_location
 from .utils import (
     build_missing_credentials_from_field_info,
     credential_rejection_status,
@@ -102,6 +112,10 @@ from .utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+# The least a block priced on its usage is debited before it runs, where the
+# executor has no estimate of its cost (see ``_pre_run_charge``).
+_MIN_USAGE_PRICED_DEBIT = 1
 
 
 def get_inputs_from_schema(
@@ -366,16 +380,18 @@ async def execute_block(
                     session_id=session_id,
                 ).from_outside(sim_error[0])
 
+            # Encoded like the real run's outputs below.
+            encoded = _encode_outputs(outputs)
             return BlockOutputResponse(
                 message=f"Block '{block.name}' executed successfully",
                 block_id=block_id,
                 block_name=block.name,
-                outputs=dict(outputs),
+                outputs=encoded,
                 provider=get_block_provider(block),
                 success=True,
                 is_dry_run=True,
                 session_id=session_id,
-            ).from_outside(outputs)
+            ).from_outside(encoded)
         except Exception as e:
             logger.error("Dry-run simulation failed: %s", e, exc_info=True)
             return ErrorResponse(
@@ -495,6 +511,21 @@ async def execute_block(
                         message=f"Failed to retrieve credentials for {field_name}",
                         session_id=session_id,
                     ).from_outside()
+                if (
+                    isinstance(credentials, APIKeyCredentials)
+                    and credentials.is_expired()
+                ):
+                    await _release_credential_leases(credential_leases)
+                    return _credential_rejected_response(
+                        block=block,
+                        block_id=block_id,
+                        input_data=input_data,
+                        matched_credentials={field_name: cred_meta},
+                        session_id=session_id,
+                        status_code=None,
+                        exc=credentials.expired_error(user_timezone),
+                        expired=True,
+                    )
                 exec_kwargs[field_name] = credentials
         except ValueError:
             await _release_credential_leases(credential_leases)
@@ -570,16 +601,9 @@ async def execute_block(
             # Coerce non-matching data types to the expected input schema.
             coerce_inputs_to_schema(input_data, block.input_schema)
 
-            # Pass `use_preflight_estimate=False` because this path bypasses
-            # the executor manager and never runs reconciliation — locking in
-            # the historical-average estimate as the final charge would be
-            # incorrect for SECOND/ITEMS/COST_USD blocks. Returns 0 here for
-            # those types, preserving the pre-#13031 contract.
-            cost, cost_filter = block_usage_cost(
-                block, input_data, use_preflight_estimate=False
-            )
-            # Paid for before it runs, so a timed-out or cancelled run is
-            # already settled.
+            # Debited before it runs, as the graph executor charges a node,
+            # and settled to what the run cost once it ends (below).
+            cost, cost_filter = _pre_run_charge(block, input_data)
             refused = await _debit_block_run(
                 block=block,
                 input_data=input_data,
@@ -596,9 +620,11 @@ async def execute_block(
             # Execute the block under the shared MCP wait cap. A block is
             # expected to finish in MAX_TOOL_WAIT_SECONDS; if it doesn't, the
             # MCP handler would block the stream close to the idle timeout.
-            # wait_for cancels the generator on timeout; the charge stands,
-            # since external side effects may already have landed.
+            # wait_for cancels the generator on timeout; the run is still
+            # settled, since external side effects may already have landed.
             outputs: dict[str, list[Any]] = defaultdict(list)
+            started = perf_counter()
+            refunded = stopped = False
             try:
                 # Every call in the chat shares its execution id, and calls from
                 # one message run at once: each keeps its local media files in
@@ -608,23 +634,30 @@ async def execute_block(
                         _collect_block_outputs(block, input_data, exec_kwargs, outputs),
                         timeout=MAX_TOOL_WAIT_SECONDS,
                     )
+                # The judge locates the outside parts as placed, so declare these.
+                encoded = _encode_outputs(outputs)
                 return BlockOutputResponse(
                     message=f"Block '{block.name}' executed successfully",
                     block_id=block_id,
                     block_name=block.name,
-                    outputs=dict(outputs),
+                    outputs=encoded,
                     provider=get_block_provider(block),
                     success=True,
                     session_id=session_id,
-                ).from_outside(outputs)
+                ).from_outside(encoded)
             except BlockError as e:
-                # A setup card (connect or reconnect) that comes before any
-                # output means the provider did no work, so it stays free.
+                # A setup card (connect or reconnect), or a saved review that
+                # could not be read, before any output means the provider did
+                # no work, so it stays free.
                 if (
                     cost > 0
                     and not outputs
-                    and _is_setup_card_failure(block, e, matched_credentials)
+                    and (
+                        _is_setup_card_failure(block, e, matched_credentials)
+                        or isinstance(e.__cause__, ReviewReadError)
+                    )
                 ):
+                    refunded = True
                     await asyncio.shield(
                         _refund_block_run(
                             block=block,
@@ -663,6 +696,31 @@ async def execute_block(
                     ),
                     session_id=session_id,
                 ).from_outside()
+            except asyncio.CancelledError:
+                # The turn was stopped while the block ran.
+                stopped = True
+                raise
+            finally:
+                if not refunded:
+                    # Finishes even if the turn is stopped meanwhile.
+                    settlement = asyncio.ensure_future(
+                        _settle_block_run(
+                            block=block,
+                            input_data=input_data,
+                            debited=cost,
+                            walltime=perf_counter() - started,
+                            stopped=stopped,
+                            user_id=user_id,
+                            session_id=session_id,
+                            node_exec_id=node_exec_id,
+                            expert_id=expert_id,
+                        )
+                    )
+                    try:
+                        await asyncio.shield(settlement)
+                    except asyncio.CancelledError:
+                        await finish_despite_cancellation(settlement)
+                        raise
         finally:
             await _release_credential_leases(credential_leases)
             # Release auto-cred locks on every exit path so Redis doesn't hold them until TTL.
@@ -710,6 +768,27 @@ async def execute_block(
         ).from_outside(str(e))
 
 
+def _encode_outputs(outputs: dict[str, list[Any]]) -> dict[str, list[Any]]:
+    """Encode block outputs by alias, as stored graph outputs are, so a Drive
+    file keeps the `_credentials_id` the next block's picker field reads.
+
+    A model leaves out its unset fields, as the response dump did for model
+    fields; an explicit None in a plain dict is data, so it stays. The encoder
+    can't tell the two apart, so models are dumped on their own first, through
+    pydantic-core like the response dump: some block models override
+    ``model_dump`` to drop fields left at their defaults.
+    sqlalchemy_safe=False keeps keys starting with `_sa`, which the encoder
+    drops by default.
+    """
+    return to_dict(
+        dict(outputs), sqlalchemy_safe=False, custom_encoder={BaseModel: _encode_model}
+    )
+
+
+def _encode_model(model: BaseModel) -> Any:
+    return json.loads(model.model_dump_json(by_alias=True, exclude_none=True))
+
+
 async def _debit_block_run(
     *,
     block: AnyBlockSchema,
@@ -725,10 +804,12 @@ async def _debit_block_run(
 
     The debit is the balance check: ``spend_credits`` checks the balance and
     debits it in one atomic step, refusing to overdraw.
-    A run that fails after the debit keeps its charge, as an executor
-    RUN-priced block does, since it may already have called the provider;
-    the one exception is a setup card before any output (see
-    ``_is_setup_card_failure``).
+    Once the run ends, ``_settle_block_run`` charges or gives back the
+    difference to what it cost, failed runs included, as the executor
+    settles a node, since a run may already have called the provider. The
+    exceptions are refunded whole: a setup card before any output (see
+    ``_is_setup_card_failure``), and a step whose saved review could not be
+    read, which stops before its provider is called.
     """
     if cost <= 0:
         return None
@@ -761,6 +842,99 @@ async def _debit_block_run(
             session_id=session_id,
         ).from_outside()
     return None
+
+
+def _pre_run_charge(
+    block: AnyBlockSchema, input_data: dict[str, Any]
+) -> tuple[int, dict[str, Any]]:
+    """What a block run is debited before it starts: the graph executor's
+    pre-flight charge for it (``billing.charge_usage``). A block priced on
+    its usage (SECOND, ITEMS or COST_USD) is debited its historical
+    estimate, or one credit where it has none, so a balance that can't
+    cover a credit can't start it. The rest is settled once the run ends
+    (``_settle_block_run``)."""
+    cost, cost_filter = block_usage_cost(block, input_data)
+    if cost <= 0 and _block_has_paid_cost_entry(block, input_data):
+        return _MIN_USAGE_PRICED_DEBIT, cost_filter
+    return cost, cost_filter
+
+
+async def _settle_block_run(
+    *,
+    block: AnyBlockSchema,
+    input_data: dict[str, Any],
+    debited: int,
+    walltime: float,
+    stopped: bool,
+    user_id: str,
+    session_id: str,
+    node_exec_id: str,
+    expert_id: str | None,
+) -> None:
+    """Charge, or give back, the difference between a run's debit and what
+    it cost, as the graph executor settles a node
+    (``billing.charge_reconciled_usage``): priced from the stats the block
+    recorded and the run's wall time, plus, for a run stopped during a model
+    call, that request's estimated input. A charge may take the balance
+    below zero, since the provider has already been paid. A failure is
+    logged, never raised, so the run's result still reaches the user."""
+    try:
+        stats = block.execution_stats.model_copy(update={"walltime": walltime})
+        cost, cost_filter = block_usage_cost(block, input_data, stats=stats)
+        if stopped:
+            cost = _with_stop_estimate(block, input_data, stats, cost, debited)
+        delta = cost - debited
+        if delta == 0:
+            return
+        await credit_db().spend_credits(
+            user_id=user_id,
+            cost=delta,
+            metadata=UsageTransactionMetadata(
+                chat_session_id=session_id,
+                node_exec_id=node_exec_id,
+                block_id=block.id,
+                block=block.name,
+                input={**cost_filter, "reconciled_delta": delta},
+                reason="copilot_block_execution_settlement",
+            ),
+            fail_insufficient_credits=False,
+        )
+    except Exception as e:
+        logger.error(
+            "BILLING_LEAK: block run not settled — user_id=%s, block_id=%s, "
+            "node_exec_id=%s, debited=%s: %s",
+            user_id,
+            block.id,
+            node_exec_id,
+            debited,
+            e,
+            extra={"json_fields": {"billing_leak": True, "user_id": user_id}},
+        )
+        return
+    try:
+        # A refund leaves the chat's spend ledger as it was, as
+        # ``_refund_block_run`` does.
+        if delta > 0:
+            await charge_credits(user_id, lambda: delta)
+        if metered := await metered_expert_id(user_id, expert_id):
+            await add_weekly_spend(metered, delta)
+    except Exception as e:
+        logger.error(
+            "SPEND_METERING_MISSED: block run settled but spend metering "
+            "failed — user_id=%s, block_id=%s, node_exec_id=%s, delta=%s: %s",
+            user_id,
+            block.id,
+            node_exec_id,
+            delta,
+            e,
+            extra={
+                "json_fields": {
+                    "spend_metering_missed": True,
+                    "user_id": user_id,
+                    "cost": str(delta),
+                }
+            },
+        )
 
 
 def _is_setup_card_failure(
@@ -825,8 +999,10 @@ def _credential_rejected_response(
     session_id: str,
     status_code: int | None,
     exc: BaseException,
+    expired: bool = False,
 ) -> SetupRequirementsResponse | ErrorResponse:
-    """The answer when the provider refused a stored credential.
+    """The answer when the provider refused a stored credential, or when
+    ``expired``, an API key is past the expiry its owner set.
 
     A watched turn gets the reconnect card. A scheduled turn's card would go
     unanswered (SECRT-2804), so it gets an error naming the account instead,
@@ -841,6 +1017,7 @@ def _credential_rejected_response(
             session_id=session_id,
             status_code=status_code,
             exc=exc,
+            expired=expired,
         )
     rejected, provider = _rejected_credential(block, matched_credentials)
     provider_name = provider.replace("_", " ").title() or "The provider"
@@ -855,6 +1032,8 @@ def _credential_rejected_response(
             f"{provider_name} rejected the saved credential{named} "
             f"(HTTP {status_code})"
         )
+    elif expired:
+        refused = f"The saved {provider_name} credential{named} has expired"
     else:
         refused = f"The saved {provider_name} credential{named} could not be refreshed"
     logger.warning(
@@ -863,9 +1042,11 @@ def _credential_rejected_response(
         block.name,
         refused,
     )
+    # An expired key's error names the date and what to do about it.
+    expiry = f" {exc}" if expired else ""
     return ErrorResponse(
         message=(
-            f"{refused}, so block '{block.name}' did not run. Nobody is "
+            f"{refused}, so block '{block.name}' did not run.{expiry} Nobody is "
             "watching this turn (it was scheduled), so there is no one to "
             "reconnect it now, and it did not switch to a different account. "
             "Say plainly in your reply that this step was skipped, name that "
@@ -906,8 +1087,10 @@ def _build_credential_rejected_card(
     session_id: str,
     status_code: int | None,
     exc: BaseException,
+    expired: bool = False,
 ) -> SetupRequirementsResponse:
-    """Setup card for a credential the provider refused mid-execution.
+    """Setup card for a credential the provider refused mid-execution, or an
+    API key past its expiry.
 
     The rejected row is kept — a 401 is not proof the secret is wrong — so
     the ``rejection`` field is what stops the card re-offering it as ready.
@@ -929,6 +1112,11 @@ def _build_credential_rejected_card(
         message = (
             f"{provider_name} rejected the saved credential{named} "
             f"(HTTP {status_code}). Connect or pick a different one, then re-run."
+        )
+    elif expired:
+        message = (
+            f"The saved {provider_name} credential{named} has expired. "
+            "Add a new key or pick a different one, then re-run."
         )
     else:
         message = (
@@ -1552,12 +1740,14 @@ async def check_hitl_review(
     session_id: str,
     organization_id: str | None = None,
     team_id: str | None = None,
+    metadata: ChatSessionMetadata | None = None,
 ) -> "tuple[str, dict[str, Any]] | ToolResponseBase":
     """Check for an existing or new HITL review requirement.
 
     If a review is needed, stores the review record and returns a
     ReviewRequiredResponse.  Otherwise returns
     ``(synthetic_node_exec_id, input_data)`` ready for execute_block.
+    *metadata* is the session's, which decides where the reply says the card is.
     """
     block = prep.block
     block_id = prep.block_id
@@ -1583,7 +1773,8 @@ async def check_hitl_review(
             message=(
                 f"Block '{block.name}' requires human review. "
                 f"After the user approves, call resume_capability with "
-                f"review_id='{existing_review.node_exec_id}' to execute."
+                f"review_id='{existing_review.node_exec_id}' to execute. "
+                f"{review_card_location(metadata)}"
             ),
             session_id=session_id,
             block_id=block_id,
@@ -1621,7 +1812,8 @@ async def check_hitl_review(
             message=(
                 f"Block '{block.name}' requires human review. "
                 f"After the user approves, call resume_capability with "
-                f"review_id='{synthetic_node_exec_id}' to execute."
+                f"review_id='{synthetic_node_exec_id}' to execute. "
+                f"{review_card_location(metadata)}"
             ),
             session_id=session_id,
             block_id=block_id,
@@ -1640,11 +1832,10 @@ async def check_spend_approval(
     threshold (SECRT-2599). None means the block may run."""
     if session.expert_id is None:
         return None
-    # Price with the credentials the run will use, not the model's own.
+    # Price with the credentials the run will use, not the model's own. A
+    # block priced on its usage is paid even before its cost is known.
     resolved = {f: m.model_dump() for f, m in prep.matched_credentials.items()}
-    cost, _ = block_usage_cost(
-        prep.block, {**prep.input_data, **resolved}, use_preflight_estimate=False
-    )
+    cost, _ = _pre_run_charge(prep.block, {**prep.input_data, **resolved})
     if cost <= 0:
         return None
     needed = await spend_approval_db().spend_approval_required(
@@ -1663,7 +1854,8 @@ async def check_spend_approval(
     return ReviewRequiredResponse(
         message=(
             f"{needed.headline}. Tell the user, and after they approve "
-            "call run_capability again with the same input."
+            "call run_capability again with the same input. "
+            f"{review_card_location(session.metadata)}"
         ),
         session_id=session.session_id,
         block_id=prep.block_id,

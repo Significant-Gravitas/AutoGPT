@@ -268,6 +268,28 @@ async def test_capped_rpush_if_hash_field_pushes_when_expected_matches() -> None
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "half", [{"closed_by_field": "closed_by"}, {"owner_field": "turn"}]
+)
+async def test_capped_rpush_if_hash_field_refuses_half_a_closed_by_check(
+    half: dict[str, str],
+) -> None:
+    # One without the other would skip the closed-by check without a word.
+    with pytest.raises(ValueError):
+        await capped_rpush_if_hash_field(
+            _Fake(),  # type: ignore[arg-type]
+            hash_key="meta",
+            hash_field="status",
+            expected="running",
+            list_key="buf",
+            value="only",
+            max_len=10,
+            ttl_seconds=60,
+            **half,
+        )
+
+
+@pytest.mark.asyncio
 async def test_capped_rpush_if_hash_field_skips_when_expected_differs() -> None:
     r = _Fake()
     r.hashes["meta"] = {"status": "completed"}
