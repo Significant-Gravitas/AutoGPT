@@ -862,15 +862,14 @@ class SendDiscordFileBlock(Block):
 def _decode_data_uri(data_uri: str) -> tuple[str, bytes]:
     """The MIME type and the bytes of a ``data:`` URI.
 
-    Per RFC 2397 the data is base64 only when ``;base64`` ends the header, and
-    percent-encoded otherwise; a URI that names no MIME type holds text/plain.
+    Per RFC 2397 the data is percent-encoded, and base64 under that when
+    ``;base64`` ends the header; a URI that names no MIME type holds text/plain.
     """
     header, _, data = data_uri.removeprefix("data:").partition(",")
     mime_type, *parameters = header.split(";")
+    content = unquote_to_bytes(data)
     if parameters and parameters[-1].strip().lower() == "base64":
-        content = base64.b64decode(data)
-    else:
-        content = unquote_to_bytes(data)
+        content = base64.b64decode(content)
     return mime_type.strip().lower() or "text/plain", content
 
 

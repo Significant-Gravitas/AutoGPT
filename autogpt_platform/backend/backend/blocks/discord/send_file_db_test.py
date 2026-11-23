@@ -16,6 +16,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
+from urllib.parse import quote
 
 import discord
 import pytest
@@ -177,6 +178,24 @@ async def test_a_data_uri_goes_out_as_the_data_it_holds(
 
     assert status == "File sent successfully"
     assert sent == [(name, content)]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_escaping_a_base64_data_uri_sends_the_same_bytes(
+    send: SendFile, chat: ExecutionContext
+):
+    """RFC 2397 data is percent-encoded, base64 or not, so escaping the
+    base64's ``+``, ``/`` and ``=`` must not change what is sent."""
+    data = bytes([0xFB, 0xFF, 0xBF, 0x01])  # base64: +/+/AQ==
+    payload = base64.b64encode(data).decode()
+
+    plain = await send(chat, f"data:application/octet-stream;base64,{payload}")
+    escaped = await send(
+        chat, f"data:application/octet-stream;base64,{quote(payload, safe='')}"
+    )
+
+    assert plain == ("File sent successfully", [("file.bin", data)])
+    assert escaped == plain
 
 
 @pytest.fixture
