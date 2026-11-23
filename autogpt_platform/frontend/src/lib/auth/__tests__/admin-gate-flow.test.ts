@@ -58,6 +58,7 @@ vi.mock("better-auth/next-js", () => ({
 }));
 
 const SECRET = "test-secret-that-is-at-least-32-chars"; // pragma: allowlist secret
+const OTHER_SECRET = "another-secret-at-least-32-chars-long"; // pragma: allowlist secret
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 interface AuthServer {
@@ -88,6 +89,13 @@ async function startAuthServer(baseURL: string): Promise<AuthServer> {
   };
 }
 
+// A session cookie as Better Auth signs it: the token, a dot and the token's
+// base64 HMAC-SHA256, URL-encoded.
+function sessionCookie(server: AuthServer, token: string, secret = SECRET) {
+  const signature = createHmac("sha256", secret).update(token).digest("base64");
+  return `${server.sessionCookieName}=${encodeURIComponent(`${token}.${signature}`)}`;
+}
+
 // The signed session cookie, and the cookie cache the server sets with it.
 async function signIn(server: AuthServer, role: "admin" | "user") {
   const now = new Date();
@@ -110,11 +118,10 @@ async function signIn(server: AuthServer, role: "admin" | "user") {
     createdAt: now,
     updatedAt: now,
   });
-  const signature = createHmac("sha256", SECRET).update(token).digest("base64");
-  const sessionCookie = `${server.sessionCookieName}=${encodeURIComponent(`${token}.${signature}`)}`;
+  const signedCookie = sessionCookie(server, token);
   const response = await server.handler(
     new Request(`${server.baseURL}/api/auth/get-session`, {
-      headers: { cookie: sessionCookie, "x-forwarded-for": nextIP() },
+      headers: { cookie: signedCookie, "x-forwarded-for": nextIP() },
     }),
   );
   const cacheCookies = response.headers
@@ -122,7 +129,7 @@ async function signIn(server: AuthServer, role: "admin" | "user") {
     .map((cookie) => cookie.split(";")[0]);
   expect(response.status).toBe(200);
   expect(cacheCookies).toHaveLength(1);
-  return { sessionCookie, cacheCookie: cacheCookies[0] };
+  return { token, sessionCookie: signedCookie, cacheCookie: cacheCookies[0] };
 }
 
 // The same signed cache, but claiming the admin role.
@@ -181,7 +188,7 @@ describe.each([
   });
 
   it.each(["production", "development"])(
-    "lets an admin through on the server's cookie cache, with no session lookup, in a %s build",
+    "lets an admin through on their own session's cookie cache, with no session lookup, in a %s build",
     async (mode) => {
       buildMode.production = mode === "production";
       const admin = await signIn(server, "admin");
@@ -219,6 +226,51 @@ describe.each([
       adminPage(
         server,
         [member.sessionCookie, claimingAdmin(member.cacheCookie)],
+        nextIP(),
+      ),
+    );
+
+    expect(redirectPath(response)).toBe("/");
+  });
+
+  it("refuses a cookie cache that belongs to another session", async () => {
+    const admin = await signIn(server, "admin");
+    const member = await signIn(server, "user");
+
+    const response = await authMiddleware(
+      adminPage(server, [member.sessionCookie, admin.cacheCookie], nextIP()),
+    );
+
+    // The session lookup decides instead, and finds the member.
+    expect(redirectPath(response)).toBe("/");
+    expect(lookups).toHaveLength(1);
+  });
+
+  it.each<{
+    session: string;
+    cookie: (server: AuthServer, cachedToken: string) => string;
+  }>([
+    {
+      session: "a session token the server never issued",
+      cookie: (server) => `${server.sessionCookieName}=made-up`,
+    },
+    {
+      session: "the cached session's token without its signature",
+      cookie: (server, cachedToken) =>
+        `${server.sessionCookieName}=${cachedToken}`,
+    },
+    {
+      session: "the cached session's token signed with another secret",
+      cookie: (server, cachedToken) =>
+        sessionCookie(server, cachedToken, OTHER_SECRET),
+    },
+  ])("refuses a cookie cache alongside $session", async ({ cookie }) => {
+    const admin = await signIn(server, "admin");
+
+    const response = await authMiddleware(
+      adminPage(
+        server,
+        [cookie(server, admin.token), admin.cacheCookie],
         nextIP(),
       ),
     );
