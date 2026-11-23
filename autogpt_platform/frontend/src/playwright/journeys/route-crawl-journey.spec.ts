@@ -231,7 +231,11 @@ test.describe("route crawl journey", () => {
     baseURL,
     flagOverrides,
     page,
+    // The owner, who makes and shares them.
+    journeyUser: _owner,
   }) => {
+    // A chat turn starts a Claude Agent SDK session, which can take a while
+    // on CI (MODEL_TURN_TIMEOUT).
     test.setTimeout(120_000);
     const env = { browser, baseURL, flagOverrides };
     const [run, chat] = await Promise.all([shareARun(page), shareAChat(page)]);
