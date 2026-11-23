@@ -3,7 +3,7 @@ removes its own when it ends. So does a block call with the copies it stages."""
 
 import asyncio
 import base64
-import shutil
+import os
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -195,28 +195,64 @@ async def test_a_block_call_ending_leaves_a_running_one_s_copies_alone(
     assert not first_copy.parent.exists() and not second_copy.parent.exists()
 
 
-def test_the_run_s_size_counts_on_past_a_copy_removed_mid_walk(
-    tmp_path: Path,
+def test_the_run_s_size_counts_on_past_what_vanishes_mid_walk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A node that ends removes its copies' folders, maybe while another
-    node's staging counts the run's folder for the disk cap. A file the count
-    found but can no longer read is skipped, and the rest still count."""
+    node's staging counts the run's folder for the disk cap. Here a file the
+    walk listed is gone when it reads its size, and the first folder it goes
+    into is gone by then. The files in the other folders, which the walk
+    reaches after that, still count, and nothing is raised: Python 3.11's
+    ``Path.glob`` raised for the folder."""
     run = tmp_path / "run"
-    for name, size in {"a/one.bin": 1, "b/two.bin": 20, "c/three.bin": 300}.items():
-        (run / name).parent.mkdir(parents=True)
+    sizes = {"top.bin": 4000, "a/one.bin": 1, "b/two.bin": 20, "c/three.bin": 300}
+    for name, size in sizes.items():
+        (run / name).parent.mkdir(parents=True, exist_ok=True)
         (run / name).write_bytes(b"x" * size)
-    removed: list[Path] = []
+    gone: list[Path] = []
+    list_folder = os.scandir
 
-    class _FirstCopyRemovedOnceFound(type(run)):
-        def is_file(self, **kwargs: Any) -> bool:
-            found = super().is_file(**kwargs)
-            if found and not removed:
-                shutil.rmtree(self.parent)
-                removed.append(self)
-            return found
+    def scandir(path: Any = ".") -> Any:
+        folder = Path(path)
+        if folder == run and not gone:
+            entries = list(list_folder(path))
+            gone.append(run / "top.bin")
+            (run / "top.bin").unlink()
+            return _Listing(entries)
+        if folder.parent == run and len(gone) == 1:
+            gone.append(folder)
+            for name in os.listdir(folder):
+                os.unlink(folder / name)
+            folder.rmdir()
+        return list_folder(path)
 
-    total = get_dir_size(_FirstCopyRemovedOnceFound(run))
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "scandir", scandir)
+        total = get_dir_size(run)
 
-    remaining = [path for path in run.rglob("*") if path.is_file()]
-    assert len(removed) == 1 and len(remaining) == 2
-    assert total == sum(path.stat().st_size for path in remaining)
+    left = [path for path in run.rglob("*") if path.is_file()]
+    assert len(gone) == 2 and len(left) == 2
+    assert total == sum(path.stat().st_size for path in left)
+
+
+class _Listing:
+    """A folder's entries, read before the walk goes through them, in the
+    shape ``os.scandir`` returns them."""
+
+    def __init__(self, entries: list[os.DirEntry]) -> None:
+        self._entries = iter(entries)
+
+    def __enter__(self) -> "_Listing":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        return None
+
+    def __iter__(self) -> "_Listing":
+        return self
+
+    def __next__(self) -> os.DirEntry:
+        return next(self._entries)
+
+    def close(self) -> None:
+        return None

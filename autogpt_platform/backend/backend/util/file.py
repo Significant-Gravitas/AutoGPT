@@ -1,5 +1,6 @@
 import base64
 import mimetypes
+import os
 import re
 import shutil
 import tempfile
@@ -505,16 +506,16 @@ def get_dir_size(path: Path) -> int:
     """Get total size of directory.
 
     Nodes of a run remove their copies' folders while other nodes still run,
-    so a file can vanish between the walk finding it and its size being read.
-    It is skipped, and the rest are still counted.
+    so a folder or a file can vanish while it is counted. ``os.walk`` skips a
+    folder it can no longer list, and a file whose size can no longer be read
+    is skipped too: the rest are still counted, and nothing is raised.
+    (``Path.glob`` raises on Python 3.11 when a folder vanishes mid-walk.)
     """
     total = 0
-    for entry in path.glob("**/*"):
-        try:
-            if entry.is_file():
-                total += entry.stat().st_size
-        except OSError:
-            continue
+    for folder, _, names in os.walk(path):
+        for name in names:
+            with suppress(OSError):
+                total += os.path.getsize(os.path.join(folder, name))
     return total
 
 
