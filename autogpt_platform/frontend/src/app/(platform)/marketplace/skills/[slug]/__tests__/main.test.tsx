@@ -1,5 +1,7 @@
 import {
   getGetV2GetMarketplaceSkillMockHandler200,
+  getGetV2ListMarketplaceSkillsMockHandler200,
+  getGetV2ListMarketplaceSkillsResponseMock,
   getPostV2InstallMarketplaceSkillMockHandler200,
   getGetV2GetMarketplaceSkillMockHandler404,
   getPostV2InstallMarketplaceSkillMockHandler401,
@@ -148,6 +150,29 @@ describe("Marketplace skill page", () => {
       "https://github.com/coreyhaines31/marketingskills/tree/abc/skills/cold-email",
     );
     expect(await screen.findByText("License: MIT")).toBeDefined();
+  });
+
+  test("shows the logo of an MCP service it works with", async () => {
+    server.use(
+      getGetV2GetMarketplaceSkillMockHandler200({
+        ...outreach,
+        required_providers: ["mcp_amplitude"],
+      }),
+      // No "More skills" shelf, whose cards say "Works with" too.
+      getGetV2ListMarketplaceSkillsMockHandler200(
+        getGetV2ListMarketplaceSkillsResponseMock({ skills: [] }),
+      ),
+      getGetV1ListCredentialsMockHandler200([]),
+      userSkillsHandler(),
+    );
+    render(<SkillPage slug="outreach-playbook" />);
+
+    const worksWith = await screen.findByText(/^Works with/);
+    expect(
+      worksWith
+        .querySelector('[data-slot="integration-logo"]')
+        ?.getAttribute("src"),
+    ).toBe("/integrations/amplitude.png");
   });
 
   test("shows a creator skill license without a source repo", async () => {
