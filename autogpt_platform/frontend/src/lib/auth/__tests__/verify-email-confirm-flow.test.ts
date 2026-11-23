@@ -165,6 +165,22 @@ describe("opening an emailed verification link", () => {
     expect(db.UserAuthSession).toHaveLength(1);
   });
 
+  it.each(["https://elsewhere.example/", "//elsewhere.example/"])(
+    "sends a click whose link names another site (%s) to /auth/callback instead",
+    async (elsewhere) => {
+      const { api, GET, verifyLink } = await createApp();
+      const held = heldLinkFrom(await GET(new Request(verifyLink)));
+
+      const target = await verifyHeldLink(
+        api,
+        { ...held, callbackURL: elsewhere },
+        new Headers(),
+      );
+
+      expect(target).toBe(getEmailVerificationCallbackURL());
+    },
+  );
+
   it.each([
     ["an expired", "TOKEN_EXPIRED"],
     ["a tampered", "INVALID_TOKEN"],

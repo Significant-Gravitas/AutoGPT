@@ -9,11 +9,8 @@ import {
 } from "./email-verification";
 
 /**
- * With email verification required, opening the emailed verify link signs in
- * whoever opens it, and a chat's link preview or a mail scanner can open it
- * before the user does. So a GET of the link only parks it in a cookie and
- * shows the confirm page, whose button verifies the address and signs in.
- * The cookie keeps the token out of the page's URL, which analytics records.
+ * A GET of a sign-up or sign-in link only parks it in a cookie and shows the
+ * confirm page; the page's button verifies the address and signs in.
  */
 export const VERIFY_EMAIL_CONFIRM_PATH = "/auth/verify-email";
 
