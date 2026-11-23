@@ -19,6 +19,9 @@ const TOP_UP_DOLLARS = 7;
 const TOP_UP = TOP_UP_DOLLARS * 100;
 const CREDITS_PATH = "/api/proxy/api/credits";
 const HISTORY_PATH = "/api/proxy/api/credits/transactions";
+// Page time the refresh check may run while it waits: with the 1 s jump of
+// the pause and the 1 s for the answers, 5 s in all, half the 10 s backup.
+const REFRESH_CLOCK_BUDGET_MS = 3_000;
 const USD = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
@@ -140,11 +143,31 @@ test.describe("billing journey", () => {
         read?.ok(),
         "the return page should have read the balance before its fulfil call",
       ).toBe(true);
+      // Playwright sees the fulfil answer before the page has handled it, so
+      // the page can schedule its reads after the pause, on timers that a
+      // paused clock never fires. Run its clock a tenth of a second at a time
+      // while waiting, and never more than REFRESH_CLOCK_BUDGET_MS in all, far
+      // short of the 10 s read, which therefore can't stand in for the first.
+      let clockRun = 0;
       await expect
-        .poll(() => refreshReads.map(pathOf), {
-          message:
-            "the page should read the credits and their history again once its fulfil call answered",
-        })
+        .poll(
+          async () => {
+            const paths = refreshReads.map(pathOf);
+            const bothRead = [CREDITS_PATH, HISTORY_PATH].every((path) =>
+              paths.includes(path),
+            );
+            if (!bothRead && clockRun < REFRESH_CLOCK_BUDGET_MS) {
+              await page.clock.runFor(100);
+              clockRun += 100;
+            }
+            return paths;
+          },
+          {
+            message:
+              "the page should read the credits and their history again once its fulfil call answered",
+            intervals: [100],
+          },
+        )
         .toEqual(expect.arrayContaining([CREDITS_PATH, HISTORY_PATH]));
       await Promise.all(
         refreshReads
