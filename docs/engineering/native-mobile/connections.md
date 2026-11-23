@@ -21,7 +21,7 @@ Open [`connections/mock.html`](connections/mock.html) in a browser for the full 
 ### Server (built)
 
 1. `GET /integrations/{p}/login?client=native` (and `POST /mcp/oauth/login` with `client: "native"`) mints a state token that starts with `native.` (`NATIVE_STATE_PREFIX` in `credentials_store.py`; `token_urlsafe` never emits `.`).
-2. The web `oauth_callback` and `mcp_callback` routes: if `state` has the prefix, answer `302 autogpt-app://integrations/oauth?code&state[&iss]`, or `?state&error[&error_description]` on failure, instead of `postMessage` + `window.close()`. Shared helper: `frontend/src/app/(platform)/auth/integrations/native-return.ts`. The scheme is `autogpt-app` on production and `autogpt-app-dev` everywhere else, matching the store app and AutoGPT Dev (`mobile-app/app.config.ts`); it comes from the deployment's own environment, never from the request. The target is fixed to the address the app registers and waits for, so the code never goes to a web address.
+2. The web `oauth_callback` and `mcp_callback` routes: if `state` has the prefix, answer `302 autogpt-app://integrations/oauth?code&state[&iss]`, or `?state&error[&error_description]` on failure, instead of `postMessage` + `window.close()`. Shared helper: `frontend/src/app/(platform)/auth/integrations/native-return.ts`. The target is fixed to the address the app registers and waits for, so the code never goes to a web address.
 3. No change to the code swap, PKCE or storage. No new redirect URI to register with Google, GitHub and the rest.
 
 Why the prefix: the callback page has no user and can't look up a state, so the "send to app" flag must ride in the state itself. A leaked code is useless without that user's JWT and the server-held PKCE verifier.
