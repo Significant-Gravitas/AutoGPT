@@ -186,6 +186,15 @@ async function buyPro(page: Page) {
   // Stripe's webhooks reach the platform before the user is back.
   await page.getByRole("button", { name: "Subscribe", exact: true }).click();
   await expect(page).toHaveURL(/\/settings\/billing/, { timeout: 30_000 });
+  // Back from checkout, the app tells the user the plan is on.
+  const activated = page
+    .getByRole("dialog")
+    .filter({ hasText: "Pro is active" });
+  await expect(activated).toContainText("Your Pro plan is active.");
+  await activated
+    .getByRole("button", { name: "Continue where you left off" })
+    .click();
+  await expect(activated).toBeHidden();
 
   const session = await stripeObject<{
     customer: string;
