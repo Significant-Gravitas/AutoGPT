@@ -2,7 +2,7 @@ import { delay, http, HttpResponse } from "msw";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { resetClientRequestFailureLog } from "@/app/api/mutators/request-failure-log";
 import { server } from "@/mocks/mock-server";
-import { act, render, screen } from "@/tests/integrations/test-utils";
+import { act, cleanup, render, screen } from "@/tests/integrations/test-utils";
 import {
   setTrialUser,
   trialResponse,
@@ -52,8 +52,12 @@ beforeEach(() => {
   server.events.on("request:start", countRead);
 });
 
-afterEach(() => {
+afterEach(async () => {
   server.events.removeListener("request:start", countRead);
+  // Unmount first, then land the answers still on their way, so a failed
+  // test leaves no handler waiting on a fake timer that teardown removes.
+  cleanup();
+  await vi.advanceTimersByTimeAsync(ROUND_TRIP_MS);
   vi.useRealTimers();
   setTrialUser(null);
   mockSearchParams.current = new URLSearchParams();
