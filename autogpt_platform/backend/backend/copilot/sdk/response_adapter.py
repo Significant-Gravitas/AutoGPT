@@ -1089,15 +1089,15 @@ class SDKResponseAdapter:
                     len(output),
                 )
             else:
-                # No output available — emit an empty output so the frontend
-                # transitions the tool from input-available to output-available
-                # (stops the spinner).
+                # No output available — emit an interrupted marker so the
+                # frontend transitions the tool to an error/interrupted state
+                # (stops the spinner without showing a successful empty run).
                 responses.append(
                     StreamToolOutputAvailable(
                         toolCallId=tool_id,
                         toolName=tool_name,
-                        output="",
-                        success=True,
+                        output={"interrupted": True, "error": "Interrupted"},
+                        success=False,
                     )
                 )
                 self.resolved_tool_calls.add(tool_id)

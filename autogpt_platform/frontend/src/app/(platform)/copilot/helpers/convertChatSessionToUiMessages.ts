@@ -636,10 +636,22 @@ function toolCallPart(rawToolCall: unknown, ctx: RowPartsContext) {
   };
   const output = ctx.toolOutputsByCallId.get(toolCallId);
   if (output !== undefined) {
+    const parsed = typeof output === "string" ? safeJsonParse(output) : output;
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      (parsed as Record<string, unknown>).interrupted === true
+    ) {
+      return {
+        ...base,
+        state: "output-error",
+        errorText: "Interrupted",
+      } as UiPart;
+    }
     return {
       ...base,
       state: "output-available",
-      output: typeof output === "string" ? safeJsonParse(output) : output,
+      output: parsed,
     } as UiPart;
   }
   // Session is complete (no active stream) but this tool call has no output
