@@ -36,7 +36,7 @@ describe("pending subscriptions share connection retries", () => {
     return FakeWebSocket.instances[index];
   }
 
-  it.each([4001, 4002, 4003, 4004])(
+  it.each([4002, 4003, 4004])(
     "rejects the pending send without retrying auth close %s",
     async (code) => {
       const outcome = api.subscribeToGraphExecution(executionID).then(
@@ -51,6 +51,28 @@ describe("pending subscriptions share connection retries", () => {
       expect(await outcome).toBe("rejected");
     },
   );
+
+  it("sends a pending subscribe once a socket signs in after a 4001", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const outcome = api.subscribeToGraphExecution(executionID).then(
+      () => "sent",
+      () => "rejected",
+    );
+    const first = await socketAt();
+    first.open();
+    first.serverClose(4001);
+    await vi.advanceTimersByTimeAsync(1000);
+    const next = await socketAt(1);
+    next.open();
+    next.pong();
+    expect(await outcome).toBe("sent");
+    expect(next.send).toHaveBeenLastCalledWith(
+      JSON.stringify({
+        method: "subscribe_graph_execution",
+        data: { graph_exec_id: executionID },
+      }),
+    );
+  });
 
   it("waits for the shared backoff and authenticated pong before sending", async () => {
     const sent = vi.fn();
@@ -75,7 +97,7 @@ describe("pending subscriptions share connection retries", () => {
     );
   });
 
-  it.each([4001, 4002, 4003, 4004])(
+  it.each([4002, 4003, 4004])(
     "waits for a closing socket's auth code %s before rejecting a new send",
     async (code) => {
       const connected = api.connectWebSocket();
