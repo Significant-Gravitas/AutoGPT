@@ -7,10 +7,20 @@ from urllib.parse import urlencode
 from pydantic import field_serializer
 
 from backend.sdk import BaseModel, Credentials, Requests
+from backend.util.request import Response
+from backend.util.truncate import truncate
 
 logger = getLogger(__name__)
 
 WORDPRESS_BASE_URL = "https://public-api.wordpress.com/"
+
+# How much of WordPress's answer an error message carries: enough for its own
+# message, not the whole HTML page a proxy or a CDN in front of it sends.
+ERROR_BODY_LIMIT = 300
+
+
+def _error_body(response: Response) -> str:
+    return truncate(response.text(), ERROR_BODY_LIMIT)
 
 
 class OAuthAuthorizeRequest(BaseModel):
@@ -170,7 +180,7 @@ async def oauth_exchange_code_for_tokens(
     if response.ok:
         return OAuthTokenResponse.model_validate(response.json())
     raise ValueError(
-        f"Failed to exchange code for tokens: {response.status} {response.text}"
+        f"Failed to exchange code for tokens: {response.status} {_error_body(response)}"
     )
 
 
@@ -213,7 +223,9 @@ async def oauth_refresh_tokens(
 
     if response.ok:
         return OAuthTokenResponse.model_validate(response.json())
-    raise ValueError(f"Failed to refresh tokens: {response.status} {response.text}")
+    raise ValueError(
+        f"Failed to refresh tokens: {response.status} {_error_body(response)}"
+    )
 
 
 class TokenInfoResponse(BaseModel):
@@ -259,7 +271,7 @@ async def validate_token(
 
     if response.ok:
         return TokenInfoResponse.model_validate(response.json())
-    raise ValueError(f"Invalid token: {response.status} {response.text}")
+    raise ValueError(f"Invalid token: {response.status} {_error_body(response)}")
 
 
 async def make_api_request(
@@ -306,7 +318,7 @@ async def make_api_request(
 
     if response.ok:
         return response.json()
-    raise ValueError(f"API request failed: {response.status} {response.text}")
+    raise ValueError(f"API request failed: {response.status} {_error_body(response)}")
 
 
 # Post-related models and functions
@@ -498,7 +510,9 @@ async def create_post(
         if response.headers.get("content-type", "").startswith("application/json")
         else {}
     )
-    error_message = error_data.get("message", response.text)
+    error_message = truncate(
+        error_data.get("message", response.text()), ERROR_BODY_LIMIT
+    )
     raise ValueError(f"Failed to create post: {response.status} - {error_message}")
 
 
@@ -627,5 +641,7 @@ async def get_posts(
         if response.headers.get("content-type", "").startswith("application/json")
         else {}
     )
-    error_message = error_data.get("message", response.text)
+    error_message = truncate(
+        error_data.get("message", response.text()), ERROR_BODY_LIMIT
+    )
     raise ValueError(f"Failed to get posts: {response.status} - {error_message}")

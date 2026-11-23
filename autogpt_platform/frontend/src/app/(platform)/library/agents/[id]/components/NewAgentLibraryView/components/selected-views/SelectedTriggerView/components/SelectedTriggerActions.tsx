@@ -1,12 +1,7 @@
 "use client";
 
-import {
-  getGetV2ListPresetsQueryKey,
-  getV2ListPresets,
-  useDeleteV2DeleteAPreset,
-} from "@/app/api/__generated__/endpoints/presets/presets";
+import { useDeleteV2DeleteAPreset } from "@/app/api/__generated__/endpoints/presets/presets";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { okData } from "@/app/api/helpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
@@ -14,6 +9,7 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { refetchPresets } from "../../../../helpers";
 import { AgentActionsDropdown } from "../../AgentActionsDropdown";
 import { Delete02Icon, FloppyDiskIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -24,7 +20,6 @@ interface Props {
   onDeleted?: () => void;
   onSaveChanges?: () => void;
   isSaving?: boolean;
-  onSwitchToRunsTab?: () => void;
 }
 
 export function SelectedTriggerActions({
@@ -33,7 +28,6 @@ export function SelectedTriggerActions({
   onDeleted,
   onSaveChanges,
   isSaving,
-  onSwitchToRunsTab,
 }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -45,28 +39,12 @@ export function SelectedTriggerActions({
         toast({
           title: "Trigger deleted",
         });
-        const queryKey = getGetV2ListPresetsQueryKey({
-          graph_id: agent.graph_id,
-        });
-
-        queryClient.invalidateQueries({
-          queryKey,
-        });
-
-        const queryData =
-          queryClient.getQueryData<
-            Awaited<ReturnType<typeof getV2ListPresets>>
-          >(queryKey);
-
-        const presets = okData(queryData)?.presets ?? [];
-        const triggers = presets.filter((preset) => preset.webhook_id);
+        await refetchPresets({ queryClient, graphID: agent.graph_id });
 
         setShowDeleteDialog(false);
+        // The sidebar then selects the next trigger, or the page leaves the
+        // emptied Triggers tab, which also lists trigger workflows.
         onDeleted?.();
-
-        if (triggers.length === 0 && onSwitchToRunsTab) {
-          onSwitchToRunsTab();
-        }
       },
       onError: (error: any) => {
         toast({

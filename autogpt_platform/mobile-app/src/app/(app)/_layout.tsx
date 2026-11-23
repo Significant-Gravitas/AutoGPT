@@ -34,7 +34,10 @@ export default function AppLayout() {
         <Drawer.Screen name="create-expert" />
         <Drawer.Screen name="marketplace/index" />
         <Drawer.Screen name="marketplace/[templateId]" />
+        <Drawer.Screen name="files/index" />
+        <Drawer.Screen name="files/[folderId]" />
         <Drawer.Screen name="settings" />
+        <Drawer.Screen name="plan" />
       </Drawer>
     </View>
   );

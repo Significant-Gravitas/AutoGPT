@@ -213,6 +213,9 @@ class EditAgentTool(BaseTool):
             # credentials, so moving it onto this one is a start.
             move_webhook_presets=external_allows(session, APIKeyPermission.RUN_AGENT),
             external_caller=session.external_caller,
+            # A node saved on a switched-off model keeps it until the user
+            # asks: it runs on its fallback from its shutdown date anyway.
+            saved_agent=current_agent,
         )
 
 

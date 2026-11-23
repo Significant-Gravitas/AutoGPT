@@ -2,10 +2,11 @@
 
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { useRelativeTime } from "@/components/atoms/RelativeTime/useRelativeTime";
 import { Text } from "@/components/atoms/Text/Text";
 import { isCompletedWithErrors } from "@/lib/run-health";
-import { formatTimeAgo } from "@/lib/utils/time";
 import Link, { useLinkStatus } from "next/link";
+import { useNowSecond } from "@/hooks/useNowSecond";
 import type { AgentExecutionWithInfo } from "../helpers";
 import { getExecutionDuration } from "../helpers";
 import {
@@ -47,6 +48,14 @@ interface Props {
 }
 
 export function ActivityItem({ execution }: Props) {
+  const isActiveStatus =
+    execution.status === AgentExecutionStatus.RUNNING ||
+    execution.status === AgentExecutionStatus.QUEUED;
+  // Tick every second so live elapsed advances without waiting for stats.
+  const nowMs = useNowSecond(isActiveStatus);
+  const startedAgo = useRelativeTime(execution.started_at, "short");
+  const endedAgo = useRelativeTime(execution.ended_at, "short");
+
   function getStatusIcon() {
     switch (execution.status) {
       case AgentExecutionStatus.QUEUED:
@@ -80,27 +89,17 @@ export function ActivityItem({ execution }: Props) {
 
   function getItemDisplay() {
     // Handle active statuses (running/queued)
-    const isActiveStatus =
-      execution.status === AgentExecutionStatus.RUNNING ||
-      execution.status === AgentExecutionStatus.QUEUED;
-
     if (isActiveStatus) {
-      const timeAgo = execution.started_at
-        ? formatTimeAgo(execution.started_at.toString())
-        : "recently";
+      const timeAgo = startedAgo ?? "recently";
       const statusText =
         execution.status === AgentExecutionStatus.QUEUED ? "queued" : "running";
       return [
-        `Started ${timeAgo}, ${getExecutionDuration(execution)} ${statusText}`,
+        `Started ${timeAgo}, ${getExecutionDuration(execution, new Date(nowMs))} ${statusText}`,
       ];
     }
 
     // Handle all other statuses with time display
-    const timeAgo = execution.ended_at
-      ? formatTimeAgo(execution.ended_at.toString())
-      : execution.started_at
-        ? formatTimeAgo(execution.started_at.toString())
-        : "recently";
+    const timeAgo = endedAgo ?? startedAgo ?? "recently";
 
     let statusText = "ended";
     switch (execution.status) {

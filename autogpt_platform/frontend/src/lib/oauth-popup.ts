@@ -16,6 +16,8 @@ export const OAUTH_ERROR_POPUP_BLOCKED =
   "Popup blocked — the sign-in window opened in a new tab instead. If you don't see it, allow popups for this site and retry.";
 export const OAUTH_ERROR_POPUP_BLOCKED_NO_TAB =
   "Popup blocked — allow popups for this site and try again.";
+export const OAUTH_ERROR_UNSAFE_LOGIN_URL =
+  "The sign-in link is not a web address, so it was not opened.";
 
 export type OAuthPopupResult = {
   code: string;
@@ -129,6 +131,12 @@ export function openOAuthPopup(
     timeout = DEFAULT_TIMEOUT_MS,
     cancelUrl,
   } = options;
+
+  // The window we are about to navigate is still on our own origin, so a
+  // `javascript:` login URL would run as us — and a login URL can come from a
+  // third party's OAuth metadata. Thrown before any window is opened or
+  // adopted, so the caller's pre-opened window is still theirs to close.
+  if (!isHTTPURL(loginUrl)) throw new Error(OAUTH_ERROR_UNSAFE_LOGIN_URL);
 
   const controller = new AbortController();
 
@@ -354,4 +362,14 @@ export function openOAuthPopup(
     popupBlocked,
     fallbackBlocked,
   };
+}
+
+function isHTTPURL(value: string) {
+  try {
+    // Resolved the way assigning to `location.href` resolves it.
+    const url = new URL(value, window.location.href);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
 }

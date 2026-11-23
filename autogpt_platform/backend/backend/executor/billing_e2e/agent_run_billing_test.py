@@ -140,7 +140,9 @@ async def test_an_agent_run_costs_what_its_model_calls_cost(
     assert delays and max(delays) < TOOL_CALL_DELAY_LIMIT_S, delays
 
 
-def _agent_with_an_ai_tool() -> graph_model.Graph:
+def _agent_with_an_ai_tool(model: LLMModel = MODEL) -> graph_model.Graph:
+    """An agent in agent mode, on *model*, whose tool is an AI block on
+    *model*."""
     platform_key = {
         "id": credentials_store.anthropic_credentials.id,
         "provider": "anthropic",
@@ -151,14 +153,14 @@ def _agent_with_an_ai_tool() -> graph_model.Graph:
         block_id=OrchestratorBlock().id,
         input_default={
             "prompt": "Greet the user with your tool.",
-            "model": MODEL.value,
+            "model": model.value,
             "credentials": platform_key,
             "agent_mode_max_iterations": TOOL_CALLS + 3,
         },
     )
     tool = graph_model.Node(
         block_id=AITextGeneratorBlock().id,
-        input_default={"model": MODEL.value, "credentials": platform_key},
+        input_default={"model": model.value, "credentials": platform_key},
     )
     return graph_model.Graph(
         name="Agent with an AI tool",
@@ -199,11 +201,13 @@ async def _start_run(
     return message
 
 
-async def _run_on_an_executor_pod(run_entry: str, model_url: str) -> None:
+async def _run_on_an_executor_pod(
+    run_entry: str, model_url: str, script: str = EXECUTOR_POD
+) -> None:
     pod = await asyncio.create_subprocess_exec(
         sys.executable,
         "-c",
-        EXECUTOR_POD,
+        script,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
