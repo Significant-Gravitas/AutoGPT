@@ -20,6 +20,7 @@ class UvicornOptions(TypedDict):
     loop: Literal["uvloop", "auto"]
     ws: Literal["websockets-sansio"]
     forwarded_allow_ips: str | None
+    timeout_keep_alive: int
 
 
 def rest_api_uvicorn_options(config: Config) -> UvicornOptions:
@@ -32,4 +33,7 @@ def rest_api_uvicorn_options(config: Config) -> UvicornOptions:
         "loop": "uvloop" if platform.system() != "Windows" else "auto",
         "ws": "websockets-sansio",
         "forwarded_allow_ips": uvicorn_forwarded_allow_ips(config.trusted_proxies),
+        # uvicorn's default, 5 s, closes a connection the load balancer still
+        # counts on reusing.
+        "timeout_keep_alive": config.server_keep_alive_timeout_seconds,
     }
