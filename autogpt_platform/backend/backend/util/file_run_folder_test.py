@@ -3,7 +3,9 @@ removes its own when it ends. So does a block call with the copies it stages."""
 
 import asyncio
 import base64
+import shutil
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -12,6 +14,7 @@ from backend.data.execution import ExecutionContext
 from backend.util import file as file_module
 from backend.util.file import (
     clean_exec_files,
+    get_dir_size,
     get_exec_file_path,
     remove_staged_copies_on_exit,
     separate_exec_files,
@@ -132,13 +135,13 @@ async def test_a_run_ending_leaves_a_concurrent_run_s_files_alone(
 async def test_a_block_call_s_copies_go_when_it_ends(
     temp_dir: Path, staging: None
 ) -> None:
-    """Only its copies: one staged outside it, and a file a block wrote under
-    a name of its own, stay until the run ends."""
+    """Only its copies: one staged outside it, and a file the block writes
+    under a name of its own while it runs, stay until the run ends."""
     outside = await _stage("staged outside")
-    output = _write("node-1_concat_clip.mp4", "a block's output")
 
     with remove_staged_copies_on_exit():
         inside = await _stage("staged inside")
+        output = _write("node-1_concat_clip.mp4", "a block's output")
         assert inside.read_text() == "staged inside"
 
     assert not inside.parent.exists()
@@ -189,4 +192,31 @@ async def test_a_block_call_ending_leaves_a_running_one_s_copies_alone(
     (first_copy, first_text), second_copy = first.result(), second.result()
 
     assert first_text == "first"
-    assert not first_copy.exists() and not second_copy.exists()
+    assert not first_copy.parent.exists() and not second_copy.parent.exists()
+
+
+def test_the_run_s_size_counts_on_past_a_copy_removed_mid_walk(
+    tmp_path: Path,
+) -> None:
+    """A node that ends removes its copies' folders, maybe while another
+    node's staging counts the run's folder for the disk cap. A file the count
+    found but can no longer read is skipped, and the rest still count."""
+    run = tmp_path / "run"
+    for name, size in {"a/one.bin": 1, "b/two.bin": 20, "c/three.bin": 300}.items():
+        (run / name).parent.mkdir(parents=True)
+        (run / name).write_bytes(b"x" * size)
+    removed: list[Path] = []
+
+    class _FirstCopyRemovedOnceFound(type(run)):
+        def is_file(self, **kwargs: Any) -> bool:
+            found = super().is_file(**kwargs)
+            if found and not removed:
+                shutil.rmtree(self.parent)
+                removed.append(self)
+            return found
+
+    total = get_dir_size(_FirstCopyRemovedOnceFound(run))
+
+    remaining = [path for path in run.rglob("*") if path.is_file()]
+    assert len(removed) == 1 and len(remaining) == 2
+    assert total == sum(path.stat().st_size for path in remaining)

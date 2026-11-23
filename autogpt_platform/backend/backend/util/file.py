@@ -297,11 +297,10 @@ async def store_media_file(
 
     def _new_copy_path(filename: str) -> Path:
         """Where a new copy named *filename* goes: a new folder of the run's
-        folder, which no other copy uses."""
+        folder, which no other copy uses. The name must stay in that folder."""
+        folder = base_path / uuid.uuid4().hex
         try:
-            return _ensure_inside_base(
-                base_path / uuid.uuid4().hex / filename, base_path
-            )
+            return _ensure_inside_base(folder / filename, folder)
         except OSError as e:
             raise ValueError(f"Invalid file path '{filename}': {e}") from e
 
@@ -503,14 +502,19 @@ async def store_media_file(
 
 
 def get_dir_size(path: Path) -> int:
-    """Get total size of directory."""
+    """Get total size of directory.
+
+    Nodes of a run remove their copies' folders while other nodes still run,
+    so a file can vanish between the walk finding it and its size being read.
+    It is skipped, and the rest are still counted.
+    """
     total = 0
-    try:
-        for entry in path.glob("**/*"):
+    for entry in path.glob("**/*"):
+        try:
             if entry.is_file():
                 total += entry.stat().st_size
-    except Exception:
-        pass
+        except OSError:
+            continue
     return total
 
 

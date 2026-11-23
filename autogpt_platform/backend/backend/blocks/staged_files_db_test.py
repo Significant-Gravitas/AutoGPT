@@ -213,6 +213,7 @@ async def thread_jobs_wait_their_turn() -> AsyncIterator[None]:
     behind the callbacks already waiting there, so a read handed to a thread
     happens at a known point instead of whenever a thread gets to it."""
     loop = asyncio.get_running_loop()
+    # set_default_executor refuses None, the loop's usual value, so restore it directly
     default_executor = loop._default_executor
     loop.set_default_executor(_InTurnExecutor(loop))
     try:
