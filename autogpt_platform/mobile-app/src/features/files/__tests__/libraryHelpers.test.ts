@@ -116,4 +116,9 @@ describe("formatJson", () => {
   it("keeps empty objects and lists on one line", () => {
     expect(formatJson('{"a": {}, "b": [ ]}')).toBe('{\n  "a": {},\n  "b": []\n}');
   });
+
+  it("leaves deeply nested JSON as written rather than ballooning it", () => {
+    const nested = "[".repeat(10_000) + "0" + "]".repeat(10_000);
+    expect(formatJson(nested)).toBe(nested);
+  });
 });

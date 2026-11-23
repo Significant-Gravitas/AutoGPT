@@ -138,6 +138,8 @@ export function tableFromText(
 }
 
 const JSON_SPACE = " \t\n\r";
+// Indents grow with depth, so a deeply nested file could balloon; past this it shows as written.
+const FORMATTED_LIMIT = 1_000_000;
 
 /**
  * JSON laid out two spaces deep; anything that doesn't parse comes back as it was.
@@ -188,6 +190,7 @@ export function formatJson(text: string) {
       if (char === '"') inString = true;
       out += char;
     }
+    if (out.length > FORMATTED_LIMIT) return text;
   }
   return out;
 }
