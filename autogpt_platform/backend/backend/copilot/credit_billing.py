@@ -289,11 +289,14 @@ async def credit_billing(turn: CreditBilledTurn) -> AsyncIterator[None]:
     finally:
         _credit_billed_turn.reset(token)
         # On a task of its own: a cancel that lands while the turn is charged
-        # (a Stop's second one, #17286) waits for the charge, then goes on.
+        # (a Stop's second one, #17286) waits for the charge, then goes on,
+        # past an error from the charge too, which it keeps as its context.
         deferred = DeferredCancel()
-        await deferred.finish(turn.end())
-        if deferred.held is not None:
-            raise deferred.held
+        try:
+            await deferred.finish(turn.end())
+        finally:
+            if deferred.held is not None:
+                raise deferred.held
 
 
 async def tool_spend_refusal(user_id: str | None) -> str | None:

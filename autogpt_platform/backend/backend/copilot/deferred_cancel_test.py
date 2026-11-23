@@ -100,7 +100,7 @@ async def test_a_cancel_cuts_a_step_on_this_task_short_but_not_the_next():
 @pytest.mark.asyncio
 async def test_a_step_that_outlasts_a_held_cancel_is_given_up(monkeypatch, caplog):
     """A hung step can't hold the turn's task for good once a cancel is held."""
-    monkeypatch.setattr(deferred_cancel, "HELD_CANCEL_STEP_LIMIT_SECONDS", 0.05)
+    monkeypatch.setattr(deferred_cancel, "HELD_CANCEL_LIMIT_SECONDS", 0.05)
     deferred = DeferredCancel()
     started, step_cancelled = asyncio.Event(), asyncio.Event()
 
@@ -123,3 +123,47 @@ async def test_a_step_that_outlasts_a_held_cancel_is_given_up(monkeypatch, caplo
 
     assert isinstance(deferred.held, asyncio.CancelledError)
     assert "still running 0.05s after a cancel was held" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_the_whole_held_cleanup_gets_one_limit(monkeypatch):
+    """Steps after the one a cancel was held in share its deadline: on their
+    own tasks, on the cleanup's task, and in a DeferredCancel made inside a
+    step, as a credit-billed turn's charge is. Each would finish in half a
+    fresh limit; none is given one."""
+    limit = 0.1
+    monkeypatch.setattr(deferred_cancel, "HELD_CANCEL_LIMIT_SECONDS", limit)
+    deferred = DeferredCancel()
+    started = asyncio.Event()
+    finished: list[str] = []
+
+    async def hangs() -> None:
+        started.set()
+        await asyncio.Event().wait()
+
+    async def half_a_limit(name: str) -> None:
+        await asyncio.sleep(limit / 2)
+        finished.append(name)
+
+    async def nested_cleanup() -> None:
+        nested = DeferredCancel()
+        try:
+            await nested.finish(half_a_limit("nested step"))
+        finally:
+            if nested.held is not None:
+                raise nested.held
+
+    async def cleanup() -> None:
+        await deferred.finish(hangs())
+        await deferred.finish(half_a_limit("next step"))
+        await deferred.run_here(half_a_limit("step on this task"))
+        await deferred.run_here(nested_cleanup())
+
+    task = asyncio.create_task(cleanup())
+    async with asyncio.timeout(_HANG_SECONDS):
+        await started.wait()
+        task.cancel()
+        await asyncio.shield(task)
+
+    assert finished == []
+    assert isinstance(deferred.held, asyncio.CancelledError)

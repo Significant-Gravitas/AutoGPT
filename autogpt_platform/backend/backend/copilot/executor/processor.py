@@ -1240,24 +1240,33 @@ class CoPilotProcessor:
                         if scheduled_watch is not None:
                             await deferred.finish(scheduled_watch.record(error_msg))
                     finally:
-                        set_turn_surface(None)
-                        # On this task: the stack resets context variables
-                        # the turn set, and a task of its own would hold only
-                        # a copy of them.
-                        await deferred.run_here(cost_context_stack.aclose())
-                        # A browser turn leaves a Chromium tree on this pod
-                        # that nothing else ever stops; state is already
-                        # persisted, so the next turn restores it wherever it
-                        # lands. Read right before the close: a newer turn of
-                        # the chat on this pod owns the tree by then.
-                        if await deferred.finish(_newer_turn_runs_here(entry)):
-                            log.info(
-                                "A newer turn of this chat runs here; its browser stays"
-                            )
-                        elif await deferred.finish(
-                            close_browser_daemon(entry.session_id)
-                        ):
-                            log.info("Browser daemon teardown attempted for this turn")
-                        if deferred.held is not None:
-                            log.info("Turn cleanup done; passing on the cancel it held")
-                            raise deferred.held
+                        try:
+                            set_turn_surface(None)
+                            # On this task: the stack resets context variables
+                            # the turn set, and a task of its own would hold
+                            # only a copy of them.
+                            await deferred.run_here(cost_context_stack.aclose())
+                            # A browser turn leaves a Chromium tree on this pod
+                            # that nothing else ever stops; state is already
+                            # persisted, so the next turn restores it wherever
+                            # it lands. Read right before the close: a newer
+                            # turn of the chat on this pod owns the tree by then.
+                            if await deferred.finish(_newer_turn_runs_here(entry)):
+                                log.info(
+                                    "A newer turn of this chat runs here; "
+                                    "its browser stays"
+                                )
+                            elif await deferred.finish(
+                                close_browser_daemon(entry.session_id)
+                            ):
+                                log.info(
+                                    "Browser daemon teardown attempted for this turn"
+                                )
+                        finally:
+                            # Past a later step's error too, which the cancel
+                            # keeps as its context.
+                            if deferred.held is not None:
+                                log.info(
+                                    "Turn cleanup done; passing on the cancel it held"
+                                )
+                                raise deferred.held

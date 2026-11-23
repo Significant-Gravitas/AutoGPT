@@ -77,18 +77,37 @@ def exec_loop():
         pytest.param(True, "subtasks", id="both-cancels-reach-the-cleanup"),
         pytest.param(False, "charge", id="second-cancel-during-the-charge"),
         pytest.param(False, "record", id="second-cancel-during-the-record"),
+        # On a route that leases its credential, so not billed to credits.
+        pytest.param(
+            False, "lease release", id="second-cancel-during-the-lease-release"
+        ),
     ],
 )
 def test_a_cancel_in_the_cleanup_waits_for_every_step(
     exec_loop, mocker, reply_sees_the_stop: bool, held_at: str
 ):
-    """The worker's grace runs out while the cleanup of a credit-billed,
-    scheduled browser turn waits on one of its steps."""
+    """The worker's grace runs out while the cleanup of a scheduled browser
+    turn, billed to credits or on a leased credential, waits on a step."""
+    route = "microsoft 365" if held_at == "lease release" else "credits"
     seen = _stop_a_turn(
-        exec_loop, mocker, reply_sees_the_stop=reply_sees_the_stop, held_at=held_at
+        exec_loop,
+        mocker,
+        reply_sees_the_stop=reply_sees_the_stop,
+        held_at=held_at,
+        route=route,
     )
 
-    assert seen == _expected(reply_sees_the_stop=reply_sees_the_stop, held_at=held_at)
+    assert seen == _expected(
+        reply_sees_the_stop=reply_sees_the_stop, held_at=held_at, route=route
+    )
+
+
+def test_an_error_from_a_later_step_does_not_drop_the_held_cancel(exec_loop, mocker):
+    """The browser close fails after the second cancel was held: the cancel
+    wins, and the turn still ends cancelled."""
+    seen = _stop_a_turn(exec_loop, mocker, browser_close_fails=True)
+
+    assert seen == _expected()
 
 
 @pytest.mark.parametrize(
@@ -163,6 +182,7 @@ def _expected(
     *,
     reply_sees_the_stop: bool = False,
     held_at: str = "subtasks",
+    route: str = "credits",
     browser_closes: list | None = None,
 ) -> dict:
     """What a stopped turn's cleanup must have done (see _stop_a_turn)."""
@@ -180,16 +200,17 @@ def _expected(
         "cancels in flight when the cleanup was held": 0 if reply_sees_the_stop else 1,
         "subtasks stopped": [call([_SUBTASK])],
         # The worker fails the session while the cleanup is held: before the
-        # turn's own completion when the subtasks are held, after it when a
-        # later step is.
+        # turn's own completion when a step before it is held, after it when
+        # a later step is.
         "session completions": (
             [fail_close, turns_own]
-            if held_at == "subtasks"
+            if held_at in ("lease release", "subtasks")
             else [turns_own, fail_close]
         ),
         # Half a credit spent, rounded up when the turn ends.
-        "credits charged by the turn's end": [1],
-        "credits charged in all": [1],
+        "credits charged by the turn's end": [1] if route == "credits" else [],
+        "credits charged in all": [1] if route == "credits" else [],
+        "lease releases": [True] if route == "microsoft 365" else [],
         "scheduled run recorded": [stream_registry.CANCELLED_MESSAGE],
         "browser closes": (
             [call(_SESSION_ID)] if browser_closes is None else browser_closes
@@ -221,14 +242,21 @@ def _stop_a_turn(
     *,
     reply_sees_the_stop: bool = False,
     held_at: str = "subtasks",
+    route: str = "credits",
     chat_turn_at_close: str = _TURN_ID,
     newer_turn_runs_here: bool = False,
+    browser_close_fails: bool = False,
 ) -> dict:
-    """Run a credit-billed, scheduled turn through the worker and Stop it.
-    The worker's grace runs out while its cleanup is held at *held_at*: the
+    """Run a scheduled browser turn through the worker and Stop it. On the
+    ``credits`` route the AutoPilot block's turn is billed to credits; on
+    ``microsoft 365`` it holds a lease on its credential. The worker's grace
+    runs out while its cleanup is held at *held_at*: the lease's release, the
     subtasks' cancellation, the debit that charges the turn, or the record of
     its scheduled run. Returns what the turn and its cleanup did."""
     cost = TrialCostContext(user_id=_USER_ID, trial_id="trial-1")
+    leased = route == "microsoft 365"
+    provider = "microsoft_365_copilot" if leased else "platform"
+    credential_id = "cred-microsoft" if leased else None
     entry = CoPilotExecutionEntry(
         session_id=_SESSION_ID,
         turn_id=_TURN_ID,
@@ -237,6 +265,8 @@ def _stop_a_turn(
         is_user_message=True,
         request_arrival_at=0.0,
         cost_context=cost,
+        llm_auth_provider=provider,
+        llm_credential_id=credential_id,
     )
     pause = TurnPause(reason="daily")
     billed = CreditBilledTurn(
@@ -249,6 +279,7 @@ def _stop_a_turn(
     release_cleanup = asyncio.Event()
     charged: list[int] = []
     recorded: list[str | None] = []
+    released: list[bool] = []
     turn: dict[str, asyncio.Task] = {}
     seen: dict = {}
 
@@ -292,6 +323,11 @@ def _stop_a_turn(
         if held_at == "record":
             await hold()
         recorded.append(turn_error)
+
+    async def release_lease() -> None:
+        if held_at == "lease release":
+            await hold()
+        released.append(True)
 
     real_turn_transaction = processor.turn_transaction
 
@@ -352,7 +388,26 @@ def _stop_a_turn(
     mocker.patch.object(processor, "turn_transaction", watched_turn_transaction)
     mocker.patch(
         "backend.copilot.model.get_chat_session",
-        AsyncMock(return_value=ChatSession.new(_USER_ID, dry_run=False)),
+        AsyncMock(
+            return_value=ChatSession.new(
+                _USER_ID,
+                dry_run=False,
+                llm_auth_provider=provider,
+                llm_credential_id=credential_id,
+            )
+        ),
+    )
+    lease = MagicMock(release=release_lease)
+    mocker.patch.object(
+        processor,
+        "IntegrationCredentialsManager",
+        return_value=MagicMock(acquire_lease=AsyncMock(return_value=lease)),
+    )
+    mocker.patch.object(
+        processor, "is_microsoft_365_copilot_credential", return_value=True
+    )
+    mocker.patch.object(
+        processor, "stream_chat_completion_microsoft_365", return_value=None
     )
     mocker.patch.object(stream_registry, "publish_chunk", AsyncMock())
     mocker.patch.object(stream_registry, "stream_and_publish", reply)
@@ -376,7 +431,14 @@ def _stop_a_turn(
         stream_registry, "mark_session_completed", AsyncMock(return_value=True)
     )
     browser = mocker.patch.object(
-        processor, "close_browser_daemon", AsyncMock(return_value=True)
+        processor,
+        "close_browser_daemon",
+        AsyncMock(
+            return_value=True,
+            side_effect=(
+                RuntimeError("browser close failed") if browser_close_fails else None
+            ),
+        ),
     )
     cluster_lock = MagicMock()
     cluster_lock.refresh.side_effect = refresh
@@ -421,7 +483,7 @@ def _stop_a_turn(
     while_replying = seen["context while replying"]
     assert isinstance(while_replying["shared trial reads"], SharedTrialReads)
     assert while_replying["trial cost context"] == cost
-    assert while_replying["credit-billed turn"] is billed
+    assert while_replying["credit-billed turn"] is (None if leased else billed)
     return {
         "cancels in flight when the cleanup was held": seen.get("cancels in flight"),
         "subtasks stopped": stopped.await_args_list,
@@ -430,6 +492,7 @@ def _stop_a_turn(
             "credits charged by the turn's end"
         ),
         "credits charged in all": charged,
+        "lease releases": released,
         "scheduled run recorded": recorded,
         "browser closes": browser.await_args_list,
         "turn's context after its cleanup": seen.get("context after the cleanup"),
