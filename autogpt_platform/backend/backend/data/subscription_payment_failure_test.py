@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import stripe
 from prisma.enums import CreditTransactionType, SubscriptionTier
-from prisma.errors import UniqueViolationError
+from prisma.errors import PrismaError, UniqueViolationError
 
 from backend.data.credit import (
     REPLACED_PLAN_CANCELLATION_COMMENT,
@@ -809,6 +809,48 @@ async def test_a_failed_bill_void_after_the_cancel_asks_a_person_to_finish():
     assert world.tier == SubscriptionTier.MAX
     assert world.stripe.cancelled == ["sub_old"]
     assert world.stripe.voided == []
+    assert len(world.alerts) == 1
+    assert "void their open bills by hand" in world.alerts[0]
+
+
+def _broken_first_page(world: World) -> None:
+    """Stripe answers the list of past-due plans with an empty page that
+    claims more results."""
+    real_list = world.stripe.list_subscriptions
+
+    async def list_subscriptions(customer: str, status: str, limit: int):
+        if status == "past_due":
+            return MagicMock(data=[], has_more=True)
+        return await real_list(customer, status, limit)
+
+    world.stripe.list_subscriptions = list_subscriptions
+
+
+def _restart_lookup_fails(world: World) -> None:
+    async def find_paid_pause(where):
+        raise PrismaError("database unavailable")
+
+    world._find_paid_pause = find_paid_pause
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("break_it", [_broken_first_page, _restart_lookup_fails])
+async def test_a_non_stripe_error_ending_replaced_plans_still_cancels_and_alerts(
+    break_it: Callable[[World], None],
+):
+    """An activation replay skips this cleanup, so an error that is not
+    Stripe's must not escape it either: the other active plan is still
+    cancelled, and a person is asked to finish the rest."""
+    world = World()
+    break_it(world)
+    with world:
+        _left_for_a_new_plan(world, "active")
+        world.paid_after_pause["sub_old"] = None
+        await world.subscription_updated("sub_new")
+
+    assert world.tier == SubscriptionTier.MAX
+    assert world.stripe.cancelled == ["sub_old"]
+    assert world.stripe.subscriptions["sub_new"]["status"] == "active"
     assert len(world.alerts) == 1
     assert "void their open bills by hand" in world.alerts[0]
 
