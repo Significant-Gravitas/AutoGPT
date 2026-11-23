@@ -154,7 +154,7 @@ test.describe("subscription journey", () => {
     expect(await unservedStripeRequests(stripeCursor)).toEqual([]);
   });
 
-  test("a plan cancelled through the app lasts until its period ends", async ({
+  test("a plan cancelled through the platform's API lasts until its period ends", async ({
     page,
     journeyUser: _user,
   }) => {
