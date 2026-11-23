@@ -6,7 +6,7 @@ frontend's image optimizer fetch from GCS whenever a Marketplace page shows
 them. ``load_store_agents --local-media`` saves the placeholder images in
 ``fixtures/store_media`` to the stack's own media storage instead, where an
 upload goes on a stack without a bucket, and points the listings and the
-avatar at them. The e2e stack seeds this way, so its tests make no requests
+avatar at them. The e2e stack seeds this way, so its pages load no image from
 outside the stack.
 """
 
