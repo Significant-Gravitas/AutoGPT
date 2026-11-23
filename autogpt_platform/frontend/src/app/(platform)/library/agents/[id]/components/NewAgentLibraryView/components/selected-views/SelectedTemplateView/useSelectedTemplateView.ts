@@ -15,6 +15,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { withCalendarDates } from "../../modals/RunAgentInputs/helpers";
 import {
   mergePresetInputs,
   splitPresetInputs,
@@ -23,12 +24,17 @@ import {
 type Args = {
   templateId: string;
   graphId: string;
+  // The schemas the form shows, so a stored date is read as the day it shows.
+  inputSchema?: unknown;
+  triggerConfigSchema?: unknown;
   onRunCreated?: (execution: GraphExecutionMeta) => void;
 };
 
 export function useSelectedTemplateView({
   templateId,
   graphId,
+  inputSchema,
+  triggerConfigSchema,
   onRunCreated,
 }: Args) {
   const { toast } = useToast();
@@ -56,10 +62,14 @@ export function useSelectedTemplateView({
     if (query.data) {
       setName(query.data.name || "");
       setDescription(query.data.description || "");
-      applyPresetInputs(query.data.inputs);
+      applyPresetInputs({
+        presetInputs: query.data.inputs,
+        inputSchema,
+        triggerConfigSchema,
+      });
       setCredentials(query.data.credentials || {});
     }
-  }, [query.data]);
+  }, [query.data, inputSchema, triggerConfigSchema]);
 
   const updateMutation = usePatchV2UpdateAnExistingPreset({
     mutation: {
@@ -174,10 +184,16 @@ export function useSelectedTemplateView({
     setTriggerConfig((prev) => ({ ...prev, [key]: value }));
   }
 
-  function applyPresetInputs(presetInputs: Record<string, any> | undefined) {
-    const split = splitPresetInputs(presetInputs);
-    setInputs(split.inputs);
-    setTriggerConfig(split.triggerConfig);
+  function applyPresetInputs(args: {
+    presetInputs: Record<string, any> | undefined;
+    inputSchema: unknown;
+    triggerConfigSchema: unknown;
+  }) {
+    const split = splitPresetInputs(args.presetInputs);
+    setInputs(withCalendarDates(args.inputSchema, split.inputs));
+    setTriggerConfig(
+      withCalendarDates(args.triggerConfigSchema, split.triggerConfig),
+    );
     setMaskKey(split.maskKey);
   }
 
@@ -194,10 +210,14 @@ export function useSelectedTemplateView({
     if (updateMutation.isSuccess && query.data) {
       setName(query.data.name || "");
       setDescription(query.data.description || "");
-      applyPresetInputs(query.data.inputs);
+      applyPresetInputs({
+        presetInputs: query.data.inputs,
+        inputSchema,
+        triggerConfigSchema,
+      });
       setCredentials(query.data.credentials || {});
     }
-  }, [updateMutation.isSuccess, query.data]);
+  }, [updateMutation.isSuccess, query.data, inputSchema, triggerConfigSchema]);
 
   return {
     template: query.data,
