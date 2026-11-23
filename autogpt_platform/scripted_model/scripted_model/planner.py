@@ -186,7 +186,8 @@ def _captured(
     model reads an id out of what a tool just returned. *results* are only
     the ones this request sends back, for the last turn's calls, so an
     earlier turn's result (and its possibly stale id) is never read. Of
-    several calls to the tool in that turn, the last one that matches wins."""
+    several calls to the tool in that turn, the last one with a match whose
+    first group took part wins: an optional group can match empty-handed."""
     for result in reversed(results):
         if result.tool != capture.tool:
             continue

@@ -240,7 +240,8 @@ jobs:
             # The official marketplace agents, which the expert roster's
             # workflows are, so a hired expert gets them as on a deploy.
             store_agents: true
-            # Journeys may pin a known bug with test.fail(); it must still fail.
+            # Journeys may pin a known bug with pinKnownFailure(); it must
+            # still fail, and only on the check it pins.
             known_failures: true
           # The leg above, second shard.
           - suite: journeys
