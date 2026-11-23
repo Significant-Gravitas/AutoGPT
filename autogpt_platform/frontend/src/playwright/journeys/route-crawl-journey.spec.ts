@@ -85,6 +85,8 @@ const ADMIN_SLICES = slices(
   ),
 );
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Tries at a pinned bug's visit before its pin counts it as fixed.
+const REPRODUCE_TRIES = 3;
 
 // Dynamic routes nothing here samples: a page added later lands here, with
 // an annotation, until it gets a sample.
@@ -302,9 +304,19 @@ test.describe("route crawl journey", () => {
             `${route} has a dynamic segment: give its pin a visit in REPRODUCTIONS`,
           );
         }
-        const [result] = reproduce
-          ? await reproduce(env, page)
-          : await crawlAs(env, page, who, [route]);
+        // A visit can miss a timing bug on a busy runner, so it is tried
+        // again until the bug shows: the pin then fails every run while the
+        // bug is there, and passes every run once it is fixed.
+        const problems: string[] = [];
+        for (let tries = 0; tries < REPRODUCE_TRIES; tries++) {
+          const [result] = reproduce
+            ? await reproduce(env, page)
+            : await crawlAs(env, page, who, [route]);
+          problems.push(...result.problems);
+          if (result.problems.some((problem) => bug.problem.test(problem))) {
+            break;
+          }
+        }
         // The page's other known bugs have pins of their own, or none can.
         const others = [
           ...KNOWN_BUGS.filter(
@@ -312,7 +324,7 @@ test.describe("route crawl journey", () => {
           ),
           ...INTERMITTENT_BUGS,
         ];
-        const unrelated = result.problems.filter(
+        const unrelated = problems.filter(
           (problem) =>
             !bug.problem.test(problem) &&
             !others.some((other) => other.problem.test(problem)),
@@ -326,7 +338,7 @@ test.describe("route crawl journey", () => {
           `${route} should load without #${issue} for the ${who}`,
         );
         expect(
-          result.problems.filter((problem) => bug.problem.test(problem)),
+          problems.filter((problem) => bug.problem.test(problem)),
           pinned,
         ).toEqual([]);
       },

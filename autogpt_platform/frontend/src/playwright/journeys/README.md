@@ -115,7 +115,8 @@ a page links to aren't rendered alongside it.
   on the page still fails that test. A bug a plain visit shows only now and
   then, or a page with a dynamic segment, needs a visit that shows it every
   time, in the spec's `REPRODUCTIONS`: the hydration bugs open their page
-  with the browser's clock ahead. A bug other pages show too, depending on
+  with the browser's clock ahead. A pinned test tries its visit up to three
+  times, until the bug shows, so a busy runner can't make it pass. A bug other pages show too, depending on
   what they list, is `showsElsewhere`: their groups note it rather than
   fail on it.
 - **A bug that shows only now and then**, with no visit that shows it every
