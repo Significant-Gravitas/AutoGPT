@@ -15,6 +15,9 @@ from websockets.exceptions import ConnectionClosedError
 from backend.api import ws_api
 from backend.api.conn_manager import ConnectionManager
 
+# Only a step that never comes keeps a wait going this long.
+_HANG_SECONDS = 10.0
+
 
 @pytest_asyncio.fixture
 async def websocket_server(
@@ -51,6 +54,24 @@ async def websocket_server(
     finally:
         server.should_exit = True
         await asyncio.wait_for(serving, timeout=5)
+
+
+def _auth_frame() -> str:
+    return json.dumps({"method": "authenticate", "data": {"token": "wire-test"}})
+
+
+async def test_a_socket_that_never_signs_in_is_closed_with_4001(
+    websocket_server: tuple[str, ConnectionManager],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    url, manager = websocket_server
+    monkeypatch.setattr(ws_api, "AUTH_MESSAGE_TIMEOUT_S", 0.2)
+    async with connect(url, open_timeout=_HANG_SECONDS, close_timeout=1) as websocket:
+        with pytest.raises(ConnectionClosedError) as closed:
+            await asyncio.wait_for(websocket.recv(), timeout=_HANG_SECONDS)
+        assert closed.value.rcvd is not None
+        assert closed.value.rcvd.code == 4001
+    assert not manager.active_connections
 
 
 def _stub_account_closed(monkeypatch: pytest.MonkeyPatch, *, closed: bool) -> None:
@@ -93,8 +114,12 @@ async def test_auth_failure_reaches_the_client_as_a_close_frame(
     track_connection = Mock()
     monkeypatch.setattr(ws_api, "update_websocket_connections", track_connection)
 
-    target = url if failure == "missing-token" else f"{url}?token=wire-test"
-    async with connect(target, open_timeout=3, close_timeout=1) as websocket:
+    async with connect(url, open_timeout=3, close_timeout=1) as websocket:
+        await websocket.send(
+            json.dumps({"method": "heartbeat", "data": "ping"})
+            if failure == "missing-token"
+            else _auth_frame()
+        )
         with pytest.raises(ConnectionClosedError) as closed:
             await asyncio.wait_for(websocket.recv(), timeout=3)
         assert closed.value.rcvd is not None
@@ -120,7 +145,12 @@ async def test_disconnected_auth_failure_does_not_register_socket(
     )
     websocket = WebSocket(
         {"type": "websocket", "query_string": b""},
-        receive=AsyncMock(return_value={"type": "websocket.connect"}),
+        receive=AsyncMock(
+            side_effect=[
+                {"type": "websocket.connect"},
+                {"type": "websocket.receive", "text": "not a sign-in"},
+            ]
+        ),
         send=send,
     )
     manager = ConnectionManager()
@@ -159,20 +189,27 @@ async def test_auth_failure_propagates_unrelated_errors(
         )
 
 
+@pytest.mark.parametrize("token_in", ["first-message", "url"])
 async def test_valid_socket_is_accepted_once_and_serves_heartbeats(
     websocket_server: tuple[str, ConnectionManager],
     monkeypatch: pytest.MonkeyPatch,
+    token_in: str,
 ) -> None:
+    """The token comes in the first message; a frontend from before that
+    change still sends it in the URL."""
     url, manager = websocket_server
-    monkeypatch.setattr(
-        ws_api, "parse_jwt_token_async", AsyncMock(return_value={"sub": "user"})
-    )
+    parse = AsyncMock(return_value={"sub": "user"})
+    monkeypatch.setattr(ws_api, "parse_jwt_token_async", parse)
     monkeypatch.setattr(ws_api, "require_active_auth_session", AsyncMock())
-    async with connect(f"{url}?token=wire-test", open_timeout=3) as websocket:
+    target = url if token_in == "first-message" else f"{url}?token=wire-test"
+    async with connect(target, open_timeout=3) as websocket:
+        if token_in == "first-message":
+            await websocket.send(_auth_frame())
         await websocket.send(json.dumps({"method": "heartbeat"}))
         response = json.loads(await asyncio.wait_for(websocket.recv(), timeout=3))
         assert response == {"method": "heartbeat", "data": "pong", "success": True}
         assert len(manager.active_connections) == 1
+        parse.assert_awaited_once_with("wire-test")
 
     async def wait_until_disconnected() -> None:
         while manager.active_connections:

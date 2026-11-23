@@ -95,7 +95,7 @@ describe("WebSocket authentication and recovery", () => {
     socket.open();
     expect(
       socket.send.mock.calls.map(([data]) => JSON.parse(data).method),
-    ).toEqual(["heartbeat"]);
+    ).toEqual(["authenticate", "heartbeat"]);
     expect(connected).not.toHaveBeenCalled();
     socket.pong();
     await subscription;

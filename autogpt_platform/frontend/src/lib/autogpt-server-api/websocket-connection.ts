@@ -139,11 +139,9 @@ export class BackendWebSocket {
         else this.finishConnecting();
         return;
       }
-      const socket = new WebSocket(
-        `${this.url}?token=${encodeURIComponent(token)}`,
-      );
+      const socket = new WebSocket(this.url);
       this.socket = socket;
-      this.attach(socket, generation);
+      this.attach(socket, generation, token);
     } catch (error) {
       if (generation !== this.generation) return;
       console.warn("[BackendAPI] Could not connect WebSocket:", error);
@@ -168,12 +166,15 @@ export class BackendWebSocket {
     return this.socket === socket && this.generation === generation;
   }
 
-  private attach(socket: WebSocket, generation: number) {
+  private attach(socket: WebSocket, generation: number, token: string) {
     socket.onopen = () => {
       if (!this.current(socket, generation) || hasDisconnectIntent()) {
         socket.close();
         return;
       }
+      // The token goes in the first message, never in the URL. The server
+      // handles messages in order, so the pong to this ping confirms it.
+      socket.send(JSON.stringify({ method: "authenticate", data: { token } }));
       this.ping(socket, generation);
     };
     socket.onmessage = (event) => this.receive(socket, generation, event);
