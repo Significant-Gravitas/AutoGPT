@@ -44,6 +44,12 @@ x-backend-env-files: &backend-env-files
     - path: backend/.env # User overrides (optional)
       required: false
 
+# Where workspace files and Marketplace media live when no bucket is set.
+# Every service that reads, writes or erases them mounts the same volume at
+# the same path; a service without it works on files no other service sees.
+x-workspace-volume: &workspace-volume workspace-data:/app/autogpt_platform/backend/workspaces
+x-store-media-volume: &store-media-volume store-media-data:/app/autogpt_platform/backend/store-media
+
 x-codex-tmpfs: &codex-tmpfs
   - /run/autogpt-codex:rw,nosuid,nodev,noexec,mode=0700,size=128m
 
@@ -320,8 +326,8 @@ services:
     ports:
       - "8006:8006"
     volumes:
-      - workspace-data:/app/autogpt_platform/backend/workspaces
-      - store-media-data:/app/autogpt_platform/backend/store-media
+      - *workspace-volume
+      - *store-media-volume
     networks:
       - app-network
     logging:
@@ -361,10 +367,9 @@ services:
     # Metrics only. Reachable from the other containers, not from the host.
     expose:
       - "8002"
-    # A run's file outputs are written here; rest_server serves them from
-    # the same volume.
+    # A run's file outputs are written here, and rest_server serves them.
     volumes:
-      - workspace-data:/app/autogpt_platform/backend/workspaces
+      - *workspace-volume
     networks:
       - app-network
     logging:
@@ -406,7 +411,7 @@ services:
     expose:
       - "8008"
     volumes:
-      - workspace-data:/app/autogpt_platform/backend/workspaces
+      - *workspace-volume
     networks:
       - app-network
     logging:
@@ -472,8 +477,10 @@ services:
     # Internal service. Reachable from the other containers, not from the host.
     expose:
       - "8005"
+    # Account erasure deletes an erased account's files from both volumes.
     volumes:
-      - store-media-data:/app/autogpt_platform/backend/store-media
+      - *workspace-volume
+      - *store-media-volume
     networks:
       - app-network
     logging:
