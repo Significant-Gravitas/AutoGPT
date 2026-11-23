@@ -183,25 +183,13 @@ test.describe("copilot stop journey", () => {
         ].join("; "),
       });
 
-      // Which bug shows depends on how fast the stopped turn ends. A slow
-      // Stop leaves it running when the correction arrives: the correction is
-      // queued behind it and deleted with its queue (#16673). A fast one cuts
-      // its CLI's close short, so the CLI keeps reading the stopped reply
-      // (#16729), and the correction's turn can be dropped while the
-      // executor still holds the chat, under an error card ("This reply
-      // could not start", #16673). So the error card check is part of the
-      // pinned one: it runs on dev, where it is one of the bugs' own marks.
-      const pinned = pinKnownFailure(
-        "#16673, #16729: a correction sent right after Stop is never answered or can't start, or a CLI keeps reading the stopped reply",
-        "the correction should be answered with no error card, and the stopped reply's model stream ended",
-      );
       expect(
         [
           answered ? null : "the correction was never answered",
           errorCardsShown === 0 ? null : `${errorCardsShown} error card(s)`,
           replyEnd === "cut" ? null : `the stopped reply was ${replyEnd}`,
         ].filter(Boolean),
-        pinned,
+        "the correction should be answered with no error card, and the stopped reply's model stream ended",
       ).toEqual([]);
       await expect
         .poll(() => savedConversation(page, sessionID), {
