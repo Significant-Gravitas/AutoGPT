@@ -34,25 +34,33 @@ export function toCalendarDate(value: unknown): string {
   return isNaN(date.getTime()) ? "" : format(date, "yyyy-MM-dd");
 }
 
+// The part of an object schema, such as a workflow's input schema, that names
+// its fields.
+interface ObjectSchema {
+  properties?: Record<string, BlockIOSubSchema>;
+}
+
 /**
  * Stored inputs with each Date input's value as the day the form shows, so a
  * form seeded from a template or trigger sends that day, not the timestamp it
  * was saved as. `schema` is the object schema whose properties the form shows.
  */
 export function withCalendarDates(
-  schema: unknown,
+  schema: ObjectSchema | null | undefined,
   values: Record<string, unknown> | null | undefined,
 ): Record<string, unknown> {
-  const fields =
-    (schema as { properties?: Record<string, BlockIOSubSchema> } | null)
-      ?.properties ?? {};
+  const fields = schema?.properties ?? {};
   return Object.fromEntries(
     Object.entries(values ?? {}).map(([key, value]) => {
-      const field = fields[key];
-      if (!field || resolveDataType(field).type !== DataType.DATE) {
-        return [key, value];
-      }
+      if (!isDateField(fields, key)) return [key, value];
       return [key, toCalendarDate(value) || value];
     }),
+  );
+}
+
+function isDateField(fields: Record<string, BlockIOSubSchema>, key: string) {
+  return (
+    Object.hasOwn(fields, key) &&
+    resolveDataType(fields[key]).type === DataType.DATE
   );
 }

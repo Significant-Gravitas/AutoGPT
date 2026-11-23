@@ -1,3 +1,4 @@
+import type { BlockIOSubSchema } from "@/lib/autogpt-server-api/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { toCalendarDate, withCalendarDates } from "../helpers";
 
@@ -52,7 +53,7 @@ describe("toCalendarDate", () => {
 describe("withCalendarDates", () => {
   it("reads only a Date input's value as a day, and keeps one it can't read", () => {
     process.env.TZ = "Pacific/Auckland";
-    const schema = {
+    const schema: { properties: Record<string, BlockIOSubSchema> } = {
       properties: {
         date: { type: "string", format: "date" },
         optional_date: {
@@ -70,6 +71,9 @@ describe("withCalendarDates", () => {
         unreadable_date: "soon",
         note: "2026-03-14T11:00:00.000Z",
         not_in_schema: "2026-03-14T11:00:00.000Z",
+        // Named after members every object inherits, not fields.
+        constructor: "2026-03-14T11:00:00.000Z",
+        toString: "2026-03-14T11:00:00.000Z",
       }),
     ).toEqual({
       date: "2026-03-15",
@@ -77,6 +81,8 @@ describe("withCalendarDates", () => {
       unreadable_date: "soon",
       note: "2026-03-14T11:00:00.000Z",
       not_in_schema: "2026-03-14T11:00:00.000Z",
+      constructor: "2026-03-14T11:00:00.000Z",
+      toString: "2026-03-14T11:00:00.000Z",
     });
   });
 });
