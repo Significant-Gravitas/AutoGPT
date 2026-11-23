@@ -115,7 +115,7 @@ test("adding a submission to the admin's library adds that version and says so",
   expect(await screen.findByText("Added to Library")).toBeDefined();
   expect(added).toEqual([VERSION_ID]);
   expect(
-    screen.getByRole("button", { name: "Add to My Library" }),
+    await screen.findByRole("button", { name: "Add to My Library" }),
   ).toBeDefined();
 });
 

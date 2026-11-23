@@ -1,14 +1,21 @@
 import { readdirSync } from "node:fs";
 import path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { getServerSession } from "@/lib/auth/server/getServerSession";
 
 // Every admin page turns away a visitor who is not an admin, on the server,
-// before it returns anything to render. The middleware's check comes first,
-// but it never sees a path ending in an image extension (src/middleware.ts),
-// so the page's own check is the only one a dynamic admin route always gets.
-// Calling each page shows the check runs; reading its source would only show
-// that the check is mentioned.
+// before it returns anything to render. Each page checks for itself and never
+// relies on the middleware's check, whatever paths the middleware's matcher
+// covers. Calling each page shows the check runs; reading its source would
+// only show that the check is mentioned.
 
 class SentAway extends Error {
   constructor(readonly to: string) {
@@ -80,11 +87,23 @@ function signedInAs(role: string | null) {
   vi.mocked(getServerSession).mockResolvedValue(session as never);
 }
 
+const pages = new Map<string, Page>();
+
+// Importing a page module cold takes a while; do it once, up front, rather
+// than inside the first test's timeout.
+beforeAll(async () => {
+  for (const file of adminPages) {
+    const specifier = path.join(APP_DIR, file);
+    const { default: page } = (await import(/* @vite-ignore */ specifier)) as {
+      default: Page;
+    };
+    pages.set(file, page);
+  }
+}, 120_000);
+
 async function visit(file: string) {
-  const specifier = path.join(APP_DIR, file);
-  const { default: page } = (await import(/* @vite-ignore */ specifier)) as {
-    default: Page;
-  };
+  const page = pages.get(file);
+  if (!page) throw new Error(`${file} wasn't imported`);
   return Promise.resolve()
     .then(() =>
       page({
@@ -94,6 +113,10 @@ async function visit(file: string) {
     )
     .catch((error: unknown) => error);
 }
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 beforeEach(() => {
   // The test-data page answers "not found" off a local stack, to anyone.
