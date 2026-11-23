@@ -278,9 +278,10 @@ services:
   # One-shot: publishes the public skills catalog (marketplace skills and the
   # expert roster) once the schema is migrated, the same way a deploy does
   # after `prisma migrate deploy`. Idempotent, so a restart that changes
-  # nothing is a no-op. Needs GitHub; offline, set SKILLS_CATALOG_PATH in
-  # backend/.env to a local checkout. Fails once and visibly rather than
-  # looping, and nothing else waits on it: copies catch up lazily.
+  # nothing is a no-op. Needs GitHub, and rides out a blip there for about two
+  # minutes; offline, set SKILLS_CATALOG_PATH in backend/.env to a local
+  # checkout. Then fails once and visibly rather than looping, and nothing
+  # else waits on it: copies catch up lazily.
   publish_skills:
     image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
