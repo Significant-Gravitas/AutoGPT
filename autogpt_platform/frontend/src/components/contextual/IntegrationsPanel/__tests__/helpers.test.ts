@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 
 import {
+  formatProviderList,
   filterProviders,
   formatMaskedValue,
   formatProviderName,
@@ -75,6 +76,14 @@ describe("formatProviderName", () => {
     expect(formatProviderName(null)).toBe("");
     expect(formatProviderName(42)).toBe("");
     expect(formatProviderName("")).toBe("");
+  });
+});
+
+describe("formatProviderList", () => {
+  test("names each service once, even when a skill lists its block and its MCP server", () => {
+    expect(formatProviderList(["linear", "mcp_linear", "mcp_amplitude"])).toBe(
+      "Linear and Amplitude",
+    );
   });
 });
 

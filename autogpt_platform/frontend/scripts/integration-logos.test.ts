@@ -42,7 +42,8 @@ describe("integration logo assets", () => {
 });
 
 describe("MCP catalog names", () => {
-  // ...and the page calls the service what the catalog does (#17336).
+  // Every catalog entry, named as a provider, reads as its display_name
+  // (#17336).
   test.each(catalog)(
     "$name, named as a provider, reads $display_name",
     (entry) => {

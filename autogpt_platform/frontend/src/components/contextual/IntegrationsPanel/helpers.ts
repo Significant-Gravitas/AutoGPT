@@ -100,12 +100,16 @@ export function formatProviderName(slug: unknown): string {
     .join(" ");
 }
 
-/** The services in `providers`, as one phrase: "Amplitude and Linear". */
+const PROVIDER_LIST = new Intl.ListFormat("en", {
+  style: "long",
+  type: "conjunction",
+});
+
+/** The services in `providers`, as one phrase: "Amplitude and Linear". A
+ * service named twice, such as `linear` and `mcp_linear`, is named once. */
 export function formatProviderList(providers: string[]): string {
-  return new Intl.ListFormat("en", {
-    style: "long",
-    type: "conjunction",
-  }).format(providers.map(formatProviderName).filter(Boolean));
+  const names = providers.map(formatProviderName).filter(Boolean);
+  return PROVIDER_LIST.format([...new Set(names)]);
 }
 
 export interface ServiceRef {
