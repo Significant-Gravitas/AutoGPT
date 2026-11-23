@@ -12,7 +12,6 @@ import {
   unservedStripeRequests,
 } from "./fake-stripe";
 import { expect, test } from "./fixtures";
-import { watchForUnexpectedErrors } from "./guard";
 
 // Buying credits on Settings → Billing, paid on the fake Stripe's checkout
 // page (fake-stripe.ts). One credit is one cent, so $7 buys 700.
@@ -25,190 +24,136 @@ const USD = new Intl.NumberFormat("en-US", {
 });
 
 test.describe("billing journey", () => {
-  test(
-    "credits bought through Stripe checkout are added once, however often Stripe reports the payment",
-    {
-      annotation: {
-        type: "issue",
-        description:
-          "https://github.com/Significant-Gravitas/AutoGPT/issues/17270",
-      },
-    },
-    async ({ page, journeyUser: _user }) => {
-      await requireFakeStripe();
-      const unexpected = watchForUnexpectedErrors(page.context(), []);
-      const stripeCursor = await stripeRequestCursor();
-      const before = await getCreditBalance(page);
-      await openAutomationCredits(page);
-      await expect(balance(page, before)).toBeVisible();
+  test("credits bought through Stripe checkout are added once, however often Stripe reports the payment", async ({
+    page,
+    journeyUser: _user,
+  }) => {
+    await requireFakeStripe();
+    const stripeCursor = await stripeRequestCursor();
+    const before = await getCreditBalance(page);
+    await openAutomationCredits(page);
+    await expect(balance(page, before)).toBeVisible();
 
-      const sessionID = await checkOut(page);
-      // The return page also fulfils the checkout itself, so hold that call
-      // until the purchase is credited: only the webhook can have done it.
-      let releaseFulfilment = () => {};
-      const fulfilmentHeld = new Promise<void>((resolve) => {
-        releaseFulfilment = resolve;
-      });
-      await page.route(`**${CREDITS_PATH}`, async (route) => {
-        if (route.request().method() === "PATCH") await fulfilmentHeld;
-        await route.fallback();
-      });
-      let completed: StripeEvent;
-      try {
-        await payAndReturn(page);
-
-        // The fake sends checkout.session.completed before the user is back.
-        const events = await stripeEvents(sessionID);
-        expect(events.map((event) => event.type)).toEqual([
-          "checkout.session.completed",
-        ]);
-        completed = events[0];
-        expect(
-          completed.deliveries.map((delivery) => delivery.status),
-          "the platform should acknowledge the payment",
-        ).toEqual([200]);
-        await expectAddedOnce(page, before, paymentIntent(completed));
-      } finally {
-        releaseFulfilment();
-      }
-      const fulfilled = await page.waitForResponse(isFulfilment, {
-        timeout: 15_000,
-      });
-      expect(fulfilled.ok(), "PATCH credits from the return page").toBe(true);
-      await page.unroute(`**${CREDITS_PATH}`);
-      await expectInLedgerOnce(page, before, paymentIntent(completed));
-
-      // Stripe sends an event again when it doesn't hear back in time.
-      const retried = await deliverEvent(completed.id);
-      expect(retried.status, retried.body).toBe(200);
-      // A delayed payment method ends with a second event about the session.
-      const succeeded = await sendEvent(
-        "checkout.session.async_payment_succeeded",
-        sessionID,
-      );
-      expect(succeeded.deliveries.map((delivery) => delivery.status)).toEqual([
-        200,
-      ]);
-      // And the return page asks the platform to fulfil it on every visit.
-      const fulfil = await page.request.patch(CREDITS_PATH);
-      expect(fulfil.ok(), `PATCH credits: ${fulfil.status()}`).toBe(true);
-
-      // The toast says to refresh if the credits don't show; the user does.
-      await page.reload();
-      const creditsTab = page.getByRole("tab", { name: "Automation Credits" });
-      await expect(creditsTab).toBeVisible();
-      // A fresh load of Automation Credits, in a page of its own: this one
-      // stays as the reload left it, for the pinned check at the end.
-      const credits = await page.context().newPage();
-      await openAutomationCredits(credits);
-      await expectAddedOnce(credits, before, paymentIntent(completed));
-      await credits.close();
-      expect(await unservedStripeRequests(stripeCursor)).toEqual([]);
-
-      // A known failure from here on, so anything above failing still fails
-      // the run.
-      await expectNothingFailedYet(unexpected);
-      test.fail(
-        true,
-        "#17270: a reload after buying credits opens the Subscription tab",
-      );
-      await expect(
-        creditsTab,
-        "the reload should stay on Automation Credits, where the toast said the credits would appear",
-      ).toHaveAttribute("aria-selected", "true", { timeout: 5_000 });
-    },
-  );
-
-  test(
-    "credits whose webhook reaches the platform after the user is back are added once, and the page shows them",
-    {
-      annotation: {
-        type: "issue",
-        description:
-          "https://github.com/Significant-Gravitas/AutoGPT/issues/17269",
-      },
-    },
-    async ({ page, journeyUser: _user }) => {
-      await requireFakeStripe();
-      const unexpected = watchForUnexpectedErrors(page.context(), []);
-      const stripeCursor = await stripeRequestCursor();
-      const before = await getCreditBalance(page);
-      await openAutomationCredits(page);
-      const sessionID = await checkOut(page);
-      await holdWebhooks(sessionID);
-
-      // With the webhook late, the return page fulfils the checkout itself.
-      // Against Stripe its balance read answers before that call, which waits
-      // on Stripe; the fake answers at once, so hold the call until the read
-      // is back, whatever the stack's speed.
-      const balanceRead = page
-        .waitForResponse(isBalanceRead, { timeout: 15_000 })
-        .catch(() => null);
-      await page.route(`**${CREDITS_PATH}`, async (route) => {
-        if (route.request().method() === "PATCH") await balanceRead;
-        await route.fallback();
-      });
-      const fulfilled = page.waitForResponse(isFulfilment);
+    const sessionID = await checkOut(page);
+    // The return page also fulfils the checkout itself, so hold that call
+    // until the purchase is credited: only the webhook can have done it.
+    let releaseFulfilment = () => {};
+    const fulfilmentHeld = new Promise<void>((resolve) => {
+      releaseFulfilment = resolve;
+    });
+    await page.route(`**${CREDITS_PATH}`, async (route) => {
+      if (route.request().method() === "PATCH") await fulfilmentHeld;
+      await route.fallback();
+    });
+    let completed: StripeEvent;
+    try {
       await payAndReturn(page);
-      expect((await fulfilled).ok(), "PATCH credits from the return page").toBe(
-        true,
-      );
-      // The wait's timeout still lets the call go, but without the read first
-      // this test proves nothing about the page, so it fails here.
-      const read = await balanceRead;
+
+      // The fake sends checkout.session.completed before the user is back.
+      const events = await stripeEvents(sessionID);
+      expect(events.map((event) => event.type)).toEqual([
+        "checkout.session.completed",
+      ]);
+      completed = events[0];
       expect(
-        read?.ok(),
-        "the return page should have read the balance before its fulfil call",
-      ).toBe(true);
-      const [completed, ...others] = await stripeEvents(sessionID);
-      expect(others).toEqual([]);
-      expect(completed.deliveries, "the webhook is held").toEqual([]);
-      await expectInLedgerOnce(page, before, paymentIntent(completed));
+        completed.deliveries.map((delivery) => delivery.status),
+        "the platform should acknowledge the payment",
+      ).toEqual([200]);
+      await expectAddedOnce(page, before, paymentIntent(completed));
+    } finally {
+      releaseFulfilment();
+    }
+    const fulfilled = await page.waitForResponse(isFulfilment, {
+      timeout: 15_000,
+    });
+    expect(fulfilled.ok(), "PATCH credits from the return page").toBe(true);
+    await page.unroute(`**${CREDITS_PATH}`);
+    await expectInLedgerOnce(page, before, paymentIntent(completed));
 
-      // Then Stripe's webhook arrives.
-      const late = await deliverEvent(completed.id);
-      expect(late.status, late.body).toBe(200);
-      await expectInLedgerOnce(page, before, paymentIntent(completed));
-      expect(await unservedStripeRequests(stripeCursor)).toEqual([]);
-      await page.unroute(`**${CREDITS_PATH}`);
+    // Stripe sends an event again when it doesn't hear back in time.
+    const retried = await deliverEvent(completed.id);
+    expect(retried.status, retried.body).toBe(200);
+    // A delayed payment method ends with a second event about the session.
+    const succeeded = await sendEvent(
+      "checkout.session.async_payment_succeeded",
+      sessionID,
+    );
+    expect(succeeded.deliveries.map((delivery) => delivery.status)).toEqual([
+      200,
+    ]);
+    // And the return page asks the platform to fulfil it on every visit.
+    const fulfil = await page.request.patch(CREDITS_PATH);
+    expect(fulfil.ok(), `PATCH credits: ${fulfil.status()}`).toBe(true);
 
-      // A known failure from here on, so anything above failing still fails
-      // the run.
-      await expectNothingFailedYet(unexpected);
-      test.fail(
-        true,
-        "#17269: the page keeps the old balance after its return from checkout credits the top-up",
-      );
-      await expect(
-        balance(page, before + TOP_UP),
-        "the page should show the credits its own fulfil call added",
-      ).toBeVisible({ timeout: 5_000 });
-      await expect(
-        purchases(page),
-        "the history should list the purchase without a reload",
-      ).toHaveCount(1, { timeout: 5_000 });
-    },
-  );
+    // The toast says to refresh if the credits don't show; the user does,
+    // and stays where the credits are (#17270).
+    await page.reload();
+    await expect(
+      page.getByRole("tab", { name: "Automation Credits" }),
+      "the reload should stay on Automation Credits, where the toast said the credits would appear",
+    ).toHaveAttribute("aria-selected", "true");
+    await expectAddedOnce(page, before, paymentIntent(completed));
+    expect(await unservedStripeRequests(stripeCursor)).toEqual([]);
+  });
+
+  test("credits whose webhook reaches the platform after the user is back are added once, and the page shows them", async ({
+    page,
+    journeyUser: _user,
+  }) => {
+    await requireFakeStripe();
+    const stripeCursor = await stripeRequestCursor();
+    const before = await getCreditBalance(page);
+    await openAutomationCredits(page);
+    const sessionID = await checkOut(page);
+    await holdWebhooks(sessionID);
+
+    // With the webhook late, the return page fulfils the checkout itself.
+    // Against Stripe its balance read answers before that call, which waits
+    // on Stripe; the fake answers at once, so hold the call until the read
+    // is back, whatever the stack's speed.
+    const balanceRead = page
+      .waitForResponse(isBalanceRead, { timeout: 15_000 })
+      .catch(() => null);
+    await page.route(`**${CREDITS_PATH}`, async (route) => {
+      if (route.request().method() === "PATCH") await balanceRead;
+      await route.fallback();
+    });
+    const fulfilled = page.waitForResponse(isFulfilment);
+    await payAndReturn(page);
+    expect((await fulfilled).ok(), "PATCH credits from the return page").toBe(
+      true,
+    );
+    // The wait's timeout still lets the call go, but without the read first
+    // this test proves nothing about the page, so it fails here.
+    const read = await balanceRead;
+    expect(
+      read?.ok(),
+      "the return page should have read the balance before its fulfil call",
+    ).toBe(true);
+    const [completed, ...others] = await stripeEvents(sessionID);
+    expect(others).toEqual([]);
+    expect(completed.deliveries, "the webhook is held").toEqual([]);
+    await expectInLedgerOnce(page, before, paymentIntent(completed));
+    // The page reads the credits again once its fulfil call is done
+    // (#17269). Within 5 s, so it's that read, not the later one it makes
+    // 10 s after, for a webhook that's still on its way.
+    await expect(
+      balance(page, before + TOP_UP),
+      "the page should show the credits its own fulfil call added",
+    ).toBeVisible({ timeout: 5_000 });
+    await expect(
+      purchases(page),
+      "the history should list the purchase without a reload",
+    ).toHaveCount(1, { timeout: 5_000 });
+
+    // Then Stripe's webhook arrives.
+    const late = await deliverEvent(completed.id);
+    expect(late.status, late.body).toBe(200);
+    await expectInLedgerOnce(page, before, paymentIntent(completed));
+    expect(await unservedStripeRequests(stripeCursor)).toEqual([]);
+    await page.unroute(`**${CREDITS_PATH}`);
+  });
 });
-
-/**
- * Checks made before a known failure is pinned, since test.fail() would take
- * any other failure for it: nothing failed softly, and the journey guard has
- * seen no unexpected error (its own check runs after the test).
- */
-async function expectNothingFailedYet(
-  guard: ReturnType<typeof watchForUnexpectedErrors>,
-) {
-  expect(
-    test.info().errors.map((error) => error.message),
-    "nothing before the known failure should have failed",
-  ).toEqual([]);
-  const problems = await guard.collect();
-  expect(
-    problems,
-    `unexpected error(s) before the known failure:\n\n${problems.join("\n\n")}`,
-  ).toEqual([]);
-}
 
 async function openAutomationCredits(page: Page) {
   await page.goto("/settings/billing?tab=automation-credits");
