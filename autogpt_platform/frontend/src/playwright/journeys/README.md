@@ -86,6 +86,8 @@ scripts load once per session. A page loads cleanly when:
 - it shows content of its own;
 - no error UI shows: the error card, the error page, or Next's not-found or
   exception page;
+- every image it asks Next's image optimizer for is in `public/` (the crawl
+  answers the others itself, so the server logs no error for them);
 - the guard sees no failed API call, page error or `console.error`.
 
 The pages are read from `src/app` when the tests are listed, so a new page is
@@ -101,13 +103,16 @@ a page links to aren't rendered alongside it.
   samples (`route-samples.ts`). Until it has one, the crawl annotates it
   "unsampled route" and doesn't fail. Add the sample, and the route to
   `DYNAMIC_ROUTES`.
-- **A page with an open bug:** give its entry a `bug` (issue, whom it shows
-  for, what goes wrong, and a pattern matching the problems it causes). It is
-  then left out of its group and crawled only in a test of its own, pinned to
-  the bug. Any other problem on the page still fails that test. A bug a plain
-  visit shows only now and then, or a page with a dynamic segment, needs a
-  visit that shows it every time, in the spec's `REPRODUCTIONS`: the
-  hydration bugs open their page with the browser's clock ahead.
+- **A page with an open bug:** add it to `KNOWN_BUGS` (`route-table.ts`):
+  the page, the issue, whom it shows for, what goes wrong, and a pattern
+  matching the problems it causes. The page is then left out of its group
+  and crawled in a test of its own per bug, pinned to it. Any other problem
+  on the page still fails that test. A bug a plain visit shows only now and
+  then, or a page with a dynamic segment, needs a visit that shows it every
+  time, in the spec's `REPRODUCTIONS`: the hydration bugs open their page
+  with the browser's clock ahead. A bug other pages show too, depending on
+  what they list, is `showsElsewhere`: their groups note it rather than
+  fail on it.
 
 ## Run locally
 

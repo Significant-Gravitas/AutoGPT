@@ -6,6 +6,7 @@ import {
   accessOf,
   DYNAMIC_ROUTES,
   isDynamic,
+  KNOWN_BUGS,
   listAppRoutes,
   ROUTE_RULES,
 } from "../route-table";
@@ -33,6 +34,14 @@ describe("the route crawl's table", () => {
     expect(
       Object.keys(DYNAMIC_ROUTES).filter(
         (route) => !routes.includes(route) || !isDynamic(route),
+      ),
+    ).toEqual([]);
+  });
+
+  it("pins bugs only on pages that exist", () => {
+    expect(
+      KNOWN_BUGS.map((bug) => bug.route).filter(
+        (route) => !routes.includes(route),
       ),
     ).toEqual([]);
   });

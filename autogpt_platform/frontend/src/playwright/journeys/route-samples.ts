@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { integrationIconSrc } from "../../components/molecules/IntegrationLogo/helpers";
 import { savedAssistantTexts } from "./copilot-chat";
 import {
   type Expert,
@@ -10,7 +11,7 @@ import {
 import { isLocalStack } from "./journey-user";
 import { ADD_34, createAgent, newListing, submitDirectly } from "./marketplace";
 import quickAnswer from "./model-scripts/quick-answer.json";
-import type { Sample } from "./route-crawl";
+import { existsInPublic, type Sample } from "./route-crawl";
 import { scriptedRun } from "./scripted-model";
 
 // Data for the route crawl's dynamic routes: what is already on the stack
@@ -30,10 +31,16 @@ const RUN_ENDED = /^(COMPLETED|FAILED|TERMINATED)$/;
 const SCRIPTED_MODEL_URL =
   process.env.PLAYWRIGHT_SCRIPTED_MODEL_URL ?? "http://localhost:4010";
 
+interface StoreSkill {
+  slug: string;
+  title: string;
+  required_providers: string[];
+}
+
 /**
- * An approved listing, its creator, an expert on the roster and a skill, as
- * the stack has them. CI's journeys leg loads the official listings, and the
- * roster with its skills.
+ * An approved listing, its creator, an expert on the roster and two skills,
+ * as the stack has them. CI's journeys leg loads the official listings, and
+ * the roster with its skills.
  */
 export async function sampleMarketplace(page: Page) {
   const [agents, experts, skills] = await Promise.all([
@@ -44,61 +51,55 @@ export async function sampleMarketplace(page: Page) {
       page,
       "/api/proxy/api/experts/templates",
     ),
-    getJSON<{ skills: { slug: string; title: string }[] }>(
+    getJSON<{ skills: StoreSkill[] }>(
       page,
-      "/api/proxy/api/store/skills?page_size=1",
+      "/api/proxy/api/store/skills?page_size=100",
     ),
   ]);
-  const samples: RouteSample[] = [];
-  const unsampled: Unsampled[] = [];
   const [agent] = agents.agents;
-  if (agent) {
-    const creator = encodeURIComponent(agent.creator);
-    samples.push(
-      {
-        route: "/marketplace/agent/[creator]/[slug]",
-        path: `/marketplace/agent/${creator}/${encodeURIComponent(agent.slug)}`,
-        shows: agent.agent_name,
-      },
-      {
-        route: "/marketplace/creator/[creator]",
-        path: `/marketplace/creator/${creator}`,
-      },
-    );
-  } else {
-    const why = "no approved listing on this stack";
-    unsampled.push(
-      { route: "/marketplace/agent/[creator]/[slug]", why },
-      { route: "/marketplace/creator/[creator]", why },
-    );
-  }
   const [expert] = experts;
-  if (expert) {
-    samples.push({
+  const creator = agent && encodeURIComponent(agent.creator);
+  return {
+    agent: agent && {
+      route: "/marketplace/agent/[creator]/[slug]",
+      path: `/marketplace/agent/${creator}/${encodeURIComponent(agent.slug)}`,
+      shows: agent.agent_name,
+    },
+    creator: agent && {
+      route: "/marketplace/creator/[creator]",
+      path: `/marketplace/creator/${creator}`,
+    },
+    expert: expert && {
       route: "/marketplace/experts/[expertId]",
       path: `/marketplace/experts/${expert.id}`,
       shows: expert.name,
-    });
-  } else {
-    unsampled.push({
-      route: "/marketplace/experts/[expertId]",
-      why: "no roster published on this stack",
-    });
-  }
-  const [skill] = skills.skills;
-  if (skill) {
-    samples.push({
+    },
+    // A skill whose logo, if it shows one, public/ has.
+    skill: skillSample(
+      skills.skills.find((skill) => hasItsLogo(skill.required_providers[0])),
+    ),
+    // A skill whose first service is an MCP server (#17313).
+    skillWithMCPService: skillSample(
+      skills.skills.find((skill) =>
+        skill.required_providers[0]?.startsWith("mcp_"),
+      ),
+    ),
+  };
+}
+
+function skillSample(skill: StoreSkill | undefined): RouteSample | undefined {
+  return (
+    skill && {
       route: "/marketplace/skills/[slug]",
       path: `/marketplace/skills/${encodeURIComponent(skill.slug)}`,
       shows: skill.title,
-    });
-  } else {
-    unsampled.push({
-      route: "/marketplace/skills/[slug]",
-      why: "no skill in this stack's Marketplace",
-    });
-  }
-  return { samples, unsampled };
+    }
+  );
+}
+
+function hasItsLogo(provider: string | undefined) {
+  const logo = provider ? integrationIconSrc(provider) : null;
+  return !logo || existsInPublic(logo);
 }
 
 /** A workflow of the user's own, in their Library. */

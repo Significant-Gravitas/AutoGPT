@@ -13,7 +13,13 @@ export type Access = "public" | "signed-in" | "admin";
 /** Whom a page is opened as: signed out, a signed-in user, or an admin. */
 export type Who = "visitor" | "user" | "admin";
 
+/**
+ * An open bug a page fails on. The page is left out of its group and crawled
+ * in a test of its own per bug, pinned to it (its visit is in the spec's
+ * REPRODUCTIONS when a plain one doesn't show the bug every time).
+ */
 export interface KnownBug {
+  route: string;
   issue: number;
   /** Whom the bug shows for. */
   who: Who;
@@ -22,6 +28,9 @@ export interface KnownBug {
   /** The problems the bug causes, as the crawl words them. Any other
    *  problem on the page still fails the test. */
   problem: RegExp;
+  /** Other pages can show it too, depending on the data they list. Their
+   *  groups don't fail on it: this bug's own test pins it. */
+  showsElsewhere?: boolean;
 }
 
 export interface RouteRule {
@@ -45,14 +54,49 @@ export interface RouteRule {
   ownSession?: boolean;
   /** Only a local stack serves it; anywhere else it is a 404. */
   localOnly?: boolean;
-  /** An open bug it fails on. The page is then crawled only in a test of
-   *  its own, pinned to the bug, and left out of its group. */
-  bug?: KnownBug;
 }
 
 // What a page shows as "… ago" is worked out on the server and again in the
 // browser; it reads differently when the age crosses a boundary in between.
 const TIME_AGO_MISMATCH = /Minified React error #418\b/;
+
+export const KNOWN_BUGS: KnownBug[] = [
+  {
+    route: "/admin/marketplace",
+    issue: 17309,
+    who: "admin",
+    what: "the review page throws React error #418 when a submission's age reads differently in the browser",
+    problem: TIME_AGO_MISMATCH,
+  },
+  {
+    route: "/marketplace/agent/[creator]/[slug]",
+    issue: 17310,
+    who: "visitor",
+    what: 'the page throws React error #418 when "Last updated" reads differently in the browser',
+    problem: TIME_AGO_MISMATCH,
+  },
+  {
+    route: "/marketplace/skills/[slug]",
+    issue: 17310,
+    who: "visitor",
+    what: 'the page throws React error #418 when "Updated" reads differently in the browser',
+    problem: TIME_AGO_MISMATCH,
+  },
+  {
+    route: "/marketplace/skills/[slug]",
+    issue: 17313,
+    who: "visitor",
+    what: "a skill whose first service is an MCP server asks for a logo public/ doesn't have",
+    problem: /asks for the image \/integrations\/mcp_/,
+    // Its card does the same on /marketplace and /marketplace/skills, when
+    // it is among the skills they list.
+    showsElsewhere: true,
+  },
+];
+
+export function hasKnownBug(route: string) {
+  return KNOWN_BUGS.some((bug) => bug.route === route);
+}
 
 const MISSING_OAUTH_PARAMETERS = {
   showsErrorCard: true,
@@ -115,33 +159,6 @@ export const ROUTE_RULES: Record<string, RouteRule> = {
     reason:
       "an OAuth app's integrations setup: opened without the app's request, it says what's missing",
     ...MISSING_OAUTH_PARAMETERS,
-  },
-  "/admin/marketplace": {
-    reason: "shows how long ago each listing was submitted",
-    bug: {
-      issue: 17309,
-      who: "admin",
-      what: "the review page throws React error #418 when a submission's age reads differently in the browser",
-      problem: TIME_AGO_MISMATCH,
-    },
-  },
-  "/marketplace/agent/[creator]/[slug]": {
-    reason: "shows how long ago the listing was updated",
-    bug: {
-      issue: 17310,
-      who: "visitor",
-      what: 'the page throws React error #418 when "Last updated" reads differently in the browser',
-      problem: TIME_AGO_MISMATCH,
-    },
-  },
-  "/marketplace/skills/[slug]": {
-    reason: "shows how long ago the skill was updated",
-    bug: {
-      issue: 17310,
-      who: "visitor",
-      what: 'the page throws React error #418 when "Updated" reads differently in the browser',
-      problem: TIME_AGO_MISMATCH,
-    },
   },
   "/admin/impersonation": {
     reason: "opens Users, where an admin starts impersonating",

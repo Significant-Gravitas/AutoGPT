@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import type {
   Browser,
   BrowserContext,
@@ -208,6 +210,7 @@ async function openContext(
     await markChangelogSeen(context);
     await serveHostedFlags(context, env.flagOverrides);
     await context.route(/[?&]_rsc=/, answerPrefetchesEmpty);
+    await context.route(/\/_next\/image\?/, answerMissingImages);
     if (clockAheadMs) {
       await context.clock.install({ time: Date.now() + clockAheadMs });
     }
@@ -261,6 +264,9 @@ async function checkPage(page: Page, visit: Visit) {
     );
   }
   problems.push(...failedDocuments);
+  for (const image of missingImages.get(page) ?? []) {
+    problems.push(`it asks for the image ${image}, which public/ doesn't have`);
+  }
   return problems;
 }
 
@@ -275,6 +281,42 @@ async function answerPrefetchesEmpty(route: Route) {
     await route.fulfill({ status: 204 });
   } else {
     await route.fallback();
+  }
+}
+
+const PUBLIC_DIR = path.resolve(__dirname, "../../../public");
+// Images each page asked for that public/ doesn't have.
+const missingImages = new WeakMap<Page, Set<string>>();
+
+// Next's image optimizer logs an error for an image public/ doesn't have,
+// and the leg's check of the server log then fails without naming a page.
+// The crawl answers those requests itself, with a 404, and reports each on
+// the page that asked.
+async function answerMissingImages(route: Route) {
+  const image = new URL(route.request().url()).searchParams.get("url");
+  if (!image?.startsWith("/") || image.startsWith("//")) {
+    return route.fallback();
+  }
+  if (existsInPublic(image)) return route.fallback();
+  const page = pageOf(route.request());
+  if (page) {
+    missingImages.set(page, (missingImages.get(page) ?? new Set()).add(image));
+  }
+  await route.fulfill({ status: 404 });
+}
+
+/** Whether public/ has the file the app serves at `image`. */
+export function existsInPublic(image: string) {
+  const file = path.join(PUBLIC_DIR, decodeURIComponent(image.split("?")[0]));
+  return file.startsWith(PUBLIC_DIR + path.sep) && fs.existsSync(file);
+}
+
+function pageOf(request: Request) {
+  try {
+    return request.frame().page();
+  } catch {
+    // A service worker's request has no frame.
+    return undefined;
   }
 }
 

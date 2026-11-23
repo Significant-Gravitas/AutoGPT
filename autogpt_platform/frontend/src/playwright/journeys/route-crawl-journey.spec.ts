@@ -24,6 +24,7 @@ import {
   hireAnExpert,
   letGo,
   makeWorkflow,
+  type RouteSample,
   sampleMarketplace,
   shareAChat,
   shareARun,
@@ -33,7 +34,10 @@ import {
 import {
   accessOf,
   DYNAMIC_ROUTES,
+  hasKnownBug,
   isDynamic,
+  KNOWN_BUGS,
+  type KnownBug,
   listAppRoutes,
   ROUTE_RULES,
   type Who,
@@ -58,10 +62,10 @@ const ROUTES = listAppRoutes();
 const STATIC_ROUTES = ROUTES.filter((route) => !isDynamic(route));
 const DYNAMIC = ROUTES.filter(isDynamic);
 
-// A page pinned to an open bug is crawled only in its own test, as whom the
-// bug shows for: its group would fail on the bug, or now and then on it.
+// A page with an open bug is crawled only in a test of its own per bug, as
+// whom the bug shows for: its group would fail on the bug, or now and then.
 function crawledInGroup(route: string) {
-  return !ROUTE_RULES[route]?.bug;
+  return !hasKnownBug(route);
 }
 
 const PUBLIC_SLICES = slices(
@@ -79,10 +83,6 @@ const ADMIN_SLICES = slices(
     (route) => accessOf(route) === "admin" && crawledInGroup(route),
   ),
 );
-const PINNED = ROUTES.flatMap((route) => {
-  const bug = ROUTE_RULES[route]?.bug;
-  return bug ? [{ route, bug }] : [];
-});
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Dynamic routes nothing here samples: a page added later lands here, with
@@ -168,19 +168,22 @@ test.describe("route crawl journey", () => {
     journeyUser,
   }) => {
     const env = { browser, baseURL, flagOverrides };
-    const { samples, unsampled } = await sampleMarketplace(page);
-    annotateUnsampled(unsampled);
+    const { creator, expert } = await sampleMarketplace(page);
+    const samples = [
+      creator ??
+        unsampled("/marketplace/creator/[creator]", "no approved listing"),
+      expert ??
+        unsampled("/marketplace/experts/[expertId]", "no roster published"),
+    ].filter((sample): sample is RouteSample => sample !== null);
     const user = await sessionOf(page, "user", journeyUser);
     const visitor: Session = { who: "visitor" };
     await expectAllClean(
       await crawl(
         env,
-        samples
-          .filter((sample) => crawledInGroup(sample.route))
-          .flatMap((sample) => [
-            planVisit(sample.route, visitor, sample),
-            planVisit(sample.route, user, sample),
-          ]),
+        samples.flatMap((sample) => [
+          planVisit(sample.route, visitor, sample),
+          planVisit(sample.route, user, sample),
+        ]),
       ),
     );
   });
@@ -283,15 +286,16 @@ test.describe("route crawl journey", () => {
     );
   });
 
-  for (const { route, bug } of PINNED) {
+  for (const bug of KNOWN_BUGS) {
+    const { route, who, issue } = bug;
     test(
-      `${route} loads for ${bug.who === "visitor" ? "a signed-out visitor" : `the ${bug.who}`} (known bug #${bug.issue})`,
-      { annotation: { type: "issue", description: `${ISSUES}/${bug.issue}` } },
+      `${route} loads for ${who === "visitor" ? "a signed-out visitor" : `the ${who}`} (known bug #${issue})`,
+      { annotation: { type: "issue", description: `${ISSUES}/${issue}` } },
       async ({ browser, baseURL, flagOverrides, page }) => {
-        const noAdmin = bug.who === "admin" && adminGrantUnavailable();
+        const noAdmin = who === "admin" && adminGrantUnavailable();
         test.skip(Boolean(noAdmin), noAdmin || undefined);
         const env = { browser, baseURL, flagOverrides };
-        const reproduce = REPRODUCTIONS[route];
+        const reproduce = REPRODUCTIONS[reproductionKey(bug)];
         if (!reproduce && isDynamic(route)) {
           throw new Error(
             `${route} has a dynamic segment: give its pin a visit in REPRODUCTIONS`,
@@ -299,22 +303,36 @@ test.describe("route crawl journey", () => {
         }
         const [result] = reproduce
           ? await reproduce(env, page)
-          : await crawlAs(env, page, bug.who, [route]);
+          : await crawlAs(env, page, who, [route]);
+        // The page's other known bugs have pins of their own.
+        const others = KNOWN_BUGS.filter(
+          (other) => other.route === route && other !== bug,
+        );
         const unrelated = result.problems.filter(
-          (problem) => !bug.problem.test(problem),
+          (problem) =>
+            !bug.problem.test(problem) &&
+            !others.some((other) => other.problem.test(problem)),
         );
-        expect(unrelated, `${route} should fail only on #${bug.issue}`).toEqual(
-          [],
-        );
+        expect(
+          unrelated,
+          `${route} should fail only on its known bugs`,
+        ).toEqual([]);
         const pinned = pinKnownFailure(
-          `#${bug.issue}: ${bug.what}`,
-          `${route} should load cleanly for the ${bug.who}`,
+          `#${issue}: ${bug.what}`,
+          `${route} should load without #${issue} for the ${who}`,
         );
-        expect(result.problems, pinned).toEqual([]);
+        expect(
+          result.problems.filter((problem) => bug.problem.test(problem)),
+          pinned,
+        ).toEqual([]);
       },
     );
   }
 });
+
+function reproductionKey({ route, issue }: KnownBug) {
+  return `${route} #${issue}`;
+}
 
 // A pinned bug that a plain visit doesn't show every time gets the visit
 // that does. Any other is crawled as whom the bug shows for.
@@ -324,8 +342,8 @@ const REPRODUCTIONS: Record<
 > = {
   // A submission's age is worked out on the server and again in the
   // browser. With the browser's clock ahead, one submitted moments ago reads
-  // differently in each, every time (#17309).
-  "/admin/marketplace": (env, page) =>
+  // differently in each, every time.
+  "/admin/marketplace #17309": (env, page) =>
     asAnAdmin(page, async (admin) => {
       const listing = await submitAListing(page);
       return crawl(env, [
@@ -336,27 +354,29 @@ const REPRODUCTIONS: Record<
         }),
       ]);
     }),
-  // The same for "Last updated" and "Updated" (#17310). Two days ahead
-  // changes what any age reads.
-  "/marketplace/agent/[creator]/[slug]": (env, page) =>
-    visitAheadOfTheServer(env, page, "/marketplace/agent/[creator]/[slug]"),
-  "/marketplace/skills/[slug]": (env, page) =>
-    visitAheadOfTheServer(env, page, "/marketplace/skills/[slug]"),
+  // The same for "Last updated" and "Updated". Two days ahead changes what
+  // any age reads.
+  "/marketplace/agent/[creator]/[slug] #17310": async (env, page) =>
+    visitAsVisitor(env, (await sampleMarketplace(page)).agent, 2 * DAY_MS),
+  "/marketplace/skills/[slug] #17310": async (env, page) =>
+    visitAsVisitor(env, (await sampleMarketplace(page)).skill, 2 * DAY_MS),
+  // A skill whose first service is an MCP server asks for its logo under the
+  // server's name.
+  "/marketplace/skills/[slug] #17313": async (env, page) =>
+    visitAsVisitor(env, (await sampleMarketplace(page)).skillWithMCPService),
 };
 
-/** The Marketplace's sample for `route`, opened signed out, the browser's
- *  clock two days ahead of the server's. */
-async function visitAheadOfTheServer(env: CrawlEnv, page: Page, route: string) {
-  const { samples } = await sampleMarketplace(page);
-  const sample = samples.find((candidate) => candidate.route === route);
-  test.skip(!sample, `nothing on this stack to open at ${route}`);
+/** The Marketplace's `sample`, opened signed out, the browser's clock
+ *  `clockAheadMs` ahead of the server's. */
+async function visitAsVisitor(
+  env: CrawlEnv,
+  sample: RouteSample | undefined,
+  clockAheadMs?: number,
+) {
+  test.skip(!sample, "this stack has nothing to open for it");
   if (!sample) return [];
   return crawl(env, [
-    planVisit(
-      route,
-      { who: "visitor" },
-      { ...sample, clockAheadMs: 2 * DAY_MS },
-    ),
+    planVisit(sample.route, { who: "visitor" }, { ...sample, clockAheadMs }),
   ]);
 }
 
@@ -412,6 +432,12 @@ function servedHere(route: string) {
   return false;
 }
 
+/** Says a sample is missing, for a list of samples to leave it out of. */
+function unsampled(route: string, why: string) {
+  annotateUnsampled([{ route, why: `${why} on this stack` }]);
+  return null;
+}
+
 function annotateUnsampled(unsampled: Unsampled[]) {
   for (const { route, why } of unsampled) {
     test.info().annotations.push({
@@ -426,12 +452,28 @@ async function expectAllClean(results: VisitResult[]) {
     body: JSON.stringify(summarize(results), null, 2),
     contentType: "application/json",
   });
-  const failures = describeFailures(results);
+  const failures = describeFailures(results.map(setAsidePinnedElsewhere));
   expect(
     failures.length,
     `${failures.length} of ${results.length} pages didn't load cleanly:\n\n` +
       failures.join("\n\n"),
   ).toBe(0);
+}
+
+// A known bug that shows on other pages, depending on what they list, is
+// pinned by its own test: a group notes it on its pages rather than fail.
+function setAsidePinnedElsewhere(result: VisitResult): VisitResult {
+  const elsewhere = KNOWN_BUGS.filter((bug) => bug.showsElsewhere);
+  const problems = result.problems.filter((problem) => {
+    const bug = elsewhere.find((known) => known.problem.test(problem));
+    if (!bug) return true;
+    test.info().annotations.push({
+      type: "known bug seen",
+      description: `#${bug.issue} on ${result.visit.path}: ${problem}`,
+    });
+    return false;
+  });
+  return { ...result, problems };
 }
 
 // The pages in near-equal slices of at most PAGES_PER_TEST, in route order.
