@@ -692,10 +692,8 @@ def test_events_go_out_in_the_order_they_are_recorded(
         if free:
             events._lock.release()
         assert not free, "an event was recorded, then queued in a separate step"
-    finally:
         release.set()
         first.join(5)
-    try:
         events.emit("customer.updated", {"id": "cus_second", "object": "customer"})
         received = _wait_for(
             lambda: [e.data.object["id"] for e in stack.receiver.events],
@@ -704,6 +702,8 @@ def test_events_go_out_in_the_order_they_are_recorded(
         assert received == ["cus_first", "cus_second"]
         assert [r["object"] for r in events.find()] == ["cus_first", "cus_second"]
     finally:
+        release.set()
+        first.join(5)
         events.close()
 
 
@@ -730,7 +730,9 @@ class _FirstPutWaits:
     def put(self, item: Any) -> None:
         if not self._paused.is_set():
             self._paused.set()
-            self._release.wait(10)
+            # Until the test lets it go, however long that takes: its
+            # ``finally`` always does.
+            self._release.wait()
         self._inner.put(item)
 
     def get(self) -> Any:
