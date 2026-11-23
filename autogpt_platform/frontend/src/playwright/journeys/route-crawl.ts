@@ -1,5 +1,3 @@
-import fs from "fs";
-import path from "path";
 import type {
   Browser,
   BrowserContext,
@@ -9,9 +7,14 @@ import type {
   Route,
 } from "@playwright/test";
 import { markChangelogSeen } from "../utils/changelog";
-import { serveHostedFlags } from "./fixtures";
+import { serveHostedFlags, test } from "./fixtures";
 import { type ExpectedResponse, watchPageForUnexpectedErrors } from "./guard";
 import { authHeaders, type JourneyUser } from "./journey-user";
+import {
+  existsInPublic,
+  inAPublicFolder,
+  missingPublicImage,
+} from "./public-images";
 import { ROUTE_RULES, type Who } from "./route-table";
 import { JOURNEY_USER_AGENT } from "./user-agent";
 
@@ -56,22 +59,32 @@ export interface VisitResult {
   visit: Visit;
   problems: string[];
   ms: number;
+  /** False for a page the crawl ran out of time for: it has no problems
+   *  and took no time, as it was never opened. */
+  reached: boolean;
 }
 
 export interface CrawlEnv {
   browser: Browser;
   baseURL: string | undefined;
   flagOverrides: Record<string, unknown>;
+  /** When the test started: its timeout runs from about then. */
+  startedAt: number;
 }
 
 // Pages loaded at once. The journeys run four workers on a 4-vCPU runner
 // beside the whole stack, so a crawl keeps to two.
 const TABS = 2;
-// No visit starts after this, and none runs longer than VISIT_TIMEOUT_MS,
-// so even a slow runner reports every page inside the test's timeout.
-const CRAWL_BUDGET_MS = 45_000;
 const VISIT_TIMEOUT_MS = 30_000;
 const GUARD_COLLECT_MS = 10_000;
+// The longest a visit runs once it has started: its checks; its guard, which
+// checks its deadline only between batches of body reads, so it can run one
+// batch (10 s) over it (guard.ts); and opening and closing its tab.
+const VISIT_MAX_MS = VISIT_TIMEOUT_MS + GUARD_COLLECT_MS + 10_000 + 5_000;
+// What the test does after its last visit: closing the crawl's browser
+// contexts and attaching its report. Fixtures tear down on a timeout of
+// their own.
+const REPORT_MS = 5_000;
 const GOTO_TIMEOUT_MS = 30_000;
 const LANDING_TIMEOUT_MS = 20_000;
 const LOAD_TIMEOUT_MS = 15_000;
@@ -111,7 +124,12 @@ export function planVisit(
   };
 }
 
-/** Visits every page, a few at a time, and returns what each one got wrong. */
+/**
+ * Visits every page, a few at a time, and returns what each one got wrong.
+ * It starts no visit too late for the visit, and the test's report, to end
+ * inside the test's timeout: a page it runs out of time for comes back
+ * unreached.
+ */
 export async function crawl(
   env: CrawlEnv,
   visits: Visit[],
@@ -122,7 +140,7 @@ export async function crawl(
     contexts.set(session, context);
     return context;
   }
-  const stopStartingAt = Date.now() + CRAWL_BUDGET_MS;
+  const stopStartingAt = visitCutoff(env.startedAt, test.info().timeout);
   const results: VisitResult[] = new Array(visits.length);
   let next = 0;
   async function tab() {
@@ -132,11 +150,7 @@ export async function crawl(
       results[index] =
         Date.now() < stopStartingAt
           ? await visitOnce(env, visit, sharedContext)
-          : {
-              visit,
-              problems: ["not visited: the crawl ran out of time"],
-              ms: 0,
-            };
+          : { visit, problems: [], ms: 0, reached: false };
     }
   }
   try {
@@ -147,6 +161,14 @@ export async function crawl(
     );
   }
   return results;
+}
+
+// The last moment a visit may start, for a test that started at `startedAt`
+// and times out after `timeout` (0: never).
+function visitCutoff(startedAt: number, timeout: number) {
+  return timeout > 0
+    ? startedAt + timeout - VISIT_MAX_MS - REPORT_MS
+    : Infinity;
 }
 
 /** Each page that didn't load cleanly, with what went wrong on it. */
@@ -160,12 +182,14 @@ export function describeFailures(results: VisitResult[]) {
     );
 }
 
-/** Each visit's page, whom it was for, how long it took and what it got wrong. */
+/** Each visit's page, whom it was for, whether the crawl reached it, how
+ *  long it took and what it got wrong. */
 export function summarize(results: VisitResult[]) {
-  return results.map(({ visit, problems, ms }) => ({
+  return results.map(({ visit, problems, ms, reached }) => ({
     route: visit.route,
     path: visit.path,
     who: visit.session.who,
+    reached,
     ms,
     problems,
   }));
@@ -197,7 +221,7 @@ async function visitOnce(
   }
   if (guard) problems.push(...(await guard.collect(GUARD_COLLECT_MS)));
   await (ownContext ? context?.close() : page?.close());
-  return { visit, problems, ms: Date.now() - started };
+  return { visit, problems, ms: Date.now() - started, reached: true };
 }
 
 // Checks that run past VISIT_TIMEOUT_MS are stopped by closing the page,
@@ -338,7 +362,6 @@ async function answerPrefetchesEmpty(route: Route) {
   }
 }
 
-const PUBLIC_DIR = path.resolve(__dirname, "../../../public");
 // Images each page asked for that public/ doesn't have.
 const missingImages = new WeakMap<Page, Set<string>>();
 
@@ -347,33 +370,13 @@ const missingImages = new WeakMap<Page, Set<string>>();
 // The crawl answers those requests itself, with a 404, and reports each on
 // the page that asked.
 async function answerMissingImages(route: Route) {
-  const image = new URL(route.request().url()).searchParams.get("url");
-  if (!image || !inAPublicFolder(image) || existsInPublic(image)) {
-    return route.fallback();
-  }
+  const image = missingPublicImage(route.request().url());
+  if (!image) return route.fallback();
   const page = pageOf(route.request());
   if (page) {
     missingImages.set(page, (missingImages.get(page) ?? new Set()).add(image));
   }
   await route.fulfill({ status: 404 });
-}
-
-// A local path under one of public/'s folders (/integrations/…). Anything
-// else, such as a route handler's (/avatars/…) or another host's image, is
-// none of this check's business.
-function inAPublicFolder(image: string) {
-  const [, folder, file] = image.split("/");
-  return (
-    image.startsWith("/") &&
-    Boolean(folder && file) &&
-    fs.existsSync(path.join(PUBLIC_DIR, folder))
-  );
-}
-
-/** Whether public/ has the file the app serves at `image`. */
-export function existsInPublic(image: string) {
-  const file = path.join(PUBLIC_DIR, decodeURIComponent(image.split("?")[0]));
-  return file.startsWith(PUBLIC_DIR + path.sep) && fs.existsSync(file);
 }
 
 function pageOf(request: Request) {

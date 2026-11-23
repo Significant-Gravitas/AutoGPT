@@ -54,6 +54,12 @@ export interface RouteRule {
   ownSession?: boolean;
   /** Only a local stack serves it; anywhere else it is a 404. */
   localOnly?: boolean;
+  /**
+   * Only a stack that takes payments serves it: a hosted one, or a
+   * self-hosted one whose operator turned payments on. On any other
+   * self-hosted stack it is a 404.
+   */
+  hostedOnly?: boolean;
 }
 
 // What a page shows as "… ago" is worked out on the server and again in the
@@ -165,8 +171,14 @@ export const ROUTE_RULES: Record<string, RouteRule> = {
     landsOn: "/settings/api-keys",
   },
   "/profile/credits": {
-    reason: "an old link: the page moved to Settings",
+    reason: "an old link: the page moved to Settings, to Billing",
     landsOn: "/settings/billing",
+    hostedOnly: true,
+  },
+  "/settings/billing": {
+    reason:
+      "Billing: a self-hosted stack without payments answers it with the not-found page (useBillingStatus)",
+    hostedOnly: true,
   },
   "/profile/dashboard": {
     reason: "an old link: the page moved to Settings",
@@ -260,21 +272,76 @@ export const ROUTE_RULES: Record<string, RouteRule> = {
   },
 };
 
-/** How the crawl samples each page with a dynamic segment, or why it can't. */
-export const DYNAMIC_ROUTES: Record<string, string> = {
-  "/marketplace/agent/[creator]/[slug]":
-    "an approved listing on the stack (CI loads the official ones)",
-  "/marketplace/creator/[creator]": "the creator of that listing",
-  "/marketplace/experts/[expertId]": "an expert on the published roster",
-  "/marketplace/skills/[slug]": "a skill in the Marketplace",
-  "/library/agents/[id]": "a workflow the journey makes",
-  "/team/[expertId]": "an expert the journey hires",
-  "/share/[token]": "a run the journey shares",
-  "/share/chat/[token]": "a chat the journey shares",
-  "/admin/marketplace/preview/[id]": "a listing the journey submits",
-  "/link/[token]":
-    "an unknown setup link, which shows the page's own failure state: only a chat bot makes real ones",
+/** The route crawl's test that samples a page with a dynamic segment. */
+export type Sampler = "marketplace" | "own data" | "shared" | "admin";
+
+export interface DynamicRoute {
+  /** The test that samples it. It fails unless it crawls the page or says
+   *  why it can't, so an entry here always ends up crawled or noted. */
+  sampledIn: Sampler;
+  /** What the page is opened with. */
+  sample: string;
+}
+
+/** How the crawl samples each page with a dynamic segment, and in which test. */
+export const DYNAMIC_ROUTES: Record<string, DynamicRoute> = {
+  "/marketplace/agent/[creator]/[slug]": {
+    sampledIn: "marketplace",
+    sample: "an approved listing on the stack (CI loads the official ones)",
+  },
+  "/marketplace/creator/[creator]": {
+    sampledIn: "marketplace",
+    sample: "the creator of that listing",
+  },
+  "/marketplace/experts/[expertId]": {
+    sampledIn: "marketplace",
+    sample: "an expert on the published roster",
+  },
+  "/marketplace/skills/[slug]": {
+    sampledIn: "marketplace",
+    sample: "a skill in the Marketplace",
+  },
+  "/library/agents/[id]": {
+    sampledIn: "own data",
+    sample: "a workflow the journey makes",
+  },
+  "/team/[expertId]": {
+    sampledIn: "own data",
+    sample: "an expert the journey hires",
+  },
+  "/link/[token]": {
+    sampledIn: "own data",
+    sample:
+      "an unknown setup link, which shows the page's own failure state: only a chat bot makes real ones",
+  },
+  "/share/[token]": { sampledIn: "shared", sample: "a run the journey shares" },
+  "/share/chat/[token]": {
+    sampledIn: "shared",
+    sample: "a chat the journey shares",
+  },
+  "/admin/marketplace/preview/[id]": {
+    sampledIn: "admin",
+    sample: "a listing the journey submits",
+  },
 };
+
+/**
+ * The routes `table` gives `sampler` that a test of it has no sample for
+ * (`missing`), and the ones it samples that `table` gives another test or
+ * none (`misplaced`). `sampled` counts a route it says it can't sample.
+ */
+export function samplingGaps(
+  sampler: Sampler,
+  sampled: string[],
+  table: Record<string, DynamicRoute> = DYNAMIC_ROUTES,
+) {
+  return {
+    missing: Object.keys(table).filter(
+      (route) => table[route].sampledIn === sampler && !sampled.includes(route),
+    ),
+    misplaced: sampled.filter((route) => table[route]?.sampledIn !== sampler),
+  };
+}
 
 const APP_DIR = path.resolve(__dirname, "../../app");
 const PAGE_FILE = /^page\.(tsx|ts|jsx|js|mdx)$/;
