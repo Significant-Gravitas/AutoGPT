@@ -775,14 +775,16 @@ jobs:
 
       # publish_skills is a one-shot nothing else waits for, and the skill
       # journeys need what it publishes: wait for it, and fail on its own
-      # error rather than on the tests it would leave skipped.
+      # error rather than on the tests it would leave skipped. The cap covers
+      # its download retries at their slowest (skill_catalog_github.py): six
+      # attempts of up to 120 s each and about 93 s of backoff, ~820 s.
       - name: Set up Platform - Wait for the skills catalog publish
         if: matrix.suite == 'journeys'
         run: |
           compose() { docker compose -f ../docker-compose.resolved.yml "$@"; }
           container=$(compose ps -a -q publish_skills 2>/dev/null) || true
           [ -n "$container" ] || exit 0
-          code=$(timeout 600 docker wait "$container") || code="none after 600 s"
+          code=$(timeout 900 docker wait "$container") || code="none after 900 s"
           [ "$code" = 0 ] && exit 0
           error=$(compose logs --no-log-prefix publish_skills 2>&1 | sed -n 's/^error: //p' | tail -n 1)
           echo "::error title=publish_skills failed::publish_skills failed: ${error:-exit status $code}"
