@@ -63,12 +63,15 @@ export function checkoutSessionID(pageURL: string) {
  * user is back on its page.
  */
 export async function holdWebhooks(objectID: string) {
-  await control("POST", `hold?object=${encodeURIComponent(objectID)}`);
+  await control<{ held: string }>(
+    "POST",
+    `hold?object=${encodeURIComponent(objectID)}`,
+  );
 }
 
 /** Every webhook event about `objectID`, oldest first, with its deliveries. */
 export async function stripeEvents(objectID: string): Promise<StripeEvent[]> {
-  const body = await control(
+  const body = await control<{ events: StripeEvent[] }>(
     "GET",
     `events?object=${encodeURIComponent(objectID)}`,
   );
@@ -77,7 +80,7 @@ export async function stripeEvents(objectID: string): Promise<StripeEvent[]> {
 
 /** Delivers an event again, as Stripe retries one, or a held one at last. */
 export async function deliverEvent(eventID: string): Promise<StripeDelivery> {
-  const body = await control(
+  const body = await control<{ delivery: StripeDelivery }>(
     "POST",
     `events/${encodeURIComponent(eventID)}/deliver`,
   );
@@ -89,7 +92,7 @@ export async function sendEvent(
   type: string,
   objectID: string,
 ): Promise<StripeEvent> {
-  return control("POST", "events", { type, object: objectID });
+  return control<StripeEvent>("POST", "events", { type, object: objectID });
 }
 
 /**
@@ -97,7 +100,7 @@ export async function sendEvent(
  * give it to `unservedStripeRequests` to look only at the journey's calls.
  */
 export async function stripeRequestCursor(): Promise<number> {
-  const body = await control("GET", "requests/cursor");
+  const body = await control<{ cursor: number }>("GET", "requests/cursor");
   return body.cursor;
 }
 
@@ -107,12 +110,28 @@ export async function stripeRequestCursor(): Promise<number> {
  */
 export async function unservedStripeRequests(
   cursor: number,
-): Promise<{ method: string; path: string; status: number }[]> {
-  const body = await control("GET", `requests?unserved=true&after=${cursor}`);
+): Promise<StripeRequest[]> {
+  const body = await control<{ requests: StripeRequest[] }>(
+    "GET",
+    `requests?unserved=true&after=${cursor}`,
+  );
   return body.requests;
 }
 
-async function control(method: string, path: string, body?: unknown) {
+/** A Stripe API call the platform made, as the fake journals it. */
+export interface StripeRequest {
+  seq: number;
+  method: string;
+  path: string;
+  status: number;
+  served: boolean;
+}
+
+async function control<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<T> {
   const response = await fetch(`${FAKE_STRIPE_URL}/__stripe__/${path}`, {
     method,
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -122,5 +141,5 @@ async function control(method: string, path: string, body?: unknown) {
     response.ok,
     `${method} fake Stripe ${path}: ${response.status} ${await response.clone().text()}`,
   ).toBe(true);
-  return response.json();
+  return (await response.json()) as T;
 }

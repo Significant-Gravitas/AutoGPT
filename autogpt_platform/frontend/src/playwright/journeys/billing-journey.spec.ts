@@ -1,4 +1,4 @@
-import type { Page, Response } from "@playwright/test";
+import type { Page, Request, Response } from "@playwright/test";
 import { getCreditBalance, getCreditTransactions } from "./credits";
 import {
   checkoutSessionID,
@@ -18,6 +18,7 @@ import { expect, test } from "./fixtures";
 const TOP_UP_DOLLARS = 7;
 const TOP_UP = TOP_UP_DOLLARS * 100;
 const CREDITS_PATH = "/api/proxy/api/credits";
+const HISTORY_PATH = "/api/proxy/api/credits/transactions";
 const USD = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
@@ -118,40 +119,67 @@ test.describe("billing journey", () => {
       if (route.request().method() === "PATCH") await balanceRead;
       await route.fallback();
     });
-    const fulfilled = page.waitForResponse(isFulfilment);
-    await payAndReturn(page);
-    expect((await fulfilled).ok(), "PATCH credits from the return page").toBe(
-      true,
-    );
-    // The wait's timeout still lets the call go, but without the read first
-    // this test proves nothing about the page, so it fails here.
-    const read = await balanceRead;
-    expect(
-      read?.ok(),
-      "the return page should have read the balance before its fulfil call",
-    ).toBe(true);
-    const [completed, ...others] = await stripeEvents(sessionID);
-    expect(others).toEqual([]);
-    expect(completed.deliveries, "the webhook is held").toEqual([]);
-    await expectInLedgerOnce(page, before, paymentIntent(completed));
-    // The page reads the credits again once its fulfil call is done
-    // (#17269). Within 5 s, so it's that read, not the later one it makes
-    // 10 s after, for a webhook that's still on its way.
-    await expect(
-      balance(page, before + TOP_UP),
-      "the page should show the credits its own fulfil call added",
-    ).toBeVisible({ timeout: 5_000 });
-    await expect(
-      purchases(page),
-      "the history should list the purchase without a reload",
-    ).toHaveCount(1, { timeout: 5_000 });
+    let completed: StripeEvent;
+    try {
+      const refreshReads = getsAfter(page, isFulfilment);
+      const fulfilled = page.waitForResponse(isFulfilment);
+      // Once its fulfil call is done, the page reads the credits again
+      // (#17269), and a second time 10 s later for a webhook still on its
+      // way. On the page's own clock, paused as the call answers, that
+      // second read can never stand in for the first.
+      await page.clock.install();
+      await payAndReturn(page);
+      expect((await fulfilled).ok(), "PATCH credits from the return page").toBe(
+        true,
+      );
+      await page.clock.pauseAt(Date.now() + 1_000);
+      // The wait's timeout still lets the call go, but without the read
+      // first this test proves nothing about the page, so it fails here.
+      const read = await balanceRead;
+      expect(
+        read?.ok(),
+        "the return page should have read the balance before its fulfil call",
+      ).toBe(true);
+      await expect
+        .poll(() => refreshReads.map(pathOf), {
+          message:
+            "the page should read the credits and their history again once its fulfil call answered",
+        })
+        .toEqual(expect.arrayContaining([CREDITS_PATH, HISTORY_PATH]));
+      await Promise.all(
+        refreshReads
+          .filter((request) =>
+            [CREDITS_PATH, HISTORY_PATH].includes(pathOf(request)),
+          )
+          .map((request) => request.response()),
+      );
+      // Their answers reach the page on its zero-delay timers: run a second
+      // of its time, far short of the 10 s read.
+      await page.clock.runFor(1_000);
+      await expect(
+        balance(page, before + TOP_UP),
+        "the page should show the credits its own fulfil call added",
+      ).toBeVisible();
+      await expect(
+        purchases(page),
+        "the history should list the purchase without a reload",
+      ).toHaveCount(1);
+      await page.clock.resume();
+
+      const [held, ...others] = await stripeEvents(sessionID);
+      expect(others).toEqual([]);
+      expect(held.deliveries, "the webhook is held").toEqual([]);
+      completed = held;
+      await expectInLedgerOnce(page, before, paymentIntent(completed));
+    } finally {
+      await page.unroute(`**${CREDITS_PATH}`);
+    }
 
     // Then Stripe's webhook arrives.
     const late = await deliverEvent(completed.id);
     expect(late.status, late.body).toBe(200);
     await expectInLedgerOnce(page, before, paymentIntent(completed));
     expect(await unservedStripeRequests(stripeCursor)).toEqual([]);
-    await page.unroute(`**${CREDITS_PATH}`);
   });
 });
 
@@ -239,6 +267,26 @@ function paymentIntent(event: { event: { data: { object: object } } }) {
   const session = event.event.data.object as { payment_intent?: unknown };
   expect(typeof session.payment_intent).toBe("string");
   return String(session.payment_intent);
+}
+
+/**
+ * Every GET the page sends once a response `isAnswer` accepts has arrived,
+ * in order. Both listeners see events in the order the page made them.
+ */
+function getsAfter(page: Page, isAnswer: (response: Response) => boolean) {
+  let answered = false;
+  const requests: Request[] = [];
+  page.on("response", (response) => {
+    if (isAnswer(response)) answered = true;
+  });
+  page.on("request", (request) => {
+    if (answered && request.method() === "GET") requests.push(request);
+  });
+  return requests;
+}
+
+function pathOf(request: Request) {
+  return new URL(request.url()).pathname;
 }
 
 function isFulfilment(response: Response) {
