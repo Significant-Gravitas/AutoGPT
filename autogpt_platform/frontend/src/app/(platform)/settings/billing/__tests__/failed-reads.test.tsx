@@ -126,6 +126,8 @@ it("keeps the plan to pick when the trial status of an account with no plan fail
   expect(
     screen.getByText("Pick a plan to continue using AutoGPT."),
   ).toBeDefined();
+  expect(screen.queryByRole("button", { name: /Start Pro/i })).toBeNull();
+  expect(screen.getByRole("button", { name: "Try Again" })).toBeDefined();
 });
 
 it("reads a failing plan once more when a checkout return shows the trial's plan choices, not in a loop", async () => {

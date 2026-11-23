@@ -24,6 +24,7 @@ export function SubscriptionTab({ isPlanCheckoutReturn = false }: Props) {
     planChoicesOffer,
     isConfirmingPlan,
     isLoading,
+    isTrialUnavailable,
     hasPlanChoices,
     paymentFailed,
     payment,
@@ -48,17 +49,23 @@ export function SubscriptionTab({ isPlanCheckoutReturn = false }: Props) {
           <TrialPlanChoices offer={planChoicesOffer} />
         ) : null}
       </div>
-      {showPlan ? <YourPlanCard index={0} showUsage /> : null}
+      {showPlan ? (
+        <YourPlanCard
+          index={0}
+          showUsage
+          hideUpgradeActions={isTrialUnavailable}
+        />
+      ) : null}
       {!showPlan && !isLoading && !paymentFailed ? (
         <div
           className={
-            hasPlanChoices
+            hasPlanChoices || isTrialUnavailable
               ? "grid gap-4"
               : "grid items-stretch gap-4 md:grid-cols-[1.15fr_1fr]"
           }
         >
           <AutopilotUsageCard index={1} />
-          {!hasPlanChoices ? <BillingOffer /> : null}
+          {!hasPlanChoices && !isTrialUnavailable ? <BillingOffer /> : null}
         </div>
       ) : null}
       <PaymentMethodCard index={2} />
