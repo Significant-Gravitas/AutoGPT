@@ -27,7 +27,6 @@ import re
 import tarfile
 from pathlib import Path
 
-import httpx
 import yaml
 from pydantic import BaseModel, ConfigDict
 from typing_extensions import TypedDict
@@ -54,6 +53,7 @@ from backend.copilot.tools.skills import (
 from backend.data.skill_package import SKILL_MD, file_sha256, package_tree_sha256
 
 from .categories import validate_canonical_categories
+from .skill_catalog_github import github_get
 
 logger = logging.getLogger(__name__)
 
@@ -428,17 +428,16 @@ def resolve_catalog(into: Path) -> CatalogSource:
 def fetch_catalog(into: Path, *, repo: str, ref: str) -> CatalogSource:
     """Download *repo* at *ref* into *into*. The source names the exact
     commit the ref resolved to, so a release log entry is reproducible even
-    when the ref was a branch."""
+    when the ref was a branch. Each request rides out a GitHub blip
+    (:mod:`skill_catalog_github`)."""
     headers = github_headers()
     revision = ref if _SHA_RE.fullmatch(ref) else resolve_ref(repo, ref, headers)
     logger.info(f"Downloading {repo}@{revision}")
-    response = httpx.get(
+    response = github_get(
         f"https://api.github.com/repos/{repo}/tarball/{revision}",
         headers=headers,
-        follow_redirects=True,
         timeout=120,
     )
-    response.raise_for_status()
     with tarfile.open(fileobj=io.BytesIO(response.content), mode="r:gz") as tar:
         _extract_catalog_archive(tar, into)
     # GitHub wraps the tree in one "<owner>-<repo>-<sha>" directory.
@@ -463,13 +462,11 @@ def resolve_ref(repo: str, ref: str, headers: dict[str, str]) -> str:
     """The commit *ref* points at now. A 40-hex ref is returned as is."""
     if _SHA_RE.fullmatch(ref):
         return ref
-    response = httpx.get(
+    response = github_get(
         f"https://api.github.com/repos/{repo}/commits/{ref}",
         headers={**headers, "Accept": "application/vnd.github.sha"},
-        follow_redirects=True,
         timeout=30,
     )
-    response.raise_for_status()
     sha = response.text.strip()
     if not _SHA_RE.fullmatch(sha):
         raise CatalogError(f"could not resolve {repo}@{ref} to a commit: {sha!r}")
