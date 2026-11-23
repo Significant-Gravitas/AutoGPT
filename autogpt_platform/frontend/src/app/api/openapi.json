@@ -25106,6 +25106,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Service Icon"
           },
+          "mcp_catalog_entry": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Mcp Catalog Entry",
+            "description": "The MCP catalog entry (e.g. mcp_linear) whose server this sign-in connects; null for other credentials and uncatalogued servers"
+          },
           "microsoft_identity": {
             "anyOf": [
               { "$ref": "#/components/schemas/MicrosoftIdentity" },
