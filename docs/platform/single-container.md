@@ -49,6 +49,27 @@ tag or manifest digest. Docker image tags map to source releases as follows:
 
 `canary-sha-*` tags are unsupported pre-release validation artifacts.
 
+Release images carry a signed build provenance attestation, a record that this
+repository's release workflow built the image from the release's commit. To
+check an image before you run it, use the [GitHub CLI](https://cli.github.com/),
+signed in with `gh auth login`:
+
+```bash
+gh attestation verify oci://docker.io/significantgravitas/autogpt:vX.Y.Z \
+  --repo Significant-Gravitas/AutoGPT \
+  --signer-workflow Significant-Gravitas/AutoGPT/.github/workflows/platform-single-container-docker.yml \
+  --source-ref refs/tags/autogpt-platform-beta-vX.Y.Z
+```
+
+Use the same version in both places: `--source-ref` accepts only an
+attestation made from that release's tag, not one made from a branch. The
+attestation covers the multi-platform image the tag points to, so check the tag
+or that image's digest, not the digest of one platform's image.
+
+The check shows where and how the image was built, not that its code is safe.
+Images released before attestations were added have none, so the command
+finds nothing for them.
+
 To build from source instead, run Docker Buildx Bake from the repository root:
 
 ```bash

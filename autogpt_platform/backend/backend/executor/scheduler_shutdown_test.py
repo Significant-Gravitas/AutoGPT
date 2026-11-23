@@ -1,12 +1,15 @@
 """Stopping the scheduler keeps a job that falls due as it stops, and runs it once.
+The stop also finishes while a running job calls back into the scheduler.
 
 The race tests start the real ``Scheduler.run_service`` APScheduler (its pool
 and job defaults, two starts sharing one SQLite jobstore), stop it through
 ``Scheduler.cleanup`` as SIGTERM does, and force their race in order through
-the scheduler's jobstore lock.
+the scheduler's jobstore lock or the stop's wait for the pool.
 """
 
+import sys
 import threading
+import traceback
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager
 from datetime import datetime, timedelta, timezone
@@ -20,17 +23,24 @@ from apscheduler.schedulers import (
     SchedulerNotRunningError,
 )
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from backend.executor import scheduler as scheduler_module
 from backend.executor.jobstore import ResilientSQLAlchemyJobStore
+from backend.executor.schedule_index import ScheduleIndexEntry
+from backend.executor.schedule_index_test_helpers import _graph_job_kwargs
 from backend.executor.scheduler import Jobstores, Scheduler
 from backend.executor.scheduler_shutdown import StopSafeBackgroundScheduler
 
 _EXECUTION = Jobstores.EXECUTION.value
+# Holds a job that is a closure, which the SQLite jobstore can't pickle.
+_IN_MEMORY = Jobstores.MEMORY_CRON_RECONCILE.value
 # Only a broken run waits this long.
-_WAIT_S = 30
+_HANG_SECONDS = 30
+# How often a test's wait for the jobstore lock checks whether to give up.
+_LOCK_POLL_SECONDS = 0.1
 
 _runs: list[str] = []
 _ran = threading.Condition()
@@ -78,7 +88,7 @@ def test_a_job_due_as_the_scheduler_stops_runs_once_on_the_next_start(tmp_path):
             service.scheduler.resume()
             assert lock.wait_until_asked_by(scheduler_thread)
             stopper.start()
-            assert shut_down.wait(_WAIT_S)
+            assert shut_down.wait(_HANG_SECONDS)
         finally:
             lock.let_go()
 
@@ -124,7 +134,7 @@ def test_a_one_shot_handed_to_the_pool_as_the_stop_begins_runs_once(tmp_path):
             jobstore=_EXECUTION,
         )
         service.scheduler.resume()
-        assert removing.wait(_WAIT_S)
+        assert removing.wait(_HANG_SECONDS)
         stopper.start()
 
     assert stop_asked_first == [True]
@@ -167,6 +177,115 @@ def test_only_a_start_that_goes_ahead_clears_a_stop():
         scheduler.shutdown()
 
 
+def test_a_stop_waits_out_a_reconcile_that_calls_back_into_the_scheduler(tmp_path):
+    """#16951. Stock shutdown waits for running jobs holding the jobstore
+    lock. The schedule index reconcile, a pool job, calls ``get_jobs`` and
+    ``get_job``, so a stop that began while it ran waited on it for good, and
+    it on that lock."""
+    jobstore = f"sqlite:///{tmp_path / 'jobs.sqlite'}"
+    stop_waited_first: list[bool] = []
+
+    with _started_service(jobstore) as (service, _, stopper):
+        index = service._schedule_index
+        assert index is not None
+        # Paused, so it never runs: a schedule only the reconcile indexes.
+        service.scheduler.add_job(
+            scheduler_module.execute_graph,
+            CronTrigger.from_crontab("0 0 * * *", timezone=timezone.utc),
+            kwargs=_graph_job_kwargs("schedule", "user", "graph"),
+            id="schedule",
+            next_run_time=None,
+            jobstore=_EXECUTION,
+        )
+        # The row of a job that is gone, for the reconcile's sweep to remove.
+        index.upsert(ScheduleIndexEntry(job_id="gone", user_id="user", kind="graph"))
+        pool_wait = _pool_wait_begun(service)
+        reconciling = threading.Event()
+        ensure_table = index.ensure_table
+
+        def ensure_table_once_the_stop_waits() -> None:
+            # In the pool: the reconcile's last call before get_jobs().
+            reconciling.set()
+            stop_waited_first.append(pool_wait.wait(_HANG_SECONDS))
+            ensure_table()
+
+        index.ensure_table = ensure_table_once_the_stop_waits
+        service.scheduler.add_job(
+            scheduler_module.reconcile_schedule_index,
+            id="reconcile_schedule_index",
+            jobstore=_EXECUTION,
+        )
+        service.scheduler.resume()
+        assert reconciling.wait(_HANG_SECONDS)
+        stopper.start()
+
+    assert stop_waited_first == [True]
+    # The whole pass ran against the open jobstore, its sweep included.
+    assert index.all_job_ids() == {"schedule"}
+
+
+def test_a_job_a_running_job_adds_as_the_scheduler_stops_runs_once_on_the_next_start(
+    tmp_path,
+):
+    """#16951. A running job that writes to the scheduler while it stops: the
+    write lands in the jobstore rather than waiting on the stop for good, and
+    the job pass it wakes hands nothing to the pool the stop is closing, so
+    the next start runs what it added, once."""
+    jobstore = f"sqlite:///{tmp_path / 'jobs.sqlite'}"
+    due = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(seconds=1)
+    waits: list[bool] = []
+
+    with _started_service(jobstore) as (service, _, stopper):
+        pool_wait = _pool_wait_begun(service)
+        passed = threading.Event()
+        process_jobs = service.scheduler._process_jobs
+
+        def process_jobs_and_say_so() -> float | None:
+            try:
+                return process_jobs()
+            finally:
+                passed.set()
+
+        service.scheduler._process_jobs = process_jobs_and_say_so
+        adding = threading.Event()
+
+        def add_a_job_once_the_stop_waits() -> None:
+            adding.set()
+            waits.append(pool_wait.wait(_HANG_SECONDS))
+            passed.clear()
+            service.scheduler.add_job(
+                _record_run,
+                DateTrigger(due, timezone=timezone.utc),
+                args=["added"],
+                id="added",
+                jobstore=_EXECUTION,
+            )
+            # Until the pass the add woke is over, so the stop can't end first.
+            waits.append(passed.wait(_HANG_SECONDS))
+
+        service.scheduler.add_job(
+            add_a_job_once_the_stop_waits, id="adder", jobstore=_IN_MEMORY
+        )
+        service.scheduler.resume()
+        assert adding.wait(_HANG_SECONDS)
+        # The pass that handed the adder over, so it can't end after the
+        # adder clears `passed`; nothing else wakes the scheduler until the add.
+        assert passed.wait(_HANG_SECONDS)
+        stopper.start()
+
+    assert waits == [True, True]
+    assert _runs == []
+    assert _stored_jobs(jobstore)["added"].next_run_time == due
+
+    with _started_service(jobstore) as (service, _, _):
+        service.scheduler.resume()
+        _wait_for(lambda: "added" in _runs)
+        service.cleanup()
+
+    assert _runs == ["added"]
+    assert "added" not in _stored_jobs(jobstore)
+
+
 class _WatchedLock:
     """The scheduler's jobstore lock, noting each thread that asks for it and
     able to keep one waiting at its ask until ``let_go``: how a test orders a
@@ -177,6 +296,7 @@ class _WatchedLock:
         self._changed = threading.Condition()
         self._askers: set[threading.Thread] = set()
         self._held: threading.Thread | None = None
+        self._given_up = False
 
     def acquire(self, blocking: bool = True, timeout: float = -1) -> bool:
         me = threading.current_thread()
@@ -184,7 +304,21 @@ class _WatchedLock:
             self._askers.add(me)
             self._changed.notify_all()
             self._changed.wait_for(lambda: self._held is not me)
-        return self._lock.acquire(blocking, timeout)
+        if not blocking or timeout >= 0:
+            return self._lock.acquire(blocking, timeout)
+        # A little at a time, so that ``give_up`` can end the wait.
+        while not self._lock.acquire(timeout=_LOCK_POLL_SECONDS):
+            if self._given_up:
+                raise RuntimeError("the test gave up waiting for the jobstore lock")
+        return True
+
+    def give_up(self) -> None:
+        """End every wait for the lock with an error. A stop that hung on a
+        job waiting for it leaves that job's pool thread waiting for good,
+        and the test session can't exit past a pool thread. It frees only
+        threads blocked on this lock: a stop that hangs anywhere else still
+        fails its test, but can leave a pool thread that holds up the exit."""
+        self._given_up = True
 
     def release(self) -> None:
         self._lock.release()
@@ -208,7 +342,7 @@ class _WatchedLock:
 
     def wait_until_asked_by(self, thread: threading.Thread) -> bool:
         with self._changed:
-            return self._changed.wait_for(lambda: thread in self._askers, _WAIT_S)
+            return self._changed.wait_for(lambda: thread in self._askers, _HANG_SECONDS)
 
 
 @contextmanager
@@ -253,32 +387,58 @@ def _started_service(
             service.run_service()
         yield service, lock, stopper
     finally:
-        _stop(service, stopper)
+        _stop(service, lock, stopper)
     if stop_errors:
         raise stop_errors[0]
 
 
-def _stop(service: Scheduler, stopper: threading.Thread) -> None:
+def _pool_wait_begun(service: Scheduler) -> threading.Event:
+    """Set when the stop asks the scheduler's pool to finish its running jobs:
+    a wait a running job's calls into the scheduler must not get stuck in."""
+    begun = threading.Event()
+    executor = service.scheduler._executors["default"]
+    shut_down = executor.shutdown
+
+    def shut_down_and_say_so(wait: bool = True) -> None:
+        if wait:
+            begun.set()
+        shut_down(wait)
+
+    executor.shutdown = shut_down_and_say_so
+    return begun
+
+
+def _stop(service: Scheduler, lock: _WatchedLock, stopper: threading.Thread) -> None:
     """Stop *service* if its test didn't, then close what its start opened:
-    the event loop, and the jobstores of a start that failed part-way."""
-    if stopper.ident is not None:
-        # Twice the longest wait inside the stop, once any held pass is let go.
-        stopper.join(2 * _WAIT_S)
-        if stopper.is_alive():
-            pytest.fail("the scheduler's stop never finished")
-    # Run last to first, each tried even if one after it fails; a failure
-    # still raises.
-    with ExitStack() as closing:
-        closing.callback(_close_event_loop)
-        # Already closed by a stop; these are for a start that failed part-way.
-        for store in service._persistent_jobstores.values():
-            closing.callback(store.shutdown)
-        if (
-            stopper.ident is None
-            and service._scheduler is not None
-            and service._scheduler.running
-        ):
-            closing.callback(service.cleanup)
+    the event loop, and the jobstores of a start that failed part-way. A stop
+    that hung fails the test once all that is closed."""
+    hung_at: str | None = None
+    try:
+        if stopper.ident is not None:
+            # Twice the longest wait inside the stop, once any held pass is let go.
+            stopper.join(2 * _HANG_SECONDS)
+            if stopper.is_alive():
+                frame = sys._current_frames().get(stopper.ident)
+                hung_at = "".join(traceback.format_stack(frame)[-6:]) if frame else ""
+                # Free the job the stop waits on, so both threads can end.
+                lock.give_up()
+                stopper.join(_HANG_SECONDS)
+    finally:
+        # Run last to first, each tried even if one after it fails; a failure
+        # still raises.
+        with ExitStack() as closing:
+            closing.callback(_close_event_loop)
+            # Already closed by a stop; these are for a start that failed part-way.
+            for store in service._persistent_jobstores.values():
+                closing.callback(store.shutdown)
+            if (
+                stopper.ident is None
+                and service._scheduler is not None
+                and service._scheduler.running
+            ):
+                closing.callback(service.cleanup)
+    if hung_at is not None:
+        pytest.fail(f"the scheduler's stop never finished; it was at:\n{hung_at}")
 
 
 def _close_event_loop() -> None:
@@ -288,7 +448,7 @@ def _close_event_loop() -> None:
         return
     if thread is not None and thread.is_alive():
         loop.call_soon_threadsafe(loop.stop)
-        thread.join(_WAIT_S)
+        thread.join(_HANG_SECONDS)
         if thread.is_alive():
             pytest.fail("the scheduler's event loop never stopped")
     if not loop.is_running():
@@ -297,7 +457,7 @@ def _close_event_loop() -> None:
 
 def _wait_for(condition: Callable[[], bool]) -> None:
     with _ran:
-        assert _ran.wait_for(condition, _WAIT_S), f"runs so far: {_runs}"
+        assert _ran.wait_for(condition, _HANG_SECONDS), f"runs so far: {_runs}"
 
 
 def _stored_jobs(jobstore: str) -> dict[str, Job]:

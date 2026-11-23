@@ -1,4 +1,5 @@
 import type { Locator, Page, Request, WebSocketRoute } from "@playwright/test";
+import { subscribeTimedOutFrame } from "../../tests/integrations/subscribe-failure-frame";
 import {
   clickRunButton,
   getActiveItemId,
@@ -25,6 +26,31 @@ test.describe("realtime updates journey", () => {
 
     await page.goto(`/library/agents/${agent.libraryAgentID}`);
     await waitForAgentPageLoad(page);
+    // A workflow with no runs has no live view on its page, so open the
+    // account menu: its Activity row subscribes to every workflow. The server
+    // can't complete that subscribe, as when Redis doesn't confirm it in time
+    // (#16922), and nothing else subscribes to the workflow before the run.
+    live.failNextSubscribe(agent.graphID);
+    await page.getByTestId("profile-popout-menu-trigger").click();
+    const menu = page.getByTestId("account-menu-popover");
+    await expect(menu).toBeVisible();
+    await expect
+      .poll(() => live.subscribeFailed(), {
+        message:
+          "the page should subscribe to the workflow, and the server fail that",
+        timeout: 15_000,
+      })
+      .toBe(true);
+    await expect
+      .poll(() => live.failedSubscribeConfirmedAgain(), {
+        message:
+          "the page should send the subscribe the server could not complete " +
+          "again, or the run's live updates never arrive",
+        timeout: 15_000,
+      })
+      .toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
     await clickRunButton(page);
     await expect
       .poll(() => getActiveItemId(page), {
@@ -40,6 +66,12 @@ test.describe("realtime updates journey", () => {
         runItem.getByRole("img", { name: /^Task (queued|running)$/ }),
         "the runs list should show the run in flight",
       ).toBeVisible({ timeout: 30_000 });
+      await expect
+        .poll(() => live.forwardedStatuses(runID).length, {
+          message: "live update arrived after one failed resubscribe",
+          timeout: 30_000,
+        })
+        .toBeGreaterThan(0);
       const activity = await openActivity(page);
       await expect(activityItem(activity, agent.name)).toContainText(
         /queued|running/,
@@ -103,6 +135,10 @@ test.describe("realtime updates journey", () => {
       expect(await markPageInstance(page), "the page never reloaded").toBe(
         pageInstance,
       );
+      expect(
+        live.urls().filter((url) => new URL(url).search),
+        "every connection sends its token in its first message, not its URL",
+      ).toEqual([]);
     } finally {
       // A step that failed before the stop must not leave the run going.
       await stopRun(page, agent.graphID, runID).catch(() => undefined);
@@ -112,13 +148,22 @@ test.describe("realtime updates journey", () => {
 
 /**
  * Routes the page's run-updates socket through Playwright, so the journey
- * can break the server side the way production sees it: updates stop
- * arriving, then the server closes the socket with 1011.
+ * can break the server side the way production sees it: a subscribe it
+ * can't complete, updates that stop arriving, then a close with 1011.
  */
 async function routeLiveConnection(page: Page) {
   const connections: Connection[] = [];
   let closedUpTo = 0;
   let outage = false;
+  const failure = { graphID: "", failed: false, confirmedAgain: false };
+
+  // What the journey breaks must not reach the real Sentry, whose tunnel is
+  // on the app's own origin.
+  await page
+    .context()
+    .route(/sentry\.io|[?&]o=\d+&p=\d+/, (route) =>
+      route.fulfill({ status: 200, body: "{}" }),
+    );
 
   await page.routeWebSocket(/\/ws(\?|$)/, (client) => {
     const connection: Connection = {
@@ -127,11 +172,43 @@ async function routeLiveConnection(page: Page) {
       openedAt: Date.now(),
       // One the page opens during the outage gets no updates either.
       streamLost: outage,
+      subscribing: [],
       dropped: [],
       forwarded: [],
     };
     connections.push(connection);
+    client.onMessage((message) => {
+      const subscribe = subscribeRequest(message);
+      if (
+        subscribe?.graphID === failure.graphID &&
+        subscribe.method === "subscribe_graph_executions" &&
+        !failure.failed
+      ) {
+        failure.failed = true;
+        client.send(subscribeTimedOutFrame(subscribe.graphID));
+        return;
+      }
+      if (subscribe) {
+        connection.subscribing.push({
+          graphID: subscribe.graphID,
+          sentAfterFailure: failure.failed,
+        });
+      }
+      connection.server.send(message);
+    });
     connection.server.onMessage((message) => {
+      // The server answers a socket's subscribes in order.
+      const answer = subscribeAnswer(message);
+      if (answer) {
+        const subscribe = connection.subscribing.shift();
+        if (
+          subscribe?.sentAfterFailure &&
+          subscribe.graphID === failure.graphID &&
+          answer === "ok"
+        ) {
+          failure.confirmedAgain = true;
+        }
+      }
       const update = runUpdate(message);
       if (connection.streamLost && update) {
         if (update.status) connection.dropped.push(withStatus(update));
@@ -143,7 +220,20 @@ async function routeLiveConnection(page: Page) {
   });
 
   return {
+    /** Fails the page's next subscribe to the graph's runs, once. */
+    failNextSubscribe(graphID: string) {
+      failure.graphID = graphID;
+    },
+    /** The page sent that subscribe, and the server's failure went back. */
+    subscribeFailed: () => failure.failed,
+    /**
+     * The server confirmed a subscribe to the graph sent after the failure.
+     * Until Run, only the page's retry can be one: the workflow's page has no
+     * live view, and the menu's Activity row subscribes to each workflow once.
+     */
+    failedSubscribeConfirmedAgain: () => failure.confirmedAgain,
     opened: () => connections.length,
+    urls: () => connections.map(({ client }) => client.url()),
     /** When the first connection after the last close opened. */
     reopenedAt: () => connections[closedUpTo]?.openedAt ?? Infinity,
     droppedStatuses: (runID: string) =>
@@ -183,6 +273,8 @@ interface Connection {
   server: WebSocketRoute;
   openedAt: number;
   streamLost: boolean;
+  /** Each subscribe sent to the server and not yet answered. */
+  subscribing: { graphID?: string; sentAfterFailure: boolean }[];
   dropped: { runID: string; status: string }[];
   forwarded: { runID: string; status: string }[];
 }
@@ -242,6 +334,37 @@ function trackListReads(page: Page, graphID: string) {
         .toBe(true);
     },
   };
+}
+
+/** A subscribe the page sends, or null for anything else. */
+function subscribeRequest(message: string | Buffer) {
+  const parsed = parseMessage(message);
+  if (!parsed?.method?.startsWith("subscribe_")) return null;
+  return { method: parsed.method, graphID: parsed.data?.graph_id };
+}
+
+/** The server's answer to a subscribe, or null for anything else. */
+function subscribeAnswer(message: string | Buffer) {
+  const parsed = parseMessage(message);
+  // An error answers a subscribe only if it names one.
+  if (parsed?.method === "error") {
+    return parsed.request?.method?.startsWith("subscribe_") ? "failed" : null;
+  }
+  if (parsed?.method?.startsWith("subscribe_")) return "ok";
+  return null;
+}
+
+function parseMessage(message: string | Buffer) {
+  if (typeof message !== "string") return null;
+  try {
+    return JSON.parse(message) as {
+      method?: string;
+      data?: { graph_id?: string };
+      request?: { method?: string };
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** A run's update from the server, or null for anything else. */

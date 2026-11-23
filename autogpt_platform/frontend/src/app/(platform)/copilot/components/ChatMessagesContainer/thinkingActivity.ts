@@ -1,5 +1,5 @@
 import type { UIDataTypes, UIMessage, UITools } from "ai";
-import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
+import { isToolCallPending } from "../ToolChain/helpers";
 import {
   isBookkeepingPart,
   PENDING_DRAINED_PART_TYPE,
@@ -39,7 +39,13 @@ export function getTurnActivity(
   // been produced past it, so the indicator is the only sign the assistant
   // picked the follow-up up.
   let lastIndex = parts.length - 1;
-  while (lastIndex >= 0 && isBookkeepingPart(parts[lastIndex])) {
+  // A step-start is skipped too: the backend opens a step seconds before the
+  // model writes anything, so what decides is the part before it.
+  while (
+    lastIndex >= 0 &&
+    (isBookkeepingPart(parts[lastIndex]) ||
+      parts[lastIndex].type === "step-start")
+  ) {
     if (parts[lastIndex].type === PENDING_DRAINED_PART_TYPE) return QUIET_NOW;
     lastIndex--;
   }
@@ -52,13 +58,8 @@ function getPartActivity(
   index: number,
 ): TurnActivity {
   if (part.type === TURN_PAUSED_PART_TYPE) return { kind: "ended" };
-  if (
-    part.type.startsWith(TOOL_PART_PREFIX) &&
-    "state" in part &&
-    (part.state === "input-streaming" || part.state === "input-available")
-  ) {
-    return { kind: "working" };
-  }
+  // A running tool, or one paused on the user's approval, shows its own card.
+  if (isToolCallPending(part)) return { kind: "working" };
   if (part.type === "reasoning" && part.state === "streaming") {
     return { kind: "working" };
   }

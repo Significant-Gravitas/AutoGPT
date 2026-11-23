@@ -106,6 +106,67 @@ test.describe("schedules journey", () => {
     );
     expect(await runs.json()).toMatchObject({ executions: [] });
   });
+
+  test("a schedule runs its agent when it fires, and the run completes", async ({
+    page,
+    journeyUser: _user,
+  }) => {
+    // The schedule fires at the next minute boundary, so this test can wait
+    // up to a minute before its run even starts.
+    test.setTimeout(180_000);
+    const graphId = await createAgent(
+      page,
+      createUniqueAgentName("Journey firing schedule"),
+    );
+    const response = await page.request.post(
+      `/api/proxy/api/graphs/${graphId}/schedules`,
+      {
+        data: {
+          name: "Every minute",
+          cron: "* * * * *",
+          inputs: {},
+          timezone: TIMEZONE,
+        },
+      },
+    );
+    expect(
+      response.ok(),
+      `creating the schedule failed: ${response.status()}`,
+    ).toBe(true);
+    const schedule = (await response.json()) as Schedule;
+    let scheduleDeleted = false;
+
+    try {
+      // Nothing else runs this agent, so its first run is the schedule's.
+      let runId = "";
+      await expect
+        .poll(async () => (runId = await firstRunId(page, graphId)), {
+          message: "the schedule should start a run",
+          timeout: 90_000,
+          intervals: [2_000],
+        })
+        .not.toBe("");
+      // No later tick can add a run, or outlive the test.
+      await deleteSchedule(page, schedule.id);
+      scheduleDeleted = true;
+
+      // The scheduler queued that run and an executor ran it to the end.
+      let status = "";
+      await expect
+        .poll(async () => (status = await runStatus(page, graphId, runId)), {
+          message: "the schedule's run should end",
+          timeout: 60_000,
+          intervals: [2_000],
+        })
+        .toMatch(RUN_SETTLED);
+      expect(status).toBe("COMPLETED");
+    } finally {
+      // Best effort: a failure here mustn't hide why the test failed.
+      if (!scheduleDeleted) {
+        await deleteSchedule(page, schedule.id, { soft: true });
+      }
+    }
+  });
 });
 
 async function whileSchedulerIsOut(page: Page, check: () => Promise<void>) {
@@ -156,6 +217,62 @@ async function listSchedules(page: Page, graphId: string) {
   );
   expect(response.ok(), `listing schedules: ${response.status()}`).toBe(true);
   return (await response.json()) as Schedule[];
+}
+
+// A run that will change no more, or that waits on a reviewer: the poll
+// stops on either, so the test fails fast with the status the run is in. Not
+// INCOMPLETE, which every run starts as before it's queued.
+const RUN_SETTLED = /^(COMPLETED|FAILED|TERMINATED|REVIEW)$/;
+
+// The id of the agent's first run, or "" while it has none. The list is
+// newest first, so that is its last entry.
+async function firstRunId(page: Page, graphId: string): Promise<string> {
+  const response = await page.request.get(
+    `/api/proxy/api/graphs/${graphId}/executions`,
+  );
+  expect(response.ok(), `listing runs: ${response.status()}`).toBe(true);
+  const { executions } = (await response.json()) as {
+    executions: { id: string }[];
+  };
+  return executions.at(-1)?.id ?? "";
+}
+
+async function runStatus(
+  page: Page,
+  graphId: string,
+  runId: string,
+): Promise<string> {
+  const response = await page.request.get(
+    `/api/proxy/api/graphs/${graphId}/executions/${runId}`,
+  );
+  expect(response.ok(), `reading the run: ${response.status()}`).toBe(true);
+  return ((await response.json()) as { status: string }).status;
+}
+
+async function deleteSchedule(
+  page: Page,
+  scheduleId: string,
+  { soft = false } = {},
+) {
+  const url = `/api/proxy/api/schedules/${scheduleId}`;
+  if (!soft) {
+    const response = await page.request.delete(url);
+    expect(
+      response.ok(),
+      `deleting the schedule failed: ${response.status()}`,
+    ).toBe(true);
+    return;
+  }
+  // Cleanup after a failure: record its own failure, never throw over the
+  // one that brought the test here.
+  try {
+    const response = await page.request.delete(url);
+    expect
+      .soft(response.ok(), `deleting the schedule failed: ${response.status()}`)
+      .toBe(true);
+  } catch (error) {
+    expect.soft(error, "deleting the schedule threw").toBeUndefined();
+  }
 }
 
 async function onlySchedule(page: Page, graphId: string) {

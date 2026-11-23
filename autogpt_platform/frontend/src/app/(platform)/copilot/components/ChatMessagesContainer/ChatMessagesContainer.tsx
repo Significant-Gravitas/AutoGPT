@@ -29,6 +29,7 @@ import { reviewRefetchKey } from "./reviewRefetchKey";
 import {
   buildMessageIndexById,
   isMidTurnSegmentRow,
+  sourceMessageID,
   splitMessagesAtDrainHints,
   turnMessagesForRow,
 } from "./midTurnSplit";
@@ -59,6 +60,7 @@ import { ChatErrorBanner } from "./components/ChatErrorBanner/ChatErrorBanner";
 import { rowKeyOf, type RowKeys } from "./stableRowKeys";
 import { useStableRowKeys } from "./useStableRowKeys";
 import { useFollowAnimation } from "./useFollowAnimation";
+import { UnconfirmedSendError } from "../../stream/turnRuntime";
 
 type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
 
@@ -85,6 +87,8 @@ interface Props {
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
   onRetry?: () => void;
+  /** Sends again a message the chat couldn't confirm it sent. */
+  onResend?: () => void;
   turnStats?: TurnStatsMap;
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
@@ -281,6 +285,7 @@ export function ChatMessagesContainer({
   isLoadingMore,
   onLoadMore,
   onRetry,
+  onResend,
   turnStats,
   queuedMessages,
   pendingSend,
@@ -357,8 +362,11 @@ export function ChatMessagesContainer({
   // the same error string — the marker becomes an in-line ErrorCard bubble,
   // the SSE event sets ``error`` on ``useChat``. Without dedup, the user sees
   // the same error twice. Suppress the trailing banner whenever the last
-  // assistant message already carries the marker.
-  const lastAssistantHasErrorMarker = hasTrailingErrorMarker(messages);
+  // assistant message already carries the marker. An unconfirmed send is the
+  // client's own finding, about a later prompt: no marker repeats it.
+  const isErrorShownInline =
+    !(error instanceof UnconfirmedSendError) &&
+    hasTrailingErrorMarker(messages);
 
   const turnActivity = getTurnActivity(lastMessage, status);
 
@@ -422,6 +430,10 @@ export function ChatMessagesContainer({
     const isLastRow = rowIndex === renderRows.length - 1;
     const isAssistant = message.role === "assistant";
     const isLastAssistant = isLastRow && isAssistant;
+    // A follow-up sent mid-turn splits the newest message into several rows,
+    // and every one of them is still the newest answer, not just the last.
+    const isLatestAnswer =
+      isAssistant && sourceMessageID(message) === lastMessage?.id;
     const isCurrentlyStreaming = isLastAssistant && isActivelyStreaming;
     const nextRow = renderRows[rowIndex + 1];
     // A segment that only runs up to a mid-turn drain is never the end
@@ -439,6 +451,7 @@ export function ChatMessagesContainer({
         message={message}
         rowKey={key}
         isLastAssistant={isLastAssistant}
+        isLatestAnswer={isLatestAnswer}
         isCurrentlyStreaming={isCurrentlyStreaming}
         isLastInTurn={isLastInTurn}
         isLatestTurn={isLastRow}
@@ -608,8 +621,8 @@ export function ChatMessagesContainer({
                 </MessageContent>
               </Message>
             ))}
-          {!readOnly && error && !lastAssistantHasErrorMarker && (
-            <ChatErrorBanner error={error} />
+          {!readOnly && error && !isErrorShownInline && (
+            <ChatErrorBanner error={error} onResend={onResend} />
           )}
           {!readOnly && (
             <TurnEndAnnouncer

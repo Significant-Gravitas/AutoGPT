@@ -371,11 +371,6 @@ async def test_approving_a_submission_clears_the_store_caches_off_the_event_loop
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     routes = store_admin_routes
-    mocker.patch.object(
-        routes.store_db,
-        "check_submission_already_approved",
-        AsyncMock(return_value=False),
-    )
     mocker.patch.object(routes.store_db, "review_store_submission", AsyncMock())
     mocker.patch.object(
         routes.skill_submission_db, "review_skill_submission", AsyncMock()

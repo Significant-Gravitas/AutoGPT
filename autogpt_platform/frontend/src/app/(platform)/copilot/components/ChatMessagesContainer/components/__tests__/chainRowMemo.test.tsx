@@ -54,7 +54,12 @@ function message(parts: MessagePart[]) {
   return (
     <QueryClientProvider client={queryClient}>
       <CopilotChatActionsProvider onSend={onSend}>
-        <ChainMessageParts parts={parts} messageID="a1" isCurrentlyStreaming />
+        <ChainMessageParts
+          parts={parts}
+          messageID="a1"
+          isCurrentlyStreaming
+          isLatestAnswer
+        />
       </CopilotChatActionsProvider>
     </QueryClientProvider>
   );

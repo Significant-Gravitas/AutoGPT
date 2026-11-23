@@ -9,17 +9,35 @@ export function sanitizeImportedGraph(graph: Graph): void {
   removeCredentials(graph);
 }
 
-/** Recursively remove (in place) all "credentials" properties from an object */
-function removeCredentials(obj: any): void {
-  if (obj && typeof obj === "object") {
-    if (Array.isArray(obj)) {
-      obj.forEach((item) => removeCredentials(item));
-    } else {
-      delete obj.credentials;
-      Object.values(obj).forEach((value) => removeCredentials(value));
+/** Removes (in place) the credentials the nodes still hold, sub-workflows'
+ * nodes included: each credentials input that points at a stored credential,
+ * which would block the save or point at someone else's. The file carries no
+ * block schemas, so the input's name marks these inputs: blocks must name every
+ * credentials field `credentials` or `*_credentials`. Anything else is the
+ * user's data, even when it is keyed "credentials" or looks like a credential. */
+function removeCredentials(graph: Graph): void {
+  const nodes = [graph, ...(graph.sub_graphs ?? [])].flatMap(
+    (g) => g.nodes ?? [],
+  );
+  for (const node of nodes) {
+    const inputs = node.input_default ?? {};
+    for (const [name, value] of Object.entries(inputs)) {
+      if (isCredentialsFieldName(name) && pointsAtStoredCredential(value)) {
+        delete inputs[name];
+      }
     }
   }
-  return obj;
+}
+
+function isCredentialsFieldName(name: string): boolean {
+  return name === "credentials" || name.endsWith("_credentials");
+}
+
+/** A credentials value with an `id` names a stored credential; one without
+ * points at nothing, so the save skips it. */
+function pointsAtStoredCredential(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  return typeof (value as Record<string, unknown>).id === "string";
 }
 
 /** ⚠️ Remove after 2025-10-01 (one year after implementation in

@@ -14,10 +14,8 @@ import {
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useEffect, useRef, useState } from "react";
 import { ScheduleAgentModal } from "../ScheduleAgentModal/ScheduleAgentModal";
-import {
-  AIAgentSafetyPopup,
-  useAIAgentSafetyPopup,
-} from "./components/AIAgentSafetyPopup/AIAgentSafetyPopup";
+import { AIAgentSafetyPopup } from "./components/AIAgentSafetyPopup/AIAgentSafetyPopup";
+import { shouldShowSafetyPopup } from "./components/AIAgentSafetyPopup/helpers";
 import { ModalHeader } from "./components/ModalHeader/ModalHeader";
 import { ModalRunSection } from "./components/ModalRunSection/ModalRunSection";
 import { RunActions } from "./components/RunActions/RunActions";
@@ -109,12 +107,6 @@ export function RunAgentModal({
   );
   const contentRef = useRef<HTMLDivElement>(null);
 
-  const { shouldShowPopup, dismissPopup } = useAIAgentSafetyPopup(
-    agent.id,
-    agent.has_sensitive_action,
-    agent.has_human_in_the_loop,
-  );
-
   const hasAnySetupFields =
     hasInputFields || Object.keys(agentCredentialsInputFields || {}).length > 0;
 
@@ -202,7 +194,7 @@ export function RunAgentModal({
   }
 
   function handleRunWithSafetyCheck() {
-    if (shouldShowPopup) {
+    if (shouldShowSafetyPopup(agent)) {
       setPendingRunAction(() => handleRun);
       setIsSafetyPopupOpen(true);
     } else {
@@ -212,7 +204,6 @@ export function RunAgentModal({
 
   function handleSafetyPopupAcknowledge() {
     setIsSafetyPopupOpen(false);
-    dismissPopup();
     if (pendingRunAction) {
       pendingRunAction();
       setPendingRunAction(null);
@@ -332,7 +323,7 @@ export function RunAgentModal({
       </Dialog>
 
       <AIAgentSafetyPopup
-        agentId={agent.id}
+        agent={agent}
         isOpen={isSafetyPopupOpen}
         onAcknowledge={handleSafetyPopupAcknowledge}
       />

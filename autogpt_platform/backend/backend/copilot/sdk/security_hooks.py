@@ -14,6 +14,8 @@ from backend.copilot import turn_end
 from backend.copilot.ai_spans import ToolSpanTimer
 from backend.copilot.context import get_execution_context, is_allowed_local_path
 from backend.copilot.pending_messages import drain_and_format_for_injection
+from backend.copilot.tools import deferred_name_message, is_deferred_name_slip
+from backend.copilot.tools.capability_gates import tool_refused_message
 from backend.copilot.untrusted_text import HOOK_CONTEXT, contains_instructions
 
 from .governor import TurnGovernor
@@ -142,9 +144,14 @@ def _validate_tool_access(
 
 def _deny_unlisted(tool_name: str) -> dict[str, Any]:
     logger.warning(f"Blocked tool outside the session's allowed set: {tool_name}")
+    name = tool_name.removeprefix(MCP_TOOL_PREFIX)
+    # Defensive: deferred tools are never registered on the MCP server, so
+    # the CLI is likely to answer a named one before this hook runs.
+    if is_deferred_name_slip(name):
+        return _deny(deferred_name_message(name))
     return _deny(
-        f"[SECURITY] Tool '{tool_name}' is not available in this session. "
-        "This is enforced by the platform and cannot be bypassed."
+        f"[SECURITY] {tool_refused_message(name)} This is enforced by the "
+        "platform and cannot be bypassed."
     )
 
 

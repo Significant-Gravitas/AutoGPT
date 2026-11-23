@@ -3584,7 +3584,9 @@ async def test_archive_pauses_detaches_and_revive_reattaches(
         where={"expertId": expert_id}
     )
     assert any(e.clearedAt is None for e in events)
-    sched.pause_schedule.assert_awaited_once_with("sched-1", user_id=test_user.id)
+    sched.pause_schedule.assert_awaited_once_with(
+        "sched-1", user_id=test_user.id, for_expert_archive=True
+    )
     # Paused, not deleted: the pointer survives so the same job is resumed
     # rather than a second one being created alongside it.
     wf_row = await prisma.models.ExpertWorkflow.prisma().find_first(
@@ -3595,7 +3597,10 @@ async def test_archive_pauses_detaches_and_revive_reattaches(
     with patch.object(scheduling, "get_scheduler_client", return_value=sched):
         revived = await experts_db.hire_expert(test_user.id, template.id, None)
 
-    sched.resume_schedule.assert_awaited_once_with("sched-1", user_id=test_user.id)
+    # Only a schedule the archive paused comes back; the scheduler checks.
+    sched.resume_schedule.assert_awaited_once_with(
+        "sched-1", user_id=test_user.id, only_if_paused_by_expert_archive=True
+    )
     # Resume has to look through the paused jobs; the default read hides them.
     sched.get_execution_schedules.assert_awaited_with(
         user_id=test_user.id, kind="graph", include_paused=True
@@ -3695,8 +3700,12 @@ async def test_user_created_schedule_survives_fire_and_rehire(
         await experts_db.archive_expert(test_user.id, expert_id)
         revived = await experts_db.hire_expert(test_user.id, template.id, None)
 
-    sched.pause_schedule.assert_awaited_once_with("user-sched", user_id=test_user.id)
-    sched.resume_schedule.assert_awaited_once_with("user-sched", user_id=test_user.id)
+    sched.pause_schedule.assert_awaited_once_with(
+        "user-sched", user_id=test_user.id, for_expert_archive=True
+    )
+    sched.resume_schedule.assert_awaited_once_with(
+        "user-sched", user_id=test_user.id, only_if_paused_by_expert_archive=True
+    )
     # Restored by resuming the original job, never by creating a new one.
     sched.add_execution_schedule.assert_not_awaited()
     assert revived.expert.is_archived is False
@@ -5349,6 +5358,7 @@ def _output_node_exec(
     added_minutes: int = 0,
     queued_minutes: int | None = None,
     stats: dict | None = None,
+    output: list | None = None,
 ) -> SimpleNamespace:
     base = datetime(2026, 8, 14, 9, 0, tzinfo=timezone.utc)
     return SimpleNamespace(
@@ -5368,6 +5378,7 @@ def _output_node_exec(
             if execution_data is None
             else []
         ),
+        Output=[SimpleNamespace(name="output", data=item) for item in output or []],
     )
 
 
@@ -5437,6 +5448,36 @@ def test_outputs_from_node_execs_uses_last_cleared_input_message():
         ]
     )
     assert outputs == {"rows": ["b"]}
+
+
+def test_outputs_from_node_execs_uses_yielded_output_over_input_value():
+    outputs = experts_db._outputs_from_node_execs(
+        [_output_node_exec("report", {"rows": 2}, output=["2 rows"])]
+    )
+    assert outputs == {"report": ["2 rows"]}
+
+
+def test_outputs_from_node_execs_masks_moderation_cleared_outputs():
+    moderated = "Failed due to content moderation"
+    outputs = experts_db._outputs_from_node_execs(
+        [
+            _output_node_exec(
+                "report",
+                "raw secret",
+                output=["formatted secret"],
+                stats={
+                    "error": moderated,
+                    "cleared_inputs": {
+                        "name": ["report"],
+                        "value": [moderated],
+                        "format": [moderated],
+                    },
+                    "cleared_outputs": {"output": [moderated]},
+                },
+            )
+        ]
+    )
+    assert outputs == {"report": [moderated]}
 
 
 def test_outputs_from_node_execs_falls_back_when_stats_are_corrupt():
@@ -5651,6 +5692,27 @@ async def test_classify_run_outputs_degrades_only_corrupt_execution():
         "exec-bad": ("unknown", None),
         "exec-good": ("doc", "report"),
     }
+
+
+@pytest.mark.asyncio
+async def test_classify_run_outputs_reads_what_the_output_node_yielded():
+    """A formatted output is classified as the text it rendered, so the query
+    must load the Output rows: Prisma returns only the relations it includes."""
+
+    async def find_many(*, where, include):
+        node_exec = _output_node_exec("report", {"rows": 2}, output=["word " * 100])
+        if not include.get("Output"):
+            node_exec.Output = None
+        return [SimpleNamespace(agentGraphExecutionId="exec-1", **vars(node_exec))]
+
+    with patch.object(
+        prisma.models.AgentNodeExecution,
+        "prisma",
+        return_value=SimpleNamespace(find_many=find_many),
+    ):
+        classified = await experts_db._classify_run_outputs(["exec-1"])
+
+    assert classified == {"exec-1": ("doc", "report")}
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -6238,6 +6300,23 @@ async def test_list_templates_filters_by_category(server: SpinTestServer):
     assert seller.id not in listed
 
     assert marketer.categories == ["marketing"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_search_matches_underscores_literally(
+    server: SpinTestServer,
+):
+    """A roster search is a literal substring match: `_` is the character,
+    not a one-character wildcard (#15660)."""
+    suffix = uuid.uuid4().hex[:8]
+    named = await _template(f"first_last {suffix}")
+    lookalike = await _template(f"firstxlast {suffix}")
+
+    found = await experts_db.list_templates(search_query=f"first_last {suffix}")
+
+    listed = {t.id for t in found}
+    assert named.id in listed
+    assert lookalike.id not in listed
 
 
 @pytest.mark.asyncio(loop_scope="session")

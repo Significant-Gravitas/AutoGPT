@@ -24,7 +24,7 @@ from backend.blocks.code_executor import (
     ExecuteCodeStepBlock,
     InstantiateCodeSandboxBlock,
 )
-from backend.blocks.codex import CodeGenerationBlock, CodexModel
+from backend.blocks.codex import RETIRED_CODEX_MODELS, CodeGenerationBlock, CodexModel
 from backend.blocks.enrichlayer.linkedin import (
     GetLinkedinProfileBlock,
     GetLinkedinProfilePictureBlock,
@@ -114,7 +114,9 @@ def _model_cost_from_catalog() -> dict[LLMModel, int]:
     Deliberately does NOT filter on ``is_enabled``: the kill switch stops
     a model from being SERVED to new work, but stored graphs that still
     reference it keep executing — and an execution that happens must be
-    billed. Filtering here would make killed-model usage free."""
+    billed. Filtering here would make killed-model usage free. (A killed
+    model with a fallback runs, and is billed, as the fallback from its
+    shutdown date: ``block_usage_cost``.)"""
     members = _enum_members_by_value()
     costs: dict[LLMModel, int] = {}
     for model in get_catalog().models:
@@ -393,7 +395,9 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     AIListGeneratorBlock: LLM_COST,
     # CodeGenerationBlock (Codex): block computes USD from response usage with
     # the selected model's rate and emits provider_cost + cost_usd. COST_USD
-    # 150 cr/$ matches the TOKEN_COST margin.
+    # 150 cr/$ matches the TOKEN_COST margin. A saved retired model gets the
+    # same entry: the gate's estimate and the spend check price a node's
+    # input before its schema reads the value as the model that runs.
     CodeGenerationBlock: [
         BlockCost(
             cost_type=BlockCostType.COST_USD,
@@ -407,7 +411,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
             cost_amount=150,
         )
-        for model in CodexModel
+        for model in [*CodexModel, *RETIRED_CODEX_MODELS]
     ],
     # D-ID: $5.90/min of generated video. Median 10-sec clip ≈ $0.98 →
     # 148 cr at 1.5x. 100 cr flat is a conservative middle; long clips

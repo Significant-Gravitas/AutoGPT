@@ -20,6 +20,12 @@ x-scripted-model-env: &scripted-model-env
   CHAT_USE_CLAUDE_CODE_SUBSCRIPTION: "false"
   CHAT_BASE_URL: http://scripted_model:4010/api/v1
   CHAT_API_KEY: "scripted-model-accepts-any-key" # pragma: allowlist secret
+  # The stack has no platform LLM keys, so an AI block asks the user for one.
+  # Every Anthropic client built without a base URL reads this, platform-key
+  # ones included, so an AI block run with the key the user saves calls the
+  # fake too, which journals which key each request presented. The SDK
+  # engine's CLI gets its own ANTHROPIC_BASE_URL either way.
+  ANTHROPIC_BASE_URL: http://scripted_model:4010/api
   # Keep memory inside the stack. The fake returns schema-valid empty
   # extractions and deterministic embeddings so journeys exercise memory
   # without inventing facts or sending test conversations to an external
@@ -35,6 +41,15 @@ services:
   scripted_model:
     build:
       context: ./scripted_model
+    environment:
+      # It is also the stack's Stripe (scripted_model/README.md), which the
+      # hosted configuration points the backend at
+      # (.github/scripts/hosted_journeys_env.py). Its checkout page is opened
+      # by the browser on the host; its webhooks go to the REST server, signed
+      # with the secret that configuration gives the backend.
+      FAKE_STRIPE_PUBLIC_URL: http://localhost:4010
+      FAKE_STRIPE_WEBHOOK_URL: http://rest_server:8006/api/credits/stripe_webhook
+      FAKE_STRIPE_WEBHOOK_SECRET: "whsec_journeys_fake_stripe" # pragma: allowlist secret
     volumes:
       - ./frontend/src/playwright/journeys/model-scripts:/scripts:ro
     # Journeys read the journal from the host.

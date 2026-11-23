@@ -49,6 +49,10 @@ interface Props {
   /** Last rendered row and an assistant one. Only this row gets `onRetry`
    *  and keeps its actions visible without hover. */
   isLastAssistant: boolean;
+  /** Rendered from the newest message, an assistant one: only its cards
+   *  can send. True for every row a mid-turn follow-up split it into, not
+   *  just the last one. */
+  isLatestAnswer: boolean;
   /** `isLastAssistant` while the chat status is streaming or submitted. */
   isCurrentlyStreaming: boolean;
   /** Assistant row that closes its turn: shows the stats bar and actions. */
@@ -88,6 +92,7 @@ export const MessageRow = memo(function MessageRow({
   message,
   rowKey,
   isLastAssistant,
+  isLatestAnswer,
   isCurrentlyStreaming,
   isLastInTurn,
   isLatestTurn,
@@ -217,6 +222,7 @@ export const MessageRow = memo(function MessageRow({
             messageID={rowKey}
             isCurrentlyStreaming={isCurrentlyStreaming}
             canActOnCards={isLastAssistant && !isTurnSettling}
+            isLatestAnswer={isLatestAnswer}
             onRetry={isLastAssistant ? onRetry : undefined}
             fileUrlBuilder={fileUrlBuilder}
             readOnly={readOnly}

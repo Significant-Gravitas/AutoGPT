@@ -56,6 +56,7 @@ export function NewAgentLibraryView() {
     handleSelectRun,
     handleCountsChange,
     handleClearSelectedRun,
+    handleItemDeleted,
     handleScheduleDeleted,
     onRunInitiated,
     onTriggerSetup,
@@ -112,7 +113,7 @@ export function NewAgentLibraryView() {
         targetState={{
           isOpen: true,
           step: "info",
-          submissionData: { isMarketplaceUpdate: true } as any,
+          submissionData: null,
         }}
         preSelectedAgentId={agent.graph_id}
         preSelectedAgentVersion={agent.graph_version}
@@ -156,7 +157,6 @@ export function NewAgentLibraryView() {
             agent={agent}
             triggerId={selectedItemId}
             onClearSelectedRun={handleClearSelectedRun}
-            onSwitchToRunsTab={() => setActiveTab("runs")}
             banner={renderMarketplaceUpdateBanner()}
           />
         );
@@ -288,6 +288,7 @@ export function NewAgentLibraryView() {
             selectedRunId={activeItemId ?? undefined}
             onSelectRun={handleSelectRun}
             onClearSelectedRun={handleClearSelectedRun}
+            onItemDeleted={handleItemDeleted}
             onScheduleDeleted={handleScheduleDeleted}
             onTabChange={setActiveTab}
             onCountsChange={handleCountsChange}

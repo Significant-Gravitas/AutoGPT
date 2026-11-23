@@ -35,6 +35,7 @@ export function TriggerListItem({
       description={formatDistanceToNow(trigger.updated_at, { addSuffix: true })}
       onClick={onClick}
       selected={selected}
+      testID={`library-trigger-item-${trigger.id}`}
       actions={
         <TriggerActionsDropdown
           agent={agent}

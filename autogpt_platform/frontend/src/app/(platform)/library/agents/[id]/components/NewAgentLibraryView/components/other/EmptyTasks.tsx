@@ -23,6 +23,7 @@ import { useState } from "react";
 import { RunAgentModal } from "../modals/RunAgentModal/RunAgentModal";
 import { RunDetailCard } from "../selected-views/RunDetailCard/RunDetailCard";
 import { EmptyTasksIllustration } from "./EmptyTasksIllustration";
+import { getBuilderHref } from "@/app/(platform)/build/helpers/builderHref";
 
 type Props = {
   agent: LibraryAgent;
@@ -182,10 +183,7 @@ export function EmptyTasks({
           </div>
           <div className="mt-4 flex items-center gap-2">
             <Button variant="secondary" size="small" asChild>
-              <Link
-                href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
-                target="_blank"
-              >
+              <Link href={getBuilderHref(agent.graph_id)} target="_blank">
                 Edit workflow
               </Link>
             </Button>

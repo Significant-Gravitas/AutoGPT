@@ -33,6 +33,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { MoreHorizontalIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { getBuilderHref } from "@/app/(platform)/build/helpers/builderHref";
 
 interface Props {
   agent: LibraryAgent;
@@ -197,7 +198,7 @@ export function AgentActionsDropdown({
           ) : null}
           <DropdownMenuItem asChild>
             <Link
-              href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
+              href={getBuilderHref(agent.graph_id)}
               target="_blank"
               className="flex items-center gap-2"
             >

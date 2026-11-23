@@ -3,7 +3,10 @@ import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { UIMessage } from "ai";
 import { useEffect, useInsertionEffect, useRef, useState } from "react";
 
-import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
+import {
+  makePromotedUserBubble,
+  promotedBubbleId,
+} from "./helpers/makePromotedBubble";
 import { v4 as uuidv4 } from "uuid";
 import { PENDING_DRAINED_PART_TYPE } from "./messageParts";
 
@@ -105,14 +108,28 @@ export function useCopilotPendingChips({
     setQueue,
   });
 
+  /** Returns the chip's id, for `unqueueMessage`. */
   function queueMessage(text: string) {
     // Options force uuid's getRandomValues path: crypto.randomUUID does not
-    // exist on a plain-HTTP LAN origin, and this updater runs during render,
-    // so there it took the whole chat page down instead of queueing.
-    setQueue((prev) => [...prev, { id: uuidv4({}), text }]);
+    // exist on a plain-HTTP LAN origin.
+    const id = uuidv4({});
+    setQueue((prev) => [...prev, { id, text }]);
+    return id;
   }
 
-  return { queuedMessages, queueMessage };
+  /**
+   * Takes back a chip whose message the backend did not accept, with the
+   * bubble a drain may have promoted it to while the request was out.
+   */
+  function unqueueMessage(id: string) {
+    setQueue((prev) => prev.filter((entry) => entry.id !== id));
+    setMessages?.((prev) => {
+      const kept = prev.filter((message) => !isPromotedBubbleFor(message, id));
+      return kept.length === prev.length ? prev : kept;
+    });
+  }
+
+  return { queuedMessages, queueMessage, unqueueMessage };
 }
 
 // ── 1. Peek sync ───────────────────────────────────────────────────────
@@ -379,9 +396,9 @@ function promoteChipsToTrailingBubbles(
 ): void {
   setMessages((prev) => {
     const newBubbles = drained
-      .filter((entry) => !prev.some((m) => isPromotedBubbleFor(m, entry)))
+      .filter((entry) => !prev.some((m) => isPromotedBubbleFor(m, entry.id)))
       .map((entry) =>
-        makePromotedUserBubble(entry.text, flavour, bubbleIdFor(entry)),
+        makePromotedUserBubble(entry.text, flavour, bubbleIdFor(entry.id)),
       );
     if (newBubbles.length === 0) return prev;
     const lastIdx = prev.length - 1;
@@ -396,22 +413,18 @@ function promoteChipsToTrailingBubbles(
 // and mid-turn promotion paths.  Without this, a poll resolving after
 // auto-continue already promoted the same entry would render the bubble
 // twice (different ids → dedup misses).
-function bubbleIdFor(entry: QueuedMessage): string {
-  return `pending-chip-${entry.id}`;
+function bubbleIdFor(entryId: string): string {
+  return `pending-chip-${entryId}`;
 }
 
-// Whether *message* is the promoted bubble for *entry*, whichever path
-// promoted it.  The queue id is the chip's identity; the flavour prefix
+// Whether *message* is the promoted bubble for the chip *entryId*, whichever
+// path promoted it.  The queue id is the chip's identity; the flavour prefix
 // only records which path got there first.  Repeated user messages carry
 // distinct queue ids, so they still each get a bubble.
-function isPromotedBubbleFor(
-  message: UIMessage,
-  entry: QueuedMessage,
-): boolean {
-  const suffix = bubbleIdFor(entry);
+function isPromotedBubbleFor(message: UIMessage, entryId: string): boolean {
+  const suffix = bubbleIdFor(entryId);
   return PROMOTION_FLAVOURS.some(
-    (flavour) =>
-      message.id === makePromotedUserBubble(entry.text, flavour, suffix).id,
+    (flavour) => message.id === promotedBubbleId(flavour, suffix),
   );
 }
 
