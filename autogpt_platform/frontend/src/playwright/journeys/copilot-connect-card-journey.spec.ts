@@ -27,6 +27,7 @@ import {
   openIntegrations,
 } from "./credentials";
 import { expect, test } from "./fixtures";
+import { pinKnownFailure } from "./known-failure";
 import connectScript from "./model-scripts/connect-card-api-key.json";
 import cancelScript from "./model-scripts/connect-card-cancelled.json";
 import {
@@ -197,13 +198,15 @@ test.describe("copilot connect card journey", () => {
           "nothing should offer to run the finished step again",
         ).toHaveCount(0, { timeout: REDO_CHECK_TIMEOUT });
         // Whether a finished card shows at all is still open (#17253): a
-        // known failure from here on, so anything above failing still fails
-        // the run.
-        test.fail(true, "#17253: the finished step's card comes back");
-        await expect(
-          connectCards(reloaded),
+        // known failure on this check alone, so anything above it, and any
+        // other failure after it, still fails the run.
+        const pinned = pinKnownFailure(
+          "#17253: the finished step's card comes back",
           "the finished step's connect card should not come back after a reload",
-        ).toHaveCount(0, { timeout: REDO_CHECK_TIMEOUT });
+        );
+        await expect(connectCards(reloaded), pinned).toHaveCount(0, {
+          timeout: REDO_CHECK_TIMEOUT,
+        });
       } finally {
         if (save.credential) await deleteCredential(page, save.credential);
       }
