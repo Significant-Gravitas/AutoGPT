@@ -25,13 +25,14 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
-from moviepy import ColorClip, VideoFileClip
+from moviepy import ColorClip
 from openpyxl import Workbook
 from prisma.models import UserWorkspace
 
 from backend.blocks._base import Block
 from backend.blocks.http import HttpMethod, SendWebRequestBlock
 from backend.blocks.spreadsheet import ReadSpreadsheetBlock
+from backend.blocks.video._render import open_video
 from backend.blocks.video.concat import VideoConcatBlock
 from backend.data import db
 from backend.data.execution import ExecutionContext
@@ -333,7 +334,7 @@ def _video(folder: Path, colour: tuple[int, int, int]) -> bytes:
 
 def _colours(video: Path, *seconds: float) -> list[str]:
     """Whether the video is red or blue at each of the given times."""
-    clip = VideoFileClip(str(video))
+    clip = open_video(str(video))
     try:
         frames = [clip.get_frame(second) for second in seconds]
     finally:
