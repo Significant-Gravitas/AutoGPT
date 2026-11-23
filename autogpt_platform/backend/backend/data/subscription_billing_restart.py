@@ -151,8 +151,7 @@ async def record_plan_paused(user_id: str, invoice: dict, subscription: dict) ->
 async def restart_period_after_late_payment(invoice_id: str) -> RestartOutcome:
     """Restart the subscription's billing period from this invoice's payment,
     if it was paid late and still opens the subscription's current period.
-    Any invoice of a plan already ended as replaced that is paid needs a
-    refund instead."""
+    A bill paid on a plan a newer plan replaced needs a refund instead."""
     invoice = dict(await stripe_call(stripe.Invoice.retrieve_async, invoice_id))
     sub_id = _invoice_subscription_id(invoice)
     if not sub_id or invoice.get("status") != "paid":
@@ -161,7 +160,7 @@ async def restart_period_after_late_payment(invoice_id: str) -> RestartOutcome:
         subscription = dict(
             await stripe_call(stripe.Subscription.retrieve_async, sub_id)
         )
-        if paid_after_replacement(invoice, subscription):
+        if await _paid_on_replaced_plan(invoice, subscription):
             return _needs_refund(invoice_id, sub_id)
         return RestartOutcome.NOT_APPLICABLE
     async with transaction(timeout=timedelta(seconds=90)) as tx:
@@ -177,7 +176,7 @@ async def _restart_locked(invoice: dict, sub_id: str, tx: Prisma) -> RestartOutc
     subscription = dict(await stripe_call(stripe.Subscription.retrieve_async, sub_id))
     if subscription.get("status") != "active":
         outcome = await _not_applicable(invoice, subscription, tx)
-        if paid_after_replacement(invoice, subscription):
+        if await _paid_on_replaced_plan(invoice, subscription):
             return _needs_refund(invoice_id, sub_id)
         return outcome
     if stripe_id(subscription.get("latest_invoice")) != invoice_id:
@@ -264,14 +263,33 @@ async def _not_applicable(
     return RestartOutcome.NEEDS_MANUAL_FIX
 
 
+async def _paid_on_replaced_plan(invoice: dict, subscription: dict) -> bool:
+    """Whether this paid bill is owed back because a newer plan replaced its
+    plan: paid after the plan was ended as replaced, or paid, while the plan
+    is still unpaid, on a bill that isn't its latest.
+
+    Paying an older bill leaves the plan past due, so the plan never revives
+    and ``end_revived_plan`` never runs, and it may be ended as replaced only
+    after the payment's events were delivered. So the refund is asked for
+    when the payment lands. Paying the latest bill revives the plan, and that
+    path raises the refund alert.
+    """
+    if paid_after_replacement(invoice, subscription):
+        return True
+    if subscription.get("status") in ("active", "canceled"):
+        return False
+    if stripe_id(subscription.get("latest_invoice")) == invoice["id"]:
+        return False
+    customer_id = stripe_id(subscription.get("customer"))
+    return await replaced_by_newer_plan(customer_id, subscription)
+
+
 def paid_after_replacement(invoice: dict, subscription: dict) -> bool:
     """Whether the invoice was paid after its plan was ended as replaced.
 
     A bank debit still processing when the plan was ended can settle later,
     on an older bill too, since a past-due plan keeps billing each period.
-    The plan never revives, so nothing else asks for that refund. A payment
-    made before the plan was ended revived it, and ``end_revived_plan`` or
-    the replaced-plan cleanup raised the refund alert already.
+    The plan never revives, so nothing else asks for that refund.
     """
     details = subscription.get("cancellation_details") or {}
     if (
@@ -286,8 +304,8 @@ def paid_after_replacement(invoice: dict, subscription: dict) -> bool:
 
 def _needs_refund(invoice_id: str, sub_id: str) -> RestartOutcome:
     logger.error(
-        f"Invoice {invoice_id} was paid after subscription {sub_id} was ended"
-        " as replaced by another plan; refund the payment by hand"
+        f"Invoice {invoice_id} of subscription {sub_id} was paid after another"
+        " plan replaced it; refund the payment by hand"
     )
     return RestartOutcome.NEEDS_REFUND
 

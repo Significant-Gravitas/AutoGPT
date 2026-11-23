@@ -891,9 +891,9 @@ _RESTART_ALERTS = {
         " period could not be restarted from the payment; see the logs"
     ),
     RestartOutcome.NEEDS_REFUND: (
-        "Invoice {invoice_id} was paid after its subscription was ended as"
-        " replaced by another plan, so the plan stays cancelled. The payment"
-        " needs a manual refund"
+        "Invoice {invoice_id} was paid on a subscription that another plan"
+        " replaced, so the plan is or will be cancelled and never revives."
+        " The payment needs a manual refund"
     ),
 }
 
