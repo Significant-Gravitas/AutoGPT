@@ -54,10 +54,12 @@ export function useSelectedTemplateView({
 
   const [name, setName] = useState<string>("");
   const [description, setDescription] = useState<string>("");
-  const [inputs, setInputs] = useState<Record<string, any>>({});
+  const [inputs, setInputs] = useState<Record<string, unknown>>({});
   // A detached triggered preset is filed here, so its inputs can carry the
   // trigger node's mask; keep the key so saving re-nests under the same one.
-  const [triggerConfig, setTriggerConfig] = useState<Record<string, any>>({});
+  const [triggerConfig, setTriggerConfig] = useState<Record<string, unknown>>(
+    {},
+  );
   const [maskKey, setMaskKey] = useState<string | null>(null);
   const [credentials, setCredentials] = useState<
     Record<string, CredentialsMetaInput>
@@ -190,7 +192,7 @@ export function useSelectedTemplateView({
   }
 
   function applyPresetInputs(args: {
-    presetInputs: Record<string, any> | undefined;
+    presetInputs: Record<string, unknown> | undefined;
     inputSchema: Args["inputSchema"];
     triggerConfigSchema: Args["triggerConfigSchema"];
   }) {

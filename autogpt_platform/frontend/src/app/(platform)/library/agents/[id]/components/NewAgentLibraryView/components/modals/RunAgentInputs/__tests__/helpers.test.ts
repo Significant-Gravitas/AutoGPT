@@ -63,6 +63,10 @@ describe("toCalendarDate", () => {
     { value: "2026-02-29", zone: "UTC", day: "" },
     { value: "2026-02-30T00:00:00Z", zone: "UTC", day: "" },
     { value: "2026-02-30T10:00:00Z", zone: "UTC", day: "" },
+    // Offsets that don't exist: hours past 23, minutes past 59.
+    { value: "2026-03-15T00:00+99", zone: "UTC", day: "" },
+    { value: "2026-03-15T00:00:00+24:00", zone: "UTC", day: "" },
+    { value: "2026-03-15T00:00:00+13:60", zone: "UTC", day: "" },
   ])("reads $value in $zone as $day", ({ value, zone, day }) => {
     process.env.TZ = zone;
     expect(toCalendarDate(value)).toBe(day);
@@ -103,9 +107,10 @@ describe("withCalendarDates", () => {
     });
   });
 
-  // The field shows nothing for these, so they must count as empty.
+  // The field shows nothing for these, so they must count as empty, and an
+  // explicit null keeps a template's stored value from being merged back in.
   it.each(["soon", "2026-02-30", "2026-13-45", 20260315, { day: 15 }])(
-    "drops a Date input's value it can't show as a day: %j",
+    "seeds a Date input's value it can't show as a day as null: %j",
     (value) => {
       const seeded = withCalendarDates(schema, {
         date: value,
@@ -113,7 +118,11 @@ describe("withCalendarDates", () => {
         note: "kept",
       });
 
-      expect(seeded).toStrictEqual({ note: "kept" });
+      expect(seeded).toStrictEqual({
+        date: null,
+        optional_date: null,
+        note: "kept",
+      });
     },
   );
 

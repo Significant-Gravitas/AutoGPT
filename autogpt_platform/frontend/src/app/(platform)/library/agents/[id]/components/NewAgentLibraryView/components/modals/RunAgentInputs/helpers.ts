@@ -13,7 +13,7 @@ export function getSelectOptions(schema: BlockIOSubSchema) {
 const CALENDAR_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TIMESTAMP = /^(\d{4}-\d{2}-\d{2})[T ]\d{2}:\d{2}/;
 const MIDNIGHT_TIMESTAMP =
-  /^(\d{4}-\d{2}-\d{2})[T ]00:00(?::00(?:\.0+)?)?(?:Z|[+-]\d{2}(?::?\d{2})?)?$/i;
+  /^(\d{4}-\d{2}-\d{2})[T ]00:00(?::00(?:\.0+)?)?(?:Z|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?$/i;
 
 /**
  * The day a Date input holds, as `yyyy-MM-dd`, or "" if it holds none, or
@@ -51,9 +51,11 @@ interface ObjectSchema {
 /**
  * Stored inputs with each Date input's value as the day the form shows, so a
  * form seeded from a template or trigger sends that day, not the timestamp it
- * was saved as. A value the field can't show as a day is dropped: kept, it
- * would count as filled while the field shows nothing. `schema` is the object
- * schema whose properties the form shows.
+ * was saved as. A value the field can't show as a day becomes null: kept, it
+ * would count as filled while the field shows nothing; dropped, the stored
+ * value would come back when a template's inputs are merged over it. Such a
+ * template or trigger therefore opens as edited, and saving it clears the
+ * value. `schema` is the object schema whose properties the form shows.
  */
 export function withCalendarDates(
   schema: ObjectSchema | null | undefined,
@@ -65,7 +67,7 @@ export function withCalendarDates(
       ([key, value]): [string, unknown][] => {
         if (!isDateField(fields, key) || isEmpty(value)) return [[key, value]];
         const day = toCalendarDate(value);
-        return day ? [[key, day]] : [];
+        return [[key, day || null]];
       },
     ),
   );

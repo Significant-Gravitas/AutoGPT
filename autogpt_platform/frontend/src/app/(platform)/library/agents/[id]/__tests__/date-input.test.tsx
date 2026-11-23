@@ -403,14 +403,39 @@ test.each(["2026-02-30", "soon"])(
     const dialog = await screen.findByRole("dialog");
     const field = await within(dialog).findByTestId("agent-input-date");
     expect(field).toHaveProperty("value", "");
-    const start = within(dialog).getByRole("button", { name: "Start Task" });
-    expect(start).toHaveProperty("disabled", true);
+    const startTask = () =>
+      within(dialog).getByRole("button", { name: "Start Task" });
+    await waitFor(() => expect(startTask()).toHaveProperty("disabled", true));
 
     fireEvent.change(field, { target: { value: PICKED } });
-    await waitFor(() => expect(start).toHaveProperty("disabled", false));
-    await user.click(start);
+    await waitFor(() => expect(startTask()).toHaveProperty("disabled", false));
+    await user.click(startTask());
     await waitFor(() =>
       expect(sent.task).toHaveBeenCalledWith({ date: PICKED }),
+    );
+  },
+);
+
+test.each(["2026-02-30", "soon"])(
+  "a template whose date %s can't be shown clears it, whether a task is started from it or it is saved",
+  async (stored) => {
+    const sent = mockLibrary({ presets: [makePreset({ date: stored })] });
+    const user = renderPage("activeTab=templates&activeItem=tpl-1");
+    await screen.findByDisplayValue("Trip template");
+
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(sent.savedPreset).toHaveBeenCalledWith({ date: null }),
+    );
+
+    // Starting from the template merges what it sends over what it stores,
+    // so the date must be sent as null, not left out. (Starting opens the
+    // new run, so this goes last.)
+    await user.click(
+      screen.getByRole("button", { name: "Start task from template" }),
+    );
+    await waitFor(() =>
+      expect(sent.templateTask).toHaveBeenCalledWith({ date: null }),
     );
   },
 );
