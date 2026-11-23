@@ -3779,7 +3779,7 @@ class Scheduler(AppService):
             and _fires_alike(job.trigger, trigger)
         ):
             raise ConflictError(_SCHEDULE_KEY_TAKEN)
-        # The earlier attempt may have stopped after persisting the job.
+        # A create can persist its job and stop before indexing it; repair without replacing a later create's row.
         self._upsert_schedule_index_row(job.id, info, replace_existing=False)
         logger.info(f"Create of schedule {job.id} was sent again; answered with it")
         return info

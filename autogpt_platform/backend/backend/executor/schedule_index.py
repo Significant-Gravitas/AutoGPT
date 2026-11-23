@@ -92,19 +92,23 @@ class ScheduleIndex:
 
     def insert_if_missing(self, entry: ScheduleIndexEntry) -> None:
         """Repair a missing row without replacing one from a later create."""
-        try:
-            with self._engine.begin() as conn:
-                conn.execute(insert(self._table), _entry_values(entry))
-        except IntegrityError:
-            # Check after rollback so we can see the row committed by its writer.
-            with self._engine.connect() as conn:
-                existing_id = conn.scalar(
-                    select(self._table.c.job_id).where(
-                        self._table.c.job_id == entry.job_id
+        for attempt in (1, 2):
+            try:
+                with self._engine.begin() as conn:
+                    conn.execute(insert(self._table), _entry_values(entry))
+                return
+            except IntegrityError:
+                # Check after rollback so we can see the row committed by its writer.
+                with self._engine.connect() as conn:
+                    existing_id = conn.scalar(
+                        select(self._table.c.job_id).where(
+                            self._table.c.job_id == entry.job_id
+                        )
                     )
-                )
-            if existing_id is None:
-                raise
+                if existing_id is not None:
+                    return
+                if attempt == 2:
+                    raise
 
     def upsert_many(self, entries: Sequence[ScheduleIndexEntry]) -> None:
         if not entries:
