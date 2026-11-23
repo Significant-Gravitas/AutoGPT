@@ -67,6 +67,10 @@ const WORDS_AFTER_STOP = STOP_REACHES_TURN_WITHIN_MS / WORD_DELAY_MS;
 // wall-clock: three of the cancel route's 5 s windows. After one, the route
 // completes a stopped turn itself, so only a hang lasts this long.
 const STOPPED_TURN_ENDS_WITHIN_MS = 15_000;
+// wall-clock: two of the cancel route's 5 s windows. The executor confirms a
+// Stop inside one, and the scripted model sees the dropped stream at its next
+// word, a tenth of a second later; a CLI still reading is past both.
+const STOPPED_REPLY_CUT_WITHIN_MS = 10_000;
 // wall-clock: a new turn's CLI start and a one-line reply take a few
 // seconds on CI; an unanswered message fails here, well inside the test's
 // 90 s.
@@ -163,6 +167,18 @@ test.describe("copilot stop journey", () => {
         modelTurns(await readJournal(run.nonce)),
         "the answer should be asked for once, by the SDK engine's CLI",
       ).toEqual([[1, "anthropic"]]);
+      const answered = await transcript
+        .getByText(CORRECTION_ANSWER, { exact: true })
+        .first()
+        .waitFor({ timeout: ANSWERED_WITHIN_MS })
+        .then(
+          () => true,
+          () => false,
+        );
+      const replyEnd = await stoppedReplyEnd(
+        run.nonce,
+        stoppedAt + STOPPED_REPLY_CUT_WITHIN_MS,
+      );
       test.info().annotations.push({
         type: "stop timing",
         description: [
@@ -170,21 +186,27 @@ test.describe("copilot stop journey", () => {
           `server let go of the stopped turn ${turnEndedAt - stoppedAt} ms after Stop`,
           `cancel answered ${cancelled.at - stoppedAt} ms after Stop (${cancelled.reason ?? "confirmed"})`,
           `${wordsAtStop} words shown at Stop, ${wordsSaved} saved, ${wordsShown} shown once the turn ended`,
-          `correction: ${await sendOutcome(page, 1)}`,
+          `correction: ${await sendOutcome(page, 1)}, ${answered ? "answered" : "not answered"}`,
+          `stopped reply: ${replyEnd}`,
         ].join("; "),
       });
 
-      // A message sent while the Stop settles is queued behind the stopped
-      // turn and deleted with its queue (#16673); one that starts its own turn
-      // finds the stopped turn's CLI still holding the session (#16729).
+      // Which bug shows depends on how fast the stopped turn ends. A slow
+      // Stop leaves it running when the correction arrives: the correction is
+      // queued behind it and deleted with its queue (#16673). A fast one cuts
+      // its CLI's close short: the CLI keeps reading the stopped reply and
+      // can hold the session the correction's turn needs (#16729).
       const pinned = pinKnownFailure(
-        "#16673, #16729: a message sent right after Stop is never answered",
-        "the correction sent right after Stop should be answered",
+        "#16673, #16729: a correction sent right after Stop is never answered, or a CLI keeps reading the stopped reply",
+        "the correction should be answered and the stopped reply's model stream ended",
       );
-      await expect(
-        transcript.getByText(CORRECTION_ANSWER, { exact: true }).first(),
+      expect(
+        [
+          answered ? null : "the correction was never answered",
+          replyEnd === "cut" ? null : `the stopped reply was ${replyEnd}`,
+        ].filter(Boolean),
         pinned,
-      ).toBeVisible({ timeout: ANSWERED_WITHIN_MS });
+      ).toEqual([]);
       await expect(errorCards(page), "no error card should show").toHaveCount(
         0,
       );
@@ -221,12 +243,6 @@ test.describe("copilot stop journey", () => {
         "the reloaded chat should show the reply as it stopped",
       ).toBe(wordsSaved);
       expectEachTurnOnce(await readJournal(after.nonce), AFTER_STOP);
-      await expect
-        .poll(async () => firstReplyCompleted(await readJournal(run.nonce)), {
-          message:
-            "the Stop should end the model's reply, not leave a CLI reading it",
-        })
-        .toBe(false);
       expect(
         cancelled.reason,
         "the executor should confirm the Stop inside the cancel route's 5 s",
@@ -468,6 +484,36 @@ function modelTurns(journal: JournalEntry[]) {
   return journal
     .filter((entry) => entry.kind !== "side_call")
     .map((entry) => [entry.turn ?? entry.kind, entry.dialect]);
+}
+
+/**
+ * How the stopped reply's model stream ended, by `deadline`: "cut" when the
+ * platform dropped it, "read to its end" when a CLI kept reading it, "still
+ * being read" when one still is. The scripted model sees a dropped stream at
+ * its next word.
+ */
+async function stoppedReplyEnd(nonce: string, deadline: number) {
+  let end = "still being read";
+  await expect
+    .poll(
+      async () => {
+        const completed = firstReplyCompleted(await readJournal(nonce));
+        end =
+          completed === false
+            ? "cut"
+            : completed === true
+              ? "read to its end"
+              : "still being read";
+        return completed !== null || Date.now() >= deadline;
+      },
+      {
+        message: "the stopped reply's model stream should end or be checked",
+        timeout: Math.max(0, deadline - Date.now()) + 10_000,
+        intervals: [250],
+      },
+    )
+    .toBe(true);
+  return end;
 }
 
 /** Whether the run's first model reply reached the platform in full; null
