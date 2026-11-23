@@ -95,12 +95,19 @@ test.describe("subscription journey", () => {
     const stripeCursor = await stripeRequestCursor();
     const { customer, subscription } = await buyPro(page);
     await cancelInBillingPortal(page);
-
-    await planCard(page, "Pro")
-      .getByRole("button", { name: "Resume subscription" })
-      .click();
-    await expect(page.getByText("Subscription resumed")).toBeVisible();
     const renews = await shortDate(page, subscription.current_period_end);
+    await expectPlan(page, {
+      label: "Pro",
+      badge: "Cancellation scheduled",
+      summary: `${PRO_PRICE} / month · Ends on ${renews}`,
+    });
+
+    const resume = planCard(page, "Pro").getByRole("button", {
+      name: "Resume subscription",
+    });
+    await expect(resume).toBeVisible();
+    await resume.click();
+    await expect(page.getByText("Subscription resumed")).toBeVisible();
     await expectPlan(page, {
       label: "Pro",
       badge: "Active",
