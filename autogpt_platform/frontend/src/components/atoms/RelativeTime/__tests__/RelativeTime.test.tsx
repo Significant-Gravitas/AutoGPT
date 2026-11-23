@@ -73,4 +73,9 @@ describe("RelativeTime", () => {
     expect(htmlEarly).toBe("2026-04-23");
     expect(htmlLater).toBe("2026-04-23");
   });
+
+  it("falls back to raw string without throwing for invalid dates", () => {
+    render(<Row id="bad" date="not-a-date" as unknown as Date />);
+    expect(label("bad")).toBe("not-a-date");
+  });
 });

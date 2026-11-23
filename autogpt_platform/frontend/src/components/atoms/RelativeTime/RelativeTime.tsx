@@ -8,21 +8,6 @@ interface Props {
   date: Date | string | number;
 }
 
-function formatUtcDate(date: Date | string | number): string {
-  const parsed = date instanceof Date ? date : new Date(date);
-  return Number.isNaN(parsed.getTime())
-    ? String(date)
-    : parsed.toISOString().slice(0, 10);
-}
-
-/**
- * `date` relative to now, e.g. "5 minutes ago". It re-renders on the shared
- * minute clock, so the label keeps up with time without a timer of its own
- * and without its parent re-rendering.
- *
- * Renders the deterministic UTC date until mount so SSR and client hydration
- * always match regardless of clock drift or elapsed time.
- */
 export function RelativeTime({ date }: Props) {
   useNowMinute();
   const [mounted, setMounted] = useState(false);
@@ -31,9 +16,14 @@ export function RelativeTime({ date }: Props) {
     setMounted(true);
   }, []);
 
-  if (!mounted) {
-    return <>{formatUtcDate(date)}</>;
+  const parsed = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(parsed.getTime())) {
+    return <>{String(date)}</>;
   }
 
-  return <>{formatDistanceToNow(date, { addSuffix: true })}</>;
+  if (!mounted) {
+    return <>{parsed.toISOString().slice(0, 10)}</>;
+  }
+
+  return <>{formatDistanceToNow(parsed, { addSuffix: true })}</>;
 }
