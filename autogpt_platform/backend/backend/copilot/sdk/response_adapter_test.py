@@ -1178,8 +1178,7 @@ def test_flush_unresolved_at_result_message():
     ][0]
     assert output_event.toolCallId == "ws-1"
     assert output_event.toolName == "WebSearch"
-    assert output_event.output == {"interrupted": True, "error": "Interrupted"}
-    assert output_event.success is False
+    assert output_event.output == ""
 
 
 def test_flush_unresolved_at_next_assistant_message():

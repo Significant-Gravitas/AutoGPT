@@ -1028,7 +1028,12 @@ class SDKResponseAdapter:
         self._pending_thinking_delta = ""
         self._pending_thinking_index = None
 
-    def flush_unresolved_tool_calls(self, responses: list[StreamBaseResponse]) -> None:
+    def flush_unresolved_tool_calls(
+        self,
+        responses: list[StreamBaseResponse],
+        *,
+        interrupted: bool = False,
+    ) -> None:
         """Emit outputs for tool calls that didn't receive a UserMessage result.
 
         SDK built-in tools (WebSearch, Read, etc.) may be executed by the CLI
@@ -1089,15 +1094,20 @@ class SDKResponseAdapter:
                     len(output),
                 )
             else:
-                # No output available — emit an interrupted marker so the
-                # frontend transitions the tool to an error/interrupted state
-                # (stops the spinner without showing a successful empty run).
+                # No output available — on interrupted/stopped turns emit an
+                # interrupted marker so the frontend renders output-error
+                # ("Interrupted") instead of an empty successful run; on normal
+                # mid-turn flushes emit an empty output to stop the spinner.
                 responses.append(
                     StreamToolOutputAvailable(
                         toolCallId=tool_id,
                         toolName=tool_name,
-                        output={"interrupted": True, "error": "Interrupted"},
-                        success=False,
+                        output=(
+                            {"interrupted": True, "error": "Interrupted"}
+                            if interrupted
+                            else ""
+                        ),
+                        success=not interrupted,
                     )
                 )
                 self.resolved_tool_calls.add(tool_id)

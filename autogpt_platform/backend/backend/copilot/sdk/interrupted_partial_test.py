@@ -50,7 +50,7 @@ def _adapter_with_unresolved(responses: list[StreamToolOutputAvailable]):
     adapter = MagicMock()
     adapter.has_unresolved_tool_calls = bool(responses)
 
-    def _flush(out: list) -> None:
+    def _flush(out: list, **_kwargs) -> None:
         out.extend(responses)
         adapter.has_unresolved_tool_calls = False
 
@@ -380,7 +380,7 @@ def test_flush_unresolved_tool_calls_without_stash_marks_interrupted():
         "backend.copilot.sdk.response_adapter.pop_pending_tool_output",
         return_value=None,
     ):
-        adapter.flush_unresolved_tool_calls(responses)
+        adapter.flush_unresolved_tool_calls(responses, interrupted=True)
 
     assert len(responses) == 1
     assert responses[0].toolCallId == "call_1"

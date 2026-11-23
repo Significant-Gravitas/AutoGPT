@@ -2082,7 +2082,7 @@ def _flush_orphan_tool_uses_to_session(
     if not state.adapter.has_unresolved_tool_calls:
         return []
     safety: list[StreamBaseResponse] = []
-    state.adapter.flush_unresolved_tool_calls(safety)
+    state.adapter.flush_unresolved_tool_calls(safety, interrupted=True)
     for resp in safety:
         if isinstance(resp, StreamToolOutputAvailable):
             content = (
