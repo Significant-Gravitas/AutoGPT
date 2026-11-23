@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import io
 import mimetypes
@@ -789,7 +788,11 @@ class SendDiscordFileBlock(Block):
                     stored = Path(
                         get_exec_file_path(execution_context.graph_exec_id, local_path)
                     )
-                    file_bytes = await asyncio.to_thread(stored.read_bytes)
+                    # Read the copy before anything else is awaited. A workflow
+                    # run keeps every node's copies in one folder, so another
+                    # node sending a file of the same name could replace this
+                    # copy while this one waited.
+                    file_bytes = stored.read_bytes()
 
                     if not filename:
                         detected_filename = stored.name

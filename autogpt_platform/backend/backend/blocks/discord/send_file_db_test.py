@@ -5,12 +5,16 @@ through ``WorkspaceManager`` to a real database and the real
 ``store_media_file``. Only the Discord client is replaced, by one that records
 what the channel was sent."""
 
+import asyncio
 import base64
+import posixpath
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import AsyncExitStack
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import discord
@@ -58,7 +62,7 @@ SendFile = Callable[..., Awaitable[tuple[str, Sent]]]
 async def test_a_workspace_file_goes_out_under_its_own_name(
     send: SendFile, chat: ExecutionContext, reference: str
 ):
-    file_id = await _write_csv(chat)
+    file_id = await _write_file(chat)
 
     status, sent = await send(chat, reference.format(id=file_id, name=FILE_NAME))
 
@@ -70,7 +74,7 @@ async def test_a_workspace_file_goes_out_under_its_own_name(
 async def test_a_filename_given_to_the_block_wins(
     send: SendFile, chat: ExecutionContext
 ):
-    file_id = await _write_csv(chat)
+    file_id = await _write_file(chat)
 
     status, sent = await send(chat, f"workspace://{file_id}#text/csv", "Bericht.csv")
 
@@ -82,8 +86,7 @@ async def test_a_filename_given_to_the_block_wins(
 async def test_a_run_file_goes_out_under_its_own_name(
     send: SendFile, graph_run: ExecutionContext
 ):
-    """A file an earlier block left in a workflow run's own folder, with no
-    workspace in play."""
+    """A file an earlier node left in the workflow run's own folder."""
     assert graph_run.graph_exec_id
     path = Path(file_module.get_exec_file_path(graph_run.graph_exec_id, "image.png"))
     path.parent.mkdir(parents=True)
@@ -93,6 +96,39 @@ async def test_a_run_file_goes_out_under_its_own_name(
 
     assert status == "File sent successfully"
     assert sent == [("image.png", PNG)]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_two_sends_in_one_run_each_carry_their_own_file(
+    send: SendFile,
+    graph_run: ExecutionContext,
+    local_files: AsyncMock,
+    thread_jobs_wait_their_turn: None,
+):
+    """Two nodes of one workflow run send different workspace files that have
+    the same name. The run keeps every node's copies in one folder, so the
+    second copy replaces the first: each send has to read its own copy before
+    another node can write there.
+
+    The interleaving is forced. The first send writes its copy only once the
+    second is waiting right before writing its own, so the second writes at
+    the first point the first send yields. A job meant for a worker thread
+    runs on the loop in turn, so a read moved to a thread comes after that
+    write as well."""
+    first = await _write_file(graph_run, b"first report", "/reports/report.csv")
+    second = await _write_file(graph_run, b"second report", "/archive/report.csv")
+    local_files.side_effect = _second_copy_written_when_the_first_yields(
+        first=b"first report"
+    )
+
+    (first_status, first_sent), (second_status, second_sent) = await asyncio.gather(
+        send(graph_run, f"workspace://{first}#text/csv"),
+        send(graph_run, f"workspace://{second}#text/csv"),
+    )
+
+    assert [first_status, second_status] == ["File sent successfully"] * 2
+    assert first_sent == [("report.csv", b"first report")]
+    assert second_sent == [("report.csv", b"second report")]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -170,7 +206,7 @@ def send(mocker) -> SendFile:
 
 
 @pytest.fixture
-def chat(workspace: UserWorkspace, local_files: None) -> ExecutionContext:
+def chat(workspace: UserWorkspace, local_files: AsyncMock) -> ExecutionContext:
     """The context AutoPilot's run_block gives a block in one of its chats."""
     session_id = str(uuid.uuid4())
     return ExecutionContext(
@@ -182,13 +218,30 @@ def chat(workspace: UserWorkspace, local_files: None) -> ExecutionContext:
 
 
 @pytest.fixture
-def graph_run(local_files: None) -> ExecutionContext:
-    """The context of a workflow run outside AutoPilot: no workspace, no chat."""
+def graph_run(workspace: UserWorkspace, local_files: AsyncMock) -> ExecutionContext:
+    """The context the executor gives a block in a workflow run outside
+    AutoPilot: the owner's workspace and no chat, so every node of the run
+    keeps its copies in the run's one folder."""
     return ExecutionContext(
-        user_id=str(uuid.uuid4()),
+        user_id=workspace.userId,
         graph_id=str(uuid.uuid4()),
         graph_exec_id=str(uuid.uuid4()),
+        workspace_id=workspace.id,
     )
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def thread_jobs_wait_their_turn() -> AsyncIterator[None]:
+    """Runs each job meant for the loop's worker threads on the loop itself,
+    behind the callbacks already waiting there, so a read handed to a thread
+    happens at a known point instead of whenever a thread gets to it."""
+    loop = asyncio.get_running_loop()
+    default_executor = loop._default_executor
+    loop.set_default_executor(_InTurnExecutor(loop))
+    try:
+        yield
+    finally:
+        loop._default_executor = default_executor
 
 
 @pytest_asyncio.fixture(loop_scope="session")
@@ -211,9 +264,12 @@ async def workspace() -> AsyncIterator[UserWorkspace]:
 
 
 @pytest.fixture
-def local_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def local_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[AsyncMock]:
     """Workspace files and the run's local copies kept under ``tmp_path``,
-    without the virus scanner, the storage quota or search indexing."""
+    without the virus scanner, the storage quota or search indexing.
+
+    Yields the stand-in for the scan ``store_media_file`` runs right before it
+    writes its copy."""
     monkeypatch.setattr(file_module, "TEMP_DIR", (tmp_path / "temp").resolve())
     storage = LocalWorkspaceStorage(base_dir=str(tmp_path / "storage"))
     with (
@@ -226,21 +282,72 @@ def local_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Non
             AsyncMock(return_value=1_000_000),
         ),
         patch("backend.util.workspace.scan_content_safe", AsyncMock()),
-        patch("backend.util.file.scan_content_safe", AsyncMock()),
+        patch("backend.util.file.scan_content_safe", AsyncMock()) as scan,
         patch(
             "backend.api.features.workspace.embeddings.schedule_workspace_file_embedding"
         ),
     ):
-        yield
+        yield scan
 
 
-async def _write_csv(chat: ExecutionContext) -> str:
-    """Saves the CSV in the chat's own folder, as AutoPilot would, and returns
-    its file id."""
-    assert chat.user_id and chat.workspace_id
-    manager = WorkspaceManager(chat.user_id, chat.workspace_id, chat.session_id)
-    file = await manager.write_file(content=CSV, filename=FILE_NAME)
+async def _write_file(
+    context: ExecutionContext, content: bytes = CSV, path: str = f"/{FILE_NAME}"
+) -> str:
+    """Saves a file in the context's workspace, inside its chat's own folder
+    when it has a chat, as AutoPilot would, and returns its file id."""
+    assert context.user_id and context.workspace_id
+    manager = WorkspaceManager(
+        context.user_id, context.workspace_id, context.session_id
+    )
+    file = await manager.write_file(
+        content=content, filename=posixpath.basename(path), path=path
+    )
     return file.id
+
+
+def _second_copy_written_when_the_first_yields(
+    *, first: bytes
+) -> Callable[..., Awaitable[None]]:
+    """A stand-in for the scan, the last step before ``store_media_file``
+    writes its copy. The scan of ``first`` returns only once the other send is
+    waiting in its own scan, and that one returns right after: the other send
+    then writes its copy at the first point the first send yields."""
+    second_waiting = asyncio.Event()
+    first_scanned = asyncio.Event()
+
+    async def scan(content: bytes, *, filename: str) -> None:
+        async with asyncio.timeout(30):
+            if content == first:
+                await second_waiting.wait()
+                first_scanned.set()
+            else:
+                second_waiting.set()
+                await first_scanned.wait()
+
+    return scan
+
+
+class _InTurnExecutor(ThreadPoolExecutor):
+    """Queues each job on the event loop, behind the callbacks already waiting
+    there, instead of handing it to a thread."""
+
+    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+        super().__init__(max_workers=1)
+        self._loop = loop
+
+    def submit(self, fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Future:
+        job: Future = Future()
+
+        def run() -> None:
+            if not job.set_running_or_notify_cancel():
+                return
+            try:
+                job.set_result(fn(*args, **kwargs))
+            except BaseException as error:
+                job.set_exception(error)
+
+        self._loop.call_soon(run)
+        return job
 
 
 class _RecordingChannel:
