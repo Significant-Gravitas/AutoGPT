@@ -22,6 +22,9 @@ export interface ModelScript {
 
 export interface JournalEntry {
   kind: "turn" | "side_call" | "error" | "unexpected";
+  /** "anthropic" from the SDK engine's CLI, "openai" from the baseline
+   *  engine and side calls. */
+  dialect?: string;
   model?: string;
   turn?: number | null;
   error?: string;
