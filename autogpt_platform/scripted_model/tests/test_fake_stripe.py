@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 import stripe
-from scripted_model.fake_stripe.events import Events
+from scripted_model.fake_stripe.events import API_VERSION, Events
 from scripted_model.fake_stripe.fake import FakeStripe
 from scripted_model.server import ScriptedModelServer
 
@@ -251,6 +251,14 @@ def test_a_journey_holds_and_redelivers_webhooks(stack: Stack) -> None:
     ]
     assert other["deliveries"][0]["status"] == 200
     assert other["event"]["data"]["object"]["payment_status"] == "paid"
+
+
+def test_the_fake_models_the_api_version_the_platform_s_sdk_pins() -> None:
+    """Stripe never changes what a pinned API version sends or accepts, so the
+    fake can only fall behind when the platform's SDK moves to a newer version.
+    This fails on that bump until the fake is checked against the new version's
+    changelog and brought up to date."""
+    assert API_VERSION == stripe.api_version
 
 
 def test_the_fake_refuses_what_stripe_would(stack: Stack) -> None:
