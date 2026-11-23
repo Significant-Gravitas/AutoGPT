@@ -114,10 +114,27 @@ function mockRunWithOutputs(outputs: Record<string, unknown[]>) {
   );
 }
 
-// An output's label, followed by what the run view shows for it.
+function renderRunView() {
+  render(
+    <NuqsTestingAdapter
+      hasMemory
+      searchParams={`activeTab=runs&activeItem=${run.id}`}
+    >
+      <AgentLibraryPage />
+    </NuqsTestingAdapter>,
+  );
+}
+
+// What the run view shows for an output: the value beside its label.
 async function shownOutput(name: string) {
-  const label = await screen.findByText(name);
-  return label.nextElementSibling as HTMLElement;
+  const label = await screen.findByText(name, {
+    selector: '[data-testid="output-item-label"]',
+  });
+  const value = label.parentElement?.querySelector<HTMLElement>(
+    '[data-testid="output-item-value"]',
+  );
+  if (!value) throw new Error(`the run view shows no value for ${name}`);
+  return value;
 }
 
 test("the run view shows text that reads as a JSON number or boolean exactly as the text", async () => {
@@ -127,18 +144,29 @@ test("the run view shows text that reads as a JSON number or boolean exactly as 
     ),
   );
 
-  render(
-    <NuqsTestingAdapter
-      hasMemory
-      searchParams={`activeTab=runs&activeItem=${run.id}`}
-    >
-      <AgentLibraryPage />
-    </NuqsTestingAdapter>,
-  );
+  renderRunView();
 
   const shown: Record<string, string | null> = {};
   for (const name of Object.keys(TEXT_OUTPUTS)) {
     shown[name] = (await shownOutput(name)).textContent;
   }
   expect(shown).toEqual(TEXT_OUTPUTS);
+});
+
+// Text holding a JSON object still goes to a renderer that lays it out (code,
+// or JSON), ahead of the text renderer that now takes number-like text.
+test("the run view shows text holding a JSON object laid out, not as the bare text", async () => {
+  const objectText = '{"a":1}';
+  mockRunWithOutputs({ json_text: [objectText] });
+
+  renderRunView();
+
+  const { textContent } = await shownOutput("json_text");
+  expect(textContent, "the run view should show the object").toMatch(
+    /"a":\s*1/,
+  );
+  expect(
+    textContent,
+    "the run view should lay the object out, not show its bare text",
+  ).not.toBe(objectText);
 });
