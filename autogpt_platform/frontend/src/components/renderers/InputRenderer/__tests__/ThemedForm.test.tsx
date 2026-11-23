@@ -1,5 +1,6 @@
 import RJSFForm from "@rjsf/core";
 import type { RJSFSchema } from "@rjsf/utils";
+import { act } from "@testing-library/react";
 import { createRef, type Ref } from "react";
 import { describe, expect, it } from "vitest";
 import { render } from "@/tests/integrations/test-utils";
@@ -24,10 +25,15 @@ function themedForm(ref: Ref<RJSFForm>, name: string) {
 }
 
 describe("the themed form", () => {
-  it("passes a ref through to the RJSF form, which a caller can submit or validate", () => {
+  it("passes a ref through to the RJSF form, so a caller can validate it", () => {
     const ref = createRef<RJSFForm>();
     render(themedForm(ref, "first"));
     expect(ref.current).toBeInstanceOf(RJSFForm);
+    let valid: boolean | undefined;
+    act(() => {
+      valid = ref.current?.validateForm();
+    });
+    expect(valid).toBe(true);
   });
 
   it("keeps its RJSF form across renders", () => {
