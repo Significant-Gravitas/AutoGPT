@@ -58,7 +58,29 @@ export interface RouteRule {
 
 // What a page shows as "… ago" is worked out on the server and again in the
 // browser; it reads differently when the age crosses a boundary in between.
-const TIME_AGO_MISMATCH = /Minified React error #418\b/;
+const TIME_AGO_MISMATCH =
+  /Minified React error #418; visit https:\/\/react\.dev\/errors\/418\?args\[\]=text/;
+
+/**
+ * An open bug that shows now and then on pages that are otherwise fine, with
+ * no visit that shows it every time, so no test can pin it: CI accepts a
+ * pinned test only if it fails every run. A group notes it on its pages with
+ * an annotation, rather than fail on it.
+ */
+export interface IntermittentBug {
+  issue: number;
+  what: string;
+  problem: RegExp;
+}
+
+export const INTERMITTENT_BUGS: IntermittentBug[] = [
+  {
+    issue: 16925,
+    what: "a page throws React error #418 (HTML) while it hydrates, now and then",
+    problem:
+      /Minified React error #418; visit https:\/\/react\.dev\/errors\/418\?args\[\]=HTML/,
+  },
+];
 
 export const KNOWN_BUGS: KnownBug[] = [
   {

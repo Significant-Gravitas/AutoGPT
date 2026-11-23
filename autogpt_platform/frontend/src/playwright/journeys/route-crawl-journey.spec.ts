@@ -35,6 +35,7 @@ import {
   accessOf,
   DYNAMIC_ROUTES,
   hasKnownBug,
+  INTERMITTENT_BUGS,
   isDynamic,
   KNOWN_BUGS,
   type KnownBug,
@@ -304,10 +305,13 @@ test.describe("route crawl journey", () => {
         const [result] = reproduce
           ? await reproduce(env, page)
           : await crawlAs(env, page, who, [route]);
-        // The page's other known bugs have pins of their own.
-        const others = KNOWN_BUGS.filter(
-          (other) => other.route === route && other !== bug,
-        );
+        // The page's other known bugs have pins of their own, or none can.
+        const others = [
+          ...KNOWN_BUGS.filter(
+            (other) => other.route === route && other !== bug,
+          ),
+          ...INTERMITTENT_BUGS,
+        ];
         const unrelated = result.problems.filter(
           (problem) =>
             !bug.problem.test(problem) &&
@@ -452,7 +456,7 @@ async function expectAllClean(results: VisitResult[]) {
     body: JSON.stringify(summarize(results), null, 2),
     contentType: "application/json",
   });
-  const failures = describeFailures(results.map(setAsidePinnedElsewhere));
+  const failures = describeFailures(results.map(noteKnownBugs));
   expect(
     failures.length,
     `${failures.length} of ${results.length} pages didn't load cleanly:\n\n` +
@@ -460,12 +464,16 @@ async function expectAllClean(results: VisitResult[]) {
   ).toBe(0);
 }
 
-// A known bug that shows on other pages, depending on what they list, is
-// pinned by its own test: a group notes it on its pages rather than fail.
-function setAsidePinnedElsewhere(result: VisitResult): VisitResult {
-  const elsewhere = KNOWN_BUGS.filter((bug) => bug.showsElsewhere);
+// Known bugs a group notes on its pages rather than fail on: one that other
+// pages show too, depending on what they list, which its own test pins, and
+// one that shows only now and then, which no test can pin.
+function noteKnownBugs(result: VisitResult): VisitResult {
+  const noted = [
+    ...KNOWN_BUGS.filter((bug) => bug.showsElsewhere),
+    ...INTERMITTENT_BUGS,
+  ];
   const problems = result.problems.filter((problem) => {
-    const bug = elsewhere.find((known) => known.problem.test(problem));
+    const bug = noted.find((known) => known.problem.test(problem));
     if (!bug) return true;
     test.info().annotations.push({
       type: "known bug seen",

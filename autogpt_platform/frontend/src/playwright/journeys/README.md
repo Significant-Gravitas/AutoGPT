@@ -79,7 +79,9 @@ product does what the user expects.
 is for, each in a tab of its own watched by the guard on that tab alone
 (`watchPageForUnexpectedErrors`), and fails with each page that didn't load
 cleanly and why. A session's tabs share a browser context, so the app's
-scripts load once per session. A page loads cleanly when:
+scripts load once per session. The checks run once the page has hydrated:
+its scripts have run, its API calls have gone quiet and the browser is idle.
+A page loads cleanly when:
 
 - the server answers it below 400;
 - it ends up where it should;
@@ -113,6 +115,10 @@ a page links to aren't rendered alongside it.
   with the browser's clock ahead. A bug other pages show too, depending on
   what they list, is `showsElsewhere`: their groups note it rather than
   fail on it.
+- **A bug that shows only now and then**, with no visit that shows it every
+  time, can't be pinned: CI accepts a pinned test only if it fails every
+  run. Add it to `INTERMITTENT_BUGS` with its issue. The crawl then notes it
+  on any page it shows on, with an annotation, rather than fail.
 
 ## Run locally
 

@@ -72,6 +72,8 @@ const TABS = 2;
 const CRAWL_BUDGET_MS = 60_000;
 const GOTO_TIMEOUT_MS = 30_000;
 const LANDING_TIMEOUT_MS = 20_000;
+const LOAD_TIMEOUT_MS = 15_000;
+const IDLE_TIMEOUT_MS = 3_000;
 // A page's own requests have settled once none has been open for this long.
 const API_QUIET_MS = 750;
 const API_SETTLE_TIMEOUT_MS = 10_000;
@@ -248,7 +250,7 @@ async function checkPage(page: Page, visit: Visit) {
       `it should end up on ${visit.landsOn}, but it is on ${pathnameOf(page.url())}`,
     );
   }
-  await requests.settle();
+  await settle(page, requests);
 
   const content = await waitForContent(page);
   if (content !== "ready")
@@ -268,6 +270,31 @@ async function checkPage(page: Page, visit: Visit) {
     problems.push(`it asks for the image ${image}, which public/ doesn't have`);
   }
   return problems;
+}
+
+// The server's HTML shows a page's content before React has hydrated it, and
+// what breaks in hydration (a mismatch, an error thrown while rendering) only
+// shows after. So the checks wait for the page's scripts to have run ("load",
+// which async chunks hold back), its API calls to go quiet, and the browser
+// to be idle, React's render work done. None of these waits fails a visit:
+// each is capped, and the checks after them report what's wrong.
+async function settle(
+  page: Page,
+  requests: ReturnType<typeof trackAPIRequests>,
+) {
+  await page
+    .waitForLoadState("load", { timeout: LOAD_TIMEOUT_MS })
+    .catch(() => {});
+  await requests.settle();
+  await page
+    .evaluate(
+      (timeout) =>
+        new Promise<void>((resolve) =>
+          requestIdleCallback(() => resolve(), { timeout }),
+        ),
+      IDLE_TIMEOUT_MS,
+    )
+    .catch(() => {});
 }
 
 // Next prefetches the pages a page links to, rendering each on the server.
