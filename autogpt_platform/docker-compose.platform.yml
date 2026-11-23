@@ -640,9 +640,13 @@ services:
       # directly; tables live in the platform schema (Prisma migrations).
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?run make init-env in autogpt_platform/ to generate it}@db:5432/postgres
       AUTH_DB_SCHEMA: platform
-      # Node closes an idle keep-alive socket after 5 s (+1 s buffer); a client reusing one right then
-      # gets "socket hang up". Keep idle sockets longer than clients and proxies leave them unused.
-      KEEP_ALIVE_TIMEOUT: "65000"
+      # How long Next keeps an idle connection, in milliseconds (Node's default
+      # is 5 s). A proxy or client that sends a request on a connection just as
+      # Next closes it gets no answer: a proxy answers 502, and doesn't retry a
+      # POST. So keep connections longer than any proxy in front does: Google's
+      # load balancer 600 s, Caddy 120 s, Traefik 90 s, nginx 60 s. The backend's
+      # equivalent is SERVER_KEEP_ALIVE_TIMEOUT_SECONDS.
+      KEEP_ALIVE_TIMEOUT: "620000"
 volumes:
   workspace-data:
   store-media-data:
