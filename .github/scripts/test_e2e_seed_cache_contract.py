@@ -548,7 +548,7 @@ class E2ECoverageContractTests(unittest.TestCase):
         workflow = (
             Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
         ).read_text(encoding="utf-8")
-        self.assertEqual(_matrix_leg(workflow, "smoke")["min_tests"], "36")
+        self.assertEqual(_matrix_leg(workflow, "smoke")["min_tests"], "37")
         # The whole journeys suite's inventory, one total on every shard.
         self.assertEqual(
             {leg["min_tests"] for leg in _matrix_legs(workflow, "journeys")}, {"47"}
