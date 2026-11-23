@@ -1,4 +1,10 @@
-import { getCookieCache, getSessionCookie } from "better-auth/cookies";
+import {
+  getCookieCache,
+  getSessionCookie,
+  parseCookies,
+  SECURE_COOKIE_PREFIX,
+} from "better-auth/cookies";
+import { constantTimeEqual, makeSignature } from "better-auth/crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { usesSecureCookies } from "./base-url";
 import { IP_ADDRESS_HEADERS } from "./client-ip";
@@ -18,14 +24,8 @@ async function getSessionUserRole(
 ): Promise<string | null> {
   // Fast path: the signed cookie cache carries the user without a DB hit.
   try {
-    const cached = await getCookieCache(request, {
-      secret: process.env.BETTER_AUTH_SECRET,
-      // Under the name auth.ts gives it. Left to guess, Better Auth looks for
-      // the `__Secure-` name in any production build, which a server whose
-      // base URL is http never sets (#17308).
-      isSecure: usesSecureCookies(),
-    });
-    if (cached?.user) {
+    const cached = await getOwnCookieCache(request);
+    if (cached) {
       return (cached.user as { role?: string }).role ?? null;
     }
   } catch {
@@ -52,6 +52,46 @@ async function getSessionUserRole(
   }
 }
 
+// The signed cookie cache, if it belongs to the request's session. As Better
+// Auth's own /get-session checks, the session token inside the cache must be
+// the one in the request's signed session cookie.
+async function getOwnCookieCache(request: NextRequest) {
+  const secret = process.env.BETTER_AUTH_SECRET;
+  if (!secret) return null;
+  // Under the names auth.ts gives the cookies. Left to guess, Better Auth
+  // looks for the `__Secure-` names in any production build, which a server
+  // whose base URL is http never sets (#17308).
+  const isSecure = usesSecureCookies();
+  const token = await getSignedSessionToken({ request, secret, isSecure });
+  if (!token) return null;
+  const cached = await getCookieCache(request, { secret, isSecure });
+  return cached?.session.token === token ? cached : null;
+}
+
+interface SignedCookieArgs {
+  request: NextRequest;
+  secret: string;
+  isSecure: boolean;
+}
+
+// The token in the request's session cookie, if its signature is valid. The
+// cookie holds `<token>.<signature>`: better-call's signCookieValue signs the
+// token with this same makeSignature (HMAC-SHA256, base64).
+async function getSignedSessionToken({
+  request,
+  secret,
+  isSecure,
+}: SignedCookieArgs) {
+  const name = `${isSecure ? SECURE_COOKIE_PREFIX : ""}better-auth.session_token`;
+  const value = parseCookies(request.headers.get("cookie") ?? "").get(name);
+  const separator = value?.lastIndexOf(".") ?? -1;
+  if (!value || separator < 1) return null;
+  const token = value.slice(0, separator);
+  const signature = value.slice(separator + 1);
+  const expected = await makeSignature(token, secret);
+  return constantTimeEqual(signature, expected) ? token : null;
+}
+
 // The visitor's cookies, and the headers Better Auth reads their IP address
 // from, as they arrived. Better Auth then counts the lookup against the
 // visitor, by the same rules as their own requests to /api/auth, rather than
@@ -71,8 +111,8 @@ function sessionLookupHeaders(request: NextRequest) {
  * Follows the Better Auth guidance for Next.js: the middleware only does an
  * optimistic cookie-presence check for protected pages; real session
  * validation happens in route handlers and server components. Admin pages
- * additionally resolve the user's role (cookie cache first, then a session
- * fetch).
+ * additionally resolve the user's role (the session's own cookie cache first,
+ * then a session fetch).
  */
 export async function authMiddleware(request: NextRequest) {
   const url = request.nextUrl.clone();
