@@ -132,6 +132,13 @@ class CheckFrontendServerErrorsTests(unittest.TestCase):
             " ⨯ upstream image response timed out for http://localhost:3000/a.png",
             " ⨯ upstream image response timed out for http://rest_server:8006/a.png",
             " ⨯ upstream image response timed out for http://172.18.0.4/a.png",
+            " ⨯ upstream image response timed out for http://0.0.0.0:3000/a.png",
+            " ⨯ upstream image response timed out for http://169.254.1.1/a.png",
+            (
+                " ⨯ upstream image response timed out for "
+                "http://host.docker.internal:8006/a.png"
+            ),
+            " ⨯ upstream image response timed out for http://[::1]:3000/a.png",
             " ⨯ upstream image response failed for https://example.com/a.png 404",
         ):
             with self.subTest(line=line):

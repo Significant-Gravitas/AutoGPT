@@ -65,10 +65,16 @@ def is_external_image_timeout(message: str) -> bool:
     if not match:
         return False
     host = match["host"].lower()
-    # Docker service names have no dot; loopback and private hosts are ours.
-    return "." in host and not re.match(
-        r"^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)", host
-    )
+    # Docker service names have no dot (nor does a bracketed IPv6 host as
+    # matched here); loopback, unspecified, link-local, private and Docker's
+    # host alias are ours too.
+    return "." in host and not _LOCAL_HOST.match(host)
+
+
+_LOCAL_HOST = re.compile(
+    r"^(localhost|0\.0\.0\.0$|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\."
+    r"|169\.254\.|host\.docker\.internal$)"
+)
 
 
 def report(errors: list[tuple[str, list[str]]], source: str) -> str:
