@@ -1,6 +1,9 @@
-import type { BrowserContext, Response } from "@playwright/test";
+import type { BrowserContext, Page, Response } from "@playwright/test";
 import { describe, expect, it } from "vitest";
-import { watchForUnexpectedErrors } from "../guard";
+import {
+  watchForUnexpectedErrors,
+  watchPageForUnexpectedErrors,
+} from "../guard";
 
 const activationURL =
   "http://localhost:3000/api/proxy/api/credits/pro-activation/current";
@@ -102,5 +105,74 @@ describe("a response the journey fakes itself", () => {
     const errors = await collectFaked({ "retry-after": "15" });
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain(`503 GET ${schedulesURL}`);
+  });
+});
+
+describe("the guard on one page", () => {
+  type Handler = (payload: never) => void;
+
+  function fakePage() {
+    const handlers = new Map<string, Handler>();
+    const page = {
+      on(event: string, handler: Handler) {
+        handlers.set(event, handler);
+      },
+      url: () => "http://localhost:3000/library",
+    } as unknown as Page;
+    function emit(event: string, payload: unknown) {
+      handlers.get(event)?.(payload as never);
+    }
+    return { page, emit };
+  }
+
+  it("collects the page's failed API call, console.error and page error", async () => {
+    const { page, emit } = fakePage();
+    const guard = watchPageForUnexpectedErrors(page, []);
+    emit("response", {
+      url: () => "http://localhost:3000/api/proxy/api/library/agents",
+      status: () => 500,
+      headers: () => ({}),
+      request: () => ({ method: () => "GET" }),
+      text: async () => "boom",
+    });
+    emit("console", {
+      type: () => "error",
+      text: () => "Something broke",
+      location: () => ({ url: "app.js", lineNumber: 3 }),
+    });
+    emit("pageerror", new Error("Minified React error #418"));
+
+    const problems = await guard.collect();
+
+    expect(problems).toHaveLength(3);
+    expect(problems[0]).toContain(
+      "500 GET http://localhost:3000/api/proxy/api/library/agents",
+    );
+    expect(problems[1]).toContain("console.error at app.js:3: Something broke");
+    expect(problems[2]).toContain(
+      "pageerror on http://localhost:3000/library: Minified React error #418",
+    );
+  });
+
+  it("leaves out what it would leave out for a whole context", async () => {
+    const { page, emit } = fakePage();
+    const guard = watchPageForUnexpectedErrors(page, [
+      { status: 404, url: "/api/platform-linking/tokens/" },
+    ]);
+    emit("response", {
+      url: () =>
+        "http://localhost:3000/api/proxy/api/platform-linking/tokens/x/info",
+      status: () => 404,
+      headers: () => ({}),
+      request: () => ({ method: () => "GET" }),
+      text: async () => "{}",
+    });
+    emit("console", {
+      type: () => "error",
+      text: () => "Failed to load resource: the server responded with 404",
+      location: () => ({ url: "", lineNumber: 0 }),
+    });
+
+    expect(await guard.collect()).toEqual([]);
   });
 });

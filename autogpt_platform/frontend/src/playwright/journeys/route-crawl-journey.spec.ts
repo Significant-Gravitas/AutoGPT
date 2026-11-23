@@ -47,8 +47,9 @@ import {
 // why. The full-stack legs' check of the Next.js server log then covers
 // every page too.
 
-// Pages per test. Two load at a time in about 2-4 s each on CI.
-const PAGES_PER_TEST = 12;
+// Pages per test. Two load at a time, in 3 to 12 s each on a CI runner
+// that four workers share with the stack.
+const PAGES_PER_TEST = 8;
 const ISSUES = "https://github.com/Significant-Gravitas/AutoGPT/issues";
 // No setup link looks like this: the page's state for a lapsed one.
 const UNKNOWN_LINK_TOKEN = "route-crawl-unknown-link";
@@ -63,16 +64,20 @@ function crawledInGroup(route: string) {
   return !ROUTE_RULES[route]?.bug;
 }
 
-const PUBLIC_PAGES = STATIC_ROUTES.filter(
-  (route) => accessOf(route) === "public" && crawledInGroup(route),
+const PUBLIC_SLICES = slices(
+  STATIC_ROUTES.filter(
+    (route) => accessOf(route) === "public" && crawledInGroup(route),
+  ),
 );
 const SIGNED_IN_SLICES = slices(
   STATIC_ROUTES.filter(
     (route) => accessOf(route) !== "admin" && crawledInGroup(route),
   ),
 );
-const ADMIN_PAGES = STATIC_ROUTES.filter(
-  (route) => accessOf(route) === "admin" && crawledInGroup(route),
+const ADMIN_SLICES = slices(
+  STATIC_ROUTES.filter(
+    (route) => accessOf(route) === "admin" && crawledInGroup(route),
+  ),
 );
 const PINNED = ROUTES.flatMap((route) => {
   const bug = ROUTE_RULES[route]?.bug;
@@ -85,20 +90,22 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const NO_SAMPLE = DYNAMIC.filter((route) => !(route in DYNAMIC_ROUTES));
 
 test.describe("route crawl journey", () => {
-  test("public pages load for a signed-out visitor", async ({
-    browser,
-    baseURL,
-    flagOverrides,
-  }) => {
-    const env = { browser, baseURL, flagOverrides };
-    const visitor: Session = { who: "visitor" };
-    await expectAllClean(
-      await crawl(
-        env,
-        PUBLIC_PAGES.map((route) => planVisit(route, visitor)),
-      ),
-    );
-  });
+  for (const [index, pages] of PUBLIC_SLICES.entries()) {
+    test(`public pages load for a signed-out visitor (${index + 1}/${PUBLIC_SLICES.length}): ${pages[0]} to ${pages.at(-1)}`, async ({
+      browser,
+      baseURL,
+      flagOverrides,
+    }) => {
+      const env = { browser, baseURL, flagOverrides };
+      const visitor: Session = { who: "visitor" };
+      await expectAllClean(
+        await crawl(
+          env,
+          pages.map((route) => planVisit(route, visitor)),
+        ),
+      );
+    });
+  }
 
   for (const [index, pages] of SIGNED_IN_SLICES.entries()) {
     test(`signed-in pages load (${index + 1}/${SIGNED_IN_SLICES.length}): ${pages[0]} to ${pages.at(-1)}`, async ({
@@ -123,27 +130,34 @@ test.describe("route crawl journey", () => {
     const noAdmin = adminGrantUnavailable();
     test.skip(Boolean(noAdmin), noAdmin);
 
-    test("admin pages load for an admin, with a listing's preview", async ({
-      browser,
-      baseURL,
-      flagOverrides,
-      page,
-    }) => {
-      const env = { browser, baseURL, flagOverrides };
-      const results = await asAnAdmin(page, async (admin) => {
-        const listing = await submitAListing(page);
-        return crawl(env, [
-          ...ADMIN_PAGES.filter(servedHere).map((route) =>
-            planVisit(route, admin),
-          ),
-          planVisit("/admin/marketplace/preview/[id]", admin, {
-            path: `/admin/marketplace/preview/${listing.versionID}`,
-            shows: listing.title,
-          }),
-        ]);
+    for (const [index, pages] of ADMIN_SLICES.entries()) {
+      // The first slice also previews a listing the admin submits.
+      const withPreview = index === 0;
+      test(`admin pages load for an admin (${index + 1}/${ADMIN_SLICES.length}): ${pages[0]} to ${pages.at(-1)}${withPreview ? ", and a listing's preview" : ""}`, async ({
+        browser,
+        baseURL,
+        flagOverrides,
+        page,
+      }) => {
+        const env = { browser, baseURL, flagOverrides };
+        const results = await asAnAdmin(page, async (admin) => {
+          const visits = pages
+            .filter(servedHere)
+            .map((route) => planVisit(route, admin));
+          if (withPreview) {
+            const listing = await submitAListing(page);
+            visits.push(
+              planVisit("/admin/marketplace/preview/[id]", admin, {
+                path: `/admin/marketplace/preview/${listing.versionID}`,
+                shows: listing.title,
+              }),
+            );
+          }
+          return crawl(env, visits);
+        });
+        await expectAllClean(results);
       });
-      await expectAllClean(results);
-    });
+    }
   });
 
   test("the Marketplace's pages for one listing's creator and an expert load, signed out and signed in", async ({

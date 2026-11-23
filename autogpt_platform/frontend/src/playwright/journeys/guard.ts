@@ -1,6 +1,7 @@
 import type {
   BrowserContext,
   ConsoleMessage,
+  Page,
   Response,
 } from "@playwright/test";
 
@@ -49,37 +50,57 @@ export function watchForUnexpectedErrors(
   context: BrowserContext,
   expected: ExpectedResponse[],
 ) {
+  const watch = startWatching(expected);
+  context.on("response", watch.onResponse);
+  context.on("console", watch.onConsole);
+  context.on("weberror", (webError) =>
+    watch.onPageError(webError.error(), webError.page()?.url()),
+  );
+  return { collect: watch.collect };
+}
+
+/**
+ * The same guard on one page of a context, so what it collects is that
+ * page's alone, e.g. one page of a crawl that shares a context.
+ */
+export function watchPageForUnexpectedErrors(
+  page: Page,
+  expected: ExpectedResponse[],
+) {
+  const watch = startWatching(expected);
+  page.on("response", watch.onResponse);
+  page.on("console", watch.onConsole);
+  page.on("pageerror", (error) => watch.onPageError(error, page.url()));
+  return { collect: watch.collect };
+}
+
+function startWatching(expected: ExpectedResponse[]) {
   const pending: Promise<string | null>[] = [];
-
-  context.on("response", (response) => {
-    if (!isApiResponse(response) || response.status() < 400) return;
-    if (isExpected(response, expected)) return;
-    if (isKnownNoise({ kind: "response", response })) return;
-    pending.push(
-      isMissingActivation(response).then((missing) =>
-        missing ? null : describeResponse(response),
-      ),
-    );
-  });
-
-  context.on("console", (message) => {
-    if (message.type() !== "error") return;
-    if (isKnownNoise({ kind: "console", text: message.text() })) return;
-    pending.push(Promise.resolve(describeConsole(message)));
-  });
-
-  context.on("weberror", (webError) => {
-    const error = webError.error();
-    if (isKnownNoise({ kind: "pageerror", text: error.message })) return;
-    pending.push(
-      Promise.resolve(
-        `pageerror on ${webError.page()?.url() ?? "unknown page"}: ` +
-          `${error.message}\n${error.stack ?? ""}`.trim(),
-      ),
-    );
-  });
-
   return {
+    onResponse(response: Response) {
+      if (!isApiResponse(response) || response.status() < 400) return;
+      if (isExpected(response, expected)) return;
+      if (isKnownNoise({ kind: "response", response })) return;
+      pending.push(
+        isMissingActivation(response).then((missing) =>
+          missing ? null : describeResponse(response),
+        ),
+      );
+    },
+    onConsole(message: ConsoleMessage) {
+      if (message.type() !== "error") return;
+      if (isKnownNoise({ kind: "console", text: message.text() })) return;
+      pending.push(Promise.resolve(describeConsole(message)));
+    },
+    onPageError(error: Error, url: string | undefined) {
+      if (isKnownNoise({ kind: "pageerror", text: error.message })) return;
+      pending.push(
+        Promise.resolve(
+          `pageerror on ${url ?? "unknown page"}: ` +
+            `${error.message}\n${error.stack ?? ""}`.trim(),
+        ),
+      );
+    },
     async collect() {
       return (await Promise.all(pending)).filter(
         (problem): problem is string => problem !== null,

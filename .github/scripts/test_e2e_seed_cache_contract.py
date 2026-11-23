@@ -551,7 +551,7 @@ class E2ECoverageContractTests(unittest.TestCase):
         self.assertEqual(_matrix_leg(workflow, "smoke")["min_tests"], "37")
         # The whole journeys suite's inventory, one total on every shard.
         self.assertEqual(
-            {leg["min_tests"] for leg in _matrix_legs(workflow, "journeys")}, {"64"}
+            {leg["min_tests"] for leg in _matrix_legs(workflow, "journeys")}, {"68"}
         )
         # Smoke stays strict: no test.fail() known failures.
         self.assertEqual(_matrix_leg(workflow, "smoke")["known_failures"], "false")

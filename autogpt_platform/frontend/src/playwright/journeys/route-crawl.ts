@@ -8,15 +8,16 @@ import type {
 } from "@playwright/test";
 import { markChangelogSeen } from "../utils/changelog";
 import { serveHostedFlags } from "./fixtures";
-import { type ExpectedResponse, watchForUnexpectedErrors } from "./guard";
+import { type ExpectedResponse, watchPageForUnexpectedErrors } from "./guard";
 import { authHeaders, type JourneyUser } from "./journey-user";
 import { ROUTE_RULES, type Who } from "./route-table";
 import { JOURNEY_USER_AGENT } from "./user-agent";
 
-// The route crawl's visits. Each page gets a browser context of its own,
-// watched by the journey guard, so everything wrong is put down to the page
-// that did it; the crawl reports every page's problems rather than stopping
-// at the first.
+// The route crawl's visits. Each page opens in a tab of its own, watched by
+// the journey guard on that tab alone, so everything wrong is put down to the
+// page that did it; the crawl reports every page's problems rather than
+// stopping at the first. A session's tabs share one browser context, so the
+// app's scripts load once per session rather than once per page.
 
 type StorageState = Awaited<ReturnType<BrowserContext["storageState"]>>;
 
@@ -61,8 +62,8 @@ export interface CrawlEnv {
   flagOverrides: Record<string, unknown>;
 }
 
-// Pages loaded at once, each in its own context. The journeys run four
-// workers on a 4-vCPU runner beside the whole stack, so a crawl keeps to two.
+// Pages loaded at once. The journeys run four workers on a 4-vCPU runner
+// beside the whole stack, so a crawl keeps to two.
 const TABS = 2;
 // No visit starts after this, so a slow runner gets a report of what's left
 // rather than the test's timeout.
@@ -108,6 +109,12 @@ export async function crawl(
   env: CrawlEnv,
   visits: Visit[],
 ): Promise<VisitResult[]> {
+  const contexts = new Map<Session, Promise<BrowserContext>>();
+  function sharedContext(session: Session) {
+    const context = contexts.get(session) ?? openContext(env, session);
+    contexts.set(session, context);
+    return context;
+  }
   const stopStartingAt = Date.now() + CRAWL_BUDGET_MS;
   const results: VisitResult[] = new Array(visits.length);
   let next = 0;
@@ -117,7 +124,7 @@ export async function crawl(
       const visit = visits[index];
       results[index] =
         Date.now() < stopStartingAt
-          ? await visitOnce(env, visit)
+          ? await visitOnce(env, visit, sharedContext)
           : {
               visit,
               problems: ["not visited: the crawl ran out of time"],
@@ -125,7 +132,13 @@ export async function crawl(
             };
     }
   }
-  await Promise.all(Array.from({ length: TABS }, tab));
+  try {
+    await Promise.all(Array.from({ length: TABS }, tab));
+  } finally {
+    await Promise.allSettled(
+      [...contexts.values()].map(async (context) => (await context).close()),
+    );
+  }
   return results;
 }
 
@@ -151,35 +164,58 @@ export function summarize(results: VisitResult[]) {
   }));
 }
 
-async function visitOnce(env: CrawlEnv, visit: Visit): Promise<VisitResult> {
+async function visitOnce(
+  env: CrawlEnv,
+  visit: Visit,
+  sharedContext: (session: Session) => Promise<BrowserContext>,
+): Promise<VisitResult> {
   const started = Date.now();
-  const context = await env.browser.newContext({
-    baseURL: env.baseURL,
-    bypassCSP: true,
-    userAgent: JOURNEY_USER_AGENT,
-    storageState: visit.session.storageState ?? { cookies: [], origins: [] },
-  });
-  const guard = watchForUnexpectedErrors(context, visit.expectedResponses);
+  // A page that ends its session, or runs on a clock of its own, gets a
+  // context to itself.
+  const ownContext = visit.ownSession || Boolean(visit.clockAheadMs);
   const problems: string[] = [];
+  let context: BrowserContext | undefined;
+  let page: Page | undefined;
+  let guard: ReturnType<typeof watchPageForUnexpectedErrors> | undefined;
   try {
-    await markChangelogSeen(context);
-    await serveHostedFlags(context, env.flagOverrides);
-    await context.route(/[?&]_rsc=/, answerPrefetchesEmpty);
-    if (visit.clockAheadMs) {
-      await context.clock.install({ time: Date.now() + visit.clockAheadMs });
-    }
-    const page = await context.newPage();
+    context = ownContext
+      ? await openContext(env, visit.session, visit.clockAheadMs)
+      : await sharedContext(visit.session);
+    page = await context.newPage();
+    guard = watchPageForUnexpectedErrors(page, visit.expectedResponses);
     if (visit.ownSession) await signInAgain(page, visit);
     problems.push(...(await checkPage(page, visit)));
   } catch (error) {
     problems.push(`the visit broke off: ${firstLine(error)}`);
   }
-  try {
-    problems.push(...(await guard.collect()));
-  } finally {
-    await context.close();
-  }
+  if (guard) problems.push(...(await guard.collect()));
+  await (ownContext ? context?.close() : page?.close());
   return { visit, problems, ms: Date.now() - started };
+}
+
+async function openContext(
+  env: CrawlEnv,
+  session: Session,
+  clockAheadMs?: number,
+) {
+  const context = await env.browser.newContext({
+    baseURL: env.baseURL,
+    bypassCSP: true,
+    userAgent: JOURNEY_USER_AGENT,
+    storageState: session.storageState ?? { cookies: [], origins: [] },
+  });
+  try {
+    await markChangelogSeen(context);
+    await serveHostedFlags(context, env.flagOverrides);
+    await context.route(/[?&]_rsc=/, answerPrefetchesEmpty);
+    if (clockAheadMs) {
+      await context.clock.install({ time: Date.now() + clockAheadMs });
+    }
+    return context;
+  } catch (error) {
+    await context.close();
+    throw error;
+  }
 }
 
 // What "loads cleanly" means, in order: the document answers, the page ends
