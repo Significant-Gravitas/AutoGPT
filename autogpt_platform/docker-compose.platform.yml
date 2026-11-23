@@ -361,6 +361,10 @@ services:
     # Metrics only. Reachable from the other containers, not from the host.
     expose:
       - "8002"
+    # A run's file outputs are written here; rest_server serves them from
+    # the same volume.
+    volumes:
+      - workspace-data:/app/autogpt_platform/backend/workspaces
     networks:
       - app-network
     logging:
