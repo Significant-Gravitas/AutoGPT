@@ -153,6 +153,18 @@ If an older install set `WORKSPACE_STORAGE_DIR` in `backend/.env` to another pat
 - copy that folder's contents into the `workspace-data` volume, and the `store-media` folder beside it into `store-media-data`; or
 - mount your host folders at the two container paths above, in place of the named volumes.
 
+Before the `executor` service mounted `workspace-data`, files a workflow run wrote stayed inside the `executor` container, and their download links failed. Upgrading recreates that container and removes them. To keep them, copy them out before you upgrade:
+
+```
+docker compose cp -a executor:/app/autogpt_platform/backend/workspaces ./executor-workspaces
+```
+
+After the upgrade, copy them into the shared volume, alongside what is already there. Their download links then work:
+
+```
+docker compose cp -a ./executor-workspaces/. rest_server:/app/autogpt_platform/backend/workspaces
+```
+
 Back up `data/db/data` (with the stack stopped) together with your `.env` files: `backend/.env` holds the `ENCRYPTION_KEY` your stored integration credentials are encrypted with.
 
 ### API Client Generation
