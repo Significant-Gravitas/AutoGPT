@@ -209,18 +209,9 @@ test.describe("typed inputs journey", () => {
         const shown = await readShownOutputs(page);
         observe(testInfo, `the run view shows ${JSON.stringify(shown)}`);
         expect(
-          pick(shown, ["digits_text", "boolean_text"]),
-          "the run view should show text that isn't a JSON number as typed",
-        ).toEqual({ digits_text: "00123", boolean_text: "true" });
-
-        const pinned = pinKnownFailure(
-          "#17307: the run view shows the text 1e5 as 100000, and 1.50 as 1.5",
-          "the run view should show text that reads as a JSON number exactly as typed",
-        );
-        expect(pick(shown, ["exponent_text", "price_text"]), pinned).toEqual({
-          exponent_text: "1e5",
-          price_text: "1.50",
-        });
+          pick(shown, Object.keys(LOOKS_LIKE_DATA)),
+          "the run view should show each text exactly as typed",
+        ).toEqual(LOOKS_LIKE_DATA);
       },
     );
 
