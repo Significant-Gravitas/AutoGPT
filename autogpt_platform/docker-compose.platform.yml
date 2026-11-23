@@ -593,6 +593,9 @@ services:
     # Internal service. Reachable from the other containers, not from the host.
     expose:
       - "8009"
+    # Files people attach in a bot chat are stored here for Otto to read.
+    volumes:
+      - *workspace-volume
     networks:
       - app-network
     logging:
