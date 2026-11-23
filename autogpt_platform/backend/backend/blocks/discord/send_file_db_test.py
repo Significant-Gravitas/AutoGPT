@@ -121,11 +121,18 @@ async def test_two_sends_in_one_run_each_carry_their_own_file(
         first=b"first report"
     )
 
-    (first_status, first_sent), (second_status, second_sent) = await asyncio.gather(
-        send(graph_run, f"workspace://{first}#text/csv"),
-        send(graph_run, f"workspace://{second}#text/csv"),
-    )
+    # A task group cancels and joins the other send if one fails, so neither
+    # outlives the fixtures it runs on.
+    async with asyncio.TaskGroup() as sends:
+        first_send = sends.create_task(send(graph_run, f"workspace://{first}#text/csv"))
+        second_send = sends.create_task(
+            send(graph_run, f"workspace://{second}#text/csv")
+        )
 
+    (first_status, first_sent), (second_status, second_sent) = (
+        first_send.result(),
+        second_send.result(),
+    )
     assert [first_status, second_status] == ["File sent successfully"] * 2
     assert first_sent == [("report.csv", b"first report")]
     assert second_sent == [("report.csv", b"second report")]
