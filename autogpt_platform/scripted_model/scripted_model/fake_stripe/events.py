@@ -54,10 +54,22 @@ class Events:
         self._records: dict[str, dict[str, Any]] = {}
         self._held: set[str] = set()
         self._lock = threading.Lock()
-        self._queue: queue.SimpleQueue[tuple[str, threading.Event]] = (
+        # None tells the sender to stop (``close``).
+        self._queue: queue.SimpleQueue[tuple[str, threading.Event] | None] = (
             queue.SimpleQueue()
         )
         self._sender: threading.Thread | None = None
+
+    def close(self, timeout: float = DELIVERY_TIMEOUT_S) -> None:
+        """Stops the sender once the events already queued are delivered, so
+        a test leaves no thread behind. An event emitted later starts a new
+        one."""
+        with self._lock:
+            sender, self._sender = self._sender, None
+            if sender is None:
+                return
+            self._queue.put(None)
+        sender.join(timeout)
 
     def hold(self, object_id: str) -> None:
         """Keep the events this object's changes raise from now on until a
@@ -165,11 +177,14 @@ class Events:
             self._sender.start()
 
     def _send_queued(self) -> None:
-        """Delivers queued events one by one for as long as the fake runs. A
-        delivery that fails is recorded as failed and the next one goes out,
-        and whoever waits for one is let go either way."""
+        """Delivers queued events one by one until ``close``. A delivery that
+        fails is recorded as failed and the next one goes out, and whoever
+        waits for one is let go either way."""
         while True:
-            event_id, sent = self._queue.get()
+            item = self._queue.get()
+            if item is None:
+                return
+            event_id, sent = item
             try:
                 self.deliver(event_id)
             except Exception:

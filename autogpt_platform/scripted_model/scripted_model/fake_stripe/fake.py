@@ -90,6 +90,10 @@ class FakeStripe:
             return control.handle(self, method, path, query, body)
         return Response.json(404, {"error": {"message": f"nothing serves {path}"}})
 
+    def close(self) -> None:
+        """Stops sending webhooks once those already queued are out."""
+        self.events.close()
+
     def requests(
         self, unserved_only: bool = False, after: int = 0
     ) -> list[dict[str, Any]]:

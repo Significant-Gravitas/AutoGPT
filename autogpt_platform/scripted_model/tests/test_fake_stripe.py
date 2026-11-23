@@ -127,6 +127,9 @@ def stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Stack]:
     try:
         yield Stack(url, receiver)
     finally:
+        # Its webhooks still queued go out to the receiver, then its sender
+        # stops: no thread outlives the test.
+        server.stripe.close()
         for s in (server, receiver):
             s.shutdown()
             s.server_close()
@@ -645,9 +648,8 @@ def test_a_delivery_cut_short_is_recorded_and_the_next_one_still_goes_out() -> N
     delivery, and the deliveries after it still go out."""
     server = ThreadingHTTPServer(("127.0.0.1", 0), _ShortBody)
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    events = Events("http://%s:%d/webhook" % server.server_address[:2], SECRET)
     try:
-        host, port = server.server_address[:2]
-        events = Events(f"http://{host!s}:{port}/webhook", SECRET)
         customer = {"id": "cus_short", "object": "customer"}
         records: list[dict[str, Any]] = []
 
@@ -662,6 +664,7 @@ def test_a_delivery_cut_short_is_recorded_and_the_next_one_still_goes_out() -> N
         assert [r["deliveries"][0]["status"] for r in records] == [None, None]
         assert all("IncompleteRead" in r["deliveries"][0]["error"] for r in records)
     finally:
+        events.close()
         server.shutdown()
         server.server_close()
 
@@ -669,27 +672,39 @@ def test_a_delivery_cut_short_is_recorded_and_the_next_one_still_goes_out() -> N
 def test_events_go_out_in_the_order_they_are_recorded(
     stack: Stack, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An event paused between being recorded and being queued can't be
-    overtaken by one recorded after it."""
+    """An event is recorded and queued in one step under the events' lock,
+    so one recorded after it can't be queued, and sent, before it."""
     host, port = stack.receiver.server_address[:2]
     events = Events(f"http://{host!s}:{port}/webhook", SECRET)
-    paused = threading.Event()
-    monkeypatch.setattr(events, "_queue", _FirstPutPauses(paused))
+    paused, release = threading.Event(), threading.Event()
+    monkeypatch.setattr(events, "_queue", _FirstPutWaits(paused, release))
     first = threading.Thread(
         target=events.emit,
         args=("customer.updated", {"id": "cus_first", "object": "customer"}),
         kwargs={"wait": False},
     )
     first.start()
-    assert paused.wait(5)
-    events.emit("customer.updated", {"id": "cus_second", "object": "customer"})
-    first.join(5)
-    received = _wait_for(
-        lambda: [e.data.object["id"] for e in stack.receiver.events],
-        lambda ids: len(ids) >= 2,
-    )
-    assert received == ["cus_first", "cus_second"]
-    assert [r["object"] for r in events.find()] == ["cus_first", "cus_second"]
+    try:
+        assert paused.wait(5)
+        # The first event is recorded and held in its put: the lock must
+        # still be taken, or another event could be queued ahead of it.
+        free = events._lock.acquire(blocking=False)
+        if free:
+            events._lock.release()
+        assert not free, "an event was recorded, then queued in a separate step"
+    finally:
+        release.set()
+        first.join(5)
+    try:
+        events.emit("customer.updated", {"id": "cus_second", "object": "customer"})
+        received = _wait_for(
+            lambda: [e.data.object["id"] for e in stack.receiver.events],
+            lambda ids: len(ids) >= 2,
+        )
+        assert received == ["cus_first", "cus_second"]
+        assert [r["object"] for r in events.find()] == ["cus_first", "cus_second"]
+    finally:
+        events.close()
 
 
 class _ShortBody(BaseHTTPRequestHandler):
@@ -704,17 +719,18 @@ class _ShortBody(BaseHTTPRequestHandler):
         pass
 
 
-class _FirstPutPauses:
-    """The events' queue, whose first ``put`` stalls for half a second."""
+class _FirstPutWaits:
+    """The events' queue, whose first ``put`` waits until ``release``."""
 
-    def __init__(self, paused: threading.Event) -> None:
+    def __init__(self, paused: threading.Event, release: threading.Event) -> None:
         self._inner: queue.SimpleQueue[Any] = queue.SimpleQueue()
         self._paused = paused
+        self._release = release
 
     def put(self, item: Any) -> None:
         if not self._paused.is_set():
             self._paused.set()
-            time.sleep(0.5)
+            self._release.wait(10)
         self._inner.put(item)
 
     def get(self) -> Any:
