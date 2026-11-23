@@ -81,7 +81,7 @@
     "@xyflow/react": "12.12.0",
     "ai": "7.0.143",
     "bcryptjs": "3.0.3",
-    "better-auth": "1.7.16",
+    "better-auth": "1.7.25",
     "boring-avatars": "2.0.4",
     "canvas-confetti": "1.9.4",
     "class-variance-authority": "0.7.1",
