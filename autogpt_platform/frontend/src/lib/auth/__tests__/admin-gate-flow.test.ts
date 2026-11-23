@@ -145,9 +145,15 @@ function claimingAdmin(cacheCookie: string) {
 let addresses = 0;
 // Every sign-in and visitor comes from an address of its own, so no test
 // spends another's rate limit.
+// Documentation addresses (RFC 5737), each test's own rate-limit bucket.
+const TEST_NETS = ["198.51.100", "203.0.113", "192.0.2"];
+
 function nextIP() {
+  const net = TEST_NETS[Math.floor(addresses / 254)];
+  if (!net) throw new Error("the tests used up the documentation addresses");
+  const ip = `${net}.${(addresses % 254) + 1}`;
   addresses += 1;
-  return `198.51.100.${addresses}`;
+  return ip;
 }
 
 function adminPage(server: AuthServer, cookies: string[], ip: string) {
@@ -187,6 +193,8 @@ describe.each([
     vi.restoreAllMocks();
   });
 
+  // Both take the same path now; they differ only on the old cookie name,
+  // which followed the build mode, so they guard against going back to it.
   it.each(["production", "development"])(
     "lets an admin through on their own session's cookie cache, with no session lookup, in a %s build",
     async (mode) => {

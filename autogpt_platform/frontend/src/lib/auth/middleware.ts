@@ -7,7 +7,7 @@ import {
 import { constantTimeEqual, makeSignature } from "better-auth/crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { usesSecureCookies } from "./base-url";
-import { IP_ADDRESS_HEADERS } from "./client-ip";
+import { IP_ADDRESS_HEADERS } from "./ip-address-headers";
 import { isAdminPage, isProtectedPage } from "./helpers";
 import { canConsumeLegacyCookies } from "./legacy-cookies";
 

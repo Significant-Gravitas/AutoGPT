@@ -60,6 +60,10 @@ test.describe("admin navigation journey", () => {
         responses.forEach((response, index) => {
           const location = response.headers()["location"];
           if (location) sentAway.push(`${ADMIN_LINKS[index]} -> ${location}`);
+          else if (!response.ok())
+            sentAway.push(
+              `${ADMIN_LINKS[index]} answered ${response.status()}`,
+            );
         });
       }
       expect(sentAway, "the admin should pass every role check").toEqual([]);

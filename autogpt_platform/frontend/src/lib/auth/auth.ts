@@ -21,12 +21,9 @@ import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
 import { authDbPool } from "./auth-db-pool";
 import { assertNotBannedAddress } from "./ban-record";
 import { getAuthBaseURL, usesSecureCookies } from "./base-url";
-import {
-  getTrustedClientIP,
-  IP_ADDRESS_HEADERS,
-  trustedProxies,
-} from "./client-ip";
+import { getTrustedClientIP, trustedProxies } from "./client-ip";
 import { DISABLED_AUTH_PATHS } from "./disabled-paths";
+import { IP_ADDRESS_HEADERS } from "./ip-address-headers";
 import { assertNotDisposableEmail } from "./disposable-email";
 import { runAfterResponse } from "./background-tasks";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";

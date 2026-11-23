@@ -248,7 +248,7 @@ Requests to the authentication API under `/api/auth/` are limited per IP address
 
 Each path counts on its own. A path allows that many requests in a row, and starts counting again once a whole window has passed since the last request it let through. Past the limit, the answer is `429` with `{"message":"Too many requests. Please try again later."}` and an `X-Retry-After` header in seconds.
 
-Opening an admin page reads your role from your signed session cookie and counts toward none of these. Once that cookie has expired (it lasts five minutes), the frontend asks `/get-session` on your behalf, and that request is counted the same way as your own, by your IP address.
+Opening an admin page reads your role from your signed session cookie and counts toward none of these. Once that cookie has expired (it lasts five minutes), the frontend asks `/get-session` on your behalf, and that request is counted the same way as your own, by your IP address. If that lookup is refused, for example past this limit, the admin page sends you to Home until a lookup is allowed again.
 
 These limits apply to production builds of the frontend and aren't configurable. On a self-hosted install behind a reverse proxy, see [Client IP Addresses](client-ip.md).
 

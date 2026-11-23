@@ -4,10 +4,6 @@ import { environment } from "@/services/environment";
 
 // Documented in docs/platform/client-ip.md: update it with any change here.
 
-// The headers Better Auth reads a caller's IP address from (auth.ts). The
-// middleware passes them on, as they arrived, to the session lookups it makes.
-export const IP_ADDRESS_HEADERS = ["x-forwarded-for"];
-
 // The client IP for the sign-in IP log and IP blocks. Where X-Forwarded-For is
 // not trusted they get no IP, while Better Auth's per-IP rate limits still key on it.
 export function getTrustedClientIP(ip: string | null | undefined) {
