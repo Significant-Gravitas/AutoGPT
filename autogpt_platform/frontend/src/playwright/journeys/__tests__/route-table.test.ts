@@ -4,11 +4,13 @@ import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   accessOf,
+  type DynamicRoute,
   DYNAMIC_ROUTES,
   isDynamic,
   KNOWN_BUGS,
   listAppRoutes,
   ROUTE_RULES,
+  samplingGaps,
 } from "../route-table";
 
 const routes = listAppRoutes();
@@ -61,6 +63,51 @@ describe("the route crawl's table", () => {
         .filter(([, rule]) => !rule.reason.trim())
         .map(([route]) => route),
     ).toEqual([]);
+  });
+
+  it("finds a dynamic route a test is given and has no sample for, and one it isn't given", () => {
+    const table = {
+      "/a/[id]": { sampledIn: "shared", sample: "an a" },
+      "/b/[id]": { sampledIn: "shared", sample: "a b" },
+      "/c/[id]": { sampledIn: "admin", sample: "a c" },
+    } satisfies Record<string, DynamicRoute>;
+
+    expect(samplingGaps("shared", ["/a/[id]", "/b/[id]"], table)).toEqual({
+      missing: [],
+      misplaced: [],
+    });
+    expect(samplingGaps("shared", ["/a/[id]"], table)).toEqual({
+      missing: ["/b/[id]"],
+      misplaced: [],
+    });
+    expect(
+      samplingGaps(
+        "shared",
+        ["/a/[id]", "/b/[id]", "/c/[id]", "/d/[id]"],
+        table,
+      ),
+    ).toEqual({ missing: [], misplaced: ["/c/[id]", "/d/[id]"] });
+  });
+
+  it("says what each dynamic route is opened with", () => {
+    expect(
+      Object.entries(DYNAMIC_ROUTES)
+        .filter(([, { sample }]) => !sample.trim())
+        .map(([route]) => route),
+    ).toEqual([]);
+  });
+
+  it("crawls a page that sends the user on only where the page it sends them to is served", () => {
+    const unmarked = Object.entries(ROUTE_RULES).filter(([, rule]) =>
+      [rule.landsOn, rule.signedInLandsOn].some((target) => {
+        const destination = target ? ROUTE_RULES[target] : undefined;
+        return (
+          (destination?.hostedOnly && !rule.hostedOnly) ||
+          (destination?.localOnly && !rule.localOnly)
+        );
+      }),
+    );
+    expect(unmarked.map(([route]) => route)).toEqual([]);
   });
 
   it("crawls /admin pages as an admin and the rest signed in by default", () => {
