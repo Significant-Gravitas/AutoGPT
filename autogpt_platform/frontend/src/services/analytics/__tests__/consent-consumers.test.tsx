@@ -35,6 +35,25 @@ vi.mock("next/script", () => ({
   ),
 }));
 
+// The root layout re-renders on client navigation only through usePathname.
+const route = vi.hoisted(() => ({
+  pathname: "/",
+  listeners: new Set<() => void>(),
+}));
+vi.mock("next/navigation", async () => {
+  const { useSyncExternalStore } = await import("react");
+  return {
+    usePathname: () =>
+      useSyncExternalStore(
+        (listener) => {
+          route.listeners.add(listener);
+          return () => route.listeners.delete(listener);
+        },
+        () => route.pathname,
+      ),
+  };
+});
+
 vi.mock("@vercel/speed-insights/next", () => ({
   SpeedInsights: () => <div data-testid="vercel-speed-insights" />,
 }));
@@ -53,8 +72,32 @@ beforeEach(() => {
 
 afterEach(() => {
   removeCookiebot();
+  setPage("/", "");
   vi.unstubAllEnvs();
 });
+
+function setPage(path: string, referrer: string) {
+  const { happyDOM } = window as unknown as {
+    happyDOM?: { setURL: (url: string) => void };
+  };
+  happyDOM?.setURL(`https://platform.agpt.co${path}`);
+  route.pathname = new URL(path, "https://platform.agpt.co").pathname;
+  Object.defineProperty(document, "referrer", {
+    configurable: true,
+    value: referrer && `https://platform.agpt.co${referrer}`,
+  });
+}
+
+function navigate(path: string) {
+  act(() => {
+    const { happyDOM } = window as unknown as {
+      happyDOM?: { setURL: (url: string) => void };
+    };
+    happyDOM?.setURL(`https://platform.agpt.co${path}`);
+    route.pathname = path;
+    route.listeners.forEach((listener) => listener());
+  });
+}
 
 describe("without NEXT_PUBLIC_COOKIEBOT_CBID", () => {
   it("loads no analytics, even for a browser holding an old answer", () => {
@@ -147,6 +190,28 @@ describe("with NEXT_PUBLIC_COOKIEBOT_CBID", () => {
 
     act(() => answerCookiebot({ statistics: true }));
     expect(queryScript("_custom-ga")).not.toBeNull();
+  });
+
+  it("holds DataFast back on a page whose URL holds a credential, and loads it on the next page", () => {
+    installCookiebot({ statistics: true });
+    setPage("/reset-password?token=one-time-link-value", "");
+    render(<SetupAnalytics host="platform.agpt.co" ga={GA} />);
+    expect(queryScript(DATAFAST_SRC)).toBeNull();
+
+    navigate("/marketplace");
+
+    expect(queryScript(DATAFAST_SRC)).not.toBeNull();
+  });
+
+  it("holds DataFast back for a whole page load whose referrer holds a credential", () => {
+    installCookiebot({ statistics: true });
+    setPage("/login", "/link/one-time-link-value");
+    render(<SetupAnalytics host="platform.agpt.co" ga={GA} />);
+
+    // An in-app navigation keeps the document's referrer.
+    navigate("/marketplace");
+
+    expect(queryScript(DATAFAST_SRC)).toBeNull();
   });
 
   it("stops rendering Vercel Speed Insights when the visitor declines", () => {

@@ -9,6 +9,7 @@ import {
 import { act, render } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { PostHog, type CaptureResult } from "posthog-js";
+import { stripStoredURLCredentials } from "../posthog-stored-urls";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Runs the real posthog-js client behind our provider against a stubbed
@@ -157,31 +158,6 @@ describe("analytics events from a page whose URL carries a credential", () => {
     expectNoSecret(heatmap);
   });
 
-  it("strip it from the first page PostHog stores for its flag requests", async () => {
-    const posthog = await loadPage("/reset-password?token=SECRET&next=%2Fhome");
-    const key = `phc_test_${pageLoads}`;
-    // posthog-js stores the first page on its first event; identify and the
-    // consent grant reload the flags with it.
-    await waitForEvent("$pageview");
-    posthog.reloadFeatureFlags();
-
-    await vi.waitFor(() =>
-      expect(
-        flagsBodies.some(
-          (body) =>
-            body.token === key && body.person_properties?.$initial_current_url,
-        ),
-      ).toBe(true),
-    );
-
-    const ownBodies = flagsBodies.filter((body) => body.token === key);
-    const firstPage = ownBodies.find(
-      (body) => body.person_properties?.$initial_current_url,
-    )?.person_properties?.$initial_current_url;
-    expect(firstPage).toMatch(/\/reset-password\?token=<masked>&next=%2Fhome$/);
-    expect(JSON.stringify(ownBodies)).not.toContain(LINK_VALUE);
-  });
-
   // Every page whose URL holds a credential, and a parameter that must survive.
   it.each([
     [
@@ -238,6 +214,121 @@ describe("analytics events from a page whose URL carries a credential", () => {
   });
 });
 
+// posthog-js sends the first page it stored with every /flags/ request, which
+// skips before_send, and keeps it in the cookie agpt.co's PostHog reads too.
+describe("the first page posthog-js stores", () => {
+  it("is masked before the first flag request when an earlier visit stored it", async () => {
+    storeAsEarlierVisit(SIGNED_LINK_REDIRECT, LINKING_PAGE);
+
+    await loadPage("/marketplace", { trackers: false });
+
+    const firstPage = await waitForStoredPageInFlags();
+    expect(firstPage.$initial_current_url).toContain(MASKED_NEXT);
+    expect(firstPage.$initial_referrer).toBe(`${PAGE_ORIGIN}/link/[REDACTED]`);
+    expectPostHogStorageHoldsNoSecret();
+  });
+
+  it.each([
+    [
+      "the password reset link",
+      "/reset-password?token=SECRET&next=%2Fhome",
+      undefined,
+      "token=[REDACTED]&next=%2Fhome",
+    ],
+    [
+      "a signed link's sign-in redirect, from the linking page",
+      SIGNED_LINK_REDIRECT,
+      LINKING_PAGE,
+      MASKED_NEXT,
+    ],
+  ])(
+    "is masked when this visit stores %s after the visitor accepts",
+    async (_page, path, referrer, kept) => {
+      removeCookiebot();
+      installCookiebot();
+      setReferrer(referrer);
+      const posthog = await loadPage(path);
+      act(() => answerCookiebot({ statistics: true }));
+      await waitForEvent("$pageview");
+
+      posthog.reloadFeatureFlags();
+      const firstPage = await waitForStoredPageInFlags();
+
+      expect(firstPage.$initial_current_url).toContain(kept);
+      expectPostHogStorageHoldsNoSecret();
+    },
+  );
+
+  // Today the accepting tab writes its own copy over the stored one; a
+  // posthog-js that lets the cookie win would take the other tab's instead.
+  it.each([
+    ["today's posthog-js", {}],
+    ["a posthog-js that lets the cookie win", COOKIE_WINS],
+  ])(
+    "is masked when another tab stores it before the visitor accepts, with %s",
+    async (_version, clientConfig) => {
+      removeCookiebot();
+      installCookiebot();
+      const posthog = await loadPage("/marketplace", {
+        trackers: false,
+        clientConfig,
+      });
+      storeAsEarlierVisit(SIGNED_LINK_REDIRECT, LINKING_PAGE, pageLoads);
+
+      act(() => answerCookiebot({ statistics: true }));
+      posthog.reloadFeatureFlags();
+      await vi.waitFor(() =>
+        expect(ownFlagsBodies().length).toBeGreaterThan(0),
+      );
+
+      expect(JSON.stringify(ownFlagsBodies())).not.toContain(LINK_VALUE);
+      expectPostHogStorageHoldsNoSecret();
+    },
+  );
+
+  it("reaches agpt.co's PostHog, which reads the shared cookie, masked", async () => {
+    setReferrer(LINKING_PAGE);
+    await loadPage(SIGNED_LINK_REDIRECT);
+    await waitForEvent("$pageview");
+    // agpt.co is another origin: only the cookie is shared.
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    setPageURL(`${PAGE_ORIGIN}/`);
+    setReferrer(undefined);
+    flagsBodies = [];
+
+    const website = new PostHog();
+    clients.push(website);
+    website.init(`phc_test_${pageLoads}`, {
+      api_host: POSTHOG_ORIGIN,
+      persistence: "localStorage+cookie",
+      cross_subdomain_cookie: true,
+      capture_pageview: false,
+      autocapture: false,
+      disable_session_recording: true,
+    });
+    website.reloadFeatureFlags();
+    const event = website.capture("probe");
+
+    const firstPage = await waitForStoredPageInFlags();
+    expect(firstPage.$initial_current_url).toContain(MASKED_NEXT);
+    expect(JSON.stringify(event)).not.toContain(LINK_VALUE);
+  });
+
+  it("is masked under any key posthog-js stores it", async () => {
+    const posthog = await loadPage("/marketplace", { trackers: false });
+    posthog.register({
+      $renamed_initial_info: { u: withSecret(`${PAGE_ORIGIN}/link/SECRET`) },
+    });
+
+    stripStoredURLCredentials(posthog);
+
+    expect(posthog.get_property("$renamed_initial_info")).toEqual({
+      u: `${PAGE_ORIGIN}/link/[REDACTED]`,
+    });
+  });
+});
+
 // rrweb cannot record in happy-dom (it patches canvas and CSS prototypes it
 // lacks), so the batch is built as the recorder sends it and captured through
 // the same client.
@@ -272,8 +363,20 @@ describe("session replay of a page whose URL carries a credential", () => {
 });
 
 const USER = { id: "user-1", email: "ada@example.com" } as unknown as User;
+const SIGNED_LINK_REDIRECT =
+  "/login?next=%2Fsettings%2Faccount%3Ff%3Doff%26t%3DSECRET";
+const MASKED_NEXT = "next=%2Fsettings%2Faccount%3Ff%3Doff%26t%3D%5BREDACTED%5D";
+const LINKING_PAGE = `${PAGE_ORIGIN}/link/SECRET`;
+const COOKIE_WINS = { __preview_cookie_wins_on_conflict: true };
 
-async function loadPage(path: string, { user = null as User | null } = {}) {
+async function loadPage(
+  path: string,
+  {
+    user = null as User | null,
+    trackers = true,
+    clientConfig = {} as Record<string, unknown>,
+  } = {},
+) {
   const url = new URL(withSecret(path), PAGE_ORIGIN);
   setPageURL(url.href);
   // A client from an earlier test can still write its storage, keyed by token.
@@ -282,6 +385,9 @@ async function loadPage(path: string, { user = null as User | null } = {}) {
   vi.resetModules();
   const client = new PostHog();
   clients.push(client);
+  const init = client.init.bind(client);
+  client.init = (token, config, name) =>
+    init(token, { ...config, ...clientConfig }, name);
   vi.doMock("posthog-js", () => ({
     default: client,
     posthog: client,
@@ -308,11 +414,77 @@ async function loadPage(path: string, { user = null as User | null } = {}) {
     provider;
   render(
     <PostHogProvider>
-      <PostHogUserTracker />
-      <PostHogPageViewTracker />
+      {trackers && (
+        <>
+          <PostHogUserTracker />
+          <PostHogPageViewTracker />
+        </>
+      )}
     </PostHogProvider>,
   );
   return client;
+}
+
+// What an earlier visit, or agpt.co, left in posthog-js's storage, written by
+// posthog-js itself with nothing masked.
+function storeAsEarlierVisit(
+  path: string,
+  referrer?: string,
+  pageLoad = pageLoads + 1,
+) {
+  const pageURL = window.location.href;
+  setPageURL(new URL(withSecret(path), PAGE_ORIGIN).href);
+  setReferrer(referrer);
+  const earlier = new PostHog();
+  earlier.init(`phc_test_${pageLoad}`, {
+    api_host: POSTHOG_ORIGIN,
+    persistence: "localStorage+cookie",
+    advanced_disable_flags: true,
+    capture_pageview: false,
+    autocapture: false,
+    disable_session_recording: true,
+  });
+  earlier.capture("probe");
+  const storage = storedItems();
+  const cookies = document.cookie.split("; ").filter(Boolean);
+  // Retire it without letting it write again; its memory switch clears both.
+  earlier.set_config({ persistence: "memory" });
+  Object.entries(storage).forEach(([name, value]) =>
+    window.localStorage.setItem(name, value),
+  );
+  cookies.forEach((cookie) => {
+    document.cookie = `${cookie}; Path=/`;
+  });
+  setReferrer(undefined);
+  setPageURL(pageURL);
+}
+
+function ownFlagsBodies() {
+  return flagsBodies.filter((body) => body.token === `phc_test_${pageLoads}`);
+}
+
+async function waitForStoredPageInFlags() {
+  const key = `phc_test_${pageLoads}`;
+  await vi.waitFor(() =>
+    expect(
+      flagsBodies.some(
+        (body) =>
+          body.token === key && body.person_properties?.$initial_current_url,
+      ),
+    ).toBe(true),
+  );
+  const ownBodies = flagsBodies.filter((body) => body.token === key);
+  expect(JSON.stringify(ownBodies)).not.toContain(LINK_VALUE);
+  return ownBodies.find((body) => body.person_properties?.$initial_current_url)!
+    .person_properties!;
+}
+
+function expectPostHogStorageHoldsNoSecret() {
+  const postHogItems = Object.entries(storedItems()).filter(([name]) =>
+    name.startsWith("ph_"),
+  );
+  expect(JSON.stringify(postHogItems)).not.toContain(LINK_VALUE);
+  expect(document.cookie).not.toContain(LINK_VALUE);
 }
 
 async function waitForEvent(name: string, timeout?: number) {
@@ -337,6 +509,26 @@ async function readFlagsBody(request: Request): Promise<FlagsBody> {
   const data = new URLSearchParams(body).get("data");
   const json = data ? Buffer.from(data, "base64").toString("utf8") : body;
   return JSON.parse(json) as FlagsBody;
+}
+
+function storedItems(): Record<string, string> {
+  return Object.fromEntries(
+    Array.from({ length: window.localStorage.length }, (_, index) => {
+      const name = window.localStorage.key(index)!;
+      return [name, window.localStorage.getItem(name) ?? ""];
+    }),
+  );
+}
+
+function setReferrer(referrer: string | undefined) {
+  if (referrer === undefined) {
+    Reflect.deleteProperty(document, "referrer");
+    return;
+  }
+  Object.defineProperty(document, "referrer", {
+    configurable: true,
+    value: withSecret(referrer),
+  });
 }
 
 function withSecret(text: string) {

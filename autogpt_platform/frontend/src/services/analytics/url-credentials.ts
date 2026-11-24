@@ -31,6 +31,23 @@ export function stripCredentialsFromURL(text: string, depth = 0): string {
   return redactCredentialPaths(stripped);
 }
 
+/** Mask the credentials in every string, and object key, a value holds. */
+export function stripCredentialsFromValue(value: unknown): unknown {
+  if (typeof value === "string") return stripCredentialsFromURL(value);
+  if (Array.isArray(value)) return value.map(stripCredentialsFromValue);
+  if (isRecord(value)) return stripObject(value);
+  return value;
+}
+
+/** Whether the page URL or its referrer carries a credential. */
+export function pageHoldsCredential() {
+  // Only the browser sees the whole URL, so the server never says no.
+  if (typeof window === "undefined") return true;
+  return [window.location.href, document.referrer].some(
+    (url) => stripCredentialsFromURL(url) !== url,
+  );
+}
+
 // /reset-password's `token`, the preference links' signed `t`, the OAuth
 // pages' `code` and `state`, Telegram's signed `hash` on the linking page.
 // posthog-js masks these exact names in the first page it stores.
@@ -79,21 +96,16 @@ function stripObject(object: Record<string, unknown>) {
     stripped[stripCredentialsFromURL(key)] =
       key === SNAPSHOT_DATA && Array.isArray(value)
         ? value.map(stripSnapshotEvent)
-        : stripValue(value);
+        : stripCredentialsFromValue(value);
   }
   return stripped;
 }
 
 // A replay event posthog-js has gzipped carries `cv`; its strings are binary.
 function stripSnapshotEvent(event: unknown) {
-  return isRecord(event) && "cv" in event ? event : stripValue(event);
-}
-
-function stripValue(value: unknown): unknown {
-  if (typeof value === "string") return stripCredentialsFromURL(value);
-  if (Array.isArray(value)) return value.map(stripValue);
-  if (isRecord(value)) return stripObject(value);
-  return value;
+  return isRecord(event) && "cv" in event
+    ? event
+    : stripCredentialsFromValue(event);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

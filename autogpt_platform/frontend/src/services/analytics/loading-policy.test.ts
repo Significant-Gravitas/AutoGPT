@@ -10,6 +10,7 @@ const production = {
   host: "platform.agpt.co",
   isLocal: false,
   isConsentManaged: true,
+  pageHoldsCredential: false,
 };
 
 describe("resolveAnalyticsLoading", () => {
@@ -93,6 +94,7 @@ describe("resolveAnalyticsLoading", () => {
       host: "localhost:3000",
       isLocal: true,
       isConsentManaged: true,
+      pageHoldsCredential: false,
     };
 
     expect(

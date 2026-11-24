@@ -70,7 +70,7 @@ describe("PostHogProvider", () => {
     );
   });
 
-  it("drops events without consent, strips URL credentials, then marks those an admin sends while acting as a user", async () => {
+  it("keeps its stored URLs masked, drops events without consent, strips URL credentials, then marks those an admin sends while acting as a user", async () => {
     const { PostHogProvider } = await import("../posthog-provider");
     const { markImpersonatedEvent } = await import(
       "@/services/analytics/posthog-request-context"
@@ -79,10 +79,14 @@ describe("PostHogProvider", () => {
     const { stripURLCredentials } = await import(
       "@/services/analytics/url-credentials"
     );
+    const { keepStoredURLsStripped } = await import(
+      "@/services/analytics/posthog-stored-urls"
+    );
 
     render(<PostHogProvider>app</PostHogProvider>);
 
     expect(posthog.init.mock.calls[0][1].before_send).toEqual([
+      keepStoredURLsStripped,
       dropWithoutConsent,
       stripURLCredentials,
       markImpersonatedEvent,
