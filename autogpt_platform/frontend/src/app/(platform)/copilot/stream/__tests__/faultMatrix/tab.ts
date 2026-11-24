@@ -35,6 +35,9 @@ export class Tab {
   private toast = vi.fn<RuntimeDeps["toast"]>();
   private lastView: SessionView | null = null;
   private renderTail = createTailRenderer(SESSION);
+  /** A read's view is taken when it starts and answered this much later, as a
+   *  response still on the wire when the server says something new. */
+  viewAnswerDelayMs = 0;
   private joinRuns = createAssistantRunJoiner();
 
   constructor(
@@ -93,6 +96,10 @@ export class Tab {
     } catch {
       return null;
     }
+    if (this.viewAnswerDelayMs)
+      await new Promise((resolve) =>
+        setTimeout(resolve, this.viewAnswerDelayMs),
+      );
     this.lastView = view;
     if (this.echoes) setTimeout(() => this.runtime.observe(view), 0);
     return view;

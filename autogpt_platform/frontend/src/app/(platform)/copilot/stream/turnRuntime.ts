@@ -251,6 +251,11 @@ export class TurnRuntime {
   private boundFetchSession: (() => Promise<SessionView | null>) | null = null;
   private disposed = false;
   private probes = 0;
+  // The server's word that a turn ended can come while a read is out that
+  // was taken before that end; one more read is owed once it settles.
+  private readClock = 0;
+  private readStartedAt = 0;
+  private rereadOwedAt = 0;
   private hiddenAt: number | null = null;
   private rereadTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -500,9 +505,23 @@ export class TurnRuntime {
    * finished reads it anyway.
    */
   rereadIfIdle() {
-    if (this.disposed || this.recovering || this.probes > 0 || !this.isIdle())
+    if (this.disposed) return;
+    if (this.recovering || this.probes > 0) {
+      this.rereadOwedAt = ++this.readClock;
       return;
+    }
+    if (!this.isIdle()) return;
     void this.reread();
+  }
+
+  // A read that started after the server's word covers it; otherwise the
+  // owed read happens now, if the chat is still idle.
+  private settleOwedReread() {
+    if (this.disposed || this.probes > 0 || this.recovering) return;
+    if (!this.rereadOwedAt) return;
+    const owed = this.rereadOwedAt > this.readStartedAt;
+    this.rereadOwedAt = 0;
+    if (owed) this.rereadIfIdle();
   }
 
   dispose() {
@@ -1112,6 +1131,7 @@ export class TurnRuntime {
       // checks read again, and retry while reads fail.
       if (!read && !this.runningTurn() && !this.isPostPending())
         this.decideSendsBehindTurn();
+      this.settleOwedReread();
     }
   }
 
@@ -1618,10 +1638,12 @@ export class TurnRuntime {
       clearTimeout(timer);
       if (this.notice === "catching-up") this.notice = null;
       this.emit();
+      this.settleOwedReread();
     }
   }
 
   private async fetchView() {
+    this.readStartedAt = ++this.readClock;
     try {
       return await (this.boundFetchSession ?? this.deps.fetchSession)();
     } catch {

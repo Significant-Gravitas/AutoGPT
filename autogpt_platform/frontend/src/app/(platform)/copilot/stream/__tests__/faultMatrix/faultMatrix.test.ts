@@ -1627,6 +1627,29 @@ describe("two tabs on one chat", () => {
   );
 
   cell(
+    "M7p",
+    "a turn the other tab ends while this tab's end-of-turn read is on the wire shows once that read lands",
+    async () => {
+      tab.send(P1);
+      await advance(0);
+      server.publish();
+      tab.viewAnswerDelayMs = 2_000;
+      await advance(700);
+      const other = openTab();
+      other.send(P2);
+      await advance(0);
+      server.publish();
+      await advance(100);
+      tab.runtime.rereadIfIdle();
+      await advance(10_000);
+      expectScreen({
+        error: null,
+        chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER],
+      });
+    },
+  );
+
+  cell(
     "M7f",
     "the server's word that a turn ended reads nothing while this tab follows a turn",
     async () => {
