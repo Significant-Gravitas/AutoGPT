@@ -64,6 +64,10 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importActual) => {
 
 const STREAM = `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`;
 const PENDING = `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/messages/pending`;
+const UNCONFIRMED =
+  "We couldn't confirm your message was sent. Check your connection and send it again.";
+const DROPPED =
+  "The connection dropped before your message was sent. Check your connection and send it again.";
 
 function resetStores() {
   resetChatRuntimes();
@@ -82,8 +86,9 @@ afterEach(() => {
 });
 
 // Every send stays out, never answered, until the chat is torn down, which
-// aborts it. The first is checked and reported.
-function holdSends() {
+// aborts it. The first is checked and reported; with `dropFirst` the network
+// drops it instead, before it reaches the server.
+function holdSends({ dropFirst = false } = {}) {
   const sent: { message: string; message_id: string }[] = [];
   const queued: string[] = [];
   server.use(
@@ -91,6 +96,7 @@ function holdSends() {
     getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler([]),
     http.post(STREAM, async ({ request }) => {
       sent.push((await request.json()) as (typeof sent)[number]);
+      if (dropFirst && sent.length === 1) return HttpResponse.error();
       await new Promise<void>((resolve) =>
         request.signal.addEventListener("abort", () => resolve(), {
           once: true,
@@ -119,6 +125,8 @@ async function reportUnconfirmedSend() {
   // Thirty seconds of silence, then the checks that find no row for it.
   await act(() => vi.advanceTimersByTimeAsync(40_000));
   const sendAgain = await screen.findByRole("button", { name: "Send again" });
+  // Silent rather than dropped: the server may have it.
+  expect(screen.getByText(UNCONFIRMED)).toBeDefined();
   return { ...requests, sendAgain };
 }
 
@@ -140,6 +148,26 @@ it("queues a follow-up typed while Send again's request is out, rather than star
   await waitFor(() => expect(queued).toEqual(["And example.org?"]));
   expect(sent).toHaveLength(2);
   expect(sent[1].message_id).toBe(sent[0].message_id);
+});
+
+it("offers Send again for a message the network dropped, and sends it under its first id", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const { sent } = holdSends({ dropFirst: true });
+  renderHost();
+  await typeAndSend("What does example.com say?");
+  // The checks that find no row for it.
+  await act(() => vi.advanceTimersByTimeAsync(10_000));
+  expect(
+    await screen.findByText(DROPPED, undefined, { timeout: 10_000 }),
+  ).toBeDefined();
+
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  await user.click(screen.getByRole("button", { name: "Send again" }));
+
+  await waitFor(() => expect(sent).toHaveLength(2));
+  expect(sent[1].message).toBe("What does example.com say?");
+  expect(sent[1].message_id).toBe(sent[0].message_id);
+  await waitFor(() => expect(screen.queryByText(DROPPED)).toBeNull());
 });
 
 it("says so when Send again finds nothing left to send", async () => {
