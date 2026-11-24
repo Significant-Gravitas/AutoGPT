@@ -78,15 +78,18 @@ interface Refusal {
   limit?: unknown;
 }
 
+/** A create or hire refused because the team has no room left. */
+export function teamFullMessage(limit: unknown) {
+  const size = typeof limit === "number" ? ` (${limit} experts)` : "";
+  return `Your team is full${size}. Remove one on the web to add another.`;
+}
+
 /** The sentence for a create that failed for any reason but a dead session. */
 export function createErrorMessage(error: unknown) {
   const { status, code, limit } =
     typeof error === "object" && error !== null ? (error as Refusal) : {};
   if (status === 402) return PLAN_REQUIRED_MESSAGE;
-  if (status === 409 && code === "active_expert_limit") {
-    const size = typeof limit === "number" ? ` (${limit} experts)` : "";
-    return `Your team is full${size}. Remove one on the web to add another.`;
-  }
+  if (status === 409 && code === "active_expert_limit") return teamFullMessage(limit);
   if (status === 409 && code === "raised_expert_lifetime_limit") {
     return "You've created the most experts your plan allows.";
   }

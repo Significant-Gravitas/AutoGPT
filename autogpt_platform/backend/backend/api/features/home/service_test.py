@@ -317,8 +317,32 @@ async def test_scheduler_and_credit_failures_degrade_instead_of_failing_the_page
     dashboard = await build_home_dashboard(user_id="user-1")
 
     assert dashboard.upcoming_tasks == []
+    assert dashboard.schedules_unavailable is True
     assert dashboard.week.credits_balance is None
     assert dashboard.briefing.outcomes[0].title == "Booked the flight."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "refused, unavailable", [(None, False), (ConnectionError, True)]
+)
+async def test_upcoming_runs_are_unknown_only_when_the_scheduler_did_not_answer(
+    mocker: MockerFixture,
+    home_dependencies,
+    refused: type[Exception] | None,
+    unavailable: bool,
+) -> None:
+    scheduler = MagicMock()
+    scheduler.get_execution_schedules = AsyncMock(return_value=[], side_effect=refused)
+    mocker.patch(
+        "backend.api.features.home.service.get_scheduler_client", return_value=scheduler
+    )
+
+    dashboard = await build_home_dashboard(user_id="user-1")
+
+    # An answered empty list is "nothing scheduled"; no answer is "unknown".
+    assert dashboard.upcoming_tasks == []
+    assert dashboard.schedules_unavailable is unavailable
 
 
 @pytest.mark.asyncio

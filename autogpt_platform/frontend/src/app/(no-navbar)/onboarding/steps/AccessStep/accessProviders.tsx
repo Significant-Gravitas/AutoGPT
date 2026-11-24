@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import { GoogleAccess } from "./components/GoogleAccess/GoogleAccess";
 import { MicrosoftAccess } from "./components/MicrosoftAccess";
 
 export interface AccessConnectProps {
@@ -16,8 +17,8 @@ interface AccessProvider {
 /**
  * Sign-in providers whose data Otto can also use, keyed by the provider id
  * the sign-in account is stored under. Signing up with one of these adds the
- * access step to onboarding; another provider (Google, GitHub) joins by
- * adding an entry here.
+ * access step to onboarding; another provider (GitHub) joins by adding an
+ * entry here.
  */
 export const ACCESS_PROVIDERS: Record<string, AccessProvider> = {
   microsoft: {
@@ -25,5 +26,11 @@ export const ACCESS_PROVIDERS: Record<string, AccessProvider> = {
     description:
       "Signing in with Microsoft only proves who you are. Connecting is what lets Otto work with your Microsoft 365. You can change this anytime in Settings.",
     Connect: MicrosoftAccess,
+  },
+  google: {
+    title: "Also connect Gmail, Drive and Calendar?",
+    description:
+      "Signing in with Google only proves who you are. Connecting is what lets Otto work with your email, files and calendar. You can change this anytime in Settings.",
+    Connect: GoogleAccess,
   },
 };

@@ -46,6 +46,11 @@ concurrency:
 permissions:
   contents: write # required to create/update the rolling release + its assets
 
+# The fixture is published as a release asset that preview databases restore,
+# so the bake never reads or writes the Actions cache: a poisoned entry saved
+# by another workflow must not reach what it publishes.
+cache-mode: none
+
 defaults:
   run:
     shell: bash
@@ -111,12 +116,6 @@ jobs:
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
-
-      - name: Set up Python dependency cache
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ~/.cache/pypoetry
-          key: poetry-${{ runner.os }}-py3.12-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
 
       - name: Install Poetry
         run: |
