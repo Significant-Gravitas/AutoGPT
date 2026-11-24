@@ -480,7 +480,7 @@ async def get_library_agent_id_by_graph_id(user_id: str, graph_id: str) -> str |
 async def get_library_agent_refs_by_graph_ids(
     user_id: str, graph_ids: list[str], *, include_deleted: bool = False
 ) -> list[library_model.LibraryAgentRef]:
-    """Resolve display name + id for the given graphs in one query.
+    """Resolve display name + id for the given graphs in one batched lookup.
 
     Batched counterpart to :func:`get_library_agent_id_by_graph_id`, for
     callers (e.g. the morning briefing) that need to label a known handful
@@ -504,13 +504,18 @@ async def get_library_agent_refs_by_graph_ids(
         where["isDeleted"] = False
     agents = await prisma.models.LibraryAgent.prisma().find_many(
         where=where,
+        include={"AgentGraph": True},
         order=[{"isDeleted": "desc"}, {"agentGraphVersion": "asc"}],
     )
     newest_by_graph = {
         agent.agentGraphId: library_model.LibraryAgentRef(
             id=agent.id,
             graph_id=agent.agentGraphId,
-            name=agent.name or "",
+            name=(
+                agent.name
+                if agent.name is not None
+                else ((agent.AgentGraph and agent.AgentGraph.name) or "")
+            ),
             image_url=agent.imageUrl,
             is_deleted=agent.isDeleted,
         )
