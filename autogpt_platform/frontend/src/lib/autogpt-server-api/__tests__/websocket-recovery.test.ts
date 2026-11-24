@@ -343,6 +343,7 @@ describe("WebSocket recovery and logout", () => {
     expect(
       second.send.mock.calls.map(([data]) => JSON.parse(data).method),
     ).toEqual([
+      "authenticate",
       "heartbeat",
       "heartbeat",
       "subscribe_graph_executions",
@@ -406,6 +407,7 @@ describe("WebSocket recovery and logout", () => {
     expect(
       second.send.mock.calls.map(([data]) => JSON.parse(data).method),
     ).toEqual([
+      "authenticate",
       "heartbeat",
       "subscribe_graph_executions",
       "heartbeat",
