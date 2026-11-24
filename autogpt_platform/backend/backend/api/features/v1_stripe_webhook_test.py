@@ -1254,8 +1254,12 @@ def test_a_payment_after_its_plan_was_replaced_asks_for_one_refund(
 
     assert restart.await_count == 3
     alert.assert_awaited_once()
-    assert "in_late" in alert.await_args.args[0]
-    assert "needs a manual refund" in alert.await_args.args[0]
+    message = alert.await_args.args[0]
+    assert "in_late" in message and "needs a manual refund" in message
+    # Nothing on the at-payment path ends the plan, and an uncollectible or
+    # unpaid plan gets no failure that would, so a person is told to.
+    assert "is or will be cancelled" not in message
+    assert "If the plan is still live, cancel it and void its open bills" in message
 
 
 def test_a_late_payment_alert_that_was_not_delivered_is_sent_by_the_next_delivery(

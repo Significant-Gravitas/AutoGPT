@@ -853,6 +853,9 @@ async def test_a_non_stripe_error_ending_replaced_plans_still_cancels_and_alerts
     assert world.stripe.subscriptions["sub_new"]["status"] == "active"
     assert len(world.alerts) == 1
     assert "void their open bills by hand" in world.alerts[0]
+    # The cleanup after it cancels an older plan a late payment may have
+    # revived, so on-call finds nothing past due: the alert names the refund.
+    assert "may have a payment that needs a manual refund" in world.alerts[0]
 
 
 @pytest.mark.asyncio

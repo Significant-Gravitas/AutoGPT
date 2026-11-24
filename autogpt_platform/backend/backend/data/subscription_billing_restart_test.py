@@ -170,7 +170,10 @@ class FakeStripe:
 
     async def list_credit_notes(self, invoice: str, limit: int):
         page = MagicMock()
-        page.data = [dict(n) for n in self.credit_notes if n["invoice"] == invoice]
+        # Newest first, as Stripe lists them.
+        page.data = [
+            dict(n) for n in reversed(self.credit_notes) if n["invoice"] == invoice
+        ]
         page.has_more = False
         return page
 
@@ -674,6 +677,43 @@ async def test_a_credit_whose_record_rolled_back_is_taken_back_when_the_retry_ex
     assert fake.balance == 0
 
 
+def _unchanged(fake: FakeStripe) -> None:
+    pass
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("change", "outcome"),
+    [
+        (_unchanged, RestartOutcome.RESTARTED),
+        (_upgraded, RestartOutcome.NEEDS_MANUAL_FIX),
+    ],
+)
+async def test_our_credit_is_found_behind_a_newer_credit_note_a_person_added(
+    fake, change, outcome
+):
+    """The credit was made and its record rolled back, then a person issued
+    another credit note on the same invoice. Stripe lists that one first; the
+    retry must still find this restart's credit, to finish the restart with
+    it or take it back, never leave it on the balance to pay the next bill."""
+    _fail_on_3rd_pay_on_9th(fake)
+    fake.fail_next_modify = 1
+    with pytest.raises(stripe.APIConnectionError):
+        await restart_period_after_late_payment("in_march")
+    row = fake.rows["in_march"]
+    row.paidAt = row.stripeCreditNoteId = None
+    fake.credit_notes.append(
+        {"id": "cn_manual", "invoice": "in_march", "status": "issued", "metadata": {}}
+    )
+
+    change(fake)
+    fake.idempotent.clear()
+    assert await restart_period_after_late_payment("in_march") == outcome
+    assert fake.balance == 0
+    assert fake.card_charges == [PRICE]
+    assert [n["id"] for n in fake.credit_notes] == ["cn_1", "cn_manual"]
+
+
 @pytest.mark.asyncio
 async def test_a_finished_restart_redelivered_after_an_upgrade_takes_nothing_back(
     fake,
@@ -873,6 +913,92 @@ async def test_an_older_bill_paid_while_a_newer_plan_replaced_its_plan_needs_a_r
     assert fake.credit_notes == []
     assert fake.balance_transactions == []
     assert fake.subscriptions[SUB]["current_period_start"] == _ts(2026, 3, 3)
+
+
+def _newer_plan_bought(fake: FakeStripe, at: int) -> None:
+    fake.subscriptions["sub_new"] = {
+        "id": "sub_new",
+        "customer": CUSTOMER,
+        "status": "active",
+        "created": at,
+    }
+
+
+def _revived_by_april(fake: FakeStripe) -> None:
+    """April's debit settled in the same batch and its event came first: the
+    plan revived, and ``end_revived_plan`` has not ended it yet."""
+    fake.pay("in_april", _ts(2026, 4, 8))
+    fake.subscriptions[SUB]["status"] = "active"
+
+
+def _revived_by_april_then_ended(fake: FakeStripe) -> None:
+    """April's event came first, and ``end_revived_plan`` ended the plan
+    before March's event was handled."""
+    _revived_by_april(fake)
+    fake.subscriptions[SUB].update(
+        status="canceled",
+        canceled_at=_ts(2026, 4, 8) + 60,
+        cancellation_details={"comment": credit.REPLACED_PLAN_CANCELLATION_COMMENT},
+    )
+
+
+def _ended_by_aprils_failure(fake: FakeStripe) -> None:
+    """March's first delivery failed; April's debit then failed and ended the
+    plan as replaced before Stripe redelivered March's event."""
+    fake.invoices["in_april"]["status"] = "void"
+    fake.subscriptions[SUB].update(
+        status="canceled",
+        canceled_at=_ts(2026, 4, 9),
+        cancellation_details={"comment": credit.REPLACED_PLAN_CANCELLATION_COMMENT},
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reason", ["subscription_cycle", "subscription_update"])
+@pytest.mark.parametrize(
+    "since", [_revived_by_april, _revived_by_april_then_ended, _ended_by_aprils_failure]
+)
+async def test_an_older_bill_paid_after_a_newer_plan_needs_a_refund_whatever_the_plan_is_now(
+    fake, reason, since
+):
+    """The customer bought a newer plan on 26 March while the old plan's
+    March and April debits were in flight. March's settled on 8 April, after
+    the newer plan existed, so it pays for a plan the customer left. What the
+    old plan has become by the time March's event is handled, revived by
+    April's payment or ended as replaced, must not hide that."""
+    fake.add_subscription(period_start=_ts(2026, 3, 3), status="past_due")
+    fake.add_invoice("in_march", paid_at=None, billing_reason=reason)
+    fake.pause("in_march", at=_ts(2026, 3, 3) + HOUR)
+    _newer_plan_bought(fake, at=_ts(2026, 3, 26))
+    fake.add_invoice("in_april", paid_at=None)
+    fake.pay("in_march", _ts(2026, 4, 8))
+    since(fake)
+
+    assert await restart_period_after_late_payment("in_march") == (
+        RestartOutcome.NEEDS_REFUND
+    )
+    assert fake.credit_notes == []
+    assert fake.balance_transactions == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reason", ["subscription_cycle", "subscription_update"])
+async def test_an_older_bill_paid_before_the_newer_plan_was_bought_needs_no_refund(
+    fake, reason
+):
+    """March's debit settled on 5 April and the newer plan was bought on 6
+    April. A redelivery of March's payment after that pays for a period the
+    customer had, not one they left, so nobody is asked to refund it."""
+    fake.add_subscription(period_start=_ts(2026, 3, 3), status="past_due")
+    fake.add_invoice("in_march", paid_at=None, billing_reason=reason)
+    fake.pause("in_march", at=_ts(2026, 3, 3) + HOUR)
+    fake.add_invoice("in_april", paid_at=None)
+    fake.pay("in_march", _ts(2026, 4, 5))
+    _newer_plan_bought(fake, at=_ts(2026, 4, 6))
+
+    assert await restart_period_after_late_payment("in_march") == (
+        RestartOutcome.NOT_APPLICABLE
+    )
 
 
 @pytest.mark.asyncio
