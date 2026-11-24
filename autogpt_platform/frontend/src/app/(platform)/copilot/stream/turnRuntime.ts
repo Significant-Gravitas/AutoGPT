@@ -981,12 +981,7 @@ export class TurnRuntime {
     if (ended()) return;
     this.checks.delete(lost);
     this.resetFailures();
-    if (this.sendInDoubt(lost, end)) {
-      this.error =
-        end.kind === "failed" && end.error instanceof Error
-          ? end.error
-          : new Error(lost.syntheticError ?? "The connection closed early.");
-    }
+    if (this.sendInDoubt(lost, end)) this.error = lostSendError(lost, end);
     this.emitNow();
   }
 
@@ -1895,12 +1890,36 @@ export class MessageTooLongError extends SendRefusedError {
   }
 }
 
-/** A send whose connection went silent, and that the session has no row for. */
+// The error for a send no check found a row for. A network error offers Send
+// again, as a silent request does; the resend reuses the first `message_id`.
+function lostSendError(lost: Lost, end: ConnectionEnd): Error {
+  if (end.kind !== "failed" || !(end.error instanceof Error))
+    return new Error(lost.syntheticError ?? "The connection closed early.");
+  if (end.error.name === "TypeError")
+    return new DroppedSendError(lost.prompt, end.error);
+  return end.error;
+}
+
+/**
+ * A send whose connection went silent, and that the session has no row for;
+ * Send again posts it under its first id.
+ */
 export class UnconfirmedSendError extends Error {
-  /** `prompt`: the key of the message whose request went silent. */
-  constructor(readonly prompt: string | null = null) {
-    super("The connection stalled before the server confirmed your message.");
+  /** `prompt`: the key of the message whose request was lost. */
+  constructor(
+    readonly prompt: string | null = null,
+    message = "The connection stalled before the server confirmed your message.",
+  ) {
+    super(message);
     this.name = "UnconfirmedSendError";
+  }
+}
+
+/** The same, for a send whose request failed on the network, as when offline. */
+export class DroppedSendError extends UnconfirmedSendError {
+  constructor(prompt: string | null, cause: Error) {
+    super(prompt, cause.message);
+    this.name = "DroppedSendError";
   }
 }
 

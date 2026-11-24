@@ -37,6 +37,8 @@ export type PostMode =
   | "lost-after-receive"
   // The request reaches the server only after the client gave up on it.
   | "late-after-receive"
+  // The client's request fails at once, but the server takes it that late too.
+  | "lost-late-receive"
   // The server started the turn; the response stays open and silent, as a frozen page sees it.
   | "silent-after-receive"
   | "route-error-after-receive"
@@ -244,8 +246,9 @@ export class FaultServer {
     const id = body.expert_kickoff
       ? "expert-kickoff-row"
       : scopedMessageId(url, body.message_id);
-    if (mode === "late-after-receive") {
+    if (mode === "late-after-receive" || mode === "lost-late-receive") {
       setTimeout(() => this.arrive(body.message, id), LATE_RECEIVE_MS);
+      if (mode === "lost-late-receive") throw new TypeError("Failed to fetch");
       return hangUntilAborted(init?.signal);
     }
     // The route's claim on the id: a send it already took starts nothing, and
