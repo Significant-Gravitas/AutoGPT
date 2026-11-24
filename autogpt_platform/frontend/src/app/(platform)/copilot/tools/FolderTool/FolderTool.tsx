@@ -79,8 +79,8 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
         <div className="flex items-center gap-2">
           {folder.color ? (
             <span
-              className="inline-block h-3 w-3 rounded-full"
-              style={{ backgroundColor: folder.color }}
+              className="inline-block h-3 w-3 rounded-full bg-(--folder-color)"
+              style={{ "--folder-color": folder.color } as React.CSSProperties}
             />
           ) : (
             <Icon icon={Folder01Icon} size={14} tone="secondary" />

@@ -14,15 +14,17 @@ export function ContextBar({ context }: Props) {
     <div className="relative h-2 w-full rounded-pill bg-surface-hover">
       <div
         className={
-          "absolute inset-y-0 left-0 rounded-pill transition-all " +
+          "absolute inset-y-0 left-0 w-(--fill) rounded-pill transition-all " +
           (isOverAutocompact(context) ? "bg-warning" : "bg-action")
         }
-        style={{ width: `${windowPercent(context)}%` }}
+        style={
+          { "--fill": `${windowPercent(context)}%` } as React.CSSProperties
+        }
       />
       <div
         aria-hidden
-        className="absolute inset-y-0 w-px bg-warning"
-        style={{ left: `${threshold}%` }}
+        className="absolute inset-y-0 left-(--threshold) w-px bg-warning"
+        style={{ "--threshold": `${threshold}%` } as React.CSSProperties}
       />
     </div>
   );

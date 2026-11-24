@@ -149,8 +149,12 @@ export function ContextPanel({ sessionId, mobile }: Props) {
                 means the inner is wider than the shell for the whole tween,
                 so the clip above is what stops it spilling over the chat. */}
             <div
-              style={{ width: contextPanelWidth }}
-              className="flex h-full min-h-0 flex-col overflow-hidden"
+              style={
+                {
+                  "--panel-width": `${contextPanelWidth}px`,
+                } as React.CSSProperties
+              }
+              className="flex h-full min-h-0 w-(--panel-width) flex-col overflow-hidden"
             >
               {content}
             </div>

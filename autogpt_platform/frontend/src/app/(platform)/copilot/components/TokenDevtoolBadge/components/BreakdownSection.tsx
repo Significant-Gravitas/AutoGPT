@@ -6,6 +6,7 @@ import {
 } from "../../../tokenDevtool/tokenMath";
 import { BREAKDOWN_COLORS } from "../helpers";
 import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
 
 interface Props {
   breakdown: ContextBreakdown;
@@ -43,8 +44,12 @@ export function BreakdownSection({ breakdown }: Props) {
         {rows.map((row) => (
           <div
             key={row.label}
-            className={row.color}
-            style={{ width: `${(row.tokens / total) * 100}%` }}
+            className={cn("w-(--share)", row.color)}
+            style={
+              {
+                "--share": `${(row.tokens / total) * 100}%`,
+              } as React.CSSProperties
+            }
           />
         ))}
       </div>

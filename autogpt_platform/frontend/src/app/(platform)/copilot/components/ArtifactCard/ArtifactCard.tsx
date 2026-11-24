@@ -160,10 +160,8 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
       <Icon
         icon={ArrowRight01Icon}
         size={16}
-        className={cn(
-          "shrink-0",
-          isActive ? "text-brand/60" : "text-foreground-disabled",
-        )}
+        tone={isActive ? undefined : "disabled"}
+        className={cn("shrink-0", isActive && "text-brand/60")}
       />
     </button>
   );

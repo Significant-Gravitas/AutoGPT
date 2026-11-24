@@ -45,7 +45,7 @@ export function UsagePopover({ trigger, align = "start" }: Props) {
       </PopoverTrigger>
       {/* z-command: must layer above the mobile sidebar sheet so the popover
           doesn't render under its overlay. */}
-      <PopoverContent align={align} className="z-command w-72 p-4">
+      <PopoverContent align={align} className="z-command w-72">
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2">
             <Text tone="emphasis" variant="body" weight="medium">

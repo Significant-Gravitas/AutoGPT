@@ -192,10 +192,8 @@ export function TodoList({ row }: RowProps) {
               <Icon
                 icon={CircleIcon}
                 size={15}
-                className={
-                  "shrink-0 " +
-                  (active ? "text-brand" : "text-foreground-disabled")
-                }
+                tone={active ? "brand" : "disabled"}
+                className="shrink-0"
               />
             )}
             <span

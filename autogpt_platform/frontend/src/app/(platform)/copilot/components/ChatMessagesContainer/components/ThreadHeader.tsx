@@ -29,8 +29,7 @@ const floatingControlsClassName: Record<FloatingControls, string> = {
   newLayout: "max-lg:top-2 max-lg:justify-center",
 };
 
-const chipButtonClassName =
-  "size-9 shrink-0 rounded-pill hover:bg-surface-hover";
+const chipButtonClassName = "size-9 shrink-0 rounded-pill";
 
 interface Props {
   expertIdentity?: ExpertIdentity | null;

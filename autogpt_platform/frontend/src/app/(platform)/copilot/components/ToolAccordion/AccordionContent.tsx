@@ -187,10 +187,12 @@ export function ContentBadge({
 }) {
   return (
     <Text
-      variant="small"
+      variant="caption-sm"
       as="span"
+      tone="emphasis"
+      leading="inherit"
       className={cn(
-        "shrink-0 rounded-pill border bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-emphasis",
+        "shrink-0 rounded-pill border bg-surface-hover px-2 py-0.5",
         className,
       )}
     >

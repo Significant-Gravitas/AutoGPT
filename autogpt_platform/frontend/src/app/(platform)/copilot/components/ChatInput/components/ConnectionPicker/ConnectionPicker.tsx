@@ -215,7 +215,7 @@ export function ConnectionPicker({
       <PopoverContent
         align="end"
         className={cn(
-          "max-h-[var(--radix-popover-content-available-height)] w-[24rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border-border-base bg-surface-muted p-3 pt-4 text-foreground-strong shadow-lg",
+          "max-h-[var(--radix-popover-content-available-height)] w-[24rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl bg-surface-muted p-3 pt-4 shadow-lg",
           showMaxUpgrade && "bg-surface",
         )}
       >
