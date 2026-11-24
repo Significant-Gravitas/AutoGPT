@@ -551,6 +551,20 @@ def _mappable_discriminator_default(
     return default if default in mapping else None
 
 
+def _refuses_platform_credentials(
+    nodes: Mapping[str, Node], node_field_pairs: Iterable[tuple[str, str]]
+) -> bool:
+    """Whether a step behind an aggregated credentials field refuses the
+    platform's shared keys, by the check graph validation makes on the step's
+    saved inputs. The run form and schedule dialog then keep the field off the
+    platform's key, as the builder does from the block's own schema."""
+    return any(
+        (node := nodes.get(node_id)) is not None
+        and node.block.refuses_platform_credentials_for(node.input_default)
+        for node_id, _ in node_field_pairs
+    )
+
+
 class GraphModel(Graph, GraphMeta):
     """
     Full graph model representing an existing graph from the database.
@@ -597,10 +611,13 @@ class GraphModel(Graph, GraphMeta):
         # Build JSON schema directly to avoid expensive create_model + validation overhead
         properties = {}
         required_fields = []
+        nodes_by_id = {
+            node.id: node for graph in (self, *self.sub_graphs) for node in graph.nodes
+        }
 
         for agg_field_key, (
             field_info,
-            _,
+            node_field_pairs,
             is_required,
         ) in graph_credentials_inputs.items():
             providers = list(field_info.provider)
@@ -659,6 +676,8 @@ class GraphModel(Graph, GraphMeta):
                     exclude={"provider", "supported_types"},  # already included above
                 )
             )
+            if _refuses_platform_credentials(nodes_by_id, node_field_pairs):
+                field_schema["refuses_platform_credentials"] = True
 
             # Ensure field schema is well-formed
             CredentialsMetaInput.validate_credentials_field_schema(
