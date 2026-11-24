@@ -2,7 +2,7 @@ import { DefaultChatTransport, type ChatTransport, type UIMessage } from "ai";
 import * as Crypto from "expo-crypto";
 import { fetch as expoFetch } from "expo/fetch";
 
-import { apiUrl, authHeaders } from "@/lib/api/client";
+import { apiUrl, authHeaders, reportPlanRequired } from "@/lib/api/client";
 import { SessionChangedError, SignedOutError } from "@/lib/auth/errors";
 import { assertSameSession, clearAccessToken, sessionMark } from "@/lib/auth/token";
 import { tapReply } from "@/lib/haptics";
@@ -93,6 +93,7 @@ const fetchStream: typeof globalThis.fetch = async (input, init) => {
     }
   }
   if (response.ok) return response;
+  if (response.status === 402) reportPlanRequired();
   throw new Error(statusMessage(response.status));
 };
 

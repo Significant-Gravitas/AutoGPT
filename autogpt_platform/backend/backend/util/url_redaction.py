@@ -1,8 +1,8 @@
 """Masking for credentials that travel in request URLs and headers.
 
-The browser opens its WebSocket with the user's session JWT in ``?token=``,
-email links carry one-click tokens in the query, and some path segments are
-bearer secrets themselves: whoever holds one can post to a webhook, claim a
+Tabs on an older frontend open their WebSocket with the user's session JWT
+in ``?token=``, email links carry one-click tokens in the query, and some path
+segments are bearer secrets themselves: whoever holds one can post to a webhook, claim a
 platform link, read a shared chat or run, or accept an org invitation. uvicorn
 logs the path and query of every request and Sentry attaches both to every
 event, so anything that records a request URL masks it here first. Outgoing
@@ -84,6 +84,9 @@ _MAX_QUERY_CREDENTIALS = 16
 # `clientsecret`, and header names as Sentry shows an ASGI scope's bytes
 # (`b'cookie'`), are masked. The accepted cost: a name that only contains one of
 # these words, such as `author` or `design`, has its value masked too.
+# `backend.util.request` also drops, on a redirect to another origin, every
+# header this matches: narrowing it lets more headers through there, widening
+# it drops more.
 _CREDENTIAL_NAME = re.compile(
     r"(?i)auth|code|cookie|credential|csrf|jwt|key|password|secret|sess|sid|sig"
     r"|state|token|sec-websocket-protocol|content-mac"

@@ -1693,6 +1693,7 @@ _ANSWERED_AT_ONCE_SHARED_ERRORS = {
     "BlockOutputError",
     "BlockUnknownError",
     "ConflictError",
+    "CredentialsExpiredError",
     "DuplicateChatMessageError",
     "EmailUndeliverableError",
     "ExpertLimitExceededError",

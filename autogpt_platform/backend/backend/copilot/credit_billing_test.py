@@ -244,6 +244,44 @@ async def test_a_turn_cancelled_while_its_charge_waits_is_still_charged(credits)
     assert _charged(credits) == [100, 1]
 
 
+@pytest.mark.asyncio
+async def test_a_cancel_held_during_the_charge_outlasts_an_error_from_it(mocker):
+    """The cancel held back while the turn is charged is raised even when the
+    charge fails, and keeps the failure as its context."""
+    turn = CreditBilledTurn(
+        user_id="user-1", session_id="sess-1", cap_credits=10, refusal=OUT_OF_TODAY
+    )
+    charging, fail = asyncio.Event(), asyncio.Event()
+
+    async def end() -> None:
+        charging.set()
+        await fail.wait()
+        raise RuntimeError("charge failed")
+
+    mocker.patch.object(turn, "end", end)
+    left_with: list[BaseException] = []
+
+    async def leave_billing() -> None:
+        try:
+            async with credit_billing(turn):
+                pass
+        except BaseException as error:
+            left_with.append(error)
+            raise
+
+    leaving = asyncio.create_task(leave_billing())
+    # Waits on events; the bound only ends a run that hangs.
+    async with asyncio.timeout(30):
+        await charging.wait()
+        leaving.cancel()
+        fail.set()
+        await asyncio.wait({leaving})
+
+    assert leaving.cancelled()
+    assert isinstance(left_with[0], asyncio.CancelledError)
+    assert isinstance(left_with[0].__context__, RuntimeError)
+
+
 async def _bill(**tenancy) -> CreditBilledTurn | None:
     return await bill_to_credits(
         user_id="user-1",

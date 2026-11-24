@@ -37,6 +37,13 @@ def _is_ws_close_race(exc: BaseException, websocket: WebSocket) -> bool:
     return False
 
 
+async def accept_once(websocket: WebSocket) -> None:
+    """Accept the socket, unless reading its sign-in message already has."""
+    # getattr: test doubles of WebSocket may not define the state.
+    if getattr(websocket, "application_state", None) != WebSocketState.CONNECTED:
+        await websocket.accept()
+
+
 _EVENT_TYPE_TO_METHOD_MAP: dict[ExecutionEventType, WSMethod] = {
     ExecutionEventType.GRAPH_EXEC_UPDATE: WSMethod.GRAPH_EXECUTION_EVENT,
     ExecutionEventType.NODE_EXEC_UPDATE: WSMethod.NODE_EXECUTION_EVENT,
@@ -118,7 +125,7 @@ class ConnectionManager:
             return False
         self._user_sockets.setdefault(user_id, set()).add(websocket)
         try:
-            await websocket.accept()
+            await accept_once(websocket)
         except BaseException:
             self._release_user_socket(user_id, websocket)
             raise
@@ -351,7 +358,7 @@ class ConnectionManager:
         # Accepted first, so the client gets 1013 rather than a failed handshake.
         logger.warning(f"Refusing WebSocket for user #{user_id}: server busy")
         try:
-            await websocket.accept()
+            await accept_once(websocket)
             await websocket.close(
                 code=WS_CLOSE_TRY_AGAIN_LATER, reason="Try again later"
             )

@@ -673,6 +673,77 @@ describe("ToolChain", () => {
 
     expect(onSend).not.toHaveBeenCalled();
   });
+
+  it("offers no confirm-only step on a card in an earlier answer", () => {
+    render(
+      <ToolChain
+        parts={[
+          toolPart("connect_integration", "output-available", {
+            output: {
+              type: "setup_requirements",
+              setup_info: { agent_name: "GitHub" },
+            },
+          }),
+        ]}
+        isStreaming={false}
+        isLatestAnswer={false}
+      />,
+    );
+
+    // The card has registered by now: in the newest answer this same render
+    // shows the step.
+    expect(screen.getByText("setup-card-GitHub")).toBeDefined();
+    expect(screen.queryByText("Everything's filled in")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Proceed" })).toBeNull();
+  });
+
+  // A question is pending by its own rule, so answering it is never held back
+  // by the answer it sits in. The earlier answer's other cards still send
+  // nothing, so their lines stay out of the reply.
+  it("sends a pending question's answers from a chain in an earlier answer", async () => {
+    const user = userEvent.setup();
+    const pending: PendingQuestions = {
+      dockId: "m1:call-ask_question",
+      callIds: ["call-ask_question"],
+      questions: [
+        { question: "Which region?", keyword: "region", example: "Europe" },
+      ],
+    };
+
+    render(
+      <PendingQuestionsContext.Provider value={pending}>
+        <ToolChain
+          parts={[
+            toolPart("connect_integration", "output-available", {
+              output: {
+                type: "setup_requirements",
+                setup_info: { agent_name: "GitHub" },
+              },
+            }),
+            toolPart("ask_question", "output-available", {
+              output: {
+                type: "agent_builder_clarification_needed",
+                questions: pending.questions,
+              },
+            }),
+          ]}
+          isStreaming={false}
+          isLatestAnswer={false}
+        />
+      </PendingQuestionsContext.Provider>,
+    );
+
+    await user.type(
+      screen.getByPlaceholderText("e.g. Europe"),
+      "Western Europe",
+    );
+    await user.click(screen.getByRole("button", { name: "Send answers" }));
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+    expect(onSend).toHaveBeenCalledWith(
+      "**Here are my answers:**\n\n> Which region?\n\nWestern Europe\n\nPlease proceed.",
+    );
+  });
 });
 
 // ToolChain sends the chain's follow-up turn itself, so it needs the actions

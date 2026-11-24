@@ -5,17 +5,18 @@ import {
   AlertTitle,
 } from "@/components/molecules/Alert/Alert";
 import { Refresh01Icon } from "@hugeicons/core-free-icons";
+import type { SetupInput } from "../../helpers";
 import { WizardPlaceholder } from "../WizardPlaceholder";
 import { useLoadingSetup } from "./useLoadingSetup";
 
 interface Props {
   totalSteps: number;
-  waitingFor: string[];
+  waitingFor: SetupInput[];
   onSlow: () => void;
 }
 
 export function LoadingSetup({ totalSteps, waitingFor, onSlow }: Props) {
-  const { isSlow, noticeRef, reload } = useLoadingSetup({
+  const { isSlow, noticeRef, titleID, reload } = useLoadingSetup({
     waitingFor,
     onSlow,
   });
@@ -25,10 +26,14 @@ export function LoadingSetup({ totalSteps, waitingFor, onSlow }: Props) {
       <div
         ref={noticeRef}
         tabIndex={-1}
+        role="group"
+        aria-labelledby={titleID}
         className="flex w-full max-w-md flex-col items-center gap-4 px-4 outline-none"
       >
         <Alert variant="warning">
-          <AlertTitle>Your setup is taking longer than usual</AlertTitle>
+          <AlertTitle id={titleID}>
+            Your setup is taking longer than usual
+          </AlertTitle>
           <AlertDescription>
             Reload to continue; your progress is saved.
           </AlertDescription>

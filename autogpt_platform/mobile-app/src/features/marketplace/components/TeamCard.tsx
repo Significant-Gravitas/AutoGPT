@@ -5,9 +5,8 @@ import { ExpertAvatar } from "@/components/ExpertAvatar";
 import { Icon } from "@/components/Icon";
 import { avatarSource, avatarTint } from "@/features/team/helpers";
 import type { Expert } from "@/lib/api/experts";
-import { createStyles, radius, useColors, useScheme } from "@/lib/theme";
+import { createStyles, radius, useColors } from "@/lib/theme";
 
-import { areaColor, seatTint } from "../areaColors";
 import { type Area, firstName, type OpenSeat } from "../helpers";
 
 const SEAT_SIZE = 40;
@@ -24,7 +23,6 @@ interface Props {
 export function TeamCard({ team, openSeats, openingID, onOpenExpert, onOpenSeat }: Props) {
   const styles = useStyles();
   const colors = useColors();
-  const scheme = useScheme();
   return (
     <View style={styles.card}>
       <View style={styles.heading}>
@@ -52,6 +50,7 @@ export function TeamCard({ team, openSeats, openingID, onOpenExpert, onOpenSeat 
                 name={expert.name}
                 source={avatarSource(expert)}
                 tint={avatarTint(expert)}
+                background={colors.panelBackground}
                 size={SEAT_SIZE}
               />
               {openingID === expert.id ? (
@@ -74,16 +73,8 @@ export function TeamCard({ team, openSeats, openingID, onOpenExpert, onOpenSeat 
             onPress={() => onOpenSeat(seat.area)}
             style={({ pressed }) => [styles.seat, pressed && styles.pressed]}
           >
-            <View
-              style={[
-                styles.dashed,
-                {
-                  borderColor: areaColor(seat.area),
-                  backgroundColor: seatTint(seat.area, scheme),
-                },
-              ]}
-            >
-              <Icon icon={Add01Icon} size={18} color={areaColor(seat.area)} />
+            <View style={styles.dashed}>
+              <Icon icon={Add01Icon} size={18} color={colors.textTertiary} />
             </View>
             <Text numberOfLines={1} style={styles.seatLabel}>
               {seat.label}
@@ -136,6 +127,7 @@ const useStyles = createStyles((colors) => ({
     borderRadius: SEAT_SIZE / 2,
     borderWidth: 1.5,
     borderStyle: "dashed",
+    borderColor: colors.borderStrong,
     alignItems: "center",
     justifyContent: "center",
   },

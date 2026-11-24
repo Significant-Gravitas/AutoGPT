@@ -239,6 +239,9 @@ describe("auth config", () => {
       google: {
         clientId: "google-client-id",
         clientSecret: "google-client-secret",
+        // Ready for a sign-in that connects (sign-in-connection.ts).
+        accessType: "offline",
+        getUserInfo: expect.any(Function),
       },
     });
   });
@@ -264,18 +267,18 @@ describe("auth config", () => {
     });
   });
 
-  it("sends password reset emails with the reset link", async () => {
+  it("sends password reset emails with the reset link, back to the reset page", async () => {
     const options = await loadAuthOptions();
 
     await options.emailAndPassword.sendResetPassword({
       user: { email: "user@example.com" },
-      url: "https://platform.example.com/reset?token=abc",
+      url: "https://platform.example.com/reset/abc?callbackURL=%2Flibrary",
     });
 
     expect(sendAuthEmailMock).toHaveBeenCalledWith({
       to: "user@example.com",
       type: "reset_password",
-      url: "https://platform.example.com/reset?token=abc",
+      url: `https://platform.example.com/reset/abc?callbackURL=${encodeURIComponent("http://localhost:3000/reset-password")}`,
     });
   });
 

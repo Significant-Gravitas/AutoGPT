@@ -25,6 +25,7 @@ from backend.data.workspace_scope import (
     resolve_expert_workspace_scope,
 )
 from backend.util.json import SafeJson
+from backend.util.platform_payment import is_platform_payment_enabled
 from backend.util.sql import escape_like
 
 if TYPE_CHECKING:
@@ -279,12 +280,17 @@ async def _live_size(tx: Prisma, workspace_id: str, replacing: Collection[str]) 
 
 
 def storage_limit_exceeded(used_bytes: int, limit_bytes: int) -> ValueError:
-    """The refusal every quota check raises; callers map its prefix."""
+    """The refusal every quota check raises; callers map its prefix. The
+    upload toast shows it, so it offers a plan only where there are plans."""
+    advice = (
+        "Delete some files or upgrade your plan for more storage."
+        if is_platform_payment_enabled()
+        else "Delete some files to free up space."
+    )
     return ValueError(
         "Storage limit exceeded. "
         f"You've used {format_bytes(used_bytes)} of your "
-        f"{format_bytes(limit_bytes)} quota. "
-        "Delete some files or upgrade your plan for more storage."
+        f"{format_bytes(limit_bytes)} quota. {advice}"
     )
 
 

@@ -2,9 +2,9 @@
 
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { useRelativeTime } from "@/components/atoms/RelativeTime/useRelativeTime";
 import { Text } from "@/components/atoms/Text/Text";
 import { isCompletedWithErrors } from "@/lib/run-health";
-import { formatTimeAgo } from "@/lib/utils/time";
 import Link, { useLinkStatus } from "next/link";
 import { useNowSecond } from "@/hooks/useNowSecond";
 import type { AgentExecutionWithInfo } from "../helpers";
@@ -53,6 +53,8 @@ export function ActivityItem({ execution }: Props) {
     execution.status === AgentExecutionStatus.QUEUED;
   // Tick every second so live elapsed advances without waiting for stats.
   const nowMs = useNowSecond(isActiveStatus);
+  const startedAgo = useRelativeTime(execution.started_at, "short");
+  const endedAgo = useRelativeTime(execution.ended_at, "short");
 
   function getStatusIcon() {
     switch (execution.status) {
@@ -88,9 +90,7 @@ export function ActivityItem({ execution }: Props) {
   function getItemDisplay() {
     // Handle active statuses (running/queued)
     if (isActiveStatus) {
-      const timeAgo = execution.started_at
-        ? formatTimeAgo(execution.started_at.toString())
-        : "recently";
+      const timeAgo = startedAgo ?? "recently";
       const statusText =
         execution.status === AgentExecutionStatus.QUEUED ? "queued" : "running";
       return [
@@ -99,11 +99,7 @@ export function ActivityItem({ execution }: Props) {
     }
 
     // Handle all other statuses with time display
-    const timeAgo = execution.ended_at
-      ? formatTimeAgo(execution.ended_at.toString())
-      : execution.started_at
-        ? formatTimeAgo(execution.started_at.toString())
-        : "recently";
+    const timeAgo = endedAgo ?? startedAgo ?? "recently";
 
     let statusText = "ended";
     switch (execution.status) {

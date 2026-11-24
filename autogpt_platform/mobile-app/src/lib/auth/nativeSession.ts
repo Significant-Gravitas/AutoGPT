@@ -5,14 +5,11 @@ import { FRONTEND_URL } from "@/lib/env";
 
 import {
   NO_APP_SESSION_CODE,
-  nameFromEmail,
   parseStoredSession,
   readSignInFailure,
-  readSignUpOutcome,
   readUser,
   sessionCookieHeader,
   storageKey,
-  verificationCallbackURL,
   type SignInFailure,
   type StoredSession,
 } from "./sessionHelpers";
@@ -67,20 +64,15 @@ export function getSessionCookie() {
   return current ? sessionCookieHeader(current.token, FRONTEND_URL) : null;
 }
 
-/**
- * Resolves to null once signed in, or to why the server refused. Throws when
- * it can't be reached. `callbackURL` is where the fresh link an unverified
- * account is sent leads.
- */
+/** Resolves to null once signed in, or to why the server refused. Throws when it can't be reached. */
 export async function signInWithEmail(
   email: string,
   password: string,
-  callbackURL?: string,
 ): Promise<SignInFailure | null> {
-  const response = await postJSON("/sign-in/email", {
-    email,
-    password,
-    ...(callbackURL ? { callbackURL } : {}),
+  const response = await send("/sign-in/email", null, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
   });
   if (!response.ok) return readSignInFailure(response);
   const token = response.headers.get("set-auth-token");
@@ -89,79 +81,10 @@ export async function signInWithEmail(
   if (!token || !user) {
     return { status: response.status, code: NO_APP_SESSION_CODE };
   }
-  saveSession({ token, user });
-  return null;
-}
-
-export type SignUpResult =
-  | { kind: "signedIn" }
-  | { kind: "verify" }
-  | { kind: "refused"; failure: SignInFailure };
-
-/**
- * Creates the account. Signed in at once when the server needs no email
- * verification; otherwise it has emailed a link. Throws when it can't be reached.
- */
-export async function signUpWithEmail({
-  email,
-  password,
-  marketingOptOut,
-}: {
-  email: string;
-  password: string;
-  marketingOptOut: boolean;
-}): Promise<SignUpResult> {
-  const address = email.trim();
-  const response = await postJSON("/sign-up/email", {
-    email: address,
-    password,
-    name: nameFromEmail(address),
-    callbackURL: verificationCallbackURL(marketingOptOut),
-  });
-  if (!response.ok) {
-    return { kind: "refused", failure: await readSignInFailure(response) };
-  }
-  const token = response.headers.get("set-auth-token");
-  const body: unknown = await response.json().catch(() => null);
-  const outcome = readSignUpOutcome(body, token);
-  const user = readUser(body);
-  if (outcome === "signedIn" && token && user) {
-    saveSession({ token, user });
-    return { kind: "signedIn" };
-  }
-  if (outcome === "verify") return { kind: "verify" };
-  return {
-    kind: "refused",
-    failure: { status: response.status, code: NO_APP_SESSION_CODE },
-  };
-}
-
-/** Emails a fresh verification link. Null once sent, or why the server refused. */
-export async function resendVerification({
-  email,
-  marketingOptOut,
-}: {
-  email: string;
-  marketingOptOut: boolean;
-}): Promise<SignInFailure | null> {
-  const response = await postJSON("/send-verification-email", {
-    email: email.trim(),
-    callbackURL: verificationCallbackURL(marketingOptOut),
-  });
-  return response.ok ? null : readSignInFailure(response);
-}
-
-function saveSession(session: StoredSession) {
+  const session = { token, user };
   SecureStore.setItem(STORAGE_KEY, JSON.stringify(session));
   setCurrent(session);
-}
-
-function postJSON(path: string, body: unknown) {
-  return send(path, null, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  return null;
 }
 
 /** A request to the auth service as the signed-in user. */

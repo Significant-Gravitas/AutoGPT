@@ -4,6 +4,7 @@ import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
 import { Text } from "@/components/atoms/Text/Text";
 import NextLink from "next/link";
 import { cn } from "@/lib/utils";
+import { stashCopilotPrompt } from "@/services/copilot/prompt-handoff";
 import { useRouter } from "next/navigation";
 import type { SitrepItemData, SitrepPriority } from "../../types";
 import { ContextualActionButton } from "../ContextualActionButton/ContextualActionButton";
@@ -85,9 +86,11 @@ export function SitrepItem({ item }: Props) {
   const router = useRouter();
 
   function handleAskAutoPilot() {
-    const prompt = buildAutoPilotPrompt(item);
-    const encoded = encodeURIComponent(prompt);
-    router.push(`/home?autosubmit=true#prompt=${encoded}`);
+    stashCopilotPrompt({
+      prompt: buildAutoPilotPrompt(item),
+      autosubmit: true,
+    });
+    router.push("/home");
   }
 
   return (
@@ -98,6 +101,7 @@ export function SitrepItem({ item }: Props) {
     >
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {showImage && item.agentImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- a workflow image URL from any host, which next/image would need configured
           <img
             src={item.agentImageUrl}
             alt={item.agentName}
