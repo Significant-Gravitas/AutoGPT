@@ -15675,7 +15675,7 @@
       "get": {
         "tags": ["platform-config"],
         "summary": "Get Platform Config",
-        "description": "This deployment's settings the browser needs, the same for every caller.",
+        "description": "Settings the browser and the mobile app need, the same for every caller.",
         "operationId": "get_platform_config",
         "responses": {
           "200": {
@@ -34085,6 +34085,11 @@
             "type": "boolean",
             "title": "Payment Enabled",
             "description": "Whether the platform is paid for, so an account without a plan is paywalled (`ENABLE_PLATFORM_PAYMENT`)."
+          },
+          "mobile_min_version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Mobile Min Version",
+            "description": "Oldest mobile app version still allowed in; an older app asks to be updated (`MOBILE_MIN_APP_VERSION`). Null means no minimum."
           }
         },
         "type": "object",

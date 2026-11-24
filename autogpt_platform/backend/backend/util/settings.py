@@ -278,6 +278,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "is paywalled and the billing pages offer plans. Off for self-hosted "
         "installs; the hosted platform sets it.",
     )
+    mobile_min_app_version: str = Field(
+        default="",
+        description="Oldest mobile app version (MAJOR.MINOR.PATCH) still allowed "
+        "in; an older app asks to be updated. Empty means no minimum.",
+    )
     refund_credit_tolerance_threshold: int = Field(
         default=500,
         description="Maximum number of credits above the balance to be auto-approved.",
