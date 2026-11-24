@@ -8,9 +8,8 @@ import {
 import { parseChangelogIndex } from "../../components/molecules/ChangelogPopup/helpers";
 
 // The changelog routes read the published changelog from agpt.co, which the
-// stack under test doesn't own: when that fetch failed, the route answered
-// 502 and failed whichever test saw it. So the browser gets this index, in the
-// published format, instead of going through the routes.
+// stack under test doesn't own, so the browser gets this index, in the
+// published format, instead.
 const CHANGELOG_INDEX = `
 | Date | Highlights |
 | ---- | ---------- |
@@ -18,8 +17,12 @@ const CHANGELOG_INDEX = `
 `;
 
 const [LATEST] = parseChangelogIndex(CHANGELOG_INDEX);
+if (!LATEST) {
+  throw new Error("The changelog fixture no longer parses as an index");
+}
 
-// What the latest-releases route makes of that index.
+// What the latest-releases route makes of that index. The route takes each
+// title from the release's own page; this one stands in for it.
 const LATEST_RELEASES: LatestRelease[] = [
   { ...LATEST, title: "File folders, shareable chats and a Discord bot" },
 ];
