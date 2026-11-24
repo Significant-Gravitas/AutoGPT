@@ -18,11 +18,15 @@ import { AttributionReporter } from "@/services/analytics/AttributionReporter";
 import { FeatureFlagProvider } from "@/services/feature-flags/feature-flag-provider";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MotionConfig } from "framer-motion";
-import { ThemeProvider, ThemeProviderProps } from "next-themes";
+import { ThemeProvider } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
-import { Suspense } from "react";
+import { Suspense, type ReactNode } from "react";
 
-export function Providers({ children, ...props }: ThemeProviderProps) {
+interface Props {
+  children: ReactNode;
+}
+
+export function Providers({ children }: Props) {
   const queryClient = getQueryClient();
   useClearOnAccountChange(queryClient);
   return (
@@ -46,7 +50,11 @@ export function Providers({ children, ...props }: ThemeProviderProps) {
                 <OrgTeamProvider>
                   <FeatureFlagProvider>
                     <OnboardingProvider>
-                      <ThemeProvider forcedTheme="light" {...props}>
+                      <ThemeProvider
+                        attribute="data-theme"
+                        forcedTheme="light"
+                        disableTransitionOnChange
+                      >
                         <TooltipProvider>{children}</TooltipProvider>
                       </ThemeProvider>
                     </OnboardingProvider>

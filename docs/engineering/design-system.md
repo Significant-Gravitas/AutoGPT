@@ -63,7 +63,7 @@ The codemods that did the migration stay for branches that still use the old nam
 
 - every role on `theme.css`'s `:root` is registered in `globals.css`'s `@theme`, and the other way round, and `color-roles.ts` lists them all;
 - no shadcn name is left but streamdown's, each aliasing a role;
-- `.dark` only redefines names that `:root` declares;
+- `dark:` keys on `[data-theme="dark"]`, and no stylesheet has a `.dark` selector;
 - there is no raw palette (no `tailwind.v3-preset.ts`, no `--color-<hue>-<step>`).
 
 `src/components/styles/__tests__/roles.test.ts` checks that every role has its value in the one `:root` block of `theme.css` and a `@theme inline` entry in `globals.css`, that compiling the stylesheet gives every role a class, and that the palette is reset before any colour is registered, so a palette class compiles to nothing.
@@ -139,7 +139,24 @@ Some numbers stay literal, because they are not UI transitions: `duration: 0`, d
 
 ## Dark mode
 
-No `dark:` or `light:` classes. A theme is a set of token values, not a second set of classes. `globals.css` ties `dark:` to a `.dark` ancestor (`@custom-variant dark`), which the app never sets, so these classes never render. Delete them and keep the light value; the role tokens carry the theme. Rule: `design-system/no-dark-variant`.
+The app is light only. There is no second theme and no switch.
+
+No `dark:` or `light:` classes. A theme is a set of token values, not a second set of classes. Rule: `design-system/no-dark-variant`. Delete them and keep the light value; the role tokens carry the theme.
+
+Two attributes on `<html>` set how the app looks. They are independent.
+
+- **`data-theme`** is the mode: `light` or `dark`, and nothing else. next-themes writes it from `src/app/providers.tsx`, which forces `light`. The attribute is kept for the mode because the components we vendor switch their own dark styles on `[data-theme="dark"]`. `globals.css` ties `dark:` to the same selector (`@custom-variant dark`), and `shape.css` keeps its one dark value, `--smooth-ring-color`, under it. Neither renders today.
+- **`data-look`** is the look: a set of brand colour and shape values. The canary look, a dev tool, is the one example (see "The canary look").
+
+`src/components/__tests__/theme-contrast.test.ts` computes WCAG contrast from the light triplets: the body text roles on `canvas`, `surface` and `surface-muted`, `action-foreground` on `action`, the inverse text on `surface-inverse`, `accent-strong` on `accent-surface`, each status foreground on its surface and `placeholder` on `surface`, all against 4.5:1 (WCAG 1.4.3 holds placeholder text to the same minimum as other text). The pairs that fail today are listed in the test with their ratio.
+
+### Adding a theme later
+
+1. Write a file under `src/app/tokens/themes/` that redefines every colour role under `html[data-theme="dark"]`, and import it from `globals.css` right after `theme.css`.
+2. Add it to the `THEMES` list in `theme-contrast.test.ts`, and add a test that it redefines every colour role, like `canary-look.test.ts` does for the canary.
+3. Move every component that draws an always-dark surface onto the inverse roles: `surface-inverse` (or `-hover`) for the surface and `foreground-inverse` for its text. None reads them yet: the toast, the tooltip, terminals and code blocks paint the surface with `action` or `action-hover` and the text with `action-foreground` or a surface role (the tooltip's `surface-muted`). A theme that sets only the inverse roles leaves those components on its `action` and surface values, where their text can be unreadable while the contrast test, which checks `foreground-inverse` on `surface-inverse`, passes.
+4. Stop forcing light in `providers.tsx`.
+5. In that file, give the inverse and fill roles values of their own. In `theme.css` they repeat the values of `action` and of text roles.
 
 ## Primitives
 

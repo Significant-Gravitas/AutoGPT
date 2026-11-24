@@ -70,7 +70,7 @@
   --shell-content-max: 80rem;
 }
 
-.dark {
+[data-theme="dark"] {
   --smooth-ring-color: rgb(255 255 255 / 0.18);
 }
 
