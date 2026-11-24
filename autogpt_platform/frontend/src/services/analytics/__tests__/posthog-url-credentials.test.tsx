@@ -259,19 +259,32 @@ describe("the first page posthog-js stores", () => {
     },
   );
 
-  it("is masked when an earlier visit stored it and the visitor accepts later", async () => {
-    removeCookiebot();
-    installCookiebot();
-    storeAsEarlierVisit(SIGNED_LINK_REDIRECT, LINKING_PAGE);
-    const posthog = await loadPage("/marketplace", { trackers: false });
+  // Today the accepting tab writes its own copy over the stored one; a
+  // posthog-js that lets the cookie win would take the other tab's instead.
+  it.each([
+    ["today's posthog-js", {}],
+    ["a posthog-js that lets the cookie win", COOKIE_WINS],
+  ])(
+    "is masked when another tab stores it before the visitor accepts, with %s",
+    async (_version, clientConfig) => {
+      removeCookiebot();
+      installCookiebot();
+      const posthog = await loadPage("/marketplace", {
+        trackers: false,
+        clientConfig,
+      });
+      storeAsEarlierVisit(SIGNED_LINK_REDIRECT, LINKING_PAGE, pageLoads);
 
-    act(() => answerCookiebot({ statistics: true }));
-    posthog.reloadFeatureFlags();
-    const firstPage = await waitForStoredPageInFlags();
+      act(() => answerCookiebot({ statistics: true }));
+      posthog.reloadFeatureFlags();
+      await vi.waitFor(() =>
+        expect(ownFlagsBodies().length).toBeGreaterThan(0),
+      );
 
-    expect(firstPage.$initial_current_url).toContain(MASKED_NEXT);
-    expectPostHogStorageHoldsNoSecret();
-  });
+      expect(JSON.stringify(ownFlagsBodies())).not.toContain(LINK_VALUE);
+      expectPostHogStorageHoldsNoSecret();
+    },
+  );
 
   it("reaches agpt.co's PostHog, which reads the shared cookie, masked", async () => {
     setReferrer(LINKING_PAGE);
@@ -354,10 +367,15 @@ const SIGNED_LINK_REDIRECT =
   "/login?next=%2Fsettings%2Faccount%3Ff%3Doff%26t%3DSECRET";
 const MASKED_NEXT = "next=%2Fsettings%2Faccount%3Ff%3Doff%26t%3D%5BREDACTED%5D";
 const LINKING_PAGE = `${PAGE_ORIGIN}/link/SECRET`;
+const COOKIE_WINS = { __preview_cookie_wins_on_conflict: true };
 
 async function loadPage(
   path: string,
-  { user = null as User | null, trackers = true } = {},
+  {
+    user = null as User | null,
+    trackers = true,
+    clientConfig = {} as Record<string, unknown>,
+  } = {},
 ) {
   const url = new URL(withSecret(path), PAGE_ORIGIN);
   setPageURL(url.href);
@@ -367,6 +385,9 @@ async function loadPage(
   vi.resetModules();
   const client = new PostHog();
   clients.push(client);
+  const init = client.init.bind(client);
+  client.init = (token, config, name) =>
+    init(token, { ...config, ...clientConfig }, name);
   vi.doMock("posthog-js", () => ({
     default: client,
     posthog: client,
@@ -406,11 +427,16 @@ async function loadPage(
 
 // What an earlier visit, or agpt.co, left in posthog-js's storage, written by
 // posthog-js itself with nothing masked.
-function storeAsEarlierVisit(path: string, referrer?: string) {
+function storeAsEarlierVisit(
+  path: string,
+  referrer?: string,
+  pageLoad = pageLoads + 1,
+) {
+  const pageURL = window.location.href;
   setPageURL(new URL(withSecret(path), PAGE_ORIGIN).href);
   setReferrer(referrer);
   const earlier = new PostHog();
-  earlier.init(`phc_test_${pageLoads + 1}`, {
+  earlier.init(`phc_test_${pageLoad}`, {
     api_host: POSTHOG_ORIGIN,
     persistence: "localStorage+cookie",
     advanced_disable_flags: true,
@@ -430,6 +456,11 @@ function storeAsEarlierVisit(path: string, referrer?: string) {
     document.cookie = `${cookie}; Path=/`;
   });
   setReferrer(undefined);
+  setPageURL(pageURL);
+}
+
+function ownFlagsBodies() {
+  return flagsBodies.filter((body) => body.token === `phc_test_${pageLoads}`);
 }
 
 async function waitForStoredPageInFlags() {

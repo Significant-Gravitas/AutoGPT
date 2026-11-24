@@ -126,7 +126,7 @@ export function syncPostHogConsent() {
   keepPersistenceWithCapture();
   if (posthog.config.persistence !== PERSISTENT_STORAGE) {
     posthog.set_config({ persistence: PERSISTENT_STORAGE });
-    // The storage now holds what an earlier visit, or agpt.co, stored.
+    // The switch can take up what another tab, or agpt.co, has since stored.
     stripStoredURLCredentials();
   }
   if (posthog.config.disable_session_recording) {
