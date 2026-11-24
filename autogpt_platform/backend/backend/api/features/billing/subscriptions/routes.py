@@ -892,8 +892,8 @@ _RESTART_ALERTS = {
     ),
     RestartOutcome.NEEDS_REFUND: (
         "Invoice {invoice_id} was paid on a subscription that another plan"
-        " replaced, so the plan is or will be cancelled and never revives."
-        " The payment needs a manual refund"
+        " replaced, so the payment needs a manual refund. If the plan is"
+        " still live, cancel it and void its open bills"
     ),
 }
 

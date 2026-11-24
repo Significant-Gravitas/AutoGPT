@@ -183,7 +183,10 @@ async def _restart_locked(invoice: dict, sub_id: str, tx: Prisma) -> RestartOutc
         # Restarted already, or a newer invoice opened a later period: an old
         # payment never moves the renewal date of the period after it.
         await _record_finished_reset(invoice, subscription, tx)
-        return await _not_applicable(invoice, subscription, tx)
+        outcome = await _not_applicable(invoice, subscription, tx)
+        if await _paid_on_replaced_plan(invoice, subscription):
+            return _needs_refund(invoice_id, sub_id)
+        return outcome
     pause = await SubscriptionBillingRestart.prisma(tx).find_unique(
         where={"stripeInvoiceId": invoice_id}
     )
@@ -265,23 +268,25 @@ async def _not_applicable(
 
 async def _paid_on_replaced_plan(invoice: dict, subscription: dict) -> bool:
     """Whether this paid bill is owed back because a newer plan replaced its
-    plan: paid after the plan was ended as replaced, or paid, while the plan
-    is still unpaid, on a bill that isn't its latest.
+    plan: paid after the plan was ended as replaced, or a bill that isn't the
+    plan's latest, paid after a newer plan was bought.
 
-    Paying an older bill leaves the plan past due, so the plan never revives
-    and ``end_revived_plan`` never runs, and it may be ended as replaced only
-    after the payment's events were delivered. So the refund is asked for
-    when the payment lands. Paying the latest bill revives the plan, and that
-    path raises the refund alert.
+    Paying an older bill never revives the plan, so ``end_revived_plan``
+    never asks for its refund. It is decided by when the payment landed, not
+    by the plan's state when its event is handled: by then the latest bill's
+    payment may have revived the plan, or a failure ended it as replaced.
+    Paying the latest bill revives the plan, and that path raises the refund
+    alert.
     """
     if paid_after_replacement(invoice, subscription):
         return True
-    if subscription.get("status") in ("active", "canceled"):
-        return False
     if stripe_id(subscription.get("latest_invoice")) == invoice["id"]:
         return False
+    paid_at = (invoice.get("status_transitions") or {}).get("paid_at")
+    if not paid_at:
+        return False
     customer_id = stripe_id(subscription.get("customer"))
-    return await replaced_by_newer_plan(customer_id, subscription)
+    return await replaced_by_newer_plan(customer_id, subscription, by=paid_at)
 
 
 def paid_after_replacement(invoice: dict, subscription: dict) -> bool:
@@ -395,16 +400,21 @@ async def _existing_credit_notes(invoice_id: str) -> tuple[dict | None, bool]:
     notes = await stripe_call(
         stripe.CreditNote.list_async, invoice=invoice_id, limit=100
     )
+    # Stripe lists the newest first, so a note a person added after ours
+    # comes before it: the whole list is read before deciding.
+    other = None
     async for note in stripe_list_items(notes):
         if (note.get("metadata") or {}).get(RESTARTED_FROM_INVOICE_KEY) == invoice_id:
             return dict(note), False
-        if note.get("status") != "void":
-            logger.error(
-                f"Invoice {invoice_id} already has credit note {note.get('id')};"
-                " not crediting it again to restart its billing period"
-            )
-            return None, True
-    return None, False
+        if other is None and note.get("status") != "void":
+            other = note.get("id")
+    if other is None:
+        return None, False
+    logger.error(
+        f"Invoice {invoice_id} already has credit note {other}; not crediting"
+        " it again to restart its billing period"
+    )
+    return None, True
 
 
 async def _save_credit_note(invoice_id: str, credit_note_id: str, tx: Prisma) -> None:

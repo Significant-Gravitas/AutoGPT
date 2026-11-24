@@ -3172,8 +3172,11 @@ async def _cleanup_stale_subscriptions(customer_id: str, new_sub_id: str) -> Non
         )
 
 
-async def replaced_by_newer_plan(customer_id: str, subscription: dict) -> bool:
-    """Whether the customer has an active or trialing plan created after this one.
+async def replaced_by_newer_plan(
+    customer_id: str, subscription: dict, *, by: int | None = None
+) -> bool:
+    """Whether the customer has an active or trialing plan created after this
+    one, and, with ``by``, no later than that time.
 
     An older plan never replaces a newer one, even when a failed cleanup left
     it active. A trial cancelled to end at ``trial_end`` does not count: it
@@ -3195,7 +3198,8 @@ async def replaced_by_newer_plan(customer_id: str, subscription: dict) -> bool:
                 continue
             if status == "trialing" and other.get("cancel_at_period_end"):
                 continue
-            if (other.get("created") or 0) > created:
+            other_created = other.get("created") or 0
+            if other_created > created and (by is None or other_created <= by):
                 return True
     return False
 

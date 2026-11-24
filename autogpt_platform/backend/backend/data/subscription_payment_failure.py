@@ -393,7 +393,8 @@ async def end_plans_replaced_by(customer_id: str, new_sub_id: str) -> None:
         await alert_tier_reconciliation_discrepancy(
             f"Could not end the past-due plans that subscription {new_sub_id}"
             f" of customer {customer_id} replaced; cancel them and void their"
-            " open bills by hand"
+            " open bills by hand. An older plan cancelled here as replaced"
+            " may have a payment that needs a manual refund"
         )
 
 
