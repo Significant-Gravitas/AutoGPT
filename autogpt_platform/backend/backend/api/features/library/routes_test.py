@@ -66,6 +66,50 @@ def test_create_expert_preset_missing_workspace_returns_503(
     )
 
 
+def test_create_expert_preset_with_a_key_the_expert_was_never_granted_returns_400(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Its every run would be refused for that key, so it isn't saved (#17376)."""
+    mocker.patch(
+        "backend.api.features.library.routes.presets.experts_db.resolve_expert_for_graph",
+        new_callable=AsyncMock,
+        return_value="expert-1",
+    )
+    mocker.patch(
+        "backend.executor.utils.get_experts_db",
+        return_value=mocker.MagicMock(
+            expert_allowed_credential_ids=AsyncMock(return_value=["cred-granted"])
+        ),
+    )
+    create = mocker.patch(
+        "backend.api.features.library.routes.presets.db.create_preset",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/presets",
+        json={
+            "graph_id": "graph-1",
+            "graph_version": 1,
+            "inputs": {},
+            "credentials": {
+                "notion_credentials": {
+                    "id": "cred-own",
+                    "provider": "notion",
+                    "type": "api_key",
+                }
+            },
+            "name": "Preset",
+            "description": "",
+            "is_active": True,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Grant them on the expert's page" in response.json()["detail"]
+    create.assert_not_awaited()
+
+
 def test_create_preset_from_run_without_saved_credentials_returns_400(
     mocker: pytest_mock.MockFixture,
 ) -> None:
