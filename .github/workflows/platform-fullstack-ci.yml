@@ -783,9 +783,9 @@ jobs:
       # publish_skills is a one-shot nothing else waits for, and the skill
       # journeys need what it publishes: wait for it, and fail on its own
       # error rather than on the tests it would leave skipped. The cap covers
-      # its GitHub retries at their slowest (skill_catalog_github.py): it
-      # resolves the catalog's ref, then downloads it, each in up to six
-      # attempts (30 s and 120 s each) with about 93 s of backoff, ~1,100 s.
+      # its GitHub retries at their slowest (skill_catalog_github.py): no
+      # token is set here, so it downloads the catalog from codeload in up to
+      # six attempts (120 s each) with about 93 s of backoff, ~810 s.
       - name: Set up Platform - Wait for the skills catalog publish
         if: matrix.suite == 'journeys'
         run: |

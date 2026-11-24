@@ -16,7 +16,9 @@ Environment:
     The repo (``owner/name``) and branch, tag or commit to download.
 ``SKILLS_CATALOG_TOKEN``
     A GitHub token, optional for the public catalog; ``GITHUB_TOKEN`` is the
-    fallback. Raises the API rate limit and is required for a private fork.
+    fallback. Required for a private fork: with one, the download goes
+    through GitHub's REST API; without one, it skips that API and its rate
+    limit (:func:`fetch_catalog`).
 """
 
 import io
@@ -429,22 +431,40 @@ def fetch_catalog(into: Path, *, repo: str, ref: str) -> CatalogSource:
     """Download *repo* at *ref* into *into*. The source names the exact
     commit the ref resolved to, so a release log entry is reproducible even
     when the ref was a branch. Each request rides out a GitHub blip
-    (:mod:`skill_catalog_github`)."""
+    (:mod:`skill_catalog_github`).
+
+    With a token, which a private fork needs, the ref is resolved and that
+    commit downloaded through GitHub's REST API. Without one, that API allows
+    60 requests an hour per IP address, which CI runners and NATs share, so
+    the archive comes from codeload instead, which that limit doesn't cover,
+    and the commit is read from the archive itself."""
     headers = github_headers()
-    revision = ref if _SHA_RE.fullmatch(ref) else resolve_ref(repo, ref, headers)
-    logger.info(f"Downloading {repo}@{revision}")
-    response = github_get(
-        f"https://api.github.com/repos/{repo}/tarball/{revision}",
-        headers=headers,
-        timeout=120,
-    )
+    if "Authorization" in headers:
+        revision = ref if _SHA_RE.fullmatch(ref) else resolve_ref(repo, ref, headers)
+        url = f"https://api.github.com/repos/{repo}/tarball/{revision}"
+    else:
+        revision = None
+        url = f"https://codeload.github.com/{repo}/tar.gz/{ref}"
+    logger.info(f"Downloading {url}")
+    response = github_get(url, headers=headers, timeout=120)
     with tarfile.open(fileobj=io.BytesIO(response.content), mode="r:gz") as tar:
         _extract_catalog_archive(tar, into)
-    # GitHub wraps the tree in one "<owner>-<repo>-<sha>" directory.
+        revision = revision or _archived_commit(tar, f"{repo}@{ref}")
+    # GitHub wraps the tree in one directory: "<owner>-<repo>-<sha>" from the
+    # API, "<repo>-<ref>" from codeload.
     roots = [p for p in into.iterdir() if p.is_dir()]
     if len(roots) != 1:
         raise CatalogError(f"unexpected tarball layout for {repo}: {roots}")
     return CatalogSource(repository=repo, revision=revision, root=roots[0])
+
+
+def _archived_commit(archive: tarfile.TarFile, named: str) -> str:
+    """The commit *archive* was built from. GitHub builds archives with
+    ``git archive``, which writes the commit into the pax global header."""
+    commit = archive.pax_headers.get("comment", "")
+    if not _SHA_RE.fullmatch(commit):
+        raise CatalogError(f"the archive of {named} names no commit")
+    return commit
 
 
 def github_headers() -> dict[str, str]:
