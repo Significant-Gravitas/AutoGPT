@@ -7,9 +7,11 @@ on:
   push:
     paths:
       - .github/workflows/copilot-setup-steps.yml
+      - .github/scripts/apt_refresh.py
   pull_request:
     paths:
       - .github/workflows/copilot-setup-steps.yml
+      - .github/scripts/apt_refresh.py
 
 jobs:
   # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
@@ -197,12 +199,14 @@ jobs:
       - name: Build migrate Docker image with cache
         working-directory: autogpt_platform
         run: |
-          # Build the migrate image with buildx for GHA caching. The UTC date
-          # re-runs its package installs once a day (APT_REFRESH).
+          # Build the migrate image with buildx for GHA caching. A new
+          # APT_REFRESH re-runs its package installs; the key changes daily and
+          # whenever Debian publishes security updates.
+          apt_refresh="$(python3 ../.github/scripts/apt_refresh.py)"
           docker buildx build \
             --cache-from type=gha \
             --cache-to type=gha,mode=max \
-            --build-arg APT_REFRESH="$(date -u +%F)" \
+            --build-arg APT_REFRESH="$apt_refresh" \
             --target migrate \
             --tag autogpt_platform-migrate:latest \
             --load \

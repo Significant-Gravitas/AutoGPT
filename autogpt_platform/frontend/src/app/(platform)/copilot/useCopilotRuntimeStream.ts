@@ -49,6 +49,7 @@ import {
 } from "./stream/turnRuntime";
 import type { PersistedRow } from "./stream/turnLog";
 import { useCopilotStop } from "./useCopilotStop";
+import { useRereadOnTurnEnd } from "./useRereadOnTurnEnd";
 
 const NOTICE_TEXT = {
   "catching-up": "Catching up…",
@@ -75,7 +76,8 @@ interface Args {
   rawSessionMessages?: unknown[];
   sessionAuthProvider?: string | null;
   sessionCredentialId?: string | null;
-  refetchSession: () => Promise<{ data?: unknown }>;
+  /** A failed refetch still answers, with the last good `data`. */
+  refetchSession: () => Promise<{ data?: unknown; isError: boolean }>;
   copilotModel: CopilotLlmModel | undefined;
 }
 
@@ -119,6 +121,7 @@ export function useCopilotRuntimeStream({
     runtime?.getSnapshot ?? emptySnapshot,
     runtime?.getSnapshot ?? emptySnapshot,
   );
+  useRereadOnTurnEnd(runtime);
   const isUserStoppingRef = useRef(snapshot.stopped);
   useInsertionEffect(() => {
     isUserStoppingRef.current = snapshot.stopped;
@@ -192,7 +195,11 @@ export function useCopilotRuntimeStream({
           }
         },
       },
-      async () => viewOf((await refetchSession()).data),
+      async () => {
+        const read = await refetchSession();
+        // The cached view is no news: the runtime reads again later.
+        return read.isError ? null : viewOf(read.data);
+      },
     );
   });
 

@@ -4,6 +4,12 @@
     "slug": "autogpt-mobile",
     "owner": "autogpt",
     "version": "0.1.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/3fdedc8c-8a9e-4002-a95a-ab366d15cd71"
+    },
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "autogpt-app",
@@ -55,7 +61,15 @@
           "enableBackgroundPlayback": false
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "@sentry/react-native",
+        {
+          "organization": "significant-gravitas",
+          "project": "autogpt-mobile",
+          "url": "https://sentry.io/"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

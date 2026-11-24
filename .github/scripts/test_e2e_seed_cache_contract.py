@@ -533,16 +533,21 @@ class E2ESeedCacheContractTests(unittest.TestCase):
 
 
 class E2EImageBuildContractTests(unittest.TestCase):
-    def test_backend_images_reinstall_os_packages_daily(self):
+    def test_backend_images_reinstall_os_packages_when_debian_publishes(self):
         workflow = (
             Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
         ).read_text(encoding="utf-8")
         build = workflow.split(
             "- name: Set up Platform - Build backend Docker images\n", 1
         )[1].split("\n      - name:", 1)[0]
-        # APT_REFRESH in backend/Dockerfile: the date re-runs the package
-        # installs once a day, so E2E tests the OS packages that ship.
-        self.assertIn('--set "*.args.APT_REFRESH=$(date -u +%F)"', build)
+        # APT_REFRESH in backend/Dockerfile: the key changes daily and when
+        # Debian publishes security updates, re-running the package installs,
+        # so E2E tests the OS packages that ship.
+        key = 'apt_refresh="$(python3 "$GITHUB_WORKSPACE/.github/scripts/apt_refresh.py")"'
+        bake = '--set "*.args.APT_REFRESH=$apt_refresh"'
+        self.assertIn(key, build)
+        self.assertIn(bake, build)
+        self.assertLess(build.index(key), build.index(bake))
 
 
 class E2ECoverageContractTests(unittest.TestCase):
@@ -553,7 +558,7 @@ class E2ECoverageContractTests(unittest.TestCase):
         self.assertEqual(_matrix_leg(workflow, "smoke")["min_tests"], "37")
         # The whole journeys suite's inventory, one total on every shard.
         self.assertEqual(
-            {leg["min_tests"] for leg in _matrix_legs(workflow, "journeys")}, {"78"}
+            {leg["min_tests"] for leg in _matrix_legs(workflow, "journeys")}, {"81"}
         )
         # Smoke stays strict: no test.fail() known failures.
         self.assertEqual(_matrix_leg(workflow, "smoke")["known_failures"], "false")

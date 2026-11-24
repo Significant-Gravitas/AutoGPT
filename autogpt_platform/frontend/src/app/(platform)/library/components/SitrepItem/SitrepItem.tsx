@@ -101,6 +101,7 @@ export function SitrepItem({ item }: Props) {
     >
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {showImage && item.agentImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- a workflow image URL from any host, which next/image would need configured
           <img
             src={item.agentImageUrl}
             alt={item.agentName}

@@ -1031,7 +1031,7 @@ describe("MCPSetupCard", () => {
     expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
   });
 
-  it("uses current provider and chat actions from a previously registered chain callback", async () => {
+  it("uses the current provider and retry line from a previously registered chain callback", async () => {
     const { postV2InitiateOauthLoginForAnMcpServer } = await import(
       "@/app/api/__generated__/endpoints/mcp/mcp"
     );
@@ -1108,10 +1108,14 @@ describe("MCPSetupCard", () => {
         "latest-state",
         undefined,
       );
-      expect(latestOnSend).toHaveBeenCalledWith("Latest retry instruction");
+      expect(registeredEntry?.justConnected).toBe(true);
     });
+    // The chain sends the reply, so the card hands it the latest line
+    // instead of sending one of its own.
+    expect(registeredEntry!.buildMessage()).toBe("Latest retry instruction");
     expect(initialProviderCallback).not.toHaveBeenCalled();
     expect(initialOnSend).not.toHaveBeenCalled();
+    expect(latestOnSend).not.toHaveBeenCalled();
   });
 
   it("does not reinterpret an already prepared Basic chain credential", async () => {

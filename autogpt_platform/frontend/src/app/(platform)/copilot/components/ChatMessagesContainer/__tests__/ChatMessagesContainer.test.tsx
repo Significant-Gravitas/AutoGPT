@@ -12,7 +12,10 @@ import {
 } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagesContainer } from "../ChatMessagesContainer";
-import { UnconfirmedSendError } from "../../../stream/turnRuntime";
+import {
+  DroppedSendError,
+  UnconfirmedSendError,
+} from "../../../stream/turnRuntime";
 import { buildKickoffMessage } from "../../../expertKickoff";
 import type { TurnStatsMap } from "../../../helpers/convertChatSessionToUiMessages";
 
@@ -741,42 +744,51 @@ describe("ChatMessagesContainer — error banner dedup", () => {
     expect(screen.queryByTestId("chat-error-banner")).toBeNull();
   });
 
-  it("keeps Send again for an unconfirmed prompt sent after an earlier turn's error marker", () => {
-    const onResend = vi.fn();
-    render(
-      <ChatMessagesContainer
-        {...baseProps}
-        error={new UnconfirmedSendError("u-2")}
-        status="error"
-        onResend={onResend}
-        messages={[
-          {
-            id: "u-1",
-            role: "user",
-            parts: [{ type: "text", text: "go" }],
-          },
-          {
-            id: "a-1",
-            role: "assistant",
-            parts: [
-              {
-                type: "text",
-                text: "[__COPILOT_ERROR_f7a1__] SDK stream error: Prompt is too long",
-              },
-            ],
-          },
-          {
-            id: "u-2",
-            role: "user",
-            parts: [{ type: "text", text: "try once more" }],
-          },
-        ]}
-      />,
-    );
-    expect(screen.getByTestId("chat-error-banner")).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Send again" }));
-    expect(onResend).toHaveBeenCalledTimes(1);
-  });
+  it.each([
+    ["an unconfirmed prompt", new UnconfirmedSendError("u-2")],
+    [
+      "a prompt the network dropped",
+      new DroppedSendError("u-2", new TypeError("Failed to fetch")),
+    ],
+  ])(
+    "keeps Send again for %s sent after an earlier turn's error marker",
+    (_case, error) => {
+      const onResend = vi.fn();
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          error={error}
+          status="error"
+          onResend={onResend}
+          messages={[
+            {
+              id: "u-1",
+              role: "user",
+              parts: [{ type: "text", text: "go" }],
+            },
+            {
+              id: "a-1",
+              role: "assistant",
+              parts: [
+                {
+                  type: "text",
+                  text: "[__COPILOT_ERROR_f7a1__] SDK stream error: Prompt is too long",
+                },
+              ],
+            },
+            {
+              id: "u-2",
+              role: "user",
+              parts: [{ type: "text", text: "try once more" }],
+            },
+          ]}
+        />,
+      );
+      expect(screen.getByTestId("chat-error-banner")).toBeDefined();
+      fireEvent.click(screen.getByRole("button", { name: "Send again" }));
+      expect(onResend).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("suppresses the trailing banner when the marker is retryable", () => {
     render(
