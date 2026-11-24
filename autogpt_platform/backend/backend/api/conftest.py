@@ -6,7 +6,6 @@ setup_test_user, and setup_admin_user are defined in the parent conftest.py
 """
 
 import asyncio
-from collections import defaultdict
 from types import SimpleNamespace
 
 import pytest
@@ -18,7 +17,7 @@ from backend.data.pro_activation import UsageActivationState
 from backend.data.user import is_user_account_closed as _REAL_IS_USER_ACCOUNT_CLOSED
 from backend.data.user import is_user_banned as _REAL_IS_USER_BANNED
 from backend.data.user import is_user_refused as _REAL_IS_USER_REFUSED
-from backend.executor import direct_block_execution
+from backend.executor import direct_block_execution, direct_block_run_parent
 
 # Every module that imports the check by name.
 _PAYWALL_CHECK_SITES = (
@@ -58,11 +57,10 @@ class _RunsInProcess:
         return True
 
     async def run(self, block, input_data, execute_kwargs, timeout):
-        collected = defaultdict(list)
         async with asyncio.timeout(timeout):
-            async for name, data in block.execute(input_data, **execute_kwargs):
-                collected[name].append(data)
-        return collected
+            return await direct_block_run_parent._collect(
+                block.execute(input_data, **execute_kwargs)
+            )
 
 
 @pytest.fixture

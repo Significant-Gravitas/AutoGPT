@@ -116,6 +116,11 @@ async def test_a_block_computing_past_its_budget_gets_a_504_and_is_killed(
         "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER",
         1,
     )
+    # Shorter than the child's own alarm, so only the run parent's kill passes.
+    mocker.patch(
+        "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_KILL_WAIT_SECONDS",
+        1,
+    )
     _serve_blocks(mocker)
     beats = tmp_path / "beats"
 
