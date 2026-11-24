@@ -249,6 +249,25 @@ async def test_a_read_refused_after_the_batch_keeps_receipts_and_voids_the_scope
 
 
 @pytest.mark.asyncio
+async def test_a_dialog_check_refused_after_the_batch_keeps_the_receipts():
+    """The closing read's dialog check goes through the same door: refused,
+    the receipts still go back and the older scopes are void."""
+    patches, _ = _patched(
+        batches=[[_ok({"url": "https://a.example/"})]],
+        dialogs=[None, LoginChainChanged("login files changed")],
+    )
+    issue = AsyncMock(return_value="new-scope")
+    patches.append(patch(f"{_D}.issue_scope", issue))
+    result = await _call(
+        patches, actions=[{"action": "goto", "url": "https://a.example"}]
+    )
+    assert isinstance(result, DesktopBrowserResponse)
+    assert result.receipts[0]["status"] == "completed"
+    assert result.ref_scope is None
+    issue.assert_awaited_once_with("sb-1", [], None)
+
+
+@pytest.mark.asyncio
 async def test_a_scope_that_cannot_be_issued_still_returns_the_receipts():
     patches, _ = _patched(
         batches=[[_ok({"url": "https://a.example/"})], list(_OBSERVED)]

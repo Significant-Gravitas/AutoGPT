@@ -324,13 +324,13 @@ class DesktopBrowserTool(BaseTool):
     ) -> tuple[driver.Observation | None, list[dict]]:
         """The page after the call, and the closing read's entries (a
         dialog's warning, or why it could not be read)."""
-        dialog = await driver.open_dialog(sandbox, session_name)
-        if dialog is not None:
-            # Script in the page would wait on the dialog: no snapshot now.
-            return None, [{"success": False, "error": dialog}]
         commands = driver.observe_commands(actions, stamp)
         settled = commands[0][:2] == ["wait", "--load"]
         try:
+            dialog = await driver.open_dialog(sandbox, session_name)
+            if dialog is not None:
+                # Script in the page would wait on the dialog: no snapshot now.
+                return None, [{"success": False, "error": dialog}]
             entries = await driver.run_batch(
                 sandbox, session_name, commands, bail=False, timeout=45
             )
