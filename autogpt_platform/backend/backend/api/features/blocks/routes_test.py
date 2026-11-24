@@ -37,6 +37,8 @@ app = fastapi.FastAPI()
 app.include_router(router)
 client = fastapi.testclient.TestClient(app)
 
+pytestmark = pytest.mark.usefixtures("blocks_run_in_process")
+
 
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user, test_user_id):

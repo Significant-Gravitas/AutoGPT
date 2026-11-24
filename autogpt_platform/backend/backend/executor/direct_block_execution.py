@@ -1,46 +1,55 @@
-"""Direct block execution, run off the REST server's event loop.
+"""Direct block execution: one block run for the caller, in a process of its own.
 
-The block-execute routes run one block for the caller and return its outputs.
-Each run is a task on one of a small pool of worker threads, each with its own
-event loop, so the server's loop only serves requests. A worker loop holds as
-many runs as are waiting on I/O at once.
+The block-execute routes run one block and return its outputs. Each run is a
+child process forked from this server's run parent, which the server forks in
+start-up before it starts any thread or opens any connection
+(``start_run_parent``). The run parent kills a child still running
+``DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS`` after it started, so a run ends at its
+deadline whatever its block is doing, and its memory is capped
+(``direct_block_run_parent``).
 
 Each user may have ``DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER`` direct runs in
-flight in this process, and a run has ``DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS``
-from the moment it starts on its worker loop. A run that is still running
-``DIRECT_BLOCK_EXECUTION_CANCEL_GRACE_SECONDS`` after its budget ran out (stuck
-in synchronous code, or ignoring cancellation) has its worker retired: a fresh
-worker takes its place in the pool and its waiting runs, and the old thread
-ends once its runs stop. While ``DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS``
-retired workers are still running, new runs are refused, since only a restart
-may free them.
+flight on this server, and the server ``DIRECT_BLOCK_EXECUTION_MAX_RUNS``.
 
-Worker threads do not use the server's Prisma client (it reports itself
-disconnected there, see ``backend.data.db``), so block code reaches the
-database through the database manager, as it does in the executor.
+A run reaches the database through the database manager, as the executor does:
+its process has no Prisma connection of its own.
 """
 
 import asyncio
-import concurrent.futures
-import contextvars
-import itertools
+import json
 import logging
+import os
+import pickle
+import signal
+import socket
+import sys
 import threading
+import time
 from collections import defaultdict
-from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
-from backend.data.block import BlockOutput, CompletedBlockOutput
+from backend.data.block import BlockInput, CompletedBlockOutput
+from backend.executor import direct_block_run_parent
+from backend.executor.direct_block_run_parent import (
+    DIRECT_BLOCK_EXECUTION_MAX_OUTPUT_SIZE,
+    FRAME_HEADER,
+    OUTPUTS,
+    REQUEST,
+    RUN_ORDER,
+)
+from backend.util.exceptions import BlockExecutionError, BlockUnknownError
+
+if TYPE_CHECKING:
+    from backend.blocks._base import AnyBlockSchema
 
 logger = logging.getLogger(__name__)
 
 DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS = 300
-DIRECT_BLOCK_EXECUTION_CANCEL_GRACE_SECONDS = 5
-DIRECT_BLOCK_EXECUTION_WORKERS = 8
+# How long the server waits for a timed-out run's process to be killed.
+DIRECT_BLOCK_EXECUTION_KILL_WAIT_SECONDS = 5
 # Documented in docs/platform/rate-limits.md: update it with any change here.
 DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER = 4
-# A held run keeps its user's slot, so one user's runs fill at most
-# DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER of these.
-DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS = 8
+DIRECT_BLOCK_EXECUTION_MAX_RUNS = 32
 
 
 class DirectBlockExecutionTimeoutError(Exception):
@@ -63,10 +72,10 @@ class DirectBlockExecutionLimitError(Exception):
 
 
 class DirectBlockExecutionBusyError(DirectBlockExecutionLimitError):
-    """Too many retired workers are still running in this process.
+    """This server can't start a run: its run parent isn't running, or
+    ``DIRECT_BLOCK_EXECUTION_MAX_RUNS`` are in flight.
 
-    Unlike a user's own cap, it can last until the process restarts, so the
-    routes answer it with a 503 rather than a 429.
+    Not the user's own cap, so the routes answer it with a 503 rather than a 429.
     """
 
     def __init__(self) -> None:
@@ -78,32 +87,20 @@ class DirectBlockExecutionBusyError(DirectBlockExecutionLimitError):
 
 _runs_per_user: dict[str, int] = defaultdict(int)
 _runs_lock = threading.Lock()
-_workers_lock = threading.Lock()
 
 
 class DirectBlockExecutionSlot:
-    """One of a user's in-flight direct runs.
-
-    Released when the ``with`` block exits, or, once handed to
-    ``run_block_off_loop``, when the block itself stops running.
-    """
+    """One of a user's direct runs in flight, released when its ``with`` exits."""
 
     def __init__(self, user_id: str):
         self._user_id = user_id
         self._released = False
-        self._handed_off = False
 
     def __enter__(self) -> "DirectBlockExecutionSlot":
         return self
 
     def __exit__(self, *exc_info: object) -> None:
-        if not self._handed_off:
-            self.release()
-
-    def hand_off(self) -> Callable[[], None]:
-        """Keep the slot past the ``with`` block; the caller releases it."""
-        self._handed_off = True
-        return self.release
+        self.release()
 
     def release(self) -> None:
         with _runs_lock:
@@ -121,277 +118,174 @@ def claim_direct_block_execution_slot(user_id: str) -> DirectBlockExecutionSlot:
     Raises:
         DirectBlockExecutionLimitError: The user already has
             ``DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER`` runs in flight.
-        DirectBlockExecutionBusyError: ``DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS``
-            retired workers are still running.
+        DirectBlockExecutionBusyError: The run parent isn't running, or
+            ``DIRECT_BLOCK_EXECUTION_MAX_RUNS`` runs are in flight.
     """
-    with _workers_lock:
-        if len(_retired_workers) >= DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS:
-            raise DirectBlockExecutionBusyError()
-    limit = DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER
     with _runs_lock:
+        if (
+            _run_parent is None
+            or not _run_parent.running()
+            or sum(_runs_per_user.values()) >= DIRECT_BLOCK_EXECUTION_MAX_RUNS
+        ):
+            raise DirectBlockExecutionBusyError()
+        limit = DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER
         if _runs_per_user[user_id] >= limit:
             raise DirectBlockExecutionLimitError(limit)
         _runs_per_user[user_id] += 1
     return DirectBlockExecutionSlot(user_id)
 
 
-async def run_block_off_loop(
-    outputs: BlockOutput, slot: DirectBlockExecutionSlot | None = None
+async def run_block_in_child(
+    block: "AnyBlockSchema", input_data: BlockInput, **execute_kwargs: Any
 ) -> CompletedBlockOutput:
-    """Collect a block's ``execute()`` stream on a worker loop.
-
-    The time budget starts when the run starts on its worker loop. A run that
-    has not started within one budget is given up too.
+    """Run ``block.execute(input_data, **execute_kwargs)`` in a child process
+    and collect its outputs.
 
     Raises:
         DirectBlockExecutionTimeoutError: The block ran past
-            ``DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS``. It is cancelled at its
-            next ``await``, and its worker is retired if it has not stopped
-            ``DIRECT_BLOCK_EXECUTION_CANCEL_GRACE_SECONDS`` later.
+            ``DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS``; its process has been killed.
+        DirectBlockExecutionBusyError: The run parent stopped.
+        BlockExecutionError: The block failed on a ``ValueError``, ran out of
+            memory, or returned too much output.
+        BlockUnknownError: The block failed on any other error.
     """
+    if _run_parent is None:
+        raise DirectBlockExecutionBusyError()
     timeout = DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS
-    server_loop = asyncio.get_running_loop()
-    # The worker is picked and the run submitted under two acquisitions of
-    # _workers_lock. That is safe only because nothing yields in between:
-    # retirement runs on this loop, so it cannot retire the worker meanwhile.
-    worker = _least_busy_worker()
-    finished = False
-    stopped = threading.Event()
-    budget = asyncio.timeout(timeout)
-
     try:
-        async with budget:
-
-            def start_budget() -> None:
-                if not finished and not budget.expired():
-                    budget.reschedule(server_loop.time() + timeout)
-
-            release = slot.hand_off() if slot else _nothing
-
-            def on_finish() -> None:
-                stopped.set()
-                release()
-
-            try:
-                future = worker.submit(
-                    outputs,
-                    contextvars.copy_context(),
-                    on_start=lambda: server_loop.call_soon_threadsafe(start_budget),
-                    on_finish=on_finish,
-                )
-            except BaseException:
-                release()  # The run never reached the worker.
-                raise
-            try:
-                return await asyncio.wrap_future(future)
-            finally:
-                finished = True
+        return await _run_parent.run(block, input_data, execute_kwargs, timeout)
     except TimeoutError as e:
-        if not budget.expired():
-            raise  # The block raised it, within its budget.
-        server_loop.call_later(
-            DIRECT_BLOCK_EXECUTION_CANCEL_GRACE_SECONDS,
-            _retire_unless_stopped,
-            worker,
-            stopped,
-        )
         raise DirectBlockExecutionTimeoutError(timeout) from e
 
 
-class _Run:
-    """A block run handed to a worker, and the future its caller waits on."""
+def start_run_parent() -> None:
+    """Fork this server's run parent, which forks every direct run.
 
-    def __init__(
-        self,
-        outputs: BlockOutput,
-        context: contextvars.Context,
-        on_start: Callable[[], object],
-        on_finish: Callable[[], object],
-    ):
-        self.outputs = outputs
-        self.context = context
-        self.on_start = on_start
-        self.on_finish = on_finish
-        self.future: concurrent.futures.Future[CompletedBlockOutput] = (
-            concurrent.futures.Future()
-        )
-
-
-class _WorkerLoop:
-    """A thread running one event loop until the worker is retired.
-
-    Thread-cached async clients created by a block stay bound to a live loop.
+    Call before the process starts any thread or opens any connection: the run
+    parent, and every run, inherit the process as it is at this call.
     """
-
-    def __init__(self, index: int):
-        self.loop = asyncio.new_event_loop()
-        self.active = 0
-        self.retired = False
-        # Insertion-ordered, so runs moved to a replacement keep their order.
-        self._waiting: dict[_Run, None] = {}
-        self._thread = threading.Thread(
-            target=self._serve,
-            name=f"direct-block-execution-{index}",
-            daemon=True,
-        )
-        self._thread.start()
-
-    @property
-    def name(self) -> str:
-        return self._thread.name
-
-    def _serve(self) -> None:
-        asyncio.set_event_loop(self.loop)
-        self.loop.run_forever()
-        # Only a retired worker stops, once its last run has stopped.
-        with _workers_lock:
-            _retired_workers.discard(self)
-        self.loop.close()
-
-    def submit(
-        self,
-        outputs: BlockOutput,
-        context: contextvars.Context,
-        on_start: Callable[[], object],
-        on_finish: Callable[[], object],
-    ) -> concurrent.futures.Future[CompletedBlockOutput]:
-        """Run *outputs* as a task on this loop, in *context*.
-
-        Cancelling the returned future cancels the task. *on_finish* runs when
-        the task has stopped, which can be after the future is cancelled.
-        """
-        run = _Run(outputs, context, on_start, on_finish)
-        self.queue(run)
-        return run.future
-
-    def queue(self, run: _Run) -> None:
-        with _workers_lock:
-            self.active += 1
-            self._waiting[run] = None
-        try:
-            self.loop.call_soon_threadsafe(self._start, run)
-        except BaseException:
-            with _workers_lock:
-                if run in self._waiting:
-                    del self._waiting[run]
-                    self.active -= 1
-            raise
-
-    def take_waiting_runs(self) -> list[_Run]:
-        """Retire this worker and hand back the runs it has not started.
-
-        The caller holds ``_workers_lock``.
-        """
-        self.retired = True
-        runs = list(self._waiting)
-        self._waiting.clear()
-        self.active -= len(runs)
-        if self.active == 0:
-            self.loop.call_soon_threadsafe(self.loop.stop)
-        return runs
-
-    def _start(self, run: _Run) -> None:
-        with _workers_lock:
-            if run not in self._waiting:
-                return  # Moved to the worker that replaced this one.
-            self._waiting.pop(run, None)
-        if run.future.cancelled():
-            self._finish(run, None)
-            return
-        task = self.loop.create_task(_collect(run.outputs), context=run.context)
-        task.add_done_callback(lambda task: self._finish(run, task))
-
-        def cancel_task(_: concurrent.futures.Future) -> None:
-            if run.future.cancelled():
-                self.loop.call_soon_threadsafe(task.cancel)
-
-        run.future.add_done_callback(cancel_task)
-        # The task's first step runs after this callback returns.
-        run.on_start()
-
-    def _finish(
-        self, run: _Run, task: asyncio.Task[CompletedBlockOutput] | None
-    ) -> None:
-        with _workers_lock:
-            self.active -= 1
-            drained = self.retired and self.active == 0
-        run.on_finish()
-        if task is not None:
-            _settle(run.future, task)
-        if drained:
-            self.loop.stop()
+    global _run_parent
+    if sys.platform == "win32":
+        logger.warning("Direct block runs need os.fork; this server refuses them")
+        return
+    direct_block_run_parent.load_blocks()
+    ours, theirs = socket.socketpair()
+    pid = os.fork()
+    if pid == 0:
+        ours.close()
+        direct_block_run_parent.serve_runs(theirs)
+    theirs.close()
+    ours.setblocking(False)
+    _run_parent = _RunParent(pid, ours)
+    logger.info(f"Started the direct block run parent (pid {pid})")
 
 
-_pool: list[_WorkerLoop] = []
-_retired_workers: set[_WorkerLoop] = set()
-_worker_numbers = itertools.count()
+def stop_run_parent() -> None:
+    """Stop the run parent, killing any runs still in flight."""
+    global _run_parent
+    parent, _run_parent = _run_parent, None
+    if parent is not None:
+        parent.stop()
 
 
-def _least_busy_worker() -> _WorkerLoop:
-    with _workers_lock:
-        if not _pool:
-            _pool.extend(
-                _WorkerLoop(next(_worker_numbers))
-                for _ in range(DIRECT_BLOCK_EXECUTION_WORKERS)
+class _RunParent:
+    """The server's end of its run parent."""
+
+    def __init__(self, pid: int, control: socket.socket):
+        self.pid = pid
+        self._control = control
+        self._exited = False
+
+    def running(self) -> bool:
+        if not self._exited and _has_exited(self.pid):
+            self._exited = True
+            logger.error(
+                f"The direct block run parent (pid {self.pid}) exited; this "
+                "server refuses direct block runs until it restarts"
             )
-        return min(_pool, key=lambda worker: worker.active)
+        return not self._exited
 
-
-def _retire_unless_stopped(worker: _WorkerLoop, stopped: threading.Event) -> None:
-    """Replace *worker* in the pool if its timed-out run is still running."""
-    if stopped.is_set():
-        return
-    replacement: _WorkerLoop | None = None
-    moved: list[_Run] = []
-    with _workers_lock:
-        if worker.retired or worker not in _pool:
-            return
-        retired = len(_retired_workers)
-        if retired < DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS:
-            replacement = _WorkerLoop(next(_worker_numbers))
-            _pool[_pool.index(worker)] = replacement
-            _retired_workers.add(worker)
-            moved = worker.take_waiting_runs()
-    if replacement is None:
-        logger.warning(
-            "Direct block execution worker %s is still running a run past its "
-            "time budget, and %s retired workers are still running; keeping it",
-            worker.name,
-            retired,
+    async def run(
+        self,
+        block: "AnyBlockSchema",
+        input_data: BlockInput,
+        execute_kwargs: dict[str, Any],
+        timeout: float,
+    ) -> CompletedBlockOutput:
+        request = pickle.dumps(
+            (block.id, input_data, execute_kwargs), pickle.HIGHEST_PROTOCOL
         )
-        return
-    logger.warning(
-        "Direct block execution worker %s is still running a run %ss past its "
-        "time budget; retired it and started %s",
-        worker.name,
-        DIRECT_BLOCK_EXECUTION_CANCEL_GRACE_SECONDS,
-        replacement.name,
-    )
-    for run in moved:
-        replacement.queue(run)
+        deadline = time.monotonic() + timeout
+        reader, writer = await self._start(timeout)
+        try:
+            try:
+                async with asyncio.timeout(timeout):
+                    writer.write(FRAME_HEADER.pack(REQUEST, len(request)) + request)
+                    await writer.drain()
+                    kind, body = await _read_answer(reader)
+            except (ConnectionError, asyncio.IncompleteReadError) as e:
+                if time.monotonic() < deadline:
+                    raise RuntimeError("The block's process ended unexpectedly") from e
+                raise TimeoutError() from e  # Killed at its deadline.
+            except TimeoutError:
+                await _wait_for_exit(reader)
+                raise
+        finally:
+            writer.close()
+        answer = json.loads(body)
+        if kind == OUTPUTS:
+            return answer
+        error = BlockExecutionError if answer["value_error"] else BlockUnknownError
+        raise error(message=answer["message"], block_name=block.name, block_id=block.id)
+
+    async def _start(
+        self, timeout: float
+    ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+        """Have the run parent fork a child, and connect to it."""
+        ours, theirs = socket.socketpair()
+        try:
+            socket.send_fds(self._control, [RUN_ORDER.pack(timeout)], [theirs.fileno()])
+        except OSError as e:
+            ours.close()
+            raise DirectBlockExecutionBusyError() from e
+        finally:
+            theirs.close()
+        return await asyncio.open_connection(sock=ours)
+
+    def stop(self) -> None:
+        self._control.close()
+        stop_by = time.monotonic() + DIRECT_BLOCK_EXECUTION_KILL_WAIT_SECONDS
+        while not _has_exited(self.pid):
+            if time.monotonic() > stop_by:
+                os.kill(self.pid, signal.SIGKILL)
+                os.waitpid(self.pid, 0)
+                return
+            time.sleep(0.01)
 
 
-def _settle(
-    future: concurrent.futures.Future[CompletedBlockOutput],
-    task: asyncio.Task[CompletedBlockOutput],
-) -> None:
+_run_parent: _RunParent | None = None
+
+
+async def _read_answer(reader: asyncio.StreamReader) -> tuple[bytes, bytes]:
+    kind, size = FRAME_HEADER.unpack(await reader.readexactly(FRAME_HEADER.size))
+    # The run parent caps outputs at this; anything longer is not its answer.
+    if size > DIRECT_BLOCK_EXECUTION_MAX_OUTPUT_SIZE + 2**16:
+        raise RuntimeError(f"The block's process sent a {size}-byte answer")
+    return kind, await reader.readexactly(size)
+
+
+async def _wait_for_exit(reader: asyncio.StreamReader) -> None:
+    # The run parent kills the run at its deadline; its socket ends with it.
     try:
-        if task.cancelled():
-            future.cancel()
-        elif (error := task.exception()) is not None:
-            future.set_exception(error)
-        else:
-            future.set_result(task.result())
-    except concurrent.futures.InvalidStateError:
-        pass  # The caller cancelled the future first.
+        async with asyncio.timeout(DIRECT_BLOCK_EXECUTION_KILL_WAIT_SECONDS):
+            while await reader.read(2**16):
+                pass
+    except (TimeoutError, ConnectionError):
+        logger.warning("A direct block run's process outlived its deadline")
 
 
-def _nothing() -> None:
-    pass
-
-
-async def _collect(outputs: BlockOutput) -> CompletedBlockOutput:
-    collected: CompletedBlockOutput = defaultdict(list)
-    async for name, data in outputs:
-        collected[name].append(data)
-    return collected
+def _has_exited(pid: int) -> bool:
+    try:
+        return bool(os.waitpid(pid, os.WNOHANG)[0])
+    except ChildProcessError:
+        return True  # Reaped already.

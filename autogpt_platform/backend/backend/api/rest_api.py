@@ -99,6 +99,7 @@ from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.webhook_routes import register_webhook_adapters
 from backend.data.model import Credentials
+from backend.executor.direct_block_execution import start_run_parent, stop_run_parent
 from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi, start_metrics_server
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
@@ -685,6 +686,12 @@ check_token_before_body(app)
 
 
 class AgentServer(backend.util.service.AppProcess):
+    def before_threads(self):
+        start_run_parent()
+
+    def cleanup(self):
+        stop_run_parent()
+
     def run(self):
         cors_params = build_cors_params(
             settings.config.backend_cors_allow_origins,

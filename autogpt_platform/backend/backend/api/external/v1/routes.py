@@ -30,10 +30,9 @@ from backend.data.execution import ExecutionContext, ExecutionTrigger
 from backend.executor.direct_block_execution import (
     DirectBlockExecutionBusyError,
     DirectBlockExecutionLimitError,
-    DirectBlockExecutionSlot,
     DirectBlockExecutionTimeoutError,
     claim_direct_block_execution_slot,
-    run_block_off_loop,
+    run_block_in_child,
 )
 from backend.executor.utils import (
     add_graph_execution,
@@ -158,7 +157,7 @@ async def execute_graph_block(
         ) from e
 
     with slot:
-        return await _run_direct_block(obj, data, auth, user.timezone, slot)
+        return await _run_direct_block(obj, data, auth, user.timezone)
 
 
 async def _run_direct_block(
@@ -166,7 +165,6 @@ async def _run_direct_block(
     data: BlockInput,
     auth: APIAuthorizationInfo,
     user_timezone: str,
-    slot: DirectBlockExecutionSlot,
 ) -> CompletedBlockOutput:
     try:
         await charge_for_direct_block_execution(
@@ -188,9 +186,7 @@ async def _run_direct_block(
     )
 
     try:
-        return await run_block_off_loop(
-            obj.execute(data, execution_context=execution_context), slot
-        )
+        return await run_block_in_child(obj, data, execution_context=execution_context)
     except DirectBlockExecutionTimeoutError as e:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(e)

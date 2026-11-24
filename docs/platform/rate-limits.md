@@ -293,7 +293,7 @@ The deprecated v1 has no limit across all calls. Instead, its endpoints share tw
 
 ### Running a block on its own
 
-Running one block directly, through v1's `POST /blocks/{block_id}/execute` or the same path in the Platform's own API, allows 4 runs at once per account on each of the Platform's servers. A fifth is refused with `429` and "You already have 4 blocks running. Wait for one to finish, then try again." Not configurable.
+Running one block directly, through v1's `POST /blocks/{block_id}/execute` or the same path in the Platform's own API, allows 4 runs at once per account on each of the Platform's servers. A fifth is refused with `429` and "You already have 4 blocks running. Wait for one to finish, then try again." Each server runs at most 32 such runs at once, from all accounts; past that, a run is refused with `503` and "Block execution is temporarily unavailable; please try again later." A run may take 300 seconds (`504` after that), use 1 GB of memory and return 32 MB of output (`400` past either). Not configurable.
 
 ## Not on this page
 

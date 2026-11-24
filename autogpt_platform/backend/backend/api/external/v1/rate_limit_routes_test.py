@@ -10,6 +10,8 @@ from backend.api.external.v1 import routes
 from backend.api.external.v1.app import v1_app
 from backend.blocks._base import BlockType
 
+pytestmark = pytest.mark.usefixtures("blocks_run_in_process")
+
 ROUTES = [
     ("GET", "/me", "read"),
     ("GET", "/blocks", "read"),

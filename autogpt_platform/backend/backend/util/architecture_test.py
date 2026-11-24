@@ -1279,14 +1279,13 @@ def _opens_for_writing(call: ast.Call) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Rule: REST routes run blocks through the direct block execution workers
+# Rule: REST routes run blocks through direct block execution
 # ---------------------------------------------------------------------------
 #
-# Motivation: the API server's event loop serves every request in the
-# process, and block runs belong on the direct block execution workers. Routes
-# hand a block's ``execute()`` stream to
-# ``backend.executor.direct_block_execution``, which runs it on a worker loop
-# under a time budget and a per-user cap.
+# Motivation: a block run in the API server's process would hold it for as
+# long as the block computes. Routes hand the block to
+# ``backend.executor.direct_block_execution``, which runs it in a process of its
+# own, killed at its deadline, under a per-user cap.
 
 _API_PACKAGE = BACKEND_ROOT / "api"
 
@@ -1318,8 +1317,8 @@ def test_api_routes_do_not_iterate_block_execute():
         )
 
     assert not offenders, (
-        "API code must not iterate a block's execute() stream itself; pass it "
-        "to backend.executor.direct_block_execution.run_block_off_loop.\n\n"
+        "API code must not iterate a block's execute() stream itself; pass the "
+        "block to backend.executor.direct_block_execution.run_block_in_child.\n\n"
         "Offenders:\n  " + "\n  ".join(offenders)
     )
 

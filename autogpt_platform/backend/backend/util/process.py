@@ -65,6 +65,10 @@ class AppProcess(ABC):
     def service_name(self) -> str:
         return self.__class__.__name__
 
+    def before_threads(self):
+        """Runs in the process before anything in it starts a thread or a connection."""
+        pass
+
     def cleanup(self):
         """
         Implement this method on a subclass to do post-execution cleanup,
@@ -87,6 +91,7 @@ class AppProcess(ABC):
 
             set_service_name(self.service_name)
             logger.info(f"[{self.service_name}] Starting...")
+            self.before_threads()
             if start_flags:
                 initialize_feature_flags()
             self.run()

@@ -155,8 +155,14 @@ def test_a_process_that_failed_to_start_is_not_kept(monkeypatch):
     service.stop()
 
 
-STARTS_FLAGS = ["initialize_flags", "run", "cleanup", "shutdown_flags"]
-NO_FLAGS = ["run", "cleanup"]
+STARTS_FLAGS = [
+    "before_threads",
+    "initialize_flags",
+    "run",
+    "cleanup",
+    "shutdown_flags",
+]
+NO_FLAGS = ["before_threads", "run", "cleanup"]
 
 
 @pytest.mark.parametrize(
@@ -245,6 +251,7 @@ def _record_lifecycle(mocker, instance: AppProcess) -> list[str]:
     mocker.patch.object(
         process_module, "shutdown_feature_flags", record("shutdown_flags")
     )
+    mocker.patch.object(instance, "before_threads", record("before_threads"))
     mocker.patch.object(instance, "run", record("run"))
     mocker.patch.object(instance, "cleanup", record("cleanup"))
     # Keeps the test runner's own signal handlers and service name.
