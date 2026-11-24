@@ -15,10 +15,16 @@ export function TokenDevtoolPanel({ turns, breakdown, context }: Props) {
   return (
     <>
       <div className="flex items-baseline justify-between pb-2">
-        <Text variant="body-medium-tight" as="span" tone="emphasis">
+        <Text
+          variant="body"
+          weight="medium"
+          leading="5"
+          as="span"
+          tone="emphasis"
+        >
           Context window
         </Text>
-        <Text variant="small-mono-tight" as="span" tone="muted">
+        <Text variant="small" mono leading="4" as="span" tone="muted">
           {context === null ? "—" : `~${formatTokenCount(context)}`} /{" "}
           {formatTokenCount(MODEL_CONTEXT_WINDOW)}
         </Text>

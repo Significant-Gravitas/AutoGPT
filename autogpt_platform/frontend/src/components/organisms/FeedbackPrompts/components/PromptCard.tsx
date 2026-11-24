@@ -38,7 +38,7 @@ export function PromptCard({
               {eyebrow}
             </Text>
           ) : null}
-          <Text variant="body-medium" tone="primary">
+          <Text variant="body" weight="medium" tone="primary">
             {title}
           </Text>
         </div>

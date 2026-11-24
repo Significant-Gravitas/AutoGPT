@@ -41,7 +41,7 @@ export const TriggerAgentBanner = () => {
           }
           className="underline"
         >
-          <Text variant="body-tight" as="span" tone="inherit">
+          <Text variant="body" leading="5" as="span" tone="inherit">
             Workflow Library
           </Text>
         </Link>

@@ -19,7 +19,7 @@ export function ChangelogFallback() {
         <Icon icon={NewsIcon} size={20} />
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <Text as="span" variant="body-medium" tone="primary">
+        <Text as="span" variant="body" weight="medium" tone="primary">
           See what we&apos;ve shipped lately
         </Text>
         <Text as="span" variant="body" tone="secondary">

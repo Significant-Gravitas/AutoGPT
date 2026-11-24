@@ -20,7 +20,13 @@ export function UpcomingRow({ item }: Props) {
         <TaskMarker item={item} />
       </span>
       <div className="min-w-0 flex-1">
-        <Text variant="body-medium-tight" tone="primary" className="truncate">
+        <Text
+          variant="body"
+          weight="medium"
+          leading="5"
+          tone="primary"
+          className="truncate"
+        >
           <span>{item.title}</span>
           {item.kind === "agent" ? (
             <span className="font-normal text-foreground-tertiary">

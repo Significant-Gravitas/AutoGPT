@@ -71,7 +71,8 @@ export function TeamNode({ member, animate }: Props) {
         >
           <Text
             as="span"
-            variant="body-medium"
+            variant="body"
+            weight="medium"
             className="block whitespace-nowrap"
           >
             {member.name}

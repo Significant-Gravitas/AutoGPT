@@ -33,7 +33,12 @@ export function RunRow({ item, isHidden = false }: Props) {
           data-slot="briefing-card-run-row-header"
           className="flex items-center gap-2"
         >
-          <Text variant="body-medium" tone="primary" className="truncate">
+          <Text
+            variant="body"
+            weight="medium"
+            tone="primary"
+            className="truncate"
+          >
             {item.agent_name}
           </Text>
           {isFailed ? (

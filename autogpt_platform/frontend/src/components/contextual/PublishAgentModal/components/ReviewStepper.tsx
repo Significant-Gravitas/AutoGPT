@@ -63,7 +63,7 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
       transition={{ duration: duration.base, ease: ease.out, delay: 0.24 }}
       className="mt-6 flex w-full max-w-md flex-col gap-3 px-2"
     >
-      <Text variant="body-medium" as="span">
+      <Text variant="body" weight="medium" as="span">
         What happens next
       </Text>
       <ol className="flex flex-col">
@@ -93,7 +93,8 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
               </div>
               <div className={cn("flex min-w-0 flex-col", !isLast && "pb-4")}>
                 <Text
-                  variant="small-medium"
+                  variant="small"
+                  weight="medium"
                   as="span"
                   tone={step.state === "upcoming" ? "subtle" : "base"}
                 >

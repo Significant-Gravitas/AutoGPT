@@ -89,7 +89,7 @@ export function AgentSelectStep({
         />
         <div className="mt-5 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-2xl border border-error/10 bg-error-surface px-6 py-8 text-center">
           <Icon icon={AlertCircleIcon} size={32} tone="danger" />
-          <Text variant="large-medium" tone="error-strong">
+          <Text variant="large" weight="medium" tone="error-strong">
             We could not load your workflows
           </Text>
           <Text variant="body" tone="error-strong" className="max-w-[420px]">
@@ -126,7 +126,9 @@ export function AgentSelectStep({
           <div className="flex size-11 items-center justify-center rounded-full bg-surface text-foreground-body shadow-subtle">
             <Icon icon={PlusSignIcon} size={20} />
           </div>
-          <Text variant="large-medium">No publishable workflows yet</Text>
+          <Text variant="large" weight="medium">
+            No publishable workflows yet
+          </Text>
           <Text variant="body" tone="secondary" className="max-w-[460px]">
             Create and save a workflow in the builder. It will appear here when
             a version is ready to submit.
@@ -194,7 +196,7 @@ export function AgentSelectStep({
                   className="flex min-h-[200px] flex-col items-center justify-center gap-2 px-6 py-10 text-center"
                   data-testid="agent-search-no-matches"
                 >
-                  <Text variant="body-medium">
+                  <Text variant="body" weight="medium">
                     No workflows match &ldquo;{debouncedSearch}&rdquo;
                   </Text>
                   <Text variant="small" tone="muted">
@@ -272,7 +274,8 @@ export function AgentSelectStep({
                           <div className="flex min-w-0 flex-1 flex-col gap-1">
                             <div className="flex min-w-0 items-center gap-2">
                               <Text
-                                variant="body-medium"
+                                variant="body"
+                                weight="medium"
                                 as="span"
                                 className="truncate"
                               >
@@ -400,7 +403,8 @@ function PaginationBar({
           entry === "…" ? (
             <span key={`gap-${idx}`} className="px-1" aria-hidden>
               <Text
-                variant="body-tight"
+                variant="body"
+                leading="5"
                 as="span"
                 tone="subtle"
                 className="block"
@@ -431,7 +435,9 @@ function PaginationBar({
               ) : null}
               <Text
                 as="span"
-                variant="body-medium-tight"
+                variant="body"
+                weight="medium"
+                leading="5"
                 tone="inherit"
                 className="relative"
               >

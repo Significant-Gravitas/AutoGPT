@@ -33,7 +33,9 @@ export function ConnectAccountRow({ onConnect, isConnecting }: Props) {
     >
       <IntegrationLogo provider="openai" size={20} />
       <Text
-        variant="body-medium-tight"
+        variant="body"
+        weight="medium"
+        leading="5"
         as="span"
         tone="primary"
         className="min-w-0 flex-1"

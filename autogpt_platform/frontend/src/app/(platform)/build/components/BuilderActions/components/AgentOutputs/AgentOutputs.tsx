@@ -114,7 +114,8 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
             <div>
               <SheetTitle>
                 <Text
-                  variant="lead-semibold"
+                  variant="lead"
+                  weight="semibold"
                   as="span"
                   tone="inherit"
                   className="block"
@@ -126,7 +127,9 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                 <span className="inline-flex items-center gap-1.5">
                   <span className="rounded-md bg-yellow/30 px-2 py-0.5 text-yellow-foreground">
                     <Text
-                      variant="small-medium-tight"
+                      variant="small"
+                      weight="medium"
+                      leading="4"
                       as="span"
                       tone="inherit"
                       className="block"
@@ -134,7 +137,7 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                       Beta
                     </Text>
                   </span>
-                  <Text variant="body-tight" as="span" tone="inherit">
+                  <Text variant="body" leading="5" as="span" tone="inherit">
                     This feature is in beta and may contain bugs
                   </Text>
                 </span>
@@ -152,7 +155,9 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                     <div>
                       <Label>
                         <Text
-                          variant="large-semibold-tight"
+                          variant="large"
+                          weight="semibold"
+                          leading="6"
                           as="span"
                           tone="inherit"
                         >
@@ -162,7 +167,9 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                       {group.metadata.description && (
                         <Label className="mt-1 block text-foreground-secondary">
                           <Text
-                            variant="body-medium-tight"
+                            variant="body"
+                            weight="medium"
+                            leading="5"
                             as="span"
                             tone="inherit"
                           >

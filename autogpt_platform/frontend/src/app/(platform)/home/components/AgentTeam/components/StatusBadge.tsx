@@ -27,7 +27,8 @@ export function StatusBadge({ status }: Props) {
 
   return (
     <Text
-      variant="small-medium"
+      variant="small"
+      weight="medium"
       as="span"
       tone="muted"
       className="inline-flex shrink-0 items-center gap-1.5"

@@ -121,9 +121,7 @@ function RelatedExecution({
       ) : (
         <Text variant="small">{name}</Text>
       )}
-      {amount != null && (
-        <TransactionAmount amount={amount} variant="small-medium" />
-      )}
+      {amount != null && <TransactionAmount amount={amount} variant="small" />}
     </div>
   );
 }

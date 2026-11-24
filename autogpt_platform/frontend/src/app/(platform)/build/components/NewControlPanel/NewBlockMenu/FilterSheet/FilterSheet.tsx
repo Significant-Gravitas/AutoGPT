@@ -104,7 +104,7 @@ export function FilterSheet({
 
             {/* Created by section */}
             <div className="space-y-4 px-5">
-              <Text variant="large-medium-tight" tone="emphasis">
+              <Text variant="large" weight="medium" leading="6" tone="emphasis">
                 Created by
               </Text>
               <div className="space-y-2">
@@ -134,7 +134,7 @@ export function FilterSheet({
                   className="m-0 p-0 hover:text-foreground-secondary"
                   onClick={handleToggleShowMoreCreators}
                 >
-                  <Text variant="body-medium" as="span" tone="inherit">
+                  <Text variant="body" weight="medium" as="span" tone="inherit">
                     {displayedCreatorsCount < creators.length ? "More" : "Less"}
                   </Text>
                 </Button>

@@ -62,10 +62,16 @@ function PendingArtifactCard({ attachment }: CardProps) {
         className="shrink-0"
       />
       <div className="min-w-0 flex-1">
-        <Text variant="body-medium-tight" tone="primary" className="truncate">
+        <Text
+          variant="body"
+          weight="medium"
+          leading="5"
+          tone="primary"
+          className="truncate"
+        >
           {attachment.name}
         </Text>
-        <Text variant="small-tight" tone="subtle">
+        <Text variant="small" leading="4" tone="subtle">
           <span className="inline-block rounded-pill bg-info-surface px-1.5 py-0.5 text-caption font-medium text-info">
             {classification.label}
           </span>

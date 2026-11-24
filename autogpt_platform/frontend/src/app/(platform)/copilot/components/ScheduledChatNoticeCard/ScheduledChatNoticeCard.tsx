@@ -106,10 +106,10 @@ export function ScheduledChatNoticeCard({ notice, sessionID = null }: Props) {
           <Icon icon={icon} size={18} />
         </AttentionCard.Icon>
         <AttentionCard.Content>
-          <Text variant="body-medium-tight" tone="primary">
+          <Text variant="body" weight="medium" leading="5" tone="primary">
             {notice.headline}
           </Text>
-          <Text variant="body-tight" tone="muted" className="mt-1">
+          <Text variant="body" leading="5" tone="muted" className="mt-1">
             {notice.body}
           </Text>
           {showActions ? (

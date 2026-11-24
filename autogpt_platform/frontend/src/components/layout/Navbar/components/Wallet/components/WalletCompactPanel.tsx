@@ -53,12 +53,13 @@ export function WalletCompactPanel({
           <Text
             as="h2"
             id={creditsHeadingID}
-            variant="large-medium"
+            variant="large"
+            weight="medium"
             tone="primary"
           >
             Automation credits
           </Text>
-          <Text variant="large-semibold" tone="primary" tabular>
+          <Text variant="large" weight="semibold" tone="primary" tabular>
             {formattedCredits}
           </Text>
         </div>

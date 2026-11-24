@@ -83,7 +83,9 @@ export function ConnectionPicker({
         )}
       >
         <Text
-          variant="small-medium-tight"
+          variant="small"
+          weight="medium"
+          leading="4"
           as="span"
           tone="error"
           className="inline-flex items-center gap-1.5"
@@ -107,7 +109,9 @@ export function ConnectionPicker({
       >
         <Icon icon={AlertCircleIcon} size={14} />
         <Text
-          variant="small-medium-tight"
+          variant="small"
+          weight="medium"
+          leading="4"
           as="span"
           tone="inherit"
           className="hidden sm:inline"

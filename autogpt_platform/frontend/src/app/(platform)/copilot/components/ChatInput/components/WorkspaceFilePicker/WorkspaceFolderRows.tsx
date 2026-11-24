@@ -84,7 +84,8 @@ export function WorkspaceFolderRows({
               <div className="flex min-w-0 flex-1 flex-col">
                 <Text
                   tone="primary"
-                  variant="body-medium"
+                  variant="body"
+                  weight="medium"
                   className="truncate"
                   title={folder.name}
                 >

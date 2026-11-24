@@ -47,7 +47,7 @@ export function PanelEmptyState({
           </div>
         ))}
       </div>
-      <Text tone="primary" variant="large-medium">
+      <Text tone="primary" variant="large" weight="medium">
         {title}
       </Text>
       <Text tone="muted" variant={textSize} className="mt-1.5 max-w-[17rem]">

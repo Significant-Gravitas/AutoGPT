@@ -79,7 +79,8 @@ export function SearchCommandResultItem({
           className="min-w-0 flex-1"
         >
           <Text
-            variant="body-tight"
+            variant="body"
+            leading="5"
             as="div"
             data-slot="search-command-result-item-title"
             tone={isHighlighted ? "base" : "emphasis"}
@@ -98,7 +99,9 @@ export function SearchCommandResultItem({
           </Text>
           {item.subtitle ? (
             <Text
-              variant="small-medium-tight"
+              variant="small"
+              weight="medium"
+              leading="4"
               as="div"
               tone="muted"
               data-slot="search-command-result-item-subtitle"

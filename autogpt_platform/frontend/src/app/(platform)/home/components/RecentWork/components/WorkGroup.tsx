@@ -22,7 +22,13 @@ export function WorkGroup({ group, timezone }: Props) {
   const header = (
     <div className="flex min-w-0 items-center gap-2">
       <ActorMark actor={actor} />
-      <Text variant="body-medium-tight" tone="primary" className="truncate">
+      <Text
+        variant="body"
+        weight="medium"
+        leading="5"
+        tone="primary"
+        className="truncate"
+      >
         {actor.name}
       </Text>
       <span
@@ -33,7 +39,9 @@ export function WorkGroup({ group, timezone }: Props) {
         )}
       >
         <Text
-          variant="small-medium-tight"
+          variant="small"
+          weight="medium"
+          leading="4"
           as="span"
           tone="inherit"
           transform="capitalize"

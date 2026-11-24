@@ -75,7 +75,11 @@ export function ChangelogPopup() {
             />
           </div>
           <div data-slot="changelog-popup-heading" className="min-w-0 flex-1">
-            <Text variant="body-medium" data-slot="changelog-popup-title">
+            <Text
+              variant="body"
+              weight="medium"
+              data-slot="changelog-popup-title"
+            >
               What&apos;s new
             </Text>
             <Text variant="small" data-slot="changelog-popup-date" tone="muted">

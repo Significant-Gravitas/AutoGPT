@@ -62,7 +62,13 @@ export const ViewMoreData = ({
           size="small"
           className="h-fit w-fit min-w-0"
         >
-          <Text variant="small-medium-tight" as="span" tone="inherit">
+          <Text
+            variant="small"
+            weight="medium"
+            leading="4"
+            as="span"
+            tone="inherit"
+          >
             View More
           </Text>
         </Button>
@@ -85,7 +91,13 @@ export const ViewMoreData = ({
                       Execution ID:
                     </Text>
                     <div className="rounded-pill border border-border-strong bg-surface-muted px-2 py-1">
-                      <Text variant="small-medium-mono-tight" as="p">
+                      <Text
+                        variant="small"
+                        weight="medium"
+                        mono
+                        leading="4"
+                        as="p"
+                      >
                         {result.node_exec_id}
                       </Text>
                     </div>
@@ -106,15 +118,23 @@ export const ViewMoreData = ({
                         return (
                           <div key={key} className="flex flex-col gap-2">
                             <div className="flex items-center gap-2">
-                              <Text variant="body-semibold" tone="secondary">
+                              <Text
+                                variant="body"
+                                weight="semibold"
+                                tone="secondary"
+                              >
                                 Pin:
                               </Text>
-                              <Text variant="body-medium" tone="body">
+                              <Text variant="body" weight="medium" tone="body">
                                 {beautifyString(key)}
                               </Text>
                             </div>
                             <div className="w-full space-y-2">
-                              <Text variant="body-semibold" tone="secondary">
+                              <Text
+                                variant="body"
+                                weight="semibold"
+                                tone="secondary"
+                              >
                                 Data:
                               </Text>
                               <div className="relative space-y-2">

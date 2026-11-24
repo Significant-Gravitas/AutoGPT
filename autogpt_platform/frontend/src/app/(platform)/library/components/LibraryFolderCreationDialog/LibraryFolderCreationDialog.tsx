@@ -183,7 +183,7 @@ export default function LibraryFolderCreationDialog() {
             render={({ field }) => (
               <FormItem>
                 <div className="flex flex-col gap-2">
-                  <Text variant="large-medium" as="span">
+                  <Text variant="large" weight="medium" as="span">
                     Folder icon
                   </Text>
                   <div className="flex flex-col gap-3">

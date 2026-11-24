@@ -232,7 +232,12 @@ export function SidebarRunsList({
             <div className="scrollbar-thin flex min-h-0 flex-1 scrollbar-thumb-border-strong scrollbar-track-transparent flex-col gap-4 overflow-x-scroll px-1 pt-1 pb-4 lg:gap-3 lg:overflow-x-hidden lg:overflow-y-auto">
               {triggers.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  <Text variant="body-medium" tone="muted" className="mx-1">
+                  <Text
+                    variant="body"
+                    weight="medium"
+                    tone="muted"
+                    className="mx-1"
+                  >
                     Webhook Triggers
                   </Text>
                   <div className="flex flex-nowrap items-center justify-start gap-4 lg:flex-col lg:gap-3">
@@ -257,7 +262,12 @@ export function SidebarRunsList({
               )}
               {triggerAgents.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  <Text variant="body-medium" tone="muted" className="mx-1">
+                  <Text
+                    variant="body"
+                    weight="medium"
+                    tone="muted"
+                    className="mx-1"
+                  >
                     Trigger Workflows
                   </Text>
                   <div className="flex flex-nowrap items-center justify-start gap-4 lg:flex-col lg:gap-3">

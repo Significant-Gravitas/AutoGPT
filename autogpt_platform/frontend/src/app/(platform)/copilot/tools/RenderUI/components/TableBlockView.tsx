@@ -29,7 +29,12 @@ export function TableBlockView({ block }: Props) {
                     numeric[index] && "text-right",
                   )}
                 >
-                  <Text as="span" variant="small-medium" tone="secondary">
+                  <Text
+                    as="span"
+                    variant="small"
+                    weight="medium"
+                    tone="secondary"
+                  >
                     {column}
                   </Text>
                 </th>
@@ -55,7 +60,8 @@ export function TableBlockView({ block }: Props) {
                   >
                     <Text
                       as="span"
-                      variant={cellIndex === 0 ? "body-medium" : "body"}
+                      variant="body"
+                      weight={cellIndex === 0 ? "medium" : undefined}
                       tone={cellIndex === 0 ? "primary" : "body"}
                       tabular={numeric[cellIndex]}
                       className="break-words"

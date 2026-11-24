@@ -94,7 +94,7 @@ export function WorkspaceFileList({
   if (files.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 py-8">
-        <Text variant="body-tight" tone="muted" className="text-center">
+        <Text variant="body" leading="5" tone="muted" className="text-center">
           {emptyMessage}
         </Text>
         {emptyAction}
@@ -149,7 +149,8 @@ export function WorkspaceFileList({
                 <div className="flex min-w-0 flex-1 flex-col">
                   <Text
                     tone="primary"
-                    variant="body-medium"
+                    variant="body"
+                    weight="medium"
                     className="truncate"
                     title={file.name}
                   >

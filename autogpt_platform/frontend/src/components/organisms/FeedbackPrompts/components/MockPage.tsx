@@ -14,7 +14,7 @@ export function MockPage({ title, children, corner, centered }: Props) {
   return (
     <div className="relative min-h-screen bg-canvas">
       <header className="flex h-14 items-center gap-6 border-b border-border-base bg-surface px-6">
-        <Text variant="body-medium" tone="primary">
+        <Text variant="body" weight="medium" tone="primary">
           AutoGPT
         </Text>
         {NAV.map((item) => (

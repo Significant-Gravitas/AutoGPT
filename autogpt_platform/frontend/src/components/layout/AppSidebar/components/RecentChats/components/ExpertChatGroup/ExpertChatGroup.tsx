@@ -186,7 +186,14 @@ function ShowMoreButton({
       onClick={onClick}
       className="mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-emphasis max-md:py-2.5"
     >
-      <Text as="span" variant="small-medium-tight-touch" tone="inherit">
+      <Text
+        as="span"
+        variant="small"
+        weight="medium"
+        leading="4"
+        narrowSize="body"
+        tone="inherit"
+      >
         {loadFailed ? "Couldn't load. Try again" : "Show more"}
       </Text>
       {isLoading && <LoadingSpinner size="small" />}

@@ -124,7 +124,7 @@ function TransactionActivity({ transaction }: { transaction: Transaction }) {
             {name}
           </Link>
         ) : (
-          <Text variant="body-medium" className="break-words">
+          <Text variant="body" weight="medium" className="break-words">
             {name}
           </Text>
         )}

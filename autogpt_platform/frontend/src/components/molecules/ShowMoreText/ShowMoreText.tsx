@@ -1,6 +1,6 @@
 "use client";
 
-import { Text } from "@/components/atoms/Text/Text";
+import { Text, type TextProps } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import React from "react";
 import { ShowMoreTextVariant } from "./helpers";
@@ -9,6 +9,7 @@ interface Props {
   children: string;
   previewLimit?: number;
   variant?: ShowMoreTextVariant;
+  weight?: TextProps["weight"];
   className?: string;
   toggleClassName?: string;
   defaultExpanded?: boolean;
@@ -18,6 +19,7 @@ export function ShowMoreText({
   children,
   previewLimit = 100,
   variant = "body",
+  weight,
   className,
   toggleClassName,
   defaultExpanded = false,
@@ -34,6 +36,7 @@ export function ShowMoreText({
     return (
       <Text
         variant={variant}
+        weight={weight}
         data-slot="show-more-text"
         className={cn(className)}
       >
@@ -45,6 +48,7 @@ export function ShowMoreText({
   return (
     <Text
       variant={variant}
+      weight={weight}
       data-slot="show-more-text"
       className={cn("flex flex-wrap items-center", className)}
     >

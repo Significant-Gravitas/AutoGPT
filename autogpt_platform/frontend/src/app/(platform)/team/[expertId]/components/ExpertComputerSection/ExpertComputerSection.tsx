@@ -69,7 +69,10 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
     <section className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <Text variant="large-medium">{`${expertName}'s computer`}</Text>
+          <Text
+            variant="large"
+            weight="medium"
+          >{`${expertName}'s computer`}</Text>
           <Text variant="small" tone="muted" className="mt-1 max-w-prose">
             One persistent cloud machine only {expertName} uses: the shell it
             runs commands in and, when needed, its screen. It is suspended
@@ -136,7 +139,9 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
                 )}
               />
               <Text
-                variant="small-medium-tight"
+                variant="small"
+                weight="medium"
+                leading="4"
                 as="span"
                 tone={running ? "success-light" : "disabled"}
               >
@@ -179,7 +184,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
 
       {mounts.length > 0 ? (
         <div className="rounded-2xl bg-surface p-4 smooth-shadow-ring-sm">
-          <Text variant="small-medium" tone="body">
+          <Text variant="small" weight="medium" tone="body">
             Volumes
           </Text>
           <ul className="mt-2 divide-y divide-separator">
@@ -189,12 +194,24 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
                   <Icon icon={Folder01Icon} size={15} aria-hidden />
                 </span>
                 <span className="flex min-w-0 flex-col gap-0.5">
-                  <Text variant="small-mono-tight" as="code" tone="emphasis">
+                  <Text
+                    variant="small"
+                    mono
+                    leading="4"
+                    as="code"
+                    tone="emphasis"
+                  >
                     {path}
                   </Text>
                   <Text variant="small" tone="muted">
                     {describeMount(path, computer)}{" "}
-                    <Text variant="small-mono-tight" as="span" tone="subtle">
+                    <Text
+                      variant="small"
+                      mono
+                      leading="4"
+                      as="span"
+                      tone="subtle"
+                    >
                       {name}
                     </Text>
                   </Text>
@@ -232,7 +249,7 @@ function DetailTile({ icon, label, children }: DetailTileProps) {
         <Icon icon={icon} size={15} aria-hidden />
       </span>
       <span className="flex min-w-0 flex-col gap-0.5">
-        <Text variant="small-medium" tone="body">
+        <Text variant="small" weight="medium" tone="body">
           {label}
         </Text>
         <Text variant="small" tone="muted">

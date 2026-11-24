@@ -84,7 +84,13 @@ export function ChoiceRow({
         )}
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex items-center gap-1.5">
-            <Text variant="body-medium-tight" as="span" tone="primary">
+            <Text
+              variant="body"
+              weight="medium"
+              leading="5"
+              as="span"
+              tone="primary"
+            >
               {title}
             </Text>
             {badge && (
@@ -146,7 +152,7 @@ function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
         className="mt-[3px] flex-none"
       />
       <span className="flex min-w-0 flex-col">
-        <Text variant="body-medium-tight" as="span" tone="muted">
+        <Text variant="body" weight="medium" leading="5" as="span" tone="muted">
           {title}
         </Text>
         {subtitle && (

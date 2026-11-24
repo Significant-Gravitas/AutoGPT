@@ -61,7 +61,7 @@ export function TrialTimeline({ label, milestones }: Props) {
                 !isLast && "pb-4 [@media(max-height:780px)]:pb-3",
               )}
             >
-              <Text variant="small-medium" as="span" tone="secondary">
+              <Text variant="small" weight="medium" as="span" tone="secondary">
                 {milestone.date ? (
                   <time dateTime={toLocalISODate(milestone.date)}>
                     {milestone.when}
@@ -70,7 +70,7 @@ export function TrialTimeline({ label, milestones }: Props) {
                   milestone.when
                 )}
               </Text>
-              <Text variant="large-medium" as="span" tone="primary">
+              <Text variant="large" weight="medium" as="span" tone="primary">
                 {milestone.title}
               </Text>
               <Text

@@ -38,7 +38,8 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
         <div className="min-w-0 flex-1">
           <Text
             id="local-executor-setup-title"
-            variant="body-medium"
+            variant="body"
+            weight="medium"
             as="h3"
             tone="primary"
           >
@@ -60,7 +61,7 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
               {index + 1}
             </span>
             <div className="min-w-0 flex-1">
-              <Text variant="small-medium" tone="emphasis">
+              <Text variant="small" weight="medium" tone="emphasis">
                 {step.title}
               </Text>
               <pre className="mt-1 max-w-full overflow-x-auto rounded-lg bg-action-hover px-3 py-2 text-left font-mono text-caption text-action-foreground">
@@ -83,7 +84,7 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
       </a>
 
       <div className="mt-4 border-t border-border-base pt-4">
-        <Text variant="small-medium" tone="emphasis">
+        <Text variant="small" weight="medium" tone="emphasis">
           Keep the computer connected
         </Text>
         <Text variant="small" tone="secondary" className="mt-1">

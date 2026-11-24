@@ -121,10 +121,10 @@ export function ExpertTeamCard({
 
           <div className="mt-2 flex min-w-0 flex-1 flex-col gap-1">
             <div className="flex items-baseline justify-between gap-2 tabular-nums">
-              <Text variant="small-medium" tone="secondary">
+              <Text variant="small" weight="medium" tone="secondary">
                 Budget
               </Text>
-              <Text variant="small-medium" tone="secondary">
+              <Text variant="small" weight="medium" tone="secondary">
                 {weeklySpend
                   ? `${creditsToUsdLabel(weeklySpend.spent)} / ${creditsToUsdLabel(weeklySpend.budget)}`
                   : "No budget"}

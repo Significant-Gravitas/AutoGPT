@@ -35,7 +35,7 @@ export function ChangesView({ version, versions, onSelect }: Props) {
         data-slot="skill-learning-sheet-changes-version-field"
         className="flex flex-col gap-1"
       >
-        <Text variant="small-medium" tone="primary">
+        <Text variant="small" weight="medium" tone="primary">
           Version
         </Text>
         <select
@@ -77,7 +77,7 @@ export function ChangesView({ version, versions, onSelect }: Props) {
               data-slot="skill-learning-sheet-changes-item"
               className="rounded-lg bg-surface-muted p-3"
             >
-              <Text variant="small-medium" tone="primary">
+              <Text variant="small" weight="medium" tone="primary">
                 {change.step}
               </Text>
               {change.before ? (

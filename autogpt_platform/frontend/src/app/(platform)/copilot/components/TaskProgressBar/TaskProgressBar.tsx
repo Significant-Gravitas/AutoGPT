@@ -92,7 +92,9 @@ export const TaskProgressBar = memo(function TaskProgressBar({
                 className="flex-shrink-0"
               />
               <Text
-                variant="body-medium-tight"
+                variant="body"
+                weight="medium"
+                leading="5"
                 tone="emphasis"
                 className="min-w-0 flex-1 truncate"
               >
@@ -110,7 +112,9 @@ export const TaskProgressBar = memo(function TaskProgressBar({
                   status={toDisplayStatus(current.status, isStreaming)}
                 />
                 <Text
-                  variant="body-medium-tight"
+                  variant="body"
+                  weight="medium"
+                  leading="5"
                   tone="emphasis"
                   className="min-w-0 flex-1 truncate"
                 >
@@ -129,7 +133,9 @@ export const TaskProgressBar = memo(function TaskProgressBar({
                 className="flex-shrink-0"
               />
               <Text
-                variant="body-medium-tight"
+                variant="body"
+                weight="medium"
+                leading="5"
                 tone="emphasis"
                 className="min-w-0 flex-1"
               >
@@ -140,7 +146,8 @@ export const TaskProgressBar = memo(function TaskProgressBar({
         </div>
 
         <Text
-          variant="body-tight"
+          variant="body"
+          leading="5"
           as="span"
           tone="primary"
           tabular

@@ -48,7 +48,8 @@ export function HomeTile({
             aria-hidden="true"
           />
           <Text
-            variant="body-medium"
+            variant="body"
+            weight="medium"
             as="h2"
             tone="primary"
             className="truncate"

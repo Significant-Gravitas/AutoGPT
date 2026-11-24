@@ -87,7 +87,7 @@ export function APIKeyInfoDialog({ open, apiKey, onOpenChange }: Props) {
 function Section({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <Text variant="small-medium" as="span" tone="muted">
+      <Text variant="small" weight="medium" as="span" tone="muted">
         {label}
       </Text>
       {children}

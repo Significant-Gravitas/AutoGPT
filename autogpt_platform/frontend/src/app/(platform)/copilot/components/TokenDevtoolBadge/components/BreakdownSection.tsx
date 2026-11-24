@@ -57,7 +57,7 @@ export function BreakdownSection({ breakdown }: Props) {
             <span className={`size-1.5 shrink-0 rounded-full ${row.color}`} />
             <span className="text-foreground-secondary">{row.label}</span>
             {row.note && (
-              <Text variant="tiny-inherit" tone="subtle">
+              <Text variant="tiny" leading="inherit" tone="subtle">
                 {row.note}
               </Text>
             )}

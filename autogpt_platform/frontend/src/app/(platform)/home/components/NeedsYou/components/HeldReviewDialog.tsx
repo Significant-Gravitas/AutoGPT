@@ -84,7 +84,13 @@ export function HeldReviewDialog({ carousel, held, chatLink = true }: Props) {
                 leadingIcon={ArrowLeft01Icon}
                 onClick={() => carousel.move(-1)}
               />
-              <Text variant="body-medium" as="span" aria-live="polite" tabular>
+              <Text
+                variant="body"
+                weight="medium"
+                as="span"
+                aria-live="polite"
+                tabular
+              >
                 {carousel.position} of {carousel.total}
               </Text>
               <Button

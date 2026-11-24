@@ -90,7 +90,7 @@ export function SubmissionsList({
     >
       <div className="flex items-center justify-between pr-1 pl-4">
         <div className="flex items-center gap-2">
-          <Text variant="body-medium" as="span">
+          <Text variant="body" weight="medium" as="span">
             Submissions
           </Text>
         </div>
@@ -180,7 +180,7 @@ export function SubmissionsList({
                 <tr>
                   <td colSpan={COLUMN_COUNT} className="px-4 py-12">
                     <div className="flex flex-col items-center justify-center gap-3 text-center">
-                      <Text variant="body-medium">
+                      <Text variant="body" weight="medium">
                         {debouncedSearch
                           ? `No submissions match "${debouncedSearch}"`
                           : "No submissions match these filters"}

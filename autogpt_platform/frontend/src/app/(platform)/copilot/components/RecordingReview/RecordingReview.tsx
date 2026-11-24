@@ -77,7 +77,7 @@ export function RecordingReview({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-3 py-2">
-          <Text variant="body-tight" tone="body">
+          <Text variant="body" leading="5" tone="body">
             Your executor transferred these hygiene-redacted structured steps to
             this authenticated browser for review. Remove anything you
             don&apos;t want included, or hide a value. Finishing applies those
@@ -87,13 +87,13 @@ export function RecordingReview({
           </Text>
 
           {errorMessage ? (
-            <Text variant="body-tight" role="alert" tone="danger">
+            <Text variant="body" leading="5" role="alert" tone="danger">
               {errorMessage}
             </Text>
           ) : null}
 
           {steps.length === 0 ? (
-            <Text variant="body-tight" tone="muted">
+            <Text variant="body" leading="5" tone="muted">
               No steps captured.
             </Text>
           ) : (
@@ -115,7 +115,8 @@ export function RecordingReview({
                     </div>
                     {step.label ? (
                       <Text
-                        variant="body-tight"
+                        variant="body"
+                        leading="5"
                         tone="body"
                         className="break-words"
                       >
@@ -123,7 +124,8 @@ export function RecordingReview({
                       </Text>
                     ) : null}
                     <Text
-                      variant="small-tight"
+                      variant="small"
+                      leading="4"
                       tone="muted"
                       className="break-words"
                     >

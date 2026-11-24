@@ -20,7 +20,8 @@ export default function SlackInstalledPage() {
             {/* The page navigates on its own, so announce it rather than
                 letting a screen reader land somewhere unexplained. */}
             <Text
-              variant="body-medium"
+              variant="body"
+              weight="medium"
               tone="muted"
               role="status"
               aria-live="polite"

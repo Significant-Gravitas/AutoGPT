@@ -54,14 +54,14 @@ export function SubscriptionTierSection() {
   if (error) {
     return (
       <div className="space-y-4">
-        <Text variant="lead-medium" as="h3" tone="inherit">
+        <Text variant="lead" weight="medium" as="h3" tone="inherit">
           Subscription Plan
         </Text>
         <div
           role="alert"
           className="rounded-md border border-error/20 bg-error-surface px-3 py-2 text-error-foreground"
         >
-          <Text variant="body-tight" as="p" tone="inherit">
+          <Text variant="body" leading="5" as="p" tone="inherit">
             {error}
           </Text>
         </div>
@@ -76,14 +76,26 @@ export function SubscriptionTierSection() {
   if (currentTier === "ENTERPRISE") {
     return (
       <div className="space-y-4">
-        <Text variant="lead-medium" as="h3" tone="inherit">
+        <Text variant="lead" weight="medium" as="h3" tone="inherit">
           Subscription Plan
         </Text>
         <div className="rounded-lg border border-brand bg-accent-surface p-4 text-accent-strong">
-          <Text variant="large-semibold-tight" as="p" tone="inherit">
+          <Text
+            variant="large"
+            weight="semibold"
+            leading="6"
+            as="p"
+            tone="inherit"
+          >
             Enterprise Plan
           </Text>
-          <Text variant="body-tight" as="p" tone="secondary" className="mt-1">
+          <Text
+            variant="body"
+            leading="5"
+            as="p"
+            tone="secondary"
+            className="mt-1"
+          >
             Your Enterprise plan is managed by your administrator. Contact your
             account team for changes.
           </Text>
@@ -134,7 +146,7 @@ export function SubscriptionTierSection() {
 
   return (
     <div className="space-y-4">
-      <Text variant="lead-medium" as="h3" tone="inherit">
+      <Text variant="lead" weight="medium" as="h3" tone="inherit">
         Subscription Plan
       </Text>
 
@@ -143,10 +155,22 @@ export function SubscriptionTierSection() {
           role="status"
           className="rounded-md border border-brand/40 bg-accent-surface px-4 py-3 text-accent-strong"
         >
-          <Text variant="body-medium-tight" as="p" tone="inherit">
+          <Text
+            variant="body"
+            weight="medium"
+            leading="5"
+            as="p"
+            tone="inherit"
+          >
             Pick a plan to continue using AutoGPT.
           </Text>
-          <Text variant="body-tight" as="p" tone="inherit" className="mt-1">
+          <Text
+            variant="body"
+            leading="5"
+            as="p"
+            tone="inherit"
+            className="mt-1"
+          >
             Your account doesn&apos;t have an active subscription. Choose a tier
             below to start working with experts and running workflows.
           </Text>
@@ -158,7 +182,7 @@ export function SubscriptionTierSection() {
           role="alert"
           className="rounded-md border border-error/20 bg-error-surface px-3 py-2 text-error-foreground"
         >
-          <Text variant="body-tight" as="p" tone="inherit">
+          <Text variant="body" leading="5" as="p" tone="inherit">
             {tierError}
           </Text>
         </div>
@@ -203,12 +227,24 @@ export function SubscriptionTierSection() {
               }`}
             >
               <div className="mb-2 flex items-center justify-between">
-                <Text variant="large-semibold-tight" as="span" tone="inherit">
+                <Text
+                  variant="large"
+                  weight="semibold"
+                  leading="6"
+                  as="span"
+                  tone="inherit"
+                >
                   {tier.label}
                 </Text>
                 {isCurrent && (
                   <span className="flex rounded-pill bg-brand/10 px-2 py-0.5 text-accent-strong">
-                    <Text variant="small-medium-tight" as="span" tone="inherit">
+                    <Text
+                      variant="small"
+                      weight="medium"
+                      leading="4"
+                      as="span"
+                      tone="inherit"
+                    >
                       Current
                     </Text>
                   </span>
@@ -216,7 +252,8 @@ export function SubscriptionTierSection() {
               </div>
 
               <Text
-                variant="heading-md-bold"
+                variant="heading-md"
+                weight="bold"
                 as="p"
                 tone="inherit"
                 className="mb-1"
@@ -225,7 +262,9 @@ export function SubscriptionTierSection() {
               </Text>
               {rateLimitLabel && (
                 <Text
-                  variant="body-medium-tight"
+                  variant="body"
+                  weight="medium"
+                  leading="5"
                   as="p"
                   tone="secondary"
                   className="mb-1"
@@ -233,7 +272,13 @@ export function SubscriptionTierSection() {
                   {rateLimitLabel}
                 </Text>
               )}
-              <Text variant="body-tight" as="p" tone="muted" className="mb-4">
+              <Text
+                variant="body"
+                leading="5"
+                as="p"
+                tone="muted"
+                className="mb-4"
+              >
                 {tier.description}
               </Text>
 
@@ -263,7 +308,7 @@ export function SubscriptionTierSection() {
 
       {currentTier !== "NO_TIER" && isPaymentEnabled && (
         <div className="flex items-center justify-between gap-3">
-          <Text variant="body-tight" as="p" tone="muted">
+          <Text variant="body" leading="5" as="p" tone="muted">
             Your subscription is managed through Stripe. Upgrades take effect
             immediately. Downgrades take effect at the end of your current
             billing period.
@@ -293,7 +338,7 @@ export function SubscriptionTierSection() {
         }}
       >
         <Dialog.Content>
-          <Text variant="body-tight" as="p" tone="secondary">
+          <Text variant="body" leading="5" as="p" tone="secondary">
             {confirmDowngradeTo === "NO_TIER"
               ? `Cancelling your subscription schedules it to end at the close of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""} — no charge today and no further charges to your card. You keep your current plan and existing credits until then.`
               : `Switching to ${getTierLabel(confirmDowngradeTo ?? "")} takes effect at the end of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""} — no charge today. You keep your current plan until then. From that date your saved card is billed at the ${getTierLabel(confirmDowngradeTo ?? "")} rate.`}{" "}
@@ -328,7 +373,7 @@ export function SubscriptionTierSection() {
         }}
       >
         <Dialog.Content>
-          <Text variant="body-tight" as="p" tone="secondary">
+          <Text variant="body" leading="5" as="p" tone="secondary">
             You have a pending change to{" "}
             {getTierLabel(pendingTierFromSubscription ?? "")}
             {subscription.pending_tier_effective_at
@@ -366,7 +411,7 @@ export function SubscriptionTierSection() {
         }}
       >
         <Dialog.Content>
-          <Text variant="body-tight" as="p" tone="secondary">
+          <Text variant="body" leading="5" as="p" tone="secondary">
             {subscription.has_active_stripe_subscription
               ? `Your subscription is upgraded to ${getTierLabel(pendingUpgradeTier ?? "")} immediately. On your next invoice${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""}, your saved card is charged for the upgrade proration since today plus the next month at the new rate, with the unused portion of your current plan automatically deducted.`
               : `You'll be redirected to Stripe to enter payment details and start your ${getTierLabel(pendingUpgradeTier ?? "")} subscription.`}

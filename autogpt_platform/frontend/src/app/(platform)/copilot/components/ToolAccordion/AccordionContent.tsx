@@ -68,7 +68,9 @@ export function ContentCardTitle({
 }) {
   return (
     <Text
-      variant={size === "small" ? "small-medium-tight" : "body-medium"}
+      variant={size === "small" ? "small" : "body"}
+      weight="medium"
+      leading={size === "small" ? "4" : undefined}
       tone="emphasis"
       className={cn("truncate", className)}
     >
@@ -107,7 +109,8 @@ export function ContentCardDescription({
 }) {
   return (
     <Text
-      variant={size === "small" ? "small-tight" : "body"}
+      variant={size === "small" ? "small" : "body"}
+      leading={size === "small" ? "4" : undefined}
       tone="emphasis"
       className={cn("mt-2", className)}
     >

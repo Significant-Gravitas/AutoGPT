@@ -70,7 +70,9 @@ export default function AuthFeedback({
             <CardContent className="p-0">
               <div className="divide-y divide-separator">
                 <Text
-                  variant="body-medium-tight"
+                  variant="body"
+                  weight="medium"
+                  leading="5"
                   as="span"
                   tone="error"
                   className="my-3 block text-center"

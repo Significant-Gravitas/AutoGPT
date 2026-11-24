@@ -67,7 +67,7 @@ export function MicrosoftConnectionPanel({
           }))}
         />
       ) : (
-        <Text variant="body-medium">
+        <Text variant="body" weight="medium">
           {credential.title || credential.username}
         </Text>
       )}

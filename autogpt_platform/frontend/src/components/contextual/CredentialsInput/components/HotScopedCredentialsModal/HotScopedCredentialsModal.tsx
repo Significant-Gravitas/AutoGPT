@@ -220,7 +220,13 @@ export function HostScopedCredentialsModal({
     >
       <Dialog.Content>
         {schema.description && (
-          <Text variant="body-tight" as="p" tone="secondary" className="mb-4">
+          <Text
+            variant="body"
+            leading="5"
+            as="p"
+            tone="secondary"
+            className="mb-4"
+          >
             {schema.description}
           </Text>
         )}
@@ -254,7 +260,13 @@ export function HostScopedCredentialsModal({
 
             <div className="space-y-2">
               <FormLabel className="peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                <Text variant="body-medium-lh-none" as="span" tone="inherit">
+                <Text
+                  variant="body"
+                  weight="medium"
+                  leading="none"
+                  as="span"
+                  tone="inherit"
+                >
                   Headers
                 </Text>
               </FormLabel>

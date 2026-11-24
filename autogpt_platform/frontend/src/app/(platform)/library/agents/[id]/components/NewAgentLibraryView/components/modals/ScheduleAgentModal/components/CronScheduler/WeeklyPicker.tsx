@@ -39,7 +39,7 @@ export function WeeklyPicker({
 
   return (
     <div className="mb-8 space-y-3">
-      <Text variant="body-medium" as="span">
+      <Text variant="body" weight="medium" as="span">
         Repeats on
       </Text>
       <div className="flex flex-wrap gap-2">

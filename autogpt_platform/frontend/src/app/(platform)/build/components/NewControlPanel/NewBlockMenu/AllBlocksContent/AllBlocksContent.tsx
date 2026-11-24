@@ -60,7 +60,7 @@ export const AllBlocksContent = () => {
           {/* Category Section */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <Text variant="body-medium" tone="emphasis">
+              <Text variant="body" weight="medium" tone="emphasis">
                 {category.name && beautifyString(category.name)}
               </Text>
               <span className="rounded-pill bg-surface-hover px-1.5">
@@ -115,7 +115,8 @@ export const AllBlocksContent = () => {
                   onClick={() => handleRefetchBlocks(category.name)}
                 >
                   <Text
-                    variant="body-medium"
+                    variant="body"
+                    weight="medium"
                     as="span"
                     tone="inherit"
                     decoration="underline"

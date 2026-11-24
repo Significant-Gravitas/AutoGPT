@@ -47,7 +47,7 @@ export function SubmissionSummaryCard({
         )}
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
-        <Text variant="body-medium" as="span" className="truncate">
+        <Text variant="body" weight="medium" as="span" className="truncate">
           {agentName}
         </Text>
         {subheader ? (

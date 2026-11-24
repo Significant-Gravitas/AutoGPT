@@ -164,7 +164,7 @@ Two attributes on `<html>` set how the app looks. They are independent.
 
 The props that replace the usual restyles:
 
-- **`Text`:** `tone` (colour), `weight`, `mono`, `tabular`, `italic`, `decoration`, `transform` and `align`, on top of the `variant`. A line height that differs from the variant's is a variant of its own (`body-tight`, `small-loose`, ...), not a `leading-*` class.
+- **`Text`:** the `variant` names a type role only (`hero`, `h1` to `h5`, `heading-md`, `lead`, `large`, `body-md`, `body`, `body-sm`, `small`, `caption-sm`, `tiny`, `label`, `eyebrow`). On top of it: `tone` (colour), `weight`, `leading` (a line height that differs from the role's: `none`, `tight`, `snug`, `normal`, `relaxed`, `inherit` or the fixed steps `4`, `5`, `6`, `8`), `tracking`, `mono`, `tabular`, `italic`, `decoration`, `transform`, `narrowSize` (a step up below md, to `body` or `large`) and `align`. So `<Text variant="small" weight="medium" leading="4">`, never a `leading-*` or `font-*` class. `scripts/ds/text-variant-map.ts` lists what each old compound name (`small-medium-tight`, ...) became, and `npx tsx scripts/ds/text-variants.ts --write <dir>` rewrites a branch that still uses them (no pixel moves; `scripts/ds/text-variant-map.test.tsx` proves it).
 - **`Icon`:** `tone` (the same values as `Text`, from `src/components/styles/tones.ts`; without one the icon takes the colour around it), `spin` for a loading indicator and `motion` (`transform`, `colors`, `opacity`) for an icon that animates a class change, such as a chevron's rotation.
 - **`Button`:** the quiet `ghost-muted`, `ghost-subtle` and `ghost-danger` variants, the `row` (32px), `inline`, `inline-xs` (no box, for a link in copy) and `icon-2xs` (24px) sizes, and `shape` (`pill`, `rounded`, `soft`) for the corner radius.
 
@@ -190,7 +190,7 @@ No arbitrary values except for layout and transitions (`w-[320px]`, `top-[7px]` 
 
 ## Typography
 
-Text renders through the `Text` atom by default: `<Text variant="body">`, with `as` for the tag (`<Text variant="small" as="span">`), `tone` for the colour and `weight`, `mono` or `tabular` to adjust the variant. `<Text>` owns its typography and colour; `className` takes layout, truncation, wrapping and alignment only (the `Text` contract of `design-system/no-restyle`).
+Text renders through the `Text` atom by default: `<Text variant="body">`, with `as` for the tag (`<Text variant="small" as="span">`), `tone` for the colour and `weight`, `leading`, `mono` or `tabular` to adjust the role. `<Text>` owns its typography and colour; `className` takes layout, truncation, wrapping and alignment only (the `Text` contract of `design-system/no-restyle`).
 
 Use a scale class only where `Text` can't render the element identically, and inside primitives. The type scale is the app's only set of text sizes: its values are in `src/app/tokens/typography.css` (one `:root` block, mapped to `text-<step>` by `@theme` in `globals.css`), so a redesign changes that file and every size follows. Each step bundles its line-height:
 

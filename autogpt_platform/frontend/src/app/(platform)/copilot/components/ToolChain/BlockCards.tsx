@@ -77,14 +77,21 @@ export function BlockListCard({ blocks }: BlockListCardProps) {
             </div>
             <div className="min-w-0 flex-1">
               <Text
-                variant="body-sm-medium-inherit"
+                variant="body-sm"
+                weight="medium"
+                leading="inherit"
                 tone="emphasis"
                 className="truncate"
               >
                 {getBlockDisplayName(block.name, block) ?? "Block"}
               </Text>
               {str(block, "description") && (
-                <Text variant="small-tight" tone="muted" className="truncate">
+                <Text
+                  variant="small"
+                  leading="4"
+                  tone="muted"
+                  className="truncate"
+                >
                   {str(block, "description")}
                 </Text>
               )}
@@ -119,7 +126,9 @@ export function BlockOutputCard({ output }: BlockOutputCardProps) {
           />
         </div>
         <Text
-          variant="body-sm-medium-inherit"
+          variant="body-sm"
+          weight="medium"
+          leading="inherit"
           tone="emphasis"
           className="min-w-0 flex-1 truncate"
         >

@@ -14,7 +14,8 @@ export function HomeHeader({ dashboard }: Props) {
     <header className="flex items-end justify-between gap-6 px-1 pt-1 pb-5">
       <div className="min-w-0">
         <Text
-          variant="lead-semibold"
+          variant="lead"
+          weight="semibold"
           as="h2"
           tone="primary"
           tracking="title"
@@ -41,7 +42,7 @@ export function HomeHeader({ dashboard }: Props) {
         dateTime={new Date(dashboard.generated_at).toISOString()}
         className="shrink-0 text-right"
       >
-        <Text variant="large-medium" tone="primary">
+        <Text variant="large" weight="medium" tone="primary">
           {date.weekday}
         </Text>
         <Text variant="body" tone="primary">

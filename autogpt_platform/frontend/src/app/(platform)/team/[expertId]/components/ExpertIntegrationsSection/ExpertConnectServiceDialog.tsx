@@ -145,7 +145,12 @@ export function ExpertConnectServiceDialog({
                     className="flex flex-col gap-4"
                   >
                     <div className="flex flex-col gap-1">
-                      <Text variant="lead-medium" as="h3" tone="primary">
+                      <Text
+                        variant="lead"
+                        weight="medium"
+                        as="h3"
+                        tone="primary"
+                      >
                         Connect a service for {expertName}
                       </Text>
                       <Text variant="small" tone="muted">

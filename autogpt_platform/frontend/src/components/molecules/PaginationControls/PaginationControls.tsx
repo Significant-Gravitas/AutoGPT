@@ -47,7 +47,8 @@ export function PaginationControls({
         Previous
       </button>
       <Text
-        variant="body-tight"
+        variant="body"
+        leading="5"
         as="span"
         tone="inherit"
         data-slot="pagination-controls-label"

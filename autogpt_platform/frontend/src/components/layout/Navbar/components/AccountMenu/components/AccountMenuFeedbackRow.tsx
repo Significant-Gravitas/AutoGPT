@@ -40,7 +40,8 @@ export function AccountMenuFeedbackRow() {
         />
       </span>
       <Text
-        variant="body-tight"
+        variant="body"
+        leading="5"
         as="span"
         tone="inherit"
         className="relative z-raised flex-1 truncate"

@@ -69,7 +69,8 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
       <div className="flex flex-1 flex-col items-start gap-0.5">
         {title && (
           <Text
-            variant="body-medium"
+            variant="body"
+            weight="medium"
             as="span"
             tone={rest.disabled ? "subtle" : "emphasis"}
             className="line-clamp-1"
@@ -79,7 +80,8 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
         )}
         <div className="flex items-center space-x-2.5">
           <Text
-            variant="small-loose"
+            variant="small"
+            leading="5"
             as="span"
             tone={rest.disabled ? "subtle" : "muted"}
             className="truncate"
@@ -87,19 +89,32 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             By {creator_name}
           </Text>
 
-          <Text variant="body-medium-tight" as="span" tone="subtle">
+          <Text
+            variant="body"
+            weight="medium"
+            leading="5"
+            as="span"
+            tone="subtle"
+          >
             •
           </Text>
 
           <Text
-            variant="small-loose"
+            variant="small"
+            leading="5"
             as="span"
             tone={rest.disabled ? "subtle" : "muted"}
             className="truncate"
           >
             {number_of_runs} runs
           </Text>
-          <Text variant="body-medium-tight" as="span" tone="subtle">
+          <Text
+            variant="body"
+            weight="medium"
+            leading="5"
+            as="span"
+            tone="subtle"
+          >
             •
           </Text>
           <Link
@@ -108,7 +123,10 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             onClick={(e) => e.stopPropagation()}
           >
             <Text
-              variant="small-medium-loose-underline"
+              variant="small"
+              weight="medium"
+              leading="5"
+              decoration="underline"
               as="span"
               tone="info-strong"
             >

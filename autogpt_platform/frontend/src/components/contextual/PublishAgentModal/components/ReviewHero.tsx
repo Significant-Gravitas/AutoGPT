@@ -128,7 +128,12 @@ export function ReviewHero({
         transition={{ duration: duration.base, ease: ease.out, delay: 0.12 }}
         className="mt-5 flex max-w-md flex-col items-center gap-2 px-2 text-center"
       >
-        <Text variant="lead-medium" as="h2" data-testid="view-agent-name">
+        <Text
+          variant="lead"
+          weight="medium"
+          as="h2"
+          data-testid="view-agent-name"
+        >
           {hero.title}
         </Text>
         <Text variant="body" tone="secondary">

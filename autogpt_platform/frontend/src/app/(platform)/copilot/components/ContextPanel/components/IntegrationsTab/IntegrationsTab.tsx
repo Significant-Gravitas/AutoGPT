@@ -247,7 +247,8 @@ function IntegrationRow({
       <span className="flex min-w-0 flex-1 flex-col">
         <Text
           tone="primary"
-          variant="body-medium"
+          variant="body"
+          weight="medium"
           as="span"
           className="truncate"
         >

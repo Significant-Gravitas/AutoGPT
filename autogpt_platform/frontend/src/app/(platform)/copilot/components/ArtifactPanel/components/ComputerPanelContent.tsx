@@ -130,7 +130,9 @@ export function ComputerPanelContent({ sessionId }: Props) {
         </div>
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-base p-6 text-center">
-          <Text variant="small-medium">Screen is not on this panel yet</Text>
+          <Text variant="small" weight="medium">
+            Screen is not on this panel yet
+          </Text>
           <Text tone="muted" variant="small" className="max-w-xs">
             {isExpert
               ? "This chat runs on the expert's own computer. Turn on its screen to watch it work in a real browser, or ask for one in the chat."

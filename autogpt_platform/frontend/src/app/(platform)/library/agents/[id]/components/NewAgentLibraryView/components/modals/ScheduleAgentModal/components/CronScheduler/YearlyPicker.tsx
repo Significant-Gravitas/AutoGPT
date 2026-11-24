@@ -35,7 +35,7 @@ export function YearlyPicker({
 
   return (
     <div className="mb-6 space-y-2">
-      <Text variant="body-medium" as="span">
+      <Text variant="body" weight="medium" as="span">
         Months
       </Text>
       <div className="flex gap-2">

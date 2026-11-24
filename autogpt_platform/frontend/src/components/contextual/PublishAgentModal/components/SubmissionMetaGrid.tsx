@@ -28,7 +28,8 @@ export function SubmissionMetaGrid({ items, shouldReduceMotion }: Props) {
             {item.label}
           </Text>
           <Text
-            variant="small-medium"
+            variant="small"
+            weight="medium"
             as="span"
             title={item.title}
             className="truncate"

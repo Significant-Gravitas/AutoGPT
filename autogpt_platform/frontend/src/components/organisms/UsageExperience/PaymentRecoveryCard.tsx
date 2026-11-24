@@ -26,7 +26,7 @@ export function PaymentRecoveryCard({ payment, fallback }: Props) {
         >
           <Icon icon={CreditCardIcon} size={17} />
         </span>
-        <Text variant="small-medium" tone="secondary">
+        <Text variant="small" weight="medium" tone="secondary">
           Payment
         </Text>
       </div>

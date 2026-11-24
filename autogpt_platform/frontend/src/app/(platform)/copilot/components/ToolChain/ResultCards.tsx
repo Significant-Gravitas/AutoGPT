@@ -90,7 +90,9 @@ export function StatusCard({ label, ok }: StatusCardProps) {
         />
       )}
       <Text
-        variant="body-sm-medium-inherit"
+        variant="body-sm"
+        weight="medium"
+        leading="inherit"
         tone="body"
         className="min-w-0 truncate"
       >
@@ -107,7 +109,8 @@ export function StatCard({ value, label }: StatCardProps) {
         {value.toLocaleString()}
       </span>
       <Text
-        variant="small-tight"
+        variant="small"
+        leading="4"
         as="span"
         tone="muted"
         className="min-w-0 truncate"
@@ -155,19 +158,22 @@ export function LinkCard({ url, title, meta, secret }: LinkCardProps) {
       </div>
       <div className="min-w-0 flex-1">
         <Text
-          variant="body-sm-medium-inherit"
+          variant="body-sm"
+          weight="medium"
+          leading="inherit"
           tone="emphasis"
           className="truncate"
         >
           {title ?? domain}
         </Text>
-        <Text variant="small-tight" tone="muted" className="truncate">
+        <Text variant="small" leading="4" tone="muted" className="truncate">
           {title ? domain : url}
         </Text>
       </div>
       {meta && (
         <Text
-          variant="small-tight"
+          variant="small"
+          leading="4"
           as="span"
           tone="subtle"
           className="shrink-0"

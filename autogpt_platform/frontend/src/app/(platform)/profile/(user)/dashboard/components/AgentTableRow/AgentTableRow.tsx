@@ -92,7 +92,8 @@ export const AgentTableRow = ({
             <div className="flex items-center gap-2">
               <Text
                 variant="h3"
-                size="large-medium"
+                size="large"
+                weight="medium"
                 tone="emphasis"
                 className="line-clamp-1"
               >

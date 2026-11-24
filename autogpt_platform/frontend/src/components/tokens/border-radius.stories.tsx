@@ -133,7 +133,8 @@ export function AllVariants() {
               </div>
               <div className="rounded-lg border border-border-base p-4">
                 <Text
-                  variant="body-medium"
+                  variant="body"
+                  weight="medium"
                   className="mb-2 font-semibold text-foreground-emphasis"
                 >
                   Directional Classes
@@ -216,7 +217,8 @@ export function AllVariants() {
             >
               <div className="flex w-32 flex-col">
                 <Text
-                  variant="body-medium"
+                  variant="body"
+                  weight="medium"
                   className="font-mono text-foreground-emphasis"
                 >
                   {radius.name}

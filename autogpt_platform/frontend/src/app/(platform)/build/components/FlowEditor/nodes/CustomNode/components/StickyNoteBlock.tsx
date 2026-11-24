@@ -42,7 +42,7 @@ export const StickyNoteBlock = ({ data, nodeId }: StickyNoteBlockType) => {
       )}
       style={{ "--note-angle": `${angle}deg` } as CSSProperties}
     >
-      <Text variant="h3-tracking-tight" tone="body">
+      <Text variant="h3" tracking="tight" tone="body">
         Notes #{nodeId.split("-")[0]}
       </Text>
       <FormCreator

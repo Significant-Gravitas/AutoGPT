@@ -30,7 +30,7 @@ export function BrowserNotificationsCard({ index = 0 }: Props) {
     >
       <div className="flex h-fit flex-col gap-4 rounded-large border border-border-base bg-surface px-4 py-3 shadow-message-table">
         <div className="flex flex-col gap-1">
-          <Text variant="body-medium" as="span">
+          <Text variant="body" weight="medium" as="span">
             Browser
           </Text>
           {/* Unlike the email settings above, these live in this browser's

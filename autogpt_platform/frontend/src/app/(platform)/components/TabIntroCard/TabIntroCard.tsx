@@ -145,7 +145,7 @@ export function TabIntroCard({
             </div>
 
             <div className="flex flex-col gap-3 px-7 pt-6 pb-7 text-left">
-              <Text variant="lead-semibold" tone="primary" as="h3">
+              <Text variant="lead" weight="semibold" tone="primary" as="h3">
                 {title}
               </Text>
               <Text variant="large" tone="secondary">

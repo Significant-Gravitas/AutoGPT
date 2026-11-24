@@ -56,7 +56,7 @@ export function NeedsAttentionRow({
             href={getReviewLink(review)}
             data-slot="needs-attention-row-link"
           >
-            <Text variant="body-medium" className="truncate">
+            <Text variant="body" weight="medium" className="truncate">
               {title}
             </Text>
             {subtitle ? (

@@ -36,7 +36,7 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
       className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-1 px-4">
-        <Text variant="body-medium" as="span">
+        <Text variant="body" weight="medium" as="span">
           Your links
         </Text>
         <Text variant="small" tone="muted">

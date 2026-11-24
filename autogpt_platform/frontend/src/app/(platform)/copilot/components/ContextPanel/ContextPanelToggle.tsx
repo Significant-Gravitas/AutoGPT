@@ -112,7 +112,9 @@ export function ContextPanelToggle({
               />
               {documentCount > 0 && (
                 <Text
-                  variant="small-medium-tight"
+                  variant="small"
+                  weight="medium"
+                  leading="4"
                   as="span"
                   tone="emphasis-soft"
                 >

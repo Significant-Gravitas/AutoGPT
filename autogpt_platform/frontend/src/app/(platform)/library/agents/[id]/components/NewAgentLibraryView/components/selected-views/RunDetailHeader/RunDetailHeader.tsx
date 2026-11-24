@@ -41,7 +41,7 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
                   {run.is_dry_run && (
                     <div className="inline-flex items-center gap-1 rounded-md bg-warning-surface p-1 text-warning-foreground">
                       <Icon icon={FlaskConicalIcon} size={16} />
-                      <Text variant="small-medium" tone="warning">
+                      <Text variant="small" weight="medium" tone="warning">
                         Simulated
                       </Text>
                     </div>
@@ -50,7 +50,7 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
               ) : scheduleRecurrence ? (
                 <div className="inline-flex items-center gap-1 rounded-md bg-warning-surface p-1 text-yellow-foreground">
                   <Icon icon={TimeScheduleIcon} size={16} />
-                  <Text variant="small-medium" tone="inherit">
+                  <Text variant="small" weight="medium" tone="inherit">
                     Scheduled
                   </Text>
                 </div>

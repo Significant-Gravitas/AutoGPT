@@ -2,7 +2,7 @@ import { isComposingEvent } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import { forwardRef, ReactNode, useState } from "react";
 import CurrencyInput from "react-currency-input-field";
-import { Text } from "../Text/Text";
+import { Text, type TextProps } from "../Text/Text";
 import type { Variant } from "../Text/helpers";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { BaseInput, type BaseInputProps } from "./BaseInput";
@@ -28,6 +28,7 @@ export interface TextFieldProps
   hint?: ReactNode;
   size?: "small" | "medium";
   labelVariant?: Variant;
+  labelWeight?: TextProps["weight"];
   labelClassName?: string;
   labelTooltip?: string;
   wrapperClassName?: string;
@@ -90,7 +91,8 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
     hint,
     error,
     size = "medium",
-    labelVariant = "large-medium",
+    labelVariant = "large",
+    labelWeight = "medium",
     labelClassName,
     labelTooltip,
     wrapperClassName,
@@ -322,7 +324,8 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
       >
         <Text
           data-slot="input-error"
-          variant="small-medium"
+          variant="small"
+          weight="medium"
           as="span"
           tone="error"
           className="block"
@@ -347,6 +350,7 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
             <Text
               data-slot="input-label-text"
               variant={labelVariant}
+              weight={labelWeight}
               as="span"
               tone="base"
               // oxlint-disable-next-line design-system/require-static-classes -- labelClassName is a caller override that existing call sites outside the design system still use

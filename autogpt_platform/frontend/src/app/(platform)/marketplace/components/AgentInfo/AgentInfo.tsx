@@ -103,7 +103,7 @@ export const AgentInfo = ({
         {/* Version Header */}
         <div className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Text variant="body-semibold" tone="primary">
+            <Text variant="body" weight="semibold" tone="primary">
               Version {versionInfo.version}.0
             </Text>
             {versionInfo.isCurrentVersion && (
@@ -227,7 +227,9 @@ export const AgentInfo = ({
                 data-testid="agent-download-button"
               >
                 <Text
-                  variant="body-medium-tight"
+                  variant="body"
+                  weight="medium"
+                  leading="5"
                   as="span"
                   tone="inherit"
                   decoration="underline"

@@ -93,7 +93,7 @@ export function NpsCard({
           </div>
           {score !== null ? (
             <>
-              <Text variant="body-medium" tone="primary">
+              <Text variant="body" weight="medium" tone="primary">
                 {followUpFor(score)}
               </Text>
               <Textarea

@@ -34,7 +34,7 @@ export function OttoMistakeCard({
       <div className="flex items-start gap-3">
         <AutopilotAvatar size={32} className="ring-1 ring-border-base" />
         <div className="flex flex-1 flex-col gap-0.5">
-          <Text variant="body-medium" tone="primary">
+          <Text variant="body" weight="medium" tone="primary">
             Help the team fix this
           </Text>
           <Text variant="small" tone="muted">

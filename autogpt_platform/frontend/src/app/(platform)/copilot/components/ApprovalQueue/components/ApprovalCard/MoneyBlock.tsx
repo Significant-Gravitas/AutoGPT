@@ -44,7 +44,7 @@ export function MoneyBlock({ spend }: Props) {
           style={{ width: `${share * 100}%` }}
         />
       </div>
-      <Text variant="small-tight" tone="muted">
+      <Text variant="small" leading="4" tone="muted">
         Approving runs this step and adds {dollars(spend.unit)} to this
         chat&apos;s ceiling.
       </Text>

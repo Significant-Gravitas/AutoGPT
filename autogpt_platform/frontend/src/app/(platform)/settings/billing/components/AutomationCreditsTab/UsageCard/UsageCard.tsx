@@ -51,7 +51,7 @@ export function UsageCard({ index = 0 }: Props) {
   return (
     <motion.section {...sectionMotion} className="flex w-full flex-col gap-2">
       <div className="px-4">
-        <Text variant="body-medium" as="span">
+        <Text variant="body" weight="medium" as="span">
           Usage
         </Text>
       </div>
@@ -60,7 +60,7 @@ export function UsageCard({ index = 0 }: Props) {
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div className="flex items-baseline gap-2">
             {/* oxlint-disable-next-line design-system/no-restyle -- the spend total uses tabular figures */}
-            <Text variant="large-medium" as="span" tabular>
+            <Text variant="large" weight="medium" as="span" tabular>
               ${totalSpent.toFixed(2)}
             </Text>
             <Text variant="body" as="span" tone="muted">

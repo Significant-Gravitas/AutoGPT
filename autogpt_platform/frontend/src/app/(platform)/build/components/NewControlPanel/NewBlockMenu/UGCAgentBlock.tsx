@@ -63,7 +63,8 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
       <div className="flex flex-1 flex-col items-start gap-0.5">
         {title && (
           <Text
-            variant="body-medium"
+            variant="body"
+            weight="medium"
             as="span"
             tone={rest.disabled ? "subtle" : "emphasis"}
             className="line-clamp-1"
@@ -74,7 +75,8 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
         <div className="flex items-center space-x-1.5">
           {edited_time && (
             <Text
-              variant="small-loose"
+              variant="small"
+              leading="5"
               as="span"
               tone={rest.disabled ? "subtle" : "muted"}
               className="line-clamp-1"
@@ -83,12 +85,19 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
             </Text>
           )}
 
-          <Text variant="body-medium-tight" as="span" tone="subtle">
+          <Text
+            variant="body"
+            weight="medium"
+            leading="5"
+            as="span"
+            tone="subtle"
+          >
             •
           </Text>
 
           <Text
-            variant="small-loose"
+            variant="small"
+            leading="5"
             as="span"
             tone={rest.disabled ? "subtle" : "muted"}
             className="line-clamp-1"
@@ -98,7 +107,9 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
 
           <span className="rounded-xl bg-surface-active px-2">
             <Text
-              variant="small-medium-loose"
+              variant="small"
+              weight="medium"
+              leading="5"
               as="span"
               tone="muted"
               className="block"

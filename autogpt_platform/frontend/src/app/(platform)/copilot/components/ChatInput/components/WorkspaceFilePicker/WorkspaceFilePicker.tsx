@@ -87,7 +87,7 @@ export function WorkspaceFilePicker({
                   onCheckedChange={picker.setExpertOnly}
                 />
                 <label htmlFor="picker-expert-only">
-                  <Text tone="body" variant="small-medium" as="span">
+                  <Text tone="body" variant="small" weight="medium" as="span">
                     Only {who}&rsquo;s files
                   </Text>
                 </label>

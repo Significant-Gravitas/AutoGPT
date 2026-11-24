@@ -128,7 +128,12 @@ export function SubmissionItem({
                   className="inline-flex min-w-0 items-center gap-1 truncate text-foreground-base hover:underline"
                   data-testid="submission-marketplace-link"
                 >
-                  <Text variant="body-medium" as="span" className="truncate">
+                  <Text
+                    variant="body"
+                    weight="medium"
+                    as="span"
+                    className="truncate"
+                  >
                     {submission.name}
                   </Text>
                   <UIIcon
@@ -140,7 +145,12 @@ export function SubmissionItem({
                   />
                 </Link>
               ) : (
-                <Text variant="body-medium" as="span" className="truncate">
+                <Text
+                  variant="body"
+                  weight="medium"
+                  as="span"
+                  className="truncate"
+                >
                   {submission.name}
                 </Text>
               )}

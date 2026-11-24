@@ -104,7 +104,8 @@ export function ExpertWorkflowCard({
       <div className="pointer-events-none relative flex flex-1 flex-col px-3 pt-2.5 pb-3">
         <div className="hyphens-auto">
           <Text
-            variant="large-medium"
+            variant="large"
+            weight="medium"
             tone="primary"
             className="line-clamp-2 break-words"
           >

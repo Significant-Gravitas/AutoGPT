@@ -19,7 +19,7 @@ export function TourAgentCard({ agent, runCompleted }: Props) {
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border-base/70 bg-surface p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
-        <Text variant="large-medium" tone="primary">
+        <Text variant="large" weight="medium" tone="primary">
           {agent.name}
         </Text>
         <span

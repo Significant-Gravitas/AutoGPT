@@ -17,7 +17,7 @@ export function StorageBar() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
-        <Text tone="body" variant="body-medium">
+        <Text tone="body" variant="body" weight="medium">
           File storage
         </Text>
         <Text variant="body" tone="muted" tabular>

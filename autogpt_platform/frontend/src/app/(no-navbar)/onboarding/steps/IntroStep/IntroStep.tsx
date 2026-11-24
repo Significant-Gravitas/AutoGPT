@@ -44,7 +44,7 @@ export function IntroStep({ slide }: Props) {
         >
           {eyebrow && (
             <span className="mb-3 rounded-pill bg-accent-surface px-3 py-1 ring-1 ring-accent-strong/15 md:mb-4">
-              <Text as="span" variant="body-medium" tone="accent">
+              <Text as="span" variant="body" weight="medium" tone="accent">
                 {eyebrow}
               </Text>
             </span>

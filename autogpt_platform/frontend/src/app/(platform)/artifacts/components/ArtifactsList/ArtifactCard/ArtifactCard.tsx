@@ -82,7 +82,8 @@ export function ArtifactCard({ file, onOpen, index = 0 }: Props) {
           </span>
           <div className="flex min-w-0 flex-1 flex-col">
             <Text
-              variant="body-medium"
+              variant="body"
+              weight="medium"
               tone="primary"
               className="truncate"
               title={file.name}

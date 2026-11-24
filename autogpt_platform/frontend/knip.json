@@ -13,6 +13,7 @@
     "scripts/check-token-equivalence.ts",
     "scripts/ds/alias-to-role.ts",
     "scripts/ds/palette-to-role.ts",
+    "scripts/ds/text-variants.ts",
     "scripts/screenshot-pages.ts"
   ],
   "ignoreDependencies": [

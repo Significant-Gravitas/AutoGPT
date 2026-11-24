@@ -38,7 +38,8 @@ export const FilterChip: React.FC<Props> = ({
         {...rest}
       >
         <Text
-          variant="body-medium"
+          variant="body"
+          weight="medium"
           as="span"
           tone={
             rest.disabled

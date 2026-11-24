@@ -18,7 +18,7 @@ export function LoadingView({
         <div className="animate-spin text-foreground-strong">
           <Icon icon={Loading03Icon} size={48} />
         </div>
-        <Text variant="body-medium" tone="muted">
+        <Text variant="body" weight="medium" tone="muted">
           {message}
         </Text>
       </div>

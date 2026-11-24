@@ -31,7 +31,8 @@ export function StatsBlockView({ block }: Props) {
           >
             <dt>
               <Text
-                variant="small-medium"
+                variant="small"
+                weight="medium"
                 tone="secondary"
                 className="break-words"
               >
@@ -43,7 +44,12 @@ export function StatsBlockView({ block }: Props) {
                 {item.value}
               </Text>
               {item.change ? (
-                <Text variant="small-medium" tone={TEXT_TONE[tone]} tabular>
+                <Text
+                  variant="small"
+                  weight="medium"
+                  tone={TEXT_TONE[tone]}
+                  tabular
+                >
                   {item.change}
                 </Text>
               ) : null}

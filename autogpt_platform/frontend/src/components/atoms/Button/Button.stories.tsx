@@ -337,7 +337,7 @@ function renderCompactVariants() {
     <div className="space-y-6 p-8">
       {COMPACT_VARIANTS.map((variant) => (
         <div key={variant} className="space-y-2">
-          <Text variant="small-medium" tone="muted">
+          <Text variant="small" weight="medium" tone="muted">
             {variant}
           </Text>
           <div className="flex flex-wrap items-center gap-3">
@@ -386,7 +386,7 @@ function renderVariantMatrix() {
     <div className="space-y-6 p-8">
       {MATRIX_VARIANTS.map((variant) => (
         <div key={variant} className="space-y-2">
-          <Text variant="small-medium" tone="muted">
+          <Text variant="small" weight="medium" tone="muted">
             {variant}
           </Text>
           <div className="flex flex-wrap items-center gap-3">

@@ -39,7 +39,7 @@ export function SubmissionStatus({ status }: Props) {
       )}
     >
       <div className={cn("h-3 w-3 rounded-full", config.dot)} />
-      <Text variant="body-tight" as="div" tone="secondary">
+      <Text variant="body" leading="5" as="div" tone="secondary">
         {config.label}
       </Text>
     </div>

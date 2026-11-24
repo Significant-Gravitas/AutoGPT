@@ -56,7 +56,9 @@ export function BlocksTab() {
         <span className="flex text-foreground-subtle">
           <Icon icon={SecurityBlockIcon} size={32} />
         </span>
-        <Text variant="large-medium">No active blocks</Text>
+        <Text variant="large" weight="medium">
+          No active blocks
+        </Text>
         <Text variant="body" className="max-w-[420px]" tone="secondary">
           Block an address from an account&apos;s Sign-ins, or an email domain
           from its Related accounts.

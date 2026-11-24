@@ -43,7 +43,10 @@ export function CollapsibleNavGroup({
           <CollapsibleTrigger>
             <Text
               as="span"
-              variant="body-sm-medium-inherit-touch"
+              variant="body-sm"
+              weight="medium"
+              leading="inherit"
+              narrowSize="body"
               tone="inherit"
             >
               {label}

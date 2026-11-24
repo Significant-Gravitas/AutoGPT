@@ -246,7 +246,8 @@ function IntegrationOption({
           {integration.name}
         </span>
         <Text
-          variant="small-tight"
+          variant="small"
+          leading="4"
           as="span"
           tone="muted"
           className="block truncate"
@@ -291,7 +292,13 @@ function FolderOption({
     <>
       <Icon icon={Folder01Icon} tone="primary" className="h-4 w-4 shrink-0" />
       <span className="min-w-0 flex-1 truncate">{folder.name}</span>
-      <Text variant="small-tight" as="span" tone="muted" className="shrink-0">
+      <Text
+        variant="small"
+        leading="4"
+        as="span"
+        tone="muted"
+        className="shrink-0"
+      >
         {count}
       </Text>
     </>

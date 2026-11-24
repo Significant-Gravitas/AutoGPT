@@ -37,7 +37,11 @@ export function ExpertBudgetSection({ expert, color, className }: Props) {
     >
       <div className="flex items-center justify-between gap-2 tabular-nums">
         <div className="flex items-center gap-1">
-          <Text variant="body-medium" tone={color ? "inherit" : "secondary"}>
+          <Text
+            variant="body"
+            weight="medium"
+            tone={color ? "inherit" : "secondary"}
+          >
             Budget
           </Text>
           <Button
@@ -52,7 +56,11 @@ export function ExpertBudgetSection({ expert, color, className }: Props) {
             onClick={() => setIsEditOpen(true)}
           />
         </div>
-        <Text variant="body-medium" tone={color ? "inherit" : "secondary"}>
+        <Text
+          variant="body"
+          weight="medium"
+          tone={color ? "inherit" : "secondary"}
+        >
           {weeklySpend
             ? `${creditsToUsdLabel(weeklySpend.spent)} / ${creditsToUsdLabel(weeklySpend.budget)}`
             : "No budget"}

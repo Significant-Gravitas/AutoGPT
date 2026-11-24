@@ -28,7 +28,7 @@ export function SpendByAgentList({ rollups, agentLookup, totalCents }: Props) {
   return (
     <section className="flex flex-col gap-2 lg:mt-4">
       <div className="flex items-baseline justify-between gap-2 lg:mb-2">
-        <Text variant="body-medium" tone="emphasis">
+        <Text variant="body" weight="medium" tone="emphasis">
           Spend by workflow
         </Text>
         <Text variant="small" tone="subtle">
@@ -56,7 +56,7 @@ export function SpendByAgentList({ rollups, agentLookup, totalCents }: Props) {
                   {label}
                 </Text>
                 <div className="tabular-nums">
-                  <Text variant="body-medium" tone="emphasis">
+                  <Text variant="body" weight="medium" tone="emphasis">
                     {formatCents(rollup.cost_cents)}
                     <Text
                       variant="small"
