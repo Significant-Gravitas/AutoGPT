@@ -2,6 +2,7 @@
 
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
+import { preloadMessageResponse } from "@/components/organisms/Message/Message";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import dynamic from "next/dynamic";
 import { parseAsString, useQueryState } from "nuqs";
@@ -13,6 +14,9 @@ import { FileDropZone } from "./components/FileDropZone/FileDropZone";
 import { NotificationBanner } from "./components/NotificationBanner/NotificationBanner";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
 import { useIsMobile } from "./useIsMobile";
+
+// A chat's messages arrive after hydration; the renderer downloads during it.
+if (typeof window !== "undefined") void preloadMessageResponse();
 
 const ArtifactPanel = dynamic(
   () =>

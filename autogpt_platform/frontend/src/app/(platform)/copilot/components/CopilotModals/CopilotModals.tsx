@@ -1,15 +1,25 @@
 "use client";
 
 import { ConnectServiceDialog } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/ConnectServiceDialog";
-import { IntegrationsPanel } from "@/components/contextual/IntegrationsPanel/IntegrationsPanel";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { SchedulesPanel } from "@/components/contextual/SchedulesPanel/SchedulesPanel";
 import { SkillsPanel } from "@/components/contextual/SkillsPanel/SkillsPanel";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { grantToExpert } from "@/services/experts/grant-to-expert";
 import { useQueryClient } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import { useCopilotUIStore } from "../../store";
 import { useCopilotModal } from "../../useCopilotModal";
+
+// The integrations list loads when its dialog first opens.
+const IntegrationsPanel = dynamic(
+  () =>
+    import("@/components/contextual/IntegrationsPanel/IntegrationsPanel").then(
+      (module) => module.IntegrationsPanel,
+    ),
+  { ssr: false, loading: () => <Skeleton className="h-40 w-full" /> },
+);
 
 export function CopilotModals() {
   const { modal, closeModal } = useCopilotModal();

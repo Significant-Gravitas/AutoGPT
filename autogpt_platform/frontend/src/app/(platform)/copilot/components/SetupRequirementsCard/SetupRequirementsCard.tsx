@@ -4,9 +4,10 @@ import { useStableCallback } from "@/hooks/useStableCallback";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
-import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { LazyFormRenderer as FormRenderer } from "@/components/renderers/InputRenderer/LazyFormRenderer";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
+import dynamic from "next/dynamic";
 import { useContext, useEffect, useId, useRef, useState } from "react";
 import {
   ChainActionsContext,
@@ -41,6 +42,15 @@ import {
   reportCredentialPicks,
 } from "./helpers";
 import { CredentialRejectionNotice } from "../CredentialRejectionNotice/CredentialRejectionNotice";
+
+// The credentials picker loads with the card, not with the chat.
+const CredentialsGroupedView = dynamic(
+  () =>
+    import(
+      "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView"
+    ).then((module) => module.CredentialsGroupedView),
+  { ssr: false, loading: () => <Skeleton className="h-10 w-full" /> },
+);
 
 /**
  * Single credential/setup card rendered inline in copilot chats.

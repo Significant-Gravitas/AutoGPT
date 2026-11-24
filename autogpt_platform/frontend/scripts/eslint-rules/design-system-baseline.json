@@ -456,7 +456,7 @@
   "src/components/contextual/OutputRenderers/renderers/CodeRenderer.tsx": {
     "no-inline-styles": 4
   },
-  "src/components/contextual/OutputRenderers/renderers/MarkdownRenderer.tsx": {
+  "src/components/contextual/OutputRenderers/renderers/MarkdownContent.tsx": {
     "no-restyle": 2
   },
   "src/components/contextual/OutputRenderers/renderers/VideoRenderer.tsx": {

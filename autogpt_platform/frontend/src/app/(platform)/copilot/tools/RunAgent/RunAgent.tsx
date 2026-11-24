@@ -19,7 +19,6 @@ import {
 } from "./helpers";
 import { ExecutionStartedCard } from "./components/ExecutionStartedCard/ExecutionStartedCard";
 import { useLiveRunStatus } from "./components/ExecutionStartedCard/useLiveRunStatus";
-import { AgentDetailsCard } from "./components/AgentDetailsCard/AgentDetailsCard";
 import { SetupRequirementsCard } from "../../components/SetupRequirementsCard/SetupRequirementsCard";
 import { ErrorCard } from "./components/ErrorCard/ErrorCard";
 import {
@@ -27,6 +26,17 @@ import {
   reportCorruptedToolOutput,
 } from "../../helpers/toolOutput";
 import { Text } from "@/components/atoms/Text/Text";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import dynamic from "next/dynamic";
+
+// The inputs form and its validator load when a workflow's details first show.
+const AgentDetailsCard = dynamic(
+  () =>
+    import("./components/AgentDetailsCard/AgentDetailsCard").then(
+      (module) => module.AgentDetailsCard,
+    ),
+  { ssr: false, loading: () => <Skeleton className="h-24 w-full" /> },
+);
 
 export interface RunAgentToolPart {
   type: string;

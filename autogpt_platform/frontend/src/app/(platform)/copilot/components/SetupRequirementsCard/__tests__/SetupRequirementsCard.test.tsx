@@ -133,7 +133,7 @@ describe("SetupRequirementsCard (edit mode)", () => {
     expect(screen.getByText("Please configure credentials")).toBeDefined();
   });
 
-  it("renders credential section when missing credentials are provided", () => {
+  it("renders credential section when missing credentials are provided", async () => {
     render(
       <SetupRequirementsCard
         output={makeOutput({
@@ -146,7 +146,7 @@ describe("SetupRequirementsCard (edit mode)", () => {
         })}
       />,
     );
-    expect(screen.getByTestId("credentials-grouped-view")).toBeDefined();
+    expect(await screen.findByTestId("credentials-grouped-view")).toBeDefined();
   });
 
   it("uses custom credentials label when provided", () => {
