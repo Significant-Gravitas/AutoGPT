@@ -88,6 +88,7 @@ const components: Components = {
   // Creator markdown carries no dimensions, so the shift is contained by the
   // radius and max-width rather than eliminated.
   img: ({ src, alt }) => (
+    // eslint-disable-next-line @next/next/no-img-element -- creator markdown can link an image on any host, which next/image only loads from listed ones
     <img
       src={typeof src === "string" ? src : undefined}
       alt={alt ?? ""}
