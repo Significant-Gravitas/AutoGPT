@@ -40,7 +40,7 @@ export function GraphSearchContent({
         onKeyDown={handleKeyDown}
       />
 
-      <Separator className="h-[1px] w-full text-foreground-disabled" />
+      <Separator className="h-[1px] w-full" />
 
       <div className="flex-1 overflow-hidden">
         {trimmedQuery && (

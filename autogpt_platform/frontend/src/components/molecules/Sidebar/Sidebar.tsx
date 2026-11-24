@@ -263,8 +263,8 @@ const Sidebar = React.forwardRef<
             tabIndex={-1}
             // The default sheet eases in over 500ms, which lags behind the
             // tap; a drawer curve that starts fast keeps up with the finger.
-            // oxlint-disable-next-line design-system/no-arbitrary-values -- drawer easing curve for the sheet animation; no easing token
-            className="w-(--sidebar-width) bg-surface-muted p-0 text-foreground-emphasis outline-none [animation-timing-function:cubic-bezier(0.32,0.72,0,1)] data-[state=closed]:duration-200 data-[state=open]:duration-300 [&>button]:hidden"
+            // oxlint-disable-next-line design-system/no-arbitrary-values -- reads the drawer easing token; the ease-drawer class would lose to the sheet's ease-in-out, which comes later in the stylesheet
+            className="w-(--sidebar-width) bg-surface-muted p-0 text-foreground-emphasis outline-none [animation-timing-function:var(--ease-drawer)] data-[state=closed]:duration-200 data-[state=open]:duration-300 [&>button]:hidden"
             style={
               {
                 "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
@@ -396,8 +396,11 @@ SidebarRail.displayName = "SidebarRail";
 
 const SidebarInset = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"main">
->(({ className, ...props }, ref) => {
+  React.ComponentProps<"main"> & {
+    /** `muted`: the page's grey behind cards, instead of white. */
+    surface?: "muted";
+  }
+>(({ className, surface, ...props }, ref) => {
   return (
     <main
       ref={ref}
@@ -408,6 +411,7 @@ const SidebarInset = React.forwardRef<
         // viewport instead of shrinking.
         "relative flex w-full min-w-0 flex-1 flex-col bg-surface",
         "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow md:peer-data-[state=collapsed]:peer-data-[variant=inset]:ml-2",
+        surface === "muted" && "bg-surface-muted",
         className,
       )}
       {...props}
@@ -416,30 +420,44 @@ const SidebarInset = React.forwardRef<
 });
 SidebarInset.displayName = "SidebarInset";
 
-const SidebarHeader = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentProps<"div">
->(({ className, ...props }, ref) => {
-  return (
-    <div
-      ref={ref}
-      data-sidebar="header"
-      className={cn("flex flex-col gap-2 p-2", className)}
-      {...props}
-    />
-  );
-});
+// `surface="muted"`: the sidebar's own grey, for a header or footer pinned
+// over the list scrolling under it. `divided`: a rule above the footer.
+interface EdgeProps extends React.ComponentProps<"div"> {
+  surface?: "muted";
+}
+
+const SidebarHeader = React.forwardRef<HTMLDivElement, EdgeProps>(
+  ({ className, surface, ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        data-sidebar="header"
+        className={cn(
+          "flex flex-col gap-2 p-2",
+          surface === "muted" && "bg-surface-muted",
+          className,
+        )}
+        {...props}
+      />
+    );
+  },
+);
 SidebarHeader.displayName = "SidebarHeader";
 
 const SidebarFooter = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"div">
->(({ className, ...props }, ref) => {
+  EdgeProps & { divided?: boolean }
+>(({ className, surface, divided = false, ...props }, ref) => {
   return (
     <div
       ref={ref}
       data-sidebar="footer"
-      className={cn("flex flex-col gap-2 p-2", className)}
+      className={cn(
+        "flex flex-col gap-2 p-2",
+        divided && "border-t border-separator",
+        surface === "muted" && "bg-surface-muted",
+        className,
+      )}
       {...props}
     />
   );
@@ -466,13 +484,20 @@ SidebarContent.displayName = "SidebarContent";
 
 const SidebarGroup = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"div">
->(({ className, ...props }, ref) => {
+  React.ComponentProps<"div"> & {
+    /** `tight`: 4px above and below, for the app sidebar's stacked groups. */
+    spacing?: "tight";
+  }
+>(({ className, spacing, ...props }, ref) => {
   return (
     <div
       ref={ref}
       data-sidebar="group"
-      className={cn("relative flex w-full min-w-0 flex-col p-2", className)}
+      className={cn(
+        "relative flex w-full min-w-0 flex-col p-2",
+        spacing === "tight" && "py-1",
+        className,
+      )}
       {...props}
     />
   );
@@ -570,6 +595,12 @@ const sidebarMenuButtonVariants = cva(
         default: "hover:bg-surface-hover hover:text-foreground-strong",
         outline:
           "bg-surface shadow-outline hover:bg-surface-hover hover:text-foreground-strong hover:shadow-surface-hover",
+        // The app sidebar's top-level links: rounder and roomier, with a
+        // darker fill on the current page (see compoundVariants).
+        nav: "hover:bg-surface-hover hover:text-foreground-strong",
+        // A chat in the sidebar's recent list: regular weight even when open,
+        // a step larger on a phone with room for its menu button.
+        chat: "hover:bg-surface-hover hover:text-foreground-strong",
       },
       size: {
         default: "h-8 text-body leading-5",
@@ -577,6 +608,21 @@ const sidebarMenuButtonVariants = cva(
         lg: "h-12 text-body leading-5 group-data-[collapsible=icon]:!p-0",
       },
     },
+    // After the size, whose height and padding the nav link replaces.
+    compoundVariants: [
+      {
+        variant: "nav",
+        class: [
+          "h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-surface-hover [&>svg]:size-4 group-data-[collapsible=icon]:[&>svg]:size-4.5 max-md:gap-3 max-md:py-2.5 max-md:text-body-lg max-md:[&>svg]:size-5",
+          "data-[active=true]:!bg-surface-active data-[active=true]:hover:!bg-surface-active",
+        ],
+      },
+      {
+        variant: "chat",
+        class:
+          "font-normal hover:!bg-surface-hover data-[active=true]:!bg-surface-hover data-[active=true]:font-normal max-md:!pr-11 max-md:text-body-md max-md:leading-5",
+      },
+    ],
     defaultVariants: {
       variant: "default",
       size: "default",

@@ -26,6 +26,9 @@ const BUTTON_TONES = {
   "quiet-danger": "text-foreground-tertiary hover:text-error",
   "quiet-warning":
     "text-warning-foreground hover:bg-warning-surface hover:border-warning-surface",
+  // A small icon action on a file: preview turns blue, clear turns red.
+  "quiet-info": "text-foreground-tertiary hover:text-info-foreground",
+  "quiet-remove": "text-foreground-tertiary hover:text-error-hover",
 } as const;
 
 // Corner radius, from the radius tokens. A look that squares controls

@@ -35,10 +35,10 @@ export function CollapsibleNavGroup({
       onOpenChange={onOpenChange}
       className="group/collapsible"
     >
-      <SidebarGroup className="py-1">
+      <SidebarGroup spacing="tight">
         <SidebarGroupLabel
           asChild
-          className="leading-inherit text-foreground-tertiary group-data-[collapsible=icon]:hidden max-md:h-11"
+          className="leading-inherit group-data-[collapsible=icon]:hidden max-md:h-11"
         >
           <CollapsibleTrigger>
             <Text
@@ -47,7 +47,7 @@ export function CollapsibleNavGroup({
               weight="medium"
               leading="inherit"
               narrowSize="body"
-              tone="inherit"
+              tone="muted"
             >
               {label}
             </Text>
@@ -59,7 +59,7 @@ export function CollapsibleNavGroup({
             />
           </CollapsibleTrigger>
         </SidebarGroupLabel>
-        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
+        <CollapsibleContent motion="height" className="overflow-hidden">
           <SidebarGroupContent>{children}</SidebarGroupContent>
         </CollapsibleContent>
       </SidebarGroup>

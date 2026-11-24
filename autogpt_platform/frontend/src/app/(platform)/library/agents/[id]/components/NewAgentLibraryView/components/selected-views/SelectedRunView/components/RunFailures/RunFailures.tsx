@@ -20,9 +20,7 @@ const WarningIcon = createIconComponent(Alert02Icon);
 const FailedIcon = createIconComponent(CancelCircleIcon);
 
 const ERROR_PREVIEW_LIMIT = 300;
-const ERROR_CLASS_NAME =
-  // oxlint-disable-next-line design-system/no-restyle -- ShowMoreText has no tone prop yet
-  "whitespace-pre-wrap break-words !text-foreground-emphasis";
+const ERROR_CLASS_NAME = "whitespace-pre-wrap break-words";
 
 interface Props {
   run: GraphExecution | GraphExecutionWithNodes;
@@ -59,6 +57,7 @@ export function RunFailures({ run }: Props) {
               <ShowMoreText
                 variant="small"
                 previewLimit={ERROR_PREVIEW_LIMIT}
+                tone="emphasis"
                 className={ERROR_CLASS_NAME}
               >
                 {runError}
@@ -81,6 +80,7 @@ export function RunFailures({ run }: Props) {
                     <ShowMoreText
                       variant="small"
                       previewLimit={ERROR_PREVIEW_LIMIT}
+                      tone="emphasis"
                       className={ERROR_CLASS_NAME}
                     >
                       {step.error}

@@ -10,7 +10,7 @@ const commonStyles = {
 // Modal specific styles
 export const modalStyles = {
   ...commonStyles,
-  content: `${commonStyles.content} p-6 min-w-[40vw] max-w-[60vw] max-h-[95vh] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-fadein`,
+  content: `${commonStyles.content} p-6 min-w-[40vw] max-w-[60vw] max-h-[95vh] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2`,
   iconWrap:
     "absolute top-2 right-3 bg-transparent p-2 rounded-pill transition-colors duration-300 ease-in-out outline-none border-none",
   icon: "w-4 h-4 text-foreground-emphasis",

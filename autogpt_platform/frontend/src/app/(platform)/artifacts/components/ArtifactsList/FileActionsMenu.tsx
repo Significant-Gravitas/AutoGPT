@@ -106,8 +106,7 @@ export function FileActionsMenu({ file, className }: Props) {
           <DropdownMenuItem
             onSelect={handleDelete}
             disabled={isDeleting}
-            // oxlint-disable-next-line design-system/no-restyle -- a destructive item; the menu molecule has no destructive variant
-            className="text-error-hover focus:bg-error-surface focus:text-error-foreground"
+            tone="danger"
             data-testid="artifacts-delete"
           >
             {isDeleting ? (

@@ -5,17 +5,11 @@
   "src/app/(platform)/PaywallGate/components/PaywallPlanChoices.tsx": {
     "no-restyle": 2
   },
-  "src/app/(platform)/PlatformChrome/PlatformChrome.tsx": {
-    "no-restyle": 2
-  },
   "src/app/(platform)/PlatformChrome/components/InsetHeaderSidebarTrigger/InsetHeaderSidebarTrigger.tsx": {
     "no-restyle": 6
   },
-  "src/app/(platform)/auth/auth-code-error/page.tsx": {
-    "no-restyle": 1
-  },
   "src/app/(platform)/build/components/BuilderActions/components/AgentOutputs/AgentOutputs.tsx": {
-    "no-restyle": 5
+    "no-restyle": 3
   },
   "src/app/(platform)/build/components/BuilderActions/components/RunInputDialog/RunInputDialog.tsx": {
     "no-restyle": 2
@@ -23,14 +17,8 @@
   "src/app/(platform)/build/components/FloatingSafeModeToogle.tsx": {
     "no-restyle": 1
   },
-  "src/app/(platform)/build/components/FlowEditor/Flow/components/TriggerAgentBanner.tsx": {
-    "no-restyle": 1
-  },
   "src/app/(platform)/build/components/FlowEditor/edges/CustomEdge.tsx": {
     "no-restyle": 6
-  },
-  "src/app/(platform)/build/components/FlowEditor/handlers/NodeHandle.tsx": {
-    "no-restyle": 2
   },
   "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/NodeBadges.tsx": {
     "no-restyle": 6
@@ -41,71 +29,29 @@
   "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/NodeExecutionBadge.tsx": {
     "no-restyle": 3
   },
-  "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/NodeOutput/NodeOutput.tsx": {
-    "no-restyle": 4
-  },
   "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/SubAgentUpdate/SubAgentUpdateFeature.tsx": {
     "no-restyle": 2
   },
   "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/SubAgentUpdate/components/IncompatibleUpdateDialog.tsx": {
     "no-restyle": 12
   },
-  "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/WebhookDisclaimer.tsx": {
-    "no-restyle": 1
-  },
   "src/app/(platform)/build/components/MCPToolDialog.tsx": {
     "no-restyle": 1
-  },
-  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/AllBlocksContent/AllBlocksContent.tsx": {
-    "no-restyle": 1
-  },
-  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/Block.tsx": {
-    "no-restyle": 8
   },
   "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/BlockMenu/BlockMenu.tsx": {
     "no-restyle": 6
   },
-  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/BlockMenuContent/BlockMenuContent.tsx": {
-    "no-restyle": 1
-  },
-  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/BlockMenuDefault/BlockMenuDefault.tsx": {
-    "no-restyle": 1
-  },
-  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/BlockMenuSearchBar/BlockMenuSearchBar.tsx": {
-    "no-restyle": 13
-  },
   "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/FilterSheet/FilterSheet.tsx": {
-    "no-restyle": 15
-  },
-  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/Integration.tsx": {
-    "no-restyle": 9
-  },
-  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/IntegrationChip.tsx": {
-    "no-restyle": 6
+    "no-restyle": 2
   },
   "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/IntergrationBlock.tsx": {
-    "no-restyle": 18
-  },
-  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/MarketplaceAgentBlock.tsx": {
-    "no-restyle": 10
-  },
-  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/SearchHistoryChip.tsx": {
-    "no-restyle": 1
-  },
-  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/UGCAgentBlock.tsx": {
-    "no-restyle": 10
+    "no-restyle": 9
   },
   "src/app/(platform)/build/components/NewControlPanel/NewSaveControl/NewSaveControl.tsx": {
     "no-restyle": 7
   },
   "src/app/(platform)/build/components/NewControlPanel/NewSearchGraph/GraphMenu/GraphMenu.tsx": {
     "no-restyle": 4
-  },
-  "src/app/(platform)/build/components/NewControlPanel/NewSearchGraph/GraphMenuContent/GraphContent.tsx": {
-    "no-restyle": 1
-  },
-  "src/app/(platform)/build/components/NewControlPanel/NewSearchGraph/GraphMenuSearchBar/GraphMenuSearchBar.tsx": {
-    "no-restyle": 13
   },
   "src/app/(platform)/components/ContextualTips/ContextualTips.tsx": {
     "no-restyle": 4
@@ -319,14 +265,11 @@
   "src/app/(platform)/raise/components/NameStep/NameStep.tsx": {
     "no-restyle": 1
   },
-  "src/components/atoms/Button/Button.tsx": {
-    "no-misused-role": 1
-  },
   "src/components/atoms/Button/helpers.ts": {
     "no-misused-role": 2
   },
   "src/components/atoms/FileInput/FileInput.tsx": {
-    "no-restyle": 8
+    "no-restyle": 2
   },
   "src/components/atoms/Select/components/SelectPrimitives.tsx": {
     "no-restyle": 1
@@ -334,68 +277,32 @@
   "src/components/atoms/ToggleChip/ToggleChip.tsx": {
     "no-restyle": 2
   },
-  "src/components/auth/AuthCard.tsx": {
-    "no-restyle": 1
-  },
-  "src/components/auth/AuthFeedback.tsx": {
-    "no-restyle": 17
-  },
-  "src/components/auth/AuthSplitLayout/components/MarketingHeader.tsx": {
-    "no-restyle": 1
-  },
-  "src/components/auth/AuthSplitLayout/components/TeamAvatars.tsx": {
-    "no-restyle": 10
-  },
   "src/components/auth/CheckYourInbox/CheckYourInbox.tsx": {
     "no-restyle": 1
-  },
-  "src/components/contextual/CredentialsInput/components/APIKeyCredentialsModal/APIKeyCredentialsModal.tsx": {
-    "no-restyle": 2
   },
   "src/components/contextual/CredentialsInput/components/ConnectCredentialDialog/components/ExistingCredentialsView/ExistingCredentialsView.tsx": {
     "no-restyle": 2
   },
   "src/components/contextual/CredentialsInput/components/CredentialTypeSelector/CredentialTypeSelector.tsx": {
-    "no-restyle": 3
+    "no-restyle": 1
   },
   "src/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView.tsx": {
-    "no-restyle": 5
+    "no-restyle": 2
   },
   "src/components/contextual/CredentialsInput/components/HotScopedCredentialsModal/HotScopedCredentialsModal.tsx": {
-    "no-restyle": 3
+    "no-restyle": 1
   },
   "src/components/contextual/CronScheduler/cron-scheduler.tsx": {
     "no-restyle": 2
   },
-  "src/components/contextual/EditAgentModal/components/EditAgentForm.tsx": {
-    "no-restyle": 25
-  },
   "src/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/ConnectMethodView/ConnectMethodView.tsx": {
     "no-restyle": 2
-  },
-  "src/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/ConnectMethodView/InlineApiKeyForm.tsx": {
-    "no-restyle": 1
-  },
-  "src/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/ConnectMethodView/InlineHostScopedForm.tsx": {
-    "no-restyle": 1
-  },
-  "src/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/ConnectMethodView/InlineUserPasswordForm.tsx": {
-    "no-restyle": 1
-  },
-  "src/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/ApiKeyConnectForm.tsx": {
-    "no-restyle": 1
   },
   "src/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/ListView.tsx": {
     "no-restyle": 1
   },
   "src/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/PopularProviderTile.tsx": {
     "no-restyle": 1
-  },
-  "src/components/contextual/IntegrationsPanel/components/IntegrationsHeader/IntegrationsHeader.tsx": {
-    "no-restyle": 1
-  },
-  "src/components/contextual/IntegrationsPanel/components/ProviderGroup/ProviderGroup.tsx": {
-    "no-restyle": 13
   },
   "src/components/contextual/MCPAuthSchemeField/MCPAuthSchemeField.tsx": {
     "require-static-classes": 1
@@ -412,81 +319,38 @@
   "src/components/contextual/OutputRenderers/renderers/VideoRenderer.tsx": {
     "no-restyle": 3
   },
-  "src/components/contextual/PublishAgentModal/components/AgentInfoStep/AgentInfoStep.tsx": {
-    "no-restyle": 25
-  },
-  "src/components/contextual/SchedulesPanel/components/EmptyFollowups/EmptyFollowups.tsx": {
-    "no-restyle": 1
-  },
-  "src/components/contextual/SchedulesPanel/components/FollowupListItem/FollowupListItem.tsx": {
-    "no-restyle": 1
-  },
   "src/components/contextual/SchedulesPanel/components/GraphScheduleListItem/GraphScheduleListItem.tsx": {
     "require-static-classes": 2
   },
   "src/components/layout/AppSidebar/AppSidebar.tsx": {
-    "no-restyle": 5,
-    "require-static-classes": 2
+    "no-restyle": 1
   },
   "src/components/layout/AppSidebar/components/AppSidebarHeader/AppSidebarHeader.tsx": {
-    "no-restyle": 4
-  },
-  "src/components/layout/AppSidebar/components/ChatsRailItem/ChatsRailItem.tsx": {
-    "no-restyle": 2,
-    "require-static-classes": 1
+    "no-restyle": 1
   },
   "src/components/layout/AppSidebar/components/CollapsibleNavGroup/CollapsibleNavGroup.tsx": {
-    "no-restyle": 6
-  },
-  "src/components/layout/AppSidebar/components/RecentChats/RecentChats.tsx": {
     "no-restyle": 1
   },
   "src/components/layout/AppSidebar/components/RecentChats/components/ExpertChatGroup/ExpertChatGroup.tsx": {
-    "no-restyle": 27
-  },
-  "src/components/layout/AppSidebar/components/RecentChats/components/RecentChatItem/RecentChatItem.tsx": {
-    "no-restyle": 12
+    "no-restyle": 17
   },
   "src/components/layout/AppSidebar/components/SidebarUserActions/SidebarUserActions.tsx": {
-    "no-restyle": 4
-  },
-  "src/components/layout/Navbar/components/AccountMenu/AccountMenu.tsx": {
-    "no-restyle": 7
-  },
-  "src/components/layout/Navbar/components/AccountMenu/components/AccountMenuActivityRow.tsx": {
-    "no-restyle": 5
-  },
-  "src/components/layout/Navbar/components/AccountMenu/components/AccountMenuHeader.tsx": {
-    "no-restyle": 5
+    "no-restyle": 1
   },
   "src/components/layout/Navbar/components/AccountMenu/components/AccountMenuOrgList.tsx": {
     "no-restyle": 1
   },
-  "src/components/layout/Navbar/components/AccountMenu/components/AccountMenuRow.tsx": {
-    "no-restyle": 1
-  },
   "src/components/layout/Navbar/components/AgentActivityDropdown/components/ActivityDropdown/ActivityDropdown.tsx": {
-    "no-inline-styles": 2,
     "no-restyle": 1
-  },
-  "src/components/layout/Navbar/components/AgentActivityDropdown/components/ActivityItem.tsx": {
-    "no-restyle": 2
   },
   "src/components/layout/Navbar/components/Wallet/Wallet.tsx": {
-    "no-restyle": 6
+    "no-restyle": 4
   },
   "src/components/layout/Navbar/components/Wallet/components/WalletCopilotUsage.tsx": {
-    "no-restyle": 4,
     "require-static-classes": 1
-  },
-  "src/components/layout/Navbar/components/Wallet/components/WalletEarnCredits.tsx": {
-    "no-restyle": 2
   },
   "src/components/layout/Navbar/components/Wallet/components/WalletFullPanel.tsx": {
     "no-restyle": 1
-  },
-  "src/components/layout/Navbar/components/Wallet/components/WalletTaskGroups.tsx": {
-    "no-inline-styles": 1
   },
   "src/components/layout/SectionNav/SectionMobileNav.tsx": {
     "no-restyle": 1
@@ -496,12 +360,6 @@
   },
   "src/components/molecules/CookieSettingsLink/CookieSettingsLink.tsx": {
     "no-restyle": 4
-  },
-  "src/components/molecules/DropdownMenu/DropdownMenu.tsx": {
-    "no-restyle": 1
-  },
-  "src/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails.tsx": {
-    "no-restyle": 1
   },
   "src/components/molecules/InputGroup/InputGroup.tsx": {
     "no-restyle": 9
@@ -518,29 +376,14 @@
   "src/components/organisms/Conversation/Conversation.tsx": {
     "no-restyle": 1
   },
-  "src/components/organisms/PendingReviewsList/PendingReviewsList.tsx": {
-    "no-restyle": 1
-  },
   "src/components/organisms/ProActivation/ActivationPaymentMethod.tsx": {
     "no-restyle": 2
-  },
-  "src/components/organisms/ProActivation/ActivationTerms.tsx": {
-    "no-restyle": 1
   },
   "src/components/organisms/SearchCommandModal/SearchCommandResultItem.tsx": {
     "no-restyle": 3
   },
   "src/components/organisms/SubscriptionPlans/components/BillingToggle.tsx": {
     "no-restyle": 6
-  },
-  "src/components/organisms/SubscriptionPlans/components/PlanHeader.tsx": {
-    "no-restyle": 1
-  },
-  "src/components/organisms/SubscriptionPlans/components/SubscriptionOffer.tsx": {
-    "no-restyle": 3
-  },
-  "src/components/organisms/UsageExperience/PaymentRecoveryCard.tsx": {
-    "no-restyle": 3
   },
   "src/components/organisms/UsageExperience/PlanOffer.tsx": {
     "no-restyle": 2
@@ -581,9 +424,6 @@
   },
   "src/components/renderers/InputRenderer/custom/JsonTextField/JsonTextField.tsx": {
     "no-restyle": 3
-  },
-  "src/components/renderers/InputRenderer/custom/LlmModelField/components/LlmIcon.tsx": {
-    "no-inline-styles": 4
   },
   "src/components/renderers/InputRenderer/custom/LlmModelField/components/LlmModelPicker.tsx": {
     "no-restyle": 6

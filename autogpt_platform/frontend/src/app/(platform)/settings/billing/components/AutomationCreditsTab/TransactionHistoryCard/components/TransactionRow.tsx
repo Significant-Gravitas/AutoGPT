@@ -118,8 +118,8 @@ function TransactionActivity({ transaction }: { transaction: Transaction }) {
         {href ? (
           <Link
             href={href}
-            // oxlint-disable-next-line design-system/no-restyle -- related-run links are brand-coloured; Link has no brand variant
-            className="inline-flex min-h-6 items-center break-words text-accent-strong"
+            tone="accent"
+            className="inline-flex min-h-6 items-center break-words"
           >
             {name}
           </Link>

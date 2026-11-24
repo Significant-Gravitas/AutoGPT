@@ -53,9 +53,7 @@ export const AllBlocksContent = () => {
     <div className={blockMenuContainerStyle}>
       {categories?.map((category, index) => (
         <Fragment key={category.name}>
-          {index > 0 && (
-            <Separator className="h-[1px] w-full text-foreground-disabled" />
-          )}
+          {index > 0 && <Separator className="h-[1px] w-full" />}
 
           {/* Category Section */}
           <div className="space-y-2.5">

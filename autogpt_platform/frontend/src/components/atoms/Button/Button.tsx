@@ -152,7 +152,7 @@ export function Button(props: ButtonProps | CompactButtonProps) {
               shape,
               className,
             }),
-            "pointer-events-none border-foreground-tertiary bg-foreground-tertiary text-action-foreground",
+            "pointer-events-none border-foreground-tertiary bg-fill-soft text-action-foreground",
           );
 
     if (as === "NextLink") {

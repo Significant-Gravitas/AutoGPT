@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
@@ -143,7 +144,8 @@ export function ActivityDropdown({
             rowHeight={itemHeight}
             rowProps={{ executions: filteredExecutions }}
             rowComponent={VirtualizedActivityItem}
-            style={{ width: "100%", height: listHeight }}
+            className="h-(--list-height) w-full"
+            style={{ "--list-height": `${listHeight}px` } as CSSProperties}
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-5 pt-6 pb-8">

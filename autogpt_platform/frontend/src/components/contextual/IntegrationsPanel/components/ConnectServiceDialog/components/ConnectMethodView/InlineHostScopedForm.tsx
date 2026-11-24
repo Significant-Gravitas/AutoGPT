@@ -94,7 +94,7 @@ export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
   }
 
   return (
-    <Form form={form} onSubmit={handleSubmit} className="space-y-2.5">
+    <Form form={form} onSubmit={handleSubmit} spacing="compact">
       <FormField
         control={form.control}
         name="host"

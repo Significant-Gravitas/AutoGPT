@@ -13,7 +13,6 @@ import { Progress } from "@/components/atoms/Progress/Progress";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { formatTrialEnd } from "@/components/organisms/TrialCard/helpers";
-import { cn } from "@/lib/utils";
 import { useTrialStatus } from "@/services/trials/useTrialStatus";
 
 export function WalletCopilotUsage() {
@@ -99,10 +98,8 @@ function TrialUsage() {
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={percent}
-        className={cn(
-          "bg-surface-active [&>div]:rounded-pill",
-          percent >= 80 ? "[&>div]:bg-orange" : "[&>div]:bg-info",
-        )}
+        tone={percent >= 80 ? "orange" : "info"}
+        roundedFill
       />
       <Text variant="small" tone="muted">
         {trial.active ? "Ends" : "Ended"} {formatTrialEnd(trial.ends_at)}

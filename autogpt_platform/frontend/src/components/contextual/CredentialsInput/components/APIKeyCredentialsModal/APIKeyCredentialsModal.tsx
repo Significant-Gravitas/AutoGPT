@@ -97,7 +97,7 @@ export function APIKeyCredentialsModal({
                     placeholder="Enter API Key..."
                     hint={
                       schema.credentials_scopes ? (
-                        <FormDescription className="text-body-sm leading-inherit">
+                        <FormDescription size="body-sm">
                           Required scope(s) for this block:{" "}
                           {schema.credentials_scopes?.map((s, i, a) => (
                             <span key={i}>

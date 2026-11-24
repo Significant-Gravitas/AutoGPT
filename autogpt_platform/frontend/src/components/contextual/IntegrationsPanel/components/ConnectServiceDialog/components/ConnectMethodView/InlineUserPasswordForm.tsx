@@ -91,7 +91,7 @@ export function InlineUserPasswordForm({
   }
 
   return (
-    <Form form={form} onSubmit={handleSubmit} className="space-y-2.5">
+    <Form form={form} onSubmit={handleSubmit} spacing="compact">
       <FormField
         control={form.control}
         name="title"

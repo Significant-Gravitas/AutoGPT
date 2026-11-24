@@ -103,9 +103,13 @@ export const textModifiers = cva("", {
       relaxed: "leading-relaxed",
       inherit: "leading-inherit",
       "4": "leading-4",
+      "4.5": "leading-4.5",
       "5": "leading-5",
       "6": "leading-6",
+      "7": "leading-7",
       "8": "leading-8",
+      "9": "leading-9",
+      "10": "leading-10",
     },
     // Below md, a step up to body (14/20) or large (16/24), like the
     // responsive raw sizes it replaced.

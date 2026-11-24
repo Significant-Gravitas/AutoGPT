@@ -30,7 +30,7 @@ export const WebhookDisclaimer = ({ nodeId }: { nodeId: string }) => {
   return (
     <>
       <div className="px-4 pt-4">
-        <Alert className="mb-3 rounded-xlarge">
+        <Alert shape="builder" className="mb-3">
           <AlertDescription>
             <Text variant="small" weight="medium">
               You can set up and manage this trigger in your{" "}
