@@ -47,6 +47,13 @@ product does what the user expects.
   `provisionNewJourneyUser`. `grantAdminRole` (`admin-role.ts`) makes one an
   admin; it writes the stack's database, so skip with `adminGrantUnavailable()`
   where that can't be reached. `marketplace-journey.spec.ts` does all of this.
+- **Undo what you change on the stack in a fixture's teardown,** not in a
+  `finally` in the test's body: Playwright abandons the body when the test
+  times out, but still tears its fixtures down. Wrap `provide()` in
+  `try`/`finally`, as the admin fixtures in `marketplace-journey.spec.ts` and
+  `route-crawl-journey.spec.ts` do; otherwise a long-lived stack keeps a
+  journey user as a platform admin. Name the callback `provide`: ESLint's
+  rules-of-hooks fails `use(...)` inside a named fixture.
 - **Make your own data.** Build or import the agents you need inside the
   journey. Name things uniquely (`Date.now()` suffix).
 - **Assert invariants, not DOM trivia.** Use web-first assertions
@@ -103,13 +110,26 @@ crawled as soon as it exists. It is crawled signed in, or as an admin under
 its own: the crawl answers Next's link prefetches with nothing, so the pages
 a page links to aren't rendered alongside it.
 
+A crawl starts no visit too late for it, and the test's report, to end inside
+the test's timeout (`test.info().timeout`). A page it runs out of time for is
+annotated "unreached page", not failed: a slow runner is no broken page. A
+page it opened and found broken still fails.
+
 - **A page that sends the user on, needs query parameters, or is public**
   gets an entry in `ROUTE_RULES` (`route-table.ts`), with the reason. Say
   where it lands, what it shows, or which error response it gets by design.
+- **A page only some stacks serve** is `localOnly` (only a local stack, such
+  as the test-data page) or `hostedOnly` (only a stack that takes payments,
+  such as Billing, which a self-hosted build without payments answers with
+  the not-found page). Elsewhere the crawl annotates it "page not served
+  here" and doesn't open it. A page that sends the user on to one is marked
+  the same.
 - **A page with a dynamic segment** (`[id]`) is crawled only with data a test
   samples (`route-samples.ts`). Until it has one, the crawl annotates it
-  "unsampled route" and doesn't fail. Add the sample, and the route to
-  `DYNAMIC_ROUTES`.
+  "unsampled route" and doesn't fail. Add the sample to one of the crawl's
+  tests, and the route to `DYNAMIC_ROUTES` with that test (`sampledIn`). That
+  test fails unless it crawls each route `DYNAMIC_ROUTES` gives it, or says
+  why it can't on this stack.
 - **A page with an open bug:** add it to `KNOWN_BUGS` (`route-table.ts`):
   the page, the issue, whom it shows for, what goes wrong, and a pattern
   matching the problems it causes. The page is then left out of its group
@@ -119,8 +139,10 @@ a page links to aren't rendered alongside it.
   time, in the spec's `REPRODUCTIONS`; a hydration bug can open its page
   with the browser's clock ahead (`clockAheadMs`). A pinned test tries its
   visit up to three times, until the bug shows, so a busy runner can't make
-  it pass. A bug other pages show too, depending on what they list, is
-  `showsElsewhere`: their groups note it rather than fail on it.
+  it pass; a try the crawl runs out of time for ends the tries, and with
+  none made the test only notes the page. A bug other pages show too,
+  depending on what they list, is `showsElsewhere`: their groups note it
+  rather than fail on it.
 - **When the fix lands,** drop the bug from `KNOWN_BUGS` and its visit from
   `REPRODUCTIONS`, and keep a visit that showed it every time as a test of
   its own that must load cleanly: the pages that show an age (#17309,
@@ -282,7 +304,9 @@ PLAYWRIGHT_BASE_URL=https://autogpt-pr-<N>.vercel.app \
   `HeadlessChrome` user agent, so with the default headless one, dev and
   previews would serve every flag off: no paywall, no experts, old layout.
   A context you create with `browser.newContext()` doesn't inherit the
-  config, so pass it `userAgent: JOURNEY_USER_AGENT` yourself.
+  config, so pass it `userAgent: JOURNEY_USER_AGENT` yourself, and call
+  `markChangelogSeen(context)` so its pages get the changelog from the
+  fixture instead of agpt.co.
 - Users sign up as `journey-<id>@previews.agpt.co`, which the preview
   allowlist accepts. Override the domain with `PLAYWRIGHT_JOURNEY_EMAIL_DOMAIN`.
 - Previews run with `ENABLE_PLATFORM_PAYMENT` on, so a fresh user is

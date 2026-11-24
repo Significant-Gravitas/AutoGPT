@@ -11,7 +11,7 @@ import backend.api.features.library.db as library_db
 import backend.api.features.library.model as library_model
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
-from backend.blocks import load_all_blocks
+from backend.blocks import get_block, load_all_blocks
 from backend.blocks._base import (
     AnyBlockSchema,
     BlockCategory,
@@ -198,11 +198,8 @@ def get_block_by_id(block_id: str) -> BlockInfo | None:
     """
     Get a specific block by its ID.
     """
-    for block_type in load_all_blocks().values():
-        block: AnyBlockSchema = block_type()
-        if block.id == block_id:
-            return block.get_info()
-    return None
+    block = get_block(block_id)
+    return block.get_info() if block else None
 
 
 async def update_search(

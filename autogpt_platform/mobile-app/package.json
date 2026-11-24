@@ -7,6 +7,7 @@
     "@expo/ui": "~58.0.27",
     "@hugeicons/core-free-icons": "^4.4.0",
     "@hugeicons/react-native": "^1.0.16",
+    "@sentry/react-native": "~8.28.1",
     "@shopify/flash-list": "2.3.2",
     "@stardazed/streams-text-encoding": "^1.0.2",
     "@tanstack/query-async-storage-persister": "5.104.5",
@@ -35,6 +36,7 @@
     "expo-status-bar": "~58.0.4",
     "expo-symbols": "~58.0.4",
     "expo-system-ui": "~58.0.7",
+    "expo-updates": "~58.0.22",
     "expo-web-browser": "~58.1.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
@@ -52,6 +54,7 @@
     "react-native-worklets": "0.13.0"
   },
   "devDependencies": {
+    "@testing-library/react-native": "^14.1.0",
     "@types/jest": "30.0.0",
     "@types/react": "~19.3.0",
     "@types/ungap__structured-clone": "^1.2.0",
@@ -68,7 +71,9 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test": "TZ=UTC jest",
-    "types": "tsc --noEmit"
+    "types": "tsc --noEmit",
+    "update:dev": "EXPO_PUBLIC_FRONTEND_URL=https://dev-builder.agpt.co EXPO_PUBLIC_API_URL=https://dev-server.agpt.co EXPO_PUBLIC_SENTRY_ENVIRONMENT=dev eas update --channel dev --environment preview && sentry-expo-upload-sourcemaps dist",
+    "update:production": "EXPO_PUBLIC_FRONTEND_URL=https://platform.agpt.co EXPO_PUBLIC_API_URL=https://backend.agpt.co EXPO_PUBLIC_SENTRY_ENVIRONMENT=production eas update --channel production --environment production && sentry-expo-upload-sourcemaps dist"
   },
   "jest": {
     "preset": "jest-expo"

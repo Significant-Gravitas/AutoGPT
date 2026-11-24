@@ -281,16 +281,24 @@ test.describe("typed inputs journey", () => {
             run.outputs.time,
             "the workflow should get the time picked",
           ).toEqual([TIME_GOT]);
-          await expect
-            .poll(async () => (await readShownOutputs(page)).time, {
-              message: "the run view should show the time picked",
-            })
-            .toBe(TIME_GOT);
-          const shown = await readShownOutputs(page);
           expect(
-            { status: run.status, got: run.outputs.date, shown: shown.date },
-            "the workflow should get the date picked, and the run view show it",
-          ).toEqual({ status: "COMPLETED", got: [DATE], shown: DATE });
+            { status: run.status, got: run.outputs.date },
+            "the workflow should get the date picked",
+          ).toEqual({ status: "COMPLETED", got: [DATE] });
+          // The run view can show one output a moment before the other, so
+          // wait for both rather than read the date once the time shows.
+          await expect
+            .poll(
+              async () => {
+                const shown = await readShownOutputs(page);
+                return { date: shown.date, time: shown.time };
+              },
+              {
+                message:
+                  "the run view should show the date and the time picked",
+              },
+            )
+            .toEqual({ date: DATE, time: TIME_GOT });
         },
       );
     });

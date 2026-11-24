@@ -68,7 +68,10 @@ export function RunAgentModal({
 
     // Form: credentials
     inputCredentials,
-    setInputCredentials,
+    handleCredentialChange,
+    handleCredentialAutoSelect,
+    clearedFields,
+    scheduleCredentials,
 
     // Preset/trigger labels
     presetName,
@@ -82,6 +85,11 @@ export function RunAgentModal({
     // Schemas
     agentInputFields,
     agentCredentialsInputFields,
+    nodeCredentials,
+    isResolvingCredentials,
+    nodeCredentialsUnknown,
+    isRetryingNodeCredentials,
+    retryNodeCredentials,
     hasInputFields,
 
     // Async states
@@ -163,18 +171,6 @@ export function RunAgentModal({
     }));
   }
 
-  function handleCredentialsChange(key: string, value: any | undefined) {
-    setInputCredentials((prev) => {
-      const next = { ...prev } as Record<string, any>;
-      if (value === undefined) {
-        delete next[key];
-        return next;
-      }
-      next[key] = value;
-      return next;
-    });
-  }
-
   function handleSetOpen(open: boolean) {
     setIsOpen(open);
   }
@@ -243,8 +239,16 @@ export function RunAgentModal({
                       setTriggerConfigValue: handleTriggerConfigChange,
                       triggerConfigFields,
                       inputCredentials,
-                      setInputCredentialsValue: handleCredentialsChange,
+                      setInputCredentialsValue: handleCredentialChange,
+                      autoSelectInputCredentialsValue:
+                        handleCredentialAutoSelect,
+                      clearedCredentialFields: clearedFields,
                       agentCredentialsInputFields,
+                      nodeCredentials,
+                      isResolvingCredentials,
+                      nodeCredentialsUnknown,
+                      isRetryingNodeCredentials,
+                      retryNodeCredentials,
                     }}
                   >
                     <ModalRunSection />
@@ -314,7 +318,8 @@ export function RunAgentModal({
                 onClose={handleCloseScheduleModal}
                 agent={agent}
                 inputValues={inputValues}
-                inputCredentials={inputCredentials}
+                inputCredentials={scheduleCredentials}
+                formCredentials={inputCredentials}
                 onScheduleCreated={handleScheduleCreated}
               />
             </Dialog.Footer>

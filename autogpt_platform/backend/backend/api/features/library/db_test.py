@@ -2205,7 +2205,8 @@ async def test_set_expert_preset_webhook_rehomes_legacy_preset(mocker):
     update_data = mock_preset_client.update.await_args.kwargs["data"]
     assert update_data["Webhook"] == {"connect": {"id": "personal-webhook"}}
     assert update_data["organizationId"] == "personal-org"
-    assert update_data["teamId"] == "personal-team"
+    assert update_data["Team"] == {"connect": {"id": "personal-team"}}
+    assert "teamId" not in update_data
 
 
 @pytest.mark.asyncio

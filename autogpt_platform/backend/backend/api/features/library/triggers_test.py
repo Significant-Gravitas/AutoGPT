@@ -114,6 +114,7 @@ async def _setup(
     constant_inputs: dict | None = None,
     graph_id: str = "graph-1",
     graph_version: int = 1,
+    agent_credentials: dict[str, CredentialsMetaInput] | None = None,
 ):
     return await setup_triggered_preset(
         user_id=_USER,
@@ -124,10 +125,29 @@ async def _setup(
         trigger_config=(
             {"repo": "owner/repo"} if trigger_config is None else trigger_config
         ),
-        agent_credentials={},
+        agent_credentials=agent_credentials or {},
         constant_inputs=constant_inputs,
         expert_id=expert_id,
     )
+
+
+def _granted(*credential_ids: str):
+    """The expert's credential grants, where the run-time check reads them."""
+    return patch.object(
+        executor_utils,
+        "get_experts_db",
+        return_value=MagicMock(
+            expert_allowed_credential_ids=AsyncMock(return_value=list(credential_ids))
+        ),
+    )
+
+
+def _key(credential_id: str) -> dict[str, CredentialsMetaInput]:
+    return {
+        "github_credentials": CredentialsMetaInput(
+            id=credential_id, provider="github", type="api_key"
+        )
+    }
 
 
 @pytest.mark.asyncio
@@ -348,6 +368,45 @@ async def test_expert_trigger_maps_missing_personal_tenancy_to_unavailable():
 
     webhook_mock.assert_not_awaited()
     create_mock.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "credential_id, grants, refused",
+    [
+        pytest.param("cred-own", [], True, id="own-key-never-granted"),
+        pytest.param("cred-own", ["cred-own"], False, id="own-key-granted"),
+        pytest.param("firecrawl-default", [], False, id="platform-key"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_expert_trigger_needs_a_grant_for_each_of_the_users_own_keys(
+    credential_id: str, grants: list[str], refused: bool
+):
+    """Each delivery's run would be refused for a key the expert was never
+    granted, and nobody sees that refusal (#17376). The trigger is refused
+    before its webhook is registered instead."""
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        patch(
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
+            new=AsyncMock(return_value=("personal-org", "personal-team")),
+        ),
+        _granted(*grants),
+    ):
+        if refused:
+            with pytest.raises(ValueError, match="Grant them on the expert's page"):
+                await _setup(
+                    expert_id="expert-1", agent_credentials=_key(credential_id)
+                )
+        else:
+            await _setup(expert_id="expert-1", agent_credentials=_key(credential_id))
+
+    assert webhook_mock.await_count == create_mock.await_count == (0 if refused else 1)
 
 
 @pytest.mark.asyncio
@@ -1124,6 +1183,31 @@ async def test_update_expert_trigger_maps_missing_personal_tenancy_to_unavailabl
 
 
 @pytest.mark.asyncio
+async def test_update_expert_trigger_to_a_key_it_was_never_granted_is_refused():
+    """As at setup: refused before the new webhook is registered, and the
+    preset keeps the keys it had."""
+    current = _preset(webhook_id="wh-old", expert_id="expert-1")
+    with (
+        _update_patches(current=current) as m,
+        patch(
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
+            new=AsyncMock(return_value=("personal-org", "personal-team")),
+        ),
+        _granted("cred-granted"),
+    ):
+        with pytest.raises(ValueError, match="Grant them on the expert's page"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs={"_node_input_mask_trigger": {"repo": "owner/repo"}},
+                credentials=_key("cred-own"),
+            )
+
+    m["setup"].assert_not_awaited()
+    m["update"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_update_reconfigure_webhook_rejected_raises():
     with _update_patches(current=_preset(), webhook=None, feedback="no events") as m:
         with pytest.raises(InvalidInputError, match="no events"):
@@ -1469,3 +1553,22 @@ def _example_trigger_config(block) -> dict:
         for k, v in (example or {}).items()
         if k != "payload" and k not in credentials
     }
+
+
+@pytest.mark.asyncio
+async def test_a_trigger_of_no_expert_is_set_up_on_any_of_the_users_keys():
+    """Grants bind an expert's workflows only: a trigger of no expert takes the
+    user's key, and the grants are never read."""
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        _granted() as experts,
+    ):
+        await _setup(agent_credentials=_key("cred-own"))
+
+    experts.assert_not_called()
+    assert webhook_mock.await_count == create_mock.await_count == 1

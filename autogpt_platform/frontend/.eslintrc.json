@@ -28,6 +28,11 @@
     // Disable temporarily as we have some `any` in the codebase and we need to got case by case
     // and see if they can be fixed.
     "@typescript-eslint/no-explicit-any": "off",
+    // A raw <img> skips next/image sizing and lazy loading. Use next/image, or
+    // opt out with `// eslint-disable-next-line @next/next/no-img-element --
+    // <reason>` when it can't work (a host next.config.mjs doesn't list, a
+    // blob or data URL).
+    "@next/next/no-img-element": "error",
     // Allow unused vars that start with underscore (convention for intentionally unused)
     "@typescript-eslint/no-unused-vars": [
       "error",
