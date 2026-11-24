@@ -37,7 +37,7 @@ export function TrialCancelPending({
           <span
             aria-hidden
             data-slot="trial-cancel-pending-status-dot"
-            className="size-1.5 rounded-full bg-foreground-subtle"
+            className="size-1.5 rounded-full bg-fill-subtle"
           />
           Cancellation pending
         </span>

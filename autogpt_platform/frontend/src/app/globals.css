@@ -99,7 +99,11 @@
   --color-surface-inverse: rgb(var(--color-surface-inverse) / 1);
   --color-surface-inverse-hover: rgb(var(--color-surface-inverse-hover) / 1);
   --color-foreground-inverse: rgb(var(--color-foreground-inverse) / 1);
+  --color-foreground-on-color: rgb(var(--color-foreground-on-color) / 1);
   --color-fill-subtle: rgb(var(--color-fill-subtle) / 1);
+  --color-fill-soft: rgb(var(--color-fill-soft) / 1);
+  --color-fill-medium: rgb(var(--color-fill-medium) / 1);
+  --color-fill-bold: rgb(var(--color-fill-bold) / 1);
   --color-fill-strong: rgb(var(--color-fill-strong) / 1);
   --color-shell: rgb(var(--color-shell) / 1);
   --color-shell-foreground: rgb(var(--color-shell-foreground) / 1);
@@ -738,30 +742,30 @@ body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
 
 @keyframes orbit-loader-ball1 {
   0% {
-    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-foreground-strong));
+    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-action-hover));
   }
   50% {
-    box-shadow: 0 0 0 rgb(var(--color-foreground-strong));
+    box-shadow: 0 0 0 rgb(var(--color-action-hover));
     margin-bottom: 0;
     transform: translate(calc(var(--spacing) / 2), calc(var(--spacing) / 2));
   }
   100% {
-    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-foreground-strong));
+    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-action-hover));
     margin-bottom: calc(var(--gap));
   }
 }
 
 @keyframes orbit-loader-ball2 {
   0% {
-    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-foreground-subtle));
+    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-fill-subtle));
   }
   50% {
-    box-shadow: 0 0 0 rgb(var(--color-foreground-subtle));
+    box-shadow: 0 0 0 rgb(var(--color-fill-subtle));
     margin-top: calc(var(--ball-size) * -1);
     transform: translate(calc(var(--spacing) / 2), calc(var(--spacing) / 2));
   }
   100% {
-    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-foreground-subtle));
+    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-fill-subtle));
     margin-top: 0;
   }
 }

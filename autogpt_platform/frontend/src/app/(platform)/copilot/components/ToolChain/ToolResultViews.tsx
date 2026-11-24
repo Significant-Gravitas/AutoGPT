@@ -148,7 +148,7 @@ export function Terminal({ row }: RowProps) {
   const stdout = output ? str(output, "stdout", "stderr") : null;
   const exitCode = output?.exit_code;
   return (
-    <div className="rounded-xl bg-action-hover p-3 font-mono text-caption-sm leading-4">
+    <div className="rounded-xl bg-surface-inverse-hover p-3 font-mono text-caption-sm leading-4">
       {command && (
         <p className="break-words whitespace-pre-wrap text-foreground-subtle">
           <span className="text-foreground-tertiary select-none">$ </span>
@@ -156,7 +156,7 @@ export function Terminal({ row }: RowProps) {
         </p>
       )}
       {stdout && (
-        <pre className="mt-1.5 scrollbar-none max-h-40 overflow-y-auto break-words whitespace-pre-wrap text-action-foreground">
+        <pre className="mt-1.5 scrollbar-none max-h-40 overflow-y-auto break-words whitespace-pre-wrap text-foreground-inverse">
           {stdout}
         </pre>
       )}

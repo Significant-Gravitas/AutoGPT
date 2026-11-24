@@ -15,8 +15,10 @@ export const tones = {
   muted: "text-foreground-tertiary", // #83838C
   subtle: "text-foreground-subtle", // #ADADB3
   disabled: "text-foreground-disabled", // #C5C5C9
-  // Text and icons on a dark fill: the primary Button, a brand chip.
-  inverse: "text-action-foreground", // #FEFEFE
+  // Text and icons on the inverse surface: a toast, a tooltip, a dark tile.
+  inverse: "text-foreground-inverse", // #FEFEFE
+  // Text and icons on a saturated fill: a brand chip, a status badge.
+  "on-color": "text-foreground-on-color", // #FEFEFE
   brand: "text-brand", // #7733F5
   "brand-strong": "text-brand-hover", // #6C2EDF
   accent: "text-accent-strong", // #6D28D9

@@ -138,8 +138,8 @@ function StepProgress({ stepNumber, stepCount }: StepProgressProps) {
             key={index}
             className={cn(
               "h-1 rounded-pill transition-[width,background-color] duration-300 ease-out motion-reduce:transition-none",
-              index + 1 === stepNumber ? "w-4 bg-foreground-emphasis" : "w-1.5",
-              index + 1 < stepNumber && "bg-foreground-tertiary",
+              index + 1 === stepNumber ? "w-4 bg-action" : "w-1.5",
+              index + 1 < stepNumber && "bg-fill-soft",
               index + 1 > stepNumber && "bg-surface-active",
             )}
           />

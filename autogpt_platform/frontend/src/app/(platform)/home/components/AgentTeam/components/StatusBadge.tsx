@@ -6,7 +6,7 @@ const STATUS_CONFIG = {
   working: { label: "Working", dot: "bg-action", pulse: true },
   ready: { label: "Ready", dot: "bg-success", pulse: false },
   needs_setup: { label: "Finish setup", dot: "bg-warning", pulse: false },
-  paused: { label: "Paused", dot: "bg-foreground-subtle", pulse: false },
+  paused: { label: "Paused", dot: "bg-fill-subtle", pulse: false },
   failed: { label: "Failed", dot: "bg-error", pulse: false },
 };
 

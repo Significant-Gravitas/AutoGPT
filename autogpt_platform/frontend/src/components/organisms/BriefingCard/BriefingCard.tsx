@@ -173,7 +173,7 @@ function ScrollArrow({
         aria-label={isUp ? "Scroll up" : "Scroll down"}
         data-slot="briefing-card-scroll-arrow-control"
         className={cn(
-          "flex size-8 items-center justify-center rounded-pill bg-surface text-foreground-tertiary smooth-shadow-ring-sm shadow-foreground-base transition-colors hover:text-foreground-strong",
+          "flex size-8 items-center justify-center rounded-pill bg-surface text-foreground-tertiary smooth-shadow-ring-sm shadow-scrim transition-colors hover:text-foreground-strong",
           isVisible && "pointer-events-auto",
         )}
       >

@@ -575,7 +575,7 @@ export function ExecutionsTable({
                       <Icon icon={StopCircleIcon} className="mr-2 h-4 w-4" />
                       Stop Selected ({selectedIds.size})
                       {hasOrphanedSelected && (
-                        <span className="ml-1 text-caption leading-4 font-medium text-action-foreground/80">
+                        <span className="ml-1 text-caption leading-4 font-medium text-foreground-on-color/80">
                           ({selectedOrphanedIds.length} orphaned)
                         </span>
                       )}

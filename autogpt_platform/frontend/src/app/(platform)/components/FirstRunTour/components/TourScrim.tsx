@@ -50,7 +50,7 @@ export function TourScrim({ boxes, dim = true }: Props) {
           <rect
             width="100%"
             height="100%"
-            className="fill-foreground-base/55"
+            className="fill-scrim/55"
             mask={`url(#${maskID})`}
           />
         </svg>

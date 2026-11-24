@@ -27,7 +27,7 @@ import { ApproveRejectButtons } from "./ApproveRejectButton";
 import { DownloadAgentAdminButton } from "./DownloadAgentButton";
 
 const STATUS_CHIP =
-  "inline-flex cursor-default items-center rounded-md border border-transparent px-2.5 py-0.5 text-caption font-semibold leading-4 text-action-foreground shadow";
+  "inline-flex cursor-default items-center rounded-md border border-transparent px-2.5 py-0.5 text-caption font-semibold leading-4 text-foreground-on-color shadow";
 
 // Moved the getStatusBadge function into the client component
 const getStatusBadge = (status: SubmissionStatus) => {
@@ -39,9 +39,7 @@ const getStatusBadge = (status: SubmissionStatus) => {
     case SubmissionStatus.REJECTED:
       return <span className={cn(STATUS_CHIP, "bg-error")}>Rejected</span>;
     default:
-      return (
-        <span className={cn(STATUS_CHIP, "bg-foreground-tertiary")}>Draft</span>
-      );
+      return <span className={cn(STATUS_CHIP, "bg-fill-soft")}>Draft</span>;
   }
 };
 

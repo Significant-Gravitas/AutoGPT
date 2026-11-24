@@ -45,7 +45,7 @@ export function SpendMeter({ spent, budget, muted, color }: Props) {
           ? "[&>div]:bg-error"
           : color
             ? "[&>div]:![background-color:var(--meter-fill)]"
-            : "[&>div]:bg-foreground-subtle",
+            : "[&>div]:bg-fill-subtle",
         muted && "opacity-50",
       )}
     />

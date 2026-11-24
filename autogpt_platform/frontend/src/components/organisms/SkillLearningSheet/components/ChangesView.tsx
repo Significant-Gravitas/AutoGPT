@@ -105,7 +105,7 @@ export function ChangesView({ version, versions, onSelect }: Props) {
       {showRaw ? (
         <pre
           data-slot="skill-learning-sheet-changes-raw-diff"
-          className="overflow-x-auto rounded-lg bg-action-hover p-3 text-caption text-action-foreground"
+          className="overflow-x-auto rounded-lg bg-surface-inverse-hover p-3 text-caption text-foreground-inverse"
         >
           {lineDiff(before, after) || "(no line-level differences)"}
         </pre>

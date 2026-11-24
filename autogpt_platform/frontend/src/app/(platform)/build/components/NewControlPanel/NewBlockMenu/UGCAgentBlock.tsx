@@ -121,7 +121,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
       </div>
       <div
         className={cn(
-          "flex h-7 w-7 items-center justify-center rounded-lg bg-foreground-body group-disabled:bg-foreground-subtle",
+          "flex h-7 w-7 items-center justify-center rounded-lg bg-fill-bold group-disabled:bg-fill-subtle",
         )}
       >
         {isLoading ? (

@@ -16,7 +16,7 @@ export function ChecklistMark({ state }: Props) {
         initial={{ scale: 0.4, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: "spring", ...spring.snappy }}
-        className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand text-action-foreground"
+        className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand text-foreground-on-color"
       >
         <Icon icon={Tick02Icon} size={14} aria-hidden />
         <span className="sr-only">Completed</span>

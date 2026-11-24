@@ -147,7 +147,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
                   (i === current
                     ? "size-2.5 border-2 border-action"
                     : i < current
-                      ? "size-2 bg-foreground-subtle"
+                      ? "size-2 bg-fill-subtle"
                       : "size-2 border border-border-strong")
                 }
               />

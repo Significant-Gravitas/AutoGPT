@@ -34,9 +34,7 @@ export const IntegrationBlocks = () => {
       <div className="w-full space-y-3 p-4">
         {Array.from({ length: 3 }).map((_, blockIndex) => (
           <Fragment key={blockIndex}>
-            {blockIndex > 0 && (
-              <Skeleton className="my-4 h-[1px] w-full text-surface-hover" />
-            )}
+            {blockIndex > 0 && <Skeleton className="my-4 h-[1px] w-full" />}
             {[0, 1, 2].map((index) => (
               <IntegrationBlock.Skeleton key={`${blockIndex}-${index}`} />
             ))}

@@ -297,7 +297,7 @@ export function AgentSelectStep({
                             </Text>
                           </div>
                           {isSelected ? (
-                            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand text-action-foreground">
+                            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand text-foreground-on-color">
                               <Icon icon={CheckmarkCircle02Icon} size={14} />
                             </span>
                           ) : (
@@ -421,7 +421,7 @@ function PaginationBar({
               className={cn(
                 "relative flex size-9 items-center justify-center rounded-pill transition",
                 entry === page
-                  ? "text-action-foreground"
+                  ? "text-foreground-on-color"
                   : "border border-border-base text-foreground-body hover:border-border-strong",
               )}
             >

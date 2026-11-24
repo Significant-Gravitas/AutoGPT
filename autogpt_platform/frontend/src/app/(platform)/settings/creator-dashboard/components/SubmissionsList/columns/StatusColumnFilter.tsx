@@ -56,7 +56,7 @@ export function StatusColumnFilter({ value, onChange }: Props) {
                       "flex h-4 w-4 items-center justify-center rounded-xsmall border",
                       "transition-[background-color,border-color,transform] duration-200",
                       checked
-                        ? "scale-100 border-brand bg-brand text-action-foreground"
+                        ? "scale-100 border-brand bg-brand text-foreground-on-color"
                         : "scale-95 border-border-strong bg-surface text-transparent",
                     )}
                   >

@@ -94,7 +94,11 @@ html[data-look="canary"] {
   --color-surface-inverse: 0 60 0;
   --color-surface-inverse-hover: 0 40 0;
   --color-foreground-inverse: 255 200 255;
+  --color-foreground-on-color: 230 120 255;
   --color-fill-subtle: 150 100 0;
+  --color-fill-soft: 170 115 0;
+  --color-fill-medium: 135 90 0;
+  --color-fill-bold: 120 75 0;
   --color-fill-strong: 100 60 0;
   --color-shell: 90 220 90;
   --color-shell-foreground: 140 0 140;

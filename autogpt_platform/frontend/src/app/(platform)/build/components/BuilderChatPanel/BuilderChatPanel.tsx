@@ -172,7 +172,7 @@ export function BuilderChatPanel({ className }: Props) {
           "pointer-events-auto flex h-12 w-12 items-center justify-center rounded-pill shadow-lg transition-colors",
           "focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:outline-none",
           isOpen
-            ? "bg-action text-action-foreground hover:bg-foreground-body"
+            ? "bg-action text-action-foreground hover:bg-fill-bold"
             : "border border-node-border bg-surface text-foreground-body hover:bg-surface-muted",
         )}
       >
