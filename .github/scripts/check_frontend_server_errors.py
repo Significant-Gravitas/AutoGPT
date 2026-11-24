@@ -9,6 +9,7 @@ the frontend container's log after the tests and fail on any such line.
 """
 
 import argparse
+import ipaddress
 import re
 import sys
 from collections import Counter
@@ -50,6 +51,40 @@ def server_errors(lines: list[str]) -> list[tuple[str, list[str]]]:
     return errors
 
 
+# The image optimizer timing out on a host outside the stack: the e2e seed's
+# Marketplace listings point at production media on GCS, so a slow network
+# between the runner and that host, not the platform, makes this one. It is
+# reported, but doesn't fail the leg. A failed (rather than timed-out) fetch,
+# or any local URL, still fails it.
+_EXTERNAL_IMAGE_TIMEOUT = re.compile(
+    r"^upstream image response timed out for https?://(?P<host>[^/:\s]+)"
+)
+
+
+def is_external_image_timeout(message: str) -> bool:
+    match = _EXTERNAL_IMAGE_TIMEOUT.match(message)
+    return bool(match) and not _is_local_host(match["host"].lower())
+
+
+def _is_local_host(host: str) -> bool:
+    """A host inside the stack or on the runner. Docker service names have no
+    dot (nor does a bracketed IPv6 host as matched here); an IP literal is
+    local if it's loopback, unspecified, link-local or private. A DNS name is
+    local only if it's localhost or Docker's host alias, whatever its labels."""
+    if "." not in host or host in ("localhost", "host.docker.internal"):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return (
+        address.is_loopback
+        or address.is_unspecified
+        or address.is_link_local
+        or address.is_private
+    )
+
+
 def report(errors: list[tuple[str, list[str]]], source: str) -> str:
     counts = Counter(message for message, _ in errors)
     summary = (
@@ -86,6 +121,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{name}: the log is empty, so the server's errors can't be checked")
         return 1
     errors = server_errors(lines)
+    external = Counter(
+        message for message, _ in errors if is_external_image_timeout(message)
+    )
+    for message, count in external.most_common():
+        print(f"::warning title=External image timed out ({count}x)::{message}")
+    errors = [error for error in errors if not is_external_image_timeout(error[0])]
     if errors:
         print(report(errors, name))
         return 1

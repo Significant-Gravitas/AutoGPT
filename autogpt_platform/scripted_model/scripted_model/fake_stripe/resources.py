@@ -34,18 +34,126 @@ def customer(params: dict[str, Any]) -> StripeObject:
 
 
 def line_item(
-    description: str, unit_price: Decimal, quantity: Any, currency: str
+    description: str,
+    unit_price: Decimal,
+    quantity: Any,
+    currency: str,
+    price: StripeObject | None = None,
 ) -> dict[str, Any]:
     """As Stripe totals a line: the unit price times the quantity, rounded up
-    to a whole minor unit (0.05 x 30 is 1.5, charged as 2)."""
+    to a whole minor unit (0.05 x 30 is 1.5, charged as 2). ``price`` is the
+    price it was bought at, when it names one."""
     count = as_int(quantity, 1)
     total = (unit_price * count).to_integral_value(rounding=ROUND_CEILING)
+    recurring = (price or {}).get("recurring") or {}
     return {
         "description": description,
         "quantity": count,
         "amount_total": int(total),
         "currency": currency,
+        "price": price["id"] if price else None,
+        "interval": recurring.get("interval"),
     }
+
+
+def subscription(
+    session: StripeObject,
+    prices: list[tuple[StripeObject, int]],
+    payment_method_id: str,
+    start: int,
+    end: int,
+) -> StripeObject:
+    """The active subscription a paid checkout starts: one item per recurring
+    price, charged to the card the checkout took."""
+    subscription_id = new_id("sub")
+    items = [
+        {
+            "id": new_id("si"),
+            "object": "subscription_item",
+            "created": start,
+            "metadata": {},
+            "price": price,
+            "quantity": quantity,
+            "subscription": subscription_id,
+        }
+        for price, quantity in prices
+    ]
+    return {
+        "id": subscription_id,
+        "object": "subscription",
+        "billing_cycle_anchor": start,
+        "cancel_at": None,
+        "cancel_at_period_end": False,
+        "canceled_at": None,
+        "cancellation_details": not_cancelled(),
+        "collection_method": "charge_automatically",
+        "created": start,
+        "currency": prices[0][0]["currency"],
+        "current_period_end": end,
+        "current_period_start": start,
+        "customer": session["customer"],
+        "default_payment_method": payment_method_id,
+        "discounts": [],
+        "ended_at": None,
+        "items": {
+            "object": "list",
+            "data": items,
+            "has_more": False,
+            "total_count": len(items),
+            "url": f"/v1/subscription_items?subscription={subscription_id}",
+        },
+        "latest_invoice": None,
+        "livemode": False,
+        "metadata": dict(session["_subscription_data"].get("metadata") or {}),
+        "schedule": None,
+        "start_date": start,
+        "status": "active",
+        "trial_end": None,
+        "trial_start": None,
+    }
+
+
+def not_cancelled() -> dict[str, Any]:
+    return {"comment": None, "feedback": None, "reason": None}
+
+
+def invoice_payment(
+    subscription: StripeObject,
+    invoice_id: str,
+    amount: int,
+    billing_reason: str,
+    created: int,
+) -> StripeObject:
+    """The payment that settles a subscription invoice with its card."""
+    description = (
+        "Subscription creation"
+        if billing_reason == "subscription_create"
+        else "Subscription update"
+    )
+    return {
+        "id": new_id("pi"),
+        "object": "payment_intent",
+        "amount": amount,
+        "amount_received": amount,
+        "created": created,
+        "currency": subscription["currency"],
+        "customer": subscription["customer"],
+        "description": description,
+        "invoice": invoice_id,
+        "latest_charge": new_id("ch"),
+        "livemode": False,
+        "metadata": {},
+        "payment_method": subscription["default_payment_method"],
+        "setup_future_usage": "off_session",
+        "status": "succeeded",
+    }
+
+
+def money(amount: int, currency: str | None) -> str:
+    """An amount in a currency's minor unit, as a page shows it: ``$23.00``."""
+    if (currency or "usd").lower() == "usd":
+        return f"${amount / 100:,.2f}"
+    return f"{amount / 100:,.2f} {str(currency).upper()}"
 
 
 def checkout_session(
@@ -80,15 +188,18 @@ def checkout_session(
         "url": f"{public_url}{CHECKOUT_PAGE}/{session_id}",
         "_line_items": items,
         "_payment_intent_data": params.get("payment_intent_data") or {},
+        "_subscription_data": params.get("subscription_data") or {},
     }
 
 
-def card(customer_id: str | None) -> StripeObject:
-    """Stripe's 4242 test Visa; ``customer`` is set when it was saved."""
+def card(customer_id: str | None, allow_redisplay: str = "always") -> StripeObject:
+    """Stripe's 4242 test Visa; ``customer`` is set when it was saved. A card
+    a subscription checkout saves is ``limited``: shown again only where a
+    checkout asks for limited cards too."""
     return {
         "id": new_id("pm"),
         "object": "payment_method",
-        "allow_redisplay": "always",
+        "allow_redisplay": allow_redisplay,
         "billing_details": {"address": {"country": "US"}, "email": None, "name": None},
         "card": {
             "brand": "visa",

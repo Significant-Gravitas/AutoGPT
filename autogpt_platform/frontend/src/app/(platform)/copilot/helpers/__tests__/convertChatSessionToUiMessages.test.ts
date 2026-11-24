@@ -1,6 +1,10 @@
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { describe, expect, it } from "vitest";
 import {
+  EMPTY_TODOS,
+  getLatestTaskList,
+} from "../../components/TaskProgressBar/helpers";
+import {
   concatWithAssistantMerge,
   convertChatSessionMessagesToUiMessages,
 } from "../convertChatSessionToUiMessages";
@@ -559,6 +563,37 @@ describe("convertChatSessionMessagesToUiMessages — latest user marker", () => 
         (todoPart as { input: { todos: unknown[] } }).input.todos,
       ).toHaveLength(2);
     });
+
+    it.each([
+      [{ type: "todo_write", todos: [] }, EMPTY_TODOS],
+      [{ todos: [] }, todos],
+      [{ oldTodos: todos, newTodos: [] }, todos],
+    ])(
+      "applies an orphan empty result only when it identifies TodoWrite (%j)",
+      (output, expected) => {
+        const result = convertChatSessionMessagesToUiMessages(
+          SESSION_ID,
+          [
+            { role: "assistant", content: "on it", sequence: 0 },
+            {
+              role: "tool",
+              content: JSON.stringify({ type: "todo_write", todos }),
+              tool_call_id: "call-1",
+              sequence: 1,
+            },
+            {
+              role: "tool",
+              content: JSON.stringify(output),
+              tool_call_id: "call-2",
+              sequence: 2,
+            },
+          ],
+          { isComplete: true },
+        );
+
+        expect(getLatestTaskList(result.messages)).toEqual(expected);
+      },
+    );
 
     it("ignores an orphan result missing a `todos` array", () => {
       const result = convertChatSessionMessagesToUiMessages(

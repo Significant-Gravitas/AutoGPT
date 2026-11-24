@@ -13,20 +13,24 @@ from collections.abc import Callable, Mapping
 from decimal import Decimal
 from typing import Any
 
-from . import resources
-from .errors import ApiError
+from . import catalog, resources
+from .errors import ApiError, NotModelled
 from .forms import as_int
 from .line_items import product_name, unit_price
 from .store import Store, StripeObject, public
+from .subscriptions import Subscriptions
 
 Params = dict[str, Any]
 Handler = Callable[[re.Match[str], Params], StripeObject]
 
 
 class StripeApi:
-    def __init__(self, store: Store, public_url: str) -> None:
+    def __init__(
+        self, store: Store, public_url: str, subscriptions: Subscriptions
+    ) -> None:
         self._store = store
         self._public_url = public_url
+        self._subscriptions = subscriptions
         self._replies: dict[str, tuple[str, int, StripeObject]] = {}
         self._replies_lock = threading.Lock()
         id_ = r"(?P<id>[^/]+)"
@@ -61,6 +65,21 @@ class StripeApi:
             ),
             ("GET", "/v1/subscriptions", self._list_subscriptions),
             ("GET", f"/v1/subscriptions/{id_}", self._retriever("subscription")),
+            # Never wait for their webhooks: see events.py.
+            (
+                "POST",
+                f"/v1/subscriptions/{id_}",
+                lambda match, params: self._subscriptions.update(
+                    match["id"], params, wait=False
+                ),
+            ),
+            (
+                "DELETE",
+                f"/v1/subscriptions/{id_}",
+                lambda match, params: self._subscriptions.cancel(
+                    match["id"], params, wait=False
+                ),
+            ),
             (
                 "GET",
                 "/v1/invoices",
@@ -76,7 +95,8 @@ class StripeApi:
         self, method: str, path: str, params: Params, headers: Mapping[str, str]
     ) -> tuple[int, StripeObject, bool]:
         """``(status, body, served)``; ``served`` is False for a URL the fake
-        doesn't model. ``path`` starts at ``/v1``; header names are lowercase."""
+        doesn't model, or parameters it doesn't (``NotModelled``). ``path``
+        starts at ``/v1``; header names are lowercase."""
         if not _test_key(headers.get("authorization") or ""):
             error = ApiError(
                 401,
@@ -88,8 +108,7 @@ class StripeApi:
             match = pattern.fullmatch(path)
             if match and route_method == method:
                 key = headers.get("idempotency-key") if method == "POST" else None
-                status, body = self._idempotent(key, path, params, match, handler)
-                return status, body, True
+                return self._idempotent(key, path, params, match, handler)
         error = ApiError(404, f"Unrecognized request URL ({method}: {path}).")
         return error.status, error.body, False
 
@@ -100,7 +119,7 @@ class StripeApi:
         params: Params,
         match: re.Match[str],
         handler: Handler,
-    ) -> tuple[int, StripeObject]:
+    ) -> tuple[int, StripeObject, bool]:
         """A retried POST with the same Idempotency-Key gets the first answer,
         as Stripe gives it (Customer.create relies on this)."""
         if key is None:
@@ -112,12 +131,12 @@ class StripeApi:
         with self._replies_lock:
             seen = self._replies.get(key)
             if seen is None:
-                status, body = self._run(match, params, handler)
+                status, body, served = self._run(match, params, handler)
                 # Stripe keeps no result for a request it refused for its
                 # parameters, and the fake's only errors are such refusals.
                 if status < 400:
                     self._replies[key] = (fingerprint, status, body)
-                return status, body
+                return status, body, served
         if seen[0] != fingerprint:
             error = ApiError(
                 400,
@@ -125,19 +144,21 @@ class StripeApi:
                 " parameters they were first used with.",
                 kind="idempotency_error",
             )
-            return error.status, error.body
-        return seen[1], seen[2]
+            return error.status, error.body, True
+        return seen[1], seen[2], True
 
     def _run(
         self, match: re.Match[str], params: Params, handler: Handler
-    ) -> tuple[int, StripeObject]:
+    ) -> tuple[int, StripeObject, bool]:
         try:
             body = handler(match, params)
+        except NotModelled as error:
+            return error.status, error.body, False
         except ApiError as error:
-            return error.status, error.body
+            return error.status, error.body, True
         for path in _expansions(params.get("expand")):
             self._expand(body, path.split("."))
-        return 200, body
+        return 200, body, True
 
     def _expand(self, node: Any, parts: list[str]) -> None:
         """Replaces the id at ``parts`` (``data.subscription`` in a list) with
@@ -221,24 +242,44 @@ class StripeApi:
     ) -> StripeObject:
         if params.get("customer"):
             self._require(params["customer"], "customer", "customer")
-        if params.get("mode") not in ("payment", "subscription", "setup"):
+        mode = params.get("mode")
+        if mode not in ("payment", "subscription", "setup"):
             raise ApiError(400, "Invalid mode: must be payment, subscription or setup.")
+        if mode == "subscription" and not params.get("customer"):
+            raise NotModelled("a subscription checkout without a customer")
+        # Only the subscription's metadata is modelled: a trial or anything
+        # else there would start a plan the fake bills differently.
+        subscription_data = params.get("subscription_data")
+        unmodelled = (
+            sorted(set(subscription_data) - {"metadata"})
+            if isinstance(subscription_data, dict)
+            else []
+        )
+        if unmodelled:
+            fields = ", ".join(f"subscription_data[{name}]" for name in unmodelled)
+            raise NotModelled(f"a checkout with {fields}")
         if not params.get("success_url"):
             raise ApiError(400, "Missing required param: success_url.")
         items = [
-            self._line_item(index, item)
+            self._line_item(index, item, mode)
             for index, item in enumerate(params.get("line_items") or [])
         ]
         if params["mode"] != "setup" and not items:
             raise ApiError(400, "Missing required param: line_items.")
+        if mode == "subscription":
+            _require_one_interval(items)
         session = resources.checkout_session(params, items, self._public_url)
         return public(self._store.add(session))
 
-    def _line_item(self, index: int, item: Any) -> dict[str, Any]:
+    def _line_item(self, index: int, item: Any, mode: str) -> dict[str, Any]:
+        """A checkout's line: an inline price for a payment, a recurring price
+        for a subscription, as Stripe takes them."""
         where = f"line_items[{index}]"
         if not isinstance(item, dict):
             raise ApiError(400, "Invalid line item.", param=where)
         if isinstance(price_data := item.get("price_data"), dict):
+            if mode == "subscription":
+                raise NotModelled("an inline price (price_data) for a subscription")
             return resources.line_item(
                 product_name(price_data, f"{where}[price_data]"),
                 unit_price(price_data, f"{where}[price_data]"),
@@ -246,11 +287,22 @@ class StripeApi:
                 price_data.get("currency") or "usd",
             )
         price = self._require(str(item.get("price")), "price", f"{where}[price]")
+        recurring = price.get("type") == "recurring"
+        if recurring and mode == "payment":
+            raise ApiError(
+                400,
+                "You specified `payment` mode but passed a recurring price. Either"
+                " switch to `subscription` mode or use only one-time prices.",
+                param=f"{where}[price]",
+            )
+        if not recurring and mode == "subscription":
+            raise NotModelled("a one-time price on a subscription's first invoice")
         return resources.line_item(
-            price.get("nickname") or price["id"],
+            catalog.product_name(self._store, price),
             Decimal(as_int(price.get("unit_amount"))),
             item.get("quantity"),
             price.get("currency") or "usd",
+            price,
         )
 
     def _expire_session(self, match: re.Match[str], params: Params) -> StripeObject:
@@ -301,6 +353,21 @@ class StripeApi:
         self._require(str(params.get("customer")), "customer", "customer")
         session = resources.portal_session(params, self._public_url)
         return public(self._store.add(session))
+
+
+def _require_one_interval(items: list[dict[str, Any]]) -> None:
+    """Stripe bills a subscription's prices on one cycle, so they must recur
+    alike. Mixing intervals takes flexible billing, which the API version the
+    fake models doesn't have. (The catalogue's prices all recur every one
+    month or year.)"""
+    intervals = sorted({str(item["interval"]) for item in items})
+    if len(intervals) > 1:
+        raise ApiError(
+            400,
+            "All of a subscription's prices must have the same billing"
+            f" interval; these recur by {' and '.join(intervals)}.",
+            param="line_items",
+        )
 
 
 def _test_key(authorization: str) -> bool:

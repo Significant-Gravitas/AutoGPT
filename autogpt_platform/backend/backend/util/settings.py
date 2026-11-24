@@ -576,6 +576,21 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "the API can't read them.",
     )
 
+    # Documented in docs/platform/deployment-environment-variables.md: update it
+    # with any change here.
+    server_keep_alive_timeout_seconds: int = Field(
+        # A proxy that sends a request on a connection just as the server closes
+        # it gets no answer, so the proxy has to be the one that closes an idle
+        # connection. Google's load balancer keeps one open for 600 s and asks
+        # backends for 620 s, or it answers 502
+        # (backend_connection_closed_before_data_sent_to_client):
+        # https://docs.cloud.google.com/load-balancing/docs/https/troubleshooting-ext-https-lbs
+        default=620,
+        ge=1,
+        description="How long the API and WebSocket servers keep an idle "
+        "connection open: longer than any proxy in front of them does.",
+    )
+
     notification_service_port: int = Field(
         default=8007,
         description="The port for notification service daemon to run on",

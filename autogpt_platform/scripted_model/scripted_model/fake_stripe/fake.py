@@ -3,7 +3,11 @@
 - ``/stripe/v1/...``: the REST API, for the platform's Stripe SDK
   (``STRIPE_API_BASE=http://scripted_model:4010/stripe``).
 - ``/stripe/checkout/<id>``: the hosted checkout page a browser opens.
+- ``/stripe/billing_portal/<id>``, ``/stripe/invoices/<id>``: the customer's
+  billing portal and hosted invoices (``portal.py``).
 - ``/__stripe__/...``: the journeys' controls (``control.py``).
+
+It starts with the plans in ``catalog.json`` for sale.
 
 The browser reaches the fake through a host port and the platform through
 the compose network, so pages it hands out use ``FAKE_STRIPE_PUBLIC_URL``.
@@ -16,18 +20,21 @@ from collections import deque
 from collections.abc import Mapping
 from typing import Any
 
-from . import control
+from . import catalog, control
 from .api import StripeApi
 from .checkout import Checkout
 from .events import Events
 from .forms import decode
+from .portal import Portal
 from .responses import Response
 from .store import Store
+from .subscriptions import Subscriptions
 
 logger = logging.getLogger("scripted_model.fake_stripe")
 
 API_PREFIX = "/stripe/v1/"
-PAGE_PREFIXES = ("/stripe/checkout/", "/stripe/billing_portal/")
+CHECKOUT_PREFIX = "/stripe/checkout/"
+CUSTOMER_PAGE_PREFIXES = ("/stripe/billing_portal/", "/stripe/invoices/")
 CONTROL_PREFIX = "/__stripe__/"
 # Enough for a journeys run; the oldest requests go first. Unserved requests
 # are also kept apart and never dropped, so a journey always sees them.
@@ -42,10 +49,14 @@ class FakeStripe:
     def __init__(
         self, public_url: str, webhook_url: str = "", webhook_secret: str = ""
     ) -> None:
+        public_url = public_url.rstrip("/")
         self.store = Store()
+        catalog.seed(self.store)
         self.events = Events(webhook_url, webhook_secret)
-        self.api = StripeApi(self.store, public_url.rstrip("/"))
-        self.checkout = Checkout(self.store, self.events)
+        self.subscriptions = Subscriptions(self.store, self.events, public_url)
+        self.api = StripeApi(self.store, public_url, self.subscriptions)
+        self.checkout = Checkout(self.store, self.events, self.subscriptions)
+        self.portal = Portal(self.store, self.subscriptions)
         self._requests: deque[dict[str, Any]] = deque(maxlen=JOURNAL_LIMIT)
         self._unserved: list[dict[str, Any]] = []
         self._last_seq = 0
@@ -71,11 +82,17 @@ class FakeStripe:
     ) -> Response:
         if path.startswith(API_PREFIX):
             return self._api(method, path.removeprefix("/stripe"), query, body, headers)
-        if path.startswith(PAGE_PREFIXES):
+        if path.startswith(CHECKOUT_PREFIX):
             return self.checkout.handle(method, path)
+        if path.startswith(CUSTOMER_PAGE_PREFIXES):
+            return self.portal.handle(method, path)
         if path.startswith(CONTROL_PREFIX):
             return control.handle(self, method, path, query, body)
         return Response.json(404, {"error": {"message": f"nothing serves {path}"}})
+
+    def close(self) -> None:
+        """Stops sending webhooks once those already queued are out."""
+        self.events.close()
 
     def requests(
         self, unserved_only: bool = False, after: int = 0

@@ -32,7 +32,9 @@ def public(obj: StripeObject) -> StripeObject:
 class Store:
     def __init__(self) -> None:
         self._objects: dict[str, StripeObject] = {}
-        self._lock = threading.Lock()
+        # Re-entrant, so a change ``update`` applies can read the store,
+        # e.g. to number an invoice it adds.
+        self._lock = threading.RLock()
 
     def add(self, obj: StripeObject) -> StripeObject:
         with self._lock:
@@ -52,11 +54,14 @@ class Store:
         object_id: str,
         change: Callable[[StripeObject], None],
         also_add: tuple[StripeObject, ...] = (),
+        committed: Callable[[StripeObject], None] | None = None,
     ) -> StripeObject | None:
         """Applies ``change`` to the object under the lock, so a check it makes
         (a session still open, say) and its write are one step, and adds
         ``also_add`` in the same step. An exception from ``change`` leaves the
-        store as it was, without ``also_add``."""
+        store as it was, without ``also_add``. ``committed`` gets the result
+        in that step too, before another change can be made: the events it
+        records go out in the order the changes were made."""
         with self._lock:
             obj = self._objects.get(object_id)
             if obj is None:
@@ -66,7 +71,10 @@ class Store:
             self._objects[object_id] = changed
             for extra in also_add:
                 self._objects[extra["id"]] = copy.deepcopy(extra)
-            return copy.deepcopy(changed)
+            result = copy.deepcopy(changed)
+            if committed is not None:
+                committed(result)
+            return result
 
     def find(
         self, kind: str, match: Callable[[StripeObject], bool]
