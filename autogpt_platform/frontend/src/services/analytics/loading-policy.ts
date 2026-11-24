@@ -7,6 +7,7 @@ interface LoadingArgs {
   isLocal: boolean;
   isConsentManaged: boolean;
   consent: ConsentState;
+  pageHoldsCredential: boolean;
 }
 
 export function resolveAnalyticsLoading({
@@ -14,6 +15,7 @@ export function resolveAnalyticsLoading({
   isLocal,
   isConsentManaged,
   consent,
+  pageHoldsCredential,
 }: LoadingArgs) {
   const isProductionDomain = isProductionHost(host);
 
@@ -23,11 +25,12 @@ export function resolveAnalyticsLoading({
     // Cookiebot sends the answer once there is one. Without a banner nothing
     // could ever answer, so the tag stays off. Open-source developers running
     // locally only send analytics after opting in. DataFast waits for consent
-    // everywhere, the public tour included.
+    // everywhere, the public tour included, and has no hook to mask a URL, so
+    // it also waits for a page whose URL and referrer carry no credential.
     googleTag:
       (isProductionDomain && isConsentManaged) ||
       (isLocal && consent.analytics),
-    dataFast: isProductionDomain && consent.analytics,
+    dataFast: isProductionDomain && consent.analytics && !pageHoldsCredential,
   };
 }
 

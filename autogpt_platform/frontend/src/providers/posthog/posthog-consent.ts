@@ -14,6 +14,7 @@ import {
   hasDeclinedConsentFor,
   subscribeToConsent,
 } from "@/services/consent/consent";
+import { stripStoredURLCredentials } from "@/services/analytics/posthog-stored-urls";
 import posthog, { type CaptureResult, type PostHogConfig } from "posthog-js";
 
 const POSTHOG_CONSENT_KEY = "agpt_posthog_consent";
@@ -125,6 +126,8 @@ export function syncPostHogConsent() {
   keepPersistenceWithCapture();
   if (posthog.config.persistence !== PERSISTENT_STORAGE) {
     posthog.set_config({ persistence: PERSISTENT_STORAGE });
+    // The storage now holds what an earlier visit, or agpt.co, stored.
+    stripStoredURLCredentials();
   }
   if (posthog.config.disable_session_recording) {
     posthog.startSessionRecording();

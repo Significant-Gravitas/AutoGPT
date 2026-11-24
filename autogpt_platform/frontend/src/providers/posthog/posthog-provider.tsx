@@ -11,6 +11,10 @@ import { capturePostHogEvent } from "@/services/analytics/posthog-capture";
 import { PageEvent } from "@/services/analytics/posthog-events";
 import { markImpersonatedEvent } from "@/services/analytics/posthog-request-context";
 import {
+  keepStoredURLsStripped,
+  stripStoredURLCredentials,
+} from "@/services/analytics/posthog-stored-urls";
+import {
   CREDENTIAL_PARAMS,
   stripURLCredentials,
 } from "@/services/analytics/url-credentials";
@@ -59,7 +63,10 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
         // skips before_send. This also masks posthog-js's own ad click IDs.
         mask_personal_data_properties: true,
         custom_personal_data_properties: CREDENTIAL_PARAMS,
+        // Before the first /flags/ request: an earlier visit stored the page.
+        loaded: () => stripStoredURLCredentials(),
         before_send: [
+          keepStoredURLsStripped,
           dropWithoutConsent,
           stripURLCredentials,
           markImpersonatedEvent,

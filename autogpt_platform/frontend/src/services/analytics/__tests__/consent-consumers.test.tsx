@@ -53,8 +53,20 @@ beforeEach(() => {
 
 afterEach(() => {
   removeCookiebot();
+  setPage("/", "");
   vi.unstubAllEnvs();
 });
+
+function setPage(path: string, referrer: string) {
+  const { happyDOM } = window as unknown as {
+    happyDOM?: { setURL: (url: string) => void };
+  };
+  happyDOM?.setURL(`https://platform.agpt.co${path}`);
+  Object.defineProperty(document, "referrer", {
+    configurable: true,
+    value: referrer && `https://platform.agpt.co${referrer}`,
+  });
+}
 
 describe("without NEXT_PUBLIC_COOKIEBOT_CBID", () => {
   it("loads no analytics, even for a browser holding an old answer", () => {
@@ -148,6 +160,26 @@ describe("with NEXT_PUBLIC_COOKIEBOT_CBID", () => {
     act(() => answerCookiebot({ statistics: true }));
     expect(queryScript("_custom-ga")).not.toBeNull();
   });
+
+  it.each([
+    ["URL", "/reset-password?token=one-time-link-value", ""],
+    ["referrer", "/login", "/link/one-time-link-value"],
+  ])(
+    "holds DataFast back while the page %s holds a credential, until the next page",
+    (_field, path, referrer) => {
+      installCookiebot({ statistics: true });
+      setPage(path, referrer);
+      const { rerender } = render(
+        <SetupAnalytics host="platform.agpt.co" ga={GA} />,
+      );
+      expect(queryScript(DATAFAST_SRC)).toBeNull();
+
+      setPage("/marketplace", "");
+      rerender(<SetupAnalytics host="platform.agpt.co" ga={GA} />);
+
+      expect(queryScript(DATAFAST_SRC)).not.toBeNull();
+    },
+  );
 
   it("stops rendering Vercel Speed Insights when the visitor declines", () => {
     installCookiebot({ statistics: true });
