@@ -230,6 +230,24 @@ export function SkillCard({ output }: OutputProps) {
   );
 }
 
+// Module level on purpose: React Compiler cannot compile a `finally` clause
+// inside a component, and the project tests allow no new bailouts.
+async function sendGoalOnce(
+  sending: { current: boolean },
+  send: () => void | Promise<void>,
+  onError: (error: unknown) => void,
+) {
+  if (sending.current) return;
+  sending.current = true;
+  try {
+    await send();
+  } catch (error) {
+    onError(error);
+  } finally {
+    sending.current = false;
+  }
+}
+
 export function SuggestedGoalCard({ output }: OutputProps) {
   const actions = useContext(CopilotChatActionsContext);
   // A second click while the first send is pending would send the goal again.
@@ -238,23 +256,21 @@ export function SuggestedGoalCard({ output }: OutputProps) {
   const goal = str(output, "suggested_goal");
   if (!goal) return null;
 
-  async function handleUseGoal() {
-    if (!actions || sendingRef.current) return;
-    sendingRef.current = true;
-    try {
-      await actions.onSend(`Please create a workflow with this goal: ${goal}`);
-    } catch (error) {
-      // `onSend` may have already updated the chat before rejecting, so ask
-      // the user to check the chat before sending the same goal again.
-      toastSendFailure({
-        title: "Couldn't send message",
-        error,
-        recovery: "check the chat before trying again",
-        paywallRecovery: "the suggested goal is still on the card",
-      });
-    } finally {
-      sendingRef.current = false;
-    }
+  function handleUseGoal() {
+    if (!actions) return;
+    return sendGoalOnce(
+      sendingRef,
+      () => actions.onSend(`Please create a workflow with this goal: ${goal}`),
+      (error) =>
+        // `onSend` may have already updated the chat before rejecting, so ask
+        // the user to check the chat before sending the same goal again.
+        toastSendFailure({
+          title: "Couldn't send message",
+          error,
+          recovery: "check the chat before trying again",
+          paywallRecovery: "the suggested goal is still on the card",
+        }),
+    );
   }
 
   return (
