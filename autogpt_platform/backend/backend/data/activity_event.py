@@ -98,11 +98,20 @@ async def list_activity_events(
     since: datetime,
     categories: list[ActivityEventCategory] | None = None,
     limit: int = 200,
+    *,
+    until: datetime | None = None,
+    after_id: str | None = None,
 ) -> list[ActivityEvent]:
     where: dict[str, Any] = {"userId": user_id, "createdAt": {"gte": since}}
+    if until is not None:
+        where["createdAt"]["lte"] = until
     if categories:
         where["category"] = {"in": categories}
     rows = await prisma.models.ActivityEvent.prisma().find_many(
-        where=where, order={"createdAt": "desc"}, take=limit
+        where=where,
+        order=[{"createdAt": "desc"}, {"id": "desc"}],
+        cursor={"id": after_id} if after_id is not None else None,
+        skip=1 if after_id is not None else 0,
+        take=limit,
     )
     return [ActivityEvent.from_db(row) for row in rows]

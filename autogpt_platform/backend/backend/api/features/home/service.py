@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -36,6 +37,7 @@ from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .compose import compose_home_dashboard
 from .models import HomeDashboardResponse
+from .recent_work import is_model_call, scheduled_workflow_id
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -78,6 +80,11 @@ async def build_home_dashboard(
     graph_ids = list(
         {execution.graph_id for execution in data.executions}
         | {review.graph_id for review in data.reviews if review.graph_id}
+        | {
+            graph_id
+            for event in data.work_events
+            if (graph_id := scheduled_workflow_id(event))
+        }
     )
     work_session_ids = list(
         {event.session_id for event in data.work_events if event.session_id}
@@ -184,11 +191,13 @@ async def _load_home_source_data(
         )
     )
     schedules_task = asyncio.create_task(_get_schedules(user_id=user_id))
+    work_events_task = asyncio.create_task(
+        _get_work_events(
+            user_id=user_id, since=week_start, until=now, schedules_task=schedules_task
+        )
+    )
     credits_task = asyncio.create_task(_get_credits(user_id=user_id, ctx=ctx))
     questions_task = asyncio.create_task(_get_pending_questions(user_id=user_id))
-    work_events_task = asyncio.create_task(
-        _get_work_events(user_id=user_id, since=week_start)
-    )
     paused_chats_task = asyncio.create_task(_get_paused_chats(user_id=user_id))
     user_task = asyncio.create_task(user_db.get_user_by_id(user_id))
     # Gather rather than awaiting one by one: a failure in the first task would
@@ -199,9 +208,9 @@ async def _load_home_source_data(
         reviews_task,
         cost_summary_task,
         schedules_task,
+        work_events_task,
         credits_task,
         questions_task,
-        work_events_task,
         paused_chats_task,
         user_task,
     ]
@@ -213,7 +222,7 @@ async def _load_home_source_data(
         executions=executions_task.result(),
         reviews=reviews_task.result(),
         cost_summary=cost_summary_task.result(),
-        schedules=schedules or [],
+        schedules=[job for job in schedules or [] if job.next_run_time],
         schedules_unavailable=schedules is None,
         credits_balance=credits_task.result(),
         questions=questions_task.result(),
@@ -224,8 +233,7 @@ async def _load_home_source_data(
 
 
 async def _get_schedules(
-    *,
-    user_id: str,
+    *, user_id: str
 ) -> list[GraphExecutionJobInfo | CopilotTurnJobInfo] | None:
     # Deliberately owner-scoped: executions, reviews and cost totals on this page
     # are all personal, so org/team schedules would surface upcoming runs whose
@@ -235,7 +243,9 @@ async def _get_schedules(
     # the rows are unknown, not absent.
     try:
         return await asyncio.wait_for(
-            get_scheduler_client().get_execution_schedules(user_id=user_id),
+            get_scheduler_client().get_execution_schedules(
+                user_id=user_id, include_paused=True
+            ),
             timeout=settings.config.schedule_read_timeout_seconds,
         )
     except Exception:
@@ -271,30 +281,74 @@ async def _get_pending_questions(*, user_id: str) -> list[ChatSessionInfo]:
 
 
 async def _get_work_events(
-    *, user_id: str, since: datetime
+    *,
+    user_id: str,
+    since: datetime,
+    until: datetime | None = None,
+    schedules_task: (
+        asyncio.Task[list[GraphExecutionJobInfo | CopilotTurnJobInfo] | None] | None
+    ) = None,
 ) -> list[activity_db.ActivityEvent]:
-    # Fail-soft like schedules and credits: a broken audit read costs the
-    # Recent work card, not the page.
-    try:
-        events = await activity_db.list_activity_events(
-            user_id,
-            since=since,
-            categories=["FILE", "INTEGRATION", "SCHEDULE"],
-            limit=_WORK_EVENT_LIMIT,
-        )
-    except Exception:
-        logger.warning(
-            "Home could not load work events for user %s", user_id[:_LOG_ID_CHARS]
-        )
-        return []
-    try:
-        return await _without_working_files(user_id, events)
-    except Exception:
-        logger.warning(
-            "Home could not check work files for user %s", user_id[:_LOG_ID_CHARS]
-        )
-        # An unchecked file row may be one of Otto's own; the rest still show.
-        return [event for event in events if event.category != "FILE"]
+    visible: list[activity_db.ActivityEvent] = []
+    seen_schedule_ids: set[str] = set()
+    graph_by_schedule: dict[str, str] | None = None
+    async for page in _work_event_pages(user_id, since, until):
+        if schedules_task is not None:
+            schedules = await schedules_task
+            if schedules is not None:
+                graph_by_schedule = {
+                    job.id: job.graph_id for job in schedules if job.kind == "graph"
+                }
+            schedules_task = None
+        for event in page:
+            if is_model_call(event):
+                continue
+            schedule_id = event.schedule_id
+            if schedule_id and (graph_id := scheduled_workflow_id(event)):
+                if schedule_id in seen_schedule_ids:
+                    continue
+                if (
+                    graph_by_schedule is not None
+                    and graph_by_schedule.get(schedule_id) != graph_id
+                ):
+                    continue
+                seen_schedule_ids.add(schedule_id)
+            visible.append(event)
+            if len(visible) == _WORK_EVENT_LIMIT:
+                return visible
+    return visible
+
+
+async def _work_event_pages(
+    user_id: str, since: datetime, until: datetime | None
+) -> AsyncIterator[list[activity_db.ActivityEvent]]:
+    after_id = None
+    while True:
+        try:
+            events = await activity_db.list_activity_events(
+                user_id,
+                since=since,
+                until=until,
+                after_id=after_id,
+                categories=["FILE", "INTEGRATION", "SCHEDULE"],
+                limit=_WORK_EVENT_LIMIT,
+            )
+        except Exception:
+            logger.warning(
+                "Home could not load work events for user %s", user_id[:_LOG_ID_CHARS]
+            )
+            return
+        try:
+            page = await _without_working_files(user_id, events)
+        except Exception:
+            logger.warning(
+                "Home could not check work files for user %s", user_id[:_LOG_ID_CHARS]
+            )
+            page = [event for event in events if event.category != "FILE"]
+        yield page
+        if len(events) < _WORK_EVENT_LIMIT:
+            return
+        after_id = events[-1].id
 
 
 async def _without_working_files(

@@ -87,7 +87,7 @@ def compose_recent_work(
         event
         for event in events
         if event.category in _ITEM_CATEGORIES
-        and not _is_model_call(event)
+        and not is_model_call(event)
         and as_utc(event.created_at) >= since
     ]
     for event in displayable:
@@ -131,6 +131,10 @@ def _run_key(item: BriefingRunItem) -> ActorKey:
     return ("workflow", item.graph_id)
 
 
+def scheduled_workflow_id(event: ActivityEvent) -> str | None:
+    return event.object_id if event.event_type == "schedule.created" else None
+
+
 def _event_key(
     event: ActivityEvent, exec_by_id: dict[str, GraphExecutionMeta]
 ) -> ActorKey:
@@ -145,6 +149,8 @@ def _event_key(
         # A run past the fetch limit still keys by its own execution, so two
         # unknown runs never collapse into one unnamed workflow.
         return ("workflow", execution.graph_id if execution else event.graph_exec_id)
+    if graph_id := scheduled_workflow_id(event):
+        return ("workflow", graph_id)
     return ("autopilot", "")
 
 
@@ -179,7 +185,7 @@ def _actor(
     return HomeWorkActor(kind="autopilot", name=AUTOPILOT_NAME, link="/copilot")
 
 
-def _is_model_call(event: ActivityEvent) -> bool:
+def is_model_call(event: ActivityEvent) -> bool:
     """Rows written before LLM credential use stopped being recorded."""
     return event.category == "INTEGRATION" and event.provider in LLM_PROVIDER_NAMES
 
