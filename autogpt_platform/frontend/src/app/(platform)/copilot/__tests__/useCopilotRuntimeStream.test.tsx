@@ -69,7 +69,7 @@ function renderStream() {
         sessionId: SESSION_ID,
         sessionView: null,
         hydratedMessages: [],
-        refetchSession: async () => ({ data: undefined }),
+        refetchSession: async () => ({ data: undefined, isError: false }),
         copilotModel: undefined,
       }),
     {

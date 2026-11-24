@@ -1,4 +1,3 @@
-import { getGetV2GetSessionMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import type { SessionDetailResponseMessagesItem } from "@/app/api/__generated__/models/sessionDetailResponseMessagesItem";
 import { server } from "@/mocks/mock-server";
@@ -9,7 +8,7 @@ import {
 import { installLiveSocket } from "@/tests/integrations/live-socket";
 import type { FakeWebSocket } from "@/lib/autogpt-server-api/__tests__/websocket-fake";
 import { act, waitFor } from "@testing-library/react";
-import { http } from "msw";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useCopilotStreamStore } from "../copilotStreamStore";
 import { useCopilotUIStore } from "../store";
@@ -79,6 +78,11 @@ const TEST_TIMEOUT = { timeout: 25_000 };
 type Row = SessionDetailResponseMessagesItem;
 
 let rows: Row[] = [];
+// The session GET returns the latest this-many rows, as its window does.
+let windowSize: number | null = null;
+// Session GETs fail while this is above zero; each one takes one.
+let failingReads = 0;
+let reads = 0;
 
 function resetStores() {
   resetChatRuntimes();
@@ -90,6 +94,9 @@ function resetStores() {
 beforeEach(() => {
   resetStores();
   rows = [];
+  windowSize = null;
+  failingReads = 0;
+  reads = 0;
   store("user", LIMA);
   store("assistant", "Lima.");
 });
@@ -184,15 +191,99 @@ it(
     await turnEnded(socket, "another-session");
     expect(reread).not.toHaveBeenCalled();
 
+    otherTabSends(MIKE, "Mike.");
     await turnEnded(socket);
     expect(reread).toHaveBeenCalledTimes(1);
+    // The read it starts lands before the test ends.
+    await waitFor(
+      () =>
+        expect(transcript()).toEqual([
+          `user: ${LIMA}`,
+          "assistant: Lima.",
+          `user: ${MIKE}`,
+          "assistant: Mike.",
+        ]),
+      SETTLED,
+    );
+  },
+);
+
+it(
+  "an idle chat told of the other tab's turn still shows it when the read after the word fails and the server then answers again",
+  { timeout: 60_000 },
+  async () => {
+    const socket = await openChat();
+    otherTabSends(MIKE, "Mike.");
+    // The read the word starts fails on the network, and so does each of the
+    // session query's three retries.
+    failingReads = 4;
+    const before = reads;
+    await turnEnded(socket);
+    await waitFor(() => expect(reads - before).toBe(4), { timeout: 20_000 });
+
+    // The server answers again from here on; no new word is said.
+    await waitFor(
+      () =>
+        expect(transcript()).toEqual([
+          `user: ${LIMA}`,
+          "assistant: Lima.",
+          `user: ${MIKE}`,
+          "assistant: Mike.",
+        ]),
+      { timeout: 25_000 },
+    );
+  },
+);
+
+it(
+  "an idle chat shows the other tab's turn when one read of the session starts right after this tab's own last turn",
+  TEST_TIMEOUT,
+  async () => {
+    const socket = await openChat();
+    answerSends("November.");
+    await typeAndSend(NOVEMBER);
+    // The answer shows as it streams; the turn's own read comes after.
+    const runtime = getTurnRuntime(TEST_SESSION_ID);
+    await waitFor(
+      () =>
+        expect(runtime.getSnapshot().segments.at(-1)).toMatchObject({
+          kind: "turn",
+          reconciled: true,
+        }),
+      SETTLED,
+    );
+
+    // The read holds the other tab's turn and nothing before it.
+    windowSize = 2;
+    otherTabSends(MIKE, "Mike.");
+    await turnEnded(socket);
+
+    await waitFor(
+      () =>
+        expect(transcript()).toEqual([
+          `user: ${LIMA}`,
+          "assistant: Lima.",
+          `user: ${NOVEMBER}`,
+          "assistant: November.",
+          `user: ${MIKE}`,
+          "assistant: Mike.",
+        ]),
+      SETTLED,
+    );
   },
 );
 
 /** Opens this tab on the chat, with the live connection the page keeps. */
 async function openChat(live = installLiveSocket()) {
   renderHost({
-    sessionResponse: getGetV2GetSessionMockHandler200(() => session()),
+    sessionResponse: http.get("*/api/chat/sessions/:sessionId", () => {
+      reads += 1;
+      if (failingReads > 0) {
+        failingReads -= 1;
+        return HttpResponse.error();
+      }
+      return HttpResponse.json(session());
+    }),
   });
   const socket = await live.acceptNext();
   await waitFor(
@@ -245,15 +336,17 @@ async function turnEnded(socket: FakeWebSocket, sessionId = TEST_SESSION_ID) {
 }
 
 function session(): SessionDetailResponse {
+  const shown = windowSize === null ? rows : rows.slice(-windowSize);
+  const oldest = shown[0]?.sequence;
   return {
     id: TEST_SESSION_ID,
     created_at: "2026-11-24T00:00:00Z",
     updated_at: "2026-11-24T00:00:00Z",
     user_id: USER_ID,
     chat_status: "idle",
-    messages: rows.map((r) => ({ ...r })),
-    has_more_messages: false,
-    oldest_sequence: null,
+    messages: shown.map((r) => ({ ...r })),
+    has_more_messages: shown.length < rows.length,
+    oldest_sequence: typeof oldest === "number" ? oldest : null,
     active_stream: null,
     metadata: { dry_run: false, builder_graph_id: null },
     expert_id: null,
