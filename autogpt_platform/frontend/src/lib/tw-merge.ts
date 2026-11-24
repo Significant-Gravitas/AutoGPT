@@ -75,7 +75,15 @@ export const twMerge = extendTailwindMerge({
   },
   extend: {
     theme: {
-      radius: ["xsmall", "small", "medium", "large", "xlarge", "2xlarge"],
+      radius: [
+        "xsmall",
+        "small",
+        "medium",
+        "large",
+        "xlarge",
+        "2xlarge",
+        "pill",
+      ],
     },
     classGroups: {
       "font-size": [

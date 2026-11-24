@@ -42,6 +42,7 @@ The app has one colour system: the role tokens. Their values live in one place, 
 - Status: `error`, `error-hover`, `error-foreground`, `error-surface`, `warning`, `warning-foreground`, `warning-surface`, `warning-border`, `success`, `success-foreground`, `success-surface`, `info`, `info-foreground`, `info-surface`, and `error-inverse` and `success-inverse` for status text on the always-dark toast, terminal and tooltip
 - Accents, hues that are not a status (categories, usage meters, data types, badges): `orange`, `orange-foreground`, `yellow`, `yellow-foreground`, `sky`, `sky-foreground`, `indigo`, `pink`, `pink-foreground`. A pale tint or border of a hue is the hue at an opacity: `bg-orange/10`, `bg-pink/10`, `ring-sky/30`.
 - Builder: `builder-canvas`, `builder-grid`, `node-surface`, `node-border`, `node-selected`, `edge`, `handle`
+- Not used yet: `surface-inverse`, `surface-inverse-hover`, `foreground-inverse` (a dark fill and the text on it), `fill-subtle`, `fill-strong` (solid marks that are not text), and `shell`, `shell-foreground`, `shell-hover`, `shell-active`, `shell-border` (the app frame around the page)
 
 `src/components/styles/color-roles.ts` lists every role (the Tokens/Colors story draws it). To add one, write its triplet in `theme.css`, register it in `globals.css`'s `@theme` and list it there; add one only when real, repeated uses need a colour no role has.
 
@@ -64,6 +65,25 @@ The codemods that did the migration stay for branches that still use the old nam
 - there is no raw palette (no `tailwind.v3-preset.ts`, no `--color-<hue>-<step>`).
 
 `src/components/styles/__tests__/roles.test.ts` checks that every role has its value in the one `:root` block of `theme.css` and a `@theme inline` entry in `globals.css`, that compiling the stylesheet gives every role a class, and that the palette is reset before any colour is registered, so a palette class compiles to nothing.
+
+### The token files
+
+Every design value lives in one of four files in `src/app/tokens/`. Change a value there and every class that uses it follows.
+
+- `theme.css`: colour. The roles above.
+- `typography.css`: type. The text sizes and the line height each one bundles (see [Typography](#typography)).
+- `shape.css`: radius, elevation, layers and the app shell.
+  - Radius: `rounded-sm` to `rounded-3xl`, `rounded-full` and the new `rounded-pill`. `rounded` is `--radius` (4px). The older names (`rounded-xsmall` to `rounded-2xlarge`) alias the step of the same size.
+  - Shadows: `shadow-sm` to `shadow-2xl`, `shadow-inner`, `shadow-subtle` and `shadow-message-table`. Their colour is `--shadow-color`, an RGB triplet read at runtime. The steps themselves are in the file's own `@theme` block, because Tailwind reads each shadow's colour from the value to make a coloured shadow (`shadow-md shadow-scrim/10`).
+  - Layers: `z-behind` (-10), `z-base` (0), `z-raised` (10), `z-sticky` (20), `z-floating` (30), `z-header` (40), `z-overlay` (50: dialogs, sheets, menus, popovers, tooltips), `z-drawer-scrim` (60), `z-drawer` (70), `z-command` (80), `z-blocking` (100), `z-tour-scrim` (110) and `z-tour` (120). A bare number (`z-10`) still works.
+  - Shell: `--shell-sidebar-width`, `--shell-sidebar-width-collapsed`, `--shell-sidebar-width-mobile` and `--shell-content-max`. Read them with `w-(--shell-sidebar-width)`.
+- `motion.css`: durations (`duration-instant`, `-fast`, `-base`, `-slow`, `-slower`) and easings (`ease-standard`, `ease-in`, `ease-out`, `ease-emphasized`, `ease-out-quint`, `ease-glide`, `ease-drawer`; `ease-in-out` is the standard curve). A bare number (`duration-200`) still works. `src/components/styles/motion.ts` has the same values for Framer Motion: `duration` in seconds, `ease` as cubic-bezier numbers, and three `spring` presets.
+
+`tailwind.config.ts` holds no colour, text size, radius, shadow, layer, duration or easing.
+
+To add a token, write its value in the file above that owns it, and register it in `globals.css`'s `@theme inline reference` block, which turns it into a class: `--radius-<step>: var(--radius-<step>)`, `--z-index-<name>: var(--z-<name>)`, `--transition-duration-<name>: var(--duration-<name>)` or `--ease-<name>: var(--ease-<name>)`. A shadow goes in `shape.css`'s own `@theme` block, coloured with `rgb(var(--shadow-color) / <alpha>)`. A colour role is also listed in `color-roles.ts`. A motion value is also written in `motion.ts`.
+
+`src/components/__tests__/shape-motion-tokens.test.ts` checks that every variable in `shape.css` and `motion.css` is registered and compiles to a class that reads it, and that no such value is left in `tailwind.config.ts` or in `globals.css`'s `@theme`. `src/components/styles/__tests__/motion.test.ts` checks that `motion.ts` matches `motion.css`.
 
 ## Dark mode
 

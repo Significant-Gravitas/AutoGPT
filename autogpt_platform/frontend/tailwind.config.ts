@@ -1,11 +1,12 @@
 import type { Config } from "tailwindcss";
 import tailwindcssAnimate from "tailwindcss-animate";
 
-// The colours, type scale and radii are the theme in src/app/globals.css,
-// with this app's own utilities (`@utility`). What is left here is the rest of
-// Tailwind 3's theme (TAILWIND_3_THEME), the spacing, shadow and motion values
-// still in JS, and tailwindcss-animate. There is no colour palette: a colour
-// is a role in src/app/tokens/theme.css, and `bg-red-500` generates nothing.
+// The colours, type scale, radii, shadows, layers, durations and easings are
+// the theme in src/app/globals.css and src/app/tokens/, with this app's own
+// utilities (`@utility`). What is left here is the rest of Tailwind 3's theme
+// (TAILWIND_3_THEME), the spacing and animation values still in JS, and
+// tailwindcss-animate. There is no colour palette: a colour is a role in
+// src/app/tokens/theme.css, and `bg-red-500` generates nothing.
 
 // Classes Tailwind 3 generated nothing for, which Tailwind 4 would now turn
 // into CSS: bare numbers it accepts without a theme step (`z-12`, `flex-2`,
@@ -44,8 +45,10 @@ const TAILWIND_3_DEAD_CLASSES = [
   every class keeps the value Tailwind 3 gave it and a class Tailwind 3 had no
   value for still generates nothing.
 
-  The font families, sizes, line-heights, letter-spacings, radii and colours
-  are in globals.css's `@theme`, so those keys are not here.
+  The font families, sizes, line-heights, letter-spacings, radii, shadows,
+  z-indexes, durations, easings and colours are in globals.css's `@theme` and
+  src/app/tokens/, so those keys are not here. A bare number (`z-10`,
+  `duration-150`) needs no theme step: Tailwind 4 writes it as is.
 
   Two keys differ from the original. `maxWidth` writes out its `screen-*`
   steps, because Tailwind 4 passes no `breakpoints` helper. The
@@ -135,16 +138,6 @@ const TAILWIND_3_THEME: Config["theme"] = {
     2: "2px",
     4: "4px",
     8: "8px",
-  },
-  boxShadow: {
-    sm: "0 1px 2px 0 rgb(0 0 0 / 0.05)",
-    DEFAULT: "0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)",
-    md: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
-    lg: "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
-    xl: "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)",
-    "2xl": "0 25px 50px -12px rgb(0 0 0 / 0.25)",
-    inner: "inset 0 2px 4px 0 rgb(0 0 0 / 0.05)",
-    none: "none",
   },
   brightness: {
     0: "0",
@@ -855,18 +848,6 @@ const TAILWIND_3_THEME: Config["theme"] = {
     700: "700ms",
     1000: "1000ms",
   },
-  transitionDuration: {
-    DEFAULT: "150ms",
-    0: "0s",
-    75: "75ms",
-    100: "100ms",
-    150: "150ms",
-    200: "200ms",
-    300: "300ms",
-    500: "500ms",
-    700: "700ms",
-    1000: "1000ms",
-  },
   transitionProperty: {
     none: "none",
     all: "all",
@@ -877,13 +858,6 @@ const TAILWIND_3_THEME: Config["theme"] = {
     opacity: "opacity",
     shadow: "box-shadow",
     transform: "transform",
-  },
-  transitionTimingFunction: {
-    DEFAULT: "cubic-bezier(0.4, 0, 0.2, 1)",
-    linear: "linear",
-    in: "cubic-bezier(0.4, 0, 1, 1)",
-    out: "cubic-bezier(0, 0, 0.2, 1)",
-    "in-out": "cubic-bezier(0.4, 0, 0.2, 1)",
   },
   translate: ({ theme }) => ({
     ...theme("spacing"),
@@ -973,15 +947,6 @@ const TAILWIND_3_THEME: Config["theme"] = {
     contents: "contents",
     transform: "transform",
   },
-  zIndex: {
-    auto: "auto",
-    0: "0",
-    10: "10",
-    20: "20",
-    30: "30",
-    40: "40",
-    50: "50",
-  },
 };
 
 const config = {
@@ -1041,10 +1006,6 @@ const config = {
         "4.5": "1.125rem",
         "7.5": "1.875rem",
         "8.5": "2.125rem",
-      },
-      boxShadow: {
-        subtle: "0px 1px 2px 0px rgba(0,0,0,0.05)",
-        "message-table": "0 1px 2px rgba(0,0,0,0.04)",
       },
       backgroundImage: {
         "message-table-header":
@@ -1173,14 +1134,6 @@ const config = {
         "shimmer-text": "shimmer-text 2s linear infinite",
         "fade-up": "fade-up 320ms cubic-bezier(0.23, 1, 0.32, 1) both",
         "grow-line": "grow-line 500ms cubic-bezier(0.23, 1, 0.32, 1) both",
-      },
-      transitionDuration: {
-        "400": "400ms",
-        "2000": "2000ms",
-      },
-      transitionTimingFunction: {
-        // easeOutQuint — long, soft settle for accordion expand/collapse.
-        "out-quint": "cubic-bezier(0.23, 1, 0.32, 1)",
       },
     },
   },

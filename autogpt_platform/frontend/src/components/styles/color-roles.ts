@@ -99,6 +99,30 @@ export const COLOR_ROLE_GROUPS = [
       "handle",
     ],
   },
+  {
+    name: "Inverse",
+    description:
+      "A dark fill on the light theme, its hover and the text on it. Not used yet.",
+    roles: ["surface-inverse", "surface-inverse-hover", "foreground-inverse"],
+  },
+  {
+    name: "Fills",
+    description:
+      "Solid marks that are not text: dots, bars and tracks. Not used yet.",
+    roles: ["fill-subtle", "fill-strong"],
+  },
+  {
+    name: "Shell",
+    description:
+      "The app frame around the page: the sidebar, its items and its border. Not used yet.",
+    roles: [
+      "shell",
+      "shell-foreground",
+      "shell-hover",
+      "shell-active",
+      "shell-border",
+    ],
+  },
 ] as const;
 
 export const COLOR_ROLES = COLOR_ROLE_GROUPS.flatMap((group) => group.roles);
