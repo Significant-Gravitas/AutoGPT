@@ -24,6 +24,7 @@ from pydantic import BaseModel
 
 from backend.api.features.admin.model import UserHistoryResponse
 from backend.data import subscription_activation, subscription_trial_stripe
+from backend.data.account_deletion import refuse_closed_account
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.credit_admin_lookup import search_history_keys, user_emails
 from backend.data.credit_history import get_credit_history
@@ -40,10 +41,15 @@ from backend.data.model import UserCreditTransactionAdminView
 from backend.data.notifications import NotificationEventModel, OpsData
 from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.stripe_authentication import requires_authentication
-from backend.data.stripe_client import stripe_call, stripe_list_items
+from backend.data.stripe_client import (
+    api_base_override,
+    stripe_call,
+    stripe_list_items,
+)
 from backend.data.subscription_checkout import (
     ensure_no_unconverted_trial,
     expire_all_open_checkouts,
+    expire_if_account_closed,
     expire_other_subscription_checkouts,
     subscription_checkout_lock,
 )
@@ -83,6 +89,10 @@ if TYPE_CHECKING:
 
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
+if api_base := api_base_override(
+    settings.config.stripe_api_base, settings.secrets.stripe_api_key
+):
+    stripe.api_base = api_base
 logger = logging.getLogger(__name__)
 base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
@@ -851,7 +861,20 @@ class UserCredit(UserCreditBase):
             fail_insufficient_credits=fail_insufficient_credits,
         )
 
-        # Auto top-up if balance is below threshold.
+        # The debit is committed, so nothing after it may fail the call: the
+        # database manager's client retries a failed spend, debiting it again.
+        try:
+            await self._auto_top_up_after_spend(user_id, balance, metadata)
+        except Exception:
+            logger.exception(
+                f"Auto top-up check failed for user {user_id}, balance: {balance}"
+            )
+        return balance
+
+    async def _auto_top_up_after_spend(
+        self, user_id: str, balance: int, metadata: UsageTransactionMetadata
+    ) -> None:
+        """Top the user up if the spend left *balance* below their threshold."""
         auto_top_up = await get_auto_top_up(user_id)
         if (
             auto_top_up.threshold
@@ -871,8 +894,6 @@ class UserCredit(UserCreditBase):
                 logger.error(
                     f"Auto top-up failed for user {user_id}, balance: {balance}, amount: {auto_top_up.amount}, error: {e}"
                 )
-
-        return balance
 
     async def top_up_credits(
         self,
@@ -1422,6 +1443,10 @@ class UserCredit(UserCreditBase):
                 f"Top up amount must be at most ${MAX_TOP_UP_AMOUNT // 100:,} but is ${amount // 100:,}"
             )
 
+        # Past the auth cache, before a Stripe customer is made: closing
+        # expires the open Checkouts, and a closed account must get none.
+        await refuse_closed_account(user_id)
+
         # Resolve the Stripe Product ID from LD; when unset (default), keep the
         # legacy inline product_data path (Stripe creates an ephemeral product
         # per Checkout). When set, reference the canonical Product so all
@@ -1477,6 +1502,7 @@ class UserCredit(UserCreditBase):
             customer_update={"address": "auto"},
             metadata=_datafast_metadata(datafast_visitor_id, datafast_session_id),
         )
+        await expire_if_account_closed(user_id, checkout_session.id)
 
         await self._add_transaction(
             user_id=user_id,
@@ -3105,6 +3131,9 @@ async def _create_subscription_checkout(
     datafast_visitor_id: str | None,
     datafast_session_id: str | None,
 ) -> str:
+    # Past the auth cache, before a Stripe customer is made: closing expires
+    # the open Checkouts, and a closed account must get none.
+    await refuse_closed_account(user_id)
     price_id = await get_subscription_price_id(tier, billing_cycle)
     if not price_id:
         raise ValueError(f"Subscription not available for tier {tier.value}")
@@ -3150,6 +3179,7 @@ async def _create_subscription_checkout(
         },
         metadata=datafast,
     )
+    await expire_if_account_closed(user_id, session.id)
     if not session.url:
         # An empty checkout URL for a paid upgrade is always an error; surfacing it
         # as ValueError means the API handler returns 422 instead of silently

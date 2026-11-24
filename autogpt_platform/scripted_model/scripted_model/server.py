@@ -12,7 +12,10 @@ from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
 
 from . import chat_completions, embeddings, messages, responses
-from .journal import Journal, Request
+from .fake_stripe.fake import FakeStripe
+from .fake_stripe.fake import serves as stripe_serves
+from .holds import Holds
+from .journal import Journal, Request, fingerprint
 from .planner import Conversation, Plan, Reply, plan
 from .scripts import ScriptError
 from .streaming import Event, sse
@@ -20,6 +23,10 @@ from .streaming import Event, sse
 logger = logging.getLogger("scripted_model")
 
 JOURNAL_PATH = "/__scripted__/journal"
+RELEASE_PATH = "/__scripted__/release"
+# A held reply nobody releases finishes after this, failing its journal check,
+# so a journey that died mid-way doesn't leave a platform turn open for good.
+HOLD_TIMEOUT_S = 120.0
 
 
 @dataclass(frozen=True)
@@ -50,10 +57,17 @@ OPENAI = Dialect(
 class ScriptedModelServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], scripts_dir: Path) -> None:
+    def __init__(
+        self,
+        address: tuple[str, int],
+        scripts_dir: Path,
+        stripe: FakeStripe | None = None,
+    ) -> None:
         super().__init__(address, Handler)
         self.scripts_dir = scripts_dir
         self.journal = Journal()
+        self.holds = Holds()
+        self.stripe = stripe or FakeStripe.from_env()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -72,12 +86,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         url = urlparse(self.path)
-        if url.path == "/healthz":
+        if stripe_serves(url.path):
+            self._serve_stripe()
+        elif url.path == "/healthz":
             self._send_json(HTTPStatus.OK, {"ok": True})
         elif url.path == JOURNAL_PATH:
             query = {key: values[-1] for key, values in parse_qs(url.query).items()}
             entries = self.model_server.journal.find(
-                script=query.get("script"), nonce=query.get("nonce")
+                script=query.get("script"),
+                nonce=query.get("nonce"),
+                credential=query.get("credential"),
             )
             self._send_json(HTTPStatus.OK, {"entries": entries})
         elif url.path.endswith("/api/hello"):
@@ -86,8 +104,14 @@ class Handler(BaseHTTPRequestHandler):
             self._unexpected()
 
     def do_POST(self) -> None:
-        path = urlparse(self.path).path
-        if path.endswith("/messages/count_tokens"):
+        url = urlparse(self.path)
+        path = url.path
+        if stripe_serves(path):
+            self._serve_stripe()
+        elif path == RELEASE_PATH:
+            self._read_body()
+            self._release(parse_qs(url.query).get("nonce", [""])[-1])
+        elif path.endswith("/messages/count_tokens"):
             body = self._read_json()
             tokens = max(1, len(json.dumps(body)) // 4) if body is not None else 1
             self._send_json(HTTPStatus.OK, {"input_tokens": tokens})
@@ -101,6 +125,28 @@ class Handler(BaseHTTPRequestHandler):
             self._structured_response()
         else:
             self._unexpected()
+
+    def do_DELETE(self) -> None:
+        if stripe_serves(urlparse(self.path).path):
+            self._serve_stripe()
+        else:
+            self._unexpected()
+
+    def _serve_stripe(self) -> None:
+        """The fake Stripe's API, checkout pages and journey controls."""
+        url = urlparse(self.path)
+        body = self._read_body() if self.command in ("POST", "DELETE") else b""
+        headers = {name.lower(): value for name, value in self.headers.items()}
+        response = self.model_server.stripe.handle(
+            self.command, url.path, url.query, body, headers
+        )
+        self.send_response(response.status)
+        self.send_header("Content-Type", response.content_type)
+        if response.location:
+            self.send_header("Location", response.location)
+        self.send_header("Content-Length", str(len(response.body)))
+        self.end_headers()
+        self.wfile.write(response.body)
 
     def _embedding_response(self) -> None:
         body = self._read_json()
@@ -121,7 +167,7 @@ class Handler(BaseHTTPRequestHandler):
 
         model = str(body["model"])
         entry = self.model_server.journal.record_side_call(
-            Request("openai-embeddings", self.path), model, ""
+            Request("openai-embeddings", self.path, self._credential()), model, ""
         )
         logger.info("openai-embeddings side call (%s)", model)
         self._send_json(HTTPStatus.OK, payload)
@@ -146,7 +192,9 @@ class Handler(BaseHTTPRequestHandler):
 
         model = str(body["model"])
         entry = self.model_server.journal.record_side_call(
-            Request("openai-responses", self.path), model, output_text
+            Request("openai-responses", self.path, self._credential()),
+            model,
+            output_text,
         )
         logger.info("openai-responses side call (%s)", model)
         self._send_json(HTTPStatus.OK, payload)
@@ -198,7 +246,16 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json(HTTPStatus.BAD_REQUEST, dialect.error(reason))
 
     def _request(self, dialect: Dialect) -> Request:
-        return Request(dialect.name, self.path)
+        return Request(dialect.name, self.path, self._credential())
+
+    def _credential(self) -> str | None:
+        """The API key the request presented: Anthropic's ``x-api-key``, or a
+        bearer token (OpenAI clients, the CLI's auth token)."""
+        key = self.headers.get("x-api-key") or ""
+        authorization = self.headers.get("Authorization") or ""
+        if not key and authorization.lower().startswith("bearer "):
+            key = authorization[len("bearer ") :].strip()
+        return fingerprint(key) if key else None
 
     def _stream(self, events: Iterator[Event], entry: dict[str, Any]) -> None:
         self.send_response(HTTPStatus.OK)
@@ -208,6 +265,8 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         try:
             for event in events:
+                if event.hold:
+                    self._hold(entry)
                 if event.delay_ms:
                     time.sleep(event.delay_ms / 1000)
                 self._write_chunk(sse(event))
@@ -220,6 +279,24 @@ class Handler(BaseHTTPRequestHandler):
             self.model_server.journal.finish(entry, completed=False)
             return
         self.model_server.journal.finish(entry, completed=True)
+
+    def _hold(self, entry: dict[str, Any]) -> None:
+        nonce = entry["nonce"]
+        logger.info("holding run %s's reply until the journey releases it", nonce)
+        released = self.model_server.holds.wait(nonce, HOLD_TIMEOUT_S)
+        if not released:
+            logger.error("run %s was never released; finishing its reply", nonce)
+        detail = "released" if released else f"not released in {HOLD_TIMEOUT_S:g}s"
+        self.model_server.journal.add_check(entry, "held reply", released, detail)
+
+    def _release(self, nonce: str) -> None:
+        if not nonce:
+            message = "scripted-model: a release names its run: ?nonce=<nonce>"
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": {"message": message}})
+            return
+        self.model_server.holds.release(nonce)
+        logger.info("released run %s", nonce)
+        self._send_json(HTTPStatus.OK, {"released": nonce})
 
     def _write_chunk(self, data: bytes) -> None:
         self.wfile.write(f"{len(data):X}\r\n".encode() + data + b"\r\n")
@@ -245,7 +322,7 @@ class Handler(BaseHTTPRequestHandler):
         return b"".join(parts)
 
     def _unexpected(self) -> None:
-        if self.command in ("POST", "PUT", "PATCH"):
+        if self.command in ("POST", "PUT", "PATCH", "DELETE"):
             # Unread, the body would be taken for the next request's start.
             self._read_body()
         logger.warning("unexpected request: %s %s", self.command, self.path)

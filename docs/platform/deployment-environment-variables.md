@@ -89,7 +89,6 @@ published ports instead: `http://<server>:3000` for the frontend,
 | `autogpt_platform/.env` | `FRONTEND_BASE_URL` | `https://autogpt.example.com` | Links the backend sends people: OAuth redirects, emails, Stripe |
 | `autogpt_platform/.env` | `NEXT_PUBLIC_FRONTEND_BASE_URL` | `https://autogpt.example.com` | The frontend's own address |
 | `frontend/.env` | `BETTER_AUTH_URL` | `https://autogpt.example.com` | The login service's own address, used in password-reset and verification links and social sign-in callbacks |
-| `frontend/.env` | `BETTER_AUTH_INTERNAL_URL` | `http://localhost:3000` | Where the frontend's server reaches its own login service. Always `http://localhost:3000` under Docker |
 | `frontend/.env` | `NEXT_PUBLIC_AGPT_SERVER_URL` | `https://api.autogpt.example.com/api` | The backend API, as the browser reaches it |
 | `frontend/.env` | `NEXT_PUBLIC_AGPT_WS_SERVER_URL` | `wss://api.autogpt.example.com/ws` | The WebSocket server, as the browser reaches it |
 | `backend/.env` | `PLATFORM_BASE_URL` | `https://api.autogpt.example.com` | Webhook and MCP URLs the backend hands to other services |
@@ -97,15 +96,14 @@ published ports instead: `http://<server>:3000` for the frontend,
 
 Some of these lines are not in the files yet, so add them:
 `FRONTEND_BASE_URL` and `NEXT_PUBLIC_FRONTEND_BASE_URL` in
-`autogpt_platform/.env`, `BACKEND_CORS_ALLOW_ORIGINS` in `backend/.env`, and
-`BETTER_AUTH_INTERNAL_URL` in `frontend/.env`. Leave out the trailing `/`.
+`autogpt_platform/.env`, and `BACKEND_CORS_ALLOW_ORIGINS` in `backend/.env`.
+Leave out the trailing `/`.
 
-Without `BETTER_AUTH_INTERNAL_URL`, the frontend's server calls
-`BETTER_AUTH_URL` to fetch a signed-in visitor's token. That works only if the
-frontend container can resolve your public hostname, reach it, and trust its
-certificate. With a name only your network's clients know about, or a
-self-signed or internal certificate, it cannot: sign-up then fails, and the
-sign-up page stays where it is without an error.
+The frontend's server also calls its own login service: to fetch a signed-in
+visitor's token, and to check that whoever opens an admin page is an admin.
+The compose file sends those calls straight to the frontend container's own
+port (`BETTER_AUTH_INTERNAL_URL` is `http://localhost:3000`), not out through
+your public address and proxy, so leave that setting alone.
 
 Give `FRONTEND_BASE_URL`, `NEXT_PUBLIC_FRONTEND_BASE_URL` and
 `BETTER_AUTH_URL` the same value. The backend sends password-reset and
@@ -162,31 +160,22 @@ firewall or a cloud security group. The other ports the stack publishes
 (Postgres, Redis, RabbitMQ, FalkorDB and ClamAV) are bound to `127.0.0.1`
 only.
 
-`TRUSTED_PROXY_COUNT` in `backend/.env` is the number of proxies that add an
-`X-Forwarded-For` entry in front of the backend. The default, `3`, is for the
-hosted platform: set `1` for a single reverse proxy, or `0` with none. Only
-the External API (`/api/v2`) uses it, for its per-IP rate limits.
+Set `TRUSTED_PROXIES` in both `backend/.env` and `frontend/.env` to your
+proxy, so rate limits, the sign-in history and IP blocks see each visitor
+rather than the proxy. [Client IP Addresses](client-ip.md) says which
+addresses to list on each, and which older settings it replaces.
 
-The frontend finds the visitor's address separately: for its per-IP limits on
-sign-in and password-reset attempts, the per-visitor limit on store search,
-and the sign-in history and IP blocks. Set `TRUST_X_FORWARDED_FOR=true` in
-`frontend/.env` when the proxy sets `X-Forwarded-For` to the visitor's
-address, replacing any value the request arrived with. Caddy does that by
-default. In nginx, use `proxy_set_header X-Forwarded-For $remote_addr;`, not
-`$proxy_add_x_forwarded_for`, which keeps what the visitor sent. Without the
-setting, sign-in and password-reset attempts are limited only per email
-address, all visitors share one store-search limit, and sign-ins record no IP
-address.
-
-If the header can carry more than one address, because there is a chain of
-proxies or one that adds to the header instead of replacing it, set
-`TRUSTED_PROXIES` in `frontend/.env` instead: your proxies' addresses, as a
-comma-separated list of IP addresses or CIDR ranges, for example
-`10.0.0.0/8,172.16.0.0/12`. The visitor is then the first address from the
-right of the header that the list does not cover. A non-empty list trusts the
-header on its own, so it does not need `TRUST_X_FORWARDED_FOR`. An entry that
-is not an IP address or CIDR range stops the frontend from starting. Making
-the proxy replace the header is still the better choice where you can.
+The frontend, the API and the WebSocket server keep an idle connection open
+for 620 seconds, longer than nginx (60 seconds), Traefik (90 seconds) and Caddy
+(2 minutes) keep one by default, so the proxy is the one that closes it. A proxy
+that keeps idle connections longer would now and then send a request on a
+connection a server is closing, and answer 502, which it doesn't retry for a
+POST: set `SERVER_KEEP_ALIVE_TIMEOUT_SECONDS` in `backend/.env`, and
+`KEEP_ALIVE_TIMEOUT` (in milliseconds) on the `frontend` service in
+`docker-compose.platform.yml`, above its idle timeout. With no proxy in front,
+a connection a browser leaves idle holds one of a server's file descriptors for
+that long; on a server that clients reach directly, a shorter setting such as
+75 seconds is enough.
 
 ## 4. Decide who can sign up
 
@@ -241,9 +230,9 @@ files do not set them, so setting those two in `backend/.env` is enough.
 - [ ] `make init-env` in `autogpt_platform/`
 - [ ] A real `mailto:` `VAPID_CLAIM_EMAIL` in `backend/.env`
 - [ ] `FRONTEND_BASE_URL` and `NEXT_PUBLIC_FRONTEND_BASE_URL` added to `autogpt_platform/.env`
-- [ ] `BETTER_AUTH_URL`, `BETTER_AUTH_INTERNAL_URL`, `NEXT_PUBLIC_AGPT_SERVER_URL` and `NEXT_PUBLIC_AGPT_WS_SERVER_URL` in `frontend/.env`
+- [ ] `BETTER_AUTH_URL`, `NEXT_PUBLIC_AGPT_SERVER_URL` and `NEXT_PUBLIC_AGPT_WS_SERVER_URL` in `frontend/.env`
 - [ ] `PLATFORM_BASE_URL` and `BACKEND_CORS_ALLOW_ORIGINS` (added) in `backend/.env`
-- [ ] A TLS reverse proxy in front of `3000`, `8001` and `8006`, those ports firewalled, `TRUSTED_PROXY_COUNT` set, and in `frontend/.env` either `TRUST_X_FORWARDED_FOR=true` if the proxy replaces `X-Forwarded-For`, or `TRUSTED_PROXIES` if it does not
+- [ ] A TLS reverse proxy in front of `3000`, `8001` and `8006`, those ports firewalled, and `TRUSTED_PROXIES` set in `backend/.env` and `frontend/.env`
 - [ ] Sign-ups limited, if the server is public
 - [ ] `docker compose up -d --build`
 - [ ] From another machine: sign up, log in, and check the browser console shows no `localhost` connection errors

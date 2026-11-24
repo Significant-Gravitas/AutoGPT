@@ -1,12 +1,13 @@
-"""End the Stripe subscriptions of the orgs that go with the account, so
-nobody is billed for an org that no longer exists.
+"""End the Stripe subscriptions of the account and of the orgs that go with
+it, so nobody is billed for an account or org that no longer exists.
 
-The account's own customer is not touched here: closing the account
-(`cancel_all_subscriptions_now`, SECRT-2877) cancelled it, and refused to
-close the account if it could not. This covers what that does not: the
-customers of the account's sole orgs, when they differ from its own. The
-customers and their invoices and payments stay in Stripe: they are the
-billing records accounting keeps.
+Closing the account (`cancel_all_subscriptions_now`, SECRT-2877) cancelled
+its own customer's subscriptions, and refused to close the account if it
+could not, and a Checkout started around the close is expired. One paid all
+the same (a Stripe failure in closing's sweep, say) would bill a closed
+account, so its own customer is covered again here, with the customers of
+its sole orgs. The customers and their invoices and payments
+stay in Stripe: they are the billing records accounting keeps.
 """
 
 import stripe
@@ -22,19 +23,18 @@ from backend.data.subscription_checkout import expire_all_open_checkouts
 from backend.util.settings import Settings
 
 
-async def cancel_org_subscriptions(subject: Subject, *, dry_run: bool) -> StepReport:
+async def cancel_subscriptions(subject: Subject, *, dry_run: bool) -> StepReport:
     """Expire their open Checkouts and cancel every subscription Stripe can
-    still cancel, now and with no invoice, the way closing the account does
-    for its own customer."""
-    customers = subject.org_stripe_customer_ids
+    still cancel, now and with no invoice, the way closing the account does."""
+    customers = subject.stripe_customer_ids
     if not customers:
         return _report(0, dry_run)
     if not Settings().secrets.stripe_api_key:
         return StepReport(
-            name="org_subscriptions",
+            name="subscriptions",
             status=StepStatus.SKIPPED,
-            note="STRIPE_API_KEY is not set; check the org customers in Stripe "
-            "by hand",
+            note="STRIPE_API_KEY is not set; check the account's and its orgs' "
+            "customers in Stripe by hand",
         )
     if dry_run:
         counts = [await _count_cancellable(c) for c in customers]
@@ -53,7 +53,7 @@ async def cancel_org_subscriptions(subject: Subject, *, dry_run: bool) -> StepRe
 
 def _report(count: int, dry_run: bool) -> StepReport:
     return StepReport(
-        name="org_subscriptions",
+        name="subscriptions",
         status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
         counts={"subscriptions": count},
     )

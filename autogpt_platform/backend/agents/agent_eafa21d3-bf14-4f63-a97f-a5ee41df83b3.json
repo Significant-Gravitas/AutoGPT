@@ -838,7 +838,7 @@
       "block_id": "9c0b0450-d199-458b-a731-072189dd6593",
       "input_default": {
         "focus": "List the top 5 YouTube video urls results in this data.\n\nThe urls look like this:\n```https://www.youtube.com/watch?v=.....```",
-        "model": "claude-sonnet-4-5-20250929",
+        "model": "claude-sonnet-5-5",
         "max_retries": 3,
         "ollama_host": "localhost:11434",
         "source_data": null
@@ -894,7 +894,7 @@
       "id": "95cbf9be-59cb-4240-aead-e537af599976",
       "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
       "input_default": {
-        "model": "claude-sonnet-4-5-20250929",
+        "model": "claude-sonnet-5-5",
         "retry": 3,
         "prompt": "You are tasked with writing a {{STYLE}} LinkedIn post based on transcripts from top-result YouTube videos on a specific topic. Your goal is to create an {{OBJECTIVE}} piece that delivers valuable insights in LinkedIn's professional format.\n\nHere are the transcripts you will be working with:\n\n<transcripts>\n{{TRANSCRIPTS}}\n</transcripts>\n\nThe topic of the LinkedIn post is: {{TOPIC}}\n\nTo complete this task, follow these steps:\n\n1. Carefully read through all the provided transcripts.\n\n2. Identify the most impactful insights and key takeaways that would resonate with a professional LinkedIn audience.\n\n3. Structure your LinkedIn post to include:\n   - A compelling hook that stops the scroll\n   - 2-3 main points that deliver value\n   - A clear call-to-action or thought-provoking question\n   - Relevant hashtags (3-5 maximum)\n   - Strategic line breaks for better readability\n\n4. Write the post, ensuring that you:\n   - Use a {{TONE}} tone appropriate for LinkedIn's professional environment\n   - Incorporate insights from multiple transcripts to demonstrate expertise\n   - Explain complex concepts in a {{CLARITY}} manner\n   - Break up text into easily digestible chunks\n   - Include relevant statistics or data mentioned in the transcripts, if applicable\n   - Avoid directly quoting from the transcripts; instead, paraphrase and synthesize the information\n   - Present the content from a {{OPINION}} perspective\n\n5. The post must be {{MIN_WORD_COUNT}} words, considering LinkedIn's optimal post length (1,300 characters maximum for standard posts).\n\n6. Format your post with:\n   - Strategic emojis (if appropriate for the topic)\n   - Bullet points or numbered lists when relevant\n   - Line breaks between key points\n   - Clear paragraph separation\n   - But AVOID using ** or other markdown style formatting, as LinkedIn will not render it.\n\n7. After writing the post, review it for:\n   - Professional tone\n   - Mobile-first readability\n   - Strategic use of white space\n   - Engagement potential\n   - Character count compliance\n\n8. Output only the final LinkedIn post, without any additional commentary or parentheses. Do not include any meta-information about the writing process or the original transcripts.\n\nBegin writing the LinkedIn post now, and present it as a complete, ready-to-publish piece.",
         "sys_prompt": "",

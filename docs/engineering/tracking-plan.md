@@ -402,6 +402,8 @@ merges the website pageviews into the new user:
 | `voice_recording_downloaded` | browser | live | `turn_index` | The audio is downloaded instead. |
 | `voice_mode_permission_denied` | browser | live | `stage` | Microphone permission is refused. |
 | `voice_mode_error` | browser | live | `stage` | The VAD, synthesis or send failed. |
+| `dictation_rejected` | browser | live | — | The transcription API cannot read a recording from the chat composer's mic, and the composer offers Record again in place of Retry. |
+| `dictation_rerecorded` | browser | live | — | A new composer recording starts while that rejection is on screen. |
 | `visual_option_clicked` | browser | live | none | An option card in one of Otto's visual answers is clicked, which sends its title as the user's reply. |
 | `experts_section_viewed` | browser | live | — | The marketplace experts shelf renders with results. |
 | `expert_profile_opened` | browser | live | `template_id` | An expert profile page opens. |
@@ -479,6 +481,7 @@ sent or dropped this way, not while it is held.
 | `briefing_opened` | browser | live | — | The briefing renders on home. Not the plan's `briefing_opened_in_chat`, which is opening it in the chat thread. |
 | `briefing_outcome_clicked` | browser | live | `status` | An outcome row in the briefing is clicked. |
 | `expert_fired` | backend | live | `expert_id` | An expert is fired. |
+| `expert_reset` | backend | live | `expert_id`, `template_id` (`created` for a created expert), `memory_nodes_erased`, `computer_erased`, `soul_reset`, `routines_reset`, `chats_archived`, `approvals_cleared` | An expert is reset: its memory and computer are erased and its chats removed. A strong sign the expert got something wrong. |
 
 Return visits are `$pageview`; account-level retention is computed in
 `retention_task_weekly` and `user_lifecycle`, not sent as events.
@@ -528,10 +531,9 @@ changelog) is not covered.
 
 ## Account deletion
 
-Self-serve account deletion (SECRT-2877), behind the
-`self-serve-account-deletion` flag; nothing is sent while it is off. These
-events are anonymous: the backend sends each one with `capture_anonymous()`,
-under a fresh random `distinct_id` and with `$process_person_profile: false`,
+Self-serve account deletion (SECRT-2877), open to every user. These events
+are anonymous: the backend sends each one with `capture_anonymous()`, under a
+fresh random `distinct_id` and with `$process_person_profile: false`,
 so PostHog creates no person and nothing links the event to an account. The
 backend never adds the user id, email or name to them, so they cannot be
 joined to the person's other events.
@@ -626,8 +628,10 @@ Calls that skip OpenRouter never reach Broadcast and have no
 `$ai_generation`: direct Anthropic and Claude Code subscription deployments,
 a user's connected Codex account and the local transport. Auxiliary calls
 that are not attributed yet (the baseline path's context compaction, the
-action gate's classifiers, web search, Graphiti memory) arrive without the
-user or chat when their client goes through OpenRouter.
+action gate's classifiers, web search, Graphiti memory) send no user or
+chat, and none had reached PostHog by 18 Nov 2026: every `$ai_generation`
+in the production project from the past 60 days had both (the check is in
+[`privacy-objections.md`](privacy-objections.md), step 5).
 
 ## Feedback prompts
 
@@ -906,4 +910,5 @@ so nobody adds a duplicate:
 - `$pageleave`, `$autocapture`, `$identify` and `$feature_flag_called`:
   posthog-js (`capture_pageleave` and `autocapture` are on).
 - `$ai_generation`: OpenRouter Broadcast, for every AutoPilot LLM call that
-  goes through OpenRouter (see [LLM analytics](#llm-analytics)).
+  goes through OpenRouter with the user attached (see
+  [LLM analytics](#llm-analytics)).

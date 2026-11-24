@@ -11,8 +11,14 @@ from collections.abc import Iterator
 from typing import Any
 
 from .invoice import requested_cache_ttl
-from .planner import Conversation, Reply, ToolResult, bare_name
-from .streaming import Event, json_chunks, text_chunks
+from .planner import (
+    Conversation,
+    Reply,
+    ToolResult,
+    assistant_messages_before_marker,
+    bare_name,
+)
+from .streaming import Event, held_chunk, json_chunks, text_chunks
 
 
 def conversation(body: dict[str, Any]) -> Conversation:
@@ -53,6 +59,14 @@ def conversation(body: dict[str, Any]) -> Conversation:
             for m in messages[last_assistant + 1 :]
             if m.get("role") == "user"
         ),
+        system_text="\n".join(
+            _text(m.get("content"))
+            for m in messages
+            if m.get("role") in ("system", "developer")
+        ),
+        assistant_messages_before_marker=assistant_messages_before_marker(
+            [(str(m.get("role")), _text(m.get("content"))) for m in messages]
+        ),
     )
 
 
@@ -66,14 +80,20 @@ def events(reply: Reply, model: str) -> Iterator[Event]:
     }
 
     def chunk(
-        delta: dict[str, Any], finish: str | None = None, delay_ms: int = 0
+        delta: dict[str, Any],
+        finish: str | None = None,
+        delay_ms: int = 0,
+        hold: bool = False,
     ) -> Event:
         choice = {"index": 0, "delta": delta, "finish_reason": finish}
-        return Event(None, {**base, "choices": [choice]}, delay_ms)
+        return Event(None, {**base, "choices": [choice]}, delay_ms, hold)
 
     yield chunk({"role": "assistant", "content": ""})
-    for piece in text_chunks(reply.text, reply.chunk_words):
-        yield chunk({"content": piece}, delay_ms=reply.delay_ms)
+    hold_at = held_chunk(reply.chunk_words, reply.hold_after_words)
+    for chunk_index, piece in enumerate(text_chunks(reply.text, reply.chunk_words)):
+        yield chunk(
+            {"content": piece}, delay_ms=reply.delay_ms, hold=chunk_index == hold_at
+        )
     for index, (name, arguments) in enumerate(reply.tool_calls):
         call = {"index": index, "id": _id("call_"), "type": "function"}
         yield chunk(

@@ -1,12 +1,13 @@
 "use client";
 import { Button } from "@/components/atoms/Button/Button";
-import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
 import { ArrowLeft01Icon, Logout03Icon } from "@hugeicons/core-free-icons";
+import { LoadingSetup } from "./components/LoadingSetup/LoadingSetup";
 import { ProgressBar } from "./components/ProgressBar";
 import { ProgressError } from "./components/ProgressError";
 import { StepIndicator } from "./components/StepIndicator";
+import { WizardPlaceholder } from "./components/WizardPlaceholder";
 import { orderedSteps } from "./progress";
 import { AccessStep } from "./steps/AccessStep/AccessStep";
 import { BrainDumpStep } from "./steps/BrainDumpStep/BrainDumpStep";
@@ -35,6 +36,8 @@ export default function OnboardingPage() {
     progressConflict,
     retryProgress,
     completionError,
+    setupWaitingFor,
+    reportSlowSetup,
   } = useOnboardingPage();
   const prevStep = useOnboardingWizardStore((s) => s.prevStep);
   const isStepBusy = useOnboardingWizardStore((s) => s.isStepBusy);
@@ -49,15 +52,19 @@ export default function OnboardingPage() {
     );
   if (isLoading && paidConfirmation.pending)
     return (
-      <Text variant="body" role="status">
-        Confirming your subscription…
-      </Text>
+      <WizardPlaceholder
+        message="Confirming your subscription…"
+        totalSteps={totalSteps}
+        showMessage
+      />
     );
   if (isLoading)
     return !trialConfirmation.ready ? (
-      <Text variant="body" role="status">
-        Confirming your trial and card setup…
-      </Text>
+      <WizardPlaceholder
+        message="Confirming your trial and card setup…"
+        totalSteps={totalSteps}
+        showMessage
+      />
     ) : progressError ? (
       <ProgressError
         message={progressError}
@@ -65,9 +72,11 @@ export default function OnboardingPage() {
         retry={retryProgress}
       />
     ) : (
-      <Text variant="body" role="status">
-        Loading your setup…
-      </Text>
+      <LoadingSetup
+        totalSteps={totalSteps}
+        waitingFor={setupWaitingFor}
+        onSlow={reportSlowSetup}
+      />
     );
 
   // ProgressBar + StepIndicator track only the user-interactive steps.

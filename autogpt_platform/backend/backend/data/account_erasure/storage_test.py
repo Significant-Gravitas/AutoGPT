@@ -74,6 +74,9 @@ def gcs(monkeypatch):
                 f"workspaces/{WORKSPACE_ID}/f1/a.txt",
                 f"workspaces/{WORKSPACE_ID}/f2/b.txt",
                 f"workspaces/cli-sessions/{USER_ID}/s1.jsonl",
+                f"workspaces/chat-transcripts/{USER_ID}/s0.jsonl",
+                f"workspaces/chat-transcripts/{USER_ID}/s0.meta.json",
+                "workspaces/chat-transcripts/9d4e2b7a-1111-4c2a-9a51-0c6f2d8e1a77/s.jsonl",
                 f"uploads/users/{USER_ID}/u1/voice.webm",
                 f"users/{USER_ID}/images/1.png",
                 "workspaces/someone-else/f/x.txt",
@@ -95,7 +98,7 @@ async def test_a_dry_run_lists_the_accounts_objects_and_deletes_nothing(gcs):
     report = await storage.delete_files(SUBJECT, dry_run=True)
 
     assert report.status == StepStatus.WOULD_DO
-    assert report.counts == {"private_bucket_objects": 5, "public_bucket_objects": 2}
+    assert report.counts == {"private_bucket_objects": 7, "public_bucket_objects": 2}
     assert gcs.deleted == []
 
 
@@ -104,7 +107,8 @@ async def test_only_the_accounts_objects_are_deleted(gcs):
     await storage.delete_files(SUBJECT, dry_run=False)
 
     names = {name for _, name in gcs.deleted}
-    assert len(gcs.deleted) == 7
+    assert len(gcs.deleted) == 9
+    assert f"workspaces/chat-transcripts/{USER_ID}/s0.jsonl" in names
     assert "workspaces/someone-else/f/x.txt" not in names
     assert not any("9d4e2b7a" in name for name in names)
 
@@ -137,7 +141,7 @@ async def test_a_legacy_single_bucket_is_swept_once(monkeypatch, gcs):
 
     report = await storage.delete_files(SUBJECT, dry_run=True)
 
-    assert report.counts == {"private_bucket_objects": 5}
+    assert report.counts == {"private_bucket_objects": 7}
 
 
 @pytest.mark.asyncio
@@ -158,7 +162,10 @@ async def test_an_unsafe_id_is_refused_before_any_listing(gcs, subject):
 def test_transcripts_are_only_swept_for_an_id_they_are_stored_under():
     plain = storage._prefixes(Subject(user_id="user_with_underscores"))
     assert not any("cli-sessions" in prefix for prefix in plain)
-    assert f"workspaces/cli-sessions/{USER_ID}/" in storage._prefixes(SUBJECT)
+    assert not any("chat-transcripts" in prefix for prefix in plain)
+    prefixes = storage._prefixes(SUBJECT)
+    assert f"workspaces/cli-sessions/{USER_ID}/" in prefixes
+    assert f"workspaces/chat-transcripts/{USER_ID}/" in prefixes
 
 
 @pytest.mark.asyncio
@@ -168,17 +175,19 @@ async def test_a_self_hosted_stack_removes_the_accounts_folders(monkeypatch, tmp
     mine = [
         workspaces / WORKSPACE_ID / "f1" / "a.txt",
         workspaces / "cli-sessions" / USER_ID / "s1.jsonl",
+        workspaces / "chat-transcripts" / USER_ID / "s0.jsonl",
         media / "users" / USER_ID / "images" / "1.png",
     ]
     theirs = workspaces / "other-workspace" / "f" / "x.txt"
-    for path in [*mine, theirs]:
+    their_transcript = workspaces / "chat-transcripts" / "other-user" / "s.jsonl"
+    for path in [*mine, theirs, their_transcript]:
         path.parent.mkdir(parents=True)
         path.write_text("x")
     monkeypatch.setattr(storage, "Settings", lambda: _settings(local=str(workspaces)))
     monkeypatch.setattr(storage, "media_root", lambda: media)
 
     dry = await storage.delete_files(SUBJECT, dry_run=True)
-    assert dry.counts == {"local_files": 3}
+    assert dry.counts == {"local_files": 4}
     # Reported as the buckets skipped, so a cloud pod missing the setting
     # stops the erasure (routine.py) unless "buckets" is listed as unused.
     assert dry.status == StepStatus.SKIPPED
@@ -187,6 +196,7 @@ async def test_a_self_hosted_stack_removes_the_accounts_folders(monkeypatch, tmp
     await storage.delete_files(SUBJECT, dry_run=False)
     assert not any(path.exists() for path in mine)
     assert theirs.exists()
+    assert their_transcript.exists()
 
     again = await storage.delete_files(SUBJECT, dry_run=False)
     assert again.counts == {"local_files": 0}
@@ -200,12 +210,12 @@ async def test_media_a_kept_listing_shows_is_not_deleted(gcs, kept):
     await storage.delete_files(SUBJECT, dry_run=False)
 
     assert dry.counts == {
-        "private_bucket_objects": 4,
+        "private_bucket_objects": 6,
         "public_bucket_objects": 1,
         "kept_media": 1,
     }
     assert f"users/{USER_ID}/images/1.png" not in {name for _, name in gcs.deleted}
-    assert len(gcs.deleted) == 5
+    assert len(gcs.deleted) == 7
 
 
 @pytest.mark.asyncio
