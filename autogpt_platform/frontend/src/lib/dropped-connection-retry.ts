@@ -27,7 +27,13 @@ export async function fetchRetryingDroppedConnection(
     if (!RETRYABLE_METHODS.has(method) || !isDroppedConnection(error, code)) {
       throw error;
     }
-    const response = await fetch(url, init);
+    // During a server render, Next's fetch answers an identical GET that has
+    // no signal with the first call's promise, which here is the failure. A
+    // signal opts out of that, and the caller's own keeps its cancellation.
+    const response = await fetch(url, {
+      ...init,
+      signal: init.signal ?? new AbortController().signal,
+    });
     const { pathname } = new URL(url, "http://localhost");
     console.info(
       `Retried ${method} ${pathname} after a dropped connection (${code}): ${response.status}`,
