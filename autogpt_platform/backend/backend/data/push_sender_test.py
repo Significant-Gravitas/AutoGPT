@@ -76,8 +76,6 @@ class TestBuildPushPayload:
 
         result = push_sender._build_push_payload(payload)
 
-        import json
-
         parsed = json.loads(result)
         assert parsed["type"] == "agent_run"
         assert parsed["event"] == "completed"
@@ -91,8 +89,6 @@ class TestBuildPushPayload:
 
         result = push_sender._build_push_payload(payload)
 
-        import json
-
         parsed = json.loads(result)
         assert parsed["execution_id"] == "exec-1"
         assert parsed["graph_id"] == "graph-1"
@@ -105,8 +101,6 @@ class TestBuildPushPayload:
 
         result = push_sender._build_push_payload(payload)
 
-        import json
-
         parsed = json.loads(result)
         assert "custom_field" not in parsed
 
@@ -116,16 +110,12 @@ class TestBuildPushPayload:
 
         result = push_sender._build_push_payload(payload)
 
-        import json
-
         parsed = json.loads(result)
         assert isinstance(parsed["type"], str)
         assert isinstance(parsed["event"], str)
 
     def test_includes_unique_id_per_call(self):
         """Each push gets a fresh UUID so repeats don't collapse under the same SW tag."""
-        import json
-
         payload = _make_payload(type="agent_run", event="completed")
 
         first = json.loads(push_sender._build_push_payload(payload))
