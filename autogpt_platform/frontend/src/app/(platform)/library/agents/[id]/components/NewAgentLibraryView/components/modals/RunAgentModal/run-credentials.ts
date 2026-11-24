@@ -1,7 +1,7 @@
 import { hasRequiredScopes } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
 import {
   CredentialFieldSchema,
-  findNodeCredential,
+  getStartingCredential,
   toCredentialsInput,
 } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/node-credentials";
 import { getSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
@@ -13,32 +13,34 @@ interface Args {
   currentCredentials: Record<string, unknown>;
   allProviders: CredentialsProvidersContextType;
   nodeCredentials: CredentialsMetaInput[];
+  nodeCredentialsUnknown: boolean;
 }
 
 /**
  * The credentials a run form starts with, for each field still empty: the
- * user's own key the workflow's steps were set to use, else the platform's
- * key when exactly one fits.
+ * user's own key the workflow's steps agree on, else the platform's key when
+ * exactly one fits.
  */
 export function getDefaultRunCredentials({
   properties,
   currentCredentials,
   allProviders,
   nodeCredentials,
+  nodeCredentialsUnknown,
 }: Args) {
   const defaults: Record<string, CredentialsMetaInput> = {};
 
   for (const [key, schema] of Object.entries(properties)) {
     if (currentCredentials[key]) continue;
 
-    const nodeCredential = findNodeCredential(
+    const credential = getStartingCredential({
       schema,
       nodeCredentials,
+      nodeCredentialsUnknown,
       allProviders,
-    );
-    const credential = nodeCredential
-      ? toCredentialsInput(nodeCredential)
-      : findPlatformCredential(schema, allProviders);
+      findFallbackCredential: () =>
+        findPlatformCredential(schema, allProviders),
+    });
     if (credential) defaults[key] = credential;
   }
 

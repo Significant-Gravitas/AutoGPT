@@ -2,6 +2,7 @@ import {
   getGetV1GetExecutionDetailsMockHandler,
   getGetV1GetExecutionDetailsResponseMock,
   getGetV1GetSpecificGraphMockHandler,
+  getGetV1GetSpecificGraphMockHandler422,
   getGetV1GetSpecificGraphResponseMock,
   getGetV1ListGraphExecutionsMockHandler,
   getPostV1ExecuteGraphAgentMockHandler,
@@ -58,6 +59,10 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => ({
 }));
 
 const FIELD = "firecrawl_api_key_credentials";
+const PICKER = "Select Firecrawl credential";
+const SYSTEM_SECTION = /^System credentials/;
+const LOOKUP_FAILED =
+  /^Couldn't load the credentials this workflow's steps use/;
 
 // The platform's own Firecrawl key, as /integrations/credentials lists it.
 const PLATFORM_KEY = {
@@ -74,6 +79,13 @@ const USER_KEY = {
   title: "My Firecrawl key",
   is_system: false,
 };
+const OTHER_KEY = {
+  id: "other-firecrawl-key",
+  provider: "firecrawl",
+  type: "api_key",
+  title: "Other Firecrawl key",
+  is_system: false,
+};
 
 // What a step's `input_default.credentials` holds once a key is picked on it.
 function savedOnStep(key: { id: string; title: string }) {
@@ -85,8 +97,30 @@ function savedOnStep(key: { id: string; title: string }) {
   };
 }
 
+function scrapeStep(
+  id: string,
+  graphID: string,
+  credentials?: Record<string, unknown>,
+) {
+  return {
+    id,
+    block_id: "firecrawl-scrape",
+    graph_id: graphID,
+    graph_version: 1,
+    input_default: credentials
+      ? { url: "https://example.com", credentials }
+      : { url: "https://example.com" },
+    metadata: {},
+    input_links: [],
+    output_links: [],
+  };
+}
+
 interface Workflow {
   stepCredentials?: Record<string, unknown>;
+  // Keys saved on more of the workflow's steps, and on a sub-workflow's steps
+  otherStepCredentials?: Array<Record<string, unknown>>;
+  subWorkflowStepCredentials?: Array<Record<string, unknown>>;
   // Holds the graph's answer back until it resolves
   graphReady?: Promise<void>;
   savedCredentials?: Array<Record<string, unknown>>;
@@ -95,28 +129,32 @@ interface Workflow {
 
 function mockWorkflow({
   stepCredentials,
+  otherStepCredentials = [],
+  subWorkflowStepCredentials = [],
   graphReady,
   savedCredentials = [PLATFORM_KEY, USER_KEY],
   systemProviders = ["firecrawl"],
 }: Workflow) {
+  const { sub_graphs: _, ...subWorkflow } =
+    getGetV1GetSpecificGraphResponseMock({
+      id: "sub-graph-1",
+      version: 1,
+      links: [],
+      sub_graphs: [],
+      nodes: subWorkflowStepCredentials.map((credentials, index) =>
+        scrapeStep(`sub-step-${index}`, "sub-graph-1", credentials),
+      ),
+    });
   const graph = getGetV1GetSpecificGraphResponseMock({
     id: "graph-1",
     version: 1,
     links: [],
-    sub_graphs: [],
+    sub_graphs: subWorkflowStepCredentials.length > 0 ? [subWorkflow] : [],
     nodes: [
-      {
-        id: "scrape-step",
-        block_id: "firecrawl-scrape",
-        graph_id: "graph-1",
-        graph_version: 1,
-        input_default: stepCredentials
-          ? { url: "https://example.com", credentials: stepCredentials }
-          : { url: "https://example.com" },
-        metadata: {},
-        input_links: [],
-        output_links: [],
-      },
+      scrapeStep("scrape-step", "graph-1", stepCredentials),
+      ...otherStepCredentials.map((credentials, index) =>
+        scrapeStep(`other-step-${index}`, "graph-1", credentials),
+      ),
     ],
   });
   const run = getPostV1ExecuteGraphAgentResponseMock({
@@ -132,6 +170,14 @@ function mockWorkflow({
   });
   const executeBodies: Array<{ credentials_inputs?: unknown }> = [];
   const scheduleBodies: Array<{ credentials?: unknown }> = [];
+  function answerGraphReads() {
+    server.use(
+      getGetV1GetSpecificGraphMockHandler(async () => {
+        await graphReady;
+        return graph;
+      }),
+    );
+  }
 
   server.use(
     getGetV2GetLibraryAgentMockHandler(
@@ -167,10 +213,6 @@ function mockWorkflow({
         recommended_schedule_cron: null,
       }),
     ),
-    getGetV1GetSpecificGraphMockHandler(async () => {
-      await graphReady;
-      return graph;
-    }),
     http.get("*/api/integrations/providers", () =>
       HttpResponse.json([
         { name: "firecrawl", description: "Web scraping and crawling" },
@@ -220,8 +262,14 @@ function mockWorkflow({
       });
     }),
   );
+  answerGraphReads();
 
-  return { executeBodies, scheduleBodies };
+  return { executeBodies, scheduleBodies, answerGraphReads };
+}
+
+// Every read of the graph fails, until answerGraphReads() is called again
+function failGraphReads() {
+  server.use(getGetV1GetSpecificGraphMockHandler422());
 }
 
 function renderAgentPage() {
@@ -270,13 +318,9 @@ test("the run form shows the step's key, outside the collapsed system credential
 
   await openRunForm();
 
-  const picker = await screen.findByRole("combobox", {
-    name: /firecrawl credential/i,
-  });
+  const picker = await screen.findByRole("combobox", { name: PICKER });
   expect((picker as HTMLSelectElement).value).toBe(USER_KEY.id);
-  expect(
-    screen.queryByRole("button", { name: /system credentials/i }),
-  ).toBeNull();
+  expect(screen.queryByRole("button", { name: SYSTEM_SECTION })).toBeNull();
 });
 
 test("a run form opened before the step's keys load still starts on the step's key", async () => {
@@ -290,16 +334,21 @@ test("a run form opened before the step's keys load still starts on the step's k
   });
   renderAgentPage();
 
-  await openRunForm();
-  expect(await screen.findByLabelText("Loading credentials")).toBeDefined();
-  expect(
-    screen.getByRole("button", { name: "Start Task" }).hasAttribute("disabled"),
-  ).toBe(true);
-  releaseGraph();
+  try {
+    await openRunForm();
+    expect(
+      await screen.findByRole("status", { name: "Loading credentials" }),
+    ).toBeDefined();
+    expect(
+      screen
+        .getByRole("button", { name: "Start Task" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+  } finally {
+    releaseGraph();
+  }
 
-  const picker = await screen.findByRole("combobox", {
-    name: /firecrawl credential/i,
-  });
+  const picker = await screen.findByRole("combobox", { name: PICKER });
   expect((picker as HTMLSelectElement).value).toBe(USER_KEY.id);
   await clickWhenEnabled("Start Task");
 
@@ -315,13 +364,11 @@ test("the user can switch the step's key to the platform key, and the field stay
 
   await openRunForm();
   await userEvent.selectOptions(
-    await screen.findByRole("combobox", { name: /firecrawl credential/i }),
+    await screen.findByRole("combobox", { name: PICKER }),
     PLATFORM_KEY.id,
   );
 
-  const picker = await screen.findByRole("combobox", {
-    name: /firecrawl credential/i,
-  });
+  const picker = await screen.findByRole("combobox", { name: PICKER });
   expect((picker as HTMLSelectElement).value).toBe(PLATFORM_KEY.id);
   await clickWhenEnabled("Start Task");
 
@@ -335,35 +382,27 @@ test("a key picked inside the system credentials stays put until they close, the
 
   await openRunForm();
   await userEvent.click(
-    await screen.findByRole("button", { name: /system credentials/i }),
+    await screen.findByRole("button", { name: SYSTEM_SECTION }),
   );
-  const section = await screen.findByRole("region", {
-    name: /system credentials/i,
-  });
+  const section = await screen.findByRole("region", { name: SYSTEM_SECTION });
   await userEvent.selectOptions(
-    within(section).getByRole("combobox", { name: /firecrawl credential/i }),
+    within(section).getByRole("combobox", { name: PICKER }),
     USER_KEY.id,
   );
   expect(
     (
       within(section).getByRole("combobox", {
-        name: /firecrawl credential/i,
+        name: PICKER,
       }) as HTMLSelectElement
     ).value,
   ).toBe(USER_KEY.id);
 
-  await userEvent.click(
-    screen.getByRole("button", { name: /system credentials/i }),
-  );
+  await userEvent.click(screen.getByRole("button", { name: SYSTEM_SECTION }));
 
   await waitFor(() =>
-    expect(
-      screen.queryByRole("button", { name: /system credentials/i }),
-    ).toBeNull(),
+    expect(screen.queryByRole("button", { name: SYSTEM_SECTION })).toBeNull(),
   );
-  const picker = screen.getByRole("combobox", {
-    name: /firecrawl credential/i,
-  });
+  const picker = screen.getByRole("combobox", { name: PICKER });
   expect((picker as HTMLSelectElement).value).toBe(USER_KEY.id);
   await clickWhenEnabled("Start Task");
 
@@ -443,9 +482,11 @@ test("a user with no key of their own gets the form at once, on the platform key
   try {
     await openRunForm();
     expect(
-      await screen.findByRole("button", { name: /system credentials/i }),
+      await screen.findByRole("button", { name: SYSTEM_SECTION }),
     ).toBeDefined();
-    expect(screen.queryByLabelText("Loading credentials")).toBeNull();
+    expect(
+      screen.queryByRole("status", { name: "Loading credentials" }),
+    ).toBeNull();
     await clickWhenEnabled("Start Task");
 
     await waitFor(() => expect(executeBodies).toHaveLength(1));
@@ -462,21 +503,121 @@ test.each([
     stepCredentials: savedOnStep({ id: "deleted-key", title: "Old key" }),
   },
 ])(
-  "a step with $case runs on the platform key, as before",
+  "a step with $case runs on the platform key",
   async ({ stepCredentials }) => {
     const { executeBodies } = mockWorkflow({ stepCredentials });
     renderAgentPage();
 
     await openRunForm();
     expect(
-      await screen.findByRole("button", { name: /system credentials/i }),
+      await screen.findByRole("button", { name: SYSTEM_SECTION }),
     ).toBeDefined();
-    expect(
-      screen.queryByRole("combobox", { name: /firecrawl credential/i }),
-    ).toBeNull();
+    expect(screen.queryByRole("combobox", { name: PICKER })).toBeNull();
     await clickWhenEnabled("Start Task");
 
     await waitFor(() => expect(executeBodies).toHaveLength(1));
     expect(keyIn(executeBodies[0].credentials_inputs)).toBe(PLATFORM_KEY.id);
   },
 );
+
+test.each([
+  {
+    case: "two different keys of the user's",
+    otherStepCredentials: [savedOnStep(OTHER_KEY)],
+    subWorkflowStepCredentials: [],
+  },
+  {
+    case: "the user's key and the platform key",
+    otherStepCredentials: [savedOnStep(PLATFORM_KEY)],
+    subWorkflowStepCredentials: [],
+  },
+  {
+    case: "the user's key, and a sub-workflow's step to another",
+    otherStepCredentials: [],
+    subWorkflowStepCredentials: [savedOnStep(OTHER_KEY)],
+  },
+])(
+  "steps set to $case don't agree, so the run falls back to the platform key",
+  async ({ otherStepCredentials, subWorkflowStepCredentials }) => {
+    const { executeBodies } = mockWorkflow({
+      stepCredentials: savedOnStep(USER_KEY),
+      otherStepCredentials,
+      subWorkflowStepCredentials,
+      savedCredentials: [PLATFORM_KEY, USER_KEY, OTHER_KEY],
+    });
+    renderAgentPage();
+
+    await openRunForm();
+    expect(
+      await screen.findByRole("button", { name: SYSTEM_SECTION }),
+    ).toBeDefined();
+    expect(screen.queryByRole("combobox", { name: PICKER })).toBeNull();
+    await clickWhenEnabled("Start Task");
+
+    await waitFor(() => expect(executeBodies).toHaveLength(1));
+    expect(keyIn(executeBodies[0].credentials_inputs)).toBe(PLATFORM_KEY.id);
+  },
+);
+
+test("the user's key on every step, a sub-workflow's included, is the one the run uses", async () => {
+  const { executeBodies } = mockWorkflow({
+    stepCredentials: savedOnStep(USER_KEY),
+    otherStepCredentials: [{}],
+    subWorkflowStepCredentials: [savedOnStep(USER_KEY)],
+    savedCredentials: [PLATFORM_KEY, USER_KEY, OTHER_KEY],
+  });
+  renderAgentPage();
+
+  await openRunForm();
+  const picker = await screen.findByRole("combobox", { name: PICKER });
+  expect((picker as HTMLSelectElement).value).toBe(USER_KEY.id);
+  await clickWhenEnabled("Start Task");
+
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(keyIn(executeBodies[0].credentials_inputs)).toBe(USER_KEY.id);
+});
+
+test("when the steps' keys can't be read, the field waits for the user's pick, with a notice", async () => {
+  const { executeBodies } = mockWorkflow({
+    stepCredentials: savedOnStep(USER_KEY),
+  });
+  failGraphReads();
+  renderAgentPage();
+
+  await openRunForm();
+  expect(await screen.findByText(LOOKUP_FAILED)).toBeDefined();
+  const picker = await screen.findByRole("combobox", { name: PICKER });
+  expect((picker as HTMLSelectElement).value).toBe("__none__");
+  expect(
+    screen.getByRole("button", { name: "Start Task" }).hasAttribute("disabled"),
+  ).toBe(true);
+
+  await userEvent.selectOptions(picker, PLATFORM_KEY.id);
+  await clickWhenEnabled("Start Task");
+
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(keyIn(executeBodies[0].credentials_inputs)).toBe(PLATFORM_KEY.id);
+});
+
+test("after a failed read of the steps' keys, Try again starts the form on the step's key", async () => {
+  const { executeBodies, answerGraphReads } = mockWorkflow({
+    stepCredentials: savedOnStep(USER_KEY),
+  });
+  failGraphReads();
+  renderAgentPage();
+
+  await openRunForm();
+  expect(await screen.findByText(LOOKUP_FAILED)).toBeDefined();
+  answerGraphReads();
+  await clickWhenEnabled("Try again");
+
+  await waitFor(() => expect(screen.queryByText(LOOKUP_FAILED)).toBeNull());
+  const picker = await screen.findByRole("combobox", { name: PICKER });
+  await waitFor(() =>
+    expect((picker as HTMLSelectElement).value).toBe(USER_KEY.id),
+  );
+  await clickWhenEnabled("Start Task");
+
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(keyIn(executeBodies[0].credentials_inputs)).toBe(USER_KEY.id);
+});

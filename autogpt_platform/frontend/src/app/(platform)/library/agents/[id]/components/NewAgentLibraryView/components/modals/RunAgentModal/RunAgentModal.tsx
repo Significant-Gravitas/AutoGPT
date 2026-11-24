@@ -84,6 +84,9 @@ export function RunAgentModal({
     agentCredentialsInputFields,
     nodeCredentials,
     isResolvingCredentials,
+    nodeCredentialsUnknown,
+    isRetryingNodeCredentials,
+    retryNodeCredentials,
     hasInputFields,
 
     // Async states
@@ -249,6 +252,9 @@ export function RunAgentModal({
                       agentCredentialsInputFields,
                       nodeCredentials,
                       isResolvingCredentials,
+                      nodeCredentialsUnknown,
+                      isRetryingNodeCredentials,
+                      retryNodeCredentials,
                     }}
                   >
                     <ModalRunSection />

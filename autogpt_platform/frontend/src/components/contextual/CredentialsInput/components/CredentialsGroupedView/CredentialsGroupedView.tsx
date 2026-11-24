@@ -20,8 +20,12 @@ type Props = {
   inputCredentials: Record<string, CredentialsMetaInput | undefined>;
   inputValues: Record<string, any>;
   onCredentialChange: (key: string, value?: CredentialsMetaInput) => void;
+  /** Called instead of onCredentialChange for a key the view picks itself. */
+  onAutoSelect?: (key: string, value: CredentialsMetaInput) => void;
   /** The credentials picked on the workflow's steps; a field starts on the user's own key among them. */
   nodeCredentials?: CredentialsMetaInput[];
+  /** The steps' keys couldn't be read: a field the user has a key of their own for is left for them to pick. */
+  nodeCredentialsUnknown?: boolean;
 };
 
 export function CredentialsGroupedView({
@@ -30,7 +34,9 @@ export function CredentialsGroupedView({
   inputCredentials,
   inputValues,
   onCredentialChange,
+  onAutoSelect,
   nodeCredentials = NO_NODE_CREDENTIALS,
+  nodeCredentialsUnknown = false,
 }: Props) {
   const {
     visibleFields,
@@ -43,7 +49,9 @@ export function CredentialsGroupedView({
     requiredCredentials,
     inputCredentials,
     onCredentialChange,
+    onAutoSelect,
     nodeCredentials,
+    nodeCredentialsUnknown,
   });
 
   function renderField([key, inputSubSchema]: CredentialField) {

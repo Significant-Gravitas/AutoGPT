@@ -41,6 +41,7 @@ export const RunInputDialog = ({
     inputValues,
     credentialValues,
     handleCredentialFieldChange,
+    handleAutoSelectCredential,
     isExecutingGraph,
   } = useRunInputDialog({ setIsOpen, graphID, graphVersion });
 
@@ -88,6 +89,7 @@ export const RunInputDialog = ({
                       inputCredentials={credentialValues}
                       inputValues={inputValues}
                       onCredentialChange={handleCredentialFieldChange}
+                      onAutoSelect={handleAutoSelectCredential}
                       nodeCredentials={nodeCredentials}
                     />
                   </div>

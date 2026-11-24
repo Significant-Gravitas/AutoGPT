@@ -25,9 +25,13 @@ export interface RunAgentModalContextValue {
   inputCredentials: Record<string, any>;
   setInputCredentialsValue: (key: string, value: any | undefined) => void;
   agentCredentialsInputFields: Record<string, any>;
-  // The keys picked on the workflow's steps, and whether the form waits for them
+  // The keys picked on the workflow's steps, whether the form waits for them,
+  // and whether reading them failed
   nodeCredentials: CredentialsMetaInput[];
   isResolvingCredentials: boolean;
+  nodeCredentialsUnknown: boolean;
+  isRetryingNodeCredentials: boolean;
+  retryNodeCredentials: () => void;
 }
 
 const RunAgentModalContext = createContext<RunAgentModalContextValue | null>(

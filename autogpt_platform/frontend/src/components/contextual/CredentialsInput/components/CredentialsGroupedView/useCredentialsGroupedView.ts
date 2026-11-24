@@ -2,7 +2,10 @@ import {
   CredentialsMetaInput,
   CredentialsType,
 } from "@/lib/autogpt-server-api/types";
-import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import {
+  CredentialsProvidersContext,
+  CredentialsProvidersContextType,
+} from "@/providers/agent-credentials/credentials-provider";
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   areSystemCredentialProvidersLoading,
@@ -12,9 +15,11 @@ import {
   splitCredentialFieldsBySystem,
 } from "./helpers";
 import {
-  findNodeCredential,
+  awaitsUserChoice,
+  CredentialFieldSchema,
+  getNodeCredentialsKey,
+  getStartingCredential,
   isOwnCredential,
-  toCredentialsInput,
 } from "./node-credentials";
 
 interface Args {
@@ -22,7 +27,9 @@ interface Args {
   requiredCredentials: Set<string>;
   inputCredentials: Record<string, CredentialsMetaInput | undefined>;
   onCredentialChange: (key: string, value?: CredentialsMetaInput) => void;
+  onAutoSelect?: (key: string, value: CredentialsMetaInput) => void;
   nodeCredentials: CredentialsMetaInput[];
+  nodeCredentialsUnknown: boolean;
 }
 
 export function useCredentialsGroupedView({
@@ -30,7 +37,9 @@ export function useCredentialsGroupedView({
   requiredCredentials,
   inputCredentials,
   onCredentialChange,
+  onAutoSelect,
   nodeCredentials,
+  nodeCredentialsUnknown,
 }: Args) {
   const allProviders = useContext(CredentialsProvidersContext);
 
@@ -40,7 +49,9 @@ export function useCredentialsGroupedView({
   );
 
   const hasSystemCredentials = systemCredentialFields.length > 0;
-  const hasAttemptedAutoSelect = useRef(false);
+  // Empty fields are filled once for each set of step keys they could start on
+  const autoSelectBasis = `${getNodeCredentialsKey(nodeCredentials)}|${nodeCredentialsUnknown}`;
+  const autoSelectedFor = useRef<string | null>(null);
   // A field the user changes stays where it is: one shown above the system
   // credentials keeps its place if they switch it to the platform key, and
   // one changed inside the open section waits there until it closes.
@@ -48,18 +59,21 @@ export function useCredentialsGroupedView({
   const [pinnedInside, setPinnedInside] = useState<string[]>([]);
 
   // A field set to one of the user's own keys is shown above the collapsed
-  // system credentials, so they can see which key the run will use.
-  function isShownAbove(key: string) {
+  // system credentials, so they can see which key the run will use, and so
+  // is one left for them to pick.
+  function isShownAbove([key, schema]: CredentialField) {
     if (pinnedAbove.includes(key)) return true;
     if (pinnedInside.includes(key)) return false;
-    return isOwnCredential(inputCredentials?.[key], allProviders);
+    if (isOwnCredential(inputCredentials?.[key], allProviders)) return true;
+    return (
+      !inputCredentials?.[key] &&
+      awaitsUserChoice(schema, nodeCredentialsUnknown, allProviders)
+    );
   }
 
-  const promotedFields = systemCredentialFields.filter(([key]) =>
-    isShownAbove(key),
-  );
+  const promotedFields = systemCredentialFields.filter(isShownAbove);
   const collapsedFields = systemCredentialFields.filter(
-    ([key]) => !isShownAbove(key),
+    (field) => !isShownAbove(field),
   );
 
   const isLoadingProviders = useMemo(
@@ -78,8 +92,11 @@ export function useCredentialsGroupedView({
     );
 
   function handleFieldChange(key: string, value?: CredentialsMetaInput) {
-    if (systemCredentialFields.some(([systemKey]) => systemKey === key)) {
-      const pin = isShownAbove(key) ? setPinnedAbove : setPinnedInside;
+    const systemField = systemCredentialFields.find(
+      ([systemKey]) => systemKey === key,
+    );
+    if (systemField) {
+      const pin = isShownAbove(systemField) ? setPinnedAbove : setPinnedInside;
       pin((keys) => (keys.includes(key) ? keys : [...keys, key]));
     }
     onCredentialChange(key, value);
@@ -90,53 +107,41 @@ export function useCredentialsGroupedView({
   }
 
   useEffect(() => {
-    if (hasAttemptedAutoSelect.current) return;
+    if (autoSelectedFor.current === autoSelectBasis) return;
     if (!hasSystemCredentials && nodeCredentials.length === 0) return;
     if (!allProviders || isLoadingProviders) return;
 
+    const select = onAutoSelect ?? onCredentialChange;
     for (const [key, schema] of credentialFields) {
       if (inputCredentials?.[key]) continue;
 
-      const nodeCredential = findNodeCredential(
+      const isRequiredSystemField =
+        requiredCredentials.has(key) &&
+        systemCredentialFields.some(([systemKey]) => systemKey === key);
+      const credential = getStartingCredential({
         schema,
         nodeCredentials,
+        nodeCredentialsUnknown,
         allProviders,
-      );
-      if (nodeCredential) {
-        onCredentialChange(key, toCredentialsInput(nodeCredential));
-        continue;
-      }
-
-      const isSystemField = systemCredentialFields.some(
-        ([systemKey]) => systemKey === key,
-      );
-      if (!isSystemField || !requiredCredentials.has(key)) continue;
-
-      const savedCredential = findSavedCredentialByProviderAndType(
-        schema.credentials_provider || [],
-        schema.credentials_types || [],
-        schema.credentials_scopes,
-        allProviders,
-        schema.discriminator_values,
-      );
-      if (savedCredential) {
-        onCredentialChange(key, {
-          id: savedCredential.id,
-          provider: savedCredential.provider,
-          type: savedCredential.type as CredentialsType,
-          title: savedCredential.title,
-        });
-      }
+        findFallbackCredential: () =>
+          isRequiredSystemField
+            ? findFallbackCredential(schema, allProviders)
+            : undefined,
+      });
+      if (credential) select(key, credential);
     }
 
-    hasAttemptedAutoSelect.current = true;
+    autoSelectedFor.current = autoSelectBasis;
   }, [
     allProviders,
+    autoSelectBasis,
     credentialFields,
     hasSystemCredentials,
     inputCredentials,
     isLoadingProviders,
     nodeCredentials,
+    nodeCredentialsUnknown,
+    onAutoSelect,
     onCredentialChange,
     requiredCredentials,
     systemCredentialFields,
@@ -148,5 +153,26 @@ export function useCredentialsGroupedView({
     hasMissingSystemCredentials,
     handleFieldChange,
     handleSystemSectionChange,
+  };
+}
+
+// The platform's key, or failing that the only key that fits
+function findFallbackCredential(
+  schema: CredentialFieldSchema,
+  allProviders: CredentialsProvidersContextType,
+): CredentialsMetaInput | undefined {
+  const saved = findSavedCredentialByProviderAndType(
+    schema.credentials_provider || [],
+    schema.credentials_types || [],
+    schema.credentials_scopes,
+    allProviders,
+    schema.discriminator_values,
+  );
+  if (!saved) return undefined;
+  return {
+    id: saved.id,
+    provider: saved.provider,
+    type: saved.type as CredentialsType,
+    title: saved.title,
   };
 }

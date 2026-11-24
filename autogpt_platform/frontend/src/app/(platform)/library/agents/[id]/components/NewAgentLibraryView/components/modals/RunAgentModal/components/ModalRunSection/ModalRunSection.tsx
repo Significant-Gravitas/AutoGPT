@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
 import { useRunAgentModalContext } from "../../context";
 import { ModalSection } from "../ModalSection/ModalSection";
+import { NodeCredentialsNotice } from "../NodeCredentialsNotice/NodeCredentialsNotice";
 import { WebhookTriggerBanner } from "../WebhookTriggerBanner/WebhookTriggerBanner";
 
 export function ModalRunSection() {
@@ -27,6 +28,9 @@ export function ModalRunSection() {
     setInputCredentialsValue,
     nodeCredentials,
     isResolvingCredentials,
+    nodeCredentialsUnknown,
+    isRetryingNodeCredentials,
+    retryNodeCredentials,
   } = useRunAgentModalContext();
 
   const triggerConfigFieldEntries = Object.entries(triggerConfigFields || {});
@@ -128,18 +132,28 @@ export function ModalRunSection() {
         >
           {isResolvingCredentials ? (
             <Skeleton
+              role="status"
               aria-label="Loading credentials"
               className="h-14 w-full"
             />
           ) : (
-            <CredentialsGroupedView
-              credentialFields={credentialFields}
-              requiredCredentials={requiredCredentials}
-              inputCredentials={inputCredentials}
-              inputValues={inputValues}
-              onCredentialChange={setInputCredentialsValue}
-              nodeCredentials={nodeCredentials}
-            />
+            <div className="flex flex-col gap-4">
+              {nodeCredentialsUnknown ? (
+                <NodeCredentialsNotice
+                  isRetrying={isRetryingNodeCredentials}
+                  onRetry={retryNodeCredentials}
+                />
+              ) : null}
+              <CredentialsGroupedView
+                credentialFields={credentialFields}
+                requiredCredentials={requiredCredentials}
+                inputCredentials={inputCredentials}
+                inputValues={inputValues}
+                onCredentialChange={setInputCredentialsValue}
+                nodeCredentials={nodeCredentials}
+                nodeCredentialsUnknown={nodeCredentialsUnknown}
+              />
+            </div>
           )}
         </ModalSection>
       ) : null}

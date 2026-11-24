@@ -2,12 +2,13 @@ import type { CustomNode } from "@/app/(platform)/build/components/FlowEditor/no
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import {
+  getGetV1GetSpecificGraphResponseMock,
   getPostV1ExecuteGraphAgentMockHandler,
   getPostV1ExecuteGraphAgentResponseMock,
 } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { server } from "@/mocks/mock-server";
 import CredentialsProvider from "@/providers/agent-credentials/credentials-provider";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { ReactFlowProvider } from "@xyflow/react";
 import { HttpResponse, http } from "msw";
@@ -24,6 +25,8 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 }));
 
 const FIELD = "firecrawl_api_key_credentials";
+const PICKER = "Select Firecrawl credential";
+const SYSTEM_SECTION = /^System credentials/;
 const PLATFORM_KEY = {
   id: "firecrawl-default",
   provider: "firecrawl",
@@ -38,14 +41,37 @@ const USER_KEY = {
   title: "My Firecrawl key",
   is_system: false,
 };
+const OTHER_KEY = {
+  id: "other-firecrawl-key",
+  provider: "firecrawl",
+  type: "api_key",
+  title: "Other Firecrawl key",
+  is_system: false,
+};
 
-function scrapeStep(hardcodedValues: Record<string, unknown>) {
+type Key = typeof USER_KEY;
+
+// A step's saved inputs, with this key picked on it
+function inputsWith(key?: Key) {
+  if (!key) return { url: "https://example.com" };
   return {
-    id: "scrape-step",
+    url: "https://example.com",
+    credentials: {
+      id: key.id,
+      provider: "firecrawl",
+      type: "api_key",
+      title: key.title,
+    },
+  };
+}
+
+function scrapeStep(id: string, key?: Key) {
+  return {
+    id,
     type: "custom",
     position: { x: 0, y: 0 },
     data: {
-      hardcodedValues,
+      hardcodedValues: inputsWith(key),
       title: "Firecrawl Scrape",
       description: "Scrape a page",
       inputSchema: {},
@@ -57,7 +83,49 @@ function scrapeStep(hardcodedValues: Record<string, unknown>) {
   } as unknown as CustomNode;
 }
 
-function mockBuilderRun(stepValues: Record<string, unknown>) {
+function setStepKeys(keys: Array<Key | undefined>) {
+  useNodeStore.setState({
+    nodes: keys.map((key, index) => scrapeStep(`scrape-step-${index}`, key)),
+  });
+}
+
+// The saved workflow the canvas loaded, whose sub-workflow has these steps
+function setSubWorkflowStepKeys(keys: Array<Key | undefined>) {
+  const { sub_graphs: _, ...subWorkflow } =
+    getGetV1GetSpecificGraphResponseMock({
+      id: "sub-graph-1",
+      version: 1,
+      links: [],
+      sub_graphs: [],
+      nodes: keys.map((key, index) => ({
+        id: `sub-step-${index}`,
+        block_id: "firecrawl-scrape",
+        graph_id: "sub-graph-1",
+        graph_version: 1,
+        input_default: inputsWith(key),
+        metadata: {},
+        input_links: [],
+        output_links: [],
+      })),
+    });
+  useGraphStore.setState({
+    loadedGraph: getGetV1GetSpecificGraphResponseMock({
+      id: "graph-1",
+      version: 1,
+      links: [],
+      nodes: [],
+      sub_graphs: [subWorkflow],
+    }),
+  });
+}
+
+function mockBuilderRun({
+  stepKeys,
+  subWorkflowStepKeys = [],
+}: {
+  stepKeys: Array<Key | undefined>;
+  subWorkflowStepKeys?: Array<Key | undefined>;
+}) {
   const executeBodies: Array<{ credentials_inputs?: unknown }> = [];
   useGraphStore.setState({
     inputSchema: null,
@@ -74,7 +142,10 @@ function mockBuilderRun(stepValues: Record<string, unknown>) {
       required: [FIELD],
     },
   });
-  useNodeStore.setState({ nodes: [scrapeStep(stepValues)] });
+  setStepKeys(stepKeys);
+  if (subWorkflowStepKeys.length > 0) {
+    setSubWorkflowStepKeys(subWorkflowStepKeys);
+  }
   server.use(
     http.get("*/api/integrations/providers", () =>
       HttpResponse.json([
@@ -85,7 +156,7 @@ function mockBuilderRun(stepValues: Record<string, unknown>) {
       HttpResponse.json(["firecrawl"]),
     ),
     http.get("*/api/integrations/credentials", () =>
-      HttpResponse.json([PLATFORM_KEY, USER_KEY]),
+      HttpResponse.json([PLATFORM_KEY, USER_KEY, OTHER_KEY]),
     ),
     getPostV1ExecuteGraphAgentMockHandler(async ({ request }) => {
       executeBodies.push((await request.json()) as never);
@@ -99,24 +170,51 @@ function mockBuilderRun(stepValues: Record<string, unknown>) {
 }
 
 function renderRunDialog() {
-  render(
-    <CredentialsProvider>
-      <ReactFlowProvider>
-        <RunInputDialog
-          isOpen
-          setIsOpen={vi.fn()}
-          purpose="run"
-          graphID="graph-1"
-          graphVersion={1}
-        />
-      </ReactFlowProvider>
-    </CredentialsProvider>,
-  );
+  function dialog(isOpen: boolean) {
+    return (
+      <CredentialsProvider>
+        <ReactFlowProvider>
+          <RunInputDialog
+            isOpen={isOpen}
+            setIsOpen={vi.fn()}
+            purpose="run"
+            graphID="graph-1"
+            graphVersion={1}
+          />
+        </ReactFlowProvider>
+      </CredentialsProvider>
+    );
+  }
+  const { rerender } = render(dialog(true));
+  return {
+    close: () => rerender(dialog(false)),
+    reopen: () => rerender(dialog(true)),
+  };
 }
 
-function keyIn(credentials: unknown) {
-  return (credentials as Record<string, { id?: string }> | undefined)?.[FIELD]
-    ?.id;
+async function expectPickerOn(key: { id: string }) {
+  const picker = await screen.findByRole("combobox", { name: PICKER });
+  await waitFor(() => expect((picker as HTMLSelectElement).value).toBe(key.id));
+}
+
+// The platform key sits inside the collapsed system credentials
+async function expectPlatformKeyPicked() {
+  await userEvent.click(
+    await screen.findByRole("button", { name: SYSTEM_SECTION }),
+  );
+  await expectPickerOn(PLATFORM_KEY);
+}
+
+async function runAndGetKey(
+  executeBodies: Array<{ credentials_inputs?: unknown }>,
+) {
+  await userEvent.click(screen.getByRole("button", { name: "Manual Run" }));
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  return (
+    executeBodies[0].credentials_inputs as
+      | Record<string, { id?: string }>
+      | undefined
+  )?.[FIELD]?.id;
 }
 
 afterEach(() => {
@@ -125,45 +223,122 @@ afterEach(() => {
 });
 
 test("a builder run uses the key picked on the step, and shows it", async () => {
-  const executeBodies = mockBuilderRun({
-    url: "https://example.com",
-    credentials: {
-      id: USER_KEY.id,
-      provider: "firecrawl",
-      type: "api_key",
-      title: USER_KEY.title,
-    },
-  });
+  const executeBodies = mockBuilderRun({ stepKeys: [USER_KEY] });
   renderRunDialog();
 
-  const picker = await screen.findByRole("combobox", {
-    name: /firecrawl credential/i,
-  });
-  await waitFor(() =>
-    expect((picker as HTMLSelectElement).value).toBe(USER_KEY.id),
-  );
-  await userEvent.click(screen.getByRole("button", { name: "Manual Run" }));
+  await expectPickerOn(USER_KEY);
 
-  await waitFor(() => expect(executeBodies).toHaveLength(1));
-  expect(keyIn(executeBodies[0].credentials_inputs)).toBe(USER_KEY.id);
+  expect(await runAndGetKey(executeBodies)).toBe(USER_KEY.id);
 });
 
-test("a builder run whose step has no key of its own uses the platform key, as before", async () => {
-  const executeBodies = mockBuilderRun({ url: "https://example.com" });
+test("a builder run whose step has no key of its own uses the platform key", async () => {
+  const executeBodies = mockBuilderRun({ stepKeys: [undefined] });
   renderRunDialog();
 
-  // The platform key is picked inside the collapsed section, as before
-  await userEvent.click(
-    await screen.findByRole("button", { name: /system credentials/i }),
-  );
-  const picker = await screen.findByRole("combobox", {
-    name: /firecrawl credential/i,
-  });
-  await waitFor(() =>
-    expect((picker as HTMLSelectElement).value).toBe(PLATFORM_KEY.id),
-  );
-  await userEvent.click(screen.getByRole("button", { name: "Manual Run" }));
+  // With no key on the step, the platform key is picked inside the collapsed section
+  await expectPlatformKeyPicked();
 
-  await waitFor(() => expect(executeBodies).toHaveLength(1));
-  expect(keyIn(executeBodies[0].credentials_inputs)).toBe(PLATFORM_KEY.id);
+  expect(await runAndGetKey(executeBodies)).toBe(PLATFORM_KEY.id);
+});
+
+test.each([
+  {
+    case: "two different keys of the user's",
+    stepKeys: [USER_KEY, OTHER_KEY],
+    subWorkflowStepKeys: [],
+  },
+  {
+    case: "the user's key and the platform key",
+    stepKeys: [USER_KEY, PLATFORM_KEY],
+    subWorkflowStepKeys: [],
+  },
+  {
+    case: "the user's key, and a sub-workflow's step to another",
+    stepKeys: [USER_KEY],
+    subWorkflowStepKeys: [OTHER_KEY],
+  },
+])(
+  "builder steps set to $case don't agree, so the run falls back to the platform key",
+  async ({ stepKeys, subWorkflowStepKeys }) => {
+    const executeBodies = mockBuilderRun({ stepKeys, subWorkflowStepKeys });
+    renderRunDialog();
+
+    await expectPlatformKeyPicked();
+
+    expect(await runAndGetKey(executeBodies)).toBe(PLATFORM_KEY.id);
+  },
+);
+
+test.each([
+  {
+    case: "on every step, a sub-workflow's included",
+    stepKeys: [USER_KEY, undefined],
+    subWorkflowStepKeys: [USER_KEY],
+  },
+  {
+    case: "only on a sub-workflow's step",
+    stepKeys: [undefined],
+    subWorkflowStepKeys: [USER_KEY],
+  },
+])(
+  "the user's key $case is the one a builder run uses",
+  async ({ stepKeys, subWorkflowStepKeys }) => {
+    const executeBodies = mockBuilderRun({ stepKeys, subWorkflowStepKeys });
+    renderRunDialog();
+
+    await expectPickerOn(USER_KEY);
+
+    expect(await runAndGetKey(executeBodies)).toBe(USER_KEY.id);
+  },
+);
+
+test.each([
+  { case: "the platform key", before: undefined, after: USER_KEY },
+  { case: "the user's key", before: USER_KEY, after: OTHER_KEY },
+])(
+  "a builder dialog that started on $case starts on the step's new key when reopened",
+  async ({ before, after }) => {
+    const executeBodies = mockBuilderRun({ stepKeys: [before] });
+    const { close, reopen } = renderRunDialog();
+    if (before) await expectPickerOn(before);
+    else await expectPlatformKeyPicked();
+
+    close();
+    act(() => setStepKeys([after]));
+    reopen();
+
+    await expectPickerOn(after);
+    expect(await runAndGetKey(executeBodies)).toBe(after.id);
+  },
+);
+
+test("an open builder dialog moves to the step's key once the saved workflow loads it", async () => {
+  const executeBodies = mockBuilderRun({ stepKeys: [undefined] });
+  renderRunDialog();
+  await expectPlatformKeyPicked();
+
+  act(() => setSubWorkflowStepKeys([USER_KEY]));
+
+  await expectPickerOn(USER_KEY);
+  expect(await runAndGetKey(executeBodies)).toBe(USER_KEY.id);
+});
+
+test("a key the user picked in the builder dialog stays after the step's key changes", async () => {
+  const executeBodies = mockBuilderRun({ stepKeys: [USER_KEY] });
+  const { close, reopen } = renderRunDialog();
+  await expectPickerOn(USER_KEY);
+  await userEvent.selectOptions(
+    screen.getByRole("combobox", { name: PICKER }),
+    PLATFORM_KEY.id,
+  );
+  await expectPickerOn(PLATFORM_KEY);
+
+  close();
+  act(() => setStepKeys([OTHER_KEY]));
+  reopen();
+
+  expect(
+    await screen.findByRole("button", { name: SYSTEM_SECTION }),
+  ).toBeDefined();
+  expect(await runAndGetKey(executeBodies)).toBe(PLATFORM_KEY.id);
 });

@@ -108,18 +108,34 @@ export function useAgentRunModal(
       CredentialFieldSchema
     >,
   );
-  // Only the graph's owner gets the keys picked on its steps back, read once
-  // with the page so they are there before the form opens.
-  const { nodeCredentials, isLoadingNodeCredentials } = useSavedNodeCredentials(
-    agent,
-    Boolean(agent.can_access_graph) && credentialFieldSchemas.length > 0,
+  // A step can only hold one of the user's own keys, so the steps' keys only
+  // matter to a user with a key of their own, and a template brings its own.
+  const hasOwnCredential = hasOwnCredentialFor(
+    credentialFieldSchemas,
+    allProviders,
   );
-  // A step can only hold one of the user's own keys, so a user with none of
-  // their own never waits for them, and a template brings its own keys.
+  const needsNodeCredentials =
+    hasOwnCredential && !callbacks?.initialInputCredentials;
+  // Only the graph's owner gets the keys picked on its steps back. They are
+  // read with the page for a user with a key of their own, so they are there
+  // before the form opens, and otherwise once the form opens, where the user
+  // may add their first key.
+  const {
+    nodeCredentials,
+    isLoadingNodeCredentials,
+    hasNodeCredentialsError,
+    isRetryingNodeCredentials,
+    retryNodeCredentials,
+  } = useSavedNodeCredentials(
+    agent,
+    Boolean(agent.can_access_graph) &&
+      credentialFieldSchemas.length > 0 &&
+      (hasOwnCredential || isOpen),
+  );
   const isResolvingCredentials =
-    isLoadingNodeCredentials &&
-    !callbacks?.initialInputCredentials &&
-    hasOwnCredentialFor(credentialFieldSchemas, allProviders);
+    isLoadingNodeCredentials && needsNodeCredentials;
+  const nodeCredentialsUnknown =
+    hasNodeCredentialsError && needsNodeCredentials;
 
   // Start each credential on the key its steps use, else the platform's key
   useEffect(() => {
@@ -141,17 +157,17 @@ export function useAgentRunModal(
         currentCredentials: currentCreds,
         allProviders,
         nodeCredentials,
+        nodeCredentialsUnknown,
       });
+      if (Object.keys(credsToAdd).length === 0) return currentCreds;
 
-      if (Object.keys(credsToAdd).length > 0) {
-        hasInitializedSystemCreds.current = true;
-        return {
-          ...currentCreds,
-          ...credsToAdd,
-        };
-      }
-
-      return currentCreds;
+      // While the steps' keys are unknown the form isn't settled: once they
+      // load, the fields left for them still start on the step's key.
+      if (!nodeCredentialsUnknown) hasInitializedSystemCreds.current = true;
+      return {
+        ...currentCreds,
+        ...credsToAdd,
+      };
     });
   }, [
     allProviders,
@@ -159,6 +175,7 @@ export function useAgentRunModal(
     callbacks?.initialInputCredentials,
     isResolvingCredentials,
     nodeCredentials,
+    nodeCredentialsUnknown,
   ]);
 
   // Reset initialization flag when modal closes/opens or agent changes
@@ -419,6 +436,9 @@ export function useAgentRunModal(
     agentCredentialsInputFields,
     nodeCredentials,
     isResolvingCredentials,
+    nodeCredentialsUnknown,
+    isRetryingNodeCredentials,
+    retryNodeCredentials,
     hasInputFields,
     isExecuting: executeGraphMutation.isPending,
     isSettingUpTrigger: setupTriggerMutation.isPending,
