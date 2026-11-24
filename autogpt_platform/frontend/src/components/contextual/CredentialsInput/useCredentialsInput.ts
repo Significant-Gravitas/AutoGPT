@@ -114,7 +114,11 @@ export function useCredentialsInput({
   useEffect(() => {
     if (readOnly) return;
     if (!credentials) return;
-    const availableCreds = credentials.savedCredentials;
+    // A block that refuses the platform's shared keys can't run on a system
+    // credential, so one it was given is let go like a key that's gone
+    const availableCreds = schema.refuses_platform_credentials
+      ? filterSystemCredentials(credentials.savedCredentials)
+      : credentials.savedCredentials;
     if (
       selectedCredential &&
       selectedCredential.provider !== credentials.provider
@@ -149,6 +153,7 @@ export function useCredentialsInput({
     isDeletingCredential,
     onSelectCredential,
     readOnly,
+    schema.refuses_platform_credentials,
     selectedCredential,
   ]);
 
@@ -215,9 +220,12 @@ export function useCredentialsInput({
     discriminatorValue,
   } = credentials;
 
-  // Split credentials into user and system
+  // Split credentials into user and system. A block that refuses the
+  // platform's shared keys isn't offered a system credential.
   const userCredentials = filterSystemCredentials(savedCredentials);
-  const systemCredentials = getSystemCredentials(savedCredentials);
+  const systemCredentials = schema.refuses_platform_credentials
+    ? []
+    : getSystemCredentials(savedCredentials);
   const userUpgradeableCredentials = filterSystemCredentials(
     upgradeableCredentials,
   );

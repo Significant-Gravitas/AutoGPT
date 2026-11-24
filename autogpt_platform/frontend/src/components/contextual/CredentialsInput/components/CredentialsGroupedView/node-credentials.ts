@@ -11,6 +11,8 @@ export interface CredentialFieldSchema {
   credentials_types?: string[];
   credentials_scopes?: string[];
   discriminator_values?: string[];
+  /** A step under the field refuses the platform's keys, so it takes the user's own. */
+  refuses_platform_credentials?: boolean;
 }
 
 interface GraphSteps {
@@ -114,6 +116,7 @@ export function awaitsUserChoice({
  * steps set to the platform's key on a field with one provider, which falls
  * back to that key anyway; a field open to several providers falls back to
  * the first one's, so there the platform key the steps agree on is named.
+ * A field whose steps refuse the platform's keys never gets one this way.
  */
 export function findNodeCredential(
   schema: CredentialFieldSchema,
@@ -129,7 +132,12 @@ export function findNodeCredential(
   if (choices.size !== 1) return undefined;
   const [choice] = choices.values();
   const hasOneProvider = (schema.credentials_provider ?? []).length <= 1;
-  if (isSystemCredential(choice) && hasOneProvider) return undefined;
+  if (
+    isSystemCredential(choice) &&
+    (hasOneProvider || schema.refuses_platform_credentials)
+  ) {
+    return undefined;
+  }
   return hasRequiredScopes(choice, schema.credentials_scopes)
     ? choice
     : undefined;

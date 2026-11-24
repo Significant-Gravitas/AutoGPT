@@ -783,6 +783,62 @@ describe("CredentialsInput – blocks that refuse the platform's keys", () => {
       }),
     );
   });
+
+  it("does not offer the system credential for such a block", async () => {
+    const otherCredential = {
+      ...ownCredential,
+      id: "other-exa",
+      title: "Other Exa key",
+    };
+    mockExa([systemCredential, ownCredential, otherCredential]);
+
+    render(
+      <StatefulCredentialsInput
+        schema={{ ...exaSchema, refuses_platform_credentials: true }}
+      />,
+    );
+
+    const picker = (await screen.findByRole("combobox", {
+      name: "Select Exa credential",
+    })) as HTMLSelectElement;
+    expect(Array.from(picker.options, (option) => option.value)).toEqual([
+      "__none__",
+      ownCredential.id,
+      otherCredential.id,
+    ]);
+  });
+
+  it("lets go of a system credential such a block was given, for the user's own", async () => {
+    const onSelectionChange = vi.fn();
+    mockExa([systemCredential, ownCredential]);
+
+    render(
+      <StatefulCredentialsInput
+        schema={{ ...exaSchema, refuses_platform_credentials: true }}
+        initial={{
+          id: systemCredential.id,
+          provider: "exa",
+          type: "api_key",
+          title: systemCredential.title,
+        }}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(onSelectionChange.mock.calls).toEqual([
+        [undefined],
+        [
+          {
+            id: ownCredential.id,
+            provider: "exa",
+            title: ownCredential.title,
+            type: ownCredential.type,
+          },
+        ],
+      ]),
+    );
+  });
 });
 
 describe("CredentialsInput – a removed connection", () => {
