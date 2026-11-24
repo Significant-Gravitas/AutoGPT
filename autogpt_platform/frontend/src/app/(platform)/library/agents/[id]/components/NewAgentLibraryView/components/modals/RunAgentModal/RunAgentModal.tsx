@@ -319,6 +319,7 @@ export function RunAgentModal({
                 agent={agent}
                 inputValues={inputValues}
                 inputCredentials={scheduleCredentials}
+                formCredentials={inputCredentials}
                 onScheduleCreated={handleScheduleCreated}
               />
             </Dialog.Footer>

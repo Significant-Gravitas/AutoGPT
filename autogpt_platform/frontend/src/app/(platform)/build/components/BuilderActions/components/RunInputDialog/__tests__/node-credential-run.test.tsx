@@ -423,20 +423,18 @@ test("a reopened builder dialog keeps None on an optional field", async () => {
     screen.getByRole("combobox", { name: PICKER }),
     "__none__",
   );
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  // The dialog's keys live in state, with no request behind them, so
+  // whatever could pick a key back runs inside the change's act()
   expect(
     (screen.getByRole("combobox", { name: PICKER }) as HTMLSelectElement).value,
   ).toBe("__none__");
 
   close();
   reopen();
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  // The fields mount inside the rerender's act(), and so do the effects that
+  // pick a key on mount
   expect(
-    (
-      (await screen.findByRole("combobox", {
-        name: PICKER,
-      })) as HTMLSelectElement
-    ).value,
+    (screen.getByRole("combobox", { name: PICKER }) as HTMLSelectElement).value,
   ).toBe("__none__");
   expect(await runAndGetKey(executeBodies)).toBeUndefined();
 });

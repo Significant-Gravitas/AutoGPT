@@ -77,8 +77,10 @@ export function getDefaultRunCredentials({
  * watches, and one for an expert's workflow can only use the keys the expert
  * was granted; the platform's keys need no grant. So a field the form started
  * on one of the user's own keys from the steps, and the user left alone, goes
- * back to the key it starts on without them: the platform's, else the only
- * key that fits, else none. A required field keeps the steps' key over none.
+ * back to the key it starts on without them: the platform's key for that
+ * key's provider, else the only key that fits, else none. A required field
+ * keeps the steps' key over none. The schedule dialog names the fields that
+ * differ from the run form, and can schedule on the form's keys instead.
  */
 export function getScheduleCredentials({
   properties,
@@ -102,7 +104,13 @@ export function getScheduleCredentials({
     );
     if (nodeCredential?.id !== current.id) continue;
 
-    const platformCredential = findPlatformCredential(schema, allProviders);
+    // A field open to several providers keeps the step key's provider, so a
+    // step set up on OpenAI isn't moved to Anthropic
+    const platformCredential = findPlatformCredential(
+      schema,
+      allProviders,
+      current.provider,
+    );
     if (platformCredential) {
       scheduled[key] = platformCredential;
     } else if (
@@ -116,13 +124,17 @@ export function getScheduleCredentials({
   return scheduled;
 }
 
+// The only platform key that fits the field, from the first of its providers
+// with one, or from the given provider alone
 function findPlatformCredential(
   schema: CredentialFieldSchema,
   allProviders: CredentialsProvidersContextType,
+  provider?: string,
 ) {
   const supportedTypes = schema.credentials_types ?? [];
+  const providers = provider ? [provider] : (schema.credentials_provider ?? []);
 
-  for (const providerName of schema.credentials_provider ?? []) {
+  for (const providerName of providers) {
     const providerData = allProviders[providerName];
     if (!providerData) continue;
 

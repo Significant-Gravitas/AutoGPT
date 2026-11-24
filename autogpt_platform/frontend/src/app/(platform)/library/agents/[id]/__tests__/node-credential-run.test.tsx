@@ -147,6 +147,34 @@ const USER_OPENAI_KEY = {
   is_system: false,
 };
 
+// A second field, for Exa, with a platform key and a key of the user's own
+const EXA_FIELD = "exa_api_key_credentials";
+const EXA_PICKER = "Select Exa credential";
+const EXA_FIELD_SCHEMA = {
+  ...FIRECRAWL_FIELD,
+  credentials_provider: ["exa"],
+  properties: {
+    ...FIRECRAWL_FIELD.properties,
+    provider: { const: "exa", type: "string" },
+  },
+};
+const EXA_PLATFORM_KEY = {
+  id: "exa-default",
+  provider: "exa",
+  type: "api_key",
+  title: "Exa API Key",
+  is_system: true,
+};
+const USER_EXA_KEY = {
+  id: "user-exa-key",
+  provider: "exa",
+  type: "api_key",
+  title: "My Exa key",
+  is_system: false,
+};
+
+const USE_FORM_KEYS = "Use the keys shown in the run form";
+
 // What a step's `input_default.credentials` holds once a key is picked on it.
 function savedOnStep(key: { id: string; title: string; provider?: string }) {
   return {
@@ -419,6 +447,15 @@ function keyIn(credentials: unknown, field = FIELD) {
     ?.id;
 }
 
+function pickerValue(name = PICKER) {
+  return (screen.getByRole("combobox", { name }) as HTMLSelectElement).value;
+}
+
+// Waits for the form to settle on a key; the picker can move as it does
+async function expectPickerOn(key: { id: string }, name = PICKER) {
+  await waitFor(() => expect(pickerValue(name)).toBe(key.id));
+}
+
 test("a run uses the key the user saved on the step, not the platform key", async () => {
   const { executeBodies } = mockWorkflow({
     stepCredentials: savedOnStep(USER_KEY),
@@ -563,6 +600,9 @@ test("a schedule keeps a key the user picked in the run form, the step's include
     USER_KEY.id,
   );
   await clickWhenEnabled("Schedule Task");
+  // The schedule already runs on the key the form shows, so nothing to say
+  expect(await screen.findByRole("button", { name: "Schedule" })).toBeDefined();
+  expect(screen.queryByRole("button", { name: USE_FORM_KEYS })).toBeNull();
   await clickWhenEnabled("Schedule");
 
   await waitFor(() => expect(scheduleBodies).toHaveLength(1));
@@ -968,9 +1008,16 @@ test("picking None on an optional field that started on the step's only key leav
   expect(keyIn(executeBodies[0].credentials_inputs)).toBeUndefined();
 });
 
-// Finds the picker, wherever the field sits after the form reopens
+// Finds the picker above the system credentials, or opens them to find it.
+// After the form reopens, the fields mount inside the click's act(), so a key
+// picked back on mount already shows once either is there.
 async function findPicker() {
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("combobox", { name: PICKER }) ??
+        screen.queryByRole("button", { name: SYSTEM_SECTION }),
+    ).not.toBeNull(),
+  );
   if (!screen.queryByRole("combobox", { name: PICKER })) {
     await userEvent.click(screen.getByRole("button", { name: SYSTEM_SECTION }));
   }
@@ -1009,8 +1056,13 @@ test.each([
     renderAgentPage();
 
     await openRunForm();
-    await userEvent.selectOptions(await findPicker(), "__none__");
-    const afterNone = (await findPicker()).value;
+    await expectPickerOn(USER_KEY);
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: PICKER }),
+      "__none__",
+    );
+    // Whatever could pick a key back runs inside the change's act()
+    const afterNone = pickerValue();
     await closeRunForm();
     await openRunForm();
     const afterReopen = (await findPicker()).value;
@@ -1025,11 +1077,24 @@ test.each([
   },
 );
 
-test("after a failed read, a platform key the user picked themselves survives Try again", async () => {
+test("after a failed read, a platform key the user picked themselves survives Try again, which moves a field they left to its step's key", async () => {
   const { executeBodies, answerGraphReads } = mockWorkflow({
     stepCredentials: savedOnStep(USER_KEY),
+    otherStepCredentials: [savedOnStep(USER_EXA_KEY)],
+    credentialFields: {
+      [FIELD]: FIRECRAWL_FIELD,
+      [EXA_FIELD]: EXA_FIELD_SCHEMA,
+    },
     requiredFields: [],
-    savedCredentials: [PLATFORM_KEY, USER_KEY, OTHER_KEY],
+    providers: ["firecrawl", "exa"],
+    systemProviders: ["firecrawl", "exa"],
+    savedCredentials: [
+      PLATFORM_KEY,
+      USER_KEY,
+      OTHER_KEY,
+      EXA_PLATFORM_KEY,
+      USER_EXA_KEY,
+    ],
   });
   failGraphReads();
   renderAgentPage();
@@ -1051,12 +1116,18 @@ test("after a failed read, a platform key the user picked themselves survives Tr
 
   answerGraphReads();
   await clickWhenEnabled("Try again");
-  await waitFor(() => expect(screen.queryByText(LOOKUP_FAILED)).toBeNull());
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  // One pass sets every field the steps' keys decide, so once the field the
+  // user left is on its step's key, the one they set is final too
+  await expectPickerOn(USER_EXA_KEY, EXA_PICKER);
+  expect(screen.queryByText(LOOKUP_FAILED)).toBeNull();
+  expect((await findPicker()).value).toBe(PLATFORM_KEY.id);
   await clickWhenEnabled("Start Task");
 
   await waitFor(() => expect(executeBodies).toHaveLength(1));
   expect(keyIn(executeBodies[0].credentials_inputs)).toBe(PLATFORM_KEY.id);
+  expect(keyIn(executeBodies[0].credentials_inputs, EXA_FIELD)).toBe(
+    USER_EXA_KEY.id,
+  );
 });
 
 test("an LLM step whose model comes from a link, saved on Anthropic's platform key, runs on it, not on OpenAI's", async () => {
@@ -1102,3 +1173,109 @@ test.each([
     ).toBe(true);
   },
 );
+
+const REFUSED =
+  "This block keeps what it creates in the Firecrawl account behind its key, so it can't use the platform's shared Firecrawl key. Connect your own Firecrawl API key and select it instead.";
+
+// The backend checks a schedule's credentials when the schedule is made, and a
+// block that keeps what it creates in the vendor's account (Exa Websets,
+// SmartLead campaigns: `refuses_platform_credentials`) refuses the platform's
+// key there
+function refusePlatformKeyOnSchedules() {
+  const accepted: Array<{ credentials?: unknown }> = [];
+  const refused: Array<{ credentials?: unknown }> = [];
+  server.use(
+    http.post("*/api/graphs/:graphId/schedules", async ({ request }) => {
+      const body = (await request.json()) as { credentials?: unknown };
+      if (keyIn(body.credentials) === PLATFORM_KEY.id) {
+        refused.push(body);
+        return HttpResponse.json({ detail: REFUSED }, { status: 400 });
+      }
+      accepted.push(body);
+      return HttpResponse.json(
+        getPostV1CreateExecutionScheduleResponseMock({
+          id: "new-schedule",
+          graph_id: "graph-1",
+        }),
+      );
+    }),
+  );
+  return { accepted, refused };
+}
+
+test("a schedule for a step that refuses the platform's key is made on the user's key the run form shows", async () => {
+  mockWorkflow({ stepCredentials: savedOnStep(USER_KEY) });
+  const { accepted, refused } = refusePlatformKeyOnSchedules();
+  renderAgentPage();
+
+  await openRunForm();
+  await expectPickerOn(USER_KEY);
+  await clickWhenEnabled("Schedule Task");
+  // The schedule starts on the platform's key, and says so
+  expect(
+    await screen.findByText(
+      "Firecrawl credentials: the platform's key instead of My Firecrawl key",
+    ),
+  ).toBeDefined();
+  await clickWhenEnabled(USE_FORM_KEYS);
+  expect(
+    await screen.findByText(
+      "This schedule uses the keys shown in the run form.",
+    ),
+  ).toBeDefined();
+  await clickWhenEnabled("Schedule");
+
+  await waitFor(() => expect(accepted.length + refused.length).toBe(1));
+  expect(refused.map((body) => keyIn(body.credentials))).toEqual([]);
+  expect(accepted.map((body) => keyIn(body.credentials))).toEqual([
+    USER_KEY.id,
+  ]);
+});
+
+test("a schedule keeps the key the run form shows on an optional field, rather than dropping it", async () => {
+  // GitHub-like: no platform key, and the user has two keys of their own
+  const { scheduleBodies } = mockWorkflow({
+    stepCredentials: savedOnStep(USER_KEY),
+    requiredFields: [],
+    savedCredentials: [USER_KEY, OTHER_KEY],
+    systemProviders: [],
+  });
+  renderAgentPage();
+
+  await openRunForm();
+  await expectPickerOn(USER_KEY);
+  await clickWhenEnabled("Schedule Task");
+  // Sent with no key, the backend skips the field's steps on every run
+  expect(
+    await screen.findByText(
+      "Firecrawl credentials: no key instead of My Firecrawl key, so the steps that use it are skipped",
+    ),
+  ).toBeDefined();
+  await clickWhenEnabled(USE_FORM_KEYS);
+  await clickWhenEnabled("Schedule");
+
+  await waitFor(() => expect(scheduleBodies).toHaveLength(1));
+  expect(keyIn(scheduleBodies[0].credentials)).toBe(USER_KEY.id);
+});
+
+test("a schedule for an LLM step on the user's OpenAI key starts on OpenAI's platform key, whatever order the field lists its providers in", async () => {
+  const { scheduleBodies } = mockLLMWorkflow({
+    credentialFields: {
+      [LLM_FIELD]: {
+        ...LLM_FIELD_SCHEMA,
+        credentials_provider: ["anthropic", "openai"],
+      },
+    },
+  });
+  renderAgentPage();
+
+  await openRunForm();
+  await expectPickerOn(USER_OPENAI_KEY, LLM_PICKER);
+  await clickWhenEnabled("Schedule Task");
+  await clickWhenEnabled("Schedule");
+
+  await waitFor(() => expect(scheduleBodies).toHaveLength(1));
+  expect(keyIn(scheduleBodies[0].credentials, LLM_FIELD)).toBe(
+    OPENAI_PLATFORM_KEY.id,
+  );
+});

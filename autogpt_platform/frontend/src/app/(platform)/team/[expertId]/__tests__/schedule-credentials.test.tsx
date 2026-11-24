@@ -11,6 +11,7 @@ import {
   getPostV1CreateExecutionScheduleResponseMock,
 } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { getListExpertCredentialsMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { ExpertCredentialRef } from "@/app/api/__generated__/models/expertCredentialRef";
 import { server } from "@/mocks/mock-server";
 import CredentialsProvider from "@/providers/agent-credentials/credentials-provider";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
@@ -37,6 +38,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => ({
 }));
 
 const FIELD = "firecrawl_api_key_credentials";
+const PICKER = "Select Firecrawl credential";
 const PLATFORM_KEY = {
   id: "firecrawl-default",
   provider: "firecrawl",
@@ -51,9 +53,16 @@ const USER_KEY = {
   title: "My Firecrawl key",
   is_system: false,
 };
+const REFUSED =
+  "This block keeps what it creates in the Firecrawl account behind its key, so it can't use the platform's shared Firecrawl key. Connect your own Firecrawl API key and select it instead.";
 
-test("a schedule made for an expert's workflow starts on the platform key, not a step's key the expert was never granted", async () => {
-  const scheduleBodies: Array<{ credentials?: unknown }> = [];
+function keyIn(credentials: unknown) {
+  return (credentials as Record<string, { id?: string }> | undefined)?.[FIELD]
+    ?.id;
+}
+
+// An expert's workflow whose step is set to the user's own Firecrawl key
+function mockExpertWorkflow(grantedKeys: ExpertCredentialRef[]) {
   server.use(
     getGetV2GetLibraryAgentMockHandler(
       getGetV2GetLibraryAgentResponseMock({
@@ -82,7 +91,6 @@ test("a schedule made for an expert's workflow starts on the platform key, not a
         recommended_schedule_cron: null,
       }),
     ),
-    // The workflow's step is set to the user's own Firecrawl key
     getGetV1GetSpecificGraphMockHandler(
       getGetV1GetSpecificGraphResponseMock({
         id: "graph-1",
@@ -111,8 +119,7 @@ test("a schedule made for an expert's workflow starts on the platform key, not a
         ],
       }),
     ),
-    // The expert was granted none of the user's credentials
-    getListExpertCredentialsMockHandler([]),
+    getListExpertCredentialsMockHandler(grantedKeys),
     http.get("*/api/integrations/providers", () =>
       HttpResponse.json([{ name: "firecrawl", description: "firecrawl" }]),
     ),
@@ -122,15 +129,10 @@ test("a schedule made for an expert's workflow starts on the platform key, not a
     http.get("*/api/integrations/credentials", () =>
       HttpResponse.json([PLATFORM_KEY, USER_KEY]),
     ),
-    getPostV1CreateExecutionScheduleMockHandler(async ({ request }) => {
-      scheduleBodies.push((await request.json()) as never);
-      return getPostV1CreateExecutionScheduleResponseMock({
-        id: "new-schedule",
-        graph_id: "graph-1",
-      });
-    }),
   );
+}
 
+function renderScheduleDialog() {
   render(
     <CredentialsProvider>
       <CreateScheduleDialog
@@ -150,7 +152,15 @@ test("a schedule made for an expert's workflow starts on the platform key, not a
       />
     </CredentialsProvider>,
   );
+}
 
+async function clickWhenEnabled(name: string | RegExp) {
+  const button = await screen.findByRole("button", { name });
+  await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
+  await userEvent.click(button);
+}
+
+async function openRunForm() {
   // The row is re-rendered as the run form's trigger once the workflow loads
   await waitFor(() =>
     expect(
@@ -160,23 +170,81 @@ test("a schedule made for an expert's workflow starts on the platform key, not a
     ).toBe(false),
   );
   await userEvent.click(screen.getByRole("button", { name: /^Scrape agent/ }));
-  const scheduleTask = await screen.findByRole("button", {
-    name: "Schedule Task",
-  });
-  await waitFor(() =>
-    expect(scheduleTask.hasAttribute("disabled")).toBe(false),
+}
+
+test("a schedule made for an expert's workflow starts on the platform key, not a step's key the expert was never granted", async () => {
+  const scheduleBodies: Array<{ credentials?: unknown }> = [];
+  // The expert was granted none of the user's credentials
+  mockExpertWorkflow([]);
+  server.use(
+    getPostV1CreateExecutionScheduleMockHandler(async ({ request }) => {
+      scheduleBodies.push((await request.json()) as never);
+      return getPostV1CreateExecutionScheduleResponseMock({
+        id: "new-schedule",
+        graph_id: "graph-1",
+      });
+    }),
   );
-  await userEvent.click(scheduleTask);
-  const schedule = await screen.findByRole("button", { name: "Schedule" });
-  await waitFor(() => expect(schedule.hasAttribute("disabled")).toBe(false));
-  await userEvent.click(schedule);
+  renderScheduleDialog();
+
+  await openRunForm();
+  await clickWhenEnabled("Schedule Task");
+  await clickWhenEnabled("Schedule");
 
   await waitFor(() => expect(scheduleBodies).toHaveLength(1));
   // The backend attributes this schedule to the expert, and refuses every
   // run that names a credential the expert wasn't granted. The platform's
   // key needs no grant.
-  expect(
-    (scheduleBodies[0].credentials as Record<string, { id?: string }>)[FIELD]
-      ?.id,
-  ).toBe(PLATFORM_KEY.id);
+  expect(keyIn(scheduleBodies[0].credentials)).toBe(PLATFORM_KEY.id);
+});
+
+test("a schedule made on the expert page for a step that refuses the platform's key is made on the user's key the run form shows", async () => {
+  const accepted: Array<{ credentials?: unknown }> = [];
+  const refused: Array<{ credentials?: unknown }> = [];
+  // The expert was granted the user's key, so a schedule on it would run
+  mockExpertWorkflow([
+    {
+      credential_id: USER_KEY.id,
+      provider: "firecrawl",
+      title: USER_KEY.title,
+      type: "api_key",
+    },
+  ]);
+  // The backend checks a schedule's credentials when the schedule is made,
+  // and a block that keeps what it creates in the vendor's account (Exa
+  // Websets, SmartLead campaigns) refuses the platform's key there
+  server.use(
+    http.post("*/api/graphs/:graphId/schedules", async ({ request }) => {
+      const body = (await request.json()) as { credentials?: unknown };
+      if (keyIn(body.credentials) === PLATFORM_KEY.id) {
+        refused.push(body);
+        return HttpResponse.json({ detail: REFUSED }, { status: 400 });
+      }
+      accepted.push(body);
+      return HttpResponse.json(
+        getPostV1CreateExecutionScheduleResponseMock({
+          id: "new-schedule",
+          graph_id: "graph-1",
+        }),
+      );
+    }),
+  );
+  renderScheduleDialog();
+
+  await openRunForm();
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("combobox", { name: PICKER }) as HTMLSelectElement)
+        .value,
+    ).toBe(USER_KEY.id),
+  );
+  await clickWhenEnabled("Schedule Task");
+  await clickWhenEnabled("Use the keys shown in the run form");
+  await clickWhenEnabled("Schedule");
+
+  await waitFor(() => expect(accepted.length + refused.length).toBe(1));
+  expect(refused.map((body) => keyIn(body.credentials))).toEqual([]);
+  expect(accepted.map((body) => keyIn(body.credentials))).toEqual([
+    USER_KEY.id,
+  ]);
 });
