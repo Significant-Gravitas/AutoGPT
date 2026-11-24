@@ -215,11 +215,14 @@ it(
     const socket = await openChat();
     otherTabSends(MIKE, "Mike.");
     // The read the word starts fails on the network, and so does each of the
-    // session query's three retries.
+    // session query's three retries. At least: the runtime's own retry runs
+    // on real backoff, so a slow runner can see it already sent.
     failingReads = 4;
     const before = reads;
     await turnEnded(socket);
-    await waitFor(() => expect(reads - before).toBe(4), { timeout: 20_000 });
+    await waitFor(() => expect(reads - before).toBeGreaterThanOrEqual(4), {
+      timeout: 20_000,
+    });
 
     // The server answers again from here on; no new word is said.
     await waitFor(
