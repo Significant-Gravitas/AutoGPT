@@ -2,11 +2,8 @@ import posthog, { type CaptureResult, type PostHog } from "posthog-js";
 import { stripCredentialsFromValue } from "./url-credentials";
 
 /**
- * Masks the credentials in the URLs posthog-js keeps in its own storage. It
- * sends the first page it stored with every /flags/ request, which skips
- * before_send, and keeps it in the `.agpt.co` cookie that agpt.co's PostHog
- * reads too. Every stored key is walked, so a key a posthog-js upgrade renames
- * is still covered.
+ * Masks credentials in every value posthog-js keeps in its own storage;
+ * `/flags/` requests read that storage and skip before_send.
  */
 export function stripStoredURLCredentials(client: PostHog = posthog) {
   const stored = client.persistence?.props;
