@@ -9,6 +9,8 @@ import type { TurnRuntime } from "./stream/turnRuntime";
  * tab never streams. The server says over the live connection when any turn
  * in the chat ends, so an idle chat reads itself again then, and once that
  * connection is back, since an end said while it was down is not said again.
+ * It only listens: the live connection is opened elsewhere in the app (the
+ * wallet and onboarding open it today), so without that the push never comes.
  */
 export function useRereadOnTurnEnd(runtime: TurnRuntime | null) {
   const api = useBackendAPI();

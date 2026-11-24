@@ -1650,6 +1650,30 @@ describe("two tabs on one chat", () => {
   );
 
   cell(
+    "M7d",
+    "two words that a turn ended, at once, never put two reads on the wire",
+    async () => {
+      await finishFirstTurn();
+      const other = openTab();
+      other.send(P2);
+      await advance(0);
+      server.publish();
+      await advance(5_000);
+      tab.viewAnswerDelayMs = 1_000;
+      const reads = server.viewReads;
+      tab.runtime.rereadIfIdle();
+      tab.runtime.rereadIfIdle();
+      await advance(100);
+      expect(server.viewReads - reads).toBe(1);
+      await advance(5_000);
+      expectScreen({
+        error: null,
+        chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER],
+      });
+    },
+  );
+
+  cell(
     "M7f",
     "the server's word that a turn ended reads nothing while this tab follows a turn",
     async () => {

@@ -256,6 +256,7 @@ export class TurnRuntime {
   private readClock = 0;
   private readStartedAt = 0;
   private rereadOwedAt = 0;
+  private rereading = false;
   private hiddenAt: number | null = null;
   private rereadTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -506,7 +507,7 @@ export class TurnRuntime {
    */
   rereadIfIdle() {
     if (this.disposed) return;
-    if (this.recovering || this.probes > 0) {
+    if (this.recovering || this.probes > 0 || this.rereading) {
       this.rereadOwedAt = ++this.readClock;
       return;
     }
@@ -517,7 +518,8 @@ export class TurnRuntime {
   // A read that started after the server's word covers it; otherwise the
   // owed read happens now, if the chat is still idle.
   private settleOwedReread() {
-    if (this.disposed || this.probes > 0 || this.recovering) return;
+    if (this.disposed || this.probes > 0 || this.recovering || this.rereading)
+      return;
     if (!this.rereadOwedAt) return;
     const owed = this.rereadOwedAt > this.readStartedAt;
     this.rereadOwedAt = 0;
@@ -1325,8 +1327,11 @@ export class TurnRuntime {
     const persisted = turnRows(this.segments, this.ownedFrom, seg, rows);
     if (!persisted) return;
     // The session GET returns a window; a turn starting before it waits.
-    const windowStart = rows[0]?.sequence ?? Infinity;
-    if (view.has_more_messages !== false && windowStart > persisted.start) {
+    const firstRowSequence = rows[0]?.sequence ?? Infinity;
+    if (
+      view.has_more_messages !== false &&
+      firstRowSequence > persisted.start
+    ) {
       const ownUserTexts = new Set(
         seg.log.rows.filter((r) => r.role === "user").map((r) => r.content),
       );
@@ -1571,17 +1576,25 @@ export class TurnRuntime {
   private async reread(attempt = 0) {
     if (this.rereadTimer) clearTimeout(this.rereadTimer);
     this.rereadTimer = null;
-    const view = await this.fetchView();
+    // One read at a time, so an older answer can't land after a newer one.
+    this.rereading = true;
+    let view: SessionView | null;
+    try {
+      view = await this.fetchView();
+    } finally {
+      this.rereading = false;
+    }
     if (this.disposed) return;
     if (view) {
       this.observe(view);
+      this.settleOwedReread();
       return;
     }
     const delay = REREAD_RETRY_MS[attempt];
     if (delay === undefined) return;
     this.rereadTimer = setTimeout(() => {
       this.rereadTimer = null;
-      if (this.isIdle()) void this.reread(attempt + 1);
+      if (this.isIdle() && !this.rereading) void this.reread(attempt + 1);
     }, delay);
   }
 
