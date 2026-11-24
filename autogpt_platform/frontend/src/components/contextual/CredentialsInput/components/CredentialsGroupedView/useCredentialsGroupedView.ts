@@ -1,4 +1,5 @@
 import {
+  BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
   CredentialsType,
 } from "@/lib/autogpt-server-api/types";
@@ -31,6 +32,14 @@ interface Args {
   onAutoSelect?: (key: string, value: CredentialsMetaInput) => void;
   nodeCredentials: CredentialsMetaInput[];
   nodeCredentialsUnknown: boolean;
+  clearedFields: string[];
+}
+
+/** A field with the schema its picker gets; none when no provider resolves. */
+export interface PickerField {
+  key: string;
+  schema: BlockIOCredentialsSubSchema;
+  pickerSchema: BlockIOCredentialsSubSchema | null;
 }
 
 export function useCredentialsGroupedView({
@@ -41,6 +50,7 @@ export function useCredentialsGroupedView({
   onAutoSelect,
   nodeCredentials,
   nodeCredentialsUnknown,
+  clearedFields,
 }: Args) {
   const allProviders = useContext(CredentialsProvidersContext);
 
@@ -61,20 +71,22 @@ export function useCredentialsGroupedView({
 
   // A field set to one of the user's own keys is shown above the collapsed
   // system credentials, so they can see which key the run will use, and so
-  // is one left for them to pick.
+  // is one left for them to pick, or a required one they have to add a key for.
   function isShownAbove([key, schema]: CredentialField) {
     if (pinnedAbove.includes(key)) return true;
     if (pinnedInside.includes(key)) return false;
     if (isOwnCredential(inputCredentials?.[key], allProviders)) return true;
-    return (
-      !inputCredentials?.[key] &&
-      awaitsUserChoice({
-        schema,
-        isRequired: requiredCredentials.has(key),
-        nodeCredentialsUnknown,
-        allProviders,
-      })
-    );
+    if (inputCredentials?.[key]) return false;
+    const isRequired = requiredCredentials.has(key);
+    if (isRequired && !getPickerSchema(schema, undefined, allProviders)) {
+      return true;
+    }
+    return awaitsUserChoice({
+      schema,
+      isRequired,
+      nodeCredentialsUnknown,
+      allProviders,
+    });
   }
 
   const promotedFields = systemCredentialFields.filter(isShownAbove);
@@ -97,16 +109,16 @@ export function useCredentialsGroupedView({
       allProviders,
     );
 
-  // Each field with the schema its picker gets; one with no picker is left out
-  function withPickerSchemas(fields: CredentialField[]) {
-    return fields.flatMap(([key, schema]): CredentialField[] => {
-      const pickerSchema = getPickerSchema(
+  function withPickerSchemas(fields: CredentialField[]): PickerField[] {
+    return fields.map(([key, schema]) => ({
+      key,
+      schema,
+      pickerSchema: getPickerSchema(
         schema,
         inputCredentials?.[key],
         allProviders,
-      );
-      return pickerSchema ? [[key, pickerSchema]] : [];
-    });
+      ),
+    }));
   }
 
   function handleFieldChange(key: string, value?: CredentialsMetaInput) {
@@ -131,7 +143,8 @@ export function useCredentialsGroupedView({
 
     const select = onAutoSelect ?? onCredentialChange;
     for (const [key, schema] of credentialFields) {
-      if (inputCredentials?.[key]) continue;
+      // A field the user cleared stays empty: "None" is their choice
+      if (inputCredentials?.[key] || clearedFields.includes(key)) continue;
 
       const isRequired = requiredCredentials.has(key);
       const isRequiredSystemField =
@@ -155,6 +168,7 @@ export function useCredentialsGroupedView({
   }, [
     allProviders,
     autoSelectBasis,
+    clearedFields,
     credentialFields,
     hasSystemCredentials,
     inputCredentials,
@@ -182,12 +196,13 @@ export function useCredentialsGroupedView({
 // A picker shows one provider's keys. A field open to several, like an LLM
 // step's whose model comes from a link, shows the provider of the key it
 // holds, else the first one the user has a key of their own for; with
-// neither it has no picker. As before, the discriminator is left out.
-function getPickerSchema(
-  schema: CredentialFieldSchema,
+// neither it has no picker. The discriminator is left out: the picker goes by
+// provider, not by the step's other inputs.
+function getPickerSchema<Schema extends CredentialFieldSchema>(
+  schema: Schema,
   selected: CredentialsMetaInput | undefined,
   allProviders: CredentialsProvidersContextType | null,
-) {
+): Schema | null {
   const pickerSchema = { ...schema, discriminator: undefined };
   const providers = schema.credentials_provider ?? [];
   if (providers.length <= 1) return pickerSchema;

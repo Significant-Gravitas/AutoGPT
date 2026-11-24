@@ -92,7 +92,7 @@ export function getStartingCredential({
 /**
  * Whether a field's key is left for the user to pick: the steps' keys are
  * unknown, the run needs the field, and the user has a key of their own that
- * fits it. An optional field starts as it did before, on the platform's key.
+ * fits it. An optional field starts on the platform's key.
  */
 export function awaitsUserChoice({
   schema,
@@ -108,11 +108,12 @@ export function awaitsUserChoice({
 }
 
 /**
- * The user's own key that every step under this field was set to use. Each
- * step's saved key counts, the platform's included; a step with no key, or
- * with a key that no longer exists, doesn't. Steps set to different keys give
- * no answer, and so do steps set to the platform's key, which is what the
- * field falls back to anyway.
+ * The key every step under this field was set to use. Each step's saved key
+ * counts, the platform's included; a step with no key, or with a key that no
+ * longer exists, doesn't. Steps set to different keys give no answer. So do
+ * steps set to the platform's key on a field with one provider, which falls
+ * back to that key anyway; a field open to several providers falls back to
+ * the first one's, so there the platform key the steps agree on is named.
  */
 export function findNodeCredential(
   schema: CredentialFieldSchema,
@@ -127,10 +128,25 @@ export function findNodeCredential(
 
   if (choices.size !== 1) return undefined;
   const [choice] = choices.values();
-  if (isSystemCredential(choice)) return undefined;
+  const hasOneProvider = (schema.credentials_provider ?? []).length <= 1;
+  if (isSystemCredential(choice) && hasOneProvider) return undefined;
   return hasRequiredScopes(choice, schema.credentials_scopes)
     ? choice
     : undefined;
+}
+
+/** The saved keys, the platform's included, that fit a field: provider, type, host and scopes. */
+export function getFittingCredentials(
+  schema: CredentialFieldSchema,
+  allProviders: CredentialsProvidersContextType | null,
+) {
+  return (schema.credentials_provider ?? []).flatMap((providerName) =>
+    (allProviders?.[providerName]?.savedCredentials ?? []).filter(
+      (credential) =>
+        isUnderField(credential, schema) &&
+        hasRequiredScopes(credential, schema.credentials_scopes),
+    ),
+  );
 }
 
 /** Whether a picked credential is one of the user's own, not a platform key. */

@@ -21,9 +21,17 @@ export interface RunAgentModalContextValue {
   triggerConfigValues: Record<string, any>;
   setTriggerConfigValue: (key: string, value: any) => void;
   triggerConfigFields: Record<string, any>;
-  // Credentials
+  // Credentials: the user's changes, and the keys the form picks itself
   inputCredentials: Record<string, any>;
-  setInputCredentialsValue: (key: string, value: any | undefined) => void;
+  setInputCredentialsValue: (
+    key: string,
+    value: CredentialsMetaInput | undefined,
+  ) => void;
+  autoSelectInputCredentialsValue: (
+    key: string,
+    value: CredentialsMetaInput,
+  ) => void;
+  clearedCredentialFields: string[];
   agentCredentialsInputFields: Record<string, any>;
   // The keys picked on the workflow's steps, whether the form waits for them,
   // and whether reading them failed

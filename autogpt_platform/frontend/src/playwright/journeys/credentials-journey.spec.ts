@@ -178,8 +178,9 @@ test.describe("credentials journey", () => {
         "the builder should still show the key after a reload",
       ).toBeVisible({ timeout: 20_000 });
 
-      // The run dialog: with a second key saved, it starts on the key picked
-      // on the step rather than on none, and the run uses that key.
+      // The run dialog: with a second key saved, only the step's choice tells
+      // the two apart, so it starts on the key picked on the step, and the
+      // run uses that key.
       otherKey = await createAPIKey(page, `Journey other key ${stamp}`);
       await page.goto(`/library/agents/${workflow.libraryAgentID}`);
       await waitForAgentPageLoad(page);

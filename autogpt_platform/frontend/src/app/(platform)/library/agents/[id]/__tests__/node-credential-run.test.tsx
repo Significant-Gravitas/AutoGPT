@@ -15,6 +15,8 @@ import {
 import {
   getGetV2GetASpecificPresetMockHandler,
   getGetV2ListPresetsMockHandler,
+  getPostV2SetupTriggerMockHandler,
+  getPostV2SetupTriggerResponseMock,
 } from "@/app/api/__generated__/endpoints/presets/presets.msw";
 import {
   getGetV1ListExecutionSchedulesForAGraphMockHandler,
@@ -22,6 +24,7 @@ import {
   getPostV1CreateExecutionScheduleResponseMock,
 } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { GraphTriggerInfo } from "@/app/api/__generated__/models/graphTriggerInfo";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { server } from "@/mocks/mock-server";
 import CredentialsProvider from "@/providers/agent-credentials/credentials-provider";
@@ -190,6 +193,8 @@ interface Workflow {
   requiredFields?: string[];
   // A template whose credentials the run form starts from
   templateCredentials?: LibraryAgentPreset["credentials"];
+  // The workflow starts from a trigger, so the run form sets one up
+  triggerSetupInfo?: GraphTriggerInfo;
 }
 
 const TEMPLATE_ID = "template-1";
@@ -206,6 +211,7 @@ function mockWorkflow({
   credentialFields = { [FIELD]: FIRECRAWL_FIELD },
   requiredFields = [FIELD],
   templateCredentials,
+  triggerSetupInfo,
 }: Workflow) {
   const { sub_graphs: _, ...subWorkflow } =
     getGetV1GetSpecificGraphResponseMock({
@@ -242,6 +248,8 @@ function mockWorkflow({
   });
   const executeBodies: Array<{ credentials_inputs?: unknown }> = [];
   const scheduleBodies: Array<{ credentials?: unknown }> = [];
+  const triggerBodies: Array<{ agent_credentials?: unknown }> = [];
+  const graphReads: string[] = [];
   const templates: LibraryAgentPreset[] = templateCredentials
     ? [
         {
@@ -263,7 +271,8 @@ function mockWorkflow({
     : [];
   function answerGraphReads() {
     server.use(
-      getGetV1GetSpecificGraphMockHandler(async () => {
+      getGetV1GetSpecificGraphMockHandler(async ({ request }) => {
+        graphReads.push(request.url);
         await graphReady;
         return graph;
       }),
@@ -285,7 +294,7 @@ function mockWorkflow({
           required: requiredFields,
         },
         has_external_trigger: false,
-        trigger_setup_info: null,
+        trigger_setup_info: triggerSetupInfo ?? null,
         has_sensitive_action: false,
         has_human_in_the_loop: false,
         recommended_schedule_cron: null,
@@ -342,10 +351,23 @@ function mockWorkflow({
         graph_id: "graph-1",
       });
     }),
+    getPostV2SetupTriggerMockHandler(async ({ request }) => {
+      triggerBodies.push((await request.json()) as never);
+      return getPostV2SetupTriggerResponseMock({
+        id: "new-trigger",
+        graph_id: "graph-1",
+      });
+    }),
   );
   answerGraphReads();
 
-  return { executeBodies, scheduleBodies, answerGraphReads };
+  return {
+    executeBodies,
+    scheduleBodies,
+    triggerBodies,
+    graphReads,
+    answerGraphReads,
+  };
 }
 
 // Every read of the graph fails, until answerGraphReads() is called again
@@ -508,18 +530,65 @@ test("a key picked inside the system credentials stays put until they close, the
   expect(keyIn(executeBodies[0].credentials_inputs)).toBe(USER_KEY.id);
 });
 
-test("a schedule made from the run form uses the step's key too", async () => {
+test("a schedule made from the run form starts on the platform key, not the step's", async () => {
   const { scheduleBodies } = mockWorkflow({
     stepCredentials: savedOnStep(USER_KEY),
   });
   renderAgentPage();
 
   await openRunForm();
+  const picker = await screen.findByRole("combobox", { name: PICKER });
+  expect((picker as HTMLSelectElement).value).toBe(USER_KEY.id);
+  await clickWhenEnabled("Schedule Task");
+  await clickWhenEnabled("Schedule");
+
+  await waitFor(() => expect(scheduleBodies).toHaveLength(1));
+  expect(keyIn(scheduleBodies[0].credentials)).toBe(PLATFORM_KEY.id);
+});
+
+test("a schedule keeps a key the user picked in the run form, the step's included", async () => {
+  const { scheduleBodies } = mockWorkflow({
+    stepCredentials: savedOnStep(USER_KEY),
+    savedCredentials: [PLATFORM_KEY, USER_KEY, OTHER_KEY],
+  });
+  renderAgentPage();
+
+  await openRunForm();
+  await userEvent.selectOptions(
+    await screen.findByRole("combobox", { name: PICKER }),
+    OTHER_KEY.id,
+  );
+  await userEvent.selectOptions(
+    screen.getByRole("combobox", { name: PICKER }),
+    USER_KEY.id,
+  );
   await clickWhenEnabled("Schedule Task");
   await clickWhenEnabled("Schedule");
 
   await waitFor(() => expect(scheduleBodies).toHaveLength(1));
   expect(keyIn(scheduleBodies[0].credentials)).toBe(USER_KEY.id);
+});
+
+test("a trigger set up from the run form starts on the platform key, not the step's", async () => {
+  const { triggerBodies } = mockWorkflow({
+    stepCredentials: savedOnStep(USER_KEY),
+    triggerSetupInfo: {
+      provider: "generic_webhook",
+      config_schema: { type: "object", properties: {} },
+      credentials_input_name: null,
+    },
+  });
+  renderAgentPage();
+
+  await openRunForm();
+  await userEvent.type(
+    await screen.findByPlaceholderText("Enter trigger name"),
+    "New trigger",
+  );
+  await clickWhenEnabled("Set up Trigger");
+
+  await waitFor(() => expect(triggerBodies).toHaveLength(1));
+  expect(keyIn(triggerBodies[0].agent_credentials)).toBe(PLATFORM_KEY.id);
 });
 
 test("a key added from the run form is the one the run uses", async () => {
@@ -720,8 +789,10 @@ test("after a failed read of the steps' keys, Try again starts the form on the s
   expect(keyIn(executeBodies[0].credentials_inputs)).toBe(USER_KEY.id);
 });
 
-test("someone who doesn't own the workflow but has a key of their own gets a run form that works", async () => {
-  const { executeBodies } = mockWorkflow({
+test("someone who doesn't own the workflow runs on the platform key, without reading its steps", async () => {
+  // The mocked graph answers with the user's key on the step whoever asks,
+  // so only the ownership check keeps it out of the run
+  const { executeBodies, graphReads } = mockWorkflow({
     stepCredentials: savedOnStep(USER_KEY),
     canAccessGraph: false,
   });
@@ -731,6 +802,8 @@ test("someone who doesn't own the workflow but has a key of their own gets a run
   await clickWhenEnabled("Start Task");
 
   await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(keyIn(executeBodies[0].credentials_inputs)).toBe(PLATFORM_KEY.id);
+  expect(graphReads).toEqual([]);
   expect(
     screen.queryByRole("status", { name: "Loading credentials" }),
   ).toBeNull();
@@ -871,3 +944,161 @@ test("a key of the user's own that doesn't fit the field doesn't hold it back wh
   expect(keyIn(executeBodies[0].credentials_inputs)).toBe(PLATFORM_KEY.id);
   expect(screen.queryByText(LOOKUP_FAILED)).toBeNull();
 });
+
+test("picking None on an optional field that started on the step's only key leaves it empty", async () => {
+  // GitHub-like: no platform key, and the user has one key, saved on the step
+  const { executeBodies } = mockWorkflow({
+    stepCredentials: savedOnStep(USER_KEY),
+    requiredFields: [],
+    savedCredentials: [USER_KEY],
+    systemProviders: [],
+  });
+  renderAgentPage();
+
+  await openRunForm();
+  const picker = await screen.findByRole("combobox", { name: PICKER });
+  expect((picker as HTMLSelectElement).value).toBe(USER_KEY.id);
+  await userEvent.selectOptions(picker, "__none__");
+
+  expect(
+    (screen.getByRole("combobox", { name: PICKER }) as HTMLSelectElement).value,
+  ).toBe("__none__");
+  await clickWhenEnabled("Start Task");
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(keyIn(executeBodies[0].credentials_inputs)).toBeUndefined();
+});
+
+// Finds the picker, wherever the field sits after the form reopens
+async function findPicker() {
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  if (!screen.queryByRole("combobox", { name: PICKER })) {
+    await userEvent.click(screen.getByRole("button", { name: SYSTEM_SECTION }));
+  }
+  return (await screen.findByRole("combobox", {
+    name: PICKER,
+  })) as HTMLSelectElement;
+}
+
+async function closeRunForm() {
+  await userEvent.keyboard("{Escape}");
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Start Task" })).toBeNull(),
+  );
+}
+
+test.each([
+  {
+    case: "with several keys to pick from",
+    savedCredentials: [PLATFORM_KEY, USER_KEY, OTHER_KEY],
+    systemProviders: ["firecrawl"],
+  },
+  {
+    case: "on the user's only key",
+    savedCredentials: [USER_KEY],
+    systemProviders: [],
+  },
+])(
+  "None on an optional field survives closing and reopening the form, $case",
+  async ({ savedCredentials, systemProviders }) => {
+    const { executeBodies } = mockWorkflow({
+      stepCredentials: savedOnStep(USER_KEY),
+      requiredFields: [],
+      savedCredentials,
+      systemProviders,
+    });
+    renderAgentPage();
+
+    await openRunForm();
+    await userEvent.selectOptions(await findPicker(), "__none__");
+    const afterNone = (await findPicker()).value;
+    await closeRunForm();
+    await openRunForm();
+    const afterReopen = (await findPicker()).value;
+    await clickWhenEnabled("Start Task");
+
+    await waitFor(() => expect(executeBodies).toHaveLength(1));
+    expect({
+      afterNone,
+      afterReopen,
+      sent: keyIn(executeBodies[0].credentials_inputs) ?? null,
+    }).toEqual({ afterNone: "__none__", afterReopen: "__none__", sent: null });
+  },
+);
+
+test("after a failed read, a platform key the user picked themselves survives Try again", async () => {
+  const { executeBodies, answerGraphReads } = mockWorkflow({
+    stepCredentials: savedOnStep(USER_KEY),
+    requiredFields: [],
+    savedCredentials: [PLATFORM_KEY, USER_KEY, OTHER_KEY],
+  });
+  failGraphReads();
+  renderAgentPage();
+
+  await openRunForm();
+  expect(await screen.findByText(LOOKUP_FAILED)).toBeDefined();
+  await userEvent.click(screen.getByRole("button", { name: SYSTEM_SECTION }));
+  const section = await screen.findByRole("region", { name: SYSTEM_SECTION });
+  const picker = within(section).getByRole("combobox", { name: PICKER });
+  await waitFor(() =>
+    expect((picker as HTMLSelectElement).value).toBe(PLATFORM_KEY.id),
+  );
+  // The user tries another key, then settles on platform credits
+  await userEvent.selectOptions(picker, OTHER_KEY.id);
+  await userEvent.selectOptions(
+    screen.getByRole("combobox", { name: PICKER }),
+    PLATFORM_KEY.id,
+  );
+
+  answerGraphReads();
+  await clickWhenEnabled("Try again");
+  await waitFor(() => expect(screen.queryByText(LOOKUP_FAILED)).toBeNull());
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await clickWhenEnabled("Start Task");
+
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(keyIn(executeBodies[0].credentials_inputs)).toBe(PLATFORM_KEY.id);
+});
+
+test("an LLM step whose model comes from a link, saved on Anthropic's platform key, runs on it, not on OpenAI's", async () => {
+  const { executeBodies } = mockLLMWorkflow({
+    stepCredentials: savedOnStep(ANTHROPIC_PLATFORM_KEY),
+  });
+  renderAgentPage();
+
+  await openRunForm();
+  await clickWhenEnabled("Start Task");
+
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(keyIn(executeBodies[0].credentials_inputs, LLM_FIELD)).toBe(
+    ANTHROPIC_PLATFORM_KEY.id,
+  );
+});
+
+// No platform key for any LLM provider, and none of the user's own
+test.each([
+  { case: "a provider of the user's", systemProviders: [] },
+  // Listed as the platform's, as when its key isn't set up on the server
+  { case: "the platform's", systemProviders: ["openai", "anthropic"] },
+])(
+  "a required field open to several providers, each $case, with no key to pick, stays in view and says where to add one",
+  async ({ systemProviders }) => {
+    mockLLMWorkflow({
+      stepCredentials: undefined,
+      systemProviders,
+      savedCredentials: [],
+    });
+    renderAgentPage();
+
+    await openRunForm();
+    const link = await screen.findByRole("link", {
+      name: "Settings → Integrations",
+    });
+    expect(link.getAttribute("href")).toBe("/settings/integrations");
+    expect(screen.getByText(/Openai or Anthropic/)).toBeDefined();
+    expect(
+      screen
+        .getByRole("button", { name: "Start Task" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+  },
+);

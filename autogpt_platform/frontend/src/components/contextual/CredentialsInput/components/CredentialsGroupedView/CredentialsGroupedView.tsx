@@ -7,12 +7,17 @@ import {
 } from "@/components/molecules/Accordion/Accordion";
 import { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { CredentialField } from "./helpers";
-import { useCredentialsGroupedView } from "./useCredentialsGroupedView";
+import {
+  PickerField,
+  useCredentialsGroupedView,
+} from "./useCredentialsGroupedView";
+import { ProviderKeyNotice } from "./components/ProviderKeyNotice";
 import { SlidersHorizontalIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 const SYSTEM_SECTION = "system-credentials";
 const NO_NODE_CREDENTIALS: CredentialsMetaInput[] = [];
+const NO_CLEARED_FIELDS: string[] = [];
 
 type Props = {
   credentialFields: CredentialField[];
@@ -26,6 +31,8 @@ type Props = {
   nodeCredentials?: CredentialsMetaInput[];
   /** The steps' keys couldn't be read: a field the user has a key of their own for is left for them to pick. */
   nodeCredentialsUnknown?: boolean;
+  /** Fields the user set to none: nothing fills them again. */
+  clearedFields?: string[];
 };
 
 export function CredentialsGroupedView({
@@ -37,6 +44,7 @@ export function CredentialsGroupedView({
   onAutoSelect,
   nodeCredentials = NO_NODE_CREDENTIALS,
   nodeCredentialsUnknown = false,
+  clearedFields = NO_CLEARED_FIELDS,
 }: Props) {
   const {
     visibleFields,
@@ -52,19 +60,31 @@ export function CredentialsGroupedView({
     onAutoSelect,
     nodeCredentials,
     nodeCredentialsUnknown,
+    clearedFields,
   });
 
-  function renderField([key, inputSubSchema]: CredentialField) {
+  function renderField({ key, schema, pickerSchema }: PickerField) {
+    const isOptional = !requiredCredentials.has(key);
+    if (!pickerSchema) {
+      return (
+        <ProviderKeyNotice
+          key={key}
+          providers={schema.credentials_provider ?? []}
+          isOptional={isOptional}
+        />
+      );
+    }
     return (
       <CredentialsInput
         key={key}
-        schema={inputSubSchema}
+        schema={pickerSchema}
         selectedCredentials={inputCredentials?.[key]}
         onSelectCredentials={(value) => {
           handleFieldChange(key, value);
         }}
         siblingInputs={inputValues}
-        isOptional={!requiredCredentials.has(key)}
+        isOptional={isOptional}
+        autoSelect={!clearedFields.includes(key)}
       />
     );
   }

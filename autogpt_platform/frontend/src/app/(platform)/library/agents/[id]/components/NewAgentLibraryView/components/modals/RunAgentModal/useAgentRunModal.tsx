@@ -28,7 +28,10 @@ import {
 import { getVisibleFields } from "../AgentInputsReadOnly/helpers";
 import { withCalendarDates } from "../RunAgentInputs/helpers";
 import { showExecutionErrorToast } from "./errorHelpers";
-import { getDefaultRunCredentials } from "./run-credentials";
+import {
+  getDefaultRunCredentials,
+  getScheduleCredentials,
+} from "./run-credentials";
 import { useSavedNodeCredentials } from "./useSavedNodeCredentials";
 
 export type RunVariant =
@@ -78,6 +81,8 @@ export function useAgentRunModal(
   const hasInitializedSystemCreds = useRef(false);
   // The keys the form started fields on while the steps' keys were unknown
   const provisionalCreds = useRef<Record<string, string>>({});
+  // The fields the user set, to a key or to none: the form leaves them alone
+  const [userFields, setUserFields] = useState<string[]>([]);
 
   // Determine the default run type based on agent capabilities
   const defaultRunType: RunVariant = agent.trigger_setup_info
@@ -93,6 +98,7 @@ export function useAgentRunModal(
     );
     setInputCredentials(callbacks?.initialInputCredentials || {});
     provisionalCreds.current = {};
+    setUserFields([]);
     setTriggerConfigValues(
       withCalendarDates(
         agent.trigger_setup_info?.config_schema,
@@ -114,30 +120,38 @@ export function useAgentRunModal(
       CredentialFieldSchema
     >,
   );
+  // A template brings its own credentials. A trigger runs while no one
+  // watches, and one for an expert's workflow can only use the keys the
+  // expert was granted, so it starts on the platform's key, which needs none.
+  const usesNodeCredentials =
+    !callbacks?.initialInputCredentials && !agent.trigger_setup_info;
   // A step can only hold one of the user's own keys, so the steps' keys only
-  // matter to a user with a key of their own, and a template brings its own.
+  // matter to a user with a key of their own.
   const hasOwnCredential = hasOwnCredentialFor(
     credentialFieldSchemas,
     allProviders,
   );
-  const needsNodeCredentials =
-    hasOwnCredential && !callbacks?.initialInputCredentials;
+  const needsNodeCredentials = hasOwnCredential && usesNodeCredentials;
   // Only the graph's owner gets the keys picked on its steps back. They are
   // read with the page for a user with a key of their own, so they are there
   // before the form opens, and otherwise once the form opens, where the user
   // may add their first key.
   const {
-    nodeCredentials,
+    nodeCredentials: savedNodeCredentials,
     isLoadingNodeCredentials,
     hasNodeCredentialsError,
     isRetryingNodeCredentials,
     retryNodeCredentials,
   } = useSavedNodeCredentials(
     agent,
-    Boolean(agent.can_access_graph) &&
+    usesNodeCredentials &&
+      Boolean(agent.can_access_graph) &&
       credentialFieldSchemas.length > 0 &&
       (hasOwnCredential || isOpen),
   );
+  const nodeCredentials = usesNodeCredentials
+    ? savedNodeCredentials
+    : NO_NODE_CREDENTIALS;
   const isResolvingCredentials =
     isLoadingNodeCredentials && needsNodeCredentials;
   const nodeCredentialsUnknown =
@@ -171,6 +185,7 @@ export function useAgentRunModal(
         requiredFields,
         currentCredentials: currentCreds,
         provisionalCredentials,
+        userFields,
         allProviders,
         nodeCredentials,
         nodeCredentialsUnknown,
@@ -198,12 +213,39 @@ export function useAgentRunModal(
     isResolvingCredentials,
     nodeCredentials,
     nodeCredentialsUnknown,
+    userFields,
   ]);
 
   // Reset initialization flag when modal closes/opens or agent changes
   useEffect(() => {
     hasInitializedSystemCreds.current = false;
   }, [isOpen, agent.graph_id]);
+
+  function handleCredentialChange(key: string, value?: CredentialsMetaInput) {
+    setUserFields((fields) =>
+      fields.includes(key) ? fields : [...fields, key],
+    );
+    setInputCredentials((current) => {
+      const next = { ...current };
+      if (value) next[key] = value;
+      else delete next[key];
+      return next;
+    });
+  }
+
+  function handleCredentialAutoSelect(
+    key: string,
+    value: CredentialsMetaInput,
+  ) {
+    setInputCredentials((current) => ({ ...current, [key]: value }));
+  }
+
+  const credentialProperties = (agent.credentials_input_schema?.properties ??
+    {}) as Record<string, CredentialFieldSchema>;
+  const requiredCredentialFields =
+    (agent.credentials_input_schema?.required as string[] | undefined) ?? [];
+  // Fields the user set to none
+  const clearedFields = userFields.filter((key) => !inputCredentials[key]?.id);
 
   // API mutations
   const executeGraphMutation = usePostV1ExecuteGraphAgent({
@@ -447,6 +489,17 @@ export function useAgentRunModal(
     setTriggerConfigValues,
     inputCredentials,
     setInputCredentials,
+    handleCredentialChange,
+    handleCredentialAutoSelect,
+    clearedFields,
+    scheduleCredentials: getScheduleCredentials({
+      properties: credentialProperties,
+      requiredFields: requiredCredentialFields,
+      credentials: inputCredentials,
+      userFields,
+      allProviders,
+      nodeCredentials,
+    }),
     presetName,
     presetDescription,
     setPresetName,
@@ -456,11 +509,9 @@ export function useAgentRunModal(
     agentInputFields,
     triggerConfigFields,
     agentCredentialsInputFields,
-    // A template brings its own credentials, so the view doesn't fill the
-    // ones it leaves empty from the steps' keys either
-    nodeCredentials: callbacks?.initialInputCredentials
-      ? NO_NODE_CREDENTIALS
-      : nodeCredentials,
+    // None while a template or a trigger is set up: the view doesn't fill
+    // fields from the steps' keys either
+    nodeCredentials,
     isResolvingCredentials,
     nodeCredentialsUnknown,
     isRetryingNodeCredentials,

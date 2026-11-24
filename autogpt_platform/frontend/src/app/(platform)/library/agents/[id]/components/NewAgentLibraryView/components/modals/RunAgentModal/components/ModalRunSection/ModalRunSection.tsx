@@ -26,6 +26,8 @@ export function ModalRunSection() {
     agentCredentialsInputFields,
     inputCredentials,
     setInputCredentialsValue,
+    autoSelectInputCredentialsValue,
+    clearedCredentialFields,
     nodeCredentials,
     isResolvingCredentials,
     nodeCredentialsUnknown,
@@ -150,8 +152,10 @@ export function ModalRunSection() {
                 inputCredentials={inputCredentials}
                 inputValues={inputValues}
                 onCredentialChange={setInputCredentialsValue}
+                onAutoSelect={autoSelectInputCredentialsValue}
                 nodeCredentials={nodeCredentials}
                 nodeCredentialsUnknown={nodeCredentialsUnknown}
+                clearedFields={clearedCredentialFields}
               />
             </div>
           )}

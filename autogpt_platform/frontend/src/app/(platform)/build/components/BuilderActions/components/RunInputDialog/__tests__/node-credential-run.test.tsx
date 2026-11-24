@@ -166,12 +166,17 @@ function mockBuilderRun({
   field = FIELD,
   fieldSchema = FIRECRAWL_FIELD,
   savedCredentials = [PLATFORM_KEY, USER_KEY, OTHER_KEY],
+  required = true,
+  systemProviders,
 }: {
   stepKeys: Array<Key | undefined>;
   subWorkflowStepKeys?: Array<Key | undefined>;
   field?: string;
   fieldSchema?: typeof FIRECRAWL_FIELD;
   savedCredentials?: Key[];
+  required?: boolean;
+  // The providers the platform has a key for; all of the field's by default
+  systemProviders?: string[];
 }) {
   const executeBodies: Array<{ credentials_inputs?: unknown }> = [];
   const providers = fieldSchema.credentials_provider;
@@ -180,7 +185,7 @@ function mockBuilderRun({
     credentialsInputSchema: {
       type: "object",
       properties: { [field]: fieldSchema },
-      required: [field],
+      required: required ? [field] : [],
     },
   });
   setStepKeys(stepKeys);
@@ -194,7 +199,7 @@ function mockBuilderRun({
       ),
     ),
     http.get("*/api/integrations/providers/system", () =>
-      HttpResponse.json(providers),
+      HttpResponse.json(systemProviders ?? providers),
     ),
     http.get("*/api/integrations/credentials", () =>
       HttpResponse.json(savedCredentials),
@@ -210,7 +215,7 @@ function mockBuilderRun({
   return executeBodies;
 }
 
-function renderRunDialog() {
+function renderRunDialog(purpose: "run" | "schedule" = "run") {
   function dialog(isOpen: boolean) {
     return (
       <CredentialsProvider>
@@ -218,7 +223,7 @@ function renderRunDialog() {
           <RunInputDialog
             isOpen={isOpen}
             setIsOpen={vi.fn()}
-            purpose="run"
+            purpose={purpose}
             graphID="graph-1"
             graphVersion={1}
           />
@@ -401,4 +406,87 @@ test("a builder run's LLM field, open to several providers, starts on the step's
   await expectPickerOn(USER_OPENAI_KEY, LLM_PICKER);
 
   expect(await runAndGetKey(executeBodies, LLM_FIELD)).toBe(USER_OPENAI_KEY.id);
+});
+
+test("a reopened builder dialog keeps None on an optional field", async () => {
+  // No platform key, and two keys of the user's, so nothing picks one itself
+  const executeBodies = mockBuilderRun({
+    stepKeys: [USER_KEY],
+    savedCredentials: [USER_KEY, OTHER_KEY],
+    required: false,
+    systemProviders: [],
+  });
+  const { close, reopen } = renderRunDialog();
+
+  await expectPickerOn(USER_KEY);
+  await userEvent.selectOptions(
+    screen.getByRole("combobox", { name: PICKER }),
+    "__none__",
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  expect(
+    (screen.getByRole("combobox", { name: PICKER }) as HTMLSelectElement).value,
+  ).toBe("__none__");
+
+  close();
+  reopen();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  expect(
+    (
+      (await screen.findByRole("combobox", {
+        name: PICKER,
+      })) as HTMLSelectElement
+    ).value,
+  ).toBe("__none__");
+  expect(await runAndGetKey(executeBodies)).toBeUndefined();
+});
+
+test("a builder LLM step whose model comes from a link, saved on Anthropic's platform key, runs on it", async () => {
+  const executeBodies = mockBuilderRun({
+    stepKeys: [ANTHROPIC_PLATFORM_KEY],
+    field: LLM_FIELD,
+    fieldSchema: LLM_FIELD_SCHEMA,
+    savedCredentials: [
+      OPENAI_PLATFORM_KEY,
+      ANTHROPIC_PLATFORM_KEY,
+      USER_OPENAI_KEY,
+    ],
+  });
+  renderRunDialog();
+
+  // Anthropic's only key is a row inside the system credentials
+  await userEvent.click(
+    await screen.findByRole("button", { name: SYSTEM_SECTION }),
+  );
+  expect(await screen.findByText(ANTHROPIC_PLATFORM_KEY.title)).toBeDefined();
+
+  expect(await runAndGetKey(executeBodies, LLM_FIELD)).toBe(
+    ANTHROPIC_PLATFORM_KEY.id,
+  );
+});
+
+test("the builder's schedule dialog starts on the platform key, not the step's", async () => {
+  mockBuilderRun({ stepKeys: [USER_KEY] });
+  renderRunDialog("schedule");
+
+  await expectPlatformKeyPicked();
+  expect(screen.getAllByRole("combobox", { name: PICKER })).toHaveLength(1);
+});
+
+test("a builder field open to several providers, with no key to pick, says where to add one", async () => {
+  // No platform key for any LLM provider, and none of the user's own
+  mockBuilderRun({
+    stepKeys: [undefined],
+    field: LLM_FIELD,
+    fieldSchema: LLM_FIELD_SCHEMA,
+    savedCredentials: [],
+    systemProviders: [],
+  });
+  renderRunDialog();
+
+  const link = await screen.findByRole("link", {
+    name: "Settings → Integrations",
+  });
+  expect(link.getAttribute("href")).toBe("/settings/integrations");
+  expect(screen.getByText(/Openai or Anthropic/)).toBeDefined();
 });

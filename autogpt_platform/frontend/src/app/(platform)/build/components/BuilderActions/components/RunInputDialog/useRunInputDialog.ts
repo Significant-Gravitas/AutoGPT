@@ -18,23 +18,29 @@ export const useRunInputDialog = ({
   setIsOpen,
   graphID,
   graphVersion,
+  purpose = "run",
 }: {
   setIsOpen: (isOpen: boolean) => void;
   graphID?: string;
   graphVersion?: number | null;
+  purpose?: "run" | "schedule";
 }) => {
   const credentialsSchema = useGraphStore(
     (state) => state.credentialsInputSchema,
   );
   const setIsGraphRunning = useGraphStore((state) => state.setIsGraphRunning);
-  // The run starts on the keys picked on the steps, not the platform's
+  // A run starts on the keys picked on the steps, not the platform's. A
+  // schedule runs while no one watches, and one for an expert's workflow can
+  // only use the keys the expert was granted, so it starts on the platform's
+  // key, which needs none.
   const {
     nodeCredentials,
     credentialValues,
+    clearedFields,
     handleCredentialFieldChange,
     handleAutoSelectCredential,
     replaceCredentialValues,
-  } = useRunCredentials();
+  } = useRunCredentials({ startsOnStepKeys: purpose === "run" });
 
   const [openCronSchedulerDialog, setOpenCronSchedulerDialog] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
@@ -179,6 +185,7 @@ export const useRunInputDialog = ({
     credentialFields,
     requiredCredentials,
     nodeCredentials,
+    clearedFields,
     inputValues,
     credentialValues,
     isExecutingGraph,
