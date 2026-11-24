@@ -342,10 +342,13 @@ class DesktopBrowserTool(BaseTool):
         except Exception:
             logger.warning("[desktop_browser] could not read the page", exc_info=True)
             return None, []
-        return (
-            driver.observation_from(entries, settled),
-            entries[(1 if settled else 0) :],
-        )
+        try:
+            observation = driver.observation_from(entries, settled)
+        except Exception:
+            # Treated like any read that failed: no scope from it.
+            logger.warning("[desktop_browser] unreadable page data", exc_info=True)
+            observation = None
+        return observation, entries[(1 if settled else 0) :]
 
     async def _save_look(
         self,

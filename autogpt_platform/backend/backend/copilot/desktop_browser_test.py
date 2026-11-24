@@ -248,6 +248,16 @@ class TestObservation:
         assert observation_from([_fail("tab_gone")]) is None
         assert len(OBSERVE) == 3
 
+    @pytest.mark.parametrize(
+        "snapshot_result",
+        [["not", "a", "dict"], {"snapshot": "x", "refs": ["e1"]}],
+    )
+    def test_malformed_page_data_reads_as_an_unread_page(self, snapshot_result):
+        """Then the receipts still go back and the older scopes are voided."""
+        entries = [_ok({"url": "u"}), _ok({"title": "t"}), _ok()]
+        entries[2]["result"] = snapshot_result
+        assert observation_from(entries) is None
+
 
 def test_batch_output_parses_lists_and_error_objects():
     assert parse_batch('[{"success": true}]') == [{"success": True}]
@@ -268,9 +278,16 @@ class _LockRedis:
         self.data[key] = value
         return True
 
-    async def eval(self, script, numkeys, key, token):
-        if self.data.get(key) == token:
+    renewed = 0
+
+    async def eval(self, script, numkeys, key, token, *args):
+        if self.data.get(key) != token:
+            return 0
+        if "expire" in script:
+            self.renewed += 1
+        else:
             del self.data[key]
+        return 1
 
 
 @pytest.mark.asyncio
@@ -312,6 +329,24 @@ async def test_a_box_held_too_long_is_reported_busy(monkeypatch):
         async with driver.call_lock("sb-1", 60):
             pass
     assert redis.data == {"copilot:desktop-browser:lock:sb-1": "someone"}
+
+
+@pytest.mark.asyncio
+async def test_a_long_call_keeps_its_lock_and_a_dead_one_frees_it_soon(monkeypatch):
+    """The lock is renewed while the call runs, and its own lifetime is
+    short, so a worker that died holding it frees the box within a minute."""
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    redis = _LockRedis()
+    monkeypatch.setattr(driver, "get_redis_async", AsyncMock(return_value=redis))
+    monkeypatch.setattr(driver, "_LOCK_RENEW_SECONDS", 0.01)
+    async with driver.call_lock("sb-1", driver.LOCK_HOLD_SECONDS):
+        await asyncio.sleep(0.06)
+        assert "copilot:desktop-browser:lock:sb-1" in redis.data
+    assert redis.renewed >= 2
+    assert redis.data == {}
+    assert driver.LOCK_HOLD_SECONDS <= 60
 
 
 # ---------------------------------------------------------------- review fixes

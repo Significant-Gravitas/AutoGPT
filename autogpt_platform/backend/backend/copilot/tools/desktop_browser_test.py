@@ -399,13 +399,17 @@ async def test_an_open_dialog_stops_a_call_that_does_not_answer_it():
 
 @pytest.mark.asyncio
 async def test_a_dialog_action_is_not_held_back_by_the_dialog():
-    patches, batch = _patched(
-        batches=[[_ok({"handled": True})], _SETTLED], dialogs=[None]
-    )
+    """The dialog stays open on every check, so the test fails if the call
+    that answers it is held back by the check before acting."""
+    patches, batch = _patched(batches=[[_ok({"handled": True})]])
+    still_open = AsyncMock(return_value="A JavaScript confirm dialog is open")
+    patches.append(patch(f"{_D}.open_dialog", still_open))
     result = await _call(patches, actions=[{"action": "dialog", "answer": "accept"}])
     assert isinstance(result, DesktopBrowserResponse)
     assert batch.await_args_list[0].args[2] == [["dialog", "accept"]]
     assert result.receipts[0]["status"] == "completed"
+    # Only the closing read asked: the call itself was not checked.
+    still_open.assert_awaited_once()
 
 
 @pytest.mark.asyncio

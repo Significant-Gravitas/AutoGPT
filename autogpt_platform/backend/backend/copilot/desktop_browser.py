@@ -93,17 +93,20 @@ _REF_SCOPE_TTL_SECONDS = 3600
 # an expert's turns share a box, and a call checked against a snapshot must
 # not run after another has replaced it.
 _LOCK_WAIT_SECONDS = 30
-# Longer than the slowest call can hold it: an agent-browser install (180 s),
-# Chrome's start (30 s) and a new tab (10 s) on a box without them, two dialog
-# checks (15 s each), the batch twice at its own limit plus its kill margin
-# (the lost-tab retry, 2 x 185 s), the closing read (50 s) and the screenshot's
-# clean-up (10 s): 690 s, with room to spare. Only a holder that died lets it
-# lapse.
-LOCK_HOLD_SECONDS = 900
+# The lock lives this long unless renewed; the holder renews it every
+# _LOCK_RENEW_SECONDS for as long as the call runs (the slowest the code's own
+# limits allow is about 690 s), so only a holder that died lets it lapse, and
+# then within a minute, not after the longest call.
+LOCK_HOLD_SECONDS = 60
+_LOCK_RENEW_SECONDS = 20
 _LOCK_POLL_SECONDS = 0.25
 _UNLOCK_SCRIPT = (
     'if redis.call("get", KEYS[1]) == ARGV[1] then '
     'return redis.call("del", KEYS[1]) else return 0 end'
+)
+_RENEW_SCRIPT = (
+    'if redis.call("get", KEYS[1]) == ARGV[1] then '
+    'return redis.call("expire", KEYS[1], ARGV[2]) else return 0 end'
 )
 _REF_RE = re.compile(r"^@?(e[0-9]{1,6})$")
 _KEY_RE = re.compile(r"^[A-Za-z0-9+_ -]{1,64}$")
@@ -589,7 +592,14 @@ def observation_from(
     core, stamp = rest[: len(OBSERVE)], rest[len(OBSERVE) : len(OBSERVE) + 1]
     if len(core) != len(OBSERVE) or not all(e.get("success") for e in core):
         return None
-    url, title, snap = (e.get("result") or {} for e in core)
+    results = [e.get("result") or {} for e in core]
+    # Malformed output reads as an unread page: the receipts still go back
+    # and every older ref_scope is voided, as for any read that failed.
+    if not all(isinstance(r, dict) for r in results):
+        return None
+    url, title, snap = results
+    if not isinstance(snap.get("refs") or {}, dict):
+        return None
     text = str(snap.get("snapshot", ""))
     if len(text) > MAX_SNAPSHOT_CHARS:
         text = text[:MAX_SNAPSHOT_CHARS] + "\n[snapshot cut: the page has more]"
@@ -677,8 +687,8 @@ class BrowserBusy(RuntimeError):
 
 @contextlib.asynccontextmanager
 async def call_lock(sandbox_id: str, hold_seconds: int) -> AsyncIterator[None]:
-    """Hold the box's browser for one call. Its expiry outlasts the call's
-    own limits, so only a holder that died lets it lapse."""
+    """Hold the box's browser for one call, renewing the lock while the call
+    runs, so only a holder that died lets it lapse."""
     redis = await get_redis_async()
     key = f"copilot:desktop-browser:lock:{sandbox_id}"
     token = secrets.token_hex(8)
@@ -688,9 +698,20 @@ async def call_lock(sandbox_id: str, hold_seconds: int) -> AsyncIterator[None]:
         if time.monotonic() >= deadline:
             raise BrowserBusy("another desktop_browser call is still running")
         await asyncio.sleep(_LOCK_POLL_SECONDS)
+
+    async def renew() -> None:
+        while True:
+            await asyncio.sleep(_LOCK_RENEW_SECONDS)
+            with contextlib.suppress(Exception):
+                await redis.eval(_RENEW_SCRIPT, 1, key, token, hold_seconds)
+
+    renewer = asyncio.create_task(renew())
     try:
         yield
     finally:
+        renewer.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await renewer
         with contextlib.suppress(Exception):
             await redis.eval(_UNLOCK_SCRIPT, 1, key, token)
 
