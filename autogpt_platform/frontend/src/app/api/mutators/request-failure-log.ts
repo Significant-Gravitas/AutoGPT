@@ -1,3 +1,4 @@
+import { fetchRetryingDroppedConnection } from "@/lib/dropped-connection-retry";
 import * as Sentry from "@sentry/nextjs";
 
 interface RequestFailure {
@@ -63,12 +64,15 @@ export function logServerRequestFailure(failure: RequestFailure) {
  * (BUILDER-95D beside BUILDER-95C). The integration captures before fetch
  * resolves, so while the request is in flight `isLoggedRequestFailure` can
  * pick that copy out for `beforeSend` to drop.
+ *
+ * On the server, a read whose pooled connection to the backend was dead is
+ * sent once more. A browser's fetch error carries no cause to go by.
  */
 export async function fetchWithFailureLog(url: string, init: RequestInit) {
   const key = requestKey(init.method ?? "GET", url);
   inFlight.set(key, (inFlight.get(key) ?? 0) + 1);
   try {
-    return await fetch(url, init);
+    return await fetchRetryingDroppedConnection(url, init);
   } finally {
     const remaining = (inFlight.get(key) ?? 1) - 1;
     if (remaining > 0) inFlight.set(key, remaining);

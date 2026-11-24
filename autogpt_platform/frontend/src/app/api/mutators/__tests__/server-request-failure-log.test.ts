@@ -1,9 +1,21 @@
 // @vitest-environment node
 import { getV2GetLibraryAgent } from "@/app/api/__generated__/endpoints/library/library";
 import { server } from "@/mocks/mock-server";
+import {
+  hangUp,
+  startLoopbackBackend,
+} from "@/tests/integrations/loopback-backend";
 import * as Sentry from "@sentry/nextjs";
 import { http, HttpResponse } from "msw";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 // A signed-in render; reading the session cookie needs a live Next request.
 vi.mock("@/lib/autogpt-server-api/helpers", async (importActual) => ({
@@ -78,5 +90,34 @@ describe("a request that fails while rendering on the server", () => {
     expect(consoleInfo).toHaveBeenCalledWith(
       "Request failed on server: GET /api/library/agents/{id} 404: Library agent not found",
     );
+  });
+});
+
+describe("a read whose backend connection drops while rendering on the server", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is sent once more on a new connection, and only logged at info", async () => {
+    consoleError.mockClear();
+    consoleInfo.mockClear();
+    const backend = await startLoopbackBackend((request, response, count) => {
+      if (count === 1) return hangUp(request);
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ id: AGENT }));
+    });
+    vi.stubEnv("AGPT_SERVER_URL", `${backend.url}/api`);
+
+    const response = await getV2GetLibraryAgent(AGENT);
+
+    expect(response.status).toBe(200);
+    expect(backend.requests).toEqual([
+      `GET /api/library/agents/${AGENT}`,
+      `GET /api/library/agents/${AGENT}`,
+    ]);
+    expect(consoleInfo).toHaveBeenCalledExactlyOnceWith(
+      `Retried GET /api/library/agents/${AGENT} after a dropped connection (UND_ERR_SOCKET): 200`,
+    );
+    expect(consoleError).not.toHaveBeenCalled();
   });
 });
