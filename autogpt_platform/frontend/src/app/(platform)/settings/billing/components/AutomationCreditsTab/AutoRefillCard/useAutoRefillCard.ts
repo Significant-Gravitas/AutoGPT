@@ -28,8 +28,9 @@ export function useAutoRefillCard() {
   });
 
   // Names this save, so a retry after a lost response can't charge again.
-  // Kept through retries; replaced when the dialog opens, when the values
-  // change, and after a decline, which Stripe would otherwise replay for it.
+  // Kept through retries, even across closing the dialog after a lost
+  // response; replaced once a save succeeds, when the values change, and
+  // after a decline, which Stripe would otherwise replay for it.
   const [saveKey, setSaveKey] = useState(newSaveKey);
   const { mutateAsync: configureAutoTopUp, isPending: isSaving } =
     usePostV1ConfigureAutoTopUp({
@@ -101,6 +102,7 @@ export function useAutoRefillCard() {
       });
       if (!sent) return;
       await refetch();
+      setSaveKey(newSaveKey());
       setOpen(false);
     } catch (error) {
       if (error instanceof ApiError && error.status === 402) {
@@ -135,11 +137,6 @@ export function useAutoRefillCard() {
     }
   }
 
-  function changeOpen(next: boolean) {
-    if (next) setSaveKey(newSaveKey());
-    setOpen(next);
-  }
-
   // Different values are a different save.
   function changeThreshold(value: string) {
     setThreshold(value);
@@ -157,7 +154,7 @@ export function useAutoRefillCard() {
     isLoading,
     isSaving,
     open,
-    setOpen: changeOpen,
+    setOpen,
     threshold,
     setThreshold: changeThreshold,
     refillAmount,

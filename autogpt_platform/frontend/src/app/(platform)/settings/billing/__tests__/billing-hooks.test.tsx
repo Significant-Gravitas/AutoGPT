@@ -416,7 +416,7 @@ describe("useAutoRefillCard", () => {
   it("names each save, keeping the name through a retry so it can't charge twice", async () => {
     const keys: (string | null)[] = [];
     // What the server answers each save, in order.
-    const answers = [504, 200, 200, 402, 200, 200, 200];
+    const answers = [504, 200, 402, 200, 200];
     server.use(
       jsonHandler("get", "/api/credits/auto-top-up", {
         amount: 0,
@@ -446,27 +446,23 @@ describe("useAutoRefillCard", () => {
       await waitFor(() => expect(result.current.isSaving).toBe(false));
     }
 
-    // A lost response, its retry, and a second click before the dialog closes.
+    // A lost response: the user closes the dialog, reopens it and saves again.
     await saveAgain();
-    await saveAgain();
-    await saveAgain();
-    // A decline, then the retry after the card is fixed.
-    await saveAgain();
-    await saveAgain();
-    // Reopening the dialog starts a new save; so does changing the values.
     act(() => result.current.setOpen(false));
     act(() => result.current.setOpen(true));
+    await saveAgain();
+    // That one succeeded, so the next save is a new one; it's declined.
+    await saveAgain();
+    // The retry after fixing the card, then a save with other values.
     await saveAgain();
     act(() => result.current.setRefillAmount("20"));
     await saveAgain();
 
     expect(keys[0]).toBeTruthy();
     expect(keys[1]).toBe(keys[0]);
-    expect(keys[2]).toBe(keys[0]);
-    expect(keys[3]).toBe(keys[0]);
+    expect(keys[2]).not.toBe(keys[1]);
+    expect(keys[3]).not.toBe(keys[2]);
     expect(keys[4]).not.toBe(keys[3]);
-    expect(keys[5]).not.toBe(keys[4]);
-    expect(keys[6]).not.toBe(keys[5]);
   });
 
   it("save() catches mutation failures and stops the spinner", async () => {
