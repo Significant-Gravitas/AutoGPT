@@ -1,5 +1,6 @@
 """Shared utilities for chat tools."""
 
+import asyncio
 import logging
 import re
 from collections.abc import Mapping
@@ -369,9 +370,44 @@ async def get_user_credentials(
     user_id: str, expert_id: str | None = None
 ) -> list[Credentials]:
     """Get the credentials available for a user, scoped to an expert if given."""
-    creds_manager = IntegrationCredentialsManager()
-    credentials = await creds_manager.store.get_all_creds(user_id)
-    return await scope_credentials_to_expert(user_id, expert_id, credentials)
+    credentials, granted = await credentials_with_grants(user_id, expert_id)
+    if granted is None:
+        return credentials
+
+    from backend.api.features.experts.credentials import filter_credentials_for_expert
+
+    return filter_credentials_for_expert(credentials, granted)
+
+
+async def credentials_with_grants(
+    user_id: str, expert_id: str | None
+) -> tuple[list[Credentials], set[str] | None]:
+    """The account's credentials, and the ids *expert_id* was granted (``None``
+    for a plain session, which keeps everything).
+
+    The two are read side by side, and a failure is raised in the order they
+    ran one after the other. An expert's first grants read seeds its grants,
+    a write, so that read still waits until the credentials have been read.
+    """
+    store = IntegrationCredentialsManager().store
+    if expert_id is None:
+        return await store.get_all_creds(user_id), None
+
+    from backend.data.db_accessors import experts_db
+
+    experts = experts_db()
+    credentials, granted = await asyncio.gather(
+        store.get_all_creds(user_id),
+        experts.seeded_expert_credential_ids(user_id, expert_id),
+        return_exceptions=True,
+    )
+    if isinstance(credentials, BaseException):
+        raise credentials
+    if isinstance(granted, BaseException):
+        raise granted
+    if granted is None:
+        granted = await experts.expert_allowed_credential_ids(user_id, expert_id)
+    return credentials, set(granted)
 
 
 async def scope_credentials_to_expert(
@@ -460,17 +496,20 @@ def find_matching_credential(
     and — for MCP OAuth credentials — the server URL.
 
     ``selected`` maps a provider or provider:host to the credential picked; a
-    pick that fits always wins. ``ask_when_ambiguous`` is for a caller that can
-    ask: when several of the user's own credentials fit and none was picked, it
-    gets ``None``, which surfaces as a setup card where the user chooses. Taking
-    the first fit there would run on whichever account was stored first.
+    pick that fits always wins, even an expired key. ``ask_when_ambiguous`` is
+    for a caller that can ask: when several of the user's own credentials fit
+    and none was picked, it gets ``None``, which surfaces as a setup card where
+    the user chooses. Taking the first fit there would run on whichever account
+    was stored first.
     """
     fits = [c for c in available_creds if _credential_fits(c, field_info)]
     if selected:
-        # A pick wins even after the provider refused its refresh: the run
-        # then asks for that account to be reconnected instead of quietly
-        # switching to another one.
-        for cred in fits:
+        # A pick wins even after the provider refused its refresh or its key
+        # expired: the run then asks for that account to be reconnected, or
+        # for a new key, instead of quietly switching to another one.
+        for cred in available_creds:
+            if not _credential_fits(cred, field_info, as_pick=True):
+                continue
             provider = _provider_slug(cred)
             key = (
                 _selection_key(provider, field_info)
@@ -517,7 +556,13 @@ def _selection_key(provider: str, field_info: CredentialsFieldInfo) -> str:
     return next(iter(keys)) if len(keys) == 1 else provider
 
 
-def _credential_fits(cred: Credentials, field_info: CredentialsFieldInfo) -> bool:
+def _credential_fits(
+    cred: Credentials, field_info: CredentialsFieldInfo, *, as_pick: bool = False
+) -> bool:
+    # An expired key is refused when it loads, so it never shadows a key that
+    # works. Only as the user's own pick does it fit, so the run can say so.
+    if cred.type == "api_key" and cred.is_expired() and not as_pick:
+        return False
     if cred.provider not in field_info.provider:
         return False
     if is_refused_sdk_default(cred.id):
@@ -591,10 +636,7 @@ async def match_user_credentials_to_graph(
     # subsequent grant UI use the same data without repeated store reads.
     available_creds = available_credentials
     if available_creds is None:
-        creds_manager = IntegrationCredentialsManager()
-        available_creds = await scope_credentials_to_expert(
-            user_id, expert_id, await creds_manager.store.get_all_creds(user_id)
-        )
+        available_creds = await get_user_credentials(user_id, expert_id)
     available_creds = keep_to_pins(available_creds)
     selected = await selected_credentials(session_id)
 
@@ -714,10 +756,7 @@ async def check_user_has_required_credentials(
     if not required_credentials:
         return []
 
-    creds_manager = IntegrationCredentialsManager()
-    available_creds = await scope_credentials_to_expert(
-        user_id, expert_id, await creds_manager.store.get_all_creds(user_id)
-    )
+    available_creds = await get_user_credentials(user_id, expert_id)
 
     missing: list[CredentialsMetaInput] = []
     for required in required_credentials:

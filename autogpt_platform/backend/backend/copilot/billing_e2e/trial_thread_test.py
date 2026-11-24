@@ -329,7 +329,8 @@ def _turn_runner(
             monkeypatch,
             config,
             executor,
-            base_url=f"{provider.url}{scenario.client_path}",
+            provider,
+            path=scenario.client_path,
             model=scenario.model,
         )
         if tool is not None:

@@ -6,15 +6,15 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ConnectServiceDialog } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/ConnectServiceDialog";
-import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
+import { formatProviderList } from "@/components/contextual/IntegrationsPanel/helpers";
 import { SkillFileViewer } from "@/components/contextual/SkillPackage/SkillFileViewer";
 import { SkillPackageFileList } from "@/components/contextual/SkillPackage/SkillPackageFileList";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import { cn } from "@/lib/utils";
-import { formatTimeAgo } from "@/lib/utils/time";
 import { ArrowLeft02Icon, BookOpen01Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -153,7 +153,9 @@ export function SkillPage({ slug }: Props) {
           {skill.updated_at ? (
             <>
               <span aria-hidden>·</span>
-              <span>Updated {formatTimeAgo(String(skill.updated_at))}</span>
+              <span>
+                Updated <RelativeTime date={skill.updated_at} variant="short" />
+              </span>
             </>
           ) : null}
           {skill.source_repo ? (
@@ -195,7 +197,7 @@ export function SkillPage({ slug }: Props) {
         </div>
 
         {isAdded && pendingConnections.length > 0 ? (
-          <ConnectStep names={pendingConnections} onConnect={openConnect} />
+          <ConnectStep providers={pendingConnections} onConnect={openConnect} />
         ) : null}
       </header>
 
@@ -311,12 +313,4 @@ function SkillPageSkeleton() {
       </div>
     </main>
   );
-}
-
-function formatProviderList(providers: string[]): string {
-  const names = providers.map(formatProviderName).filter(Boolean);
-  return new Intl.ListFormat("en", {
-    style: "long",
-    type: "conjunction",
-  }).format(names);
 }

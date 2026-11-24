@@ -1,5 +1,8 @@
 * @Significant-Gravitas/maintainers
 .github/workflows/ @Significant-Gravitas/devops
+.github/zizmor.yml @Significant-Gravitas/devops
+.github/actions/ @Significant-Gravitas/devops
+.github/dependabot.yml @Significant-Gravitas/devops
 classic/forge/ @Significant-Gravitas/forge-maintainers
 classic/benchmark/ @Significant-Gravitas/benchmark-maintainers
 classic/frontend/ @Significant-Gravitas/frontend-maintainers

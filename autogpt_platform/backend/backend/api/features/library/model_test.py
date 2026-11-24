@@ -202,6 +202,29 @@ def test_from_db_hides_the_publishers_picked_file_from_other_libraries():
     assert "file" in result.input_schema["required"]
 
 
+@pytest.mark.parametrize(
+    "schedule_info, scheduled, unavailable",
+    [
+        (None, False, False),
+        (library_model.ScheduleInfo(), False, False),
+        (library_model.ScheduleInfo(next_runs={"g1": "2030-01-01T09:00"}), True, False),
+        (library_model.ScheduleInfo(available=False), False, True),
+    ],
+)
+def test_from_db_says_when_the_schedule_is_unknown(
+    schedule_info: library_model.ScheduleInfo | None,
+    scheduled: bool,
+    unavailable: bool,
+):
+    result = library_model.LibraryAgent.from_db(
+        _make_library_agent(graph_id="g1"), schedule_info=schedule_info
+    )
+
+    assert result.is_scheduled is scheduled
+    assert result.next_scheduled_run == ("2030-01-01T09:00" if scheduled else None)
+    assert result.schedule_info_unavailable is unavailable
+
+
 def test_from_db_execution_count_override_covers_success_rate():
     """Covers execution_count_override is not None branch and executions/count > 0 block."""
     now = datetime.datetime.now(datetime.timezone.utc)

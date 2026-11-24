@@ -11,6 +11,7 @@ import { CheckYourInbox } from "@/components/auth/CheckYourInbox/CheckYourInbox"
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
 import { MicrosoftOAuthButton } from "@/components/auth/MicrosoftOAuthButton";
+import { SignInWithoutConnecting } from "@/components/auth/SignInWithoutConnecting";
 import { AuthDivider } from "@/components/auth/AuthSplitLayout/AuthDivider";
 import { AuthSplitLayout } from "@/components/auth/AuthSplitLayout/AuthSplitLayout";
 import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
@@ -32,11 +33,13 @@ export default function SignupPage() {
 
   const {
     form,
+    formRef,
     feedback,
     nextUrl: safeNextUrl,
     verificationEmail,
     isLoggedIn,
-    hasInitializedAuth,
+    isCheckingSession,
+    isHydrated,
     isLoading,
     isGoogleLoading,
     isMicrosoftLoading,
@@ -48,11 +51,12 @@ export default function SignupPage() {
     handleSubmit,
     handleToggleMarketingOptOut,
     handleProviderSignup,
+    connectFallback,
     handleCloseNotAllowedModal,
     handleStartAgain,
   } = useSignupPage();
 
-  if (!hasInitializedAuth || isLoggedIn) {
+  if (isCheckingSession || isLoggedIn) {
     return <LoadingSignup />;
   }
 
@@ -85,7 +89,11 @@ export default function SignupPage() {
       </div>
 
       <FormProvider {...form}>
-        <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
+        <form
+          ref={formRef}
+          onSubmit={handleSubmit}
+          className="flex w-full flex-col gap-1"
+        >
           <FormField
             control={form.control}
             name="email"
@@ -119,7 +127,7 @@ export default function SignupPage() {
           <Button
             variant="primary"
             loading={isLoading}
-            disabled={isGoogleLoading || isMicrosoftLoading}
+            disabled={!isHydrated || isGoogleLoading || isMicrosoftLoading}
             type="submit"
             className="mt-6 w-full"
           >
@@ -135,17 +143,31 @@ export default function SignupPage() {
                 <GoogleOAuthButton
                   onClick={() => handleProviderSignup("google")}
                   isLoading={isGoogleLoading}
-                  disabled={isLoading || isMicrosoftLoading}
+                  disabled={!isHydrated || isLoading || isMicrosoftLoading}
                 />
               ) : null}
               {isMicrosoftEnabled ? (
                 <MicrosoftOAuthButton
                   onClick={() => handleProviderSignup("microsoft")}
                   isLoading={isMicrosoftLoading}
-                  disabled={isLoading || isGoogleLoading}
+                  disabled={!isHydrated || isLoading || isGoogleLoading}
                 />
               ) : null}
             </div>
+            {connectFallback ? (
+              <SignInWithoutConnecting
+                provider={connectFallback}
+                disabled={
+                  !isHydrated ||
+                  isLoading ||
+                  isGoogleLoading ||
+                  isMicrosoftLoading
+                }
+                onSignIn={() =>
+                  handleProviderSignup(connectFallback, { connect: false })
+                }
+              />
+            ) : null}
           </>
         ) : null}
 

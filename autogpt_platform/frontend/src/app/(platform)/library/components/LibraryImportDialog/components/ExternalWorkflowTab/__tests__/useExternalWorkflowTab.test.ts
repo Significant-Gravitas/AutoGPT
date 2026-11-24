@@ -46,8 +46,7 @@ describe("useExternalWorkflowTab where crypto.randomUUID is missing", () => {
 
     const file: File = uploadFileDirectMock.mock.calls[0][0];
     expect(file.name).toMatch(/^workflow-[0-9a-f-]{36}\.json$/);
-    expect(pushMock).toHaveBeenCalledWith(
-      "/copilot?source=import&autosubmit=true",
-    );
+    expect(pushMock).toHaveBeenCalledWith("/copilot?source=import");
+    expect(sessionStorage.getItem("importWorkflowAutosubmit")).toBe("true");
   });
 });

@@ -34,9 +34,10 @@ function verificationTable(burst: number) {
     adapter: {
       findMany: async ({ where }) => {
         const [match] = where;
+        const ids = [match.value].flat();
         const found = rows.filter((row) =>
           match.field === "id"
-            ? row.id === match.value
+            ? ids.includes(row.id)
             : row.identifier === match.value && row.expiresAt > new Date(),
         );
         if (++checked === burst) releaseChecks();
@@ -174,7 +175,6 @@ describe("when a cap can't be checked", () => {
       getAuthContext: async () => brokenContext(),
       hasPlatformUser: async () => false,
       requireEmailVerification: true,
-      resetRedirectTo: "http://localhost:3000/reset-password",
     });
 
     expect(sendAuthEmail).toHaveBeenCalledWith(

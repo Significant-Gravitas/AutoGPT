@@ -1,3 +1,20 @@
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
+
+/** Every name a skill's `required_providers` can use for what the user has
+ *  connected. An MCP service goes by its catalog entry ("mcp_linear"), which
+ *  the backend reads off the sign-in's server; its provider is only "mcp". */
+export function connectedProviders(
+  credentials: CredentialsMetaResponse[],
+): Set<string> {
+  return new Set(
+    credentials.flatMap((credential) =>
+      credential.mcp_catalog_entry
+        ? [credential.provider, credential.mcp_catalog_entry]
+        : [credential.provider],
+    ),
+  );
+}
+
 const HEADING = /^(#{1,6})\s+(.*)$/;
 const FENCE = /^\s*(```|~~~)/;
 

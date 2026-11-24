@@ -6,7 +6,7 @@ import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/cred
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { useTrialStatus } from "@/services/trials/useTrialStatus";
 
-import { readTier } from "./helpers";
+import { isAwaitingFirstAnswer, readTier } from "./helpers";
 
 const POLL_MS = 2_000;
 const GIVE_UP_MS = 30_000;
@@ -35,8 +35,11 @@ export function usePlanCheckoutReturn(isCheckoutReturn: boolean) {
     return () => clearTimeout(timer);
   }, [isCheckoutReturn]);
 
+  // The plan choices this gates read the plan too and refetch a failed read
+  // on mount, so gate only on the first answer.
   return {
-    isConfirmingPlan: isWatching && (tier.isPending || tier.data === "TRIAL"),
+    isConfirmingPlan:
+      isWatching && (isAwaitingFirstAnswer(tier) || tier.data === "TRIAL"),
   };
 }
 
