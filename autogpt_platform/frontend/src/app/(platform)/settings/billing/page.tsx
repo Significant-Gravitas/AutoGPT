@@ -134,6 +134,7 @@ function SettingsBillingPage() {
             type="button"
             variant="ghost"
             size="icon-sm"
+            shape="soft"
             leadingIcon={InformationCircleIcon}
             aria-label="How usage and credits work"
             tone="muted"

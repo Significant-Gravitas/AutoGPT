@@ -16,6 +16,7 @@ export function Dismiss({ className, ...rest }: DismissProps) {
       type="button"
       variant="icon"
       size="icon-xs"
+      shape="sharp"
       className={className}
       {...rest}
     >

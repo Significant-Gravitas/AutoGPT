@@ -38,6 +38,7 @@ export function PodBoard({
             type="button"
             variant="ghost"
             size="icon-xs"
+            shape="sharp"
             leadingIcon={ArrowLeft01Icon}
             aria-label="Back to pods"
             onClick={() => setOpenPodId(null)}

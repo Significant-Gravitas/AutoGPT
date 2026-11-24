@@ -184,6 +184,7 @@ function PanelHeader({
         type="button"
         variant="ghost"
         size="icon-xs"
+        shape="sharp"
         leadingIcon={Cancel01Icon}
         aria-label={closeLabel}
         withTooltip={closeTooltip}

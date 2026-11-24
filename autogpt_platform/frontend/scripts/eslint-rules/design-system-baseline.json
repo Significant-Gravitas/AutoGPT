@@ -372,9 +372,6 @@
   "src/app/(platform)/raise/components/NameStep/NameStep.tsx": {
     "no-restyle": 1
   },
-  "src/components/atoms/Button/helpers.ts": {
-    "no-unknown-classes": 7
-  },
   "src/components/atoms/FileInput/FileInput.tsx": {
     "no-restyle": 8
   },

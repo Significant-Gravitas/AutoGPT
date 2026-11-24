@@ -52,6 +52,7 @@ export function SuggestedTasksBlock({
           type="button"
           variant="ghost"
           size="xs"
+          shape="sharp"
           withTooltip={false}
           id={toggleID}
           aria-expanded={isOpen}

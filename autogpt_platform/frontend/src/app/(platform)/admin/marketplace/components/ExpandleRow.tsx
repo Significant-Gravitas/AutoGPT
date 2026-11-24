@@ -92,7 +92,7 @@ export function ExpandableRow({
                 <Link
                   href={`/admin/marketplace/preview/${latestVersion.listing_version_id}`}
                 >
-                  <Button size="xs" variant="secondary">
+                  <Button size="xs" shape="sharp" variant="secondary">
                     <Icon aria-hidden icon={EyeIcon} className="h-4 w-4" />
                     Preview
                   </Button>
@@ -221,7 +221,11 @@ export function ExpandableRow({
                                 <Link
                                   href={`/admin/marketplace/preview/${version.listing_version_id}`}
                                 >
-                                  <Button size="xs" variant="secondary">
+                                  <Button
+                                    size="xs"
+                                    shape="sharp"
+                                    variant="secondary"
+                                  >
                                     <Icon
                                       aria-hidden
                                       icon={EyeIcon}

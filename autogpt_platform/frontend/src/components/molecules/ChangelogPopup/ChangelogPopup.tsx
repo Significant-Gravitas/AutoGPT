@@ -88,8 +88,10 @@ export function ChangelogPopup() {
           </div>
           <Button
             type="button"
-            variant="ghost-muted"
+            variant="ghost"
+            tone="quiet"
             size="icon-sm"
+            shape="soft"
             withTooltip={false}
             onClick={dismiss}
             data-slot="changelog-popup-dismiss"

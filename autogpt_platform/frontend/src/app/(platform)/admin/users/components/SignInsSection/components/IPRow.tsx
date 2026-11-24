@@ -40,6 +40,7 @@ export function IPRow({ ip, ownIP }: Props) {
         <Button
           variant="icon"
           size="icon-xs"
+          shape="sharp"
           aria-label={`${isExpanded ? "Hide" : "Show"} sign-ins from ${ip.display_address}`}
           aria-expanded={isExpanded}
           onClick={() => setIsExpanded(!isExpanded)}

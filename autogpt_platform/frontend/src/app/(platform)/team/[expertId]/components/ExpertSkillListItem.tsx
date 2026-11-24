@@ -119,6 +119,7 @@ export function ExpertSkillListItem({
           <Button
             variant="ghost"
             size="icon-sm"
+            shape="soft"
             leadingIcon={WorkHistoryIcon}
             onClick={learning.onDetails}
             aria-label={`Learning details for ${entry.name}`}
@@ -131,6 +132,7 @@ export function ExpertSkillListItem({
             href="/library/skills"
             variant="ghost"
             size="icon-sm"
+            shape="soft"
             aria-label="Open in library"
             leadingIcon={LinkSquare02Icon}
             tone="muted"
@@ -140,12 +142,13 @@ export function ExpertSkillListItem({
           <Button
             variant="ghost"
             size="icon-sm"
+            shape="soft"
             leadingIcon={Delete02Icon}
             disabled={isSaving}
             onClick={() => onRemove(entry.name)}
             aria-label={`Remove ${entry.name}`}
             tone="muted"
-            // oxlint-disable-next-line design-system/no-restyle -- ghost-danger turns #EF4444 on hover; this remove action turns the darker error-foreground red
+            // oxlint-disable-next-line design-system/no-restyle -- the quiet-danger tone turns #EF4444 on hover; this remove action turns the darker error-foreground red
             className="hover:text-error-foreground"
           />
         ) : null}

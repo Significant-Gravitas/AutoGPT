@@ -9,6 +9,7 @@ import React from "react";
 import {
   BUTTON_ICON_SIZE,
   ButtonProps,
+  defaultButtonShape,
   extendedButtonVariants,
   ICON_ONLY_SIZES,
 } from "./helpers";
@@ -41,6 +42,8 @@ export function Button(props: ButtonProps | CompactButtonProps) {
     textSize === "body-md"
       ? cn(callerClassName, "text-body-md")
       : callerClassName;
+
+  const resolvedShape = shape ?? defaultButtonShape(variant);
 
   const disabled = "disabled" in props ? props.disabled : false;
   const isDisabled = disabled;
@@ -110,7 +113,7 @@ export function Button(props: ButtonProps | CompactButtonProps) {
           extendedButtonVariants({
             variant: "link",
             size,
-            shape,
+            shape: resolvedShape,
             tone,
             className,
           }),
@@ -128,20 +131,29 @@ export function Button(props: ButtonProps | CompactButtonProps) {
   }
 
   if (loading) {
-    const loadingClassName = variant?.startsWith("ghost")
-      ? cn(
-          extendedButtonVariants({ variant, size, shape, tone, className }),
-          "pointer-events-none",
-        )
-      : cn(
-          extendedButtonVariants({
-            variant: "primary",
-            size,
-            shape,
-            className,
-          }),
-          "pointer-events-none border-foreground-tertiary bg-foreground-tertiary text-action-foreground",
-        );
+    const loadingClassName =
+      variant === "ghost"
+        ? cn(
+            extendedButtonVariants({
+              variant,
+              size,
+              shape: resolvedShape,
+              tone,
+              className,
+            }),
+            "pointer-events-none",
+          )
+        : // Loading draws the primary look, so it takes primary's corner unless
+          // the call site sets a shape.
+          cn(
+            extendedButtonVariants({
+              variant: "primary",
+              size,
+              shape,
+              className,
+            }),
+            "pointer-events-none border-foreground-tertiary bg-foreground-tertiary text-action-foreground",
+          );
 
     if (as === "NextLink") {
       return (
@@ -180,7 +192,13 @@ export function Button(props: ButtonProps | CompactButtonProps) {
         data-slot="button"
         {...(restProps as LinkProps)}
         className={cn(
-          extendedButtonVariants({ variant, size, shape, tone, className }),
+          extendedButtonVariants({
+            variant,
+            size,
+            shape: resolvedShape,
+            tone,
+            className,
+          }),
           loading && "pointer-events-none",
           isDisabled && "pointer-events-none opacity-50",
         )}
@@ -197,7 +215,13 @@ export function Button(props: ButtonProps | CompactButtonProps) {
     <button
       data-slot="button"
       className={cn(
-        extendedButtonVariants({ variant, size, shape, tone, className }),
+        extendedButtonVariants({
+          variant,
+          size,
+          shape: resolvedShape,
+          tone,
+          className,
+        }),
         loading && "pointer-events-none",
       )}
       disabled={isDisabled}

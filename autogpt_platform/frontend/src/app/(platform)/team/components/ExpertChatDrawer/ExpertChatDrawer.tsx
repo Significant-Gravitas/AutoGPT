@@ -69,6 +69,7 @@ export function ExpertChatDrawer({
             type="button"
             variant="ghost"
             size="icon-xs"
+            shape="sharp"
             leadingIcon={NoteEditIcon}
             aria-label="New task"
             disabled={!chat.sessionId}
@@ -79,6 +80,7 @@ export function ExpertChatDrawer({
             href={copilotHref}
             variant="ghost"
             size="icon-xs"
+            shape="sharp"
             leadingIcon={ArrowExpandIcon}
             aria-label="Open in Chat"
           />

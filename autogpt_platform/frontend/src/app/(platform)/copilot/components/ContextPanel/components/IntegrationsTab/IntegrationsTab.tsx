@@ -126,7 +126,8 @@ function IntegrationsTabContent({ expert }: { expert: ContextPanelExpert }) {
             <>
               {canUseExisting && (
                 <Button
-                  variant="ghost-subtle"
+                  variant="ghost"
+                  tone="quiet-subtle"
                   size="icon-2xs"
                   shape="soft"
                   withTooltip={false}
@@ -137,7 +138,8 @@ function IntegrationsTabContent({ expert }: { expert: ContextPanelExpert }) {
                 </Button>
               )}
               <Button
-                variant="ghost-subtle"
+                variant="ghost"
+                tone="quiet-subtle"
                 size="icon-2xs"
                 shape="soft"
                 withTooltip={false}
@@ -265,7 +267,8 @@ function IntegrationRow({
       />
       <span className="flex shrink-0 opacity-0 transition-opacity group-hover:opacity-100 has-[:focus-visible]:opacity-100 [@media(hover:none)]:opacity-100">
         <Button
-          variant="ghost-danger"
+          variant="ghost"
+          tone="quiet-danger"
           size="icon-xs"
           shape="soft"
           withTooltip={false}

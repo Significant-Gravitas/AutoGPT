@@ -158,6 +158,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
             <Button
               variant="secondary"
               size="xs"
+              shape="sharp"
               className="relative"
               loading={isOpening}
               disabled={!computer.e2b_active}

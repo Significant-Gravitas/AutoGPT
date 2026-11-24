@@ -55,6 +55,7 @@ export function TranscriptionErrorBar({
           type="button"
           variant="ghost"
           size="xs"
+          shape="sharp"
           leadingIcon={RefreshIcon}
           loading={isRetrying}
           disabled={isRetrying}
@@ -68,6 +69,7 @@ export function TranscriptionErrorBar({
           type="button"
           variant="ghost"
           size="xs"
+          shape="sharp"
           leadingIcon={Mic01Icon}
           disabled={isRecordAgainDisabled}
           onClick={onRecordAgain}
@@ -79,6 +81,7 @@ export function TranscriptionErrorBar({
         type="button"
         variant="ghost"
         size="xs"
+        shape="sharp"
         leadingIcon={Download04Icon}
         onClick={onDownload}
       >
@@ -88,6 +91,7 @@ export function TranscriptionErrorBar({
         type="button"
         variant="icon"
         size="icon-xs"
+        shape="sharp"
         aria-label="Dismiss"
         onClick={onDismiss}
       >

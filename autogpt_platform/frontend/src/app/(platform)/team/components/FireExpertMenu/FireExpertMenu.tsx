@@ -22,6 +22,7 @@ export function FireExpertMenu({ expertName, onFire, testId }: Props) {
           type="button"
           variant="secondary"
           size="icon-sm"
+          shape="soft"
           leadingIcon={MoreVerticalIcon}
           aria-label={`${expertName} actions`}
           withTooltip={false}

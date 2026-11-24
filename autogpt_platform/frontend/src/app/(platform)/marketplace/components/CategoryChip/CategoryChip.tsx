@@ -96,6 +96,7 @@ export function CategoryChip({
     <Button
       variant="outline"
       size={size === "default" ? "small" : "xs"}
+      shape={size === "default" ? undefined : "sharp"}
       title={title}
       aria-pressed={isSelected}
       onClick={onClick}
