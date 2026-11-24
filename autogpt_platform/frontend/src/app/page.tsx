@@ -1,15 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
-
+// On the server, so the browser starts /home's load without first running this page.
 export default function Page() {
-  const router = useRouter();
-
-  useEffect(() => {
-    router.replace("/home");
-  }, [router]);
-
-  return <LoadingSpinner size="large" cover />;
+  redirect("/home");
 }
