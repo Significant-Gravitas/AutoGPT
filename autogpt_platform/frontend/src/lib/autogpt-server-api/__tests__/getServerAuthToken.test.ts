@@ -266,6 +266,8 @@ describe("getServerAuthToken", () => {
       name: "AuthTokenUnavailableError",
       status: 503,
     });
+    // A failure with no dropped-connection cause isn't sent again.
+    expect(fetchMock).toHaveBeenCalledOnce();
     expect(captureExceptionMock).toHaveBeenCalledWith(expect.any(TypeError));
   });
 

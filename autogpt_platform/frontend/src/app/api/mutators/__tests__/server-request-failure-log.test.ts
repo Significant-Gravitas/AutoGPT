@@ -152,7 +152,7 @@ describe("a read whose backend connection drops while rendering on the server", 
       `GET /api/library/agents/${AGENT}`,
     ]);
     expect(consoleInfo).toHaveBeenCalledExactlyOnceWith(
-      `Retried GET /api/library/agents/${AGENT} after a dropped connection (UND_ERR_SOCKET): 200`,
+      "Retried GET /api/library/agents/{id} after a dropped connection (UND_ERR_SOCKET): 200",
     );
     expect(consoleError).not.toHaveBeenCalled();
   });

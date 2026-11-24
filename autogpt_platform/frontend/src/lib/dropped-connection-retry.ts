@@ -1,3 +1,5 @@
+import { routeTemplate } from "@/lib/route-template";
+
 // Node's fetch (undici) reuses keep-alive connections, and one can be dead by
 // the time it's picked up: something on the way forgot it, or the far side
 // closed it as the request went out. A serverless instance is frozen between
@@ -34,9 +36,10 @@ export async function fetchRetryingDroppedConnection(
       ...init,
       signal: init.signal ?? new AbortController().signal,
     });
-    const { pathname } = new URL(url, "http://localhost");
+    // Templated: a path can carry a capability token, such as a share link's.
+    const path = routeTemplate(new URL(url, "http://localhost").pathname);
     console.info(
-      `Retried ${method} ${pathname} after a dropped connection (${code}): ${response.status}`,
+      `Retried ${method} ${path} after a dropped connection (${code}): ${response.status}`,
     );
     return response;
   }
