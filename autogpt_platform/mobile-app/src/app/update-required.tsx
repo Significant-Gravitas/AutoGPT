@@ -1,13 +1,16 @@
-import { Download04Icon, SmartPhone01Icon } from "@hugeicons/core-free-icons";
+import { Download04Icon } from "@hugeicons/core-free-icons";
 import Constants from "expo-constants";
+import { Image } from "expo-image";
 import { Linking, Platform, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "@/components/Button";
-import { Icon } from "@/components/Icon";
 import { storeURL } from "@/features/update/helpers";
 import { APP_VERSION } from "@/features/update/useUpdateGate";
-import { createStyles, spacing, type, useColors } from "@/lib/theme";
+import { createStyles, spacing, type } from "@/lib/theme";
+
+// The app's own icon, as on the sign-in screen.
+const appIcon = require("../../assets/images/icon.png");
 
 const STORE_URL = storeURL(
   Platform.OS,
@@ -18,7 +21,6 @@ const STORE_URL = storeURL(
 /** A version the server no longer lets in stops here, signed in or not. */
 export default function UpdateRequiredScreen() {
   const styles = useStyles();
-  const colors = useColors();
   const insets = useSafeAreaInsets();
   const storeName = Platform.OS === "ios" ? "the App Store" : "Google Play";
 
@@ -29,9 +31,7 @@ export default function UpdateRequiredScreen() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom + spacing.lg }]}>
       <View style={styles.middle}>
-        <View style={styles.mark}>
-          <Icon icon={SmartPhone01Icon} size={28} color={colors.textSecondary} />
-        </View>
+        <Image source={appIcon} style={styles.icon} accessibilityIgnoresInvertColors />
         <Text accessibilityRole="header" style={styles.heading}>
           Update AutoGPT
         </Text>
@@ -50,15 +50,7 @@ export default function UpdateRequiredScreen() {
 const useStyles = createStyles((colors) => ({
   screen: { flex: 1, paddingHorizontal: spacing.xl, backgroundColor: colors.background },
   middle: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md },
-  mark: {
-    width: 64,
-    height: 64,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing.xs,
-    borderRadius: 20,
-    backgroundColor: colors.surfaceRaised,
-  },
+  icon: { width: 64, height: 64, borderRadius: 16, marginBottom: spacing.xs },
   heading: { ...type.headline, color: colors.text, textAlign: "center" },
   body: { ...type.body, color: colors.textSecondary, textAlign: "center" },
   version: { ...type.small, color: colors.textTertiary },
