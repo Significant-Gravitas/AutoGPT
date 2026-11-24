@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook, waitFor } from "@testing-library/react-native";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react-native";
 import type { ReactNode } from "react";
 import { AppState } from "react-native";
 
@@ -14,6 +14,7 @@ describe("useUpdateGate", () => {
   const fetchMock = jest.fn();
 
   beforeEach(() => {
+    jest.useFakeTimers();
     client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     fetchMock.mockReset();
     globalThis.fetch = fetchMock;
@@ -25,10 +26,13 @@ describe("useUpdateGate", () => {
       });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await cleanup();
     client.clear();
     globalThis.fetch = originalFetch;
     jest.restoreAllMocks();
+    jest.clearAllTimers();
+    jest.useRealTimers();
   });
 
   function Wrapper({ children }: { children: ReactNode }) {
@@ -38,24 +42,19 @@ describe("useUpdateGate", () => {
   }
 
   it("lets the app in when the initial check times out", async () => {
-    jest.useFakeTimers();
-    try {
-      fetchMock.mockImplementation(
-        (_url: string, options: RequestInit) =>
-          new Promise((_resolve, reject) => {
-            options.signal?.addEventListener("abort", () =>
-              reject(new Error("Aborted")),
-            );
-          }),
-      );
-      const { result } = await renderHook(useUpdateGate, { wrapper: Wrapper });
-      expect(result.current).toBe("checking");
-      await act(async () => jest.advanceTimersByTime(4_000));
-      await act(async () => jest.advanceTimersByTime(0));
-      expect(result.current).toBe("ok");
-    } finally {
-      jest.useRealTimers();
-    }
+    fetchMock.mockImplementation(
+      (_url: string, options: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          options.signal?.addEventListener("abort", () =>
+            reject(new Error("Aborted")),
+          );
+        }),
+    );
+    const { result } = await renderHook(useUpdateGate, { wrapper: Wrapper });
+    expect(result.current).toBe("checking");
+    await act(async () => jest.advanceTimersByTime(4_000));
+    await act(async () => jest.advanceTimersByTime(0));
+    expect(result.current).toBe("ok");
   });
 
   it("keeps a confirmed block through expired-session cache clearing and a failed recheck", async () => {
@@ -82,23 +81,18 @@ describe("useUpdateGate", () => {
     const { result } = await renderHook(useUpdateGate, { wrapper: Wrapper });
     await waitFor(() => expect(result.current).toBe("ok"));
 
-    jest.useFakeTimers();
-    try {
-      fetchMock.mockImplementation(
-        (_url: string, options: RequestInit) =>
-          new Promise((_resolve, reject) => {
-            options.signal?.addEventListener("abort", () =>
-              reject(new Error("Aborted")),
-            );
-          }),
-      );
-      await act(async () => foreground());
-      expect(result.current).toBe("ok");
-      await act(async () => jest.advanceTimersByTime(4_000));
-      expect(result.current).toBe("ok");
-    } finally {
-      jest.useRealTimers();
-    }
+    fetchMock.mockImplementation(
+      (_url: string, options: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          options.signal?.addEventListener("abort", () =>
+            reject(new Error("Aborted")),
+          );
+        }),
+    );
+    await act(async () => foreground());
+    expect(result.current).toBe("ok");
+    await act(async () => jest.advanceTimersByTime(4_000));
+    expect(result.current).toBe("ok");
   });
 
   it("waits for the initial answer and lets a later successful check change it", async () => {
