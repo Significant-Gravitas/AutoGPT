@@ -140,6 +140,7 @@ from .utils import (
     LogMetadata,
     NodeExecutionProgress,
     create_execution_queue_config,
+    credentials_fit_field,
     validate_exec,
 )
 
@@ -738,15 +739,7 @@ async def execute_node(
 
             credentials_meta = input_type(**field_value)
             field_info = credential_fields_info[field_name]
-            # An SDK provider's field is an untyped CredentialsMetaInput, so the
-            # field info, not the annotation, holds it to its provider and type.
-            if not (
-                any(
-                    provider_matches(credentials_meta.provider, p)
-                    for p in field_info.provider
-                )
-                and credentials_meta.type in field_info.supported_types
-            ):
+            if not credentials_fit_field(credentials_meta, field_info):
                 raise ValueError(
                     f"Credentials #{credentials_meta.id} in field '{field_name}' are "
                     "not of a provider and type this block takes."

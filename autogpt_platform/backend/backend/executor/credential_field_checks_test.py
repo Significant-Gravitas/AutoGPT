@@ -1,11 +1,13 @@
-"""A node's credentials must be of a provider and type its field takes, and a
-required field whose credentials are gone fails as not found."""
+"""A step's credentials must be of a provider and type its field takes, both when
+a run is created and when the step runs, and a required field whose credentials
+are gone fails as not found."""
 
 from typing import Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
+from pytest_mock import MockerFixture
 
 from backend.blocks._base import AnyBlockSchema, BlockSchemaInput
 from backend.blocks.airtable.bases import AirtableListBasesBlock
@@ -21,45 +23,69 @@ from backend.data.model import (
     UserPasswordCredentials,
 )
 from backend.executor.manager import ExecutionProcessor
-from backend.executor.utils import NodeExecutionProgress
+from backend.executor.utils import (
+    CRED_ERR_INVALID_TYPE_MISMATCH,
+    NodeExecutionProgress,
+    _validate_node_input_credentials,
+)
 from backend.integrations.providers import ProviderName
 
 GITHUB_INPUTS = {"issue_url": "https://github.com/o/r/issues/1", "comment": "hi"}
 
-
-@pytest.mark.parametrize(
-    "named, stored, runs",
+# AirtableListBasesBlock's field is an untyped CredentialsMetaInput, which takes
+# any provider and type.
+FIT_CASES = pytest.mark.parametrize(
+    "provider, cred_type, fits",
     [
-        (("airtable", "api_key"), APIKeyCredentials, True),
-        (("github", "api_key"), APIKeyCredentials, False),
-        (("airtable", "user_password"), UserPasswordCredentials, False),
+        ("airtable", "api_key", True),
+        ("github", "api_key", False),
+        ("airtable", "user_password", False),
     ],
     ids=["its-own", "another-provider", "another-type"],
 )
+
+
+@FIT_CASES
 @pytest.mark.asyncio
-async def test_an_sdk_blocks_credentials_must_be_of_its_provider_and_type(
-    named: tuple[str, str], stored: type[Credentials], runs: bool
+async def test_creating_a_run_refuses_an_sdk_step_whose_credentials_dont_fit(
+    provider: str, cred_type: str, fits: bool, mocker: MockerFixture
 ):
-    """AirtableListBasesBlock's field is an untyped CredentialsMetaInput, which
-    takes any provider and type."""
-    provider, cred_type = named
-    if stored is APIKeyCredentials:
-        key: Credentials = APIKeyCredentials(
-            id="cred-1", provider=provider, api_key=SecretStr("k"), title="Key"
-        )
+    store = MagicMock(
+        get_all_creds=AsyncMock(return_value=[_stored(provider, cred_type)])
+    )
+    mocker.patch(
+        "backend.executor.utils.get_integration_credentials_store",
+        return_value=store,
+    )
+    node = MagicMock()
+    node.id = "node-1"
+    node.credentials_optional = False
+    node.block = AirtableListBasesBlock()
+    node.input_default = {
+        "credentials": {"id": "cred-1", "provider": provider, "type": cred_type}
+    }
+
+    errors, _ = await _validate_node_input_credentials(
+        MagicMock(nodes=[node]), "user-1"
+    )
+
+    if fits:
+        assert "node-1" not in errors
     else:
-        key = UserPasswordCredentials(
-            id="cred-1",
-            provider=provider,
-            username=SecretStr("u"),
-            password=SecretStr("p"),
-            title="Login",
-        )
+        assert errors["node-1"]["credentials"] == CRED_ERR_INVALID_TYPE_MISMATCH
+
+
+@FIT_CASES
+@pytest.mark.asyncio
+async def test_an_sdk_step_whose_credentials_dont_fit_fails_when_it_runs(
+    provider: str, cred_type: str, fits: bool
+):
+    key = _stored(provider, cred_type)
     inputs = {"credentials": {"id": "cred-1", "provider": provider, "type": cred_type}}
 
     run, stats, status = await _execute(AirtableListBasesBlock(), inputs, key)
 
-    if runs:
+    if fits:
         run.assert_called_once()
         assert run.call_args.kwargs["credentials"] is key
     else:
@@ -106,6 +132,20 @@ class _DefaultedKeyInput(BlockSchemaInput):
     ] = CredentialsField(description="GitHub key", default={})
     issue_url: str
     comment: str
+
+
+def _stored(provider: str, cred_type: str) -> Credentials:
+    if cred_type == "api_key":
+        return APIKeyCredentials(
+            id="cred-1", provider=provider, api_key=SecretStr("k"), title="Key"
+        )
+    return UserPasswordCredentials(
+        id="cred-1",
+        provider=provider,
+        username=SecretStr("u"),
+        password=SecretStr("p"),
+        title="Login",
+    )
 
 
 def _defaulted_key_block() -> GithubCommentBlock:

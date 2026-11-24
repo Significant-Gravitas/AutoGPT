@@ -62,6 +62,7 @@ from backend.data.model import (
     PLATFORM_FUNDED_COST_KEY,
     USER_TIMEZONE_NOT_SET,
     APIKeyCredentials,
+    CredentialsFieldInfo,
     CredentialsMetaInput,
     GraphInput,
     NodeExecutionStats,
@@ -85,6 +86,7 @@ from backend.executor.nesting import nested_context, resumed_chain
 from backend.integrations.credentials_store import (
     CredentialsSnapshot,
     is_system_credential,
+    provider_matches,
 )
 from backend.monitoring.instrumentation import record_graph_execution
 from backend.util import product_analytics
@@ -727,6 +729,12 @@ async def _validate_node_input_credentials(
                 ] = f"{CRED_ERR_INVALID_PREFIX} {e}"
                 continue
 
+            if not credentials_fit_field(
+                credentials_meta, credentials_fields_info[field_name]
+            ):
+                credential_errors[node.id][field_name] = CRED_ERR_INVALID_TYPE_MISMATCH
+                continue
+
             if is_refused_sdk_default(credentials_meta.id):
                 credential_errors[node.id][field_name] = (
                     f"{CRED_ERR_NOT_AVAILABLE_PREFIX} "
@@ -913,6 +921,20 @@ async def _validate_node_input_credentials(
             nodes_to_skip.add(node.id)
 
     return credential_errors, nodes_to_skip
+
+
+def credentials_fit_field(
+    credentials_meta: CredentialsMetaInput, field_info: CredentialsFieldInfo
+) -> bool:
+    """Whether a step's credentials are of a provider and type its field takes.
+
+    An SDK provider's field is an untyped ``CredentialsMetaInput``, so only its
+    field info, not the annotation, holds it to its provider and type.
+    """
+    return (
+        any(provider_matches(credentials_meta.provider, p) for p in field_info.provider)
+        and credentials_meta.type in field_info.supported_types
+    )
 
 
 async def _user_timezone(user_id: str) -> str:
