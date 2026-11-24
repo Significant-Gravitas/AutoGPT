@@ -28,6 +28,9 @@ type RunStatus = GraphExecution | GraphExecutionMeta;
 export function useLiveUpdateLog() {
   const queryClient = useQueryClient();
   const [log] = useState(() => sharedLiveUpdateLog);
+  // Live updates stop when Activity unmounts, so what the log holds by the
+  // next mount may be stale: each mount starts from an empty log.
+  useEffect(() => () => log.reset(), [log]);
 
   useEffect(() => {
     const listHash = hashKey(getGetV1ListAllExecutionsQueryKey());

@@ -134,12 +134,41 @@ test("a left-out run that is gone by the time it is read leaves Activity", async
 });
 
 test("a left-out run whose read fails stays as shown", async () => {
-  const { list } = await showOldRunThenReconnect(async () => 500);
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const reads = vi.mocked(getV1GetExecutionDetails);
+  // Reads fail until the refetch below: the run stays as shown however
+  // many reads the reconnect check takes.
+  let answerFailedReads = true;
+  const { list } = await showOldRunThenReconnect(
+    async () =>
+      answerFailedReads ? 500 : AgentExecutionStatus.COMPLETED,
+    { queryClient },
+  );
   await latestReadTaken();
 
   expect(
     (await findRunOf(list, "Old workflow")).getByText(/running$/),
   ).toBeDefined();
+
+  // A later list refresh retries the failed read: the run is read again
+  // and its answer shown.
+  answerFailedReads = false;
+  const readsBefore = reads.mock.calls.length;
+  await act(() =>
+    queryClient.refetchQueries({
+      queryKey: getGetV1ListAllExecutionsQueryKey(),
+    }),
+  );
+  await waitFor(() =>
+    expect(reads.mock.calls.length).toBeGreaterThan(readsBefore),
+  );
+  await latestReadTaken();
+
+  const oldRun = await findRunOf(list, "Old workflow");
+  expect(await oldRun.findByText(/^Completed /)).toBeDefined();
+  expect(oldRun.queryByText(/running$/)).toBeNull();
 });
 
 test("a live update that lands while a left-out run is read by ID stands", async () => {
