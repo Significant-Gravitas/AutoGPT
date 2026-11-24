@@ -50,6 +50,7 @@ describe("formatProviderName", () => {
     expect(formatProviderName("twitter")).toBe("X");
     expect(formatProviderName("aiml_api")).toBe("AI/ML API");
     expect(formatProviderName("anysearch")).toBe("AnySearch");
+    expect(formatProviderName("mrscraper")).toBe("MrScraper");
   });
 
   test("title-cases unknown snake_case slugs", () => {

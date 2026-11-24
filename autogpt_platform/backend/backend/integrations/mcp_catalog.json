@@ -915,6 +915,23 @@
     }
   },
   {
+    "name": "mcp_mrscraper",
+    "display_name": "MrScraper",
+    "description": "Scrape pages as HTML, Markdown, screenshots, brand data, or structured JSON, and search the web.",
+    "mcp_server": {
+      "server_url": "https://mcp.mrscraper.com/mcp",
+      "documentation_url": "https://docs.mrscraper.com/docs/getting-started/mcp-server",
+      "setup_instructions": "Sign in to MrScraper and authorize the connection, or use an API key from https://app.mrscraper.com/api-tokens. Scraping and search use your MrScraper tokens; the account status tool does not.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "icon_id": "mrscraper",
+      "provider": "mrscraper"
+    }
+  },
+  {
     "name": "mcp_neon",
     "display_name": "Neon",
     "description": "Manage Neon Postgres projects: create databases and branches, run SQL, review query performance and apply schema migrations.",

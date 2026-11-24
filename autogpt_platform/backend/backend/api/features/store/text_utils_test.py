@@ -47,6 +47,8 @@ from backend.util.text import split_camelcase
         ("PostToTikTokBlock", "Post To TikTok Block"),
         ("AllQuietGetOnCallBlock", "AllQuiet Get On Call Block"),
         ("AnySearchExtractBlock", "AnySearch Extract Block"),
+        ("MrScraperScrapeHTMLBlock", "MrScraper Scrape HTML Block"),
+        ("MrScraperScrapeJSONBlock", "MrScraper Scrape JSON Block"),
     ],
 )
 def test_split_camelcase(input_text: str, expected: str):
