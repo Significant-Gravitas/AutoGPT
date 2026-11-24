@@ -18,10 +18,9 @@ export function TourHero() {
             className="mb-6 h-20 w-20"
           />
 
-          {/* oxlint-disable-next-line design-system/no-arbitrary-values -- hero glass badge's indigo gradient ring and glow, no token */}
-          <span className="relative mb-6 inline-flex overflow-hidden rounded-full bg-[linear-gradient(135deg,rgb(var(--color-indigo)/0.6),rgb(var(--color-info)/0.35),rgb(var(--color-indigo)/0.35))] p-px shadow-[0_6px_20px_-6px_rgba(59,130,246,0.35)]">
-            {/* oxlint-disable-next-line design-system/no-arbitrary-values -- glass highlight, no shadow token */}
-            <span className="relative inline-flex items-center gap-2 rounded-full bg-surface/50 px-4 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl">
+          {/* oxlint-disable-next-line design-system/no-arbitrary-values -- hero glass badge's indigo gradient ring, no token */}
+          <span className="relative mb-6 inline-flex overflow-hidden rounded-full bg-[linear-gradient(135deg,rgb(var(--color-indigo)/0.6),rgb(var(--color-info)/0.35),rgb(var(--color-indigo)/0.35))] p-px shadow-drop shadow-info/35">
+            <span className="relative inline-flex items-center gap-2 rounded-full bg-surface/50 px-4 py-1.5 shadow-gloss backdrop-blur-xl">
               <span className="contents text-brand">
                 <Icon icon={SparklesIcon} className="h-4 w-4" />
               </span>

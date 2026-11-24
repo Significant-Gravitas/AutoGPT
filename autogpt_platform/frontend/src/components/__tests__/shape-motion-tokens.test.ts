@@ -20,6 +20,11 @@ const read = (file: string) =>
 const globalsCss = read("src/app/globals.css");
 const shapeCss = read("src/app/tokens/shape.css");
 const motionCss = read("src/app/tokens/motion.css");
+const colourRoles = new Set(
+  [...read("src/app/tokens/theme.css").matchAll(/(--color-[a-z0-9-]+):/g)].map(
+    ([, name]) => name,
+  ),
+);
 
 function rootVariables(css: string) {
   return [...css.matchAll(/^:root\s*\{([^}]*)\}/gm)].flatMap(([, body]) =>
@@ -120,7 +125,7 @@ describe("shape and motion tokens", () => {
       expect.arrayContaining(["--shadow-color", "--smooth-ring-color"]),
     );
     for (const [name, value] of themeEntries(shapeCss))
-      expect(value, name).toContain("var(--shadow-color)");
+      expect(value, name).toMatch(/var\(--(?:shadow-color|color-[a-z0-9-]+)\)/);
     expect(globalsCss).toContain("var(--smooth-ring-color)");
   });
 
@@ -145,7 +150,7 @@ describe("shape and motion tokens", () => {
     }
   });
 
-  it("keep the shadow steps in shape.css, coloured by --shadow-color", () => {
+  it("keep the shadow steps in shape.css, coloured by --shadow-color or a role", () => {
     const shadows = themeEntries(shapeCss);
     expect(shadows.map(([name]) => name).sort()).toEqual(
       [
@@ -158,17 +163,53 @@ describe("shape and motion tokens", () => {
         "--shadow-inner",
         "--shadow-subtle",
         "--shadow-message-table",
+        "--shadow-lift",
+        "--shadow-popover-raised",
+        "--shadow-composer",
+        "--shadow-drop",
+        "--shadow-scroll-edge",
+        "--shadow-keycap",
+        "--shadow-gloss",
+        "--shadow-sheen",
+        "--shadow-outline",
+        "--shadow-halo",
+        "--shadow-spotlight",
+        "--shadow-glow",
+        "--shadow-status-glow",
+        "--shadow-beacon",
+        "--shadow-chip-glow-brand",
+        "--shadow-chip-glow-warning",
+        "--shadow-chip-glow-sky",
+        "--shadow-chip-glow-neutral",
       ].sort(),
     );
+    expect(colourRoles.size).toBeGreaterThan(0);
     for (const [name, value] of shadows) {
       const colours = value.match(
         /rgba?\([^()]*(?:\([^()]*\)[^()]*)*\)|#[0-9a-f]{3,8}/gi,
       );
       expect(colours?.length, name).toBeGreaterThan(0);
-      for (const colour of colours ?? [])
-        expect(colour, name).toMatch(
-          /^rgb\(var\(--shadow-color\) \/ [\d.]+\)$/,
-        );
+      for (const colour of colours ?? []) {
+        const read = /^rgb\(var\((--[a-z0-9-]+)\) \/ [\d.]+\)$/.exec(colour);
+        expect(read, `${name}: ${colour}`).not.toBeNull();
+        const variable = read![1];
+        expect(
+          variable === "--shadow-color" || colourRoles.has(variable),
+          `${name} reads ${variable}, which is neither --shadow-color nor a colour role`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("compile every shadow step to a class a shadow colour can recolour", async () => {
+    const steps = themeEntries(shapeCss).map(([name]) =>
+      name.replace(/^--shadow-?/, ""),
+    );
+    const classes = steps.map((step) => (step ? `shadow-${step}` : "shadow"));
+    const root = await compile(classes);
+    for (const className of classes) {
+      const shadow = declarationsOf(root, `.${className}`)["--tw-shadow"];
+      expect(shadow, className).toMatch(/var\(--tw-shadow-color, rgb\(var\(/);
     }
   });
 

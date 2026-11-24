@@ -569,8 +569,7 @@ const sidebarMenuButtonVariants = cva(
       variant: {
         default: "hover:bg-surface-hover hover:text-foreground-strong",
         outline:
-          // oxlint-disable-next-line design-system/no-arbitrary-values -- 1px outline drawn as a shadow so the focus ring keeps ring-info
-          "bg-surface shadow-[0_0_0_1px_rgb(var(--color-border-base))] hover:bg-surface-hover hover:text-foreground-strong hover:shadow-[0_0_0_1px_rgb(var(--color-surface-hover))]",
+          "bg-surface shadow-outline hover:bg-surface-hover hover:text-foreground-strong hover:shadow-surface-hover",
       },
       size: {
         default: "h-8 text-body leading-5",

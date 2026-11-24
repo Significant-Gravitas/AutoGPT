@@ -54,10 +54,7 @@ export function ExpertCard({ expert, isHired, category }: Props) {
   const areaAccent = getCategoryAccent(area);
 
   return (
-    <div
-      // oxlint-disable-next-line design-system/no-arbitrary-values -- the card's hover lift shadow has no shadow token
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border-base/80 bg-surface text-left shadow-message-table transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
-    >
+    <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-border-base/80 bg-surface text-left shadow-message-table transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-border-strong hover:shadow-lift">
       <div
         className="pointer-events-none absolute inset-x-0 top-0 h-[4.5rem]"
         // oxlint-disable-next-line design-system/no-inline-styles -- the card band is tinted at runtime with the expert's own colour

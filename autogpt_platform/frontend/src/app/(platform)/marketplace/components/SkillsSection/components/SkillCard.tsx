@@ -32,8 +32,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
     <Link
       href={`/marketplace/skills/${skill.slug}`}
       data-testid="skill-card"
-      // oxlint-disable-next-line design-system/no-arbitrary-values -- the card's hover lift shadow has no shadow token
-      className="group relative flex h-full [touch-action:manipulation] flex-col overflow-hidden rounded-2xl border border-border-base/80 bg-surface text-left shadow-message-table transition-[transform,box-shadow,border-color] duration-200 ease-out outline-none hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:hover:transform-none"
+      className="group relative flex h-full [touch-action:manipulation] flex-col overflow-hidden rounded-2xl border border-border-base/80 bg-surface text-left shadow-message-table transition-[transform,box-shadow,border-color] duration-200 ease-out outline-none hover:-translate-y-0.5 hover:border-border-strong hover:shadow-lift focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:hover:transform-none"
     >
       <div
         className={cn(

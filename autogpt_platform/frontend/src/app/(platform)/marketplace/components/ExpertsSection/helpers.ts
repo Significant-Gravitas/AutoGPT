@@ -30,7 +30,7 @@ export interface ExpertAccent {
   roleIcon: IconSvgElement;
 }
 
-/* oxlint-disable design-system/no-arbitrary-values -- the accent washes and glossy chip glows are gradients and shadows with no token */
+/* oxlint-disable design-system/no-arbitrary-values -- the accent washes are gradients with no token */
 const ACCENTS: Record<string, ExpertAccent> = {
   violet: {
     wash: "bg-[radial-gradient(120%_100%_at_50%_0%,rgb(var(--color-brand)/0.10),transparent_70%)]",
@@ -38,7 +38,7 @@ const ACCENTS: Record<string, ExpertAccent> = {
       "bg-[linear-gradient(180deg,rgb(var(--color-brand)/0.10),rgb(var(--color-brand)/0.03)_60%,transparent)]",
     pill: "bg-accent-surface text-accent-strong ring-1 ring-inset ring-brand/10",
     band: "bg-accent-surface/60",
-    chip: "bg-gradient-to-b from-surface to-accent-surface text-accent-strong ring-1 ring-inset ring-brand/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(139,92,246,0.12),0_0_18px_-4px_rgba(139,92,246,0.45)]",
+    chip: "bg-gradient-to-b from-surface to-accent-surface text-accent-strong ring-1 ring-inset ring-brand/20 shadow-chip-glow-brand",
     icon: "text-brand",
     roleIcon: Megaphone01Icon,
   },
@@ -48,7 +48,7 @@ const ACCENTS: Record<string, ExpertAccent> = {
       "bg-[linear-gradient(180deg,rgb(var(--color-warning)/0.10),rgb(var(--color-warning)/0.03)_60%,transparent)]",
     pill: "bg-warning-surface text-warning-foreground ring-1 ring-inset ring-warning-foreground/10",
     band: "bg-warning-surface/60",
-    chip: "bg-gradient-to-b from-surface to-warning-surface text-warning-foreground ring-1 ring-inset ring-warning/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(245,158,11,0.12),0_0_18px_-4px_rgba(245,158,11,0.45)]",
+    chip: "bg-gradient-to-b from-surface to-warning-surface text-warning-foreground ring-1 ring-inset ring-warning/20 shadow-chip-glow-warning",
     icon: "text-warning",
     roleIcon: ChartIncreaseIcon,
   },
@@ -58,7 +58,7 @@ const ACCENTS: Record<string, ExpertAccent> = {
       "bg-[linear-gradient(180deg,rgb(var(--color-sky)/0.10),rgb(var(--color-sky)/0.03)_60%,transparent)]",
     pill: "bg-info-surface text-sky-foreground ring-1 ring-inset ring-sky-foreground/10",
     band: "bg-info-surface/60",
-    chip: "bg-gradient-to-b from-surface to-info-surface text-sky-foreground ring-1 ring-inset ring-sky/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(14,165,233,0.12),0_0_18px_-4px_rgba(14,165,233,0.45)]",
+    chip: "bg-gradient-to-b from-surface to-info-surface text-sky-foreground ring-1 ring-inset ring-sky/20 shadow-chip-glow-sky",
     icon: "text-sky",
     roleIcon: Settings01Icon,
   },
@@ -68,7 +68,7 @@ const ACCENTS: Record<string, ExpertAccent> = {
       "bg-[linear-gradient(180deg,rgb(var(--color-foreground-tertiary)/0.08),rgb(var(--color-foreground-tertiary)/0.02)_60%,transparent)]",
     pill: "bg-surface-hover text-foreground-secondary ring-1 ring-inset ring-foreground-tertiary/10",
     band: "bg-surface-hover/60",
-    chip: "bg-gradient-to-b from-surface to-surface-muted text-foreground-body ring-1 ring-inset ring-foreground-tertiary/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(113,113,122,0.12),0_0_18px_-4px_rgba(113,113,122,0.45)]",
+    chip: "bg-gradient-to-b from-surface to-surface-muted text-foreground-body ring-1 ring-inset ring-foreground-tertiary/20 shadow-chip-glow-neutral",
     icon: "text-foreground-tertiary",
     roleIcon: Briefcase01Icon,
   },

@@ -43,8 +43,8 @@ export function TourEndCard() {
           rel="noopener noreferrer"
           variant="primary"
           onClick={handlePricingClick}
-          // oxlint-disable-next-line design-system/no-restyle, design-system/no-arbitrary-values -- the end card CTA's violet glow, no shadow token or Button variant
-          className="h-auto w-full shadow-[0_0_20px_-6px_rgba(124,58,237,0.6)]"
+          // oxlint-disable-next-line design-system/no-restyle -- the end card CTA's glow, no Button variant
+          className="h-auto w-full shadow-glow"
         >
           <span className="flex flex-col items-center">
             <span className="font-medium">Make this workflow yours</span>

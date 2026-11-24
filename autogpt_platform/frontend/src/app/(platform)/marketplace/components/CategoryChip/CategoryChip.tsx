@@ -15,7 +15,6 @@ export type ChipSize = "small" | "medium" | "default";
 /** The marketplace's chip: a filter wears it on a button, a label on a span,
  *  and the two read as the same object because they are the same classes. */
 /* oxlint-disable design-system/no-restyle -- the glossy category chip restyles its Button; ToggleChip would change its shape and fill (deferred) */
-/* oxlint-disable design-system/no-arbitrary-values -- the gloss highlight and drop shadow have no shadow token */
 export const CHIP_SHAPE =
   "inline-flex items-center rounded-full border border-separator bg-transparent font-medium text-foreground-base";
 export const CHIP_SIZE: Record<ChipSize, string> = {
@@ -39,13 +38,11 @@ const NEUTRAL_SELECTED =
 
 // The same glossy pill for chips with no category colour (the hero's search
 // terms, "All"): a white-to-zinc fill, a top highlight and a small drop.
-const NEUTRAL_GLOSS =
-  "bg-gradient-to-b shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(16,24,40,0.05)]";
+const NEUTRAL_GLOSS = "bg-gradient-to-b shadow-gloss";
 const NEUTRAL_GLOSS_IDLE =
   "border-border-base from-surface to-surface-muted text-foreground-body hover:border-border-strong hover:from-surface hover:to-surface-hover";
 const NEUTRAL_GLOSS_SELECTED =
   "border-border-strong from-surface-hover to-surface-active/80 text-foreground-strong";
-/* oxlint-enable design-system/no-arbitrary-values */
 /* oxlint-enable design-system/no-restyle */
 
 /** A category chip in its own colour, with a soft top highlight so it reads

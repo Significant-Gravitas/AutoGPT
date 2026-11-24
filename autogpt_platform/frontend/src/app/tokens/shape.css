@@ -66,7 +66,10 @@
   Tailwind finds each shadow's colour in the value: `shadow-md shadow-scrim/10`
   swaps that colour for the scrim's. A `var(--shadow-md)` would hide it, and
   the coloured shadows would lose their colour. So `inline` writes each value
-  into its class, and the colour still follows --shadow-color at runtime.
+  into its class, and the colour still follows --shadow-color (or the colour
+  role a step reads) at runtime. A shadow colour class sets every layer to
+  one colour and alpha, so a step with a white edge and a tinted glow names
+  its colours itself.
 */
 @theme inline reference {
   --shadow-sm: 0 1px 2px 0 rgb(var(--shadow-color) / 0.05);
@@ -86,4 +89,64 @@
   --shadow-inner: inset 0 2px 4px 0 rgb(var(--shadow-color) / 0.05);
   --shadow-subtle: 0px 1px 2px 0px rgb(var(--shadow-color) / 0.05);
   --shadow-message-table: 0 1px 2px rgb(var(--shadow-color) / 0.04);
+
+  /* Named effects, each for one purpose. A step with a single colour takes
+     another from a shadow colour class: `shadow-drop shadow-brand/45`. */
+  /* A card raised on hover. */
+  --shadow-lift: 0 16px 40px -16px rgb(var(--shadow-color) / 0.18);
+  /* A card floating over the composer. */
+  --shadow-popover-raised: 0 16px 40px -24px rgb(var(--shadow-color) / 0.25);
+  /* The chat composer. */
+  --shadow-composer:
+    0 1px 2px rgb(var(--shadow-color) / 0.04),
+    0 4px 20px rgb(var(--shadow-color) / 0.08);
+  /* Under a badge, an avatar or a filled button. */
+  --shadow-drop: 0 8px 24px -8px rgb(var(--shadow-color) / 0.25);
+  /* Above a footer that content scrolls under. */
+  --shadow-scroll-edge: 0 -2px 8px rgb(var(--shadow-color) / 0.04);
+  /* A keyboard key. */
+  --shadow-keycap:
+    inset 0 -1px 0 rgb(var(--shadow-color) / 0.04),
+    0 1px 1px rgb(var(--shadow-color) / 0.04);
+  /* A glossy pill: a white top edge and a hairline drop. */
+  --shadow-gloss:
+    inset 0 1px 0 rgb(var(--color-surface) / 0.9),
+    0 1px 2px rgb(var(--shadow-color) / 0.05);
+  /* The inner sheen of a tab that joins the composer. */
+  --shadow-sheen:
+    inset 0 1px 0 0 rgb(var(--color-surface) / 0.9),
+    inset 0 5px 6px -4px rgb(var(--color-surface) / 0.7);
+  /* A 1px edge drawn as a shadow, which leaves `ring` to the focus ring. */
+  --shadow-outline: 0 0 0 1px rgb(var(--color-border-base) / 1);
+  /* The halo round a selected card. */
+  --shadow-halo: 0 0 0 3px rgb(var(--color-brand) / 0.12);
+  /* The tour's spotlight edge over the dimmed page. */
+  --shadow-spotlight:
+    0 0 0 1.5px rgb(var(--color-surface) / 0.9),
+    0 0 0 6px rgb(var(--color-surface) / 0.14);
+  /* A call to action's glow. */
+  --shadow-glow: 0 0 20px -6px rgb(var(--color-brand) / 0.6);
+  /* A status chip's glow, in the status colour. */
+  --shadow-status-glow: 0 0 8px -1px rgb(var(--shadow-color) / 0.7);
+  /* The tour's glow on what to click next. */
+  --shadow-beacon: 0 0 32px -4px rgb(var(--shadow-color) / 0.4);
+  /* The marketplace's glossy accent chips: a white top edge and a glow in
+     the accent, one step per accent, since a shadow colour class would
+     recolour the white edge too. */
+  --shadow-chip-glow-brand:
+    inset 0 1px 0 rgb(var(--color-surface) / 0.95),
+    0 1px 2px rgb(var(--color-brand) / 0.12),
+    0 0 18px -4px rgb(var(--color-brand) / 0.45);
+  --shadow-chip-glow-warning:
+    inset 0 1px 0 rgb(var(--color-surface) / 0.95),
+    0 1px 2px rgb(var(--color-warning) / 0.12),
+    0 0 18px -4px rgb(var(--color-warning) / 0.45);
+  --shadow-chip-glow-sky:
+    inset 0 1px 0 rgb(var(--color-surface) / 0.95),
+    0 1px 2px rgb(var(--color-sky) / 0.12),
+    0 0 18px -4px rgb(var(--color-sky) / 0.45);
+  --shadow-chip-glow-neutral:
+    inset 0 1px 0 rgb(var(--color-surface) / 0.95),
+    0 1px 2px rgb(var(--color-foreground-tertiary) / 0.12),
+    0 0 18px -4px rgb(var(--color-foreground-tertiary) / 0.45);
 }

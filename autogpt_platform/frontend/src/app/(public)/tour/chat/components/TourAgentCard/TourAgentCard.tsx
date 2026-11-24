@@ -26,8 +26,7 @@ export function TourAgentCard({ agent, runCompleted }: Props) {
           className={cn(
             "relative isolate flex shrink-0 items-center gap-2 rounded-full bg-success-surface px-3 py-1.5 text-body font-semibold text-success-foreground",
             !runCompleted &&
-              // oxlint-disable-next-line design-system/no-arbitrary-values -- the live run's emerald glow, no shadow token
-              "shadow-[0_0_14px_-2px_rgba(16,185,129,0.65),0_0_28px_-4px_rgba(16,185,129,0.5)] ring-1 ring-success/70",
+              "shadow-beacon ring-1 shadow-success/60 ring-success/70",
           )}
         >
           {runCompleted ? (

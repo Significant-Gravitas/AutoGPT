@@ -256,8 +256,7 @@ export function AgentSelectStep({
                           className={cn(
                             "group flex w-full cursor-pointer items-center gap-3 rounded-xl border bg-surface p-3 text-left transition-[border-color,box-shadow] duration-150 select-none hover:border-brand focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:outline-none",
                             isSelected
-                              ? // oxlint-disable-next-line design-system/no-arbitrary-values -- brand-tinted selection halo, no shadow token for it
-                                "border-brand bg-accent-surface/40 shadow-[0_0_0_3px_rgba(119,51,245,0.12)]"
+                              ? "border-brand bg-accent-surface/40 shadow-halo"
                               : "border-border-base",
                           )}
                           onClick={() =>
@@ -425,8 +424,7 @@ function PaginationBar({
                 <motion.span
                   layoutId="pagination-active-pill"
                   aria-hidden
-                  // oxlint-disable-next-line design-system/no-arbitrary-values -- brand-tinted glow, no shadow token for it
-                  className="absolute inset-0 rounded-full bg-brand shadow-[0_4px_10px_-4px_rgba(119,51,245,0.55)]"
+                  className="absolute inset-0 rounded-full bg-brand shadow-md shadow-brand/55"
                   transition={{ type: "spring", stiffness: 420, damping: 32 }}
                 />
               ) : null}
