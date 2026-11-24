@@ -739,6 +739,9 @@ def _executor_holding(
         try:
             await asyncio.Event().wait()
         finally:
+            # Cleanup takes loop turns, so only a batch that waits sees it end.
+            for _ in range(3):
+                await asyncio.sleep(0)
             ended.add(tool_call.name)
         return ToolCallResult(
             tool_call_id=tool_call.id, tool_name=tool_call.name, content="ok"
