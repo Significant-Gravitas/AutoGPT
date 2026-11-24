@@ -107,7 +107,6 @@ async def send_push_for_user(user_id: str, payload: NotificationPayload) -> None
         return
 
     push_data = _build_push_payload(payload)
-    vapid_claims: dict[str, str | int] = {"sub": vapid_claim_email}
 
     async def _send_one(sub: PushSubscriptionDTO) -> None:
         try:
@@ -124,7 +123,8 @@ async def send_push_for_user(user_id: str, payload: NotificationPayload) -> None
                 },
                 data=push_data,
                 vapid_private_key=vapid_private,
-                vapid_claims=vapid_claims,
+                # pywebpush writes this endpoint's `aud` into the dict: one per send.
+                vapid_claims={"sub": vapid_claim_email},
             )
         except ValueError as e:
             logger.warning(
