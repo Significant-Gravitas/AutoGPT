@@ -276,6 +276,7 @@ describe("useAgentActivityDropdown", () => {
         expect(finishRead).toHaveBeenCalledWith(
           "run-1",
           expect.anything(),
+          expect.anything(),
           false,
         ),
       );
@@ -297,6 +298,7 @@ describe("useAgentActivityDropdown", () => {
         await waitFor(() =>
           expect(finishRead).toHaveBeenCalledWith(
             "run-1",
+            expect.anything(),
             expect.anything(),
             false,
           ),

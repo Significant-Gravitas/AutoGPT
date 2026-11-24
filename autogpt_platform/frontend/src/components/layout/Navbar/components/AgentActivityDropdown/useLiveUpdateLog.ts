@@ -75,11 +75,21 @@ export function createLiveUpdateLog() {
   // run id -> its read by ID under way: when it started, and whether newer
   // news of the run has come since (a live update, or a list fetched later),
   // with that news's place in the sequence, so a queued fresh read can tell
-  // whether the news also covers it.
+  // whether the news also covers it. Each read holds the token its
+  // startRead call returned: only a finishRead with that token settles it,
+  // so a completion for a replaced or cleared registration is ignored.
   const reads = new Map<
     string,
-    { started: number; superseded: boolean; supersededAt?: number }
+    {
+      started: number;
+      superseded: boolean;
+      supersededAt?: number;
+      token: number;
+    }
   >();
+  // Tokens are never reused, and reset() does not restart them: a token
+  // from before a reset can never match a read started after it.
+  let nextReadToken = 0;
 
   return {
     /** Drop everything: for tests that share the log across renders. */
@@ -104,14 +114,21 @@ export function createLiveUpdateLog() {
         read.supersededAt = sequence;
       }
     },
-    /** A read of one run by ID starts now. */
+    /** A read of one run by ID starts now. Returns the registration token
+     * its completion must carry: only a finishRead with this token settles
+     * this read. */
     startRead(runID: string) {
       sequence += 1;
-      reads.set(runID, { started: sequence, superseded: false });
+      const token = ++nextReadToken;
+      reads.set(runID, { started: sequence, superseded: false, token });
+      return token;
     },
     /**
      * A read by ID has settled. True if nothing newer about the run came
-     * meanwhile. Its answer then stands for the moment the read started, so
+     * meanwhile and the token is the registration this read started with.
+     * A completion whose registration was replaced or cleared (a reset
+     * dropped it) is rejected: it stores nothing and its answer stands for
+     * no one. Its answer then stands for the moment the read started, so
      * a list fetched before that moment replays it. When newer news did
      * come, `supersededAt` says where in the sequence it sits, so the
      * caller can tell whether it also covers a check queued after the read
@@ -120,11 +137,14 @@ export function createLiveUpdateLog() {
      * too: a capped list that leaves the run out would otherwise replay
      * it over every later list, and no follow-up read ever corrects it.
      */
-    finishRead(runID: string, read?: RunStatus, gone = false) {
+    finishRead(runID: string, token: number, read?: RunStatus, gone = false) {
       const pending = reads.get(runID);
-      reads.delete(runID);
-      if (!pending || pending.superseded) {
+      if (!pending || pending.token !== token) {
         return { accepted: false, supersededAt: pending?.supersededAt };
+      }
+      reads.delete(runID);
+      if (pending.superseded) {
+        return { accepted: false, supersededAt: pending.supersededAt };
       }
       if (read) {
         updates.delete(runID);

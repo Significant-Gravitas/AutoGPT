@@ -11,9 +11,15 @@ const MAX_CHECKS_PER_LIST = 10;
 interface Args {
   runs: GraphExecutionMeta[];
   log: {
-    startRead(runID: string): void;
+    /** Starts a read by ID and returns its registration token. */
+    startRead(runID: string): number;
+    /**
+     * Settles the read that `token` started. Rejects a completion whose
+     * registration was replaced or cleared.
+     */
     finishRead(
       runID: string,
+      token: number,
       read?: GraphExecutionMeta,
       gone?: boolean,
     ): { accepted: boolean; supersededAt?: number };
@@ -63,7 +69,7 @@ export function createOmittedRunChecker() {
   ): Promise<void> {
     reading.add(run.id);
     lastRead.set(run.id, ++reads);
-    log.startRead(run.id);
+    const token = log.startRead(run.id);
     let read: GraphExecutionMeta | undefined;
     let gone = false;
     try {
@@ -83,7 +89,12 @@ export function createOmittedRunChecker() {
     } finally {
       reading.delete(run.id);
     }
-    const { accepted, supersededAt } = log.finishRead(run.id, read, gone);
+    const { accepted, supersededAt } = log.finishRead(
+      run.id,
+      token,
+      read,
+      gone,
+    );
     if (accepted) {
       if (read) onRead(read);
       else if (gone) onGone(run.id);

@@ -18,54 +18,58 @@ function startList(log: ReturnType<typeof createLiveUpdateLog>) {
 describe("reads of a single run against live updates and lists", () => {
   test("a live update that arrives during a read stands over it", () => {
     const log = createLiveUpdateLog();
-    log.startRead(RUN);
+    const token = log.startRead(RUN);
     log.recordUpdate(status(RUN, AgentExecutionStatus.REVIEW));
 
     expect(
-      log.finishRead(RUN, status(RUN, AgentExecutionStatus.RUNNING)).accepted,
+      log.finishRead(RUN, token, status(RUN, AgentExecutionStatus.RUNNING))
+        .accepted,
     ).toBe(false);
   });
 
   test("a list fetched after a read started stands over it", () => {
     const log = createLiveUpdateLog();
-    log.startRead(RUN);
+    const token = log.startRead(RUN);
     startList(log)(1);
     log.updatesNewerThan(1, [{ id: RUN }], false);
 
     expect(
-      log.finishRead(RUN, status(RUN, AgentExecutionStatus.RUNNING)).accepted,
+      log.finishRead(RUN, token, status(RUN, AgentExecutionStatus.RUNNING))
+        .accepted,
     ).toBe(false);
   });
 
   test("a list of every run fetched after a read started stands over it, run or no run", () => {
     const log = createLiveUpdateLog();
-    log.startRead(RUN);
+    const token = log.startRead(RUN);
     startList(log)(1);
     // The list has every run but not this one: the run is gone.
     log.updatesNewerThan(1, [], true);
 
     expect(
-      log.finishRead(RUN, status(RUN, AgentExecutionStatus.RUNNING)).accepted,
+      log.finishRead(RUN, token, status(RUN, AgentExecutionStatus.RUNNING))
+        .accepted,
     ).toBe(false);
   });
 
   test("a list of only the newest runs that leaves the run out doesn't stand over a read", () => {
     const log = createLiveUpdateLog();
-    log.startRead(RUN);
+    const token = log.startRead(RUN);
     startList(log)(1);
     log.updatesNewerThan(1, [], false);
 
     expect(
-      log.finishRead(RUN, status(RUN, AgentExecutionStatus.RUNNING)).accepted,
+      log.finishRead(RUN, token, status(RUN, AgentExecutionStatus.RUNNING))
+        .accepted,
     ).toBe(true);
   });
 
   test("a read that started after a list's fetch is replayed over that list", () => {
     const log = createLiveUpdateLog();
     const land = startList(log);
-    log.startRead(RUN);
+    const token = log.startRead(RUN);
     const completed = status(RUN, AgentExecutionStatus.COMPLETED);
-    expect(log.finishRead(RUN, completed).accepted).toBe(true);
+    expect(log.finishRead(RUN, token, completed).accepted).toBe(true);
     land(1);
 
     expect(log.updatesNewerThan(1, [{ id: RUN }], false)).toEqual([completed]);
@@ -73,9 +77,10 @@ describe("reads of a single run against live updates and lists", () => {
 
   test("a later list forgets a read it already includes", () => {
     const log = createLiveUpdateLog();
-    log.startRead(RUN);
+    const token = log.startRead(RUN);
     expect(
-      log.finishRead(RUN, status(RUN, AgentExecutionStatus.RUNNING)).accepted,
+      log.finishRead(RUN, token, status(RUN, AgentExecutionStatus.RUNNING))
+        .accepted,
     ).toBe(true);
     startList(log)(1);
 
@@ -84,9 +89,9 @@ describe("reads of a single run against live updates and lists", () => {
 
   test("a later capped list that leaves a run out keeps a read's completed answer for it", () => {
     const log = createLiveUpdateLog();
-    log.startRead(RUN);
+    const token = log.startRead(RUN);
     const completed = status(RUN, AgentExecutionStatus.COMPLETED);
-    expect(log.finishRead(RUN, completed).accepted).toBe(true);
+    expect(log.finishRead(RUN, token, completed).accepted).toBe(true);
     // A later list, capped at the newest runs, that leaves the run out: it
     // says nothing about the run, so the read's answer survives.
     const land = startList(log);
@@ -98,8 +103,8 @@ describe("reads of a single run against live updates and lists", () => {
   test("a read by ID that finds a run gone drops its earlier live-update entry", () => {
     const log = createLiveUpdateLog();
     log.recordUpdate(status(RUN, AgentExecutionStatus.RUNNING));
-    log.startRead(RUN);
-    expect(log.finishRead(RUN, undefined, true).accepted).toBe(true);
+    const token = log.startRead(RUN);
+    expect(log.finishRead(RUN, token, undefined, true).accepted).toBe(true);
     const land = startList(log);
     land(2);
 
@@ -111,8 +116,8 @@ describe("reads of a single run against live updates and lists", () => {
   test("a read by ID with no answer that is not gone keeps the earlier entry", () => {
     const log = createLiveUpdateLog();
     log.recordUpdate(status(RUN, AgentExecutionStatus.RUNNING));
-    log.startRead(RUN);
-    expect(log.finishRead(RUN, undefined).accepted).toBe(true);
+    const token = log.startRead(RUN);
+    expect(log.finishRead(RUN, token, undefined).accepted).toBe(true);
     const land = startList(log);
     land(2);
 
@@ -123,12 +128,12 @@ describe("reads of a single run against live updates and lists", () => {
 
   test("a later capped list drops a read's answer for a run past the 72-hour retention", () => {
     const log = createLiveUpdateLog();
-    log.startRead(RUN);
+    const token = log.startRead(RUN);
     const old = {
       ...status(RUN, AgentExecutionStatus.COMPLETED),
       ended_at: new Date(Date.now() - 73 * 60 * 60 * 1000),
     };
-    expect(log.finishRead(RUN, old).accepted).toBe(true);
+    expect(log.finishRead(RUN, token, old).accepted).toBe(true);
     const land = startList(log);
     land(1);
 
@@ -137,13 +142,14 @@ describe("reads of a single run against live updates and lists", () => {
 
   test("a read that settles after the log is reset is not accepted", () => {
     const log = createLiveUpdateLog();
-    log.startRead(RUN);
+    const token = log.startRead(RUN);
     // Activity unmounted while the read was out: the reset drops the
     // registration, so the late answer must not repopulate the fresh log.
     log.reset();
 
     expect(
-      log.finishRead(RUN, status(RUN, AgentExecutionStatus.RUNNING)).accepted,
+      log.finishRead(RUN, token, status(RUN, AgentExecutionStatus.RUNNING))
+        .accepted,
     ).toBe(false);
     const land = startList(log);
     land(1);
@@ -153,10 +159,10 @@ describe("reads of a single run against live updates and lists", () => {
 
   test("a gone answer that settles after the log is reset is not accepted", () => {
     const log = createLiveUpdateLog();
-    log.startRead(RUN);
+    const token = log.startRead(RUN);
     log.reset();
 
-    expect(log.finishRead(RUN, undefined, true).accepted).toBe(false);
+    expect(log.finishRead(RUN, token, undefined, true).accepted).toBe(false);
     // The stale "gone" must not drop an entry the fresh log learned since.
     log.recordUpdate(status(RUN, AgentExecutionStatus.RUNNING));
     const land = startList(log);
@@ -169,13 +175,40 @@ describe("reads of a single run against live updates and lists", () => {
 
   test("a read started after a reset is accepted", () => {
     const log = createLiveUpdateLog();
-    log.startRead(RUN);
+    const stale = log.startRead(RUN);
     log.reset();
-    log.startRead(RUN);
+    // A completion carrying the pre-reset token settles nothing.
+    expect(
+      log.finishRead(RUN, stale, status(RUN, AgentExecutionStatus.RUNNING))
+        .accepted,
+    ).toBe(false);
+    const token = log.startRead(RUN);
     const completed = status(RUN, AgentExecutionStatus.COMPLETED);
-    expect(log.finishRead(RUN, completed).accepted).toBe(true);
+    expect(log.finishRead(RUN, token, completed).accepted).toBe(true);
     const land = startList(log);
     land(1);
+
+    expect(log.updatesNewerThan(1, [], false)).toEqual([completed]);
+  });
+
+  test("a completion tied to a replaced registration is not accepted", () => {
+    const log = createLiveUpdateLog();
+    const first = log.startRead(RUN);
+    const second = log.startRead(RUN);
+    // The first read's answer must not settle the run: a newer read
+    // replaced its registration.
+    expect(
+      log.finishRead(RUN, first, status(RUN, AgentExecutionStatus.RUNNING))
+        .accepted,
+    ).toBe(false);
+    const land = startList(log);
+    land(1);
+
+    // Nothing was stored for the first read.
+    expect(log.updatesNewerThan(1, [], false)).toEqual([]);
+    // The second read still settles the run.
+    const completed = status(RUN, AgentExecutionStatus.COMPLETED);
+    expect(log.finishRead(RUN, second, completed).accepted).toBe(true);
 
     expect(log.updatesNewerThan(1, [], false)).toEqual([completed]);
   });
