@@ -400,6 +400,8 @@ export class TurnRuntime {
       }));
     }
     this.emitNow();
+    // No end-of-turn read follows a stop to cover a word owed meanwhile.
+    this.settleOwedReread();
   }
 
   /** Promoted follow-ups; a drained row in the turn with the same text stands in for one. */
@@ -1374,7 +1376,11 @@ export class TurnRuntime {
         diffs: formatDiffs(drift),
       });
     }
-    this.updateTurn(seg.key, (s) => reconcileTurn(s, persisted));
+    const reconciled = reconcileTurn(seg, persisted);
+    // A slow Stop's end is said before the turn's last rows are saved; the
+    // turn waits for them, so the rows after it have a known place.
+    if (!seg.stopped || reconciled.log.rows.every((r) => r.sequence !== null))
+      this.updateTurn(seg.key, () => reconciled);
     const index = this.segments.findIndex((s) => s.key === seg.key);
     const prompt = this.segments[index - 1];
     const row = rows.find((r) => r.sequence === persisted.start - 1);
@@ -1414,7 +1420,7 @@ export class TurnRuntime {
     const gap =
       this.ownedFrom === null || !placed
         ? null
-        : gapSegment(this.segments, Infinity, rows);
+        : gapSegment(this.segments, Infinity, rows, windowStart(view, rows));
     if (gap) this.segments.push(gap);
     this.putBack(unwritten);
   }
@@ -1607,7 +1613,9 @@ export class TurnRuntime {
     if (view) {
       this.observe(view);
       this.settleOwedReread();
-      return;
+      // A stopped turn whose last rows are not saved yet is read again on a
+      // failed read's schedule; an owed read that just started does it instead.
+      if (this.rereading || !this.awaitsStoppedRows()) return;
     }
     const delay = REREAD_RETRY_MS[attempt];
     if (delay === undefined) return;
@@ -1615,6 +1623,14 @@ export class TurnRuntime {
       this.rereadTimer = null;
       if (this.isIdle() && !this.rereading) void this.reread(attempt + 1);
     }, delay);
+  }
+
+  // The latest turn was stopped, and the session has not saved its last rows.
+  private awaitsStoppedRows() {
+    const last = this.segments.findLast(
+      (s): s is TurnSegment => s.kind === "turn",
+    );
+    return !!last?.stopped && !last.reconciled;
   }
 
   private ensureTicking() {

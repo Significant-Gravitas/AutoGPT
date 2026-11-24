@@ -187,10 +187,18 @@ export function turnRows(
         return locatePrompt(later, rows, start + 1)?.sequence ?? null;
       })
       .find((n): n is number => typeof n === "number") ?? Infinity;
-  const raw = rows.filter(
+  const inRange = rows.filter(
     (r) =>
       typeof r.sequence === "number" && r.sequence >= start && r.sequence < end,
   );
+  // A stopped turn's rows end with the marker its stop saves; a read that
+  // comes after it was saved can show the next turn's rows too.
+  const marker = seg.stopped
+    ? inRange.findIndex(
+        (r) => r.role === "assistant" && r.content === CANCELLED_MARKER,
+      )
+    : -1;
+  const raw = marker === -1 ? inRange : inRange.slice(0, marker + 1);
   return { start, raw, rows: raw.map(logRowFromPersisted) };
 }
 
@@ -267,14 +275,20 @@ export function withPromptRow(
   };
 }
 
-/** Rows persisted after the tail's end and before `start` that no segment holds. */
+/**
+ * Rows persisted after the tail's end and before `start` that no segment
+ * holds. None when the window starts past the tail's end: the rows it shows
+ * would follow the tail with a hole before them.
+ */
 export function gapSegment(
   segments: readonly Segment[],
   start: number,
   rows: readonly PersistedRow[],
+  windowStart = -Infinity,
 ): RowsSegment | null {
   const tailEnd = tailEndSequence(segments);
-  return tailEnd === null ? null : rowsBetween(tailEnd, start, rows);
+  if (tailEnd === null || windowStart > tailEnd + 1) return null;
+  return rowsBetween(tailEnd, start, rows);
 }
 
 /**
