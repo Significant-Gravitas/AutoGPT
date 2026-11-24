@@ -37,6 +37,13 @@ class FakeNotification {
 
 let lastQueryClient: QueryClient;
 
+// The read has settled, list re-read included, not just reached the server:
+// until then the hook ignores the lists, so a cache update would be missed.
+async function waitForFirstRead() {
+  await waitFor(() => expect(markedRead).toEqual(["sess-1"]));
+  await waitFor(() => expect(lastQueryClient.isMutating()).toBe(0));
+}
+
 function makeWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -238,7 +245,7 @@ describe("useCopilotNotifications — a completion this tab never heard", () => 
     renderHook(() => useCopilotNotifications("sess-1"), {
       wrapper: makeWrapper(),
     });
-    await waitFor(() => expect(markedRead).toEqual(["sess-1"]));
+    await waitForFirstRead();
 
     // A turn ended while the socket was down: only the list's next read
     // shows it.
@@ -281,7 +288,7 @@ describe("useCopilotNotifications — which cached list to believe", () => {
     renderHook(() => useCopilotNotifications("sess-1"), {
       wrapper: makeWrapper(),
     });
-    await waitFor(() => expect(markedRead).toEqual(["sess-1"]));
+    await waitForFirstRead();
 
     act(() => {
       lastQueryClient.setQueryData(
@@ -299,7 +306,7 @@ describe("useCopilotNotifications — which cached list to believe", () => {
     renderHook(() => useCopilotNotifications("sess-1"), {
       wrapper: makeWrapper(),
     });
-    await waitFor(() => expect(markedRead).toEqual(["sess-1"]));
+    await waitForFirstRead();
 
     act(() => {
       lastQueryClient.setQueryData(
