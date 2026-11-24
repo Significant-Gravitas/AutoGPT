@@ -17,7 +17,6 @@ from prisma.types import (
     ChatMessageWhereInput,
     ChatSessionCreateInput,
     ChatSessionUpdateInput,
-    ChatSessionUpdateManyMutationInput,
     ChatSessionWhereInput,
     FindManyChatMessageArgsFromChatSession,
 )
@@ -900,9 +899,9 @@ async def mark_sessions_read(
     or all of them, among those the session list shows (``pinned`` as there).
     Returns how many changed. Raw SQL so the sidebar's order doesn't move.
 
-    A turn's end is stamped by the executor's clock and the read by this
-    process's, so the read never goes below the turn end it acknowledges:
-    a clock running behind must not leave a chat its owner opened unread."""
+    Stamped by the database's clock, like a turn's end in
+    ``update_chat_session_status``: the two are compared, and pods' clocks
+    can disagree either way."""
     where, params = _visible_sessions_where(
         user_id,
         organization_id,
@@ -913,12 +912,9 @@ async def mark_sessions_read(
     if session_id is not None:
         params.append(session_id)
         where += f' AND "id" = ${len(params)}'
-    params.append(datetime.now(UTC))
     return await db.execute_raw_with_schema(
-        'UPDATE {schema_prefix}"ChatSession" SET "lastReadAt" = '
-        # The parameter arrives as text, which GREATEST can't compare with a
-        # timestamp column on its own.
-        f'GREATEST(${len(params)}::timestamp, "lastTurnEndedAt") '
+        'UPDATE {schema_prefix}"ChatSession" '
+        'SET "lastReadAt" = statement_timestamp() '
         "WHERE " + where + f" AND {_UNREAD_SQL}",
         *params,
     )
@@ -1976,16 +1972,56 @@ async def update_chat_session_status(
     not, to record that end, which leaves the chat unread until its owner
     opens it.  Returns True iff the row was matched and updated.
     """
+    if turn_failed is not None:
+        return await _end_turn(
+            session_id=session_id,
+            status=status,
+            expect_status=expect_status,
+            user_id=user_id,
+            turn_failed=turn_failed,
+        )
     where: ChatSessionWhereInput = {"id": session_id}
     if expect_status is not None:
         where["chatStatus"] = expect_status
     if user_id is not None:
         where["userId"] = user_id
-    data: ChatSessionUpdateManyMutationInput = {"chatStatus": status}
-    if turn_failed is not None:
-        data["lastTurnEndedAt"] = datetime.now(UTC)
-        data["lastTurnFailed"] = turn_failed
-    updated = await PrismaChatSession.prisma().update_many(where=where, data=data)
+    updated = await PrismaChatSession.prisma().update_many(
+        where=where, data={"chatStatus": status}
+    )
+    return updated > 0
+
+
+async def _end_turn(
+    *,
+    session_id: str,
+    status: str,
+    expect_status: str | None,
+    user_id: str | None,
+    turn_failed: bool,
+) -> bool:
+    """The status flip of ``update_chat_session_status`` plus the turn's end,
+    stamped by the database's clock: ``mark_sessions_read`` stamps a read by
+    the same clock, and the two are compared to tell an unread chat. Sets
+    ``updatedAt`` as Prisma's ``@updatedAt`` would."""
+    params: list[Any] = [session_id, status, turn_failed]
+    where = '"id" = $1'
+    if expect_status is not None:
+        params.append(expect_status)
+        where += (
+            f' AND "chatStatus" = ${len(params)}::{{schema_prefix}}"ChatSessionStatus"'
+        )
+    if user_id is not None:
+        params.append(user_id)
+        where += f' AND "userId" = ${len(params)}'
+    updated = await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" '
+        'SET "chatStatus" = $2::{schema_prefix}"ChatSessionStatus", '
+        '"updatedAt" = statement_timestamp(), '
+        '"lastTurnEndedAt" = statement_timestamp(), '
+        '"lastTurnFailed" = $3 '
+        "WHERE " + where,
+        *params,
+    )
     return updated > 0
 
 

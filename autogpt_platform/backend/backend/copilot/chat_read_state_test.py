@@ -126,17 +126,15 @@ async def test_marking_read_touches_only_unread_chats_the_list_shows():
 
     assert marked == 2
     query, *params = execute.await_args.args
-    assert query.startswith('UPDATE {schema_prefix}"ChatSession" SET "lastReadAt"')
+    assert query.startswith('UPDATE {schema_prefix}"ChatSession"')
     # Raw SQL leaves updatedAt alone, so the sidebar's order doesn't move.
     assert '"updatedAt"' not in query
     assert '"archivedAt" IS NULL' in query
     assert '"expertId" = $3' in query
     assert '"lastReadAt" < "lastTurnEndedAt"' in query
-    *scope, read_at = params
-    assert scope == ["u1", "org-1", "maria"]
-    # Never below the stored turn end, whatever this process's clock says.
-    assert 'GREATEST($4::timestamp, "lastTurnEndedAt")' in query
-    assert isinstance(read_at, datetime)
+    assert params == ["u1", "org-1", "maria"]
+    # The database's clock, the one a turn's end is stamped by.
+    assert 'SET "lastReadAt" = statement_timestamp()' in query
 
 
 @pytest.mark.asyncio
@@ -148,7 +146,28 @@ async def test_marking_one_chat_read_is_scoped_to_its_owner():
     query, *params = execute.await_args.args
     assert '"userId" = $1' in query
     assert '"id" = $2' in query
-    assert params[:-1] == ["u1", "chat-1"]
+    assert params == ["u1", "chat-1"]
+
+
+@pytest.mark.asyncio
+async def test_a_turn_end_is_stamped_by_the_database_clock_with_the_status_flip():
+    execute = AsyncMock(return_value=1)
+    with patch("backend.copilot.db.db.execute_raw_with_schema", execute):
+        assert await update_chat_session_status(
+            session_id="chat-1",
+            status="idle",
+            expect_status="running",
+            user_id="u1",
+            turn_failed=True,
+        )
+
+    query, *params = execute.await_args.args
+    assert '"lastTurnEndedAt" = statement_timestamp()' in query
+    # The flip still moves the chat up the sidebar, as Prisma's @updatedAt did.
+    assert '"updatedAt" = statement_timestamp()' in query
+    assert '"chatStatus" = $4::{schema_prefix}"ChatSessionStatus"' in query
+    assert '"userId" = $5' in query
+    assert params == ["chat-1", "idle", True, "running", "u1"]
 
 
 @pytest.mark.asyncio
