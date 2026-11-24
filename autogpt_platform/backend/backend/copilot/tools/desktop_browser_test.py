@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.util.sandbox_login import LoginChainChanged
+
 from .desktop_browser import DesktopBrowserTool
 from .models import DesktopBrowserResponse, ErrorResponse
 
@@ -224,6 +226,42 @@ async def test_a_page_that_cannot_be_read_keeps_the_receipts():
     assert result.receipts[0]["status"] == "completed"
     assert result.ref_scope is None and "take a snapshot" in result.message
     issue.assert_awaited_once_with("sb-1", [], None)
+
+
+@pytest.mark.asyncio
+async def test_a_read_refused_after_the_batch_keeps_receipts_and_voids_the_scope():
+    """The batch ran, so the page may have moved: every older ref_scope goes."""
+    patches, _ = _patched(
+        batches=[
+            [_ok({"url": "https://a.example/"})],
+            LoginChainChanged("login files changed"),
+        ]
+    )
+    issue = AsyncMock(return_value="new-scope")
+    patches.append(patch(f"{_D}.issue_scope", issue))
+    result = await _call(
+        patches, actions=[{"action": "goto", "url": "https://a.example"}]
+    )
+    assert isinstance(result, DesktopBrowserResponse)
+    assert result.receipts[0]["status"] == "completed"
+    assert result.ref_scope is None
+    issue.assert_awaited_once_with("sb-1", [], None)
+
+
+@pytest.mark.asyncio
+async def test_a_scope_that_cannot_be_issued_still_returns_the_receipts():
+    patches, _ = _patched(
+        batches=[[_ok({"url": "https://a.example/"})], list(_OBSERVED)]
+    )
+    patches.append(
+        patch(f"{_D}.issue_scope", AsyncMock(side_effect=ConnectionError("redis")))
+    )
+    result = await _call(
+        patches, actions=[{"action": "goto", "url": "https://a.example"}]
+    )
+    assert isinstance(result, DesktopBrowserResponse)
+    assert result.receipts[0]["status"] == "completed"
+    assert result.ref_scope is None
 
 
 @pytest.mark.asyncio

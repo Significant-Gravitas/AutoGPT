@@ -93,11 +93,13 @@ _REF_SCOPE_TTL_SECONDS = 3600
 # an expert's turns share a box, and a call checked against a snapshot must
 # not run after another has replaced it.
 _LOCK_WAIT_SECONDS = 30
-# Longer than the slowest call can hold it: an agent-browser install (180 s)
-# and Chrome's start (30 s) on a box without them, the batch's own limit, the
-# snapshot after (30 s) and the screenshot, with room to spare. Only a holder
-# that died lets it lapse.
-LOCK_HOLD_SECONDS = 600
+# Longer than the slowest call can hold it: an agent-browser install (180 s),
+# Chrome's start (30 s) and a new tab (10 s) on a box without them, two dialog
+# checks (15 s each), the batch twice at its own limit plus its kill margin
+# (the lost-tab retry, 2 x 185 s), the closing read (50 s) and the screenshot's
+# clean-up (10 s): 690 s, with room to spare. Only a holder that died lets it
+# lapse.
+LOCK_HOLD_SECONDS = 900
 _LOCK_POLL_SECONDS = 0.25
 _UNLOCK_SCRIPT = (
     'if redis.call("get", KEYS[1]) == ARGV[1] then '
@@ -549,7 +551,8 @@ def _failure(action: Action, error: str, ran_any: bool) -> Receipt:
     """``not_started`` only when the action's first command failed in a way
     that means it never touched the page; anything else may have run."""
     lowered = error.strip().lower()
-    miss = _NOT_STARTED.match(lowered)
+    # Only a ref action can miss its element; any other failure may have run.
+    miss = _NOT_STARTED.match(lowered) if action.ref is not None else None
     if not ran_any and miss:
         return Receipt(
             action=action.name,

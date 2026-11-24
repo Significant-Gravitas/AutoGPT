@@ -454,6 +454,15 @@ class TestReceiptAnchors:
         (receipt,) = receipts_for([click], [commands_for(click, "/x")], [_fail(error)])
         assert receipt.status == "unknown"
 
+    def test_a_lookup_error_on_an_action_with_no_ref_may_have_run(self):
+        """A navigation's failure never reads as safe to repeat, whatever it
+        says."""
+        goto = Action(name="goto", params={"url": "https://a.example"})
+        (receipt,) = receipts_for(
+            [goto], [commands_for(goto, "/x")], [_fail("Element not found: x")]
+        )
+        assert receipt.status == "unknown"
+
 
 class TestPageNotes:
     def test_dialog_warnings_and_why_the_read_failed_not_action_errors(self):

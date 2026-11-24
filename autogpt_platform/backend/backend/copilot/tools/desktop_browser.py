@@ -210,13 +210,19 @@ class DesktopBrowserTool(BaseTool):
                 if receipt.action == "snapshot" and receipt.status == "completed":
                     receipt.status, receipt.reason = "unknown", "no_snapshot"
         # Every older ref_scope is void now, whether or not this one came back.
-        token = await driver.issue_scope(
-            sandbox.sandbox_id,
-            observation.refs if observation else [],
-            # Unstamped, the snapshot's refs stand on ref_scope alone: a
-            # check against a stamp the page never got would refuse them all.
-            stamp if observation and observation.stamped else None,
-        )
+        try:
+            token = await driver.issue_scope(
+                sandbox.sandbox_id,
+                observation.refs if observation else [],
+                # Unstamped, the snapshot's refs stand on ref_scope alone: a
+                # check against a stamp the page never got would refuse them all.
+                stamp if observation and observation.stamped else None,
+            )
+        except Exception:
+            # The receipts still go back; with no scope, the next ref action
+            # is refused until a snapshot issues one.
+            logger.warning("[desktop_browser] could not issue a scope", exc_info=True)
+            token = None
         file_id = await self._save_look(
             user_id, session, sandbox, actions, receipts, look_path
         )
@@ -328,8 +334,11 @@ class DesktopBrowserTool(BaseTool):
             entries = await driver.run_batch(
                 sandbox, session_name, commands, bail=False, timeout=45
             )
-        except LoginChainChanged:
-            raise
+        except LoginChainChanged as refused:
+            # The batch has run by now: its receipts still go back, and the
+            # caller voids every older ref_scope, as for any unread page.
+            logger.warning("[desktop_browser] the page was not read: %s", refused)
+            return None, [{"success": False, "error": str(refused)}]
         except Exception:
             logger.warning("[desktop_browser] could not read the page", exc_info=True)
             return None, []
