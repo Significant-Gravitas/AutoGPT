@@ -33,6 +33,8 @@ export const RunInputDialog = ({
   const {
     credentialFields,
     requiredCredentials,
+    nodeCredentials,
+    clearedFields,
     handleManualRun,
     handleInputChange,
     openCronSchedulerDialog,
@@ -40,8 +42,9 @@ export const RunInputDialog = ({
     inputValues,
     credentialValues,
     handleCredentialFieldChange,
+    handleAutoSelectCredential,
     isExecutingGraph,
-  } = useRunInputDialog({ setIsOpen, graphID, graphVersion });
+  } = useRunInputDialog({ setIsOpen, graphID, graphVersion, purpose });
 
   // Tutorial integration - track input values for the tutorial
   const setTutorialInputValues = useTutorialStore(
@@ -87,6 +90,9 @@ export const RunInputDialog = ({
                       inputCredentials={credentialValues}
                       inputValues={inputValues}
                       onCredentialChange={handleCredentialFieldChange}
+                      onAutoSelect={handleAutoSelectCredential}
+                      nodeCredentials={nodeCredentials}
+                      clearedFields={clearedFields}
                     />
                   </div>
                 </div>
