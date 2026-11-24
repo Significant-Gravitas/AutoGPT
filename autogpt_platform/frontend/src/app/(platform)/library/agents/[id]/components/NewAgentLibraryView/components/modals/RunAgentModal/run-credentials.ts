@@ -10,20 +10,25 @@ import { CredentialsProvidersContextType } from "@/providers/agent-credentials/c
 
 interface Args {
   properties: Record<string, CredentialFieldSchema>;
-  currentCredentials: Record<string, unknown>;
+  requiredFields: string[];
+  currentCredentials: Record<string, { id?: string } | undefined>;
+  /** Keys the form started fields on itself; a field still on one starts again. */
+  provisionalCredentials?: Record<string, string>;
   allProviders: CredentialsProvidersContextType;
   nodeCredentials: CredentialsMetaInput[];
   nodeCredentialsUnknown: boolean;
 }
 
 /**
- * The credentials a run form starts with, for each field still empty: the
- * user's own key the workflow's steps agree on, else the platform's key when
- * exactly one fits.
+ * The credentials a run form starts with, for each field still empty or on a
+ * key the form picked itself: the user's own key the workflow's steps agree
+ * on, else the platform's key when exactly one fits.
  */
 export function getDefaultRunCredentials({
   properties,
+  requiredFields,
   currentCredentials,
+  provisionalCredentials = {},
   allProviders,
   nodeCredentials,
   nodeCredentialsUnknown,
@@ -31,10 +36,14 @@ export function getDefaultRunCredentials({
   const defaults: Record<string, CredentialsMetaInput> = {};
 
   for (const [key, schema] of Object.entries(properties)) {
-    if (currentCredentials[key]) continue;
+    const current = currentCredentials[key];
+    const isProvisional =
+      current?.id !== undefined && current.id === provisionalCredentials[key];
+    if (current && !isProvisional) continue;
 
     const credential = getStartingCredential({
       schema,
+      isRequired: requiredFields.includes(key),
       nodeCredentials,
       nodeCredentialsUnknown,
       allProviders,

@@ -58,7 +58,7 @@ export function CredentialsGroupedView({
     return (
       <CredentialsInput
         key={key}
-        schema={{ ...inputSubSchema, discriminator: undefined } as any}
+        schema={inputSubSchema}
         selectedCredentials={inputCredentials?.[key]}
         onSelectCredentials={(value) => {
           handleFieldChange(key, value);

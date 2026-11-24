@@ -12,13 +12,17 @@ import {
   getGetV2GetLibraryAgentMockHandler,
   getGetV2GetLibraryAgentResponseMock,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
-import { getGetV2ListPresetsMockHandler } from "@/app/api/__generated__/endpoints/presets/presets.msw";
+import {
+  getGetV2GetASpecificPresetMockHandler,
+  getGetV2ListPresetsMockHandler,
+} from "@/app/api/__generated__/endpoints/presets/presets.msw";
 import {
   getGetV1ListExecutionSchedulesForAGraphMockHandler,
   getPostV1CreateExecutionScheduleMockHandler,
   getPostV1CreateExecutionScheduleResponseMock,
 } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { server } from "@/mocks/mock-server";
 import CredentialsProvider from "@/providers/agent-credentials/credentials-provider";
 import {
@@ -87,11 +91,64 @@ const OTHER_KEY = {
   is_system: false,
 };
 
+const FIRECRAWL_FIELD = {
+  credentials_provider: ["firecrawl"],
+  credentials_types: ["api_key"],
+  title: "Credentials",
+  type: "object",
+  properties: {
+    id: { title: "Id", type: "string" },
+    provider: { const: "firecrawl", type: "string" },
+    type: { const: "api_key", type: "string" },
+  },
+  required: ["id", "provider", "type"],
+};
+
+// An LLM step whose model comes from a link: its field lists every LLM
+// provider, since which one the run needs isn't known before it runs.
+const LLM_FIELD = "anthropic-openai_api_key_credentials";
+const LLM_PICKER = "Select Openai credential";
+const LLM_FIELD_SCHEMA = {
+  credentials_provider: ["openai", "anthropic"],
+  credentials_types: ["api_key"],
+  discriminator: "model",
+  discriminator_mapping: { "gpt-4o": "openai", "claude-sonnet-4": "anthropic" },
+  title: "Credentials",
+  type: "object",
+  properties: {
+    id: { title: "Id", type: "string" },
+    provider: { enum: ["openai", "anthropic"], type: "string" },
+    type: { const: "api_key", type: "string" },
+  },
+  required: ["id", "provider", "type"],
+};
+const OPENAI_PLATFORM_KEY = {
+  id: "openai-default",
+  provider: "openai",
+  type: "api_key",
+  title: "OpenAI API Key",
+  is_system: true,
+};
+const ANTHROPIC_PLATFORM_KEY = {
+  id: "anthropic-default",
+  provider: "anthropic",
+  type: "api_key",
+  title: "Anthropic API Key",
+  is_system: true,
+};
+const USER_OPENAI_KEY = {
+  id: "user-openai-key",
+  provider: "openai",
+  type: "api_key",
+  title: "My OpenAI key",
+  is_system: false,
+};
+
 // What a step's `input_default.credentials` holds once a key is picked on it.
-function savedOnStep(key: { id: string; title: string }) {
+function savedOnStep(key: { id: string; title: string; provider?: string }) {
   return {
     id: key.id,
-    provider: "firecrawl",
+    provider: key.provider ?? "firecrawl",
     type: "api_key",
     title: key.title,
   };
@@ -124,10 +181,18 @@ interface Workflow {
   // Holds the graph's answer back until it resolves
   graphReady?: Promise<void>;
   savedCredentials?: Array<Record<string, unknown>>;
+  providers?: string[];
   systemProviders?: string[];
   // Whether the user owns the workflow; only an owner can read its steps
   canAccessGraph?: boolean;
+  // The run form's credential fields, and which of them are required
+  credentialFields?: Record<string, unknown>;
+  requiredFields?: string[];
+  // A template whose credentials the run form starts from
+  templateCredentials?: LibraryAgentPreset["credentials"];
 }
+
+const TEMPLATE_ID = "template-1";
 
 function mockWorkflow({
   stepCredentials,
@@ -135,8 +200,12 @@ function mockWorkflow({
   subWorkflowStepCredentials = [],
   graphReady,
   savedCredentials = [PLATFORM_KEY, USER_KEY],
+  providers = ["firecrawl"],
   systemProviders = ["firecrawl"],
   canAccessGraph = true,
+  credentialFields = { [FIELD]: FIRECRAWL_FIELD },
+  requiredFields = [FIELD],
+  templateCredentials,
 }: Workflow) {
   const { sub_graphs: _, ...subWorkflow } =
     getGetV1GetSpecificGraphResponseMock({
@@ -173,6 +242,25 @@ function mockWorkflow({
   });
   const executeBodies: Array<{ credentials_inputs?: unknown }> = [];
   const scheduleBodies: Array<{ credentials?: unknown }> = [];
+  const templates: LibraryAgentPreset[] = templateCredentials
+    ? [
+        {
+          id: TEMPLATE_ID,
+          name: "Weekly scrape",
+          description: "",
+          graph_id: "graph-1",
+          graph_version: 1,
+          inputs: {},
+          credentials: templateCredentials,
+          is_active: true,
+          user_id: "user-1",
+          created_at: new Date(),
+          updated_at: new Date(),
+          webhook_id: null,
+          webhook: null,
+        },
+      ]
+    : [];
   function answerGraphReads() {
     server.use(
       getGetV1GetSpecificGraphMockHandler(async () => {
@@ -193,21 +281,8 @@ function mockWorkflow({
         input_schema: { type: "object", properties: {} },
         credentials_input_schema: {
           type: "object",
-          properties: {
-            [FIELD]: {
-              credentials_provider: ["firecrawl"],
-              credentials_types: ["api_key"],
-              title: "Credentials",
-              type: "object",
-              properties: {
-                id: { title: "Id", type: "string" },
-                provider: { const: "firecrawl", type: "string" },
-                type: { const: "api_key", type: "string" },
-              },
-              required: ["id", "provider", "type"],
-            },
-          },
-          required: [FIELD],
+          properties: credentialFields,
+          required: requiredFields,
         },
         has_external_trigger: false,
         trigger_setup_info: null,
@@ -217,9 +292,9 @@ function mockWorkflow({
       }),
     ),
     http.get("*/api/integrations/providers", () =>
-      HttpResponse.json([
-        { name: "firecrawl", description: "Web scraping and crawling" },
-      ]),
+      HttpResponse.json(
+        providers.map((name) => ({ name, description: `${name} provider` })),
+      ),
     ),
     http.get("*/api/integrations/providers/system", () =>
       HttpResponse.json(systemProviders),
@@ -238,14 +313,17 @@ function mockWorkflow({
     }),
     getGetV1ListExecutionSchedulesForAGraphMockHandler([]),
     getGetV2ListPresetsMockHandler({
-      presets: [],
+      presets: templates,
       pagination: {
-        total_items: 0,
-        total_pages: 0,
+        total_items: templates.length,
+        total_pages: templates.length > 0 ? 1 : 0,
         current_page: 1,
         page_size: 100,
       },
     }),
+    ...templates.map((template) =>
+      getGetV2GetASpecificPresetMockHandler(template),
+    ),
     getPostV1ExecuteGraphAgentMockHandler(async ({ request }) => {
       executeBodies.push((await request.json()) as never);
       return run;
@@ -275,14 +353,31 @@ function failGraphReads() {
   server.use(getGetV1GetSpecificGraphMockHandler422());
 }
 
-function renderAgentPage() {
+function renderAgentPage(searchParams?: string) {
   render(
     <CredentialsProvider>
-      <NuqsTestingAdapter hasMemory>
+      <NuqsTestingAdapter hasMemory searchParams={searchParams}>
         <NewAgentLibraryView />
       </NuqsTestingAdapter>
     </CredentialsProvider>,
   );
+}
+
+// An LLM step set to the user's own OpenAI key, with both providers' platform keys
+function mockLLMWorkflow(workflow: Workflow = {}) {
+  return mockWorkflow({
+    stepCredentials: savedOnStep(USER_OPENAI_KEY),
+    credentialFields: { [LLM_FIELD]: LLM_FIELD_SCHEMA },
+    requiredFields: [LLM_FIELD],
+    providers: ["openai", "anthropic"],
+    systemProviders: ["openai", "anthropic"],
+    savedCredentials: [
+      OPENAI_PLATFORM_KEY,
+      ANTHROPIC_PLATFORM_KEY,
+      USER_OPENAI_KEY,
+    ],
+    ...workflow,
+  });
 }
 
 async function openRunForm() {
@@ -297,8 +392,8 @@ async function clickWhenEnabled(name: string) {
   await userEvent.click(button);
 }
 
-function keyIn(credentials: unknown) {
-  return (credentials as Record<string, { id?: string }> | undefined)?.[FIELD]
+function keyIn(credentials: unknown, field = FIELD) {
+  return (credentials as Record<string, { id?: string }> | undefined)?.[field]
     ?.id;
 }
 
@@ -655,4 +750,124 @@ test("a step input that only looks like a key, with an unknown provider, doesn't
 
   await waitFor(() => expect(executeBodies).toHaveLength(1));
   expect(keyIn(executeBodies[0].credentials_inputs)).toBe(USER_KEY.id);
+});
+
+test("an LLM step's field, open to several providers, starts on the step's key and shows it", async () => {
+  const { executeBodies } = mockLLMWorkflow();
+  renderAgentPage();
+
+  await openRunForm();
+  const picker = await screen.findByRole("combobox", { name: LLM_PICKER });
+  expect((picker as HTMLSelectElement).value).toBe(USER_OPENAI_KEY.id);
+  await clickWhenEnabled("Start Task");
+
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(keyIn(executeBodies[0].credentials_inputs, LLM_FIELD)).toBe(
+    USER_OPENAI_KEY.id,
+  );
+});
+
+test("after a failed read, an LLM step's field open to several providers still shows, and Try again starts it on the step's key", async () => {
+  const { executeBodies, answerGraphReads } = mockLLMWorkflow();
+  failGraphReads();
+  renderAgentPage();
+
+  await openRunForm();
+  expect(await screen.findByText(LOOKUP_FAILED)).toBeDefined();
+  const picker = await screen.findByRole("combobox", { name: LLM_PICKER });
+  expect((picker as HTMLSelectElement).value).toBe("__none__");
+
+  answerGraphReads();
+  await clickWhenEnabled("Try again");
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("combobox", { name: LLM_PICKER }) as HTMLSelectElement)
+        .value,
+    ).toBe(USER_OPENAI_KEY.id),
+  );
+  await clickWhenEnabled("Start Task");
+
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(keyIn(executeBodies[0].credentials_inputs, LLM_FIELD)).toBe(
+    USER_OPENAI_KEY.id,
+  );
+});
+
+test("a template that leaves an optional credential empty runs with none for it", async () => {
+  const { executeBodies } = mockWorkflow({
+    stepCredentials: savedOnStep(USER_KEY),
+    requiredFields: [],
+    templateCredentials: {},
+  });
+  renderAgentPage(`activeTab=templates&activeItem=${TEMPLATE_ID}`);
+
+  await clickWhenEnabled("New workflow task");
+  await clickWhenEnabled("Start Task");
+
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(keyIn(executeBodies[0].credentials_inputs)).toBeUndefined();
+});
+
+test("after a failed read, an optional field starts on the platform key as before, and Try again moves it to the step's key", async () => {
+  const { executeBodies, answerGraphReads } = mockWorkflow({
+    stepCredentials: savedOnStep(USER_KEY),
+    requiredFields: [],
+  });
+  failGraphReads();
+  renderAgentPage();
+
+  await openRunForm();
+  expect(await screen.findByText(LOOKUP_FAILED)).toBeDefined();
+  await userEvent.click(screen.getByRole("button", { name: SYSTEM_SECTION }));
+  const section = await screen.findByRole("region", { name: SYSTEM_SECTION });
+  await waitFor(() =>
+    expect(
+      (
+        within(section).getByRole("combobox", {
+          name: PICKER,
+        }) as HTMLSelectElement
+      ).value,
+    ).toBe(PLATFORM_KEY.id),
+  );
+
+  answerGraphReads();
+  await clickWhenEnabled("Try again");
+  await waitFor(() => expect(screen.queryByText(LOOKUP_FAILED)).toBeNull());
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("combobox", { name: PICKER }) as HTMLSelectElement)
+        .value,
+    ).toBe(USER_KEY.id),
+  );
+  expect(screen.queryByRole("button", { name: SYSTEM_SECTION })).toBeNull();
+  await clickWhenEnabled("Start Task");
+
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(keyIn(executeBodies[0].credentials_inputs)).toBe(USER_KEY.id);
+});
+
+test("a key of the user's own that doesn't fit the field doesn't hold it back when the steps' keys can't be read", async () => {
+  const userLogin = {
+    id: "user-firecrawl-login",
+    provider: "firecrawl",
+    type: "oauth2",
+    title: "My Firecrawl login",
+    scopes: [],
+    is_system: false,
+  };
+  const { executeBodies } = mockWorkflow({
+    savedCredentials: [PLATFORM_KEY, userLogin],
+  });
+  failGraphReads();
+  renderAgentPage();
+
+  await openRunForm();
+  expect(
+    await screen.findByRole("button", { name: SYSTEM_SECTION }),
+  ).toBeDefined();
+  await clickWhenEnabled("Start Task");
+
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(keyIn(executeBodies[0].credentials_inputs)).toBe(PLATFORM_KEY.id);
+  expect(screen.queryByText(LOOKUP_FAILED)).toBeNull();
 });

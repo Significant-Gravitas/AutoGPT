@@ -14,6 +14,7 @@ import {
   hasOwnCredentialFor,
 } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/node-credentials";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -35,6 +36,8 @@ export type RunVariant =
   | "schedule"
   | "automatic-trigger"
   | "manual-trigger";
+
+const NO_NODE_CREDENTIALS: CredentialsMetaInput[] = [];
 
 interface UseAgentRunModalCallbacks {
   onRun?: (execution: GraphExecutionMeta) => void;
@@ -73,6 +76,8 @@ export function useAgentRunModal(
   const [presetName, setPresetName] = useState<string>("");
   const [presetDescription, setPresetDescription] = useState<string>("");
   const hasInitializedSystemCreds = useRef(false);
+  // The keys the form started fields on while the steps' keys were unknown
+  const provisionalCreds = useRef<Record<string, string>>({});
 
   // Determine the default run type based on agent capabilities
   const defaultRunType: RunVariant = agent.trigger_setup_info
@@ -87,6 +92,7 @@ export function useAgentRunModal(
       withCalendarDates(agent.input_schema, callbacks?.initialInputValues),
     );
     setInputCredentials(callbacks?.initialInputCredentials || {});
+    provisionalCreds.current = {};
     setTriggerConfigValues(
       withCalendarDates(
         agent.trigger_setup_info?.config_schema,
@@ -150,11 +156,21 @@ export function useAgentRunModal(
       string,
       CredentialFieldSchema
     >;
+    const requiredFields =
+      (agent.credentials_input_schema.required as string[] | undefined) ?? [];
+    // Once the steps' keys load, a field still on a key the form picked while
+    // they were unknown starts again, on the step's key if they agree on one
+    const provisionalCredentials = nodeCredentialsUnknown
+      ? {}
+      : provisionalCreds.current;
+    if (!nodeCredentialsUnknown) provisionalCreds.current = {};
 
     setInputCredentials((currentCreds) => {
       const credsToAdd = getDefaultRunCredentials({
         properties,
+        requiredFields,
         currentCredentials: currentCreds,
+        provisionalCredentials,
         allProviders,
         nodeCredentials,
         nodeCredentialsUnknown,
@@ -163,7 +179,13 @@ export function useAgentRunModal(
 
       // While the steps' keys are unknown the form isn't settled: once they
       // load, the fields left for them still start on the step's key.
-      if (!nodeCredentialsUnknown) hasInitializedSystemCreds.current = true;
+      if (nodeCredentialsUnknown) {
+        for (const [key, credential] of Object.entries(credsToAdd)) {
+          provisionalCreds.current[key] = credential.id;
+        }
+      } else {
+        hasInitializedSystemCreds.current = true;
+      }
       return {
         ...currentCreds,
         ...credsToAdd,
@@ -434,7 +456,11 @@ export function useAgentRunModal(
     agentInputFields,
     triggerConfigFields,
     agentCredentialsInputFields,
-    nodeCredentials,
+    // A template brings its own credentials, so the view doesn't fill the
+    // ones it leaves empty from the steps' keys either
+    nodeCredentials: callbacks?.initialInputCredentials
+      ? NO_NODE_CREDENTIALS
+      : nodeCredentials,
     isResolvingCredentials,
     nodeCredentialsUnknown,
     isRetryingNodeCredentials,

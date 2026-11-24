@@ -17,6 +17,7 @@ import {
 import {
   awaitsUserChoice,
   CredentialFieldSchema,
+  findOwnCredentialProvider,
   getNodeCredentialsKey,
   getStartingCredential,
   isOwnCredential,
@@ -67,7 +68,12 @@ export function useCredentialsGroupedView({
     if (isOwnCredential(inputCredentials?.[key], allProviders)) return true;
     return (
       !inputCredentials?.[key] &&
-      awaitsUserChoice(schema, nodeCredentialsUnknown, allProviders)
+      awaitsUserChoice({
+        schema,
+        isRequired: requiredCredentials.has(key),
+        nodeCredentialsUnknown,
+        allProviders,
+      })
     );
   }
 
@@ -90,6 +96,18 @@ export function useCredentialsGroupedView({
       inputCredentials,
       allProviders,
     );
+
+  // Each field with the schema its picker gets; one with no picker is left out
+  function withPickerSchemas(fields: CredentialField[]) {
+    return fields.flatMap(([key, schema]): CredentialField[] => {
+      const pickerSchema = getPickerSchema(
+        schema,
+        inputCredentials?.[key],
+        allProviders,
+      );
+      return pickerSchema ? [[key, pickerSchema]] : [];
+    });
+  }
 
   function handleFieldChange(key: string, value?: CredentialsMetaInput) {
     const systemField = systemCredentialFields.find(
@@ -115,11 +133,13 @@ export function useCredentialsGroupedView({
     for (const [key, schema] of credentialFields) {
       if (inputCredentials?.[key]) continue;
 
+      const isRequired = requiredCredentials.has(key);
       const isRequiredSystemField =
-        requiredCredentials.has(key) &&
+        isRequired &&
         systemCredentialFields.some(([systemKey]) => systemKey === key);
       const credential = getStartingCredential({
         schema,
+        isRequired,
         nodeCredentials,
         nodeCredentialsUnknown,
         allProviders,
@@ -148,12 +168,37 @@ export function useCredentialsGroupedView({
   ]);
 
   return {
-    visibleFields: [...userCredentialFields, ...promotedFields],
-    collapsedFields,
+    visibleFields: withPickerSchemas([
+      ...userCredentialFields,
+      ...promotedFields,
+    ]),
+    collapsedFields: withPickerSchemas(collapsedFields),
     hasMissingSystemCredentials,
     handleFieldChange,
     handleSystemSectionChange,
   };
+}
+
+// A picker shows one provider's keys. A field open to several, like an LLM
+// step's whose model comes from a link, shows the provider of the key it
+// holds, else the first one the user has a key of their own for; with
+// neither it has no picker. As before, the discriminator is left out.
+function getPickerSchema(
+  schema: CredentialFieldSchema,
+  selected: CredentialsMetaInput | undefined,
+  allProviders: CredentialsProvidersContextType | null,
+) {
+  const pickerSchema = { ...schema, discriminator: undefined };
+  const providers = schema.credentials_provider ?? [];
+  if (providers.length <= 1) return pickerSchema;
+
+  const provider =
+    selected && providers.includes(selected.provider)
+      ? selected.provider
+      : findOwnCredentialProvider(schema, allProviders);
+  return provider
+    ? { ...pickerSchema, credentials_provider: [provider] }
+    : null;
 }
 
 // The platform's key, or failing that the only key that fits

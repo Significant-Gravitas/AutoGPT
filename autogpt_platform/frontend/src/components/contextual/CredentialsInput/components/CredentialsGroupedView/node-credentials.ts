@@ -17,12 +17,17 @@ interface GraphSteps {
   nodes?: Array<{ input_default?: Record<string, unknown> }>;
 }
 
-interface StartingCredentialArgs {
+interface UserChoiceArgs {
   schema: CredentialFieldSchema;
-  nodeCredentials: CredentialsMetaInput[];
+  /** Whether the run needs the field filled. */
+  isRequired: boolean;
   /** The steps' keys couldn't be read, so which key they use is unknown. */
   nodeCredentialsUnknown?: boolean;
   allProviders: CredentialsProvidersContextType | null;
+}
+
+interface StartingCredentialArgs extends UserChoiceArgs {
+  nodeCredentials: CredentialsMetaInput[];
   /** The key the field starts on when the steps don't decide, e.g. the platform's. */
   findFallbackCredential: () => CredentialsMetaInput | undefined;
 }
@@ -54,11 +59,12 @@ export function getNodeCredentialsKey(nodeCredentials: CredentialsMetaInput[]) {
 /**
  * The key a run field starts on: the user's own key the workflow's steps
  * agree on, else the field's fallback. While the steps' keys are unknown, a
- * field the user has a key of their own for starts on none, so the platform's
- * key can't silently replace a step's: the user picks.
+ * required field the user has a key of their own for starts on none, so the
+ * platform's key can't silently replace a step's: the user picks.
  */
 export function getStartingCredential({
   schema,
+  isRequired,
   nodeCredentials,
   nodeCredentialsUnknown = false,
   allProviders,
@@ -70,19 +76,35 @@ export function getStartingCredential({
     allProviders,
   );
   if (nodeCredential) return toCredentialsInput(nodeCredential);
-  if (awaitsUserChoice(schema, nodeCredentialsUnknown, allProviders)) {
+  if (
+    awaitsUserChoice({
+      schema,
+      isRequired,
+      nodeCredentialsUnknown,
+      allProviders,
+    })
+  ) {
     return undefined;
   }
   return findFallbackCredential();
 }
 
-/** Whether a field's key is left for the user to pick, as the steps' keys are unknown. */
-export function awaitsUserChoice(
-  schema: CredentialFieldSchema,
-  nodeCredentialsUnknown: boolean,
-  allProviders: CredentialsProvidersContextType | null,
-) {
-  return nodeCredentialsUnknown && hasOwnCredentialFor([schema], allProviders);
+/**
+ * Whether a field's key is left for the user to pick: the steps' keys are
+ * unknown, the run needs the field, and the user has a key of their own that
+ * fits it. An optional field starts as it did before, on the platform's key.
+ */
+export function awaitsUserChoice({
+  schema,
+  isRequired,
+  nodeCredentialsUnknown = false,
+  allProviders,
+}: UserChoiceArgs) {
+  return (
+    nodeCredentialsUnknown &&
+    isRequired &&
+    hasOwnCredentialFor([schema], allProviders)
+  );
 }
 
 /**
@@ -121,16 +143,25 @@ export function isOwnCredential(
   return saved !== undefined && !isSystemCredential(saved);
 }
 
-/** Whether the user has a key of their own for any of these fields' providers. */
+/** Whether the user has a key of their own that fits any of these fields. */
 export function hasOwnCredentialFor(
   schemas: CredentialFieldSchema[],
   allProviders: CredentialsProvidersContextType | null,
 ) {
-  return schemas.some((schema) =>
-    (schema.credentials_provider ?? []).some((providerName) =>
-      (allProviders?.[providerName]?.savedCredentials ?? []).some(
-        (credential) => !isSystemCredential(credential),
-      ),
+  return schemas.some(
+    (schema) => findOwnCredentialProvider(schema, allProviders) !== undefined,
+  );
+}
+
+/** The first of a field's providers the user has a key of their own for that fits the field. */
+export function findOwnCredentialProvider(
+  schema: CredentialFieldSchema,
+  allProviders: CredentialsProvidersContextType | null,
+) {
+  return (schema.credentials_provider ?? []).find((providerName) =>
+    (allProviders?.[providerName]?.savedCredentials ?? []).some(
+      (credential) =>
+        !isSystemCredential(credential) && isUnderField(credential, schema),
     ),
   );
 }
@@ -157,8 +188,9 @@ function isCredentialsMetaInput(value: unknown): value is CredentialsMetaInput {
   );
 }
 
-// Whether a step's key sits under this field, which the run fills for every
-// step it covers. Scopes don't decide it: the field asks for all its steps'.
+// Whether a key sits under this field, which the run fills for every step it
+// covers: its provider, type and host fit. Scopes don't decide it: the field
+// asks for all its steps'.
 function isUnderField(
   credential: CredentialsMetaResponse,
   schema: CredentialFieldSchema,

@@ -51,6 +51,47 @@ const OTHER_KEY = {
 
 type Key = typeof USER_KEY;
 
+const FIRECRAWL_FIELD = {
+  credentials_provider: ["firecrawl"],
+  credentials_types: ["api_key"],
+  title: "Credentials",
+  type: "object",
+};
+
+// An LLM step whose model comes from a link: its field lists every LLM
+// provider, since which one the run needs isn't known before it runs.
+const LLM_FIELD = "anthropic-openai_api_key_credentials";
+const LLM_PICKER = "Select Openai credential";
+const LLM_FIELD_SCHEMA = {
+  credentials_provider: ["openai", "anthropic"],
+  credentials_types: ["api_key"],
+  discriminator: "model",
+  discriminator_mapping: { "gpt-4o": "openai", "claude-sonnet-4": "anthropic" },
+  title: "Credentials",
+  type: "object",
+};
+const OPENAI_PLATFORM_KEY = {
+  id: "openai-default",
+  provider: "openai",
+  type: "api_key",
+  title: "OpenAI API Key",
+  is_system: true,
+};
+const ANTHROPIC_PLATFORM_KEY = {
+  id: "anthropic-default",
+  provider: "anthropic",
+  type: "api_key",
+  title: "Anthropic API Key",
+  is_system: true,
+};
+const USER_OPENAI_KEY = {
+  id: "user-openai-key",
+  provider: "openai",
+  type: "api_key",
+  title: "My OpenAI key",
+  is_system: false,
+};
+
 // A step's saved inputs, with this key picked on it
 function inputsWith(key?: Key) {
   if (!key) return { url: "https://example.com" };
@@ -58,7 +99,7 @@ function inputsWith(key?: Key) {
     url: "https://example.com",
     credentials: {
       id: key.id,
-      provider: "firecrawl",
+      provider: key.provider,
       type: "api_key",
       title: key.title,
     },
@@ -122,24 +163,24 @@ function setSubWorkflowStepKeys(keys: Array<Key | undefined>) {
 function mockBuilderRun({
   stepKeys,
   subWorkflowStepKeys = [],
+  field = FIELD,
+  fieldSchema = FIRECRAWL_FIELD,
+  savedCredentials = [PLATFORM_KEY, USER_KEY, OTHER_KEY],
 }: {
   stepKeys: Array<Key | undefined>;
   subWorkflowStepKeys?: Array<Key | undefined>;
+  field?: string;
+  fieldSchema?: typeof FIRECRAWL_FIELD;
+  savedCredentials?: Key[];
 }) {
   const executeBodies: Array<{ credentials_inputs?: unknown }> = [];
+  const providers = fieldSchema.credentials_provider;
   useGraphStore.setState({
     inputSchema: null,
     credentialsInputSchema: {
       type: "object",
-      properties: {
-        [FIELD]: {
-          credentials_provider: ["firecrawl"],
-          credentials_types: ["api_key"],
-          title: "Credentials",
-          type: "object",
-        },
-      },
-      required: [FIELD],
+      properties: { [field]: fieldSchema },
+      required: [field],
     },
   });
   setStepKeys(stepKeys);
@@ -148,15 +189,15 @@ function mockBuilderRun({
   }
   server.use(
     http.get("*/api/integrations/providers", () =>
-      HttpResponse.json([
-        { name: "firecrawl", description: "Web scraping and crawling" },
-      ]),
+      HttpResponse.json(
+        providers.map((name) => ({ name, description: `${name} provider` })),
+      ),
     ),
     http.get("*/api/integrations/providers/system", () =>
-      HttpResponse.json(["firecrawl"]),
+      HttpResponse.json(providers),
     ),
     http.get("*/api/integrations/credentials", () =>
-      HttpResponse.json([PLATFORM_KEY, USER_KEY, OTHER_KEY]),
+      HttpResponse.json(savedCredentials),
     ),
     getPostV1ExecuteGraphAgentMockHandler(async ({ request }) => {
       executeBodies.push((await request.json()) as never);
@@ -192,8 +233,8 @@ function renderRunDialog() {
   };
 }
 
-async function expectPickerOn(key: { id: string }) {
-  const picker = await screen.findByRole("combobox", { name: PICKER });
+async function expectPickerOn(key: { id: string }, name = PICKER) {
+  const picker = await screen.findByRole("combobox", { name });
   await waitFor(() => expect((picker as HTMLSelectElement).value).toBe(key.id));
 }
 
@@ -207,6 +248,7 @@ async function expectPlatformKeyPicked() {
 
 async function runAndGetKey(
   executeBodies: Array<{ credentials_inputs?: unknown }>,
+  field = FIELD,
 ) {
   await userEvent.click(screen.getByRole("button", { name: "Manual Run" }));
   await waitFor(() => expect(executeBodies).toHaveLength(1));
@@ -214,7 +256,7 @@ async function runAndGetKey(
     executeBodies[0].credentials_inputs as
       | Record<string, { id?: string }>
       | undefined
-  )?.[FIELD]?.id;
+  )?.[field]?.id;
 }
 
 afterEach(() => {
@@ -341,4 +383,22 @@ test("a key the user picked in the builder dialog stays after the step's key cha
     await screen.findByRole("button", { name: SYSTEM_SECTION }),
   ).toBeDefined();
   expect(await runAndGetKey(executeBodies)).toBe(PLATFORM_KEY.id);
+});
+
+test("a builder run's LLM field, open to several providers, starts on the step's key and shows it", async () => {
+  const executeBodies = mockBuilderRun({
+    stepKeys: [USER_OPENAI_KEY],
+    field: LLM_FIELD,
+    fieldSchema: LLM_FIELD_SCHEMA,
+    savedCredentials: [
+      OPENAI_PLATFORM_KEY,
+      ANTHROPIC_PLATFORM_KEY,
+      USER_OPENAI_KEY,
+    ],
+  });
+  renderRunDialog();
+
+  await expectPickerOn(USER_OPENAI_KEY, LLM_PICKER);
+
+  expect(await runAndGetKey(executeBodies, LLM_FIELD)).toBe(USER_OPENAI_KEY.id);
 });
