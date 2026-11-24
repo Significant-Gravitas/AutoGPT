@@ -49,6 +49,7 @@ import {
 } from "./stream/turnRuntime";
 import type { PersistedRow } from "./stream/turnLog";
 import { useCopilotStop } from "./useCopilotStop";
+import { useRereadOnTurnEnd } from "./useRereadOnTurnEnd";
 
 const NOTICE_TEXT = {
   "catching-up": "Catching up…",
@@ -119,6 +120,7 @@ export function useCopilotRuntimeStream({
     runtime?.getSnapshot ?? emptySnapshot,
     runtime?.getSnapshot ?? emptySnapshot,
   );
+  useRereadOnTurnEnd(runtime);
   const isUserStoppingRef = useRef(snapshot.stopped);
   useInsertionEffect(() => {
     isUserStoppingRef.current = snapshot.stopped;

@@ -1532,6 +1532,127 @@ describe("two tabs on one chat", () => {
       );
     },
   );
+
+  cell(
+    "M6",
+    "a send from a tab that missed the other tab's whole turn shows that turn above its own",
+    async () => {
+      const stale = openTab();
+      await finishFirstTurn();
+      stale.send(P2);
+      await advance(0);
+      server.publish();
+      await advance(5_000);
+      expectScreen(
+        {
+          error: null,
+          chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER],
+        },
+        stale,
+      );
+    },
+  );
+
+  cell(
+    "M6n",
+    "a tab's next send after the other tab's whole turn shows that turn between its own",
+    async () => {
+      await finishFirstTurn();
+      const other = openTab();
+      other.send(P2);
+      await advance(0);
+      server.publish();
+      await advance(5_000);
+      tab.send(P3);
+      await advance(0);
+      server.publish();
+      await advance(5_000);
+      expectScreen({
+        error: null,
+        chat: [
+          `user: ${P1}`,
+          ANSWER,
+          `user: ${P2}`,
+          ANSWER,
+          `user: ${P3}`,
+          ANSWER,
+        ],
+      });
+    },
+  );
+
+  cell(
+    "M6l",
+    "a stale tab's send whose answer was lost, and whose turn ended while the tab was hidden, shows the other tab's turn above it",
+    async () => {
+      const stale = openTab();
+      await finishFirstTurn();
+      setVisibility("hidden");
+      server.postMode = "lost-after-receive";
+      stale.send(P2);
+      await advance(0);
+      server.publish();
+      await advance(60_000);
+      setVisibility("visible");
+      await advance(5_000);
+      expectScreen(
+        {
+          error: null,
+          chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER],
+        },
+        stale,
+      );
+    },
+  );
+
+  // What the page does when the server says a turn in the chat ended.
+  cell(
+    "M7",
+    "a turn the other tab ends while this tab is idle and visible shows once the server says so",
+    async () => {
+      await finishFirstTurn();
+      const other = openTab();
+      other.send(P2);
+      await advance(0);
+      server.publish();
+      await advance(5_000);
+      expectScreen({ chat: [`user: ${P1}`, ANSWER] });
+      tab.runtime.rereadIfIdle();
+      await advance(1_000);
+      expectScreen({
+        error: null,
+        chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER],
+      });
+    },
+  );
+
+  cell(
+    "M7f",
+    "the server's word that a turn ended reads nothing while this tab follows a turn",
+    async () => {
+      await streamFirstBlock();
+      const reads = server.viewReads;
+      tab.runtime.rereadIfIdle();
+      await advance(1_000);
+      expect(server.viewReads).toBe(reads);
+    },
+  );
+
+  cell(
+    "M7s",
+    "the server's word that this tab's own turn ended adds nothing to the turn's own read",
+    async () => {
+      tab.send(P1);
+      await advance(0);
+      server.publish();
+      await advance(100);
+      const reads = server.viewReads;
+      tab.runtime.rereadIfIdle();
+      await advance(5_000);
+      expect(server.viewReads - reads).toBe(1);
+      expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] });
+    },
+  );
 });
 
 describe("the page lifecycle", () => {

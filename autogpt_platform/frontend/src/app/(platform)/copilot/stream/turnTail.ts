@@ -274,13 +274,34 @@ export function gapSegment(
   rows: readonly PersistedRow[],
 ): RowsSegment | null {
   const tailEnd = tailEndSequence(segments);
-  if (tailEnd === null) return null;
-  const gap = rows.filter(
-    (r) => (r.sequence ?? -1) > tailEnd && (r.sequence ?? -1) < start,
-  );
-  return gap.length
-    ? { kind: "rows", key: `rows:${gap[0].sequence}`, rows: gap }
-    : null;
+  return tailEnd === null ? null : rowsBetween(tailEnd, start, rows);
+}
+
+/**
+ * Rows persisted between the tail before a prompt and the prompt's own row:
+ * another tab's or device's turn, which a tab that had not read it sent
+ * after. A tail that starts with the prompt owns every row from `ownedFrom`.
+ * None when the segment before ends at no known row, or the window starts
+ * past the gap.
+ */
+export function gapBeforePrompt(
+  segments: readonly Segment[],
+  index: number,
+  ownedFrom: number | null,
+  rows: readonly PersistedRow[],
+  windowStart: number,
+): RowsSegment | null {
+  const prompt = segments[index];
+  if (prompt?.kind !== "user" || prompt.sequence === null) return null;
+  const before = segments.slice(0, index);
+  const end =
+    before.length > 0
+      ? tailEndSequence(before)
+      : ownedFrom === null
+        ? null
+        : ownedFrom - 1;
+  if (end === null || windowStart > end + 1) return null;
+  return rowsBetween(end, prompt.sequence, rows);
 }
 
 export function tailEndSequence(segments: readonly Segment[]) {
@@ -468,6 +489,19 @@ function markerRow(key: string, content: string): LogRow {
     sequence: null,
     metadata: null,
   };
+}
+
+function rowsBetween(
+  after: number,
+  before: number,
+  rows: readonly PersistedRow[],
+): RowsSegment | null {
+  const gap = rows.filter(
+    (r) => (r.sequence ?? -1) > after && (r.sequence ?? -1) < before,
+  );
+  return gap.length
+    ? { kind: "rows", key: `rows:${gap[0].sequence}`, rows: gap }
+    : null;
 }
 
 function segmentStart(seg: Segment): number | null {

@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { emptyTurnLog, type LogRow, type PersistedRow } from "../turnLog";
 import {
+  gapBeforePrompt,
   locatePrompt,
   mergeRows,
   newTurnSegment,
@@ -136,6 +137,84 @@ describe("turnRows", () => {
 
     expect(persisted?.start).toBe(3);
     expect(persisted?.rows.map((r) => r.content)).toEqual(["Partial"]);
+  });
+});
+
+describe("gapBeforePrompt", () => {
+  // Another tab's turn (2, 3) landed before this tab's prompt (4).
+  const ROWS: PersistedRow[] = [
+    { role: "user", content: "lima", sequence: 0 },
+    { role: "assistant", content: "Lima.", sequence: 1 },
+    { role: "user", content: "mike", sequence: 2 },
+    { role: "assistant", content: "Mike.", sequence: 3 },
+    { role: "user", content: "november", sequence: 4 },
+    { role: "assistant", content: "November.", sequence: 5 },
+  ];
+  const sent = (text: string, sequence: number | null) => ({
+    ...userSegment(prompt(text), "sent"),
+    sequence,
+  });
+
+  it("takes the rows between where the tail starts and a prompt that opens it", () => {
+    // Sent from a view that ended at 1, so the tail claimed 2 onwards.
+    const gap = gapBeforePrompt([sent("november", 4)], 0, 2, ROWS, -Infinity);
+
+    expect(gap?.key).toBe("rows:2");
+    expect(gap?.rows.map((r) => r.content)).toEqual(["mike", "Mike."]);
+  });
+
+  it("takes the rows between the tail's last turn and the next prompt", () => {
+    const answered = newTurnSegment("turn-1", {
+      ...emptyTurnLog(),
+      rows: [row("block-1", "Lima.", 1)],
+    });
+    const segments: Segment[] = [
+      sent("lima", 0),
+      answered,
+      sent("november", 4),
+    ];
+
+    const gap = gapBeforePrompt(segments, 2, 0, ROWS, -Infinity);
+
+    expect(gap?.rows.map((r) => r.sequence)).toEqual([2, 3]);
+  });
+
+  it("takes nothing when the prompt follows the tail at once", () => {
+    expect(gapBeforePrompt([sent("mike", 2)], 0, 2, ROWS, -Infinity)).toBe(
+      null,
+    );
+  });
+
+  it("takes nothing while the segment before ends at no known row", () => {
+    // A turn not reconciled yet: its rows have no sequences.
+    const streaming = newTurnSegment("turn-1", {
+      ...emptyTurnLog(),
+      rows: [row("block-1", "Lima.", null)],
+    });
+    const segments: Segment[] = [
+      sent("lima", 0),
+      streaming,
+      sent("november", 4),
+    ];
+
+    expect(gapBeforePrompt(segments, 2, 0, ROWS, -Infinity)).toBe(null);
+  });
+
+  it("takes nothing for a prompt with no row yet", () => {
+    expect(
+      gapBeforePrompt([sent("november", null)], 0, 2, ROWS, -Infinity),
+    ).toBe(null);
+  });
+
+  it("takes nothing from a session window that starts inside the gap", () => {
+    const windowed = ROWS.slice(3);
+
+    expect(gapBeforePrompt([sent("november", 4)], 0, 2, windowed, 3)).toBe(
+      null,
+    );
+    expect(
+      gapBeforePrompt([sent("november", 4)], 0, 2, ROWS.slice(2), 2)?.rows,
+    ).toHaveLength(2);
   });
 });
 

@@ -24,6 +24,7 @@ import {
   chipKey,
   closeBlocks,
   FROZEN_NOTE,
+  gapBeforePrompt,
   gapSegment,
   hasOpenParts,
   INTERRUPTED_MARKER,
@@ -490,6 +491,18 @@ export class TurnRuntime {
       (s): s is TurnSegment => s.kind === "turn",
     );
     void this.probe(last?.log.turnId ?? null, CONTINUATION_PROBES, true);
+  }
+
+  /**
+   * The server says a turn in the chat ended, maybe another tab's or
+   * device's, or the live connection is back and may have missed one: an
+   * idle chat reads the session again. A turn this tab follows or just
+   * finished reads it anyway.
+   */
+  rereadIfIdle() {
+    if (this.disposed || this.recovering || this.probes > 0 || !this.isIdle())
+      return;
+    void this.reread();
   }
 
   dispose() {
@@ -1333,6 +1346,7 @@ export class TurnRuntime {
       row?.role === "user"
     ) {
       this.segments[index - 1] = withPromptRow(prompt, row);
+      this.placeGapBefore(index - 1, view, rows);
     }
   }
 
@@ -1354,9 +1368,10 @@ export class TurnRuntime {
         this.ownedFrom,
       );
       const row = locatePrompt(last, rows, floor);
-      if (row)
+      if (row) {
         this.segments[this.segments.length - 1] = withPromptRow(last, row);
-      else placed = false;
+        this.placeGapBefore(this.segments.length - 1, view, rows);
+      } else placed = false;
     }
     const gap =
       this.ownedFrom === null || !placed
@@ -1364,6 +1379,24 @@ export class TurnRuntime {
         : gapSegment(this.segments, Infinity, rows);
     if (gap) this.segments.push(gap);
     this.putBack(unwritten);
+  }
+
+  // A prompt sent from a tab that had not read another tab's or device's
+  // turn takes its row after that turn's; once it has its row, that turn
+  // shows above it.
+  private placeGapBefore(
+    index: number,
+    view: SessionView,
+    rows: readonly PersistedRow[],
+  ) {
+    const gap = gapBeforePrompt(
+      this.segments,
+      index,
+      this.ownedFrom,
+      rows,
+      windowStart(view, rows),
+    );
+    if (gap) this.segments.splice(index, 0, gap);
   }
 
   /**
@@ -1376,18 +1409,12 @@ export class TurnRuntime {
     rows: readonly PersistedRow[],
   ) {
     // A window that starts past a prompt's place can't show it has no row.
-    const windowStart =
-      view.has_more_messages === false
-        ? -Infinity
-        : (rows[0]?.sequence ?? Infinity);
+    const start = windowStart(view, rows);
     const taken: UserSegment[] = [];
     for (;;) {
       const index = this.segments.length - 1;
       const last = this.segments[index];
-      if (
-        last?.kind !== "user" ||
-        !this.isUnwritten(last, index, rows, windowStart)
-      )
+      if (last?.kind !== "user" || !this.isUnwritten(last, index, rows, start))
         break;
       taken.unshift(last);
       this.segments.pop();
@@ -1827,6 +1854,14 @@ function userMessage(id: string, input: SendInput): UIMessage {
 
 function str(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+// The first sequence a view can show anything about: its rows are a window
+// onto the session unless it says there are no more.
+function windowStart(view: SessionView, rows: readonly PersistedRow[]) {
+  return view.has_more_messages === false
+    ? -Infinity
+    : (rows[0]?.sequence ?? Infinity);
 }
 
 // JSON stays as sent, since the error handler reads its detail; a proxy's
