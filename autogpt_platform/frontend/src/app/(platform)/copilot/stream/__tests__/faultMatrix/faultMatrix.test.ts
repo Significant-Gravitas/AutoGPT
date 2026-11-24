@@ -2062,10 +2062,8 @@ describe("two tabs on one chat", () => {
       // `baseline/service_cancellation_test.py`: a cancelled baseline turn saves
       // its rows and no marker row.
       savePartialAnswerOnly();
-      const first = await readsOf(() => awayAndBack());
+      await readsOf(() => awayAndBack());
       const second = await readsOf(() => awayAndBack());
-      // eslint-disable-next-line no-console
-      console.log(`W1 reads: first=${first} second=${second}`);
       expect({ second, turn: stoppedTurn() }).toMatchObject({
         second: 1,
         turn: { stopped: true, reconciled: true },
@@ -2094,10 +2092,8 @@ describe("two tabs on one chat", () => {
       // The cancel loses the race: the turn ends as any other, with no marker.
       server.publish();
       await advance(100);
-      const first = await readsOf(() => awayAndBack());
+      await readsOf(() => awayAndBack());
       const second = await readsOf(() => awayAndBack());
-      // eslint-disable-next-line no-console
-      console.log(`W3 reads: first=${first} second=${second}`);
       expect({
         second,
         turn: stoppedTurn(),
