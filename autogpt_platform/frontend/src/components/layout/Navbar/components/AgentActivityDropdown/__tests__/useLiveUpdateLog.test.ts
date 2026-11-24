@@ -134,4 +134,49 @@ describe("reads of a single run against live updates and lists", () => {
 
     expect(log.updatesNewerThan(1, [], false)).toEqual([]);
   });
+
+  test("a read that settles after the log is reset is not accepted", () => {
+    const log = createLiveUpdateLog();
+    log.startRead(RUN);
+    // Activity unmounted while the read was out: the reset drops the
+    // registration, so the late answer must not repopulate the fresh log.
+    log.reset();
+
+    expect(
+      log.finishRead(RUN, status(RUN, AgentExecutionStatus.RUNNING)).accepted,
+    ).toBe(false);
+    const land = startList(log);
+    land(1);
+
+    expect(log.updatesNewerThan(1, [], false)).toEqual([]);
+  });
+
+  test("a gone answer that settles after the log is reset is not accepted", () => {
+    const log = createLiveUpdateLog();
+    log.startRead(RUN);
+    log.reset();
+
+    expect(log.finishRead(RUN, undefined, true).accepted).toBe(false);
+    // The stale "gone" must not drop an entry the fresh log learned since.
+    log.recordUpdate(status(RUN, AgentExecutionStatus.RUNNING));
+    const land = startList(log);
+    land(1);
+
+    expect(log.updatesNewerThan(1, [], false)).toEqual([
+      status(RUN, AgentExecutionStatus.RUNNING),
+    ]);
+  });
+
+  test("a read started after a reset is accepted", () => {
+    const log = createLiveUpdateLog();
+    log.startRead(RUN);
+    log.reset();
+    log.startRead(RUN);
+    const completed = status(RUN, AgentExecutionStatus.COMPLETED);
+    expect(log.finishRead(RUN, completed).accepted).toBe(true);
+    const land = startList(log);
+    land(1);
+
+    expect(log.updatesNewerThan(1, [], false)).toEqual([completed]);
+  });
 });

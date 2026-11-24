@@ -3,16 +3,27 @@ import {
   getGetV1ListAllExecutionsQueryKey,
   getV1GetExecutionDetails,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { getGetV1GetExecutionDetailsResponseMock } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
-import { AFTER_RECONNECT } from "@/tests/integrations/live-socket";
-import { act, waitFor, within } from "@/tests/integrations/test-utils";
+import { server } from "@/mocks/mock-server";
+import {
+  AFTER_RECONNECT,
+  installLiveSocket,
+} from "@/tests/integrations/live-socket";
+import { act, screen, waitFor, within } from "@/tests/integrations/test-utils";
 import { QueryClient } from "@tanstack/react-query";
+import { render as renderWithoutProviders } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { AccountMenuActivityRow } from "../AccountMenuActivityRow";
 import {
   OLD_RUN_STARTED,
   findRunOf,
   latestReadTaken,
+  providersFor,
   run,
+  serveActivity,
   showOldRunThenReconnect,
 } from "./account-menu-activity-harness";
 
@@ -142,8 +153,7 @@ test("a left-out run whose read fails stays as shown", async () => {
   // many reads the reconnect check takes.
   let answerFailedReads = true;
   const { list } = await showOldRunThenReconnect(
-    async () =>
-      answerFailedReads ? 500 : AgentExecutionStatus.COMPLETED,
+    async () => (answerFailedReads ? 500 : AgentExecutionStatus.COMPLETED),
     { queryClient },
   );
   await latestReadTaken();
@@ -286,4 +296,160 @@ test("a left-out run's read by ID doesn't take an answer that was already on its
   const oldRun = await findRunOf(list, "Old workflow");
   expect(oldRun.getByText(/^Awaiting approval /)).toBeDefined();
   expect(oldRun.queryByText(/running$/)).toBeNull();
+});
+
+test("a run that finished while the menu was closed is not shown as running on reopen", async () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const reads = vi.mocked(getV1GetExecutionDetails);
+  const newer = Array.from({ length: 250 }, (_, i) =>
+    run(`run-${i}`, AgentExecutionStatus.COMPLETED, "graph-busy"),
+  );
+  // The list never includes the old run: only the shared log could show it.
+  serveActivity(async () => newer, {
+    "graph-old": "Old workflow",
+    "graph-busy": "Busy workflow",
+  });
+  server.use(
+    http.get(
+      "/api/proxy/api/graphs/:graphId/executions/:graphExecId",
+      async () =>
+        HttpResponse.json({
+          ...getGetV1GetExecutionDetailsResponseMock(),
+          ...run("run-old", AgentExecutionStatus.RUNNING, "graph-old"),
+          inputs: {},
+          outputs: {},
+          node_executions: [],
+        }),
+    ),
+  );
+  const live = installLiveSocket();
+
+  const firstRender = renderWithoutProviders(<AccountMenuActivityRow />, {
+    wrapper: providersFor(queryClient),
+  });
+  await userEvent.click(
+    await screen.findByTestId("account-menu-activity-trigger"),
+  );
+  const list = await screen.findByTestId("agent-activity-dropdown");
+  const first = await live.acceptNext();
+  await live.publish(first, {
+    ...run("run-old", AgentExecutionStatus.RUNNING, "graph-old"),
+    started_at: OLD_RUN_STARTED,
+  });
+  expect(
+    (await findRunOf(list, "Old workflow")).getByText(/running$/),
+  ).toBeDefined();
+
+  // The menu closes while the run is still shown as going. The unmount
+  // resets the shared log, so the stale entry is gone on reopen.
+  firstRender.unmount();
+  renderWithoutProviders(<AccountMenuActivityRow />, {
+    wrapper: providersFor(queryClient),
+  });
+  await userEvent.click(
+    await screen.findByTestId("account-menu-activity-trigger"),
+  );
+  const reopened = await screen.findByTestId("agent-activity-dropdown");
+  // The reopened list has landed once a listed run shows.
+  await waitFor(() =>
+    expect(
+      within(reopened).queryAllByText("Busy workflow").length,
+    ).toBeGreaterThan(0),
+  );
+  await act(async () => {});
+  expect(within(reopened).queryByText("Old workflow")).toBeNull();
+  expect(reads.mock.calls.length).toBe(0);
+});
+
+test("a read that settles after the menu closed does not bring its run back", async () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const reads = vi.mocked(getV1GetExecutionDetails);
+  let readStarted = false;
+  let releaseRead = () => {};
+  const readHeld = new Promise<void>((resolve) => {
+    releaseRead = resolve;
+  });
+  releaseHeldList = releaseRead;
+  const newer = Array.from({ length: 250 }, (_, i) =>
+    run(`run-${i}`, AgentExecutionStatus.COMPLETED, "graph-busy"),
+  );
+  let requests = 0;
+  serveActivity(
+    async () => {
+      requests += 1;
+      if (requests === 1) return newer;
+      return [
+        run("run-new", AgentExecutionStatus.RUNNING, "graph-new"),
+        ...newer.slice(0, 249),
+      ];
+    },
+    {
+      "graph-old": "Old workflow",
+      "graph-busy": "Busy workflow",
+      "graph-new": "New workflow",
+    },
+  );
+  server.use(
+    http.get(
+      "/api/proxy/api/graphs/:graphId/executions/:graphExecId",
+      async () => {
+        readStarted = true;
+        await readHeld;
+        return HttpResponse.json({
+          ...getGetV1GetExecutionDetailsResponseMock(),
+          ...run("run-old", AgentExecutionStatus.RUNNING, "graph-old"),
+          inputs: {},
+          outputs: {},
+          node_executions: [],
+        });
+      },
+    ),
+  );
+  const live = installLiveSocket();
+
+  const firstRender = renderWithoutProviders(<AccountMenuActivityRow />, {
+    wrapper: providersFor(queryClient),
+  });
+  await userEvent.click(
+    await screen.findByTestId("account-menu-activity-trigger"),
+  );
+  const list = await screen.findByTestId("agent-activity-dropdown");
+  const first = await live.acceptNext();
+  await live.publish(first, {
+    ...run("run-old", AgentExecutionStatus.RUNNING, "graph-old"),
+    started_at: OLD_RUN_STARTED,
+  });
+  expect(
+    (await findRunOf(list, "Old workflow")).getByText(/running$/),
+  ).toBeDefined();
+
+  // The reconnect starts a read of the left-out run; hold it, then close
+  // the menu while it is out.
+  await live.drop(first);
+  await live.acceptNext();
+  expect(await findRunOf(list, "New workflow", AFTER_RECONNECT)).toBeDefined();
+  await vi.waitFor(() => expect(readStarted).toBe(true));
+
+  firstRender.unmount();
+  // The read settles after the unmount reset: its answer must not land in
+  // the fresh log or revive the run.
+  releaseRead();
+  await latestReadTaken();
+
+  renderWithoutProviders(<AccountMenuActivityRow />, {
+    wrapper: providersFor(queryClient),
+  });
+  await userEvent.click(
+    await screen.findByTestId("account-menu-activity-trigger"),
+  );
+  const reopened = await screen.findByTestId("agent-activity-dropdown");
+  expect(await findRunOf(reopened, "New workflow")).toBeDefined();
+  await act(async () => {});
+  expect(within(reopened).queryByText("Old workflow")).toBeNull();
+  // No fresh read went out on reopen: the stale answer satisfied nothing.
+  expect(reads.mock.calls.length).toBe(1);
 });
