@@ -103,7 +103,7 @@ The scripts set the channel's server addresses themselves, because `eas update` 
 
 ### Minimum version
 
-The backend's `MOBILE_MIN_APP_VERSION` setting (for example `0.2.0`) is the oldest app version it still lets in. The app reads it from the public `/api/platform-config` at launch and whenever it comes back to the front, before sign-in. An older app shows "Update AutoGPT" with a button to its store page and goes no further. Empty, the default, lets every version in; so does a server that doesn't answer within four seconds.
+The backend's `MOBILE_MIN_APP_VERSION` setting (for example `0.2.0`) is the oldest app version it still lets in. The app reads it from the public `/api/platform-config` at launch and whenever it comes back to the front, before sign-in. An older app shows "Update AutoGPT" with a button to its store page and goes no further. An empty setting, the default, lets every version in. If the initial check fails or the server does not answer within four seconds, the app lets you in. A failed check on return to the foreground keeps the last answer, so an app already blocked stays blocked.
 
 Both builds share one app ID, so a phone holds one of them at a time. On Android, moving between a `dev` APK and the Play build means uninstalling first, because the two are signed with different keys. Only submit builds from the `production` profile to the stores.
 
