@@ -96,7 +96,7 @@ from .activity_status_generator import (
     generate_activity_status_for_execution,
 )
 from .automod.manager import automod_manager
-from .block_credentials import acquire_block_credentials
+from .block_credentials import acquire_block_credentials, unused_credentials_fields
 from .cluster_lock import ClusterLock
 from .nesting import sub_workflow_depth
 from .node_tracing import (
@@ -479,22 +479,12 @@ def _drop_unused_credentials(node: Node, inputs: BlockInput) -> BlockInput:
     if input_schema is None:  # an unknown block; validation reports it
         return dropped
     input_model = cast(type[BlockSchema], input_schema)
-    required_fields = input_model.get_required_fields()
-    for field_name, field_info in input_model.get_credentials_fields_info().items():
-        if not field_info.discriminator or field_name in required_fields:
-            continue
-        discriminator_value = inputs.get(
-            field_info.discriminator,
-            node.input_default.get(field_info.discriminator),
-        )
-        try:
-            unused = not field_info.requires_credentials(discriminator_value)
-        except TypeError:  # an unhashable linked value: validation reports it
-            continue
-        if unused:
-            if field_name in inputs:
-                dropped[field_name] = inputs[field_name]
-            inputs[field_name] = None
+    for field_name in unused_credentials_fields(
+        input_model, inputs, node.input_default
+    ):
+        if field_name in inputs:
+            dropped[field_name] = inputs[field_name]
+        inputs[field_name] = None
     return dropped
 
 

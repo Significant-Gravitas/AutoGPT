@@ -27,7 +27,10 @@ from backend.data.auth.api_key import APIKeyInfo
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.execution import ExecutionContext, ExecutionTrigger
-from backend.executor.block_credentials import acquire_direct_block_credentials
+from backend.executor.block_credentials import (
+    acquire_direct_block_credentials,
+    named_credential_ids,
+)
 from backend.executor.direct_block_execution import (
     DirectBlockExecutionBusyError,
     DirectBlockExecutionLimitError,
@@ -142,7 +145,7 @@ async def execute_graph_block(
             status_code=403,
             detail=f"Block #{block_id} can only run inside a workflow.",
         )
-    if _names_a_stored_credential(obj, data) and (
+    if named_credential_ids(obj, data) and (
         missing := [p for p in _STORED_CREDENTIALS_SCOPES if p not in auth.scopes]
     ):
         raise HTTPException(
@@ -184,19 +187,6 @@ _STORED_CREDENTIALS_SCOPES = (
     APIKeyPermission.WRITE_LIBRARY,
     APIKeyPermission.EXECUTE_GRAPH,
 )
-
-
-def _names_a_stored_credential(block: AnyBlockSchema, data: BlockInput) -> bool:
-    schema = block.input_schema
-    fields = [
-        *schema.get_credentials_fields(),
-        *(info["field_name"] for info in schema.get_auto_credentials_fields().values()),
-    ]
-    return any(
-        isinstance(value := data.get(field), dict)
-        and (value.get("id") or value.get("_credentials_id"))
-        for field in fields
-    )
 
 
 async def _run_direct_block(

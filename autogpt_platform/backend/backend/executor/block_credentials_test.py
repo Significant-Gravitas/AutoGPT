@@ -4,6 +4,7 @@ These drive the routes against the real credential store: whose credential a run
 may use is decided there, and a mocked store would decide it for the test.
 """
 
+import asyncio
 import time
 import uuid
 from datetime import UTC, datetime
@@ -28,7 +29,10 @@ from backend.blocks.code_executor import ExecuteCodeBlock
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.model import APIKeyCredentials
 from backend.data.user import get_or_create_user
-from backend.integrations.credentials_store import IntegrationCredentialsStore
+from backend.integrations.credentials_store import (
+    IntegrationCredentialsStore,
+    e2b_credentials,
+)
 from backend.util.test import SpinTestServer
 
 ROUTES = ["internal", "external"]
@@ -84,23 +88,33 @@ async def test_a_block_that_needs_credentials_runs_on_the_callers_stored_credent
 
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize("route", ROUTES)
-@pytest.mark.parametrize("credential", ["missing", "another user's"])
+@pytest.mark.parametrize(
+    "credential, refusal",
+    [
+        ("missing", "needs credentials in field 'credentials'"),
+        ("another user's", "needs credentials in field 'credentials'"),
+        ("the platform's", "field 'credentials' are the platform's own"),
+    ],
+)
 async def test_a_credential_the_caller_cannot_use_is_refused_before_the_charge(
     route: str,
     credential: str,
+    refusal: str,
     caller: str,
     spend: AsyncMock,
     sandbox_keys: list[str],
 ):
     if credential == "missing":
         block_input = {"code": "print(1)"}
-    else:
+    elif credential == "another user's":
         block_input = _code_input(await _store_e2b_key(await _user()))
+    else:
+        block_input = _code_input(e2b_credentials)
 
     response = await _execute(route, caller, ExecuteCodeBlock(), block_input)
 
     assert response.status_code == 400, response.text
-    assert "'credentials'" in response.json()["detail"]
+    assert refusal in response.json()["detail"]
     spend.assert_not_awaited()
     assert sandbox_keys == []
 
@@ -124,20 +138,72 @@ async def test_an_expired_stored_key_is_refused_before_the_charge(
 
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize("route", ROUTES)
+@pytest.mark.parametrize("auth", [{"auth": "anonymous"}, {}], ids=["chosen", "default"])
+@pytest.mark.parametrize("leftover", [False, True], ids=["none", "stale"])
 async def test_a_block_whose_credentials_are_optional_runs_without_any(
-    route: str, caller: str, spend: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    route: str,
+    auth: dict,
+    leftover: bool,
+    caller: str,
+    spend: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
 ):
+    """Anonymous AnySearch ignores a credential it doesn't use, even one that's gone."""
+
     async def _search(self, credentials, payload):
         return {"code": 0, "message": "success", "data": {"results": []}}
 
     monkeypatch.setattr(AnySearchBlock, "_search", _search)
+    block_input: dict = {"query": "q", **auth}
+    if leftover:
+        block_input["credentials"] = {
+            "id": str(uuid.uuid4()),
+            "provider": "anysearch",
+            "type": "api_key",
+            "title": "Deleted key",
+        }
 
     response = await _execute(
-        route, caller, AnySearchBlock(), {"query": "q", "auth": "anonymous"}
+        route,
+        caller,
+        AnySearchBlock(),
+        block_input,
+        scopes=(APIKeyPermission.EXECUTE_BLOCK,),
     )
 
     assert response.status_code == 200, response.text
     assert response.json()["results"] == [[]]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("route", ROUTES)
+async def test_a_credential_another_run_holds_answers_409_without_waiting_it_out(
+    route: str,
+    caller: str,
+    spend: AsyncMock,
+    sandbox_keys: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def _held_by_another_run(*_args, **_kwargs):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(
+        "backend.executor.block_credentials._get_node_credentials",
+        _held_by_another_run,
+    )
+    monkeypatch.setattr(
+        "backend.executor.block_credentials.DIRECT_CREDENTIALS_WAIT_SECONDS", 0.2
+    )
+    credential = await _store_e2b_key(caller)
+
+    response = await asyncio.wait_for(
+        _execute(route, caller, ExecuteCodeBlock(), _code_input(credential)),
+        timeout=10,
+    )
+
+    assert response.status_code == 409, response.text
+    spend.assert_not_awaited()
+    assert sandbox_keys == []
 
 
 @pytest.mark.asyncio(loop_scope="session")

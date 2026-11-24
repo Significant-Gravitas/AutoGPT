@@ -4,6 +4,7 @@ Shared by the graph executor and the direct block-execute routes, so a block get
 its credentials the same way however it is run.
 """
 
+import asyncio
 import inspect
 import logging
 from typing import Any
@@ -27,12 +28,16 @@ from backend.integrations.credentials_store import (
     provider_matches,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.util.exceptions import ConflictError
 from backend.util.logging import TruncatedLogger
 from backend.util.request import HTTPClientError
 
 from .auto_credentials import acquire_auto_credentials
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[BlockCredentials]")
+
+# How long a direct run waits for a credential another run holds.
+DIRECT_CREDENTIALS_WAIT_SECONDS = 10
 
 
 class CredentialsUnavailableError(ValueError):
@@ -45,6 +50,10 @@ class CredentialsUnavailableError(ValueError):
 
 class DirectBlockCredentialsError(ValueError):
     """A direct block run's input does not give the block the credentials it needs."""
+
+
+class CredentialsInUseError(ConflictError):
+    """Another run holds a credential a direct block run needs."""
 
 
 class BlockCredentials:
@@ -231,17 +240,42 @@ async def acquire_direct_block_credentials(
 
     Raises:
         DirectBlockCredentialsError: A credentials field the block's ``run()``
-            requires is empty, or names a credential the caller doesn't have or
-            one of another provider or type. The app answers it with a 400.
+            requires is empty, or names one of the platform's credentials, one the
+            caller doesn't have, or one of another provider or type. The app
+            answers it with a 400.
+        CredentialsInUseError: Another run held a credential past
+            ``DIRECT_CREDENTIALS_WAIT_SECONDS``. The app answers it with a 409.
     """
-    try:
-        credentials = await acquire_block_credentials(
-            block.input_schema,
-            input_data,
-            IntegrationCredentialsManager(),
-            user_id,
-            user_timezone=user_timezone,
+    for field_name in unused_credentials_fields(
+        block.input_schema, input_data, _schema_defaults(block.input_schema)
+    ):
+        input_data[field_name] = None
+    # Nothing settles a direct run's usage afterwards, so the platform's keys stay out.
+    if platform := [
+        field
+        for field, cred_id in named_credential_ids(block, input_data)
+        if is_system_credential(cred_id)
+    ]:
+        raise DirectBlockCredentialsError(
+            f"The credentials in field '{platform[0]}' are the platform's own, which "
+            "only a workflow run can use. Pass one of your stored credentials."
         )
+    try:
+        credentials = await asyncio.wait_for(
+            acquire_block_credentials(
+                block.input_schema,
+                input_data,
+                IntegrationCredentialsManager(),
+                user_id,
+                user_timezone=user_timezone,
+            ),
+            timeout=DIRECT_CREDENTIALS_WAIT_SECONDS,
+        )
+    except TimeoutError as e:
+        raise CredentialsInUseError(
+            "A credential this block needs is in use by another run. "
+            "Try again once it finishes."
+        ) from e
     except CredentialsUnavailableError as e:
         raise DirectBlockCredentialsError(
             f"The credentials in field '{e.field_name}' are not in your account, "
@@ -259,6 +293,60 @@ async def acquire_direct_block_credentials(
             "pass the id, provider and type of one of your stored credentials."
         )
     return credentials
+
+
+def named_credential_ids(
+    block: AnyBlockSchema, input_data: BlockInput
+) -> list[tuple[str, str]]:
+    """The used credentials fields of ``input_data`` that name a stored credential,
+    each with that credential's id."""
+    schema = block.input_schema
+    unused = set(
+        unused_credentials_fields(schema, input_data, _schema_defaults(schema))
+    )
+    fields = [
+        *schema.get_credentials_fields(),
+        *(info["field_name"] for info in schema.get_auto_credentials_fields().values()),
+    ]
+    return [
+        (field, cred_id)
+        for field in fields
+        if field not in unused
+        and isinstance(value := input_data.get(field), dict)
+        and (cred_id := value.get("id") or value.get("_credentials_id"))
+    ]
+
+
+def unused_credentials_fields(
+    input_model: type[BlockSchema], inputs: BlockInput, defaults: BlockInput
+) -> list[str]:
+    """Optional credentials fields that the selected discriminator does not use.
+
+    An empty or stale credential in one would otherwise fail its nested schema, or
+    its lookup, for a run that was never going to touch that provider.
+    """
+    required_fields = input_model.get_required_fields()
+    unused = []
+    for field_name, field_info in input_model.get_credentials_fields_info().items():
+        if not field_info.discriminator or field_name in required_fields:
+            continue
+        discriminator_value = inputs.get(
+            field_info.discriminator, defaults.get(field_info.discriminator)
+        )
+        try:
+            if not field_info.requires_credentials(discriminator_value):
+                unused.append(field_name)
+        except TypeError:  # an unhashable linked value: validation reports it
+            continue
+    return unused
+
+
+def _schema_defaults(input_model: type[BlockSchema]) -> BlockInput:
+    """A direct request's stand-in for a node's saved inputs: the schema's defaults."""
+    properties = input_model.jsonschema().get("properties", {})
+    return {
+        name: prop["default"] for name, prop in properties.items() if "default" in prop
+    }
 
 
 def _unfilled_credentials_fields(
