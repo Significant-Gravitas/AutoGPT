@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { APIKeyInfo } from "@/app/api/__generated__/models/aPIKeyInfo";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   Tooltip,
@@ -11,7 +12,7 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 
 import { APIKeyInfoDialog } from "../APIKeyInfoDialog/APIKeyInfoDialog";
-import { formatLastUsed, maskAPIKey } from "../APIKeyList/helpers";
+import { maskAPIKey } from "../APIKeyList/helpers";
 import {
   CheckmarkSquare02Icon,
   Delete02Icon,
@@ -35,12 +36,11 @@ export function APIKeyRow({
 }: Props) {
   const [infoOpen, setInfoOpen] = useState(false);
   const maskedKey = maskAPIKey(apiKey.head, apiKey.tail);
-  const lastUsedLabel = formatLastUsed(apiKey.last_used_at);
 
   return (
     <div
       data-selected={selected}
-      className="flex items-center justify-between py-4 pl-3 pr-5 transition-colors data-[selected=true]:bg-surface-hover"
+      className="flex items-center justify-between py-4 pr-5 pl-3 transition-colors data-[selected=true]:bg-surface-hover"
     >
       <div className="flex items-center gap-3">
         <button
@@ -63,7 +63,7 @@ export function APIKeyRow({
         </button>
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <Text variant="body-medium" as="span" className="text-textBlack">
+            <Text variant="body-medium" as="span">
               {apiKey.name}
             </Text>
             <TooltipProvider>
@@ -83,15 +83,17 @@ export function APIKeyRow({
             </TooltipProvider>
           </div>
           <div className="flex items-center gap-3 whitespace-nowrap">
-            <Text variant="label" as="span" className="text-foreground-body">
+            <Text variant="label" as="span" tone="body">
               {maskedKey}
             </Text>
-            <Text
-              variant="small"
-              as="span"
-              className="leading-5 text-foreground-tertiary"
-            >
-              {lastUsedLabel}
+            <Text variant="small-loose" as="span" tone="muted">
+              {apiKey.last_used_at ? (
+                <>
+                  Used <RelativeTime date={apiKey.last_used_at} />
+                </>
+              ) : (
+                "Never used"
+              )}
             </Text>
           </div>
         </div>

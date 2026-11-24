@@ -7,7 +7,18 @@ import {
 } from "@/lib/constants";
 import { getClientIPToken } from "@/lib/auth/client-ip-token";
 import { getCountryToken } from "@/lib/auth/country-token";
+import { authTokenUnavailableResponse } from "@/lib/auth/server/authTokenUnavailableResponse";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
+import {
+  isSessionRejection,
+  readServerSession,
+} from "@/lib/auth/server/getServerSession";
+import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
+import {
+  fetchRetryingDroppedConnection,
+  getFetchFailureCode,
+} from "@/lib/dropped-connection-retry";
+import { ImpersonationState } from "@/lib/impersonation";
 import { environment } from "@/services/environment";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -18,6 +29,7 @@ import {
   getSafePrivateMediaRange,
   shouldBufferPrivateMedia,
   getWorkspaceDownloadErrorMessage,
+  hardenRelayedResponseHeaders,
   isPrivateStoreMediaRequest,
   isPrivateStoreVideoRequest,
   isStoreSearchRequest,
@@ -117,6 +129,7 @@ async function buildForwardHeaders(
     const value = req.headers.get(name);
     if (value) headers.set(name, value);
   }
+  await keepImpersonationOnlyForItsOwner(req, headers);
   headers.set("accept-encoding", BACKEND_ACCEPT_ENCODING);
   // The visitor's country as the edge saw it, signed so the backend can tell
   // it from one a caller typed. Without it the country is unknown, which the
@@ -132,6 +145,37 @@ async function buildForwardHeaders(
     headers.set("authorization", `Bearer ${token}`);
   }
   return headers;
+}
+
+// The browser sends X-Act-As-User-Id itself, so forward it only when the
+// session making the request is the admin who chose that target (per the
+// impersonation cookie). Anything else goes out as the caller themselves.
+async function keepImpersonationOnlyForItsOwner(
+  req: NextRequest,
+  headers: Headers,
+): Promise<void> {
+  const requested = headers.get(IMPERSONATION_HEADER_NAME);
+  if (!requested) return;
+
+  const allowed = await ImpersonationState.getServerSide(
+    async (name) => req.cookies.get(name)?.value ?? null,
+    async () => {
+      const session = await readServerSession().catch((error) => {
+        if (isSessionRejection(error)) return null;
+        // Without the session there's no telling whose target this is, and
+        // dropping the header would run the request on the admin's account.
+        throw new Error("Couldn't check the impersonation session", {
+          cause: error,
+        });
+      });
+      if (!session?.user) return null;
+      return {
+        id: session.user.id,
+        role: (session.user as { role?: string | null }).role,
+      };
+    },
+  );
+  if (allowed !== requested) headers.delete(IMPERSONATION_HEADER_NAME);
 }
 
 function filterResponseHeaders(src: Headers): Headers {
@@ -275,7 +319,9 @@ async function handler(
 
     let backendResponse: Response;
     try {
-      backendResponse = await fetch(backendUrl, {
+      // A GET or HEAD whose pooled connection turns out to be dead is sent
+      // once more, inside the same deadlines.
+      backendResponse = await fetchRetryingDroppedConnection(backendUrl, {
         method,
         headers,
         body: responseStart.body,
@@ -294,6 +340,7 @@ async function handler(
     }
 
     const responseHeaders = filterResponseHeaders(backendResponse.headers);
+    hardenRelayedResponseHeaders(path, responseHeaders);
     if (isPrivateMedia) {
       hardenPrivateMediaResponseHeaders(responseHeaders);
       // Vercel silently drops the tail of large streamed binary bodies, so
@@ -316,12 +363,25 @@ async function handler(
       headers: responseHeaders,
     });
   } catch (error) {
+    if (error instanceof AuthTokenUnavailableError) {
+      const response = authTokenUnavailableResponse(error);
+      if (isPrivateMedia) {
+        hardenPrivateMediaResponseHeaders(response.headers);
+      }
+      return response;
+    }
     const timedOut = isTimeoutError(error);
     const errorMessage = timedOut
       ? "Proxy request timed out"
       : "Proxy request failed";
+    // "fetch failed" alone doesn't say whether the connection was reset,
+    // refused or never resolved; the cause's code does.
+    const failureCode = getFetchFailureCode(error);
+    const failureKind = failureCode ? ` (${failureCode})` : "";
     if (isPrivateMedia) {
-      console.error(`Private media proxy ${method} failed: ${errorMessage}`);
+      console.error(
+        `Private media proxy ${method} failed: ${errorMessage}${failureKind}`,
+      );
       const response = NextResponse.json(
         { error: errorMessage },
         { status: timedOut ? 504 : 502 },
@@ -330,7 +390,10 @@ async function handler(
       return response;
     }
 
-    console.error(`Proxy error for ${method} /${path.join("/")}:`, error);
+    console.error(
+      `Proxy error for ${method} /${path.join("/")}${failureKind}:`,
+      error,
+    );
     return NextResponse.json(
       {
         error: errorMessage,

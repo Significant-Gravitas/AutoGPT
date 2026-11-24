@@ -97,19 +97,21 @@ function EventCard({ event }: { event: IcsData }) {
     <div className="flex h-full w-full flex-col items-center justify-center gap-0.5 bg-surface p-3 text-center">
       {date ? (
         <>
-          <span className="text-sm font-bold uppercase leading-none tracking-wide text-error">
+          <span className="text-body leading-none font-bold tracking-wide text-error uppercase">
             {weekdayLabel(date)}
           </span>
-          <span className="text-4xl font-bold leading-none text-foreground-strong">
+          <span className="text-title leading-none font-bold text-foreground-strong">
             {date.day}
           </span>
         </>
       ) : null}
-      <span className="mt-1.5 line-clamp-2 text-sm font-medium text-foreground-emphasis">
+      <span className="mt-1.5 line-clamp-2 text-body font-medium text-foreground-emphasis">
         {event.summary ?? "Event"}
       </span>
       {timeRange ? (
-        <span className="text-xs text-foreground-secondary">{timeRange}</span>
+        <span className="text-caption text-foreground-secondary">
+          {timeRange}
+        </span>
       ) : null}
     </div>
   );
@@ -139,33 +141,33 @@ function ContactCard({ contact }: { contact: VcardData }) {
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-surface p-3 text-center">
       {contact.photo ? (
-        // eslint-disable-next-line @next/next/no-img-element
+        // eslint-disable-next-line @next/next/no-img-element -- a contact photo from an arbitrary host, which next/image would need configured
         <img
           src={contact.photo}
           alt={contact.name ?? "Contact"}
           className="h-14 w-14 rounded-full object-cover"
         />
       ) : (
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-active text-lg font-semibold text-foreground-secondary">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-active text-lead font-semibold text-foreground-secondary">
           {initials(contact.name ?? "")}
         </div>
       )}
-      <span className="truncate text-sm font-medium text-foreground-strong">
+      <span className="truncate text-body font-medium text-foreground-strong">
         {contact.name}
       </span>
       {contact.title || contact.org ? (
-        <span className="truncate text-xs text-foreground-tertiary">
+        <span className="truncate text-caption text-foreground-tertiary">
           {[contact.title, contact.org].filter(Boolean).join(" · ")}
         </span>
       ) : null}
       {contact.tel ? (
-        <span className="flex items-center gap-1 text-xs text-foreground-tertiary">
+        <span className="flex items-center gap-1 text-caption text-foreground-tertiary">
           <Icon icon={CallIcon} size={12} className="shrink-0" />
           <span className="truncate">{contact.tel}</span>
         </span>
       ) : null}
       {contact.email ? (
-        <span className="flex items-center gap-1 text-xs text-foreground-tertiary">
+        <span className="flex items-center gap-1 text-caption text-foreground-tertiary">
           <Icon icon={Mail02Icon} size={12} className="shrink-0" />
           <span className="truncate">{contact.email}</span>
         </span>

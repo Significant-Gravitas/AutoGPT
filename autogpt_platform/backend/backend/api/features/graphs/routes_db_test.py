@@ -3,9 +3,16 @@ from uuid import uuid4
 import pytest
 from autogpt_libs.auth.models import RequestContext
 from prisma.actions import AgentGraphActions
+from prisma.models import AgentGraph
 from pytest_mock import MockerFixture
 
-from backend.api.features.graphs.routes import get_graph, get_graph_all_versions
+from backend.api.features.graphs.routes import (
+    get_graph,
+    get_graph_all_versions,
+    update_graph,
+)
+from backend.api.features.library import db as library_db
+from backend.api.features.orgs.db import get_user_default_team
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.code_executor import ExecuteCodeBlock
 from backend.blocks.github.issues import GithubCommentBlock
@@ -96,6 +103,49 @@ async def test_a_listed_version_walks_both_versions_of_a_sub_graph_it_calls(
     assert listed.credentials_input_schema == single.credentials_input_schema
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_saving_a_graph_id_that_belongs_to_somebody_else_saves_a_copy(
+    server: SpinTestServer,
+) -> None:
+    """A graph ID belongs to its creator; anyone else's save is their own copy."""
+    creator, editor = await _new_user(), await _new_user()
+    created = await graph_db.create_graph(
+        graph_db.Graph(name="Workflow", description=""), creator
+    )
+    await AgentGraph.prisma().create(
+        data={
+            "id": created.id,
+            "version": 2,
+            "name": "Workflow",
+            "description": "",
+            "isActive": True,
+            "userId": editor,
+        }
+    )
+    [in_library] = await graph_db.get_graph_all_versions(created.id, editor)
+    await library_db.create_library_agent(in_library, editor)
+    org_id, team_id = await get_user_default_team(editor)
+    assert org_id
+    ctx = _request_context(editor, org_id=org_id, team_id=team_id)
+
+    saved = await update_graph(
+        created.id,
+        graph_db.Graph(id=created.id, name="Workflow, edited", description=""),
+        editor,
+        ctx,
+    )
+
+    copy = saved.graph
+    assert (copy.user_id, copy.version) == (editor, 1)
+    assert copy.name == "Workflow, edited (copy)"
+    assert (copy.forked_from_id, copy.forked_from_version) == (created.id, 2)
+    assert await library_db.get_library_agent_by_graph_id(editor, copy.id)
+    rows = await AgentGraph.prisma().find_many(
+        where={"id": created.id}, order={"version": "asc"}
+    )
+    assert [(row.version, row.userId) for row in rows] == [(1, creator), (2, editor)]
+
+
 async def _new_user() -> str:
     user_id = str(uuid4())
     await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
@@ -117,11 +167,13 @@ async def _leaf_graphs(user_id: str) -> list[graph_db.GraphModel]:
     ]
 
 
-def _request_context(user_id: str) -> RequestContext:
+def _request_context(
+    user_id: str, org_id: str | None = None, team_id: str | None = None
+) -> RequestContext:
     return RequestContext(
         user_id=user_id,
-        org_id=str(uuid4()),
-        team_id=None,
+        org_id=org_id or str(uuid4()),
+        team_id=team_id,
         is_org_owner=True,
         is_org_admin=True,
         is_org_billing_manager=False,

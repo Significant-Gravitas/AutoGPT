@@ -6,26 +6,33 @@ import { describe, expect, it } from "vitest";
 
 import { BlockUIType } from "@/app/(platform)/build/components/types";
 import { render } from "@/tests/integrations/test-utils";
+import { expectTypingKept } from "@/tests/integrations/typing";
 
 import { FormRenderer } from "../FormRenderer";
 
-interface DictionaryData {
-  prompt_values: Record<string, string>;
+type DictionaryData = Record<string, Record<string, string>>;
+
+function schemaFor(field: string): RJSFSchema {
+  return {
+    type: "object",
+    properties: {
+      [field]: {
+        title: "Dictionary",
+        type: "object",
+        additionalProperties: { type: "string" },
+      },
+    },
+  };
 }
 
-const schema: RJSFSchema = {
-  type: "object",
-  properties: {
-    prompt_values: {
-      title: "Prompt values",
-      type: "object",
-      additionalProperties: { type: "string" },
-    },
-  },
-};
-
-function DictionaryForm({ values }: { values: Record<string, string> }) {
-  const [data, setData] = useState<DictionaryData>({ prompt_values: values });
+function DictionaryForm({
+  values,
+  field = "prompt_values",
+}: {
+  values: Record<string, string>;
+  field?: string;
+}) {
+  const [data, setData] = useState<DictionaryData>({ [field]: values });
 
   function handleChange(event: IChangeEvent<DictionaryData>) {
     if (event.formData) setData(event.formData);
@@ -34,7 +41,7 @@ function DictionaryForm({ values }: { values: Record<string, string> }) {
   return (
     <>
       <FormRenderer
-        jsonSchema={schema}
+        jsonSchema={schemaFor(field)}
         handleChange={handleChange}
         uiSchema={{}}
         initialValues={data}
@@ -50,10 +57,10 @@ function DictionaryForm({ values }: { values: Record<string, string> }) {
   );
 }
 
-function readDictionary(): Record<string, string> {
+function readDictionary(field = "prompt_values"): Record<string, string> {
   return JSON.parse(
     screen.getByLabelText("Stored dictionary").textContent || "{}",
-  ).prompt_values;
+  )[field];
 }
 
 describe("Dictionary input preservation", () => {
@@ -104,6 +111,44 @@ describe("Dictionary input preservation", () => {
     });
   });
 
+  it("trims whitespace around a prompt-values key when it is blurred", async () => {
+    render(<DictionaryForm values={{ title: "Keep this value" }} />);
+
+    const key = screen.getByDisplayValue("title");
+    fireEvent.change(key, { target: { value: "  name \t" } });
+    fireEvent.blur(key);
+
+    await waitFor(() => {
+      expect(readDictionary()).toEqual({ name: "Keep this value" });
+      expect(screen.getByDisplayValue("name")).toBeDefined();
+    });
+  });
+
+  it("keeps whitespace in the keys of other dictionaries", async () => {
+    render(<DictionaryForm field="values" values={{ title: "Keep this" }} />);
+
+    const key = screen.getByDisplayValue("title");
+    fireEvent.change(key, { target: { value: " name " } });
+    fireEvent.blur(key);
+
+    await waitFor(() => {
+      expect(readDictionary("values")).toEqual({ " name ": "Keep this" });
+    });
+  });
+
+  it("keeps the old key when a key of only whitespace is blurred", async () => {
+    render(<DictionaryForm values={{ title: "Keep this value" }} />);
+
+    const key = screen.getByDisplayValue("title");
+    fireEvent.change(key, { target: { value: "   " } });
+    fireEvent.blur(key);
+
+    await waitFor(() => {
+      expect(readDictionary()).toEqual({ title: "Keep this value" });
+      expect(screen.getByDisplayValue("title")).toBeDefined();
+    });
+  });
+
   it("removes an entry only through its remove action", async () => {
     render(<DictionaryForm values={{ title: "Remove this value" }} />);
 
@@ -137,4 +182,61 @@ describe("Dictionary input preservation", () => {
       expect(screen.getByDisplayValue("First")).toBeDefined();
     });
   });
+});
+
+describe("Integer dictionary values beyond 2^53", () => {
+  const intSchema: RJSFSchema = {
+    type: "object",
+    properties: {
+      ids: {
+        title: "Ids",
+        type: "object",
+        additionalProperties: { type: "integer" },
+      },
+    },
+  };
+
+  type IntData = { ids: Record<string, unknown> };
+
+  function IntForm() {
+    const [data, setData] = useState<IntData>({ ids: { id: -9 } });
+    return (
+      <>
+        <FormRenderer
+          jsonSchema={intSchema}
+          handleChange={(event: IChangeEvent<IntData>) => {
+            if (event.formData) setData(event.formData);
+          }}
+          uiSchema={{}}
+          initialValues={data}
+          formContext={{
+            nodeId: "int-node",
+            uiType: BlockUIType.STANDARD,
+            showHandles: false,
+            size: "small",
+          }}
+        />
+        <output aria-label="Stored data">{JSON.stringify(data)}</output>
+      </>
+    );
+  }
+
+  it.each([
+    ["223372036854775807", '{"ids":{"id":"-9223372036854775807"}}'],
+    ["2", '{"ids":{"id":-92}}'],
+  ])(
+    "stores -9%s typed into a dictionary value exactly",
+    async (text, stored) => {
+      render(<IntForm />);
+
+      await expectTypingKept(
+        screen.getByRole("spinbutton") as HTMLInputElement,
+        text,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("Stored data").textContent).toBe(stored);
+      });
+    },
+  );
 });

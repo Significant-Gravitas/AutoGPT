@@ -42,3 +42,8 @@ export function isNoModelError(error: unknown) {
     error.response?.detail === "chat_transport_not_configured"
   );
 }
+
+/** The backend refused a follow-up because its turn had already ended. */
+export function isQueueRefusal(error: unknown) {
+  return error instanceof Error && error.name === "QueueFollowUpNotActiveError";
+}

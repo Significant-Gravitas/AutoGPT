@@ -8,23 +8,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/atoms/Select/components/SelectPrimitives";
-import { ArrowDownNarrowWideIcon } from "lucide-react";
+import { SortByDown02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { useLibrarySortMenu } from "./useLibrarySortMenu";
 
 interface Props {
+  librarySort: LibraryAgentSort;
   setLibrarySort: (value: LibraryAgentSort) => void;
 }
 
-export function LibrarySortMenu({ setLibrarySort }: Props) {
+export function LibrarySortMenu({ librarySort, setLibrarySort }: Props) {
   const { handleSortChange } = useLibrarySortMenu({ setLibrarySort });
   return (
     <div className="flex items-center" data-testid="sort-by-dropdown">
-      <span className="hidden whitespace-nowrap text-sm text-foreground-tertiary sm:inline">
+      <span className="hidden text-body whitespace-nowrap text-foreground-tertiary sm:inline">
         sort by
       </span>
-      <Select onValueChange={handleSortChange}>
-        <SelectTrigger className="!m-0 ml-1 w-fit space-x-1 border-none !bg-transparent px-[1rem] text-sm underline underline-offset-4 !shadow-none !ring-offset-transparent">
-          <ArrowDownNarrowWideIcon className="h-4 w-4 sm:hidden" />
+      <Select value={librarySort} onValueChange={handleSortChange}>
+        <SelectTrigger
+          // oxlint-disable-next-line design-system/no-restyle -- Select has no inline link-style trigger variant
+          className="!m-0 ml-1 w-fit space-x-1 border-none !bg-transparent px-4 text-body underline underline-offset-4 !shadow-none !ring-offset-transparent"
+        >
+          <Icon
+            aria-hidden
+            icon={SortByDown02Icon}
+            className="h-4 w-4 sm:hidden"
+          />
           <SelectValue placeholder="Last Modified" />
         </SelectTrigger>
         <SelectContent>

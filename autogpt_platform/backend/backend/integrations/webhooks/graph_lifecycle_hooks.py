@@ -3,9 +3,13 @@ import logging
 from typing import TYPE_CHECKING, Optional, cast, overload
 
 from backend.blocks._base import BlockSchema
+from backend.blocks.autopilot import AutoPilotTransport
+from backend.copilot.constants import AUTOPILOT_BLOCK_ID
 from backend.data.graph import set_node_webhook
 from backend.data.integrations import get_webhook
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.util.exceptions import GraphActivationError, SharedCredentialsRefusedError
+from backend.util.url_redaction import mask_credential
 
 from . import get_webhook_manager, supports_webhooks
 
@@ -17,15 +21,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 credentials_manager = IntegrationCredentialsManager()
-
-
-class GraphActivationError(Exception):
-    """Raised when a graph cannot be activated (e.g. a required credential is
-    missing, revoked, or its OAuth token can no longer be refreshed).
-
-    Callers in the API layer should map this to HTTP 400 so the user sees a
-    clear, actionable message instead of an opaque 500.
-    """
 
 
 async def before_graph_activate(graph: "GraphModel", user_id: str) -> "GraphModel":
@@ -140,6 +135,9 @@ def _apply_credential_result(
     (OAuth refresh raised, infra error) as "unusable" — failures are
     logged here so the caller doesn't have to.
     """
+    if isinstance(result, SharedCredentialsRefusedError):
+        raise GraphActivationError(str(result))
+
     refresh_error: str | None = None
     unavailable = False
     if isinstance(result, BaseException):
@@ -181,13 +179,18 @@ def _apply_credential_result(
 
     # If the credential field is optional (has a default in the schema, or
     # node metadata marks it optional), clear the stale reference instead
-    # of blocking the save.
+    # of blocking the save. An infra failure says nothing about the
+    # credential, so keep the reference and fail below instead.
     creds_field_optional = (
         new_node.credentials_optional
         or creds_field_name not in block_input_schema.get_required_fields()
     )
-    if creds_field_optional:
-        new_node.input_default[creds_field_name] = {}
+    if creds_field_optional and not unavailable:
+        # A stored node says "not configured" by leaving the key out, as the
+        # builder does; an id-less object fails the field's credentials
+        # schema anywhere it isn't cleared first.
+        _preserve_legacy_autopilot_transport(new_node, creds_field_name)
+        new_node.input_default.pop(creds_field_name, None)
         logger.warning(
             f"Node #{new_node.id}: cleared stale optional "
             f"credentials #{creds_meta['id']} for "
@@ -223,6 +226,23 @@ def _apply_credential_result(
     )
 
 
+def _preserve_legacy_autopilot_transport(
+    new_node: "Node | NodeModel", creds_field_name: str
+) -> None:
+    """A submitted legacy AutoPilot node encodes ChatGPT billing as the
+    presence of `codex_credentials` and has no `transport`. Persist that
+    choice before dropping a deleted reference so `AutoPilotBlock.run`
+    reports the missing connection instead of billing platform credits.
+    """
+    if creds_field_name != "codex_credentials":
+        return
+    if new_node.input_default.get("transport") is not None:
+        return
+    if new_node.block_id != AUTOPILOT_BLOCK_ID:
+        return
+    new_node.input_default["transport"] = AutoPilotTransport.CODEX_APP_SERVER.value
+
+
 async def on_graph_deactivate(graph: "GraphModel", user_id: str):
     """
     Hook to be called when a graph is deactivated/deleted.
@@ -230,7 +250,8 @@ async def on_graph_deactivate(graph: "GraphModel", user_id: str):
     ⚠️ Assuming node entities are not re-used between graph versions, ⚠️
     this hook calls `on_node_deactivate` on all nodes in `graph`.
     """
-    get_credentials = credentials_manager.cached_getter(user_id)
+    # A webhook registered earlier on a platform key must still deregister.
+    get_credentials = credentials_manager.cached_getter(user_id, allow_sdk_default=True)
     updated_nodes = []
     for node in graph.nodes:
         block_input_schema = cast(BlockSchema, node.block.input_schema)
@@ -293,7 +314,7 @@ async def on_node_deactivate(
 
     if webhook_id := node.webhook_id:
         logger.warning(
-            f"Node #{node.id} still attached to webhook #{webhook_id} - "
+            f"Node #{node.id} still attached to webhook #{mask_credential(webhook_id)} - "
             "did migration by `migrate_legacy_triggered_graphs` fail? "
             "Triggered nodes are deprecated since Significant-Gravitas/AutoGPT#10418."
         )
@@ -306,7 +327,7 @@ async def on_node_deactivate(
         # Prune and deregister the webhook if it is no longer used anywhere
         logger.debug(
             f"Pruning{' and deregistering' if credentials else ''} "
-            f"webhook #{webhook_id}"
+            f"webhook #{mask_credential(webhook_id)}"
         )
         await webhooks_manager.prune_webhook_if_dangling(
             user_id, webhook_id, credentials
@@ -316,7 +337,7 @@ async def on_node_deactivate(
             and not credentials
         ):
             logger.warning(
-                f"Cannot deregister webhook #{webhook_id}: credentials "
+                f"Cannot deregister webhook #{mask_credential(webhook_id)}: credentials "
                 f"#{webhook.credentials_id} not available "
                 f"({webhook.provider.value} webhook ID: {webhook.provider_webhook_id})"
             )

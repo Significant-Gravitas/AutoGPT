@@ -36,6 +36,13 @@ def turn_started(turn_id: str) -> None:
         _deferred[turn_id] = []
 
 
+def running_here(turn_id: str) -> bool:
+    """Whether turn *turn_id* runs in this process: started, and its
+    done-callback not yet run."""
+    with _lock:
+        return turn_id in _deferred
+
+
 def turn_finished(turn_id: str) -> list[Work]:
     """The work *turn_id* deferred, for its done-callback to run."""
     with _lock:

@@ -34,7 +34,7 @@ vi.mock("@/providers/onboarding/onboarding-provider", async (original) => ({
   useOnboarding: () => onboarding.current,
 }));
 
-// The profile menu's feedback row talks to Tally and Sentry's replay.
+// The profile menu's feedback row talks to Tally and PostHog's replay.
 vi.mock("@/components/molecules/TallyPoup/useTallyFeedback", () => ({
   useTallyFeedback: () => ({
     isFormVisible: false,

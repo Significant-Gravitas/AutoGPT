@@ -64,7 +64,7 @@ def _paying_user(monkeypatch: pytest.MonkeyPatch) -> None:
         "get_redis_async",
         AsyncMock(return_value=MagicMock(get=AsyncMock(return_value=None))),
     )
-    monkeypatch.setattr(sdk_service, "get_user_tier", AsyncMock(return_value=None))
+    monkeypatch.setattr(sdk_service, "_graphiti_enabled", lambda _user_id: False)
     monkeypatch.setattr(
         sdk_service,
         "_fetch_graphiti_context",

@@ -47,7 +47,7 @@ export function TrialCardContent({
       <Skeleton
         className={cn(
           "w-full",
-          // TODO(tokens): no radius token for 18px.
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- 18px matches the billing cards this skeleton stands in for
           isBilling ? "h-28 rounded-[18px]" : "h-36 rounded-2xl",
         )}
       />
@@ -83,7 +83,7 @@ export function TrialCardContent({
         <p
           role="alert"
           data-slot="trial-card-content-error"
-          className="mt-3 text-sm text-destructive"
+          className="mt-3 text-body text-error"
         >
           {error}
         </p>
@@ -106,7 +106,7 @@ export function TrialCardContent({
         className="flex w-full flex-col gap-2 py-4"
       >
         <div data-slot="trial-card-content-heading" className="sr-only">
-          <Text variant="body-medium" as="span" className="text-textBlack">
+          <Text variant="body-medium" as="span">
             {trial.eligible ? "Free trial" : "Your plan"}
           </Text>
         </div>

@@ -55,7 +55,7 @@ export function BlockDomainDialog({
       ) : null}
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <Text variant="body" className="text-foreground-secondary">
+          <Text variant="body" tone="secondary">
             No one can sign up with an @{dialog.domain} address until the block
             ends. Accounts that already exist aren&apos;t affected unless you
             ban them below.
@@ -75,7 +75,7 @@ export function BlockDomainDialog({
                     dialog.setAlsoBan(checked === true)
                   }
                 />
-                <Text variant="body" as="span" className="text-foreground-body">
+                <Text variant="body" as="span" tone="body">
                   Also ban the{" "}
                   {pluralize(dialog.banCount || existing, "existing account")}{" "}
                   on this domain

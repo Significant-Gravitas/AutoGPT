@@ -2,7 +2,7 @@ import json
 import re
 import urllib.parse
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
@@ -12,6 +12,7 @@ import fastapi.testclient
 import httpx
 import pytest
 import pytest_mock
+from autogpt_libs.auth import forget_account_state, remember_account_closed
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi.routing import APIRoute
 from prisma.actions import UserActions
@@ -23,7 +24,11 @@ from pytest_snapshot.plugin import Snapshot
 from backend.api.model import RECOGNIZED_TERMS_VERSIONS, UserConsentResponse
 from backend.api.rest_api import app as real_app
 from backend.data.model import User
-from backend.data.notifications import AudienceAction, NotificationResult
+from backend.data.notifications import (
+    AudienceAction,
+    NotificationPreference,
+    NotificationResult,
+)
 from backend.data.user import (
     generate_preference_link,
     get_or_create_user,
@@ -73,6 +78,16 @@ def setup_app_auth(mock_jwt_user, setup_test_user, test_user_id):
     app.dependency_overrides[get_request_context] = _fake_request_context
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def held_sign_in_connection(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """The connection a sign-up's Google or Microsoft sign-in left waiting."""
+    return mocker.patch(
+        "backend.api.features.user.routes.keep_held_sign_in_connection",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
 
 
 # Auth endpoints tests
@@ -130,6 +145,29 @@ def test_get_or_create_user_route_reports_creation(
     assert response.headers["X-AutoGPT-User-Created"] == "true"
 
 
+def test_setting_up_an_account_keeps_the_connection_its_sign_up_brought(
+    mocker: pytest_mock.MockFixture,
+    held_sign_in_connection: AsyncMock,
+    test_user_id: str,
+) -> None:
+    # The sign-up's handoff came before this request created the account, so
+    # its connection waited for it; this request still reports the creation.
+    mock_user = Mock()
+    mock_user.id = test_user_id
+    mock_user.created_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    mock_user.model_dump.return_value = {"id": test_user_id}
+    mocker.patch(
+        "backend.api.features.user.routes.get_or_create_user_with_status",
+        return_value=Mock(user=mock_user, was_created=True),
+    )
+
+    response = client.post("/auth/user")
+
+    assert response.status_code == 200
+    assert response.headers["X-AutoGPT-User-Created"] == "true"
+    held_sign_in_connection.assert_awaited_once_with(test_user_id)
+
+
 @pytest.mark.parametrize("was_created", [False, True])
 def test_get_or_create_user_route_flags_an_internal_sign_in(
     mocker: pytest_mock.MockFixture, test_user_id: str, was_created: bool
@@ -143,6 +181,7 @@ def test_get_or_create_user_route_flags_an_internal_sign_in(
         return_value=Mock(user=mock_user, was_created=was_created),
     )
     mark = mocker.patch("backend.api.features.user.routes.mark_internal_on_sign_in")
+    mocker.patch("backend.api.features.user.routes.set_tier_on_sign_in")
 
     assert client.post("/auth/user").status_code == 200
 
@@ -152,6 +191,34 @@ def test_get_or_create_user_route_flags_an_internal_sign_in(
         mark.assert_called_once_with(test_user_id, "test@example.com", "user")
 
 
+@pytest.mark.parametrize("was_created", [False, True])
+def test_get_or_create_user_route_sets_the_tier_at_a_sign_in(
+    mocker: pytest_mock.MockFixture, test_user_id: str, was_created: bool
+) -> None:
+    """A sign-in sets the stored tier on the PostHog person (SECRT-3411); a
+    new account gets it from the signup sync."""
+    mock_user = Mock(
+        id=test_user_id,
+        email="test@example.com",
+        subscription_tier=SubscriptionTier.BUSINESS,
+    )
+    mock_user.created_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    mock_user.model_dump.return_value = {"id": test_user_id}
+    mocker.patch(
+        "backend.api.features.user.routes.get_or_create_user_with_status",
+        return_value=Mock(user=mock_user, was_created=was_created),
+    )
+    mocker.patch("backend.api.features.user.routes.mark_internal_on_sign_in")
+    fill = mocker.patch("backend.api.features.user.routes.set_tier_on_sign_in")
+
+    assert client.post("/auth/user").status_code == 200
+
+    if was_created:
+        fill.assert_not_called()
+    else:
+        fill.assert_called_once_with(test_user_id, SubscriptionTier.BUSINESS)
+
+
 def test_get_or_create_user_route_documents_creation_header() -> None:
     response_schema = app.openapi()["paths"]["/auth/user"]["post"]["responses"]["200"]
 
@@ -159,6 +226,48 @@ def test_get_or_create_user_route_documents_creation_header() -> None:
         "description": "Whether this request created a new user",
         "schema": {"type": "string", "enum": ["true", "false"]},
     }
+
+
+@pytest.fixture
+def closed_account() -> Iterator[str]:
+    """Signed in as an account its owner deleted: a token minted before the
+    close still verifies, so the backend itself must refuse it."""
+    user_id = f"closed-{uuid.uuid4()}"
+    app.dependency_overrides[get_jwt_payload] = lambda: {
+        "sub": user_id,
+        "role": "user",
+        "email": f"{user_id}@example.com",
+    }
+    remember_account_closed(user_id)
+    yield user_id
+    forget_account_state(user_id)
+
+
+@pytest.mark.parametrize(
+    "method,path,provision",
+    [
+        ("POST", "/auth/user", "get_or_create_user_with_status"),
+        ("GET", "/auth/user/timezone", "get_or_create_user"),
+    ],
+)
+def test_a_closed_account_is_refused_and_never_provisioned(
+    mocker: pytest_mock.MockFixture,
+    closed_account: str,
+    method: str,
+    path: str,
+    provision: str,
+) -> None:
+    """Both routes create the User row from the token when it is missing, so
+    after erasure they would bring a deleted account back."""
+    provisioned = mocker.patch(
+        f"backend.api.features.user.routes.{provision}", new_callable=AsyncMock
+    )
+
+    response = client.request(method, path)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "This account is closed."}
+    provisioned.assert_not_awaited()
 
 
 def _consented_user(user_id: str, opted_out_at: datetime | None) -> User:
@@ -478,6 +587,33 @@ def test_the_frontend_terms_version_is_recognized() -> None:
 
     assert shown is not None
     assert shown.group(1) in RECOGNIZED_TERMS_VERSIONS
+
+
+def test_update_preferences_accepts_a_reserved_domain_address(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """The settings pages post the account's own address back with every save.
+    Validating it failed every save with a 422 for a stored address EmailStr
+    rejects, such as a reserved `.test` domain (AUTOGPT-SERVER-5E4)."""
+    stored = NotificationPreference(user_id=test_user_id, email="test-1@autogpt.test")
+    update = mocker.patch(
+        "backend.api.features.user.routes.update_user_notification_preference",
+        return_value=stored,
+    )
+
+    response = client.post(
+        "/auth/user/preferences",
+        json={
+            "email": "test-1@autogpt.test",
+            "briefing_frequency": "WEEKLY",
+            "alerts_enabled": True,
+            "store_verdicts_enabled": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["email"] == "test-1@autogpt.test"
+    assert update.call_args.args[1].email == "test-1@autogpt.test"
 
 
 # Invalid request tests

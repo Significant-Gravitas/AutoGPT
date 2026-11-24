@@ -30,6 +30,12 @@ const mockUseAuth = vi.hoisted(() => ({
   current: { isLoggedIn: true, isUserLoading: false },
 }));
 
+const REPLAY = "https://eu.posthog.com/project/1/replay/session-1?t=10";
+const mockReplay = vi.hoisted(() => ({ url: "" }));
+vi.mock("@/services/analytics/posthog-request-context", () => ({
+  getPostHogReplayUrl: () => mockReplay.url,
+}));
+
 vi.mock("@/lib/auth/actions", () => mockAuth);
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => mockUseAuth.current,
@@ -51,6 +57,7 @@ describe("AccountMenuFeedbackRow", () => {
     mockSidebar.current = null;
     mockUseAuth.current = { isLoggedIn: true, isUserLoading: false };
     mockAuth.getCurrentUser.mockReset();
+    mockReplay.url = "";
     window.history.replaceState({}, "", "/library?sort=updatedAt");
     tally = stubTallyEmbed();
   });
@@ -82,6 +89,18 @@ describe("AccountMenuFeedbackRow", () => {
         },
       }),
     );
+  });
+
+  test("links the feedback to the person's PostHog replay when there is one", async () => {
+    mockReplay.url = REPLAY;
+    fireEvent.click(await renderRow());
+    await tally.finishLoading();
+
+    expect(tally.popupOptions().hiddenFields).toEqual({
+      posthogReplayUrl: REPLAY,
+      pageUrl: `${window.location.origin}/library`,
+      isAuthenticated: "true",
+    });
   });
 
   test("later clicks open the form without loading Tally again", async () => {

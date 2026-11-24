@@ -16,6 +16,10 @@ installation you intend to keep.
   `linux/amd64` or `linux/arm64`. Building locally also requires Docker Buildx.
 - More than the measured 5–6 GiB of appliance memory use, with additional
   headroom for agents, local models, and workload growth.
+- To build the image from source instead of pulling it, more than 8 GiB of
+  memory available to Docker while it builds. The frontend build step alone
+  peaks at about 7.5 GiB, so a build limited to 8 GiB can still be killed
+  partway through. On a smaller host, use the published image.
 - Host storage with enough capacity and throughput for the image, the growing
   `/data` volume, and at least one complete compressed backup archive alongside
   the live data. Shutdown and backup time depend on storage throughput and fsync
@@ -44,6 +48,27 @@ tag or manifest digest. Docker image tags map to source releases as follows:
   commits are built and tested in CI but not published.
 
 `canary-sha-*` tags are unsupported pre-release validation artifacts.
+
+Release images carry a signed build provenance attestation, a record that this
+repository's release workflow built the image from the release's commit. To
+check an image before you run it, use the [GitHub CLI](https://cli.github.com/),
+signed in with `gh auth login`:
+
+```bash
+gh attestation verify oci://docker.io/significantgravitas/autogpt:vX.Y.Z \
+  --repo Significant-Gravitas/AutoGPT \
+  --signer-workflow Significant-Gravitas/AutoGPT/.github/workflows/platform-single-container-docker.yml \
+  --source-ref refs/tags/autogpt-platform-beta-vX.Y.Z
+```
+
+Use the same version in both places: `--source-ref` accepts only an
+attestation made from that release's tag, not one made from a branch. The
+attestation covers the multi-platform image the tag points to, so check the tag
+or that image's digest, not the digest of one platform's image.
+
+The check shows where and how the image was built, not that its code is safe.
+Images released before attestations were added have none, so the command
+finds nothing for them.
 
 To build from source instead, run Docker Buildx Bake from the repository root:
 
@@ -250,13 +275,19 @@ callbacks, cookies, and generated links.
 For LAN or remote access, keep AutoGPT bound to loopback and place it behind a
 TLS reverse proxy running outside the AutoGPT container. The proxy provides
 HTTPS and forwards requests to port `3000`; AutoGPT handles application routing
-internally.
+internally. The container keeps an idle connection open for 620 seconds, longer
+than nginx, Caddy and Traefik keep one by default, so the proxy is the one that
+closes it. That limit is fixed in the image, not a setting, so if your proxy
+keeps idle connections longer than that, lower the proxy's idle timeout:
+otherwise it now and then sends a request on a connection the container is
+closing, and answers 502.
 
 Before exposing the proxy, complete the [Account policy](#account-policy)
 bootstrap, promote the intended administrator, and close new-account signup.
-The bundled nginx records the external proxy as the immediate client, so the
-proxy must preserve its own client-attribution logs and enforce any per-client
-IP rate limits or access rules.
+Set `TRUSTED_PROXIES` on the container to that proxy's addresses, so the
+bundled nginx reads the visitor's address from `X-Forwarded-For` and the
+sign-in limits, IP blocks and sign-in log see each visitor rather than the
+proxy; see [Client IP Addresses](client-ip.md#the-single-container-image).
 
 Set `AUTOGPT_PUBLIC_URL` to the browser-visible HTTPS origin, for example:
 
@@ -1181,6 +1212,9 @@ logs a warning, and startup continues without the catalog. Set
 - Required email verification is unsupported.
 - The prebuilt frontend cannot configure Google Picker public keys at runtime.
 - Remote TLS termination is operator-supplied.
-- The local `bash_exec` fallback depends on host support for Bubblewrap user and
-  network namespaces. Do not make the entire appliance privileged to work
-  around a host that disables them.
+- The local `bash_exec` fallback depends on host support for Bubblewrap user,
+  network and PID namespaces, and on a host `/proc` the sandbox can mount its
+  own copy of: an appliance started with Docker's default masked `/proc` runs no
+  command, and reports the setting to change (`--security-opt
+  systempaths=unconfined`, or `procMount: Unmasked` on Kubernetes). Do not make
+  the entire appliance privileged to work around a host that disables them.

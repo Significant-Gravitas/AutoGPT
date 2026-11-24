@@ -6,15 +6,15 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ConnectServiceDialog } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/ConnectServiceDialog";
-import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
+import { formatProviderList } from "@/components/contextual/IntegrationsPanel/helpers";
 import { SkillFileViewer } from "@/components/contextual/SkillPackage/SkillFileViewer";
 import { SkillPackageFileList } from "@/components/contextual/SkillPackage/SkillPackageFileList";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import { cn } from "@/lib/utils";
-import { formatTimeAgo } from "@/lib/utils/time";
 import { ArrowLeft02Icon, BookOpen01Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -92,24 +92,21 @@ export function SkillPage({ slug }: Props) {
       <header>
         <div className="flex flex-wrap items-center gap-4 sm:gap-5">
           <span
-            // TODO(tokens): no fitting role for ring-black/5 #141414; #141414 is foreground-base (a text colour)
-            className="inline-flex h-18 w-18 shrink-0 items-center justify-center rounded-2xl bg-surface shadow-sm ring-1 ring-black/5"
+            className={cn(
+              "inline-flex h-18 w-18 shrink-0 items-center justify-center rounded-2xl bg-surface shadow-sm ring-1 ring-foreground-base/5",
+              accent.icon,
+            )}
           >
-            <Icon
-              icon={BookOpen01Icon}
-              size={32}
-              className={accent.icon}
-              aria-hidden
-            />
+            <Icon icon={BookOpen01Icon} size={32} aria-hidden />
           </span>
           <div className="min-w-0 flex-1">
-            <h1 className="text-heading font-semibold leading-8 tracking-heading text-foreground-strong">
+            <h1 className="text-heading leading-8 font-semibold tracking-heading text-foreground-strong">
               {title}
             </h1>
             {icon && skill.categories[0] ? (
               <span
                 className={cn(
-                  "mt-2 inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium",
+                  "mt-2 inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-caption font-medium",
                   accent.pill,
                 )}
               >
@@ -130,10 +127,7 @@ export function SkillPage({ slug }: Props) {
           />
         </div>
 
-        <p
-          // TODO(tokens): SECRT-3152 rare size: text-[17px]
-          className="mt-5 max-w-[60ch] text-[17px] leading-7 text-foreground-secondary"
-        >
+        <p className="mt-5 max-w-[60ch] text-body-lg leading-7 text-foreground-secondary">
           {skill.description}
         </p>
 
@@ -159,7 +153,9 @@ export function SkillPage({ slug }: Props) {
           {skill.updated_at ? (
             <>
               <span aria-hidden>·</span>
-              <span>Updated {formatTimeAgo(String(skill.updated_at))}</span>
+              <span>
+                Updated <RelativeTime date={skill.updated_at} variant="short" />
+              </span>
             </>
           ) : null}
           {skill.source_repo ? (
@@ -172,8 +168,7 @@ export function SkillPage({ slug }: Props) {
                     href={skill.source_url}
                     target="_blank"
                     rel="noreferrer"
-                    // TODO(tokens): no fitting role for decoration-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (a text colour), border-strong (a border colour)
-                    className="underline decoration-zinc-300 underline-offset-2 hover:text-foreground-strong"
+                    className="underline decoration-foreground-disabled underline-offset-2 hover:text-foreground-strong"
                   >
                     {skill.source_repo}
                   </a>
@@ -202,7 +197,7 @@ export function SkillPage({ slug }: Props) {
         </div>
 
         {isAdded && pendingConnections.length > 0 ? (
-          <ConnectStep names={pendingConnections} onConnect={openConnect} />
+          <ConnectStep providers={pendingConnections} onConnect={openConnect} />
         ) : null}
       </header>
 
@@ -245,7 +240,7 @@ export function SkillPage({ slug }: Props) {
               {skill.triggers.map((trigger) => (
                 <span
                   key={trigger}
-                  className="rounded-lg bg-surface-hover px-2.5 py-1 text-sm font-medium text-foreground-secondary"
+                  className="rounded-lg bg-surface-hover px-2.5 py-1 text-body font-medium text-foreground-secondary"
                 >
                   {trigger}
                 </span>
@@ -318,12 +313,4 @@ function SkillPageSkeleton() {
       </div>
     </main>
   );
-}
-
-function formatProviderList(providers: string[]): string {
-  const names = providers.map(formatProviderName).filter(Boolean);
-  return new Intl.ListFormat("en", {
-    style: "long",
-    type: "conjunction",
-  }).format(names);
 }

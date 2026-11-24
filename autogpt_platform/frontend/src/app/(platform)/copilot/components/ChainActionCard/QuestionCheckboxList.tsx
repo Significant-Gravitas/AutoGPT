@@ -87,7 +87,7 @@ export const QuestionCheckboxList = forwardRef<
             onClick={() => onToggle(option)}
             onKeyDown={(event) => handleKeyDown(event, index)}
             className={
-              "flex items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left text-base leading-snug transition-all " +
+              "flex items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left text-body-lg leading-snug transition-all " +
               (isSelected
                 ? "bg-surface text-foreground-strong ring-2 ring-action"
                 : "bg-surface-muted text-foreground-body ring-1 ring-separator hover:bg-surface-hover")
@@ -99,7 +99,7 @@ export const QuestionCheckboxList = forwardRef<
                 "flex size-5 shrink-0 items-center justify-center rounded-md transition-colors " +
                 (isSelected
                   ? "bg-action text-action-foreground"
-                  : "ring-1 ring-inset ring-border-strong")
+                  : "ring-1 ring-border-strong ring-inset")
               }
             >
               {isSelected && <Icon icon={Tick02Icon} size={13} />}

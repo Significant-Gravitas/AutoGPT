@@ -19,6 +19,7 @@ import {
 import { useElapsedTimer } from "../../JobStatsBar/useElapsedTimer";
 import { PendingImageThumbnail } from "./MessageImageThumbnail";
 import { ThinkingIndicator } from "./ThinkingIndicator";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   pendingSend: PendingUploadSend;
@@ -57,24 +58,27 @@ function PendingArtifactCard({ attachment }: CardProps) {
       <Icon
         icon={classification.icon}
         size={20}
-        className="shrink-0 text-foreground-subtle"
+        tone="subtle"
+        className="shrink-0"
       />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground-strong">
+        <Text variant="body-medium-tight" tone="primary" className="truncate">
           {attachment.name}
-        </p>
-        <p className="text-xs text-foreground-subtle">
-          <span className="inline-block rounded-full bg-info-surface px-1.5 py-0.5 text-xs font-medium text-info">
+        </Text>
+        <Text variant="small-tight" tone="subtle">
+          <span className="inline-block rounded-full bg-info-surface px-1.5 py-0.5 text-caption font-medium text-info">
             {classification.label}
           </span>
           {attachment.sizeBytes ? ` • ${formatSize(attachment.sizeBytes)}` : ""}
-        </p>
+        </Text>
       </div>
       {attachment.isUploading && (
         <Icon
           icon={Loading03Icon}
           size={16}
-          className="shrink-0 animate-spin text-foreground-subtle"
+          spin
+          tone="subtle"
+          className="shrink-0"
         />
       )}
     </div>
@@ -108,19 +112,18 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
         from="user"
         data-testid="pending-upload-message"
         data-message-id={PENDING_UPLOAD_MESSAGE_ID}
-        className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
       >
         {pendingSend.text && (
           <MessageContent
             className={cn(
               isCompact
-                ? "text-sm leading-6 group-[.is-user]:rounded-xl"
+                ? "text-body leading-6 group-[.is-user]:rounded-xl"
                 : "text-body-lg leading-relaxed group-[.is-user]:rounded-3xl",
-              // TODO(tokens): no fitting role for group-[.is-user]:text-zinc-50 #F9F9FA; #F9F9FA is surface-muted (a fill)
-              "group-[.is-user]:bg-action-hover group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-50",
+              "group-[.is-user]:bg-action-hover group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-action-foreground",
             )}
           >
-            <div className="whitespace-pre-wrap break-words">
+            <div className="break-words whitespace-pre-wrap">
               <CredentialMentionText text={pendingSend.text} />
             </div>
           </MessageContent>
@@ -149,7 +152,7 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
       </Message>
       <Message
         from="assistant"
-        className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
       >
         <MessageContent className="text-body-lg leading-relaxed">
           {/* Announce the status on its own: the indicator's elapsed timer

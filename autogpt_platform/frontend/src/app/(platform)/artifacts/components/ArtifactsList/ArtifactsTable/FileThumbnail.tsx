@@ -27,7 +27,7 @@ export function FileThumbnail({ file }: Props) {
       data-testid="artifacts-thumbnail"
     >
       {showImage ? (
-        // eslint-disable-next-line @next/next/no-img-element
+        // eslint-disable-next-line @next/next/no-img-element -- the preview endpoint already sizes the thumbnail
         <img
           src={getFilePreviewUrl(file.id, { width: THUMBNAIL_WIDTH })}
           alt=""
@@ -36,11 +36,9 @@ export function FileThumbnail({ file }: Props) {
           className="h-full w-full object-cover"
         />
       ) : (
-        <Icon
-          icon={getFileTypeIcon(file.mime_type, file.name)}
-          size={18}
-          className="text-foreground-tertiary"
-        />
+        <span className="flex text-foreground-tertiary">
+          <Icon icon={getFileTypeIcon(file.mime_type, file.name)} size={18} />
+        </span>
       )}
     </div>
   );

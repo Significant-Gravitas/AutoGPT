@@ -55,7 +55,7 @@ export function ReasonFields({
           options={DURATION_OPTIONS}
           wrapperClassName="mb-0"
         />
-        <Text variant="small" className="text-foreground-tertiary">
+        <Text variant="small" tone="muted">
           {end
             ? `Ends ${formatDateTime(end)} (${formatTimeUntil(end)})`
             : "Doesn't end on its own."}

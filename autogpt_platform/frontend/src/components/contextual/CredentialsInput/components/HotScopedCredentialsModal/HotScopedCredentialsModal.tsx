@@ -23,6 +23,7 @@ import {
   addHeaderPairToList,
   findExistingHostCredentials,
   hasExistingHostCredential,
+  hasRepeatedHeaderName,
   headerPairsToRecord,
   removeHeaderPairFromList,
   updateHeaderPairInList,
@@ -56,6 +57,7 @@ export function HostScopedCredentialsModal({
   const formSchema = z.object({
     host: z
       .string()
+      .trim()
       .min(1, "Host is required")
       .refine((val) => !/^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(val), {
         message: "Enter only the host (e.g. api.example.com), not a full URL",
@@ -120,6 +122,9 @@ export function HostScopedCredentialsModal({
     currentHost || form.getValues("host"),
   );
 
+  const hasUsableHeader =
+    Object.keys(headerPairsToRecord(headerPairs)).length > 0;
+
   const addHeaderPair = () => {
     setHeaderPairs((prev) => addHeaderPairToList(prev));
   };
@@ -138,6 +143,26 @@ export function HostScopedCredentialsModal({
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     const headers = headerPairsToRecord(headerPairs);
+
+    // Check before touching the existing credentials: a submit the backend
+    // will refuse must not delete a working credential for this host.
+    if (Object.keys(headers).length === 0) {
+      toast({
+        title: "Add at least one header",
+        description: "Each header needs a name and a value.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (hasRepeatedHeaderName(headerPairs)) {
+      toast({
+        title: "Use each header name once",
+        description:
+          "Authorization and authorization count as the same header.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     // Delete existing host-scoped credentials for the same host to avoid duplicates.
     // Uses unfiltered provider credentials (not the hook's pre-filtered list).
@@ -233,11 +258,7 @@ export function HostScopedCredentialsModal({
                   Headers
                 </Text>
               </FormLabel>
-              <FormDescription
-                // TODO(tokens): SECRT-3152 rare size: text-[0.8rem].
-                // dark:text-neutral-400: the legacy FormDescription's, moved verbatim (DS6, SECRT-3116)
-                className="max-w-md text-[0.8rem] leading-inherit dark:text-neutral-400"
-              >
+              <FormDescription className="max-w-md text-body-sm leading-inherit">
                 Add sensitive headers (like Authorization, X-API-Key) that
                 should be automatically included in requests to the specified
                 host.
@@ -262,7 +283,6 @@ export function HostScopedCredentialsModal({
                     label="Header Value"
                     size="small"
                     type="password"
-                    className="flex-2"
                     placeholder="Header value (e.g., Bearer token123)"
                     value={pair.value}
                     onChange={(e) =>
@@ -293,7 +313,12 @@ export function HostScopedCredentialsModal({
             </div>
 
             <div className="pt-8">
-              <Button type="submit" className="w-full" size="small">
+              <Button
+                type="submit"
+                className="w-full"
+                size="small"
+                disabled={!hasUsableHeader}
+              >
                 {hasExistingForHost
                   ? "Update & use these credentials"
                   : "Save & use these credentials"}

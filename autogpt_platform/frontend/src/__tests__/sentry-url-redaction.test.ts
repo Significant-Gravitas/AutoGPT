@@ -23,7 +23,8 @@ const LINK_PAGE = `/link/${LINK_MARKER}?platform=discord`;
 const LINK_INFO_CALL = `/api/proxy/api/platform-linking/tokens/${LINK_MARKER}/info`;
 
 const sent: Sentry.Event[] = [];
-const sentSpans: { data?: Record<string, unknown> }[] = [];
+type SentSpan = { attributes: Record<string, { value: unknown }> };
+const sentSpans: SentSpan[] = [];
 
 beforeAll(async () => {
   vi.spyOn(console, "info").mockImplementation(() => undefined);
@@ -35,7 +36,9 @@ beforeAll(async () => {
         if (header.type === "event" || header.type === "transaction") {
           sent.push(payload as Sentry.Event);
         }
-        if (header.type === "span") sentSpans.push(payload as never);
+        if (header.type === "span") {
+          sentSpans.push(...(payload as { items: SentSpan[] }).items);
+        }
       }
       return {};
     },
@@ -175,7 +178,7 @@ describe("a browser transaction", () => {
     await Sentry.flush(2000);
 
     expect(sentSpans).toHaveLength(1);
-    expect(sentSpans[0].data?.transaction).toBe(`/link/${R}`);
+    expect(sentSpans[0].attributes.transaction?.value).toBe(`/link/${R}`);
   });
 });
 

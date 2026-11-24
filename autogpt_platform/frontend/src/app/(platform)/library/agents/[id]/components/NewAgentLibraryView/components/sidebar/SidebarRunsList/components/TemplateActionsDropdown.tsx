@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  getGetV2ListPresetsQueryKey,
-  useDeleteV2DeleteAPreset,
-} from "@/app/api/__generated__/endpoints/presets/presets";
+import { useDeleteV2DeleteAPreset } from "@/app/api/__generated__/endpoints/presets/presets";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import type { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { Button } from "@/components/atoms/Button/Button";
@@ -20,6 +17,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { MoreVerticalIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { refetchPresets } from "../../../../helpers";
 
 interface Props {
   agent: LibraryAgent;
@@ -43,11 +41,7 @@ export function TemplateActionsDropdown({ agent, template, onDeleted }: Props) {
         title: "Template deleted",
       });
 
-      queryClient.invalidateQueries({
-        queryKey: getGetV2ListPresetsQueryKey({
-          graph_id: agent.graph_id,
-        }),
-      });
+      await refetchPresets({ queryClient, graphID: agent.graph_id });
 
       setShowDeleteDialog(false);
       onDeleted?.();
@@ -68,16 +62,11 @@ export function TemplateActionsDropdown({ agent, template, onDeleted }: Props) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            // TODO(tokens): no exact role for hover:bg-gray-100 (#F3F4F6)
-            className="ml-auto shrink-0 rounded p-1 hover:bg-gray-100"
+            className="ml-auto shrink-0 rounded p-1 text-foreground-subtle hover:bg-surface-hover"
             onClick={(e) => e.stopPropagation()}
             aria-label="More actions"
           >
-            <Icon
-              // TODO(tokens): no exact role for text-gray-400 (#9CA3AF)
-              icon={MoreVerticalIcon}
-              className="h-5 w-5 text-gray-400"
-            />
+            <Icon icon={MoreVerticalIcon} className="h-5 w-5" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -86,7 +75,6 @@ export function TemplateActionsDropdown({ agent, template, onDeleted }: Props) {
               e.stopPropagation();
               setShowDeleteDialog(true);
             }}
-            className="flex items-center gap-2"
           >
             Delete template
           </DropdownMenuItem>

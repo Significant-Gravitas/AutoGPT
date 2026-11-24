@@ -258,4 +258,6 @@ class _RefreshScenario:
         )
 
     async def get_token(self):
-        return await integration_creds.get_provider_token(self.user, "github")
+        return await integration_creds.get_provider_token(
+            self.user, "github", allowed_ids=None
+        )

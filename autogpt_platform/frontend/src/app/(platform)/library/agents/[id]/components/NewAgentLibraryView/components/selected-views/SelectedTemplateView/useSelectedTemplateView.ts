@@ -9,22 +9,37 @@ import {
   usePostV2ExecuteAPreset,
 } from "@/app/api/__generated__/endpoints/presets/presets";
 import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
+import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import type { LibraryAgentPresetUpdatable } from "@/app/api/__generated__/models/libraryAgentPresetUpdatable";
 import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { withCalendarDates } from "../../modals/RunAgentInputs/helpers";
+import {
+  mergePresetInputs,
+  splitPresetInputs,
+} from "../SelectedTriggerView/helpers";
+
+type TriggerConfigSchema = NonNullable<
+  LibraryAgent["trigger_setup_info"]
+>["config_schema"];
 
 type Args = {
   templateId: string;
   graphId: string;
+  // The schemas the form shows, so a stored date is read as the day it shows.
+  inputSchema?: LibraryAgent["input_schema"];
+  triggerConfigSchema?: TriggerConfigSchema;
   onRunCreated?: (execution: GraphExecutionMeta) => void;
 };
 
 export function useSelectedTemplateView({
   templateId,
   graphId,
+  inputSchema,
+  triggerConfigSchema,
   onRunCreated,
 }: Args) {
   const { toast } = useToast();
@@ -39,7 +54,13 @@ export function useSelectedTemplateView({
 
   const [name, setName] = useState<string>("");
   const [description, setDescription] = useState<string>("");
-  const [inputs, setInputs] = useState<Record<string, any>>({});
+  const [inputs, setInputs] = useState<Record<string, unknown>>({});
+  // A detached triggered preset is filed here, so its inputs can carry the
+  // trigger node's mask; keep the key so saving re-nests under the same one.
+  const [triggerConfig, setTriggerConfig] = useState<Record<string, unknown>>(
+    {},
+  );
+  const [maskKey, setMaskKey] = useState<string | null>(null);
   const [credentials, setCredentials] = useState<
     Record<string, CredentialsMetaInput>
   >({});
@@ -48,10 +69,14 @@ export function useSelectedTemplateView({
     if (query.data) {
       setName(query.data.name || "");
       setDescription(query.data.description || "");
-      setInputs(query.data.inputs || {});
+      applyPresetInputs({
+        presetInputs: query.data.inputs,
+        inputSchema,
+        triggerConfigSchema,
+      });
       setCredentials(query.data.credentials || {});
     }
-  }, [query.data]);
+  }, [query.data, inputSchema, triggerConfigSchema]);
 
   const updateMutation = usePatchV2UpdateAnExistingPreset({
     mutation: {
@@ -107,6 +132,8 @@ export function useSelectedTemplateView({
   function handleSaveChanges() {
     if (!query.data) return;
 
+    const storedInputs = mergePresetInputs({ inputs, triggerConfig, maskKey });
+
     const updateData: LibraryAgentPresetUpdatable = {};
     if (name !== (query.data.name || "")) {
       updateData.name = name;
@@ -117,14 +144,14 @@ export function useSelectedTemplateView({
     }
 
     const inputsChanged =
-      JSON.stringify(inputs) !== JSON.stringify(query.data.inputs || {});
+      JSON.stringify(storedInputs) !== JSON.stringify(query.data.inputs || {});
 
     const credentialsChanged =
       JSON.stringify(credentials) !==
       JSON.stringify(query.data.credentials || {});
 
     if (inputsChanged || credentialsChanged) {
-      updateData.inputs = inputs;
+      updateData.inputs = storedInputs;
       updateData.credentials = credentials;
     }
 
@@ -137,8 +164,10 @@ export function useSelectedTemplateView({
   function handleStartTask() {
     if (!query.data) return;
 
+    const storedInputs = mergePresetInputs({ inputs, triggerConfig, maskKey });
+
     const inputsChanged =
-      JSON.stringify(inputs) !== JSON.stringify(query.data.inputs || {});
+      JSON.stringify(storedInputs) !== JSON.stringify(query.data.inputs || {});
 
     const credentialsChanged =
       JSON.stringify(credentials) !==
@@ -148,7 +177,7 @@ export function useSelectedTemplateView({
     executeMutation.mutate({
       presetId: templateId,
       data: {
-        inputs: inputsChanged ? inputs : undefined,
+        inputs: inputsChanged ? storedInputs : undefined,
         credential_inputs: credentialsChanged ? credentials : undefined,
       },
     });
@@ -156,6 +185,23 @@ export function useSelectedTemplateView({
 
   function setInputValue(key: string, value: any) {
     setInputs((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function setTriggerConfigValue(key: string, value: any) {
+    setTriggerConfig((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function applyPresetInputs(args: {
+    presetInputs: Record<string, unknown> | undefined;
+    inputSchema: Args["inputSchema"];
+    triggerConfigSchema: Args["triggerConfigSchema"];
+  }) {
+    const split = splitPresetInputs(args.presetInputs);
+    setInputs(withCalendarDates(args.inputSchema, split.inputs));
+    setTriggerConfig(
+      withCalendarDates(args.triggerConfigSchema, split.triggerConfig),
+    );
+    setMaskKey(split.maskKey);
   }
 
   function setCredentialValue(key: string, value: CredentialsMetaInput) {
@@ -171,10 +217,14 @@ export function useSelectedTemplateView({
     if (updateMutation.isSuccess && query.data) {
       setName(query.data.name || "");
       setDescription(query.data.description || "");
-      setInputs(query.data.inputs || {});
+      applyPresetInputs({
+        presetInputs: query.data.inputs,
+        inputSchema,
+        triggerConfigSchema,
+      });
       setCredentials(query.data.credentials || {});
     }
-  }, [updateMutation.isSuccess, query.data]);
+  }, [updateMutation.isSuccess, query.data, inputSchema, triggerConfigSchema]);
 
   return {
     template: query.data,
@@ -186,6 +236,9 @@ export function useSelectedTemplateView({
     setDescription,
     inputs,
     setInputValue,
+    triggerConfig,
+    setTriggerConfigValue,
+    hasTriggerConfig: maskKey !== null,
     credentials,
     setCredentialValue,
     handleSaveChanges,
