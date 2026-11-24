@@ -315,16 +315,12 @@ export class TurnRuntime {
    */
   resendUnconfirmed(model: CopilotLlmModel | undefined) {
     const error = this.error;
-    if (!(error instanceof UnconfirmedSendError) || error.prompt === null)
-      return null;
+    if (!(error instanceof UnconfirmedSendError)) return null;
     // A later send still waiting on its answer goes first.
     if (this.isPostPending()) return null;
-    const index = this.segments.findIndex((s) => s.key === error.prompt);
-    const prompt = this.segments[index];
-    if (prompt?.kind !== "user" || prompt.sequence !== null) return null;
-    // A fresh id would let the server keep a second copy if it took the first.
-    if (prompt.clientMessageId === null) return null;
-    this.segments.splice(index, 1);
+    const prompt = this.resendablePrompt(error.prompt);
+    if (!prompt) return null;
+    this.segments.splice(this.segments.indexOf(prompt), 1);
     // With the model chosen now, as any send is, not the first request's.
     // The send's end reaches the chat through onEnd; nobody awaits this.
     this.postPrompt(prompt.message, model, prompt.clientMessageId).catch(
@@ -981,12 +977,8 @@ export class TurnRuntime {
     if (ended()) return;
     this.checks.delete(lost);
     this.resetFailures();
-    if (this.sendInDoubt(lost, end)) {
-      this.error =
-        end.kind === "failed" && end.error instanceof Error
-          ? end.error
-          : new Error(lost.syntheticError ?? "The connection closed early.");
-    }
+    if (this.sendInDoubt(lost, end))
+      this.error = lostSendError(lost, end, this.resendablePrompt(lost.prompt));
     this.emitNow();
   }
 
@@ -1008,6 +1000,15 @@ export class TurnRuntime {
     return (
       prompt.sequence !== null || this.segments[index + 1]?.kind === "turn"
     );
+  }
+
+  // The prompt Send again would post: still without its row, and with the
+  // `message_id` its first request named. A fresh id would let the server
+  // keep a second copy if it took the first.
+  private resendablePrompt(key: string | null) {
+    const prompt = this.segments.find((s) => s.key === key);
+    if (prompt?.kind !== "user" || prompt.sequence !== null) return null;
+    return prompt.clientMessageId === null ? null : prompt;
   }
 
   // With nothing running, the session shows whether each send that
@@ -1895,12 +1896,42 @@ export class MessageTooLongError extends SendRefusedError {
   }
 }
 
-/** A send whose connection went silent, and that the session has no row for. */
+// The error for a send no check found a row for. A network error offers Send
+// again, as a silent request does, while its prompt can still be sent again
+// (`resendable`); the resend reuses the first `message_id`.
+function lostSendError(
+  lost: Lost,
+  end: ConnectionEnd,
+  resendable: UserSegment | null,
+): Error {
+  if (end.kind !== "failed" || !(end.error instanceof Error))
+    return new Error(lost.syntheticError ?? "The connection closed early.");
+  if (end.error.name === "TypeError" && resendable)
+    return new DroppedSendError(resendable.key, end.error);
+  return end.error;
+}
+
+/**
+ * A send whose connection went silent, and that the session has no row for;
+ * Send again posts it under its first id.
+ */
 export class UnconfirmedSendError extends Error {
-  /** `prompt`: the key of the message whose request went silent. */
-  constructor(readonly prompt: string | null = null) {
-    super("The connection stalled before the server confirmed your message.");
+  /** `prompt`: the key of the message whose request was lost. */
+  constructor(
+    readonly prompt: string | null = null,
+    message = "The connection stalled before the server confirmed your message.",
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
     this.name = "UnconfirmedSendError";
+  }
+}
+
+/** The same, for a send whose request failed on the network, as when offline. */
+export class DroppedSendError extends UnconfirmedSendError {
+  constructor(prompt: string | null, cause: Error) {
+    super(prompt, cause.message, { cause });
+    this.name = "DroppedSendError";
   }
 }
 
