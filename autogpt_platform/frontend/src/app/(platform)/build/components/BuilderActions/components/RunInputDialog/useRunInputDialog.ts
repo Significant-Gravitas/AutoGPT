@@ -11,7 +11,9 @@ import { useCallback, useMemo, useState } from "react";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useReactFlow } from "@xyflow/react";
+import { useShallow } from "zustand/react/shallow";
 import type { CredentialField } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
+import { getSavedNodeCredentials } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/node-credentials";
 
 export const useRunInputDialog = ({
   setIsOpen,
@@ -26,6 +28,14 @@ export const useRunInputDialog = ({
     (state) => state.credentialsInputSchema,
   );
   const setIsGraphRunning = useGraphStore((state) => state.setIsGraphRunning);
+  // The keys picked on the steps; the run starts on them, not the platform's
+  const nodeCredentials = useNodeStore(
+    useShallow((state) =>
+      getSavedNodeCredentials(
+        state.nodes.map((node) => node.data.hardcodedValues),
+      ),
+    ),
+  );
 
   const [openCronSchedulerDialog, setOpenCronSchedulerDialog] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
@@ -188,6 +198,7 @@ export const useRunInputDialog = ({
   return {
     credentialFields,
     requiredCredentials,
+    nodeCredentials,
     inputValues,
     credentialValues,
     isExecutingGraph,

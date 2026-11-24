@@ -33,6 +33,7 @@ export const RunInputDialog = ({
   const {
     credentialFields,
     requiredCredentials,
+    nodeCredentials,
     handleManualRun,
     handleInputChange,
     openCronSchedulerDialog,
@@ -87,6 +88,7 @@ export const RunInputDialog = ({
                       inputCredentials={credentialValues}
                       inputValues={inputValues}
                       onCredentialChange={handleCredentialFieldChange}
+                      nodeCredentials={nodeCredentials}
                     />
                   </div>
                 </div>

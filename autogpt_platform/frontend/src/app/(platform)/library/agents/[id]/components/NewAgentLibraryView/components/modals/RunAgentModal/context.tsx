@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext } from "react";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { RunVariant } from "./useAgentRunModal";
 
 export interface RunAgentModalContextValue {
@@ -24,6 +25,9 @@ export interface RunAgentModalContextValue {
   inputCredentials: Record<string, any>;
   setInputCredentialsValue: (key: string, value: any | undefined) => void;
   agentCredentialsInputFields: Record<string, any>;
+  // The keys picked on the workflow's steps, and whether the form waits for them
+  nodeCredentials: CredentialsMetaInput[];
+  isResolvingCredentials: boolean;
 }
 
 const RunAgentModalContext = createContext<RunAgentModalContextValue | null>(

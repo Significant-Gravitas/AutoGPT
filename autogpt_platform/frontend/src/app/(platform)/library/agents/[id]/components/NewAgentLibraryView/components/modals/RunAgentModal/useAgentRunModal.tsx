@@ -9,6 +9,10 @@ import {
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
+import {
+  CredentialFieldSchema,
+  hasOwnCredentialFor,
+} from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/node-credentials";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { useQueryClient } from "@tanstack/react-query";
@@ -20,10 +24,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { getSystemCredentials } from "../../../../../../../../../../components/contextual/CredentialsInput/helpers";
 import { getVisibleFields } from "../AgentInputsReadOnly/helpers";
 import { withCalendarDates } from "../RunAgentInputs/helpers";
 import { showExecutionErrorToast } from "./errorHelpers";
+import { getDefaultRunCredentials } from "./run-credentials";
+import { useSavedNodeCredentials } from "./useSavedNodeCredentials";
 
 export type RunVariant =
   | "manual"
@@ -97,68 +102,46 @@ export function useAgentRunModal(
   ]);
 
   const allProviders = useContext(CredentialsProvidersContext);
+  const credentialFieldSchemas = Object.values(
+    (agent.credentials_input_schema?.properties ?? {}) as Record<
+      string,
+      CredentialFieldSchema
+    >,
+  );
+  // Only the graph's owner gets the keys picked on its steps back, read once
+  // with the page so they are there before the form opens.
+  const { nodeCredentials, isLoadingNodeCredentials } = useSavedNodeCredentials(
+    agent,
+    Boolean(agent.can_access_graph) && credentialFieldSchemas.length > 0,
+  );
+  // A step can only hold one of the user's own keys, so a user with none of
+  // their own never waits for them, and a template brings its own keys.
+  const isResolvingCredentials =
+    isLoadingNodeCredentials &&
+    !callbacks?.initialInputCredentials &&
+    hasOwnCredentialFor(credentialFieldSchemas, allProviders);
 
-  // Initialize credentials with default system credentials
+  // Start each credential on the key its steps use, else the platform's key
   useEffect(() => {
     if (!allProviders || !agent.credentials_input_schema?.properties) return;
     if (callbacks?.initialInputCredentials) {
       hasInitializedSystemCreds.current = true;
       return;
     }
-    if (hasInitializedSystemCreds.current) return;
+    if (hasInitializedSystemCreds.current || isResolvingCredentials) return;
 
     const properties = agent.credentials_input_schema.properties as Record<
       string,
-      any
+      CredentialFieldSchema
     >;
 
     setInputCredentials((currentCreds) => {
-      const credsToAdd: Record<string, any> = {};
-
-      for (const [key, schema] of Object.entries(properties)) {
-        if (currentCreds[key]) continue;
-
-        const providerNames = schema.credentials_provider || [];
-        const supportedTypes = schema.credentials_types || [];
-        const requiredScopes = schema.credentials_scopes;
-
-        for (const providerName of providerNames) {
-          const providerData = allProviders[providerName];
-          if (!providerData) continue;
-
-          const systemCreds = getSystemCredentials(
-            providerData.savedCredentials ?? [],
-          );
-          const matchingSystemCreds = systemCreds.filter((cred) => {
-            if (!supportedTypes.includes(cred.type)) return false;
-
-            if (
-              cred.type === "oauth2" &&
-              requiredScopes &&
-              requiredScopes.length > 0
-            ) {
-              const grantedScopes = new Set(cred.scopes || []);
-              const hasAllRequiredScopes = requiredScopes.every(
-                (scope: string) => grantedScopes.has(scope),
-              );
-              if (!hasAllRequiredScopes) return false;
-            }
-
-            return true;
-          });
-
-          if (matchingSystemCreds.length === 1) {
-            const systemCred = matchingSystemCreds[0];
-            credsToAdd[key] = {
-              id: systemCred.id,
-              type: systemCred.type,
-              provider: providerName,
-              title: systemCred.title,
-            };
-            break;
-          }
-        }
-      }
+      const credsToAdd = getDefaultRunCredentials({
+        properties,
+        currentCredentials: currentCreds,
+        allProviders,
+        nodeCredentials,
+      });
 
       if (Object.keys(credsToAdd).length > 0) {
         hasInitializedSystemCreds.current = true;
@@ -174,6 +157,8 @@ export function useAgentRunModal(
     allProviders,
     agent.credentials_input_schema,
     callbacks?.initialInputCredentials,
+    isResolvingCredentials,
+    nodeCredentials,
   ]);
 
   // Reset initialization flag when modal closes/opens or agent changes
@@ -302,8 +287,14 @@ export function useAgentRunModal(
   const allRequiredInputsAreSet = useMemo(
     () =>
       allRequiredInputsAreSetRaw &&
+      !isResolvingCredentials &&
       (!credentialsRequired || allCredentialsAreSet),
-    [allRequiredInputsAreSetRaw, credentialsRequired, allCredentialsAreSet],
+    [
+      allRequiredInputsAreSetRaw,
+      isResolvingCredentials,
+      credentialsRequired,
+      allCredentialsAreSet,
+    ],
   );
 
   const notifyMissingRequirements = useCallback(() => {
@@ -426,6 +417,8 @@ export function useAgentRunModal(
     agentInputFields,
     triggerConfigFields,
     agentCredentialsInputFields,
+    nodeCredentials,
+    isResolvingCredentials,
     hasInputFields,
     isExecuting: executeGraphMutation.isPending,
     isSettingUpTrigger: setupTriggerMutation.isPending,

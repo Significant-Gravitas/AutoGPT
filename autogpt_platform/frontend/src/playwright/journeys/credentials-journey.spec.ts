@@ -31,6 +31,7 @@ import {
   startRun,
   uniqueStamp,
   waitForRunToEnd,
+  type Credential,
   type Workflow,
 } from "./credentials";
 import { expect, serveHostedFlags, test as journeyTest } from "./fixtures";
@@ -146,6 +147,7 @@ test.describe("credentials journey", () => {
     test.setTimeout(180_000);
     const stamp = uniqueStamp();
     const credential = await createAPIKey(page, `Journey key ${stamp}`);
+    let otherKey: Credential | undefined;
     try {
       const workflow = await createWorkflow(
         page,
@@ -176,7 +178,9 @@ test.describe("credentials journey", () => {
         "the builder should still show the key after a reload",
       ).toBeVisible({ timeout: 20_000 });
 
-      // The run dialog: the key is offered, and the run uses it.
+      // The run dialog: with a second key saved, it starts on the key picked
+      // on the step rather than on none, and the run uses that key.
+      otherKey = await createAPIKey(page, `Journey other key ${stamp}`);
       await page.goto(`/library/agents/${workflow.libraryAgentID}`);
       await waitForAgentPageLoad(page);
       const setUp = page.getByRole("button", { name: "Setup your task" });
@@ -186,7 +190,7 @@ test.describe("credentials journey", () => {
       await expect(dialog.getByText("Task Credentials")).toBeVisible();
       await expect(
         dialog.getByText(credential.title, { exact: true }),
-        "the run dialog should offer the key",
+        "the run dialog should start on the key picked on the step",
       ).toBeVisible();
       const note = `Scraping note ${stamp}`;
       await dialog.getByTestId("agent-input-note").fill(note);
@@ -281,6 +285,7 @@ test.describe("credentials journey", () => {
         await deleteSchedule(page, schedule.id);
       }
     } finally {
+      if (otherKey) await deleteCredential(page, otherKey);
       await deleteCredential(page, credential);
     }
   });

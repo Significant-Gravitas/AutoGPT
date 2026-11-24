@@ -82,6 +82,8 @@ export function RunAgentModal({
     // Schemas
     agentInputFields,
     agentCredentialsInputFields,
+    nodeCredentials,
+    isResolvingCredentials,
     hasInputFields,
 
     // Async states
@@ -245,6 +247,8 @@ export function RunAgentModal({
                       inputCredentials,
                       setInputCredentialsValue: handleCredentialsChange,
                       agentCredentialsInputFields,
+                      nodeCredentials,
+                      isResolvingCredentials,
                     }}
                   >
                     <ModalRunSection />

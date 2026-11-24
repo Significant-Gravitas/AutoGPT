@@ -1,4 +1,5 @@
 import { Input } from "@/components/atoms/Input/Input";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { useMemo } from "react";
@@ -24,6 +25,8 @@ export function ModalRunSection() {
     agentCredentialsInputFields,
     inputCredentials,
     setInputCredentialsValue,
+    nodeCredentials,
+    isResolvingCredentials,
   } = useRunAgentModalContext();
 
   const triggerConfigFieldEntries = Object.entries(triggerConfigFields || {});
@@ -123,13 +126,21 @@ export function ModalRunSection() {
           title="Task Credentials"
           subtitle="These are the credentials the workflow will use to perform this task"
         >
-          <CredentialsGroupedView
-            credentialFields={credentialFields}
-            requiredCredentials={requiredCredentials}
-            inputCredentials={inputCredentials}
-            inputValues={inputValues}
-            onCredentialChange={setInputCredentialsValue}
-          />
+          {isResolvingCredentials ? (
+            <Skeleton
+              aria-label="Loading credentials"
+              className="h-14 w-full"
+            />
+          ) : (
+            <CredentialsGroupedView
+              credentialFields={credentialFields}
+              requiredCredentials={requiredCredentials}
+              inputCredentials={inputCredentials}
+              inputValues={inputValues}
+              onCredentialChange={setInputCredentialsValue}
+              nodeCredentials={nodeCredentials}
+            />
+          )}
         </ModalSection>
       ) : null}
     </div>
