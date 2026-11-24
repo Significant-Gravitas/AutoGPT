@@ -151,4 +151,83 @@ describe("CredentialsFlatView", () => {
     expect(screen.queryByRole("button", connectButton)).toBeNull();
     expect(screen.getByRole("button", { name: /Add API key/i })).toBeTruthy();
   });
+
+  describe("read-only (a run's inputs)", () => {
+    const firstKey = {
+      id: "key-1",
+      title: "Platform key",
+      type: "api_key",
+      provider: "firecrawl",
+    };
+    const secondKey = {
+      id: "key-2",
+      title: "My Firecrawl key",
+      type: "api_key",
+      provider: "firecrawl",
+    };
+    const readOnlyProps = {
+      provider: "firecrawl",
+      displayName: "Firecrawl",
+      readOnly: true,
+    };
+
+    it("shows only the credential the run used", () => {
+      render(
+        <CredentialsFlatView
+          {...makeProps({
+            ...readOnlyProps,
+            credentials: [firstKey, secondKey],
+            selectedCredential: {
+              id: "key-2",
+              type: "api_key",
+              provider: "firecrawl",
+              title: "My Firecrawl key",
+            },
+          })}
+        />,
+      );
+
+      expect(screen.getByText("My Firecrawl key")).toBeTruthy();
+      expect(screen.queryByText("Platform key")).toBeNull();
+    });
+
+    it("marks the credential as deleted instead of naming another saved key", () => {
+      render(
+        <CredentialsFlatView
+          {...makeProps({
+            ...readOnlyProps,
+            credentials: [firstKey],
+            selectedCredential: {
+              id: "key-2",
+              type: "api_key",
+              provider: "firecrawl",
+              title: "My Firecrawl key",
+            },
+          })}
+        />,
+      );
+
+      expect(screen.getByText("My Firecrawl key (deleted)")).toBeTruthy();
+      expect(screen.queryByText("Platform key")).toBeNull();
+    });
+
+    it("marks the credential as deleted when no saved key is left", () => {
+      render(
+        <CredentialsFlatView
+          {...makeProps({
+            ...readOnlyProps,
+            credentials: [],
+            selectedCredential: {
+              id: "key-2",
+              type: "api_key",
+              provider: "firecrawl",
+              title: "My Firecrawl key",
+            },
+          })}
+        />,
+      );
+
+      expect(screen.getByText("My Firecrawl key (deleted)")).toBeTruthy();
+    });
+  });
 });
