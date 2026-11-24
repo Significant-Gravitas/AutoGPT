@@ -13,6 +13,7 @@ from .recent_work import is_model_call, scheduled_workflow_id
 logger = logging.getLogger(__name__)
 
 _WORK_EVENT_LIMIT = 200
+_MAX_WORK_EVENT_PAGES = 3
 
 
 async def get_work_events(
@@ -58,7 +59,7 @@ async def _work_event_pages(
     user_id: str, since: datetime, until: datetime | None
 ) -> AsyncIterator[list[activity_db.ActivityEvent]]:
     after_id = None
-    while True:
+    for _ in range(_MAX_WORK_EVENT_PAGES):
         try:
             events = await activity_db.list_activity_events(
                 user_id,

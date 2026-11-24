@@ -141,6 +141,26 @@ async def test_deleted_schedules_cannot_hide_the_next_page_of_recent_work(
 
 
 @pytest.mark.asyncio
+async def test_home_reads_at_most_three_pages_of_hidden_activity(
+    mocker, home_dependencies
+):
+    # Four pages of deleted schedules within the seven-day activity window.
+    events = [
+        _schedule_created(f"event-{i}", f"deleted-{i}", minutes_ago=15 * i)
+        for i in range(601)
+    ]
+    read = mocker.patch(
+        "backend.api.features.home.work_events.activity_db.list_activity_events",
+        side_effect=[events[i : i + 200] for i in range(0, len(events), 200)],
+    )
+
+    home = await build_home_dashboard(user_id="user-1")
+
+    assert read.await_count == 3
+    assert home.recent_work.total_count == 0
+
+
+@pytest.mark.asyncio
 async def test_recent_work_drops_files_marked_as_ottos_own(mocker: MockerFixture):
     """FILE rows logged before working-file writes stopped being logged: the
     migration marks the file, and the row is dropped through its file id."""
