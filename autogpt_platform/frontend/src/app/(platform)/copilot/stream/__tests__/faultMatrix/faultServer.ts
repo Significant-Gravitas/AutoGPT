@@ -105,6 +105,9 @@ export class FaultServer {
   namesUser = true;
   /** Runs once as the next session GET starts, as a page read landing meanwhile. */
   beforeViewOnce: (() => void) | null = null;
+  /** A response stays open this much longer after its turn's finish, as a
+   *  proxy can hold it. */
+  closeAfterFinishMs = 0;
   viewReads = 0;
   private pending: { text: string; id: string }[] = [];
   private pumps = new Set<() => void>();
@@ -329,6 +332,7 @@ export class FaultServer {
     let heartbeat: ReturnType<typeof setInterval> | null = null;
     let done: ReturnType<typeof setTimeout> | null = null;
     const pumps = this.pumps;
+    const closeAfterFinishMs = this.closeAfterFinishMs;
     const conn: FaultConnection = {
       method,
       url,
@@ -351,7 +355,12 @@ export class FaultServer {
         controller.enqueue(encoder.encode(frame.sse));
         if (isFinish(frame.sse)) {
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-          end(() => controller.close());
+          if (!closeAfterFinishMs) end(() => controller.close());
+          else
+            done = setTimeout(
+              () => end(() => controller.close()),
+              closeAfterFinishMs,
+            );
         }
       }
       // The listener ends a read of a turn that is no longer running.

@@ -1,3 +1,4 @@
+import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -68,12 +69,14 @@ function renderStream() {
         sessionId: SESSION_ID,
         sessionView: null,
         hydratedMessages: [],
-        refetchSession: async () => ({ data: undefined }),
+        refetchSession: async () => ({ data: undefined, isError: false }),
         copilotModel: undefined,
       }),
     {
       wrapper: ({ children }: { children: ReactNode }) => (
-        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        <QueryClientProvider client={client}>
+          <BackendAPIProvider>{children}</BackendAPIProvider>
+        </QueryClientProvider>
       ),
     },
   );
