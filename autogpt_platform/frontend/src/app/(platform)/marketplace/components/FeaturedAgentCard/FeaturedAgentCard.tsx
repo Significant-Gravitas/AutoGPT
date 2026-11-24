@@ -28,10 +28,10 @@ interface Props {
 /* oxlint-disable design-system/no-arbitrary-values -- the card washes are radial gradients with no token */
 const WASHES: Record<string, string> = {
   violet:
-    "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(139,92,246,0.10),transparent_70%)]",
+    "bg-[radial-gradient(120%_100%_at_50%_0%,rgb(var(--color-brand)/0.10),transparent_70%)]",
   blue: "bg-[radial-gradient(120%_100%_at_50%_0%,rgb(var(--color-info)/0.10),transparent_70%)]",
   green:
-    "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(34,197,94,0.10),transparent_70%)]",
+    "bg-[radial-gradient(120%_100%_at_50%_0%,rgb(var(--color-success)/0.10),transparent_70%)]",
 };
 /* oxlint-enable design-system/no-arbitrary-values */
 

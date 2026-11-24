@@ -787,6 +787,45 @@ const noHexColours: Rule.RuleModule = {
   },
 };
 
+// A colour function with numbers for arguments, in any string:
+// `rgba(0,0,0,0.08)`, `rgb(248 250 252)`, `hsl(0 0% 50%)`, `oklch(0.7 0.1 200)`
+// and `rgba(255,255,255,${alpha})`, a signed number included (`hsl(-30 …)`).
+// A role read (`rgb(var(--color-x) / 0.5)`) is not one.
+const COLOUR_FUNCTION =
+  /(?<![a-z0-9-])(?:rgba?|hsla?|oklch)\(\s*[+-]?[\d.][^()"'`]*(?:\([^()"'`]*\)[^()"'`]*)*\)?/gi;
+
+export function colourFunctions(text: string) {
+  return [...text.matchAll(COLOUR_FUNCTION)].map((match) => match[0]);
+}
+
+const noColourFunctions: Rule.RuleModule = {
+  meta: {
+    type: "problem",
+    docs: { description: "Disallow rgb(), hsl() and oklch() colour literals" },
+    schema: [],
+  },
+  create(context) {
+    const file = relativeToFrontend(context.filename);
+    if (isWholeFileExempt(file)) return {};
+    return stringNodes((node, text) => {
+      // A class whose whole arbitrary value is the colour
+      // (`text-[rgb(20,20,20)]`) is no-arbitrary-colour's.
+      const owned = new Set(
+        arbitraryColours(text).map((match) => match.valueIndex),
+      );
+      for (const match of text.matchAll(COLOUR_FUNCTION)) {
+        const colour = match[0];
+        if (isExempt(file, colour)) continue;
+        if (owned.has(match.index)) continue;
+        context.report({
+          node,
+          message: `"${colour}" hardcodes a colour. Read a role instead: rgb(var(--color-<role>) / <alpha>) in a string, or a role class with an opacity modifier (bg-brand/10). Artwork, logos and chart series go in ds-colour-exempt.json, with a reason.`,
+        });
+      }
+    });
+  },
+};
+
 // A colour class whose arbitrary value is a colour literal: `bg-[#fff]`,
 // `text-[rgb(20,20,20)]`, `border-[color:hsl(0_0%_90%)]/50`, or an arbitrary
 // colour property (`[color:#fff]`). A value read from a role
@@ -878,6 +917,7 @@ const plugin = {
       noRawPaletteClasses,
     ),
     "no-hex-colours": ratchet("no-hex-colours", noHexColours),
+    "no-colour-functions": ratchet("no-colour-functions", noColourFunctions),
     "no-arbitrary-colour": ratchet("no-arbitrary-colour", noArbitraryColour),
     "no-dark-variant": ratchet("no-dark-variant", noDarkVariant),
     "no-raw-text-size": ratchet("no-raw-text-size", noRawTextSize),

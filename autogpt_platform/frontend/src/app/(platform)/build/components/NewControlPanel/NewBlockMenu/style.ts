@@ -18,7 +18,7 @@ export const blockDragPreviewStyle = `
     background: rgb(var(--color-surface-hover));
     border-radius: 0.75rem;
     color: rgb(var(--color-foreground-emphasis));
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 6px -1px rgb(var(--shadow-color) / 0.1);
     position: absolute;
     top: -9999px;
   `;

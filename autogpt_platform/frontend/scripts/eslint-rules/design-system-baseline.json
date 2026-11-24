@@ -1,4 +1,7 @@
 {
+  "src/app/(no-navbar)/onboarding/steps/SubscriptionStep/components/PlanStepCard/PlanStepCard.tsx": {
+    "no-colour-functions": 2
+  },
   "src/app/(platform)/PaywallGate/components/PaywallHeader.tsx": {
     "no-restyle": 4
   },
@@ -104,6 +107,9 @@
   "src/app/(platform)/build/components/NewControlPanel/NewSearchGraph/GraphMenu/GraphMenu.tsx": {
     "no-restyle": 4
   },
+  "src/app/(platform)/build/components/NewControlPanel/NewSearchGraph/GraphMenuContent/GraphContent.stories.tsx": {
+    "no-colour-functions": 1
+  },
   "src/app/(platform)/build/components/NewControlPanel/NewSearchGraph/GraphMenuContent/GraphContent.tsx": {
     "no-restyle": 1
   },
@@ -112,6 +118,9 @@
   },
   "src/app/(platform)/components/ContextualTips/ContextualTips.tsx": {
     "no-restyle": 4
+  },
+  "src/app/(platform)/components/FirstRunTour/components/TourScrim.tsx": {
+    "no-colour-functions": 3
   },
   "src/app/(platform)/components/FirstRunTour/components/TourSpotlight.tsx": {
     "no-restyle": 4
@@ -147,12 +156,14 @@
     "no-inline-styles": 2
   },
   "src/app/(platform)/copilot/components/ChatContainer/components/ComposerPanelTab.tsx": {
+    "no-colour-functions": 2,
     "no-restyle": 2
   },
   "src/app/(platform)/copilot/components/ChatContainer/components/SessionNotFound.tsx": {
     "no-restyle": 6
   },
   "src/app/(platform)/copilot/components/ChatInput/ChatInput.tsx": {
+    "no-colour-functions": 4,
     "no-restyle": 59,
     "require-static-classes": 22
   },
@@ -252,6 +263,7 @@
     "no-inline-styles": 1
   },
   "src/app/(platform)/copilot/components/ExpertOnboardingCard/ExpertOnboardingCard.tsx": {
+    "no-colour-functions": 1,
     "no-inline-styles": 1
   },
   "src/app/(platform)/copilot/components/ExpertOnboardingCard/components/OnboardingReview.tsx": {
@@ -263,6 +275,9 @@
   "src/app/(platform)/copilot/components/OrbitLoader/OrbitLoader.tsx": {
     "no-inline-styles": 2
   },
+  "src/app/(platform)/copilot/components/QuestionDock/QuestionDock.tsx": {
+    "no-colour-functions": 1
+  },
   "src/app/(platform)/copilot/components/RateLimitResetDialog/RateLimitResetDialog.tsx": {
     "no-restyle": 5
   },
@@ -272,10 +287,14 @@
   "src/app/(platform)/copilot/components/SuggestedTasks/SuggestedTasksBlock.tsx": {
     "no-restyle": 1
   },
+  "src/app/(platform)/copilot/components/TaskProgressBar/TaskProgressBar.tsx": {
+    "no-colour-functions": 2
+  },
   "src/app/(platform)/copilot/components/TaskProgressBar/components/StatusIcon/StatusIcon.tsx": {
     "no-restyle": 2
   },
   "src/app/(platform)/copilot/components/TokenDevtoolBadge/TokenDevtoolBadge.tsx": {
+    "no-colour-functions": 1,
     "no-restyle": 4
   },
   "src/app/(platform)/copilot/components/TokenDevtoolBadge/components/BreakdownSection.tsx": {
@@ -351,6 +370,42 @@
   "src/app/(platform)/home/components/RecentWork/components/WorkGroup.tsx": {
     "no-restyle": 1
   },
+  "src/app/(platform)/home/components/RecentWork/helpers.ts": {
+    "no-colour-functions": 2
+  },
+  "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/RunAgentModal/RunAgentModal.tsx": {
+    "no-colour-functions": 1
+  },
+  "src/app/(platform)/marketplace/components/AgentInfo/AgentInfo.tsx": {
+    "no-colour-functions": 1
+  },
+  "src/app/(platform)/marketplace/components/BecomeACreator/BecomeACreator.tsx": {
+    "no-colour-functions": 2
+  },
+  "src/app/(platform)/marketplace/components/CategoryChip/CategoryChip.tsx": {
+    "no-colour-functions": 2
+  },
+  "src/app/(platform)/marketplace/components/CreatorCard/CreatorCard.tsx": {
+    "no-colour-functions": 1
+  },
+  "src/app/(platform)/marketplace/components/ExpertsSection/components/ExpertCard.tsx": {
+    "no-colour-functions": 1
+  },
+  "src/app/(platform)/marketplace/components/ExpertsSection/helpers.ts": {
+    "no-colour-functions": 12
+  },
+  "src/app/(platform)/marketplace/components/FeaturedAgentCard/FeaturedAgentCard.tsx": {
+    "no-colour-functions": 1
+  },
+  "src/app/(platform)/marketplace/components/SkillsSection/components/SkillCard.tsx": {
+    "no-colour-functions": 1
+  },
+  "src/app/(platform)/marketplace/components/StoreCard/StoreCard.tsx": {
+    "no-colour-functions": 1
+  },
+  "src/app/(platform)/marketplace/experts/[expertId]/components/ExpertPageHeader.tsx": {
+    "no-colour-functions": 3
+  },
   "src/app/(platform)/raise/components/JobTitleStep/JobTitleStep.tsx": {
     "no-restyle": 1
   },
@@ -371,6 +426,21 @@
   },
   "src/app/(platform)/raise/components/NameStep/NameStep.tsx": {
     "no-restyle": 1
+  },
+  "src/app/(platform)/settings/profile/components/ProfileHeader/ProfileHeader.tsx": {
+    "no-colour-functions": 2
+  },
+  "src/app/(public)/tour/chat/components/TourAgentCard/TourAgentCard.tsx": {
+    "no-colour-functions": 2
+  },
+  "src/app/(public)/tour/chat/components/TourEndCard/TourEndCard.tsx": {
+    "no-colour-functions": 1
+  },
+  "src/app/(public)/tour/chat/components/TourPromptBar/TourPromptBar.tsx": {
+    "no-colour-functions": 4
+  },
+  "src/app/(public)/tour/components/TourHero/TourHero.tsx": {
+    "no-colour-functions": 2
   },
   "src/components/atoms/Button/helpers.ts": {
     "no-unknown-classes": 7
@@ -464,6 +534,12 @@
   },
   "src/components/contextual/PublishAgentModal/components/AgentInfoStep/AgentInfoStep.tsx": {
     "no-restyle": 25
+  },
+  "src/components/contextual/PublishAgentModal/components/AgentSelectStep/AgentSelectStep.tsx": {
+    "no-colour-functions": 2
+  },
+  "src/components/contextual/PublishAgentModal/components/ReviewHero.tsx": {
+    "no-colour-functions": 1
   },
   "src/components/contextual/SchedulesPanel/components/EmptyFollowups/EmptyFollowups.tsx": {
     "no-restyle": 1
@@ -577,7 +653,11 @@
   "src/components/organisms/ProActivation/ActivationTerms.tsx": {
     "no-restyle": 1
   },
+  "src/components/organisms/SearchCommandModal/SearchCommandModal.tsx": {
+    "no-colour-functions": 8
+  },
   "src/components/organisms/SearchCommandModal/SearchCommandResultItem.tsx": {
+    "no-colour-functions": 2,
     "no-restyle": 3
   },
   "src/components/organisms/SubscriptionPlans/components/BillingToggle.tsx": {
