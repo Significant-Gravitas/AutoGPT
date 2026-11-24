@@ -4,7 +4,9 @@ import {
   screen,
   cleanup,
   waitFor,
+  within,
 } from "@/tests/integrations/test-utils";
+import { renderToString } from "react-dom/server";
 import { useCopilotUIStore } from "../store";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CopilotPage } from "../CopilotPage";
@@ -261,11 +263,13 @@ describe("CopilotPage test-mode banner", () => {
     ).toBeNull();
   });
 
-  it("shows loading spinner when user is loading", () => {
+  it("shows the chat's frame, not a spinner, while the user is loading", () => {
     // Auth check moved to CopilotPage — mock useAuth directly.
     mockUseAuth.mockReturnValue({ isUserLoading: true, isLoggedIn: false });
     render(<CopilotPage />);
-    expect(screen.getByTestId("scale-loader")).toBeDefined();
+    expect(screen.getByTestId("chat-frame")).toBeDefined();
+    expect(screen.getByRole("status").textContent).toBe("Loading your chat…");
+    expect(screen.queryByTestId("scale-loader")).toBeNull();
     expect(screen.queryByTestId("chat-container")).toBeNull();
   });
 
@@ -318,4 +322,24 @@ describe("CopilotPage test-mode banner", () => {
       "false",
     );
   });
+});
+
+describe("CopilotPage before the user is known", () => {
+  it.each([
+    ["a new chat", null],
+    ["an open chat", "session-1"],
+  ])(
+    "the server's HTML for %s holds the chat's frame, not a full-screen cover",
+    (_, sessionId) => {
+      mockUseAuth.mockReturnValue({ isUserLoading: true, isLoggedIn: false });
+      mockSessionIdForQueryState = sessionId;
+      const container = document.createElement("div");
+      container.innerHTML = renderToString(<CopilotPage />);
+      document.body.appendChild(container);
+
+      expect(within(container).getByTestId("chat-frame")).toBeDefined();
+      expect(within(container).queryByTestId("scale-loader")).toBeNull();
+      container.remove();
+    },
+  );
 });

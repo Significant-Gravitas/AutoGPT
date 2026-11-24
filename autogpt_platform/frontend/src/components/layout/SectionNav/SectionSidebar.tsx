@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { useEntranceInitial } from "@/hooks/useEntranceInitial";
 import { cn } from "@/lib/utils";
 import { SectionNavItem, type SectionNavLink } from "./SectionNavItem";
 
@@ -15,6 +16,10 @@ interface Props {
 
 export function SectionSidebar({ items, className }: Props) {
   const reduceMotion = useReducedMotion();
+  const asideInitial = useEntranceInitial(
+    reduceMotion ? { opacity: 0 } : { opacity: 0, x: -10 },
+  );
+  const navInitial = useEntranceInitial("hidden");
 
   const container = {
     hidden: {},
@@ -28,7 +33,7 @@ export function SectionSidebar({ items, className }: Props) {
 
   return (
     <motion.aside
-      initial={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -10 }}
+      initial={asideInitial}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.25, ease: [0, 0, 0.2, 1] as const }}
       className={cn(
@@ -48,7 +53,7 @@ export function SectionSidebar({ items, className }: Props) {
       </Link>
       <motion.nav
         variants={container}
-        initial="hidden"
+        initial={navInitial}
         animate="show"
         className="flex flex-col items-start gap-2"
       >
