@@ -168,6 +168,25 @@ describe("Marketplace skills", () => {
     expect(brand.textContent).not.toContain("Works with");
   });
 
+  test("names the MCP services a skill works with as the catalog does", async () => {
+    const apiMotion: MarketplaceSkill = {
+      ...outreach,
+      slug: "developer-and-api-motion",
+      name: "developer-and-api-motion",
+      title: "Developer and API motion",
+      // The catalog calls mcp_apollo_io "Apollo.io", not "Apollo Io".
+      required_providers: ["mcp_amplitude", "mcp_apollo_io"],
+    };
+    server.use(listing([apiMotion]));
+
+    render(<SkillsBrowsePage />);
+
+    const card = await screen.findByRole("link", {
+      name: /Developer and API motion/,
+    });
+    expect(card.textContent).toMatch(/Works with\s*Amplitude and Apollo\.io/);
+  });
+
   test("credits the repo a vendored skill came from, and nothing for our own", async () => {
     const coldEmail: MarketplaceSkill = {
       ...outreach,

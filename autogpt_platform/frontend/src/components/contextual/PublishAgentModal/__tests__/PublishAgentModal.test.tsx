@@ -624,6 +624,41 @@ describe("PublishAgentModal opened pre-scoped to a workflow", () => {
     expect(lookups).toHaveBeenCalledOnce();
   });
 
+  test("stays on the success screen after a submit while a page re-renders it with a new targetState each time", async () => {
+    installHandlers();
+    server.use(
+      getGetV2GetMyLiveSubmissionMockHandler({
+        ...LIVE_LISTING,
+        image_urls: ["https://example.com/listed-thumbnail.png"],
+      }),
+      getPostV2CreateStoreSubmissionMockHandler({
+        ...LIVE_LISTING,
+        listing_version_id: "listing-version-2",
+        listing_version: 2,
+        status: SubmissionStatus.PENDING,
+      }),
+    );
+    renderDialog(<LibraryStylePublishDialog />);
+    await expectUpdateFormFromLiveListing();
+    fireEvent.change(screen.getByRole("textbox", { name: "What changed?" }), {
+      target: { value: "Clearer instructions" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
+    expect(await screen.findByText("Submission received")).toBeDefined();
+
+    fireEvent.click(screen.getByTestId("page-rerenders"));
+    fireEvent.click(screen.getByTestId("page-rerenders"));
+
+    // The step strip shows on every step but the success screen. It sits
+    // outside the animated step, so it changes in the render that changes the
+    // step, before the form could animate back in.
+    expect(screen.queryByRole("list", { name: "Publish progress" })).toBeNull();
+    expect(screen.getByText("Submission received")).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Submit for review" }),
+    ).toBeNull();
+  });
+
   test("an update keeps the live listing's schedule and images when the workflow's newer version has neither", async () => {
     installHandlers();
     const submissions = recordSubmissions();

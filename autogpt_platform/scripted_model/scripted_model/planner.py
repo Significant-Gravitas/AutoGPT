@@ -1,5 +1,6 @@
 """Decide what to answer a model request, whichever wire format it came in."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from .scripts import (
     Usage,
     find_marker,
     load_script,
+    typed_marker,
 )
 
 # What a side call (a request offering no tools: a session title, a summary)
@@ -48,14 +50,38 @@ class Conversation:
     cache_ttl: str | None = None
     # The system prompt's text.
     system_text: str = ""
+    # Assistant messages before the user message that carries the marker; the
+    # script's turns count from that message.
+    assistant_messages_before_marker: int = 0
 
     def marker(self) -> Marker | None:
-        """The marker that picks the script: the one in the user's messages,
-        else one in the system prompt. A turn the platform sends itself (an
-        expert's kickoff) has no user-typed marker, so a journey puts one in
-        text the user controls that the system prompt carries (an expert's
-        writing sample)."""
-        return find_marker(self.user_text) or find_marker(self.system_text)
+        """The marker that picks the script: the newest one in the user's own
+        words; with none there, the first in the user's messages (a title
+        request quotes the chat inside a ``<conversation>`` tag), else one in
+        the system prompt. A turn the platform sends itself (an expert's
+        kickoff) has no user-typed marker, so a journey puts one in text the
+        user controls that the system prompt carries (an expert's writing
+        sample)."""
+        return (
+            typed_marker(self.user_text)
+            or find_marker(self.user_text)
+            or find_marker(self.system_text)
+        )
+
+
+def assistant_messages_before_marker(messages: Sequence[tuple[str, str]]) -> int:
+    """How many assistant messages come before the newest user message whose
+    own words carry a marker, given each message's role and text. 0 when
+    none does: a marker in the system prompt counts every turn."""
+    marked = max(
+        (
+            index
+            for index, (role, text) in enumerate(messages)
+            if role == "user" and typed_marker(text)
+        ),
+        default=0,
+    )
+    return sum(1 for role, _ in messages[:marked] if role == "assistant")
 
 
 @dataclass(frozen=True)
@@ -124,7 +150,9 @@ def _plan(conversation: Conversation, scripts_dir: Path) -> Plan:
             "this conversation has no [[script:<name>]] marker, so the scripted "
             "model has nothing to answer with. Put the marker in the first message."
         )
-    index = conversation.assistant_messages
+    index = (
+        conversation.assistant_messages - conversation.assistant_messages_before_marker
+    )
     if index >= len(script.turns):
         raise ScriptError(
             f"script {script.name!r} has {len(script.turns)} turn(s), but the "

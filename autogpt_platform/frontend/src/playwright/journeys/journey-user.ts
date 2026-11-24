@@ -27,6 +27,16 @@ const COMPLETED_ONBOARDING_STEPS = [
   "WORKFLOWS_MOVED",
 ];
 
+export interface ProvisionOptions {
+  /**
+   * Whether the user gets PLAYWRIGHT_JOURNEY_TIER's plan (`subscription-tier.ts`),
+   * as most journeys need to get past the hosted paywall. A journey about
+   * buying a plan passes false: its user keeps the tier a new hosted user
+   * really has.
+   */
+  grantTier?: boolean;
+}
+
 /**
  * Signs a user into the page's browser context, ready to use the app.
  *
@@ -36,18 +46,21 @@ const COMPLETED_ONBOARDING_STEPS = [
  * existing account instead, e.g. a paid user on a preview where fresh users
  * meet the paywall.
  */
-export async function provisionJourneyUser(page: Page): Promise<JourneyUser> {
+export async function provisionJourneyUser(
+  page: Page,
+  options: ProvisionOptions = {},
+): Promise<JourneyUser> {
   const existingEmail = process.env.PLAYWRIGHT_JOURNEY_EMAIL;
   const existingPassword = process.env.PLAYWRIGHT_JOURNEY_PASSWORD;
   if (!existingEmail || !existingPassword) {
-    return provisionNewJourneyUser(page);
+    return provisionNewJourneyUser(page, options);
   }
   const user = await signIn(page, {
     email: existingEmail,
     password: existingPassword,
     name: existingEmail.split("@")[0],
   });
-  return readyForTheApp(page, user);
+  return readyForTheApp(page, user, options);
 }
 
 /**
@@ -58,13 +71,18 @@ export async function provisionJourneyUser(page: Page): Promise<JourneyUser> {
  */
 export async function provisionNewJourneyUser(
   page: Page,
+  options: ProvisionOptions = {},
 ): Promise<JourneyUser> {
-  return readyForTheApp(page, await signUp(page, newJourneyUser()));
+  return readyForTheApp(page, await signUp(page, newJourneyUser()), options);
 }
 
-async function readyForTheApp(page: Page, user: JourneyUser) {
+async function readyForTheApp(
+  page: Page,
+  user: JourneyUser,
+  { grantTier = true }: ProvisionOptions,
+) {
   // Before anything reads the tier: the backend caches it for minutes.
-  if (user.id) await grantSubscriptionTier(user.id);
+  if (user.id && grantTier) await grantSubscriptionTier(user.id);
   await finishAccountSetup(page);
   await completeOnboarding(page);
   return user;

@@ -3,6 +3,7 @@ import {
   API_KEY_HEADER_NAME,
   IMPERSONATION_HEADER_NAME,
 } from "@/lib/constants";
+import { fetchRetryingDroppedConnection } from "@/lib/dropped-connection-retry";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 import { cache } from "react";
@@ -200,11 +201,14 @@ export const getServerAuthToken = cache(async (): Promise<string | null> => {
     // (-> `pg`), so the SSR path keeps the HTTP hop. Bound it: an unbounded
     // self-request can occupy a worker waiting on a worker, and that deadlock
     // is what made the Copilot page hang forever instead of erroring.
-    const response = await fetch(`${baseURL}/api/auth/token`, {
-      headers: { cookie: cookieHeader },
-      cache: "no-store",
-      signal: AbortSignal.timeout(10_000),
-    });
+    const response = await fetchRetryingDroppedConnection(
+      `${baseURL}/api/auth/token`,
+      {
+        headers: { cookie: cookieHeader },
+        cache: "no-store",
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
     // Better Auth's answer to a missing, expired or revoked session.
     if (response.status === 401) return null;
     // This self-request carries no client IP, so every user's SSR mint shares

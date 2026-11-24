@@ -5,7 +5,13 @@ from collections.abc import Iterator
 from typing import Any
 
 from .invoice import requested_cache_ttl
-from .planner import Conversation, Reply, ToolResult, bare_name
+from .planner import (
+    Conversation,
+    Reply,
+    ToolResult,
+    assistant_messages_before_marker,
+    bare_name,
+)
 from .streaming import Event, held_chunk, json_chunks, text_chunks
 
 
@@ -45,6 +51,9 @@ def conversation(body: dict[str, Any]) -> Conversation:
             if m.get("role") == "user"
         ),
         system_text=_text(body.get("system")),
+        assistant_messages_before_marker=assistant_messages_before_marker(
+            [(str(m.get("role")), _text(m.get("content"))) for m in messages]
+        ),
     )
 
 

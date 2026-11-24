@@ -135,6 +135,10 @@ test.describe("realtime updates journey", () => {
       expect(await markPageInstance(page), "the page never reloaded").toBe(
         pageInstance,
       );
+      expect(
+        live.urls().filter((url) => new URL(url).search),
+        "every connection sends its token in its first message, not its URL",
+      ).toEqual([]);
     } finally {
       // A step that failed before the stop must not leave the run going.
       await stopRun(page, agent.graphID, runID).catch(() => undefined);
@@ -229,6 +233,7 @@ async function routeLiveConnection(page: Page) {
      */
     failedSubscribeConfirmedAgain: () => failure.confirmedAgain,
     opened: () => connections.length,
+    urls: () => connections.map(({ client }) => client.url()),
     /** When the first connection after the last close opened. */
     reopenedAt: () => connections[closedUpTo]?.openedAt ?? Infinity,
     droppedStatuses: (runID: string) =>

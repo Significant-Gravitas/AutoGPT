@@ -63,8 +63,8 @@ export function usePublishAgentModal({
     useState<PublishAgentInfoInitialData>(emptyModalState);
 
   // The selected workflow's live listing, as the last check found it. Kept
-  // out of currentState: a parent that hands in a fresh targetState on every
-  // render would overwrite it.
+  // out of currentState, which the page's targetState replaces whenever it
+  // changes the dialog's open state, step or submission.
   const [liveSubmission, setLiveSubmission] =
     useState<LiveStoreSubmission | null>(null);
   const listingCheck = useLiveListingCheck();
@@ -91,31 +91,46 @@ export function usePublishAgentModal({
   });
   const creatorUsername = profile?.username;
 
-  // Sync currentState with targetState when it changes from outside
+  // Follow targetState's values, not its identity: a page may hand in a new
+  // object on every render, and the dialog must stay on the step it's on. So
+  // re-sending the same values doesn't reset or reopen it; a page that keeps
+  // the dialog mounted mirrors onStateChange into what it passes. `target`
+  // gives the dependency lists plain values.
+  const hasTarget = targetState !== undefined;
+  const target = targetState ?? defaultTargetState;
   useEffect(() => {
-    if (targetState) {
-      setCurrentState(targetState);
-    }
-  }, [targetState]);
+    if (!hasTarget) return;
+    setCurrentState({
+      isOpen: target.isOpen,
+      step: target.step,
+      submissionData: target.submissionData,
+    });
+  }, [hasTarget, target.isOpen, target.step, target.submissionData]);
 
   // Reset internal state when modal opens (only on initial open, not on every targetState change)
   const [hasOpened, setHasOpened] = useState(false);
   useEffect(() => {
-    if (!targetState) return;
-    if (targetState.isOpen && !hasOpened) {
+    if (!hasTarget) return;
+    if (target.isOpen && !hasOpened) {
       setSelectedAgent(null);
       setSelectedAgentId(preSelectedAgentId || null);
       setSelectedAgentVersion(preSelectedAgentVersion || null);
       setInitialData(emptyModalState);
       setLiveSubmission(null);
       setHasOpened(true);
-      if (targetState.step === "info") checkPreSelectedAgent();
-    } else if (!targetState.isOpen && hasOpened) {
+      if (target.step === "info") checkPreSelectedAgent();
+    } else if (!target.isOpen && hasOpened) {
       // The page closed the dialog: a check still running would reopen it.
       listingCheck.cancel();
       setHasOpened(false);
     }
-  }, [targetState, preSelectedAgentId, preSelectedAgentVersion]);
+  }, [
+    hasTarget,
+    target.isOpen,
+    target.step,
+    preSelectedAgentId,
+    preSelectedAgentVersion,
+  ]);
 
   // A dialog opened pre-scoped to a workflow starts on the listing form; build
   // it once the workflow's live listing is known.

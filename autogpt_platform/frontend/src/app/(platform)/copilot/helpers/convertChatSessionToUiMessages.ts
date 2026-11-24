@@ -200,9 +200,9 @@ function toToolInput(rawArguments: unknown): unknown {
  * list from the orphan result's ``todos`` and synthesize the missing part.
  */
 function orphanTodoWriteResultToPart(
-  msg: SessionChatMessage,
+  msg: Pick<SessionChatMessage, "tool_call_id" | "content">,
   consumedToolCallIds: ReadonlySet<string>,
-): UIMessage<unknown, UIDataTypes, UITools>["parts"][number] | null {
+) {
   const toolCallId = msg.tool_call_id?.trim();
   if (!toolCallId || consumedToolCallIds.has(toolCallId)) {
     return null;
@@ -210,15 +210,17 @@ function orphanTodoWriteResultToPart(
   if (typeof msg.content !== "string") return null;
   const parsed = safeJsonParse(msg.content);
   if (!parsed || typeof parsed !== "object") return null;
-  const todos = (parsed as { todos?: unknown }).todos;
-  if (!Array.isArray(todos) || todos.length === 0) return null;
+  const output = parsed as { type?: unknown; todos?: unknown };
+  const { type, todos } = output;
+  if (!Array.isArray(todos) || (todos.length === 0 && type !== "todo_write"))
+    return null;
   return {
     type: "tool-TodoWrite",
     toolCallId,
     state: "output-available",
     input: { todos },
-    output: parsed,
-  } as UIMessage<unknown, UIDataTypes, UITools>["parts"][number];
+    output,
+  } satisfies UiPart;
 }
 
 function collectConsumedToolCallIds(
@@ -689,7 +691,7 @@ export function createTurnLogRenderer(
       unanswered: turnOver ? "interrupted" : "input-available",
     };
 
-    const groups = groupTurnRows(log);
+    const { groups, orphanParts } = groupTurnRows(log);
     const next = new Map<string, { deps: unknown[]; message: UiMessage }>();
     const messages = groups.map((group, index) => {
       const trailingStep = stepIsEmpty && index === groups.length - 1;
@@ -711,6 +713,7 @@ export function createTurnLogRenderer(
               streamingRows,
               trailingStep,
               ctx,
+              orphanParts,
             );
       next.set(group.key, { deps, message });
       return message;
@@ -729,13 +732,15 @@ export function savedTurnBubbleIds(
   log: TurnLog,
 ): Map<string, string> {
   const ids = new Map<string, string>();
-  for (const group of groupTurnRows(log)) {
+  for (const group of groupTurnRows(log).groups) {
     if (group.role !== "assistant") continue;
-    const sequence = group.rows
-      .map((i) => log.rows[i].sequence)
-      .findLast((s): s is number => s !== null);
-    if (sequence !== undefined)
-      ids.set(group.key, `${sessionId}-seq-${sequence}`);
+    const messageRows = group.rows
+      .map((i) => log.rows[i])
+      .filter((row) => row.role !== "tool");
+    const sequence = messageRows.length
+      ? messageRows.findLast((row) => row.sequence !== null)?.sequence
+      : log.rows[group.rows[0]]?.sequence;
+    if (sequence != null) ids.set(group.key, `${sessionId}-seq-${sequence}`);
   }
   return ids;
 }
@@ -743,7 +748,7 @@ export function savedTurnBubbleIds(
 interface TurnGroup {
   key: string;
   role: "user" | "assistant";
-  /** Indices of the rows that draw parts; tool rows only feed outputs. */
+  /** Indices of rows that emit parts, including identified orphan task-list updates. */
   rows: number[];
   overlay: OverlayPart[];
 }
@@ -753,20 +758,31 @@ interface TurnGroup {
  * keys never depend on sequences: the first assistant bubble is the turn's,
  * and a later one is keyed by the drained follow-up it answers.
  */
-function groupTurnRows(log: TurnLog): TurnGroup[] {
+function groupTurnRows(log: TurnLog) {
   const turn = log.turnId ?? "";
   const groups: TurnGroup[] = [];
+  const orphanParts = new Map<number, UiPart>();
+  const consumedToolCallIds = new Set(
+    log.rows.flatMap((row) => row.toolCalls.map((call) => call.id.trim())),
+  );
   const groupOfRow: number[] = [];
   let afterUser: string | null = null;
   const assistantKey = () =>
     afterUser ? `turn:${turn}:after:${afterUser}` : `turn:${turn}`;
 
   log.rows.forEach((row, i) => {
+    if (row.role === "tool") {
+      const orphan = orphanTodoWriteResultToPart(
+        { tool_call_id: row.toolCallId, content: row.content },
+        consumedToolCallIds,
+      );
+      if (orphan?.output.type === "todo_write") orphanParts.set(i, orphan);
+    }
     const last = groups[groups.length - 1];
     if (row.role === "user") {
       groups.push({ key: row.key, role: "user", rows: [i], overlay: [] });
       afterUser = row.key;
-    } else if (row.role !== "tool") {
+    } else if (row.role !== "tool" || orphanParts.has(i)) {
       if (last?.role === "assistant") last.rows.push(i);
       else {
         groups.push({
@@ -797,7 +813,7 @@ function groupTurnRows(log: TurnLog): TurnGroup[] {
     }
     groups[target].overlay.push(part);
   }
-  return groups;
+  return { groups, orphanParts };
 }
 
 function buildGroupMessage(
@@ -806,6 +822,7 @@ function buildGroupMessage(
   streamingRows: Set<number | null>,
   trailingStep: boolean,
   ctx: RowPartsContext,
+  orphanParts: ReadonlyMap<number, UiPart>,
 ): UiMessage {
   const parts: UiPart[] = [];
   let overlayIndex = 0;
@@ -820,6 +837,11 @@ function buildGroupMessage(
   };
   for (const index of group.rows) {
     flushOverlayBefore(index);
+    const orphan = orphanParts.get(index);
+    if (orphan) {
+      parts.push(orphan);
+      continue;
+    }
     parts.push(
       ...buildRowParts(sessionRowOf(rows[index]), {
         ...ctx,
@@ -829,7 +851,11 @@ function buildGroupMessage(
   }
   flushOverlayBefore(Infinity);
   if (trailingStep) parts.push({ type: "step-start" });
-  const metadata = group.rows.length ? rows[group.rows[0]].metadata : null;
+  const firstMessageRow = group.rows.find(
+    (index) => rows[index].role !== "tool",
+  );
+  const metadata =
+    firstMessageRow !== undefined ? rows[firstMessageRow].metadata : null;
   return {
     id: group.key,
     role: group.role,

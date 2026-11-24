@@ -22,12 +22,17 @@ export interface ModelScript {
 
 export interface JournalEntry {
   kind: "turn" | "side_call" | "error" | "unexpected";
+  /** "anthropic" from the SDK engine's CLI, "openai" from the baseline
+   *  engine and side calls. */
+  dialect?: string;
   model?: string;
   turn?: number | null;
   error?: string;
   cost_usd?: number | null;
   checks?: { what: string; ok: boolean; detail: string }[];
   completed?: boolean | null;
+  /** When the reply ended or its client went away, in epoch seconds. */
+  finished_at?: number;
   /** The API key the request presented, as its keyFingerprint(). */
   credential?: string | null;
 }

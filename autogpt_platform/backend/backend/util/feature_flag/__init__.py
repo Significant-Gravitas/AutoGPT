@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import uuid
@@ -394,8 +395,13 @@ async def _evaluate_flag_value(
     PostHog could not give. A degraded context lookup makes the answer
     unauthoritative too: the flag evaluates fine, it just answers for a user
     without the targeted attributes. Only a read of an experiment flag sends
-    PostHog its exposure event.
+    PostHog its exposure event. A JSON value forced from the environment
+    (:func:`_env_value_override`) answers without PostHog.
     """
+    forced = _env_value_override(flag_key)
+    if forced is not None:
+        logger.debug("Feature flag %s overridden by env", flag_key)
+        return forced, True
     if posthog.get_flag_client() is None:
         # No client means the default, without a user lookup.
         result = (default, False)
@@ -476,10 +482,11 @@ _TRUTHY = ("1", "true", "yes", "on")
 # Flags whose callers read a string / JSON value through
 # ``get_feature_flag_value`` rather than a bool. The master switch below skips
 # them so it never hands a bare ``True`` to a caller expecting a payload
-# (mirrors the frontend's ``ARRAY_TYPED_FLAGS``). ``get_feature_flag_value``
-# itself never consults the env override; this set only matters on the boolean
+# (mirrors the frontend's ``ARRAY_TYPED_FLAGS``). Only these flags take a JSON
+# value from ``FORCE_FLAG_<NAME>`` (``_env_value_override``); the boolean
 # paths (``evaluate_feature_flag``, ``feature_flag``,
-# ``create_feature_flag_dependency``).
+# ``create_feature_flag_dependency``) read that variable as true or false, as
+# for any other flag.
 _NON_BOOLEAN_FLAG_VALUES: frozenset[str] = frozenset(
     {
         Flag.STRIPE_PRODUCT_ID_TOPUP.value,
@@ -573,6 +580,47 @@ def _env_flag_override(flag_key: Flag | str) -> bool | None:
     if _force_all_flags_enabled() and key_value not in _NON_BOOLEAN_FLAG_VALUES:
         return True
     return None
+
+
+# The flags whose env value has been logged, so each warns once.
+_warned_value_overrides: set[str] = set()
+
+
+def _env_value_override(flag_key: str) -> dict | list | None:
+    """A JSON object or array forced from the environment for a non-boolean flag.
+
+    For a flag in ``_NON_BOOLEAN_FLAG_VALUES``, ``FORCE_FLAG_<NAME>`` holding a
+    JSON object or array is the flag's value, and PostHog is not asked: a
+    stack without PostHog, such as the journeys' compose stack, gets its
+    Stripe price map this way. These values are the backend's alone, so
+    ``NEXT_PUBLIC_FORCE_FLAG_<NAME>``, which is meant for the browser bundle,
+    doesn't set one. Any other value (``true``, a string, invalid JSON) is
+    ignored, and PostHog answers as it would with nothing set.
+
+    Either way the first read of each flag logs a warning that names the
+    variable, never its value: a forced price map, cost limit or model route
+    left in a deployed environment must not go unnoticed.
+    """
+    if flag_key not in _NON_BOOLEAN_FLAG_VALUES:
+        return None
+    name = "FORCE_FLAG_" + flag_key.upper().replace("-", "_")
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    try:
+        value = json.loads(raw)
+    except ValueError:
+        value = None
+    forced = isinstance(value, (dict, list))
+    if flag_key not in _warned_value_overrides:
+        _warned_value_overrides.add(flag_key)
+        logger.warning(
+            f"{name} sets {flag_key}, so PostHog is not asked for it"
+            if forced
+            else f"{name} is ignored: {flag_key} takes a JSON object or array,"
+            " so PostHog answers it"
+        )
+    return value if forced else None
 
 
 async def is_feature_enabled(

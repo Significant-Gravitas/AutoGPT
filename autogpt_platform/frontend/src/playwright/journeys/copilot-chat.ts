@@ -23,7 +23,8 @@ export async function startChat(page: Page, message: string) {
   await input.press("Enter");
 }
 
-interface RecordedStream {
+/** A chat stream's body as recordChatStreams saw it. */
+export interface RecordedStream {
   method: string;
   text: string;
   done: boolean;
@@ -204,6 +205,11 @@ export async function hasActiveTurn(page: Page, sessionID: string) {
   return Boolean((await readSession(page, sessionID)).active_stream);
 }
 
+/** The id of the turn the server is running in the chat, or null. */
+export async function runningTurnID(page: Page, sessionID: string) {
+  return (await readSession(page, sessionID)).active_stream?.turn_id ?? null;
+}
+
 async function readSession(page: Page, sessionID: string) {
   const response = await page.request.get(
     `/api/proxy/api/internal/chat/sessions/${sessionID}`,
@@ -211,7 +217,7 @@ async function readSession(page: Page, sessionID: string) {
   expect(response.ok(), `GET chat session: ${response.status()}`).toBe(true);
   return (await response.json()) as {
     messages: SavedMessage[];
-    active_stream?: unknown;
+    active_stream?: { turn_id?: string } | null;
   };
 }
 

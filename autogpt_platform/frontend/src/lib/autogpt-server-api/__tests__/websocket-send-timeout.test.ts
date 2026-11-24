@@ -74,6 +74,7 @@ describe("WebSocket send deadlines", () => {
       expect(
         socket.send.mock.calls.map(([message]) => JSON.parse(message)),
       ).toEqual([
+        { method: "authenticate", data: { token: "recovered-token" } },
         { method: "heartbeat", data: "ping", success: true },
         {
           method: "subscribe_graph_execution",
@@ -107,9 +108,12 @@ describe("WebSocket send deadlines", () => {
     socket.open();
     socket.pong();
     await vi.advanceTimersByTimeAsync(0);
-    expect(socket.send).toHaveBeenCalledExactlyOnceWith(
-      JSON.stringify({ method: "heartbeat", data: "ping", success: true }),
-    );
+    expect(
+      socket.send.mock.calls.map(([message]) => JSON.parse(message)),
+    ).toEqual([
+      { method: "authenticate", data: { token: "recovered-token" } },
+      { method: "heartbeat", data: "ping", success: true },
+    ]);
     api.disconnectWebSocket();
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -126,9 +130,12 @@ describe("WebSocket send deadlines", () => {
     socket.open();
     socket.pong();
     await vi.advanceTimersByTimeAsync(0);
-    expect(socket.send).toHaveBeenCalledExactlyOnceWith(
-      JSON.stringify({ method: "heartbeat", data: "ping", success: true }),
-    );
+    expect(
+      socket.send.mock.calls.map(([message]) => JSON.parse(message)),
+    ).toEqual([
+      { method: "authenticate", data: { token: "test-token" } },
+      { method: "heartbeat", data: "ping", success: true },
+    ]);
   });
 
   it("clears the send deadline after authentication succeeds", async () => {

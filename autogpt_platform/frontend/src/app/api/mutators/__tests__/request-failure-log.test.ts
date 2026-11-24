@@ -10,10 +10,10 @@ import {
   vi,
 } from "vitest";
 
+import { routeTemplate } from "@/lib/route-template";
 import {
   logClientRequestFailure,
   resetClientRequestFailureLog,
-  routeTemplate,
 } from "../request-failure-log";
 
 // A real Sentry client with the browser's console capture, so the events and
