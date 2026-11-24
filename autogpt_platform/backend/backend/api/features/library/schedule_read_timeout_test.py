@@ -49,10 +49,14 @@ class _SchedulerStub:
         ]
 
     async def get_execution_schedules(
-        self, user_id: str | None = None
+        self, user_id: str | None = None, *, include_paused: bool = False
     ) -> list[GraphExecutionJobInfo]:
         await self._misbehave()
-        return [s for s in self.schedules if s.user_id == user_id]
+        return [
+            s
+            for s in self.schedules
+            if s.user_id == user_id and (include_paused or s.next_run_time)
+        ]
 
     async def _misbehave(self) -> None:
         if self.mode == "hangs":
