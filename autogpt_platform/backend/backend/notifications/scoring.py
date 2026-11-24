@@ -50,19 +50,26 @@ async def score_completed_run(graph_exec_id: str) -> float | None:
     """Score one finished run and persist it. Never raises: a scoring failure
     must not fail the run that triggered it."""
     try:
-        execution = await AgentGraphExecution.prisma().find_unique(
-            where={"id": graph_exec_id}
+        rows = await query_raw_with_schema(
+            """
+            SELECT "executionStatus"::text AS "status", "stats", "agentGraphId"
+            FROM {schema_prefix}"AgentGraphExecution"
+            WHERE "id" = $1
+            """,
+            graph_exec_id,
         )
-        if execution is None or execution.executionStatus not in _STATUS_SCORE:
+        if not rows:
+            return None
+        status = AgentExecutionStatus(rows[0]["status"])
+        if status not in _STATUS_SCORE:
             return None
 
-        stats = dict(execution.stats or {})
-        baseline = await _agent_cost_baseline(execution.agentGraphId, graph_exec_id)
-        first_success = await _is_first_success(
-            execution.agentGraphId, execution.executionStatus, graph_exec_id
-        )
+        stats = dict(rows[0]["stats"] or {})
+        graph_id = rows[0]["agentGraphId"]
+        baseline = await _agent_cost_baseline(graph_id, graph_exec_id)
+        first_success = await _is_first_success(graph_id, status, graph_exec_id)
         score = compute_score(
-            status=execution.executionStatus,
+            status=status,
             cost_cents=_numeric_stat(stats.get("cost")),
             node_error_count=int(_numeric_stat(stats.get("node_error_count"))),
             has_activity=bool(stats.get("activity_status")),

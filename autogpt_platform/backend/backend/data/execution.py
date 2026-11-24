@@ -776,6 +776,40 @@ async def get_graph_execution_ids(
     return [row["id"] for row in rows]
 
 
+async def get_graph_execution_status(
+    user_id: str, execution_id: str
+) -> ExecutionStatus | None:
+    """A user's graph execution's status, reading that column alone; None
+    when the user has no such execution in their history."""
+    rows = await query_raw_with_schema(
+        """
+        SELECT "executionStatus"::text AS "status"
+        FROM {schema_prefix}"AgentGraphExecution"
+        WHERE "id" = $1 AND "userId" = $2 AND "isDeleted" = false
+        """,
+        execution_id,
+        user_id,
+    )
+    return ExecutionStatus(rows[0]["status"]) if rows else None
+
+
+async def get_graph_execution_owners(execution_ids: list[str]) -> dict[str, str]:
+    """The user ID of each listed graph execution still in its owner's
+    history, by execution ID, reading those two columns alone.
+
+    ⚠️ No `user_id` check: for admin routes only.
+    """
+    rows = await query_raw_with_schema(
+        """
+        SELECT "id", "userId"
+        FROM {schema_prefix}"AgentGraphExecution"
+        WHERE "id" = ANY($1::text[]) AND "isDeleted" = false
+        """,
+        execution_ids,
+    )
+    return {row["id"]: row["userId"] for row in rows}
+
+
 async def get_graph_executions_count(
     user_id: Optional[str] = None,
     graph_id: Optional[str] = None,
@@ -1328,6 +1362,43 @@ async def update_graph_execution_stats(
     reason to leave child rows untouched (e.g. resume flows or
     speculative writes that will be reconciled separately).
     """
+    if not await _write_graph_execution_stats(
+        graph_exec_id,
+        status,
+        stats,
+        cascade_running_children,
+        update_tenancy,
+        organization_id,
+        team_id,
+    ):
+        return None
+    graph_exec = await AgentGraphExecution.prisma().find_unique_or_raise(
+        where={"id": graph_exec_id},
+        include=graph_execution_include(
+            [*get_io_block_ids(), *get_webhook_block_ids()]
+        ),
+    )
+    return GraphExecution.from_db(graph_exec)
+
+
+async def update_graph_execution_status(
+    graph_exec_id: str, status: ExecutionStatus
+) -> bool:
+    """`update_graph_execution_stats` for a caller that needs nothing back:
+    whether the status was written, which it is only from a status it may
+    follow. The same ⚠️ applies."""
+    return await _write_graph_execution_stats(graph_exec_id, status)
+
+
+async def _write_graph_execution_stats(
+    graph_exec_id: str,
+    status: ExecutionStatus | None = None,
+    stats: GraphExecutionStats | None = None,
+    cascade_running_children: bool = True,
+    update_tenancy: bool = False,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> bool:
     if not status and not stats and not update_tenancy:
         raise ValueError(
             f"Must provide either status or stats to update for execution {graph_exec_id}"
@@ -1377,7 +1448,7 @@ async def update_graph_execution_stats(
         # from (VALID_STATUS_TRANSITIONS), e.g. a second terminal write after
         # the run already finished. Nothing changed, so do not score it,
         # cascade its children, or hand back a row that suggests it did.
-        return None
+        return False
 
     if status in TERMINAL_GRAPH_EXECUTION_STATUSES:
         # Score the finished run for the Briefing while its stats are fresh.
@@ -1400,15 +1471,7 @@ async def update_graph_execution_stats(
                 {"error": f"graph_execution_{status.value.lower()}"},
             ),
         )
-
-    graph_exec = await AgentGraphExecution.prisma().find_unique_or_raise(
-        where={"id": graph_exec_id},
-        include=graph_execution_include(
-            [*get_io_block_ids(), *get_webhook_block_ids()]
-        ),
-    )
-
-    return GraphExecution.from_db(graph_exec)
+    return True
 
 
 async def update_node_execution_status_batch(

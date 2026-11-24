@@ -1072,10 +1072,15 @@ async def test_stop_graph_execution_in_review_status_cancels_pending_reviews(
     )
 
     mock_execution_db = mocker.patch("backend.executor.utils.execution_db")
+    mock_execution_db.get_graph_execution_status = mocker.AsyncMock(
+        return_value=ExecutionStatus.REVIEW
+    )
     mock_execution_db.get_graph_execution_meta = mocker.AsyncMock(
         return_value=mock_graph_exec
     )
-    mock_execution_db.update_graph_execution_stats = mocker.AsyncMock()
+    mock_execution_db.update_graph_execution_status = mocker.AsyncMock(
+        return_value=True
+    )
 
     mock_get_event_bus = mocker.patch(
         "backend.executor.utils.get_async_execution_event_bus"
@@ -1103,10 +1108,9 @@ async def test_stop_graph_execution_in_review_status_cancels_pending_reviews(
     )
 
     # Verify execution status was updated to TERMINATED
-    mock_execution_db.update_graph_execution_stats.assert_called_once()
-    call_kwargs = mock_execution_db.update_graph_execution_stats.call_args[1]
-    assert call_kwargs["graph_exec_id"] == graph_exec_id
-    assert call_kwargs["status"] == ExecutionStatus.TERMINATED
+    mock_execution_db.update_graph_execution_status.assert_awaited_once_with(
+        graph_exec_id=graph_exec_id, status=ExecutionStatus.TERMINATED
+    )
 
 
 @pytest.mark.asyncio
@@ -1139,13 +1143,16 @@ async def test_stop_graph_execution_with_database_manager_when_prisma_disconnect
         "backend.executor.utils.get_database_manager_async_client"
     )
     mock_db_manager = mocker.AsyncMock()
+    mock_db_manager.get_graph_execution_status = mocker.AsyncMock(
+        return_value=ExecutionStatus.REVIEW
+    )
     mock_db_manager.get_graph_execution_meta = mocker.AsyncMock(
         return_value=mock_graph_exec
     )
     mock_db_manager.cancel_pending_reviews_for_execution = mocker.AsyncMock(
         return_value=3  # 3 reviews cancelled
     )
-    mock_db_manager.update_graph_execution_stats = mocker.AsyncMock()
+    mock_db_manager.update_graph_execution_status = mocker.AsyncMock(return_value=True)
     mock_get_db_manager.return_value = mock_db_manager
 
     mock_get_event_bus = mocker.patch(
@@ -1174,7 +1181,46 @@ async def test_stop_graph_execution_with_database_manager_when_prisma_disconnect
     )
 
     # Verify execution status was updated via database manager
-    mock_db_manager.update_graph_execution_stats.assert_called_once()
+    mock_db_manager.update_graph_execution_status.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_stop_waits_on_the_status_alone(mocker: MockerFixture):
+    """However long the wait, a stop reads the run's whole row once, for the
+    event it publishes when the run has ended."""
+    from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+    from backend.executor.utils import stop_graph_execution
+
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_queue",
+        return_value=mocker.AsyncMock(),
+    )
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
+    execution_store = mocker.patch("backend.executor.utils.execution_db")
+    execution_store.get_graph_execution_status = mocker.AsyncMock(
+        side_effect=[
+            ExecutionStatus.RUNNING,
+            ExecutionStatus.RUNNING,
+            ExecutionStatus.TERMINATED,
+        ]
+    )
+    ended = mocker.MagicMock(spec=GraphExecutionMeta)
+    execution_store.get_graph_execution_meta = mocker.AsyncMock(return_value=ended)
+    event_bus = mocker.MagicMock(publish=mocker.AsyncMock())
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus",
+        return_value=event_bus,
+    )
+
+    await stop_graph_execution(
+        user_id="test-user", graph_exec_id="run-1", wait_timeout=10.0, cascade=False
+    )
+
+    assert execution_store.get_graph_execution_status.await_count == 3
+    execution_store.get_graph_execution_meta.assert_awaited_once_with(
+        execution_id="run-1", user_id="test-user"
+    )
+    event_bus.publish.assert_awaited_once_with(ended)
 
 
 @pytest.mark.asyncio
@@ -1218,22 +1264,30 @@ async def test_stop_graph_execution_cascades_to_child_with_reviews(
     # Track call count to simulate status transition
     call_count = {"count": 0}
 
-    async def get_exec_meta_side_effect(execution_id, user_id):
+    async def get_exec_status_side_effect(user_id, execution_id):
         call_count["count"] += 1
         if execution_id == parent_exec_id:
             # After a few calls (child processing happens), transition parent to TERMINATED
             # This simulates the executor service processing the stop request
             if call_count["count"] > 3:
                 mock_parent_exec.status = ExecutionStatus.TERMINATED
-            return mock_parent_exec
+            return mock_parent_exec.status
         elif execution_id == child_exec_id:
-            return mock_child_exec
+            return mock_child_exec.status
         return None
 
-    mock_execution_db.get_graph_execution_meta = mocker.AsyncMock(
-        side_effect=get_exec_meta_side_effect
+    mock_execution_db.get_graph_execution_status = mocker.AsyncMock(
+        side_effect=get_exec_status_side_effect
     )
-    mock_execution_db.update_graph_execution_stats = mocker.AsyncMock()
+    mock_execution_db.get_graph_execution_meta = mocker.AsyncMock(
+        side_effect=lambda execution_id, user_id: {
+            parent_exec_id: mock_parent_exec,
+            child_exec_id: mock_child_exec,
+        }.get(execution_id)
+    )
+    mock_execution_db.update_graph_execution_status = mocker.AsyncMock(
+        return_value=True
+    )
 
     mock_get_event_bus = mocker.patch(
         "backend.executor.utils.get_async_execution_event_bus"
@@ -1268,7 +1322,7 @@ async def test_stop_graph_execution_cascades_to_child_with_reviews(
     )
 
     # Verify both parent and child status updates
-    assert mock_execution_db.update_graph_execution_stats.call_count >= 1
+    assert mock_execution_db.update_graph_execution_status.call_count >= 1
 
 
 # ---------------------------------------------------------------------------

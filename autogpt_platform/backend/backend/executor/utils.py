@@ -1411,23 +1411,24 @@ async def stop_graph_execution(
 
     start_time = time.time()
     while time.time() - start_time < wait_timeout:
-        graph_exec = await db.get_graph_execution_meta(
-            execution_id=graph_exec_id, user_id=user_id
+        # The status alone: a run's whole row can carry megabytes of inputs.
+        status = await db.get_graph_execution_status(
+            user_id=user_id, execution_id=graph_exec_id
         )
 
-        if not graph_exec:
+        if status is None:
             raise NotFoundError(f"Workflow run #{graph_exec_id} not found.")
 
-        if graph_exec.status in [
+        if status in [
             ExecutionStatus.TERMINATED,
             ExecutionStatus.COMPLETED,
             ExecutionStatus.FAILED,
         ]:
             # If graph execution is terminated/completed/failed, cancellation is complete
-            await get_async_execution_event_bus().publish(graph_exec)
+            await _publish_run_update(user_id, graph_exec_id)
             return
 
-        if graph_exec.status in [
+        if status in [
             ExecutionStatus.QUEUED,
             ExecutionStatus.INCOMPLETE,
             ExecutionStatus.REVIEW,
@@ -1436,7 +1437,7 @@ async def stop_graph_execution(
             # No need to wait for executor since it's not actively running
 
             # If graph is in REVIEW status, clean up pending reviews before terminating
-            if graph_exec.status == ExecutionStatus.REVIEW:
+            if status == ExecutionStatus.REVIEW:
                 # Use human_review_db if Prisma connected, else database manager
                 review_db = (
                     human_review_db
@@ -1451,26 +1452,29 @@ async def stop_graph_execution(
                     f"Cancelled {cancelled_count} pending review(s) for stopped execution {graph_exec_id}"
                 )
 
-            graph_exec.status = ExecutionStatus.TERMINATED
-
-            await asyncio.gather(
-                # Update graph execution status
-                db.update_graph_execution_stats(
-                    graph_exec_id=graph_exec.id,
-                    status=ExecutionStatus.TERMINATED,
-                ),
-                # Publish graph execution event
-                get_async_execution_event_bus().publish(graph_exec),
+            await db.update_graph_execution_status(
+                graph_exec_id=graph_exec_id, status=ExecutionStatus.TERMINATED
             )
+            await _publish_run_update(user_id, graph_exec_id)
             return
 
-        if graph_exec.status == ExecutionStatus.RUNNING:
+        if status == ExecutionStatus.RUNNING:
             await asyncio.sleep(0.1)
 
     raise TimeoutError(
         f"Workflow run #{graph_exec_id} will need to take longer than {wait_timeout} seconds to stop. "
         f"You can check the status of the execution in the UI or try again later."
     )
+
+
+async def _publish_run_update(user_id: str, graph_exec_id: str) -> None:
+    # The one full read of a stop, for the event the UI and waiting blocks act on.
+    db = execution_db if prisma.is_connected() else get_database_manager_async_client()
+    graph_exec = await db.get_graph_execution_meta(
+        execution_id=graph_exec_id, user_id=user_id
+    )
+    if graph_exec:
+        await get_async_execution_event_bus().publish(graph_exec)
 
 
 async def _enforce_expert_run_budget(user_id: str, expert_id: str) -> None:

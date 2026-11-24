@@ -139,6 +139,7 @@ from backend.data.execution import (
     get_frequently_executed_graphs,
     get_graph_execution,
     get_graph_execution_meta,
+    get_graph_execution_status,
     get_graph_executions,
     get_graph_executions_count,
     get_latest_node_execution,
@@ -147,6 +148,7 @@ from backend.data.execution import (
     set_execution_kv_data,
     update_graph_execution_start_time,
     update_graph_execution_stats,
+    update_graph_execution_status,
     update_node_execution_status,
     update_node_execution_status_batch,
     upsert_execution_input,
@@ -405,6 +407,7 @@ class DatabaseManager(AppService):
     get_graph_executions_count = _(get_graph_executions_count)
     get_graph_execution = _(get_graph_execution)
     get_graph_execution_meta = _(get_graph_execution_meta)
+    get_graph_execution_status = _(get_graph_execution_status)
     create_graph_execution = _(create_graph_execution)
     get_node_execution = _(get_node_execution)
     get_node_executions = _(get_node_executions)
@@ -413,6 +416,7 @@ class DatabaseManager(AppService):
     update_node_execution_status_batch = _(update_node_execution_status_batch)
     update_graph_execution_start_time = _(update_graph_execution_start_time)
     update_graph_execution_stats = _(update_graph_execution_stats)
+    update_graph_execution_status = _(update_graph_execution_status)
     upsert_execution_input = _(upsert_execution_input)
     upsert_execution_output = _(upsert_execution_output)
     get_execution_outputs_by_node_exec_id = _(get_execution_outputs_by_node_exec_id)
@@ -1028,10 +1032,12 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_latest_node_execution = d.get_latest_node_execution
     get_graph_execution = d.get_graph_execution
     get_graph_execution_meta = d.get_graph_execution_meta
+    get_graph_execution_status = d.get_graph_execution_status
     get_graph_executions = d.get_graph_executions
     get_node_execution = d.get_node_execution
     get_node_executions = d.get_node_executions
     update_graph_execution_stats = d.update_graph_execution_stats
+    update_graph_execution_status = d.update_graph_execution_status
     update_node_execution_status = d.update_node_execution_status
     update_node_execution_status_batch = d.update_node_execution_status_batch
     upsert_execution_input = d.upsert_execution_input
