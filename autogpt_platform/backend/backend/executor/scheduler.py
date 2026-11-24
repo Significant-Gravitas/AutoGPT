@@ -3742,6 +3742,14 @@ class Scheduler(AppService):
                 graph_credentials_inputs=input_credentials,
             )
         )
+        if expert_id is not None:
+            # Each run would be refused for a key the expert was never
+            # granted, and a scheduled run's refusal is only logged.
+            run_async(
+                execution_utils._enforce_expert_credential_scope(
+                    user_id, expert_id, input_credentials
+                )
+            )
 
         try:
             job = self._persist_schedule(
@@ -4062,6 +4070,13 @@ class Scheduler(AppService):
                 graph_credentials_inputs=merged.input_credentials,
             )
         )
+        if merged.expert_id is not None:
+            # As at creation, on the keys each run will carry after the edit.
+            run_async(
+                execution_utils._enforce_expert_credential_scope(
+                    user_id, merged.expert_id, merged.input_credentials
+                )
+            )
 
     def _authorized_graph_job(
         self, schedule_id: str, user_id: str
