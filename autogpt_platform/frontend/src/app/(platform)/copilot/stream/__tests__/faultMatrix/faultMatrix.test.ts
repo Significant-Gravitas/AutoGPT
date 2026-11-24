@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CANCELLED_MARKER } from "../../../useCopilotStop";
-import { CONTINUATION_PROBES, SendInFlightError } from "../../turnRuntime";
 import { createTailRenderer } from "../../renderTail";
+import {
+  CONTINUATION_PROBES,
+  SendInFlightError,
+  UnconfirmedSendError,
+} from "../../turnRuntime";
 import { FaultServer } from "./faultServer";
 import { Tab, type Screen } from "./tab";
 
@@ -403,6 +407,112 @@ describe("a send", () => {
       setOnline(true);
       await advance(15_000);
       expectScreen({ error: "Failed to fetch", notice: null });
+    },
+  );
+
+  cell(
+    "S15r",
+    "while offline, once reported, is sent again under its first id and answered once",
+    async () => {
+      server.postMode = "lost-before-send";
+      setOnline(false);
+      tab.send(P1);
+      await advance(30_000);
+      setOnline(true);
+      await advance(15_000);
+      // The check read the chat and found no row for it.
+      expectScreen({ error: "Failed to fetch", notice: null, phase: "failed" });
+      expect(tab.runtime.getSnapshot().error?.cause).toBeInstanceOf(TypeError);
+      expect(server.history).toEqual([]);
+      server.postMode = "stream";
+      expect(tab.runtime.resendUnconfirmed(undefined)).not.toBeNull();
+      await advance(0);
+      server.publish();
+      await advance(30_000);
+      expectScreen({
+        error: null,
+        notice: null,
+        chat: [`user: ${P1}`, ANSWER],
+      });
+      const [first, again] = server.posts;
+      expect(server.posts).toHaveLength(2);
+      expect(again.message_id).toBe(first.message_id);
+      expect(server.turns).toHaveLength(1);
+    },
+  );
+
+  cell(
+    "S15a",
+    "dropped, its request reaching the server only after it was reported, sent again, shows once with its answer",
+    async () => {
+      server.postMode = "lost-late-receive";
+      tab.send(P1);
+      await advance(10_000);
+      expectScreen({ error: "Failed to fetch", phase: "failed" });
+      // The server takes the first request at 40 s and starts its turn.
+      await advance(32_000);
+      expect(server.history.filter((row) => row.content === P1)).toHaveLength(
+        1,
+      );
+      server.postMode = "stream";
+      expect(tab.runtime.resendUnconfirmed(undefined)).not.toBeNull();
+      await advance(0);
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] });
+      expect(server.posts).toHaveLength(2);
+      expect(server.posts[1].message_id).toBe(server.posts[0].message_id);
+      expect(server.turns).toHaveLength(1);
+      expect(server.history.filter((row) => row.content === P1)).toHaveLength(
+        1,
+      );
+    },
+  );
+
+  cell(
+    "S15l",
+    "dropped, its request answered after it was reported, no longer offers to send it again",
+    async () => {
+      server.postMode = "lost-late-receive";
+      tab.send(P1);
+      await advance(10_000);
+      expectScreen({ error: "Failed to fetch" });
+      // The server took it at 40 s and answered; the page reads the chat.
+      await advance(32_000);
+      server.publish();
+      await advance(1_000);
+      tab.runtime.observe(server.view());
+      await advance(1_000);
+      expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] });
+      expect(tab.runtime.resendUnconfirmed(undefined)).toBeNull();
+    },
+  );
+
+  cell(
+    "S15q",
+    "queued behind another tab's turn, its response then cut off, does not offer to send it again",
+    async () => {
+      const other = openTab();
+      other.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      // The server says it queued P2, so the chat drops P2's bubble; then the
+      // response fails, and no bubble is left for Send again to post.
+      server.postMode = "lost-after-follow-up";
+      tab.send(P2);
+      await advance(3_000);
+      server.publish();
+      await advance(5_000);
+      server.publish();
+      await advance(30_000);
+      // P2's own turn answered it.
+      expectScreen({ chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER] });
+      expect(tab.runtime.getSnapshot().error).not.toBeInstanceOf(
+        UnconfirmedSendError,
+      );
+      expect(tab.runtime.resendUnconfirmed(undefined)).toBeNull();
+      expect(server.posts.map((post) => post.message)).toEqual([P1, P2]);
     },
   );
 
