@@ -20,7 +20,7 @@ export function StorageUsage() {
         className="flex items-center gap-3"
         data-testid="storage-usage-loading"
       >
-        <Skeleton className="h-1.5 w-32 rounded-full" />
+        <Skeleton className="h-1.5 w-32 rounded-pill" />
         <Skeleton className="h-3 w-28" />
       </div>
     );

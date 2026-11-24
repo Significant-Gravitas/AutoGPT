@@ -124,7 +124,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
             />
             <span
               className={cn(
-                "relative flex items-center gap-1.5 rounded-full px-2.5 py-1",
+                "relative flex items-center gap-1.5 rounded-pill px-2.5 py-1",
                 running ? "bg-success/15" : "bg-surface/10",
               )}
             >

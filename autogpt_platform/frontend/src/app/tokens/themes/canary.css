@@ -10,8 +10,9 @@
   values. Storybook's "Look" toolbar switches to it. A test keeps it complete:
   a new colour, radius or text size needs a canary value here.
 
-  `--radius-full` keeps its value: circles and pills share it until they are
-  split. Colours are RGB triplets, as in theme.css.
+  `--radius-full` keeps its value: it is for circles, which stay round in
+  any look; pills read `--radius-pill`. Colours are RGB triplets, as in
+  theme.css.
 */
 html[data-look="canary"] {
   /* Surfaces: green */
@@ -110,6 +111,9 @@ html[data-look="canary"] {
   --radius-xl: 0px;
   --radius-2xl: 0px;
   --radius-3xl: 0px;
+  --radius-4xl: 0px;
+  --radius-5xl: 0px;
+  --radius-2xl-inner: 0px;
   --radius-pill: 0px;
   --radius-xsmall: 0px;
   --radius-small: 0px;

@@ -77,7 +77,7 @@ export function BlocksTab() {
             aria-label="Filter blocks"
           />
         </div>
-        <div className="flex items-center gap-1 rounded-full bg-surface-hover p-0.5">
+        <div className="flex items-center gap-1 rounded-pill bg-surface-hover p-0.5">
           {KIND_CHIPS.map((chip) => (
             <ToggleChip
               key={chip.value}

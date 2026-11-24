@@ -31,12 +31,12 @@ export function UsageMeter({ label, percent, detail }: Props) {
         aria-valuemax={100}
         aria-valuenow={value}
         data-slot="usage-meter-track"
-        className="h-1.5 overflow-hidden rounded-full bg-surface-hover"
+        className="h-1.5 overflow-hidden rounded-pill bg-surface-hover"
       >
         <div
           data-slot="usage-meter-fill"
           className={cn(
-            "h-full w-(--usage-meter-width) rounded-full transition-[width]",
+            "h-full w-(--usage-meter-width) rounded-pill transition-[width]",
             value >= 100 ? "bg-orange" : "bg-brand",
           )}
           style={{ "--usage-meter-width": `${value}%` } as CSSProperties}

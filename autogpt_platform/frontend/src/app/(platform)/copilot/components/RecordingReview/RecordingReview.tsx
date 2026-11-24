@@ -109,7 +109,7 @@ export function RecordingReview({
                       <span className="font-medium">
                         Step {step.seq}: {step.action}
                       </span>
-                      <span className="rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit font-medium text-foreground-body">
+                      <span className="rounded-pill bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit font-medium text-foreground-body">
                         outcome: {step.outcome}
                       </span>
                     </div>

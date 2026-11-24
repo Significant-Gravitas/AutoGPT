@@ -73,32 +73,32 @@ function GenericTextContent() {
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <div className="h-0.5 w-full rounded-full bg-action-hover/10" />
+        <div className="h-0.5 w-full rounded-pill bg-action-hover/10" />
         <div className="flex gap-1">
-          <div className="h-0.5 w-1/3 rounded-full bg-action-hover/10" />
-          <div className="h-0.5 w-1/3 rounded-full bg-action-hover/10" />
-          <div className="h-0.5 w-1/3 rounded-full bg-action-hover/10" />
+          <div className="h-0.5 w-1/3 rounded-pill bg-action-hover/10" />
+          <div className="h-0.5 w-1/3 rounded-pill bg-action-hover/10" />
+          <div className="h-0.5 w-1/3 rounded-pill bg-action-hover/10" />
         </div>
         <div className="flex gap-1">
-          <div className="h-0.5 w-1/2 rounded-full bg-action-hover/10" />
-          <div className="h-0.5 w-1/2 rounded-full bg-action-hover/10" />
+          <div className="h-0.5 w-1/2 rounded-pill bg-action-hover/10" />
+          <div className="h-0.5 w-1/2 rounded-pill bg-action-hover/10" />
         </div>
         <div className="flex gap-1">
-          <div className="h-0.5 w-1/3 rounded-full bg-action-hover/10" />
-          <div className="h-0.5 w-1/3 rounded-full bg-action-hover/10" />
-          <div className="h-0.5 w-1/3 rounded-full bg-action-hover/10" />
+          <div className="h-0.5 w-1/3 rounded-pill bg-action-hover/10" />
+          <div className="h-0.5 w-1/3 rounded-pill bg-action-hover/10" />
+          <div className="h-0.5 w-1/3 rounded-pill bg-action-hover/10" />
         </div>
         <div className="flex gap-1">
-          <div className="h-0.5 w-1/3 rounded-full bg-action-hover/10" />
-          <div className="h-0.5 w-2/3 rounded-full bg-action-hover/10" />
+          <div className="h-0.5 w-1/3 rounded-pill bg-action-hover/10" />
+          <div className="h-0.5 w-2/3 rounded-pill bg-action-hover/10" />
         </div>
         <div className="flex gap-1">
-          <div className="h-0.5 w-1/3 rounded-full bg-action-hover/10" />
-          <div className="h-0.5 w-1/3 rounded-full bg-action-hover/10" />
+          <div className="h-0.5 w-1/3 rounded-pill bg-action-hover/10" />
+          <div className="h-0.5 w-1/3 rounded-pill bg-action-hover/10" />
         </div>
       </div>
       <div className="pt-1">
-        <div className="h-0.5 w-4 rounded-full bg-action-hover" />
+        <div className="h-0.5 w-4 rounded-pill bg-action-hover" />
       </div>
     </div>
   );
@@ -124,24 +124,24 @@ function JsonContent() {
     <div className="space-y-1">
       <Glyph text="{" size={6} mono className="text-foreground-strong/40" />
       <div className="flex items-center gap-1 pl-1.5">
-        <div className="h-[3px] w-3 rounded-full bg-action-hover/30" />
+        <div className="h-[3px] w-3 rounded-pill bg-action-hover/30" />
         <Glyph text=":" size={5} className="text-foreground-strong/30" />
-        <div className="h-[3px] w-4 rounded-full bg-action-hover/15" />
+        <div className="h-[3px] w-4 rounded-pill bg-action-hover/15" />
       </div>
       <div className="flex items-center gap-1 pl-1.5">
-        <div className="h-[3px] w-4 rounded-full bg-action-hover/30" />
+        <div className="h-[3px] w-4 rounded-pill bg-action-hover/30" />
         <Glyph text=":" size={5} className="text-foreground-strong/30" />
-        <div className="h-[3px] w-2 rounded-full bg-action-hover/15" />
+        <div className="h-[3px] w-2 rounded-pill bg-action-hover/15" />
       </div>
       <div className="flex items-center gap-1 pl-1.5">
-        <div className="h-[3px] w-2.5 rounded-full bg-action-hover/30" />
+        <div className="h-[3px] w-2.5 rounded-pill bg-action-hover/30" />
         <Glyph text=":" size={5} className="text-foreground-strong/30" />
-        <div className="h-[3px] w-5 rounded-full bg-action-hover/15" />
+        <div className="h-[3px] w-5 rounded-pill bg-action-hover/15" />
       </div>
       <div className="flex items-center gap-1 pl-1.5">
-        <div className="h-[3px] w-3.5 rounded-full bg-action-hover/30" />
+        <div className="h-[3px] w-3.5 rounded-pill bg-action-hover/30" />
         <Glyph text=":" size={5} className="text-foreground-strong/30" />
-        <div className="h-[3px] w-3 rounded-full bg-action-hover/15" />
+        <div className="h-[3px] w-3 rounded-pill bg-action-hover/15" />
       </div>
       <Glyph text="}" size={6} mono className="text-foreground-strong/40" />
     </div>
@@ -170,7 +170,7 @@ function HtmlContent() {
           mono
           className="text-foreground-strong/40"
         />
-        <div className={cn("h-[3px] rounded-full", color, w)} />
+        <div className={cn("h-[3px] rounded-pill", color, w)} />
         <Glyph
           text={selfClosing ? "/>" : ">"}
           size={5}
@@ -185,7 +185,7 @@ function HtmlContent() {
       <Tag color="bg-action-hover/30" w="w-3" />
       <Tag color="bg-action-hover/25" w="w-2.5" pl="pl-1.5" />
       <div className="pl-3">
-        <div className="h-[2px] w-6 rounded-full bg-action-hover/10" />
+        <div className="h-[2px] w-6 rounded-pill bg-action-hover/10" />
       </div>
       <Tag color="bg-action-hover/25" w="w-2.5" pl="pl-1.5" closing />
       <Tag color="bg-action-hover/20" w="w-2" pl="pl-1.5" selfClosing />
@@ -204,8 +204,8 @@ function VideoContent() {
         </svg>
       </div>
       {/* Timeline at the bottom */}
-      <div className="absolute right-1 bottom-1 left-1 h-1 rounded-full bg-action-hover/10">
-        <div className="h-full w-1/3 rounded-full bg-action-hover/40" />
+      <div className="absolute right-1 bottom-1 left-1 h-1 rounded-pill bg-action-hover/10">
+        <div className="h-full w-1/3 rounded-pill bg-action-hover/40" />
       </div>
     </div>
   );
@@ -215,8 +215,8 @@ function ImgContent() {
   return (
     <div className="relative h-16">
       <div className="absolute right-0 bottom-0 left-0 h-4 bg-gradient-to-t from-action-hover/20 to-transparent" />
-      <div className="absolute bottom-1 left-1 h-3 w-5 rounded-t-full bg-action-hover/25" />
-      <div className="absolute right-2 bottom-1 h-5 w-4 rounded-t-full bg-action-hover/30" />
+      <div className="absolute bottom-1 left-1 h-3 w-5 rounded-t-pill bg-action-hover/25" />
+      <div className="absolute right-2 bottom-1 h-5 w-4 rounded-t-pill bg-action-hover/30" />
       <div className="absolute top-1.5 right-1.5 size-2 rounded-full bg-action-hover/40" />
     </div>
   );
@@ -260,7 +260,7 @@ function CodeContent() {
             className="text-foreground-strong/40"
           />
           <div
-            className={cn("h-[3px] rounded-full bg-action-hover/20", line.w)}
+            className={cn("h-[3px] rounded-pill bg-action-hover/20", line.w)}
           />
         </div>
       ))}

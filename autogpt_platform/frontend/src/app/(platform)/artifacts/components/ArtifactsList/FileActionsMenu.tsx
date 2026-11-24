@@ -51,7 +51,7 @@ export function FileActionsMenu({ file, className }: Props) {
             type="button"
             aria-label={`Actions for ${file.name}`}
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-foreground-strong",
+              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-pill text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-foreground-strong",
               className,
             )}
             data-testid="artifacts-card-menu"

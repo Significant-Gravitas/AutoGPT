@@ -83,7 +83,7 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
             className="pointer-events-none absolute top-5 left-2 -translate-y-1/2 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
             onClick={() => scrollByDelta(-scrollAmount)}
           >
-            <span className="block rounded-full bg-foreground-body p-1 drop-shadow">
+            <span className="block rounded-pill bg-foreground-body p-1 drop-shadow">
               <Icon icon={ArrowLeft02Icon} size={20} tone="inverse" />
             </span>
           </button>
@@ -95,7 +95,7 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
             className="pointer-events-none absolute top-5 right-2 -translate-y-1/2 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
             onClick={() => scrollByDelta(scrollAmount)}
           >
-            <span className="block rounded-full bg-foreground-body p-1 drop-shadow">
+            <span className="block rounded-pill bg-foreground-body p-1 drop-shadow">
               <Icon icon={ArrowRight02Icon} size={20} tone="inverse" />
             </span>
           </button>

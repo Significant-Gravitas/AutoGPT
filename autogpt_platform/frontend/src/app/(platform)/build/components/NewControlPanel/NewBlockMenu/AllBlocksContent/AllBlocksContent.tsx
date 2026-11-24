@@ -63,7 +63,7 @@ export const AllBlocksContent = () => {
               <Text variant="body-medium" tone="emphasis">
                 {category.name && beautifyString(category.name)}
               </Text>
-              <span className="rounded-full bg-surface-hover px-1.5">
+              <span className="rounded-pill bg-surface-hover px-1.5">
                 <Text
                   variant="body"
                   as="span"

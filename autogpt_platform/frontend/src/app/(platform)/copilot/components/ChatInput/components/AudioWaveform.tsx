@@ -126,7 +126,7 @@ export function AudioWaveform({
             }}
           >
             <div
-              className="absolute left-0 rounded-full transition-[height] duration-75"
+              className="absolute left-0 rounded-pill transition-[height] duration-75"
               style={{
                 width: barWidth,
                 height: barHeight,

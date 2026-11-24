@@ -117,7 +117,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                 Full {dataType === "input" ? "Input" : "Output"} Preview
               </Text>
             </div>
-            <div className="rounded-full border border-border-strong bg-surface-hover px-3 py-1.5">
+            <div className="rounded-pill border border-border-strong bg-surface-hover px-3 py-1.5">
               <Text variant="small-medium-tight" as="div">
                 {shouldGroupExecutions ? totalGroupedItems : dataArray.length}{" "}
                 item
@@ -146,7 +146,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                   <Text variant="body" tone="secondary">
                     Execution ID:
                   </Text>
-                  <div className="rounded-full border border-border-strong bg-surface-muted px-2 py-1">
+                  <div className="rounded-pill border border-border-strong bg-surface-muted px-2 py-1">
                     <Text variant="small-medium-mono-tight" as="p">
                       {execId}
                     </Text>
@@ -184,7 +184,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                       <Text variant="body" tone="secondary">
                         Execution ID:
                       </Text>
-                      <div className="rounded-full border border-border-strong bg-surface-muted px-2 py-1">
+                      <div className="rounded-pill border border-border-strong bg-surface-muted px-2 py-1">
                         <Text variant="small-medium-mono-tight" as="p">
                           {execution.execId}
                         </Text>

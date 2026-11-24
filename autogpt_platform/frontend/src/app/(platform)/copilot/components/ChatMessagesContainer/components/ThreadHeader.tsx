@@ -30,7 +30,7 @@ const floatingControlsClassName: Record<FloatingControls, string> = {
 };
 
 const chipButtonClassName =
-  "size-9 shrink-0 rounded-full hover:bg-surface-hover";
+  "size-9 shrink-0 rounded-pill hover:bg-surface-hover";
 
 interface Props {
   expertIdentity?: ExpertIdentity | null;
@@ -72,7 +72,7 @@ export function ThreadHeader({
       >
         <div
           className={cn(
-            "pointer-events-auto flex min-w-0 items-center gap-1 rounded-full border border-border-base/70 bg-surface/75 py-1 pr-5 pl-1.5 shadow-sm backdrop-blur-md max-lg:shadow-md",
+            "pointer-events-auto flex min-w-0 items-center gap-1 rounded-pill border border-border-base/70 bg-surface/75 py-1 pr-5 pl-1.5 shadow-sm backdrop-blur-md max-lg:shadow-md",
             hasSidebarButton && "max-md:pl-1",
           )}
         >
@@ -90,7 +90,7 @@ export function ThreadHeader({
                     isResolving ? "Loading expert" : `${name} — ${roleLabel}`
                   }
                   className={cn(
-                    "flex min-w-0 items-center gap-2 rounded-full whitespace-nowrap",
+                    "flex min-w-0 items-center gap-2 rounded-pill whitespace-nowrap",
                     hasSidebarButton && "max-md:ml-1.5",
                   )}
                 >

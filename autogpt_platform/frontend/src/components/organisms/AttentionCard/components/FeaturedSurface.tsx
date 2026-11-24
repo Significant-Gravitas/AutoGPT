@@ -14,8 +14,7 @@ export function FeaturedSurface({ density, children }: FeaturedSurfaceProps) {
     <div
       data-slot="attention-card-featured-surface"
       className={cn(
-        // oxlint-disable-next-line design-system/no-arbitrary-values -- 15px is the 16px card radius inside its 1px gradient border
-        "relative overflow-hidden rounded-[15px] bg-surface",
+        "relative overflow-hidden rounded-2xl-inner bg-surface",
         densityVariants({ density }),
       )}
     >

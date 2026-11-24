@@ -16,7 +16,7 @@ export const blockDragPreviewClassName =
 export const blockDragPreviewStyle = `
     padding: 0.625rem 0.875rem;
     background: rgb(var(--color-surface-hover));
-    border-radius: 0.75rem;
+    border-radius: var(--radius-xl);
     color: rgb(var(--color-foreground-emphasis));
     position: absolute;
     top: -9999px;

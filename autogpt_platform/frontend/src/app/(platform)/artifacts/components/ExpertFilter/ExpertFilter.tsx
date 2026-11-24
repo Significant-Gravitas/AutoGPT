@@ -87,7 +87,7 @@ function ExpertTab({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "relative flex max-w-48 items-center gap-2 rounded-full py-1.5 text-body font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle",
+        "relative flex max-w-48 items-center gap-2 rounded-pill py-1.5 text-body font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle",
         hasAvatar ? "pr-3.5 pl-1.5" : "px-4",
         active
           ? "text-foreground-strong"
@@ -98,7 +98,7 @@ function ExpertTab({
       {active ? (
         <motion.span
           layoutId="artifacts-expert-active"
-          className="absolute inset-0 rounded-full bg-surface-hover"
+          className="absolute inset-0 rounded-pill bg-surface-hover"
           transition={snappySpring}
         />
       ) : null}

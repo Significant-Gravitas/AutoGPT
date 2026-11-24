@@ -27,7 +27,7 @@ export function WorkGroup({ group, timezone }: Props) {
       </Text>
       <span
         className={cn(
-          "shrink-0 rounded-full border px-1.5",
+          "shrink-0 rounded-pill border px-1.5",
           // oxlint-disable-next-line design-system/require-static-classes -- ACTOR_CHIPS holds whole, static class strings
           chip.className,
         )}

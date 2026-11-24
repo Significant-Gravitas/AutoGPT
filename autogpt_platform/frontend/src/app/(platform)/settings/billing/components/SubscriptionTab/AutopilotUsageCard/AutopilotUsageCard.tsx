@@ -139,10 +139,10 @@ function UsageBar({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={percent}
-        className="h-2 overflow-hidden rounded-full bg-surface-hover"
+        className="h-2 overflow-hidden rounded-pill bg-surface-hover"
       >
         <div
-          className={`h-full w-[var(--usage-percent)] rounded-full transition-[width] duration-300 motion-reduce:transition-none ${percent >= 100 ? "bg-orange" : "bg-brand"}`}
+          className={`h-full w-[var(--usage-percent)] rounded-pill transition-[width] duration-300 motion-reduce:transition-none ${percent >= 100 ? "bg-orange" : "bg-brand"}`}
           style={{ "--usage-percent": `${percent}%` } as CSSProperties}
         />
       </div>

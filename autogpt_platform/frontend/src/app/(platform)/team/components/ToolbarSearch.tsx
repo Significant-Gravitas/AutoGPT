@@ -51,7 +51,7 @@ export function ToolbarSearch({
         placeholder={label}
         textSize={textSize}
         // oxlint-disable-next-line design-system/no-restyle -- Input has no pill or leading-icon variant (src/components is P9's)
-        className="rounded-full pl-10"
+        className="rounded-pill pl-10"
         wrapperClassName="!mb-0 w-full"
       />
     </div>

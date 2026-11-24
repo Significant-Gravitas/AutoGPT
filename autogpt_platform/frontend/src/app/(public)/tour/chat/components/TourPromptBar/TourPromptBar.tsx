@@ -73,7 +73,7 @@ export function TourPromptBar({ prompt, isStreaming, onSend }: Props) {
       <span
         aria-hidden="true"
         className={cn(
-          "flex size-10 shrink-0 items-center justify-center rounded-full text-action-foreground transition-colors",
+          "flex size-10 shrink-0 items-center justify-center rounded-pill text-action-foreground transition-colors",
           isDisabled ? "bg-surface-active" : "bg-action",
         )}
       >

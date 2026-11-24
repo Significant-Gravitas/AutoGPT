@@ -58,7 +58,7 @@ export const Integration: IntegrationComponent = ({
               {beautifyString(title)}
             </Text>
           )}
-          <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-full bg-surface-hover p-1.5">
+          <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-pill bg-surface-hover p-1.5">
             <Text
               variant="body-medium"
               as="span"
@@ -96,7 +96,7 @@ const IntegrationSkeleton: React.FC<{ className?: string }> = ({
       <div className="flex flex-1 flex-col items-start gap-0.5">
         <div className="flex w-full items-center justify-between">
           <Skeleton className="h-[1.375rem] w-24 rounded bg-surface-active" />
-          <Skeleton className="h-[1.375rem] w-[1.6875rem] rounded-full bg-surface-active" />
+          <Skeleton className="h-[1.375rem] w-[1.6875rem] rounded-pill bg-surface-active" />
         </div>
         <Skeleton className="h-5 w-[80%] rounded bg-surface-active" />
       </div>

@@ -76,7 +76,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
               {triggers.map((trigger) => (
                 <span
                   key={trigger}
-                  className="rounded-full bg-surface-hover px-2 py-0.5 text-caption text-foreground-secondary"
+                  className="rounded-pill bg-surface-hover px-2 py-0.5 text-caption text-foreground-secondary"
                 >
                   {trigger}
                 </span>
@@ -133,7 +133,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
                 {triggers.map((trigger) => (
                   <span
                     key={trigger}
-                    className="rounded-full bg-surface-hover px-2 py-0.5 text-caption text-foreground-secondary"
+                    className="rounded-pill bg-surface-hover px-2 py-0.5 text-caption text-foreground-secondary"
                   >
                     {trigger}
                   </span>

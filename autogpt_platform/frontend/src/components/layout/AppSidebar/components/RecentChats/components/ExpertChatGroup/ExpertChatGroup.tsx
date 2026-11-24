@@ -248,7 +248,7 @@ function SessionCount({ id, count }: { id: string; count: number }) {
   return (
     <span
       id={id}
-      className="shrink-0 rounded-full bg-surface-active/70 px-1.5 text-caption-sm leading-4.5 font-medium text-foreground-secondary tabular-nums"
+      className="shrink-0 rounded-pill bg-surface-active/70 px-1.5 text-caption-sm leading-4.5 font-medium text-foreground-secondary tabular-nums"
     >
       {count}
     </span>

@@ -277,7 +277,7 @@ export function AgentSelectStep({
                               >
                                 {agent.name}
                               </Text>
-                              <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit font-medium text-foreground-secondary">
+                              <span className="shrink-0 rounded-pill bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit font-medium text-foreground-secondary">
                                 v{agent.version}
                               </span>
                             </div>
@@ -391,7 +391,7 @@ function PaginationBar({
           aria-label="Previous page"
           disabled={page <= 1}
           onClick={() => onChange(page - 1)}
-          className="flex size-9 items-center justify-center rounded-full border border-border-base text-foreground-tertiary transition hover:border-border-strong hover:text-foreground-body disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex size-9 items-center justify-center rounded-pill border border-border-base text-foreground-tertiary transition hover:border-border-strong hover:text-foreground-body disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Icon icon={ArrowLeft01Icon} size={14} />
         </button>
@@ -414,7 +414,7 @@ function PaginationBar({
               onClick={() => onChange(entry)}
               aria-current={entry === page ? "page" : undefined}
               className={cn(
-                "relative flex size-9 items-center justify-center rounded-full transition",
+                "relative flex size-9 items-center justify-center rounded-pill transition",
                 entry === page
                   ? "text-action-foreground"
                   : "border border-border-base text-foreground-body hover:border-border-strong",
@@ -424,7 +424,7 @@ function PaginationBar({
                 <motion.span
                   layoutId="pagination-active-pill"
                   aria-hidden
-                  className="absolute inset-0 rounded-full bg-brand shadow-md shadow-brand/55"
+                  className="absolute inset-0 rounded-pill bg-brand shadow-md shadow-brand/55"
                   transition={{ type: "spring", stiffness: 420, damping: 32 }}
                 />
               ) : null}
@@ -444,7 +444,7 @@ function PaginationBar({
           aria-label="Next page"
           disabled={page >= totalPages}
           onClick={() => onChange(page + 1)}
-          className="flex size-9 items-center justify-center rounded-full border border-border-base text-foreground-tertiary transition hover:border-border-strong hover:text-foreground-body disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex size-9 items-center justify-center rounded-pill border border-border-base text-foreground-tertiary transition hover:border-border-strong hover:text-foreground-body disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Icon icon={ArrowRight01Icon} size={14} />
         </button>

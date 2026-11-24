@@ -66,7 +66,7 @@ function PendingArtifactCard({ attachment }: CardProps) {
           {attachment.name}
         </Text>
         <Text variant="small-tight" tone="subtle">
-          <span className="inline-block rounded-full bg-info-surface px-1.5 py-0.5 text-caption font-medium text-info">
+          <span className="inline-block rounded-pill bg-info-surface px-1.5 py-0.5 text-caption font-medium text-info">
             {classification.label}
           </span>
           {attachment.sizeBytes ? ` • ${formatSize(attachment.sizeBytes)}` : ""}

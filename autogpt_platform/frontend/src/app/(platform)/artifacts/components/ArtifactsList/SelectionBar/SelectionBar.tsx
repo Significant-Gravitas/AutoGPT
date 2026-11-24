@@ -81,7 +81,7 @@ export function SelectionBar({
         <button
           type="button"
           aria-label="Clear selection"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-full text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-foreground-strong"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-pill text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-foreground-strong"
           onClick={onClear}
           data-testid="artifacts-selection-clear"
         >

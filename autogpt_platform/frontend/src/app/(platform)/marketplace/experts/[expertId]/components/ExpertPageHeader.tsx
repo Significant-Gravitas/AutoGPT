@@ -26,7 +26,7 @@ function getTopic(expert: Expert) {
 }
 
 const GLOSSY_STAT =
-  "inline-flex h-8 items-center rounded-full border border-border-base bg-gradient-to-b from-surface to-surface-muted px-3.5 text-body font-medium text-foreground-body shadow-gloss";
+  "inline-flex h-8 items-center rounded-pill border border-border-base bg-gradient-to-b from-surface to-surface-muted px-3.5 text-body font-medium text-foreground-body shadow-gloss";
 
 /** The hero band: the expert's colour with two soft glows and the category
  *  on it. The portrait (ExpertHeroIdentity) breaks out of its bottom edge,

@@ -94,7 +94,7 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
               {pauseNames.map((item) => (
                 <span
                   key={item.id}
-                  className="flex max-w-full min-w-0 rounded-full border border-warning-border bg-warning-surface px-2.5 py-0.5"
+                  className="flex max-w-full min-w-0 rounded-pill border border-warning-border bg-warning-surface px-2.5 py-0.5"
                 >
                   <Text
                     variant="small-tight"
@@ -196,7 +196,7 @@ function Consequence({
           {tag ? (
             <span
               className={cn(
-                "flex shrink-0 rounded-full px-2 py-0.5",
+                "flex shrink-0 rounded-pill px-2 py-0.5",
                 isWarn ? "bg-warning-surface" : "bg-success-surface",
               )}
             >

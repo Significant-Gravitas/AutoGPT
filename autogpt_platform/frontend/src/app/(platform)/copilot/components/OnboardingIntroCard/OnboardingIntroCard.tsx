@@ -139,7 +139,7 @@ export function OnboardingIntroCard({
                   type="button"
                   onClick={handleCopyTranscript}
                   aria-label="Copy your recording's transcript"
-                  className="rounded-full p-2 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
+                  className="rounded-pill p-2 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
                 >
                   {isCopied ? (
                     <Icon icon={Tick02Icon} size={16} tone="success" />

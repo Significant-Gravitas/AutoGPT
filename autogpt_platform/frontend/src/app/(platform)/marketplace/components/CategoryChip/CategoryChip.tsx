@@ -16,7 +16,7 @@ export type ChipSize = "small" | "medium" | "default";
  *  and the two read as the same object because they are the same classes. */
 /* oxlint-disable design-system/no-restyle -- the glossy category chip restyles its Button; ToggleChip would change its shape and fill (deferred) */
 export const CHIP_SHAPE =
-  "inline-flex items-center rounded-full border border-separator bg-transparent font-medium text-foreground-base";
+  "inline-flex items-center rounded-pill border border-separator bg-transparent font-medium text-foreground-base";
 export const CHIP_SIZE: Record<ChipSize, string> = {
   small: "h-7 gap-1 px-2 text-caption",
   medium: "h-8 gap-1 px-2 text-caption",

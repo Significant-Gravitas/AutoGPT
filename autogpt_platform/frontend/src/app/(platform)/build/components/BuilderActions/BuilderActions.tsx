@@ -13,7 +13,7 @@ export const BuilderActions = memo(() => {
   return (
     <div
       data-id="builder-actions"
-      className="absolute bottom-4 left-[50%] z-canvas-toolbar flex -translate-x-1/2 items-center gap-4 rounded-full bg-surface p-2 px-2 shadow-lg"
+      className="absolute bottom-4 left-[50%] z-canvas-toolbar flex -translate-x-1/2 items-center gap-4 rounded-pill bg-surface p-2 px-2 shadow-lg"
     >
       <AgentOutputs flowID={flowID} />
       <RunGraph flowID={flowID} />

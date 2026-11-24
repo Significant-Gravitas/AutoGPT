@@ -33,7 +33,7 @@ export function PaywallPlanChoices({
         <div
           role="group"
           aria-label="Billing period"
-          className="inline-flex rounded-full border border-border-base bg-surface-hover p-1"
+          className="inline-flex rounded-pill border border-border-base bg-surface-hover p-1"
         >
           {(["monthly", "yearly"] as const).map((value) => (
             <Button

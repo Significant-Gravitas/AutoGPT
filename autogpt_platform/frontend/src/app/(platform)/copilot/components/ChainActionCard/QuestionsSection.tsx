@@ -71,7 +71,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
         <button
           type="button"
           onClick={() => requests.forEach((req) => req.onSkip())}
-          className="rounded-full px-2 py-0.5 text-caption text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-secondary"
+          className="rounded-pill px-2 py-0.5 text-caption text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-secondary"
         >
           Skip
         </button>
@@ -163,7 +163,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
           disabled={!actionEnabled}
           onClick={handleAction}
           className={
-            "flex size-8 items-center justify-center rounded-full transition-all duration-200 enabled:active:scale-95 " +
+            "flex size-8 items-center justify-center rounded-pill transition-all duration-200 enabled:active:scale-95 " +
             (actionEnabled
               ? "bg-action text-action-foreground hover:bg-action-hover"
               : "bg-surface-hover text-foreground-subtle")

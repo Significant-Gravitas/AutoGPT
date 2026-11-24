@@ -38,7 +38,7 @@ export function FollowupListItem({ followup }: Props) {
   const kindBadgeLabel = followup.session_id ? "Same chat" : "New chat";
   const kindBadge = (
     <span
-      className="rounded-full bg-surface-hover px-2 py-0.5 text-caption text-foreground-secondary"
+      className="rounded-pill bg-surface-hover px-2 py-0.5 text-caption text-foreground-secondary"
       data-testid="followup-kind-badge"
     >
       {kindBadgeLabel}

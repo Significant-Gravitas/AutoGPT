@@ -80,7 +80,7 @@ export function ConsultVerdictCard({ output }: Props) {
         </div>
         <span
           className={cn(
-            "flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5",
+            "flex shrink-0 items-center gap-1 rounded-pill px-2 py-0.5",
             style.chip,
           )}
         >

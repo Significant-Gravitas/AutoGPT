@@ -36,7 +36,7 @@ export function ArtifactsSearchBar({ searchTerm, setSearchTerm }: Props) {
         onChange={handleChange}
         placeholder="Search"
         // oxlint-disable-next-line design-system/no-restyle -- a pill search field with a leading icon; SearchInput is rounded-xl, a shape change
-        className="min-w-[16rem] rounded-full pl-10 lg:min-w-[20rem]"
+        className="min-w-[16rem] rounded-pill pl-10 lg:min-w-[20rem]"
         wrapperClassName="!mb-0"
         data-testid="artifacts-search-input"
       />

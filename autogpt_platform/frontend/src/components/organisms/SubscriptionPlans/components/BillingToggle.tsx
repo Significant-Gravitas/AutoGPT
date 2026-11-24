@@ -10,7 +10,7 @@ export function BillingToggle({ billing, onBillingChange }: Props) {
       role="group"
       aria-label="Billing period"
       data-slot="billing-toggle"
-      className="mt-3 flex rounded-full border border-border-base bg-surface-hover p-1"
+      className="mt-3 flex rounded-pill border border-border-base bg-surface-hover p-1"
     >
       {(["monthly", "yearly"] as const).map((cycle) => (
         <Button

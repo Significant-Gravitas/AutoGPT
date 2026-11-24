@@ -72,9 +72,9 @@ export function SpendByAgentList({ rollups, agentLookup, totalCents }: Props) {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-hover">
+                <div className="h-1.5 flex-1 overflow-hidden rounded-pill bg-surface-hover">
                   <div
-                    className="h-full w-[var(--share)] rounded-full bg-info"
+                    className="h-full w-[var(--share)] rounded-pill bg-info"
                     style={{ "--share": `${widthPct}%` } as React.CSSProperties}
                     aria-hidden="true"
                   />

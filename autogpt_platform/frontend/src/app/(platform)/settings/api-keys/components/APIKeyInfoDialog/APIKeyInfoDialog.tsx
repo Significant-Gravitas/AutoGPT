@@ -50,7 +50,7 @@ export function APIKeyInfoDialog({ open, apiKey, onOpenChange }: Props) {
                 {apiKey.scopes.map((scope) => (
                   <li
                     key={scope}
-                    className="rounded-full bg-surface-hover px-2.5 py-1 text-caption text-foreground-body"
+                    className="rounded-pill bg-surface-hover px-2.5 py-1 text-caption text-foreground-body"
                   >
                     {humanizePermission(scope)}
                     {SCOPE_API_VERSION[scope] === "v1" && (

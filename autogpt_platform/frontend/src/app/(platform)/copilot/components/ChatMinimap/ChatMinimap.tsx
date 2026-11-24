@@ -71,7 +71,7 @@ export const ChatMinimap = memo(function ChatMinimap({
           >
             <motion.div
               className={cn(
-                "h-[4px] w-[32px] origin-left rounded-full transition-colors duration-150",
+                "h-[4px] w-[32px] origin-left rounded-pill transition-colors duration-150",
                 tickColor(hovered === null ? null : Math.abs(index - hovered)),
               )}
               initial={{ scale: 0.6 }}

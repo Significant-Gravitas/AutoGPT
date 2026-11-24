@@ -94,7 +94,7 @@ export const IntegrationBlocks = () => {
               {integration}
             </Text>
           </div>
-          <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-full bg-surface-hover p-1.5">
+          <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-pill bg-surface-hover p-1.5">
             <Text variant="body" as="span" tone="muted" className="block">
               {totalBlocks}
             </Text>

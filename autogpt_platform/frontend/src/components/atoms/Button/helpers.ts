@@ -12,7 +12,7 @@ import { LinkProps } from "next/link";
 // A ghost Button's box: no fill or border until hover. The ghost-* variants
 // add a quieter text colour to it.
 const GHOST =
-  "bg-transparent border-transparent hover:bg-surface-muted hover:border-surface-muted rounded-full disabled:text-surface-active disabled:opacity-1";
+  "bg-transparent border-transparent hover:bg-surface-muted hover:border-surface-muted rounded-pill disabled:text-surface-active disabled:opacity-1";
 
 // Extended button variants based on our design system.
 // TODO(tokens): no spacing step is min-w-[7.7rem], min-w-[5.5rem] or
@@ -23,13 +23,13 @@ export const extendedButtonVariants = cva(
     variants: {
       variant: {
         primary:
-          "bg-action border-action text-action-foreground hover:bg-action-hover hover:border-action-hover rounded-full disabled:text-action-foreground disabled:bg-surface-active disabled:border-border-base disabled:opacity-1",
+          "bg-action border-action text-action-foreground hover:bg-action-hover hover:border-action-hover rounded-pill disabled:text-action-foreground disabled:bg-surface-active disabled:border-border-base disabled:opacity-1",
         secondary:
-          "bg-surface border-border-base text-foreground-emphasis shadow-sm hover:bg-surface-muted hover:border-border-strong rounded-full disabled:text-foreground-disabled disabled:bg-surface-muted disabled:border-separator disabled:shadow-none disabled:opacity-1",
+          "bg-surface border-border-base text-foreground-emphasis shadow-sm hover:bg-surface-muted hover:border-border-strong rounded-pill disabled:text-foreground-disabled disabled:bg-surface-muted disabled:border-separator disabled:shadow-none disabled:opacity-1",
         destructive:
-          "bg-error border-error text-action-foreground hover:bg-error-hover hover:border-error-hover rounded-full disabled:text-action-foreground disabled:bg-surface-active disabled:border-border-base disabled:opacity-1",
+          "bg-error border-error text-action-foreground hover:bg-error-hover hover:border-error-hover rounded-pill disabled:text-action-foreground disabled:bg-surface-active disabled:border-border-base disabled:opacity-1",
         outline:
-          "bg-transparent border-border-strong text-foreground-base hover:bg-surface-hover hover:border-border-strong rounded-full disabled:border-border-base disabled:text-surface-active disabled:opacity-1",
+          "bg-transparent border-border-strong text-foreground-base hover:bg-surface-hover hover:border-border-strong rounded-pill disabled:border-border-base disabled:text-surface-active disabled:opacity-1",
         ghost: `${GHOST} text-foreground-base`,
         // Secondary actions in a row or card: grey until hovered.
         "ghost-muted": `${GHOST} text-foreground-tertiary hover:text-foreground-body`,
@@ -39,17 +39,17 @@ export const extendedButtonVariants = cva(
         "ghost-warning": `${GHOST} text-warning-foreground hover:bg-warning-surface hover:border-warning-surface`,
         // An upgrade or promotion call to action.
         brand:
-          "bg-brand border-brand text-action-foreground hover:bg-accent-strong hover:border-accent-strong rounded-full disabled:text-action-foreground disabled:bg-surface-active disabled:border-border-base disabled:opacity-100",
+          "bg-brand border-brand text-action-foreground hover:bg-accent-strong hover:border-accent-strong rounded-pill disabled:text-action-foreground disabled:bg-surface-active disabled:border-border-base disabled:opacity-100",
         // Goes ahead despite a warning, e.g. an update that breaks links.
         warning:
-          "bg-warning-foreground border-warning-foreground text-action-foreground hover:bg-warning-foreground/90 hover:border-warning-foreground rounded-full disabled:text-action-foreground disabled:bg-surface-active disabled:border-border-base disabled:opacity-100",
+          "bg-warning-foreground border-warning-foreground text-action-foreground hover:bg-warning-foreground/90 hover:border-warning-foreground rounded-pill disabled:text-action-foreground disabled:bg-surface-active disabled:border-border-base disabled:opacity-100",
         // A secondary Button showing that its action worked, e.g. "Copied".
         success:
-          "bg-success/30 border-success text-foreground-base shadow-sm hover:bg-success/40 hover:border-success rounded-full disabled:shadow-none disabled:opacity-100",
+          "bg-success/30 border-success text-foreground-base shadow-sm hover:bg-success/40 hover:border-success rounded-pill disabled:shadow-none disabled:opacity-100",
         // An icon action in a toolbar such as the chat composer: no box
         // until hovered, faded while disabled.
-        tray: "bg-transparent border-transparent text-foreground-base hover:bg-surface-hover hover:border-transparent rounded-full disabled:opacity-40 !min-w-0",
-        icon: "bg-surface text-foreground-emphasis border border-border-base shadow-sm hover:bg-surface-muted hover:border-border-strong rounded-full disabled:shadow-none disabled:opacity-1 !min-w-0",
+        tray: "bg-transparent border-transparent text-foreground-base hover:bg-surface-hover hover:border-transparent rounded-pill disabled:opacity-40 !min-w-0",
+        icon: "bg-surface text-foreground-emphasis border border-border-base shadow-sm hover:bg-surface-muted hover:border-border-strong rounded-pill disabled:shadow-none disabled:opacity-1 !min-w-0",
         toggle:
           "bg-transparent border-transparent text-foreground-tertiary hover:bg-transparent hover:border-transparent hover:text-foreground-emphasis aria-pressed:bg-surface-hover aria-pressed:text-foreground-strong rounded-md disabled:opacity-50",
         floating:
@@ -79,7 +79,7 @@ export const extendedButtonVariants = cva(
       tone: tones,
       // Corner radius over the variant's and size's own.
       shape: {
-        pill: "rounded-full",
+        pill: "rounded-pill",
         rounded: "rounded-xl",
         soft: "rounded-lg",
       },

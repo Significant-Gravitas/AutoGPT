@@ -28,7 +28,7 @@ function Pill({ tone, label }: PillProps) {
   return (
     <span
       className={cn(
-        "rounded-full px-2 py-0.5 text-caption font-medium",
+        "rounded-pill px-2 py-0.5 text-caption font-medium",
         tone === "on"
           ? "bg-success-surface text-success-foreground"
           : tone === "off"
