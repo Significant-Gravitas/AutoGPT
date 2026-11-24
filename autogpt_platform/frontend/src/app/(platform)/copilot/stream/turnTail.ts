@@ -318,6 +318,27 @@ export function gapBeforePrompt(
   return rowsBetween(end, prompt.sequence, rows);
 }
 
+/**
+ * Rows persisted between the tail's end and a running turn the tab attaches
+ * to, which starts at `start`. From a window that starts past the tail's end,
+ * only the user rows that turn answers: the rows before them may begin
+ * inside another turn.
+ */
+export function gapBeforeTurn(
+  segments: readonly Segment[],
+  start: number,
+  rows: readonly PersistedRow[],
+  windowStart: number,
+): RowsSegment | null {
+  const tailEnd = tailEndSequence(segments);
+  if (tailEnd === null || windowStart <= tailEnd + 1)
+    return gapSegment(segments, start, rows, windowStart);
+  let first = start;
+  while (rows.some((r) => r.sequence === first - 1 && r.role === "user"))
+    first -= 1;
+  return rowsBetween(first - 1, start, rows);
+}
+
 export function tailEndSequence(segments: readonly Segment[]) {
   const last = segments[segments.length - 1];
   if (!last) return null;

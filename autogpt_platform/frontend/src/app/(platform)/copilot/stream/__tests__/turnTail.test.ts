@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { emptyTurnLog, type LogRow, type PersistedRow } from "../turnLog";
 import {
   gapBeforePrompt,
+  gapBeforeTurn,
   locatePrompt,
   mergeRows,
   newTurnSegment,
@@ -215,6 +216,61 @@ describe("gapBeforePrompt", () => {
     expect(
       gapBeforePrompt([sent("november", 4)], 0, 2, ROWS.slice(2), 2)?.rows,
     ).toHaveLength(2);
+  });
+});
+
+describe("gapBeforeTurn", () => {
+  // The tail ends at 1. Another tab's turn (2, 3) came before the running
+  // turn's prompt (4); that turn's rows start at 5.
+  const ROWS: PersistedRow[] = [
+    { role: "user", content: "lima", sequence: 0 },
+    { role: "assistant", content: "Lima.", sequence: 1 },
+    { role: "user", content: "mike", sequence: 2 },
+    { role: "assistant", content: "Mike.", sequence: 3 },
+    { role: "user", content: "november", sequence: 4 },
+    { role: "assistant", content: "November.", sequence: 5 },
+  ];
+  const tail = (sequence: number | null = 1): Segment[] => [
+    { ...userSegment(prompt("lima"), "sent"), sequence: 0 },
+    newTurnSegment("turn-1", {
+      ...emptyTurnLog(),
+      rows: [row("block-1", "Lima.", sequence)],
+    }),
+  ];
+  const sequences = (rows: readonly PersistedRow[] | undefined) =>
+    rows?.map((r) => r.sequence);
+
+  it("takes every row between the tail and the turn from a window that reaches the tail's end", () => {
+    expect(sequences(gapBeforeTurn(tail(), 5, ROWS.slice(2), 2)?.rows)).toEqual(
+      [2, 3, 4],
+    );
+  });
+
+  it("takes only the turn's prompt from a window that starts past the tail's end", () => {
+    expect(sequences(gapBeforeTurn(tail(), 5, ROWS.slice(3), 3)?.rows)).toEqual(
+      [4],
+    );
+  });
+
+  it("takes the follow-ups queued before the turn's prompt as well", () => {
+    const queued: PersistedRow[] = [
+      { role: "assistant", content: "Mike.", sequence: 3 },
+      { role: "user", content: "oscar", sequence: 4 },
+      { role: "user", content: "papa", sequence: 5 },
+      { role: "assistant", content: "Papa.", sequence: 6 },
+    ];
+
+    expect(sequences(gapBeforeTurn(tail(), 6, queued, 3)?.rows)).toEqual([
+      4, 5,
+    ]);
+  });
+
+  it("takes nothing from a window that starts past the turn's prompt", () => {
+    expect(gapBeforeTurn(tail(), 5, ROWS.slice(5), 5)).toBe(null);
+  });
+
+  it("takes nothing while the tail ends at no known row", () => {
+    expect(gapBeforeTurn(tail(null), 5, ROWS.slice(3), 3)).toBe(null);
   });
 });
 

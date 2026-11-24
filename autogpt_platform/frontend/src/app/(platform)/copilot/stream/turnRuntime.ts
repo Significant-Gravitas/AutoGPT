@@ -25,6 +25,7 @@ import {
   closeBlocks,
   FROZEN_NOTE,
   gapBeforePrompt,
+  gapBeforeTurn,
   gapSegment,
   hasOpenParts,
   INTERRUPTED_MARKER,
@@ -258,9 +259,10 @@ export class TurnRuntime {
   private probes = 0;
   // The server's word that a turn ended can come while a read is out that
   // was taken before that end; one more read is owed once it settles.
-  // Every path that ends a probe, a rebuild or a re-read with a view calls
-  // settleOwedReread(); a re-read whose retries all fail leaves the word
-  // owed until the next of those settles.
+  // Every path that ends a probe, a rebuild, an expiry, an ended turn's
+  // connection or a re-read with a view calls settleOwedReread(). A re-read
+  // whose tries all fail leaves a word said before its last try owed until
+  // the next of those settles; one said during it gets tries of its own.
   private readClock = 0;
   // The latest start of a read that came back with a view.
   private readCoveredAt = 0;
@@ -810,7 +812,12 @@ export class TurnRuntime {
     this.emit();
     if (conn.closedByClient) return;
     const seg = conn.turnId ? this.turnFor(conn.turnId) : null;
-    if (seg && (seg.ended || seg.stopped || seg.frozen)) return;
+    if (seg && (seg.ended || seg.stopped || seg.frozen)) {
+      // The turn's end-of-turn read can land while its response is still
+      // open, which keeps a word owed then waiting for this close.
+      this.settleOwedReread();
+      return;
+    }
     if (end.kind === "denied") {
       this.giveUp(end.error);
       return;
@@ -1092,7 +1099,9 @@ export class TurnRuntime {
       answered?.role === "user" ? this.takeUnwrittenPrompts(view, rows) : [];
     // Rows another tab (or the server) persisted between the tail and this turn.
     const gap =
-      this.ownedFrom === null ? null : gapSegment(this.segments, start, rows);
+      this.ownedFrom === null
+        ? null
+        : gapBeforeTurn(this.segments, start, rows, windowStart(view, rows));
     if (gap) this.segments.push(gap);
     this.claimTail(start);
     const seg = newTurnSegment(
@@ -1299,6 +1308,9 @@ export class TurnRuntime {
     this.emitNow();
     this.handlers.onTurnEnd?.({ expired: true });
     this.observe(view);
+    // The rebuild's read settled while this turn still ran here, so a word
+    // said during that read is still owed.
+    this.settleOwedReread();
   }
 
   // Show the persisted rows with a note, and poll until the turn is over.
@@ -1609,6 +1621,7 @@ export class TurnRuntime {
     this.rereadTimer = null;
     // One read at a time, so an older answer can't land after a newer one.
     this.rereading = true;
+    const asked = this.readClock;
     let view: SessionView | null;
     try {
       view = await this.fetchView();
@@ -1624,7 +1637,12 @@ export class TurnRuntime {
       if (this.rereading || !this.awaitsStoppedRows()) return;
     }
     const delay = REREAD_RETRY_MS[attempt];
-    if (delay === undefined) return;
+    if (delay === undefined) {
+      // The tries are spent; a word said during the last one, which failed,
+      // had no read of its own, so it gets tries of its own.
+      if (!view && this.rereadOwedAt > asked) this.settleOwedReread();
+      return;
+    }
     this.rereadTimer = setTimeout(() => {
       this.rereadTimer = null;
       if (this.isIdle() && !this.rereading) void this.reread(attempt + 1);

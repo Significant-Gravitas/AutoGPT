@@ -2177,6 +2177,139 @@ describe("two tabs on one chat", () => {
       expect({ first, second }).toEqual({ first: 1, second: 1 });
     },
   );
+
+  cell(
+    "X1",
+    "a word said during a re-read's last try, which fails as the tries before it did, is read once the server answers again",
+    async () => {
+      await finishFirstTurn();
+      server.viewsDown = true;
+      tab.runtime.rereadIfIdle();
+      // Another device's turn runs and ends while the tries fail.
+      server.startTurn(P2);
+      server.publish();
+      // The first try, then retries 2 and 4 s apart; the last comes 8 s later.
+      await advance(6_100);
+      // The server says that turn ended as the last try reads.
+      onRead(1, () => tab.runtime.rereadIfIdle());
+      await advance(8_000);
+      server.viewsDown = false;
+      await advance(30_000);
+      expectScreen({ chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER] });
+    },
+  );
+
+  cell(
+    "X1c",
+    "(control) a word said during a re-read's first try adds no tries when every try fails",
+    async () => {
+      await finishFirstTurn();
+      server.viewsDown = true;
+      const reads = server.viewReads;
+      onRead(1, () => tab.runtime.rereadIfIdle());
+      tab.runtime.rereadIfIdle();
+      await advance(60_000);
+      expect(server.viewReads - reads).toBe(4);
+    },
+  );
+
+  cell(
+    "X2",
+    "a turn the other tab ends while this tab rebuilds its expired turn from the session shows once that rebuild lands",
+    async () => {
+      await streamFirstBlock();
+      // The stream drops and the turn ends meanwhile; its stream is gone
+      // when the tab asks for it again.
+      server.connections[0].fail();
+      server.publish();
+      server.resumeMode = { status: 410, body: { reason: "expired" } };
+      // The rebuild's read is taken as it starts and lands 2 s later.
+      tab.viewAnswerDelayMs = 2_000;
+      await advance(1_500);
+      // Another device's turn runs and ends, and the server says so.
+      server.startTurn(P2);
+      server.publish();
+      tab.runtime.rereadIfIdle();
+      await advance(10_000);
+      expectScreen({ chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER] });
+    },
+  );
+
+  cell(
+    "X2c",
+    "(control) a word said before the rebuild of this tab's expired turn reads adds no read to the rebuild's own",
+    async () => {
+      await streamFirstBlock();
+      server.connections[0].fail();
+      server.publish();
+      server.resumeMode = { status: 410, body: { reason: "expired" } };
+      server.startTurn(P2);
+      server.publish();
+      // Said while this tab still follows its turn, before the rebuild reads.
+      tab.runtime.rereadIfIdle();
+      const reads = tab.reads;
+      await advance(30_000);
+      expect(tab.reads - reads).toBe(1);
+      expectScreen({ chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER] });
+    },
+  );
+
+  cell(
+    "X3",
+    "a turn the other tab ends while this tab's end-of-turn read is out shows when the response to this tab's turn closes after that read",
+    async () => {
+      server.closeAfterFinishMs = 3_000;
+      tab.send(P1);
+      await advance(0);
+      // The end-of-turn read is taken as it starts and lands 1 s later.
+      tab.viewAnswerDelayMs = 1_000;
+      server.publish();
+      await advance(700);
+      // Another device's turn runs and ends, and the server says so.
+      server.startTurn(P2);
+      server.publish();
+      tab.runtime.rereadIfIdle();
+      await advance(10_000);
+      expectScreen({ chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER] });
+    },
+  );
+
+  cell(
+    "X3c",
+    "(control) the server's word that this tab's own turn ended adds no read when the turn's response closes after its end-of-turn read",
+    async () => {
+      server.closeAfterFinishMs = 3_000;
+      tab.send(P1);
+      await advance(0);
+      server.publish();
+      await advance(100);
+      const reads = server.viewReads;
+      tab.runtime.rereadIfIdle();
+      await advance(10_000);
+      expect(server.viewReads - reads).toBe(1);
+      expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] });
+    },
+  );
+
+  cell(
+    "X4",
+    "an idle tab that attaches to another device's running turn, from a window that starts inside the turn before it, shows the running turn whole and the cut one not at all",
+    async () => {
+      await finishFirstTurn();
+      // Another device runs a whole turn, then one more, through its checkpoint.
+      server.startTurn(P2);
+      server.publish();
+      server.startTurn(P3);
+      server.publish(19);
+      // The window holds the last 5 rows: P2's last row, then all of P3's.
+      server.window = 5;
+      tab.runtime.rereadIfIdle();
+      await advance(1_000);
+      server.publish();
+      await advance(5_000);
+      expectScreen({ chat: [`user: ${P1}`, ANSWER, `user: ${P3}`, ANSWER] });
+    },
+  );
 });
 
 describe("the page lifecycle", () => {
