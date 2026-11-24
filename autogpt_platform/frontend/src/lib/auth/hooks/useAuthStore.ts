@@ -644,4 +644,3 @@ function reportAnalyticsSession(userID: string | null): void {
     resetAnalyticsIdentity({ keepLanding: true });
   }
 }
-
