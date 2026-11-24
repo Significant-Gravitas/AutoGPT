@@ -1224,6 +1224,48 @@ async def test_a_stop_waits_on_the_status_alone(mocker: MockerFixture):
 
 
 @pytest.mark.asyncio
+async def test_a_run_the_stop_ends_itself_is_published_as_terminated(
+    mocker: MockerFixture,
+):
+    """The event is read after the write, so the page and a waiting block see
+    the run TERMINATED."""
+    from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+    from backend.executor import utils
+
+    stored = {"status": ExecutionStatus.QUEUED}
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_queue",
+        return_value=mocker.AsyncMock(),
+    )
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
+    store = mocker.patch("backend.executor.utils.execution_db")
+    store.get_graph_execution_status = mocker.AsyncMock(
+        side_effect=lambda **_: stored["status"]
+    )
+
+    def write(*, graph_exec_id: str, status: ExecutionStatus) -> bool:
+        stored["status"] = status
+        return True
+
+    def read(**_) -> GraphExecutionMeta:
+        run = mocker.MagicMock(spec=GraphExecutionMeta)
+        run.status = stored["status"]
+        return run
+
+    store.update_graph_execution_status = mocker.AsyncMock(side_effect=write)
+    store.get_graph_execution_meta = mocker.AsyncMock(side_effect=read)
+    bus = mocker.patch("backend.executor.utils.get_async_execution_event_bus")
+    bus.return_value.publish = mocker.AsyncMock()
+
+    await utils.stop_graph_execution(user_id="u", graph_exec_id="run-1", cascade=False)
+
+    bus.return_value.publish.assert_awaited_once()
+    assert bus.return_value.publish.await_args.args[0].status == (
+        ExecutionStatus.TERMINATED
+    )
+
+
+@pytest.mark.asyncio
 async def test_stop_graph_execution_cascades_to_child_with_reviews(
     mocker: MockerFixture,
 ):

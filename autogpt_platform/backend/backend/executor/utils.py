@@ -1411,7 +1411,7 @@ async def stop_graph_execution(
 
     start_time = time.time()
     while time.time() - start_time < wait_timeout:
-        # The status alone: a run's whole row can carry megabytes of inputs.
+        # The status alone; the row is read whole only for the closing event.
         status = await db.get_graph_execution_status(
             user_id=user_id, execution_id=graph_exec_id
         )
