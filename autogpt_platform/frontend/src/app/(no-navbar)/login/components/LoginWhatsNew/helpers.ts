@@ -1,6 +1,6 @@
 import type { LatestRelease } from "@/app/api/changelog/helpers";
 
-const LATEST_RELEASES_URL = "/api/changelog/latest";
+export const LATEST_RELEASES_URL = "/api/changelog/latest";
 
 // Past this the panel links to the changelog instead of waiting on it. The
 // route's own upstream budget is at most half of this, leaving the rest for
