@@ -4,7 +4,7 @@ import type { WebSocketNotification } from "@/lib/autogpt-server-api/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useInsertionEffect, useRef, useState } from "react";
 import { COPILOT_COMPLETION_NOTIFICATION } from "./helpers";
-import { cachedSessionAttention } from "./sessionGroups";
+import { newestCachedSession } from "./sessionGroups";
 import { useCopilotUIStore } from "./store";
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 
@@ -128,8 +128,9 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       if (failed.sessionID === sessionID && failed.count >= MAX_FAILED_READS) {
         return;
       }
-      const attention = cachedSessionAttention(queryClient, sessionID);
-      if (attention === "unread" || attention === "error") {
+      // `is_unread`, not the marker: a chat that needs the user shows that
+      // marker over an unseen turn.
+      if (newestCachedSession(queryClient, sessionID)?.is_unread) {
         setUnseenSessionID(sessionID);
       }
     }
@@ -192,10 +193,11 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       const userAway = isUserAway();
       if (isActiveSession) setUnseenSessionID(sessionID);
 
+      // Recorded even when it doesn't sound, so a later replay of it doesn't.
+      if (isRepeatedCompletion(sessionID, notification)) return;
+
       // Skip if viewing the active session and it's in focus
       if (isActiveSession && !userAway) return;
-
-      if (isRepeatedCompletion(sessionID, notification)) return;
 
       // Sound and browser notifications are gated by the user setting
       const state = useCopilotUIStore.getState();

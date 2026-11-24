@@ -116,6 +116,24 @@ describe("RecentChats — what each chat wants from the user", () => {
     expect(within(row("Plan the offsite")).queryByRole("img")).toBeNull();
   });
 
+  it("shows a running chat that waits on an approval as needing the user", async () => {
+    chats = [
+      {
+        id: "maria-1",
+        title: "Q4 campaign ideas",
+        expert_id: maria.id,
+        is_processing: true,
+        attention: "needs_you",
+      },
+    ];
+    renderRecentChats();
+    await screen.findByText("Q4 campaign ideas");
+
+    expect(
+      within(row("Q4 campaign ideas")).getByRole("img", { name: "Needs you" }),
+    ).toBeDefined();
+  });
+
   it("counts each expert's chats that want the user, for screen readers too", async () => {
     renderRecentChats();
     await screen.findByText("Q4 campaign ideas");

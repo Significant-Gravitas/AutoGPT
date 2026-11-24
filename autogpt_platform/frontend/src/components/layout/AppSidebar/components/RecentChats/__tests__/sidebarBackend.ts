@@ -91,6 +91,7 @@ export function toSummary(chat: SidebarChat, index: number) {
     is_processing: chat.is_processing ?? false,
     is_pinned: chat.is_pinned ?? false,
     attention: chat.attention ?? null,
+    is_unread: isUnread(chat),
     created_at: at,
     updated_at: at,
   };

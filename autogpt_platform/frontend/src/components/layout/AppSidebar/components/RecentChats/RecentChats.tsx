@@ -152,6 +152,7 @@ export function RecentChats() {
         pinnedSeparately={chatPinningEnabled}
         activeSessionId={activeSessionId}
         attentionCount={group.attention_count ?? 0}
+        unreadCount={group.unread_count ?? 0}
         onMarkAllRead={
           group.unread_count ? () => markGroupRead(expertId) : undefined
         }

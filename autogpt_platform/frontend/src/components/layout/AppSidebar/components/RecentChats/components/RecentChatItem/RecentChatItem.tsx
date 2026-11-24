@@ -188,7 +188,11 @@ export const RecentChatItem = memo(function RecentChatItem({
         className="font-normal hover:!bg-surface-hover data-[active=true]:!bg-surface-hover data-[active=true]:font-normal max-md:h-11 max-md:!pr-11 max-md:text-body-md max-md:leading-5"
       >
         <Link href={`/home?sessionId=${session.id}`}>
-          {session.is_processing ? (
+          {/* A running turn can be waiting on an approval, so needing the
+              user outranks the spinner. */}
+          {attention === "needs_you" ? (
+            <AttentionMarker attention={attention} />
+          ) : session.is_processing ? (
             <LoadingSpinner
               size="small"
               className="size-4 shrink-0 text-brand-hover"

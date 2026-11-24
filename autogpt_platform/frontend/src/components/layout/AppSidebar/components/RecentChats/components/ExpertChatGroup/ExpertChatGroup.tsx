@@ -61,6 +61,8 @@ interface Props {
   activeSessionId: string | null;
   /** The group's chats that want the user, loaded or not. */
   attentionCount: number;
+  /** The group's chats with an unseen turn, loaded or not. */
+  unreadCount: number;
   /** Clears the group's unread and failed chats; absent when it has none. */
   onMarkAllRead?: () => void;
   renderItem: (session: SessionSummaryResponse) => ReactNode;
@@ -82,6 +84,7 @@ export function ExpertChatGroup({
   pinnedSeparately,
   activeSessionId,
   attentionCount,
+  unreadCount,
   onMarkAllRead,
   renderItem,
 }: Props) {
@@ -104,6 +107,7 @@ export function ExpertChatGroup({
     pinnedSeparately,
     activeSessionId,
     attentionCount,
+    unreadCount,
   });
 
   // The button goes once nothing is left to clear, so focus moves to the

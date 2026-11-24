@@ -701,6 +701,14 @@ class SessionSummaryResponse(BaseModel):
             "ended since then). Opening the chat clears `error` and `unread`."
         ),
     )
+    is_unread: bool = Field(
+        default=False,
+        description=(
+            "A turn ended since the owner last opened the chat. Also true for "
+            "a `needs_you` chat with such a turn, which marking read clears "
+            "while it keeps its marker."
+        ),
+    )
 
 
 class ListSessionsResponse(BaseModel):
@@ -1252,6 +1260,7 @@ def _session_summary(
         is_pinned=session.is_pinned,
         expert_id=session.expert_id,
         attention=session.attention(session.session_id in awaiting_review),
+        is_unread=session.is_unread,
     )
 
 

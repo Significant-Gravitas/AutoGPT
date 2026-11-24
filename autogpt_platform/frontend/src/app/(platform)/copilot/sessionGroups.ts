@@ -26,21 +26,23 @@ export const SESSION_GROUP_PAGES_QUERY_KEY = [
 
 export type SessionGroupsResult = getV2ListSessionGroupsResponse;
 
-/** The chat's marker as the cached chat lists last read it, the grouped read
- *  and any plain list alike; null when no list holds the chat. */
-export function cachedSessionAttention(
+/** The chat as the most recently read of the cached chat lists holds it,
+ *  the grouped read and any plain list alike; undefined when none does. */
+export function newestCachedSession(
   queryClient: QueryClient,
   sessionId: string,
 ) {
-  for (const [, data] of queryClient.getQueriesData<unknown>({
-    queryKey: SESSION_LIST_QUERY_KEY,
-  })) {
-    const session = cachedSessions(data).find(
+  const newestFirst = queryClient
+    .getQueryCache()
+    .findAll({ queryKey: SESSION_LIST_QUERY_KEY })
+    .sort((a, b) => b.state.dataUpdatedAt - a.state.dataUpdatedAt);
+  for (const query of newestFirst) {
+    const session = cachedSessions(query.state.data).find(
       (candidate) => candidate.id === sessionId,
     );
-    if (session) return session.attention ?? null;
+    if (session) return session;
   }
-  return null;
+  return undefined;
 }
 
 function cachedSessions(data: unknown): SessionSummaryResponse[] {

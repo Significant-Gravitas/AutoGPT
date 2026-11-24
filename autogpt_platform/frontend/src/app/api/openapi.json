@@ -37159,6 +37159,12 @@
             ],
             "title": "Attention",
             "description": "What the chat wants from its owner, the most urgent first: `needs_you` (a question or an approval waits on them), `error` (a turn failed since they last opened it) or `unread` (a turn ended since then). Opening the chat clears `error` and `unread`."
+          },
+          "is_unread": {
+            "type": "boolean",
+            "title": "Is Unread",
+            "description": "A turn ended since the owner last opened the chat. Also true for a `needs_you` chat with such a turn, which marking read clears while it keeps its marker.",
+            "default": false
           }
         },
         "type": "object",

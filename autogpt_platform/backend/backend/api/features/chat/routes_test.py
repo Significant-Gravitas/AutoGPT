@@ -4936,11 +4936,13 @@ def test_chat_lists_carry_each_chats_marker_and_each_groups_counts(
     assert response.status_code == 200
     (group,) = response.json()["groups"]
     assert (group["attention_count"], group["unread_count"]) == (3, 2)
-    assert [(s["id"], s["attention"]) for s in group["sessions"]] == [
-        ("sess-unread", "unread"),
-        ("sess-failed", "error"),
-        ("sess-approval", "needs_you"),
-        ("sess-read", None),
+    assert [(s["id"], s["attention"], s["is_unread"]) for s in group["sessions"]] == [
+        ("sess-unread", "unread", True),
+        ("sess-failed", "error", True),
+        # Waiting on an approval and holding an unseen turn: marked needs you,
+        # still unread underneath.
+        ("sess-approval", "needs_you", True),
+        ("sess-read", None, False),
     ]
 
 

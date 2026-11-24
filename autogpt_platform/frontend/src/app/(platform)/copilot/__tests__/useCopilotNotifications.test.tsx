@@ -146,6 +146,21 @@ describe("useCopilotNotifications — OS notification dispatch", () => {
     await waitFor(() => expect(NotificationCtor).toHaveBeenCalledTimes(2));
   });
 
+  it("stays quiet for a replay of a turn that ended while the user watched", async () => {
+    setVisibility("visible");
+    setFocused(true);
+    renderHook(() => useCopilotNotifications("sess-1"), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => capturedHandler!({ ...completion("sess-1"), turn_id: "t1" }));
+    setVisibility("hidden");
+    act(() => capturedHandler!({ ...completion("sess-1"), turn_id: "t1" }));
+    await act(async () => {});
+
+    expect(NotificationCtor).not.toHaveBeenCalled();
+  });
+
   it("tells a chat's next turn from a replay by its turn id", async () => {
     renderHook(() => useCopilotNotifications(null), { wrapper: makeWrapper() });
 
@@ -235,12 +250,67 @@ describe("useCopilotNotifications — a completion this tab never heard", () => 
             {
               expert_id: null,
               total: 1,
-              sessions: [{ id: "sess-1", attention: "unread" }],
+              sessions: [
+                { id: "sess-1", attention: "unread", is_unread: true },
+              ],
             },
           ],
           pinned: [],
         },
       });
+    });
+
+    await waitFor(() => expect(markedRead).toEqual(["sess-1", "sess-1"]));
+  });
+});
+
+describe("useCopilotNotifications — which cached list to believe", () => {
+  function groups(session: Record<string, unknown>) {
+    return {
+      status: 200,
+      data: {
+        groups: [{ expert_id: null, total: 1, sessions: [session] }],
+        pinned: [],
+      },
+    };
+  }
+
+  it("marks read an unseen turn under a needs-you marker", async () => {
+    setVisibility("visible");
+    setFocused(true);
+    renderHook(() => useCopilotNotifications("sess-1"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(markedRead).toEqual(["sess-1"]));
+
+    act(() => {
+      lastQueryClient.setQueryData(
+        [...SESSION_GROUPS_QUERY_KEY, {}],
+        groups({ id: "sess-1", attention: "needs_you", is_unread: true }),
+      );
+    });
+
+    await waitFor(() => expect(markedRead).toEqual(["sess-1", "sess-1"]));
+  });
+
+  it("goes by the newest list when two disagree", async () => {
+    setVisibility("visible");
+    setFocused(true);
+    renderHook(() => useCopilotNotifications("sess-1"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(markedRead).toEqual(["sess-1"]));
+
+    act(() => {
+      lastQueryClient.setQueryData(
+        [...SESSION_GROUPS_QUERY_KEY, "older"],
+        groups({ id: "sess-1", attention: null, is_unread: false }),
+        { updatedAt: Date.now() - 60_000 },
+      );
+      lastQueryClient.setQueryData(
+        [...SESSION_GROUPS_QUERY_KEY, "newer"],
+        groups({ id: "sess-1", attention: "unread", is_unread: true }),
+      );
     });
 
     await waitFor(() => expect(markedRead).toEqual(["sess-1", "sess-1"]));
