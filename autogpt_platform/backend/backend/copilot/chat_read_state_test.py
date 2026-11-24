@@ -135,7 +135,7 @@ async def test_marking_read_touches_only_unread_chats_the_list_shows():
     *scope, read_at = params
     assert scope == ["u1", "org-1", "maria"]
     # Never below the stored turn end, whatever this process's clock says.
-    assert 'GREATEST($4, "lastTurnEndedAt")' in query
+    assert 'GREATEST($4::timestamp, "lastTurnEndedAt")' in query
     assert isinstance(read_at, datetime)
 
 

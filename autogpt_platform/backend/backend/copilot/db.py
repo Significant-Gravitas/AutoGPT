@@ -916,7 +916,9 @@ async def mark_sessions_read(
     params.append(datetime.now(UTC))
     return await db.execute_raw_with_schema(
         'UPDATE {schema_prefix}"ChatSession" SET "lastReadAt" = '
-        f'GREATEST(${len(params)}, "lastTurnEndedAt") '
+        # The parameter arrives as text, which GREATEST can't compare with a
+        # timestamp column on its own.
+        f'GREATEST(${len(params)}::timestamp, "lastTurnEndedAt") '
         "WHERE " + where + f" AND {_UNREAD_SQL}",
         *params,
     )

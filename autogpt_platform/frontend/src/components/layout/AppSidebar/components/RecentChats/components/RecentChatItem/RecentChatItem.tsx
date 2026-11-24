@@ -108,10 +108,8 @@ function AttentionMarker({ attention }: { attention: ChatAttention }) {
       }
       role="img"
       aria-label={label}
-      className={cn(
-        "size-4 shrink-0",
-        attention === "needs_you" ? "text-warning" : "text-error",
-      )}
+      tone={attention === "needs_you" ? "warning" : "error"}
+      className="size-4 shrink-0"
     />
   );
 }
