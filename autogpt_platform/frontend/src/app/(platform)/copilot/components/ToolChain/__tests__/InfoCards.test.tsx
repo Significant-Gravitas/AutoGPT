@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { render as renderWithProviders } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CopilotChatActionsContext } from "../../CopilotChatActionsProvider/useCopilotChatActions";
 import {
@@ -248,11 +249,47 @@ describe("SuggestedGoalCard", () => {
     expect(onSend.mock.calls).toEqual([[message], [message]]);
   });
 
+  it("ignores clicks while a send is pending and allows a retry after it fails", async () => {
+    let rejectSend: (error: Error) => void = () => {};
+    const onSend = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((_, reject) => {
+            rejectSend = reject;
+          }),
+      )
+      .mockResolvedValue(undefined);
+    render(
+      <CopilotChatActionsContext.Provider
+        value={{ onSend, chatSurface: "copilot" }}
+      >
+        <SuggestedGoalCard
+          output={{ suggested_goal: "Summarize weekly sales" }}
+        />
+        <Toaster />
+      </CopilotChatActionsContext.Provider>,
+    );
+
+    const button = screen.getByRole("button", { name: "Use this goal" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(onSend).toHaveBeenCalledTimes(1);
+
+    rejectSend(new Error("Network error"));
+    expect(await screen.findByText("Couldn't send message")).toBeDefined();
+
+    fireEvent.click(button);
+    expect(onSend).toHaveBeenCalledTimes(2);
+  });
+
   it("shows paywall recovery copy when sending requires an active plan", async () => {
     const onSend = vi
       .fn()
       .mockRejectedValueOnce(new ApiError("Payment required", 402, {}));
-    render(
+    // The paywall toast reads whether this install bills through React Query,
+    // so it needs the app's providers.
+    renderWithProviders(
       <CopilotChatActionsContext.Provider
         value={{ onSend, chatSurface: "copilot" }}
       >

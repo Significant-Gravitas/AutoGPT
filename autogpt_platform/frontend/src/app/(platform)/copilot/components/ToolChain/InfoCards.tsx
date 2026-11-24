@@ -9,7 +9,7 @@ import {
   MessageQuestionIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { useContext } from "react";
+import { useContext, useRef } from "react";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { CardProviderIcon } from "./BlockCards";
@@ -232,11 +232,15 @@ export function SkillCard({ output }: OutputProps) {
 
 export function SuggestedGoalCard({ output }: OutputProps) {
   const actions = useContext(CopilotChatActionsContext);
+  // A second click while the first send is pending would send the goal again.
+  // The ref is set before the await, so that click sees it in time.
+  const sendingRef = useRef(false);
   const goal = str(output, "suggested_goal");
   if (!goal) return null;
 
   async function handleUseGoal() {
-    if (!actions) return;
+    if (!actions || sendingRef.current) return;
+    sendingRef.current = true;
     try {
       await actions.onSend(`Please create a workflow with this goal: ${goal}`);
     } catch (error) {
@@ -248,6 +252,8 @@ export function SuggestedGoalCard({ output }: OutputProps) {
         recovery: "check the chat before trying again",
         paywallRecovery: "the suggested goal is still on the card",
       });
+    } finally {
+      sendingRef.current = false;
     }
   }
 
