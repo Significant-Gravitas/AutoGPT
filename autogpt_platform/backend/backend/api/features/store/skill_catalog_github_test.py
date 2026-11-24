@@ -2,15 +2,19 @@
 change.
 
 Driven through ``resolve_catalog``, the call ``publish-skills-catalog``
-makes, against a fake GitHub that redirects the tarball to codeload as the
-real one does and serves a real catalog tarball. The waits between attempts
-are noted instead of slept.
+makes. With a token, as a deploy downloads, against a fake GitHub API that
+redirects the tarball to codeload as the real one does and serves a real
+catalog tarball. Without one, as a self-hosted stack or CI's downloads,
+against an HTTP server on this machine standing in for codeload. The waits
+between attempts are noted instead of slept.
 """
 
 import io
 import tarfile
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Iterator
 from functools import partial
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import httpx
@@ -30,6 +34,7 @@ SHA = "a5dc0724d9d3b51448d59eb89bf64568cb83178a"
 COMMIT_PATH = f"/repos/{REPO}/commits/main"
 TARBALL_PATH = f"/repos/{REPO}/tarball/{SHA}"
 CODELOAD = f"https://codeload.github.com/{REPO}/legacy.tar.gz/{SHA}"
+CODELOAD_MAIN = f"/{REPO}/tar.gz/main"
 SLUGS = {"cold-email", "warm-intro"}
 
 Answer = Callable[[httpx.Request], httpx.Response]
@@ -71,11 +76,35 @@ class FakeGitHub:
         return httpx.Response(404)
 
 
+class OnlyCodeload(httpx.HTTPTransport):
+    """Sends a request for codeload.github.com to *port* on this machine, and
+    fails the test on a request for any other host."""
+
+    def __init__(self, port: int) -> None:
+        super().__init__()
+        self.port = port
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        if request.url.host != "codeload.github.com":
+            pytest.fail(f"requested {request.url}")
+        request.url = request.url.copy_with(
+            scheme="http", host="127.0.0.1", port=self.port
+        )
+        return super().handle_request(request)
+
+
 @pytest.fixture(autouse=True)
 def _download_from_github(monkeypatch: pytest.MonkeyPatch) -> None:
-    # CI points the backend's tests at a checkout; this file downloads.
-    for name in ("SKILLS_CATALOG_PATH", "SKILLS_CATALOG_REPO", "SKILLS_CATALOG_REF"):
+    # CI points the backend's tests at a checkout; this file downloads. A
+    # token picks the route, so each test sets its own rather than CI's.
+    for name in (
+        "SKILLS_CATALOG_PATH",
+        "SKILLS_CATALOG_REPO",
+        "SKILLS_CATALOG_REF",
+        "GITHUB_TOKEN",
+    ):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("SKILLS_CATALOG_TOKEN", "test-token")
 
 
 @pytest.fixture(autouse=True)
@@ -86,11 +115,11 @@ def waits(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     return slept
 
 
-@pytest.fixture
-def tarball(tmp_path: Path) -> bytes:
-    """A catalog release packed as GitHub packs one: the tree under a single
-    ``<owner>-<repo>-<sha>`` directory."""
-    root = tmp_path / "packed" / f"Significant-Gravitas-skills-catalog-{SHA[:7]}"
+def pack_catalog(directory: Path, root_name: str) -> bytes:
+    """A catalog release packed as GitHub packs one, with ``git archive``:
+    the tree under a single *root_name* directory, and the commit in the pax
+    global header."""
+    root = directory / root_name
     root.mkdir(parents=True)
     write_catalog(
         root,
@@ -98,9 +127,22 @@ def tarball(tmp_path: Path) -> bytes:
         experts={"max": expert_yaml("max", ["cold-email"])},
     )
     packed = io.BytesIO()
-    with tarfile.open(fileobj=packed, mode="w:gz") as archive:
+    with tarfile.open(
+        fileobj=packed,
+        mode="w:gz",
+        format=tarfile.PAX_FORMAT,
+        pax_headers={"comment": SHA},
+    ) as archive:
         archive.add(root, arcname=root.name)
     return packed.getvalue()
+
+
+@pytest.fixture
+def tarball(tmp_path: Path) -> bytes:
+    """The API's tarball, under one ``<owner>-<repo>-<sha>`` directory."""
+    return pack_catalog(
+        tmp_path / "packed", f"Significant-Gravitas-skills-catalog-{SHA[:7]}"
+    )
 
 
 @pytest.fixture
@@ -125,6 +167,43 @@ def into(tmp_path: Path) -> Path:
     directory = tmp_path / "download"
     directory.mkdir()
     return directory
+
+
+@pytest.fixture
+def codeload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
+    """codeload, served from this machine: a 503, then the catalog packed as
+    codeload packs a branch, under one ``<repo>-<ref>`` directory. Yields the
+    paths asked for."""
+    archive = pack_catalog(tmp_path / "codeload", "skills-catalog-main")
+    answers = [503]
+    asked: list[str] = []
+
+    class Codeload(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            asked.append(self.path)
+            code = answers.pop(0) if answers else 200
+            body = archive if code == 200 else b""
+            self.send_response(code)
+            self.send_header("Content-Type", "application/x-gzip")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Codeload)
+    serving = threading.Thread(target=server.serve_forever, daemon=True)
+    serving.start()
+    monkeypatch.setattr(
+        skill_catalog_github,
+        "Client",
+        partial(httpx.Client, transport=OnlyCodeload(server.server_port)),
+    )
+    yield asked
+    server.shutdown()
+    serving.join()
+    server.server_close()
 
 
 @pytest.mark.parametrize(
@@ -249,3 +328,20 @@ def test_a_retry_after_past_the_wait_budget_ends_the_retries(
     assert raised.value.response.status_code == 429
     assert fake.requests.count(TARBALL_PATH) == attempts
     assert waits == waited
+
+
+def test_without_a_token_the_catalog_comes_from_codeload_with_its_commit(
+    monkeypatch: pytest.MonkeyPatch, codeload: list[str], waits: list[float], into: Path
+):
+    """Nothing asks the REST API, whose limit without a token CI runners
+    share; the commit is the one the archive names, and a blip is still
+    ridden out."""
+    monkeypatch.delenv("SKILLS_CATALOG_TOKEN")
+
+    source = resolve_catalog(into)
+
+    assert source.revision == SHA
+    assert source.root == into / "skills-catalog-main"
+    assert load_release(source.root).slugs == SLUGS
+    assert codeload == [CODELOAD_MAIN, CODELOAD_MAIN]
+    assert len(waits) == 1
