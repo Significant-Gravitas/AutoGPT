@@ -14,6 +14,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { DraftDiff } from "@/lib/dexie/draft-utils";
 import { Cancel01Icon, HistoryIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration } from "@/components/styles/motion";
 
 interface DraftRecoveryPopupProps {
   isInitialLoadComplete: boolean;
@@ -92,9 +93,13 @@ export function DraftRecoveryPopup({
             y: "-150%",
             scale: 0.5,
             filter: "blur(20px)",
-            transition: { duration: 0.4, type: "spring", bounce: 0.2 },
+            transition: {
+              duration: duration.slower,
+              type: "spring",
+              bounce: 0.2,
+            },
           }}
-          transition={{ duration: 0.2, type: "spring", bounce: 0.2 }}
+          transition={{ duration: duration.base, type: "spring", bounce: 0.2 }}
         >
           <div
             className={cn(

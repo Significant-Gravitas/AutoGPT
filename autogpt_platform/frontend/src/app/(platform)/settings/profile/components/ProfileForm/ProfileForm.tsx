@@ -24,6 +24,7 @@ import {
   TextStrikethroughIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   formState: ProfileFormState;
@@ -33,8 +34,6 @@ interface Props {
     value: ProfileFormState[K],
   ) => void;
 }
-
-const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 
 interface MarkdownAction {
   label: string;
@@ -155,7 +154,11 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
     <motion.div
       initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.32, ease: EASE_OUT, delay: 0.06 }}
+      transition={{
+        duration: duration.slow,
+        ease: ease.emphasized,
+        delay: 0.06,
+      }}
       className="flex w-full flex-col gap-2"
     >
       <div className="flex items-center justify-between px-4">

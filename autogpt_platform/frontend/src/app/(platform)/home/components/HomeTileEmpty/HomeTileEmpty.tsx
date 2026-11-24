@@ -5,8 +5,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { HomeEmptyIllustration } from "./HomeEmptyIllustration";
-
-const EASE_OUT_QUINT = [0.22, 1, 0.36, 1] as const;
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   title: string;
@@ -31,13 +30,13 @@ export function HomeTileEmpty({
       return {
         initial: { opacity: 0 },
         animate: { opacity: 1 },
-        transition: { duration: 0.2, delay: 0 },
+        transition: { duration: duration.base, delay: 0 },
       };
     }
     return {
       initial: { opacity: 0, y: 6 },
       animate: { opacity: 1, y: 0 },
-      transition: { duration: 0.35, ease: EASE_OUT_QUINT, delay },
+      transition: { duration: duration.slow, ease: ease.glide, delay },
     };
   }
 

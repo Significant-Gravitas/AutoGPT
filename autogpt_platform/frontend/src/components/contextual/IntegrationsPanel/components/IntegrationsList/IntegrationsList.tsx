@@ -14,6 +14,7 @@ import { IntegrationsSelectionBar } from "../IntegrationsSelectionBar/Integratio
 import { ProviderGroup } from "../ProviderGroup/ProviderGroup";
 import { IntegrationsListSkeleton } from "./IntegrationsListSkeleton";
 import { useIntegrationsList } from "./useIntegrationsList";
+import { duration, ease } from "@/components/styles/motion";
 
 const LIST_CONTAINER_VARIANTS: Variants = {
   hidden: {},
@@ -27,7 +28,7 @@ const LIST_ITEM_VARIANTS: Variants = {
   show: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] },
+    transition: { duration: duration.slow, ease: ease.emphasized },
   },
 };
 
@@ -151,7 +152,7 @@ export function IntegrationsList({
                 ? { opacity: 0 }
                 : { opacity: 0, height: 0, marginBottom: -12 }
             }
-            transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
+            transition={{ duration: duration.base, ease: ease.out }}
             className={cn(
               "sticky top-2 z-sticky overflow-hidden sm:top-0",
               stickyClassName,

@@ -6,8 +6,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { openConsentSettings } from "@/services/consent/consent";
 import { useConsentManagerStatus } from "@/services/consent/useConsent";
-
-import { EASE_OUT } from "../../helpers";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   index?: number;
@@ -25,8 +24,8 @@ export function CookieSettingsCard({ index = 0 }: Props) {
         reduceMotion
           ? undefined
           : {
-              duration: 0.32,
-              ease: EASE_OUT,
+              duration: duration.slow,
+              ease: ease.emphasized,
               delay: 0.04 + index * 0.05,
             }
       }

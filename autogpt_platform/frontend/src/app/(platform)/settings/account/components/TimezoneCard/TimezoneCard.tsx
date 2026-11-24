@@ -9,9 +9,10 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 
-import { EASE_OUT, TIMEZONES, findTimezoneLabel } from "../../helpers";
+import { TIMEZONES, findTimezoneLabel } from "../../helpers";
 import { InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   value: string;
@@ -34,8 +35,8 @@ export function TimezoneCard({ value, onChange, index = 0 }: Props) {
         reduceMotion
           ? undefined
           : {
-              duration: 0.32,
-              ease: EASE_OUT,
+              duration: duration.slow,
+              ease: ease.emphasized,
               delay: 0.04 + index * 0.05,
             }
       }

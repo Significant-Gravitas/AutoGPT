@@ -29,8 +29,6 @@ export function buildEditPayload(submission: StoreSubmission): EditPayload {
   };
 }
 
-export const EASE_OUT = [0.16, 1, 0.3, 1] as const;
-
 export type StatusFilterValue = "all" | SubmissionStatus;
 
 export type SortKey = "submitted" | "runs";

@@ -20,9 +20,10 @@ import {
   SERVICE_FILTERS,
   useExpertConnectServiceDialog,
 } from "./useExpertConnectServiceDialog";
+import { duration, ease } from "@/components/styles/motion";
 
-const STEP_TRANSITION = { duration: 0.15, ease: [0, 0, 0.2, 1] as const };
-const HEIGHT_TRANSITION = { duration: 0.2, ease: [0, 0, 0.2, 1] as const };
+const STEP_TRANSITION = { duration: duration.fast, ease: ease.out };
+const HEIGHT_TRANSITION = { duration: duration.base, ease: ease.out };
 
 const stepVariants = {
   initial: (direction: number) => ({ x: 16 * direction, opacity: 0 }),

@@ -221,6 +221,7 @@
   --transition-duration-base: var(--duration-base);
   --transition-duration-slow: var(--duration-slow);
   --transition-duration-slower: var(--duration-slower);
+  --transition-duration-slowest: var(--duration-slowest);
   --ease-standard: var(--ease-standard);
   --ease-in: var(--ease-in);
   --ease-out: var(--ease-out);

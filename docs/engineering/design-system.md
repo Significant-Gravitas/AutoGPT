@@ -84,7 +84,7 @@ Every design value lives in one of four files in `src/app/tokens/`. Change a val
   - Write no shadow by hand (`shadow-[…]`, an inline `boxShadow`, a drag image's `box-shadow`): use a step, or add one here named for what it is for. What is left: keyframes that animate a shadow (the orbit loader, the builder tutorial's pulse), the builder tutorial's Shepherd card, the category chip's runtime-coloured selected state, the expert title's runtime-coloured glow, and the exempt artwork (`GlassSurface`, the sticky note); all of them read roles.
   - Layers: see [Layers](#layers).
   - Shell: `--shell-sidebar-width` (18.25rem, the app's sidebar), `--shell-sidebar-width-tour` (19rem, the tour's and the logged-out marketplace's), `--shell-sidebar-width-default` (20rem, a `SidebarProvider` that sets no width), `--shell-sidebar-width-mobile` (20rem, the phone sheet), `--shell-sidebar-width-collapsed` (3rem, the icon rail) and `--shell-content-max`. The Sidebar's constants and the providers in `PlatformChrome` and `TourCopilot` read them as `--sidebar-width: var(--shell-sidebar-width)`; elsewhere read them with `w-(--shell-sidebar-width)`.
-- `motion.css`: durations (`duration-instant`, `-fast`, `-base`, `-slow`, `-slower`) and easings (`ease-standard`, `ease-in`, `ease-out`, `ease-emphasized`, `ease-out-quint`, `ease-glide`, `ease-drawer`; `ease-in-out` is the standard curve). A bare number (`duration-200`) still works. `src/components/styles/motion.ts` has the same values for Framer Motion: `duration` in seconds, `ease` as cubic-bezier numbers, and three `spring` presets.
+- `motion.css`: durations (`duration-instant` 100ms, `-fast` 150ms, `-base` 200ms, `-slow` 300ms, `-slower` 400ms, `-slowest` 500ms) and easings (`ease-standard`, `ease-in`, `ease-out`, `ease-emphasized`, `ease-out-quint`, `ease-glide`, `ease-drawer`; `ease-in-out` is the standard curve). A bare number (`duration-200`) still works. `src/components/styles/motion.ts` has the same values for Framer Motion: `duration` in seconds, `ease` as cubic-bezier numbers, and three `spring` presets.
 
 `tailwind.config.ts` holds no colour, text size, radius, shadow, layer, duration or easing.
 
@@ -120,6 +120,14 @@ Every z-index is a named layer from `shape.css`, lowest first:
 - A new layer goes in `shape.css` with the number it needs, a `--z-index-<name>: var(--z-<name>)` entry in `globals.css`, and its name in `src/lib/tw-merge.ts`, so `cn("z-raised", "z-overlay")` keeps the last. Name it for what sits there. Two names share a number only when they are different layers that happen to sit at the same height today (`z-header` and `z-prompt`, `z-canvas-toolbar` and `z-blocking`), so either can move without the other.
 - `design-system/no-restyle` allows `z-*` wherever it allows layout classes, as it allowed the numbers.
 - Third-party numbers stay as their libraries need them: the Google Drive picker (`[class*="picker-dialog"]`) is forced to `z-index: 10000 !important` in `globals.css`, over its own inline value, and while it is open the app's dialog overlay and popup drop to `z-index: 1 !important` beneath it.
+
+#### How to animate
+
+In Framer Motion, take every value from `@/components/styles/motion`: `transition={{ duration: duration.base, ease: ease.out }}`, and springs as `{ type: "spring", ...spring.snappy }` (`snappy` 520/30, `gentle` 300/25, `bouncy` 200/15; a site may still add `mass`, `bounce` or `restDelta`). A timer that waits for a CSS transition reads the same token: `duration.fast * 1000`. Pick the step nearest what the transition needs; do not add a step for one site. `<MotionConfig reducedMotion="user">` in `src/app/providers.tsx` drops transform and layout animations for people who ask for reduced motion, so a component only needs its own `useReducedMotion` branch when it should do something other than that (fade instead of slide, skip a delay).
+
+Some numbers stay literal, because they are not UI transitions: `duration: 0`, durations of 0.6s and longer, `repeat: Infinity` loops, drawn, typed and ambient effects (a marquee, a typing reveal, a breathing loader), durations computed from data, and `delay` and stagger values. A file with several of them names them in a local constant. A spring far from all three presets (the folder icon's slow settle) stays literal too.
+
+`src/components/styles/__tests__/motion-literals.test.ts` fails on a curve written out in the source: a cubic-bezier array, a `cubicBezier()` call, one of Framer's easing names other than `"linear"` (`"easeOut"`, `"easeInOut"`, ...), or an `*EASE*` array constant. The loops that keep their curve are listed in its `ALLOWED` map, each with a reason.
 
 ### The canary look
 

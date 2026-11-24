@@ -12,6 +12,7 @@ import { countOpenTasks } from "./helpers";
 import { SuggestedTaskList } from "./SuggestedTaskList";
 import type { useCollapsedSuggestions } from "./useCollapsedSuggestions";
 import type { useSuggestedTasks } from "./useSuggestedTasks";
+import { duration } from "@/components/styles/motion";
 
 interface Props {
   suggestions: ReturnType<typeof useSuggestedTasks>;
@@ -79,7 +80,9 @@ export function SuggestedTasksBlock({
               exit={
                 prefersReducedMotion ? undefined : { height: 0, opacity: 0 }
               }
-              transition={{ duration: prefersReducedMotion ? 0 : 0.2 }}
+              transition={{
+                duration: prefersReducedMotion ? 0 : duration.base,
+              }}
               className="overflow-hidden"
             >
               {showTeam ? <YourTeamRow experts={suggestions.experts} /> : null}

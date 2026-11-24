@@ -4,8 +4,7 @@ import { motion, useReducedMotion } from "framer-motion";
 
 import { Text } from "@/components/atoms/Text/Text";
 import { NotificationSettingsControls } from "@/components/layout/NotificationSettings/NotificationSettingsControls";
-
-import { EASE_OUT } from "../../helpers";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   index?: number;
@@ -21,7 +20,11 @@ export function BrowserNotificationsCard({ index = 0 }: Props) {
       transition={
         reduceMotion
           ? undefined
-          : { duration: 0.32, ease: EASE_OUT, delay: 0.04 + index * 0.05 }
+          : {
+              duration: duration.slow,
+              ease: ease.emphasized,
+              delay: 0.04 + index * 0.05,
+            }
       }
       className="flex w-full flex-col"
     >

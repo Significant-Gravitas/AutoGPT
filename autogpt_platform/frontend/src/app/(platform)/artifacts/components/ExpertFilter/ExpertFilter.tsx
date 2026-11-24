@@ -4,6 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import { LayoutGroup, motion, type Transition } from "framer-motion";
+import { spring } from "@/components/styles/motion";
 
 export interface ExpertFilterOption {
   id: string;
@@ -17,10 +18,9 @@ interface Props {
   onChange: (expertId: string | null) => void;
 }
 
-const snappySpring: Transition = {
+const pillSpring: Transition = {
   type: "spring",
-  stiffness: 350,
-  damping: 30,
+  ...spring.gentle,
   mass: 1,
 };
 
@@ -99,7 +99,7 @@ function ExpertTab({
         <motion.span
           layoutId="artifacts-expert-active"
           className="absolute inset-0 rounded-pill bg-surface-hover"
-          transition={snappySpring}
+          transition={pillSpring}
         />
       ) : null}
       {hasAvatar ? (

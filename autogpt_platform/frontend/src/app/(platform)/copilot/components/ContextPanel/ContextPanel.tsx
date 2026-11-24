@@ -21,6 +21,7 @@ import { WorkspaceFileCards } from "../WorkspaceFileCards/WorkspaceFileCards";
 import { ArtifactsTab } from "./components/ArtifactsTab/ArtifactsTab";
 import { IntegrationsTab } from "./components/IntegrationsTab/IntegrationsTab";
 import { useContextPanel } from "./useContextPanel";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   sessionId: string | null;
@@ -29,8 +30,7 @@ interface Props {
 
 // iOS sheet curve — decelerates hard at the end so the chat column settles
 // instead of snapping when the panel pushes it aside.
-const PANEL_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
-const PANEL_DURATION = 0.3;
+const PANEL_DURATION = duration.slow;
 
 const TAB_TITLES: Record<ContextPanelTab, string> = {
   files: "Files",
@@ -118,7 +118,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   const transition =
     shouldReduceMotion || isResizing
       ? { duration: 0 }
-      : { duration: PANEL_DURATION, ease: PANEL_EASE };
+      : { duration: PANEL_DURATION, ease: ease.drawer };
 
   return (
     <AnimatePresence initial={false}>

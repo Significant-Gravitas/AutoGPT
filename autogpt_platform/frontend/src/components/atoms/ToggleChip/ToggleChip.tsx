@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { ArrowDataTransferVerticalIcon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { ReactNode } from "react";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   icon: ReactNode;
@@ -84,7 +85,7 @@ export function ToggleChip({
               initial={{ filter: blurred, opacity: 0 }}
               animate={{ filter: "blur(0px)", opacity: 1 }}
               exit={{ filter: blurred, opacity: 0 }}
-              transition={{ duration: 0.12, ease: [0, 0, 0.2, 1] }}
+              transition={{ duration: duration.instant, ease: ease.out }}
               className="hidden sm:inline"
             >
               {label}

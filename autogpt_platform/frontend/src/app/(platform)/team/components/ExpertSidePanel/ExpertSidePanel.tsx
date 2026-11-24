@@ -10,12 +10,12 @@ import { PanelResizeHandle } from "@/app/(platform)/copilot/components/PanelResi
 import { useIsMobile } from "@/app/(platform)/copilot/useIsMobile";
 import { IdentityAvatar, PanelIdentity } from "./IdentityAvatar";
 import { usePanelSidebarCollapse } from "./usePanelSidebarCollapse";
+import { duration, ease } from "@/components/styles/motion";
 
 const DEFAULT_PANEL_WIDTH = 520;
 const MIN_PANEL_WIDTH = 320;
 const MAX_PANEL_VIEWPORT_RATIO = 0.4;
-const PANEL_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
-const PANEL_DURATION = 0.3;
+const PANEL_DURATION = duration.slow;
 
 interface Props {
   identity: PanelIdentity | null;
@@ -74,7 +74,7 @@ export function ExpertSidePanel({
   const transition =
     shouldReduceMotion || isResizing
       ? { duration: 0 }
-      : { duration: PANEL_DURATION, ease: PANEL_EASE };
+      : { duration: PANEL_DURATION, ease: ease.drawer };
   const panelSelector = `[data-expert-panel="${panelId}"]`;
 
   return (

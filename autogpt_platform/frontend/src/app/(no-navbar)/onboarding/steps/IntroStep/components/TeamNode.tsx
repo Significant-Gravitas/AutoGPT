@@ -9,8 +9,7 @@ import {
   stagePercent,
   type TeamMember,
 } from "./teamSceneHelpers";
-
-const EASE = [0.22, 1, 0.36, 1] as const;
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   member: TeamMember;
@@ -36,7 +35,11 @@ export function TeamNode({ member, animate }: Props) {
         className="flex flex-col items-center"
         initial={animate ? { opacity: 0, y: 10, scale: 0.92 } : false}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ delay: revealDelay(member), duration: 0.55, ease: EASE }}
+        transition={{
+          delay: revealDelay(member),
+          duration: duration.slowest,
+          ease: ease.glide,
+        }}
       >
         <div className="relative size-(--size)">
           {lead && (

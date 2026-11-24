@@ -17,6 +17,7 @@ import { AdsConversionTracker } from "@/services/analytics/AdsConversionTracker"
 import { AttributionReporter } from "@/services/analytics/AttributionReporter";
 import { FeatureFlagProvider } from "@/services/feature-flags/feature-flag-provider";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { MotionConfig } from "framer-motion";
 import { ThemeProvider, ThemeProviderProps } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { Suspense } from "react";
@@ -25,33 +26,37 @@ export function Providers({ children, ...props }: ThemeProviderProps) {
   const queryClient = getQueryClient();
   useClearOnAccountChange(queryClient);
   return (
-    <QueryClientProvider client={queryClient}>
-      <NuqsAdapter>
-        <PostHogProvider>
-          <BackendAPIProvider>
-            {/* All of these read useSearchParams (directly or via useAuth), which
-                bails out of static rendering unless it sits under Suspense. */}
-            <Suspense fallback={null}>
-              <SentryUserTracker />
-              <PostHogUserTracker />
-              <AttributionReporter />
-              <AdsConversionTracker />
-              <PostHogPageViewTracker />
-            </Suspense>
-            <CredentialsProvider>
-              <OrgTeamProvider>
-                <FeatureFlagProvider>
-                  <OnboardingProvider>
-                    <ThemeProvider forcedTheme="light" {...props}>
-                      <TooltipProvider>{children}</TooltipProvider>
-                    </ThemeProvider>
-                  </OnboardingProvider>
-                </FeatureFlagProvider>
-              </OrgTeamProvider>
-            </CredentialsProvider>
-          </BackendAPIProvider>
-        </PostHogProvider>
-      </NuqsAdapter>
-    </QueryClientProvider>
+    // Framer Motion follows the OS "reduce motion" setting everywhere: it
+    // drops transform and layout animations and keeps opacity and colour.
+    <MotionConfig reducedMotion="user">
+      <QueryClientProvider client={queryClient}>
+        <NuqsAdapter>
+          <PostHogProvider>
+            <BackendAPIProvider>
+              {/* All of these read useSearchParams (directly or via useAuth), which
+                  bails out of static rendering unless it sits under Suspense. */}
+              <Suspense fallback={null}>
+                <SentryUserTracker />
+                <PostHogUserTracker />
+                <AttributionReporter />
+                <AdsConversionTracker />
+                <PostHogPageViewTracker />
+              </Suspense>
+              <CredentialsProvider>
+                <OrgTeamProvider>
+                  <FeatureFlagProvider>
+                    <OnboardingProvider>
+                      <ThemeProvider forcedTheme="light" {...props}>
+                        <TooltipProvider>{children}</TooltipProvider>
+                      </ThemeProvider>
+                    </OnboardingProvider>
+                  </FeatureFlagProvider>
+                </OrgTeamProvider>
+              </CredentialsProvider>
+            </BackendAPIProvider>
+          </PostHogProvider>
+        </NuqsAdapter>
+      </QueryClientProvider>
+    </MotionConfig>
   );
 }

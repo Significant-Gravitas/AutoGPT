@@ -10,6 +10,7 @@ import { useFilterSheet } from "./useFilterSheet";
 import { INITIAL_CREATORS_TO_SHOW } from "./constant";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration } from "@/components/styles/motion";
 
 export function FilterSheet({
   categories,
@@ -50,7 +51,11 @@ export function FilterSheet({
             initial={{ x: "-100%", filter: "blur(10px)" }}
             animate={{ x: 0, filter: "blur(0px)" }}
             exit={{ x: "-110%", filter: "blur(10px)" }}
-            transition={{ duration: 0.4, type: "spring", bounce: 0.2 }}
+            transition={{
+              duration: duration.slower,
+              type: "spring",
+              bounce: 0.2,
+            }}
           >
             {/* Top section */}
             <div className="flex items-center justify-between px-5 pt-4">

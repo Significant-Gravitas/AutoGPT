@@ -18,6 +18,7 @@ import {
   UserIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   avatarUrl: string;
@@ -31,11 +32,6 @@ interface Props {
   isUploading: boolean;
   onUpload: (file: File) => Promise<string | null>;
 }
-
-const EASE_OUT = [0.16, 1, 0.3, 1] as const;
-// iOS-style cubic-bezier — gives the badge a smooth in-and-out feel as it
-// sweeps along the avatar's circumference (Emil's drawer easing).
-const BADGE_ARC_EASE = [0.32, 0.72, 0, 1] as const;
 
 export function ProfileHeader({
   avatarUrl,
@@ -67,7 +63,7 @@ export function ProfileHeader({
     <motion.div
       initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.32, ease: EASE_OUT }}
+      transition={{ duration: duration.slow, ease: ease.emphasized }}
       className="flex flex-col items-center gap-5 sm:flex-row sm:items-start sm:gap-6"
     >
       <button
@@ -98,7 +94,7 @@ export function ProfileHeader({
           animate={{
             opacity: isUploading || isHovered ? 1 : 0,
           }}
-          transition={{ duration: 0.18, ease: EASE_OUT }}
+          transition={{ duration: duration.base, ease: ease.emphasized }}
           // oxlint-disable-next-line design-system/no-arbitrary-values -- a 2px blur under the hover veil; backdrop-blur-sm is 4px
           className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-scrim/45 text-action-foreground backdrop-blur-[2px]"
         >
@@ -115,8 +111,8 @@ export function ProfileHeader({
           initial={false}
           animate={{ rotate: !reduceMotion && isHovered ? -90 : 0 }}
           transition={{
-            duration: reduceMotion ? 0 : 0.32,
-            ease: BADGE_ARC_EASE,
+            duration: reduceMotion ? 0 : duration.slow,
+            ease: ease.drawer,
           }}
           className="pointer-events-none absolute inset-0 origin-center"
         >
@@ -124,8 +120,8 @@ export function ProfileHeader({
             initial={false}
             animate={{ rotate: !reduceMotion && isHovered ? 90 : 0 }}
             transition={{
-              duration: reduceMotion ? 0 : 0.32,
-              ease: BADGE_ARC_EASE,
+              duration: reduceMotion ? 0 : duration.slow,
+              ease: ease.drawer,
             }}
             className="absolute right-1 bottom-1 flex h-9 w-9 origin-center items-center justify-center rounded-full border-2 border-surface bg-surface text-foreground-base shadow-md shadow-scrim/25"
           >

@@ -3,7 +3,6 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { memo, useState } from "react";
-import { EASE_OUT } from "./animations";
 import { StatusIcon } from "./components/StatusIcon/StatusIcon";
 import { TaskRow } from "./components/TaskRow/TaskRow";
 import {
@@ -20,6 +19,7 @@ import {
   CheckmarkBadge01Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration, ease } from "@/components/styles/motion";
 
 // BlurText-style swap for the collapsed header's cycling current task only.
 const BLUR_SWAP = {
@@ -28,13 +28,17 @@ const BLUR_SWAP = {
     filter: ["blur(10px)", "blur(4px)", "blur(0px)"],
     opacity: [0, 0.6, 1],
     y: [-10, 3, 0],
-    transition: { duration: 0.22, times: [0, 0.5, 1], ease: EASE_OUT },
+    transition: { duration: duration.base, times: [0, 0.5, 1], ease: ease.out },
   },
   exit: {
     filter: ["blur(0px)", "blur(4px)", "blur(10px)"],
     opacity: [1, 0.6, 0],
     y: [0, 4, 10],
-    transition: { duration: 0.14, times: [0, 0.5, 1], ease: EASE_OUT },
+    transition: {
+      duration: duration.instant,
+      times: [0, 0.5, 1],
+      ease: ease.out,
+    },
   },
 };
 
@@ -68,7 +72,7 @@ export const TaskProgressBar = memo(function TaskProgressBar({
 
   const reveal = reduceMotion
     ? { duration: 0 }
-    : { duration: 0.22, ease: EASE_OUT };
+    : { duration: duration.base, ease: ease.out };
 
   return (
     <div className="mx-auto w-[95%] overflow-hidden rounded-t-3xl border border-b-0 border-border-base bg-surface-hover shadow-sheen">
@@ -147,7 +151,9 @@ export const TaskProgressBar = memo(function TaskProgressBar({
         <motion.span
           animate={{ rotate: expanded ? 180 : 0 }}
           transition={
-            reduceMotion ? { duration: 0 } : { duration: 0.2, ease: EASE_OUT }
+            reduceMotion
+              ? { duration: 0 }
+              : { duration: duration.base, ease: ease.out }
           }
           className="flex-shrink-0 text-foreground-subtle"
         >

@@ -3,7 +3,7 @@ import { motion, useReducedMotion } from "framer-motion";
 
 import { Text } from "@/components/atoms/Text/Text";
 
-import { EASE_OUT, formatRuns, type DashboardStats } from "../../helpers";
+import { formatRuns, type DashboardStats } from "../../helpers";
 import {
   CheckmarkCircle02Icon,
   Clock01Icon,
@@ -13,6 +13,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   stats: DashboardStats;
@@ -65,8 +66,8 @@ export function StatsOverview({ stats, index = 0 }: Props) {
         reduceMotion
           ? undefined
           : {
-              duration: 0.32,
-              ease: EASE_OUT,
+              duration: duration.slow,
+              ease: ease.emphasized,
               delay: 0.04 + index * 0.05,
             }
       }

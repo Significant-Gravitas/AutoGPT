@@ -11,9 +11,10 @@ import {
   toMinimapEntries,
 } from "./helpers";
 import { isKey } from "@/lib/keyboard";
+import { duration, spring } from "@/components/styles/motion";
 
-const TICK_SPRING = { type: "spring", stiffness: 200, damping: 15 } as const;
-const CARD_TRANSITION = { duration: 0.15, delay: 0.0875 } as const;
+const TICK_SPRING = { type: "spring", ...spring.bouncy } as const;
+const CARD_TRANSITION = { duration: duration.fast, delay: 0.0875 } as const;
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];

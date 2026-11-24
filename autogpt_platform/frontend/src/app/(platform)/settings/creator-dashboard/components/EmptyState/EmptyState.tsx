@@ -3,9 +3,9 @@ import { motion, useReducedMotion } from "framer-motion";
 
 import { Text } from "@/components/atoms/Text/Text";
 
-import { EASE_OUT } from "../../helpers";
 import { Rocket01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration, ease } from "@/components/styles/motion";
 
 export function EmptyState() {
   const reduceMotion = useReducedMotion();
@@ -14,7 +14,11 @@ export function EmptyState() {
     <motion.div
       initial={reduceMotion ? false : { opacity: 0, y: 8 }}
       animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-      transition={reduceMotion ? undefined : { duration: 0.28, ease: EASE_OUT }}
+      transition={
+        reduceMotion
+          ? undefined
+          : { duration: duration.slow, ease: ease.emphasized }
+      }
       className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center text-foreground-subtle"
     >
       <Icon icon={Rocket01Icon} size={28} />

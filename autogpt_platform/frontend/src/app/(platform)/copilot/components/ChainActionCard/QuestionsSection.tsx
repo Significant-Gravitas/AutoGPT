@@ -18,6 +18,7 @@ import type { QuestionRequest } from "./helpers";
 import { QuestionAnswerField } from "./QuestionAnswerField";
 import { QuestionMultiAnswerField } from "./QuestionMultiAnswerField";
 import { Text } from "@/components/atoms/Text/Text";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   requests: QuestionRequest[];
@@ -81,7 +82,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
         key={id}
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
+        transition={{ duration: duration.base, ease: ease.outQuint }}
         className="flex flex-col gap-4 px-5 pt-5 pb-4"
       >
         <span

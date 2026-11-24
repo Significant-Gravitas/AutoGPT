@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
 import type { ReactNode } from "react";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   labelledBy: string;
@@ -16,7 +17,7 @@ export function PlanStepCard({ labelledBy, twoColumns, children }: Props) {
     <motion.div
       initial={reduceMotion ? false : { opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
+      transition={{ duration: duration.slower, ease: ease.out }}
       className="w-full px-4 pt-10 lg:pt-0"
     >
       <section

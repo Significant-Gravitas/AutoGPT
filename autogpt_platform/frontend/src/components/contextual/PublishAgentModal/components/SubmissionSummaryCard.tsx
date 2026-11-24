@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { Text } from "@/components/atoms/Text/Text";
 import { Clock01Icon, ImageNotFound01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   agentName: string;
@@ -26,7 +27,7 @@ export function SubmissionSummaryCard({
     <motion.div
       initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.24, ease: "easeOut", delay: 0.18 }}
+      transition={{ duration: duration.base, ease: ease.out, delay: 0.18 }}
       className="mt-6 flex w-full max-w-md items-center gap-3 rounded-xl border border-border-base bg-surface p-3 shadow-subtle"
     >
       <div className="relative aspect-video h-12 shrink-0 overflow-hidden rounded-lg bg-surface-hover">

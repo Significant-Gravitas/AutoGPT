@@ -33,6 +33,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { AnimatePresence, domAnimation, LazyMotion, m } from "framer-motion";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   workflowConnect?: WorkflowConnectOptions;
@@ -253,7 +254,10 @@ export function ConnectMethodView({
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: "auto", opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.25, ease: [0, 0, 0.2, 1] }}
+                          transition={{
+                            duration: duration.base,
+                            ease: ease.out,
+                          }}
                           className="overflow-hidden"
                         >
                           <div className="px-3 pb-3">

@@ -12,6 +12,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect } from "react";
 import { useConnectToolsPanel } from "./useConnectToolsPanel";
 import { isKey } from "@/lib/keyboard";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   onBack: () => void;
@@ -33,7 +34,7 @@ const reducedVariants = {
   exit: { opacity: 0 },
 };
 
-const STEP_TRANSITION = { duration: 0.15, ease: [0, 0, 0.2, 1] as const };
+const STEP_TRANSITION = { duration: duration.fast, ease: ease.out };
 
 // The provider picker embedded in the welcome dialog: same list → detail
 // flow as ConnectServiceDialog, but connecting never closes the dialog —
