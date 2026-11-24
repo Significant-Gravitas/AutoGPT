@@ -42,7 +42,7 @@ export const ChatMinimap = memo(function ChatMinimap({
 
   return (
     <div
-      className="pointer-events-none absolute inset-y-0 left-0 z-20 hidden w-16 items-center xl:flex"
+      className="pointer-events-none absolute inset-y-0 left-0 z-sticky hidden w-16 items-center xl:flex"
       onMouseLeave={() => setHovered(null)}
     >
       {/* No overflow clipping here — the hover card sits outside the rail's
@@ -87,7 +87,7 @@ export const ChatMinimap = memo(function ChatMinimap({
                 }
                 animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
                 transition={reducedMotion ? { duration: 0 } : CARD_TRANSITION}
-                className="absolute top-1/2 left-[40px] z-30 w-80 origin-left -translate-y-1/2 rounded-2xl bg-surface p-3.5 smooth-shadow-ring-sm"
+                className="absolute top-1/2 left-[40px] z-floating w-80 origin-left -translate-y-1/2 rounded-2xl bg-surface p-3.5 smooth-shadow-ring-sm"
               >
                 <p className="truncate text-body-md leading-inherit text-foreground-strong">
                   {entry.title}

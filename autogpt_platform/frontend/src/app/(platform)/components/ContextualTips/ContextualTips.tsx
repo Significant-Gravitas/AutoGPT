@@ -114,7 +114,7 @@ function ContextualTip({
         role="region"
         aria-labelledby={titleID}
         data-testid="contextual-tip"
-        className="z-[120] w-[18rem] max-w-[calc(100vw-2rem)] rounded-2xl border-border-base p-4 shadow-xl"
+        className="z-tour w-[18rem] max-w-[calc(100vw-2rem)] rounded-2xl border-border-base p-4 shadow-xl"
       >
         <div className="flex flex-col gap-2">
           <span className="flex items-center gap-1.5 text-foreground-secondary">

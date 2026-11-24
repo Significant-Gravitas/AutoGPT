@@ -259,7 +259,7 @@ export function RunAgentModal({
 
             <Dialog.Footer
               // oxlint-disable-next-line design-system/no-restyle -- a sticky footer over scrolling content needs its own fill and gap
-              className={`sticky bottom-0 z-10 bg-surface pt-4 ${
+              className={`sticky bottom-0 z-raised bg-surface pt-4 ${
                 hasOverflow
                   ? // oxlint-disable-next-line design-system/no-restyle -- the overflow divider and its soft top shadow have no Dialog.Footer variant
                     "border-t border-separator shadow-scroll-edge"

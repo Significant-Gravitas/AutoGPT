@@ -64,16 +64,16 @@ export function ArtifactCard({ file, onOpen, index = 0 }: Props) {
       onDragEndCapture={handleDragEnd}
     >
       {/* Full-card click target: opening the file is the primary action.
-          Sits behind the content (z-0); the content is pointer-events-none so
+          Sits behind the content (z-base); the content is pointer-events-none so
           clicks fall through, except the kebab menu which re-enables them. */}
       <button
         type="button"
         onClick={() => onOpen(file)}
         aria-label={`Open ${file.name}`}
-        className="absolute inset-0 z-0 cursor-pointer"
+        className="absolute inset-0 z-base cursor-pointer"
         data-testid="artifacts-card-open"
       />
-      <div className="pointer-events-none relative z-10">
+      <div className="pointer-events-none relative z-raised">
         <CardPreview file={file} />
         <div className="flex items-center gap-3 p-3">
           <span className="flex shrink-0 text-foreground-tertiary">

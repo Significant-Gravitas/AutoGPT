@@ -28,7 +28,7 @@ export function ReleaseItem({ release, isLatest, isLast }: Props) {
       {isLast ? null : (
         <span
           aria-hidden
-          className="pointer-events-none absolute top-6 -bottom-4 left-[1.15625rem] z-10 w-px bg-border-base"
+          className="pointer-events-none absolute top-6 -bottom-4 left-[1.15625rem] z-raised w-px bg-border-base"
         />
       )}
       <a

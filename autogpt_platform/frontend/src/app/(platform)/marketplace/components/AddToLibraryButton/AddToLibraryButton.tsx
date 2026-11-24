@@ -186,7 +186,7 @@ export function AddToLibraryButton({
       loading={isPending}
       leftIcon={<Icon icon={PlusSignIcon} size={14} />}
       onClick={handleClick}
-      className={`z-10 ${className ?? ""}`}
+      className={`z-raised ${className ?? ""}`}
       aria-label={`Add ${agentName} to library`}
     >
       {isPending ? "Adding..." : "Add"}

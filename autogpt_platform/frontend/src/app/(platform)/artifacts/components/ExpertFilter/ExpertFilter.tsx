@@ -104,11 +104,11 @@ function ExpertTab({
       ) : null}
       {hasAvatar ? (
         // Decorative: the label carries the name for assistive tech.
-        <span aria-hidden className="relative z-10 shrink-0">
+        <span aria-hidden className="relative z-raised shrink-0">
           <ExpertAvatar name={label} avatarUrl={avatarUrl} size={22} />
         </span>
       ) : null}
-      <span className="relative z-10 truncate">{label}</span>
+      <span className="relative z-raised truncate">{label}</span>
     </button>
   );
 }

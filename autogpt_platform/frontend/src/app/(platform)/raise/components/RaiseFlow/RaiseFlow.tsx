@@ -115,7 +115,7 @@ export function RaiseFlow() {
             className="absolute inset-0"
             colors={ditherColorsFor(color)}
           />
-          <div className="absolute top-4 left-4 z-10 flex gap-2 sm:top-6 sm:left-6">
+          <div className="absolute top-4 left-4 z-raised flex gap-2 sm:top-6 sm:left-6">
             <Button
               variant="icon"
               size="icon-sm"

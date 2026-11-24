@@ -32,7 +32,7 @@ export function AccountMenuFeedbackRow() {
         className="absolute top-1/2 left-0 h-5 w-[3px] -translate-y-1/2 rounded-full bg-action-hover opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100"
         aria-hidden="true"
       />
-      <span className="relative z-10 flex shrink-0 items-center">
+      <span className="relative z-raised flex shrink-0 items-center">
         <Icon
           icon={HelpCircleIcon}
           className="h-[18px] w-[18px] shrink-0"
@@ -43,7 +43,7 @@ export function AccountMenuFeedbackRow() {
         variant="body-tight"
         as="span"
         tone="inherit"
-        className="relative z-10 flex-1 truncate"
+        className="relative z-raised flex-1 truncate"
       >
         Give feedback
       </Text>

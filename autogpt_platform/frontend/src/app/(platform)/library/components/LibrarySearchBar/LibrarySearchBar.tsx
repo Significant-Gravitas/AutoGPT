@@ -15,14 +15,14 @@ export function LibrarySearchBar({ setSearchTerm }: Props) {
   return (
     <div
       data-testid="search-bar"
-      className="relative z-[21] -mb-6 flex w-full items-center md:w-auto"
+      className="relative z-search-bar -mb-6 flex w-full items-center md:w-auto"
     >
       <span className="contents text-foreground-emphasis">
         <Icon
           icon={Search01Icon}
           width={18}
           height={18}
-          className="absolute top-[34%] left-4 z-20 -translate-y-1/2"
+          className="absolute top-[34%] left-4 z-sticky -translate-y-1/2"
         />
       </span>
 

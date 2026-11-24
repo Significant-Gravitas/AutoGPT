@@ -107,10 +107,10 @@ export function WorkspaceFileList({
       {/* White scroll-fade so rows dissolve into the dialog — only on the
           side that still has hidden content. */}
       {edges.top && (
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-surface to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-raised h-6 bg-gradient-to-b from-surface to-transparent" />
       )}
       {edges.bottom && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-surface to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-raised h-6 bg-gradient-to-t from-surface to-transparent" />
       )}
       <div
         ref={scrollRef}

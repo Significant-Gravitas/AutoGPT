@@ -117,11 +117,11 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
           <div
             onClick={clearArtifactPreview}
             // oxlint-disable-next-line design-system/no-arbitrary-values -- a light 2px backdrop blur; backdrop-blur-sm is 4px
-            className="fixed inset-0 z-[60] bg-foreground-base/20 backdrop-blur-[2px]"
+            className="fixed inset-0 z-drawer-scrim bg-foreground-base/20 backdrop-blur-[2px]"
             aria-hidden="true"
           />
           <Drawer.Content
-            className="fixed top-0 right-0 z-[70] flex h-full w-full flex-col overflow-hidden bg-surface shadow-xl outline-none"
+            className="fixed top-0 right-0 z-drawer flex h-full w-full flex-col overflow-hidden bg-surface shadow-xl outline-none"
             style={{ userSelect: "text" }}
             aria-describedby={undefined}
           >

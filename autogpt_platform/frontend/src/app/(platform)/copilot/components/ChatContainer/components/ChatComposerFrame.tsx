@@ -33,7 +33,7 @@ export function ChatComposerFrame({
       {notice && (
         <div
           ref={noticeRef}
-          className="pointer-events-none absolute right-0 bottom-full left-0 z-20 mb-2.5 pb-2"
+          className="pointer-events-none absolute right-0 bottom-full left-0 z-sticky mb-2.5 pb-2"
         >
           <div className="pointer-events-auto relative px-3">{notice}</div>
         </div>

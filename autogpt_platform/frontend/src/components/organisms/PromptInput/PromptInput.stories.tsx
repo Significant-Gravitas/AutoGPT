@@ -50,7 +50,7 @@ function Composer({
       className="relative w-full max-w-3xl pt-16"
       onSubmit={(event) => event.preventDefault()}
     >
-      <InputGroup className="relative z-10 flex-col overflow-hidden !rounded-[2rem] border-border-base shadow-sm has-[[data-slot=input-group-control]:focus-visible]:border-border-strong has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-md:!rounded-3xl">
+      <InputGroup className="relative z-raised flex-col overflow-hidden !rounded-[2rem] border-border-base shadow-sm has-[[data-slot=input-group-control]:focus-visible]:border-border-strong has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-md:!rounded-3xl">
         <div className="flex w-full flex-wrap items-end">
           <InputGroupAddon
             align="inline-start"

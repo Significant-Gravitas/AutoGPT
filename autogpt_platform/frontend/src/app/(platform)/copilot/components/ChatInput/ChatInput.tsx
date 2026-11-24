@@ -472,7 +472,7 @@ export const ChatInput = memo(function ChatInput({
       <InputGroup
         className={cn(
           // oxlint-disable-next-line design-system/no-arbitrary-values -- the pill composer's 2rem radius; no radius token has it
-          "relative z-10 flex-col overflow-hidden !rounded-[2rem] border-border-base shadow-composer has-[[data-slot=input-group-control]:focus-visible]:border-border-strong has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-md:!rounded-3xl",
+          "relative z-raised flex-col overflow-hidden !rounded-[2rem] border-border-base shadow-composer has-[[data-slot=input-group-control]:focus-visible]:border-border-strong has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-md:!rounded-3xl",
           // Card composer: a hairline border and a shallow drop instead of
           // the pill's deep shadow, so it reads as a surface the text sits on.
           stacked &&

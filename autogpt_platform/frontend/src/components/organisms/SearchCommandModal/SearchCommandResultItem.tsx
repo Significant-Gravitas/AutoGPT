@@ -56,7 +56,7 @@ export function SearchCommandResultItem({
       />
       <div
         data-slot="search-command-result-item-body"
-        className="relative z-10 flex min-w-0 flex-1 items-center gap-2.5"
+        className="relative z-raised flex min-w-0 flex-1 items-center gap-2.5"
       >
         {Icon ? (
           <span

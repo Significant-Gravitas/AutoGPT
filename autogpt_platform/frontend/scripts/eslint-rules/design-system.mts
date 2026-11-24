@@ -878,6 +878,97 @@ const noArbitraryColour: Rule.RuleModule = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Layers, read from src/app/tokens/shape.css so the advice never drifts.
+
+// A layer written as a number: `z-10`, `-z-10`, `hover:z-[21]`. A named
+// layer (`z-overlay`), one read through its variable (`z-(--z-overlay)`,
+// `z-[var(--z-overlay)]`) and `z-auto` are not one.
+const RAW_Z_CLASS =
+  /(?<![\w\-/[.#])((?:[^\s"'`{}]*:)?!?)(-?)z-(\d+|\[(?!var\(--z-[a-z0-9-]+\)\])[^\]\s]+\])(?![\w\-\]])/g;
+
+let layersByValue: Map<number, string[]> | undefined;
+
+function layers() {
+  if (layersByValue) return layersByValue;
+  const css = readFileSync(
+    path.join(FRONTEND_ROOT, "src/app/tokens/shape.css"),
+    "utf8",
+  ).replace(/\/\*[\s\S]*?\*\//g, "");
+  layersByValue = new Map();
+  for (const [, name, value] of css.matchAll(/--z-([a-z0-9-]+):\s*(-?\d+);/g)) {
+    const names = layersByValue.get(Number(value)) ?? [];
+    layersByValue.set(Number(value), [...names, `z-${name}`]);
+  }
+  return layersByValue;
+}
+
+export function layerAdvice(value: number | null) {
+  if (value === null)
+    return "Use a named layer from src/app/tokens/shape.css (z-raised, z-overlay, ...).";
+  const names = layers().get(value);
+  if (!names)
+    return "No layer has this number: add one to src/app/tokens/shape.css, named for what sits there, and register it in globals.css.";
+  if (names.length === 1)
+    return `Use "${names[0]}", the layer with that number.`;
+  return `Use the layer with that number that names what sits there: ${names.map((name) => `"${name}"`).join(" or ")}.`;
+}
+
+function zValue(sign: string, raw: string) {
+  const digits = /^\[?(-?\d+)\]?$/.exec(raw)?.[1];
+  return digits === undefined ? null : Number(sign + digits);
+}
+
+function numericZIndex(node: Node): number | null {
+  if (node.type === "Literal" && typeof node.value === "number")
+    return node.value;
+  if (node.type === "Literal" && typeof node.value === "string")
+    return /^-?\d+$/.test(node.value.trim()) ? Number(node.value) : null;
+  if (
+    node.type === "UnaryExpression" &&
+    node.operator === "-" &&
+    node.argument.type === "Literal" &&
+    typeof node.argument.value === "number"
+  )
+    return -node.argument.value;
+  return null;
+}
+
+const noRawZIndex: Rule.RuleModule = {
+  meta: {
+    type: "problem",
+    docs: { description: "Disallow z-index numbers outside the named layers" },
+    schema: [],
+  },
+  create(context) {
+    return {
+      ...stringNodes((node, text) => {
+        for (const match of text.matchAll(RAW_Z_CLASS)) {
+          context.report({
+            node,
+            message: `"${match[0]}" sets a layer by number. ${layerAdvice(zValue(match[2], match[3]))}`,
+          });
+        }
+      }),
+      Property(node: Node) {
+        if (node.type !== "Property") return;
+        const key = node.key;
+        const named =
+          (key.type === "Identifier" && key.name === "zIndex") ||
+          (key.type === "Literal" &&
+            (key.value === "zIndex" || key.value === "z-index"));
+        if (!named) return;
+        const value = numericZIndex(node.value as Node);
+        if (value === null) return;
+        context.report({
+          node,
+          message: `"zIndex: ${value}" sets a layer by number. ${layerAdvice(value)} In a style object, read it: zIndex: "var(--z-<name>)".`,
+        });
+      },
+    };
+  },
+};
+
 const shadcnRules = shadcn.rules as unknown as Record<string, Rule.RuleModule>;
 
 const plugin = {
@@ -919,6 +1010,7 @@ const plugin = {
     "no-hex-colours": ratchet("no-hex-colours", noHexColours),
     "no-colour-functions": ratchet("no-colour-functions", noColourFunctions),
     "no-arbitrary-colour": ratchet("no-arbitrary-colour", noArbitraryColour),
+    "no-raw-z-index": ratchet("no-raw-z-index", noRawZIndex),
     "no-dark-variant": ratchet("no-dark-variant", noDarkVariant),
     "no-raw-text-size": ratchet("no-raw-text-size", noRawTextSize),
     "no-legacy-import": ratchet("no-legacy-import", noLegacyImport),

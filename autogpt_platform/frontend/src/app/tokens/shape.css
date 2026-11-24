@@ -34,24 +34,31 @@
   /* The hairline ring of the smooth-shadow-ring-* utilities. */
   --smooth-ring-color: rgb(var(--shadow-color) / 0.05);
 
-  /* Layers, lowest first. `z-10` and the other bare numbers still work;
-     each step has the number its uses had. */
+  /* Layers, lowest first. Every z-index in src is one of these names
+     (design-system/no-raw-z-index). Two names share a number only where
+     two different layers happen to sit at the same height. */
   --z-behind: -10; /* decoration behind its own content */
   --z-base: 0;
   --z-raised: 10; /* lifted over a sibling in the same component */
   --z-sticky: 20; /* search bars, banners and bars pinned in a pane */
+  --z-search-bar: 21; /* the library search bar, over the sticky bars it overlaps */
   --z-floating: 30; /* buttons floating over a pane (jump to bottom) */
   --z-header: 40; /* the inset header floating over the chat */
+  --z-prompt: 40; /* a feedback prompt fixed in a corner, under dialogs */
   --z-overlay: 50; /* dialogs, sheets, menus, popovers, tooltips */
   --z-drawer-scrim: 60; /* the backdrop of a drawer above dialogs */
   --z-drawer: 70; /* the artifact panel on a phone */
   --z-command: 80; /* the command palette; popovers over a drawer */
+  --z-canvas-loading: 99; /* the builder's loading box, over the nodes */
+  --z-canvas-toolbar: 100; /* the builder's run toolbar, over the nodes and the loading box */
   --z-blocking: 100; /* modals that must cover everything else */
   --z-tour-scrim: 110;
   --z-tour: 120; /* the tour's spotlight card and contextual tips */
 
-  /* The app shell. Not read yet. */
-  --shell-sidebar-width: 18.25rem;
+  /* The app shell. The Sidebar's provider reads the widths. */
+  --shell-sidebar-width: 18.25rem; /* the app's sidebar */
+  --shell-sidebar-width-tour: 19rem; /* the tour's and the logged-out marketplace's */
+  --shell-sidebar-width-default: 20rem; /* a provider that sets no width */
   --shell-sidebar-width-collapsed: 3rem;
   --shell-sidebar-width-mobile: 20rem;
   --shell-content-max: 80rem;

@@ -197,12 +197,16 @@
   --z-index-base: var(--z-base);
   --z-index-raised: var(--z-raised);
   --z-index-sticky: var(--z-sticky);
+  --z-index-search-bar: var(--z-search-bar);
   --z-index-floating: var(--z-floating);
   --z-index-header: var(--z-header);
+  --z-index-prompt: var(--z-prompt);
   --z-index-overlay: var(--z-overlay);
   --z-index-drawer-scrim: var(--z-drawer-scrim);
   --z-index-drawer: var(--z-drawer);
   --z-index-command: var(--z-command);
+  --z-index-canvas-loading: var(--z-canvas-loading);
+  --z-index-canvas-toolbar: var(--z-canvas-toolbar);
   --z-index-blocking: var(--z-blocking);
   --z-index-tour-scrim: var(--z-tour-scrim);
   --z-index-tour: var(--z-tour);

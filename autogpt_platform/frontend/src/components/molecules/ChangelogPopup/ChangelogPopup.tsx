@@ -33,7 +33,7 @@ export function ChangelogPopup() {
   return (
     <div
       data-slot="changelog-popup"
-      className={`fixed right-4 bottom-4 z-50 w-[360px] max-w-[calc(100vw-2rem)] transition-all duration-500 ease-out sm:right-6 sm:bottom-6 ${
+      className={`fixed right-4 bottom-4 z-overlay w-[360px] max-w-[calc(100vw-2rem)] transition-all duration-500 ease-out sm:right-6 sm:bottom-6 ${
         isFading
           ? "pointer-events-none translate-y-2 opacity-0"
           : "translate-y-0 opacity-100"

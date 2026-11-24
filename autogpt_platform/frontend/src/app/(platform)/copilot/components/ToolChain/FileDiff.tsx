@@ -28,7 +28,7 @@ export function FileDiff({ file, diff }: Props) {
           <span className="text-error-foreground">-{removed}</span>
         </span>
       </div>
-      <div className="relative scrollbar-none max-h-64 overflow-y-auto py-1 text-body-sm leading-5 before:absolute before:top-0 before:bottom-0 before:left-16 before:z-10 before:w-px before:bg-surface-active before:content-['']">
+      <div className="relative scrollbar-none max-h-64 overflow-y-auto py-1 text-body-sm leading-5 before:absolute before:top-0 before:bottom-0 before:left-16 before:z-raised before:w-px before:bg-surface-active before:content-['']">
         {rows.map((row) => (
           <div
             key={`${row.type}:${row.old ?? ""}:${row.cur ?? ""}`}

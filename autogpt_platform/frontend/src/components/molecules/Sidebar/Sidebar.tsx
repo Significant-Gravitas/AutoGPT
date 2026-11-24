@@ -26,9 +26,9 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { parseSidebarCookie, SIDEBAR_COOKIE_NAME } from "./sidebar-cookie";
 
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
-const SIDEBAR_WIDTH = "20rem";
-const SIDEBAR_WIDTH_MOBILE = "20rem";
-const SIDEBAR_WIDTH_ICON = "3rem";
+const SIDEBAR_WIDTH = "var(--shell-sidebar-width-default)";
+const SIDEBAR_WIDTH_MOBILE = "var(--shell-sidebar-width-mobile)";
+const SIDEBAR_WIDTH_ICON = "var(--shell-sidebar-width-collapsed)";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 interface SetOpenOptions {
@@ -315,7 +315,7 @@ const Sidebar = React.forwardRef<
         />
         <div
           className={cn(
-            "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear md:flex",
+            "fixed inset-y-0 z-raised hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear md:flex",
             side === "left"
               ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
               : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
@@ -380,7 +380,7 @@ const SidebarRail = React.forwardRef<
       onClick={toggleSidebar}
       title="Toggle Sidebar"
       className={cn(
-        "absolute inset-y-0 z-20 hidden w-4 -translate-x-1/2 transition-all ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] hover:after:bg-border-base sm:flex",
+        "absolute inset-y-0 z-sticky hidden w-4 -translate-x-1/2 transition-all ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] hover:after:bg-border-base sm:flex",
         "[[data-side=left]_&]:cursor-w-resize [[data-side=right]_&]:cursor-e-resize",
         "[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize",
         "group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:left-full group-data-[collapsible=offcanvas]:hover:bg-surface-muted",

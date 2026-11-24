@@ -103,7 +103,7 @@ export function MentionDropdown({
         role="listbox"
         aria-label="Skill commands"
         onMouseDown={(e) => e.preventDefault()}
-        className="absolute bottom-full left-0 z-50 mb-2 max-h-80 w-80 max-w-full overflow-y-auto rounded-2xl border border-border-base bg-surface p-1.5 shadow-md"
+        className="absolute bottom-full left-0 z-overlay mb-2 max-h-80 w-80 max-w-full overflow-y-auto rounded-2xl border border-border-base bg-surface p-1.5 shadow-md"
       >
         {options.map((option, index) =>
           option.kind === "skill"
@@ -137,7 +137,7 @@ export function MentionDropdown({
       // non-interactive areas (padding, empty/loading/error states) so the
       // textarea's onBlur doesn't close the dropdown before a selection.
       onMouseDown={(e) => e.preventDefault()}
-      className="absolute bottom-full left-0 z-50 mb-2 flex max-h-96 w-80 max-w-full flex-col overflow-hidden rounded-2xl border border-border-base bg-surface shadow-md"
+      className="absolute bottom-full left-0 z-overlay mb-2 flex max-h-96 w-80 max-w-full flex-col overflow-hidden rounded-2xl border border-border-base bg-surface shadow-md"
     >
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
         {showHeadings && <SectionHeading label="Integrations" />}

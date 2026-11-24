@@ -23,7 +23,7 @@ export function TourScrim({ boxes, dim = true }: Props) {
       aria-hidden
       data-testid="first-run-tour-scrim"
       className={cn(
-        "fixed inset-0 z-[110]",
+        "fixed inset-0 z-tour-scrim",
         dim ? "pointer-events-auto" : "pointer-events-none",
       )}
     >

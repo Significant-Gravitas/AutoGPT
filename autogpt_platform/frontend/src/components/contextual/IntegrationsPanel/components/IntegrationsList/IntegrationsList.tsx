@@ -125,7 +125,7 @@ export function IntegrationsList({
     <div className="flex w-full flex-col gap-3">
       <div
         className={cn(
-          "sticky top-0 z-10 -mx-1 px-1 pt-1 pb-1",
+          "sticky top-0 z-raised -mx-1 px-1 pt-1 pb-1",
           stickyClassName,
         )}
       >
@@ -153,7 +153,7 @@ export function IntegrationsList({
             }
             transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
             className={cn(
-              "sticky top-2 z-20 overflow-hidden sm:top-0",
+              "sticky top-2 z-sticky overflow-hidden sm:top-0",
               stickyClassName,
             )}
           >

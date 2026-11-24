@@ -28,14 +28,14 @@ export function KitSearchField({
 }: Props) {
   return (
     // The Input atom wraps itself in two positioned divs that follow these
-    // adornments in the DOM, so without z-10 the opaque field paints over them.
+    // adornments in the DOM, so without z-raised the opaque field paints over them.
     <div className="relative w-full max-w-[42rem]">
       <Icon
         icon={Search01Icon}
         size={16}
         aria-hidden
         tone="muted"
-        className="pointer-events-none absolute top-1/2 left-3.5 z-10 -translate-y-1/2"
+        className="pointer-events-none absolute top-1/2 left-3.5 z-raised -translate-y-1/2"
       />
       <Input
         id={`raise-${scope}-search`}
@@ -57,14 +57,14 @@ export function KitSearchField({
           aria-hidden
           spin
           tone="muted"
-          className="absolute top-1/2 right-3.5 z-10 -translate-y-1/2"
+          className="absolute top-1/2 right-3.5 z-raised -translate-y-1/2"
         />
       ) : value ? (
         <button
           type="button"
           onClick={() => onChange("")}
           aria-label="Clear search"
-          className="absolute top-1/2 right-2.5 z-10 grid size-7 -translate-y-1/2 place-items-center rounded-full text-foreground-tertiary transition-colors duration-200 hover:bg-surface-hover hover:text-foreground-base"
+          className="absolute top-1/2 right-2.5 z-raised grid size-7 -translate-y-1/2 place-items-center rounded-full text-foreground-tertiary transition-colors duration-200 hover:bg-surface-hover hover:text-foreground-base"
         >
           <Icon icon={Cancel01Icon} size={14} aria-hidden />
         </button>

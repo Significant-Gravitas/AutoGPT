@@ -138,7 +138,7 @@ export function ExpertPage() {
         <div className="order-1 min-w-0 lg:col-start-1 lg:row-start-1">
           <ExpertHeroIdentity expert={expert} stats={stats} />
         </div>
-        <div className="relative z-10 order-2 mt-8 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:-mt-24">
+        <div className="relative z-raised order-2 mt-8 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:-mt-24">
           <div className="lg:sticky lg:top-6">
             <ExpertHireCard
               expert={expert}

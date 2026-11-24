@@ -16,7 +16,7 @@ const ROW_CLASS = "relative flex items-center gap-3 py-2 pl-[3.75rem] pr-4";
 export function ActiveRow({ item }: Props) {
   const content = (
     <>
-      <span className="absolute top-1/2 left-4 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-surface">
+      <span className="absolute top-1/2 left-4 z-raised flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-surface">
         {item.expert ? (
           <ExpertAvatar
             name={item.expert.name}
