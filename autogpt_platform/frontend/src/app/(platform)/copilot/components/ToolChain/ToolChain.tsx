@@ -198,14 +198,17 @@ export function ToolChain({
     justConnectedHere;
   // Nothing to sign in to and nothing to fill in: without a button this card
   // has no way forward at all — a card that lands after the send is spent
-  // included. Only asks that build a message qualify — an MCP row builds none,
-  // so offering one there is a button that does nothing.
+  // included. Only asks that build a message qualify — an MCP row builds one
+  // only right after its own sign-in, so an already connected one would be a
+  // button that does nothing.
   const offerProceed =
     canSend &&
     !awaitingToolResult &&
     !canAutoSend &&
     allActionsReady &&
-    (connectorRequests.length > 0 || inputRequests.length > 0);
+    (connectorRequests.length > 0 ||
+      inputRequests.length > 0 ||
+      pendingActions.some((entry) => entry.mcp && entry.justConnected));
 
   // The cards are already gone by the time a send can fail — the user's
   // message is appended optimistically and the chat's error banner offers

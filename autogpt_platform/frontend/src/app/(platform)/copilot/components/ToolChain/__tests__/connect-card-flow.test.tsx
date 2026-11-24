@@ -1232,6 +1232,178 @@ describe("copilot Connect card, one tool needing several providers", () => {
   });
 });
 
+describe("copilot Connect card, an account and an MCP server in one step", () => {
+  beforeEach(mockAccountAndMcpBackend);
+
+  afterEach(resetStores);
+
+  it("sends one message when the MCP server is connected last", async () => {
+    const { onSend } = renderAccountAndMcpChain();
+
+    await connectRemainingProvider();
+    await waitFor(() => expect(savedCredentials).toHaveLength(1));
+    expect(onSend).not.toHaveBeenCalled();
+
+    await connectMcpServer();
+
+    // The MCP card used to send its own "retry" message here, and the chain
+    // then sent the account's confirmation as a second one, which Otto
+    // received queued behind the first.
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toContain(
+      "I've configured the required credentials.",
+    );
+    expect(onSend.mock.calls[0][0]).toContain(MCP_RETRY);
+    await screen.findByText(/Connected\. Continuing/);
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends one message when the MCP server is connected first", async () => {
+    const { onSend } = renderAccountAndMcpChain();
+
+    await connectMcpServer();
+    await waitFor(() => expect(savedCredentials).toHaveLength(1));
+    await screen.findByText("Connected");
+    // The account row is still unconnected, and the step needs both.
+    expect(onSend).not.toHaveBeenCalled();
+
+    await connectRemainingProvider();
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toContain(
+      "I've configured the required credentials.",
+    );
+    expect(onSend.mock.calls[0][0]).toContain(MCP_RETRY);
+    await screen.findByText(/Connected\. Continuing/);
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves an already connected MCP server out of the account's message", async () => {
+    savedCredentials = [
+      {
+        id: "cred-mcp",
+        provider: "mcp",
+        type: "oauth2",
+        title: "Notion",
+        host: MCP_SERVER,
+        scopes: [],
+      },
+    ];
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain
+            parts={[setupRequirementsPart(), unconnectedMcpPart()]}
+            isStreaming={false}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await connectRemainingProvider();
+
+    // The server was connected before this chat, so it owes Otto no line.
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toContain(
+      "I've configured the required credentials.",
+    );
+    expect(onSend.mock.calls[0][0]).not.toContain(MCP_RETRY);
+  });
+
+  it("gives an MCP card that lands after the send a Proceed", async () => {
+    const onSend = vi.fn();
+    const { rerender } = render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain parts={[setupRequirementsPart()]} isStreaming={true} />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+    await connectRemainingProvider();
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+
+    rerender(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain
+            parts={[setupRequirementsPart(), unconnectedMcpPart()]}
+            isStreaming={true}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+    await connectMcpServer();
+
+    // The chain's single send is spent and the card no longer sends on its
+    // own, so the user needs a button to tell Otto the server is connected.
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Proceed" }));
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(2));
+    expect(onSend.mock.calls[1][0]).toContain(MCP_RETRY);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Proceed" })).toBeNull(),
+    );
+    expect(onSend).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not repeat the MCP server's line after a Proceed sends it", async () => {
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain
+            parts={[triggerPart(), unconnectedMcpPart()]}
+            isStreaming={false}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await connectRemainingProvider();
+    await connectMcpServer();
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Proceed" }));
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toContain(MCP_RETRY);
+
+    // The trigger card leaves the chain once sent, which leaves the MCP row
+    // as the chain's only card. Still counting as just connected, it would
+    // auto-send its line a second time, from the effect that runs once the
+    // row is alone; draining that effect's send before asserting.
+    await waitFor(() =>
+      expect(screen.getAllByText("Connected")).toHaveLength(1),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("still sends the MCP server's message when it is the only sign-in", async () => {
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain parts={[unconnectedMcpPart()]} isStreaming={false} />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await connectMcpServer();
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toBe(MCP_RETRY);
+    // The line is sent, so a Proceed left here would only send it again. A
+    // regressed Proceed appears before the send and stays, so waiting for it
+    // to be gone cannot pass early.
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Proceed" })).toBeNull(),
+    );
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("copilot Connect card, a card that arrives after the first connection", () => {
   beforeEach(mockTwoProviderBackend);
 
@@ -2246,6 +2418,72 @@ function mcpPart(): MessagePart {
       },
     },
   } as unknown as MessagePart;
+}
+
+const MCP_SERVER = "https://mcp.notion.com/mcp";
+const MCP_RETRY = "I've connected the integration. Please retry the same call.";
+
+function unconnectedMcpPart(): MessagePart {
+  const base = mcpPart() as unknown as Record<string, unknown>;
+  const output = base.output as Record<string, unknown>;
+  const setup = output.setup_info as Record<string, unknown>;
+  return {
+    ...base,
+    output: {
+      ...output,
+      setup_info: {
+        ...setup,
+        user_readiness: { has_all_credentials: false },
+      },
+    },
+  } as unknown as MessagePart;
+}
+
+function mockAccountAndMcpBackend() {
+  mockTwoProviderBackend();
+  server.use(
+    http.post("*/api/mcp/oauth/login", () =>
+      HttpResponse.json({
+        login_url: "https://mcp.notion.com/authorize",
+        state_token: "mcp-state",
+      }),
+    ),
+    http.post("*/api/mcp/oauth/callback", () => {
+      const stored = {
+        id: "cred-mcp",
+        provider: "mcp",
+        type: "oauth2",
+        title: "Notion",
+        host: MCP_SERVER,
+        scopes: [],
+      };
+      savedCredentials = [...savedCredentials, stored];
+      return HttpResponse.json(stored);
+    }),
+  );
+}
+
+function renderAccountAndMcpChain() {
+  const onSend = vi.fn();
+  const utils = render(
+    <CredentialsProvider>
+      <CopilotChatActionsProvider onSend={onSend}>
+        <ToolChain
+          parts={[setupRequirementsPart(), unconnectedMcpPart()]}
+          isStreaming={false}
+        />
+      </CopilotChatActionsProvider>
+    </CredentialsProvider>,
+  );
+  return { onSend, ...utils };
+}
+
+/** The MCP row comes after the account rows, so its Connect is the last one,
+ *  and it signs in straight away, without the account dialog. */
+async function connectMcpServer() {
+  const user = userEvent.setup();
+  const buttons = await screen.findAllByRole("button", { name: "Connect" });
+  await user.click(buttons[buttons.length - 1]);
 }
 
 function widerScopePart(): MessagePart {
