@@ -68,6 +68,9 @@ const QUEUED_POLL_MS = 10_000;
 const WAKE_REREAD_MS = 30_000;
 // A phone often wakes before its network does.
 const REREAD_RETRY_MS = [2_000, 4_000, 8_000];
+// How long a stopped turn waits for its last rows once a read finds them
+// unsaved; the engine saves them a couple of seconds after the turn's end.
+const STOPPED_ROWS_WAIT_MS = 10_000;
 // The backend marks a queued turn running a moment before its stream exists;
 // past this, the stream is not coming.
 const QUEUE_START_GRACE_MS = 2 * 60_000;
@@ -190,6 +193,8 @@ interface TurnBookkeeping {
   reportedErrors: number;
   resyncs: number;
   sawModeChange: boolean;
+  /** When a read first found a stopped turn's last rows unsaved. */
+  awaitingRowsSince: number | null;
 }
 
 /**
@@ -1379,7 +1384,7 @@ export class TurnRuntime {
     const reconciled = reconcileTurn(seg, persisted);
     // A slow Stop's end is said before the turn's last rows are saved; the
     // turn waits for them, so the rows after it have a known place.
-    if (!seg.stopped || reconciled.log.rows.every((r) => r.sequence !== null))
+    if (!this.holdsForStoppedRows(seg, reconciled))
       this.updateTurn(seg.key, () => reconciled);
     const index = this.segments.findIndex((s) => s.key === seg.key);
     const prompt = this.segments[index - 1];
@@ -1625,12 +1630,25 @@ export class TurnRuntime {
     }, delay);
   }
 
-  // The latest turn was stopped, and the session has not saved its last rows.
+  // The latest turn was stopped, and a read found its last rows unsaved not
+  // long ago.
   private awaitsStoppedRows() {
     const last = this.segments.findLast(
       (s): s is TurnSegment => s.kind === "turn",
     );
-    return !!last?.stopped && !last.reconciled;
+    if (!last?.stopped || last.reconciled) return false;
+    const since = this.turns.get(last.key)?.awaitingRowsSince ?? null;
+    return since !== null && Date.now() - since < STOPPED_ROWS_WAIT_MS;
+  }
+
+  // A stopped turn with a row on screen the session has not saved waits for
+  // it, for a while: a stop that saves no marker never saves that row.
+  private holdsForStoppedRows(seg: TurnSegment, reconciled: TurnSegment) {
+    if (!seg.stopped || reconciled.log.rows.every((r) => r.sequence !== null))
+      return false;
+    const book = this.bookkeeping(seg.key);
+    book.awaitingRowsSince ??= Date.now();
+    return Date.now() - book.awaitingRowsSince < STOPPED_ROWS_WAIT_MS;
   }
 
   private ensureTicking() {
@@ -1750,6 +1768,7 @@ export class TurnRuntime {
         reportedErrors: 0,
         resyncs: 0,
         sawModeChange: false,
+        awaitingRowsSince: null,
       };
       this.turns.set(key, book);
     }

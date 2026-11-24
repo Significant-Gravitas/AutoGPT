@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CANCELLED_MARKER } from "../../../useCopilotStop";
 import { CONTINUATION_PROBES, SendInFlightError } from "../../turnRuntime";
+import { createTailRenderer } from "../../renderTail";
 import { FaultServer } from "./faultServer";
 import { Tab, type Screen } from "./tab";
 
@@ -14,6 +15,7 @@ const KNOWN_WRONG: Record<string, string> = {
 };
 const CASES = new Set<string>();
 
+const SESSION = "session-1";
 const P1 = "What does example.com say?";
 const P2 = "And what about example.org?";
 const P3 = "Then compare the two.";
@@ -1939,6 +1941,136 @@ describe("two tabs on one chat", () => {
       ]);
     },
   );
+
+  // A stop that saves no cancelled marker: the baseline engine's, the SDK's
+  // generator close, or a Stop pressed as the answer finishes.
+  cell(
+    "W1",
+    "the baseline engine's stop (the partial answer, no marker) settles, and a later re-read is one read",
+    async () => {
+      await stopFirstTurnMidAnswer();
+      // `baseline/service_cancellation_test.py`: a cancelled baseline turn saves
+      // its rows and no marker row.
+      savePartialAnswerOnly();
+      const first = await readsOf(() => awayAndBack());
+      const second = await readsOf(() => awayAndBack());
+      // eslint-disable-next-line no-console
+      console.log(`W1 reads: first=${first} second=${second}`);
+      expect({ second, turn: stoppedTurn() }).toMatchObject({
+        second: 1,
+        turn: { stopped: true, reconciled: true },
+      });
+    },
+  );
+
+  cell("W2", "its saved reply can be rated", async () => {
+    await stopFirstTurnMidAnswer();
+    savePartialAnswerOnly();
+    await awayAndBack();
+    await advance(30_000);
+    expect(savedIdOfLastReply()).toBe(`${SESSION}-seq-1`);
+  });
+
+  cell(
+    "W3",
+    "a Stop pressed as the answer finishes (every row streamed, the turn ends normally) settles, a later re-read is one read, and its reply can be rated",
+    async () => {
+      tab.send(P1);
+      await advance(0);
+      // Every entry but the finish: the answer is whole on screen.
+      server.publish(server.turns[0].frames.length - 2);
+      await advance(100);
+      tab.runtime.stop();
+      // The cancel loses the race: the turn ends as any other, with no marker.
+      server.publish();
+      await advance(100);
+      const first = await readsOf(() => awayAndBack());
+      const second = await readsOf(() => awayAndBack());
+      // eslint-disable-next-line no-console
+      console.log(`W3 reads: first=${first} second=${second}`);
+      expect({
+        second,
+        turn: stoppedTurn(),
+        rated: savedIdOfLastReply(),
+      }).toMatchObject({
+        second: 1,
+        turn: { stopped: true, reconciled: true },
+        rated: expect.stringMatching(/^session-1-seq-\d+$/),
+      });
+    },
+  );
+
+  cell(
+    "W4",
+    "the other tab's turn, running when this tab reads again, is not drawn twice",
+    async () => {
+      await stopFirstTurnMidAnswer();
+      savePartialAnswerOnly();
+      await awayAndBack();
+      await advance(30_000);
+      const other = openTab();
+      other.send(P2);
+      await advance(0);
+      // Through its checkpoint: the turn's rows so far are saved, and it runs on.
+      server.publish(19);
+      await advance(1_000);
+      await awayAndBack();
+      server.publish();
+      await advance(10_000);
+      const text = tab.screen().chat.join("\n");
+      expect(text.split("It says Example Domain.").length - 1).toBe(1);
+    },
+  );
+
+  cell(
+    "W5",
+    "with nothing saved for the stopped turn, its partial answer stays on screen when the other tab's turn runs",
+    async () => {
+      await stopFirstTurnMidAnswer();
+      await awayAndBack();
+      await advance(30_000);
+      const other = openTab();
+      other.send(P2);
+      await advance(0);
+      server.publish(19);
+      await advance(1_000);
+      await awayAndBack();
+      server.publish();
+      await advance(10_000);
+      const chat = tab.screen().chat;
+      expect(chat[1]).toContain(STOPPED);
+      expect(chat.join("\n").split("It says Example Domain.").length - 1).toBe(
+        1,
+      );
+    },
+  );
+
+  cell(
+    "W6",
+    "a long stopped turn, its marker saved, whose start is before the session window costs one read per re-read",
+    async () => {
+      tab.send(P1);
+      await advance(0);
+      // Through its checkpoint: rows 1 to 3 are saved, and the turn runs on.
+      server.publish(19);
+      await advance(100);
+      tab.runtime.stop();
+      server.stopWithoutFinish();
+      await advance(100);
+      const at = server.history.length;
+      server.history.push({
+        id: `row-${at}`,
+        role: "assistant",
+        content: CANCELLED_MARKER,
+        sequence: at,
+      });
+      // The window holds the turn's last 3 rows; the turn has 4, and its prompt.
+      server.window = 3;
+      const first = await readsOf(() => awayAndBack());
+      const second = await readsOf(() => awayAndBack());
+      expect({ first, second }).toEqual({ first: 1, second: 1 });
+    },
+  );
 });
 
 describe("the page lifecycle", () => {
@@ -2091,4 +2223,40 @@ function setVisibility(state: "hidden" | "visible") {
 function setOnline(online: boolean) {
   vi.spyOn(navigator, "onLine", "get").mockReturnValue(online);
   window.dispatchEvent(new Event(online ? "online" : "offline"));
+}
+
+function stoppedTurn() {
+  return tab.runtime.getSnapshot().segments.find((s) => s.kind === "turn");
+}
+
+function savedIdOfLastReply() {
+  const rendered = createTailRenderer(SESSION)(tab.runtime.getSnapshot());
+  const reply = rendered.messages.findLast((m) => m.role === "assistant");
+  return reply ? (rendered.stats.get(reply.id)?.savedMessageId ?? null) : null;
+}
+
+/** Session reads made while `run` and the 60 s after it pass. */
+async function readsOf(run: () => Promise<void>) {
+  const before = server.viewReads;
+  await run();
+  await advance(60_000);
+  return server.viewReads - before;
+}
+
+/** Away longer than the wake re-read's 30 s, then back: one re-read of an idle chat. */
+async function awayAndBack() {
+  setVisibility("hidden");
+  await advance(31_000);
+  setVisibility("visible");
+  await advance(100);
+}
+
+function savePartialAnswerOnly() {
+  const at = server.history.length;
+  server.history.push({
+    id: `row-${at}`,
+    role: "assistant",
+    content: "Let me fetch that page.",
+    sequence: at,
+  });
 }
