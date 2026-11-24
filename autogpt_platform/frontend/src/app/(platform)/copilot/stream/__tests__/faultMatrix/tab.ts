@@ -38,6 +38,8 @@ export class Tab {
   /** A read's view is taken when it starts and answered this much later, as a
    *  response still on the wire when the server says something new. */
   viewAnswerDelayMs = 0;
+  /** Session reads this tab made; the server's count covers every tab. */
+  reads = 0;
   private joinRuns = createAssistantRunJoiner();
 
   constructor(
@@ -88,6 +90,7 @@ export class Tab {
   }
 
   private async refetch(): Promise<SessionView | null> {
+    this.reads += 1;
     if (this.viewLatencyMs)
       await new Promise((resolve) => setTimeout(resolve, this.viewLatencyMs));
     let view: SessionView;

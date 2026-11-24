@@ -1651,7 +1651,73 @@ describe("two tabs on one chat", () => {
 
   cell(
     "M7d",
-    "two words that a turn ended, at once, never put two reads on the wire",
+    "a second word that a turn ended, while the first re-read is out, puts no second read on the wire and is read after it",
+    async () => {
+      await finishFirstTurn();
+      const other = openTab();
+      tab.viewAnswerDelayMs = 1_000;
+      const reads = tab.reads;
+      tab.runtime.rereadIfIdle();
+      other.send(P2);
+      await advance(0);
+      server.publish();
+      tab.runtime.rereadIfIdle();
+      await advance(100);
+      expect(tab.reads - reads).toBe(1);
+      await advance(5_000);
+      expectScreen({
+        error: null,
+        chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER],
+      });
+      // The first read and the one owed read, then nothing more.
+      await advance(30_000);
+      expect(tab.reads - reads).toBe(2);
+    },
+  );
+
+  cell(
+    "M7e",
+    "a turn the other tab ends while every end-of-turn read of this tab fails still shows once a read works",
+    async () => {
+      const other = openTab();
+      tab.send(P1);
+      await advance(0);
+      server.publish();
+      server.viewsDown = true;
+      other.send(P2);
+      await advance(0);
+      server.publish();
+      await advance(100);
+      tab.runtime.rereadIfIdle();
+      await advance(5_000);
+      server.viewsDown = false;
+      await advance(20_000);
+      expectScreen(
+        { chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER] },
+        tab,
+      );
+    },
+  );
+
+  cell(
+    "M7w",
+    "a tab coming back after a long time away while a re-read is out puts no second read on the wire",
+    async () => {
+      await finishFirstTurn();
+      tab.viewAnswerDelayMs = 40_000;
+      const reads = server.viewReads;
+      tab.runtime.rereadIfIdle();
+      setVisibility("hidden");
+      await advance(31_000);
+      setVisibility("visible");
+      await advance(100);
+      expect(server.viewReads - reads).toBe(1);
+    },
+  );
+
+  cell(
+    "M7q",
+    "a turn the other tab ends while this tab's send is out still shows when that send is refused",
     async () => {
       await finishFirstTurn();
       const other = openTab();
@@ -1659,17 +1725,18 @@ describe("two tabs on one chat", () => {
       await advance(0);
       server.publish();
       await advance(5_000);
-      tab.viewAnswerDelayMs = 1_000;
-      const reads = server.viewReads;
-      tab.runtime.rereadIfIdle();
-      tab.runtime.rereadIfIdle();
+      server.postMode = { status: 429, body: { detail: "Too many requests" } };
+      server.respondAfterMs = 2_000;
+      tab.send(P3);
       await advance(100);
-      expect(server.viewReads - reads).toBe(1);
-      await advance(5_000);
-      expectScreen({
-        error: null,
-        chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER],
-      });
+      tab.runtime.rereadIfIdle();
+      await advance(10_000);
+      expect(tab.screen().chat.slice(0, 4)).toEqual([
+        `user: ${P1}`,
+        ANSWER,
+        `user: ${P2}`,
+        ANSWER,
+      ]);
     },
   );
 

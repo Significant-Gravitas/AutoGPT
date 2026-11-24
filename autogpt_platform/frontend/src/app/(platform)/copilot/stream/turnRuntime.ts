@@ -253,8 +253,12 @@ export class TurnRuntime {
   private probes = 0;
   // The server's word that a turn ended can come while a read is out that
   // was taken before that end; one more read is owed once it settles.
+  // Every path that ends a probe, a rebuild or a re-read with a view calls
+  // settleOwedReread(); a re-read whose retries all fail leaves the word
+  // owed until the next of those settles.
   private readClock = 0;
-  private readStartedAt = 0;
+  // The latest start of a read that came back with a view.
+  private readCoveredAt = 0;
   private rereadOwedAt = 0;
   private rereading = false;
   private hiddenAt: number | null = null;
@@ -507,11 +511,18 @@ export class TurnRuntime {
    */
   rereadIfIdle() {
     if (this.disposed) return;
-    if (this.recovering || this.probes > 0 || this.rereading) {
+    // Busy, with a read out or a turn or send of its own: the word is owed,
+    // and a read that starts after it, such as the turn's own end-of-turn
+    // read, covers it.
+    if (
+      this.recovering ||
+      this.probes > 0 ||
+      this.rereading ||
+      !this.isIdle()
+    ) {
       this.rereadOwedAt = ++this.readClock;
       return;
     }
-    if (!this.isIdle()) return;
     void this.reread();
   }
 
@@ -521,7 +532,7 @@ export class TurnRuntime {
     if (this.disposed || this.probes > 0 || this.recovering || this.rereading)
       return;
     if (!this.rereadOwedAt) return;
-    const owed = this.rereadOwedAt > this.readStartedAt;
+    const owed = this.rereadOwedAt > this.readCoveredAt;
     this.rereadOwedAt = 0;
     if (owed) this.rereadIfIdle();
   }
@@ -898,6 +909,8 @@ export class TurnRuntime {
     }
     this.emitNow();
     this.handlers.onError?.(this.error, null);
+    // No turn ran, so no end-of-turn read will cover a word owed meanwhile.
+    this.settleOwedReread();
   }
 
   // The first refusal may be a token that expired in flight; refused again,
@@ -1574,6 +1587,12 @@ export class TurnRuntime {
 
   // Another tab, device or the server may have moved an idle chat on meanwhile.
   private async reread(attempt = 0) {
+    // One read at a time, whatever asks for it (a word, a wake, a retry):
+    // a later ask is owed and read once this one lands.
+    if (this.rereading) {
+      this.rereadOwedAt = ++this.readClock;
+      return;
+    }
     if (this.rereadTimer) clearTimeout(this.rereadTimer);
     this.rereadTimer = null;
     // One read at a time, so an older answer can't land after a newer one.
@@ -1656,9 +1675,12 @@ export class TurnRuntime {
   }
 
   private async fetchView() {
-    this.readStartedAt = ++this.readClock;
+    const started = ++this.readClock;
     try {
-      return await (this.boundFetchSession ?? this.deps.fetchSession)();
+      const view = await (this.boundFetchSession ?? this.deps.fetchSession)();
+      // Only a read that came back covers a word said before it started.
+      if (view) this.readCoveredAt = Math.max(this.readCoveredAt, started);
+      return view;
     } catch {
       return null;
     }
