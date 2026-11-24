@@ -176,7 +176,11 @@ function findSavedCredential(
   credential: CredentialsMetaInput,
   allProviders: CredentialsProvidersContextType | null,
 ) {
-  return allProviders?.[credential.provider]?.savedCredentials.find(
+  // A step's saved inputs are workflow data: a provider name outside the
+  // list, such as "constructor", must not reach an inherited property.
+  if (!allProviders || !Object.hasOwn(allProviders, credential.provider))
+    return undefined;
+  return allProviders[credential.provider]?.savedCredentials.find(
     (saved) => saved.id === credential.id,
   );
 }

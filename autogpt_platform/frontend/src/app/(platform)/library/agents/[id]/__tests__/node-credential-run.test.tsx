@@ -125,6 +125,8 @@ interface Workflow {
   graphReady?: Promise<void>;
   savedCredentials?: Array<Record<string, unknown>>;
   systemProviders?: string[];
+  // Whether the user owns the workflow; only an owner can read its steps
+  canAccessGraph?: boolean;
 }
 
 function mockWorkflow({
@@ -134,6 +136,7 @@ function mockWorkflow({
   graphReady,
   savedCredentials = [PLATFORM_KEY, USER_KEY],
   systemProviders = ["firecrawl"],
+  canAccessGraph = true,
 }: Workflow) {
   const { sub_graphs: _, ...subWorkflow } =
     getGetV1GetSpecificGraphResponseMock({
@@ -186,7 +189,7 @@ function mockWorkflow({
         graph_id: "graph-1",
         graph_version: 1,
         name: "Scrape agent",
-        can_access_graph: true,
+        can_access_graph: canAccessGraph,
         input_schema: { type: "object", properties: {} },
         credentials_input_schema: {
           type: "object",
@@ -616,6 +619,38 @@ test("after a failed read of the steps' keys, Try again starts the form on the s
   await waitFor(() =>
     expect((picker as HTMLSelectElement).value).toBe(USER_KEY.id),
   );
+  await clickWhenEnabled("Start Task");
+
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(keyIn(executeBodies[0].credentials_inputs)).toBe(USER_KEY.id);
+});
+
+test("someone who doesn't own the workflow but has a key of their own gets a run form that works", async () => {
+  const { executeBodies } = mockWorkflow({
+    stepCredentials: savedOnStep(USER_KEY),
+    canAccessGraph: false,
+  });
+  renderAgentPage();
+
+  await openRunForm();
+  await clickWhenEnabled("Start Task");
+
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(
+    screen.queryByRole("status", { name: "Loading credentials" }),
+  ).toBeNull();
+});
+
+test("a step input that only looks like a key, with an unknown provider, doesn't break the run form", async () => {
+  const { executeBodies } = mockWorkflow({
+    stepCredentials: savedOnStep(USER_KEY),
+    otherStepCredentials: [
+      { id: "not-a-key", provider: "constructor", type: "api_key" },
+    ],
+  });
+  renderAgentPage();
+
+  await openRunForm();
   await clickWhenEnabled("Start Task");
 
   await waitFor(() => expect(executeBodies).toHaveLength(1));
