@@ -1,6 +1,5 @@
-"""The block-execute route runs each block in a process of its own, killed at its
-deadline, so a block that computes forever holds neither the server nor its
-user's slot."""
+"""The block-execute route runs each block in a process of its own, ended at its
+deadline."""
 
 import asyncio
 import gc
@@ -36,7 +35,7 @@ class _ReportsItsProcess:
 
 
 class _Computes:
-    """Never awaits, so only killing its process stops it."""
+    """Writes a beat every 20 ms until its process ends."""
 
     id = name = "computes"
     disabled = False

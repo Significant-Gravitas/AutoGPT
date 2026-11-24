@@ -1,5 +1,5 @@
 """Direct block runs happen in a child of the run parent, which kills one still
-running at its deadline, whatever its block is doing."""
+running at its deadline."""
 
 import asyncio
 import gc
@@ -35,7 +35,7 @@ class _ReportsItsProcess:
 
 
 class _Computes:
-    """Never awaits, so only killing its process stops it."""
+    """Writes a beat every 20 ms until its process ends."""
 
     id = name = "computes"
 

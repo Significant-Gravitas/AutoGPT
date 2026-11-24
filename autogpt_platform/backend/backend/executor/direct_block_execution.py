@@ -4,8 +4,7 @@ The block-execute routes run one block and return its outputs. Each run is a
 child process forked from this server's run parent, which the server forks in
 start-up before it starts any thread or opens any connection
 (``start_run_parent``). The run parent kills a child still running
-``DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS`` after it started, so a run ends at its
-deadline whatever its block is doing, and its memory is capped
+``DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS`` after it started, and caps its memory
 (``direct_block_run_parent``).
 
 Each user may have ``DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER`` direct runs in

@@ -1282,10 +1282,9 @@ def _opens_for_writing(call: ast.Call) -> bool:
 # Rule: REST routes run blocks through direct block execution
 # ---------------------------------------------------------------------------
 #
-# Motivation: a block run in the API server's process would hold it for as
-# long as the block computes. Routes hand the block to
+# Motivation: routes hand the block to
 # ``backend.executor.direct_block_execution``, which runs it in a process of its
-# own, killed at its deadline, under a per-user cap.
+# own, ended at its deadline, under a per-user and a per-server cap.
 
 _API_PACKAGE = BACKEND_ROOT / "api"
 
