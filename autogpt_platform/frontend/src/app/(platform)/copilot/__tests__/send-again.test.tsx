@@ -167,7 +167,7 @@ it("offers Send again for a message the network dropped, and sends it under its 
   await waitFor(() => expect(sent).toHaveLength(2));
   expect(sent[1].message).toBe("What does example.com say?");
   expect(sent[1].message_id).toBe(sent[0].message_id);
-  expect(screen.queryByText(DROPPED)).toBeNull();
+  await waitFor(() => expect(screen.queryByText(DROPPED)).toBeNull());
 });
 
 it("says so when Send again finds nothing left to send", async () => {

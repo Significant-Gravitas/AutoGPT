@@ -17,6 +17,7 @@ const FOLLOW_UP_STREAM = emptyStream({
   data: {},
   transient: true,
 });
+const FOLLOW_UP_UNFINISHED = FOLLOW_UP_STREAM.replace("data: [DONE]\n\n", "");
 
 // The session GET's rows carry the message id the renderer keys a prompt on.
 type Row = PersistedRow & { id: string };
@@ -39,6 +40,9 @@ export type PostMode =
   | "late-after-receive"
   // The client's request fails at once, but the server takes it that late too.
   | "lost-late-receive"
+  // Sent while a turn runs: the server queues it and says so, then the
+  // response fails, as a dropped socket does.
+  | "lost-after-follow-up"
   // The server started the turn; the response stays open and silent, as a frozen page sees it.
   | "silent-after-receive"
   | "route-error-after-receive"
@@ -264,6 +268,8 @@ export class FaultServer {
     if (this.running()) {
       this.pending.push({ text: body.message, id });
       if (mode === "lost-after-receive") throw new TypeError("Failed to fetch");
+      if (mode === "lost-after-follow-up")
+        return sse(failsAfter(FOLLOW_UP_UNFINISHED));
       return sse(FOLLOW_UP_STREAM);
     }
     // The route matches a send on its text too only when it names no id: one
@@ -479,6 +485,18 @@ function emptyStream(...parts: object[]) {
     .map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
     .concat("data: [DONE]\n\n")
     .join("");
+}
+
+// A body that fails once the client has read `delivered`.
+function failsAfter(delivered: string) {
+  let read = false;
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (read) controller.error(new TypeError("network lost"));
+      else controller.enqueue(encoder.encode(delivered));
+      read = true;
+    },
+  });
 }
 
 function sse(body: string | ReadableStream<Uint8Array>) {
