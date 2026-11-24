@@ -19,6 +19,7 @@ import { LibraryFolderDeleteDialog } from "../LibraryFolderDeleteDialog/LibraryF
 import { LibraryEmptyState } from "../LibraryEmptyState/LibraryEmptyState";
 import { SchedulesUnavailableNotice } from "@/components/contextual/SchedulesUnavailableNotice/SchedulesUnavailableNotice";
 import type { LibraryTab, AgentStatusFilter, FleetSummary } from "../../types";
+import { LibraryAgentListSkeleton } from "../LibraryAgentListSkeleton/LibraryAgentListSkeleton";
 import { useLibraryAgentList } from "./useLibraryAgentList";
 import { AgentBriefingPanel } from "../AgentBriefingPanel/AgentBriefingPanel";
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
@@ -214,9 +215,7 @@ export function LibraryAgentList({
           </div>
         )}
         {agentLoading ? (
-          <div className="flex h-[200px] items-center justify-center">
-            <LoadingSpinner size="large" />
-          </div>
+          <LibraryAgentListSkeleton />
         ) : isFavoritesTab && favoritesCount === 0 ? (
           <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-foreground-tertiary">
             <Icon icon={FavouriteIcon} className="h-10 w-10" />
