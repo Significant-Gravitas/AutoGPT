@@ -57,6 +57,21 @@ def test_a_field_shared_with_a_refusing_step_is_marked():
     assert _exa_field(graph)[FLAG] is True
 
 
+@pytest.mark.parametrize(
+    "refusing_id, other_id",
+    [("a-webset", "z-search"), ("z-webset", "a-search")],
+)
+def test_a_refusing_step_marks_a_shared_field_wherever_it_sorts(
+    refusing_id: str, other_id: str
+):
+    graph = _graph(
+        _node(other_id, ExaSearchBlock()),
+        _node(refusing_id, ExaCreateWebsetBlock()),
+    )
+
+    assert _exa_field(graph)[FLAG] is True
+
+
 def test_a_refusing_step_in_a_sub_workflow_marks_the_agents_field():
     graph = _graph(
         _node("search", ExaSearchBlock()),

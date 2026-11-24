@@ -70,6 +70,8 @@ export function useCredentialsInput({
   const [removedCredentialTitle, setRemovedCredentialTitle] = useState<
     string | null
   >(null);
+  // A platform key the picker let go of because the block refuses it
+  const [hasRefusedPlatformKey, setHasRefusedPlatformKey] = useState(false);
   const [credentialToDelete, setCredentialToDelete] = useState<{
     id: string;
     title: string;
@@ -144,6 +146,27 @@ export function useCredentialsInput({
       setRemovedCredentialTitle(
         selectedCredential.title || credentials.providerName,
       );
+    }
+    // A platform key a refusing block was given gives way to the user's only
+    // key, the one an empty field starts on. Passing through "none" would
+    // read as the user's own choice to the form around the picker.
+    const isRefusedPlatformKey = Boolean(
+      stillExists && schema.refuses_platform_credentials,
+    );
+    if (isRefusedPlatformKey) setHasRefusedPlatformKey(true);
+    const replacement =
+      isRefusedPlatformKey && availableCreds.length === 1
+        ? availableCreds[0]
+        : undefined;
+    if (replacement) {
+      hasAttemptedAutoSelect.current = true;
+      onSelectCredential({
+        id: replacement.id,
+        type: replacement.type,
+        provider: credentials.provider,
+        title: replacement.title,
+      });
+      return;
     }
     onSelectCredential(undefined);
     hasAttemptedAutoSelect.current = false;
@@ -232,6 +255,7 @@ export function useCredentialsInput({
 
   function handleCredentialChange(newValue?: CredentialsMetaInput) {
     setRemovedCredentialTitle(null);
+    setHasRefusedPlatformKey(false);
     onSelectCredential(newValue);
   }
 
@@ -547,6 +571,7 @@ export function useCredentialsInput({
     allCredentials: savedCredentials,
     selectedCredential,
     removedCredentialTitle,
+    hasRefusedPlatformKey,
     oAuthError,
     isAPICredentialsModalOpen,
     isUserPasswordCredentialsModalOpen,

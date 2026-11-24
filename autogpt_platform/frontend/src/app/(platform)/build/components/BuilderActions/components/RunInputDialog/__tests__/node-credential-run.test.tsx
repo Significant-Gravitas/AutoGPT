@@ -547,3 +547,13 @@ test("the builder's schedule dialog keeps a Websets step on the user's Exa key, 
 
   await expectOnlyTheUsersExaKey();
 });
+
+test("the builder's schedule dialog holds the user's Exa key for a Websets step, and doesn't only show it", async () => {
+  mockWebsetsBuilderRun(USER_EXA_KEY);
+  renderRunDialog("schedule");
+
+  await expectOnlyTheUsersExaKey();
+  // A lone key's row shows whether or not the field holds it; the field's
+  // title says "required" until it does
+  await waitFor(() => expect(screen.queryByText("required")).toBeNull());
+});
