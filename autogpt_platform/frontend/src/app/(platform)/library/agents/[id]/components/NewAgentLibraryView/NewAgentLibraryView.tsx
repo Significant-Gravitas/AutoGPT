@@ -12,7 +12,6 @@ import { RunAgentModal } from "./components/modals/RunAgentModal/RunAgentModal";
 import { AgentRunsLoading } from "./components/other/AgentRunsLoading";
 import { EmptySchedules } from "./components/other/EmptySchedules";
 import { EmptyTasks } from "./components/other/EmptyTasks";
-import { SchedulesUnavailableNotice } from "@/components/contextual/SchedulesUnavailableNotice/SchedulesUnavailableNotice";
 import { EmptyTemplates } from "./components/other/EmptyTemplates";
 import { EmptyTriggers } from "./components/other/EmptyTriggers";
 import { MarketplaceBanners } from "./components/other/MarketplaceBanners";
@@ -45,7 +44,6 @@ export function NewAgentLibraryView() {
     isTemplateLoading,
     error,
     hasAnyItems,
-    schedulesUnavailable,
     activeItemId,
     selectedTriggerKind,
     retryTriggerLists,
@@ -208,12 +206,7 @@ export function NewAgentLibraryView() {
 
   // Keep the selected-content layout while an item is selected — even with
   // zero listable items — so a stale selection can show its not-found state.
-  if (
-    !sidebarLoading &&
-    !hasAnyItems &&
-    !schedulesUnavailable &&
-    !activeItemId
-  ) {
+  if (!sidebarLoading && !hasAnyItems && !activeItemId) {
     return (
       <>
         <div className="flex h-full flex-col">
@@ -342,11 +335,7 @@ export function NewAgentLibraryView() {
             agent={agent}
             banner={renderMarketplaceUpdateBanner()}
           >
-            {schedulesUnavailable ? (
-              <SchedulesUnavailableNotice />
-            ) : (
-              <EmptySchedules />
-            )}
+            <EmptySchedules />
           </SelectedViewLayout>
         ) : activeTab === "templates" ? (
           <SelectedViewLayout

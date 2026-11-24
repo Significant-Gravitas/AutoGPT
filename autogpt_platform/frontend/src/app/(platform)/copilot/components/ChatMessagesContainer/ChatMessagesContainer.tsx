@@ -17,7 +17,7 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useInsertionEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
-import { isToolCallPending } from "../ToolChain/helpers";
+import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnEndAnnouncer } from "../JobStatsBar/TurnEndAnnouncer";
 import { useElapsedAnchor } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
@@ -60,7 +60,6 @@ import type { PendingUploadSend } from "../../copilotStreamStore";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ChatErrorBanner } from "./components/ChatErrorBanner/ChatErrorBanner";
-import { UnconfirmedSendError } from "../../stream/turnRuntime";
 
 type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
 
@@ -87,8 +86,6 @@ interface Props {
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
   onRetry?: () => void;
-  /** Sends again a message the chat couldn't confirm it sent. */
-  onResend?: () => void;
   turnStats?: TurnStatsMap;
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
@@ -285,7 +282,6 @@ export function ChatMessagesContainer({
   isLoadingMore,
   onLoadMore,
   onRetry,
-  onResend,
   turnStats,
   queuedMessages,
   pendingSend,
@@ -358,11 +354,8 @@ export function ChatMessagesContainer({
   // the same error string — the marker becomes an in-line ErrorCard bubble,
   // the SSE event sets ``error`` on ``useChat``. Without dedup, the user sees
   // the same error twice. Suppress the trailing banner whenever the last
-  // assistant message already carries the marker. An unconfirmed send is the
-  // client's own finding, about a later prompt: no marker repeats it.
-  const isErrorShownInline =
-    !(error instanceof UnconfirmedSendError) &&
-    hasTrailingErrorMarker(messages);
+  // assistant message already carries the marker.
+  const lastAssistantHasErrorMarker = hasTrailingErrorMarker(messages);
 
   const hasInflight = (() => {
     if (lastMessage?.role !== "assistant") return false;
@@ -372,17 +365,8 @@ export function ChatMessagesContainer({
     // the follow-up just landed and nothing has been produced past it, so
     // the text or tool above it is settled and Thinking is the only sign
     // the assistant picked the follow-up up.
-    // A step-start is skipped too: the backend opens a step seconds before
-    // the model writes anything (at the start of a turn, and before each
-    // model call after a tool), so what decides is the part before it.
-    // Thinking stays up through that wait; after text or reasoning it stays
-    // hidden, so nothing flashes between steps.
     let lastIndex = lastMessage.parts.length - 1;
-    while (
-      lastIndex >= 0 &&
-      (isBookkeepingPart(lastMessage.parts[lastIndex]) ||
-        lastMessage.parts[lastIndex].type === "step-start")
-    ) {
+    while (lastIndex >= 0 && isBookkeepingPart(lastMessage.parts[lastIndex])) {
       if (lastMessage.parts[lastIndex].type === PENDING_DRAINED_PART_TYPE)
         return false;
       lastIndex--;
@@ -401,12 +385,21 @@ export function ChatMessagesContainer({
     if (lastPart.type === "reasoning" && lastPart.text.trim().length > 0)
       return true;
 
+    // step-start is a turn boundary emitted right before the next tool or
+    // text chunk. Treat it as inflight so the bubble transitions straight
+    // into the next part without flashing back to "Thinking...".
+    if (lastPart.type === "step-start") return true;
+
     // A pause is how the turn ends, so nothing more is coming to wait on.
     if (lastPart.type === TURN_PAUSED_PART_TYPE) return true;
 
-    // A running tool, or one paused on the user's approval, shows its own
-    // card, so Thinking must not sit beside it.
-    if (isToolCallPending(lastPart)) return true;
+    if (
+      lastPart.type.startsWith(TOOL_PART_PREFIX) &&
+      "state" in lastPart &&
+      (lastPart.state === "input-streaming" ||
+        lastPart.state === "input-available")
+    )
+      return true;
 
     return false;
   })();
@@ -669,8 +662,8 @@ export function ChatMessagesContainer({
                 </MessageContent>
               </Message>
             ))}
-          {!readOnly && error && !isErrorShownInline && (
-            <ChatErrorBanner error={error} onResend={onResend} />
+          {!readOnly && error && !lastAssistantHasErrorMarker && (
+            <ChatErrorBanner error={error} />
           )}
           {!readOnly && (
             <TurnEndAnnouncer

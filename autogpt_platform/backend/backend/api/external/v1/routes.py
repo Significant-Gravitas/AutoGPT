@@ -296,15 +296,6 @@ async def execute_graph(
             )
             org_id, team_id = None, None
 
-    # A key issued in an organization acts only on workflows visible there.
-    if auth.organization_id and not await graph_db.get_graph(
-        graph_id=graph_id,
-        version=graph_version,
-        user_id=auth.user_id,
-        organization_id=auth.organization_id,
-    ):
-        raise HTTPException(status_code=404, detail=f"Workflow #{graph_id} not found.")
-
     try:
         graph_exec = await add_graph_execution(
             graph_id=graph_id,
@@ -355,18 +346,12 @@ async def get_graph_execution_results(
         require_resource_permission(APIKeyPermission.READ_GRAPH)
     ),
 ) -> GraphExecutionResult:
-    # The key's own runs, in the organization the key was issued in.
     graph_exec = await execution_db.get_graph_execution(
         user_id=auth.user_id,
         execution_id=graph_exec_id,
         include_node_executions=True,
-        organization_id=auth.organization_id,
     )
-    if (
-        not graph_exec
-        or graph_exec.user_id != auth.user_id
-        or graph_exec.graph_id != graph_id
-    ):
+    if not graph_exec:
         raise HTTPException(
             status_code=404, detail=f"Graph execution #{graph_exec_id} not found."
         )
@@ -375,7 +360,6 @@ async def get_graph_execution_results(
         graph_id=graph_exec.graph_id,
         version=graph_exec.graph_version,
         user_id=auth.user_id,
-        organization_id=auth.organization_id,
     ):
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 

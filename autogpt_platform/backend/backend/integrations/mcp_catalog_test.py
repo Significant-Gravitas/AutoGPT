@@ -170,39 +170,6 @@ def test_aimlapi_effect_map_names_exactly_the_published_tools():
     assert effects.irreversible == []
 
 
-# Every tool the server listed on 2026-11-18 to a caller with a valid key.
-# search, batch_search and extract each spend a call of the key's quota, but
-# searching is what the connection is for, so they run without asking, as the
-# AnySearch blocks do on the same key. score (the one tool its docs leave out)
-# sends ratings of the results back to AnySearch, so it asks first.
-ANYSEARCH_LOOKUP_TOOLS = ["batch_search", "extract", "get_sub_domains", "search"]
-
-
-def test_anysearch_takes_an_api_key_and_only_its_feedback_tool_asks():
-    url = "https://api.anysearch.com/mcp"
-    entry = get_mcp_catalog_entry_for_url(url)
-
-    assert entry is not None
-    assert entry.name == "mcp_anysearch"
-    assert entry.display_name == "AnySearch"
-    assert entry.mcp_server.icon_id == "anysearch"
-    assert entry.mcp_server.provider == "anysearch"
-    assert entry.mcp_server.connection_mode == "hosted"
-    assert entry.mcp_server.allow_custom_url is False
-    assert entry.mcp_server.auth_methods == ["bearer"]
-    assert (
-        entry.mcp_server.documentation_url
-        == "https://www.anysearch.com/docs/mcp-install"
-    )
-    effects = get_mcp_effect_maps()["mcp_anysearch"]
-    assert sorted(effects.read) == ANYSEARCH_LOOKUP_TOOLS
-    assert effects.external == ["score"]
-    assert effects.irreversible == []
-    assert mcp_tool_effect(url, "search") == "read"
-    assert mcp_tool_effect(url, "score") == "external"
-    assert mcp_tool_effect(url, "unlisted_tool") is None
-
-
 # Every tool Supabase's MCP docs listed on 2026-11-17. The reads run without
 # asking. execute_sql both reads and writes, so it asks like the other changes.
 SUPABASE_READ_TOOLS = [

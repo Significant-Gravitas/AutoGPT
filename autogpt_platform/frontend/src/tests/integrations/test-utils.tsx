@@ -17,13 +17,8 @@ function createTestQueryClient() {
   });
 }
 
-function TestProviders({
-  children,
-  queryClient = createTestQueryClient(),
-}: {
-  children: ReactNode;
-  queryClient?: QueryClient;
-}) {
+function TestProviders({ children }: { children: ReactNode }) {
+  const queryClient = createTestQueryClient();
   return (
     <QueryClientProvider client={queryClient}>
       <NuqsTestingAdapter>
@@ -41,20 +36,9 @@ function TestProviders({
 
 function customRender(
   ui: ReactElement,
-  {
-    queryClient,
-    ...options
-  }: Omit<RenderOptions, "wrapper"> & {
-    /** For a test that reads query state; the default retries nothing. */
-    queryClient?: QueryClient;
-  } = {},
+  options?: Omit<RenderOptions, "wrapper">,
 ) {
-  return render(ui, {
-    wrapper: ({ children }) => (
-      <TestProviders queryClient={queryClient}>{children}</TestProviders>
-    ),
-    ...options,
-  });
+  return render(ui, { wrapper: TestProviders, ...options });
 }
 
 // MorphingTextAnimation renders one span per character and uses a non-breaking

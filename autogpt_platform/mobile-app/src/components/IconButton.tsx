@@ -1,7 +1,7 @@
 import type { IconSvgElement } from "@hugeicons/react-native";
-import { Pressable, StyleSheet } from "react-native";
+import { Pressable } from "react-native";
 
-import { createStyles, radius, shadows, useColors, useScheme } from "@/lib/theme";
+import { createStyles, radius, useColors, useScheme } from "@/lib/theme";
 
 import { Icon } from "./Icon";
 
@@ -10,11 +10,7 @@ interface Props {
   label: string;
   onPress: () => void;
   disabled?: boolean;
-  /**
-   * `menu` is the drawer's raised circle; `floating` the chat header's, which
-   * sits over the thread.
-   */
-  variant?: "tray" | "icon" | "primary" | "menu" | "floating";
+  variant?: "tray" | "icon" | "primary";
 }
 
 export function IconButton({
@@ -28,7 +24,6 @@ export function IconButton({
   const colors = useColors();
   const scheme = useScheme();
   const isPrimary = variant === "primary";
-  const isLight = scheme === "light";
 
   function iconColor() {
     if (!isPrimary) return colors.text;
@@ -46,11 +41,7 @@ export function IconButton({
       style={({ pressed }) => [
         styles.button,
         variant === "icon" && styles.icon,
-        variant === "icon" && isLight && styles.shadow,
-        variant === "menu" && styles.menu,
-        variant === "menu" && isLight && styles.menuShadow,
-        variant === "floating" && styles.floating,
-        variant === "floating" && isLight && styles.floatingShadow,
+        variant === "icon" && scheme === "light" && styles.shadow,
         isPrimary && styles.primary,
         isPrimary && disabled && styles.primaryDisabled,
         pressed && styles.pressed,
@@ -82,16 +73,6 @@ const useStyles = createStyles((colors) => ({
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
-  menu: { backgroundColor: colors.menuButton },
-  menuShadow: shadows.menuButton,
-  floating: {
-    width: 38,
-    height: 38,
-    backgroundColor: colors.floatingButton,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.floatingRing,
-  },
-  floatingShadow: shadows.floating,
   primary: { backgroundColor: colors.action },
   primaryDisabled: { backgroundColor: colors.actionDisabled },
   pressed: { opacity: 0.6 },

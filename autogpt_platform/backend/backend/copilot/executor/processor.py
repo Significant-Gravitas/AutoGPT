@@ -65,7 +65,6 @@ from backend.copilot.llm_attribution import (
 from backend.copilot.load_test import LoadTestEngine, load_test_engine
 from backend.copilot.model import maybe_append_user_message
 from backend.copilot.rate_limit import RateLimitUnavailable
-from backend.copilot.reply_timing import describe_chat
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -75,7 +74,6 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
-from backend.copilot.service import strip_user_context_tags
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.copilot.tools.agent_browser import close_browser_daemon
 from backend.copilot.trial_cost_context import trial_cost_context
@@ -825,16 +823,6 @@ class CoPilotProcessor:
                 or session.metadata.llm_credential_id != entry.llm_credential_id
             ):
                 raise RuntimeError("codex_session_route_mismatch")
-            # The engines strip server tags before saving the turn's message.
-            describe_chat(
-                turn.span,
-                session,
-                (
-                    strip_user_context_tags(entry.message)
-                    if entry.is_user_message
-                    else None
-                ),
-            )
 
             session = await _normalize_private_expert_session_tenancy(session)
             # The allowance, budget and tier checks that set up the turn share

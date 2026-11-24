@@ -4,7 +4,7 @@ reading a pass's outcome, and the jobs' args and results."""
 
 from __future__ import annotations
 
-import asyncio
+import time
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
@@ -17,7 +17,6 @@ from . import registry, scope_crons
 from .registry_fakes_test import (
     ACCOUNT,
     EXPERT,
-    PROMPT,
     USER,
     Hang,
     HangingTransport,
@@ -26,6 +25,8 @@ from .registry_fakes_test import (
     use_short_deadline,
 )
 from .scheduling import dream_system_job
+
+PROMPT = 1.0
 
 
 @pytest.fixture
@@ -131,13 +132,14 @@ async def test_the_gate_skips_promptly_when_the_registry_hangs(env, monkeypatch)
     transport = HangingTransport()
     rpc = transport.client(DatabaseManagerAsyncClient, request_retry=True)
     monkeypatch.setattr(scope_crons, "memory_schedule_db", lambda: rpc)
+    started = time.monotonic()
     try:
-        async with asyncio.timeout(PROMPT):
-            fires = await scope_crons.memory_scope_may_fire(ACCOUNT, _status("active"))
+        fires = await scope_crons.memory_scope_may_fire(ACCOUNT, _status("active"))
     finally:
         await rpc.aclose()
 
     assert not fires
+    assert time.monotonic() - started < PROMPT
     assert transport.cancelled == transport.paths == ["/get_scope_schedule"]
 
 
@@ -146,10 +148,12 @@ async def test_the_gate_skips_promptly_when_the_expert_lookup_hangs(env, monkeyp
     await registry.ensure_scope_scheduled(EXPERT)
     use_short_deadline(monkeypatch)
     hang = Hang()
-    async with asyncio.timeout(PROMPT):
-        fires = await scope_crons.memory_scope_may_fire(EXPERT, hang.forever)
+    started = time.monotonic()
+
+    fires = await scope_crons.memory_scope_may_fire(EXPERT, hang.forever)
 
     assert not fires
+    assert time.monotonic() - started < PROMPT
     assert hang.started == hang.cancelled == 1
 
 
@@ -171,9 +175,11 @@ async def test_record_scope_run_gives_up_at_the_deadline(env, monkeypatch):
     use_short_deadline(monkeypatch)
     hang = Hang()
     monkeypatch.setattr(env.db, "record_scope_run", hang.forever)
-    async with asyncio.timeout(PROMPT):
-        assert not await scope_crons.record_scope_run(ACCOUNT, "nightly")
+    started = time.monotonic()
 
+    assert not await scope_crons.record_scope_run(ACCOUNT, "nightly")
+
+    assert time.monotonic() - started < PROMPT
     assert hang.started == hang.cancelled == 1
 
 

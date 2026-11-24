@@ -84,35 +84,6 @@ describe("copilotStreamStore pending first send persistence", () => {
     });
   });
 
-  it("carries a send's reply timing across the remount, but not a navigation", async () => {
-    const firstModule = await importFreshStore();
-    const timing = {
-      startedAt: 1234.5,
-      timeOrigin: performance.timeOrigin,
-      isNewChat: true,
-      isExpert: false,
-    };
-    const firstStore = firstModule.useCopilotStreamStore.getState();
-    firstStore.setPendingFirstSend({ text: "first", files: [], timing });
-    firstStore.bindPendingFirstSendToSession("target-session");
-
-    expect(
-      firstModule.useCopilotStreamStore.getState().pendingFirstSend?.timing,
-    ).toBe(timing);
-    expect(window.sessionStorage.getItem(STORAGE_KEY)).not.toContain(
-      "startedAt",
-    );
-
-    // A full navigation restarts performance.now(): the restored send is
-    // dispatched untimed rather than measured against the wrong clock.
-    const secondModule = await importFreshStore();
-    const { send } = secondModule.useCopilotStreamStore
-      .getState()
-      .takePendingFirstSend("target-session");
-    expect(send).toEqual({ text: "first", files: [] });
-    expect(send?.timing).toBeUndefined();
-  });
-
   it("does not consume a pending send for a different session", async () => {
     const firstModule = await importFreshStore();
     const firstStore = firstModule.useCopilotStreamStore.getState();

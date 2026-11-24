@@ -10,8 +10,8 @@ invisible instead of merely unlisted.
 import logging
 from typing import Any
 
+from backend.copilot.db import list_recent_chat_sessions
 from backend.copilot.model import ChatSession, ChatSessionInfo
-from backend.data.db_accessors import chat_db
 
 from .base import BaseTool
 from .models import ErrorResponse, SessionListResponse, SessionSummary, ToolResponseBase
@@ -91,9 +91,8 @@ class FindSessionTool(BaseTool):
         scanned = 0
         exhausted = False
         for _ in range(_MAX_SCAN_PAGES):
-            rows = await chat_db().list_recent_chat_sessions(
+            rows = await list_recent_chat_sessions(
                 user_id=user_id,
-                organization_id=session.organization_id,
                 expert_id=expert_id.strip() or None,
                 status=status.strip() or None,
                 limit=_SCAN_LIMIT,
@@ -107,7 +106,6 @@ class FindSessionTool(BaseTool):
                 # keeps the invariant with the tool rather than with one call
                 # site.
                 if row.user_id == user_id
-                and row.organization_id == session.organization_id
                 and row.session_id != session.session_id
                 and _matches_task(row, task.strip())
             )

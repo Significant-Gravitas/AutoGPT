@@ -10,21 +10,11 @@ _WORD = re.compile(r"\s*\S+")
 
 @dataclass(frozen=True)
 class Event:
-    """One server-sent event, sent after waiting ``delay_ms``. A ``hold`` event
-    first waits for the journey to release its run (see holds.py)."""
+    """One server-sent event, sent after waiting ``delay_ms``."""
 
     name: str | None
     data: Any
     delay_ms: int
-    hold: bool = False
-
-
-def held_chunk(chunk_words: int, hold_after_words: int | None) -> int | None:
-    """The index of the first text chunk that waits for the run's release:
-    the one after at least ``hold_after_words`` words have gone out."""
-    if hold_after_words is None:
-        return None
-    return -(-hold_after_words // chunk_words)
 
 
 def text_chunks(text: str, words: int) -> list[str]:

@@ -61,7 +61,6 @@ class Reply:
     usage: Usage
     chunk_words: int = 3
     delay_ms: int = 15
-    hold_after_words: int | None = None
     # Which bucket cache writes are reported in, and what the call costs.
     cache_ttl: str | None = None
     cost_usd: float | None = None
@@ -120,12 +119,6 @@ def _plan(conversation: Conversation, scripts_dir: Path) -> Plan:
             "than the script expected (an extra tool round, retry or message)."
         )
     turn = script.turns[index]
-    if turn.hold_after_words is not None and not (marker and marker.nonce):
-        raise ScriptError(
-            f"script {script.name!r} turn {index + 1} holds its reply until the "
-            "journey releases the run, which it names by nonce: put "
-            f"[[script:{script.name}#<nonce>]] in the first message."
-        )
     return Plan(
         kind="turn",
         marker=marker,
@@ -146,7 +139,6 @@ def _reply(script: Script, index: int, turn: Turn, offered: tuple[str, ...]) -> 
         usage=turn.usage,
         chunk_words=turn.chunk_words,
         delay_ms=turn.delay_ms,
-        hold_after_words=turn.hold_after_words,
     )
 
 

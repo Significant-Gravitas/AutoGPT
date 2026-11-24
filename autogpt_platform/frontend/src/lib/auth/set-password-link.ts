@@ -9,16 +9,6 @@ import { recordResetLinkAddress } from "./reset-link-address";
 // Better Auth's own default for a reset link.
 export const RESET_LINK_EXPIRES_IN_SECONDS = 60 * 60;
 
-// The page every reset and set-password email returns to.
-export function resetPasswordPage() {
-  return new URL(
-    "/reset-password",
-    process.env.BETTER_AUTH_URL ||
-      process.env.NEXT_PUBLIC_FRONTEND_BASE_URL ||
-      "http://localhost:3000",
-  ).toString();
-}
-
 /**
  * Whether the account has been used, i.e. its password was set by someone who
  * then got in. A sign-up while verification was off got a session, and the
@@ -54,6 +44,7 @@ export async function hasAccountBeenUsed(
 export async function sendSetPasswordLink(
   context: AuthEmailContext,
   user: { id: string; email: string },
+  redirectTo: string,
 ) {
   const token = randomToken(18);
   await createVerification(context, {
@@ -70,14 +61,8 @@ export async function sendSetPasswordLink(
   await sendAuthEmail({
     to: user.email,
     type: "set_password",
-    url: withResetCallback(`${context.baseURL}/reset-password/${token}`),
+    url: `${context.baseURL}/reset-password/${token}?callbackURL=${encodeURIComponent(redirectTo)}`,
   });
-}
-
-export function withResetCallback(url: string) {
-  const link = new URL(url);
-  link.searchParams.set("callbackURL", resetPasswordPage());
-  return link.toString();
 }
 
 export function randomToken(bytes: number) {

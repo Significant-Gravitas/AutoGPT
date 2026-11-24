@@ -35,7 +35,6 @@ from backend.blocks._platform_credentials import is_platform_credential
 from backend.data.integrations import WebhookWithRelations
 from backend.data.model import Credentials
 from backend.sdk import APIKeyCredentials, BaseWebhooksManager, ProviderName, Webhook
-from backend.util.url_redaction import mask_credential
 
 from ._exa_rest import WEBSETS_API_BASE, ExaApiError, exa_request, path_segment
 
@@ -325,7 +324,7 @@ def _reject_stale_timestamp(timestamp: str, webhook_id: str) -> None:
         age = time.time() - int(timestamp)
     except (ValueError, OverflowError) as exc:
         logger.warning(
-            f"Refused a signed Exa delivery to webhook #{mask_credential(webhook_id)}: its "
+            f"Refused a signed Exa delivery to webhook #{webhook_id}: its "
             f"timestamp {timestamp[:32]!r} isn't whole Unix seconds"
         )
         raise HTTPException(
@@ -334,7 +333,7 @@ def _reject_stale_timestamp(timestamp: str, webhook_id: str) -> None:
     if abs(age) > SIGNATURE_TOLERANCE_SECONDS:
         when = f"{age:.0f}s ago" if age >= 0 else f"{-age:.0f}s ahead of now"
         logger.warning(
-            f"Refused a signed Exa delivery to webhook #{mask_credential(webhook_id)}: signed "
+            f"Refused a signed Exa delivery to webhook #{webhook_id}: signed "
             f"{when}, outside the {SIGNATURE_TOLERANCE_SECONDS}s window"
         )
         raise HTTPException(

@@ -106,32 +106,17 @@ async def test_the_cli_a_copilot_turn_starts_ahead_of_its_query_holds_only_its_r
 
 
 @pytest.mark.asyncio(loop_scope="function")
-@pytest.mark.parametrize(
-    "key_provider, sent_as",
-    [
-        ("anthropic", (_USER_KEY, None)),
-        ("open_router", (_USER_KEY, f"Bearer {_USER_KEY}")),
-    ],
-)
-async def test_an_orchestrator_runs_cli_holds_no_key_and_its_model_calls_the_users(
-    key_provider: str,
-    sent_as: tuple[str, str | None],
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+async def test_an_orchestrator_runs_cli_holds_only_the_users_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """Not the user's own key either: only the relay holds it."""
     cli = _require_cli()
     monkeypatch.setenv(_SECRET_NAME, _SECRET)
     monkeypatch.setenv("ANTHROPIC_API_KEY", _PLATFORM_KEY)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "home" / ".claude"))
     async with _CliEnvironments() as provider:
-        # Where the deployment sends Anthropic and OpenRouter traffic.
+        # Where the deployment sends Anthropic traffic; the run keeps that.
         monkeypatch.setenv("ANTHROPIC_BASE_URL", f"{provider.url}/anthropic")
-        monkeypatch.setattr(
-            "backend.blocks.orchestrator.copilot_config",
-            ChatConfig(base_url=f"{provider.url}/openrouter/api/v1"),
-        )
         with patch(
             "backend.blocks.orchestrator.require_verbatim_prompts_cli",
             return_value=str(cli),
@@ -140,7 +125,7 @@ async def test_an_orchestrator_runs_cli_holds_no_key_and_its_model_calls_the_use
                 output
                 async for output in OrchestratorBlock()._execute_tools_sdk_mode(
                     input_data=_orchestrator_input(),
-                    credentials=_user_key(key_provider),
+                    credentials=_user_key(),
                     tool_functions=[],
                     prompt=[{"role": "user", "content": "hello"}],
                     execution_params=MagicMock(graph_exec_id="graph-exec-e2e"),
@@ -153,8 +138,7 @@ async def test_an_orchestrator_runs_cli_holds_no_key_and_its_model_calls_the_use
     for env in provider.seen:
         assert not _holds(env, _SECRET)
         assert not _holds(env, _PLATFORM_KEY)
-        assert not _holds(env, _USER_KEY)
-    assert set(provider.credentials) == {sent_as}
+        assert env["ANTHROPIC_API_KEY"] == _USER_KEY
 
 
 class _HarnessPrelaunch(CLIPrelaunch):
@@ -183,18 +167,14 @@ class _HarnessPrelaunch(CLIPrelaunch):
 
 class _CliEnvironments(FakeProvider):
     """The fake provider, reading the environment of each CLI that asks it
-    for a reply while that CLI waits, and each request's credential headers."""
+    for a reply while that CLI waits."""
 
     def __init__(self) -> None:
         super().__init__()
         self.seen: list[dict[str, str]] = []
-        self.credentials: list[tuple[str | None, str | None]] = []
 
     async def _messages(self, request: web.Request, route: Route) -> web.StreamResponse:
         self.seen += _cli_environments()
-        self.credentials.append(
-            (request.headers.get("x-api-key"), request.headers.get("Authorization"))
-        )
         return await super()._messages(request, route)
 
 
@@ -257,11 +237,11 @@ def _orchestrator_input() -> MagicMock:
     return input_data
 
 
-def _user_key(provider: str) -> APIKeyCredentials:
+def _user_key() -> APIKeyCredentials:
     return APIKeyCredentials(
         id="cli-environment-e2e-key",
-        provider=provider,
+        provider="anthropic",
         api_key=SecretStr(_USER_KEY),
-        title="The user's own key",
+        title="The user's Anthropic key",
         expires_at=None,
     )

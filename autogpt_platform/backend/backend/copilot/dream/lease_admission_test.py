@@ -46,9 +46,6 @@ from .schemas import (
 
 _SCOPE = MemoryScope.for_user("u1")
 _LOCK_KEY = _SCOPE.redis_key("dream_lock")
-# Each wait below only stops a hung test; a passing run goes on as soon
-# as it is met, and a CI runner can stall a test for seconds.
-_HANG_SECONDS = 10
 # Cites the one episode each pass read (``_input``): a write citing nothing
 # the pass read is dropped before it is written.
 _FACT = ConsolidatedFact(
@@ -156,19 +153,17 @@ class TestTheSyncRoute:
         loop = asyncio.get_running_loop()
         started = loop.time()
         old = asyncio.create_task(orchestrator_mod.execute_dream_pass("u1"))
-        await asyncio.wait_for(at_renewal.wait(), _HANG_SECONDS)
+        await asyncio.wait_for(at_renewal.wait(), 5)
         await fake_dream_redis.delete(_LOCK_KEY)
 
         newer = await orchestrator_mod.execute_dream_pass(
             "u1", trigger="admin", force=True
         )
         proceed.set()
-        result = await asyncio.wait_for(old, _HANG_SECONDS)
+        result = await asyncio.wait_for(old, 5)
 
         if failure == "timeout":
-            # The renewal waited out its real 2 s timeout; a renewal that
-            # never timed out would have tripped the hang guard above.
-            assert loop.time() - started > 1.9
+            assert 1.9 < loop.time() - started < 4
         assert newer.error is None and not newer.skipped
         assert graph.writes == [newer.pass_id]
         assert result.error == "expired: forced"
@@ -183,14 +178,14 @@ class TestTheSyncRoute:
         the old pass writes nothing."""
         graph.hold_next = True
         old = asyncio.create_task(orchestrator_mod.execute_dream_pass("u1"))
-        await asyncio.wait_for(graph.in_session.wait(), _HANG_SECONDS)
+        await asyncio.wait_for(graph.in_session.wait(), 5)
         await fake_dream_redis.delete(_LOCK_KEY)
 
         newer = await orchestrator_mod.execute_dream_pass(
             "u1", trigger="admin", force=True
         )
         graph.resume.set()
-        result = await asyncio.wait_for(old, _HANG_SECONDS)
+        result = await asyncio.wait_for(old, 5)
 
         assert newer.error is None
         assert graph.writes == [newer.pass_id]
@@ -208,14 +203,14 @@ class TestTheBatchRoute:
         await _seed_batch_pass(fake_dream_db, fake_dream_redis)
         graph.hold.add("p1")
         old = asyncio.create_task(_deliver_sanitize())
-        await asyncio.wait_for(graph.in_session.wait(), _HANG_SECONDS)
+        await asyncio.wait_for(graph.in_session.wait(), 5)
         await fake_dream_redis.delete(_LOCK_KEY)
 
         newer = await orchestrator_mod.execute_dream_pass(
             "u1", trigger="admin", force=True
         )
         graph.resume.set()
-        await asyncio.wait_for(old, _HANG_SECONDS)
+        await asyncio.wait_for(old, 5)
 
         assert newer.error is None
         assert graph.writes == [newer.pass_id]
@@ -247,7 +242,7 @@ class TestTheBatchRoute:
 
         mocker.patch.object(lease_mod, "extend_dream_lock", held_at_the_fence)
         old = asyncio.create_task(_deliver_sanitize())
-        await asyncio.wait_for(answered.wait(), _HANG_SECONDS)
+        await asyncio.wait_for(answered.wait(), 5)
         assert fake_dream_redis.ttls[_LOCK_KEY] == BATCH_LOCK_TTL_SECONDS
         await fake_dream_redis.delete(_LOCK_KEY)
 
@@ -255,7 +250,7 @@ class TestTheBatchRoute:
             "u1", trigger="admin", force=True
         )
         deliver.set()
-        await asyncio.wait_for(old, _HANG_SECONDS)
+        await asyncio.wait_for(old, 5)
 
         assert newer.error is None
         assert graph.writes == [newer.pass_id]

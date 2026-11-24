@@ -40,7 +40,6 @@ import {
 } from "./stream/renderTail";
 import {
   getTurnRuntime,
-  SendInFlightError,
   type RuntimePhase,
   type RuntimeSnapshot,
   type SendInput,
@@ -236,36 +235,16 @@ export function useCopilotRuntimeStream({
     ),
   );
 
-  // What the duplicate-POST guard compares, and what a refused send restores.
-  function recordSubmitted(text: string, metadata: unknown) {
-    if (!sessionId) return;
+  async function sendMessage(input: SendInput) {
+    if (!runtime || !sessionId) return;
+    const metadata = input.metadata;
     useCopilotStreamStore.getState().updateCoord(sessionId, {
-      lastSubmittedMessageText: text,
+      lastSubmittedMessageText: "text" in input ? input.text : textOf(input),
       lastSubmittedKickoffExpertId: getKickoffExpertIdFromMetadata(metadata),
       lastSubmittedKickoffAttemptToken:
         getKickoffAttemptTokenFromMetadata(metadata),
     });
-  }
-
-  async function sendMessage(input: SendInput) {
-    if (!runtime || !sessionId) return;
-    // Refused before the recovery text changes: it is still the text of the
-    // send in flight, which a 429 or 402 puts back in the composer.
-    if (runtime.isPostPending()) throw new SendInFlightError();
-    recordSubmitted(
-      "text" in input ? input.text : textOf(input),
-      input.metadata,
-    );
     await runtime.send(input, copilotModel);
-  }
-
-  // The message no check could confirm goes out again under its first id.
-  function resendUnconfirmed() {
-    if (!runtime || !sessionId) return false;
-    const message = runtime.resendUnconfirmed(copilotModel);
-    if (!message) return false;
-    recordSubmitted(textOf(message), message.metadata);
-    return true;
   }
 
   const stop = useCopilotStop({
@@ -334,7 +313,6 @@ export function useCopilotRuntimeStream({
     /** Follow-ups drained into the running turns, for the chip strip. */
     drainedCount: drainedRowCount(snapshot),
     sendMessage,
-    resendUnconfirmed,
     stop,
     status: chatStatus(snapshot.phase),
     error: snapshot.error ?? undefined,

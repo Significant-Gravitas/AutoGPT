@@ -2,7 +2,6 @@ import logging
 
 from backend.data import integrations
 from backend.data.model import Credentials
-from backend.util.url_redaction import redact_url
 
 from ._base import WT, BaseWebhooksManager
 
@@ -21,9 +20,7 @@ class ManualWebhookManagerBase(BaseWebhooksManager[WT]):
     ) -> tuple[str, dict]:
         # TODO: pass ingress_url to user in frontend
         # See: https://github.com/Significant-Gravitas/AutoGPT/issues/8537
-        logger.debug(
-            "Manual webhook registered with ingress URL: %s", redact_url(ingress_url)
-        )
+        logger.debug(f"Manual webhook registered with ingress URL: {ingress_url}")
 
         return "", {}
 

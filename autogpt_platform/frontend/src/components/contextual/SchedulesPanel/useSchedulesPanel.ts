@@ -6,9 +6,6 @@ import {
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { okData } from "@/app/api/helpers";
-import { isSchedulerUnavailableError } from "@/services/schedules/scheduler-availability";
-import { useSchedulerOutage } from "@/services/schedules/useSchedulerOutage";
-import { useSchedulerQueryOptions } from "@/services/schedules/useSchedulerQueryOptions";
 
 export type ScheduleItem =
   | { kind: "copilot_turn"; item: CopilotTurnJobInfo }
@@ -21,19 +18,17 @@ function nextRunMs(item: { next_run_time?: string | null }): number {
 }
 
 export function useSchedulesPanel() {
-  // A 503 means the scheduler is restarting: recheck after its Retry-After.
-  const schedulerQueryOptions = useSchedulerQueryOptions();
   // Followups (copilot_turn) — the scheduled-message side of the
   // feature.  Stored via ``schedule_followup`` MCP tool.
   const copilotQuery = useListCopilotFollowupSchedules({
-    query: { select: (res) => okData(res) ?? [], ...schedulerQueryOptions },
+    query: { select: (res) => okData(res) ?? [] },
   });
   // Graph schedules — recurring agent runs created via the agent
   // builder.  Same scheduler, different ``kind`` discriminator.  This
   // page now unifies both so users see ALL their pending automated
   // work in one place (briefing pill, this list, single Delete flow).
   const graphQuery = useGetV1ListExecutionSchedulesForAUser({
-    query: { select: (res) => okData(res) ?? [], ...schedulerQueryOptions },
+    query: { select: (res) => okData(res) ?? [] },
   });
   // Scheduled chats paused after failing the same way: their jobs drop out
   // of the followups list, so they are listed apart, with Resume.
@@ -58,26 +53,11 @@ export function useSchedulesPanel() {
   );
 
   const paused = pausedQuery.data ?? [];
-  // A list rechecking after an outage stays out, not loading, until the
-  // scheduler answers.
-  const copilotOut = useSchedulerOutage(copilotQuery);
-  const graphOut = useSchedulerOutage(graphQuery);
-  const outage = copilotOut || graphOut;
   const isLoading =
-    (copilotQuery.isLoading && !copilotOut) ||
-    (graphQuery.isLoading && !graphOut) ||
-    pausedQuery.isLoading;
-  const hasContent = schedules.length > 0 || paused.length > 0;
+    copilotQuery.isLoading || graphQuery.isLoading || pausedQuery.isLoading;
   const fetchError =
-    [copilotQuery.error, graphQuery.error].find(
-      (error) => error && !isSchedulerUnavailableError(error),
-    ) ?? pausedQuery.error;
-  const settled = !isLoading;
-
-  function retryUnavailable() {
-    copilotQuery.refetch();
-    graphQuery.refetch();
-  }
+    copilotQuery.error ?? graphQuery.error ?? pausedQuery.error;
+  const hasContent = schedules.length > 0 || paused.length > 0;
 
   return {
     // Backwards-compat alias — ``followups`` was the only-copilot
@@ -87,15 +67,10 @@ export function useSchedulesPanel() {
     schedules,
     paused,
     isLoading,
-    // The scheduler is out: a calm notice, never an error or an empty list,
-    // above whatever did load.
-    unavailable: settled && !fetchError && outage,
-    retryUnavailable,
-    retrying: copilotQuery.isFetching || graphQuery.isFetching,
     // The sources are independent — only hard-fail once all have settled
-    // and there is nothing to show; a partial failure keeps the loaded lists
-    // visible and surfaces a non-blocking warning.
-    error: settled && !hasContent ? fetchError : null,
-    partialError: settled && hasContent ? fetchError : null,
+    // and there is nothing to show; a partial failure keeps the loaded
+    // lists visible and surfaces a non-blocking warning instead.
+    error: !isLoading && !hasContent ? fetchError : null,
+    partialError: !isLoading && hasContent ? fetchError : null,
   };
 }

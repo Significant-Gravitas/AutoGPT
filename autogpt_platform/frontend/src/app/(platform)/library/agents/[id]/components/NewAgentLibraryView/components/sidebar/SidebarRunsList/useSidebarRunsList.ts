@@ -23,11 +23,8 @@ import {
   useExecutionEvents,
 } from "@/hooks/useExecutionEvents";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { useSchedulerOutage } from "@/services/schedules/useSchedulerOutage";
-import { useSchedulerQueryOptions } from "@/services/schedules/useSchedulerQueryOptions";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
-import { useRunsReadAfterReconnect } from "./useRunsReadAfterReconnect";
 
 function parseTab(
   value: string | null,
@@ -86,12 +83,10 @@ export function useSidebarRunsList({
     },
   );
 
-  const schedulerQueryOptions = useSchedulerQueryOptions();
   const schedulesQuery = useGetV1ListExecutionSchedulesForAGraph(graphId, {
     query: {
       enabled: !!graphId,
       select: okData,
-      ...schedulerQueryOptions,
     },
   });
 
@@ -134,16 +129,13 @@ export function useSidebarRunsList({
   // Combined count: webhook triggers + trigger agents (both shown
   // under the "Triggers" tab as separate sections).
   const triggersCount = triggers.length + triggerAgents.length;
-  // While the scheduler restarts its schedules are unknown, and the runs,
-  // templates and triggers still list.
-  const schedulesUnavailable = useSchedulerOutage(schedulesQuery);
   const loading =
     !runsQuery.isSuccess ||
-    (!schedulesQuery.isSuccess && !schedulesUnavailable) ||
+    !schedulesQuery.isSuccess ||
     !presetsQuery.presetsSettled ||
     (triggerAgentsEnabled && !triggerAgentsQuery.isSuccess);
   const error =
-    (schedulesUnavailable ? null : schedulesQuery.error) ||
+    schedulesQuery.error ||
     runsQuery.error ||
     presetsQuery.error ||
     (triggerAgentsEnabled ? triggerAgentsQuery.error : null);
@@ -157,20 +149,6 @@ export function useSidebarRunsList({
     }
   }
 
-  function retrySchedules() {
-    void schedulesQuery.refetch();
-  }
-
-  // The key includes the graph ID, so this refetches only this graph's runs.
-  function refetchRuns() {
-    queryClient.invalidateQueries({ queryKey: runsQuery.queryKey });
-  }
-
-  useRunsReadAfterReconnect({
-    queryKey: runsQuery.queryKey,
-    onTasks: tabValue === "runs",
-  });
-
   // Update query cache when execution events arrive via websocket
   useExecutionEvents({
     graphId: graphId || undefined,
@@ -178,7 +156,13 @@ export function useSidebarRunsList({
     // Refetching the infinite query reloads every loaded page in turn, so a
     // burst of events is folded into one refetch now and one at the end.
     throttleMs: EXECUTION_REFETCH_THROTTLE_MS,
-    onExecutionUpdate: refetchRuns,
+    onExecutionUpdate: (_execution) => {
+      // Invalidate and refetch the query to ensure we have the latest data
+      // This is simpler and more reliable than manually updating the cache
+      // The queryKey is stable and includes the graphId, so this only invalidates
+      // queries for this specific graph's executions
+      queryClient.invalidateQueries({ queryKey: runsQuery.queryKey });
+    },
   });
 
   // Notify parent about counts and loading state
@@ -209,17 +193,12 @@ export function useSidebarRunsList({
     }
   }, [runs, activeItem, tabValue, onSelectRun]);
 
-  // Nothing selected and schedules to show, either because there are no runs
-  // or because the Scheduled tab is open: select the first schedule.
+  // If there are no runs but there are schedules, and nothing is selected, auto-select the first schedule
   useEffect(() => {
-    if (
-      !activeItem &&
-      schedules.length > 0 &&
-      (runs.length === 0 || tabValue === "scheduled")
-    ) {
+    if (!activeItem && runs.length === 0 && schedules.length > 0) {
       onSelectRun(schedules[0].id, "scheduled");
     }
-  }, [activeItem, runs.length, schedules, tabValue, onSelectRun]);
+  }, [activeItem, runs.length, schedules, onSelectRun]);
 
   useEffect(() => {
     if (templates.length > 0 && tabValue === "templates" && !activeItem) {
@@ -245,9 +224,6 @@ export function useSidebarRunsList({
   return {
     runs,
     schedules,
-    schedulesUnavailable,
-    retrySchedules,
-    retryingSchedules: schedulesQuery.isFetching,
     templates,
     triggers,
     triggerAgents,

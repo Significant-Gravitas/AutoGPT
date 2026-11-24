@@ -1,15 +1,9 @@
 import type { ScheduleCreationRequest } from "@/app/api/__generated__/models/scheduleCreationRequest";
 import { usePostV1CreateExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
-import { scheduleCreateErrorToast } from "@/services/schedules/schedule-create-error";
-import {
-  forgetScheduleCreateKey,
-  withScheduleCreateKey,
-} from "@/services/schedules/schedule-create-key";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { useEffect, useState } from "react";
@@ -29,7 +23,6 @@ export function useCronSchedulerDialog({
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const userId = useAuthStore((state) => state.user?.id);
   const [cronExpression, setCronExpression] = useState<string>("");
   const [scheduleName, setScheduleName] = useState<string>("");
   const [scheduleNameError, setScheduleNameError] = useState<string>("");
@@ -46,8 +39,7 @@ export function useCronSchedulerDialog({
   const { mutateAsync: createSchedule, isPending: isCreatingSchedule } =
     usePostV1CreateExecutionSchedule({
       mutation: {
-        onSuccess: (response, create) => {
-          forgetScheduleCreateKey({ userId, create });
+        onSuccess: (response) => {
           if (response.status === 200) {
             setOpen(false);
             toast({
@@ -57,12 +49,12 @@ export function useCronSchedulerDialog({
             invalidateAllScheduleQueries(queryClient, flowID ?? undefined);
           }
         },
-        onError: (error, create) => {
-          forgetScheduleCreateKey({ userId, create, error });
+        onError: (error) => {
           toast({
             variant: "destructive",
             title: "Failed to create schedule",
-            ...scheduleCreateErrorToast(error),
+            description:
+              (error.detail as string) ?? "An unexpected error occurred.",
           });
         },
       },
@@ -108,21 +100,16 @@ export function useCronSchedulerDialog({
       return;
     }
 
-    await createSchedule(
-      withScheduleCreateKey({
-        userId,
-        create: {
-          graphId: flowID || "",
-          data: {
-            name: scheduleName.trim(),
-            graph_version: flowID ? flowVersion : undefined,
-            cron: cronExpression,
-            inputs: inputs,
-            credentials: credentials,
-          },
-        },
-      }),
-    );
+    await createSchedule({
+      graphId: flowID || "",
+      data: {
+        name: scheduleName.trim(),
+        graph_version: flowID ? flowVersion : undefined,
+        cron: cronExpression,
+        inputs: inputs,
+        credentials: credentials,
+      },
+    });
   }
 
   return {

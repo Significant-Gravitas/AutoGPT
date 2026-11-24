@@ -15,12 +15,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from pydantic import SecretStr
 
 from backend.api.features.experts.spend_approval import SpendApprovalNeeded
 from backend.blocks._base import AnyBlockSchema
 from backend.blocks.ai_condition import AIConditionBlock
-from backend.blocks.baas.bots import BaasBotJoinMeetingBlock
 from backend.blocks.code_executor import ExecuteCodeBlock, InstantiateCodeSandboxBlock
 from backend.blocks.llm import AITextGeneratorBlock, LLMModel, abandoned_call_stats
 from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
@@ -172,17 +170,6 @@ _RUNS: dict[type, tuple[dict[str, Any], APIKeyCredentials]] = {
     ),
     ExecuteCodeBlock: ({"code": "print(1)"}, e2b_credentials),
     InstantiateCodeSandboxBlock: ({"setup_code": ""}, e2b_credentials),
-    # Irreversible, so its saved review is read before it runs; 30 a run.
-    BaasBotJoinMeetingBlock: (
-        {"meeting_url": "https://meet.example.com/standup", "bot_name": "Notes"},
-        APIKeyCredentials(
-            id=str(uuid4()),
-            provider="baas",
-            api_key=SecretStr("not-a-real-key"),
-            title="Meeting BaaS",
-            expires_at=None,
-        ),
-    ),
 }
 
 
@@ -448,31 +435,6 @@ async def test_a_run_refunded_before_any_output_is_not_settled_again():
     assert isinstance(response, ErrorResponse)
     assert wallet.paid == 0
     assert wallet.balance == 100
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_a_run_whose_saved_review_cannot_be_read_costs_nothing():
-    """The step stops before its provider is called when its saved review
-    can't be read, so the debit is given back whole and nothing is settled on
-    top: the balance ends where it started."""
-    block = BaasBotJoinMeetingBlock()
-    wallet = _Wallet(balance=100)
-    reviews = MagicMock(
-        get_reviews_by_node_exec_ids=AsyncMock(side_effect=ConnectionError("down"))
-    )
-    run = AsyncMock()
-
-    with (
-        patch("backend.blocks.helpers.review.review_db", return_value=reviews),
-        patch.object(block, "run", run),
-    ):
-        response = await _run_block(block, wallet)
-
-    assert isinstance(response, ErrorResponse)
-    assert "review saved for step" in response.message
-    assert wallet.debits == [30, -30]
-    assert wallet.balance == 100
-    run.assert_not_called()
 
 
 @pytest.mark.asyncio(loop_scope="session")

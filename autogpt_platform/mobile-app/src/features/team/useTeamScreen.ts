@@ -3,11 +3,22 @@ import { router, useNavigation } from "expo-router";
 import { useRef, useState } from "react";
 
 import { PLAN_REQUIRED_MESSAGE } from "@/features/chat/chatErrors";
-import { latestOrNewSession } from "@/features/marketplace/openExpertChat";
+import { chatKeys, createSession, listSessions } from "@/lib/api/chat";
 import { ApiError } from "@/lib/api/client";
 import { type Expert, expertKeys, listExperts } from "@/lib/api/experts";
-import { isSessionGone, signOut } from "@/lib/session";
-import { openHome } from "@/features/home/openHome";
+import { isSessionGone, queryClient, signOut } from "@/lib/session";
+
+async function latestOrNewSession(expertID: string) {
+  const [latest] = await listSessions({
+    expertID,
+    limit: 1,
+    pinnedFirst: false,
+  });
+  if (latest) return latest.id;
+  const { id } = await createSession(expertID);
+  void queryClient.invalidateQueries({ queryKey: chatKeys.sessions });
+  return id;
+}
 
 export function useTeamScreen() {
   const experts = useQuery({ queryKey: expertKeys.list, queryFn: listExperts });
@@ -53,15 +64,11 @@ export function useTeamScreen() {
   }
 
   function openOtto() {
-    openHome(null);
+    router.navigate("/");
   }
 
   function createExpert() {
     router.navigate("/create-expert");
-  }
-
-  function browseMarketplace() {
-    router.navigate("/marketplace");
   }
 
   return {
@@ -75,6 +82,5 @@ export function useTeamScreen() {
     openExpert,
     openOtto,
     createExpert,
-    browseMarketplace,
   };
 }

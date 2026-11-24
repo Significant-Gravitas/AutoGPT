@@ -45,7 +45,6 @@ from . import shadow
 from .content import ContentVerdict, Image, judge_content
 from .headline import Headline, named
 from .policy import DEFAULT_MODE
-from .spent_approval import UnconfirmedSpend
 
 logger = logging.getLogger(__name__)
 
@@ -197,12 +196,12 @@ async def release_held_read(
         return Release(
             output=_stub(tool_name, source, _WAITING, session), success=False
         )
+    consumed = await review_store.consume(review_id, user_id)
     if review.status == ReviewStatus.REJECTED:
-        await review_store.discard(review, user_id)
         return Release(
             output=_stub(tool_name, source, _REJECTED, session), success=False
         )
-    if not await review_store.consume(review, user_id):
+    if not consumed:
         # The late result took the approved bytes first.
         return Release(
             output=_stub(tool_name, source, _DELIVERED, session), success=False
@@ -227,14 +226,9 @@ async def answered_read(
     Never re-runs the read, and never sets a chat rule: a rejected page says
     nothing about the tool that fetched it.
     """
+    consumed = await review_store.consume(review.node_exec_id, user_id)
     if review.status != ReviewStatus.APPROVED:
-        await review_store.discard(review, user_id)
         return "rejected", _REJECTED
-    try:
-        consumed = await review_store.consume(review, user_id)
-    except Exception as failed:
-        # Nothing was delivered; UnconfirmedSpend tells the fold so.
-        raise UnconfirmedSpend(review.node_exec_id) from failed
     if not consumed:
         # An identical re-read already received the released bytes.
         return "closed", _DELIVERED
@@ -307,7 +301,6 @@ async def screen_read(
             args=args,
             envelope=get_current_envelope(),
             cost_context=await capture_cost_context(user_id),
-            generation=held.card_generation(),
         )
         return await _hold(
             call,
@@ -653,7 +646,6 @@ async def _hold(
         "passage": passage,
         "judged": judged,
         "success": success,
-        review_store.HELD_GENERATION: call.generation,
         # Both seams hand over JSON-encoded text, whose control characters are
         # escaped, so the column's sanitiser leaves it byte-identical.
         "content": output,
@@ -666,8 +658,6 @@ async def _hold(
         headline.text,
     ):
         return _stub(tool_name, source, _UNRECORDABLE, session)
-    if not await held.kept_for_its_card(user_id, session.session_id, call):
-        return _stub(tool_name, source, _WAITING, session)
     return _stub(tool_name, source, _HELD, session, call.review_id)
 
 

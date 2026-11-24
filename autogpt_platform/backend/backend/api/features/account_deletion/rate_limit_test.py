@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -15,12 +16,6 @@ from backend.api.features.account_deletion.rate_limit import (
 )
 
 MODULE = "backend.api.features.account_deletion.rate_limit"
-
-# Only stops a call that missed its deadline: a passing run ends at its
-# short deadline whatever this is, and a CI runner can stall a test for
-# seconds.
-_HANG_SECONDS = 10
-
 USER_ID = "user-1"
 
 
@@ -114,14 +109,15 @@ async def test_a_stalled_redis_fails_open_fast(
     hits: MagicMock,
 ):
     async def stall():
-        await asyncio.sleep(60)
+        await asyncio.sleep(5)
 
     mocker.patch(f"{MODULE}.get_redis_async", side_effect=stall)
 
-    # Forty times the 0.25 s deadline, still well short of the 60 s stall.
-    async with asyncio.timeout(_HANG_SECONDS):
-        with caplog.at_level(logging.WARNING):
-            await enforce_feedback_rate_limit(USER_ID)
+    started = time.monotonic()
+    with caplog.at_level(logging.WARNING):
+        await enforce_feedback_rate_limit(USER_ID)
 
+    # Ten times the 0.25 s deadline, still well short of the 5 s stall.
+    assert time.monotonic() - started < 2.5
     hits.assert_not_called()
     assert "failed open" in caplog.text

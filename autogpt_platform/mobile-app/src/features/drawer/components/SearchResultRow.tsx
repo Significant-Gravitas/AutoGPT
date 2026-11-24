@@ -7,8 +7,6 @@ import { chatTitle, type ChatMatch } from "@/features/drawer/helpers";
 import { createStyles, radius, spacing, type } from "@/lib/theme";
 import { shortTime } from "@/lib/time";
 
-import { ROW_INSET } from "../DrawerRow";
-
 interface Props {
   match: ChatMatch;
   isActive: boolean;
@@ -44,7 +42,7 @@ export function SearchResultRow({ match, isActive, onOpenChat }: Props) {
         name={group.label}
         source={group.avatar}
         tint={group.tint}
-        size={28}
+        size={32}
       />
       <View style={styles.body}>
         <Text numberOfLines={1} style={styles.title}>
@@ -63,14 +61,14 @@ const useStyles = createStyles((colors) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    minHeight: 56,
-    paddingHorizontal: ROW_INSET - 3,
+    minHeight: 52,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: radius.md,
   },
-  active: { backgroundColor: colors.menuRowActive },
+  active: { backgroundColor: colors.surfaceRaised },
   pressed: { backgroundColor: colors.surfacePressed },
   body: { flex: 1, minWidth: 0 },
-  title: { ...type.body, fontSize: 17, lineHeight: 22, color: colors.text },
-  meta: { ...type.small, fontSize: 14, color: colors.textSecondary },
+  title: { ...type.label, color: colors.text },
+  meta: { ...type.small, color: colors.textTertiary },
 }));

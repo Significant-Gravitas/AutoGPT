@@ -173,10 +173,10 @@ class TestNeutraliseTags:
         whitespace must not take quadratic time on the event loop (the
         previous pattern took seconds for 20,000 spaces)."""
         run = " " * 200_000
-        started = time.thread_time()
+        started = time.perf_counter()
         untouched = recall_render.neutralise_tags("<" + run)
         neutralised = recall_render.neutralise_tags("<" + run + "/" + run + "tag")
-        elapsed = time.thread_time() - started
+        elapsed = time.perf_counter() - started
         assert untouched == "<" + run
         assert neutralised == "<!" + run + "/" + run + "tag"
         assert elapsed < 1.0, f"neutralising took {elapsed:.2f}s"

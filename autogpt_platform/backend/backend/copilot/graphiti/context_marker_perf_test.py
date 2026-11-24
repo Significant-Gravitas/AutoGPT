@@ -10,9 +10,9 @@ from .context_marker import (
 def test_many_unclosed_marked_tags_are_scrubbed_promptly() -> None:
     text = (f"<temporal_context {INJECTED_MEMORY_MARKER}") * 1000
 
-    started = time.thread_time()
+    started = time.perf_counter()
     scrubbed = INJECTED_MEMORY_BLOCK_RE.sub("", text)
-    elapsed = time.thread_time() - started
+    elapsed = time.perf_counter() - started
 
     assert scrubbed == text
     assert elapsed < 1.0

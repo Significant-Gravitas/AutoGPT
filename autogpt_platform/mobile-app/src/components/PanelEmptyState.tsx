@@ -55,7 +55,7 @@ const useStyles = createStyles((colors) => ({
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.panelCard,
+    backgroundColor: colors.background,
   },
   // The web's smooth-shadow-ring-sm: a faint ring plus a soft shadow.
   lightRing: {

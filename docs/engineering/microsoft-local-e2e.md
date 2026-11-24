@@ -87,25 +87,19 @@ calendar, files, Teams and Work IQ tools follow it.
   verified. Any other address joins no existing account (Better Auth
   answers `account_not_linked`) and creates none
   (`microsoft-sign-up-policy.ts` refuses with the same
-  `account_not_linked`), so the redirect is the same either way and doesn't
-  reveal whether an account uses the address. An address Microsoft vouches
-  for joins an existing account only once the code emailed there is typed
-  into /login (`require-sign-in-code.ts`), unless the Microsoft account is
-  that Outlook.com mailbox (`mailbox-provider.ts`): an organization vouching
-  for its domain doesn't run the mailbox. Every provider follows the same
-  rule. "Outlook.com"
-  here means the domains in `MICROSOFT_MAIL_DOMAINS`, each checked to route
-  mail to Outlook.com's consumer servers. Sign-in reads only name and email:
-  it asks for `openid profile email` and no Graph permission, and Better
-  Auth's profile-photo fetch is switched off. Only the redirect flow signs
-  in: Better Auth's ID-token sign-in is switched off for Microsoft. The code
-  can't be a link to click: the mailbox's owner could open it for someone
-  else's sign-in, and that person's Microsoft login would then sign in to
-  the account. It is typed into the browser that started the sign-in.
+  `account_not_linked` and no message, so the redirect is the same either
+  way and doesn't reveal whether an account uses the address), whether
+  or not email verification is on. "Outlook.com" here means the domains in
+  `MICROSOFT_MAIL_DOMAINS`, each checked to route mail to Outlook.com's
+  consumer servers. Sign-in reads only name and email: it asks for
+  `openid profile email` and no Graph permission, and Better Auth's
+  profile-photo fetch is switched off. Only the redirect flow signs in: Better Auth's
+  ID-token sign-in is switched off for Microsoft. Emailing a confirmation link instead would not be
+  safe: the mailbox's owner could confirm it, and the other person's
+  Microsoft login would still sign in to the account.
   An AutoGPT team address (`@agpt.co`) gets an account only through Google,
-  however Microsoft vouches for it (`team_email_requires_google`), and a
-  code doesn't change that; a team member's existing account can add
-  Microsoft with the code. The hook runs
+  however Microsoft vouches for it (`team_email_requires_google`); a team
+  member's existing account still signs in with Microsoft. The hook runs
   these Microsoft checks before the rules every provider shares, so a
   Microsoft sign-up gets these codes, which /login explains. Every
   provider's refused sign-in returns to /login with the page's `next`, so

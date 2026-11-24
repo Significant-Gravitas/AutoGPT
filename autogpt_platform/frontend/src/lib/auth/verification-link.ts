@@ -10,6 +10,7 @@ interface Args {
   getAuthContext: () => Promise<AuthEmailContext>;
   hasPlatformUser: (userId: string) => Promise<boolean>;
   requireEmailVerification: boolean;
+  resetRedirectTo: string;
 }
 
 /**
@@ -64,7 +65,7 @@ async function sendsSetPasswordLink(args: Args) {
     true,
   );
   if (!used) return false;
-  await sendSetPasswordLink(context, args.user);
+  await sendSetPasswordLink(context, args.user, args.resetRedirectTo);
   return true;
 }
 

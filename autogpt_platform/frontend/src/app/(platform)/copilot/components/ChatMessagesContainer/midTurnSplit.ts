@@ -216,19 +216,9 @@ function splitAssistantMessage(message: ChatMessage): ChatMessage[] {
   return rows;
 }
 
-const FOLLOW_UP_ROW_ID_PREFIX = "midturn-";
-
-/** The bubble a drain hint draws for a follow-up taken into a running turn,
- *  which does not start a turn of its own. */
-export function isMidTurnFollowUpRow(message: ChatMessage): boolean {
-  return (
-    message.role === "user" && message.id.startsWith(FOLLOW_UP_ROW_ID_PREFIX)
-  );
-}
-
 function makeFollowUpRow(id: string, content: string): ChatMessage {
   return {
-    id: `${FOLLOW_UP_ROW_ID_PREFIX}${id}`,
+    id: `midturn-${id}`,
     role: "user",
     parts: [{ type: "text", text: content, state: "done" }],
   };

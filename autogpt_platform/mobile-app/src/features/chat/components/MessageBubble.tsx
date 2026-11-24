@@ -9,12 +9,10 @@ import { messageFiles } from "../attachmentHelpers";
 import { groupParts } from "../steps";
 import { Markdown } from "./Markdown";
 import { OnboardingCard } from "./OnboardingCard/OnboardingCard";
-import { SetupCard } from "./SetupCard/SetupCard";
 import { StepsBlock } from "./StepsBlock";
 
 interface Props {
   message: UIMessage;
-  sessionID: string;
   isLive?: boolean;
   /** Text of the next message, or null when this one is the last. */
   replyText: string | null;
@@ -24,7 +22,6 @@ interface Props {
 
 export function MessageBubble({
   message,
-  sessionID,
   isLive = false,
   replyText,
   isBusy,
@@ -75,19 +72,6 @@ export function MessageBubble({
             <OnboardingCard
               key={block.key}
               part={block.part}
-              replyText={replyText}
-              isBusy={isBusy}
-              onSend={onSend}
-            />
-          );
-        }
-        if (block.kind === "setup") {
-          return (
-            <SetupCard
-              key={block.key}
-              sessionID={sessionID}
-              toolCallID={block.key}
-              setup={block.setup}
               replyText={replyText}
               isBusy={isBusy}
               onSend={onSend}

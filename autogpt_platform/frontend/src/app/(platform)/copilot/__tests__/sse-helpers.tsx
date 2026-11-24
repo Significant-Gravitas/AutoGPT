@@ -18,7 +18,6 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UIMessageChunk } from "ai";
 import { http, type HttpHandler } from "msw";
-import { parseAsString, useQueryState } from "nuqs";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { ReactElement, ReactNode, StrictMode, useState } from "react";
 import { expect } from "vitest";
@@ -106,18 +105,16 @@ export function copilotStreamSequenceHandler({
 function Wrapper({
   children,
   searchParams,
-  hasMemory,
 }: {
   children: ReactNode;
   searchParams: string;
-  hasMemory: boolean;
 }) {
   const [queryClient] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
   );
   return (
     <QueryClientProvider client={queryClient}>
-      <NuqsTestingAdapter searchParams={searchParams} hasMemory={hasMemory}>
+      <NuqsTestingAdapter searchParams={searchParams}>
         <BackendAPIProvider>
           <OnboardingProvider>
             <TooltipProvider>
@@ -127,18 +124,6 @@ function Wrapper({
         </BackendAPIProvider>
       </NuqsTestingAdapter>
     </QueryClientProvider>
-  );
-}
-
-/** Keyed by session as `CopilotPage` mounts it, so creating one remounts it. */
-function SessionKeyedHost() {
-  const [sessionId] = useQueryState("sessionId", parseAsString);
-  return (
-    <CopilotChatHost
-      key={`chat-host-${sessionId ?? "new"}`}
-      droppedFiles={[]}
-      onDroppedFilesConsumed={() => {}}
-    />
   );
 }
 
@@ -159,9 +144,6 @@ export function renderHost(
     /** Mount under React Strict Mode, as the dev server does: every effect
      *  runs twice on mount, so load-time requests fire twice. */
     strictMode?: boolean;
-    /** Start with no session, as a new chat does: the first send creates
-     *  one, and the host remounts under it. */
-    newChat?: boolean;
     /** Renders this instead of the chat host, e.g. the whole page when a test
      *  needs what the page mounts beside the chat. */
     ui?: ReactElement;
@@ -209,19 +191,14 @@ export function renderHost(
       reason: null,
     }),
   );
-  const host =
-    opts.ui ??
-    (opts.newChat ? (
-      <SessionKeyedHost />
-    ) : (
-      <CopilotChatHost droppedFiles={[]} onDroppedFilesConsumed={() => {}} />
-    ));
-  const searchParams = opts.newChat
-    ? ""
-    : (opts.searchParams ?? `?sessionId=${TEST_SESSION_ID}`);
+  const host = opts.ui ?? (
+    <CopilotChatHost droppedFiles={[]} onDroppedFilesConsumed={() => {}} />
+  );
   return render(opts.strictMode ? <StrictMode>{host}</StrictMode> : host, {
     wrapper: ({ children }) => (
-      <Wrapper searchParams={searchParams} hasMemory={!!opts.newChat}>
+      <Wrapper
+        searchParams={opts.searchParams ?? `?sessionId=${TEST_SESSION_ID}`}
+      >
         {children}
       </Wrapper>
     ),

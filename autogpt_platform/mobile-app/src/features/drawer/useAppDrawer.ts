@@ -12,17 +12,13 @@ import { chatKeys, listSessionsPage } from "@/lib/api/chat";
 import { expertKeys, listExperts } from "@/lib/api/experts";
 import { useSession } from "@/lib/auth/nativeSession";
 import { signOut } from "@/lib/session";
-import { openHome } from "@/features/home/openHome";
 
 const CHAT_PATH_PREFIX = "/chat/";
 
-export function useAppDrawer(
-  navigation: DrawerContentComponentProps["navigation"],
-) {
+export function useAppDrawer(navigation: DrawerContentComponentProps["navigation"]) {
   const pathname = usePathname();
   const session = useSession();
   const [query, setQuery] = useState("");
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: chatKeys.sessions,
     queryFn: () => listSessionsPage({ limit: DRAWER_SESSION_LIMIT }),
@@ -33,18 +29,7 @@ export function useAppDrawer(
     ? pathname.slice(CHAT_PATH_PREFIX.length)
     : undefined;
 
-  function openSearch() {
-    setIsSearchOpen(true);
-  }
-
-  function closeSearch() {
-    setQuery("");
-    setIsSearchOpen(false);
-  }
-
   function openChat(sessionID: string) {
-    // The next time the menu opens it shows its rows, not these results.
-    closeSearch();
     router.navigate({
       pathname: "/chat/[sessionId]",
       params: { sessionId: sessionID },
@@ -53,17 +38,12 @@ export function useAppDrawer(
   }
 
   function newChat() {
-    openHome(null);
+    router.navigate("/");
     navigation.closeDrawer();
   }
 
   function openTeam() {
     router.navigate("/team");
-    navigation.closeDrawer();
-  }
-
-  function openMarketplace() {
-    router.navigate("/marketplace");
     navigation.closeDrawer();
   }
 
@@ -92,9 +72,6 @@ export function useAppDrawer(
   return {
     query,
     setQuery,
-    isSearchOpen,
-    openSearch,
-    closeSearch,
     isSearching: query.trim().length > 0,
     groups,
     matches: searchChats(groups, query),
@@ -109,7 +86,6 @@ export function useAppDrawer(
     openChat,
     newChat,
     openTeam,
-    openMarketplace,
     openAllChats,
     openSettings,
     handleSignOut,

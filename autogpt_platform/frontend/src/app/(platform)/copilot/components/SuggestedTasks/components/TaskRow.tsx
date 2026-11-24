@@ -87,7 +87,7 @@ export function TaskRow({
               tone="success-strong"
               className="sm:whitespace-nowrap"
             >
-              <span>{`In progress with ${name}`}</span>
+              In progress with {name}
             </Text>
           </RowText>
         </NextLink>
@@ -191,9 +191,7 @@ function RowText({
               Start here
             </span>
           ) : null}
-          {/* Own element: a translator rewriting the title must not detach
-              the node "Start here" is inserted before. */}
-          <span>{task.title}</span>
+          {task.title}
         </Text>
         {showWhy && task.why ? (
           <Text

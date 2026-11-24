@@ -1,6 +1,5 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { uploadFileDirect } from "@/lib/direct-upload";
-import { stashCopilotPrompt } from "@/services/copilot/prompt-handoff";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { v4 as uuidv4 } from "uuid";
@@ -36,12 +35,12 @@ function storeAndRedirect(
   fileInfo: { fileId: string; fileName: string; mimeType: string },
   router: ReturnType<typeof useRouter>,
 ) {
-  stashCopilotPrompt({
-    prompt: "Import this workflow and recreate it as an AutoGPT workflow",
-    autosubmit: true,
-    file: fileInfo,
-  });
-  router.push("/copilot?source=import");
+  sessionStorage.setItem(
+    "importWorkflowPrompt",
+    "Import this workflow and recreate it as an AutoGPT workflow",
+  );
+  sessionStorage.setItem("importWorkflowFile", JSON.stringify(fileInfo));
+  router.push("/copilot?source=import&autosubmit=true");
 }
 
 export function useExternalWorkflowTab() {

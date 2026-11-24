@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+from openai import AsyncOpenAI
 from pydantic import SecretStr
 
 from backend.copilot.budget_gate import AutoContinueGate
@@ -236,7 +237,7 @@ class _CodexAccount(CodexAgentSession):
 
 def _codex_lease(provider: FakeProvider) -> CodexCredentialLease:
     credentials = _codex_credentials()
-    client = provider.openai_client("/codex", api_key="codex-billing-e2e")
+    client = AsyncOpenAI(api_key="codex-billing-e2e", base_url=f"{provider.url}/codex")
     session = CodexHttpSession(
         credentials,
         turn_timeout_seconds=120,

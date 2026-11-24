@@ -24,7 +24,6 @@ import z from "zod";
 import { login as loginAction } from "./actions";
 import { getPostLoginPath, getSignInErrorNotice } from "./helpers";
 import { isTeamEmail } from "@/lib/auth/team-email";
-import { SIGN_IN_CODE_SENT } from "@/lib/auth/sign-in-code";
 import { clearImpersonationEverywhere } from "@/lib/impersonation";
 
 export function useLoginPage() {
@@ -69,9 +68,6 @@ export function useLoginPage() {
     searchParams.get("error"),
     searchParams.get("provider"),
   );
-  // A provider sign-in that can't vouch for its address waits on a code
-  // emailed there (require-sign-in-code.ts).
-  const isWaitingOnCode = searchParams.get("error") === SIGN_IN_CODE_SENT;
   const showBannedNotice = isBannedNotice(searchParams);
 
   // Only honour explicit `?next=` deep links here. Generic "already logged in
@@ -180,26 +176,16 @@ export function useLoginPage() {
     }
   }
 
-  // Back to the form, keeping only the deep link.
-  function handleLeaveSignInCode() {
-    router.replace(
-      safeNext ? `/login?next=${encodeURIComponent(safeNext)}` : "/login",
-    );
-  }
-
   return {
     form,
     formRef,
     feedback:
       feedback ??
       signInErrorNotice ??
-      (isWaitlisted || isWaitingOnCode
-        ? null
-        : getSocialSignInError(microsoftErrorCode)),
+      (isWaitlisted ? null : getSocialSignInError(microsoftErrorCode)),
     nextUrl: safeNext,
     verificationEmail,
     verificationNotice,
-    isWaitingOnCode,
     showBannedNotice,
     user,
     isLoading,
@@ -216,6 +202,5 @@ export function useLoginPage() {
     handleProviderLogin,
     handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
     handleBackToLogin: () => setVerificationEmail(null),
-    handleLeaveSignInCode,
   };
 }

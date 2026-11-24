@@ -1,6 +1,5 @@
 import { postV1CompleteOnboardingStep } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import * as Sentry from "@sentry/nextjs";
 import { trackAdsConversion } from "@/services/analytics/google-ads";
 import { trackTrialCheckoutAbandoned } from "@/services/analytics/monetization-analytics";
 import { environment } from "@/services/environment";
@@ -59,26 +58,6 @@ export function useOnboardingPage() {
     userID: string | undefined;
     message: string;
   } | null>(null);
-  const setupWaitingFor = [
-    !user && "account",
-    !isReady && "layout",
-    !progress.isReady && "progress",
-  ].filter((input): input is string => typeof input === "string");
-  // Once per page: the placeholder remounts as the page moves between its
-  // loading states, and one slow setup is one report.
-  const reportedSlowSetup = useRef(false);
-
-  function reportSlowSetup() {
-    if (reportedSlowSetup.current) return;
-    reportedSlowSetup.current = true;
-    Sentry.captureMessage("Onboarding setup did not load in time", {
-      level: "warning",
-      tags: {
-        context: "onboarding-setup",
-        waiting_for: setupWaitingFor.join(","),
-      },
-    });
-  }
 
   useEffect(() => {
     return () => {
@@ -175,7 +154,5 @@ export function useOnboardingPage() {
     totalSteps,
     trialConfirmation,
     paidConfirmation,
-    setupWaitingFor,
-    reportSlowSetup,
   };
 }

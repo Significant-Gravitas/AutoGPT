@@ -9,7 +9,6 @@ import {
 } from "../copilotStreamStore";
 import type { ExpertKickoffMetadata } from "../expertKickoff";
 import type { SendInput } from "../stream/turnRuntime";
-import type { ReplyTimingStart } from "./replyTiming";
 import {
   isFolderPart,
   MAX_ATTACHMENTS,
@@ -26,8 +25,6 @@ export interface OutgoingMessage {
   files: File[];
   parts: StoredAttachmentPart[];
   metadata?: ExpertKickoffMetadata;
-  /** When the user sent it, for the reply timing. */
-  timing?: ReplyTimingStart;
 }
 
 interface UploadedFile {
@@ -36,10 +33,7 @@ interface UploadedFile {
   mime_type: string;
 }
 
-type SendMessageFn = (
-  message: SendInput,
-  timing?: ReplyTimingStart,
-) => Promise<void>;
+type SendMessageFn = (message: SendInput) => Promise<void>;
 
 interface SendArgs {
   sessionId: string;
@@ -90,7 +84,7 @@ export async function sendWithAttachments({
   sendMessage,
   waitUntilReady,
 }: SendArgs) {
-  const { text, files, parts, metadata, timing } = message;
+  const { text, files, parts, metadata } = message;
   // The per-click UUID that becomes the backend's ``ChatMessage.id``
   // is generated inside the transport's ``prepareSendMessagesRequest``
   // (one call per ``sendMessages``, stable across SDK-internal
@@ -100,7 +94,7 @@ export async function sendWithAttachments({
   // target and break the optimistic-render path that pushes the user
   // bubble into ``messages`` synchronously.
   if (files.length === 0 && !waitUntilReady) {
-    await sendMessage(messageInput(text, parts, metadata), timing);
+    await sendMessage(messageInput(text, parts, metadata));
     return;
   }
   // The bubble shows right away; the transcript reads "Uploading N files…"
@@ -127,7 +121,7 @@ export async function sendWithAttachments({
       sentParts = parts;
     }
     if (waitUntilReady && !(await waitUntilReady())) return;
-    send = sendMessage(messageInput(text, sentParts, metadata), timing);
+    send = sendMessage(messageInput(text, sentParts, metadata));
   } finally {
     // `sendMessage` pushes the user bubble into `messages` synchronously,
     // so the placeholder can go in the same tick with no gap between the

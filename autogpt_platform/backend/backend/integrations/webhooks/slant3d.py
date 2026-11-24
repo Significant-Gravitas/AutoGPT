@@ -16,7 +16,6 @@ from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks._base import BaseWebhooksManager
 from backend.util.exceptions import WebhookSetupUnavailableError
 from backend.util.request import Requests
-from backend.util.url_redaction import mask_credential
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +158,7 @@ class Slant3DWebhooksManager(BaseWebhooksManager):
     ) -> None:
         if webhook.config.get("api_version") != 2:
             logger.warning(
-                f"Manual deregistration required for legacy Slant3D webhook {mask_credential(webhook.id)}"
+                f"Manual deregistration required for legacy Slant3D webhook {webhook.id}"
             )
             return
         platform = await self._platform_request("GET", webhook.resource, credentials)

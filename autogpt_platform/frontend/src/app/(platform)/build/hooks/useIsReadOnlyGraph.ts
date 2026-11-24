@@ -35,10 +35,9 @@ export function useIsReadOnlyGraph() {
   // anyone who isn't the confirmed owner (including a logged-out viewer) is
   // read-only — failing safe toward read-only rather than toward editable. A
   // fetch failure also fails safe to read-only, so a graph that couldn't load
-  // never falls into the fully-editable "new agent" state. A refetch that fails
-  // (window focus, a network blip) keeps the graph it had, so it changes none.
+  // never falls into the fully-editable "new agent" state.
   const isReadOnly =
-    (!!flowID && isGraphError && !graph) ||
+    (!!flowID && isGraphError) ||
     (!!graph && !isUserLoading && (!user || graph.user_id !== user.id));
 
   return { isReadOnly };

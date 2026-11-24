@@ -48,7 +48,7 @@ from backend.copilot.builder_context import (
 )
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
-from backend.copilot.constants import BUDGET_EXHAUSTED_NOTICE, EMPTY_COMPLETION_NOTICE
+from backend.copilot.constants import EMPTY_COMPLETION_NOTICE
 from backend.copilot.context import (
     get_workspace_manager,
     is_unattended_turn,
@@ -274,7 +274,10 @@ _LAST_ITERATION_HINT = (
 
 # Fallback surfaced when the tool-round budget is exhausted *and* the forced-
 # text last round left the user with zero visible response.
-_BUDGET_EXHAUSTED_FALLBACK_TEXT = BUDGET_EXHAUSTED_NOTICE
+_BUDGET_EXHAUSTED_FALLBACK_TEXT = (
+    "Reached the tool-call budget for this turn. "
+    "Send a follow-up message to continue from here."
+)
 
 
 def _silent_finish_fallback_events(

@@ -6,15 +6,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 
-from backend.copilot import database_manager_fixtures
 from backend.copilot.sdk import service as sdk_service
 
 from .ledger import PlatformLedger
 from .provider import FakeProvider
-
-# No database manager runs in the copilot-sdk shard (see sdk/conftest.py).
-fake_database_manager_clients = database_manager_fixtures.fake_database_manager_clients
-database_manager = database_manager_fixtures.database_manager
 
 
 @pytest_asyncio.fixture(loop_scope="function")

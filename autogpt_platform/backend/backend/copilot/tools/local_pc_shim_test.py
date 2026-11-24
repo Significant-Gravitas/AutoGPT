@@ -32,11 +32,6 @@ from .local_pc_shim import (
     _RpcAttemptFailed,
 )
 
-# Each guard below only stops a hung test or a wait that ignored its budget:
-# a passing run ends at its short timeout, and a CI runner can stall a test
-# for seconds.
-_HANG_SECONDS = 10
-
 
 @pytest.mark.asyncio
 async def test_correlated_response_requires_exact_response_type_and_id() -> None:
@@ -398,7 +393,7 @@ class TestShimConnectionManager:
                 manager.revoke_user_shims(
                     "user-1", "autogpt-local-executor", reason="user_revoked"
                 ),
-                timeout=_HANG_SECONDS,
+                timeout=0.2,
             )
 
         websocket.send_text.assert_awaited_once()
@@ -438,31 +433,22 @@ class TestShimConnectionManager:
                 manager.revoke_user_shims(
                     "user-1", "autogpt-local-executor", reason="user_revoked"
                 ),
-                timeout=_HANG_SECONDS,
+                timeout=0.2,
             )
 
         assert relay_started.is_set()
 
     @pytest.mark.asyncio
     async def test_wait_for_uses_one_timeout_budget(self):
-        class RecordingRelay(TestShimConnectionManager.NoPresenceRelay):
-            def __init__(self):
-                super().__init__()
-                self.budgets: list[float] = []
+        manager = ShimConnectionManager(relay=self.NoPresenceRelay())
+        started = asyncio.get_running_loop().time()
+        with pytest.raises(TimeoutError, match="did not connect within"):
+            await manager.wait_for("missing", timeout=0.03)
+        elapsed = asyncio.get_running_loop().time() - started
 
-            async def wait_for_presence(self, session_id: str, *, timeout: float):
-                self.budgets.append(timeout)
-                return await super().wait_for_presence(session_id, timeout=timeout)
-
-        relay = RecordingRelay()
-        manager = ShimConnectionManager(relay=relay)
-        async with asyncio.timeout(_HANG_SECONDS):
-            with pytest.raises(TimeoutError, match="did not connect within"):
-                await manager.wait_for("missing", timeout=0.03)
-
-        # The relay is given what is left of the caller's 30 ms: less than all
-        # of it, as the clock has moved since the call began.
-        assert relay.budgets and max(relay.budgets) < 0.03
+        # 10x the budget: room for a stalled runner, and still far short of a
+        # wait that ignored the budget.
+        assert elapsed < 0.3
 
     @pytest.mark.asyncio
     async def test_cached_presence_lookup_cannot_miss_direct_registration(self):
@@ -494,16 +480,19 @@ class TestShimConnectionManager:
     async def test_cached_presence_lookup_uses_original_timeout_budget(self):
         class SlowCachedRelay(TestShimConnectionManager.NoPresenceRelay):
             async def get_presence(self, session_id: str):
-                await asyncio.sleep(60)
+                await asyncio.sleep(1)
                 return None
 
         manager = ShimConnectionManager(relay=SlowCachedRelay())
         manager._relay_transports["stale"] = MagicMock()
         manager._relay_connection_ids["stale"] = "old-connection"
+        started = asyncio.get_running_loop().time()
 
-        async with asyncio.timeout(_HANG_SECONDS):
-            with pytest.raises(TimeoutError):
-                await manager.wait_for("stale", timeout=0.03)
+        with pytest.raises(TimeoutError):
+            await manager.wait_for("stale", timeout=0.03)
+
+        elapsed = asyncio.get_running_loop().time() - started
+        assert elapsed < 0.3
 
     @pytest.mark.asyncio
     async def test_transport_open_uses_original_timeout_budget(self):
@@ -518,14 +507,17 @@ class TestShimConnectionManager:
                 )
 
             async def open_transport(self, presence):
-                await asyncio.sleep(60)
+                await asyncio.sleep(1)
                 raise AssertionError("open should be cancelled by the timeout")
 
         manager = ShimConnectionManager(relay=SlowOpenRelay())
+        started = asyncio.get_running_loop().time()
 
-        async with asyncio.timeout(_HANG_SECONDS):
-            with pytest.raises(TimeoutError):
-                await manager.wait_for("slow-open", timeout=0.03)
+        with pytest.raises(TimeoutError):
+            await manager.wait_for("slow-open", timeout=0.03)
+
+        elapsed = asyncio.get_running_loop().time() - started
+        assert elapsed < 0.3
 
     @pytest.mark.asyncio
     async def test_duplicate_session_revokes_old_connection_without_losing_new(self):

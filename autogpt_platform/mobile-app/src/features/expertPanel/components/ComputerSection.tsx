@@ -39,6 +39,6 @@ const useStyles = createStyles((colors) => ({
     borderRadius: radius.sm,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.panelTabTrack,
+    backgroundColor: colors.surfaceRaised,
   },
 }));

@@ -18,15 +18,13 @@ interface Props {
   tint?: string | null;
   /** Draw the picture at 70% of the circle, for art with its own margin. */
   inset?: boolean;
-  /** Fills the circle in place of the tint, e.g. the card colour on a grey panel. */
-  background?: string;
 }
 
 export function ExpertAvatar(props: Props) {
   return <AvatarImage key={String(props.source)} {...props} />;
 }
 
-function AvatarImage({ name, source, size, tint, inset, background }: Props) {
+function AvatarImage({ name, source, size, tint, inset }: Props) {
   const styles = useStyles();
   const colors = useColors();
   const scheme = useScheme();
@@ -35,9 +33,11 @@ function AvatarImage({ name, source, size, tint, inset, background }: Props) {
     width: size,
     height: size,
     borderRadius: size / 2,
-    backgroundColor:
-      background ??
-      mixHex(tint ?? palette.general.hex, avatarTintPercent[scheme], colors.avatarTintBase),
+    backgroundColor: mixHex(
+      tint ?? palette.general.hex,
+      avatarTintPercent[scheme],
+      colors.avatarTintBase,
+    ),
   };
 
   function handleError() {

@@ -176,22 +176,6 @@
     }
   },
   {
-    "name": "mcp_anysearch",
-    "display_name": "AnySearch",
-    "description": "Search the web and specialist verticals such as finance, academic papers and code, run up to five searches in parallel, and extract page content as Markdown.",
-    "mcp_server": {
-      "server_url": "https://api.anysearch.com/mcp",
-      "documentation_url": "https://www.anysearch.com/docs/mcp-install",
-      "setup_instructions": "Create an API key at https://www.anysearch.com/console/api-keys and paste it as the access token. It is the same key the AnySearch blocks use. Each successful search or page extraction uses one call from the key's quota.",
-      "connection_mode": "hosted",
-      "auth_methods": [
-        "bearer"
-      ],
-      "icon_id": "anysearch",
-      "provider": "anysearch"
-    }
-  },
-  {
     "name": "mcp_apify",
     "display_name": "Apify",
     "description": "Discover and run scraping and extraction Actors, and read their results.",

@@ -38,11 +38,6 @@ from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.test import SpinTestServer
 
-# Each wait below only stops a hung test, and each wall-clock bound only
-# catches a missed deadline: a passing run ends at its short deadline
-# whatever this is, and a CI runner can stall a test for seconds.
-_HANG_SECONDS = 10
-
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_agent_schedule(server: SpinTestServer):
@@ -1019,10 +1014,10 @@ class TestMemoryScopeGateBridge:
             started = time.monotonic()
             fires = _memory_scope_may_fire(MemoryScope.for_user("abc"))
             elapsed = time.monotonic() - started
-            assert hang.cancelled.wait(timeout=_HANG_SECONDS)
+            assert hang.cancelled.wait(timeout=2)
 
         assert fires is False
-        assert elapsed < _HANG_SECONDS
+        assert elapsed < 1.0
 
     @pytest.mark.parametrize("bridge", ["stamp", "forget"])
     def test_the_other_memory_bridges_cancel_what_they_give_up_on(
@@ -1040,7 +1035,7 @@ class TestMemoryScopeGateBridge:
                 scheduler_module._stamp_scope_run(scope, "nightly")
             else:
                 scheduler_module._forget_dream_registration(scope, DREAM_SYSTEM_JOBS[0])
-            assert hang.cancelled.wait(timeout=_HANG_SECONDS)
+            assert hang.cancelled.wait(timeout=2)
 
     @pytest.mark.parametrize(
         "body",
@@ -1065,9 +1060,9 @@ class TestMemoryScopeGateBridge:
             started = time.monotonic()
             body("abc")
             elapsed = time.monotonic() - started
-            assert hang.cancelled.wait(timeout=_HANG_SECONDS)
+            assert hang.cancelled.wait(timeout=2)
 
-        assert elapsed < _HANG_SECONDS
+        assert elapsed < 1.0
         submit.assert_not_called()
         rebuild.assert_not_called()
 

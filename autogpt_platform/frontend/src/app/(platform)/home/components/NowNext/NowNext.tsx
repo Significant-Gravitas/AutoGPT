@@ -1,6 +1,5 @@
 import { Calendar03Icon } from "@hugeicons/core-free-icons";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
-import { SchedulesUnavailableNotice } from "@/components/contextual/SchedulesUnavailableNotice/SchedulesUnavailableNotice";
 import { HomeSectionLabel } from "../HomeSectionLabel/HomeSectionLabel";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { HomeTile } from "../HomeTile/HomeTile";
@@ -9,8 +8,6 @@ import { UpcomingRow } from "./components/UpcomingRow";
 
 interface Props {
   dashboard: HomeDashboardResponse;
-  onRetry?: () => void;
-  retrying?: boolean;
   className?: string;
 }
 
@@ -19,7 +16,7 @@ interface Props {
 const TIMELINE_CLASS =
   "relative before:absolute before:bottom-5 before:left-[33px] before:top-5 before:w-px before:bg-surface-active";
 
-export function NowNext({ dashboard, onRetry, retrying, className }: Props) {
+export function NowNext({ dashboard, className }: Props) {
   return (
     <HomeTile className={className} icon={Calendar03Icon} title="Now & next">
       {dashboard.active_tasks.length > 0 ? (
@@ -35,15 +32,7 @@ export function NowNext({ dashboard, onRetry, retrying, className }: Props) {
 
       <div className="pb-2">
         <HomeSectionLabel>Coming up</HomeSectionLabel>
-        <SchedulesUnavailableNotice
-          show={!!dashboard.schedules_unavailable}
-          onRetry={onRetry}
-          retrying={retrying}
-          stacked
-          className="mx-4 my-3"
-        />
-        {dashboard.schedules_unavailable ? null : dashboard.upcoming_tasks
-            .length === 0 ? (
+        {dashboard.upcoming_tasks.length === 0 ? (
           <HomeTileEmpty
             title="Nothing is scheduled"
             description="Your team is ready when you are."

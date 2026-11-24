@@ -11,13 +11,14 @@ import {
   Wrench01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react-native";
-import type { DynamicToolUIPart, ToolUIPart, UIMessage } from "ai";
+import {
+  isToolUIPart,
+  type DynamicToolUIPart,
+  type ToolUIPart,
+  type UIMessage,
+} from "ai";
 
 import { ONBOARDING_TOOL } from "./components/OnboardingCard/helpers";
-import {
-  parseSetupRequirements,
-  type SetupRequest,
-} from "./components/SetupCard/helpers";
 
 export type StepPart = ToolUIPart | DynamicToolUIPart;
 
@@ -49,8 +50,7 @@ export type Block =
   | { kind: "text"; key: string; text: string }
   | { kind: "thinking"; key: string }
   | { kind: "steps"; key: string; steps: Step[] }
-  | { kind: "onboarding"; key: string; part: StepPart }
-  | { kind: "setup"; key: string; setup: SetupRequest };
+  | { kind: "onboarding"; key: string; part: StepPart };
 
 export const stepIcons: Record<VisibleStepKind, IconSvgElement> = {
   file: File01Icon,
@@ -69,11 +69,6 @@ const WEB_TOOLS = ["web_search", "web_fetch", "search_docs", "get_doc_page"];
 
 function hasAny(name: string, fragments: string[]) {
   return fragments.some((fragment) => name.includes(fragment));
-}
-
-// The SDK's `isToolUIPart`, kept here: `ai` ships ESM only, which jest can't load.
-function isToolUIPart(part: UIMessage["parts"][number]): part is StepPart {
-  return part.type.startsWith("tool-") || part.type === "dynamic-tool";
 }
 
 /** Internal tool name: never render it or put it in an accessibility label. */
@@ -127,8 +122,7 @@ export function stepState(part: StepPart): StepState {
 /**
  * Splits a message's parts into render blocks. Tool parts separated only by
  * parts that render nothing (step-start, finished reasoning, empty text)
- * share one steps block. The expert onboarding card stands on its own, and
- * so does a result asking the user to connect a service.
+ * share one steps block. The expert onboarding card stands on its own.
  */
 export function groupParts(parts: UIMessage["parts"]): Block[] {
   const blocks: Block[] = [];
@@ -145,15 +139,6 @@ export function groupParts(parts: UIMessage["parts"]): Block[] {
     if (isToolUIPart(part) && stepToolName(part) === ONBOARDING_TOOL) {
       closeRun();
       blocks.push({ kind: "onboarding", key: part.toolCallId, part });
-      return;
-    }
-    const setup =
-      isToolUIPart(part) && part.state === "output-available"
-        ? parseSetupRequirements(part.output, stepToolName(part))
-        : null;
-    if (isToolUIPart(part) && setup) {
-      closeRun();
-      blocks.push({ kind: "setup", key: part.toolCallId, setup });
       return;
     }
     if (isToolUIPart(part)) {

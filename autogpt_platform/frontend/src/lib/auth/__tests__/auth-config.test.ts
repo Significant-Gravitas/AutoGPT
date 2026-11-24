@@ -264,18 +264,18 @@ describe("auth config", () => {
     });
   });
 
-  it("sends password reset emails with the reset link, back to the reset page", async () => {
+  it("sends password reset emails with the reset link", async () => {
     const options = await loadAuthOptions();
 
     await options.emailAndPassword.sendResetPassword({
       user: { email: "user@example.com" },
-      url: "https://platform.example.com/reset/abc?callbackURL=%2Flibrary",
+      url: "https://platform.example.com/reset?token=abc",
     });
 
     expect(sendAuthEmailMock).toHaveBeenCalledWith({
       to: "user@example.com",
       type: "reset_password",
-      url: `https://platform.example.com/reset/abc?callbackURL=${encodeURIComponent("http://localhost:3000/reset-password")}`,
+      url: "https://platform.example.com/reset?token=abc",
     });
   });
 
@@ -303,7 +303,6 @@ describe("auth config", () => {
       "bearer",
       "jwt",
       "supabase-bridge",
-      "sign-in-code",
       "next-cookies",
     ]);
   });

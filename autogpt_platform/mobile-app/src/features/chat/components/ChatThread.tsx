@@ -2,7 +2,6 @@ import { Text, View } from "react-native";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { FLOATING_HEADER_HEIGHT } from "@/components/FloatingHeader";
 import type { SessionDetail } from "@/lib/api/chat";
 import { tapSend, tapStop } from "@/lib/haptics";
 import { createStyles, spacing, type } from "@/lib/theme";
@@ -35,10 +34,8 @@ export function ChatThread({ sessionID, detail, isCached }: Props) {
     loadEarlier,
   } = useChatThread({ sessionID, detail, isCached });
   const files = useAttachments(sessionID);
+  const list = useMessageList();
   const insets = useSafeAreaInsets();
-  // The chat's header floats over the thread, which starts below it.
-  const topInset = insets.top + FLOATING_HEADER_HEIGHT;
-  const list = useMessageList(topInset);
   const styles = useStyles();
   const line = files.message ?? errorMessage;
 
@@ -85,7 +82,6 @@ export function ChatThread({ sessionID, detail, isCached }: Props) {
         isLoadingEarlier={isLoadingEarlier}
         onLoadEarlier={handleLoadEarlier}
         onSend={handleAnswer}
-        topInset={topInset}
         listRef={list.listRef}
         blankSpace={list.blankSpace}
         composerHeight={list.composerHeight}

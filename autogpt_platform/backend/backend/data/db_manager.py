@@ -168,7 +168,6 @@ from backend.data.human_review import (
     cancel_pending_reviews_for_execution,
     check_approval,
     claim_approved_review,
-    delete_review_as_read,
     delete_review_by_node_exec_id,
     get_or_create_human_review,
     get_pending_reviews_for_chat_session,
@@ -476,7 +475,6 @@ class DatabaseManager(AppService):
     cancel_pending_reviews_for_execution = _(cancel_pending_reviews_for_execution)
     check_approval = _(check_approval)
     claim_approved_review = _(claim_approved_review)
-    delete_review_as_read = _(delete_review_as_read)
     delete_review_by_node_exec_id = _(delete_review_by_node_exec_id)
     get_or_create_human_review = _(get_or_create_human_review)
     get_pending_reviews_for_execution = _(get_pending_reviews_for_execution)
@@ -841,7 +839,6 @@ class DatabaseManager(AppService):
     get_chat_messages_by_ids = _(chat_db.get_chat_messages_by_ids)
     append_expert_run_message = _(chat_db.append_expert_run_message)
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
-    list_recent_chat_sessions = _(chat_db.list_recent_chat_sessions)
     get_user_chat_session_groups = _(chat_db.get_user_chat_session_groups)
     set_session_pending_question = _(chat_db.set_session_pending_question)
     clear_session_pending_question = _(chat_db.clear_session_pending_question)
@@ -1072,7 +1069,6 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     cancel_pending_reviews_for_execution = d.cancel_pending_reviews_for_execution
     check_approval = d.check_approval
     claim_approved_review = d.claim_approved_review
-    delete_review_as_read = d.delete_review_as_read
     delete_review_by_node_exec_id = d.delete_review_by_node_exec_id
     get_or_create_human_review = d.get_or_create_human_review
     get_pending_reviews_for_execution = d.get_pending_reviews_for_execution
@@ -1416,7 +1412,6 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     append_expert_run_message = d.append_expert_run_message
     get_library_agent_id_by_graph_id = d.get_library_agent_id_by_graph_id
     get_user_chat_sessions = d.get_user_chat_sessions
-    list_recent_chat_sessions = d.list_recent_chat_sessions
     get_user_chat_session_groups = d.get_user_chat_session_groups
     set_session_pending_question = d.set_session_pending_question
     clear_session_pending_question = d.clear_session_pending_question

@@ -1,6 +1,4 @@
-import asyncio
 import io
-import posixpath
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -9,29 +7,14 @@ import aiohttp
 import fastapi
 import fastapi.testclient
 import pytest
-from multidict import CIMultiDict, CIMultiDictProxy
 from prisma.errors import UniqueViolationError
-from yarl import URL
 
-from backend.api.features.workspace.routes import (
-    RenameFileRequest,
-    delete_workspace_file,
-    rename_workspace_file_route,
-    router,
-)
-from backend.copilot.tools.skills import (
-    ParsedSkill,
-    list_user_skills,
-    render_skill_markdown,
-)
-from backend.copilot.tools.skills_test import _cached_skills, _FakeWorkspaceManager
+from backend.api.features.workspace.routes import router
 from backend.data.skill_capacity import SkillLimitError
 from backend.data.workspace import Workspace, WorkspaceFile
 from backend.data.workspace_scope import WorkspaceScope
 from backend.util.workspace_storage import LocalWorkspaceStorage
 from backend.util.workspace_storage_base import STREAM_CHUNK_BYTES
-
-_ROUTES = "backend.api.features.workspace.routes"
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -491,7 +474,6 @@ def test_delete_file_success(mocker):
         return_value=_make_workspace(),
     )
     mock_manager = mocker.MagicMock()
-    mock_manager.get_file_info = mocker.AsyncMock(return_value=_make_file())
     mock_manager.delete_file = mocker.AsyncMock(return_value=True)
     mocker.patch(
         "backend.api.features.workspace.routes.WorkspaceManager",
@@ -504,17 +486,13 @@ def test_delete_file_success(mocker):
     mock_manager.delete_file.assert_called_once_with("file-aaa-bbb")
 
 
-@pytest.mark.parametrize("found_first", [False, True])
-def test_delete_file_not_found(mocker, found_first):
-    """A file that is missing, or gone by the time it is deleted, is a 404."""
+def test_delete_file_not_found(mocker):
+    """Deleting a non-existent file should return 404."""
     mocker.patch(
         "backend.api.features.workspace.routes.get_workspace",
         return_value=_make_workspace(),
     )
     mock_manager = mocker.MagicMock()
-    mock_manager.get_file_info = mocker.AsyncMock(
-        return_value=_make_file() if found_first else None
-    )
     mock_manager.delete_file = mocker.AsyncMock(return_value=False)
     mocker.patch(
         "backend.api.features.workspace.routes.WorkspaceManager",
@@ -536,114 +514,6 @@ def test_delete_file_no_workspace(mocker):
     response = client.delete("/files/file-aaa-bbb")
     assert response.status_code == 404
     assert "Workspace not found" in response.text
-
-
-class _FilesOverSkills(_FakeWorkspaceManager):
-    """The Files page's view of the fake skills workspace: skill files are
-    plain files there, renamed and deleted by id."""
-
-    async def get_file_info(self, file_id):
-        return next(
-            (
-                _make_file(id=file_id, name=posixpath.basename(path), path=path)
-                for path in self.files
-                if f"id-{path}" == file_id
-            ),
-            None,
-        )
-
-    async def delete_file(self, file_id):
-        found = await self.get_file_info(file_id)
-        await super().delete_file(file_id)
-        return found is not None
-
-    async def rename(self, file_id, workspace_id, name):
-        file = await self.get_file_info(file_id)
-        assert file is not None
-        path = posixpath.join(posixpath.dirname(file.path), name)
-        self.files[path] = self.files.pop(file.path)
-        self.metadata[path] = self.metadata.pop(file.path, {})
-        return _make_file(id=f"id-{path}", name=name, path=path)
-
-
-_EXPERT_SKILL = "/experts/expert-1/skills/brief/SKILL.md"
-
-
-def _files_page_over_skills():
-    files = _FilesOverSkills()
-    files.files[_EXPERT_SKILL] = render_skill_markdown(
-        ParsedSkill(name="brief", description="d", body="steps")
-    ).encode()
-    return files
-
-
-@pytest.mark.asyncio
-async def test_deleting_a_skill_file_reaches_the_owners_cached_skill_index():
-    """Deleting an unassigned root removes it from the next index."""
-    files = _files_page_over_skills()
-    with (
-        _cached_skills(files),
-        patch(
-            f"{_ROUTES}.get_workspace", new=AsyncMock(return_value=_make_workspace())
-        ),
-        patch(f"{_ROUTES}.WorkspaceManager", return_value=files),
-    ):
-        assert [s.name for s in await list_user_skills("u-1", "expert-1")] == ["brief"]
-        await delete_workspace_file(user_id="u-1", file_id=f"id-{_EXPERT_SKILL}")
-
-        assert await list_user_skills("u-1", "expert-1") == []
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "error", [RuntimeError("cleanup failed"), asyncio.CancelledError()]
-)
-async def test_a_deleted_skill_file_leaves_the_index_when_cleanup_fails(error):
-    files = _files_page_over_skills()
-    delete = files.delete_file
-
-    async def delete_then_fail(file_id):
-        await delete(file_id)
-        raise error
-
-    with (
-        _cached_skills(files),
-        patch(f"{_ROUTES}.get_workspace", AsyncMock(return_value=_make_workspace())),
-        patch(f"{_ROUTES}.WorkspaceManager", return_value=files),
-    ):
-        assert [s.name for s in await list_user_skills("u-1", "expert-1")] == ["brief"]
-        with patch.object(files, "delete_file", delete_then_fail), pytest.raises(
-            type(error)
-        ):
-            await delete_workspace_file(user_id="u-1", file_id=f"id-{_EXPERT_SKILL}")
-
-        assert _EXPERT_SKILL not in files.files
-        assert await list_user_skills("u-1", "expert-1") == []
-
-
-@pytest.mark.asyncio
-async def test_renaming_a_skill_file_reaches_the_owners_cached_skill_index():
-    """Renaming an unassigned root removes it from the next index."""
-    files = _files_page_over_skills()
-    with (
-        _cached_skills(files),
-        patch(
-            f"{_ROUTES}.get_workspace", new=AsyncMock(return_value=_make_workspace())
-        ),
-        patch(
-            f"{_ROUTES}.get_workspace_file",
-            AsyncMock(return_value=_make_file(path=_EXPERT_SKILL)),
-        ),
-        patch(f"{_ROUTES}.rename_workspace_file", new=files.rename),
-    ):
-        assert [s.name for s in await list_user_skills("u-1", "expert-1")] == ["brief"]
-        await rename_workspace_file_route(
-            user_id="u-1",
-            file_id=f"id-{_EXPERT_SKILL}",
-            payload=RenameFileRequest(name="notes.md"),
-        )
-
-        assert await list_user_skills("u-1", "expert-1") == []
 
 
 def test_upload_write_file_too_large_returns_413(mocker):
@@ -1270,18 +1140,6 @@ class TestCreateFileDownloadResponse:
         [
             aiohttp.ClientPayloadError("Response payload is not completed"),
             TimeoutError(),
-            aiohttp.ClientResponseError(
-                aiohttp.RequestInfo(
-                    url=URL("https://storage.googleapis.com/storage/v1/b/bucket/o/f"),
-                    method="GET",
-                    headers=CIMultiDictProxy(
-                        CIMultiDict(Authorization="Bearer test-token")
-                    ),
-                ),
-                (),
-                status=503,
-            ),
-            PermissionError(13, "Permission denied", "/srv/workspaces/ws/file.txt"),
         ],
     )
     async def test_persistent_storage_error_returns_502_and_logs(
@@ -1310,8 +1168,6 @@ class TestCreateFileDownloadResponse:
         assert len(errors) == 1
         assert errors[0].exc_info is not None
         assert type(error).__name__ in errors[0].getMessage()
-        assert "test-token" not in caplog.text
-        assert not [r for r in caplog.records if "/srv/" in r.getMessage()]
 
 
 def test_download_file_missing_content_returns_404(mocker):
@@ -1604,10 +1460,7 @@ def _unique_violation() -> UniqueViolationError:
 @patch("backend.api.features.workspace.routes.get_chat_session_expert_ids")
 @patch("backend.api.features.workspace.routes.rename_workspace_file")
 @patch("backend.api.features.workspace.routes.get_workspace")
-def test_rename_file_success(mock_get_workspace, mock_rename, mock_expert_ids, mocker):
-    mocker.patch(
-        f"{_ROUTES}.get_workspace_file", new=AsyncMock(return_value=_make_file())
-    )
+def test_rename_file_success(mock_get_workspace, mock_rename, mock_expert_ids):
     mock_get_workspace.return_value = _make_workspace()
     mock_rename.return_value = _make_file(
         id="f1", name="plan.md", path="/sessions/sess-a/plan.md"
@@ -1625,8 +1478,7 @@ def test_rename_file_success(mock_get_workspace, mock_rename, mock_expert_ids, m
 
 @patch("backend.api.features.workspace.routes.rename_workspace_file")
 @patch("backend.api.features.workspace.routes.get_workspace")
-def test_rename_file_not_found(mock_get_workspace, mock_rename, mocker):
-    mocker.patch(f"{_ROUTES}.get_workspace_file", new=AsyncMock(return_value=None))
+def test_rename_file_not_found(mock_get_workspace, mock_rename):
     mock_get_workspace.return_value = _make_workspace()
     mock_rename.return_value = None
 
@@ -1637,10 +1489,7 @@ def test_rename_file_not_found(mock_get_workspace, mock_rename, mocker):
 
 @patch("backend.api.features.workspace.routes.rename_workspace_file")
 @patch("backend.api.features.workspace.routes.get_workspace")
-def test_rename_file_conflict(mock_get_workspace, mock_rename, mocker):
-    mocker.patch(
-        f"{_ROUTES}.get_workspace_file", new=AsyncMock(return_value=_make_file())
-    )
+def test_rename_file_conflict(mock_get_workspace, mock_rename):
     mock_get_workspace.return_value = _make_workspace()
     mock_rename.side_effect = _unique_violation()
 
@@ -1660,12 +1509,7 @@ def test_rename_file_rejects_bad_names(mock_get_workspace, mock_rename, name):
 
 @patch("backend.api.features.workspace.routes.rename_workspace_file")
 @patch("backend.api.features.workspace.routes.get_workspace")
-def test_rename_file_reports_skill_capacity_conflict(
-    mock_get_workspace, mock_rename, mocker
-):
-    mocker.patch(
-        f"{_ROUTES}.get_workspace_file", new=AsyncMock(return_value=_make_file())
-    )
+def test_rename_file_reports_skill_capacity_conflict(mock_get_workspace, mock_rename):
     mock_get_workspace.return_value = _make_workspace()
     mock_rename.side_effect = SkillLimitError("Skill limit reached (150 saved skills).")
     response = client.patch("/files/f1", json={"name": "SKILL.md"})

@@ -1,9 +1,3 @@
----
-description: >-
-  Self-host the AutoGPT AI agent platform for free on your own servers or
-  on-premises: one Docker command, your own model API keys.
----
-
 # Getting Started with AutoGPT: Self-Hosting Guide
 
 ## Introduction
@@ -17,9 +11,6 @@ to do it:
 - **[Manual Setup](#manual-setup)** clones the repository and builds every
   service with Docker Compose. Use it to develop AutoGPT, or to run each
   service in its own container.
-
-To use AutoGPT without hosting it yourself, see the
-[hosted plans and pricing](https://agpt.co/pricing/).
 
 {% hint style="warning" %}
 **DO NOT FOLLOW ANY OUTSIDE TUTORIALS AS THEY WILL LIKELY BE OUT OF DATE**

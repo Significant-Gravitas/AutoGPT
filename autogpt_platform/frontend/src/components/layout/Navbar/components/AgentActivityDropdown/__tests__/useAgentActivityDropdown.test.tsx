@@ -20,7 +20,6 @@ vi.mock("@/lib/autogpt-server-api/context", () => ({
   useBackendAPI: () => ({
     onWebSocketConnect: () => () => {},
     onWebSocketDisconnect: () => () => {},
-    onWebSocketReconnect: () => () => {},
     onWebSocketMessage: (
       _method: string,
       handler: (execution: GraphExecution) => void,

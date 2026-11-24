@@ -36,13 +36,12 @@ import shutil
 import tempfile
 from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import quote
 
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.model import ChatSession
 from backend.data.workspace_internal import WORKING_FILE_METADATA
 from backend.util.egress_proxy import egress_proxy_url
-from backend.util.request import parse_url, validate_url_host
+from backend.util.request import validate_url_host
 
 from .base import BaseTool
 from .models import (
@@ -376,7 +375,7 @@ async def _restore_browser_state(
         if url:
             # Validate the saved URL to prevent SSRF via stored redirect targets.
             try:
-                url = await _checked_url(url)
+                await validate_url_host(url)
             except ValueError:
                 logger.warning(
                     "[browser] State restore: blocked SSRF URL %s", url[:200]
@@ -673,7 +672,7 @@ class BrowserNavigateTool(BaseTool):
             ).from_outside()
 
         try:
-            url = await _checked_url(url)
+            await validate_url_host(url)
         except ValueError as e:
             return ErrorResponse(
                 message=str(e),
@@ -739,22 +738,6 @@ class BrowserNavigateTool(BaseTool):
 
         return result
 
-
-async def _checked_url(url: str) -> str:
-    """The URL the browser may open: the one ``validate_url_host`` checked,
-    rebuilt from its scheme and host, never the caller's own string. A URL
-    without a scheme (protocol-relative or not) is checked as ``https://``."""
-    url = url.strip().replace("\\", "/").lstrip("/")
-    if "://" not in url:
-        url = f"https://{url}"
-    checked, _, _ = await validate_url_host(url)
-    # The check quotes the path's sub-delimiters too, which changes what a
-    # signed URL signs; keep RFC 3986's path characters as they were.
-    return checked._replace(path=quote(parse_url(url).path, safe=_PATH_CHARS)).geturl()
-
-
-# RFC 3986 pchar beyond unreserved, plus the separator and existing escapes.
-_PATH_CHARS = "/%:@!$&'()*+,;="
 
 # ---------------------------------------------------------------------------
 # Tool: browser_act

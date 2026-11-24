@@ -7,8 +7,6 @@ import { chatTitle, type ChatGroup } from "@/features/drawer/helpers";
 import { createStyles, radius, spacing, type } from "@/lib/theme";
 import { shortTime } from "@/lib/time";
 
-import { ROW_INSET } from "../DrawerRow";
-
 interface Props {
   group: ChatGroup;
   isActive: boolean;
@@ -43,7 +41,7 @@ export function ExpertRecentRow({ group, isActive, onOpenChat }: Props) {
         name={group.label}
         source={group.avatar}
         tint={group.tint}
-        size={28}
+        size={44}
       />
       <View style={styles.body}>
         <View style={styles.line}>
@@ -66,18 +64,18 @@ const useStyles = createStyles((colors) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    minHeight: 56,
-    paddingHorizontal: ROW_INSET - 3,
+    minHeight: 64,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
   },
-  active: { backgroundColor: colors.menuRowActive },
+  active: { backgroundColor: colors.surfaceRaised },
   pressed: { backgroundColor: colors.surfacePressed },
-  body: { flex: 1, minWidth: 0 },
+  body: { flex: 1, minWidth: 0, gap: 2 },
   line: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  name: { ...type.body, fontSize: 17, lineHeight: 22, flex: 1, color: colors.text },
-  time: { ...type.small, color: colors.textSecondary },
-  title: { ...type.small, fontSize: 14, color: colors.textSecondary },
+  name: { ...type.label, flex: 1, color: colors.text },
+  time: { ...type.small, color: colors.textTertiary },
+  title: { ...type.small, color: colors.textSecondary },
   dot: {
     width: 8,
     height: 8,

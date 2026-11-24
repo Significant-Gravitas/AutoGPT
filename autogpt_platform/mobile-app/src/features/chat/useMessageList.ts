@@ -1,7 +1,7 @@
 import type { FlashListRef } from "@shopify/flash-list";
 import { useRef, useState } from "react";
 import { Keyboard, type LayoutChangeEvent } from "react-native";
-import { useDerivedValue, useSharedValue } from "react-native-reanimated";
+import { useSharedValue } from "react-native-reanimated";
 
 import type { Turn } from "./turns";
 
@@ -9,10 +9,8 @@ import type { Turn } from "./turns";
  * The thread's scroll, the way ChatGPT does it: a sent message scrolls to the
  * top of the screen and its reply fills the space below, without the view
  * chasing the stream. Until the first send here, the list keeps to its end.
- * `topInset` is the header floating over the list's top, which the sent
- * message stops below.
  */
-export function useMessageList(topInset: number) {
+export function useMessageList() {
   const listRef = useRef<FlashListRef<Turn>>(null);
   const viewport = useRef(0);
   const lastTurnHeight = useRef(0);
@@ -20,19 +18,13 @@ export function useMessageList(topInset: number) {
   const pendingAnchor = useRef<number | null>(null);
   const [isAnchored, setIsAnchored] = useState(false);
   const [isAtEnd, setIsAtEnd] = useState(true);
-  // The room under the last turn before the header's inset; null while
-  // unanchored. The inset is applied below, so a header that changes height
-  // updates the blank space without a new layout pass.
-  const roomBelow = useSharedValue<number | null>(null);
-  const blankSpace = useDerivedValue(() =>
-    roomBelow.value === null ? 0 : Math.max(0, roomBelow.value - topInset),
-  );
+  const blankSpace = useSharedValue(0);
   const composerHeight = useSharedValue(0);
 
   function updateBlank(anchored: boolean) {
-    roomBelow.value = anchored
-      ? viewport.current - lastTurnHeight.current - BOTTOM_PADDING
-      : null;
+    blankSpace.value = anchored
+      ? Math.max(0, viewport.current - lastTurnHeight.current - BOTTOM_PADDING)
+      : 0;
   }
 
   /** Call once a send is accepted; `turnCount` is the turns shown before it. */

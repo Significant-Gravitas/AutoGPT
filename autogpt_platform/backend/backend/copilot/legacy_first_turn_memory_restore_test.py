@@ -249,10 +249,10 @@ class TestReading:
             ("user", built_to_backtrack(25)),
             ("assistant", "the tag is <memory_context>"),
         )
-        started = time.thread_time()
+        started = time.perf_counter()
 
         assert restore_session_file(built).content is built
-        assert time.thread_time() - started < 1.0
+        assert time.perf_counter() - started < 1.0
 
 
 class TestDownloadTranscript:

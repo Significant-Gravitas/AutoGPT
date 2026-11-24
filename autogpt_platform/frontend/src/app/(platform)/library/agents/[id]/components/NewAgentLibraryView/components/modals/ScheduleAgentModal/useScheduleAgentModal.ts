@@ -2,13 +2,7 @@ import { usePostV1CreateExecutionSchedule as useCreateSchedule } from "@/app/api
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
-import { scheduleCreateErrorToast } from "@/services/schedules/schedule-create-error";
-import {
-  forgetScheduleCreateKey,
-  withScheduleCreateKey,
-} from "@/services/schedules/schedule-create-key";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
@@ -25,7 +19,6 @@ export function useScheduleAgentModal(
 ) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const userId = useAuthStore((state) => state.user?.id);
 
   const defaultScheduleName = useMemo(() => `Run ${agent.name}`, [agent.name]);
   const [scheduleName, setScheduleName] = useState(defaultScheduleName);
@@ -35,8 +28,7 @@ export function useScheduleAgentModal(
 
   const createScheduleMutation = useCreateSchedule({
     mutation: {
-      onSuccess: (response, create) => {
-        forgetScheduleCreateKey({ userId, create });
+      onSuccess: (response) => {
         if (response.status === 200) {
           toast({
             title: "Schedule created",
@@ -49,12 +41,11 @@ export function useScheduleAgentModal(
           callbacks?.onClose?.();
         }
       },
-      onError: (error: unknown, create) => {
-        forgetScheduleCreateKey({ userId, create, error });
+      onError: (error: any) => {
         toast({
           title: "❌ Failed to create schedule",
+          description: error.message || "An unexpected error occurred.",
           variant: "destructive",
-          ...scheduleCreateErrorToast(error),
         });
       },
     },
@@ -73,19 +64,16 @@ export function useScheduleAgentModal(
 
       return new Promise<void>((resolve, reject) => {
         createScheduleMutation.mutate(
-          withScheduleCreateKey({
-            userId,
-            create: {
-              graphId: agent.graph_id,
-              data: {
-                name: scheduleName,
-                cron: cronExpression,
-                inputs: inputValues,
-                graph_version: agent.graph_version,
-                credentials: inputCredentials,
-              },
+          {
+            graphId: agent.graph_id,
+            data: {
+              name: scheduleName,
+              cron: cronExpression,
+              inputs: inputValues,
+              graph_version: agent.graph_version,
+              credentials: inputCredentials,
             },
-          }),
+          },
           {
             onSuccess: () => resolve(),
             onError: (error) => reject(error),
@@ -100,7 +88,6 @@ export function useScheduleAgentModal(
       inputCredentials,
       createScheduleMutation,
       toast,
-      userId,
     ],
   );
 

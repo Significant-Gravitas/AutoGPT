@@ -1,4 +1,8 @@
-import { Logout01Icon, Settings01Icon } from "@hugeicons/core-free-icons";
+import {
+  ArrowUp01Icon,
+  Logout01Icon,
+  Settings01Icon,
+} from "@hugeicons/core-free-icons";
 import { useRef, useState, type ComponentRef } from "react";
 import {
   Modal,
@@ -10,15 +14,14 @@ import {
 } from "react-native";
 
 import { ExpertAvatar } from "@/components/ExpertAvatar";
+import { Icon } from "@/components/Icon";
 import { avatarSource } from "@/features/team/helpers";
-import { createStyles, radius, shadows, spacing, type, useScheme } from "@/lib/theme";
+import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
 import { DrawerRow } from "../DrawerRow";
 import { AppearancePicker } from "./AppearancePicker";
 
-const BUTTON_SIZE = 48;
-const AVATAR_SIZE = 38;
-const MENU_WIDTH = 264;
+const AVATAR_SIZE = 36;
 
 interface Props {
   name: string | null;
@@ -30,30 +33,23 @@ interface Props {
 
 interface Anchor {
   left: number;
+  width: number;
   bottom: number;
 }
 
-/** The signed-in person's round avatar; tapping it opens a small menu just above. */
+/** The signed-in person's row; tapping it opens a small menu just above. */
 export function UserMenu({ name, email, image, onOpenSettings, onSignOut }: Props) {
   const styles = useStyles();
-  const isLight = useScheme() === "light";
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const buttonRef = useRef<ComponentRef<typeof View>>(null);
+  const colors = useColors();
+  const { height: windowHeight } = useWindowDimensions();
+  const rowRef = useRef<ComponentRef<typeof View>>(null);
   const [anchor, setAnchor] = useState<Anchor | null>(null);
   const title = name?.trim() || email || "Account";
   const detail = name?.trim() ? email : null;
 
   function open() {
-    // Right edges line up, so the menu grows left from the avatar, but never
-    // past the window's left edge on a narrow phone.
-    buttonRef.current?.measureInWindow((x, y, width) => {
-      setAnchor({
-        left: Math.max(
-          Math.min(x + width, windowWidth - spacing.sm) - MENU_WIDTH,
-          spacing.sm,
-        ),
-        bottom: windowHeight - y + spacing.sm,
-      });
+    rowRef.current?.measureInWindow((x, y, width) => {
+      setAnchor({ left: x, width, bottom: windowHeight - y + spacing.xs });
     });
   }
 
@@ -74,22 +70,29 @@ export function UserMenu({ name, email, image, onOpenSettings, onSignOut }: Prop
   return (
     <>
       <Pressable
-        ref={buttonRef}
+        ref={rowRef}
         accessibilityRole="button"
         accessibilityLabel={`${title}, account menu`}
         accessibilityState={{ expanded: anchor !== null }}
         onPress={open}
-        style={({ pressed }) => [
-          styles.button,
-          isLight && styles.buttonShadow,
-          pressed && styles.pressed,
-        ]}
+        style={({ pressed }) => [styles.row, pressed && styles.pressed]}
       >
         <ExpertAvatar
           name={title}
           source={avatarSource({ avatar_url: image })}
           size={AVATAR_SIZE}
         />
+        <View style={styles.text}>
+          <Text numberOfLines={1} style={styles.title}>
+            {title}
+          </Text>
+          {detail ? (
+            <Text numberOfLines={1} style={styles.detail}>
+              {detail}
+            </Text>
+          ) : null}
+        </View>
+        <Icon icon={ArrowUp01Icon} size={16} color={colors.textTertiary} />
       </Pressable>
       <Modal
         transparent
@@ -106,16 +109,6 @@ export function UserMenu({ name, email, image, onOpenSettings, onSignOut }: Prop
         />
         {anchor ? (
           <View accessibilityRole="menu" style={[styles.menu, anchor]}>
-            <View style={styles.account}>
-              <Text numberOfLines={1} style={styles.title}>
-                {title}
-              </Text>
-              {detail ? (
-                <Text numberOfLines={1} style={styles.detail}>
-                  {detail}
-                </Text>
-              ) : null}
-            </View>
             <AppearancePicker />
             <View style={styles.divider} />
             <DrawerRow
@@ -136,17 +129,16 @@ export function UserMenu({ name, email, image, onOpenSettings, onSignOut }: Prop
 }
 
 const useStyles = createStyles((colors) => ({
-  button: {
-    width: BUTTON_SIZE,
-    height: BUTTON_SIZE,
+  row: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.pill,
-    backgroundColor: colors.menuButton,
+    gap: spacing.md,
+    minHeight: 52,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
   },
-  buttonShadow: shadows.menuButton,
-  pressed: { opacity: 0.7 },
-  account: { paddingHorizontal: spacing.sm, paddingTop: spacing.xs, paddingBottom: spacing.sm },
+  pressed: { backgroundColor: colors.surfacePressed },
+  text: { flex: 1, minWidth: 0 },
   title: { ...type.label, color: colors.text },
   detail: { ...type.small, color: colors.textTertiary },
   divider: {
@@ -156,7 +148,6 @@ const useStyles = createStyles((colors) => ({
   },
   menu: {
     position: "absolute",
-    width: MENU_WIDTH,
     padding: spacing.xs,
     gap: 2,
     borderRadius: 14,

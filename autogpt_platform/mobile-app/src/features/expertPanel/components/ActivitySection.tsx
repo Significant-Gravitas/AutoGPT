@@ -48,7 +48,9 @@ const useStyles = createStyles((colors) => ({
     paddingHorizontal: spacing.md,
   },
   card: {
-    backgroundColor: colors.panelCard,
+    backgroundColor: colors.surface,
+    borderWidth: 0.5,
+    borderColor: colors.border,
     borderRadius: 16,
     overflow: "hidden",
   },

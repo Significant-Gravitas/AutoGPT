@@ -4,9 +4,6 @@ import { Pressable, Text } from "react-native";
 import { Icon } from "@/components/Icon";
 import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
-// Lines a row's icon up under the drawer's title.
-export const ROW_INSET = 20;
-
 interface Props {
   label: string;
   onPress: () => void;
@@ -22,7 +19,7 @@ export function DrawerRow({ label, onPress, icon }: Props) {
       onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
-      {icon ? <Icon icon={icon} size={22} color={colors.text} /> : null}
+      {icon ? <Icon icon={icon} size={20} color={colors.textSecondary} /> : null}
       <Text numberOfLines={1} style={styles.label}>
         {label}
       </Text>
@@ -34,11 +31,11 @@ const useStyles = createStyles((colors) => ({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.lg,
-    minHeight: 48,
-    paddingHorizontal: ROW_INSET,
+    gap: spacing.md,
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
     borderRadius: radius.md,
   },
   pressed: { backgroundColor: colors.surfacePressed },
-  label: { ...type.body, fontSize: 17, lineHeight: 22, flex: 1, color: colors.text },
+  label: { ...type.label, flex: 1, color: colors.text },
 }));

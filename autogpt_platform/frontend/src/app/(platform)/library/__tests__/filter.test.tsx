@@ -39,7 +39,7 @@ function makeAgent(overrides: Partial<LibraryAgent>): LibraryAgent {
   };
 }
 
-function setupHandlers(agents: LibraryAgent[], favorites: LibraryAgent[] = []) {
+function setupHandlers(agents: LibraryAgent[]) {
   server.use(
     getGetV2ListLibraryAgentsMockHandler({
       ...getGetV2ListLibraryAgentsResponseMock(),
@@ -53,9 +53,9 @@ function setupHandlers(agents: LibraryAgent[], favorites: LibraryAgent[] = []) {
     }),
     getGetV2ListFavoriteLibraryAgentsMockHandler({
       ...getGetV2ListFavoriteLibraryAgentsResponseMock(),
-      agents: favorites,
+      agents: [],
       pagination: {
-        total_items: favorites.length,
+        total_items: 0,
         total_pages: 1,
         current_page: 1,
         page_size: 10,
@@ -76,10 +76,7 @@ function setupHandlers(agents: LibraryAgent[], favorites: LibraryAgent[] = []) {
   );
 }
 
-function renderList(
-  statusFilter: "all" | "scheduled" | "idle",
-  activeTab: "all" | "favorites" = "all",
-) {
+function renderList(statusFilter: "all" | "scheduled" | "idle") {
   return render(
     <FavoriteAnimationProvider onAnimationComplete={() => undefined}>
       <LibraryAgentList
@@ -89,7 +86,7 @@ function renderList(
         selectedFolderId={null}
         onFolderSelect={() => undefined}
         tabs={[]}
-        activeTab={activeTab}
+        activeTab="all"
         onTabChange={() => undefined}
         statusFilter={statusFilter}
         onStatusFilterChange={() => undefined}
@@ -197,42 +194,5 @@ describe("LibraryAgentList — Scheduled status filter", () => {
     await waitFor(() => {
       expect(screen.queryByText("Actually Scheduled Agent")).toBeNull();
     });
-  });
-
-  test("leaves a workflow whose schedule is unknown out of the idle filter", async () => {
-    setupHandlers([
-      makeAgent({
-        id: "a-unknown",
-        graph_id: "g-unknown",
-        name: "Maybe Scheduled Agent",
-        schedule_info_unavailable: true,
-      }),
-      makeAgent({ id: "a-idle", graph_id: "g-idle", name: "Idle Agent" }),
-    ]);
-
-    renderList("idle");
-
-    expect(await screen.findByText("Idle Agent")).toBeDefined();
-    await waitFor(() => {
-      expect(screen.queryByText("Maybe Scheduled Agent")).toBeNull();
-    });
-  });
-
-  test("a filter that matches no favorites doesn't say there are none", async () => {
-    const favorite = makeAgent({
-      id: "a-unknown",
-      graph_id: "g-unknown",
-      name: "Maybe Scheduled Agent",
-      is_favorite: true,
-      schedule_info_unavailable: true,
-    });
-    setupHandlers([favorite], [favorite]);
-
-    renderList("scheduled", "favorites");
-
-    expect(
-      await screen.findByText(/Schedules are temporarily unavailable/),
-    ).toBeDefined();
-    expect(screen.queryByText("No favorite workflows yet")).toBeNull();
   });
 });

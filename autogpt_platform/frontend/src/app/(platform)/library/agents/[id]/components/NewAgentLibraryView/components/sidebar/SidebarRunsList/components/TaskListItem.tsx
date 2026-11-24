@@ -3,6 +3,7 @@
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import React from "react";
 import {
   describeFailedSteps,
   getFailedStepCount,
@@ -21,84 +22,49 @@ import {
   PauseCircleIcon,
   StopCircleIcon,
 } from "@hugeicons/core-free-icons";
-import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 
 const PENDING_COLORS =
   "border-warning-surface bg-warning-surface text-yellow-foreground";
-const WARNING_COLORS =
-  "border-warning-surface bg-warning-surface text-warning-foreground";
 
-interface StatusLook {
-  className: string;
-  icon: IconSvgElement;
-  /** Read out after "Task", e.g. "Task running". */
-  text: string;
-}
-
-const STATUS_LOOKS: Record<AgentExecutionStatus, StatusLook> = {
-  INCOMPLETE: {
-    className: "border-error-surface bg-error-surface text-error-foreground",
-    icon: AlertCircleIcon,
-    text: "incomplete",
-  },
-  QUEUED: { className: PENDING_COLORS, icon: Clock01Icon, text: "queued" },
-  RUNNING: {
-    className: PENDING_COLORS,
-    icon: PauseCircleIcon,
-    text: "running",
-  },
-  REVIEW: {
-    className: PENDING_COLORS,
-    icon: PauseCircleIcon,
-    text: "awaiting review",
-  },
-  COMPLETED: {
-    className:
-      "border-success-surface bg-success-surface text-success-foreground",
-    icon: CheckmarkCircle02Icon,
-    text: "completed",
-  },
-  TERMINATED: {
-    className: "border-surface-muted bg-surface-muted text-foreground-body",
-    icon: StopCircleIcon,
-    text: "stopped",
-  },
-  FAILED: {
-    className: "border-error-surface bg-error-surface text-error-foreground",
-    icon: CancelCircleIcon,
-    text: "failed",
-  },
-};
-
-const COMPLETED_WITH_ERRORS: StatusLook = {
-  className: WARNING_COLORS,
-  icon: Alert02Icon,
-  text: "completed with errors",
-};
-
-interface StatusIconProps {
-  run: GraphExecutionMeta;
-  withErrors: boolean;
-}
-
-function StatusIcon({ run, withErrors }: StatusIconProps) {
-  const status = withErrors ? COMPLETED_WITH_ERRORS : STATUS_LOOKS[run.status];
-  if (!status) return null;
-  // A simulated run shows a flask whatever its status; its label says both.
-  const look = run.is_dry_run
-    ? { className: WARNING_COLORS, icon: FlaskConicalIcon }
-    : status;
-  return (
-    <IconWrapper
-      className={look.className}
-      label={`${run.is_dry_run ? "Simulated task" : "Task"} ${status.text}`}
-    >
-      <Icon icon={look.icon} size={16} />
+const statusIconMap: Record<AgentExecutionStatus, React.ReactNode> = {
+  INCOMPLETE: (
+    <IconWrapper className="border-error-surface bg-error-surface text-error-foreground">
+      <Icon icon={AlertCircleIcon} size={16} />
     </IconWrapper>
-  );
-}
+  ),
+  QUEUED: (
+    <IconWrapper className={PENDING_COLORS}>
+      <Icon icon={Clock01Icon} size={16} />
+    </IconWrapper>
+  ),
+  RUNNING: (
+    <IconWrapper className={PENDING_COLORS}>
+      <Icon icon={PauseCircleIcon} size={16} />
+    </IconWrapper>
+  ),
+  REVIEW: (
+    <IconWrapper className={PENDING_COLORS}>
+      <Icon icon={PauseCircleIcon} size={16} />
+    </IconWrapper>
+  ),
+  COMPLETED: (
+    <IconWrapper className="border-success-surface bg-success-surface text-success-foreground">
+      <Icon icon={CheckmarkCircle02Icon} size={16} />
+    </IconWrapper>
+  ),
+  TERMINATED: (
+    <IconWrapper className="border-surface-muted bg-surface-muted text-foreground-body">
+      <Icon icon={StopCircleIcon} size={16} />
+    </IconWrapper>
+  ),
+  FAILED: (
+    <IconWrapper className="border-error-surface bg-error-surface text-error-foreground">
+      <Icon icon={CancelCircleIcon} size={16} />
+    </IconWrapper>
+  ),
+};
 
 interface Props {
   run: GraphExecutionMeta;
@@ -109,6 +75,12 @@ interface Props {
   onDeleted?: () => void;
 }
 
+const completedWithErrorsIcon = (
+  <IconWrapper className="border-warning-surface bg-warning-surface text-warning-foreground">
+    <Icon icon={Alert02Icon} size={16} />
+  </IconWrapper>
+);
+
 export function TaskListItem({
   run,
   title,
@@ -118,6 +90,15 @@ export function TaskListItem({
   onDeleted,
 }: Props) {
   const withErrors = isCompletedWithErrors(run);
+  const icon = run.is_dry_run ? (
+    <IconWrapper className="border-warning-surface bg-warning-surface text-warning-foreground">
+      <Icon icon={FlaskConicalIcon} size={16} />
+    </IconWrapper>
+  ) : withErrors ? (
+    completedWithErrorsIcon
+  ) : (
+    statusIconMap[run.status]
+  );
   const startedAgo = run.started_at ? (
     <RelativeTime date={run.started_at} />
   ) : (
@@ -126,7 +107,7 @@ export function TaskListItem({
 
   return (
     <SidebarItemCard
-      icon={<StatusIcon run={run} withErrors={withErrors} />}
+      icon={icon}
       title={run.is_dry_run ? `${title} (Simulated)` : title}
       description={
         withErrors ? (

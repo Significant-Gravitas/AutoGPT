@@ -1720,7 +1720,6 @@ async def list_chat_sessions_by_status(
 async def list_recent_chat_sessions(
     *,
     user_id: str,
-    organization_id: str | None,
     expert_id: str | None = None,
     status: str | None = None,
     limit: int = 50,
@@ -1729,21 +1728,14 @@ async def list_recent_chat_sessions(
     """The user's most recently active sessions, newest first.
 
     Backs ``find_session``. Scoped to ``user_id`` in the query itself, so
-    another user's session is invisible rather than merely unlisted.
-    ``organization_id`` is matched exactly, with none of the carve-outs of
-    ``_own_org_scope``: this read feeds one session's data into another, and
-    that must not cross organizations. ``None`` matches untagged rows only. The
+    another user's session is invisible rather than merely unlisted. The
     expert and status filters are applied in the query too, so ``limit``
     bounds the matches rather than the rows scanned — filtering them in
     Python would silently drop matches older than the window. ``skip`` pages
     the caller past rows it has already looked at, for the one filter that
     cannot move into the query (``task`` reads the metadata JSON).
     """
-    where: ChatSessionWhereInput = {
-        "userId": user_id,
-        "organizationId": organization_id,
-        "archivedAt": None,
-    }
+    where: ChatSessionWhereInput = {"userId": user_id, "archivedAt": None}
     if expert_id:
         where["expertId"] = expert_id
     if status:

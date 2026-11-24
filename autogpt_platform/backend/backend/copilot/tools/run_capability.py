@@ -296,7 +296,7 @@ async def _run_block(
     refs_resolved: bool = False,
 ) -> ToolResponseBase:
     if gate_denied(BLOCK_GATE):
-        return gate_denied_error("blocks", session.session_id, describing=validate_only)
+        return gate_denied_error("blocks", session.session_id)
     block_id = next(
         (impl.ref for impl in entry.implementations if impl.kind == "block"), ""
     )
@@ -393,7 +393,7 @@ async def _describe_tool(
             message=UNKNOWN_ID_HINT, session_id=session.session_id
         ).from_outside()
     if gate_denied(name):
-        return gate_denied_error(name, session.session_id, describing=True)
+        return gate_denied_error(name, session.session_id)
     return CapabilityDetailsResponse(
         message=f"{tool.description} Call again without validate_only to run.",
         capability=entry.listing(),
@@ -412,9 +412,7 @@ async def _run_skill(
     so this answers ``validate_only`` and any engine that did not.
     """
     if gate_denied(SKILL_TOOL):
-        return gate_denied_error(
-            SKILL_TOOL, session.session_id, describing=validate_only
-        )
+        return gate_denied_error(SKILL_TOOL, session.session_id)
     if validate_only:
         return describe_skill(entry, session.session_id)
     return await ReadSkillTool()._execute(
@@ -431,9 +429,7 @@ async def _run_mcp(
     validate_only: bool,
 ) -> ToolResponseBase:
     if gate_denied(MCP_GATE):
-        return gate_denied_error(
-            "MCP servers", session.session_id, describing=validate_only
-        )
+        return gate_denied_error("MCP servers", session.session_id)
     tool_name = str(payload.get("tool") or "").strip()
     arguments = payload.get("arguments")
     if arguments is not None and not isinstance(arguments, dict):

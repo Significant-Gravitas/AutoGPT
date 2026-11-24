@@ -22,7 +22,6 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks import get_webhook_manager
 from backend.integrations.webhooks.utils import setup_webhook_for_block
 from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
-from backend.util.url_redaction import mask_credential
 
 from . import db
 from . import model as models
@@ -397,6 +396,4 @@ async def _prune_dangling_webhook(user_id: str, webhook_id: str) -> None:
             user_id, webhook.id, credentials
         )
     except Exception as e:
-        logger.warning(
-            f"Best-effort prune of webhook #{mask_credential(webhook_id)} failed: {e}"
-        )
+        logger.warning(f"Best-effort prune of webhook #{webhook_id} failed: {e}")

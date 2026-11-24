@@ -7,16 +7,9 @@ import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 interface Props {
   value: string;
   onChangeText: (text: string) => void;
-  placeholder?: string;
-  autoFocus?: boolean;
 }
 
-export function DrawerSearchField({
-  value,
-  onChangeText,
-  placeholder = "Search chats",
-  autoFocus,
-}: Props) {
+export function DrawerSearchField({ value, onChangeText }: Props) {
   const styles = useStyles();
   const colors = useColors();
   return (
@@ -25,10 +18,9 @@ export function DrawerSearchField({
       <TextInput
         value={value}
         onChangeText={onChangeText}
-        placeholder={placeholder}
+        placeholder="Search chats"
         placeholderTextColor={colors.textTertiary}
-        accessibilityLabel={placeholder}
-        autoFocus={autoFocus}
+        accessibilityLabel="Search chats"
         autoCorrect={false}
         autoCapitalize="none"
         returnKeyType="search"
@@ -44,10 +36,10 @@ const useStyles = createStyles((colors) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    minHeight: 44,
+    minHeight: 40,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    backgroundColor: colors.menuButton,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
   },
   input: {
     ...type.label,
