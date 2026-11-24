@@ -6,8 +6,6 @@ between entries that match the query equally well; it never lifts a weak
 lexical match over a strong one (see ``ordering.rank_hits``).
 """
 
-from urllib.parse import urlsplit
-
 from pydantic import BaseModel, ConfigDict, Field
 
 from .models import CapabilityEntry
@@ -94,19 +92,10 @@ def class_weight(entry: CapabilityEntry, connected: bool | None) -> float:
 
 
 def normalize_server_url(url: str) -> str:
-    """Ignore scheme/host case and trailing path slashes when matching servers.
+    """Compare MCP server URLs the way the catalog and the user write them.
 
-    Paths, query strings and fragments remain case-sensitive. Malformed
-    stored URLs are left for the caller's validation instead of raising.
+    Catalog keys are stored both ways (``https://mcp.miro.com/`` alongside
+    ``https://mcp.linear.app/mcp``), so a raw ``==`` against whatever the
+    model passes decides "is this a catalog server" on a trailing slash.
     """
-    stripped = url.strip()
-    try:
-        parsed = urlsplit(stripped)
-    except ValueError:
-        return stripped.rstrip("/")
-    user_info, separator, host = parsed.netloc.rpartition("@")
-    return parsed._replace(
-        scheme=parsed.scheme.lower(),
-        netloc=f"{user_info}{separator}{host.lower()}",
-        path=parsed.path.rstrip("/"),
-    ).geturl()
+    return url.strip().lower().rstrip("/")

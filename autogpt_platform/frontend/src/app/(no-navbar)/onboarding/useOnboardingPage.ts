@@ -39,7 +39,6 @@ export function useOnboardingPage() {
   const progress = useWizardProgress({
     userID: user?.id ?? null,
     ready: isReady,
-    isUserSettled: !isUserLoading,
     steps,
     hasPaywall: isPaymentEnabled,
   });

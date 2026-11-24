@@ -71,7 +71,6 @@ jobs:
         with:
           ref: ${{ github.sha }}
           submodules: recursive
-          persist-credentials: false
 
       # ------------------------ Backend setup ------------------------
 
@@ -110,7 +109,7 @@ jobs:
             --junitxml="$RUNNER_TEMP/fullstack-validator-results/playwright-validator-tests.xml"
 
       - name: Set up Backend - Generate Prisma client
-        uses: $/.github/actions/generate-prisma-client
+        uses: ./.github/actions/generate-prisma-client
 
       - name: Set up Frontend - Export OpenAPI schema from Backend
         working-directory: autogpt_platform/backend
@@ -237,7 +236,6 @@ jobs:
         with:
           ref: ${{ github.sha }}
           submodules: recursive
-          persist-credentials: false
 
       # The seed dump is an image in GHCR, not an Actions cache entry.
       # The key hashes only what changes the dump's content: the seed script
@@ -333,7 +331,7 @@ jobs:
         timeout-minutes: 3
         working-directory: /tmp
         run: |
-          ref="$E2E_SEED_IMAGE:${E2E_SEED_TAG}"
+          ref="$E2E_SEED_IMAGE:${{ steps.e2e-seed-key.outputs.tag }}"
           if ! docker pull --quiet "$ref"; then
             echo "No cached E2E test data at $ref; seeding instead"
             exit 0
@@ -343,8 +341,6 @@ jobs:
           docker rm "$container" >/dev/null
           docker rmi "$ref" >/dev/null
           echo "hit=true" >> "$GITHUB_OUTPUT"
-        env:
-          E2E_SEED_TAG: ${{ steps.e2e-seed-key.outputs.tag }}
 
       - name: Set up Platform - Prepare Docker build
         working-directory: autogpt_platform
@@ -727,13 +723,11 @@ jobs:
         timeout-minutes: 5
         working-directory: /tmp
         run: |
-          ref="$E2E_SEED_IMAGE:${E2E_SEED_TAG}"
+          ref="$E2E_SEED_IMAGE:${{ steps.e2e-seed-key.outputs.tag }}"
           tar -C /tmp -c e2e_test_data.sql | docker import \
             --change "LABEL org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
             - "$ref"
           docker push "$ref"
-        env:
-          E2E_SEED_TAG: ${{ steps.e2e-seed-key.outputs.tag }}
 
       - name: Validate coverage report
         id: validate-e2e-coverage

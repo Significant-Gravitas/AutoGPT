@@ -71,8 +71,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          persist-credentials: false
 
       - name: Set up Python 3.12
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -139,8 +137,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          persist-credentials: false
 
       - name: Set up Python 3.12
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -197,8 +193,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -221,7 +215,7 @@ jobs:
         run: poetry install
 
       - name: Generate Prisma Client
-        uses: $/.github/actions/generate-prisma-client
+        uses: ./.github/actions/generate-prisma-client
 
       - name: Run Pyright
         run: poetry run pyright --pythonversion ${{ matrix.python-version }}
@@ -271,7 +265,7 @@ jobs:
           --health-retries 5
           --health-start-period 10s
       clamav:
-        image: clamav/clamav-debian:1.5.4
+        image: clamav/clamav-debian:latest
         ports:
           - 3310:3310
         env:
@@ -337,7 +331,6 @@ jobs:
           fetch-depth: 0
           filter: blob:none
           submodules: true
-          persist-credentials: false
 
       - name: Checkout skills catalog
         # The expert roster and the marketplace skills live in a separate
@@ -348,7 +341,6 @@ jobs:
         with:
           repository: Significant-Gravitas/skills-catalog
           path: skills-catalog
-          persist-credentials: false
 
       - name: Configure test shard
         shell: bash
@@ -569,7 +561,7 @@ jobs:
         run: poetry install
 
       - name: Generate Prisma Client
-        uses: $/.github/actions/generate-prisma-client
+        uses: ./.github/actions/generate-prisma-client
 
       - name: Wait for isolated stateful services
         wait: stateful-services

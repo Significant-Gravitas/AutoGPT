@@ -65,8 +65,7 @@ class MatchTextPatternBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        # Falsy data (0, False, "", [], {}) is forwarded as-is
-        output = input_data.text if input_data.data is None else input_data.data
+        output = input_data.data or input_data.text
         flags = 0
         if not input_data.case_sensitive:
             flags = flags | re.IGNORECASE
@@ -187,46 +186,43 @@ class ExtractTextInformationBlock(Block):
         if len(txt) > MAX_REGEX_TEXT_LENGTH:
             txt = txt[:MAX_REGEX_TEXT_LENGTH]
 
-        # A pattern that is invalid or too large to evaluate is an error,
-        # never "no match"
         try:
             pattern = compile_user_regex(input_data.pattern, flags)
-        except regex.error as error:
-            raise ValueError(f"Invalid regex pattern: {error}") from error
+            matches = []
+            match_count = 0
 
-        matches = []
-        match_count = 0
-        try:
             # Every pattern runs with a timeout, which covers the whole
             # iteration; a timeout ends up in the empty result below
             for match in pattern.finditer(txt, timeout=REGEX_TIMEOUT_SECONDS):
-                if not 0 <= input_data.group <= len(match.groups()):
-                    continue
-                match_text = match.group(input_data.group)
-                # An optional group can sit out a match: (a)|(b) on "b"
-                if match_text is None:
-                    continue
-                # Limit match length to prevent memory exhaustion
-                if len(match_text) > MAX_MATCH_LENGTH:
-                    match_text = match_text[:MAX_MATCH_LENGTH]
-                matches.append(match_text)
-                match_count += 1
-                # Stop before the next match is searched for
-                if not input_data.find_all or match_count >= MAX_MATCHES:
-                    break
-        except TimeoutError:
-            matches = []
+                if input_data.group <= len(match.groups()):
+                    match_text = match.group(input_data.group)
+                    # Limit match length to prevent memory exhaustion
+                    if len(match_text) > MAX_MATCH_LENGTH:
+                        match_text = match_text[:MAX_MATCH_LENGTH]
+                    matches.append(match_text)
+                    match_count += 1
+                    # Stop before the next match is searched for
+                    if not input_data.find_all or match_count >= MAX_MATCHES:
+                        break
 
-        if not input_data.find_all:
-            matches = matches[:1]
+            if not input_data.find_all:
+                matches = matches[:1]
 
-        for match in matches:
-            yield "positive", match
-        if not matches:
+            for match in matches:
+                yield "positive", match
+            if not matches:
+                yield "negative", input_data.text
+
+            yield "matched_results", matches
+            yield "matched_count", len(matches)
+        except ValueError:
+            # A pattern too large to evaluate is an error, never "no match".
+            raise
+        except Exception:
+            # Return empty results on any regex error
             yield "negative", input_data.text
-
-        yield "matched_results", matches
-        yield "matched_count", len(matches)
+            yield "matched_results", []
+            yield "matched_count", 0
 
 
 class FillTextTemplateBlock(Block):

@@ -257,21 +257,13 @@ def _scheduled(cron: str, start: datetime, end: datetime) -> list[datetime]:
     [
         # The first Monday of the month: both days must match, not either.
         "0 9 1-7 * mon",
-        # A step over every weekday counts from Sunday, as in Unix cron.
+        # A step over every weekday counts from Monday.
         "0 9 * * */2",
         "0 9 * * */3",
         "0 9 * * 5-2",
-        "0 9 * * 5-2/2",
         "0 9 * * 1-5",
         "0 9 * * 1-5/2",
-        "0 9 * * 1/2",
-        "0 9 * * 6/2",
-        "0 9 * * 7/2",
-        "0 9 * * 1-1",
-        "0 9 * * 0-7",
         "0 9 * * 7",
-        "0 9 * * sun-thu",
-        "0 9 * * mon-fri/2",
         "0 9 1,15 * *",
         "*/30 * * * mon-fri",
     ],

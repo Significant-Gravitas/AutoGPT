@@ -32,13 +32,11 @@ export default function SignupPage() {
 
   const {
     form,
-    formRef,
     feedback,
     nextUrl: safeNextUrl,
     verificationEmail,
     isLoggedIn,
-    isCheckingSession,
-    isHydrated,
+    hasInitializedAuth,
     isLoading,
     isGoogleLoading,
     isMicrosoftLoading,
@@ -54,7 +52,7 @@ export default function SignupPage() {
     handleStartAgain,
   } = useSignupPage();
 
-  if (isCheckingSession || isLoggedIn) {
+  if (!hasInitializedAuth || isLoggedIn) {
     return <LoadingSignup />;
   }
 
@@ -87,11 +85,7 @@ export default function SignupPage() {
       </div>
 
       <FormProvider {...form}>
-        <form
-          ref={formRef}
-          onSubmit={handleSubmit}
-          className="flex w-full flex-col gap-1"
-        >
+        <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
           <FormField
             control={form.control}
             name="email"
@@ -125,7 +119,7 @@ export default function SignupPage() {
           <Button
             variant="primary"
             loading={isLoading}
-            disabled={!isHydrated || isGoogleLoading || isMicrosoftLoading}
+            disabled={isGoogleLoading || isMicrosoftLoading}
             type="submit"
             className="mt-6 w-full"
           >
@@ -141,14 +135,14 @@ export default function SignupPage() {
                 <GoogleOAuthButton
                   onClick={() => handleProviderSignup("google")}
                   isLoading={isGoogleLoading}
-                  disabled={!isHydrated || isLoading || isMicrosoftLoading}
+                  disabled={isLoading || isMicrosoftLoading}
                 />
               ) : null}
               {isMicrosoftEnabled ? (
                 <MicrosoftOAuthButton
                   onClick={() => handleProviderSignup("microsoft")}
                   isLoading={isMicrosoftLoading}
-                  disabled={!isHydrated || isLoading || isGoogleLoading}
+                  disabled={isLoading || isGoogleLoading}
                 />
               ) : null}
             </div>

@@ -119,22 +119,14 @@ class CapabilityIndex:
         return len(self.entries)
 
     def with_entries(self, extra: Sequence[CapabilityEntry]) -> CapabilityIndex:
-        """Layer entries by ID without mutating this index or duplicating presets.
-
-        Unchanged platform documents are reused; only *extra* is tokenised.
-        """
+        """This index plus *extra*: the per-session layer (the owner's
+        skills) over the platform registry.  The platform documents are
+        reused, so only *extra* is tokenised; this index is left as is."""
         if not extra:
             return self
-        extra_ids = {entry.id for entry in extra}
-        kept = [
-            idx for idx, entry in enumerate(self.entries) if entry.id not in extra_ids
-        ]
         return CapabilityIndex(
-            [*(self.entries[idx] for idx in kept), *extra],
-            documents=[
-                *(self._documents[idx] for idx in kept),
-                *(_document(e) for e in extra),
-            ],
+            [*self.entries, *extra],
+            documents=[*self._documents, *(_document(e) for e in extra)],
         )
 
     def get(self, capability_id: str) -> CapabilityEntry | None:
@@ -149,7 +141,7 @@ class CapabilityIndex:
         context: CapabilityContext = "direct",
         kind: CapabilityKindName | None = None,
         connections: ConnectionState | None = None,
-        permissions: CopilotPermissions | None = None,
+        permissions: "CopilotPermissions | None" = None,
         limit: int = DEFAULT_LIMIT,
         fallback_limit: int = DEFAULT_FALLBACK_LIMIT,
         prefer_mcp: bool = False,
@@ -184,7 +176,7 @@ class CapabilityIndex:
         context: CapabilityContext,
         kind: CapabilityKindName | None,
         connections: ConnectionState | None,
-        permissions: CopilotPermissions | None,
+        permissions: "CopilotPermissions | None",
         limit: int,
         fallback_limit: int,
         prefer_mcp: bool = False,
@@ -221,17 +213,21 @@ class CapabilityIndex:
         rest = [idx for idx in scores if idx not in exact]
         fallback: list[SearchHit] = []
         if service_indices is not None:
-            # Keep session capabilities without catalog service tags, and
-            # platform tools whose own text names the requested service.
+            # A platform tool is first-party and belongs to no single service,
+            # so it carries no service tag and the restriction dropped it:
+            # "post a message to discord" could not return
+            # post_to_chat_platform at all, only the Discord blocks.  A tool
+            # that names the service in its own text is about that service and
+            # belongs here; one that merely shares a verb ("read a notion
+            # page" matching read_workspace_file) does not.  A skill is not a
+            # service either, but the one written for the named service is
+            # the best answer there is, so skills stay in; so do experts,
+            # since "someone to run my LinkedIn" names one.
             main = [
                 idx
                 for idx in rest
                 if idx in service_indices
                 or self.entries[idx].kind in ("skill", "expert")
-                or (
-                    self.entries[idx].kind == "mcp_server"
-                    and self.entries[idx].id.lower().startswith("https://")
-                )
                 or self._tool_names(idx, service_names)
             ]
             chosen = set(main)
@@ -269,7 +265,7 @@ class CapabilityIndex:
         context: CapabilityContext,
         kind: CapabilityKindName,
         connections: ConnectionState | None,
-        permissions: CopilotPermissions | None,
+        permissions: "CopilotPermissions | None",
         prefer_mcp: bool,
     ) -> None:
         """Fill ``result.other_kinds`` from the same search without *kind*.
@@ -311,7 +307,7 @@ class CapabilityIndex:
         self,
         context: CapabilityContext,
         kind: CapabilityKindName | None,
-        permissions: CopilotPermissions | None,
+        permissions: "CopilotPermissions | None",
     ) -> set[int]:
         allowed_tools: frozenset[str] | None = None
         if permissions is not None:

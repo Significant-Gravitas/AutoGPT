@@ -22,27 +22,19 @@ def resolve_entry(index: CapabilityIndex, capability_id: str) -> CapabilityEntry
     key = (capability_id or "").strip()
     if not key:
         return None
-    entry = index.get(key)
-    if entry is None and "://" not in key:
-        entry = index.get(key.lower())
+    entry = index.get(key) or index.get(key.lower())
     if entry is not None:
         return entry
     if "://" in key:
-        parsed = urlsplit(key)
-        if (
-            parsed.scheme != "https"
-            or parsed.username is not None
-            or parsed.password is not None
-            or parsed.query
-            or parsed.fragment
-        ):
-            return None
-        host = parsed.hostname
-        wanted_url = normalize_server_url(key)
+        host = urlsplit(key).hostname
         by_host = index.get(f"mcp:{host}") if host else None
+        if by_host is not None:
+            return by_host
         # Two catalog presets can share a host, so those entries are keyed by
-        # slug. Prefer an exact endpoint before the legacy host fallback;
-        # session resolution keeps stored custom URLs out of that fallback.
+        # slug; match the full server URL instead.  Normalised on both sides:
+        # failing to match here does not say "unknown id", it says "not a
+        # catalog server", which sends trusted writes to human review.
+        wanted_url = normalize_server_url(key)
         return next(
             (
                 e
@@ -50,7 +42,7 @@ def resolve_entry(index: CapabilityIndex, capability_id: str) -> CapabilityEntry
                 if e.connection.key
                 and normalize_server_url(e.connection.key) == wanted_url
             ),
-            by_host,
+            None,
         )
     if not key.startswith(("tool:", "block:", "mcp:")):
         entry = index.get(f"mcp:{key.lower()}")

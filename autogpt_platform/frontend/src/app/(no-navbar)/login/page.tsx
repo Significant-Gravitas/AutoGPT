@@ -36,7 +36,6 @@ export default function LoginPage() {
   const {
     user,
     form,
-    formRef,
     feedback,
     nextUrl: safeNextUrl,
     verificationEmail,
@@ -47,8 +46,7 @@ export default function LoginPage() {
     isMicrosoftLoading,
     isMicrosoftEnabled,
     isCloudEnv,
-    isCheckingSession,
-    isHydrated,
+    isUserLoading,
     showNotAllowedModal,
     handleSubmit,
     handleProviderLogin,
@@ -56,7 +54,7 @@ export default function LoginPage() {
     handleBackToLogin,
   } = useLoginPage();
 
-  if (isCheckingSession || user) {
+  if (isUserLoading || user) {
     return <LoadingLogin />;
   }
 
@@ -96,11 +94,7 @@ export default function LoginPage() {
       ) : null}
 
       <FormProvider {...form}>
-        <form
-          ref={formRef}
-          onSubmit={handleSubmit}
-          className="flex w-full flex-col gap-1"
-        >
+        <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
           <FormField
             control={form.control}
             name="email"
@@ -141,7 +135,7 @@ export default function LoginPage() {
           <Button
             variant="primary"
             loading={isLoading}
-            disabled={!isHydrated || isGoogleLoading || isMicrosoftLoading}
+            disabled={isGoogleLoading || isMicrosoftLoading}
             type="submit"
             className="mt-6 w-full"
           >
@@ -157,14 +151,14 @@ export default function LoginPage() {
                 <GoogleOAuthButton
                   onClick={() => handleProviderLogin("google")}
                   isLoading={isGoogleLoading}
-                  disabled={!isHydrated || isLoading || isMicrosoftLoading}
+                  disabled={isLoading || isMicrosoftLoading}
                 />
               ) : null}
               {isMicrosoftEnabled ? (
                 <MicrosoftOAuthButton
                   onClick={() => handleProviderLogin("microsoft")}
                   isLoading={isMicrosoftLoading}
-                  disabled={!isHydrated || isLoading || isGoogleLoading}
+                  disabled={isLoading || isGoogleLoading}
                 />
               ) : null}
             </div>
