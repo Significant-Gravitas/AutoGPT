@@ -644,3 +644,58 @@ def test_a_billing_manager_role_is_refused_listing_and_running_from_the_library(
     assert response.status_code == 403
     listing.assert_not_awaited()
     preset.assert_not_awaited()
+
+
+def test_create_preset_for_a_workflow_of_no_expert_reads_no_grants(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Grants bind an expert's workflows only: any other preset is saved on
+    the user's key as before."""
+    mocker.patch(
+        "backend.api.features.library.routes.presets.experts_db.resolve_expert_for_graph",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    grants = mocker.patch(
+        "backend.executor.utils.get_experts_db",
+        return_value=mocker.MagicMock(
+            expert_allowed_credential_ids=AsyncMock(return_value=[])
+        ),
+    )
+    key = {"id": "cred-own", "provider": "notion", "type": "api_key"}
+    create = mocker.patch(
+        "backend.api.features.library.routes.presets.db.create_preset",
+        new_callable=AsyncMock,
+        return_value=library_model.LibraryAgentPreset.model_validate(
+            {
+                "id": "preset-1",
+                "user_id": "test-user-id",
+                "graph_id": "graph-1",
+                "graph_version": 1,
+                "inputs": {},
+                "credentials": {"notion_credentials": key},
+                "name": "Preset",
+                "description": "",
+                "created_at": FIXED_NOW,
+                "updated_at": FIXED_NOW,
+                "webhook": None,
+            }
+        ),
+    )
+
+    response = client.post(
+        "/presets",
+        json={
+            "graph_id": "graph-1",
+            "graph_version": 1,
+            "inputs": {},
+            "credentials": {"notion_credentials": key},
+            "name": "Preset",
+            "description": "",
+            "is_active": True,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    grants.assert_not_called()
+    assert create.await_args.kwargs["expert_id"] is None

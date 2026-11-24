@@ -1553,3 +1553,22 @@ def _example_trigger_config(block) -> dict:
         for k, v in (example or {}).items()
         if k != "payload" and k not in credentials
     }
+
+
+@pytest.mark.asyncio
+async def test_a_trigger_of_no_expert_is_set_up_on_any_of_the_users_keys():
+    """Grants bind an expert's workflows only: a trigger of no expert takes the
+    user's key, and the grants are never read."""
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        _granted() as experts,
+    ):
+        await _setup(agent_credentials=_key("cred-own"))
+
+    experts.assert_not_called()
+    assert webhook_mock.await_count == create_mock.await_count == 1

@@ -173,6 +173,86 @@ async def test_an_edit_to_a_key_the_expert_was_never_granted_is_refused(
     assert stored.input_credentials[field].id == granted.id
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_edit_of_inputs_alone_meets_the_grants_of_the_key_it_keeps(
+    server: SpinTestServer, owner: Owner
+):
+    """An edit is checked on the keys the schedule will hold after it, so one
+    that sends no key still meets a grant revoked since, and changes nothing."""
+    graph = await _install(server, owner, _incident_graph())
+    key = await _own_key(owner)
+    await experts_db.grant_expert_credentials(owner.user_id, owner.expert_id, [key.id])
+
+    async with _signed_in(owner) as client:
+        created = await _create(client, graph, {"title": "Checkout is down"}, key)
+        assert created.status_code == 200, created.text
+        await experts_db.revoke_expert_credential(
+            owner.user_id, owner.expert_id, key.id
+        )
+        response = await client.patch(
+            f"/schedules/{created.json()['id']}",
+            json={"inputs": {"title": "Checkout is back"}},
+        )
+
+    assert response.status_code == 400, response.text
+    assert REFUSAL in response.json()["detail"]
+    [stored] = await _schedules(owner)
+    assert stored.input_data == {"title": "Checkout is down"}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_edit_of_the_name_or_the_timing_meets_no_grants(
+    server: SpinTestServer, owner: Owner
+):
+    """The edit dialog sends a name and a cron, never inputs or keys. A
+    schedule whose key lost its grant can still be renamed and retimed."""
+    graph = await _install(server, owner, _incident_graph())
+    key = await _own_key(owner)
+    await experts_db.grant_expert_credentials(owner.user_id, owner.expert_id, [key.id])
+
+    async with _signed_in(owner) as client:
+        created = await _create(client, graph, {"title": "Checkout is down"}, key)
+        assert created.status_code == 200, created.text
+        await experts_db.revoke_expert_credential(
+            owner.user_id, owner.expert_id, key.id
+        )
+        response = await client.patch(
+            f"/schedules/{created.json()['id']}",
+            json={"name": "Evening run", "cron": "30 0 1 1 *"},
+        )
+
+    assert response.status_code == 200, response.text
+    [stored] = await _schedules(owner)
+    assert (stored.name, stored.cron) == ("Evening run", "30 0 1 1 *")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_workflow_no_expert_has_installed_is_scheduled_on_any_key(
+    server: SpinTestServer, owner: Owner
+):
+    """Grants bind an expert's workflows only. The owner's other workflows are
+    scheduled, and edited, on keys no expert was granted."""
+    graph = await server.agent_server.test_create_graph(
+        create_graph=CreateGraph(graph=_incident_graph()), user_id=owner.user_id
+    )
+    first = await _own_key(owner)
+    second = await _own_key(owner)
+    [field] = graph.credentials_input_schema["properties"]
+
+    async with _signed_in(owner) as client:
+        created = await _create(client, graph, {"title": "Checkout is down"}, first)
+        assert created.status_code == 200, created.text
+        edited = await client.patch(
+            f"/schedules/{created.json()['id']}",
+            json={"credentials": {field: _meta(second)}},
+        )
+
+    assert edited.status_code == 200, edited.text
+    [stored] = await _schedules(owner)
+    assert stored.expert_id is None
+    assert stored.input_credentials[field].id == second.id
+
+
 async def _settle(expert_id: str) -> None:
     """Wait out the work a hire starts behind it, so none outlives the test."""
     await asyncio.gather(
