@@ -96,10 +96,12 @@ async def test_history_keeps_the_newest_versions_and_what_open_work_points_at(
     server, mocker
 ):
     mocker.patch.object(store, "MAX_VERSIONS_PER_SKILL", 3)
-    user = str(uuid4())
+    user, other = str(uuid4()), str(uuid4())
     await _create_user(user)
+    await _create_user(other)
     a, b, c, d = (_file(f"{n}.md", n) for n in "abcd")
     try:
+        others = await _save(other, [d])
         v1 = await _save(user, [a])
         await _save(user, [], state="needs_decision", base_version_id=v1.id)
         v3 = await _save(user, [b])
@@ -121,8 +123,11 @@ async def test_history_keeps_the_newest_versions_and_what_open_work_points_at(
         kept = await versions.list_versions(user, "personal", "store-check")
         assert sorted(v.version for v in kept) == [1, 2, 3, 4, 6, 7, 8]
         assert await _held(user) == {_sha(a), _sha(b), _sha(c)}
+        assert await _held(other) == {_sha(d)}
+        stored = await versions.get_version(other, others.id)
+        assert stored is not None and stored.files == [d]
     finally:
-        await _cleanup(user)
+        await _cleanup(user, other)
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -155,7 +155,7 @@ async def prune_version_history(user_id: str, head_id: str) -> int:
             if hashes:
                 await _delete_unlisted_files(tx, user_id, sorted(hashes))
     except Exception:
-        logger.warning(f"Could not prune skill history {head_id}", exc_info=True)
+        logger.error(f"Could not prune skill history {head_id}", exc_info=True)
         return 0
     return len(deleted)
 
