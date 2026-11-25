@@ -21,6 +21,7 @@ import {
   getGetV2ListLibraryFoldersQueryKey,
 } from "@/app/api/__generated__/endpoints/folders/folders";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { FOLDER_COLORS } from "../folder-constants";
 import { Folder01Icon } from "@hugeicons/core-free-icons";
@@ -61,10 +62,14 @@ export default function LibraryFolderCreationDialog() {
           description: "Your folder has been created successfully.",
         });
       },
-      onError: () => {
+      onError: (error: unknown) => {
         toast({
           title: "Error",
-          description: "Failed to create folder. Please try again.",
+          // A 400 says why the folder can't be made, so a retry won't help.
+          description:
+            error instanceof ApiError && error.status === 400
+              ? error.message
+              : "Failed to create folder. Please try again.",
           variant: "destructive",
         });
       },
