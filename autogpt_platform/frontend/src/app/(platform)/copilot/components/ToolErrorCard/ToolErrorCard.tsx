@@ -30,34 +30,25 @@ export function ToolErrorCard({
         <Icon
           icon={AlertDiamondIcon}
           size={20}
-          className="mt-0.5 shrink-0 text-error"
+          tone="error"
+          className="mt-0.5 shrink-0"
         />
         <div className="flex-1 space-y-2">
-          <Text
-            // TODO(tokens): no exact role for text-red-900
-            variant="body-medium"
-            className="text-red-900"
-          >
+          <Text variant="body-medium" tone="error-strong">
             {message || fallbackMessage}
           </Text>
           {(error || details) && (
-            <details className="text-xs text-error-foreground">
+            <details className="text-caption text-error-foreground">
               <summary className="cursor-pointer font-medium">
                 Technical details
               </summary>
               {error && (
-                <pre
-                  // TODO(tokens): no exact role for bg-red-100
-                  className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2"
-                >
+                <pre className="mt-2 max-h-40 overflow-auto rounded bg-error-surface p-2 break-words whitespace-pre-wrap">
                   {error}
                 </pre>
               )}
               {details && (
-                <pre
-                  // TODO(tokens): no exact role for bg-red-100
-                  className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2"
-                >
+                <pre className="mt-2 max-h-40 overflow-auto rounded bg-error-surface p-2 break-words whitespace-pre-wrap">
                   {details}
                 </pre>
               )}

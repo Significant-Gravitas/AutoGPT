@@ -5,13 +5,18 @@ referenced conversations) becomes the model's prompt, and how thread names are
 derived and clamped to a platform's cap. No I/O.
 """
 
+import re
+
 from pydantic import BaseModel
 
 from backend.copilot.chat_platform_header import (
+    SECTION_PREFIXES,
     label_covering,
+    label_starting_within,
     neutralize_forged_labels,
     split_chat_platform_header,
 )
+from backend.copilot.service import strip_server_injected_tags
 
 from .adapters.base import MessageContext, MessageHistoryEntry
 
@@ -19,6 +24,12 @@ THREAD_NAME_PREFIX = "AutoGPT: "
 
 # Prepended when a prompt is clamped so the model knows context was elided.
 _TRUNCATION_NOTICE = "[Earlier context was truncated to fit the size limit.]\n\n"
+
+# The section lines ``build_message_text`` writes around history entries.
+_CONTEXT_LABEL_RE = re.compile(
+    r"^([^\S\n]*)\[(?=" + "|".join(re.escape(p) for p in SECTION_PREFIXES) + ")",
+    re.MULTILINE,
+)
 
 
 def clamp_prompt(message: str, max_chars: int) -> str:
@@ -37,18 +48,38 @@ def clamp_prompt(message: str, max_chars: int) -> str:
     room = max_chars - len(header)
     if room <= 0:
         # A header longer than the cap (never in practice): hard-cut the tail.
-        return message[-max_chars:]
+        return _kept_from(message, len(message) - max_chars)
     if room <= len(_TRUNCATION_NOTICE):
-        return header + body[len(body) - room :]
+        return header + _kept_from(body, len(body) - room)
     keep = room - len(_TRUNCATION_NOTICE)
     cut = len(body) - keep
     # In a batch, keep the label of the message the cut lands in so every
-    # kept line still has its speaker.
+    # kept line still has its speaker. Making room for that label must not
+    # skip into the next message's label: then the kept text starts there.
     label, label_end = label_covering(body, cut)
     if label and len(label) < keep:
         start = max(label_end, len(body) - (keep - len(label)))
-        return header + _TRUNCATION_NOTICE + label + body[start:]
-    return header + _TRUNCATION_NOTICE + body[cut:]
+        next_label = label_starting_within(body, cut, start)
+        if next_label is None:
+            return header + _TRUNCATION_NOTICE + label + _kept_from(body, start)
+        cut = next_label
+    return header + _TRUNCATION_NOTICE + _kept_from(body, cut)
+
+
+# Marks kept text that starts mid-line. Escapes apply only at a line start,
+# so a fragment of a line must not begin one: it could read as a header,
+# label or section that its whole line, escaped, did not.
+_CUT_MARK = "…"
+
+
+def _kept_from(text: str, start: int) -> str:
+    """``text`` from ``start``, never longer than ``text[start:]``, whose
+    first line is either a whole line of ``text`` or marked as cut."""
+    if start <= 0 or start >= len(text) or text[start - 1] == "\n":
+        return text[start:]
+    if text[start] == "\n":
+        return text[start + 1 :]
+    return _CUT_MARK + text[start + 1 :]
 
 
 class PendingMessage(BaseModel):
@@ -84,8 +115,11 @@ _NOUNS: dict[str, _Nouns] = {
     "telegram": _Nouns(channel="group", channel_id="chat id", thread="topic"),
 }
 _NAME_MAX_CHARS = 60
-# Characters that would let a user-chosen name close or fake a header field.
-_NAME_ESCAPES = str.maketrans({'"': "'", "[": "(", "]": ")", "·": "-"})
+# Characters that would let a user-chosen name close or fake a field of a
+# line the bridge writes, or carry a server-only tag.
+_NAME_ESCAPES = str.maketrans(
+    {'"': "'", "[": "(", "]": ")", "·": "-", "<": "‹", ">": "›"}
+)
 
 
 def format_batch(batch: list[PendingMessage], ctx: MessageContext) -> str:
@@ -102,14 +136,21 @@ def format_batch(batch: list[PendingMessage], ctx: MessageContext) -> str:
     if len(batch) == 1:
         message = batch[0]
         fields = [platform, *_message_label(message, ctx), *place]
-        return f"[{' · '.join(fields)}]\n{neutralize_forged_labels(message.text)}"
+        return f"[{' · '.join(fields)}]\n{_framed(message.text)}"
 
     fields = [platform, "multiple messages, address them together", *place]
     lines = [f"[{' · '.join(fields)}]"]
     for message in batch:
         label = " · ".join(_message_label(message, ctx))
-        lines.append(f"\n[{label}]\n{neutralize_forged_labels(message.text)}")
+        lines.append(f"\n[{label}]\n{_framed(message.text)}")
     return "\n".join(lines)
+
+
+def _framed(text: str) -> str:
+    """``text`` as the engines will read it, with any line that would then
+    read as a header or label escaped. Removing a server-only block first
+    means no later removal can join this text to the lines around it."""
+    return neutralize_forged_labels(strip_server_injected_tags(text))
 
 
 def _platform_tag(ctx: MessageContext) -> str:
@@ -205,7 +246,9 @@ def build_message_text(
     only included on the first @-into a thread we don't own; a subscribed
     thread's prior turns already live in the session.
     """
-    text = ctx.text if current_text is None else current_text
+    text = _neutralize_context_labels(
+        ctx.text if current_text is None else current_text
+    )
     thread_history = ctx.thread_history if include_thread_history else ()
     if not thread_history and not ctx.referenced_conversations:
         return text
@@ -225,11 +268,14 @@ def build_message_text(
             f"the content.]"
         )
         for convo in ctx.referenced_conversations:
-            lines.append(f"\n[Content of #{convo.title}]")
+            lines.append(f"\n[Content of #{_sanitize(convo.title)}]")
             for entry in convo.messages:
                 lines.append(format_history_entry(entry, platform_display))
     if thread_history:
-        lines.append("\n[Recent thread context before this message]")
+        where = (
+            "channel messages" if ctx.channel_type == "channel" else "thread context"
+        )
+        lines.append(f"\n[Recent {where} before this message]")
         for entry in thread_history:
             lines.append(format_history_entry(entry, platform_display))
     lines.append(f"\n[Current message]\n{text}")
@@ -237,12 +283,20 @@ def build_message_text(
 
 
 def format_history_entry(entry: MessageHistoryEntry, platform_display: str) -> str:
+    name = _sanitize(entry.username)
     user = (
-        f"{entry.username} ({platform_display} user ID: {entry.user_id})"
+        f"{name} ({platform_display} user ID: {entry.user_id})"
         if entry.user_id
-        else entry.username
+        else name
     )
-    return f"\n[From {user}]\n{entry.text}"
+    return f"\n[From {user}]\n{_neutralize_context_labels(entry.text)}"
+
+
+def _neutralize_context_labels(text: str) -> str:
+    """Escape lines in a message that would read like a section
+    ``build_message_text`` writes, so no message, earlier or current, can
+    pose as the current message or a different speaker."""
+    return _CONTEXT_LABEL_RE.sub(r"\1\\[", _framed(text))
 
 
 def build_thread_name(text: str, username: str, max_length: int) -> str:

@@ -1,10 +1,12 @@
 import { Input } from "@/components/atoms/Input/Input";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { useMemo } from "react";
 import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
 import { useRunAgentModalContext } from "../../context";
 import { ModalSection } from "../ModalSection/ModalSection";
+import { NodeCredentialsNotice } from "../NodeCredentialsNotice/NodeCredentialsNotice";
 import { WebhookTriggerBanner } from "../WebhookTriggerBanner/WebhookTriggerBanner";
 
 export function ModalRunSection() {
@@ -18,11 +20,22 @@ export function ModalRunSection() {
     inputValues,
     setInputValue,
     agentInputFields,
+    triggerConfigValues,
+    setTriggerConfigValue,
+    triggerConfigFields,
     agentCredentialsInputFields,
     inputCredentials,
     setInputCredentialsValue,
+    autoSelectInputCredentialsValue,
+    clearedCredentialFields,
+    nodeCredentials,
+    isResolvingCredentials,
+    nodeCredentialsUnknown,
+    isRetryingNodeCredentials,
+    retryNodeCredentials,
   } = useRunAgentModalContext();
 
+  const triggerConfigFieldEntries = Object.entries(triggerConfigFields || {});
   const inputFields = Object.entries(agentInputFields || {});
 
   const credentialFields = useMemo(() => {
@@ -45,7 +58,7 @@ export function ModalRunSection() {
           <WebhookTriggerBanner />
           <div className="flex flex-col gap-4">
             <div className="flex flex-col space-y-2">
-              <label className="flex items-center gap-1 text-sm font-medium">
+              <label className="flex items-center gap-1 text-body font-medium">
                 Trigger Name
                 <InformationTooltip description="Name of the trigger you are setting up" />
               </label>
@@ -60,7 +73,7 @@ export function ModalRunSection() {
               />
             </div>
             <div className="flex flex-col space-y-2">
-              <label className="flex items-center gap-1 text-sm font-medium">
+              <label className="flex items-center gap-1 text-body font-medium">
                 Trigger Description
                 <InformationTooltip description="Description of the trigger you are setting up" />
               </label>
@@ -75,6 +88,24 @@ export function ModalRunSection() {
               />
             </div>
           </div>
+        </ModalSection>
+      ) : null}
+
+      {triggerConfigFieldEntries.length > 0 ? (
+        <ModalSection
+          title="Trigger Configuration"
+          subtitle="Configure what this trigger listens for"
+        >
+          {triggerConfigFieldEntries.map(([key, inputSubSchema]) => (
+            <RunAgentInputs
+              key={key}
+              schema={inputSubSchema}
+              value={triggerConfigValues[key] ?? inputSubSchema.default}
+              placeholder={inputSubSchema.description}
+              onChange={(value) => setTriggerConfigValue(key, value)}
+              data-testid={`trigger-config-${key}`}
+            />
+          ))}
         </ModalSection>
       ) : null}
 
@@ -101,13 +132,33 @@ export function ModalRunSection() {
           title="Task Credentials"
           subtitle="These are the credentials the workflow will use to perform this task"
         >
-          <CredentialsGroupedView
-            credentialFields={credentialFields}
-            requiredCredentials={requiredCredentials}
-            inputCredentials={inputCredentials}
-            inputValues={inputValues}
-            onCredentialChange={setInputCredentialsValue}
-          />
+          {isResolvingCredentials ? (
+            <Skeleton
+              role="status"
+              aria-label="Loading credentials"
+              className="h-14 w-full"
+            />
+          ) : (
+            <div className="flex flex-col gap-4">
+              {nodeCredentialsUnknown ? (
+                <NodeCredentialsNotice
+                  isRetrying={isRetryingNodeCredentials}
+                  onRetry={retryNodeCredentials}
+                />
+              ) : null}
+              <CredentialsGroupedView
+                credentialFields={credentialFields}
+                requiredCredentials={requiredCredentials}
+                inputCredentials={inputCredentials}
+                inputValues={inputValues}
+                onCredentialChange={setInputCredentialsValue}
+                onAutoSelect={autoSelectInputCredentialsValue}
+                nodeCredentials={nodeCredentials}
+                nodeCredentialsUnknown={nodeCredentialsUnknown}
+                clearedFields={clearedCredentialFields}
+              />
+            </div>
+          )}
         </ModalSection>
       ) : null}
     </div>

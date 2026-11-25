@@ -166,16 +166,19 @@ class AppProcess(ABC):
             self.execute_run_command(silent)
             return 0
 
-        self.process = Process(
+        process = Process(
             name=self.__class__.__name__,
             target=self.execute_run_command,
             args=(silent,),
             **proc_args,
         )
-        self.process.start()
-        logger.info(f"[{self.service_name}] started with PID {self.process.pid}")
+        process.start()
+        # Kept only once started: stop() terminates the process kept here, and
+        # an unstarted one can't be terminated.
+        self.process = process
+        logger.info(f"[{self.service_name}] started with PID {process.pid}")
 
-        return self.process.pid or 0
+        return process.pid or 0
 
     def stop(self):
         """

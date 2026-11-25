@@ -18,6 +18,7 @@ interface Props {
   onTabChange: (tabId: string) => void;
   allCount: number;
   favoritesCount: number;
+  librarySort: LibraryAgentSort;
   setLibrarySort: (value: LibraryAgentSort) => void;
   statusFilter?: AgentStatusFilter;
   onStatusFilterChange?: (filter: AgentStatusFilter) => void;
@@ -30,6 +31,7 @@ export function LibrarySubSection({
   onTabChange,
   allCount,
   favoritesCount,
+  librarySort,
   setLibrarySort,
   statusFilter = "all",
   onStatusFilterChange,
@@ -67,11 +69,12 @@ export function LibrarySubSection({
               key={tab.id}
               value={tab.id}
               ref={tab.id === "favorites" ? favoritesRef : undefined}
-              className="inline-flex items-center gap-1.5"
               disabled={tab.id === "favorites" && favoritesCount === 0}
             >
-              <Icon icon={tab.icon} size={16} />
-              {getTabLabel(tab)}
+              <span className="inline-flex items-center gap-1.5">
+                <Icon icon={tab.icon} size={16} />
+                {getTabLabel(tab)}
+              </span>
             </TabsLineTrigger>
           ))}
         </TabsLineList>
@@ -85,7 +88,10 @@ export function LibrarySubSection({
             summary={fleetSummary}
           />
         )}
-        <LibrarySortMenu setLibrarySort={setLibrarySort} />
+        <LibrarySortMenu
+          librarySort={librarySort}
+          setLibrarySort={setLibrarySort}
+        />
       </div>
     </div>
   );

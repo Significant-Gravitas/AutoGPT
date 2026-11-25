@@ -10,30 +10,41 @@ import type {
   CompactionPhase,
   CompactionStats,
 } from "../../CompactionCard/helpers";
+import type { FeedbackCardTarget } from "../../../tools/FeedbackPrompts/helpers";
 import { MessagePartRenderer } from "./MessagePartRenderer";
 
 interface Props {
   parts: MessagePart[];
   messageID: string;
   isCurrentlyStreaming: boolean;
+  canActOnCards?: boolean;
+  /** Rendered from the newest answer, any row of it. Its chains' cards can
+   *  send, mid-turn included; an earlier answer's send nothing (see
+   *  ToolChain). Required, so a new transcript view can't leave earlier
+   *  answers able to send by leaving it out. */
+  isLatestAnswer: boolean;
   onRetry?: () => void;
   fileUrlBuilder?: (fileId: string) => string;
   readOnly?: boolean;
   compactionPhase?: CompactionPhase | null;
   liveCompactionCallId?: string | null;
   liveCompactionStats?: CompactionStats;
+  feedbackTarget?: FeedbackCardTarget | null;
 }
 
 export function ChainMessageParts({
   parts,
   messageID,
   isCurrentlyStreaming,
+  canActOnCards,
+  isLatestAnswer,
   onRetry,
   fileUrlBuilder,
   readOnly,
   compactionPhase,
   liveCompactionCallId,
   liveCompactionStats,
+  feedbackTarget,
 }: Props) {
   const outcomes = useContext(HeldOutcomesContext);
   // Kept per `parts` so each ToolChain gets the same `parts` array back and
@@ -58,6 +69,7 @@ export function ChainMessageParts({
             isCurrentlyStreaming && segmentIndex === lastChainSegmentIndex
           }
           readOnly={readOnly}
+          isLatestAnswer={isLatestAnswer}
         />
       );
     }
@@ -90,6 +102,8 @@ export function ChainMessageParts({
         liveCompactionCallId={liveCompactionCallId}
         liveCompactionStats={liveCompactionStats}
         isCurrentlyStreaming={isCurrentlyStreaming}
+        canActOnCards={canActOnCards}
+        feedbackTarget={feedbackTarget}
       />
     );
   });

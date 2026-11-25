@@ -23,6 +23,7 @@ import { useState } from "react";
 import { RunAgentModal } from "../modals/RunAgentModal/RunAgentModal";
 import { RunDetailCard } from "../selected-views/RunDetailCard/RunDetailCard";
 import { EmptyTasksIllustration } from "./EmptyTasksIllustration";
+import { getBuilderHref } from "@/app/(platform)/build/helpers/builderHref";
 
 type Props = {
   agent: LibraryAgent;
@@ -110,8 +111,10 @@ export function EmptyTasks({
             <div className="flex items-center justify-between gap-2">
               <div className="flex flex-col items-center gap-2">
                 <Text
-                  variant="h3"
-                  className="text-center text-heading-sm leading-inherit"
+                  variant="h4"
+                  as="h3"
+                  // oxlint-disable-next-line design-system/no-restyle -- no heading variant keeps the parent line height; h4 alone would move the empty state by 9px
+                  className="text-center leading-inherit"
                 >
                   Ready to get started?
                 </Text>
@@ -141,7 +144,7 @@ export function EmptyTasks({
       </RunDetailCard>
 
       <div className="mt-4 flex flex-col gap-10 rounded-large border border-border-base p-6 lg:mt-0 lg:w-[29.5rem]">
-        <Text variant="label" className="text-foreground-tertiary">
+        <Text variant="label" tone="muted">
           About this workflow
         </Text>
         <div className="flex flex-col gap-2">
@@ -155,7 +158,8 @@ export function EmptyTasks({
         <ShowMoreText
           previewLimit={170}
           variant="body"
-          className="-mt-4 text-textGrey"
+          // oxlint-disable-next-line design-system/no-restyle -- ShowMoreText has no tone prop yet
+          className="-mt-4 text-foreground-body"
         >
           {agent.description ||
             `This workflow is not yet published. Once it is published, You can publish your workflow by clicking the "Publish" button in the workflow editor.`}
@@ -163,19 +167,15 @@ export function EmptyTasks({
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-20">
             <div className="flex flex-col gap-0">
-              <Text variant="body-medium" className="text-foreground-base">
-                Workflow created on
-              </Text>
-              <Text variant="body" className="text-textGrey">
+              <Text variant="body-medium">Workflow created on</Text>
+              <Text variant="body" tone="body">
                 {createdAt}
               </Text>
             </div>
             {isUpdated ? (
               <div className="flex flex-col gap-0">
-                <Text variant="body-medium" className="text-foreground-base">
-                  Workflow updated on
-                </Text>
-                <Text variant="body" className="text-textGrey">
+                <Text variant="body-medium">Workflow updated on</Text>
+                <Text variant="body" tone="body">
                   {updatedAt}
                 </Text>
               </div>
@@ -183,10 +183,7 @@ export function EmptyTasks({
           </div>
           <div className="mt-4 flex items-center gap-2">
             <Button variant="secondary" size="small" asChild>
-              <Link
-                href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
-                target="_blank"
-              >
+              <Link href={getBuilderHref(agent.graph_id)} target="_blank">
                 Edit workflow
               </Link>
             </Button>

@@ -14,7 +14,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from prisma.enums import SharedVia
-from prisma.models import AgentGraphExecution, ChatLinkedShare
+from prisma.models import (
+    AgentGraphExecution,
+    ChatLinkedShare,
+)
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.models import (
@@ -29,6 +32,7 @@ from backend.copilot.model import ChatMessage
 from backend.copilot.sharing.db import (
     _build_shared_execution_file_allowlist,
     _collect_execution_ids_from_messages,
+    _collect_public_execution_outputs,
     _file_referenced_in_session,
     disable_chat_session_share,
     enable_chat_session_share,
@@ -491,7 +495,9 @@ class TestEnableChatShareState:
         mock_prisma_calls["file"].return_value.delete_many = AsyncMock(return_value=0)
         with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
             msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[])
-            mock_prisma_calls["session"].return_value.update = AsyncMock()
+            mock_prisma_calls["session"].return_value.update_many = AsyncMock(
+                return_value=1
+            )
             await enable_chat_session_share(
                 SESSION_ID, USER_ID, auto_share_executions=False
             )
@@ -526,18 +532,48 @@ class TestEnableChatShareState:
         # _build_shared_chat_files needs to find no messages → no files.
         with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
             msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[])
-            mock_prisma_calls["session"].return_value.update = AsyncMock()
+            mock_prisma_calls["session"].return_value.update_many = AsyncMock(
+                return_value=1
+            )
 
             token = await enable_chat_session_share(
                 SESSION_ID, USER_ID, auto_share_executions=False
             )
 
-        # Token returned, session.update called with isShared=True.
+        # Token returned, session update called with isShared=True, and only
+        # while the chat is not archived.
         assert isinstance(token, str)
         assert len(token) > 10
-        update_call = mock_prisma_calls["session"].return_value.update.call_args
+        update_call = mock_prisma_calls["session"].return_value.update_many.call_args
+        assert update_call.kwargs["where"] == {"id": SESSION_ID, "archivedAt": None}
         assert update_call.kwargs["data"]["isShared"] is True
         assert update_call.kwargs["data"]["shareToken"] == token
+
+    @pytest.mark.asyncio
+    async def test_a_chat_archived_mid_share_is_not_shared(
+        self, mock_prisma_calls, mock_transaction
+    ):
+        """An expert reset can archive the chat after the up-front check;
+        the conditional update then matches nothing and the raise rolls the
+        whole share back, so an archived chat never ends up shared."""
+        mock_prisma_calls["session"].return_value.find_first = AsyncMock(
+            return_value=_mock_session()
+        )
+        mock_prisma_calls["execution"].return_value.find_many = AsyncMock(
+            return_value=[]
+        )
+        mock_prisma_calls["file"].return_value.delete_many = AsyncMock(return_value=0)
+        mock_prisma_calls["linked"].return_value.delete_many = AsyncMock(return_value=0)
+        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
+            msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[])
+            mock_prisma_calls["session"].return_value.update_many = AsyncMock(
+                return_value=0
+            )
+
+            with pytest.raises(ValueError, match="not found for user"):
+                await enable_chat_session_share(
+                    SESSION_ID, USER_ID, auto_share_executions=False
+                )
 
     @pytest.mark.asyncio
     async def test_get_chat_share_state_returns_default_for_unknown_session(
@@ -784,6 +820,12 @@ class TestSharedExecutionFileAllowlist:
             )
 
         assert created == 1
+        execution_include = mock_prisma_calls[
+            "execution"
+        ].return_value.find_unique.call_args.kwargs["include"]
+        # No node on the row at all now, so nothing can carry its block:
+        # each node is read once for the run instead.
+        assert "Node" not in execution_include["NodeExecutions"]["include"]
         find_many_call = mock_prisma_calls[
             "workspace_file"
         ].return_value.find_many.call_args.kwargs
@@ -795,6 +837,68 @@ class TestSharedExecutionFileAllowlist:
                 "shareToken": "share-token",
             }
         )
+
+
+def test_public_outputs_use_yielded_output_over_input_value():
+    node = SimpleNamespace(
+        Node=SimpleNamespace(agentBlockId="output-block"),
+        executionData={"name": "report", "value": "raw", "format": "{{ report }}!"},
+        Input=None,
+        Output=[SimpleNamespace(name="output", data="raw!")],
+    )
+    with patch(
+        "backend.copilot.sharing.db.get_block",
+        return_value=SimpleNamespace(block_type=BlockType.OUTPUT),
+    ):
+        outputs = _collect_public_execution_outputs(
+            SimpleNamespace(NodeExecutions=[node])
+        )
+    assert outputs == {"report": ["raw!"]}
+
+
+_MODERATED = "Failed due to content moderation"
+
+
+def _public_outputs(node: SimpleNamespace) -> dict:
+    with patch(
+        "backend.copilot.sharing.db.get_block",
+        return_value=SimpleNamespace(block_type=BlockType.OUTPUT),
+    ):
+        return _collect_public_execution_outputs(SimpleNamespace(NodeExecutions=[node]))
+
+
+def test_public_outputs_mask_moderation_cleared_outputs():
+    node = SimpleNamespace(
+        Node=SimpleNamespace(agentBlockId="output-block"),
+        executionData={"name": "report", "value": "secret", "format": "{{ report }}!"},
+        Input=None,
+        Output=[SimpleNamespace(name="output", data="secret!")],
+        stats={
+            "error": _MODERATED,
+            "cleared_inputs": {
+                "name": ["report"],
+                "value": [_MODERATED],
+                "format": [_MODERATED],
+            },
+            "cleared_outputs": {"output": [_MODERATED]},
+        },
+    )
+    assert _public_outputs(node) == {"report": [_MODERATED]}
+
+
+def test_public_outputs_mask_moderation_cleared_inputs():
+    node = SimpleNamespace(
+        Node=SimpleNamespace(agentBlockId="output-block"),
+        executionData={"name": "report", "value": "secret"},
+        Input=None,
+        Output=[],
+        stats={
+            "error": _MODERATED,
+            "cleared_inputs": {"name": ["report"], "value": [_MODERATED]},
+            "cleared_outputs": {},
+        },
+    )
+    assert _public_outputs(node) == {"report": [_MODERATED]}
 
 
 class TestLinkNewExecutionToChatShare:

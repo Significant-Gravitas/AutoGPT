@@ -5,13 +5,21 @@ All context variables and their accessors live here so that
 without creating circular dependencies.
 """
 
+from __future__ import annotations
+
+import asyncio
+import ntpath
 import os
+import posixpath
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeAlias
 
+from typing_extensions import TypeIs
+
+from backend.copilot.local_executor import LocalPCExecutorMarker
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import workspace_db
 from backend.data.workspace_scope import WorkspaceAccessDeniedError, WorkspaceScope
@@ -21,7 +29,12 @@ if TYPE_CHECKING:
     from e2b import AsyncSandbox
 
     from backend.copilot.permissions import CopilotPermissions
+    from backend.copilot.tools.local_pc_shim import LocalPCShim
     from backend.copilot.tree import TurnEnvelope
+
+    ExecutorSandbox: TypeAlias = AsyncSandbox | LocalPCShim
+else:
+    ExecutorSandbox = object
 
 
 # Allowed base directory for the Read tool.  Public so service.py can use it
@@ -42,10 +55,11 @@ _UUID_RE = re.compile(r"^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$", re.IGNOR
 _current_project_dir: ContextVar[str] = ContextVar("_current_project_dir", default="")
 
 _current_user_id: ContextVar[str | None] = ContextVar("current_user_id", default=None)
+_current_turn_id: ContextVar[str | None] = ContextVar("current_turn_id", default=None)
 _current_session: ContextVar[ChatSession | None] = ContextVar(
     "current_session", default=None
 )
-_current_sandbox: ContextVar["AsyncSandbox | None"] = ContextVar(
+_current_sandbox: ContextVar[ExecutorSandbox | None] = ContextVar(
     "_current_sandbox", default=None
 )
 _current_sdk_cwd: ContextVar[str] = ContextVar("_current_sdk_cwd", default="")
@@ -182,7 +196,7 @@ _encode_cwd_for_cli = encode_cwd_for_cli
 def set_execution_context(
     user_id: str | None,
     session: ChatSession | None,
-    sandbox: "AsyncSandbox | None" = None,
+    sandbox: ExecutorSandbox | None = None,
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,
     envelope: "TurnEnvelope | None" = None,
@@ -203,6 +217,15 @@ def set_execution_context(
 def get_execution_context() -> tuple[str | None, ChatSession | None]:
     """Return the current (user_id, session) pair for the active request."""
     return _current_user_id.get(), _current_session.get()
+
+
+def set_current_turn_id(turn_id: str | None) -> None:
+    """Record the executor turn ID, independently of any shared analytics trace."""
+    _current_turn_id.set(turn_id)
+
+
+def get_current_turn_id() -> str | None:
+    return _current_turn_id.get()
 
 
 def get_current_permissions() -> "CopilotPermissions | None":
@@ -237,9 +260,21 @@ def is_unattended_turn() -> bool:
     return _current_turn_unattended.get()
 
 
-def get_current_sandbox() -> "AsyncSandbox | None":
+def get_current_sandbox() -> ExecutorSandbox | None:
     """Return the E2B sandbox for the current session, or None if not active."""
     return _current_sandbox.get()
+
+
+@contextmanager
+def turn_sandbox(sandbox: "AsyncSandbox | None") -> Iterator[None]:
+    """Use *sandbox* as the turn's sandbox inside the block, for work that
+    writes to the model's working directory before the turn sets its
+    execution context."""
+    token = _current_sandbox.set(sandbox)
+    try:
+        yield
+    finally:
+        _current_sandbox.reset(token)
 
 
 def get_sdk_cwd() -> str:
@@ -250,6 +285,35 @@ def get_sdk_cwd() -> str:
 E2B_WORKDIR = "/home/user"
 E2B_ALLOWED_DIRS: tuple[str, ...] = (E2B_WORKDIR, "/tmp")
 E2B_ALLOWED_DIRS_STR: str = " or ".join(E2B_ALLOWED_DIRS)
+
+
+def is_local_pc_executor(sandbox: object | None) -> TypeIs[LocalPCShim]:
+    """Narrow an executor union to the Local PC adapter."""
+    return isinstance(sandbox, LocalPCExecutorMarker)
+
+
+def get_workdir(sandbox: ExecutorSandbox | None) -> str:
+    """Return the active executor's working directory.
+
+    LocalPCShim advertises its `allowed_root` in HELLO; E2B uses the fixed
+    `/home/user`. Falls back to `E2B_WORKDIR` when no sandbox is set so
+    legacy callsites keep their prior behavior.
+    """
+    if is_local_pc_executor(sandbox) and sandbox.allowed_root:
+        return sandbox.allowed_root
+    return E2B_WORKDIR
+
+
+def get_allowed_dirs(sandbox: ExecutorSandbox | None) -> tuple[str, ...]:
+    """Return the active executor's allowed directories.
+
+    E2B exposes both `/home/user` and `/tmp`. LocalPCShim exposes only
+    the advertised `allowed_root` — no implicit `/tmp` access for the local
+    machine.
+    """
+    if is_local_pc_executor(sandbox) and sandbox.allowed_root:
+        return (sandbox.allowed_root,)
+    return E2B_ALLOWED_DIRS
 
 
 def is_within_allowed_dirs(path: str) -> bool:
@@ -301,13 +365,57 @@ def is_sdk_tool_path(path: str) -> bool:
     )
 
 
+def resolve_executor_path(path: str, sandbox: ExecutorSandbox | None) -> str:
+    """Normalise *path* against the active executor's workdir + allowed dirs.
+
+    For LocalPCShim: resolves relative paths against `shim.allowed_root` and
+    validates against `(shim.allowed_root,)`. Note this is the platform-side
+    lexical check only — the shim itself enforces the real path jail per
+    autogpt-local-executor/docs/CROSS_PLATFORM.md (realpath + case-fold per FS
+    + reserved-name + ADS
+    rejection). Platform-side validation here is best-effort and catches
+    obvious-bad inputs before a wire roundtrip.
+
+    For E2B: equivalent to :func:`resolve_sandbox_path`.
+
+    Raises :class:`ValueError` on a lexical jail-escape.
+    """
+    workdir = get_workdir(sandbox)
+    allowed = get_allowed_dirs(sandbox)
+    windows = is_local_pc_executor(sandbox) and sandbox.platform.lower() == "windows"
+    path_module = ntpath if windows else posixpath
+    candidate = path if path_module.isabs(path) else path_module.join(workdir, path)
+    normalized = path_module.normpath(candidate)
+    for root in allowed:
+        normalized_root = path_module.normpath(root)
+        try:
+            common = path_module.commonpath((normalized_root, normalized))
+        except ValueError:
+            continue
+        if windows:
+            if ntpath.normcase(common) == ntpath.normcase(normalized_root):
+                return normalized
+        elif common == normalized_root:
+            return normalized
+    raise ValueError(
+        f"Path must be within {' or '.join(allowed)}: {path_module.basename(path)}"
+    )
+
+
 # Anchored matches for host-side SDK tool-result paths. Used by
 # wrong-tool detectors (bash_exec, read_workspace_file) to redirect the
 # model to ``read_tool_result`` / ``@@agptfile:`` rather than letting it
 # bounce off ``Permission denied`` repeatedly.
 #
 # Two shapes are matched:
-#   (1) absolute SDK path:  /<...>/.claude/projects/<cwd>/<uuid>/tool-results/<file>.json
+#   (1) anything under the SDK projects dir — files, folders and globs
+#       alike (``cd …/tool-results/``,
+#       ``ls /root/.claude/projects/*/*/tool-results/``). The sandbox has
+#       no such folder, so any reference to it ends in ``Permission denied``.
+#       The path must start a shell token and be the configured
+#       ``SDK_PROJECTS_DIR`` or a home-level ``.claude/projects`` (``~``,
+#       ``$HOME``, ``/root``, ``/home/<name>``, or relative), so a repo
+#       folder like ``/home/user/my-repo/.claude/projects`` still runs.
 #   (2) model shorthand:    tool-(results|outputs)/<toolu|mcp>_<id>.json
 #
 # The shorthand branch requires the SDK's actual ID prefix so a user
@@ -315,20 +423,47 @@ def is_sdk_tool_path(path: str) -> bool:
 # trigger a false redirect on legitimate paths like
 # ``my-pipeline/tool-outputs/data.json``.
 _SDK_TOOL_RESULT_RE = re.compile(
-    r"(?:^|[/\s'\"])/?\.claude/projects/[^/\s]+/[^/\s]+/tool-(?:results|outputs)/"
-    r"[\w-]+\.json"
+    r"(?:^|(?<=[\s'\"=(`;&|<>]))"
+    rf"(?:{re.escape(SDK_PROJECTS_DIR)}"
+    r"|(?:(?:~|\$HOME|\$\{HOME\}|/root|/home/[^/\s'\"]+)/|/)?\.claude/projects)"
+    r"(?![\w.-])"
     r"|(?:^|[/\s'\"])tool-(?:results|outputs)/(?:toolu|mcp)_[\w-]+\.json",
     re.IGNORECASE,
 )
 
 
+# The bash_exec command as the model wrote it with its ``@@agptfile:`` refs
+# cut out, set by the SDK tool adapter before it expands them. The redirect
+# check reads this, so neither a ref to an SDK tool result (the route the
+# redirect itself suggests) nor a ``.claude/projects`` path that is only text
+# inside an inlined file blocks the command. Left unset when the command is
+# nothing but refs: then the expanded file is the script that runs, so the
+# check reads that.
+_bash_command_as_written: ContextVar[str | None] = ContextVar(
+    "_bash_command_as_written", default=None
+)
+
+
+@contextmanager
+def bash_command_as_written(command: str | None) -> Iterator[None]:
+    token = _bash_command_as_written.set(command)
+    try:
+        yield
+    finally:
+        _bash_command_as_written.reset(token)
+
+
+def get_bash_command_as_written() -> str | None:
+    return _bash_command_as_written.get()
+
+
 def looks_like_sdk_tool_result_path(text: str) -> bool:
-    """Return True if *text* references a host-side SDK tool-result file.
+    """Return True if *text* references a host-side SDK tool-result path.
 
     Anchored regex match — avoids false positives on user paths that
     happen to contain a ``tool-outputs/`` directory by requiring either
-    the full ``.claude/projects/<…>/tool-(results|outputs)/<file>.json``
-    shape or the SDK's ``(toolu|mcp)_<id>.json`` filename pattern.
+    a ``.claude/projects`` path (file, folder or glob) or the SDK's
+    ``(toolu|mcp)_<id>.json`` filename pattern.
     """
     if not text:
         return False
@@ -447,8 +582,10 @@ async def get_workspace_manager(user_id: str, session_id: str) -> WorkspaceManag
     ``tools/__init__`` import chain. Expert turns get a manager confined to
     the expert's resolved scope (see :func:`current_workspace_scope`).
     """
-    workspace = await workspace_db().get_or_create_workspace(user_id)
-    scope = await current_workspace_scope(user_id, session_id)
+    workspace, scope = await asyncio.gather(
+        workspace_db().get_or_create_workspace(user_id),
+        current_workspace_scope(user_id, session_id),
+    )
     return WorkspaceManager(user_id, workspace.id, session_id, scope=scope)
 
 

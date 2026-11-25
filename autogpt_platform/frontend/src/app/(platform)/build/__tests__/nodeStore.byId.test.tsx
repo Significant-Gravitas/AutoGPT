@@ -174,10 +174,10 @@ describe("NodeContainer", () => {
 
     expect(renders).toEqual({ A: 1, B: 2 });
     expect(screen.getByText("node B").parentElement?.className).toContain(
-      "ring-amber-300",
+      "ring-warning-border",
     );
     expect(screen.getByText("node A").parentElement?.className).not.toContain(
-      "ring-amber-300",
+      "ring-warning-border",
     );
   });
 });

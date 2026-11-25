@@ -1,3 +1,4 @@
+import { QueueFollowUpFullError } from "../../../helpers/queueFollowUpMessage";
 import {
   render,
   screen,
@@ -115,29 +116,40 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 }));
 
 const voiceRetry = vi.fn();
+const voiceStartRecording = vi.fn();
 const voiceDownload = vi.fn();
 const voiceDismiss = vi.fn();
 let mockTranscriptionError: string | null = null;
 let mockHasFailedRecording = false;
+let mockIsRecordingUnreadable = false;
 let mockIsTranscribing = false;
+// Real for the focus tests: the hook focuses the composer too.
+let mockRealVoiceRecording = false;
 
-vi.mock("../useVoiceRecording", () => ({
-  useVoiceRecording: () => ({
+vi.mock("../useVoiceRecording", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../useVoiceRecording")>();
+  const stub = () => ({
     isRecording: false,
     isTranscribing: mockIsTranscribing,
     transcriptionError: mockTranscriptionError,
     hasFailedRecording: mockHasFailedRecording,
+    isRecordingUnreadable: mockIsRecordingUnreadable,
     retryTranscription: voiceRetry,
     downloadFailedRecording: voiceDownload,
     dismissTranscriptionError: voiceDismiss,
     elapsedTime: 0,
+    startRecording: voiceStartRecording,
     toggleRecording: vi.fn(),
     handleKeyDown: vi.fn(),
     showMicButton: false,
     isInputDisabled: false,
     audioStream: null,
-  }),
-}));
+  });
+  return {
+    useVoiceRecording: (args: Parameters<typeof real.useVoiceRecording>[0]) =>
+      (mockRealVoiceRecording ? real.useVoiceRecording : stub)(args),
+  };
+});
 
 vi.mock("@/components/organisms/PromptInput/PromptInput", () => ({
   PromptInputSubmit: ({
@@ -271,7 +283,9 @@ afterEach(() => {
   mockInitialPrompt = null;
   mockTranscriptionError = null;
   mockHasFailedRecording = false;
+  mockIsRecordingUnreadable = false;
   mockIsTranscribing = false;
+  mockRealVoiceRecording = false;
 });
 
 describe("ChatInput composer row", () => {
@@ -310,6 +324,40 @@ describe("ChatInput composer row", () => {
 
     expect(document.activeElement).toBe(menuItem);
   });
+
+  it.each([
+    { draft: "no draft", initialPrompt: null },
+    { draft: "a prompt from the link", initialPrompt: "Teach me a new skill" },
+  ])(
+    "leaves focus in a menu that was already open when it mounted, with $draft",
+    ({ initialPrompt }) => {
+      // Home mounts its composer only once the greeting has loaded.
+      mockRealVoiceRecording = true;
+      mockInitialPrompt = initialPrompt;
+      const { rerender } = render(
+        <>
+          <div role="dialog" aria-label="Profile menu">
+            <button type="button">Show me around</button>
+          </div>
+          {/* Holds the composer's slot, so the rerender keeps the menu mounted. */}
+          {null}
+        </>,
+      );
+      const menuItem = screen.getByRole("button", { name: "Show me around" });
+      menuItem.focus();
+
+      rerender(
+        <>
+          <div role="dialog" aria-label="Profile menu">
+            <button type="button">Show me around</button>
+          </div>
+          <ChatInput onSend={mockOnSend} sessionId="session-1" />
+        </>,
+      );
+
+      expect(document.activeElement).toBe(menuItem);
+    },
+  );
 
   it("takes focus from a dialog that is on its way out", () => {
     // A sheet closing (picking a chat in the phone's sidebar) stays mounted
@@ -641,10 +689,11 @@ describe("ChatInput Enter while streaming", () => {
     expect(textarea.value).toBe("");
   });
 
-  it("puts the text back and toasts when queueing fails", async () => {
-    const onEnqueue = vi
-      .fn()
-      .mockRejectedValue(new Error("Session has no active turn"));
+  it.each([
+    new Error("Session has no active turn"),
+    new QueueFollowUpFullError(),
+  ])("puts the text back and toasts when queueing fails: %s", async (error) => {
+    const onEnqueue = vi.fn().mockRejectedValue(error);
     render(<ChatInput onSend={mockOnSend} onEnqueue={onEnqueue} isStreaming />);
     const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
     fireEvent.change(textarea, { target: { value: "and then?" } });
@@ -655,6 +704,7 @@ describe("ChatInput Enter while streaming", () => {
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({
         title: "Couldn't send message",
+        description: expect.stringContaining(error.message),
         variant: "destructive",
       }),
     );
@@ -1565,12 +1615,46 @@ describe("ChatInput transcription failure", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /^Retry$/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Download recording/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Download recording" }));
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
 
     expect(voiceRetry).toHaveBeenCalledTimes(1);
     expect(voiceDownload).toHaveBeenCalledTimes(1);
     expect(voiceDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers Record again instead of Retry when the recording is unreadable", () => {
+    mockTranscriptionError =
+      "We couldn't read that recording. Try recording again.";
+    mockHasFailedRecording = true;
+    mockIsRecordingUnreadable = true;
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.queryByRole("button", { name: /^Retry$/ })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Download recording" }),
+    ).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Record again$/ }));
+
+    expect(voiceStartRecording).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables Record again while a reply streams, like the mic", () => {
+    mockTranscriptionError =
+      "We couldn't read that recording. Try recording again.";
+    mockHasFailedRecording = true;
+    mockIsRecordingUnreadable = true;
+    render(<ChatInput onSend={mockOnSend} isStreaming />);
+
+    const recordAgain = screen.getByRole<HTMLButtonElement>("button", {
+      name: "Record again",
+    });
+    expect(recordAgain.disabled).toBe(true);
+
+    fireEvent.click(recordAgain);
+
+    expect(voiceStartRecording).not.toHaveBeenCalled();
   });
 
   it("keeps the row up while the retry is in flight", () => {

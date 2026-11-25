@@ -12,6 +12,9 @@ import {
   setWebSocketDisconnectIntent,
 } from "../helpers";
 import type { User } from "../types";
+import { ImpersonationState } from "@/lib/impersonation";
+import { isAbortError, isNetworkError } from "@/lib/transient-errors";
+import { isSessionCheckTimeout, withDeadline } from "./session-check-deadline";
 
 interface FetchUserResult {
   user: User | null;
@@ -21,7 +24,10 @@ interface FetchUserResult {
 
 export async function fetchUser(): Promise<FetchUserResult> {
   try {
-    const { user, error } = await getCurrentUser();
+    const { user, error } = await withDeadline(
+      "getCurrentUser",
+      getCurrentUser(),
+    );
 
     if (error || !user) {
       // Only mark as loaded if we got an explicit error (not just no user)
@@ -40,7 +46,14 @@ export async function fetchUser(): Promise<FetchUserResult> {
       isUserLoading: false,
     };
   } catch (error) {
-    console.error("Get user error:", error);
+    // A check cut off by a full-page navigation (a login reloads the page), a
+    // dropped connection or no answer in time is not a broken session. Its
+    // deadline reports a timeout.
+    if (isAbortError(error) || isNetworkError(error)) {
+      console.warn("Get user deferred:", error);
+    } else if (!isSessionCheckTimeout(error)) {
+      console.error("Get user error:", error);
+    }
     return {
       user: null,
       hasLoadedUser: true, // Error means we tried and failed, so mark as loaded
@@ -49,23 +62,42 @@ export async function fetchUser(): Promise<FetchUserResult> {
   }
 }
 
+// Next's `unstable_isUnrecognizedActionError` uses `instanceof`; the name check
+// also holds when the error crosses a module or bundle boundary.
+function isUnrecognizedActionError(error: unknown): boolean {
+  return error instanceof Error && error.name === "UnrecognizedActionError";
+}
+
 interface ValidateSessionParams {
   path: string;
   currentUser: User | null;
 }
+
+// Why a validation couldn't reach a verdict. "deployment-skew" means the
+// server no longer knows this bundle's server action IDs (a deploy happened
+// while the tab was open); everything else is a network or server hiccup.
+export type SessionUnavailableReason = "network" | "deployment-skew";
 
 interface ValidateSessionResult {
   isValid: boolean;
   user?: User | null;
   redirectPath?: string | null;
   shouldUpdateUser: boolean;
+  unavailable?: SessionUnavailableReason;
 }
 
 export async function validateSession(
   params: ValidateSessionParams,
 ): Promise<ValidateSessionResult> {
   try {
-    const result = await validateSessionAction(params.path);
+    const result = await withDeadline(
+      "validateSession",
+      validateSessionAction(params.path),
+    );
+
+    if (result.isUnavailable) {
+      return { isValid: true, shouldUpdateUser: false, unavailable: "network" };
+    }
 
     if (!result.isValid) {
       return {
@@ -76,7 +108,11 @@ export async function validateSession(
     }
 
     if (result.user) {
-      const shouldUpdateUser = params.currentUser?.id !== result.user.id;
+      // A role change (e.g. an admin demoted) is a new identity too: it
+      // decides what this tab may do, impersonation included.
+      const shouldUpdateUser =
+        params.currentUser?.id !== result.user.id ||
+        params.currentUser?.role !== result.user.role;
       clearWebSocketDisconnectIntent();
       return {
         isValid: true,
@@ -90,23 +126,48 @@ export async function validateSession(
       shouldUpdateUser: false,
     };
   } catch (error) {
-    console.error("Session validation error:", error);
-    const redirectPath = getRedirectPath(params.path);
-    return {
-      isValid: false,
-      redirectPath,
-      shouldUpdateUser: true,
-    };
+    // Only the auth backend can say a session is invalid, and it says so by
+    // returning `isValid: false`. A throw means we never got its answer, so
+    // the user stays signed in and the caller retries.
+    if (isUnrecognizedActionError(error)) {
+      return {
+        isValid: true,
+        shouldUpdateUser: false,
+        unavailable: "deployment-skew",
+      };
+    }
+    if (!isSessionCheckTimeout(error)) {
+      console.warn("Session validation unavailable:", error);
+    }
+    return { isValid: true, shouldUpdateUser: false, unavailable: "network" };
   }
 }
 
 interface RefreshSessionResult {
   user?: User | null;
   error?: string;
+  isUnavailable?: boolean;
 }
 
+// Never rejects: callers get a result either way. A call that didn't reach
+// the server says nothing about the session, so it comes back unavailable.
+// One that missed its deadline may still finish on the server and set new
+// session cookies; the store's next check, guarded by the session epoch like
+// any other, reads them.
 export async function refreshSession(): Promise<RefreshSessionResult> {
-  const result = await refreshSessionAction();
+  let result: RefreshSessionResult;
+  try {
+    result = await withDeadline("refreshSession", refreshSessionAction());
+  } catch (error) {
+    if (!isSessionCheckTimeout(error)) {
+      console.warn("Session refresh unavailable:", error);
+    }
+    return {
+      user: null,
+      error: "Couldn't reach the server",
+      isUnavailable: true,
+    };
+  }
 
   if (result.user) {
     clearWebSocketDisconnectIntent();
@@ -135,6 +196,10 @@ export function handleStorageEvent(
   }
 
   setWebSocketDisconnectIntent();
+
+  // Another tab logged out: drop this tab's sessionStorage copy of any admin
+  // impersonation too, or it would be re-sent after the next sign-in.
+  ImpersonationState.clear();
 
   if (params.api) {
     params.api.disconnectWebSocket();

@@ -1,18 +1,15 @@
-import { NotionLogoIcon } from "@radix-ui/react-icons";
-import {
-  FaDiscord,
-  FaGithub,
-  FaGoogle,
-  FaHubspot,
-  FaMedium,
-  FaTwitter,
-} from "react-icons/fa";
 import { CredentialsType } from "@/lib/autogpt-server-api/types";
 import {
+  DiscordIcon,
+  GithubIcon,
   Globe02Icon,
+  GoogleIcon,
   Key01Icon,
   LockIcon,
   LockPasswordIcon,
+  MediumIcon,
+  NotionIcon,
+  TwitterIcon,
 } from "@hugeicons/core-free-icons";
 import { createIconComponent } from "@/components/atoms/Icon/Icon";
 import { z } from "zod";
@@ -21,6 +18,12 @@ export const fallbackIcon = createIconComponent(Key01Icon);
 const globeIcon = createIconComponent(Globe02Icon);
 const lockIcon = createIconComponent(LockIcon);
 const lockPasswordIcon = createIconComponent(LockPasswordIcon);
+const githubIcon = createIconComponent(GithubIcon);
+const googleIcon = createIconComponent(GoogleIcon);
+const notionIcon = createIconComponent(NotionIcon);
+const discordIcon = createIconComponent(DiscordIcon);
+const mediumIcon = createIconComponent(MediumIcon);
+const twitterIcon = createIconComponent(TwitterIcon);
 
 export const providerIcons: Partial<
   Record<string, React.FC<{ className?: string }>>
@@ -30,20 +33,20 @@ export const providerIcons: Partial<
   apollo: fallbackIcon,
   database: fallbackIcon,
   e2b: fallbackIcon,
-  github: FaGithub,
-  google: FaGoogle,
+  github: githubIcon,
+  google: googleIcon,
   groq: fallbackIcon,
   http: fallbackIcon,
-  notion: NotionLogoIcon,
+  notion: notionIcon,
   nvidia: fallbackIcon,
-  discord: FaDiscord,
+  discord: discordIcon,
   d_id: fallbackIcon,
   elevenlabs: fallbackIcon,
-  google_maps: FaGoogle,
+  google_maps: googleIcon,
   jina: fallbackIcon,
   ideogram: fallbackIcon,
   linear: fallbackIcon,
-  medium: FaMedium,
+  medium: mediumIcon,
   mem0: fallbackIcon,
   ollama: fallbackIcon,
   openai: fallbackIcon,
@@ -59,10 +62,10 @@ export const providerIcons: Partial<
   reddit: fallbackIcon,
   fal: fallbackIcon,
   revid: fallbackIcon,
-  twitter: FaTwitter,
+  twitter: twitterIcon,
   unreal_speech: fallbackIcon,
   exa: fallbackIcon,
-  hubspot: FaHubspot,
+  hubspot: fallbackIcon,
   smartlead: fallbackIcon,
   todoist: fallbackIcon,
   zerobounce: fallbackIcon,
@@ -213,6 +216,23 @@ export function getRemovedCredentialMessage(
   return `${removedCredentialTitle} was removed — now using ${replacement}.`;
 }
 
+export function getMissingScopes(
+  requiredScopes: string[],
+  grantedScopes: string[] | null | undefined,
+): string[] {
+  const granted = new Set(grantedScopes ?? []);
+  return requiredScopes.filter((scope) => !granted.has(scope));
+}
+
+export function getScopeShortfallMessage(missingScopes: string[]): string {
+  const plural = missingScopes.length > 1;
+  return (
+    `The account connected, but the ${plural ? "permissions" : "permission"} ` +
+    `${missingScopes.join(", ")} ${plural ? "were" : "was"} not granted. ` +
+    `Reconnect and approve ${plural ? "them" : "it"} to use this account here.`
+  );
+}
+
 export const OAUTH_TIMEOUT_MS = 5 * 60 * 1000;
 export const MASKED_KEY_LENGTH = 15;
 
@@ -220,7 +240,8 @@ export function isSystemCredential(credential: {
   title?: string | null;
   is_system?: boolean;
 }): boolean {
-  if (credential.is_system === true) return true;
+  // The backend sets the flag from the key's id; the title is only a guess
+  if (typeof credential.is_system === "boolean") return credential.is_system;
   if (!credential.title) return false;
   const titleLower = credential.title.toLowerCase();
   return (
@@ -379,18 +400,38 @@ export function resolveActionTarget(
 
 export type HeaderPair = { key: string; value: string };
 
+// Trims everything the backend's str.strip() trims. trim() keeps U+001C to
+// U+001F and U+0085, so a header of only those would pass here and then be
+// refused by the backend.
+const STRIPPED_BY_BACKEND = /[\s\u001c-\u001f\u0085]/;
+
+function trimLikeBackend(text: string) {
+  let start = 0;
+  let end = text.length;
+  while (start < end && STRIPPED_BY_BACKEND.test(text[start])) start++;
+  while (end > start && STRIPPED_BY_BACKEND.test(text[end - 1])) end--;
+  return text.slice(start, end);
+}
+
 export function headerPairsToRecord(
   pairs: HeaderPair[],
 ): Record<string, string> {
   return pairs.reduce(
     (acc, pair) => {
-      if (pair.key.trim() && pair.value.trim()) {
-        acc[pair.key.trim()] = pair.value.trim();
+      if (trimLikeBackend(pair.key) && trimLikeBackend(pair.value)) {
+        acc[trimLikeBackend(pair.key)] = trimLikeBackend(pair.value);
       }
       return acc;
     },
     {} as Record<string, string>,
   );
+}
+
+export function hasRepeatedHeaderName(pairs: HeaderPair[]) {
+  const names = pairs
+    .filter((pair) => trimLikeBackend(pair.key) && trimLikeBackend(pair.value))
+    .map((pair) => trimLikeBackend(pair.key).toLowerCase());
+  return new Set(names).size !== names.length;
 }
 
 export function addHeaderPairToList(pairs: HeaderPair[]): HeaderPair[] {

@@ -17,6 +17,14 @@ export function isMidTurnSegmentRow(message: ChatMessage): boolean {
   return message.id.includes(SEGMENT_ID_MARKER);
 }
 
+/** The id of the message a row was rendered from: a segment's id is its
+ *  source message's id plus the marker and its index, and every other row
+ *  is the message itself. */
+export function sourceMessageID(row: ChatMessage): string {
+  const marker = row.id.indexOf(SEGMENT_ID_MARKER);
+  return marker === -1 ? row.id : row.id.slice(0, marker);
+}
+
 /**
  * A follow-up bubble that stands in for the drain point because the stream
  * did not (or has not yet) drawn one: a chip `useCopilotPendingChips`
@@ -216,9 +224,19 @@ function splitAssistantMessage(message: ChatMessage): ChatMessage[] {
   return rows;
 }
 
+const FOLLOW_UP_ROW_ID_PREFIX = "midturn-";
+
+/** The bubble a drain hint draws for a follow-up taken into a running turn,
+ *  which does not start a turn of its own. */
+export function isMidTurnFollowUpRow(message: ChatMessage): boolean {
+  return (
+    message.role === "user" && message.id.startsWith(FOLLOW_UP_ROW_ID_PREFIX)
+  );
+}
+
 function makeFollowUpRow(id: string, content: string): ChatMessage {
   return {
-    id: `midturn-${id}`,
+    id: `${FOLLOW_UP_ROW_ID_PREFIX}${id}`,
     role: "user",
     parts: [{ type: "text", text: content, state: "done" }],
   };

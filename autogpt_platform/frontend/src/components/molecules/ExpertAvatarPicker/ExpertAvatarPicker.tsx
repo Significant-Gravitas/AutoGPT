@@ -19,7 +19,7 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
   return (
     <div
       data-slot="expert-avatar-picker"
-      className="flex w-full flex-col items-center gap-4 rounded-2xl border border-border bg-background p-5"
+      className="flex w-full flex-col items-center gap-4 rounded-2xl border border-border-base bg-canvas p-5"
     >
       <ExpertAvatar
         name={name || "Your expert"}
@@ -31,7 +31,7 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
         <p
           role="status"
           data-slot="expert-avatar-picker-status"
-          className="text-body leading-5 text-muted-foreground"
+          className="text-body leading-5 text-foreground-tertiary"
         >
           Creating another avatar. You can keep this one or upload a picture
           while you wait.
@@ -41,7 +41,7 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
         <p
           role="alert"
           data-slot="expert-avatar-picker-error"
-          className="text-body leading-5 text-destructive"
+          className="text-body leading-5 text-error"
         >
           {picker.error}
         </p>

@@ -3,6 +3,7 @@ import logging
 import math
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 from prisma.enums import AlertCause
 
@@ -92,7 +93,7 @@ def _block_has_paid_cost_entry(block: Block, input_data: "dict[str, Any]") -> bo
     block_costs = BLOCK_COSTS.get(type(block))
     if not block_costs:
         return False
-    input_data = _with_schema_defaults(block, input_data)
+    input_data = _with_schema_defaults(block, input_data, resolved_model=None)
     return any(
         not bc.is_free and _is_cost_filter_match(bc.cost_filter, input_data)
         for bc in block_costs
@@ -295,7 +296,7 @@ def _with_stop_estimate(
     tokens = stats.abandoned_input_token_count
     if tokens <= 0:
         return post_flight
-    input_data = _with_schema_defaults(block, input_data)
+    input_data = _with_schema_defaults(block, input_data, stats.resolved_model)
     block_cost = next(
         (
             bc
@@ -356,6 +357,10 @@ async def charge_reconciled_usage(
 
     ``bill_stop_estimate`` (see ``bills_stop_estimate``) adds the estimated
     input tokens of LLM requests a stop cut off mid-call.
+
+    The node is priced on the model it recorded when it started
+    (``stats.resolved_model``), so one still running at 00:00 UTC on its
+    model's shutdown date settles at the rates of the model it ran.
     """
     try:
         db_client = get_database_manager_async_client()
@@ -364,7 +369,11 @@ async def charge_reconciled_usage(
             return 0, 0
 
         if pre_flight_charge is None:
-            pre_flight, _ = block_usage_cost(block=block, input_data=node_exec.inputs)
+            pre_flight, _ = block_usage_cost(
+                block=block,
+                input_data=node_exec.inputs,
+                pre_flight_resolved_model=stats.resolved_model,
+            )
         else:
             pre_flight = pre_flight_charge
         post_flight, matching_filter = block_usage_cost(
@@ -575,16 +584,14 @@ def handle_insufficient_funds_notif(
 
     # Send Discord system alert
     try:
-        user_email = db_client.get_user_email_by_id(user_id)
-
         alert_message = (
             f"❌ **Insufficient Funds Alert**\n"
-            f"User: {user_email or user_id}\n"
+            f"User: `{user_id}`\n"
             f"Agent: {metadata.name if metadata else 'Unknown Agent'}\n"
             f"Current balance: ${e.balance / 100:.2f}\n"
             f"Attempted cost: ${abs(e.amount) / 100:.2f}\n"
             f"Shortfall: ${abs(shortfall) / 100:.2f}\n"
-            f"[View User Details]({base_url}/admin/spending?search={user_email})"
+            f"[View User Details]({base_url}/admin/spending?search={quote(user_id, safe='')})"
         )
 
         get_notification_manager_client().discord_system_alert(
@@ -622,14 +629,13 @@ def handle_low_balance(
         )
 
         try:
-            user_email = db_client.get_user_email_by_id(user_id)
             alert_message = (
                 f"⚠️ **Low Balance Alert**\n"
-                f"User: {user_email or user_id}\n"
+                f"User: `{user_id}`\n"
                 f"Balance dropped below ${LOW_BALANCE_THRESHOLD / 100:.2f}\n"
                 f"Current balance: ${current_balance / 100:.2f}\n"
                 f"Transaction cost: ${transaction_cost / 100:.2f}\n"
-                f"[View User Details]({base_url}/admin/spending?search={user_email})"
+                f"[View User Details]({base_url}/admin/spending?search={quote(user_id, safe='')})"
             )
             get_notification_manager_client().discord_system_alert(
                 alert_message, DiscordChannel.PRODUCT

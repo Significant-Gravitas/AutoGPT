@@ -131,3 +131,11 @@ async def get_cached_store_creators(
 async def get_cached_creator_details(username: str):
     """Cached helper to get creator details."""
     return await store_db.get_store_creator(username=username.lower())
+
+
+def forget_store_listings() -> None:
+    """Clear listing and creator caches after a committed change, best effort."""
+    try:
+        clear_all_caches()
+    except Exception:
+        logger.warning("Could not clear the store caches", exc_info=True)

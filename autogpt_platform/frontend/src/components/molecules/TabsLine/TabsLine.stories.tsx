@@ -29,11 +29,11 @@ type Story = StoryObj<typeof meta>;
 function TabsDemo() {
   return (
     <div className="flex flex-col gap-8 p-8">
-      <h2 className="text-2xl font-bold">TabsLine Examples</h2>
+      <h2 className="text-heading-md font-bold">TabsLine Examples</h2>
 
       <div className="space-y-6">
         <div>
-          <h3 className="mb-4 text-lg font-semibold">Basic Tabs</h3>
+          <h3 className="mb-4 text-lead font-semibold">Basic Tabs</h3>
           <TabsLine defaultValue="tab1" className="w-full">
             <TabsLineList>
               <TabsLineTrigger value="tab1">Account</TabsLineTrigger>
@@ -41,19 +41,19 @@ function TabsDemo() {
               <TabsLineTrigger value="tab3">Settings</TabsLineTrigger>
             </TabsLineList>
             <TabsLineContent value="tab1">
-              <div className="p-4 text-sm">
+              <div className="p-4 text-body">
                 Make changes to your account here. Click save when you&apos;re
                 done.
               </div>
             </TabsLineContent>
             <TabsLineContent value="tab2">
-              <div className="p-4 text-sm">
+              <div className="p-4 text-body">
                 Change your password here. After saving, you&apos;ll be logged
                 out.
               </div>
             </TabsLineContent>
             <TabsLineContent value="tab3">
-              <div className="p-4 text-sm">
+              <div className="p-4 text-body">
                 Update your preferences and settings here.
               </div>
             </TabsLineContent>
@@ -61,7 +61,7 @@ function TabsDemo() {
         </div>
 
         <div>
-          <h3 className="mb-4 text-lg font-semibold">Many Tabs</h3>
+          <h3 className="mb-4 text-lead font-semibold">Many Tabs</h3>
           <TabsLine defaultValue="overview" className="w-full">
             <TabsLineList>
               <TabsLineTrigger value="overview">Overview</TabsLineTrigger>
@@ -76,32 +76,32 @@ function TabsDemo() {
               <TabsLineTrigger value="billing">Billing</TabsLineTrigger>
             </TabsLineList>
             <TabsLineContent value="overview">
-              <div className="p-4 text-sm">
+              <div className="p-4 text-body">
                 Dashboard overview with key metrics and recent activity.
               </div>
             </TabsLineContent>
             <TabsLineContent value="analytics">
-              <div className="p-4 text-sm">
+              <div className="p-4 text-body">
                 Detailed analytics and performance metrics.
               </div>
             </TabsLineContent>
             <TabsLineContent value="reports">
-              <div className="p-4 text-sm">
+              <div className="p-4 text-body">
                 Generate and view reports for your account.
               </div>
             </TabsLineContent>
             <TabsLineContent value="notifications">
-              <div className="p-4 text-sm">
+              <div className="p-4 text-body">
                 Manage your notification preferences.
               </div>
             </TabsLineContent>
             <TabsLineContent value="integrations">
-              <div className="p-4 text-sm">
+              <div className="p-4 text-body">
                 Connect and manage third-party integrations.
               </div>
             </TabsLineContent>
             <TabsLineContent value="billing">
-              <div className="p-4 text-sm">
+              <div className="p-4 text-body">
                 View and manage your billing information.
               </div>
             </TabsLineContent>
@@ -109,7 +109,7 @@ function TabsDemo() {
         </div>
 
         <div>
-          <h3 className="mb-4 text-lg font-semibold">Disabled Tab</h3>
+          <h3 className="mb-4 text-lead font-semibold">Disabled Tab</h3>
           <TabsLine defaultValue="active1" className="w-full">
             <TabsLineList>
               <TabsLineTrigger value="active1">Active Tab</TabsLineTrigger>
@@ -119,17 +119,17 @@ function TabsDemo() {
               <TabsLineTrigger value="active2">Another Active</TabsLineTrigger>
             </TabsLineList>
             <TabsLineContent value="active1">
-              <div className="p-4 text-sm">
+              <div className="p-4 text-body">
                 This is an active tab that you can interact with.
               </div>
             </TabsLineContent>
             <TabsLineContent value="disabled">
-              <div className="p-4 text-sm">
+              <div className="p-4 text-body">
                 This content is for the disabled tab.
               </div>
             </TabsLineContent>
             <TabsLineContent value="active2">
-              <div className="p-4 text-sm">
+              <div className="p-4 text-body">
                 Another active tab with different content.
               </div>
             </TabsLineContent>
@@ -153,12 +153,12 @@ export const BasicTabs: Story = {
           <TabsLineTrigger value="password">Password</TabsLineTrigger>
         </TabsLineList>
         <TabsLineContent value="account">
-          <div className="p-4 text-sm">
+          <div className="p-4 text-body">
             Make changes to your account here. Click save when you&apos;re done.
           </div>
         </TabsLineContent>
         <TabsLineContent value="password">
-          <div className="p-4 text-sm">
+          <div className="p-4 text-body">
             Change your password here. After saving, you&apos;ll be logged out.
           </div>
         </TabsLineContent>
@@ -180,24 +180,24 @@ export const ManyTabs: Story = {
           <TabsLineTrigger value="blog">Blog</TabsLineTrigger>
         </TabsLineList>
         <TabsLineContent value="home">
-          <div className="p-4 text-sm">Welcome to our homepage!</div>
+          <div className="p-4 text-body">Welcome to our homepage!</div>
         </TabsLineContent>
         <TabsLineContent value="about">
-          <div className="p-4 text-sm">Learn more about our company.</div>
+          <div className="p-4 text-body">Learn more about our company.</div>
         </TabsLineContent>
         <TabsLineContent value="services">
-          <div className="p-4 text-sm">Discover our range of services.</div>
+          <div className="p-4 text-body">Discover our range of services.</div>
         </TabsLineContent>
         <TabsLineContent value="portfolio">
-          <div className="p-4 text-sm">
+          <div className="p-4 text-body">
             View our previous work and projects.
           </div>
         </TabsLineContent>
         <TabsLineContent value="contact">
-          <div className="p-4 text-sm">Get in touch with us today.</div>
+          <div className="p-4 text-body">Get in touch with us today.</div>
         </TabsLineContent>
         <TabsLineContent value="blog">
-          <div className="p-4 text-sm">Read our latest blog posts.</div>
+          <div className="p-4 text-body">Read our latest blog posts.</div>
         </TabsLineContent>
       </TabsLine>
     </div>
@@ -216,17 +216,17 @@ export const WithDisabledTab: Story = {
           <TabsLineTrigger value="enabled">Enabled</TabsLineTrigger>
         </TabsLineList>
         <TabsLineContent value="available">
-          <div className="p-4 text-sm">
+          <div className="p-4 text-body">
             This tab is available and can be clicked.
           </div>
         </TabsLineContent>
         <TabsLineContent value="disabled">
-          <div className="p-4 text-sm">
+          <div className="p-4 text-body">
             This tab is disabled and cannot be accessed.
           </div>
         </TabsLineContent>
         <TabsLineContent value="enabled">
-          <div className="p-4 text-sm">
+          <div className="p-4 text-body">
             This tab is also enabled and functional.
           </div>
         </TabsLineContent>
@@ -245,17 +245,17 @@ export const FullWidth: Story = {
           <TabsLineTrigger value="tab3">Tab Three</TabsLineTrigger>
         </TabsLineList>
         <TabsLineContent value="tab1">
-          <div className="p-4 text-sm">
+          <div className="p-4 text-body">
             Content for the first tab with full width layout.
           </div>
         </TabsLineContent>
         <TabsLineContent value="tab2">
-          <div className="p-4 text-sm">
+          <div className="p-4 text-body">
             Content for the second tab with full width layout.
           </div>
         </TabsLineContent>
         <TabsLineContent value="tab3">
-          <div className="p-4 text-sm">
+          <div className="p-4 text-body">
             Content for the third tab with full width layout.
           </div>
         </TabsLineContent>
@@ -283,18 +283,22 @@ function CompactDemo() {
           </TabsLineTrigger>
         </TabsLineList>
         <TabsLineContent value="basics">
-          <div className="text-sm text-foreground-secondary">Basics panel</div>
+          <div className="text-body text-foreground-secondary">
+            Basics panel
+          </div>
         </TabsLineContent>
         <TabsLineContent value="work">
-          <div className="text-sm text-foreground-secondary">Work panel</div>
+          <div className="text-body text-foreground-secondary">Work panel</div>
         </TabsLineContent>
         <TabsLineContent value="schedules">
-          <div className="text-sm text-foreground-secondary">
+          <div className="text-body text-foreground-secondary">
             Schedules panel
           </div>
         </TabsLineContent>
         <TabsLineContent value="skills">
-          <div className="text-sm text-foreground-secondary">Skills panel</div>
+          <div className="text-body text-foreground-secondary">
+            Skills panel
+          </div>
         </TabsLineContent>
       </TabsLine>
     </div>

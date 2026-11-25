@@ -1,10 +1,10 @@
 import { useDeleteV1DeleteExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import { useRelativeTime } from "@/components/atoms/RelativeTime/useRelativeTime";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
 
 interface Args {
@@ -23,10 +23,7 @@ export function useGraphScheduleListItem({ schedule }: Args) {
   const nextRunDate = schedule.next_run_time
     ? new Date(schedule.next_run_time)
     : null;
-  const nextRunRelative =
-    nextRunDate && !Number.isNaN(nextRunDate.valueOf())
-      ? formatDistanceToNow(nextRunDate, { addSuffix: true })
-      : null;
+  const nextRunRelative = useRelativeTime(nextRunDate);
   // One source of truth: the row prefixes it, the View dialog shows it bare.
   const nextRunValue = nextRunRelative
     ? nextRunRelative

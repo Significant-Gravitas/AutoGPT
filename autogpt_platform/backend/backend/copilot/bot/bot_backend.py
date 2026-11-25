@@ -24,7 +24,9 @@ from backend.copilot.response_model import (
     StreamFinish,
     StreamTextDelta,
     StreamToolOutputAvailable,
+    StreamTurnPaused,
 )
+from backend.copilot.turn_pause import TurnPause
 from backend.data.redis_client import get_redis_async
 from backend.platform_linking.models import (
     MAX_BOT_MESSAGE_CHARS,
@@ -53,6 +55,7 @@ from backend.util.exceptions import (
 )
 
 from .adapters.base import InboundAttachment
+from .pauses import pause_note
 from .prompt import clamp_prompt
 
 # How long to wait for a single chunk from the copilot stream before giving
@@ -75,12 +78,15 @@ class BotStreamError(Exception):
     """A copilot stream couldn't produce a successful reply.
 
     Carries a bounded ``error_kind`` so the handler can attribute analytics
-    accurately instead of guessing from the inline text.
+    accurately instead of guessing from the inline text, and the backend's
+    ``code`` (when the stream sent one) so the user can be told what kind of
+    failure it was.
     """
 
-    def __init__(self, error_kind: str, message: str):
+    def __init__(self, error_kind: str, message: str, code: str | None = None):
         super().__init__(message)
         self.error_kind = error_kind
+        self.code = code
 
 
 class ChatTurnDeniedError(Exception):
@@ -685,13 +691,26 @@ class BotBackend:
                     ):
                         cards_posted.add(review_id)
                         await on_approval_needed(handle.session_id, review_id)
+                elif isinstance(chunk, StreamTurnPaused):
+                    # The turn stopped at a limit on purpose; StreamFinish
+                    # follows. Say how to pick it up, after its checkpoint.
+                    if last_text_block_id is not None:
+                        yield "\n\n"
+                    yield pause_note(TurnPause.model_validate(chunk.pause))
                 elif isinstance(chunk, StreamFinish):
                     return
                 elif isinstance(chunk, StreamError):
-                    logger.error("Stream error from backend: %s", chunk.errorText)
+                    # Reported once, with its chat reference, by the turn
+                    # streamer; logging it at error here too would double it.
+                    logger.warning(
+                        "Stream error from backend: %s (code=%s)",
+                        chunk.errorText,
+                        chunk.code,
+                    )
                     raise BotStreamError(
                         "backend_stream_error",
                         chunk.errorText,
+                        code=chunk.code,
                     )
                 # Other StreamX types (StreamStart, StreamTextStart, tool events,
                 # etc.) are emitted by the executor for the frontend UI and
@@ -756,7 +775,30 @@ def _extract_setup_requirements(output: str | dict[str, Any]) -> dict[str, Any] 
         return None
     if parsed.get("type") != "setup_requirements":
         return None
+    if _needs_nothing_from_user(parsed):
+        # The "you're connected" card (run_mcp_tool answers a connection check
+        # with it). On the web it renders a Reconnect pill; here it would post
+        # "finish setup" for a setup that is already done.
+        logger.info("Not surfacing a setup card that needs no user action")
+        return None
     return parsed
+
+
+def _needs_nothing_from_user(card: dict[str, Any]) -> bool:
+    """True when a setup_requirements card reports everything in place:
+    ready to run, no missing credentials, no rejected credential. Only an
+    explicit readiness block counts; a bare card still asks for setup."""
+    if card.get("rejection"):
+        return False
+    info = card.get("setup_info")
+    readiness = info.get("user_readiness") if isinstance(info, dict) else None
+    if not isinstance(readiness, dict):
+        return False
+    return (
+        readiness.get("ready_to_run") is True
+        and readiness.get("has_all_credentials") is True
+        and not readiness.get("missing_credentials")
+    )
 
 
 def _extract_clarification_needed(

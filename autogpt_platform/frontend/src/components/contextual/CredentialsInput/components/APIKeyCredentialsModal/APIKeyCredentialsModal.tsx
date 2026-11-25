@@ -4,6 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { toDateTimeLocalValue } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/schema";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
@@ -90,11 +91,7 @@ export function APIKeyCredentialsModal({
                     placeholder="Enter API Key..."
                     hint={
                       schema.credentials_scopes ? (
-                        <FormDescription
-                          // TODO(tokens): SECRT-3152 rare size: text-[0.8rem].
-                          // dark:text-neutral-400: the legacy FormDescription's, moved verbatim (DS6, SECRT-3116)
-                          className="text-[0.8rem] leading-inherit dark:text-neutral-400"
-                        >
+                        <FormDescription className="text-body-sm leading-inherit">
                           Required scope(s) for this block:{" "}
                           {schema.credentials_scopes?.map((s, i, a) => (
                             <span key={i}>
@@ -120,30 +117,16 @@ export function APIKeyCredentialsModal({
             <FormField
               control={form.control}
               name="expiresAt"
-              render={({ field }) => (
+              render={({ field, fieldState }) => (
                 <Input
                   id="expiresAt"
                   label="Expiration Date"
                   type="datetime-local"
                   placeholder="Select expiration date..."
                   value={field.value}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value) {
-                      const dateTime = new Date(value);
-                      dateTime.setHours(0, 0, 0, 0);
-                      const year = dateTime.getFullYear();
-                      const month = String(dateTime.getMonth() + 1).padStart(
-                        2,
-                        "0",
-                      );
-                      const day = String(dateTime.getDate()).padStart(2, "0");
-                      const normalizedValue = `${year}-${month}-${day}T00:00`;
-                      field.onChange(normalizedValue);
-                    } else {
-                      field.onChange(value);
-                    }
-                  }}
+                  error={fieldState.error?.message}
+                  min={toDateTimeLocalValue(new Date())}
+                  onChange={(e) => field.onChange(e.target.value)}
                   onBlur={field.onBlur}
                   name={field.name}
                 />

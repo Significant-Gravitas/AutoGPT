@@ -31,6 +31,7 @@ Examples
     @@agptfile:/home/user/script.sh
 """
 
+import asyncio
 import itertools
 import logging
 import re
@@ -41,8 +42,9 @@ from backend.copilot.context import (
     get_current_sandbox,
     get_sdk_cwd,
     get_workspace_manager,
+    is_local_pc_executor,
     resolve_allowed_local_path,
-    resolve_sandbox_path,
+    resolve_executor_path,
 )
 from backend.copilot.host_fs import open_no_follow
 from backend.copilot.model import ChatSession
@@ -54,6 +56,7 @@ from backend.util.file_content_parser import (
     infer_format_from_uri,
     parse_file_content,
 )
+from backend.util.sandbox_output import read_sandbox_file
 from backend.util.type import MediaFileType
 
 
@@ -96,6 +99,16 @@ class FileRef:
 # ---------------------------------------------------------------------------
 # Public API  (top-down: main functions first, helpers below)
 # ---------------------------------------------------------------------------
+
+
+def text_outside_file_refs(text: str) -> str | None:
+    """Return *text* with every ``@@agptfile:`` reference cut out.
+
+    Returns None when *text* is nothing but references, since the expanded
+    content then stands in for the whole text.
+    """
+    rest = _FILE_REF_RE.sub(" ", text)
+    return rest if rest.strip() else None
 
 
 def parse_file_ref(text: str) -> FileRef | None:
@@ -180,13 +193,18 @@ async def read_file_bytes(
     sandbox = get_current_sandbox()
     if sandbox is not None:
         try:
-            remote = resolve_sandbox_path(plain)
+            # A Local PC's folder, or E2B's /home/user and /tmp.
+            remote = resolve_executor_path(plain, sandbox)
         except ValueError as exc:
             raise ValueError(
                 f"Path is not allowed (not in workspace, sdk_cwd, or sandbox): {plain}"
             ) from exc
         try:
-            data = bytes(await sandbox.files.read(remote, format="bytes"))
+            data = (
+                await sandbox.files.read_capped(remote, _MAX_BARE_REF_BYTES)
+                if is_local_pc_executor(sandbox)
+                else await read_sandbox_file(sandbox, remote, _MAX_BARE_REF_BYTES)
+            )
         except (FileNotFoundError, OSError, UnicodeDecodeError) as exc:
             raise ValueError(f"Failed to read from sandbox: {plain}: {exc}") from exc
         except Exception as exc:
@@ -206,12 +224,8 @@ async def read_file_bytes(
             # Re-raise unexpected exceptions (TypeError, AttributeError, etc.)
             # so they surface as real bugs rather than being silently masked.
             raise
-        # NOTE: E2B sandbox API does not support pre-read size checks;
-        # the full file is loaded before the size guard below.
         if len(data) > _MAX_BARE_REF_BYTES:
-            raise ValueError(
-                f"File too large ({len(data)} bytes, limit {_MAX_BARE_REF_BYTES})"
-            )
+            raise ValueError(f"File too large (limit {_MAX_BARE_REF_BYTES} bytes)")
         return data
 
     raise ValueError(
@@ -592,7 +606,9 @@ async def _expand_bare_ref(
         # file) instead of silently returning garbled bytes.
         strict = fmt in BINARY_FORMATS
         try:
-            parsed = parse_file_content(content, fmt, strict=strict)
+            parsed = await asyncio.to_thread(
+                parse_file_content, content, fmt, strict=strict
+            )
         except PARSE_EXCEPTIONS as exc:
             raise FileRefExpansionError(f"Failed to parse {fmt} file: {exc}") from exc
         # Normalize bytes fallback to str so tools never

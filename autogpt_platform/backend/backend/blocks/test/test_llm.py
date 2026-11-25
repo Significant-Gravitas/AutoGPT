@@ -6,6 +6,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
+import groq
 import httpx
 import openai
 import pytest
@@ -16,6 +17,7 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import NodeExecutionStats
 from backend.util.exceptions import BlockExecutionError
 from backend.util.llm import saturation
+from backend.util.llm.http_attempts import HttpAttemptLog
 from backend.util.llm.prompt_refusal import PROMPT_REFUSED_MESSAGE
 from backend.util.llm.prompt_refusal_test import (
     OPENAI_INVALID_PROMPT_BODY,
@@ -1152,6 +1154,40 @@ class TestUserErrorStatusCodeHandling:
             call_count > 1
         ), f"Expected multiple retry attempts for 500, got {call_count}"
 
+
+class TestContextLengthRetryHandling:
+    """Context-length failures retry with reduced max_tokens, never reaching 0."""
+
+    @pytest.mark.asyncio
+    async def test_max_tokens_reduction_clamps_above_zero(self):
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        seen_max_tokens = []
+
+        async def mock_llm_call(*args, **kwargs):
+            seen_max_tokens.append(kwargs["max_tokens"])
+            raise ValueError("This model's maximum context length is 8192 tokens")
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=_TEST_AI_CREDENTIALS,
+                max_tokens=2,
+                retry=5,
+            )
+
+            with pytest.raises(RuntimeError):
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert len(seen_max_tokens) > 1, "context-length errors should keep retrying"
+        assert all(
+            tokens >= 1 for tokens in seen_max_tokens[1:]
+        ), f"max_tokens decayed below 1: {seen_max_tokens}"
+
     @pytest.mark.asyncio
     async def test_user_error_logs_warning_not_exception(self):
         """User-caused errors should log with logger.warning, not logger.exception."""
@@ -1180,6 +1216,124 @@ class TestUserErrorStatusCodeHandling:
 
         mock_warning.assert_called_once()
         mock_exception.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_invalid_model_id_error_appends_guidance(self):
+        """Invalid model ID errors should surface a targeted remediation hint."""
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            response = httpx.Response(
+                400, request=httpx.Request("POST", "https://api.openai.com/v1/chat")
+            )
+            raise openai.APIStatusError(
+                (
+                    "Error code: 400 - {'error': {'message': "
+                    "'invalid model ID: claude-haiku-4-5-20251001'}}"
+                ),
+                response=response,
+                body=None,
+            )
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.LLMModel.CLAUDE_4_5_HAIKU,
+                credentials=_TEST_AI_CREDENTIALS,
+                retry=3,
+            )
+
+            with pytest.raises(RuntimeError) as exc_info:
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert call_count == 1
+        assert "check anthropic's current model list" in str(exc_info.value).lower()
+        assert "update the block's model configuration" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_generic_bad_request_does_not_append_model_guidance(self):
+        """Non-model 400 errors should keep their original provider message and
+        still be retried (i.e. they are not treated as non-retryable)."""
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            response = httpx.Response(
+                400, request=httpx.Request("POST", "https://api.openai.com/v1/chat")
+            )
+            raise openai.APIStatusError(
+                "Error code: 400 - {'error': {'message': 'prompt rejected by moderation'}}",
+                response=response,
+                body=None,
+            )
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.LLMModel.CLAUDE_4_5_HAIKU,
+                credentials=_TEST_AI_CREDENTIALS,
+                retry=2,
+            )
+
+            with pytest.raises(RuntimeError) as exc_info:
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        # Generic 400s are retryable, so the mock must be invoked more than once.
+        assert call_count > 1
+        error_message = str(exc_info.value).lower()
+        assert "check anthropic's current model list" not in error_message
+        assert "update the block's model configuration" not in error_message
+
+    @pytest.mark.asyncio
+    async def test_anthropic_invalid_model_id_error_appends_guidance(self):
+        """Invalid model ID errors from the Anthropic SDK should also surface
+        remediation guidance and skip retries."""
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+            response = httpx.Response(404, request=request)
+            raise anthropic.APIStatusError(
+                "Error code: 404 - model `claude-imaginary` does not exist",
+                response=response,
+                body=None,
+            )
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.LLMModel.CLAUDE_4_5_HAIKU,
+                credentials=_TEST_AI_CREDENTIALS,
+                retry=3,
+            )
+
+            with pytest.raises(RuntimeError) as exc_info:
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert call_count == 1
+        error_message = str(exc_info.value).lower()
+        assert "check anthropic's current model list" in error_message
+        assert "update the block's model configuration" in error_message
 
 
 async def test_a_refused_prompt_fails_the_block_with_a_plain_error():
@@ -1679,6 +1833,10 @@ class TestLLMRequestTimeout:
                 ),
                 id="anthropic-sdk",
             ),
+            pytest.param(
+                lambda: groq.APITimeoutError(request=httpx.Request("POST", "http://x")),
+                id="groq-sdk",
+            ),
         ],
     )
     @pytest.mark.asyncio
@@ -1774,10 +1932,12 @@ class TestLLMRequestTimeout:
     ):
         """The 0.9 threshold is the new business logic, so pin it either side.
         Both degenerate budgets (0 / 3600) leave it free to be any value."""
-        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", budget)
         with self._captured_logs() as records:
             llm._log_timeout_outcome(
-                elapsed=elapsed,
+                started=0.0,
+                cut_off=elapsed,
+                attempts=HttpAttemptLog(clock=llm._now),
+                timeout_seconds=budget,
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 execution_context=None,
                 error=TimeoutError("x"),
@@ -1787,10 +1947,12 @@ class TestLLMRequestTimeout:
     def test_a_bare_timeout_still_names_its_cause(self, monkeypatch):
         """``str(asyncio.TimeoutError())`` is "", and ``error`` is the only field
         in the alert that says what went wrong."""
-        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 100)
         with self._captured_logs() as records:
             llm._log_timeout_outcome(
-                elapsed=99.0,
+                started=0.0,
+                cut_off=99.0,
+                attempts=HttpAttemptLog(clock=llm._now),
+                timeout_seconds=100,
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 execution_context=None,
                 error=asyncio.TimeoutError(),
@@ -1877,16 +2039,29 @@ class TestLLMRequestTimeout:
         assert alerts[0].json_fields["user_id"] == "u-2"
         assert alerts[0].json_fields["node_exec_id"] == "ne-2"
 
+    @pytest.mark.parametrize(
+        "sdk_timeout",
+        [
+            pytest.param(openai.APITimeoutError, id="openai-sdk"),
+            pytest.param(anthropic.APITimeoutError, id="anthropic-sdk"),
+            # Unrelated to openai's class; a shortened per-attempt slice lets it
+            # surface before the outer wait_for, so the seam must name it too.
+            pytest.param(groq.APITimeoutError, id="groq-sdk"),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_fast_failure_warns_instead_of_alerting(self, monkeypatch):
+    async def test_fast_failure_warns_instead_of_alerting(
+        self, monkeypatch, sdk_timeout
+    ):
         """A connect-phase failure burns no provider spend; paging on it during an
         outage would bury the cutoffs that cost money. Asserts the warning is
-        actually emitted — absence alone would pass against a no-op helper."""
+        actually emitted — absence alone would pass against a no-op helper, and
+        the warning proves each SDK's timeout was classified at the seam."""
         monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 3600)
 
         with self._captured_logs() as records:
             await self._run_block_expecting_failure(
-                openai.APITimeoutError(request=httpx.Request("POST", "http://x"))
+                sdk_timeout(request=httpx.Request("POST", "http://x"))
             )
 
         assert not self._alerts(records)
@@ -2213,3 +2388,55 @@ def test_stagehand_keeps_remote_model_credentials_required(block_name):
         ]
         == []
     )
+
+
+@pytest.mark.parametrize(
+    "values, expected",
+    [
+        ({"name ": "Ada"}, {"name": "Ada"}),
+        ({" name\t": "Ada", "topic": "maths"}, {"name": "Ada", "topic": "maths"}),
+        ({"name ": "padded", "name": "clean"}, {"name": "clean"}),
+        ({"name": "clean", " name": "padded"}, {"name": "clean"}),
+        ({" name": "first", "name ": "second"}, {"name": "first"}),
+        ({"\ufeffname\u00a0": "Ada"}, {"name": "Ada"}),
+        ({"   ": "blank", "name": "Ada"}, {"name": "Ada"}),
+        ({}, {}),
+    ],
+)
+def test_strip_prompt_value_keys(values, expected):
+    assert llm.strip_prompt_value_keys(values) == expected
+
+
+@pytest.mark.asyncio
+async def test_a_prompt_value_key_with_whitespace_fills_its_variable():
+    block = llm.AIStructuredResponseGeneratorBlock()
+    sent: dict[str, Any] = {}
+
+    async def fake_llm_call(*, prompt, **_):
+        sent["prompt"] = prompt
+        return llm.LLMResponse(
+            raw_response="",
+            prompt=[],
+            response="Hello",
+            tool_calls=None,
+            prompt_tokens=1,
+            completion_tokens=1,
+            reasoning=None,
+        )
+
+    input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+        prompt="Greet {{name}}",
+        sys_prompt="You talk to {{name}}.",
+        prompt_values={"name ": "Ada"},
+        expected_format={},
+        model=llm.DEFAULT_LLM_MODEL,
+        credentials=_TEST_AI_CREDENTIALS,
+    )
+
+    with patch.object(block, "llm_call", new=AsyncMock(side_effect=fake_llm_call)):
+        async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+            pass
+
+    contents = [message["content"] for message in sent["prompt"]]
+    assert any("You talk to Ada." in content for content in contents)
+    assert any("Greet Ada" in content for content in contents)

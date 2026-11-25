@@ -413,6 +413,113 @@ async def test_sequential_tool_execution():
     assert execution_order == ["tool_a", "tool_b"]
 
 
+async def _run_one_round(
+    tool_calls: list[LLMToolCall],
+    execute_tool,
+    runs_alone=None,
+) -> list[dict[str, Any]]:
+    async def llm_call(
+        messages: list[dict[str, Any]], tools: Sequence[Any]
+    ) -> LLMLoopResponse:
+        if len(messages) == 1:
+            return _make_response(tool_calls=tool_calls)
+        return _make_response(text="Done")
+
+    def update_conversation(
+        messages: list[dict[str, Any]],
+        response: LLMLoopResponse,
+        tool_results: list[ToolCallResult] | None = None,
+    ) -> None:
+        messages.append({"role": "assistant", "content": "called tools"})
+        for tr in tool_results or []:
+            messages.append(
+                {"role": "tool", "tool_call_id": tr.tool_call_id, "content": tr.content}
+            )
+
+    msgs: list[dict[str, Any]] = [{"role": "user", "content": "go"}]
+    async for _ in tool_call_loop(
+        messages=msgs,
+        tools=TOOL_DEFS,
+        llm_call=llm_call,
+        execute_tool=execute_tool,
+        update_conversation=update_conversation,
+        runs_alone=runs_alone,
+    ):
+        pass
+    return [m for m in msgs if m["role"] == "tool"]
+
+
+@pytest.mark.asyncio
+async def test_copy_beside_the_command_building_the_file_gets_all_of_it(tmp_path):
+    """SECRT-3178: a file copied in the same message as the command that
+    builds it was stored half-written. With the builder running alone, the
+    copy sees the whole file, and the results keep the model's order."""
+    target = tmp_path / "out.zip"
+    chunks = [b"PK\x03\x04", b"data" * 64, b"PK\x05\x06"]
+
+    async def execute_tool(
+        tool_call: LLMToolCall, tools: Sequence[Any]
+    ) -> ToolCallResult:
+        if tool_call.name == "build":
+            with target.open("wb") as f:
+                for chunk in chunks:
+                    f.write(chunk)
+                    f.flush()
+                    await asyncio.sleep(0.01)
+            content = "built"
+        else:
+            content = str(len(target.read_bytes()) if target.exists() else 0)
+        return ToolCallResult(
+            tool_call_id=tool_call.id, tool_name=tool_call.name, content=content
+        )
+
+    results = await _run_one_round(
+        [
+            LLMToolCall(id="tc_build", name="build", arguments="{}"),
+            LLMToolCall(id="tc_copy", name="copy", arguments="{}"),
+        ],
+        execute_tool,
+        runs_alone=lambda tc: tc.name == "build",
+    )
+
+    assert [r["tool_call_id"] for r in results] == ["tc_build", "tc_copy"]
+    assert results[1]["content"] == str(sum(len(c) for c in chunks))
+
+
+@pytest.mark.asyncio
+async def test_calls_between_lone_calls_still_overlap():
+    """Only the picked calls lose parallelism: the calls on each side of
+    one still run together, and no call crosses it."""
+    running: set[str] = set()
+    seen_together: list[set[str]] = []
+
+    async def execute_tool(
+        tool_call: LLMToolCall, tools: Sequence[Any]
+    ) -> ToolCallResult:
+        running.add(tool_call.name)
+        await asyncio.sleep(0.01)
+        seen_together.append(set(running))
+        running.discard(tool_call.name)
+        return ToolCallResult(
+            tool_call_id=tool_call.id, tool_name=tool_call.name, content="ok"
+        )
+
+    names = ["read_a", "read_b", "write", "read_c", "read_d"]
+    await _run_one_round(
+        [LLMToolCall(id=n, name=n, arguments="{}") for n in names],
+        execute_tool,
+        runs_alone=lambda tc: tc.name == "write",
+    )
+
+    assert {"read_a", "read_b"} in seen_together
+    assert {"write"} in seen_together
+    assert {"read_c", "read_d"} in seen_together
+    assert all(
+        s <= {"read_a", "read_b"} or s == {"write"} or s <= {"read_c", "read_d"}
+        for s in seen_together
+    )
+
+
 @pytest.mark.asyncio
 async def test_last_iteration_message_appended():
     """On the final iteration, last_iteration_message should be appended

@@ -10,7 +10,7 @@ export function PlanComparison({ plans }: Props) {
     <div data-slot="plan-comparison" className="space-y-4">
       <table
         data-slot="plan-comparison-table"
-        className="w-full table-fixed text-left font-sans text-sm text-foreground-emphasis"
+        className="w-full table-fixed text-left font-sans text-body text-foreground-emphasis"
       >
         <thead data-slot="plan-comparison-head">
           <tr data-slot="plan-comparison-head-row">
@@ -19,7 +19,7 @@ export function PlanComparison({ plans }: Props) {
                 key={plan.key}
                 scope="col"
                 data-slot="plan-comparison-column"
-                className="pb-3 pr-3 font-medium"
+                className="pr-3 pb-3 font-medium"
               >
                 {plan.name}
                 {plan.usage && ` · ${plan.usage} usage`}

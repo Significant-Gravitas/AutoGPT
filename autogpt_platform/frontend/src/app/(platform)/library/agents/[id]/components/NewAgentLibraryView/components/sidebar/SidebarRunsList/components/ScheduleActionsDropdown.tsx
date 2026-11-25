@@ -74,8 +74,6 @@ export function ScheduleActionsDropdown({
     e.stopPropagation();
 
     try {
-      toast({ title: "Run started" });
-
       const res = await executeAgent({
         graphId: schedule.graph_id,
         graphVersion: schedule.graph_version,
@@ -85,6 +83,7 @@ export function ScheduleActionsDropdown({
           source: "library",
         },
       });
+      toast({ title: "Run started" });
 
       const newRunID = okData(res)?.id;
 
@@ -112,24 +111,15 @@ export function ScheduleActionsDropdown({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            // TODO(tokens): no exact role for hover:bg-gray-100 (#F3F4F6)
-            className="ml-auto shrink-0 rounded p-1 hover:bg-gray-100"
+            className="ml-auto shrink-0 rounded p-1 text-foreground-subtle hover:bg-surface-hover"
             onClick={(e) => e.stopPropagation()}
             aria-label="More actions"
           >
-            <Icon
-              // TODO(tokens): no exact role for text-gray-400 (#9CA3AF)
-              icon={MoreVerticalIcon}
-              className="h-5 w-5 text-gray-400"
-            />
+            <Icon icon={MoreVerticalIcon} className="h-5 w-5" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem
-            onClick={handleRunNow}
-            disabled={isRunning}
-            className="flex items-center gap-2"
-          >
+          <DropdownMenuItem onClick={handleRunNow} disabled={isRunning}>
             {isRunning ? "Running..." : "Run now"}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
@@ -138,7 +128,6 @@ export function ScheduleActionsDropdown({
               e.stopPropagation();
               setShowDeleteDialog(true);
             }}
-            className="flex items-center gap-2"
           >
             Delete schedule
           </DropdownMenuItem>

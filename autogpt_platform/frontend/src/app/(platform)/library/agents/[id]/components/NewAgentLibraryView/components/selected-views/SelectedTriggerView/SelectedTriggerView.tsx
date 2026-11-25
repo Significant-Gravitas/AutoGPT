@@ -9,6 +9,7 @@ import { TriggerNotFound } from "../../other/TriggerNotFound";
 import {
   getAgentCredentialsFields,
   getAgentInputFields,
+  getTriggerConfigFields,
 } from "../../modals/AgentInputsReadOnly/helpers";
 import { RunAgentInputs } from "../../modals/RunAgentInputs/RunAgentInputs";
 import { LoadingSelectedContent } from "../LoadingSelectedContent";
@@ -23,7 +24,6 @@ interface Props {
   agent: LibraryAgent;
   triggerId: string;
   onClearSelectedRun?: () => void;
-  onSwitchToRunsTab?: () => void;
   banner?: React.ReactNode;
 }
 
@@ -31,7 +31,6 @@ export function SelectedTriggerView({
   agent,
   triggerId,
   onClearSelectedRun,
-  onSwitchToRunsTab,
   banner,
 }: Props) {
   const {
@@ -44,6 +43,8 @@ export function SelectedTriggerView({
     setDescription,
     inputs,
     setInputValue,
+    triggerConfig,
+    setTriggerConfigValue,
     credentials,
     setCredentialValue,
     handleSaveChanges,
@@ -51,11 +52,14 @@ export function SelectedTriggerView({
   } = useSelectedTriggerView({
     triggerId,
     graphId: agent.graph_id,
+    inputSchema: agent.input_schema,
+    triggerConfigSchema: agent.trigger_setup_info?.config_schema,
   });
 
   const agentInputFields = getAgentInputFields(agent);
   const agentCredentialsFields = getAgentCredentialsFields(agent);
   const inputFields = Object.entries(agentInputFields);
+  const triggerConfigFields = Object.entries(getTriggerConfigFields(agent));
   const credentialFields = Object.entries(agentCredentialsFields);
 
   if (getErrorStatus(error) === 404) {
@@ -140,6 +144,22 @@ export function SelectedTriggerView({
               />
             )}
 
+            {triggerConfigFields.length > 0 && (
+              <RunDetailCard title="Trigger Configuration">
+                <div className="flex flex-col gap-4">
+                  {triggerConfigFields.map(([key, inputSubSchema]) => (
+                    <RunAgentInputs
+                      key={key}
+                      schema={inputSubSchema}
+                      value={triggerConfig[key] ?? inputSubSchema.default}
+                      placeholder={inputSubSchema.description}
+                      onChange={(value) => setTriggerConfigValue(key, value)}
+                    />
+                  ))}
+                </div>
+              </RunDetailCard>
+            )}
+
             {inputFields.length > 0 && (
               <RunDetailCard title="Your Input">
                 <div className="flex flex-col gap-4">
@@ -171,7 +191,7 @@ export function SelectedTriggerView({
                       onSelectCredentials={(value) =>
                         setCredentialValue(key, value!)
                       }
-                      siblingInputs={inputs}
+                      siblingInputs={{ ...inputs, ...triggerConfig }}
                     />
                   ))}
                 </div>
@@ -188,7 +208,6 @@ export function SelectedTriggerView({
             onDeleted={onClearSelectedRun}
             onSaveChanges={handleSaveChanges}
             isSaving={isSaving}
-            onSwitchToRunsTab={onSwitchToRunsTab}
           />
         </div>
       ) : null}

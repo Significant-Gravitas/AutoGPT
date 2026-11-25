@@ -21,11 +21,11 @@ import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages";
 import { useCopilotStream } from "@/app/(platform)/copilot/useCopilotStream";
-import { useCopilotPendingChips } from "@/app/(platform)/copilot/useCopilotPendingChips";
 import { useGetV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
 import { isKey } from "@/lib/keyboard";
 import { retryUnlessClientError } from "../../helpers/graphLoadError";
 import { getDeploymentModelStatus, isNoModelError } from "./helpers";
+import { useBuilderChatSend } from "./useBuilderChatSend";
 
 interface UseBuilderChatPanelArgs {
   panelRef?: React.RefObject<HTMLElement | null>;
@@ -161,20 +161,31 @@ export function useBuilderChatPanel({
     ).messages as UiMessages;
   }, [sessionQuery.data, sessionId, hasActiveStream]);
 
-  const { messages, setMessages, sendMessage, stop, status, error } =
-    useCopilotStream({
-      sessionId,
-      hydratedMessages,
-      hasActiveStream,
-      refetchSession: sessionQuery.refetch,
-      copilotModel: undefined,
-    });
-
-  const { queuedMessages, queueMessage } = useCopilotPendingChips({
-    sessionId,
-    status,
+  const {
     messages,
     setMessages,
+    sendMessage,
+    stop,
+    status,
+    error,
+    isReconnecting,
+    isFinishProbing,
+  } = useCopilotStream({
+    sessionId,
+    hydratedMessages,
+    hasActiveStream,
+    refetchSession: sessionQuery.refetch,
+    copilotModel: undefined,
+  });
+
+  const { onSend, queuedMessages } = useBuilderChatSend({
+    sessionId,
+    status,
+    isReconnecting,
+    isFinishProbing,
+    messages,
+    setMessages,
+    sendMessage,
   });
 
   // Track the currently-selected graph so the async bind effect can
@@ -524,28 +535,6 @@ export function useBuilderChatPanel({
     }
   }
 
-  async function onSend(message: string, _files?: File[]) {
-    const trimmed = message.trim();
-    if (!trimmed) return;
-    if (!sessionId) return;
-    const isInFlight = status === "streaming" || status === "submitted";
-    if (isInFlight) {
-      queueMessage(trimmed);
-      try {
-        const { queueFollowUpMessage } = await import(
-          "@/app/(platform)/copilot/helpers/queueFollowUpMessage"
-        );
-        await queueFollowUpMessage(sessionId, trimmed);
-      } catch (err) {
-        Sentry.captureException(err);
-        // The composer restores the draft and shows the one toast for it.
-        throw err;
-      }
-      return;
-    }
-    sendMessage({ text: trimmed });
-  }
-
   // While an error is active the panel surfaces a retry button instead of
   // the loading spinner — so the computed bootstrapping flag must read
   // false in that case.  Without this, a bind / create-graph failure would
@@ -587,6 +576,7 @@ export function useBuilderChatPanel({
     stop,
     onSend,
     queuedMessages,
+    isTurnSettling: isReconnecting || isFinishProbing || hasActiveStream,
     isBootstrapping,
     hasNoModel,
     revertTargetVersion,

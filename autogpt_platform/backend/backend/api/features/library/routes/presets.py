@@ -7,17 +7,23 @@ from backend.api.features.experts import experts_db
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.execution import ExecutionTrigger, GraphExecutionMeta
 from backend.data.model import CredentialsMetaInput
-from backend.executor.utils import add_graph_execution
+from backend.data.tenancy import require_role_where_resource_lives
+from backend.executor.utils import (
+    _enforce_expert_credential_scope,
+    add_graph_execution,
+)
 from backend.util.exceptions import (
     ExpertRunPausedError,
     WebhookRegistrationError,
     WebhookSetupUnavailableError,
 )
+from backend.util.models import MAX_PAGE
 
 from .. import db
 from .. import model as models
 from ..triggers import (
     delete_preset_with_webhook_cleanup,
+    refuse_direct_run,
     setup_triggered_preset,
     update_triggered_preset,
 )
@@ -35,8 +41,8 @@ router = APIRouter(
 )
 async def list_presets(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=10, ge=1),
+    page: int = Query(default=1, ge=1, le=MAX_PAGE),
+    page_size: int = Query(default=10, ge=1, le=db.MAX_PRESETS_PER_PAGE),
     graph_id: Optional[str] = Query(
         description="Allows to filter presets by a specific agent graph"
     ),
@@ -118,13 +124,13 @@ async def create_preset(
     # Errors are answered by the global handlers in rest_api.py: NotFoundError
     # → 404, MissingConfigError → 503, any other ValueError → 400.
     if isinstance(preset, models.LibraryAgentPresetCreatable):
-        return await db.create_preset(
-            user_id,
-            preset,
-            expert_id=await experts_db.resolve_expert_for_graph(
-                user_id, preset.graph_id
-            ),
-        )
+        expert_id = await experts_db.resolve_expert_for_graph(user_id, preset.graph_id)
+        if expert_id:
+            # Its runs would be refused for a key the expert was never granted.
+            await _enforce_expert_credential_scope(
+                user_id, expert_id, preset.credentials
+            )
+        return await db.create_preset(user_id, preset, expert_id=expert_id)
     return await db.create_preset_from_graph_execution(user_id, preset)
 
 
@@ -145,6 +151,7 @@ async def setup_trigger(
             name=params.name,
             description=params.description,
             trigger_config=params.trigger_config,
+            constant_inputs=params.constant_inputs,
             agent_credentials=params.agent_credentials,
             # Graph-match attribution is resolved by the caller (mirroring
             # create_preset above): setup_triggered_preset itself never
@@ -249,7 +256,10 @@ async def execute_preset(
     preset_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
     ctx: autogpt_auth_lib.RequestContext = Security(
-        autogpt_auth_lib.get_request_context
+        autogpt_auth_lib.requires_resource_permission(
+            autogpt_auth_lib.OrgAction.EXECUTE_RESOURCES,
+            autogpt_auth_lib.TeamAction.EXECUTE_AGENTS,
+        )
     ),
     inputs: dict[str, Any] = Body(..., embed=True, default_factory=dict),
     credential_inputs: dict[str, CredentialsMetaInput] = Body(
@@ -277,6 +287,7 @@ async def execute_preset(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Preset #{preset_id} not found",
         )
+    refuse_direct_run(preset)
 
     # Merge input overrides with preset inputs
     merged_node_input = preset.inputs | inputs
@@ -290,6 +301,14 @@ async def execute_preset(
         (preset.organization_id, preset.team_id)
         if preset.organization_id
         else (ctx.org_id, ctx.team_id)
+    )
+    # So the caller's role there must allow the run, not only in the request's.
+    await require_role_where_resource_lives(
+        user_id,
+        exec_org_id,
+        exec_team_id,
+        autogpt_auth_lib.OrgAction.EXECUTE_RESOURCES,
+        autogpt_auth_lib.TeamAction.EXECUTE_AGENTS,
     )
 
     try:

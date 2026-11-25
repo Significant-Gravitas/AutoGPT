@@ -1,4 +1,3 @@
-import { Button } from "@/components/atoms/Button/Button";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { isComposingEvent } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
@@ -37,19 +36,19 @@ export function DrawerWrap({
   }
 
   const closeBtn = (
-    <Button
-      variant="legacy-link"
+    <button
+      type="button"
       aria-label="Close"
       onClick={handleClose}
       data-slot="drawer-close"
-      className="!focus-visible:ring-0 p-0"
+      className="inline-flex h-9 items-center justify-center rounded-md text-foreground-strong transition-colors focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
     >
       <Icon
         data-slot="drawer-close-icon"
         icon={Cancel01Icon}
         width={isCompact ? "1.25rem" : "1.5rem"}
       />
-    </Button>
+    </button>
   );
 
   return (
@@ -98,10 +97,9 @@ export function DrawerWrap({
             hasVisibleTitle ? (
               closeBtn
             ) : (
-              // TODO(tokens): no role for gray-200 (#E5E7EB).
               <div
                 data-slot="drawer-close-wrap"
-                className={`${modalStyles.iconWrap} transition-colors duration-200 hover:bg-gray-200`}
+                className={`${modalStyles.iconWrap} transition-colors duration-200 hover:bg-surface-active`}
               >
                 {closeBtn}
               </div>
@@ -118,7 +116,7 @@ export function DrawerWrap({
           <div
             data-slot="drawer-viewport"
             className={cn(
-              "flex-1 overflow-y-auto overflow-x-hidden",
+              "flex-1 overflow-x-hidden overflow-y-auto",
               scrollbarStyles,
             )}
           >

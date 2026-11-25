@@ -18,6 +18,11 @@ because every reconnect says so again.  Do not set the address before the
 proxy exists: E2B's proxy option fails closed, so a box pointed at nothing
 has no egress at all, pip, npm and gh included.
 
+A pinned box is also made to trust the proxy's signing CA
+(``e2b_proxy_trust``), on create and on a reconnect whose box lacks it: the
+proxy terminates TLS to bound hosts, and without the CA every such
+connection fails inside the box.
+
 The per-box proxy credential is how the proxy knows whose connection it is
 serving, and that mapping is the tenant boundary on the proxy's side.  A
 credential is minted for one running stretch of a box: fresh at create,
@@ -53,7 +58,9 @@ from pydantic import BaseModel, ConfigDict
 from backend.data.model import APIKeyCredentials
 from backend.data.redis_client import get_redis_async
 from backend.integrations.credentials_store import is_system_credential
-from backend.util.settings import Settings
+from backend.util.e2b_proxy_trust import trust_proxy_ca, trusted_envs
+from backend.util.sandbox_limits import USER_KEY, start_slot, stopped, tagged
+from backend.util.settings import Secrets, Settings
 
 logger = logging.getLogger(__name__)
 # One JSON line per pin: which box, for whom, and which of the user's accounts
@@ -157,11 +164,74 @@ async def create_sandbox(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
 
     *sandbox_cls* is the SDK class the caller uses (``e2b.AsyncSandbox`` or
     ``e2b_code_interpreter``'s); every other keyword goes to its ``create``.
-    The credential is recorded before the box exists so that its very first
-    connection already resolves at the proxy.
+    The box is stamped with its deployment and account, and on the platform's
+    key the create waits for a place under ``backend.util.sandbox_limits``,
+    raising ``SandboxLimitError`` when there is none.
     """
     if "network" in kwargs:
         raise ValueError("A box's network is decided here, not by the caller")
+    # e2b 2.56 stopped sending this when unset, leaving it to E2B's default;
+    # keep asking for the internet access every box has had so far.
+    kwargs.setdefault("allow_internet_access", True)
+    kwargs["metadata"] = tagged(kwargs.get("metadata"), owner.user_id)
+    if not _on_platform_key(owner, kwargs.get("api_key")):
+        return await _create_pinned(sandbox_cls, owner, **kwargs)
+    async with start_slot(
+        kwargs.get("api_key"), kwargs["metadata"].get(USER_KEY)
+    ) as slot:
+        sandbox = await _create_pinned(sandbox_cls, owner, **kwargs)
+        await slot.started(sandbox.sandbox_id)
+    return sandbox
+
+
+async def connect_sandbox(
+    sandbox_cls: type[S],
+    sandbox_id: str,
+    owner: EgressOwner,
+    *,
+    apply_network: bool = True,
+    resumes: bool = True,
+    owner_at_pin: Optional[Callable[[EgressOwner], Awaitable[EgressOwner]]] = None,
+    **kwargs: Any,
+) -> S:
+    """Reconnect to a box, re-pinning its egress under a fresh credential.
+
+    *apply_network* is ``False`` for a connect that only pauses or kills the
+    box: nothing will egress before it is gone, so there is nothing to pin,
+    and it takes no place under the running-box limits.  *resumes* is
+    ``False`` when the caller has just seen the box running; any other
+    connect may wake it, so it waits for a place like a create does.
+    """
+    if not (
+        apply_network and resumes and _on_platform_key(owner, kwargs.get("api_key"))
+    ):
+        return await _connect_pinned(
+            sandbox_cls,
+            sandbox_id,
+            owner,
+            apply_network=apply_network,
+            owner_at_pin=owner_at_pin,
+            **kwargs,
+        )
+    async with start_slot(
+        kwargs.get("api_key"), owner.user_id, sandbox_id=sandbox_id
+    ) as slot:
+        sandbox = await _connect_pinned(
+            sandbox_cls, sandbox_id, owner, owner_at_pin=owner_at_pin, **kwargs
+        )
+        await slot.started(sandbox_id)
+    return sandbox
+
+
+def _on_platform_key(owner: EgressOwner, api_key: Optional[str]) -> bool:
+    """CoPilot boxes always run on the platform's key; a block's box only when
+    it runs on the platform's E2B credential, not one the user brought."""
+    return owner.kind != "block" or not api_key or api_key == Secrets().e2b_api_key
+
+
+async def _create_pinned(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any) -> S:
+    """The credential is recorded before the box exists so that its very first
+    connection already resolves at the proxy."""
     address = proxy_address()
     if address is None:
         return await sandbox_cls.create(**kwargs)
@@ -180,6 +250,9 @@ async def create_sandbox(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
     try:
         await _remember(credential, owner, sandbox_id=sandbox.sandbox_id)
         await _bind(sandbox.sandbox_id, credential.username, owner)
+        # Inside the cleanup: a create cancelled during the install (a
+        # caller's timeout) would otherwise leave the box running unowned.
+        await trust_proxy_ca(sandbox, fresh=True)
     except BaseException:
         # The box is on the meter and its handle is about to be lost: kill
         # it rather than leak it, and take its credential with it.
@@ -197,7 +270,7 @@ async def create_sandbox(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
     return sandbox
 
 
-async def connect_sandbox(
+async def _connect_pinned(
     sandbox_cls: type[S],
     sandbox_id: str,
     owner: EgressOwner,
@@ -206,11 +279,7 @@ async def connect_sandbox(
     owner_at_pin: Optional[Callable[[EgressOwner], Awaitable[EgressOwner]]] = None,
     **kwargs: Any,
 ) -> S:
-    """Reconnect to a box, re-pinning its egress under a fresh credential.
-
-    *apply_network* is ``False`` for a connect that only pauses or kills the
-    box: nothing will egress before it is gone, so there is nothing to pin.
-    The new credential is recorded before the update and the old one is
+    """The new credential is recorded before the update and the old one is
     forgotten after it, so a failed update leaves the box on a credential
     that still resolves.
 
@@ -253,7 +322,19 @@ async def connect_sandbox(
         "[E2B] Reconnected %.12s for %s, egress re-pinned", sandbox_id, owner.label
     )
     _audit_pin("reconnected", sandbox_id, owner)
+    # A box from before the proxy, or from before a rotation, gets the CA now.
+    await trust_proxy_ca(sandbox, chat=owner.kind != "block")
     return sandbox
+
+
+async def proxy_trust_envs(sandbox: AsyncSandbox) -> dict[str, str]:
+    """Environment for a process in *sandbox* that does not read
+    ``/etc/profile.d`` (a code interpreter's kernel) to trust the proxy's CA,
+    as the box's create or reconnect installed it.  Empty with no proxy
+    configured, or when that install did not reach the box."""
+    if proxy_address() is None:
+        return {}
+    return await trusted_envs(sandbox.sandbox_id)
 
 
 async def reattach_command(
@@ -390,13 +471,15 @@ async def kill_sandbox(sandbox: AsyncSandbox) -> None:
 
 
 async def forget_sandbox(sandbox_id: str) -> None:
-    """Revoke a box's proxy credential: call when the box is paused or killed.
+    """Revoke a box's proxy credential and stop counting the box under the
+    running-box limits: call when the box is paused or killed.
 
     Nothing will present it again (a resume mints a fresh one), and until its
     TTL it would keep naming this owner to the proxy.  Best effort: a failure
     here must not fail the pause or kill it follows.  The box's provider
     ceiling stays: the next re-pin of a paused box keeps it.
     """
+    await stopped(sandbox_id)
     # Not skipped while no proxy is configured: a box pinned before the
     # address was removed still has a credential on record.
     try:

@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from backend.util import retry as retry_module
 from backend.util.retry import (
     ALERT_RATE_LIMIT_SECONDS,
     _alert_rate_limiter,
@@ -20,6 +21,11 @@ from backend.util.retry import (
     should_send_alert,
     stop_retry_loops,
 )
+
+# Only catches a loop or sleep that ignored the shutdown and waited out its
+# 30 s; a passing run returns at once, and a CI runner can stall a test for
+# seconds.
+_HANG_SECONDS = 10
 
 
 @pytest.fixture(autouse=True)
@@ -90,7 +96,7 @@ def test_conn_retry_sync_aborts_on_shutdown():
         test_function()
     # Bails out near-immediately rather than running ~101 attempts / waiting 30s.
     assert attempts < 5
-    assert time.monotonic() - start < 5
+    assert time.monotonic() - start < _HANG_SECONDS
 
 
 @pytest.mark.asyncio
@@ -108,7 +114,7 @@ async def test_conn_retry_async_aborts_on_shutdown():
     with pytest.raises(ConnectionError):
         await test_function()
     assert attempts < 5
-    assert time.monotonic() - start < 5
+    assert time.monotonic() - start < _HANG_SECONDS
 
 
 def test_create_retry_decorator_aborts_on_shutdown():
@@ -126,12 +132,28 @@ def test_create_retry_decorator_aborts_on_shutdown():
     assert attempts < 5
 
 
+def test_a_wait_passed_in_replaces_the_backoff(monkeypatch):
+    slept: list[float] = []
+    monkeypatch.setattr(retry_module, "_interruptible_sleep", slept.append)
+
+    @create_retry_decorator(
+        max_attempts=3, wait=lambda retry_state: 10.0 * retry_state.attempt_number
+    )
+    def always_failing_function():
+        raise ValueError("persistent failure")
+
+    with pytest.raises(ValueError, match="persistent failure"):
+        always_failing_function()
+
+    assert slept == [10.0, 20.0]
+
+
 def test_interruptible_sleep_returns_early_on_shutdown():
     stop_retry_loops()
     assert is_shutting_down()
     start = time.monotonic()
     _interruptible_sleep(30)
-    assert time.monotonic() - start < 1
+    assert time.monotonic() - start < _HANG_SECONDS
 
 
 @pytest.mark.asyncio
@@ -139,7 +161,7 @@ async def test_interruptible_async_sleep_returns_early_on_shutdown():
     stop_retry_loops()
     start = time.monotonic()
     await _interruptible_async_sleep(30)
-    assert time.monotonic() - start < 1
+    assert time.monotonic() - start < _HANG_SECONDS
 
 
 def test_continuous_retry_sync_stops_on_shutdown():
@@ -157,7 +179,7 @@ def test_continuous_retry_sync_stops_on_shutdown():
     # Returns instead of looping forever; no exception propagates.
     assert always_failing_function() is None
     assert attempts < 5
-    assert time.monotonic() - start < 5
+    assert time.monotonic() - start < _HANG_SECONDS
 
 
 @pytest.mark.asyncio
@@ -174,7 +196,7 @@ async def test_continuous_retry_async_stops_on_shutdown():
     start = time.monotonic()
     assert await always_failing_function() is None
     assert attempts < 5
-    assert time.monotonic() - start < 5
+    assert time.monotonic() - start < _HANG_SECONDS
 
 
 class TestRetryRateLimiting:

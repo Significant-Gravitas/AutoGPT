@@ -3,7 +3,7 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 from urllib.parse import urlsplit, urlunsplit
 
 import stripe
@@ -24,7 +24,9 @@ from pydantic import BaseModel
 
 from backend.api.features.admin.model import UserHistoryResponse
 from backend.data import subscription_activation, subscription_trial_stripe
+from backend.data.account_deletion import refuse_closed_account
 from backend.data.block_cost_config import BLOCK_COSTS
+from backend.data.credit_admin_lookup import search_history_keys, user_emails
 from backend.data.credit_history import get_credit_history
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.includes import MAX_CREDIT_REFUND_REQUESTS_FETCH
@@ -38,9 +40,16 @@ from backend.data.model import User as AppUser
 from backend.data.model import UserCreditTransactionAdminView
 from backend.data.notifications import NotificationEventModel, OpsData
 from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
-from backend.data.stripe_client import stripe_call, stripe_list_items
+from backend.data.stripe_authentication import requires_authentication
+from backend.data.stripe_client import (
+    api_base_override,
+    stripe_call,
+    stripe_list_items,
+)
 from backend.data.subscription_checkout import (
     ensure_no_unconverted_trial,
+    expire_all_open_checkouts,
+    expire_if_account_closed,
     expire_other_subscription_checkouts,
     subscription_checkout_lock,
 )
@@ -80,6 +89,10 @@ if TYPE_CHECKING:
 
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
+if api_base := api_base_override(
+    settings.config.stripe_api_base, settings.secrets.stripe_api_key
+):
+    stripe.api_base = api_base
 logger = logging.getLogger(__name__)
 base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
@@ -132,6 +145,12 @@ class InvoiceListItem(BaseModel):
 # client-controlled header, so we validate them to keep attribution strictly
 # best-effort: a malformed ID must never break Checkout.
 _STRIPE_METADATA_VALUE_MAX_LEN = 500
+
+# Stripe fills this in the URL it redirects to, never in the success_url we keep.
+CHECKOUT_SESSION_ID_PLACEHOLDER = "{CHECKOUT_SESSION_ID}"
+
+# Stripe caps a USD charge at 8 digits, $999,999.99 (https://stripe.com/docs/currencies).
+MAX_TOP_UP_AMOUNT = 99_999_900
 
 
 def _sanitize_datafast_id(value: str | None) -> str | None:
@@ -472,7 +491,10 @@ class UserCreditBase(ABC):
             # Transaction doesn't exist or is already active, return early
             return None
 
-        # Atomic operation to enable transaction and update user balance using UserBalance
+        # Atomic operation to enable transaction and update user balance using
+        # UserBalance. Both rows are locked: the balance so the add is serial,
+        # and the transaction so a second fulfilment of the same payment, which
+        # passed the check above before the first committed, adds nothing.
         result = await query_raw_with_schema(
             """
             WITH user_balance_lock AS (
@@ -492,8 +514,13 @@ class UserCreditBase(ABC):
                     ) as balance
             ),
             transaction_check AS (
+                -- Locked, so of several fulfilments racing for one payment only
+                -- the first sees the row inactive: the others wait, re-check the
+                -- row as the first left it (active, re-keyed) and select nothing,
+                -- which makes the rest of this statement a no-op for them.
                 SELECT * FROM {schema_prefix}"CreditTransaction" 
                 WHERE "transactionKey" = $1 AND "userId" = $2 AND "isActive" = false
+                FOR UPDATE
             ),
             balance_update AS (
                 INSERT INTO {schema_prefix}"UserBalance" ("userId", "balance", "updatedAt")
@@ -834,7 +861,20 @@ class UserCredit(UserCreditBase):
             fail_insufficient_credits=fail_insufficient_credits,
         )
 
-        # Auto top-up if balance is below threshold.
+        # The debit is committed, so nothing after it may fail the call: the
+        # database manager's client retries a failed spend, debiting it again.
+        try:
+            await self._auto_top_up_after_spend(user_id, balance, metadata)
+        except Exception:
+            logger.exception(
+                f"Auto top-up check failed for user {user_id}, balance: {balance}"
+            )
+        return balance
+
+    async def _auto_top_up_after_spend(
+        self, user_id: str, balance: int, metadata: UsageTransactionMetadata
+    ) -> None:
+        """Top the user up if the spend left *balance* below their threshold."""
         auto_top_up = await get_auto_top_up(user_id)
         if (
             auto_top_up.threshold
@@ -854,8 +894,6 @@ class UserCredit(UserCreditBase):
                 logger.error(
                     f"Auto top-up failed for user {user_id}, balance: {balance}, amount: {auto_top_up.amount}, error: {e}"
                 )
-
-        return balance
 
     async def top_up_credits(
         self,
@@ -1005,7 +1043,7 @@ class UserCredit(UserCreditBase):
             return
 
         transaction = await self._find_top_up(request)
-        if not transaction:
+        if not transaction or await _top_up_of_an_erased_account(transaction, request):
             return
         # Stripe counts cents of the charge, which can differ from the credits granted.
         credits = _top_up_credits_for_cents(transaction, request.amount)
@@ -1065,7 +1103,7 @@ class UserCredit(UserCreditBase):
 
     async def handle_dispute(self, dispute: stripe.Dispute):
         transaction = await self._find_top_up(dispute)
-        if not transaction:
+        if not transaction or await _top_up_of_an_erased_account(transaction, dispute):
             return
         user_id = transaction.userId
         amount = dispute.amount
@@ -1290,47 +1328,80 @@ class UserCredit(UserCreditBase):
         successful_transaction = None
         new_transaction_key = None
         charged: stripe.PaymentIntent | None = None
+        declined: stripe.CardError | None = None
+        needs_authentication = False
         for payment_method in payment_methods:
-            if transaction_type == CreditTransactionType.CARD_CHECK:
-                setup_intent = await stripe_call(
-                    stripe.SetupIntent.create_async,
-                    customer=customer_id,
-                    usage="off_session",
-                    confirm=True,
-                    payment_method=payment_method.id,
-                    automatic_payment_methods={
-                        "enabled": True,
-                        "allow_redirects": "never",
-                    },
-                )
-                if setup_intent.status == "succeeded":
-                    successful_transaction = SafeJson({"setup_intent": setup_intent})
-                    new_transaction_key = setup_intent.id
-                    break
-            else:
-                payment_intent = await stripe_call(
-                    stripe.PaymentIntent.create_async,
-                    amount=amount,
-                    currency="usd",
-                    description="AutoGPT Platform Credits",
-                    customer=customer_id,
-                    off_session=True,
-                    confirm=True,
-                    payment_method=payment_method.id,
-                    automatic_payment_methods={
-                        "enabled": True,
-                        "allow_redirects": "never",
-                    },
-                )
-                if payment_intent.status == "succeeded":
-                    successful_transaction = SafeJson(
-                        {"payment_intent": payment_intent}
+            # Stripe raises a decline rather than returning a failed intent, so
+            # catch it here or the first declined card stops the other cards
+            # from being tried.
+            try:
+                if transaction_type == CreditTransactionType.CARD_CHECK:
+                    setup_intent = await stripe_call(
+                        stripe.SetupIntent.create_async,
+                        customer=customer_id,
+                        usage="off_session",
+                        confirm=True,
+                        payment_method=payment_method.id,
+                        automatic_payment_methods={
+                            "enabled": True,
+                            "allow_redirects": "never",
+                        },
                     )
-                    new_transaction_key = payment_intent.id
-                    charged = payment_intent
+                    if setup_intent.status == "succeeded":
+                        successful_transaction = SafeJson(
+                            {"setup_intent": setup_intent}
+                        )
+                        new_transaction_key = setup_intent.id
+                        break
+                    # A card check on a 3D Secure card comes back this way
+                    # instead of raising.
+                    if setup_intent.status == "requires_action":
+                        needs_authentication = True
+                else:
+                    payment_intent = await stripe_call(
+                        stripe.PaymentIntent.create_async,
+                        amount=amount,
+                        currency="usd",
+                        description="AutoGPT Platform Credits",
+                        customer=customer_id,
+                        off_session=True,
+                        confirm=True,
+                        payment_method=payment_method.id,
+                        automatic_payment_methods={
+                            "enabled": True,
+                            "allow_redirects": "never",
+                        },
+                    )
+                    if payment_intent.status == "succeeded":
+                        successful_transaction = SafeJson(
+                            {"payment_intent": payment_intent}
+                        )
+                        new_transaction_key = payment_intent.id
+                        charged = payment_intent
+                        break
+            except stripe.CardError as e:
+                logger.warning(
+                    f"Card {payment_method.id} declined on top-up for user "
+                    f"{user_id}: code={e.code}, "
+                    f"decline_code={e.error.decline_code if e.error else None}"
+                )
+                declined = e
+                # An automatic top-up runs with nobody there and nothing
+                # backing off, so trying every card would multiply declined
+                # off-session charges, which issuers and Radar hold against us.
+                if top_up_type == TopUpType.AUTO:
                     break
 
         if not successful_transaction:
+            if declined is not None:
+                raise CardDeclinedError(
+                    declined.user_message or "Your card was declined.",
+                    needs_authentication=requires_authentication(declined),
+                )
+            if needs_authentication:
+                raise CardDeclinedError(
+                    "Your card was declined.", needs_authentication=True
+                )
             raise ValueError(
                 f"Out of {len(payment_methods)} payment methods tried, none is supported"
             )
@@ -1367,6 +1438,14 @@ class UserCredit(UserCreditBase):
             raise ValueError(
                 f"Top up amount must be at least 500 credits and multiple of 100 but is {amount}"
             )
+        if amount > MAX_TOP_UP_AMOUNT:
+            raise ValueError(
+                f"Top up amount must be at most ${MAX_TOP_UP_AMOUNT // 100:,} but is ${amount // 100:,}"
+            )
+
+        # Past the auth cache, before a Stripe customer is made: closing
+        # expires the open Checkouts, and a closed account must get none.
+        await refuse_closed_account(user_id)
 
         # Resolve the Stripe Product ID from LD; when unset (default), keep the
         # legacy inline product_data path (Stripe creates an ephemeral product
@@ -1423,6 +1502,7 @@ class UserCredit(UserCreditBase):
             customer_update={"address": "auto"},
             metadata=_datafast_metadata(datafast_visitor_id, datafast_session_id),
         )
+        await expire_if_account_closed(user_id, checkout_session.id)
 
         await self._add_transaction(
             user_id=user_id,
@@ -1595,6 +1675,23 @@ def _refund_hold_key(payment_intent: str) -> str:
     return f"REFUND-HOLD-{payment_intent}"
 
 
+async def _top_up_of_an_erased_account(
+    transaction: CreditTransaction, request: stripe.Refund | stripe.Dispute
+) -> bool:
+    """The top-up's account was erased (SECRT-2854): its ledger stays for tax,
+    but there is no User row left to credit, debit or name in evidence, so the
+    refund or dispute is logged and left alone instead of failing every
+    delivery. A dispute still needs answering in Stripe, by hand."""
+    if await User.prisma().find_unique(where={"id": transaction.userId}):
+        return False
+    log = logger.error if isinstance(request, stripe.Dispute) else logger.warning
+    log(
+        f"Ignoring {request.id} (${request.amount / 100:.2f}): its top-up "
+        f"{transaction.transactionKey} belongs to an erased account"
+    )
+    return True
+
+
 def _top_up_credits_for_cents(top_up: CreditTransaction, cents: int) -> int:
     """Credits of a top-up that `cents` of its charge paid for, rounded up. The
     charge is the PaymentIntent stored on activation; without one, cents are credits."""
@@ -1747,10 +1844,13 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
     get_user_by_id.cache_delete(user_id)
 
 
-async def set_subscription_tier(user_id: str, tier: SubscriptionTier) -> None:
-    """Set the user's subscription tier. No lifecycle sync: the subscription
-    status doesn't read the tier, and the Stripe change that comes with a
-    tier change syncs through its own webhook.
+async def set_subscription_tier(
+    user_id: str, tier: SubscriptionTier, *, track_lifecycle: bool = True
+) -> None:
+    """Set the user's subscription tier, then sync the PostHog person in the
+    background, since it carries the tier. ``track_lifecycle=False`` is for
+    ``sync_subscription_from_stripe``, which decides that itself, and for the
+    periodic tier sweep, whose users the daily lifecycle sweep covers.
 
     A drop from a plan or trial to NO_TIER stamps ``subscriptionEndedAt``, which
     keeps product mail going for the win-back window; any other tier clears it."""
@@ -1771,6 +1871,8 @@ async def set_subscription_tier(user_id: str, tier: SubscriptionTier) -> None:
         data["subscriptionEndedAt"] = None
         await User.prisma().update(where={"id": user_id}, data=data)
     invalidate_subscription_caches(user_id)
+    if track_lifecycle:
+        schedule_posthog_lifecycle_sync(user_id)
 
 
 async def invalidate_billing_lookups(customer_id: str) -> None:
@@ -1801,12 +1903,67 @@ def invalidate_subscription_caches(user_id: str) -> None:
 # customer replaced that subscription with another plan. The deletion webhook
 # reads it so that cancel is not reported as the customer leaving.
 REPLACED_PLAN_CANCELLATION_COMMENT = "autogpt:replaced_by_another_plan"
+# On a trial without a chargeable card, ended so Checkout can sell the plan the
+# person just chose. Its deletion webhook still takes them out of the trial
+# group but sends no "trial ended" notice: they are paying for a plan.
+TRIAL_ENDED_FOR_CHECKOUT_CANCELLATION_COMMENT = "autogpt:trial_ended_for_checkout"
+# On the immediate cancel made when the user deletes their account. The webhooks
+# it sets off still sync the tier, but skip the ended emails, the MailerLite
+# moves and the person-level analytics: the account sends its own confirmation
+# and its PostHog person is erased.
+ACCOUNT_DELETION_CANCELLATION_COMMENT = "autogpt:account_deleted"
+
+# Every status Stripe can still cancel. ``incomplete_expired`` and ``canceled``
+# are terminal: Stripe refuses to cancel them, so they are never listed.
+CancellableSubscriptionStatus = Literal[
+    "active", "trialing", "past_due", "unpaid", "paused", "incomplete"
+]
+# A deleted account ends all of them, unpaid ones included: cancelling stops
+# Stripe collecting their open invoices, so what is still owed is written off.
+_ACCOUNT_DELETION_STATUSES: tuple[CancellableSubscriptionStatus, ...] = get_args(
+    CancellableSubscriptionStatus
+)
+
+
+def is_account_deletion_cancellation(subscription: dict) -> bool:
+    """Whether this subscription was ended because its account was deleted."""
+    details = subscription.get("cancellation_details") or {}
+    return details.get("comment") == ACCOUNT_DELETION_CANCELLATION_COMMENT
+
+
+async def cancel_all_subscriptions_now(user_id: str) -> int:
+    """End every subscription Stripe can still cancel now, for a deleted account:
+    trials, paid plans, and past-due, unpaid, paused or incomplete ones.
+
+    No invoice, no proration and no refund; Stripe stops collecting the open
+    invoices of what it cancels. The customer's open Checkouts expire first, so
+    one finished later in another tab can't subscribe or charge the closed
+    account, and one that completes meanwhile is listed and cancelled below.
+    Returns how many subscriptions were cancelled: 0 for a user without a
+    Stripe customer, which this never creates. Raises stripe.StripeError so
+    the caller can stop before closing the account.
+    """
+    # Read past the five-minute user cache, so a customer saved since it was
+    # filled can't be missed and its plan left running.
+    get_user_by_id.cache_delete(user_id)
+    user = await get_user_by_id(user_id)
+    if not user.stripe_customer_id:
+        return 0
+    await expire_all_open_checkouts(user.stripe_customer_id)
+    return await _cancel_customer_subscriptions(
+        user.stripe_customer_id,
+        at_period_end=False,
+        cancellation_comment=ACCOUNT_DELETION_CANCELLATION_COMMENT,
+        statuses=_ACCOUNT_DELETION_STATUSES,
+    )
 
 
 async def _cancel_customer_subscriptions(
     customer_id: str,
     exclude_sub_id: str | None = None,
     at_period_end: bool = False,
+    cancellation_comment: str | None = None,
+    statuses: tuple[CancellableSubscriptionStatus, ...] = ("active", "trialing"),
 ) -> int:
     """Cancel all billable Stripe subscriptions for a customer, optionally excluding one.
 
@@ -1820,15 +1977,26 @@ async def _cancel_customer_subscriptions(
     Uses the async Stripe client. Raises stripe.StripeError on list/cancel failure so callers
     that need strict consistency can react; cleanup callers can catch and log instead.
 
+    ``cancellation_comment`` is set as ``cancellation_details.comment`` on an
+    immediate cancel, where the subscription's deletion webhook can read it.
+
+    ``statuses`` are the ones listed and cancelled; widen them only for an
+    immediate cancel. Every status but ``trialing`` takes the paid road.
+
     Returns the number of subscriptions cancelled/scheduled for cancellation.
     """
-    # Query active and trialing separately; Stripe's list API accepts a single status
-    # filter at a time (no OR), and we explicitly want to skip canceled/incomplete/
+    # Query each status separately; Stripe's list API accepts a single status
+    # filter at a time (no OR), and by default we skip canceled/incomplete/
     # past_due subs rather than filter them out client-side via status="all".
     seen_ids: set[str] = set()
     try:
         await _cancel_listed_subscriptions(
-            customer_id, seen_ids, exclude_sub_id, at_period_end
+            customer_id,
+            seen_ids,
+            exclude_sub_id,
+            at_period_end,
+            cancellation_comment,
+            statuses,
         )
     finally:
         if seen_ids:
@@ -1841,8 +2009,10 @@ async def _cancel_listed_subscriptions(
     seen_ids: set[str],
     exclude_sub_id: str | None,
     at_period_end: bool,
+    cancellation_comment: str | None,
+    statuses: tuple[CancellableSubscriptionStatus, ...],
 ) -> None:
-    for status in ("active", "trialing"):
+    for status in statuses:
         subscriptions = await stripe_call(
             stripe.Subscription.list_async,
             customer=customer_id,
@@ -1879,7 +2049,7 @@ async def _cancel_listed_subscriptions(
                 canceled = await stripe_call(
                     stripe.Subscription.cancel_async,
                     sub_id,
-                    **_cancel_params(trial=True),
+                    **_cancel_params(cancellation_comment, trial=True),
                 )
                 if (sub.get("metadata") or {}).get("trial_enrollment_id"):
                     await sync_subscription_from_stripe(dict(canceled))
@@ -1887,16 +2057,21 @@ async def _cancel_listed_subscriptions(
                 await stripe_call(
                     stripe.Subscription.cancel_async,
                     sub_id,
-                    **_cancel_params(trial=False),
+                    **_cancel_params(cancellation_comment, trial=False),
                 )
 
 
-def _cancel_params(*, trial: bool) -> stripe.Subscription.CancelParams:
-    """A trial ends without an invoice or proration."""
+def _cancel_params(
+    cancellation_comment: str | None, *, trial: bool
+) -> stripe.Subscription.CancelParams:
+    """A trial ends without an invoice or proration; a comment, when given,
+    becomes ``cancellation_details.comment``."""
     params: stripe.Subscription.CancelParams = {}
     if trial:
         params["invoice_now"] = False
         params["prorate"] = False
+    if cancellation_comment:
+        params["cancellation_details"] = {"comment": cancellation_comment}
     return params
 
 
@@ -2011,8 +2186,18 @@ def is_tier_downgrade(current: SubscriptionTier, target: SubscriptionTier) -> bo
     return _tier_rank(target) < _tier_rank(current)
 
 
+class CardDeclinedError(Exception):
+    """Every saved card was declined, or the first one on an automatic top-up.
+    The message is Stripe's own reason, which is written for the cardholder and
+    carries no request id."""
+
+    def __init__(self, message: str, needs_authentication: bool = False):
+        super().__init__(message)
+        self.needs_authentication = needs_authentication
+
+
 class PendingChangeUnknown(Exception):
-    """Raised when pending-change state cannot be determined (e.g. LaunchDarkly
+    """Raised when pending-change state cannot be determined (e.g. PostHog
     price-id lookup failed). Propagates past the pending-change cache so the next
     request retries instead of serving a stale `None` for the TTL window."""
 
@@ -2058,7 +2243,7 @@ async def get_user_billing_cycle(user_id: str) -> BillingCycle | None:
     """Return the billing cycle ("monthly"/"yearly") of the user's active sub.
 
     Resolves cycle by matching the active subscription's price ID against the
-    LaunchDarkly-configured monthly/yearly price IDs for the user's current
+    PostHog-configured monthly/yearly price IDs for the user's current
     tier, falling back to scanning every priceable tier (handles the brief
     window during a tier change where DB tier and Stripe price disagree).
     Returns None when there's no Stripe customer, no active sub, or the price
@@ -2637,7 +2822,7 @@ async def _fetch_pending_subscription_change(customer_id: str) -> PendingChange 
     if not price_to_tier:
         logger.warning(
             "get_pending_subscription_change: no Stripe price IDs resolvable for"
-            " BASIC/PRO/MAX/BUSINESS (LaunchDarkly fetch failed?); raising to bypass"
+            " BASIC/PRO/MAX/BUSINESS (PostHog fetch failed?); raising to bypass"
             " the None cache so the next request retries fresh"
         )
         raise PendingChangeUnknown(
@@ -2749,7 +2934,7 @@ async def _resolve_cycle_for_price_id(price_id: str | None) -> BillingCycle | No
 
 
 def _ld_price_key(tier: SubscriptionTier, billing_cycle: BillingCycle) -> str:
-    """Compose the LaunchDarkly key for a tier+cycle.
+    """Compose the feature flag key for a tier+cycle.
 
     Monthly keeps the legacy ``<TIER>`` key (so a flag value flipped from
     monthly-only to also-yearly never breaks an older deploy that still reads
@@ -2764,7 +2949,7 @@ def _ld_price_key(tier: SubscriptionTier, billing_cycle: BillingCycle) -> str:
 async def get_subscription_price_id(
     tier: SubscriptionTier, billing_cycle: BillingCycle = "monthly"
 ) -> str | None:
-    """Return Stripe Price ID for a tier+cycle from LaunchDarkly, cached 60s.
+    """Return Stripe Price ID for a tier+cycle from PostHog, cached 60s.
 
     Reads the ``copilot-tier-stripe-prices`` JSON flag and looks up:
 
@@ -2946,6 +3131,9 @@ async def _create_subscription_checkout(
     datafast_visitor_id: str | None,
     datafast_session_id: str | None,
 ) -> str:
+    # Past the auth cache, before a Stripe customer is made: closing expires
+    # the open Checkouts, and a closed account must get none.
+    await refuse_closed_account(user_id)
     price_id = await get_subscription_price_id(tier, billing_cycle)
     if not price_id:
         raise ValueError(f"Subscription not available for tier {tier.value}")
@@ -2972,6 +3160,7 @@ async def _create_subscription_checkout(
                 **(
                     {"pro_activation_return_to": return_to}
                     if len(return_to) <= 500
+                    and CHECKOUT_SESSION_ID_PLACEHOLDER not in return_to
                     else {}
                 ),
                 **datafast,
@@ -2990,6 +3179,7 @@ async def _create_subscription_checkout(
         },
         metadata=datafast,
     )
+    await expire_if_account_closed(user_id, session.id)
     if not session.url:
         # An empty checkout URL for a paid upgrade is always an error; surfacing it
         # as ValueError means the API handler returns 422 instead of silently
@@ -3072,7 +3262,9 @@ async def sync_subscription_from_stripe(
     refreshed (in the background, from the customer's current state).
     ``track_lifecycle=False`` is for the periodic tier sweep, which would
     otherwise fan out one Stripe call per trial; the daily lifecycle sweep
-    covers those users.
+    covers those users, the tier included. Nor is it refreshed for a cancel
+    made by an account deletion: that would only update the PostHog person
+    the erasure deletes.
 
     The payload is Stripe's latest word on the subscription, so afterwards
     the cached lookups the billing page reads (the active subscription and
@@ -3087,7 +3279,7 @@ async def sync_subscription_from_stripe(
     finally:
         if isinstance(customer_id, str) and customer_id:
             await invalidate_billing_lookups(customer_id)
-    if track_lifecycle:
+    if track_lifecycle and not is_account_deletion_cancellation(stripe_subscription):
         schedule_posthog_lifecycle_sync(
             stripe_customer_id=stripe_subscription.get("customer")
         )
@@ -3346,7 +3538,7 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
         # A future improvement would be to write the new tier first, then
         # cancel the old sub.
         await _cleanup_stale_subscriptions(customer_id, new_sub_id)
-    await set_subscription_tier(user.id, tier)
+    await set_subscription_tier(user.id, tier, track_lifecycle=False)
     if is_tier_upgrade(current_tier, tier):
         billing_cycle = (
             metadata.get("billing_cycle") if isinstance(metadata, dict) else None
@@ -3689,20 +3881,26 @@ async def admin_get_user_history(
     if transaction_filter:
         where_clause["type"] = transaction_filter
     if search:
-        where_clause["OR"] = [
-            {"userId": {"contains": search, "mode": "insensitive"}},
-            {"User": {"is": {"email": {"contains": search, "mode": "insensitive"}}}},
-            {"User": {"is": {"name": {"contains": search, "mode": "insensitive"}}}},
-        ]
-    transactions = await CreditTransaction.prisma().find_many(
-        where=where_clause,
-        skip=(page - 1) * page_size,
-        take=page_size,
-        include={"User": True},
-        order={"createdAt": "desc"},
-    )
-    total = await CreditTransaction.prisma().count(where=where_clause)
+        # Matched in SQL: the ledger has no relation to User to filter through.
+        keys, total = await search_history_keys(
+            search,
+            include_inactive=include_inactive,
+            transaction_filter=transaction_filter,
+            skip=(page - 1) * page_size,
+            take=page_size,
+        )
+        transactions = await _transactions_by_key(keys)
+    else:
+        transactions = await CreditTransaction.prisma().find_many(
+            where=where_clause,
+            skip=(page - 1) * page_size,
+            take=page_size,
+            order={"createdAt": "desc"},
+        )
+        total = await CreditTransaction.prisma().count(where=where_clause)
     total_pages = (total + page_size - 1) // page_size
+    # None for an account that was deleted: its ledger rows stay.
+    emails = await user_emails(tx.userId for tx in transactions)
 
     history = []
     for tx in transactions:
@@ -3738,11 +3936,7 @@ async def admin_get_user_history(
                 current_balance=balance,
                 running_balance=tx.runningBalance or 0,
                 user_id=tx.userId,
-                user_email=(
-                    tx.User.email
-                    if tx.User
-                    else (await get_user_by_id(tx.userId)).email
-                ),
+                user_email=emails.get(tx.userId),
                 reason=reason,
                 admin_email=admin_email,
                 extra_data=str(metadata),
@@ -3757,6 +3951,19 @@ async def admin_get_user_history(
             page_size=page_size,
         ),
     )
+
+
+async def _transactions_by_key(
+    keys: list[tuple[str, str]],
+) -> list[CreditTransaction]:
+    """The rows for (transaction key, user ID) pairs, in the pairs' order."""
+    if not keys:
+        return []
+    rows = await CreditTransaction.prisma().find_many(
+        where={"OR": [{"transactionKey": key, "userId": uid} for key, uid in keys]}
+    )
+    by_key = {(row.transactionKey, row.userId): row for row in rows}
+    return [by_key[key] for key in keys if key in by_key]
 
 
 # Limits for credit-transaction CSV export. Window cap matches a typical
@@ -3815,7 +4022,6 @@ async def admin_export_user_history(
     # count() + take=cap pair would have if rows land between the two queries.
     transactions = await CreditTransaction.prisma().find_many(
         where=where,
-        include={"User": True},
         order={"createdAt": "desc"},
         take=CREDIT_EXPORT_MAX_ROWS + 1,
     )
@@ -3825,6 +4031,8 @@ async def admin_export_user_history(
             "narrow the window or add filters."
         )
 
+    # None for an account that was deleted: its ledger rows stay.
+    emails = await user_emails(tx.userId for tx in transactions)
     admin_id_to_email: dict[str, str] = {}
 
     async def _resolve_admin_email(admin_id: str) -> str:
@@ -3853,7 +4061,7 @@ async def admin_export_user_history(
                 amount=tx.amount,
                 running_balance=tx.runningBalance or 0,
                 user_id=tx.userId,
-                user_email=tx.User.email if tx.User else None,
+                user_email=emails.get(tx.userId),
                 reason=reason,
                 admin_email=admin_email,
             )

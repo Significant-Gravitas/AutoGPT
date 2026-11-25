@@ -34,13 +34,15 @@ import os
 import re
 import shutil
 import tempfile
+from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import quote
 
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.model import ChatSession
 from backend.data.workspace_internal import WORKING_FILE_METADATA
 from backend.util.egress_proxy import egress_proxy_url
-from backend.util.request import validate_url_host
+from backend.util.request import parse_url, validate_url_host
 
 from .base import BaseTool
 from .models import (
@@ -50,6 +52,7 @@ from .models import (
     ErrorResponse,
     ToolResponseBase,
 )
+from .refused_pages import PAGE_CHECK_JS, refused_page_notice
 
 logger = logging.getLogger(__name__)
 
@@ -251,12 +254,13 @@ _pending_saves: dict[str, set[asyncio.Task[None]]] = {}
 # start a new one that nothing will ever stop.
 _closing_sessions: set[str] = set()
 
-# Turn-end teardown budget. Drain plus close must stay under the executor's
-# _CANCEL_GRACE_SECONDS (5s), with room for the rest of the turn's cleanup:
-# past the grace the worker re-cancels the turn task, the teardown never
-# reaps, and the cluster lock is released while it is still running. A save
-# slower than the drain is dropped; the next turn restores from the last one
-# that landed.
+# Turn-end teardown budget. Drain plus close should fit in the executor's
+# _CANCEL_GRACE_SECONDS (5s) with the rest of the turn's cleanup. Past the
+# grace the worker releases the chat while the teardown still runs: its
+# second cancel no longer cuts the teardown short (DeferredCancel), but the
+# chat's next turn can start meanwhile, and a teardown that finds a newer turn
+# of the chat on this pod leaves its browser alone. A save slower than the
+# drain is dropped; the next turn restores from the last one that landed.
 _SAVE_DRAIN_TIMEOUT = 2
 _TURN_END_CLOSE_TIMEOUT = 2
 
@@ -373,7 +377,7 @@ async def _restore_browser_state(
         if url:
             # Validate the saved URL to prevent SSRF via stored redirect targets.
             try:
-                await validate_url_host(url)
+                url = await _checked_url(url)
             except ValueError:
                 logger.warning(
                     "[browser] State restore: blocked SSRF URL %s", url[:200]
@@ -483,6 +487,12 @@ async def _ensure_session(
             _alive_sessions.add(session_name)
 
 
+def browser_daemon_may_run(session_name: str) -> bool:
+    """Whether this pod may run an agent-browser daemon for *session_name*:
+    a browser command reached it since its last close."""
+    return session_name in _touched_sessions
+
+
 async def close_browser_daemon(session_name: str) -> bool:
     """Stop this pod's agent-browser daemon for *session_name* at turn end.
 
@@ -537,10 +547,15 @@ async def close_browser_daemon(session_name: str) -> bool:
 
 
 async def close_browser_session(session_name: str, user_id: str | None = None) -> None:
-    """Shut down the local agent-browser daemon and clean up stored state.
+    """Clean up a deleted session's stored browser state, and close its
+    browser if this process runs one.
 
     Deletes ``._browser_state.json`` from workspace storage so cookies and
     other credentials do not linger after the session is deleted.
+
+    The daemon is closed only for a session in ``_touched_sessions``. For any
+    other session, ``close`` would start a daemon and launch Chromium just to
+    shut them down again.
 
     Best-effort: errors are logged but never raised.
     """
@@ -562,6 +577,8 @@ async def close_browser_session(session_name: str, user_id: str | None = None) -
                 exc_info=True,
             )
 
+    if session_name not in _touched_sessions:
+        return
     try:
         rc, _, stderr = await _run(session_name, "close", timeout=10)
         if rc != 0:
@@ -663,7 +680,7 @@ class BrowserNavigateTool(BaseTool):
             ).from_outside()
 
         try:
-            await validate_url_host(url)
+            url = await _checked_url(url)
         except ValueError as e:
             return ErrorResponse(
                 message=str(e),
@@ -681,9 +698,13 @@ class BrowserNavigateTool(BaseTool):
             logger.warning(
                 "[browser_navigate] open failed for %s: %s", url, stderr[:300]
             )
+            # X answers a headless browser with an error status.
+            notice = refused_page_notice(
+                url, content_withheld="ERR_HTTP_RESPONSE_CODE_FAILURE" in stderr
+            )
             return ErrorResponse(
-                message="Failed to navigate to URL.",
-                error="navigation_failed",
+                message=notice or "Failed to navigate to URL.",
+                error="page_refused" if notice else "navigation_failed",
                 session_id=session_name,
             ).from_outside()
 
@@ -694,21 +715,30 @@ class BrowserNavigateTool(BaseTool):
                 "[browser_navigate] wait(%s) failed: %s", wait_for, wait_err[:300]
             )
 
-        # Get current title and URL in parallel
-        (_, title_out, _), (_, url_out, _) = await asyncio.gather(
+        (_, title_out, _), (_, url_out, _), (_, check_out, _) = await asyncio.gather(
             _run(session_name, "get", "title"),
             _run(session_name, "get", "url"),
+            _run(session_name, "eval", PAGE_CHECK_JS),
+        )
+        final_url = url_out.strip() or url
+        page_check = check_out.strip().strip('"')
+        notice = refused_page_notice(
+            final_url,
+            bot_check=page_check == "bot_check",
+            content_withheld=page_check == "sign_in_form",
         )
 
         snapshot = await _snapshot(session_name)
 
         result = BrowserNavigateResponse(
-            message=f"Navigated to {url}",
-            url=url_out.strip() or url,
+            message=(
+                f"Navigated to {url}. {notice}" if notice else f"Navigated to {url}"
+            ),
+            url=final_url,
             title=title_out.strip(),
             snapshot=snapshot,
             session_id=session_name,
-        ).from_outside(snapshot, title_out.strip(), url_out.strip() or url)
+        ).from_outside(snapshot, title_out.strip(), final_url)
 
         # Persist browser state to cloud for cross-pod continuity
         if user_id:
@@ -716,6 +746,22 @@ class BrowserNavigateTool(BaseTool):
 
         return result
 
+
+async def _checked_url(url: str) -> str:
+    """The URL the browser may open: the one ``validate_url_host`` checked,
+    rebuilt from its scheme and host, never the caller's own string. A URL
+    without a scheme (protocol-relative or not) is checked as ``https://``."""
+    url = url.strip().replace("\\", "/").lstrip("/")
+    if "://" not in url:
+        url = f"https://{url}"
+    checked, _, _ = await validate_url_host(url)
+    # The check quotes the path's sub-delimiters too, which changes what a
+    # signed URL signs; keep RFC 3986's path characters as they were.
+    return checked._replace(path=quote(parse_url(url).path, safe=_PATH_CHARS)).geturl()
+
+
+# RFC 3986 pchar beyond unreserved, plus the separator and existing escapes.
+_PATH_CHARS = "/%:@!$&'()*+,;="
 
 # ---------------------------------------------------------------------------
 # Tool: browser_act
@@ -959,8 +1005,7 @@ class BrowserScreenshotTool(BaseTool):
                 },
                 "filename": {
                     "type": "string",
-                    "default": "screenshot.png",
-                    "description": "Workspace filename (default: screenshot.png).",
+                    "description": "Workspace filename (default: a new unique name).",
                 },
             },
         }
@@ -978,7 +1023,7 @@ class BrowserScreenshotTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         annotate: bool | str = True,
-        filename: str = "screenshot.png",
+        filename: str = "",
         **kwargs: Any,
     ) -> ToolResponseBase:
         """Capture a PNG screenshot and upload it to the workspace.
@@ -993,7 +1038,11 @@ class BrowserScreenshotTool(BaseTool):
             annotate = raw_annotate.strip().lower() in {"1", "true", "yes", "on"}
         else:
             annotate = bool(raw_annotate)
-        filename = filename.strip()
+        # A chat's workspace refuses a repeated path, so an unnamed capture gets its own.
+        filename = (
+            filename.strip()
+            or f"screenshot-{datetime.now(UTC):%Y%m%d-%H%M%S}-{os.urandom(3).hex()}.png"
+        )
         session_name = session.session_id
 
         # Restore browser state from cloud if this is a different pod
@@ -1040,8 +1089,11 @@ class BrowserScreenshotTool(BaseTool):
         )
 
         if not isinstance(write_resp, WorkspaceWriteResponse):
+            logger.warning(
+                f"[browser_screenshot] failed to save {filename}: {write_resp.message}"
+            )
             return ErrorResponse(
-                message="Screenshot taken but failed to save to workspace.",
+                message=f"Screenshot taken but failed to save to workspace: {write_resp.message}",
                 error="workspace_write_failed",
                 session_id=session_name,
             ).from_outside()

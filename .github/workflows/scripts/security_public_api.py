@@ -32,7 +32,6 @@ class PublicErrorCode(Enum):
     MARKER_PAIR = "Expected exactly one complete managed marker pair"
     MARKER_ORDER = "Managed markers are reversed"
     RELEASE_TAG = "Unsupported release tag"
-    RELEASE_MAPPING = "Published advisory release mapping is invalid or ambiguous"
     RELEASE_TARGET = "Invalid release write target"
     RELEASE_UPDATE = "Release update failed; rerun after checking public notes"
     RELEASE_CHANGED = "Release changed; rerun the workflow"

@@ -22,7 +22,10 @@ from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import ExpertCredentialRef
 from backend.data.model import Credentials
 from backend.integrations.credentials_store import is_system_credential
-from backend.integrations.service_identity import service_for_credential
+from backend.integrations.service_identity import (
+    credential_display_name,
+    service_for_credential,
+)
 from backend.util.exceptions import ExpertNotFoundError
 
 if TYPE_CHECKING:
@@ -44,7 +47,7 @@ async def _owned_expert(user_id: str, expert_id: str) -> prisma.models.Expert:
         include=_WORKFLOW_INCLUDE,  # type: ignore[arg-type]
     )
     if row is None:
-        raise ExpertNotFoundError(f"Expert #{expert_id} not found")
+        raise ExpertNotFoundError(expert_id)
     return row
 
 
@@ -198,14 +201,18 @@ def _to_refs(
     refs: list[ExpertCredentialRef] = []
     for grant in grants:
         credential = by_id.get(grant.credentialId)
-        if credential is None:
+        # A grant of one of the platform's own keys is left over from before
+        # SDK keys counted as the platform's (seeding stored them like a user's
+        # account). Every expert may use those keys anyway, so the row would
+        # only list the platform's key as one of the user's accounts.
+        if credential is None or is_system_credential(credential.id):
             continue
         identity = service_for_credential(credential)
         refs.append(
             ExpertCredentialRef(
                 credential_id=credential.id,
                 provider=str(credential.provider),
-                title=credential.title or str(credential.provider),
+                title=credential_display_name(credential),
                 type=str(credential.type),
                 service=identity.service,
                 service_name=identity.name,
@@ -304,10 +311,25 @@ async def expert_allowed_credential_ids(user_id: str, expert_id: str) -> list[st
     return [grant.credentialId for grant in await _grants(expert_id)]
 
 
+async def seeded_expert_credential_ids(
+    user_id: str, expert_id: str
+) -> list[str] | None:
+    """``expert_allowed_credential_ids`` without its seed: ``None`` while the
+    allow-list is unseeded, so the read never writes and can run beside other
+    reads. A caller then seeds with ``expert_allowed_credential_ids``.
+
+    Raises ``ExpertNotFoundError`` for an expert the user does not own.
+    """
+    expert = await _owned_expert(user_id, expert_id)
+    if expert.credentialsSeededAt is None:
+        return None
+    return [grant.credentialId for grant in await _grants(expert_id)]
+
+
 def filter_credentials_for_expert(
     credentials: list[Credentials], allowed_ids: set[str]
 ) -> list[Credentials]:
-    """Drop credentials an expert has not been granted, keeping system ones."""
+    """Drop credentials an expert has not been granted, keeping the platform's."""
     return [
         credential
         for credential in credentials

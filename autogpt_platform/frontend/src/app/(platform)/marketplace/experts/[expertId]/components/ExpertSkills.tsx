@@ -27,15 +27,8 @@ export function ExpertSkills({ skills, category }: Props) {
           <ShelfTile
             key={skill.id}
             href={`/marketplace/skills/${skill.slug}`}
-            mediaClassName={cn("h-10 w-10", accent.pill)}
-            media={
-              <Icon
-                icon={icon ?? BookOpen01Icon}
-                size={18}
-                className={accent.icon}
-                aria-hidden
-              />
-            }
+            mediaClassName={cn("h-10 w-10", accent.pill, accent.icon)}
+            media={<Icon icon={icon ?? BookOpen01Icon} size={18} aria-hidden />}
             title={skill.title}
             subtitle={skill.description}
           />

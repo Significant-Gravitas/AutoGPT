@@ -32,7 +32,10 @@ from .config import graphiti_config
 from .falkordb_driver import open_driver
 from .recall_integration_fixtures import ALICE, ingest_facts
 
-# A refresh's budget in these tests, and what scheduling may add to it.
+# A refresh's budget in these tests, and what scheduling may add to it. The
+# bound stays in wall time and under a second: the refresh races real socket
+# deadlines and proxy delays of 0.5 to 2.5 s that each test then waits out,
+# so a longer one would need longer delays and a slower test.
 _BUDGET = 0.3
 _SLACK = 0.3
 # The longest the loop may go without a tick. A construction on the loop
@@ -103,6 +106,7 @@ async def test_a_silent_falkordb_neither_stalls_the_loop_nor_outlasts_the_budget
         build = client._get_loop_state().building["user_user-silent"]
 
     assert block is None
+    # wall-clock: races the 0.5 s probe and 1 s socket deadlines; see _SLACK.
     assert elapsed < _BUDGET + _SLACK, f"the refresh took {elapsed:.3f}s"
     assert heartbeat.max_gap < _MAX_STALL, f"the loop stalled {heartbeat.max_gap:.3f}s"
     # The build the refresh stopped waiting for ends at its socket deadline
@@ -225,6 +229,7 @@ async def test_a_slow_falkordb_reply_does_not_stall_the_loop_and_the_build_serve
             await asyncio.wait_for(build, timeout=10)
 
         assert first is None
+        # wall-clock: races the probe the proxy holds 1.2 s; see _SLACK.
         assert elapsed < _BUDGET + _SLACK, f"the refresh took {elapsed:.3f}s"
         assert (
             heartbeat.max_gap < _MAX_STALL
@@ -286,6 +291,7 @@ async def test_a_query_slower_than_the_budget_ends_the_read_at_the_budget_and_a_
                 await writer.close()
 
         assert block is None
+        # wall-clock: races the query the proxy holds 2.5 s; see _SLACK.
         assert read_took < _BUDGET + _SLACK, f"the refresh took {read_took:.3f}s"
         assert (
             heartbeat.max_gap < _MAX_STALL

@@ -4,6 +4,7 @@ import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflow
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { EditScheduleModal } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/SelectedScheduleView/components/EditScheduleModal/EditScheduleModal";
 import { Button } from "@/components/atoms/Button/Button";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Text } from "@/components/atoms/Text/Text";
 import { GraphScheduleListItem } from "@/components/contextual/SchedulesPanel/components/GraphScheduleListItem/GraphScheduleListItem";
 import {
@@ -17,6 +18,7 @@ import { SectionEmptyState } from "../../components/SectionEmptyState";
 import { useState } from "react";
 import {
   filterExpertSchedules,
+  getLastRun,
   SCHEDULE_FILTERS,
   ScheduleFilter,
   ACTION_BUTTON_CLASS,
@@ -32,7 +34,7 @@ interface Props {
   workflows?: ExpertWorkflowRef[];
   accentClassName?: string;
   schedules: GraphExecutionJobInfo[];
-  lastRunLabel: string | null;
+  lastRun: ReturnType<typeof getLastRun>;
 }
 
 export function ExpertSchedulesSection({
@@ -42,7 +44,7 @@ export function ExpertSchedulesSection({
   workflows,
   accentClassName,
   schedules,
-  lastRunLabel,
+  lastRun,
 }: Props) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ScheduleFilter>("all");
@@ -56,9 +58,9 @@ export function ExpertSchedulesSection({
           <Text variant="large-medium" tone="primary">
             {title}
           </Text>
-          {lastRunLabel ? (
+          {lastRun ? (
             <Text variant="small" as="span" tone="muted">
-              {lastRunLabel}
+              {lastRun.label} <RelativeTime date={lastRun.at} />
             </Text>
           ) : null}
         </div>
@@ -94,27 +96,15 @@ export function ExpertSchedulesSection({
       {schedules.length === 0 ? (
         <SectionEmptyState
           tiles={[
-            <Icon
-              key="clock"
-              icon={Clock01Icon}
-              size={22}
-              // TODO(tokens): no exact role: text-sky-500 #0EA5E9
-              className="text-sky-500"
-            />,
-            <Icon
-              key="repeat"
-              icon={RepeatIcon}
-              size={22}
-              // TODO(tokens): no exact role: text-emerald-500 #10B981
-              className="text-emerald-500"
-            />,
-            <Icon
-              key="calendar"
-              icon={Calendar03Icon}
-              size={22}
-              // TODO(tokens): no exact role: text-violet-500 #8B5CF6
-              className="text-violet-500"
-            />,
+            <span key="clock" className="inline-flex text-sky">
+              <Icon icon={Clock01Icon} size={22} />
+            </span>,
+            <span key="repeat" className="inline-flex text-success">
+              <Icon icon={RepeatIcon} size={22} />
+            </span>,
+            <span key="calendar" className="inline-flex text-brand">
+              <Icon icon={Calendar03Icon} size={22} />
+            </span>,
           ]}
           title="No schedules yet"
           description={`Put a workflow on a schedule and ${expertName} runs it for you, on time, every time.`}
@@ -132,7 +122,7 @@ export function ExpertSchedulesSection({
           ) : null}
         </SectionEmptyState>
       ) : visible.length === 0 ? (
-        <Text variant="body-md" tone="muted" className="pt-4">
+        <Text variant="body-md" tone="muted" className="mt-4">
           No schedules match.
         </Text>
       ) : (

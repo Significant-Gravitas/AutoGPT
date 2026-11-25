@@ -54,13 +54,14 @@ export function AgentTeam({ dashboard, className }: Props) {
       {team.total > 0 ? (
         <Link
           href="/team"
-          className="group flex items-center justify-between border-t border-separator px-4 py-2 outline-none transition-colors hover:bg-surface-muted focus-visible:bg-surface-muted"
+          className="group flex items-center justify-between border-t border-separator px-4 py-2 transition-colors outline-none hover:bg-surface-muted focus-visible:bg-surface-muted"
         >
           <Text
             variant="small-medium"
             as="span"
             tone="muted"
-            className="transition-colors group-hover:text-foreground-strong"
+            motion="colors"
+            className="group-hover:text-foreground-strong"
           >
             {team.total > LISTED_EXPERTS
               ? `View all ${team.total} experts`

@@ -30,6 +30,7 @@ function renderTurn(parts: Message["parts"], messages: Message[] = []) {
     <CopilotChatActionsProvider onSend={onSend}>
       <HeldOutcomesContext.Provider value={getHeldOutcomes(messages)}>
         <ChainMessageParts
+          isLatestAnswer
           parts={parts}
           messageID="a1"
           isCurrentlyStreaming={false}
@@ -49,6 +50,7 @@ test("a held call drawn outside the chain renders its real card once answered", 
       value={getHeldOutcomes([heldTurn, lateResult])}
     >
       <ChainMessageParts
+        isLatestAnswer
         parts={heldTurn.parts}
         messageID="a1"
         isCurrentlyStreaming={false}

@@ -56,7 +56,10 @@ async def test_handle_low_balance_threshold_crossing(server: SpinTestServer):
         mock_client.discord_system_alert.assert_called_once()
         discord_message = mock_client.discord_system_alert.call_args[0][0]
         assert "Low Balance Alert" in discord_message
-        assert "test@example.com" in discord_message
+        assert "test@example.com" not in discord_message
+        assert f"`{user_id}`" in discord_message
+        assert f"https://test.com/admin/spending?search={user_id}" in discord_message
+        mock_db_client.get_user_email_by_id.assert_not_called()
         assert "$4.00" in discord_message
         assert "$6.00" in discord_message
 

@@ -17,6 +17,7 @@ import {
 import { LibraryFolderEditDialog } from "../LibraryFolderEditDialog/LibraryFolderEditDialog";
 import { LibraryFolderDeleteDialog } from "../LibraryFolderDeleteDialog/LibraryFolderDeleteDialog";
 import { LibraryEmptyState } from "../LibraryEmptyState/LibraryEmptyState";
+import { SchedulesUnavailableNotice } from "@/components/contextual/SchedulesUnavailableNotice/SchedulesUnavailableNotice";
 import type { LibraryTab, AgentStatusFilter, FleetSummary } from "../../types";
 import { useLibraryAgentList } from "./useLibraryAgentList";
 import { AgentBriefingPanel } from "../AgentBriefingPanel/AgentBriefingPanel";
@@ -112,6 +113,9 @@ export function LibraryAgentList({
     displayedCount,
     favoritesCount,
     agents,
+    schedulesUnknown,
+    retrySchedules,
+    retryingSchedules,
     hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
@@ -167,6 +171,7 @@ export function LibraryAgentList({
           onTabChange={onTabChange}
           allCount={displayedCount}
           favoritesCount={favoritesCount}
+          librarySort={librarySort}
           setLibrarySort={setLibrarySort}
           statusFilter={statusFilter}
           onStatusFilterChange={onStatusFilterChange}
@@ -180,22 +185,28 @@ export function LibraryAgentList({
             <LowCreditBanner />
           </div>
         )}
+        <SchedulesUnavailableNotice
+          show={schedulesUnknown}
+          onRetry={retrySchedules}
+          retrying={retryingSchedules}
+          className="mb-4"
+        />
         {selectedFolderId && (
           <div className="mb-4 flex items-center gap-2">
             <button
               type="button"
               onClick={() => onFolderSelect(null)}
-              className="inline-flex items-center gap-1 text-sm text-foreground-tertiary hover:text-foreground-strong"
+              className="inline-flex items-center gap-1 text-body text-foreground-tertiary hover:text-foreground-strong"
             >
               <Icon icon={ArrowLeft02Icon} className="h-4 w-4" />
               My Library
             </button>
             {currentFolder && (
               <>
-                <Text variant="body" className="text-foreground-subtle">
+                <Text variant="body" tone="subtle">
                   /
                 </Text>
-                <Text variant="large" className="text-foreground-body">
+                <Text variant="large" tone="body">
                   {currentFolder.name}
                 </Text>
               </>
@@ -206,7 +217,7 @@ export function LibraryAgentList({
           <div className="flex h-[200px] items-center justify-center">
             <LoadingSpinner size="large" />
           </div>
-        ) : isFavoritesTab && agents.length === 0 ? (
+        ) : isFavoritesTab && favoritesCount === 0 ? (
           <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-foreground-tertiary">
             <Icon icon={FavouriteIcon} className="h-10 w-10" />
             <Text variant="body">No favorite workflows yet</Text>

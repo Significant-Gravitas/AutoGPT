@@ -1,4 +1,5 @@
 import {
+  act,
   render,
   screen,
   cleanup,
@@ -217,6 +218,13 @@ describe("CredentialsInput – OAuth flow", () => {
 
     await waitFor(() => {
       expect(oAuthLoginMock).toHaveBeenCalledWith("codex", [], undefined);
+      expect(mockOpenOAuthPopup).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          sameOriginFlow: true,
+          useCrossOriginListeners: true,
+        }),
+      );
     });
   });
 
@@ -308,6 +316,7 @@ describe("CredentialsInput – OAuth flow", () => {
         stateToken: "state-xyz",
         preOpenedWindow: fakeWindow,
         useCrossOriginListeners: true,
+        sameOriginFlow: false,
       }),
     );
   });
@@ -553,10 +562,16 @@ function StatefulCredentialsInput({
   initial,
   onSelectionChange,
   variant,
+  schema = baseSchema,
+  isOptional,
+  autoSelect,
 }: {
   initial?: CredentialsMetaInput;
   onSelectionChange?: (credential?: CredentialsMetaInput) => void;
   variant?: "default" | "node";
+  schema?: BlockIOCredentialsSubSchema;
+  isOptional?: boolean;
+  autoSelect?: boolean;
 }) {
   const [selected, setSelected] = React.useState<
     CredentialsMetaInput | undefined
@@ -569,14 +584,206 @@ function StatefulCredentialsInput({
 
   return (
     <CredentialsInput
-      schema={baseSchema}
+      schema={schema}
       selectedCredentials={selected}
       onSelectCredentials={handleSelectionChange}
       showTitle={false}
       variant={variant}
+      isOptional={isOptional}
+      autoSelect={autoSelect}
     />
   );
 }
+
+describe("CredentialsInput – None on an optional field", () => {
+  const ownCredential = {
+    id: "own-exa",
+    provider: "exa",
+    type: "api_key" as const,
+    title: "My Exa key",
+  };
+  const exaSchema: BlockIOCredentialsSubSchema = {
+    type: "object",
+    properties: {},
+    credentials_provider: ["exa"],
+    credentials_types: ["api_key"],
+  };
+
+  beforeEach(() => {
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        provider: "exa",
+        providerName: "Exa",
+        schema: exaSchema,
+        savedCredentials: [ownCredential],
+        allProviderCredentials: [ownCredential],
+        supportsApiKey: true,
+        supportsOAuth2: false,
+      }),
+    );
+  });
+
+  // Lets every pending effect run, so an auto-select would have happened
+  async function settle() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+
+  it("sticks on a field that started on its only key", async () => {
+    const onSelectionChange = vi.fn();
+    render(
+      <StatefulCredentialsInput
+        schema={exaSchema}
+        isOptional
+        initial={{
+          id: ownCredential.id,
+          provider: "exa",
+          type: "api_key",
+          title: ownCredential.title,
+        }}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Select Exa credential" }),
+      { target: { value: "__none__" } },
+    );
+    await settle();
+
+    expect(onSelectionChange.mock.calls).toEqual([[undefined]]);
+    expect(
+      (
+        screen.getByRole("combobox", {
+          name: "Select Exa credential",
+        }) as HTMLSelectElement
+      ).value,
+    ).toBe("__none__");
+  });
+
+  it("an input told not to pick a key leaves an empty field empty", async () => {
+    const onSelectionChange = vi.fn();
+    render(
+      <StatefulCredentialsInput
+        schema={exaSchema}
+        isOptional
+        autoSelect={false}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+
+    await settle();
+
+    expect(onSelectionChange).not.toHaveBeenCalled();
+  });
+});
+
+describe("CredentialsInput – blocks that refuse the platform's keys", () => {
+  const systemCredential = {
+    id: "system-exa",
+    provider: "exa",
+    type: "api_key" as const,
+    title: "Use Credits for Exa search",
+    is_system: true,
+  };
+  const ownCredential = {
+    id: "own-exa",
+    provider: "exa",
+    type: "api_key" as const,
+    title: "My Exa key",
+  };
+  const exaSchema: BlockIOCredentialsSubSchema = {
+    type: "object",
+    properties: {},
+    credentials_provider: ["exa"],
+    credentials_types: ["api_key"],
+  };
+
+  function mockExa(savedCredentials: CredentialsMetaResponse[]) {
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        provider: "exa",
+        providerName: "Exa",
+        schema: exaSchema,
+        savedCredentials,
+        allProviderCredentials: savedCredentials,
+        supportsApiKey: true,
+        supportsOAuth2: false,
+      }),
+    );
+  }
+
+  it("does not auto-select the system credential for such a block", async () => {
+    const onSelectionChange = vi.fn();
+    mockExa([systemCredential]);
+
+    render(
+      <StatefulCredentialsInput
+        schema={{ ...exaSchema, refuses_platform_credentials: true }}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+
+    // The hook has loaded this block's schema, and the provider's credentials
+    // have reached the component...
+    await waitFor(() =>
+      expect(
+        mockUseCredentials.mock.calls.some(
+          ([schema]) => schema?.refuses_platform_credentials === true,
+        ),
+      ).toBe(true),
+    );
+    // ...then flush every pending effect and task, so the auto-select effect
+    // has had its chance to run, before asserting it chose nothing.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(onSelectionChange).not.toHaveBeenCalled();
+  });
+
+  it("auto-selects the user's own credential next to the system one", async () => {
+    const onSelectionChange = vi.fn();
+    mockExa([systemCredential, ownCredential]);
+
+    render(
+      <StatefulCredentialsInput
+        schema={{ ...exaSchema, refuses_platform_credentials: true }}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(onSelectionChange).toHaveBeenCalledWith({
+        id: ownCredential.id,
+        provider: "exa",
+        title: ownCredential.title,
+        type: ownCredential.type,
+      }),
+    );
+  });
+
+  it("still auto-selects a lone system credential for other blocks", async () => {
+    const onSelectionChange = vi.fn();
+    mockExa([systemCredential]);
+
+    render(
+      <StatefulCredentialsInput
+        schema={exaSchema}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(onSelectionChange).toHaveBeenCalledWith({
+        id: systemCredential.id,
+        provider: "exa",
+        title: systemCredential.title,
+        type: systemCredential.type,
+      }),
+    );
+  });
+});
 
 describe("CredentialsInput – a removed connection", () => {
   const codexCredential = {

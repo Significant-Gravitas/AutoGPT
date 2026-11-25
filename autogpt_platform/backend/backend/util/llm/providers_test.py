@@ -10,15 +10,18 @@ fields each provider exposes.
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
+import json
 import socket
 from contextlib import contextmanager
 from types import SimpleNamespace
-from typing import Self
+from typing import Literal, Self
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
 import httpx
+import openai
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestServer
@@ -26,10 +29,12 @@ from pydantic import ValidationError
 
 from backend.util import egress_proxy
 from backend.util.llm import providers as providers_mod
+from backend.util.llm.http_attempts import record_http_request, record_http_response
 from backend.util.llm.providers import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     FAST_FAIL_TIMEOUT_SECONDS,
     NO_REASONING_MAX_TOKENS,
+    SMALL_CALL_REASONING_FLOOR,
     ProviderResponse,
     _anthropic_accepts_temperature,
     _is_temperature_deprecation_error,
@@ -38,6 +43,8 @@ from backend.util.llm.providers import (
     call_provider_openai_compat_sync,
     is_forced_tool_choice_rejection,
     request_timeout,
+    small_call_anthropic_thinking,
+    small_call_openai_reasoning,
     small_call_reasoning,
 )
 from backend.util.request import parse_url
@@ -740,6 +747,272 @@ def _compat_client(create, base_url: str = "https://api.openai.com/v1/"):
     )
 
 
+class TestSmallCallNativeReasoning:
+    """On the native OpenAI and Anthropic paths, a small call asks each model
+    that workflows move onto for its least reasoning. Reasoning counts against
+    the cap, so without it AI Condition's 16-token call can come back empty."""
+
+    @pytest.mark.parametrize(
+        ("model", "max_tokens", "expected"),
+        [
+            ("gpt-6-luna", 16, ({"effort": "none"}, 16)),
+            ("gpt-6.1-terra", 16, ({"effort": "none"}, 16)),
+            (
+                "gpt-5.6-sol",
+                NO_REASONING_MAX_TOKENS,
+                ({"effort": "none"}, NO_REASONING_MAX_TOKENS),
+            ),
+            # Rejects none and minimal: low, with room to reason first.
+            ("gpt-6.1-sol", 16, ({"effort": "low"}, SMALL_CALL_REASONING_FLOOR)),
+            # A bigger call keeps the model's default effort.
+            (
+                "gpt-6.1-sol",
+                NO_REASONING_MAX_TOKENS + 1,
+                (None, NO_REASONING_MAX_TOKENS + 1),
+            ),
+            # A model with no listed least effort goes as it is.
+            ("gpt-4.1", 16, (None, 16)),
+        ],
+    )
+    def test_openai_least_effort_per_model(
+        self, model: str, max_tokens: int, expected: tuple
+    ):
+        assert small_call_openai_reasoning(model, max_tokens) == expected
+
+    @pytest.mark.parametrize(
+        ("model", "max_tokens", "expected"),
+        [
+            ("claude-sonnet-5-5", 16, {"type": "between_tools"}),
+            (
+                "anthropic/claude-sonnet-5-5",
+                NO_REASONING_MAX_TOKENS,
+                {"type": "between_tools"},
+            ),
+            ("claude-sonnet-5-5", NO_REASONING_MAX_TOKENS + 1, None),
+            # Runs without thinking unless asked, so it is sent nothing.
+            ("claude-sonnet-4-6", 16, None),
+        ],
+    )
+    def test_anthropic_thinking_per_model(
+        self, model: str, max_tokens: int, expected: dict | None
+    ):
+        assert small_call_anthropic_thinking(model, max_tokens) == expected
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("model", "reasoning", "cap"),
+        [
+            ("gpt-6.1-sol", {"effort": "low"}, SMALL_CALL_REASONING_FLOOR),
+            ("gpt-6-luna", {"effort": "none"}, 16),
+            ("gpt-4o", None, 16),
+        ],
+    )
+    async def test_the_openai_request_carries_it(
+        self, model: str, reasoning: dict | None, cap: int
+    ):
+        async_create = AsyncMock(return_value=SimpleNamespace())
+        fake_client = SimpleNamespace(responses=SimpleNamespace(create=async_create))
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                return_value=fake_client,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_tool_calls",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_content",
+                return_value="true",
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_reasoning",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_usage",
+                return_value=(10, 1),
+            ),
+        ):
+            await call_provider(
+                provider="openai",
+                model=model,
+                api_key="sk-test",
+                messages=[_msg("user", "true or false?")],
+                max_tokens=16,
+            )
+
+        kwargs = async_create.call_args.kwargs
+        assert kwargs["max_output_tokens"] == cap
+        if reasoning is None:
+            assert kwargs["reasoning"] is openai.omit
+        else:
+            assert kwargs["reasoning"] == reasoning
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("model", "thinking"),
+        [
+            ("claude-sonnet-5-5", {"type": "between_tools"}),
+            ("claude-sonnet-4-6", None),
+        ],
+    )
+    async def test_the_anthropic_request_carries_it(
+        self, model: str, thinking: dict | None
+    ):
+        async_create = AsyncMock(
+            return_value=SimpleNamespace(
+                content=[SimpleNamespace(type="text", text="true")],
+                usage=SimpleNamespace(
+                    input_tokens=10,
+                    output_tokens=1,
+                    cache_read_input_tokens=0,
+                    cache_creation_input_tokens=0,
+                ),
+                stop_reason="end_turn",
+            )
+        )
+        fake_client = SimpleNamespace(messages=SimpleNamespace(create=async_create))
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            await call_provider(
+                provider="anthropic",
+                model=model,
+                api_key="sk-test",
+                messages=[_msg("user", "true or false?")],
+                max_tokens=16,
+            )
+
+        kwargs = async_create.call_args.kwargs
+        assert kwargs["max_tokens"] == 16
+        assert kwargs.get("thinking") == thinking
+
+
+def _wire_body(model: str, controls: dict) -> bytes:
+    if model.startswith("claude"):
+        body = {
+            "max_tokens": 16,
+            "messages": [{"role": "user", "content": "true or false?"}],
+            "model": model,
+            **controls,
+        }
+    else:
+        body = {
+            "include": ["reasoning.encrypted_content"],
+            "input": [{"role": "user", "content": "true or false?"}],
+            "max_output_tokens": controls.pop("max_output_tokens", 16),
+            "model": model,
+            **controls,
+            "store": False,
+        }
+    return json.dumps(body, separators=(",", ":")).encode()
+
+
+class TestSmallCallWireRequest:
+    """The exact request body the real SDK clients send for each replacement on
+    a 16-token call, as AI Condition makes it."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("provider", "model", "controls"),
+        [
+            ("openai", "gpt-6-luna", {"reasoning": {"effort": "none"}}),
+            ("openai", "gpt-6.1-terra", {"reasoning": {"effort": "none"}}),
+            ("openai", "gpt-5.6-sol", {"reasoning": {"effort": "none"}}),
+            (
+                "openai",
+                "gpt-6.1-sol",
+                {
+                    "max_output_tokens": SMALL_CALL_REASONING_FLOOR,
+                    "reasoning": {"effort": "low"},
+                },
+            ),
+            ("anthropic", "claude-sonnet-5-5", {"thinking": {"type": "between_tools"}}),
+        ],
+    )
+    async def test_the_request_body_on_the_wire(
+        self, provider: Literal["openai", "anthropic"], model: str, controls: dict
+    ):
+        sent: list[bytes] = []
+
+        def reply(request: httpx.Request) -> httpx.Response:
+            sent.append(request.content)
+            if provider == "anthropic":
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": "msg_1",
+                        "type": "message",
+                        "role": "assistant",
+                        "model": model,
+                        "content": [{"type": "text", "text": "true"}],
+                        "stop_reason": "end_turn",
+                        "stop_sequence": None,
+                        "usage": {"input_tokens": 10, "output_tokens": 1},
+                    },
+                )
+            return httpx.Response(
+                200,
+                json={
+                    "id": "resp_1",
+                    "object": "response",
+                    "created_at": 0,
+                    "model": model,
+                    "status": "completed",
+                    "output": [
+                        {
+                            "type": "message",
+                            "id": "msg_1",
+                            "role": "assistant",
+                            "status": "completed",
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": "true",
+                                    "annotations": [],
+                                }
+                            ],
+                        }
+                    ],
+                    "usage": {
+                        "input_tokens": 10,
+                        "output_tokens": 1,
+                        "total_tokens": 11,
+                        "input_tokens_details": {"cached_tokens": 0},
+                        "output_tokens_details": {"reasoning_tokens": 0},
+                    },
+                    "parallel_tool_calls": False,
+                    "tool_choice": "auto",
+                    "tools": [],
+                },
+            )
+
+        # The provider passes its own attempt-logging client; this one replaces it.
+        real_openai, real_anthropic = openai.AsyncOpenAI, anthropic.AsyncAnthropic
+        async with httpx.AsyncClient(transport=httpx.MockTransport(reply)) as client:
+            with (
+                patch(
+                    "backend.util.llm.providers.openai.AsyncOpenAI",
+                    lambda **kw: real_openai(**{**kw, "http_client": client}),
+                ),
+                patch(
+                    "backend.util.llm.providers.anthropic.AsyncAnthropic",
+                    lambda **kw: real_anthropic(**{**kw, "http_client": client}),
+                ),
+            ):
+                await call_provider(
+                    provider=provider,
+                    model=model,
+                    api_key="sk-test",
+                    messages=[_msg("user", "true or false?")],
+                    max_tokens=16,
+                )
+
+        assert sent == [_wire_body(model, dict(controls))]
+
+
 class TestSmallCallReasoning:
     """Claude 5 thinks adaptively on OpenRouter and the thinking counts against
     ``max_tokens``, so a small call asks for none; bigger calls keep theirs."""
@@ -1045,6 +1318,80 @@ class TestOllama:
             {"role": "user", "content": "consolidate these transcripts"},
         ]
         assert captured["stream"] is False
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_base64_images_before_constructing_client(self):
+        with _patched_ollama_dispatch({}) as (_, ctor), pytest.raises(
+            ValueError, match="base64-encoded image data"
+        ):
+            await call_provider(
+                provider="ollama",
+                model="llava",
+                api_key="",
+                messages=[
+                    {"role": "user", "content": "describe", "images": [__file__]}
+                ],
+                max_tokens=10,
+            )
+
+        ctor.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_decodes_base64_images_before_calling_sdk(self):
+        captured: dict = {}
+        with _patched_ollama_dispatch(captured):
+            await call_provider(
+                provider="ollama",
+                model="llava",
+                api_key="",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": "describe",
+                        "images": ["aW1hZ2UtYnl0ZXM="],
+                    }
+                ],
+                max_tokens=10,
+            )
+
+        assert captured["messages"][0]["images"] == [b"image-bytes"]
+
+    @pytest.mark.asyncio
+    async def test_accepts_line_wrapped_base64_images(self):
+        image = bytes(range(256)) * 2
+        wrapped = base64.encodebytes(image).decode()
+        assert "\n" in wrapped
+        captured: dict = {}
+        with _patched_ollama_dispatch(captured):
+            await call_provider(
+                provider="ollama",
+                model="llava",
+                api_key="",
+                messages=[{"role": "user", "content": "describe", "images": [wrapped]}],
+                max_tokens=10,
+            )
+
+        assert captured["messages"][0]["images"] == [image]
+
+    @pytest.mark.asyncio
+    async def test_accepts_tuple_of_base64_images(self):
+        captured: dict = {}
+        with _patched_ollama_dispatch(captured):
+            await call_provider(
+                provider="ollama",
+                model="llava",
+                api_key="",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": "describe",
+                        "images": ("aW1hZ2UtYnl0ZXM=",),
+                    }
+                ],
+                max_tokens=10,
+            )
+
+        assert captured["messages"][0]["images"] == [b"image-bytes"]
 
     @pytest.mark.asyncio
     async def test_force_json_output_requests_json_format(self):
@@ -1679,7 +2026,11 @@ class TestOllamaEgress:
                 ollama_host=providers_mod.settings.config.ollama_host,
             )
         assert ctor.call_args.kwargs["event_hooks"] == {
-            "request": [providers_mod._scope_ollama_key]
+            "request": [
+                providers_mod._scope_ollama_key,
+                record_http_request,
+            ],
+            "response": [record_http_response],
         }
 
 
@@ -2645,8 +2996,8 @@ class TestCallProviderStream:
     @pytest.mark.asyncio
     async def test_uses_provided_client_directly(self):
         """When a ``client`` is passed, the helper does NOT construct a
-        new one — preserves the chat layer's module-cached
-        Langfuse-wrapped client + its pooled HTTP connections."""
+        new one — preserves the chat layer's module-cached client + its
+        pooled HTTP connections."""
         from backend.util.llm.providers import call_provider_stream
 
         sentinel_stream = MagicMock(name="async_stream")
@@ -2672,8 +3023,7 @@ class TestCallProviderStream:
     @pytest.mark.asyncio
     async def test_builds_client_via_factory_when_not_provided(self):
         """When no ``client`` is passed, the helper instantiates one
-        via ``client_factory(base_url, api_key)``. The chat layer uses
-        this branch to inject ``LangfuseAsyncOpenAI`` as the factory."""
+        via ``client_factory(base_url, api_key)``."""
         from backend.util.llm.providers import call_provider_stream
 
         captured: dict[str, object] = {}
@@ -3075,6 +3425,7 @@ class TestForcedToolChoiceCapability:
             "anthropic.claude-sonnet-5-5",
             "claude-sonnet-5-5-20260928",
             "claude-fable-5-1",
+            "claude-fable-5-2",
             "claude-mythos-5-1",
         ],
     )
