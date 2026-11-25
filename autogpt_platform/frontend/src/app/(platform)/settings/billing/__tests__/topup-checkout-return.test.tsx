@@ -27,6 +27,10 @@ import { trialResponse } from "@/tests/integrations/trial-fixtures";
 
 import SettingsBillingPage from "../page";
 
+// The real timer, kept before a test fakes them, so stepping the page's clock
+// can still let the event loop turn.
+const realSetTimeout = globalThis.setTimeout;
+
 // Sign-in's start-up lookup, which a test holds to keep sign-in loading.
 vi.mock("@/lib/auth/actions", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/auth/actions")>()),
@@ -240,8 +244,8 @@ describe("when the fulfil call answers before the page's first reads of the cred
     // earlier, holding the credits from before it, answer only now.
     await waitFor(() => expect(queryClient.isMutating()).toBe(0));
     // From here only the steps below move the page's clock, never as far as
-    // the backup read, however slow the runner, so that read can't stand in
-    // for the one the fulfil call's answer must send.
+    // the backup read, so on any runner that read can't stand in for the one
+    // the fulfil call's answer must send.
     vi.setTimerTickMode("manual");
     await platform.answerSlowReads();
 
@@ -252,7 +256,8 @@ describe("when the fulfil call answers before the page's first reads of the cred
       REFRESH_BUDGET_MS,
     );
     const row = queryHistoryRow("Credits added")?.closest("tr");
-    expect(row && within(row).getByText("+$7.00")).toBeDefined();
+    expect(row).toBeTruthy();
+    expect(within(row as HTMLElement).getByText("+$7.00")).toBeDefined();
     vi.setTimerTickMode("interval");
   });
 });
@@ -444,12 +449,15 @@ const REFRESH_BUDGET_MS = 2_000;
 const STEP_MS = 50;
 
 // Moves the page's clock a step at a time until check passes, within budgetMs.
+// Each step also lets the real event loop turn once, so work that waits on it
+// still lands when the runner is slow.
 async function stepUntil(check: () => boolean, budgetMs: number) {
   for (let spent = 0; !check(); spent += STEP_MS) {
     if (spent >= budgetMs) {
       throw new Error(`Not shown within ${budgetMs} ms of page time`);
     }
     await advance(STEP_MS);
+    await act(() => new Promise((resolve) => realSetTimeout(resolve, 0)));
   }
 }
 
