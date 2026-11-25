@@ -1079,6 +1079,11 @@ describe("CredentialsInput – blocks that refuse the platform's keys", () => {
     }) as HTMLSelectElement;
     await waitFor(() => expect(picker.value).toBe("other-exa"));
     expect(screen.queryByText(/can't use the platform's Exa key/)).toBeNull();
+
+    // A later reset of the field doesn't bring the old notice back
+    rerender(renderHolding(undefined));
+    await waitFor(() => expect(picker.value).toBe("__none__"));
+    expect(screen.queryByText(/can't use the platform's Exa key/)).toBeNull();
   });
 });
 

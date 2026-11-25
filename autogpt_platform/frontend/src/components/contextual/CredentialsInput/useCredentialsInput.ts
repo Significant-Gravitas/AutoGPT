@@ -72,9 +72,11 @@ export function useCredentialsInput({
     string | null
   >(null);
   // The key the picker moved to, or none, after letting go of a platform key
-  // the block refuses. The notice shows only while the field still holds it.
+  // the block refuses. The notice shows while the field holds it, and goes
+  // for good once the field has held it and moved on.
   const [refusedPlatformKeyNotice, setRefusedPlatformKeyNotice] = useState<{
     selectedId: string | undefined;
+    reached: boolean;
   } | null>(null);
   const [credentialToDelete, setCredentialToDelete] = useState<{
     id: string;
@@ -165,7 +167,10 @@ export function useCredentialsInput({
         ? availableCreds[0]
         : undefined;
     if (isRefusedPlatformKey) {
-      setRefusedPlatformKeyNotice({ selectedId: replacement?.id });
+      setRefusedPlatformKeyNotice({
+        selectedId: replacement?.id,
+        reached: false,
+      });
     }
     if (replacement) {
       hasAttemptedAutoSelect.current = true;
@@ -188,6 +193,23 @@ export function useCredentialsInput({
     schema.refuses_platform_credentials,
     selectedCredential,
   ]);
+
+  useEffect(
+    function forgetRefusedKeyNoticeOnceMovedOn() {
+      if (!refusedPlatformKeyNotice) return;
+      const holdsIt =
+        refusedPlatformKeyNotice.selectedId === selectedCredential?.id;
+      if (holdsIt && !refusedPlatformKeyNotice.reached) {
+        setRefusedPlatformKeyNotice({
+          ...refusedPlatformKeyNotice,
+          reached: true,
+        });
+      } else if (!holdsIt && refusedPlatformKeyNotice.reached) {
+        setRefusedPlatformKeyNotice(null);
+      }
+    },
+    [refusedPlatformKeyNotice, selectedCredential?.id],
+  );
 
   // Auto-select the first available credential on initial mount
   // Once a user has made a selection, we don't override it
