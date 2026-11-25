@@ -537,6 +537,9 @@ export function useCredentialsInput({
     userCredentials,
     systemCredentials,
     allCredentials: savedCredentials,
+    // Every key saved for the provider, including the ones the field's type,
+    // scope and host filters leave out
+    allProviderCredentials: credentials.allProviderCredentials,
     selectedCredential,
     removedCredentialTitle,
     oAuthError,
