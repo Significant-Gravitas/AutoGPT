@@ -33,6 +33,7 @@ interface Args {
   nodeCredentials: CredentialsMetaInput[];
   nodeCredentialsUnknown: boolean;
   clearedFields: string[];
+  fieldsToPick: string[];
 }
 
 /** A field with the schema its picker gets; none when no provider resolves. */
@@ -51,6 +52,7 @@ export function useCredentialsGroupedView({
   nodeCredentials,
   nodeCredentialsUnknown,
   clearedFields,
+  fieldsToPick,
 }: Args) {
   const allProviders = useContext(CredentialsProvidersContext);
 
@@ -73,7 +75,7 @@ export function useCredentialsGroupedView({
   // system credentials, so they can see which key the run will use, and so
   // is one left for them to pick, or a required one they have to add a key for.
   function isShownAbove([key, schema]: CredentialField) {
-    if (pinnedAbove.includes(key)) return true;
+    if (pinnedAbove.includes(key) || fieldsToPick.includes(key)) return true;
     if (pinnedInside.includes(key)) return false;
     if (isOwnCredential(inputCredentials?.[key], allProviders)) return true;
     if (inputCredentials?.[key]) return false;
@@ -143,8 +145,15 @@ export function useCredentialsGroupedView({
 
     const select = onAutoSelect ?? onCredentialChange;
     for (const [key, schema] of credentialFields) {
-      // A field the user cleared stays empty: "None" is their choice
-      if (inputCredentials?.[key] || clearedFields.includes(key)) continue;
+      // A field the user cleared stays empty: "None" is their choice. One
+      // left for them to pick waits for them.
+      if (
+        inputCredentials?.[key] ||
+        clearedFields.includes(key) ||
+        fieldsToPick.includes(key)
+      ) {
+        continue;
+      }
 
       const isRequired = requiredCredentials.has(key);
       const isRequiredSystemField =
@@ -170,6 +179,7 @@ export function useCredentialsGroupedView({
     autoSelectBasis,
     clearedFields,
     credentialFields,
+    fieldsToPick,
     hasSystemCredentials,
     inputCredentials,
     isLoadingProviders,

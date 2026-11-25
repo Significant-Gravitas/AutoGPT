@@ -48,6 +48,8 @@ interface UseAgentRunModalCallbacks {
   initialInputValues?: Record<string, any>;
   initialTriggerConfigValues?: Record<string, any>;
   initialInputCredentials?: Record<string, any>;
+  /** The host opens and closes the form itself. */
+  controlled?: { isOpen: boolean; set: (open: boolean) => void };
 }
 
 export function useAgentRunModal(
@@ -56,7 +58,13 @@ export function useAgentRunModal(
 ) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpenHere, setIsOpenHere] = useState(false);
+  const controlled = callbacks?.controlled;
+  const isOpen = controlled ? controlled.isOpen : isOpenHere;
+  function setIsOpen(open: boolean) {
+    if (controlled) controlled.set(open);
+    else setIsOpenHere(open);
+  }
   const [inputValues, setInputValues] = useState<Record<string, any>>(() =>
     withCalendarDates(agent.input_schema, callbacks?.initialInputValues),
   );

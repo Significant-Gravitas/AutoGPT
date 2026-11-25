@@ -23,11 +23,15 @@ import { RunAgentModalContextProvider } from "./context";
 import { useAgentRunModal } from "./useAgentRunModal";
 
 interface Props {
-  triggerSlot: React.ReactNode;
+  /** Opens the form; without one, the host opens it through `controlled`. */
+  triggerSlot?: React.ReactNode;
   agent: LibraryAgent;
   initialInputValues?: Record<string, any>;
   initialTriggerConfigValues?: Record<string, any>;
   initialInputCredentials?: Record<string, any>;
+  /** Credential fields left for the user to pick a key for, e.g. one whose
+   *  key was deleted: shown, and not filled with the platform's key. */
+  fieldsToPick?: string[];
   onRunCreated?: (execution: GraphExecutionMeta) => void;
   onTriggerSetup?: (preset: LibraryAgentPreset) => void;
   onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
@@ -35,7 +39,12 @@ interface Props {
    *  override the dialog title. */
   title?: string;
   dialogVariant?: "default" | "compact";
+  controlled?: { isOpen: boolean; set: (open: boolean) => void };
+  /** Shown above the task's inputs. */
+  notice?: React.ReactNode;
 }
+
+const NO_FIELDS_TO_PICK: string[] = [];
 
 export function RunAgentModal({
   triggerSlot,
@@ -43,11 +52,14 @@ export function RunAgentModal({
   initialInputValues,
   initialTriggerConfigValues,
   initialInputCredentials,
+  fieldsToPick = NO_FIELDS_TO_PICK,
   onRunCreated,
   onTriggerSetup,
   onScheduleCreated,
   title = "Run Workflow",
   dialogVariant = "default",
+  controlled,
+  notice,
 }: Props) {
   const {
     // UI state
@@ -105,6 +117,7 @@ export function RunAgentModal({
     initialInputValues,
     initialTriggerConfigValues,
     initialInputCredentials,
+    controlled,
   });
 
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
@@ -214,12 +227,14 @@ export function RunAgentModal({
         controlled={{ isOpen, set: handleSetOpen }}
         styling={{ maxWidth: "600px", maxHeight: "90vh" }}
       >
-        <Dialog.Trigger>{triggerSlot}</Dialog.Trigger>
+        {triggerSlot ? <Dialog.Trigger>{triggerSlot}</Dialog.Trigger> : null}
         <Dialog.Content>
           <div ref={contentRef} className="flex min-h-full flex-col">
             <div className="flex-1">
               {/* Header */}
               <ModalHeader agent={agent} />
+
+              {notice ? <div className="mt-4">{notice}</div> : null}
 
               {/* Content */}
               {hasAnySetupFields ? (
@@ -243,6 +258,7 @@ export function RunAgentModal({
                       autoSelectInputCredentialsValue:
                         handleCredentialAutoSelect,
                       clearedCredentialFields: clearedFields,
+                      credentialFieldsToPick: fieldsToPick,
                       agentCredentialsInputFields,
                       nodeCredentials,
                       isResolvingCredentials,

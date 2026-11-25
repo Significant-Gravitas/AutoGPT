@@ -18,6 +18,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 const SYSTEM_SECTION = "system-credentials";
 const NO_NODE_CREDENTIALS: CredentialsMetaInput[] = [];
 const NO_CLEARED_FIELDS: string[] = [];
+const NO_FIELDS_TO_PICK: string[] = [];
 
 type Props = {
   credentialFields: CredentialField[];
@@ -33,6 +34,8 @@ type Props = {
   nodeCredentialsUnknown?: boolean;
   /** Fields the user set to none: nothing fills them again. */
   clearedFields?: string[];
+  /** Fields left for the user to pick a key for, e.g. one whose key was deleted: shown, and not filled with the platform's key. */
+  fieldsToPick?: string[];
 };
 
 export function CredentialsGroupedView({
@@ -45,6 +48,7 @@ export function CredentialsGroupedView({
   nodeCredentials = NO_NODE_CREDENTIALS,
   nodeCredentialsUnknown = false,
   clearedFields = NO_CLEARED_FIELDS,
+  fieldsToPick = NO_FIELDS_TO_PICK,
 }: Props) {
   const {
     visibleFields,
@@ -61,6 +65,7 @@ export function CredentialsGroupedView({
     nodeCredentials,
     nodeCredentialsUnknown,
     clearedFields,
+    fieldsToPick,
   });
 
   function renderField({ key, schema, pickerSchema }: PickerField) {

@@ -13,8 +13,20 @@ import type { GraphExecution } from "@/app/api/__generated__/models/graphExecuti
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import {
+  CredentialsActionsContext,
+  CredentialsProvidersContext,
+} from "@/providers/agent-credentials/credentials-provider";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useContext, useState } from "react";
+import { formatValidationError } from "../../../../modals/RunAgentModal/errorHelpers";
+import {
+  describeDeletedKeys,
+  getDeletedKeys,
+  getRefusedKeys,
+  getRerunForm,
+  RerunForm,
+} from "./helpers";
 
 interface Params {
   agentGraphId: string;
@@ -31,10 +43,14 @@ export function useSelectedRunActions({
 }: Params) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const allProviders = useContext(CredentialsProvidersContext);
+  const credentialsActions = useContext(CredentialsActionsContext);
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isCreateTemplateModalOpen, setIsCreateTemplateModalOpen] =
     useState(false);
+  // The run form a rerun opens to replace the run's deleted keys
+  const [rerunForm, setRerunForm] = useState<RerunForm | null>(null);
 
   const canStop = run?.status === "RUNNING" || run?.status === "QUEUED";
 
@@ -83,6 +99,14 @@ export function useSelectedRunActions({
       return;
     }
 
+    // A key the run used was deleted: the server would refuse it, so the run
+    // form opens with the run's inputs for the user to pick another key
+    const deletedKeys = getDeletedKeys(run.credential_inputs, allProviders);
+    if (deletedKeys.length > 0) {
+      setRerunForm(getRerunForm(run, deletedKeys));
+      return;
+    }
+
     try {
       const res = await executeRun({
         graphId: run.graph_id,
@@ -103,15 +127,38 @@ export function useSelectedRunActions({
 
       if (newRunId && onSelectRun) onSelectRun(newRunId);
     } catch (error: unknown) {
+      handleRunAgainError(run, error);
+    }
+  }
+
+  function handleRunAgainError(failedRun: GraphExecution, error: unknown) {
+    // Deleted since the page read the user's keys, e.g. in another tab: they
+    // are read again, and the run form opens to pick another
+    const refusedKeys = getRefusedKeys(error, failedRun.credential_inputs);
+    if (refusedKeys.length > 0) {
+      credentialsActions?.reload();
+      setRerunForm(getRerunForm(failedRun, refusedKeys));
       toast({
         title: "Failed to start run",
-        description:
-          error instanceof Error
-            ? error.message
-            : "An unexpected error occurred.",
+        description: describeDeletedKeys(refusedKeys),
         variant: "destructive",
       });
+      return;
     }
+    // Each step's problem, not only how many there are
+    toast({
+      title: "Failed to start run",
+      description:
+        error instanceof Error
+          ? formatValidationError(error, { graph_id: failedRun.graph_id })
+          : "An unexpected error occurred.",
+      variant: "destructive",
+      duration: 10000,
+    });
+  }
+
+  function handleRerunFormOpenChange(open: boolean) {
+    if (!open) setRerunForm(null);
   }
 
   function handleShowDeleteDialog(open: boolean) {
@@ -179,6 +226,8 @@ export function useSelectedRunActions({
     handleShowDeleteDialog,
     handleStopRun,
     handleRunAgain,
+    rerunForm,
+    handleRerunFormOpenChange,
     handleCreateTemplate,
     isCreatingTemplate,
     isCreateTemplateModalOpen,

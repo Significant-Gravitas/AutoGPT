@@ -2,10 +2,12 @@ import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { RunAgentModal } from "../../../../modals/RunAgentModal/RunAgentModal";
 import { AgentActionsDropdown } from "../../../AgentActionsDropdown";
 import { SelectedActionsWrap } from "../../../SelectedActionsWrap";
 import { ShareRunButton } from "../../../ShareRunButton/ShareRunButton";
 import { CreateTemplateModal } from "../CreateTemplateModal/CreateTemplateModal";
+import { DeletedKeysNotice } from "./components/DeletedKeysNotice";
 import { useSelectedRunActions } from "./useSelectedRunActions";
 import {
   Album01Icon,
@@ -32,6 +34,8 @@ export function SelectedRunActions({
   const {
     canRunManually,
     handleRunAgain,
+    rerunForm,
+    handleRerunFormOpenChange,
     handleStopRun,
     isRunningAgain,
     canStop,
@@ -78,6 +82,18 @@ export function SelectedRunActions({
             </div>
           )}
         </Button>
+      ) : null}
+      {rerunForm ? (
+        <RunAgentModal
+          agent={agent}
+          title="Rerun task"
+          controlled={{ isOpen: true, set: handleRerunFormOpenChange }}
+          notice={<DeletedKeysNotice deletedKeys={rerunForm.deletedKeys} />}
+          initialInputValues={rerunForm.inputs}
+          initialInputCredentials={rerunForm.credentials}
+          fieldsToPick={rerunForm.fieldsToPick}
+          onRunCreated={(execution) => onSelectRun?.(execution.id)}
+        />
       ) : null}
       {canStop ? (
         <Button
