@@ -229,5 +229,73 @@ describe("CredentialsFlatView", () => {
 
       expect(screen.getByText("My Firecrawl key (deleted)")).toBeTruthy();
     });
+
+    it("names a deleted key that had no title by its provider", () => {
+      render(
+        <CredentialsFlatView
+          {...makeProps({
+            ...readOnlyProps,
+            credentials: [],
+            selectedCredential: {
+              id: "key-3",
+              type: "api_key",
+              provider: "firecrawl",
+            },
+          })}
+        />,
+      );
+
+      expect(screen.getByText("Your Firecrawl account (deleted)")).toBeTruthy();
+    });
+
+    it("names a saved key the field's filters leave out, rather than calling it deleted", () => {
+      render(
+        <CredentialsFlatView
+          {...makeProps({
+            ...readOnlyProps,
+            credentials: [],
+            allProviderCredentials: [firstKey, secondKey],
+            selectedCredential: {
+              id: "key-2",
+              type: "api_key",
+              provider: "firecrawl",
+              title: "My Firecrawl key",
+            },
+          })}
+        />,
+      );
+
+      expect(screen.getByText("My Firecrawl key")).toBeTruthy();
+      expect(screen.queryByText(/\(deleted\)/)).toBeNull();
+      expect(screen.queryByText("Platform key")).toBeNull();
+    });
+  });
+
+  it("an editable field lists its saved key, not the selected one as deleted", () => {
+    render(
+      <CredentialsFlatView
+        {...makeProps({
+          provider: "firecrawl",
+          displayName: "Firecrawl",
+          credentials: [
+            {
+              id: "key-1",
+              title: "Platform key",
+              type: "api_key",
+              provider: "firecrawl",
+            },
+          ],
+          selectedCredential: {
+            id: "key-2",
+            type: "api_key",
+            provider: "firecrawl",
+            title: "My Firecrawl key",
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Platform key")).toBeTruthy();
+    expect(screen.queryByText(/\(deleted\)/)).toBeNull();
   });
 });
