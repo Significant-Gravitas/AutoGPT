@@ -433,19 +433,38 @@ def check_xlsx_sheet_size(
         if sheet_name and sheet_name not in [ws.title for ws in workbook.worksheets]:
             return
         sheet = workbook[sheet_name] if sheet_name else workbook.worksheets[0]
-        try:
-            _walk_sheet(sheet)
-        except XlsxSheetTooLarge as e:
-            _report_xlsx_refusal(
-                "xlsx sheet over size limit",
-                e.limit_name,
-                source,
-                counted=e.counted,
-                limit=e.limit,
-            )
-            raise
+        _walk_sheet_reporting(sheet, source, bound_memory=True)
     finally:
         workbook.close()
+
+
+def xlsx_sheet_shape(
+    sheet: Any, *, source: Literal["spreadsheet_block", "file_content_parser"]
+) -> tuple[int, int]:
+    """The number of a read-only sheet's last row with a value, and how many
+    values its widest row has, as pandas trims and pads a sheet.
+
+    Refuses a sheet past the caps on rows and listed cells, which bound how long
+    reading it takes, reporting each refusal to Sentry. Memory is the caller's to
+    bound: this keeps nothing of the sheet.
+    """
+    return _walk_sheet_reporting(sheet, source, bound_memory=False)
+
+
+def _walk_sheet_reporting(
+    sheet: Any, source: str, *, bound_memory: bool
+) -> tuple[int, int]:
+    try:
+        return _walk_sheet(sheet, bound_memory=bound_memory)
+    except XlsxSheetTooLarge as e:
+        _report_xlsx_refusal(
+            "xlsx sheet over size limit",
+            e.limit_name,
+            source,
+            counted=e.counted,
+            limit=e.limit,
+        )
+        raise
 
 
 class XlsxSheetTooLarge(ValueError):
@@ -456,8 +475,10 @@ class XlsxSheetTooLarge(ValueError):
         self.limit_name, self.counted, self.limit = limit_name, counted, limit
 
 
-def _walk_sheet(sheet: Any) -> None:
-    """Raise ``XlsxSheetTooLarge`` at the first sheet cap passed."""
+def _walk_sheet(sheet: Any, *, bound_memory: bool) -> tuple[int, int]:
+    """The sheet's last row with a value and its widest row, raising
+    ``XlsxSheetTooLarge`` at the first sheet cap passed. Without ``bound_memory``
+    only the rows and listed-cells caps apply."""
     # Read every cell, as pandas does.
     sheet.reset_dimensions()
     listed = last_row = width = characters = 0
@@ -483,6 +504,8 @@ def _walk_sheet(sheet: Any) -> None:
                 MAX_XLSX_SHEET_CELLS_LISTED,
                 f"lists more than {MAX_XLSX_SHEET_CELLS_LISTED:,} cells",
             )
+        if not bound_memory:
+            continue
         if last_row * width > MAX_XLSX_SHEET_CELLS:
             raise XlsxSheetTooLarge(
                 "MAX_XLSX_SHEET_CELLS",
@@ -498,6 +521,7 @@ def _walk_sheet(sheet: Any) -> None:
                 f"holds more than {MAX_XLSX_SHEET_CHARACTERS // (1024 * 1024)} MB "
                 "of text",
             )
+    return last_row, width
 
 
 def _csv_length(value: Any) -> int:

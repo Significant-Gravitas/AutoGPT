@@ -259,6 +259,7 @@ Configure delimiter, quote character, and escape character for proper CSV parsin
 | strip | Whether to strip whitespace from the values | bool | No |
 | skip_columns | The columns to skip from the start of the row | List[str] | No |
 | produce_singular_result | If True, yield individual 'row' outputs only (can be slow). If False, yield both 'rows' (all data) | bool | No |
+| max_rows | The most rows to read after skip_rows. Set it to read a large spreadsheet in pages, starting each page at next_skip_rows; empty reads every row, or fails if they are too large to output at once. | int | No |
 
 ### Outputs
 
@@ -267,6 +268,7 @@ Configure delimiter, quote character, and escape character for proper CSV parsin
 | error | Error message if the operation failed | str |
 | row | The data produced from each row in the spreadsheet | Dict[str, str] |
 | rows | All the data in the spreadsheet as a list of rows | List[Dict[str, str]] |
+| next_skip_rows | Only when rows are left after this read: the skip_rows that reads the next page | int |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
