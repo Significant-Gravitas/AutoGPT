@@ -27,6 +27,7 @@ from backend.blocks.code_executor import (
 from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
 from backend.blocks.jina.chunking import JinaChunkingBlock
 from backend.blocks.llm import AITextGeneratorBlock, LLMModel
+from backend.blocks.search import GetWeatherInformationBlock
 from backend.blocks.youtube import TranscribeYoutubeVideoBlock
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.model import APIKeyCredentials, NodeExecutionStats
@@ -37,6 +38,7 @@ from backend.integrations.credentials_store import (
     fal_credentials,
     jina_credentials,
     open_router_credentials,
+    openweathermap_credentials,
     webshare_proxy_credentials,
 )
 from backend.sdk.cost_integration import register_provider_costs_for_block
@@ -210,6 +212,31 @@ def test_transcribe_youtube_has_one_credit_tooling_floor():
         },
     )
     assert cost == 1
+
+
+def test_weather_costs_one_credit_on_the_platform_key_only():
+    block = GetWeatherInformationBlock()
+    platform, _ = block_usage_cost(
+        block,
+        {
+            "credentials": {
+                "id": openweathermap_credentials.id,
+                "provider": openweathermap_credentials.provider,
+                "type": openweathermap_credentials.type,
+            }
+        },
+    )
+    own_key, _ = block_usage_cost(
+        block,
+        {
+            "credentials": {
+                "id": "user-own-key",
+                "provider": openweathermap_credentials.provider,
+                "type": openweathermap_credentials.type,
+            }
+        },
+    )
+    assert (platform, own_key) == (1, 0)
 
 
 # -------- SECRT-2701: OpenRouter display rates are not billing rates --------

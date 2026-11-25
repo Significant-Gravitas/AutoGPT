@@ -64,6 +64,7 @@ from backend.blocks.pinecone import (
 from backend.blocks.replicate.flux_advanced import ReplicateFluxAdvancedModelBlock
 from backend.blocks.replicate.replicate_block import ReplicateModelBlock
 from backend.blocks.screenshotone import ScreenshotWebPageBlock
+from backend.blocks.search import GetWeatherInformationBlock
 from backend.blocks.smartlead.campaign import (
     AddLeadToCampaignBlock,
     CreateCampaignBlock,
@@ -91,6 +92,7 @@ from backend.integrations.credentials_store import (
     nvidia_credentials,
     open_router_credentials,
     openai_credentials,
+    openweathermap_credentials,
     replicate_credentials,
     screenshotone_credentials,
     smartlead_credentials,
@@ -1090,6 +1092,20 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                     "id": webshare_proxy_credentials.id,
                     "provider": webshare_proxy_credentials.provider,
                     "type": webshare_proxy_credentials.type,
+                }
+            },
+        )
+    ],
+    # OpenWeatherMap's current-weather call costs next to nothing; 1 credit is
+    # the same floor as Mem0 and the YouTube transcript block.
+    GetWeatherInformationBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": openweathermap_credentials.id,
+                    "provider": openweathermap_credentials.provider,
+                    "type": openweathermap_credentials.type,
                 }
             },
         )
