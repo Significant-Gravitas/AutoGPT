@@ -278,6 +278,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "is paywalled and the billing pages offer plans. Off for self-hosted "
         "installs; the hosted platform sets it.",
     )
+    mobile_min_app_version: str = Field(
+        default="",
+        description="Oldest mobile app version (MAJOR.MINOR.PATCH) still allowed "
+        "in; an older app asks to be updated. Empty means no minimum.",
+    )
     refund_credit_tolerance_threshold: int = Field(
         default=500,
         description="Maximum number of credits above the balance to be auto-approved.",
@@ -574,6 +579,21 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port the agent server API serves its Prometheus metrics "
         "on when ENABLE_METRICS is set: never the public API port, so a client of "
         "the API can't read them.",
+    )
+
+    # Documented in docs/platform/deployment-environment-variables.md: update it
+    # with any change here.
+    server_keep_alive_timeout_seconds: int = Field(
+        # A proxy that sends a request on a connection just as the server closes
+        # it gets no answer, so the proxy has to be the one that closes an idle
+        # connection. Google's load balancer keeps one open for 600 s and asks
+        # backends for 620 s, or it answers 502
+        # (backend_connection_closed_before_data_sent_to_client):
+        # https://docs.cloud.google.com/load-balancing/docs/https/troubleshooting-ext-https-lbs
+        default=620,
+        ge=1,
+        description="How long the API and WebSocket servers keep an idle "
+        "connection open: longer than any proxy in front of them does.",
     )
 
     notification_service_port: int = Field(
@@ -1116,6 +1136,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "value: long enough that a few weeks away never makes a relied-on "
             "memory look unused, to be tuned from the eval driver's "
             "demotion-damage data (0-3650 days)"
+        ),
+    )
+
+    stripe_api_base: str = Field(
+        default="",
+        description=(
+            "Where the Stripe SDK sends API requests, e.g. a fake Stripe in a "
+            "test stack. Blank keeps Stripe's own (https://api.stripe.com)."
         ),
     )
 

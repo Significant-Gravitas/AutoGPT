@@ -22,7 +22,8 @@ export async function startChat(page: Page, message: string) {
   await input.press("Enter");
 }
 
-interface RecordedStream {
+/** A chat stream's body as recordChatStreams saw it. */
+export interface RecordedStream {
   method: string;
   text: string;
   done: boolean;
@@ -125,18 +126,44 @@ export async function cutChatStreams(page: Page) {
 
 /** The body of the first chat stream sent with `method`, once it has ended. */
 export async function finishedChatStream(page: Page, method: "GET" | "POST") {
+  const [body] = await finishedChatStreams(page, method, 1);
+  return body;
+}
+
+/** The bodies of the first `count` chat streams sent with `method`, in the
+ * order they were opened, once each has ended. */
+export async function finishedChatStreams(
+  page: Page,
+  method: "GET" | "POST",
+  count: number,
+) {
   const handle = await page.waitForFunction(
-    (wanted) => {
+    ({ wanted, count }) => {
       const streams = (
         window as unknown as { __journeyChatStreams?: RecordedStream[] }
       ).__journeyChatStreams;
-      const stream = streams?.find((s) => s.method === wanted && s.done);
-      return stream ? stream.text : null;
+      const sent = (streams ?? []).filter((s) => s.method === wanted);
+      if (sent.length < count || !sent.slice(0, count).every((s) => s.done)) {
+        return null;
+      }
+      return sent.slice(0, count).map((s) => s.text);
     },
-    method,
+    { wanted: method, count },
     { timeout: 60_000 },
   );
-  return (await handle.jsonValue()) as string;
+  return (await handle.jsonValue()) as string[];
+}
+
+/** How many chat streams the page has opened with `method` so far. */
+export async function chatStreamCount(page: Page, method: "GET" | "POST") {
+  return page.evaluate(
+    (wanted) =>
+      (
+        (window as unknown as { __journeyChatStreams?: RecordedStream[] })
+          .__journeyChatStreams ?? []
+      ).filter((s) => s.method === wanted).length,
+    method,
+  );
 }
 
 /** The start of `text`, to see an answer begin streaming. */
@@ -169,12 +196,28 @@ export interface SavedMessage {
 }
 
 export async function savedMessages(page: Page, sessionID: string) {
+  return (await readSession(page, sessionID)).messages;
+}
+
+/** Whether the server is still running a turn in the chat. */
+export async function hasActiveTurn(page: Page, sessionID: string) {
+  return Boolean((await readSession(page, sessionID)).active_stream);
+}
+
+/** The id of the turn the server is running in the chat, or null. */
+export async function runningTurnID(page: Page, sessionID: string) {
+  return (await readSession(page, sessionID)).active_stream?.turn_id ?? null;
+}
+
+async function readSession(page: Page, sessionID: string) {
   const response = await page.request.get(
     `/api/proxy/api/chat/sessions/${sessionID}`,
   );
   expect(response.ok(), `GET chat session: ${response.status()}`).toBe(true);
-  const body = (await response.json()) as { messages: SavedMessage[] };
-  return body.messages;
+  return (await response.json()) as {
+    messages: SavedMessage[];
+    active_stream?: { turn_id?: string } | null;
+  };
 }
 
 /** The assistant's text, one entry per saved message that has any. */
@@ -182,4 +225,33 @@ export async function savedAssistantTexts(page: Page, sessionID: string) {
   return (await savedMessages(page, sessionID))
     .filter((message) => message.role === "assistant" && message.content)
     .map((message) => message.content);
+}
+
+/**
+ * Waits until nothing is left running in the chat: the session is idle and
+ * no turn is streaming. A turn that never lets go keeps the chat "working"
+ * and the user can't send. Reads the chat list, which reports the stored
+ * status as it is; opening the chat would release a long-stuck one.
+ */
+export async function expectChatSettled(page: Page, sessionID: string) {
+  await expect
+    .poll(
+      async () => {
+        const response = await page.request.get("/api/proxy/api/chat/sessions");
+        expect(response.ok(), `GET chat sessions: ${response.status()}`).toBe(
+          true,
+        );
+        const body = (await response.json()) as {
+          sessions: {
+            id: string;
+            chat_status: string;
+            is_processing: boolean;
+          }[];
+        };
+        const session = body.sessions.find((s) => s.id === sessionID);
+        return session && [session.chat_status, session.is_processing];
+      },
+      { message: "the chat should settle with no turn left running" },
+    )
+    .toEqual(["idle", false]);
 }

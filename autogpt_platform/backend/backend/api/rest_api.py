@@ -1,7 +1,6 @@
 import asyncio
 import contextlib
 import logging
-import platform
 from collections.abc import Awaitable, Callable
 from enum import Enum
 from typing import Any
@@ -11,6 +10,7 @@ import starlette.middleware.cors
 import uvicorn
 from autogpt_libs.auth import add_auth_responses_to_openapi
 from autogpt_libs.auth import verify_settings as verify_auth_settings
+from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
 
@@ -95,6 +95,7 @@ import backend.util.service
 import backend.util.settings
 from backend.api.session_auth import require_active_auth_session
 from backend.api.utils.exceptions import add_exception_handlers
+from backend.api.utils.uvicorn_options import rest_api_uvicorn_options
 from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.webhook_routes import register_webhook_adapters
@@ -105,7 +106,6 @@ from backend.util.cloud_storage import shutdown_cloud_storage_handler
 from backend.util.process import freeze_startup_heap
 from backend.util.request_credentials import remember_request_credentials
 from backend.util.service import UnhealthyServiceError
-from backend.util.trusted_proxies import uvicorn_forwarded_allow_ips
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
@@ -698,11 +698,48 @@ async def oauth_authorization_server_metadata() -> OAuthMetadata:
     )
 
 
+# The process alone. Liveness probes and the load balancer call this, so a
+# database outage must not fail it; /health/ready checks the database.
 @app.get(path="/health", tags=["health"], dependencies=[])
 async def health():
     if not backend.data.db.is_connected():
         raise UnhealthyServiceError("Database is not connected")
     return {"status": "healthy"}
+
+
+HEALTH_READY_DB_TIMEOUT_SECONDS = 2.0
+
+
+@app.get(
+    path="/health/ready",
+    tags=["health"],
+    dependencies=[],
+    include_in_schema=False,
+)
+async def health_ready():
+    """Whether this process can query the database now, for a readiness probe
+    that should take the pod out of service while it can't."""
+    if backend.data.db.is_connected() and await _database_answers():
+        return {"status": "healthy"}
+    # The cause is logged, not returned: it can name the database host and port.
+    return JSONResponse(
+        {"status": "unhealthy", "detail": "database unavailable"}, status_code=503
+    )
+
+
+async def _database_answers() -> bool:
+    try:
+        rows = await asyncio.wait_for(
+            backend.data.db.query_raw_with_schema("SELECT 1 as health_check"),
+            timeout=HEALTH_READY_DB_TIMEOUT_SECONDS,
+        )
+    except Exception as e:
+        logger.warning(f"Readiness check: the database probe failed: {e!r}")
+        return False
+    if rows and rows[0].get("health_check") == 1:
+        return True
+    logger.warning(f"Readiness check: the database probe returned {rows!r}")
+    return False
 
 
 # After the last route: a route added below this wouldn't check its token first.
@@ -736,20 +773,7 @@ class AgentServer(backend.util.service.AppProcess):
         start_metrics_server(settings.config.agent_api_metrics_port)
 
         # Configure uvicorn with performance optimizations from Kludex FastAPI tips
-        uvicorn.run(
-            app=server_app,
-            host=settings.config.agent_api_host,
-            port=settings.config.agent_api_port,
-            log_config=None,
-            # Use httptools for HTTP parsing (if available)
-            http="httptools",
-            # Only use uvloop on Unix-like systems (not supported on Windows)
-            loop="uvloop" if platform.system() != "Windows" else "auto",
-            ws="websockets-sansio",
-            forwarded_allow_ips=uvicorn_forwarded_allow_ips(
-                settings.config.trusted_proxies
-            ),
-        )
+        uvicorn.run(app=server_app, **rest_api_uvicorn_options(settings.config))
 
     @staticmethod
     async def test_execute_graph(

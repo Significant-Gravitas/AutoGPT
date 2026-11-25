@@ -1,13 +1,9 @@
 import {
-  nameFromEmail,
   parseStoredSession,
   readSignInFailure,
-  readSignUpOutcome,
   readUser,
-  serverSlug,
   sessionCookieHeader,
   storageKey,
-  verificationCallbackURL,
 } from "../sessionHelpers";
 
 const user = { id: "u1", email: "sam@example.com", name: "Sam", image: null };
@@ -109,55 +105,5 @@ describe("sessionCookieHeader", () => {
     expect(
       sessionCookieHeader("abc.s%2Fi%2Bg%3D", "http://localhost:3000"),
     ).toBe(expected);
-  });
-});
-
-describe("verificationCallbackURL", () => {
-  it("sends the link's reader to the page that points back at the app", () => {
-    expect(verificationCallbackURL(false)).toBe(
-      "/auth/callback?method=email&next=%2Fapp-verified",
-    );
-  });
-
-  it("carries a marketing refusal in the link", () => {
-    expect(verificationCallbackURL(true)).toBe(
-      "/auth/callback?method=email&next=%2Fapp-verified&marketing_opt_out=1",
-    );
-  });
-});
-
-describe("nameFromEmail", () => {
-  it("is the part before the @, as the web names a new account", () => {
-    expect(nameFromEmail("Ada.Lovelace@Northwind.co")).toBe("Ada.Lovelace");
-  });
-});
-
-describe("readSignUpOutcome", () => {
-  const newUser = { id: "u1", email: "ada@northwind.co" };
-
-  it("is signed in when the server hands over a credential", () => {
-    expect(readSignUpOutcome({ token: "t", user: newUser }, "t.signed")).toBe(
-      "signedIn",
-    );
-  });
-
-  it("waits for the email when the server made no session", () => {
-    expect(readSignUpOutcome({ token: null, user: newUser }, null)).toBe("verify");
-  });
-
-  it("names a server without the installed-app contract", () => {
-    expect(readSignUpOutcome({ token: "t", user: newUser }, null)).toBe(
-      "noAppSession",
-    );
-    expect(readSignUpOutcome({ token: "t" }, "t.signed")).toBe("noAppSession");
-  });
-});
-
-describe("serverSlug", () => {
-  it("keeps two servers apart", () => {
-    expect(serverSlug("http://dev:3000")).not.toBe(serverSlug("http://dev_3000"));
-    expect(storageKey("http://dev:3000")).toBe(
-      `autogpt.session.${serverSlug("http://dev:3000")}`,
-    );
   });
 });

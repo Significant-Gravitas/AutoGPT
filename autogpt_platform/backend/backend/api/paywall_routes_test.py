@@ -255,6 +255,7 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/store/my-unpublished-agents",
     "GET /api/store/skills/submissions",
     "GET /api/store/submissions",
+    "GET /api/store/submissions/live/{graph_id}",
     "GET /api/store/submissions/media/{owner_user_id}/{media_type}/{filename}",
     "GET /api/workspace/files",
     "GET /api/workspace/files/{file_id}/download",
@@ -370,6 +371,7 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/store/skills/{slug}",
     "GET /api/store/skills/{slug}/files/{path:path}",
     "GET /health",
+    "GET /health/ready",
 }
 
 # One closed route per router, as the client calls it.

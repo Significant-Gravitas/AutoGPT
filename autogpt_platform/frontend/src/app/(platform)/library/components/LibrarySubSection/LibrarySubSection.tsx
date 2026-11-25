@@ -18,6 +18,7 @@ interface Props {
   onTabChange: (tabId: string) => void;
   allCount: number;
   favoritesCount: number;
+  librarySort: LibraryAgentSort;
   setLibrarySort: (value: LibraryAgentSort) => void;
   statusFilter?: AgentStatusFilter;
   onStatusFilterChange?: (filter: AgentStatusFilter) => void;
@@ -30,6 +31,7 @@ export function LibrarySubSection({
   onTabChange,
   allCount,
   favoritesCount,
+  librarySort,
   setLibrarySort,
   statusFilter = "all",
   onStatusFilterChange,
@@ -86,7 +88,10 @@ export function LibrarySubSection({
             summary={fleetSummary}
           />
         )}
-        <LibrarySortMenu setLibrarySort={setLibrarySort} />
+        <LibrarySortMenu
+          librarySort={librarySort}
+          setLibrarySort={setLibrarySort}
+        />
       </div>
     </div>
   );

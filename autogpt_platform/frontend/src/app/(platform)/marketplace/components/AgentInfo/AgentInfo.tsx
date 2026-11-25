@@ -13,7 +13,7 @@ import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { formatTimeAgo } from "@/lib/utils/time";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import type { User } from "@/lib/auth/types";
 import Link from "next/link";
 import { InstallOnExpertButton } from "../InstallOnExpertButton/InstallOnExpertButton";
@@ -328,7 +328,7 @@ export const AgentInfo = ({
                 {version}.0
               </Text>
               <Text variant="body" tone="secondary">
-                Last updated {formatTimeAgo(lastUpdated)}
+                Last updated <RelativeTime date={lastUpdated} variant="short" />
               </Text>
             </div>
           </div>

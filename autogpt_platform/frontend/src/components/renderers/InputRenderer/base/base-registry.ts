@@ -4,6 +4,7 @@ import {
   TemplatesType,
 } from "@rjsf/utils";
 import { AnyOfField } from "./anyof/AnyOfField";
+import { NumberField } from "./number/NumberField";
 import { OneOfField } from "./oneof/OneOfField";
 import {
   ArrayFieldItemTemplate,
@@ -33,6 +34,7 @@ const NoButton = () => null;
 export function generateBaseFields(): RegistryFieldsType {
   return {
     AnyOfField,
+    NumberField,
     OneOfField,
     ArraySchemaField,
   };

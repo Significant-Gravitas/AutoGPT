@@ -133,6 +133,15 @@ async def create_preset(
         raise _run_permission_missing()
     assert_inputs_match(graph.input_schema, request.inputs, partial=True)
 
+    # As on the internal routes: a graph one hired expert installed runs as
+    # that expert's, under its budget, pause and credential grants.
+    expert_id = await experts_db.resolve_expert_for_graph(
+        auth.user_id, request.graph_id
+    )
+    if expert_id:
+        await execution_utils._enforce_expert_credential_scope(
+            auth.user_id, expert_id, request.credentials_inputs
+        )
     preset = await library_db.create_preset(
         user_id=auth.user_id,
         preset=LibraryAgentPresetCreatable(
@@ -144,11 +153,7 @@ async def create_preset(
             credentials=request.credentials_inputs,
             is_active=request.is_active,
         ),
-        # As on the internal routes: a graph one hired expert installed runs as
-        # that expert's, under its budget and pause.
-        expert_id=await experts_db.resolve_expert_for_graph(
-            auth.user_id, request.graph_id
-        ),
+        expert_id=expert_id,
     )
     return AgentPreset.from_internal(preset)
 

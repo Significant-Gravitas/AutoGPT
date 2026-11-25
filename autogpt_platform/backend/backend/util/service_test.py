@@ -42,6 +42,7 @@ from backend.util.service import (
     HTTPClientError,
     HTTPServerError,
     RemoteCallError,
+    UnhealthyServiceError,
     _build_return_adapter,
     _usable_adapter,
     endpoint_to_async,
@@ -194,6 +195,25 @@ async def test_service_creation(server):
         assert client.fun_with_async(5, 3) == 8
         assert await client.add_async(5, 3) == 8
         assert await client.subtract_async(10, 4) == 6
+
+
+def test_a_failed_health_check_is_a_503_logged_once(caplog):
+    """A 503, not the 400 every ``ValueError`` gets; and the error, which logs
+    itself when raised, is not logged again by the handler."""
+    app = FastAPI()
+    AppService._register_exception_handlers(app)
+
+    @app.get("/health_check")
+    async def health_check():
+        raise UnhealthyServiceError("Database is not connected", log=False)
+
+    with contextlib.closing(TestClient(app, raise_server_exceptions=False)) as raw:
+        with caplog.at_level(logging.WARNING, logger=service_module.logger.name):
+            response = raw.get("/health_check")
+
+    assert response.status_code == 503
+    assert response.json()["type"] == "UnhealthyServiceError"
+    assert [r for r in caplog.records if r.name == service_module.logger.name] == []
 
 
 def test_expert_lookup_errors_preserve_rpc_status_and_type():
@@ -1693,6 +1713,7 @@ _ANSWERED_AT_ONCE_SHARED_ERRORS = {
     "BlockOutputError",
     "BlockUnknownError",
     "ConflictError",
+    "CredentialsExpiredError",
     "DuplicateChatMessageError",
     "EmailUndeliverableError",
     "ExpertLimitExceededError",

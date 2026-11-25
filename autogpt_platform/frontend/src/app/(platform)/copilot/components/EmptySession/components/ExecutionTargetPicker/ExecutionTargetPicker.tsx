@@ -19,12 +19,21 @@ import {
 } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { LocalFolderPicker } from "./components/LocalFolderPicker/LocalFolderPicker";
+import { useAnotherComputer } from "./useAnotherComputer";
 import { useExecutionTargetPicker } from "./useExecutionTargetPicker";
 
 export function ExecutionTargetPicker() {
   const picker = useExecutionTargetPicker();
   const [warningResolved, setWarningResolved] = useState(false);
   const isLocal = picker.target.kind === "local";
+  const isFolderDialogOpen = isLocal && warningResolved && picker.isOpen;
+  const selectedMachineID =
+    picker.target.kind === "local" ? picker.target.machineID : null;
+  const anotherComputer = useAnotherComputer({
+    isOpen: isFolderDialogOpen,
+    machines: picker.machines,
+    selectedMachineID,
+  });
 
   function handleTargetChange(value: string) {
     if (value === "local") picker.selectLocal();
@@ -126,11 +135,10 @@ export function ExecutionTargetPicker() {
             ? `${picker.target.machineID ?? "none"}:${picker.target.connectionID ?? "none"}`
             : "cloud"
         }
-        isOpen={isLocal && warningResolved && picker.isOpen}
+        isOpen={isFolderDialogOpen}
         machines={picker.machines}
-        selectedMachineID={
-          picker.target.kind === "local" ? picker.target.machineID : null
-        }
+        selectedMachineID={selectedMachineID}
+        anotherComputer={anotherComputer}
         isLoadingMachines={picker.isLoadingMachines}
         isMachinesError={picker.isMachinesError}
         isRefreshingMachines={picker.isRefreshingMachines}

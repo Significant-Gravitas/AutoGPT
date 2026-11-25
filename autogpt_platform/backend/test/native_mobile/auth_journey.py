@@ -166,7 +166,7 @@ async def test_native_email_login_renewal_and_signout_revoke_backend_access(
                 "/api/auth/token", headers={"Authorization": f"Bearer {bearer}"}
             )
         ).status_code == 401
-        assert await ws_api.authenticate_websocket(websocket) == ""
+        assert await ws_api.authenticate_websocket(websocket) is None
         assert send.await_args is not None
         assert send.await_args.args[0]["code"] == 4003
         assert (
@@ -243,7 +243,7 @@ async def test_backend_rechecks_session_authority(
             receive=AsyncMock(return_value={"type": "websocket.connect"}),
             send=send,
         )
-        assert await ws_api.authenticate_websocket(websocket) == ""
+        assert await ws_api.authenticate_websocket(websocket) is None
         assert send.await_args is not None
         assert send.await_args.args[0]["code"] == 4004
 

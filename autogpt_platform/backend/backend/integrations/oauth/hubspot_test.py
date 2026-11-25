@@ -307,7 +307,7 @@ async def test_failed_revoke_does_not_raise(mocker: MockerFixture):
 
 
 async def test_every_hubspot_request_has_a_retry_cap(mocker: MockerFixture):
-    # Uncapped, a throttled or failing HubSpot is retried forever.
+    # A throttled or failing HubSpot is retried a bounded number of times.
     post = AsyncMock(
         side_effect=[
             _response(TOKEN_RESPONSE),

@@ -39,6 +39,30 @@ StripeResource = TypeVar("StripeResource", bound=stripe.StripeObject)
 # ever means a stalled socket, and holding a request that long serves nobody.
 DEFAULT_TIMEOUT_SECONDS = 30.0
 
+TEST_KEY_PREFIXES = ("sk_test_", "rk_test_")
+
+
+def api_base_override(api_base: str, api_key: str) -> str | None:
+    """Where to send the SDK's requests instead of Stripe, if anywhere.
+
+    ``STRIPE_API_BASE`` is for test stacks that run a fake Stripe, so it is
+    applied only beside a test key or no key at all. Any other key, a live
+    one or one this can't recognise, keeps the SDK on Stripe: a live key and
+    real charges never go anywhere else. The refusal is logged rather than
+    raised, so a stray setting can't keep a service from starting.
+    """
+    if not api_base:
+        return None
+    key = api_key.strip()
+    if key and not key.startswith(TEST_KEY_PREFIXES):
+        logger.error(
+            "STRIPE_API_BASE is ignored: it is applied only with a Stripe test"
+            " key (sk_test_ or rk_test_), and requests with any other key only"
+            " go to Stripe"
+        )
+        return None
+    return api_base
+
 
 async def stripe_call(
     fn: Callable[P, Awaitable[T]], /, *args: P.args, **kwargs: P.kwargs
