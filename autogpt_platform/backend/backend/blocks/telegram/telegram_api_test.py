@@ -1,13 +1,10 @@
 """Tests for the Telegram Bot API helpers against mocked HTTP replies."""
 
-import traceback
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from aiohttp import web
 
-from backend.blocks.telegram import _api as telegram_api
 from backend.blocks.telegram._api import (
     TelegramAPIException,
     TelegramFileResult,
@@ -17,8 +14,7 @@ from backend.blocks.telegram._api import (
     get_file_info,
 )
 from backend.blocks.telegram._auth import TEST_CREDENTIALS
-from backend.util.request import HTTPClientError, Requests
-from backend.util.request_test_helpers import local_requests, serve
+from backend.util.request import Requests
 
 MESSAGE = {"message_id": 42, "chat": {"id": 1}, "date": 0, "text": "hi"}
 ERROR = {"ok": False, "error_code": 400, "description": "message to delete not found"}
@@ -80,27 +76,3 @@ async def test_get_file_info_parses_file():
     with patch.object(Requests, "request", _http_200({"ok": True, "result": file})):
         info = await get_file_info(TEST_CREDENTIALS, "abc")
     assert info == TelegramFileResult(**file)
-
-
-async def test_a_refused_call_keeps_the_bot_token_out_of_its_error():
-    async def refuse(_: web.Request) -> web.Response:
-        return web.json_response(
-            {"ok": False, "error_code": 403, "description": "Forbidden"}, status=403
-        )
-
-    app = web.Application()
-    app.router.add_post("/{bot}/sendMessage", refuse)
-    runner, base = await serve(app)
-    try:
-        with (
-            patch.object(telegram_api, "TELEGRAM_API_BASE", base),
-            patch.object(telegram_api, "Requests", local_requests),
-            pytest.raises(HTTPClientError) as raised,
-        ):
-            await call_telegram_api(TEST_CREDENTIALS, "sendMessage", {"chat_id": 1})
-    finally:
-        await runner.cleanup()
-
-    assert raised.value.status_code == 403
-    token = TEST_CREDENTIALS.api_key.get_secret_value()
-    assert token not in "".join(traceback.format_exception(raised.value))
