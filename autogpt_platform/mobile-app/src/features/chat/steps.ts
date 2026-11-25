@@ -89,7 +89,7 @@ export function stepKind(toolName: string): StepKind {
   if (hasAny(name, ["workspace_file", "folder"])) return "file";
   if (WEB_TOOLS.includes(name) || name.startsWith("browser_")) return "web";
   if (hasAny(name, ["schedule", "routine", "followup"])) return "routine";
-  if (name.startsWith("memory_") || name === "add_understanding") {
+  if (name.startsWith("memory_") || name.endsWith("_understanding")) {
     return "memory";
   }
   if (name === "bash_exec" || name === "start_desktop") return "computer";

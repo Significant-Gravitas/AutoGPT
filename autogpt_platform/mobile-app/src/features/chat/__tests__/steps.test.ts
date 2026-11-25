@@ -26,6 +26,8 @@ describe("stepKind", () => {
     ["web_search", "web"],
     ["schedule_routine", "routine"],
     ["memory_search", "memory"],
+    ["add_understanding", "memory"],
+    ["read_understanding", "memory"],
     ["bash_exec", "computer"],
     ["connect_integration", "connect"],
     ["list_team", "team"],
