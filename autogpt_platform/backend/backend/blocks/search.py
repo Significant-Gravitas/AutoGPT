@@ -19,7 +19,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.request import DEFAULT_USER_AGENT
+from backend.util.request import DEFAULT_USER_AGENT, HTTPClientError, HTTPServerError
 
 
 class GetWikipediaSummaryBlock(Block, GetRequest):
@@ -146,7 +146,11 @@ class GetWeatherInformationBlock(Block, GetRequest):
         api_key = credentials.api_key.get_secret_value()
         location = input_data.location
         url = f"https://api.openweathermap.org/data/2.5/weather?q={quote(location)}&appid={api_key}&units={units}"
-        weather_data = await self.get_request(url, json=True)
+        try:
+            weather_data = await self.get_request(url, json=True)
+        except (HTTPClientError, HTTPServerError) as error:
+            # Drop aiohttp's cause: its text quotes the whole request URL.
+            raise type(error)(str(error), error.status_code, error.body) from None
 
         if "main" in weather_data and "weather" in weather_data:
             yield "temperature", str(weather_data["main"]["temp"])
