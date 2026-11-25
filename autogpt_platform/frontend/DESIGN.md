@@ -115,7 +115,7 @@ Hugeicons only: icon data from `@hugeicons/core-free-icons`, rendered with the `
 
 ## Shape: radius
 
-Use a step: `rounded-none`, `rounded-sm` (4px), `rounded` (4), `rounded-md` (6), `rounded-lg` (8), `rounded-xl` (12), `rounded-2xl` (16), `rounded-3xl` (24), `rounded-4xl` (32), `rounded-5xl` (40), and `rounded-2xl-inner` (15) for a `rounded-2xl` card's surface inside its 1px border. Corners take the same steps (`rounded-t-lg`, `rounded-l-pill`). The older names `rounded-xsmall` to `rounded-2xlarge` alias steps of the same size. Never `rounded-[…]`.
+Use a step: `rounded-none`, `rounded-sm` (4px), `rounded` (4), `rounded-md` (6), `rounded-lg` (8), `rounded-xl` (12), `rounded-2xl` (16), `rounded-3xl` (24), `rounded-4xl` (32), `rounded-5xl` (40), and `rounded-2xl-inner` (15) for a `rounded-2xl` card's surface inside its 1px border. Corners take the same steps (`rounded-t-lg`, `rounded-l-pill`). The older names `rounded-xsmall`, `-small`, `-medium`, `-large` and `-2xlarge` alias the 4, 8, 12, 16 and 24px steps; `rounded-xlarge` is 20px, which no step has. Use the step names in new code. Never `rounded-[…]`.
 
 **Pill or circle.** Ask: in a look where controls have 8px corners, should this become 8px?
 
