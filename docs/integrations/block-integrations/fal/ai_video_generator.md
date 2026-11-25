@@ -10,7 +10,7 @@ Generate videos using FAL AI models.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block generates videos from text prompts using FAL.ai's video generation models including Mochi, Luma Dream Machine, and Veo3. Describe the video you want to create, and the AI generates it.
+This block generates videos from text prompts using FAL.ai's video generation models: LTX-2.3 Fast (the default) and Veo 3. Describe the video you want to create, and the AI generates it.
 
 The generated video URL is returned along with progress logs for monitoring longer generation jobs.
 <!-- END MANUAL -->
@@ -20,7 +20,7 @@ The generated video URL is returned along with progress logs for monitoring long
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | Description of the video to generate. | str | Yes |
-| model | The FAL model to use for video generation. | "fal-ai/mochi-v1" \| "fal-ai/luma-dream-machine" \| "fal-ai/veo3" | No |
+| model | The FAL model to use for video generation. | "fal-ai/ltx-2.3/text-to-video/fast" \| "fal-ai/veo3" | No |
 
 ### Outputs
 

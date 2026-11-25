@@ -17,6 +17,7 @@ from backend.blocks.fal._auth import (
     FalCredentialsField,
     FalCredentialsInput,
 )
+from backend.data.block import BlockInput
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import store_media_file
@@ -27,9 +28,22 @@ logger = logging.getLogger(__name__)
 
 
 class FalModel(str, Enum):
-    MOCHI = "fal-ai/mochi-v1"
-    LUMA = "fal-ai/luma-dream-machine"
+    @classmethod
+    def _missing_(cls, value: object) -> "FalModel | None":
+        """A node saved on a model FAL no longer serves runs on its replacement
+        (``RETIRED_FAL_MODELS``)."""
+        return _replacement_for(value)
+
+    LTX_2_3_FAST = "fal-ai/ltx-2.3/text-to-video/fast"
     VEO3 = "fal-ai/veo3"
+
+
+# Models this block offered that FAL has removed (its queue answers 404 for
+# both), and what a node saved on one runs on: the cheapest model it offers.
+RETIRED_FAL_MODELS: dict[str, FalModel] = {
+    "fal-ai/mochi-v1": FalModel.LTX_2_3_FAST,
+    "fal-ai/luma-dream-machine": FalModel.LTX_2_3_FAST,
+}
 
 
 class AIVideoGeneratorBlock(Block):
@@ -40,10 +54,23 @@ class AIVideoGeneratorBlock(Block):
         )
         model: FalModel = SchemaField(
             title="FAL Model",
-            default=FalModel.MOCHI,
+            default=FalModel.LTX_2_3_FAST,
             description="The FAL model to use for video generation.",
         )
         credentials: FalCredentialsInput = FalCredentialsField()
+
+        @classmethod
+        def validate_data(
+            cls,
+            data: BlockInput,
+            exclude_fields: set[str] | None = None,
+        ) -> str | None:
+            """Check a saved retired model as its replacement, on a copy: the JSON
+            schema lists only current models, so it would refuse the saved value."""
+            replacement = _replacement_for(data.get("model"))
+            if replacement is not None:
+                data = {**data, "model": replacement.value}
+            return super().validate_data(data, exclude_fields=exclude_fields)
 
     class Output(BlockSchemaOutput):
         video_url: str = SchemaField(description="The URL of the generated video.")
@@ -63,7 +90,7 @@ class AIVideoGeneratorBlock(Block):
             output_schema=self.Output,
             test_input={
                 "prompt": "A dog running in a field.",
-                "model": FalModel.MOCHI,
+                "model": FalModel.LTX_2_3_FAST,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -213,3 +240,8 @@ class AIVideoGeneratorBlock(Block):
         except Exception as e:
             error_message = str(e)
             yield "error", error_message
+
+
+def _replacement_for(value: object) -> FalModel | None:
+    """The current model a saved retired value runs as; None for any other."""
+    return RETIRED_FAL_MODELS.get(value) if isinstance(value, str) else None

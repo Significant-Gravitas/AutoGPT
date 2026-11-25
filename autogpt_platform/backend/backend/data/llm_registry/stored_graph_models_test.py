@@ -136,8 +136,8 @@ NON_LLM_BLOCK_VALUES: dict[str, str] = {
     "exa": "exa/research.py",  # historical
     "exa-research": "exa/research.py",
     "exa-research-pro": "exa/research.py",
-    "fal-ai/luma-dream-machine": "fal/ai_video_generator.py",
-    "fal-ai/mochi-v1": "fal/ai_video_generator.py",
+    "fal-ai/luma-dream-machine": "fal/ai_video_generator.py",  # historical
+    "fal-ai/mochi-v1": "fal/ai_video_generator.py",  # historical
     "fal-ai/veo3": "fal/ai_video_generator.py",
     "google/gemini-2.5-flash-image": "ai_image_generator_block.py",  # historical
     "google/nano-banana": "ai_image_customizer.py",
