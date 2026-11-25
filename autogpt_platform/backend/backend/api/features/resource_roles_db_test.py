@@ -43,7 +43,8 @@ class World(BaseModel):
     """One shared org with one team. ``team_billing`` is a plain org member who
     only manages the team's billing, ``org_billing`` manages the org's billing
     and is a plain member of the team, as adding them to the org leaves them
-    on its default team."""
+    on its default team. ``admin_billing`` is an org admin who also manages its
+    billing."""
 
     org: str
     team: str
@@ -51,6 +52,7 @@ class World(BaseModel):
     member: str
     team_billing: str
     org_billing: str
+    admin_billing: str
     personal: dict[str, tuple[str, str]]
     owner_graph: str
     owner_run: str
@@ -84,9 +86,9 @@ async def world() -> AsyncIterator[World]:
 
 async def _build_world(users: list[str], orgs: list[str]) -> World:
     suffix = uuid.uuid4().hex[:8]
-    owner, member, team_billing, org_billing = [
+    owner, member, team_billing, org_billing, admin_billing = [
         await _user(f"{role}-{suffix}", users)
-        for role in ("owner", "member", "teambill", "orgbill")
+        for role in ("owner", "member", "teambill", "orgbill", "adminbill")
     ]
     personal = {uid: await _personal_org(uid, orgs) for uid in users}
     org = await prisma.organization.create(
@@ -99,6 +101,7 @@ async def _build_world(users: list[str], orgs: list[str]) -> World:
         (member, {}),
         (team_billing, {}),
         (org_billing, {"isBillingManager": True}),
+        (admin_billing, {"isAdmin": True, "isBillingManager": True}),
     ):
         await prisma.orgmember.create(
             data={"orgId": org.id, "userId": uid, "status": "ACTIVE", **flags}
@@ -122,6 +125,7 @@ async def _build_world(users: list[str], orgs: list[str]) -> World:
         member=member,
         team_billing=team_billing,
         org_billing=org_billing,
+        admin_billing=admin_billing,
         personal=personal,
         owner_graph=owner_graph.id,
         owner_run=await _run(owner, owner_graph, org.id, team.id),
@@ -518,6 +522,7 @@ async def test_private_submission_media_needs_a_role_that_covers_workflows(
     for reader, readable in (
         (w.owner, True),
         (w.team_billing, True),
+        (w.admin_billing, True),
         (w.org_billing, False),
     ):
         response = await _call(api, "GET", path, reader)
