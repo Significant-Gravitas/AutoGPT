@@ -32,6 +32,7 @@ class ResponseType(str, Enum):
     EXECUTION_STARTED = "execution_started"
     AGENT_OUTPUT = "agent_output"
     UNDERSTANDING_UPDATED = "understanding_updated"
+    UNDERSTANDING = "understanding"
     SUGGESTED_GOAL = "suggested_goal"
 
     # Agent builder (create / edit / validate / fix)
@@ -613,6 +614,13 @@ class UnderstandingUpdatedResponse(ToolResponseBase):
     type: ResponseType = ResponseType.UNDERSTANDING_UPDATED
     updated_fields: list[str] = Field(default_factory=list)
     current_understanding: dict[str, Any] = Field(default_factory=dict)
+
+
+class UnderstandingResponse(ToolResponseBase):
+    """Response for read_understanding tool."""
+
+    type: ResponseType = ResponseType.UNDERSTANDING
+    lists: dict[str, list[str]] = Field(default_factory=dict)
 
 
 SoulFieldName = Literal["identity", "voice_preferences", "boundaries"]

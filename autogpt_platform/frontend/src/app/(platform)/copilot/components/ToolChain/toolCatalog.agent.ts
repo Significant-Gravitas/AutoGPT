@@ -7,6 +7,11 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
     running: "Noting context",
     done: "Noted context",
   },
+  read_understanding: {
+    category: "memory",
+    running: "Reading your profile",
+    done: "Read your profile",
+  },
   create_agent: {
     category: "agent-build",
     running: "Creating workflow",

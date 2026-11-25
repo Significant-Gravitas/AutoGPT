@@ -81,6 +81,7 @@ from .message_session import MessageSessionTool
 from .models import ErrorResponse
 from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
+from .read_understanding import ReadUnderstandingTool
 from .render_ui import RenderUITool
 from .resume_capability import ResumeCapabilityTool
 from .routines import ListRoutinesTool, ScheduleRoutineTool
@@ -113,6 +114,7 @@ logger = logging.getLogger(__name__)
 # Single source of truth for all tools
 TOOL_REGISTRY: dict[str, BaseTool] = {
     "add_understanding": AddUnderstandingTool(),
+    "read_understanding": ReadUnderstandingTool(),
     "ask_question": AskQuestionTool(),
     "render_ui": RenderUITool(),
     "create_agent": CreateAgentTool(),

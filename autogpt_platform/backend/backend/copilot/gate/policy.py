@@ -86,6 +86,7 @@ _READ = frozenset(
         "read_expert_chat",
         "request_work_check",
         "read_skill",
+        "read_understanding",
         "read_workspace_file",
         # Draws cards from what Otto wrote; touches nothing.
         "render_ui",

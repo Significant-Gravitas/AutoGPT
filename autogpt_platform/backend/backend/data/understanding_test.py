@@ -182,3 +182,44 @@ def test_format_understanding_excludes_themed_prompts():
     assert "Automate reports" not in formatted
     assert "Set up alerts" not in formatted
     assert "Track KPIs" not in formatted
+
+
+# ─── format_understanding_for_prompt: newest items only ─────────────────
+
+
+def _profile(**lists: list[str]) -> BusinessUnderstanding:
+    now = datetime.now(tz=timezone.utc)
+    return BusinessUnderstanding(
+        id="test-id", user_id="user-1", created_at=now, updated_at=now, **lists
+    )
+
+
+def test_format_shows_each_lists_newest_items_and_how_many_it_leaves_out():
+    pain_points = [f"pain-{i:03d}" for i in range(57)]
+    goals = [f"goal-{i:03d}" for i in range(23)]
+
+    formatted = format_understanding_for_prompt(
+        _profile(
+            pain_points=pain_points, automation_goals=goals, current_software=["Slack"]
+        )
+    )
+
+    assert [p for p in pain_points if p in formatted] == pain_points[-20:]
+    assert [g for g in goals if g in formatted] == goals[-20:]
+    assert (
+        '(and 37 more: `tool:read_understanding` with field "pain_points")' in formatted
+    )
+    assert (
+        '\n- (and 3 more: `tool:read_understanding` with field "automation_goals")'
+        in formatted
+    )
+    assert "Current Software: Slack\n" in f"{formatted}\n"
+
+
+def test_format_cuts_a_long_item_at_its_first_2000_characters():
+    formatted = format_understanding_for_prompt(
+        _profile(pain_points=["a" * 1999 + "b" + "c" * 500])
+    )
+
+    assert "a" * 1999 + "b…" in formatted
+    assert "c" not in formatted.split("Pain Points: ")[1]

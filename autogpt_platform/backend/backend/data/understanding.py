@@ -18,6 +18,21 @@ CACHE_TTL_SECONDS = 48 * 60 * 60  # 48 hours
 # Left in the cache by a forget, so a read that fetched the row before it cannot cache it again.
 FORGOTTEN_MARKER = "forgotten"
 
+# The profile's lists, in the order a chat's context shows them.
+LIST_FIELDS = (
+    "key_workflows",
+    "daily_activities",
+    "pain_points",
+    "bottlenecks",
+    "manual_tasks",
+    "automation_goals",
+    "current_software",
+    "existing_automation",
+)
+# A chat's context shows each list's newest items only; `read_understanding` returns all.
+CONTEXT_LIST_ITEMS = 20
+CONTEXT_ITEM_CHARS = 2_000
+
 
 def _cache_key(user_id: str) -> str:
     """Generate cache key for user business understanding."""
@@ -306,16 +321,6 @@ def merge_business_understanding_data(
         "user_role",
         "additional_notes",
     ]
-    business_list_fields = [
-        "key_workflows",
-        "daily_activities",
-        "pain_points",
-        "bottlenecks",
-        "manual_tasks",
-        "automation_goals",
-        "current_software",
-        "existing_automation",
-    ]
 
     # Handle top-level name field
     if input_data.user_name is not None:
@@ -328,7 +333,7 @@ def merge_business_understanding_data(
             existing_business[field] = value
 
     # Business list fields - merge with existing
-    for field in business_list_fields:
+    for field in LIST_FIELDS:
         value = getattr(input_data, field)
         if value is not None:
             existing_list = _json_to_list(existing_business.get(field))
@@ -404,6 +409,10 @@ def format_understanding_for_prompt(understanding: BusinessUnderstanding) -> str
     if not understanding:
         return ""
     sections = []
+    shown = {
+        field: context_items(items, field)
+        for field, items in understanding.model_dump(include=set(LIST_FIELDS)).items()
+    }
 
     # User info section
     user_info = []
@@ -430,41 +439,36 @@ def format_understanding_for_prompt(understanding: BusinessUnderstanding) -> str
     # Processes section
     processes = []
     if understanding.key_workflows:
-        processes.append(f"Key Workflows: {', '.join(understanding.key_workflows)}")
+        processes.append(f"Key Workflows: {', '.join(shown['key_workflows'])}")
     if understanding.daily_activities:
-        processes.append(
-            f"Daily Activities: {', '.join(understanding.daily_activities)}"
-        )
+        processes.append(f"Daily Activities: {', '.join(shown['daily_activities'])}")
     if processes:
         sections.append("## Processes\n" + "\n".join(processes))
 
     # Pain points section
     pain_points = []
     if understanding.pain_points:
-        pain_points.append(f"Pain Points: {', '.join(understanding.pain_points)}")
+        pain_points.append(f"Pain Points: {', '.join(shown['pain_points'])}")
     if understanding.bottlenecks:
-        pain_points.append(f"Bottlenecks: {', '.join(understanding.bottlenecks)}")
+        pain_points.append(f"Bottlenecks: {', '.join(shown['bottlenecks'])}")
     if understanding.manual_tasks:
-        pain_points.append(f"Manual Tasks: {', '.join(understanding.manual_tasks)}")
+        pain_points.append(f"Manual Tasks: {', '.join(shown['manual_tasks'])}")
     if pain_points:
         sections.append("## Pain Points\n" + "\n".join(pain_points))
 
     # Goals section
     if understanding.automation_goals:
         sections.append(
-            "## Automation Goals\n"
-            + "\n".join(f"- {goal}" for goal in understanding.automation_goals)
+            "## Automation Goals\n- " + "\n- ".join(shown["automation_goals"])
         )
 
     # Current tools section
     tools_info = []
     if understanding.current_software:
-        tools_info.append(
-            f"Current Software: {', '.join(understanding.current_software)}"
-        )
+        tools_info.append(f"Current Software: {', '.join(shown['current_software'])}")
     if understanding.existing_automation:
         tools_info.append(
-            f"Existing Automation: {', '.join(understanding.existing_automation)}"
+            f"Existing Automation: {', '.join(shown['existing_automation'])}"
         )
     if tools_info:
         sections.append("## Current Tools\n" + "\n".join(tools_info))
@@ -477,3 +481,16 @@ def format_understanding_for_prompt(understanding: BusinessUnderstanding) -> str
         return ""
 
     return "# User Business Context\n\n" + "\n\n".join(sections)
+
+
+def context_items(items: list[str], field: str) -> list[str]:
+    """A list's newest items as a chat's context shows them, then how many it leaves out."""
+    shown = [
+        item if len(item) <= CONTEXT_ITEM_CHARS else f"{item[:CONTEXT_ITEM_CHARS]}…"
+        for item in items[-CONTEXT_LIST_ITEMS:]
+    ]
+    if older := len(items) - len(shown):
+        shown.append(
+            f'(and {older} more: `tool:read_understanding` with field "{field}")'
+        )
+    return shown

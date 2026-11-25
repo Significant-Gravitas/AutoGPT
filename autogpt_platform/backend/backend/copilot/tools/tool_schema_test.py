@@ -330,8 +330,12 @@ from ._test_data import make_session
 # Measured on PR #16677 merged with latest dev:
 #     merged tree                                 83,410
 #     + headroom                       +300       83,710
+# Raised for read_understanding, a deferred tool #16978 adds. Measured on
+# this branch merged with dev 5abb1354f95 (2026-11-25):
+#     merged tree                                 83,914
+#     + headroom                       +300       84,214
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_CHAR_BUDGET = 83_710
+_CHAR_BUDGET = 84_214
 
 
 @pytest.fixture(scope="module")
@@ -578,8 +582,12 @@ def test_total_schema_char_budget() -> None:
 # Measured on PR #16677 merged with latest dev:
 #     merged tree                                 75,382
 #     + headroom                       +300       75,682
+# read_understanding, the same tool as ``_CHAR_BUDGET`` above, rides the
+# largest session. Measured on that branch merged with dev 5abb1354f95:
+#     merged tree                                 75,833
+#     + headroom                       +300       76,133
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_SESSION_WIRE_BUDGET = 75_682
+_SESSION_WIRE_BUDGET = 76_133
 
 
 def test_largest_declared_session_wire_budget() -> None:

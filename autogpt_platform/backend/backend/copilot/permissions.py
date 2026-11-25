@@ -162,6 +162,7 @@ ToolName = Literal[
     "raise_expert",
     "read_expert_chat",
     "read_skill",
+    "read_understanding",
     "read_workspace_file",
     "remove_expert_workflow",
     "render_ui",
