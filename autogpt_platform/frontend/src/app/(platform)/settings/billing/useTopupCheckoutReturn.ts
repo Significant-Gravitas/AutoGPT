@@ -90,7 +90,8 @@ function refreshCredits(queryClient: QueryClient) {
   ]) {
     // A read already on its way may have read the credits before the fulfil
     // call added them. While the page has none to show yet, invalidating
-    // would wait for that read rather than send a new one, so drop it first.
+    // would wait for that read rather than send a new one, so drop it first:
+    // the cancel has to come before the invalidate.
     void queryClient.cancelQueries({ queryKey });
     void queryClient.invalidateQueries({ queryKey });
   }
