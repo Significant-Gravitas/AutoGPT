@@ -1,11 +1,12 @@
-"""Real-database coverage for library folder name uniqueness and nesting depth.
+"""Real-database coverage for library folder names, nesting depth and count.
 
 A live folder name is unique among its siblings, roots included, and a
 soft-deleted folder gives its name back. Both rules live in partial unique
 indexes, so only a real database can show them working.
 
 Folders nest at most ``MAX_FOLDER_DEPTH`` levels deep, and the tree never comes
-back deeper than that, whatever the table holds.
+back deeper than that, whatever the table holds. A user has at most
+``MAX_FOLDERS_PER_USER`` live folders.
 """
 
 import uuid
@@ -81,6 +82,28 @@ async def test_renaming_onto_a_deleted_sibling_name_is_allowed(
     live = await db.create_folder(user_id, "Notes")
     with pytest.raises(FolderAlreadyExistsError):
         await db.update_folder(live.id, user_id, name="Drafts")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_user_at_the_folder_cap_cannot_create_another(server: SpinTestServer):
+    user_id = await _user()
+    await prisma.models.LibraryFolder.prisma().create_many(
+        data=[
+            {"name": f"Folder {i}", "userId": user_id}
+            for i in range(db.MAX_FOLDERS_PER_USER)
+        ]
+    )
+
+    with pytest.raises(FolderValidationError):
+        await db.create_folder(user_id, "One too many")
+
+    # A deleted folder gives its place back.
+    spare = await prisma.models.LibraryFolder.prisma().find_first(
+        where={"userId": user_id}
+    )
+    assert spare
+    await db.delete_folder(spare.id, user_id)
+    await db.create_folder(user_id, "Replacement")
 
 
 @pytest.mark.asyncio(loop_scope="session")

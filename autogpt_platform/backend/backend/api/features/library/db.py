@@ -1537,6 +1537,7 @@ async def add_store_agent_to_library_as_admin(
 ##############################################
 
 MAX_FOLDER_DEPTH = 32
+MAX_FOLDERS_PER_USER = 1_000
 
 
 async def list_folders(
@@ -1725,7 +1726,8 @@ async def create_folder(
 
     Raises:
         FolderAlreadyExistsError: If a folder with this name already exists.
-        FolderValidationError: If the folder would be nested too deep.
+        FolderValidationError: If the folder would be nested too deep, or the
+            user already has MAX_FOLDERS_PER_USER folders.
         NotFoundError: If the parent folder doesn't exist.
     """
     logger.debug(f"Creating folder '{name}' for user #{user_id}")
@@ -1740,6 +1742,15 @@ async def create_folder(
             raise FolderValidationError(
                 f"Folders cannot be nested more than {MAX_FOLDER_DEPTH} levels deep"
             )
+
+    live_folders = await prisma.models.LibraryFolder.prisma().count(
+        where={"userId": user_id, "isDeleted": False}
+    )
+    if live_folders >= MAX_FOLDERS_PER_USER:
+        raise FolderValidationError(
+            f"You can have at most {MAX_FOLDERS_PER_USER:,} folders. "
+            "Delete one to make another."
+        )
 
     # Build data dict conditionally - don't include Parent key if no parent_id
     create_data: dict = {

@@ -108,6 +108,14 @@ You can have up to 200 schedules, paused ones included. A new one past that is r
 - **Counted per:** account.
 - **Self-hosting:** `MAX_SCHEDULES_PER_USER` (default `200`).
 
+### Library folders
+
+You can have up to 1,000 folders in your library, nested at most 32 levels deep. Deleted folders don't count. A new folder past either limit is refused, and so is a move that would put any folder deeper than 32 levels. Deleting a folder makes room for another.
+
+- **Counted per:** account.
+- **What you see:** `400` and "You can have at most 1,000 folders. Delete one to make another." or "Folders cannot be nested more than 32 levels deep".
+- Not configurable.
+
 ### Generated workflow images
 
 The Platform generates a picture for each workflow you add to your library, sub-workflows included, and for a marketplace listing when you ask it to. It generates up to 25 a day.
