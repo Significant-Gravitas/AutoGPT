@@ -79,6 +79,8 @@ type Props = {
   provider: string;
   displayName: string;
   credentials: Credential[];
+  /** Every key saved for the provider, to tell a filtered-out key from a deleted one. */
+  allProviderCredentials?: Credential[];
   selectedCredential?: CredentialsMetaInput;
   actionButtonText: string;
   isOptional: boolean;
@@ -96,6 +98,7 @@ export function CredentialsFlatView({
   provider,
   displayName,
   credentials,
+  allProviderCredentials = [],
   selectedCredential,
   actionButtonText,
   isOptional,
@@ -112,10 +115,13 @@ export function CredentialsFlatView({
   const shownCredentials: Credential[] =
     readOnly && selectedCredential
       ? [
-          credentials.find(({ id }) => id === selectedCredential.id) ?? {
-            ...selectedCredential,
-            title: `${getCredentialDisplayName(selectedCredential, displayName)} (deleted)`,
-          },
+          credentials.find(({ id }) => id === selectedCredential.id) ??
+            allProviderCredentials.find(
+              ({ id }) => id === selectedCredential.id,
+            ) ?? {
+              ...selectedCredential,
+              title: `${getCredentialDisplayName(selectedCredential, displayName)} (deleted)`,
+            },
         ]
       : credentials;
   const hasCredentials = shownCredentials.length > 0;
