@@ -21,7 +21,6 @@ from backend.data.db import query_raw_with_schema, transaction
 from backend.data.skill_content_approvals import content_approvals_json
 from backend.data.skill_learning import owner_key_for
 from backend.data.skill_publication_settlement import settle_publication_in
-from backend.data.skill_version_files import version_files_json
 from backend.data.skill_versions import (
     PENDING_WRITE_STATE,
     SkillVersionRecord,
@@ -165,7 +164,7 @@ async def _record(
     )
     return SkillDeletion(
         committed=True,
-        marker=SkillVersionRecord.from_db(marker),
+        marker=SkillVersionRecord.from_db(marker, None),
         archived_version_ids=[str(row["id"]) for row in archived],
         abandoned_version_ids=abandoned,
     )
@@ -213,7 +212,6 @@ async def _append_marker(
             "version": await next_version_number(head.id, client=tx),
             "content": "",
             "contentHash": content_hash(""),
-            "packageFiles": version_files_json(None),
             "contentApprovals": content_approvals_json([]),
             "description": "",
             "triggers": [],

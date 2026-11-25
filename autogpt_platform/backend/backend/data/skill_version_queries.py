@@ -10,7 +10,7 @@ from backend.data.db import query_raw_with_schema
 _SUMMARY_COLUMNS = ", ".join(
     f'"{field}"'
     for field in get_args(prisma.types.SkillVersionScalarFieldKeys)
-    if field != "packageFiles"
+    if field not in ("packageFiles", "packageManifest")
 )
 
 

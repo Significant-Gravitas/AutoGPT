@@ -6,7 +6,6 @@ from typing import Any
 from pydantic import BaseModel, TypeAdapter, field_validator
 
 from backend.data.skill_package import file_sha256, package_tree_sha256
-from backend.util.json import SafeJson
 
 
 class SkillVersionFile(BaseModel):
@@ -39,12 +38,6 @@ def parse_version_files(value: Any) -> list[SkillVersionFile] | None:
     if value is None:
         return None
     return TypeAdapter(list[SkillVersionFile]).validate_python(value)
-
-
-def version_files_json(files: list[SkillVersionFile] | None) -> SafeJson:
-    if files is None:
-        return SafeJson(None)
-    return SafeJson([f.model_dump() for f in files])
 
 
 def version_package_hash(content: str, files: list[SkillVersionFile]) -> str:

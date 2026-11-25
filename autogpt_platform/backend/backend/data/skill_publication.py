@@ -29,7 +29,13 @@ from backend.data.skill_reviews import (
     review_data,
     upsert_review_in,
 )
-from backend.data.skill_version_files import SkillVersionFile, version_files_json
+from backend.data.skill_version_files import SkillVersionFile
+from backend.data.skill_version_store import (
+    manifest_json,
+    prune_version_history,
+    read_version_files,
+    store_version_files,
+)
 from backend.data.skill_versions import (
     PENDING_WRITE_STATE,
     SkillHeadRecord,
@@ -108,38 +114,38 @@ async def commit_version(
         if review is not None:
             await _require_committable_source(tx, user_id, review)
             await _require_no_terminal_review(tx, user_id, review)
-        number = await next_version_number(head.id, client=tx)
+        data: prisma.types.SkillVersionCreateInput = {
+            "userId": user_id,
+            "expertId": head.expert_id,
+            "ownerKey": head.owner_key,
+            "skillName": head.skill_name,
+            "headId": head.id,
+            "version": await next_version_number(head.id, client=tx),
+            "content": draft.content,
+            "contentHash": content_hash(draft.content),
+            "contentApprovals": content_approvals_json(draft.content_approvals),
+            "description": draft.description,
+            "triggers": list(draft.triggers),
+            "origin": draft.origin,
+            "actorUserId": draft.actor_user_id,
+            "summary": draft.summary[:1000],
+            "baseVersionId": draft.base_version_id,
+            "restoredFromVersionId": draft.restored_from_version_id,
+            "reviewId": draft.review_id,
+            "sources": SafeJson(draft.sources),
+            "evidence": SafeJson(draft.evidence),
+            "limits": list(draft.limits),
+            "state": PENDING_WRITE_STATE,
+        }
+        if draft.files is not None:
+            package = await store_version_files(tx, user_id, draft.files)
+            data["packageManifest"] = manifest_json(package)
         try:
-            row = await tx.skillversion.create(
-                data={
-                    "userId": user_id,
-                    "expertId": head.expert_id,
-                    "ownerKey": head.owner_key,
-                    "skillName": head.skill_name,
-                    "headId": head.id,
-                    "version": number,
-                    "content": draft.content,
-                    "contentHash": content_hash(draft.content),
-                    "packageFiles": version_files_json(draft.files),
-                    "contentApprovals": content_approvals_json(draft.content_approvals),
-                    "description": draft.description,
-                    "triggers": list(draft.triggers),
-                    "origin": draft.origin,
-                    "actorUserId": draft.actor_user_id,
-                    "summary": draft.summary[:1000],
-                    "baseVersionId": draft.base_version_id,
-                    "restoredFromVersionId": draft.restored_from_version_id,
-                    "reviewId": draft.review_id,
-                    "sources": SafeJson(draft.sources),
-                    "evidence": SafeJson(draft.evidence),
-                    "limits": list(draft.limits),
-                    "state": PENDING_WRITE_STATE,
-                }
-            )
+            row = await tx.skillversion.create(data=data)
         except prisma.errors.UniqueViolationError:
             return CommitResult(committed=False, reason="version number contended")
         head_data: prisma.types.SkillHeadUpdateInput = {
-            "currentVersion": number,
+            "currentVersion": row.version,
             "currentVersionId": row.id,
             "contentHash": row.contentHash,
         }
@@ -188,8 +194,11 @@ async def commit_version(
                 )
                 or row
             )
+    await prune_version_history(user_id, head.id)
     return CommitResult(
-        committed=True, version=SkillVersionRecord.from_db(row), review_id=review_id
+        committed=True,
+        version=SkillVersionRecord.from_db(row, draft.files),
+        review_id=review_id,
     )
 
 
@@ -329,4 +338,6 @@ async def get_pending_publication_for_skill(
         skill_name,
         model=prisma.models.SkillVersion,
     )
-    return SkillVersionRecord.from_db(rows[0]) if rows else None
+    if not rows:
+        return None
+    return SkillVersionRecord.from_db(rows[0], await read_version_files(rows[0]))
