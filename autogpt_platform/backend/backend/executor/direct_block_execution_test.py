@@ -154,6 +154,15 @@ async def test_a_run_happens_in_a_process_of_its_own(run_parent):
 
 
 @pytest.mark.asyncio
+async def test_the_run_parent_outlives_a_run_it_has_reaped(run_parent):
+    await run_block_in_child(_ReportsItsProcess(), {}, execution_context=_context())
+    # Its loop wakes each second while it lists a run, so by now it has reaped this one.
+    await asyncio.sleep(2.5)
+
+    assert run_parent.running()
+
+
+@pytest.mark.asyncio
 async def test_a_block_computing_past_its_budget_is_killed(
     run_parent, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
@@ -180,6 +189,7 @@ async def test_a_block_computing_past_its_budget_is_killed(
     claim_direct_block_execution_slot("user-a").release()
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="reads the helper's /proc entry")
 @pytest.mark.asyncio
 async def test_a_run_past_its_deadline_ends_the_helpers_it_started(
     run_parent, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
