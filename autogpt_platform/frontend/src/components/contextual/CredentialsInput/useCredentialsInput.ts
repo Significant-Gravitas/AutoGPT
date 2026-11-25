@@ -26,6 +26,7 @@ import {
   getScopeShortfallMessage,
   getSupportedTypes,
   getSystemCredentials,
+  isSystemCredential,
   processCredentialDeletion,
   resolveActionTarget,
 } from "./helpers";
@@ -70,8 +71,11 @@ export function useCredentialsInput({
   const [removedCredentialTitle, setRemovedCredentialTitle] = useState<
     string | null
   >(null);
-  // A platform key the picker let go of because the block refuses it
-  const [hasRefusedPlatformKey, setHasRefusedPlatformKey] = useState(false);
+  // The key the picker moved to, or none, after letting go of a platform key
+  // the block refuses. The notice shows only while the field still holds it.
+  const [refusedPlatformKeyNotice, setRefusedPlatformKeyNotice] = useState<{
+    selectedId: string | undefined;
+  } | null>(null);
   const [credentialToDelete, setCredentialToDelete] = useState<{
     id: string;
     title: string;
@@ -136,9 +140,10 @@ export function useCredentialsInput({
     );
     if (stillUsable) return;
 
-    const stillExists = credentials.allProviderCredentials.some(
+    const selectedRecord = credentials.allProviderCredentials.find(
       (credential) => credential.id === selectedCredential.id,
     );
+    const stillExists = selectedRecord !== undefined;
 
     const isDeletingSelected =
       isDeletingCredential && credentialToDelete?.id === selectedCredential.id;
@@ -151,13 +156,17 @@ export function useCredentialsInput({
     // key, the one an empty field starts on. Passing through "none" would
     // read as the user's own choice to the form around the picker.
     const isRefusedPlatformKey = Boolean(
-      stillExists && schema.refuses_platform_credentials,
+      selectedRecord &&
+        isSystemCredential(selectedRecord) &&
+        schema.refuses_platform_credentials,
     );
-    if (isRefusedPlatformKey) setHasRefusedPlatformKey(true);
     const replacement =
       isRefusedPlatformKey && availableCreds.length === 1
         ? availableCreds[0]
         : undefined;
+    if (isRefusedPlatformKey) {
+      setRefusedPlatformKeyNotice({ selectedId: replacement?.id });
+    }
     if (replacement) {
       hasAttemptedAutoSelect.current = true;
       onSelectCredential({
@@ -255,7 +264,7 @@ export function useCredentialsInput({
 
   function handleCredentialChange(newValue?: CredentialsMetaInput) {
     setRemovedCredentialTitle(null);
-    setHasRefusedPlatformKey(false);
+    setRefusedPlatformKeyNotice(null);
     onSelectCredential(newValue);
   }
 
@@ -571,7 +580,9 @@ export function useCredentialsInput({
     allCredentials: savedCredentials,
     selectedCredential,
     removedCredentialTitle,
-    hasRefusedPlatformKey,
+    hasRefusedPlatformKey:
+      refusedPlatformKeyNotice !== null &&
+      refusedPlatformKeyNotice.selectedId === selectedCredential?.id,
     oAuthError,
     isAPICredentialsModalOpen,
     isUserPasswordCredentialsModalOpen,

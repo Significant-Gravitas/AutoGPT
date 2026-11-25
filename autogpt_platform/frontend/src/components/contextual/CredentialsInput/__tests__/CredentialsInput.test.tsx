@@ -947,6 +947,12 @@ describe("CredentialsInput – blocks that refuse the platform's keys", () => {
       initialID: "unfit-exa",
       known: [{ ...ownCredential, id: "unfit-exa", title: "Unfit Exa key" }],
     },
+    {
+      case: "a key of the user's own that doesn't fit such a block's field",
+      refuses: true,
+      initialID: "unfit-exa",
+      known: [{ ...ownCredential, id: "unfit-exa", title: "Unfit Exa key" }],
+    },
   ])("passes through none for $case", async ({ refuses, initialID, known }) => {
     const onSelectionChange = vi.fn();
     mockUseCredentials.mockReturnValue(
@@ -1019,6 +1025,60 @@ describe("CredentialsInput – blocks that refuse the platform's keys", () => {
     })) as HTMLSelectElement;
     await waitFor(() => expect(picker.value).toBe("__none__"));
     expect(onSelectionChange.mock.calls).toEqual([[undefined]]);
+  });
+
+  it("stops saying so once the form around it holds another key", async () => {
+    const otherCredential = {
+      ...ownCredential,
+      id: "other-exa",
+      title: "Other Exa key",
+    };
+    mockExa([systemCredential, ownCredential, otherCredential]);
+    const onSelectCredentials = vi.fn();
+    const schema = { ...exaSchema, refuses_platform_credentials: true };
+
+    function renderHolding(selected?: CredentialsMetaInput) {
+      return (
+        <CredentialsInput
+          schema={schema}
+          selectedCredentials={selected}
+          onSelectCredentials={onSelectCredentials}
+          showTitle={false}
+        />
+      );
+    }
+
+    const { rerender } = render(
+      renderHolding({
+        id: systemCredential.id,
+        provider: "exa",
+        type: "api_key",
+        title: systemCredential.title,
+      }),
+    );
+    await waitFor(() =>
+      expect(onSelectCredentials).toHaveBeenCalledWith(undefined),
+    );
+    rerender(renderHolding(undefined));
+    expect(
+      await screen.findByText(/Choose one of your own Exa keys/),
+    ).toBeDefined();
+
+    // The form moves the field on itself, as a switch of template does
+    rerender(
+      renderHolding({
+        id: otherCredential.id,
+        provider: "exa",
+        type: "api_key",
+        title: otherCredential.title,
+      }),
+    );
+
+    const picker = screen.getByRole("combobox", {
+      name: "Select Exa credential",
+    }) as HTMLSelectElement;
+    await waitFor(() => expect(picker.value).toBe("other-exa"));
+    expect(screen.queryByText(/can't use the platform's Exa key/)).toBeNull();
   });
 });
 
