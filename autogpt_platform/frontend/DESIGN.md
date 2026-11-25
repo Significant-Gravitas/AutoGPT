@@ -205,8 +205,8 @@ Never write a `dark:` or `light:` class; they never render. A theme is a file of
 Add one only when real, repeated uses need a value no token has.
 
 1. Write the value in the token file (`theme.css` for a colour, as an RGB triplet; `typography.css` for a text size and its line height; `shape.css` for a radius, shadow, layer or shell size; `motion.css` for a duration or easing).
-2. Register the name in `src/app/globals.css` so Tailwind makes a class for it. Shadows are registered in `shape.css` itself; a new shadow step or layer also goes in `src/lib/tw-merge.ts`.
+2. Register the name in `src/app/globals.css` so Tailwind makes a class for it. Shadows are registered in `shape.css` itself; a new shadow step, layer, duration or easing also goes in `src/lib/tw-merge.ts`, so `cn()` lets it replace another class of its kind.
 3. For a colour, list it in `src/components/styles/color-roles.ts`. For a motion value, add it to `src/components/styles/motion.ts`.
 4. For a colour, a radius or a text size, give it a value in `src/app/tokens/themes/canary.css`.
 5. Name it on this page, in the list where it belongs.
-6. Run the token tests: `pnpm vitest run src/components/__tests__ src/components/styles`. They fail a token that is not registered, not listed, not in the canary or not on this page.
+6. Run the token tests: `pnpm vitest run src/components/__tests__ src/components/styles src/lib/__tests__/tw-merge.test.ts`. They fail a token that is not registered, not listed, not in the canary, not known to `cn()` or not on this page.
