@@ -1,7 +1,6 @@
 import asyncio
 import contextlib
 import logging
-import platform
 from collections.abc import Awaitable, Callable
 from enum import Enum
 from typing import Any
@@ -95,6 +94,7 @@ import backend.util.service
 import backend.util.settings
 from backend.api.session_auth import require_active_auth_session
 from backend.api.utils.exceptions import add_exception_handlers
+from backend.api.utils.uvicorn_options import rest_api_uvicorn_options
 from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.webhook_routes import register_webhook_adapters
@@ -105,7 +105,6 @@ from backend.util.cloud_storage import shutdown_cloud_storage_handler
 from backend.util.process import freeze_startup_heap
 from backend.util.request_credentials import remember_request_credentials
 from backend.util.service import UnhealthyServiceError
-from backend.util.trusted_proxies import uvicorn_forwarded_allow_ips
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
@@ -118,6 +117,7 @@ from .external.v2.mcp_server import (
 )
 from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
+from .features.integrations.sign_in_connection import sign_in_connection_router
 from .middleware.analytics import AnalyticsContextMiddleware
 from .middleware.body_limit import RequestBodyLimitMiddleware
 from .middleware.compression import BoundedGZipMiddleware
@@ -340,7 +340,9 @@ sort_openapi(app)
 instrument_fastapi(app, service_name="rest-api", expose_endpoint=False)
 
 
-add_exception_handlers(app)
+add_exception_handlers(
+    app, server_error_detail=False, expose_missing_config_detail=True
+)
 
 app.include_router(
     backend.api.features.desktop_preview.router, tags=["v1"], prefix="/api"
@@ -403,6 +405,11 @@ app.include_router(
     auth_email_routes.auth_email_router,
     prefix="/api/auth/email",
     tags=["auth-email"],
+)
+app.include_router(
+    sign_in_connection_router,
+    prefix="/api/auth",
+    tags=["integrations"],
 )
 app.include_router(
     integrations_router,
@@ -704,20 +711,7 @@ class AgentServer(backend.util.service.AppProcess):
         start_metrics_server(settings.config.agent_api_metrics_port)
 
         # Configure uvicorn with performance optimizations from Kludex FastAPI tips
-        uvicorn.run(
-            app=server_app,
-            host=settings.config.agent_api_host,
-            port=settings.config.agent_api_port,
-            log_config=None,
-            # Use httptools for HTTP parsing (if available)
-            http="httptools",
-            # Only use uvloop on Unix-like systems (not supported on Windows)
-            loop="uvloop" if platform.system() != "Windows" else "auto",
-            ws="websockets-sansio",
-            forwarded_allow_ips=uvicorn_forwarded_allow_ips(
-                settings.config.trusted_proxies
-            ),
-        )
+        uvicorn.run(app=server_app, **rest_api_uvicorn_options(settings.config))
 
     @staticmethod
     async def test_execute_graph(

@@ -89,3 +89,16 @@ export function formatShortDate(
     year: "numeric",
   });
 }
+
+export type BillingTab = "subscription" | "automation-credits";
+
+export function isBillingTab(value: string): value is BillingTab {
+  return value === "subscription" || value === "automation-credits";
+}
+
+// The address names the open tab, so a reload opens it again.
+export function billingTabURL(tab: BillingTab, searchParams?: URLSearchParams) {
+  const params = new URLSearchParams(searchParams);
+  params.set("tab", tab);
+  return `/settings/billing?${params}`;
+}

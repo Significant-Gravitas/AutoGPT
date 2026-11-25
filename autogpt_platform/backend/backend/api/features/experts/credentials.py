@@ -47,7 +47,7 @@ async def _owned_expert(user_id: str, expert_id: str) -> prisma.models.Expert:
         include=_WORKFLOW_INCLUDE,  # type: ignore[arg-type]
     )
     if row is None:
-        raise ExpertNotFoundError(f"Expert #{expert_id} not found")
+        raise ExpertNotFoundError(expert_id)
     return row
 
 
@@ -308,6 +308,21 @@ async def expert_allowed_credential_ids(user_id: str, expert_id: str) -> list[st
     """
     expert = await _owned_expert(user_id, expert_id)
     await _seed_if_needed(user_id, expert)
+    return [grant.credentialId for grant in await _grants(expert_id)]
+
+
+async def seeded_expert_credential_ids(
+    user_id: str, expert_id: str
+) -> list[str] | None:
+    """``expert_allowed_credential_ids`` without its seed: ``None`` while the
+    allow-list is unseeded, so the read never writes and can run beside other
+    reads. A caller then seeds with ``expert_allowed_credential_ids``.
+
+    Raises ``ExpertNotFoundError`` for an expert the user does not own.
+    """
+    expert = await _owned_expert(user_id, expert_id)
+    if expert.credentialsSeededAt is None:
+        return None
     return [grant.credentialId for grant in await _grants(expert_id)]
 
 

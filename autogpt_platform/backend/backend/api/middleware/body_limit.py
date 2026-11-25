@@ -185,9 +185,15 @@ def _is_multipart(scope: Scope) -> bool:
 
 
 def _too_large(limit: int) -> Response:
+    # The upload toast shows this detail, so it reads as a size, not bytes.
     return JSONResponse(
-        {
-            "detail": f"The request body is larger than this endpoint accepts ({limit:,} bytes)"
-        },
+        {"detail": f"The request is too large. The limit is {_readable(limit)}."},
         status_code=status.HTTP_413_CONTENT_TOO_LARGE,
     )
+
+
+def _readable(size: int) -> str:
+    if size < MiB:
+        return f"{max(1, round(size / 1024))} KB"
+    megabytes = size / MiB
+    return f"{megabytes:.0f} MB" if megabytes.is_integer() else f"{megabytes:.1f} MB"

@@ -1,5 +1,6 @@
-// "Continue with Microsoft". Signing in only proves who someone is; mail,
-// files and the rest are a separate, optional step afterwards.
+// "Continue with Microsoft". Signing in proves who someone is, and with
+// connecting at sign-in on (connect-at-sign-in.ts) also connects mail,
+// calendar and files. Teams, Copilot and the rest stay a separate step.
 
 import { isWaitlistError } from "@/app/api/auth/utils";
 import { UNDELIVERABLE_EMAIL_CODE } from "./undeliverable-email";
@@ -169,6 +170,19 @@ export function isMicrosoftEmailVerified(profile: MicrosoftProfile): boolean {
   );
 }
 
+/** A personal account signing in with its own Outlook.com address: the
+ *  account is that mailbox (mailbox-provider.ts). */
+export function isMicrosoftMailboxAccount(profile: {
+  tid?: unknown;
+  email?: unknown;
+}): boolean {
+  return (
+    profile.tid === PERSONAL_TENANT_ID &&
+    typeof profile.email === "string" &&
+    isMicrosoftMailbox(profile.email)
+  );
+}
+
 function isGuest({ idp, tid }: MicrosoftProfile) {
   if (!idp) return false;
   return (
@@ -191,6 +205,8 @@ export function microsoftProfileToUser(profile: MicrosoftProfile) {
   return {
     // An unconfirmed address joins no existing account (Better Auth answers
     // `account_not_linked`) and creates none (microsoft-sign-up-policy.ts).
+    // A confirmed one joins only after an emailed code, unless the account is
+    // that Outlook.com mailbox (require-sign-in-code.ts).
     emailVerified: isMicrosoftEmailVerified(profile),
     email: profile.email,
   };
@@ -200,7 +216,7 @@ export function getMicrosoftLoginProvider() {
   const clientId = process.env.AUTH_MICROSOFT_CLIENT_ID;
   const clientSecret = process.env.AUTH_MICROSOFT_CLIENT_SECRET;
   if (!clientId || !clientSecret) return null;
-  return {
+  const options = {
     clientId,
     clientSecret,
     tenantId: "common",
@@ -208,8 +224,8 @@ export function getMicrosoftLoginProvider() {
     // person pick which one they mean.
     prompt: "select_account" as const,
     disableDefaultScope: true,
-    // The ID token's claims only. Nothing here calls Graph, and some
-    // organizations limit consent to it.
+    // The ID token's claims. A sign-in that connects Microsoft 365 too asks
+    // for the data scopes in its own request (connect-at-sign-in.ts).
     scope: ["openid", "profile", "email"],
     // Only the redirect flow, which microsoft-sign-up-policy.ts guards, signs
     // in. An ID token handed straight to /sign-in/social would skip it.
@@ -219,6 +235,10 @@ export function getMicrosoftLoginProvider() {
     disableProfilePhoto: true,
     mapProfileToUser: microsoftProfileToUser,
   };
+  // The login page imports this module for its copy, so it stays free of
+  // server code: auth.ts adds the sign-in's token handoff
+  // (sign-in-connection.ts).
+  return options;
 }
 
 const SIGN_IN_ERRORS: Record<string, string> = {

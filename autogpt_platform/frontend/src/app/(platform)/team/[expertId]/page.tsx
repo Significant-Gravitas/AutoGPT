@@ -33,7 +33,7 @@ import { ExpertResetSection } from "./components/ExpertResetSection/ExpertResetS
 import { SoulDrawer } from "../components/SoulDrawer/SoulDrawer";
 import {
   getExpertCover,
-  getLastRunLabel,
+  getLastRun,
   PROFILE_TABS_INDICATOR_CLASS,
   PROFILE_TABS_LIST_CLASS,
   PROFILE_TABS_TRIGGER_CLASS,
@@ -211,7 +211,7 @@ export default function ExpertDetailPage() {
               expertId={expert.id}
               workflows={expert.workflows}
               schedules={schedules}
-              lastRunLabel={getLastRunLabel(expert)}
+              lastRun={getLastRun(expert)}
             />
           </TabsLineContent>
 

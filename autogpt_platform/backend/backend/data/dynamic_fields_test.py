@@ -9,6 +9,8 @@ from backend.data.dynamic_fields import (
     MAX_DYNAMIC_PATH_LENGTH,
     MAX_DYNAMIC_PATH_TOKENS,
     assert_safe_pin_name,
+    get_dynamic_field_description,
+    get_dynamic_field_schema,
     is_safe_object_attribute,
     merge_execution_input,
     parse_execution_output,
@@ -187,3 +189,157 @@ def _nested(keys: list[str]) -> Any:
     for key in reversed(keys):
         value = {key: value}
     return value
+
+
+@pytest.mark.parametrize(
+    "field_name,expected",
+    [
+        (
+            "timing_#_start_datetime",
+            "Dictionary field 'start_datetime' for base field 'timing'"
+            " (timing['start_datetime'])",
+        ),
+        ("items_$_0", "List item 0 for base field 'items' (items[0])"),
+        (
+            "user_@_email_address",
+            "Object attribute 'email_address' for base field 'user'"
+            " (user.email_address)",
+        ),
+        (
+            "rows_$_2_#_first_name",
+            "Dictionary field 'first_name' for base field 'rows'"
+            " (rows[2]['first_name'])",
+        ),
+        ("regular_field", "Value for regular_field"),
+    ],
+)
+def test_dynamic_field_description_names_the_full_key(field_name, expected):
+    assert get_dynamic_field_description(field_name) == expected
+
+
+_TIMING_SCHEMA = {
+    "oneOf": [
+        {
+            "type": "object",
+            "properties": {
+                "discriminator": {"const": "exact_timing", "type": "string"},
+                "start_datetime": {"type": "string", "format": "date-time"},
+                "end_datetime": {"type": "string", "format": "date-time"},
+            },
+        },
+        {
+            "type": "object",
+            "properties": {
+                "discriminator": {"const": "duration_timing", "type": "string"},
+                "start_datetime": {"type": "string", "format": "date-time"},
+                "duration_minutes": {"type": "integer"},
+            },
+        },
+    ]
+}
+
+
+def test_dynamic_field_schema_finds_a_key_in_one_union_variant():
+    assert get_dynamic_field_schema(_TIMING_SCHEMA, "timing_#_duration_minutes") == {
+        "type": "integer"
+    }
+
+
+def test_dynamic_field_schema_merges_a_key_shared_by_union_variants():
+    assert get_dynamic_field_schema(_TIMING_SCHEMA, "timing_#_start_datetime") == {
+        "type": "string",
+        "format": "date-time",
+    }
+    assert get_dynamic_field_schema(_TIMING_SCHEMA, "timing_#_discriminator") == {
+        "anyOf": [
+            {"const": "exact_timing", "type": "string"},
+            {"const": "duration_timing", "type": "string"},
+        ]
+    }
+
+
+def test_dynamic_field_schema_follows_lists_and_typed_dicts():
+    schema = {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "additionalProperties": {"type": "number"},
+        },
+    }
+    assert get_dynamic_field_schema(schema, "scores_$_0_#_math") == {"type": "number"}
+
+
+def test_dynamic_field_schema_keeps_every_all_of_constraint():
+    schema = {
+        "allOf": [
+            {"properties": {"x": {"type": "integer", "minimum": 0}}},
+            {"properties": {"x": {"type": "integer", "maximum": 10}}},
+        ]
+    }
+    assert get_dynamic_field_schema(schema, "data_#_x") == {
+        "allOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "integer", "maximum": 10},
+        ]
+    }
+
+
+def test_dynamic_field_schema_keeps_sibling_any_of_and_one_of_apart():
+    schema = {
+        "anyOf": [{"properties": {"x": {"type": "integer", "minimum": 0}}}],
+        "oneOf": [{"properties": {"x": {"type": "integer", "maximum": 10}}}],
+    }
+    assert get_dynamic_field_schema(schema, "data_#_x") == {
+        "allOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "integer", "maximum": 10},
+        ]
+    }
+
+
+def test_dynamic_field_schema_reads_boolean_prefix_items():
+    schema = {"type": "array", "prefixItems": [True, {"type": "integer"}, False]}
+    assert get_dynamic_field_schema(schema, "items_$_0") is None
+    assert get_dynamic_field_schema(schema, "items_$_1") == {"type": "integer"}
+    assert get_dynamic_field_schema(schema, "items_$_2") is None
+
+
+@pytest.mark.parametrize(
+    "schema,field_name",
+    [
+        # a union with an untyped variant accepts any value
+        (
+            {
+                "anyOf": [
+                    {"type": "object", "additionalProperties": {"type": "integer"}},
+                    {"type": "object", "additionalProperties": {}},
+                ]
+            },
+            "values_#_name",
+        ),
+        # dict[str, Any]: the value is unconstrained
+        ({"type": "object", "additionalProperties": True}, "values_#_name"),
+        ({"type": "object", "additionalProperties": {}}, "values_#_name"),
+        # list[Any]
+        ({"type": "array", "items": {}}, "entries_$_0"),
+        # the key isn't in the schema
+        (_TIMING_SCHEMA, "timing_#_unknown"),
+        # an index the executor can't merge
+        ({"type": "array", "items": {"type": "integer"}}, "entries_$_first"),
+        # Any
+        ({}, "data_@_user_name"),
+        ({"type": "object"}, "plain_field"),
+    ],
+)
+def test_dynamic_field_schema_is_none_without_a_typed_leaf(schema, field_name):
+    assert get_dynamic_field_schema(schema, field_name) is None
+
+
+def test_dynamic_field_schema_returns_a_copy():
+    leaf = get_dynamic_field_schema(_TIMING_SCHEMA, "timing_#_duration_minutes")
+    assert leaf is not None
+    leaf["description"] = "changed"
+    assert (
+        "description"
+        not in _TIMING_SCHEMA["oneOf"][1]["properties"]["duration_minutes"]
+    )

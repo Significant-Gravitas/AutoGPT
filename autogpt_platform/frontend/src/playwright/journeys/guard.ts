@@ -1,6 +1,7 @@
 import type {
   BrowserContext,
   ConsoleMessage,
+  Page,
   Response,
 } from "@playwright/test";
 
@@ -26,8 +27,8 @@ interface KnownNoise {
 }
 
 // Reviewed, app-wide noise that is NOT a bug. Every entry needs a reason a
-// reviewer can check. A real defect never goes here: fix it, or mark the
-// journey with test.fail() and a link to the issue.
+// reviewer can check. A real defect never goes here: fix it, or pin the
+// journey to its issue with pinKnownFailure() (known-failure.ts).
 const KNOWN_BENIGN: KnownNoise[] = [
   {
     kind: "console",
@@ -49,43 +50,89 @@ export function watchForUnexpectedErrors(
   context: BrowserContext,
   expected: ExpectedResponse[],
 ) {
+  const watch = startWatching(expected);
+  context.on("response", watch.onResponse);
+  context.on("console", watch.onConsole);
+  context.on("weberror", (webError) =>
+    watch.onPageError(webError.error(), webError.page()?.url()),
+  );
+  return { collect: watch.collect };
+}
+
+/**
+ * The same guard on one page of a context, so what it collects is that
+ * page's alone, e.g. one page of a crawl that shares a context.
+ */
+export function watchPageForUnexpectedErrors(
+  page: Page,
+  expected: ExpectedResponse[],
+) {
+  const watch = startWatching(expected);
+  page.on("response", watch.onResponse);
+  page.on("console", watch.onConsole);
+  page.on("pageerror", (error) => watch.onPageError(error, page.url()));
+  return { collect: watch.collect };
+}
+
+function startWatching(expected: ExpectedResponse[]) {
   const pending: Promise<string | null>[] = [];
-
-  context.on("response", (response) => {
-    if (!isApiResponse(response) || response.status() < 400) return;
-    if (isExpected(response, expected)) return;
-    if (isKnownNoise({ kind: "response", response })) return;
-    pending.push(
-      isMissingActivation(response).then((missing) =>
-        missing ? null : describeResponse(response),
-      ),
-    );
-  });
-
-  context.on("console", (message) => {
-    if (message.type() !== "error") return;
-    if (isKnownNoise({ kind: "console", text: message.text() })) return;
-    pending.push(Promise.resolve(describeConsole(message)));
-  });
-
-  context.on("weberror", (webError) => {
-    const error = webError.error();
-    if (isKnownNoise({ kind: "pageerror", text: error.message })) return;
-    pending.push(
-      Promise.resolve(
-        `pageerror on ${webError.page()?.url() ?? "unknown page"}: ` +
-          `${error.message}\n${error.stack ?? ""}`.trim(),
-      ),
-    );
-  });
-
   return {
-    async collect() {
-      return (await Promise.all(pending)).filter(
-        (problem): problem is string => problem !== null,
+    onResponse(response: Response) {
+      if (!isApiResponse(response) || response.status() < 400) return;
+      if (isExpected(response, expected)) return;
+      if (isKnownNoise({ kind: "response", response })) return;
+      pending.push(
+        isMissingActivation(response).then((missing) =>
+          missing ? null : describeResponse(response),
+        ),
       );
     },
+    onConsole(message: ConsoleMessage) {
+      if (message.type() !== "error") return;
+      if (isKnownNoise({ kind: "console", text: message.text() })) return;
+      pending.push(Promise.resolve(describeConsole(message)));
+    },
+    onPageError(error: Error, url: string | undefined) {
+      if (isKnownNoise({ kind: "pageerror", text: error.message })) return;
+      pending.push(
+        Promise.resolve(
+          `pageerror on ${url ?? "unknown page"}: ` +
+            `${error.message}\n${error.stack ?? ""}`.trim(),
+        ),
+      );
+    },
+    // Until nothing is left pending (an error can arrive while an earlier one
+    // is still being described), or for at most `withinMs`: a page that keeps
+    // failing would otherwise keep it collecting.
+    async collect(withinMs = Infinity) {
+      const giveUpAt = Date.now() + withinMs;
+      let settled = 0;
+      const problems: (string | null)[] = [];
+      while (settled < pending.length && Date.now() < giveUpAt) {
+        const batch = pending.slice(settled);
+        settled = pending.length;
+        problems.push(...(await Promise.all(batch)));
+      }
+      if (pending.length > settled) {
+        problems.push(
+          `${pending.length - settled} more error(s) arrived after the guard stopped collecting`,
+        );
+      }
+      return problems.filter((problem): problem is string => problem !== null);
+    },
   };
+}
+
+// A body that never finishes mustn't hold the guard up: the status, method
+// and URL say enough.
+export const BODY_READ_TIMEOUT_MS = 5_000;
+
+function withinBodyReadTimeout<T>(read: Promise<T>, fallback: T) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), BODY_READ_TIMEOUT_MS);
+  });
+  return Promise.race([read, timedOut]).finally(() => clearTimeout(timer));
 }
 
 function isApiResponse(response: Response) {
@@ -136,7 +183,10 @@ async function isMissingActivation(response: Response) {
       "/api/proxy/api/credits/pro-activation/current"
   )
     return false;
-  const body: unknown = await response.json().catch(() => null);
+  const body: unknown = await withinBodyReadTimeout(
+    response.json().catch(() => null),
+    null,
+  );
   return (
     body !== null &&
     typeof body === "object" &&
@@ -147,10 +197,13 @@ async function isMissingActivation(response: Response) {
 }
 
 async function describeResponse(response: Response) {
-  const body = await response
-    .text()
-    .then((text) => text.slice(0, BODY_SNIPPET_LENGTH))
-    .catch(() => "<body unavailable>");
+  const body = await withinBodyReadTimeout(
+    response
+      .text()
+      .then((text) => text.slice(0, BODY_SNIPPET_LENGTH))
+      .catch(() => "<body unavailable>"),
+    "<body still arriving>",
+  );
   return (
     `${response.status()} ${response.request().method()} ${response.url()}\n` +
     `  body: ${body}`

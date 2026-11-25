@@ -1,6 +1,7 @@
 """Tests for credential hooks and provider-runtime credential leases."""
 
 import time
+from contextlib import asynccontextmanager
 from functools import partial
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -304,6 +305,54 @@ async def test_acquire_releases_lock_if_credential_disappears_after_refresh(mock
 
 
 @pytest.mark.asyncio
+async def test_acquire_without_refresh_only_checks_existence(mocker):
+    manager = IntegrationCredentialsManager()
+    credentials = _provider_runtime_credentials().model_copy(
+        update={"refresh_strategy": "oauth_handler"}
+    )
+    lock = _owned_lock()
+    locked = mocker.patch.object(manager, "_locked", return_value=_noop_lock_context())
+    acquire_lock = mocker.patch.object(
+        manager, "_acquire_lock", AsyncMock(return_value=lock)
+    )
+    get = mocker.patch.object(manager, "get", AsyncMock())
+    refresh = mocker.patch.object(manager, "refresh_if_needed", AsyncMock())
+    stored = mocker.patch.object(
+        manager.store,
+        "get_creds_by_id",
+        AsyncMock(return_value=credentials),
+    )
+
+    lease = await manager.acquire_lease("user-a", "cred-id", refresh=False)
+    try:
+        assert lease.credentials is credentials
+    finally:
+        await lease.release()
+
+    get.assert_not_awaited()
+    refresh.assert_not_awaited()
+    # Existence check, then the reload under the lease lock.
+    assert stored.await_count == 2
+    locked.assert_called_once_with("user-a", "cred-id", "!time_sensitive")
+    acquire_lock.assert_awaited_once()
+    lock.release.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_acquire_without_refresh_raises_for_missing_row_before_locking(mocker):
+    manager = IntegrationCredentialsManager()
+    acquire_lock = mocker.patch.object(manager, "_acquire_lock", AsyncMock())
+    get = mocker.patch.object(manager, "get", AsyncMock())
+    mocker.patch.object(manager.store, "get_creds_by_id", AsyncMock(return_value=None))
+
+    with pytest.raises(ValueError):
+        await manager.acquire("user-a", "cred-id", refresh=False)
+
+    get.assert_not_awaited()
+    acquire_lock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_locked_refresh_reloads_after_waiting_for_rotating_provider(mocker):
     manager = IntegrationCredentialsManager()
     stale = _provider_runtime_credentials().model_copy(
@@ -526,6 +575,51 @@ async def test_update_acquired_allows_codex_to_move_refresh_to_http_handler(mock
     await manager.update_acquired("user-a", migrated, _owned_lock())
 
     update.assert_awaited_once_with("user-a", migrated)
+
+
+@pytest.mark.asyncio
+async def test_get_and_delete_keep_expired_api_keys(mocker):
+    """#16234: expiry is enforced at use, not on metadata reads or deletes
+    (the #15735 failure class)."""
+    manager = IntegrationCredentialsManager()
+    expired = APIKeyCredentials(
+        id="cred-id",
+        provider="openai",
+        api_key=SecretStr("sk-expired"),
+        title="Old key",
+        expires_at=int(time.time()) - 60,
+    )
+    mocker.patch.object(
+        manager.store,
+        "get_creds_by_id",
+        AsyncMock(return_value=expired),
+    )
+    delete = mocker.patch.object(
+        manager.store,
+        "delete_creds_by_id",
+        new_callable=AsyncMock,
+    )
+
+    loaded = await manager.get("user-a", expired.id)
+    assert loaded is expired
+    assert loaded.is_expired()
+
+    getter = manager.cached_getter("user-a")
+    mocker.patch.object(
+        manager.store,
+        "get_all_creds",
+        AsyncMock(return_value=[expired]),
+    )
+    cached = await getter(expired.id)
+    assert cached is expired
+
+    @asynccontextmanager
+    async def unlocked(*_args, **_kwargs):
+        yield
+
+    mocker.patch.object(manager, "_locked", unlocked)
+    await manager.delete("user-a", expired.id)
+    delete.assert_awaited_once_with("user-a", expired.id)
 
 
 @pytest.mark.asyncio
