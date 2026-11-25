@@ -726,11 +726,12 @@ class TestXlsxSheetSize:
         [
             ("MAX_XLSX_SHEET_ROWS", 3, {"A1": "a", "A3": "c"}),
             ("MAX_XLSX_SHEET_CELLS_LISTED", 6, {f"{c}{r}": c for c in "ABC" for r in (1, 2)}),
+            ("MAX_XLSX_ROW_CELLS", 3, {"A1": "a", "C1": "c"}),
             ("MAX_XLSX_SHEET_CELLS", 6, {"A1": "a", "C2": "c"}),
             ("MAX_XLSX_SHEET_CHARACTERS", 10, {"A1": "x" * 10}),
             ("MAX_XLSX_SHEET_CHARACTERS", 309, {"A1": 1e308}),
         ],
-        ids=["rows", "cells-listed", "cells", "text", "whole-number-float"],
+        ids=["rows", "cells-listed", "row-cells", "cells", "text", "whole-number-float"],
     )  # fmt: skip
     @pytest.mark.parametrize("past_cap", [False, True])
     def test_a_sheet_at_a_cap_is_read_and_one_past_it_is_refused(
@@ -744,6 +745,37 @@ class TestXlsxSheetSize:
                 parse_file_content(data, "xlsx", strict=True)
         else:
             assert parse_file_content(data, "xlsx", strict=True) != data
+
+    @pytest.mark.parametrize(
+        "workbook",
+        [
+            lambda: _rewrite(
+                _sheet({"A1": "Name", "A2": None}),
+                "xl/worksheets/sheet1.xml",
+                (rb'<c r="A2"[^>]*/>', b"<c/>" * 16_385),
+            ),
+            lambda: _sheet({"A1": "Name", "XFE2": "far"}),
+            lambda: _rewrite(
+                _sheet({"A1": "Name", "A2": None}),
+                "xl/worksheets/sheet1.xml",
+                (rb'<c r="A2"[^>]*/>', b'<c r="XFD2"/><c/>'),
+            ),
+        ],
+        ids=["cells", "reference", "after-a-reference"],
+    )
+    def test_a_row_wider_than_excel_allows_is_refused_unread(self, workbook):
+        from openpyxl.worksheet._reader import WorkSheetParser
+
+        with (
+            patch.object(
+                WorkSheetParser,
+                "parse_row",
+                side_effect=AssertionError("a row was read"),
+            ) as parse_row,
+            pytest.raises(XlsxSheetTooLarge, match="a row of more than 16,384 cells"),
+        ):
+            parse_file_content(workbook(), "xlsx", strict=True)
+        parse_row.assert_not_called()
 
     def test_a_refused_sheet_falls_back_to_the_raw_bytes(self):
         data = _sheet({"A1": "Name", "XFD400": "far"})

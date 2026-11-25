@@ -275,6 +275,31 @@ async def test_excel_sheet_listing_past_the_cells_cap_is_refused_unread():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("far", ["XFD2", "XFE2"])
+async def test_excel_row_wider_than_excel_allows_is_refused_unread(far):
+    from openpyxl.worksheet._reader import WorkSheetParser
+
+    target = save_workbook("wide.xlsx", {"A1": "id", far: 7})
+    try:
+        if far == "XFD2":
+            rows = await read_rows(file_input=MediaFileType(target.name))
+            assert [row["column_16384"] for row in rows] == ["7"]
+            return
+        with (
+            patch.object(
+                WorkSheetParser,
+                "parse_row",
+                side_effect=AssertionError("a row was read"),
+            ) as parse_row,
+            pytest.raises(ValueError, match="a row of more than 16,384 cells"),
+        ):
+            await read_rows(file_input=MediaFileType(target.name))
+        parse_row.assert_not_called()
+    finally:
+        target.unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "sheet_name, refused", [("Big", True), ("Small", False), (None, False)]
 )
@@ -418,6 +443,21 @@ async def test_a_read_too_large_to_output_at_once_is_refused_unless_paged(
 
     pages = await read_in_pages(100, contents=contents)
     assert [len(page) for page in pages] == [3, 3, 3, 1]
+    assert [row for page in pages for row in page] == whole
+
+
+@pytest.mark.asyncio
+async def test_excel_cells_holding_the_escapechar_read_as_written():
+    folders = ["C:\\temp\\", 'say \\"hi\\"', "D:\\data\\", "plain"]
+    cells: dict[str, object] = {"A1": "name", "B1": "folder"}
+    for n, folder in enumerate(folders, start=2):
+        cells[f"A{n}"], cells[f"B{n}"] = f"r{n}", folder
+    inputs = {"file_input": MediaFileType(save_workbook("folders.xlsx", cells).name)}
+
+    whole = await read_rows(**inputs)
+    pages = await read_in_pages(1, **inputs)
+
+    assert [row["folder"] for row in whole] == folders
     assert [row for page in pages for row in page] == whole
 
 

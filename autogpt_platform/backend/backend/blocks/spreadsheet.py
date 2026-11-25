@@ -345,6 +345,7 @@ def _rows_as_csv(
         header=False,
         sep=input_data.delimiter,
         quotechar=input_data.quotechar,
+        escapechar=input_data.escapechar,
     )
     text.seek(0)
     return text
@@ -393,8 +394,9 @@ def _collect_rows(
             if max_rows is None and not PAGE_WITHOUT_MAX_ROWS:
                 raise ValueError(
                     "The spreadsheet is too large for this block to output at "
-                    "once. Read it in pages: set max_rows, and start each page "
-                    "at the next_skip_rows of the one before. Or skip some columns."
+                    "once. Read it in pages: set max_rows, and pass each read's "
+                    "next_skip_rows as the next read's skip_rows. Or skip some "
+                    "columns."
                 )
             return rows, read - 1
         rows.append(processed)

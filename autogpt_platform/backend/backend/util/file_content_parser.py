@@ -41,13 +41,14 @@ from collections.abc import Callable
 # unlike os.path.splitext which uses platform-native separators.
 from posixpath import splitext
 from typing import IO, Any, Literal
+from xml.parsers import expat
 
 import sentry_sdk
 import yaml
 
 from backend.util.bounded_yaml import load_bounded_yaml
 from backend.util.csv_delimiter import guess_delimiter
-from backend.util.zip_member import ZipMemberTooLarge, check_unpacked_size
+from backend.util.zip_member import ZipMemberTooLarge, check_unpacked_size, iter_member
 
 logger = logging.getLogger(__name__)
 
@@ -62,10 +63,11 @@ YAML_EXPANSION_FACTOR = 8
 # The .xlsx caps, per member and per workbook, checked before pandas reads it.
 MAX_XLSX_MEMBER_BYTES = 50 * 1024 * 1024
 MAX_XLSX_TOTAL_BYTES = 200 * 1024 * 1024
-# What one sheet may read to: rows, cells the file lists, cells in the table read
-# from it, and characters of text.
+# What one sheet may read to: rows, cells the file lists, cells in one row (Excel's
+# columns), cells in the table read from it, and characters of text.
 MAX_XLSX_SHEET_ROWS = 1_048_576
 MAX_XLSX_SHEET_CELLS_LISTED = 5_000_000
+MAX_XLSX_ROW_CELLS = 16_384
 MAX_XLSX_SHEET_CELLS = 500_000
 MAX_XLSX_SHEET_CHARACTERS = 32 * 1024 * 1024
 
@@ -478,7 +480,8 @@ class XlsxSheetTooLarge(ValueError):
 def _walk_sheet(sheet: Any, *, bound_memory: bool) -> tuple[int, int]:
     """The sheet's last row with a value and its widest row, raising
     ``XlsxSheetTooLarge`` at the first sheet cap passed. Without ``bound_memory``
-    only the rows and listed-cells caps apply."""
+    only the rows, row-cells and listed-cells caps apply."""
+    _scan_sheet_xml(sheet)
     # Read every cell, as pandas does.
     sheet.reset_dimensions()
     listed = last_row = width = characters = 0
@@ -522,6 +525,72 @@ def _walk_sheet(sheet: Any, *, bound_memory: bool) -> tuple[int, int]:
                 "of text",
             )
     return last_row, width
+
+
+def _scan_sheet_xml(sheet: Any) -> None:
+    """Check the row-cells and listed-cells caps on the sheet's XML, counting its
+    cells as openpyxl reads them, before any of its rows is read."""
+    from openpyxl.xml.constants import SHEET_MAIN_NS
+
+    archive = sheet.parent._archive
+    member = archive.getinfo(sheet._worksheet_path)
+    cells = _SheetCells(row_tag=f"{SHEET_MAIN_NS} row")
+    parser = expat.ParserCreate(namespace_separator=" ")
+    parser.StartElementHandler = cells.start
+    parser.EndElementHandler = cells.end
+    try:
+        for chunk in iter_member(archive, member, max_bytes=MAX_XLSX_MEMBER_BYTES):
+            parser.Parse(chunk, False)
+        parser.Parse(b"", True)
+    except expat.ExpatError as e:
+        raise ValueError(f"The sheet's XML can't be read: {e}") from e
+
+
+class _SheetCells:
+    """Counts cells as openpyxl does: every child of a row is a cell, at the column
+    its reference names or else the one after the cell before it."""
+
+    def __init__(self, row_tag: str):
+        self.row_tag = row_tag
+        # Per open element: [cells, column] for a row, None for anything else.
+        self.open: list[list[int] | None] = []
+        self.listed = 0
+
+    def start(self, tag: str, attributes: dict[str, str]) -> None:
+        row = self.open[-1] if self.open else None
+        if row is not None:
+            ref = attributes.get("r")
+            row[0] += 1
+            row[1] = _ref_column(ref) if ref else row[1] + 1
+            self.listed += 1
+            if max(row) > MAX_XLSX_ROW_CELLS:
+                raise XlsxSheetTooLarge(
+                    "MAX_XLSX_ROW_CELLS",
+                    max(row),
+                    MAX_XLSX_ROW_CELLS,
+                    f"has a row of more than {MAX_XLSX_ROW_CELLS:,} cells",
+                )
+            if self.listed > MAX_XLSX_SHEET_CELLS_LISTED:
+                raise XlsxSheetTooLarge(
+                    "MAX_XLSX_SHEET_CELLS_LISTED",
+                    self.listed,
+                    MAX_XLSX_SHEET_CELLS_LISTED,
+                    f"lists more than {MAX_XLSX_SHEET_CELLS_LISTED:,} cells",
+                )
+        self.open.append([0, 0] if tag == self.row_tag else None)
+
+    def end(self, tag: str) -> None:
+        self.open.pop()
+
+
+def _ref_column(ref: str) -> int:
+    """The column openpyxl reads from a cell reference; 0 when it can't read one."""
+    from openpyxl.utils.cell import coordinate_to_tuple
+
+    try:
+        return coordinate_to_tuple(ref)[1]
+    except ValueError:
+        return 0
 
 
 def _csv_length(value: Any) -> int:
