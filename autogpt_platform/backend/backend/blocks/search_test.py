@@ -1,3 +1,4 @@
+import json
 import traceback
 from contextlib import asynccontextmanager
 from urllib.parse import urlparse
@@ -12,7 +13,7 @@ from backend.blocks.search import (
     TEST_CREDENTIALS_INPUT,
     GetWeatherInformationBlock,
 )
-from backend.util.request import HTTPClientError, Requests
+from backend.util.request import HTTPClientError, HTTPServerError, Requests
 
 KEY = TEST_CREDENTIALS.api_key.get_secret_value()
 
@@ -45,17 +46,23 @@ async def test_weather_request_carries_the_real_key_over_https(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_a_failed_weather_request_does_not_quote_the_key(monkeypatch):
-    async def city_not_found(_incoming: web.Request):
-        return web.json_response(
-            {"cod": "404", "message": "city not found"}, status=404
-        )
+@pytest.mark.parametrize(
+    "status, error_type", [(404, HTTPClientError), (502, HTTPServerError)]
+)
+async def test_a_failed_weather_request_does_not_quote_the_key(
+    monkeypatch, status, error_type
+):
+    body = {"cod": str(status), "message": "city not found"}
 
-    async with _openweathermap(monkeypatch, city_not_found):
-        with pytest.raises(HTTPClientError) as raised:
+    async def refuse(_incoming: web.Request):
+        return web.json_response(body, status=status)
+
+    async with _openweathermap(monkeypatch, refuse):
+        with pytest.raises(error_type) as raised:
             await _run("Nowhereville")
 
-    assert raised.value.status_code == 404
+    assert raised.value.status_code == status
+    assert str(raised.value).endswith(f"Body: {json.dumps(body)}")
     # The executor logs a failed node's traceback, chained causes included.
     assert KEY not in "".join(traceback.format_exception(raised.value))
 
