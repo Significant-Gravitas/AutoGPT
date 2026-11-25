@@ -147,28 +147,6 @@ describe("returning from a top-up Checkout", () => {
     expect(within(row).getByText("+$7.00")).toBeDefined();
   });
 
-  it("shows the credits when the fulfil call answers before the page's first reads of them", async () => {
-    const platform = mockTopUpReturn({ slowFirstReads: true });
-    const { queryClient } = renderBillingPage();
-    await waitFor(() =>
-      expect(platform.ledger).toMatchObject({
-        fulfilCalls: 1,
-        balanceReads: 1,
-        historyReads: 2,
-      }),
-    );
-
-    await platform.answerFulfil();
-    // The page has handled the fulfil call's answer; the reads it sent
-    // earlier, holding the credits from before it, answer only now.
-    await waitFor(() => expect(queryClient.isMutating()).toBe(0));
-    await platform.answerSlowReads();
-
-    expect(await findBalance("$13.00")).toBeDefined();
-    const row = await findHistoryRow("Credits added");
-    expect(within(row).getByText("+$7.00")).toBeDefined();
-  });
-
   it("shows the credits on the next visit when the page closed before the fulfil call answered", async () => {
     const platform = mockTopUpReturn();
     const firstVisit = renderBillingPage();
@@ -234,6 +212,48 @@ describe("returning from a top-up Checkout", () => {
 
     expect(selectedTab()).toBe("Subscription");
     expect(address.search.toString()).toBe("tab=subscription");
+  });
+});
+
+describe("when the fulfil call answers before the page's first reads of the credits", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("shows the credits from a fresh read, not the backup read 10 s later", async () => {
+    const platform = mockTopUpReturn({ slowFirstReads: true });
+    const { queryClient } = renderBillingPage();
+    await waitFor(() =>
+      expect(platform.ledger).toMatchObject({
+        fulfilCalls: 1,
+        balanceReads: 1,
+        historyReads: 2,
+      }),
+    );
+
+    await platform.answerFulfil();
+    // The page has handled the fulfil call's answer; the reads it sent
+    // earlier, holding the credits from before it, answer only now.
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0));
+    // From here only the steps below move the page's clock, never as far as
+    // the backup read, however slow the runner, so that read can't stand in
+    // for the one the fulfil call's answer must send.
+    vi.setTimerTickMode("manual");
+    await platform.answerSlowReads();
+
+    await stepUntil(
+      () =>
+        queryBalance("$13.00") !== null &&
+        queryHistoryRow("Credits added") !== null,
+      REFRESH_BUDGET_MS,
+    );
+    const row = queryHistoryRow("Credits added")?.closest("tr");
+    expect(row && within(row).getByText("+$7.00")).toBeDefined();
+    vi.setTimerTickMode("interval");
   });
 });
 
@@ -416,4 +436,26 @@ function selectedTab() {
 
 function advance(ms: number) {
   return act(() => vi.advanceTimersByTimeAsync(ms));
+}
+
+// Page time a test steps through while waiting for the page, far short of the
+// hook's 10 s backup read.
+const REFRESH_BUDGET_MS = 2_000;
+const STEP_MS = 50;
+
+// Moves the page's clock a step at a time until check passes, within budgetMs.
+async function stepUntil(check: () => boolean, budgetMs: number) {
+  for (let spent = 0; !check(); spent += STEP_MS) {
+    if (spent >= budgetMs) {
+      throw new Error(`Not shown within ${budgetMs} ms of page time`);
+    }
+    await advance(STEP_MS);
+  }
+}
+
+function queryBalance(amount: string) {
+  const card = screen
+    .queryByRole("button", { name: "Add credits" })
+    ?.closest("section");
+  return card ? within(card as HTMLElement).queryByText(amount) : null;
 }
