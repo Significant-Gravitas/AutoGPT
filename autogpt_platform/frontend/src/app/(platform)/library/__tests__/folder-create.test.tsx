@@ -36,6 +36,7 @@ const PAGE = { total_pages: 1, current_page: 1, page_size: 20 };
 const GENERIC = "Failed to create folder. Please try again.";
 const AT_THE_CAP =
   "You can have at most 1,000 folders. Delete one to make another.";
+const TAKEN = "A folder with this name already exists in this location";
 
 // The bodies api/utils/exceptions.py sends for a refused create.
 function refusal(status: number, detail: string, hint: string) {
@@ -57,6 +58,13 @@ test.each([
     detail: AT_THE_CAP,
     hint: "Adjust the request and retry.",
     shown: AT_THE_CAP,
+    hidden: GENERIC,
+  },
+  {
+    status: 409,
+    detail: TAKEN,
+    hint: "Adjust the request and retry.",
+    shown: TAKEN,
     hidden: GENERIC,
   },
   {

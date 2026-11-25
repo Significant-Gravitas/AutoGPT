@@ -65,9 +65,9 @@ export default function LibraryFolderCreationDialog() {
       onError: (error: unknown) => {
         toast({
           title: "Error",
-          // A 400 says why the folder can't be made, so a retry won't help.
+          // A 400 or 409 says why the folder can't be made; a retry won't help.
           description:
-            error instanceof ApiError && error.status === 400
+            error instanceof ApiError && [400, 409].includes(error.status)
               ? error.message
               : "Failed to create folder. Please try again.",
           variant: "destructive",
