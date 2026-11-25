@@ -6,6 +6,7 @@ from prisma.enums import APIKeyPermission
 
 from backend.api.features.library import model as library_model
 from backend.api.features.library.db import collect_tree_ids
+from backend.api.features.library.exceptions import FolderValidationError
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db
 from backend.util.exceptions import NotFoundError
@@ -162,6 +163,13 @@ class CreateFolderTool(BaseTool):
                 color=color,
                 organization_id=organization_id,
                 team_id=team_id,
+            )
+        except FolderValidationError as e:
+            # Written for the user: the cap, the depth limit or a name clash.
+            return ErrorResponse(
+                message=f"Failed to create folder: {e}",
+                error="create_folder_failed",
+                session_id=session_id,
             )
         except Exception as e:
             return ErrorResponse(
@@ -358,6 +366,12 @@ class UpdateFolderTool(BaseTool):
                 icon=icon,
                 color=color,
             )
+        except FolderValidationError as e:
+            return ErrorResponse(
+                message=f"Failed to update folder: {e}",
+                error="update_folder_failed",
+                session_id=session_id,
+            )
         except Exception as e:
             return ErrorResponse(
                 message=f"Failed to update folder: {error_detail(e, session)}",
@@ -436,6 +450,12 @@ class MoveFolderTool(BaseTool):
                 folder_id=folder_id,
                 user_id=user_id,
                 target_parent_id=target_parent_id,
+            )
+        except FolderValidationError as e:
+            return ErrorResponse(
+                message=f"Failed to move folder: {e}",
+                error="move_folder_failed",
+                session_id=session_id,
             )
         except Exception as e:
             return ErrorResponse(
