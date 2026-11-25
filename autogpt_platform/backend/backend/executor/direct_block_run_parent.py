@@ -58,7 +58,8 @@ def load_blocks() -> None:
     gc.freeze()
 
 
-def serve_runs(control: socket.socket) -> NoReturn:
+# Runs in a forked process, which coverage doesn't measure.
+def serve_runs(control: socket.socket) -> NoReturn:  # pragma: no cover
     """The run parent's loop. It ends, killing its runs, once the server closes
     its end of *control*."""
     try:
@@ -132,7 +133,8 @@ def _start_run(control: socket.socket, deadlines: dict[int, float]) -> bool:
     return True
 
 
-def _run(conn: socket.socket, budget: float) -> NoReturn:
+# Runs in a forked process, which coverage doesn't measure.
+def _run(conn: socket.socket, budget: float) -> NoReturn:  # pragma: no cover
     """A child: read one run, answer it, exit."""
     try:
         signal.signal(signal.SIGALRM, signal.SIG_DFL)

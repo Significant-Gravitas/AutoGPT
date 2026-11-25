@@ -170,7 +170,7 @@ def start_run_parent() -> None:
     direct_block_run_parent.load_blocks()
     ours, theirs = socket.socketpair()
     pid = os.fork()
-    if pid == 0:
+    if pid == 0:  # pragma: no cover - the run parent's process
         ours.close()
         direct_block_run_parent.serve_runs(theirs)
     theirs.close()
