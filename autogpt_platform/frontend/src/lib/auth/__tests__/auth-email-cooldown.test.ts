@@ -175,7 +175,6 @@ describe("when a cap can't be checked", () => {
       getAuthContext: async () => brokenContext(),
       hasPlatformUser: async () => false,
       requireEmailVerification: true,
-      resetRedirectTo: "http://localhost:3000/reset-password",
     });
 
     expect(sendAuthEmail).toHaveBeenCalledWith(

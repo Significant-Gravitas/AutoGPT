@@ -54,9 +54,15 @@ async def wait_for_blocked_statement(tx, *, until: asyncio.Event | None = None):
     return None
 
 
-async def submit(owner: str, graph_id: str):
+async def submit(owner: str, graph_id: str, schedule: str | None = None):
     return await store_db.create_store_submission(
-        owner, graph_id, 1, graph_id, graph_id, "Replacement"
+        owner,
+        graph_id,
+        1,
+        graph_id,
+        graph_id,
+        "Replacement",
+        recommended_schedule_cron=schedule,
     )
 
 

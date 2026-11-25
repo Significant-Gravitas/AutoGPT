@@ -417,6 +417,7 @@ def create_test_mcp_app(
     sse: bool = False,
     sessions: bool = False,
     supported_versions: tuple[str, ...] = (MODERN_PROTOCOL_VERSION,),
+    slash_redirect: int | None = None,
 ) -> web.Application:
     """Create an aiohttp app that acts as an MCP server.
 
@@ -428,10 +429,17 @@ def create_test_mcp_app(
             it afterwards, answering session-less requests with a plain-text
             ``400`` like the reference SDKs.
         supported_versions: (modern) protocol versions advertised/accepted.
+        slash_redirect: serve the endpoint at ``/mcp/`` only, and answer
+            ``/mcp`` with this redirect status to it, as nginx does for a
+            ``location /mcp/``; the methods redirected go in ``redirected``.
     """
     app = web.Application()
-    app.router.add_post("/mcp", handle_mcp_request)
-    app.router.add_delete("/mcp", handle_mcp_delete)
+    path = "/mcp" if slash_redirect is None else "/mcp/"
+    app.router.add_post(path, handle_mcp_request)
+    app.router.add_delete(path, handle_mcp_delete)
+    if slash_redirect is not None:
+        app.router.add_route("*", "/mcp", _redirect_to_slash(slash_redirect))
+    app["redirected"] = []
     app["era"] = era
     app["sse"] = sse
     app["sessions_enabled"] = sessions
@@ -442,3 +450,11 @@ def create_test_mcp_app(
     if auth_token:
         app["auth_token"] = auth_token
     return app
+
+
+def _redirect_to_slash(status: int):
+    async def redirect(request: web.Request) -> web.Response:
+        request.app["redirected"].append(request.method)
+        return web.Response(status=status, headers={"Location": "/mcp/"})
+
+    return redirect

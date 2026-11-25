@@ -1,14 +1,6 @@
+import type { OrgResponse } from "@/app/api/__generated__/models/orgResponse";
 import { Key, storage } from "@/services/storage/local-storage";
 import { create } from "zustand";
-
-interface Org {
-  id: string;
-  name: string;
-  slug: string;
-  avatarUrl: string | null;
-  isPersonal: boolean;
-  memberCount: number;
-}
 
 interface Team {
   id: string;
@@ -22,13 +14,13 @@ interface Team {
 interface OrgTeamState {
   activeOrgID: string | null;
   activeTeamID: string | null;
-  orgs: Org[];
+  orgs: OrgResponse[];
   teams: Team[];
   isLoaded: boolean;
 
   setActiveOrg(orgID: string): void;
   setActiveTeam(teamID: string | null): void;
-  setOrgs(orgs: Org[]): void;
+  setOrgs(orgs: OrgResponse[]): void;
   setTeams(teams: Team[]): void;
   setLoaded(loaded: boolean): void;
   clearContext(): void;
@@ -57,7 +49,7 @@ export const useOrgTeamStore = create<OrgTeamState>((set) => ({
     set({ activeTeamID: teamID });
   },
 
-  setOrgs(orgs: Org[]) {
+  setOrgs(orgs: OrgResponse[]) {
     set({ orgs });
   },
 

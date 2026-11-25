@@ -51,6 +51,9 @@ export function installLiveSocket() {
       let answered = Promise.resolve();
       socket.send.mockImplementation((data: string) => {
         const message: SentMessage = JSON.parse(data);
+        // The sign-in message gets no answer of its own: the pong after it
+        // confirms it.
+        if (message.method === "authenticate") return;
         answered = answered.then(() =>
           message.method === "heartbeat"
             ? socket.pong()

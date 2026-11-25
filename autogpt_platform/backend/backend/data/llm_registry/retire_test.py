@@ -21,8 +21,16 @@ from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock
 from backend.blocks.codex import CodeGenerationBlock
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.blocks.stagehand.blocks import StagehandObserveBlock
-from backend.data.graph import NODE_INPUT_MASK_PREFIX, migrate_llm_models
-from backend.data.llm_registry.llm_models import DEFAULT_LLM_MODEL
+from backend.data.graph import (
+    NODE_INPUT_MASK_PREFIX,
+    find_llm_model_fields,
+    migrate_llm_models,
+)
+from backend.data.llm_registry.llm_models import (
+    DEFAULT_LLM_MODEL,
+    LEGACY_MODEL_MAPPINGS,
+    LLMModel,
+)
 from backend.data.llm_registry.registry import get_all_models, load_catalog
 from backend.data.llm_registry.retire import (
     list_model_migrations,
@@ -318,7 +326,8 @@ async def test_boot_pass_moves_shut_down_models_once_and_nothing_else(
     in either stored spelling, o1-mini included, and logs what it moved. It
     leaves a model still being served (the retire CLI moves those), a live
     model and other blocks' values alone: the Codex node's ``gpt-5.1-codex``
-    (a legacy key in Codex's own list) and an image node's model outside
+    (which the Codex block reads as its own ``gpt-5.3-codex``) and an image
+    node's model outside
     ``LLMModel`` too. A second boot changes nothing and logs no move."""
     nodes = {
         "o3-mini": await _seed_node(retirement_env, "o3-mini"),
@@ -374,8 +383,9 @@ async def test_boot_pass_rewrites_only_llm_block_preset_overrides(
     retirement_env, caplog
 ):
     """A preset's override of an LLM node moves off a model OpenAI has shut
-    down. The same value in a Codex node's override (Codex's own list offers
-    gpt-5.1-codex), an image node's override, and objects a workflow input
+    down. The same value in a Codex node's override (the Codex block reads
+    gpt-5.1-codex as its own gpt-5.3-codex), an image node's override, and
+    objects a workflow input
     holds stay as they are, also under the catch-all that sends values outside
     ``LLMModel`` to the default model."""
     llm_graph, llm_node = await _seed_graph(retirement_env, "gpt-6.1-sol")
@@ -426,6 +436,118 @@ async def test_boot_pass_rewrites_only_llm_block_preset_overrides(
             "'gpt-5.1-codex' to 'gpt-6.1-sol'"
         )
         assert (preset_move in moves) == (boot == 0)
+
+
+async def test_boot_pass_covers_every_llm_block(retirement_env):
+    """A node of every block with an LLMModel field moves, not only the text generator's."""
+    block_ids = sorted(find_llm_model_fields())
+    assert len(block_ids) > 1
+    nodes = {
+        block_id: await _seed_node(retirement_env, "o3-mini", block_id=block_id)
+        for block_id in block_ids
+    }
+
+    await migrate_llm_models(DEFAULT_LLM_MODEL)
+
+    assert {block_id: await _node_model(node) for block_id, node in nodes.items()} == {
+        block_id: "gpt-6.1-terra" for block_id in block_ids
+    }
+
+
+async def test_boot_pass_sends_a_retired_slug_outside_llmmodel_to_its_family(
+    retirement_env,
+):
+    """Most mapped spellings are no longer LLMModel members, so only the targeted statement,
+    run before the catch-all, lands them on their family's replacement and not the default.
+    """
+    keys = {
+        "claude-3-haiku-20240307": "claude-3-haiku-20240307",
+        "anthropic/claude-opus-4-1": "claude-opus-4-1",
+        "claude-sonnet-4-20250514": "claude-sonnet-4-20250514",
+        "z-ai/glm-4.5v": "z-ai/glm-4.5v",
+    }
+    expected = {
+        stored: LEGACY_MODEL_MAPPINGS[key].value for stored, key in keys.items()
+    }
+    assert not set(expected) & {member.value for member in LLMModel}
+    assert DEFAULT_LLM_MODEL.value not in expected.values()
+    nodes = {stored: await _seed_node(retirement_env, stored) for stored in expected}
+    graph, llm_node = await _seed_graph(retirement_env, "gpt-6.1-sol")
+    override = _override_key(llm_node)
+    rows = await _seed_preset(
+        graph, {override: {"model": "claude-opus-4-1-20250805", "prompt": "hi"}}
+    )
+
+    await migrate_llm_models(DEFAULT_LLM_MODEL)
+
+    assert {
+        stored: await _node_model(node) for stored, node in nodes.items()
+    } == expected
+    assert await _preset_input(rows[override]) == {
+        "model": LEGACY_MODEL_MAPPINGS["claude-opus-4-1-20250805"].value,
+        "prompt": "hi",
+    }
+
+
+async def test_boot_pass_sends_a_value_outside_llmmodel_to_the_default(
+    retirement_env, caplog
+):
+    """The catch-alls: an LLM node, and a preset's override of one, naming a value no
+    LLMModel member has run the default model, and the boot log says so."""
+    node = await _seed_node(retirement_env, "not-a-real-model")
+    graph, llm_node = await _seed_graph(retirement_env, "gpt-6.1-sol")
+    override = _override_key(llm_node)
+    rows = await _seed_preset(
+        graph, {override: {"model": "also-not-real", "prompt": "hi"}}
+    )
+
+    with caplog.at_level(logging.INFO, logger="backend.data.graph"):
+        await migrate_llm_models(DEFAULT_LLM_MODEL)
+
+    assert await _node_model(node) == DEFAULT_LLM_MODEL.value
+    assert await _preset_input(rows[override]) == {
+        "model": DEFAULT_LLM_MODEL.value,
+        "prompt": "hi",
+    }
+    outside = f"from a value outside LLMModel to '{DEFAULT_LLM_MODEL.value}'"
+    moves = [record.getMessage() for record in caplog.records]
+    assert any(
+        message.startswith("LLM model migration moved")
+        and message.endswith(outside)
+        and "0 node(s)" not in message
+        and "0 preset override(s)" not in message
+        for message in moves
+    )
+
+
+async def test_boot_pass_leaves_every_other_llmmodel_member_alone(retirement_env):
+    """The catch-all moves a value only when it is outside LLMModel: a node on any member the
+    map does not retire stays where it is."""
+    stay = [m.value for m in LLMModel if m.value not in LEGACY_MODEL_MAPPINGS]
+    nodes = {slug: await _seed_node(retirement_env, slug) for slug in stay}
+
+    await migrate_llm_models(DEFAULT_LLM_MODEL)
+
+    assert {slug: await _node_model(node) for slug, node in nodes.items()} == {
+        slug: slug for slug in stay
+    }
+
+
+async def test_boot_pass_logs_every_row_it_moves_per_pair(retirement_env, caplog):
+    """The boot log adds up every row a statement moved for one (stored value, replacement) pair."""
+    for _ in range(3):
+        await _seed_node(retirement_env, "o3-mini")
+    graph, llm_node = await _seed_graph(retirement_env, "gpt-6.1-sol")
+    for _ in range(2):
+        await _seed_preset(graph, {_override_key(llm_node): {"model": "o3-mini"}})
+
+    with caplog.at_level(logging.INFO, logger="backend.data.graph"):
+        await migrate_llm_models(DEFAULT_LLM_MODEL)
+
+    assert (
+        "LLM model migration moved 3 node(s) and 2 preset override(s) from "
+        "'o3-mini' to 'gpt-6.1-terra'"
+    ) in {record.getMessage() for record in caplog.records}
 
 
 async def test_retire_counts_preset_values_and_leaves_them_alone(

@@ -30,6 +30,7 @@ import { reviewRefetchKey } from "./reviewRefetchKey";
 import {
   buildMessageIndexById,
   isMidTurnSegmentRow,
+  sourceMessageID,
   splitMessagesAtDrainHints,
   turnMessagesForRow,
 } from "./midTurnSplit";
@@ -483,6 +484,10 @@ export function ChatMessagesContainer({
     const isLastRow = rowIndex === renderRows.length - 1;
     const isAssistant = message.role === "assistant";
     const isLastAssistant = isLastRow && isAssistant;
+    // A follow-up sent mid-turn splits the newest message into several rows,
+    // and every one of them is still the newest answer, not just the last.
+    const isLatestAnswer =
+      isAssistant && sourceMessageID(message) === lastMessage?.id;
     const isCurrentlyStreaming = isLastAssistant && isActivelyStreaming;
     const nextRow = renderRows[rowIndex + 1];
     // A segment that only runs up to a mid-turn drain is never the end
@@ -499,6 +504,7 @@ export function ChatMessagesContainer({
       <MessageRow
         message={message}
         isLastAssistant={isLastAssistant}
+        isLatestAnswer={isLatestAnswer}
         isCurrentlyStreaming={isCurrentlyStreaming}
         isLastInTurn={isLastInTurn}
         isLatestTurn={isLastRow}

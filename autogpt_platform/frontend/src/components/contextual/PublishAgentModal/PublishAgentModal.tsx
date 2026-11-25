@@ -5,6 +5,10 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { AgentSelectStep } from "./components/AgentSelectStep/AgentSelectStep";
 import { AgentInfoStep } from "./components/AgentInfoStep/AgentInfoStep";
 import { AgentReviewStep } from "./components/AgentReviewStep";
+import {
+  ListingCheckFailed,
+  ListingCheckPending,
+} from "./components/ListingCheckState";
 import { StepStrip } from "./components/StepStrip";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
@@ -35,6 +39,10 @@ export function PublishAgentModal({
     selectedAgentId,
     selectedAgentVersion,
     creatorUsername,
+    isMarketplaceUpdate,
+    isInfoFormReady,
+    isCheckingListing,
+    listingCheckFailed,
     // Handlers
     handleClose,
     handleAgentSelect,
@@ -43,6 +51,7 @@ export function PublishAgentModal({
     handleGoToBuilder,
     handleSuccessFromInfo,
     handleBack,
+    handleRetryListingCheck,
   } = usePublishAgentModal({
     targetState,
     onStateChange,
@@ -81,9 +90,21 @@ export function PublishAgentModal({
             onCancel={handleClose}
             onNext={handleNextFromSelect}
             onOpenBuilder={handleGoToBuilder}
+            isCheckingListing={isCheckingListing}
+            listingCheckFailed={listingCheckFailed}
           />
         );
       case "info":
+        if (!isInfoFormReady) {
+          return listingCheckFailed ? (
+            <ListingCheckFailed
+              onRetry={handleRetryListingCheck}
+              onCancel={handleClose}
+            />
+          ) : (
+            <ListingCheckPending />
+          );
+        }
         return (
           <AgentInfoStep
             onBack={handleBack}
@@ -91,7 +112,7 @@ export function PublishAgentModal({
             selectedAgentId={selectedAgentId}
             selectedAgentVersion={selectedAgentVersion}
             initialData={initialData}
-            isMarketplaceUpdate={!!currentState.submissionData}
+            isMarketplaceUpdate={isMarketplaceUpdate}
           />
         );
       case "review": {

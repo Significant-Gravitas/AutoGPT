@@ -6,10 +6,14 @@ as itself until that day."""
 
 import logging
 from datetime import date, datetime, timedelta, timezone
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import create_model
 
+from backend.blocks import get_blocks
+from backend.blocks._base import RECORDED_MODEL_INPUT, Block
 from backend.blocks.llm import AITextGeneratorBlock, LLMModel, LLMResponse
 from backend.data.execution import ExecutionContext
 from backend.data.graph import Link, Node
@@ -18,6 +22,7 @@ from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.catalog_model import CatalogPayload
 from backend.data.llm_registry.llm_models import (
     _retired_model_fallbacks,
+    is_llm_model_field,
     retired_model_fallback,
 )
 from backend.data.model import NodeExecutionStats
@@ -138,7 +143,9 @@ async def _run_ai_text_generator(model: str) -> list[LLMModel]:
     )
 
 
-async def _run_block(input_data: dict) -> list[LLMModel]:
+async def _run_block(
+    input_data: dict, block: AITextGeneratorBlock | None = None
+) -> list[LLMModel]:
     """Run the block for real down to the provider call, and return the model
     each call asked for."""
     asked: list[LLMModel] = []
@@ -155,13 +162,140 @@ async def _run_block(input_data: dict) -> list[LLMModel]:
         )
 
     with patch("backend.blocks.llm.llm_call", provider_call):
-        async for _ in AITextGeneratorBlock().execute(
+        async for _ in (block or AITextGeneratorBlock()).execute(
             input_data,
             credentials=openai_credentials,
             execution_context=ExecutionContext(user_id="user"),
         ):
             pass
     return asked
+
+
+_SCHEMA_DEFAULT = AITextGeneratorBlock.Input.model_fields["model"].default
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("saved", "day", "runs"),
+    [
+        ("gpt-5-2025-08-07", GPT_5_SHUTDOWN - timedelta(days=1), LLMModel.GPT5),
+        ("openai/gpt-5-2025-08-07", GPT_5_SHUTDOWN, LLMModel.GPT6_1_SOL),
+        (None, GPT_5_SHUTDOWN, _SCHEMA_DEFAULT),
+    ],
+    ids=["before-the-date", "on-the-day", "schema-default"],
+)
+async def test_a_run_records_the_model_it_runs_as_it_starts(
+    saved: str | None, day: date, runs: LLMModel, on_day
+):
+    """The run's stats name the model it runs, in the enum's spelling, so its
+    settlement and cost log price and name that model on any later day,
+    and the run's record shows it. Its inputs keep the stored value."""
+    on_day(day)
+    block = AITextGeneratorBlock()
+    input_data = {"prompt": "Say hello.", "credentials": PLATFORM_OPENAI}
+    if saved is not None:
+        input_data["model"] = saved
+
+    assert await _run_block(input_data, block) == [runs]
+    assert block.execution_stats.resolved_model == runs.value
+    assert input_data.get("model") == saved
+
+
+def test_a_blocks_only_llm_model_input_is_the_one_its_run_records():
+    """A run records the model of its ``model`` input (``RECORDED_MODEL_INPUT``),
+    which billing prices and the cost log names. Any other ``LLMModel`` input
+    would be neither recorded nor priced: a block that adds one needs its own
+    pricing first."""
+    llm_model_inputs = {
+        block.name: [
+            name
+            for name, field in block.input_schema.model_fields.items()
+            if is_llm_model_field(field)
+        ]
+        for block in (block_cls() for block_cls in get_blocks().values())
+    }
+    assert {
+        name: inputs
+        for name, inputs in llm_model_inputs.items()
+        if inputs not in ([], [RECORDED_MODEL_INPUT])
+    } == {}
+
+
+def test_the_record_is_the_model_of_the_input_it_was_read_from(on_day):
+    """A block with a second ``LLMModel`` input (none has one, above) records
+    its ``model`` input's model, and the record prices that input alone: the
+    other input keeps its own model. Here a run that started on 10 Dec on
+    gpt-5 settles on the 11th, beside a gpt-5-mini judge."""
+    on_day(GPT_5_SHUTDOWN)
+    block = SimpleNamespace(
+        input_schema=create_model(
+            "TwoModels", model=(LLMModel, ...), judge_model=(LLMModel, ...)
+        ),
+        execution_stats=NodeExecutionStats(),
+    )
+    stored = {
+        "model": LLMModel.GPT5.value,
+        "judge_model": LLMModel.GPT5_MINI.value,
+    }
+
+    Block._record_resolved_model(block, stored)
+    assert block.execution_stats.resolved_model == LLMModel.GPT5.value
+    assert Block.with_retired_models_replaced(
+        block, stored, block.execution_stats.resolved_model
+    ) == {"model": LLMModel.GPT5.value, "judge_model": LLMModel.GPT6_1_TERRA.value}
+
+
+@pytest.mark.asyncio
+async def test_a_run_parked_for_review_records_no_model_and_the_resume_resolves_afresh(
+    on_day,
+):
+    """Parked before midnight, a run calls no provider and records no model.
+    Resumed after midnight, the run that resumes makes the swap: it calls the
+    fallback and records it, never the model the parked run would have run."""
+    asked: list[str] = []
+
+    async def provider_call(*, llm_model: LLMModel, prompt: list, **kwargs):
+        asked.append(llm_model.value)
+        return LLMResponse(
+            raw_response=None,
+            prompt=prompt,
+            response="Hello.",
+            tool_calls=None,
+            prompt_tokens=1,
+            completion_tokens=1,
+        )
+
+    data = {
+        "prompt": "hi",
+        "model": LLMModel.GPT5_MINI.value,
+        "credentials": PLATFORM_OPENAI,
+    }
+    context = ExecutionContext(
+        user_id="user", graph_exec_id="g1", node_exec_id="n1", node_id="x"
+    )
+
+    async def run(block: AITextGeneratorBlock, *, parks: bool) -> list:
+        block.is_block_exec_need_review = AsyncMock(return_value=(parks, data))
+        return [
+            output
+            async for output in block.execute(
+                data, credentials=openai_credentials, execution_context=context
+            )
+        ]
+
+    with patch("backend.blocks.llm.llm_call", provider_call):
+        on_day(GPT_5_SHUTDOWN - timedelta(days=1))
+        parked = AITextGeneratorBlock()
+        assert await run(parked, parks=True) == []
+        assert asked == []
+        assert parked.execution_stats.resolved_model is None
+
+        on_day(GPT_5_SHUTDOWN)
+        resumed = AITextGeneratorBlock()
+        await run(resumed, parks=False)
+
+    assert asked == [LLMModel.GPT6_1_TERRA.value]
+    assert resumed.execution_stats.resolved_model == LLMModel.GPT6_1_TERRA.value
 
 
 @pytest.mark.asyncio
@@ -292,8 +426,8 @@ async def test_the_swap_log_names_the_model_not_the_stored_spelling(on_day, capl
 
 @pytest.mark.asyncio
 async def test_a_value_too_deep_to_resolve_still_fails_the_input_check(on_day):
-    """A thousand provider prefixes recurse through ``LLMModel._missing_``. The
-    value is unknown, and the block's input check refuses it, as before."""
+    """A thousand provider prefixes are more than any spelling has. The value
+    names no model, and the block's input check refuses it, as before."""
     on_day(GPT_5_SHUTDOWN)
     deep = "x/" * 1000 + "o3-mini"
     assert retired_model_fallback(deep) is None

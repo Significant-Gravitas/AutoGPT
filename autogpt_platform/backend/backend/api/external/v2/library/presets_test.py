@@ -225,6 +225,82 @@ async def test_a_preset_for_a_graph_a_hired_expert_installed_is_that_expert_s(
     assert save.await_args.kwargs["expert_id"] == "expert-1"
 
 
+async def test_an_expert_s_preset_with_a_key_it_was_never_granted_is_refused(
+    mocker: pytest_mock.MockFixture,
+):
+    """As on the internal route: its every run would be refused for that key."""
+    mocker.patch(
+        "backend.api.features.experts.experts_db.resolve_expert_for_graph",
+        new_callable=AsyncMock,
+        return_value="expert-1",
+    )
+    mocker.patch(
+        "backend.data.graph.get_graph",
+        new_callable=AsyncMock,
+        return_value=Mock(input_schema={"properties": {}}, webhook_input_node=None),
+    )
+    mocker.patch(
+        "backend.executor.utils.get_experts_db",
+        return_value=Mock(expert_allowed_credential_ids=AsyncMock(return_value=[])),
+    )
+    save = mocker.patch(
+        "backend.api.features.library.db.create_preset",
+        new_callable=AsyncMock,
+        return_value=_preset(expert_id="expert-1"),
+    )
+
+    with pytest.raises(ValueError, match="Grant them on the expert's page"):
+        await presets.create_preset(
+            request=AgentPresetCreateRequest(
+                name="Preset",
+                graph_id="graph-1",
+                graph_version=1,
+                credentials_inputs=NEW_CREDENTIALS,
+            ),
+            auth=_key(),
+        )
+    save.assert_not_awaited()
+
+
+async def test_a_preset_for_a_workflow_of_no_expert_reads_no_grants(
+    mocker: pytest_mock.MockFixture,
+):
+    """Grants bind an expert's workflows only: any other preset is saved on
+    the caller's key as before."""
+    mocker.patch(
+        "backend.api.features.experts.experts_db.resolve_expert_for_graph",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.data.graph.get_graph",
+        new_callable=AsyncMock,
+        return_value=Mock(input_schema={"properties": {}}, webhook_input_node=None),
+    )
+    grants = mocker.patch(
+        "backend.executor.utils.get_experts_db",
+        return_value=Mock(expert_allowed_credential_ids=AsyncMock(return_value=[])),
+    )
+    save = mocker.patch(
+        "backend.api.features.library.db.create_preset",
+        new_callable=AsyncMock,
+        return_value=_preset(),
+    )
+
+    await presets.create_preset(
+        request=AgentPresetCreateRequest(
+            name="Preset",
+            graph_id="graph-1",
+            graph_version=1,
+            credentials_inputs=NEW_CREDENTIALS,
+        ),
+        auth=_key(),
+    )
+
+    grants.assert_not_called()
+    assert save.await_args.kwargs["expert_id"] is None
+
+
 def test_the_hidden_settings_are_every_trigger_block_s_secret_inputs():
     """Read from the blocks, so a new trigger's secret is hidden without a list."""
     assert {"secret_token", "signing_secret"} <= presets.secret_trigger_inputs()

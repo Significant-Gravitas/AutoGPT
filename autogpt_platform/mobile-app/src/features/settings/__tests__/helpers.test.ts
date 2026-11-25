@@ -1,54 +1,32 @@
-import { cookieScript } from "../helpers";
+import { closedCopy, deleteErrorCopy } from "../helpers";
 
-function runScript(script: string, origin: string) {
-  const cookies: string[] = [];
-  const document = {
-    set cookie(value: string) {
-      cookies.push(value);
-    },
-  };
-  new Function("location", "document", script)({ origin }, document);
-  return cookies;
-}
-
-describe("cookieScript", () => {
-  it("sets every cookie with the Secure flag on our own https origin", () => {
-    const script = cookieScript(
-      "a=1; __Secure-b=2",
-      "https://platform.example.com",
+describe("deleteErrorCopy", () => {
+  it("shows the server's own words for a refusal it phrases", () => {
+    expect(deleteErrorCopy({ status: 502, message: "Stripe wouldn't cancel your plan." })).toBe(
+      "Stripe wouldn't cancel your plan.",
     );
-
-    expect(runScript(script, "https://platform.example.com")).toEqual([
-      "a=1; path=/; SameSite=Lax; Secure",
-      "__Secure-b=2; path=/; SameSite=Lax; Secure",
-    ]);
   });
 
-  it("sets no cookie on another origin", () => {
-    const script = cookieScript(
-      "a=1; __Secure-b=2",
-      "https://platform.example.com",
+  it("hides anything else behind one line", () => {
+    expect(deleteErrorCopy({ status: 500, message: "KeyError: 'user'" })).toBe(
+      "We couldn't delete your account. Try again.",
     );
+    expect(deleteErrorCopy(new TypeError("Network request failed"))).toBe(
+      "We couldn't delete your account. Try again.",
+    );
+  });
+});
 
-    expect(runScript(script, "https://evil.example.com")).toEqual([]);
+describe("closedCopy", () => {
+  it("names the last day to change your mind", () => {
+    expect(closedCopy("2026-12-04T12:00:00Z")).toBe(
+      "Changed your mind? Sign in on the web before Dec 4 and choose Keep my account.",
+    );
   });
 
-  it("leaves out the Secure flag on an http origin", () => {
-    const script = cookieScript("a=1", "http://localhost:3000");
-
-    expect(runScript(script, "http://localhost:3000")).toEqual([
-      "a=1; path=/; SameSite=Lax",
-    ]);
-  });
-
-  it("keeps a value with quotes and a closing script tag intact", () => {
-    const script = cookieScript(
-      'a=x"</script>y',
-      "https://platform.example.com",
+  it("falls back to the 14 days when the server gives no date", () => {
+    expect(closedCopy(null)).toBe(
+      "Changed your mind? Sign in on the web within 14 days and choose Keep my account.",
     );
-
-    expect(runScript(script, "https://platform.example.com")).toEqual([
-      'a=x"</script>y; path=/; SameSite=Lax; Secure',
-    ]);
   });
 });

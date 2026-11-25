@@ -1,0 +1,37 @@
+{
+  "description": "The plans the fake Stripe sells, seeded when it starts. A price's lookup_key is the key the platform's copilot-tier-stripe-prices flag gives it: .github/scripts/hosted_journeys_env.py builds the journeys stack's flag from this file, so the platform and the fake agree on every id. The amounts differ from the frontend's marketing prices on purpose, so a page that shows them is showing Stripe's.",
+  "products": [
+    { "id": "prod_journeys_pro", "name": "AutoGPT Pro" },
+    { "id": "prod_journeys_max", "name": "AutoGPT Max" }
+  ],
+  "prices": [
+    {
+      "id": "price_journeys_pro_monthly",
+      "product": "prod_journeys_pro",
+      "lookup_key": "PRO",
+      "unit_amount": 2300,
+      "interval": "month"
+    },
+    {
+      "id": "price_journeys_pro_yearly",
+      "product": "prod_journeys_pro",
+      "lookup_key": "PRO_YEARLY",
+      "unit_amount": 23000,
+      "interval": "year"
+    },
+    {
+      "id": "price_journeys_max_monthly",
+      "product": "prod_journeys_max",
+      "lookup_key": "MAX",
+      "unit_amount": 9700,
+      "interval": "month"
+    },
+    {
+      "id": "price_journeys_max_yearly",
+      "product": "prod_journeys_max",
+      "lookup_key": "MAX_YEARLY",
+      "unit_amount": 97000,
+      "interval": "year"
+    }
+  ]
+}

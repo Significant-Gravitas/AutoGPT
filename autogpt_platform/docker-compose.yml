@@ -157,11 +157,10 @@ services:
       file: ./docker-compose.platform.yml
       service: frontend
 
-  # db waits on rabbitmq:service_healthy to gate startup ordering:
-  # concurrent container creation in E2B's Docker races RabbitMQ's
-  # .erlang.cookie write, producing `eacces` at broker boot. migrate and the
-  # backend services all depends_on db:service_healthy, so gating db alone
-  # cascades to the rest of the stack.
+  # db waits on rabbitmq:service_healthy, and migrate and the backend services
+  # all wait on db, so the broker is up before the rest of the stack starts.
+  # The ordering is for startup only: rabbitmq's healthcheck in
+  # docker-compose.platform.yml keeps the Erlang cookie with the broker.
   db:
     <<: *agpt-services
     # Pinned to pg15 to track the managed Postgres major that prod and dev

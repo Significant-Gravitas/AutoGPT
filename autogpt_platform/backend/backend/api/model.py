@@ -48,6 +48,17 @@ class WSRequestFailed(WSMessage):
     retryable: bool
 
 
+class WSAuthenticateData(pydantic.BaseModel):
+    token: str = pydantic.Field(min_length=1)
+
+
+class WSAuthenticateRequest(pydantic.BaseModel):
+    """A socket's first message: the session token it signs in with."""
+
+    method: Literal["authenticate"]
+    data: WSAuthenticateData
+
+
 # Ids are UUIDs; the bound keeps Redis channel names short.
 WS_ID_MAX_LENGTH = 128
 

@@ -11,8 +11,13 @@ from autogpt_libs.auth.jwt_utils import parse_jwt_token_async
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
-from backend.api.conn_manager import ConnectionManager, _is_ws_close_race
+from backend.api.conn_manager import (
+    ConnectionManager,
+    _is_ws_close_race,
+    accept_once,
+)
 from backend.api.model import (
+    WSAuthenticateRequest,
     WSMessage,
     WSMethod,
     WSRequestFailed,
@@ -34,17 +39,27 @@ from backend.monitoring.instrumentation import (
     start_metrics_server,
     update_websocket_connections,
 )
-from backend.util.request_credentials import remember_request_credentials
+from backend.util.request_credentials import (
+    remember_request_credentials,
+    select_credentials,
+)
 from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
 from backend.util.trusted_proxies import uvicorn_forwarded_allow_ips
+from backend.util.url_redaction import (
+    MIN_CREDENTIAL_LENGTH,
+    keep_request_credentials,
+    request_credentials,
+)
 
 logger = logging.getLogger(__name__)
 settings = Settings()
 
 ACCOUNT_BANNED_CLOSE_CODE = 4004
-# Clients send only subscribe, unsubscribe and heartbeat messages of ~100 bytes.
-WS_MAX_MESSAGE_BYTES = 4096
+# Clients send subscribe, unsubscribe and heartbeat messages of ~100 bytes, and
+# a first message with the session token, whose name and email claims the
+# auth service doesn't bound tightly.
+WS_MAX_MESSAGE_BYTES = 16384
 # The per-message account check reads the cache in milliseconds. A Redis shard
 # that stops answering costs each of its two cache reads the cache's own bound,
 # ``REDIS_OP_TIMEOUT_S``, before the database answers instead. This bounds the
@@ -54,6 +69,10 @@ ACCOUNT_CHECK_TIMEOUT_S = 5.0
 # "Try again later": the client reconnects, and the connect-time checks, which
 # refuse a socket whose account can't be read, decide.
 ACCOUNT_CHECK_TIMED_OUT_CLOSE_CODE = 1013
+# The client sends its token as soon as the socket opens, so this only bounds
+# how long a socket that never signs in holds a connection. It is closed with
+# 1013, which the client retries.
+AUTH_MESSAGE_TIMEOUT_S = 5.0
 
 
 @asynccontextmanager
@@ -91,13 +110,61 @@ def get_connection_manager():
     return _connection_manager
 
 
-async def authenticate_websocket(websocket: WebSocket) -> str:
+async def authenticate_websocket(websocket: WebSocket) -> str | None:
+    """The id of the user whose session token the socket carries, or None once
+    the socket is closed with the reason it was refused.
+
+    The client sends the token in its first message, right after the socket
+    opens. A token in the URL, which clients sent before, is still read, so
+    tabs open on an older frontend keep their live updates.
+    """
     token = websocket.query_params.get("token")
     if not token:
+        token = await _receive_auth_token(websocket)
+        if token is None:
+            return None
+    return await _authenticate_token(websocket, token)
+
+
+async def _receive_auth_token(websocket: WebSocket) -> str | None:
+    """Accept the socket and read the token from its first message, or close
+    it: with 4001 when that message carries none, with 1013 when it doesn't
+    come in time."""
+    try:
+        await websocket.accept()
+    except (WebSocketDisconnect, OSError):
+        logger.debug("WebSocket client disconnected before authenticating")
+        return None
+    try:
+        async with asyncio.timeout(AUTH_MESSAGE_TIMEOUT_S):
+            frame = await websocket.receive_text()
+        token = WSAuthenticateRequest.model_validate_json(frame).data.token
+    except TimeoutError:
+        # Before OSError, which TimeoutError is. A sign-in that comes late,
+        # from a tab that paused or a server that stalled, is retried.
+        await _close_authentication_failure(
+            websocket, code=1013, reason="Try again later"
+        )
+        return None
+    except (KeyError, pydantic.ValidationError):
+        # Neither the frame nor the error is logged: both can carry the token.
         await _close_authentication_failure(
             websocket, code=4001, reason="Missing authentication token"
         )
-        return ""
+        return None
+    except (WebSocketDisconnect, OSError):
+        logger.debug("WebSocket client disconnected before authenticating")
+        return None
+    # Kept with the connection's credentials, as a token in its URL is, and on
+    # the same terms: long enough that masking it can't hide ordinary text.
+    if len(token) >= MIN_CREDENTIAL_LENGTH:
+        keep_request_credentials(
+            select_credentials({token}, set(request_credentials()))
+        )
+    return token
+
+
+async def _authenticate_token(websocket: WebSocket, token: str) -> str | None:
     try:
         payload = await parse_jwt_token_async(token)
         user_id = payload.get("sub")
@@ -105,16 +172,16 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
             await _close_authentication_failure(
                 websocket, code=4002, reason="Invalid token"
             )
-            return ""
+            return None
         if not await _account_can_connect(websocket, user_id):
-            return ""
+            return None
         await require_active_auth_session(payload)
         return user_id
     except ValueError:
         await _close_authentication_failure(
             websocket, code=4003, reason="Invalid token"
         )
-        return ""
+        return None
     except HTTPException as exc:
         if (exc.headers or {}).get("X-Error-Code") == SESSION_TOKEN_RENEWAL_REQUIRED:
             await _close_authentication_failure(
@@ -132,7 +199,7 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
             await _close_authentication_failure(
                 websocket, code=4003, reason="Session expired or revoked"
             )
-        return ""
+        return None
 
 
 async def _account_can_connect(websocket: WebSocket, user_id: str) -> bool:
@@ -174,7 +241,7 @@ async def _close_authentication_failure(
 ) -> None:
     """Complete the handshake so the client receives the close frame."""
     try:
-        await websocket.accept()
+        await accept_once(websocket)
         await websocket.close(code=code, reason=reason)
     except (WebSocketDisconnect, OSError):
         logger.debug("WebSocket client disconnected during authentication rejection")
@@ -311,7 +378,7 @@ async def websocket_router(
     websocket: WebSocket, manager: ConnectionManager = Depends(get_connection_manager)
 ):
     user_id = await authenticate_websocket(websocket)
-    if not user_id:
+    if user_id is None:
         return
     if not await manager.connect_socket(websocket, user_id=user_id):
         return
@@ -544,4 +611,7 @@ class WebsocketServer(AppProcess):
             forwarded_allow_ips=uvicorn_forwarded_allow_ips(
                 settings.config.trusted_proxies
             ),
+            # Its handshakes come through the same proxies as the API's
+            # requests, which can send one on a connection they kept open.
+            timeout_keep_alive=settings.config.server_keep_alive_timeout_seconds,
         )

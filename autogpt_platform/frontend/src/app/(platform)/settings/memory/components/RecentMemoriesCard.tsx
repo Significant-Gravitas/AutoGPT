@@ -2,9 +2,9 @@
 
 import type { MemoryFact } from "@/app/api/__generated__/models/memoryFact";
 import { Button } from "@/components/atoms/Button/Button";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
-import { formatWhen } from "../helpers";
 
 interface Props {
   facts: MemoryFact[];
@@ -56,7 +56,7 @@ export function RecentMemoriesCard({
                 tone="subtle"
                 className="hidden shrink-0 sm:inline"
               >
-                {formatWhen(fact.created_at)}
+                <RelativeTime date={fact.created_at} />
               </Text>
               <Button
                 variant="ghost"
