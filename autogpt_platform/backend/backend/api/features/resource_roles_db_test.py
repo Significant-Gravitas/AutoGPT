@@ -26,6 +26,7 @@ from backend.api.features.graph_executions.routes import router as executions_ro
 from backend.api.features.graphs.routes import router as graphs_router
 from backend.api.features.library.routes import router as library_router
 from backend.api.features.orgs.db import resolve_member_tenancy
+from backend.api.features.store import submission_media
 from backend.api.features.store.routes import router as store_router
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.copilot.rate_limit import enforce_payment_paywall
@@ -497,6 +498,30 @@ async def test_an_org_billing_manager_is_refused_the_orgs_workflows_and_runs(
             response = await _call(api, method, path, w.org_billing, w.org, team, body)
             assert _refused_by_role(response), (method, path, team, response.text)
     assert await prisma.agentgraph.count(where={"userId": w.org_billing}) == 0
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_private_submission_media_needs_a_role_that_covers_workflows(
+    api, world, mocker
+):
+    """As listing the org's submissions does."""
+    w = world
+    mocker.patch.object(
+        submission_media, "metadata", AsyncMock(return_value={"size": 3})
+    )
+
+    async def media_bytes(*_args):
+        yield b"png"
+
+    mocker.patch.object(submission_media, "stream", media_bytes)
+    path = f"/store/submissions/media/{w.member}/images/cover.png"
+    for reader, readable in (
+        (w.owner, True),
+        (w.team_billing, True),
+        (w.org_billing, False),
+    ):
+        response = await _call(api, "GET", path, reader)
+        assert response.status_code == (200 if readable else 404), reader
 
 
 @pytest.mark.asyncio(loop_scope="session")
