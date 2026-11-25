@@ -70,6 +70,8 @@ MAX_XLSX_SHEET_CELLS_LISTED = 5_000_000
 MAX_XLSX_ROW_CELLS = 16_384
 MAX_XLSX_SHEET_CELLS = 500_000
 MAX_XLSX_SHEET_CHARACTERS = 32 * 1024 * 1024
+# How deep a sheet's XML may nest; a worksheet's elements nest under ten deep.
+MAX_XLSX_SHEET_XML_DEPTH = 64
 
 # ---------------------------------------------------------------------------
 # Extension / MIME → format label mapping
@@ -528,8 +530,8 @@ def _walk_sheet(sheet: Any, *, bound_memory: bool) -> tuple[int, int]:
 
 
 def _scan_sheet_xml(sheet: Any) -> None:
-    """Check the row-cells and listed-cells caps on the sheet's XML, counting its
-    cells as openpyxl reads them, before any of its rows is read."""
+    """Check the row-cells, listed-cells and depth caps on the sheet's XML,
+    counting its cells as openpyxl reads them, before any of its rows is read."""
     from openpyxl.xml.constants import SHEET_MAIN_NS
 
     archive = sheet.parent._archive
@@ -557,6 +559,13 @@ class _SheetCells:
         self.listed = 0
 
     def start(self, tag: str, attributes: dict[str, str]) -> None:
+        if len(self.open) >= MAX_XLSX_SHEET_XML_DEPTH:
+            raise XlsxSheetTooLarge(
+                "MAX_XLSX_SHEET_XML_DEPTH",
+                len(self.open) + 1,
+                MAX_XLSX_SHEET_XML_DEPTH,
+                f"nests its XML more than {MAX_XLSX_SHEET_XML_DEPTH} deep",
+            )
         row = self.open[-1] if self.open else None
         if row is not None:
             ref = attributes.get("r")

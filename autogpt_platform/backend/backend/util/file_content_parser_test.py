@@ -727,11 +727,13 @@ class TestXlsxSheetSize:
             ("MAX_XLSX_SHEET_ROWS", 3, {"A1": "a", "A3": "c"}),
             ("MAX_XLSX_SHEET_CELLS_LISTED", 6, {f"{c}{r}": c for c in "ABC" for r in (1, 2)}),
             ("MAX_XLSX_ROW_CELLS", 3, {"A1": "a", "C1": "c"}),
+            # openpyxl writes worksheet > sheetData > row > c > is > t.
+            ("MAX_XLSX_SHEET_XML_DEPTH", 6, {"A1": "a"}),
             ("MAX_XLSX_SHEET_CELLS", 6, {"A1": "a", "C2": "c"}),
             ("MAX_XLSX_SHEET_CHARACTERS", 10, {"A1": "x" * 10}),
             ("MAX_XLSX_SHEET_CHARACTERS", 309, {"A1": 1e308}),
         ],
-        ids=["rows", "cells-listed", "row-cells", "cells", "text", "whole-number-float"],
+        ids=["rows", "cells-listed", "row-cells", "xml-depth", "cells", "text", "whole-number-float"],
     )  # fmt: skip
     @pytest.mark.parametrize("past_cap", [False, True])
     def test_a_sheet_at_a_cap_is_read_and_one_past_it_is_refused(
