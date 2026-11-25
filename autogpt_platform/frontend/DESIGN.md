@@ -102,7 +102,7 @@ Use the `Button` atom and choose four things:
 - **`shape`**, the corner: `pill` (default), `rounded`, `soft`, `sharp` (also the default of the toggle and floating variants). Shape is the only place a button gets its radius.
 - **`tone`:** a shared tone, or for a ghost that changes colour on hover `quiet`, `quiet-subtle`, `quiet-danger`, `quiet-warning`, `quiet-info`, `quiet-remove`.
 
-`leadingIcon` takes a Hugeicon and sizes it to the button; `loading` shows a spinner; an icon-only button shows its `aria-label` as a tooltip (`withTooltip={false}` turns it off); `as="NextLink"` with `href` renders a link. `className` on a `Button` is layout only.
+`leadingIcon` takes a Hugeicon and sizes it to the button; `loading` shows a spinner; an icon-only button shows its `aria-label` as a tooltip (`withTooltip={false}` turns it off); `as="NextLink"` with `href` renders a link, except with `variant="link"`, which always renders a `<button>` and drops `href`. For a text link that navigates, use the `Link` atom. `className` on a `Button` is layout only.
 
 The `compact-*` family is older. Do not use it in new code:
 
