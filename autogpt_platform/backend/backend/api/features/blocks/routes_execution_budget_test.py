@@ -35,7 +35,7 @@ class _ReportsItsProcess:
 
 
 class _Computes:
-    """Writes a beat every 20 ms until its process ends."""
+    """Writes a beat every 20 ms and takes no cancel, so it runs until it is killed."""
 
     id = name = "computes"
     disabled = False
@@ -115,10 +115,11 @@ async def test_a_block_computing_past_its_budget_gets_a_504_and_is_killed(
         "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER",
         1,
     )
-    # Shorter than the child's own alarm, so only the run parent's kill passes.
+    # Past the cancel's grace and short of the child's own alarm, so only the run
+    # parent's kill passes.
     mocker.patch(
         "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_KILL_WAIT_SECONDS",
-        1,
+        4,
     )
     _serve_blocks(mocker)
     beats = tmp_path / "beats"

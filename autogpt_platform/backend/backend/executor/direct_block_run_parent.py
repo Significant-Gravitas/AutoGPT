@@ -3,8 +3,8 @@
 The server forks it early in start-up (``direct_block_execution.start_run_parent``),
 before it starts a thread or opens a connection, so each fork here copies a
 process with one thread and the block registry already loaded. It forks one
-child per run and kills a child still running at its deadline. Nothing in this
-module runs in the server's own process.
+child per run, cancels a child still running at its deadline, and kills it if
+it outlasts the cancel. Nothing in this module runs in the server's own process.
 """
 
 import asyncio
@@ -39,6 +39,9 @@ logger = logging.getLogger(__name__)
 DIRECT_BLOCK_EXECUTION_MEMORY_LIMIT = 1024 * 2**20
 DIRECT_BLOCK_EXECUTION_MAX_OUTPUT_SIZE = 32 * 2**20
 
+# A run is cancelled at its deadline, so the block's own clean-up runs, and killed
+# this long after.
+_CANCEL_GRACE_SECONDS = 2
 # The kernel ends a child this long after its deadline if the run parent is gone.
 _ALARM_GRACE_SECONDS = 5
 
@@ -49,6 +52,9 @@ REQUEST, OUTPUTS, FAILED = b"R", b"O", b"E"
 RUN_ORDER = struct.Struct("!d")
 
 _OUTPUTS = pydantic.TypeAdapter(CompletedBlockOutput)
+
+# Each live run: when the run parent next signals it, and with which signal.
+_Runs = dict[int, tuple[float, signal.Signals]]
 
 
 def load_blocks() -> None:
@@ -66,19 +72,17 @@ def serve_runs(control: socket.socket) -> NoReturn:  # pragma: no cover
         signal.signal(signal.SIGINT, signal.SIG_IGN)
         signal.signal(signal.SIGTERM, signal.SIG_DFL)
         _prepare_registry()
-        deadlines: dict[int, float] = {}
+        runs: _Runs = {}
         with selectors.DefaultSelector() as selector:
             selector.register(control, selectors.EVENT_READ)
             while True:
-                _reap(deadlines, os.WNOHANG)
-                _kill_overdue(deadlines)
-                if selector.select(_next_wake(deadlines)) and not _start_run(
-                    control, deadlines
-                ):
+                _reap(runs, os.WNOHANG)
+                _end_overdue(runs)
+                if selector.select(_next_wake(runs)) and not _start_run(control, runs):
                     break
-        for pid in deadlines:
+        for pid in runs:
             os.kill(pid, signal.SIGKILL)
-        _reap(deadlines, 0)
+        _reap(runs, 0)
     except BaseException:
         logger.exception("The direct block run parent failed")
         os._exit(1)
@@ -93,29 +97,34 @@ def _prepare_registry() -> None:
     load_blocks()
 
 
-def _reap(deadlines: dict[int, float], options: int) -> None:
-    for pid in list(deadlines):
+def _reap(runs: _Runs, options: int) -> None:
+    for pid in list(runs):
         if os.waitpid(pid, options)[0]:
-            del deadlines[pid]
+            del runs[pid]
 
 
-def _kill_overdue(deadlines: dict[int, float]) -> None:
+def _end_overdue(runs: _Runs) -> None:
     # Only unreaped children are listed, so no pid here can have been reused.
     now = time.monotonic()
-    for pid, deadline in deadlines.items():
-        if deadline <= now:
-            os.kill(pid, signal.SIGKILL)
-            deadlines[pid] = math.inf
+    for pid, (due, signum) in runs.items():
+        if due > now:
+            continue
+        os.kill(pid, signum)
+        if signum == signal.SIGTERM:
+            runs[pid] = (now + _CANCEL_GRACE_SECONDS, signal.SIGKILL)
+        else:
+            runs[pid] = (math.inf, signal.SIGKILL)
 
 
-def _next_wake(deadlines: dict[int, float]) -> float | None:
-    if not deadlines:
+def _next_wake(runs: _Runs) -> float | None:
+    if not runs:
         return None
     # Wakes at least each second while runs are alive, to reap the finished.
-    return max(0.0, min(1.0, min(deadlines.values()) - time.monotonic()))
+    soonest = min(due for due, _ in runs.values())
+    return max(0.0, min(1.0, soonest - time.monotonic()))
 
 
-def _start_run(control: socket.socket, deadlines: dict[int, float]) -> bool:
+def _start_run(control: socket.socket, runs: _Runs) -> bool:
     """Fork a child for the next run the server sent; False once it is gone."""
     order, fds, _, _ = socket.recv_fds(control, RUN_ORDER.size, 1)
     if not order:
@@ -129,7 +138,7 @@ def _start_run(control: socket.socket, deadlines: dict[int, float]) -> bool:
         control.close()
         _run(conn, budget)
     conn.close()
-    deadlines[pid] = time.monotonic() + budget
+    runs[pid] = (time.monotonic() + budget, signal.SIGTERM)
     return True
 
 
@@ -143,19 +152,27 @@ def _run(conn: socket.socket, budget: float) -> NoReturn:  # pragma: no cover
         _prefer_for_oom_kill()
         with conn, conn.makefile("rb") as incoming:
             _, size = FRAME_HEADER.unpack(incoming.read(FRAME_HEADER.size))
-            conn.sendall(_answer(incoming.read(size)))
-    except Exception:
-        pass  # The server stopped waiting for the answer.
+            conn.sendall(asyncio.run(_answer_until_cancelled(incoming.read(size))))
+    except BaseException:
+        pass  # Cancelled at its deadline, or the server stopped waiting.
     finally:
         sentry_sdk.flush(timeout=2)
-    os._exit(0)
+        os._exit(0)
 
 
-def _answer(request: bytes) -> bytes:
+# Runs in a forked process, which coverage doesn't measure.
+async def _answer_until_cancelled(request: bytes) -> bytes:  # pragma: no cover
+    # The run parent's SIGTERM at the deadline cancels the block where it awaits.
+    task = asyncio.ensure_future(_answer(request))
+    asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, task.cancel)
+    return await task
+
+
+async def _answer(request: bytes) -> bytes:
     try:
         block_id, input_data, execute_kwargs = pickle.loads(request)
         block = get_blocks()[block_id]()
-        outputs = asyncio.run(_collect(block.execute(input_data, **execute_kwargs)))
+        outputs = await _collect(block.execute(input_data, **execute_kwargs))
         body = _OUTPUTS.dump_json(outputs)
     except Exception as error:
         if _ran_out_of_memory(error):

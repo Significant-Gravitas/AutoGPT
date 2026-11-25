@@ -1,7 +1,6 @@
 """What a run's child answers, built in the test's own process. The run parent and
 its children are tested end to end in ``direct_block_execution_test.py``."""
 
-import asyncio
 import json
 import pickle
 from datetime import datetime, timezone
@@ -67,7 +66,6 @@ async def test_a_block_that_ran_out_of_memory_gets_the_memory_refusal():
 
 
 async def _answer_to(request: tuple) -> tuple[bytes, object]:
-    # _answer runs its own event loop, so off the test's.
-    answer = await asyncio.to_thread(_answer, pickle.dumps(request))
+    answer = await _answer(pickle.dumps(request))
     kind, size = FRAME_HEADER.unpack(answer[: FRAME_HEADER.size])
     return kind, json.loads(answer[FRAME_HEADER.size :][:size])

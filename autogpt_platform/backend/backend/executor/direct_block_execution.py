@@ -3,9 +3,9 @@
 The block-execute routes run one block and return its outputs. Each run is a
 child process forked from this server's run parent, which the server forks in
 start-up before it starts any thread or opens any connection
-(``start_run_parent``). The run parent kills a child still running
-``DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS`` after it started, and caps its memory
-(``direct_block_run_parent``).
+(``start_run_parent``). The run parent cancels a child still running
+``DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS`` after it started, kills it if it
+outlasts the cancel, and caps its memory (``direct_block_run_parent``).
 
 Each user may have ``DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER`` direct runs in
 flight on this server, and the server ``DIRECT_BLOCK_EXECUTION_MAX_RUNS``.
@@ -44,7 +44,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS = 300
-# How long the server waits for a timed-out run's process to be killed.
+# How long the server waits for a timed-out run's process to end; the run parent
+# cancels it at the deadline and kills it 2 seconds later.
 DIRECT_BLOCK_EXECUTION_KILL_WAIT_SECONDS = 5
 # Documented in docs/platform/rate-limits.md: update it with any change here.
 DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER = 4
@@ -274,7 +275,7 @@ async def _read_answer(reader: asyncio.StreamReader) -> tuple[bytes, bytes]:
 
 
 async def _wait_for_exit(reader: asyncio.StreamReader) -> None:
-    # The run parent kills the run at its deadline; its socket ends with it.
+    # The run parent ends the run at its deadline; its socket ends with it.
     try:
         async with asyncio.timeout(DIRECT_BLOCK_EXECUTION_KILL_WAIT_SECONDS):
             while await reader.read(2**16):
