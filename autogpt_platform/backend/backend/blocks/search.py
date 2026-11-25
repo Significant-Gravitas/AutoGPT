@@ -143,9 +143,9 @@ class GetWeatherInformationBlock(Block, GetRequest):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         units = "metric" if input_data.use_celsius else "imperial"
-        api_key = credentials.api_key
+        api_key = credentials.api_key.get_secret_value()
         location = input_data.location
-        url = f"http://api.openweathermap.org/data/2.5/weather?q={quote(location)}&appid={api_key}&units={units}"
+        url = f"https://api.openweathermap.org/data/2.5/weather?q={quote(location)}&appid={api_key}&units={units}"
         weather_data = await self.get_request(url, json=True)
 
         if "main" in weather_data and "weather" in weather_data:
