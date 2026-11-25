@@ -1,12 +1,16 @@
 import { CopilotAuthError } from "./helpers";
 import {
   ChatUnavailableError,
+  DroppedSendError,
   isUnexpectedRefusal,
   MessageTooLongError,
   UnconfirmedSendError,
 } from "./stream/turnRuntime";
 
 export type ChatErrorAction = "sign-in" | "new-chat" | "plans" | "resend";
+
+const CONNECTION_DROPPED =
+  "The connection dropped before your message was sent. Check your connection and send it again.";
 
 export interface ChatErrorGuidance {
   /** What happened, and what will work next. */
@@ -68,18 +72,17 @@ export function describeChatError(error: Error): ChatErrorGuidance {
         "The server had a problem. Please try sending your message again in a moment.",
       action: null,
     };
+  if (error instanceof DroppedSendError)
+    return { title: CONNECTION_DROPPED, action: "resend" };
   if (error instanceof UnconfirmedSendError)
     return {
       title:
         "We couldn't confirm your message was sent. Check your connection and send it again.",
       action: "resend",
     };
+  // Only the stream runtime checks a dropped send and can send it again.
   if (error.name === "TypeError")
-    return {
-      title:
-        "The connection dropped before your message was sent. Check your connection and send it again.",
-      action: null,
-    };
+    return { title: CONNECTION_DROPPED, action: null };
   return {
     title: "Something went wrong. Please try sending your message again.",
     action: null,

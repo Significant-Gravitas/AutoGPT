@@ -25,7 +25,6 @@ from backend.data.db_accessors import graph_db, library_db, triggers_db
 from backend.data.graph import GraphModel, Node
 from backend.data.model import Credentials, CredentialsMetaInput
 from backend.util.exceptions import (
-    InvalidInputError,
     MissingConfigError,
     NotFoundError,
     WebhookRegistrationError,
@@ -268,12 +267,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 agent_credentials=agent_credentials,
                 expert_id=session.expert_id,
             )
-        except (
-            InvalidInputError,
-            MissingConfigError,
-            NotFoundError,
-            WebhookRegistrationError,
-        ) as e:
+        except (MissingConfigError, ValueError, WebhookRegistrationError) as e:
             return ErrorResponse(
                 message=f"Could not set up the trigger: {e}",
                 error="trigger_setup_failed",

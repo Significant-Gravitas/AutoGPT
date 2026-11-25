@@ -15,10 +15,15 @@ from pydantic import BaseModel, Field
 
 from backend.data.model import APIKeyCredentials
 from backend.util.request import Requests
+from backend.util.truncate import truncate
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+# How much of Enrichlayer's answer an error message carries: enough for its
+# own message, not the whole HTML page a proxy or a CDN in front of it sends.
+ERROR_BODY_LIMIT = 300
 
 
 class EnrichlayerAPIException(Exception):
@@ -233,11 +238,12 @@ class EnrichlayerClient:
                 error_data = response.json()
                 error_message = error_data.get("message", "")
             except JSONDecodeError:
-                error_message = response.text
+                error_message = response.text()
 
             raise EnrichlayerAPIException(
-                f"Enrichlayer API request failed ({response.status_code}): {error_message}",
-                response.status_code,
+                f"Enrichlayer API request failed ({response.status}): "
+                f"{truncate(error_message, ERROR_BODY_LIMIT)}",
+                response.status,
             )
 
         return response.json()

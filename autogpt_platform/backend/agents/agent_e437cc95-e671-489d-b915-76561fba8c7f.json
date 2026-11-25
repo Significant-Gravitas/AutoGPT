@@ -246,7 +246,7 @@
       "id": "2b85cb39-9cfc-411c-a9fb-a3af03df9e00",
       "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
       "input_default": {
-        "model": "o1",
+        "model": "gpt-5.6-sol",
         "retry": 3,
         "prompt": "Create a well-structured blog post based on the following video content analysis:\n\n{{ANALYSIS}}\n\nUse the following parameters:\n- Write the bog post in the following tone: {{TONE}}\n- Target word count: {{WORD_COUNT}}\n\nThe blog post should include:\n1. An engaging title\n2. An introduction that hooks the reader\n3. Main body with appropriate headings and subheadings\n4. A conclusion that summarizes key points\n5. SEO optimization (include relevant keywords naturally)\n\nFormat the blog post in plaintext, as beautifully as the medium allows.\n\nOutput the title inside a complete set of <title></title> xml tags.\nOutput the blogpost inside a complete set of <blog_post></blog_post> xml tags.\nOutput a list of the used keywords inside a complete set of <keywords></keywords> xml tags\n\nNEVER write xml tags inside of these xml tags, even if mentioned in the video, otherwise the parser will completely fail.",
         "sys_prompt": "",

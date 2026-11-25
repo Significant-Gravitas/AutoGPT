@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { type LayoutChangeEvent, Text, View } from "react-native";
 
-import { createStyles, useColors, useScheme } from "@/lib/theme";
+import { createStyles } from "@/lib/theme";
 
-import { areaColor, areaTint } from "../areaColors";
+import { areaColor } from "../areaColors";
 import type { AreaSection as Section } from "../helpers";
 import { RowCard } from "./TemplateRow";
 
@@ -15,8 +15,6 @@ interface Props {
 
 export function AreaSection({ section, onLayout, children }: Props) {
   const styles = useStyles();
-  const scheme = useScheme();
-  const colors = useColors();
   const { area } = section;
   return (
     <View onLayout={onLayout}>
@@ -27,9 +25,9 @@ export function AreaSection({ section, onLayout, children }: Props) {
             {section.label}
           </Text>
         </View>
-        {section.isCovered ? null : <Text style={styles.note}>Your team has no one here</Text>}
+        <Text style={styles.count}>{section.templates.length}</Text>
       </View>
-      <RowCard background={area ? areaTint(area, scheme) : colors.panelCard}>{children}</RowCard>
+      <RowCard>{children}</RowCard>
     </View>
   );
 }
@@ -45,6 +43,6 @@ const useStyles = createStyles((colors) => ({
   },
   title: { flexDirection: "row", alignItems: "center", gap: 7 },
   dot: { width: 7, height: 7, borderRadius: 3.5 },
-  label: { fontSize: 13.5, lineHeight: 18, fontWeight: "600", color: colors.text },
-  note: { fontSize: 11, lineHeight: 15, color: colors.textTertiary },
+  label: { fontSize: 14.5, lineHeight: 19, fontWeight: "600", color: colors.text },
+  count: { fontSize: 11, lineHeight: 15, color: colors.textTertiary },
 }));

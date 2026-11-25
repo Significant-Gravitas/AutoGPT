@@ -311,6 +311,21 @@
     }
   },
   {
+    "name": "mcp_attio",
+    "display_name": "Attio",
+    "description": "Search and update your Attio CRM: find records, create contacts and companies, add notes and tasks, and review meetings and emails.",
+    "mcp_server": {
+      "server_url": "https://mcp.attio.com/mcp",
+      "documentation_url": "https://docs.attio.com/mcp/overview",
+      "setup_instructions": "Sign in with your Attio account and approve access to your workspace. The assistant acts as your Attio user, with your permissions.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "icon_id": "attio"
+    }
+  },
+  {
     "name": "mcp_aws_databases",
     "display_name": "AWS Knowledge",
     "description": "Search AWS documentation and guidance for AWS Agents, AWS Databases, AWS Deployments, and AWS Amplify.",
@@ -897,6 +912,21 @@
         "bearer"
       ],
       "icon_id": "monday"
+    }
+  },
+  {
+    "name": "mcp_neon",
+    "display_name": "Neon",
+    "description": "Manage Neon Postgres projects: create databases and branches, run SQL, review query performance and apply schema migrations.",
+    "mcp_server": {
+      "server_url": "https://mcp.neon.tech/mcp",
+      "documentation_url": "https://neon.com/docs/ai/neon-mcp-server",
+      "setup_instructions": "Sign in with your Neon account and approve access. Tools can read and change your projects and databases, so connect a development project rather than production.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "icon_id": "neon"
     }
   },
   {

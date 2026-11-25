@@ -1,0 +1,37 @@
+{
+  "description": "AutoPilot runs a Countdown Timer block, which copilot-stop-journey.spec.ts stops while the timer runs. The timer is set to ten minutes, far longer than any test waits, so the Stop always lands before it goes off. The second turn answers the timer's result: a stopped turn must never ask for it.",
+  "title": "Stopped timer",
+  "turns": [
+    {
+      "text": "I will start a short timer first, then answer you when it goes off.",
+      "tool_calls": [
+        {
+          "name": "run_capability",
+          "input": {
+            "id": "block:d67a9c52-5e4e-11e2-bcfd-0800200c9a71",
+            "input": {
+              "minutes": 10,
+              "input_message": "The timer for the stopped turn went off."
+            }
+          }
+        }
+      ],
+      "usage": {
+        "input_tokens": 3200,
+        "output_tokens": 60,
+        "cache_read_input_tokens": 24000
+      }
+    },
+    {
+      "expect_tool_results": [
+        { "tool": "run_capability", "contains": "went off" }
+      ],
+      "text": "The timer went off, so here is the rest of my answer.",
+      "usage": {
+        "input_tokens": 3400,
+        "output_tokens": 14,
+        "cache_read_input_tokens": 24300
+      }
+    }
+  ]
+}

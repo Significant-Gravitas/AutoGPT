@@ -67,6 +67,11 @@ export function useAppDrawer(
     navigation.closeDrawer();
   }
 
+  function openFiles() {
+    router.navigate("/files");
+    navigation.closeDrawer();
+  }
+
   function openAllChats() {
     router.navigate("/chats");
     navigation.closeDrawer();
@@ -110,6 +115,7 @@ export function useAppDrawer(
     newChat,
     openTeam,
     openMarketplace,
+    openFiles,
     openAllChats,
     openSettings,
     handleSignOut,

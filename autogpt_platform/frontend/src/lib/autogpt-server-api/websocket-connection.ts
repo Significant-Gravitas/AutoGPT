@@ -5,7 +5,6 @@ import {
   describeErrorEvent,
   isAuthenticationClose,
   logWebSocketClose,
-  logWebSocketIssue,
 } from "./websocket-logging";
 import {
   SubscribeRetries,
@@ -33,6 +32,9 @@ const MAX_RETRY_DELAY_MS = 30_000;
 const HEALTHY_AFTER_MS = 10_000;
 const HEARTBEAT_INTERVAL_MS = 100_000;
 const HEARTBEAT_TIMEOUT_MS = 10_000;
+// The first pong waits for the server to check the token as well as to open
+// the socket's event stream.
+const SIGN_IN_TIMEOUT_MS = 30_000;
 // The server answers the ordering ping only after every resubscription, and
 // opening a shard's event stream for one can take it up to 15 s (OPEN_TIMEOUT_S
 // in backend/data/sharded_pubsub.py); each answer to a subscribe restarts this.
@@ -140,11 +142,9 @@ export class BackendWebSocket {
         else this.finishConnecting();
         return;
       }
-      const socket = new WebSocket(
-        `${this.url}?token=${encodeURIComponent(token)}`,
-      );
+      const socket = new WebSocket(this.url);
       this.socket = socket;
-      this.attach(socket, generation);
+      this.attach(socket, generation, token);
     } catch (error) {
       if (generation !== this.generation) return;
       console.warn("[BackendAPI] Could not connect WebSocket:", error);
@@ -169,28 +169,29 @@ export class BackendWebSocket {
     return this.socket === socket && this.generation === generation;
   }
 
-  private attach(socket: WebSocket, generation: number) {
+  private attach(socket: WebSocket, generation: number, token: string) {
     socket.onopen = () => {
       if (!this.current(socket, generation) || hasDisconnectIntent()) {
         socket.close();
         return;
       }
-      this.ping(socket, generation);
+      // The token goes in the first message, never in the URL. The server
+      // handles messages in order, so the pong to this ping confirms it.
+      socket.send(JSON.stringify({ method: "authenticate", data: { token } }));
+      this.ping(socket, generation, SIGN_IN_TIMEOUT_MS);
     };
     socket.onmessage = (event) => this.receive(socket, generation, event);
     socket.onclose = (event) => this.closed(socket, generation, event);
+    // The browser fires `close` after every `error`, and closed() reports the
+    // drop with its close code, so this event is not reported again.
     socket.onerror = (event) => {
       if (
         !this.current(socket, generation) ||
         this.authenticatedSocket !== socket
       )
         return;
-      const { summary, extra } = describeErrorEvent(event, this.url);
-      logWebSocketIssue(
-        "error",
-        `[BackendAPI] WebSocket error: ${summary}`,
-        extra,
-      );
+      const { summary } = describeErrorEvent(event, this.url);
+      console.debug(`[BackendAPI] WebSocket error: ${summary}`);
     };
   }
 

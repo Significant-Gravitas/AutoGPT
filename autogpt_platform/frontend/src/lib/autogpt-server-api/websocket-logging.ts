@@ -116,7 +116,13 @@ function stripQuery(url: string): string {
 }
 
 export function isAuthenticationClose(code: number): boolean {
-  return [4001, 4002, 4003, 4004].includes(code);
+  return [4002, 4003, 4004].includes(code);
+}
+
+// This client always sends its token, so a 4001 comes from a backend that
+// still expects it in the URL: retried, and not reported, until it updates.
+export function isTokenInURLClose(code: number): boolean {
+  return code === 4001;
 }
 
 export function logWebSocketClose(
@@ -134,6 +140,10 @@ export function logWebSocketClose(
     console.debug(`[BackendAPI] WebSocket closed on purpose: ${summary}`);
   } else if (isAuthenticationClose(event.code)) {
     console.info(`[BackendAPI] WebSocket authentication rejected: ${summary}`);
+  } else if (isTokenInURLClose(event.code)) {
+    console.info(
+      `[BackendAPI] WebSocket sign-in not read; retrying: ${summary}`,
+    );
   } else {
     logWebSocketIssue(
       connected ? "warn" : "error",

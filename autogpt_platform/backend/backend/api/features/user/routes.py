@@ -8,6 +8,9 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi import APIRouter, Body, HTTPException, Query, Response, Security
 from prisma.enums import BriefingFrequency
 
+from backend.api.features.integrations.sign_in_connection import (
+    keep_held_sign_in_connection,
+)
 from backend.api.model import (
     RecordUserConsentRequest,
     TimezoneResponse,
@@ -66,6 +69,9 @@ async def get_or_create_user_route(
     result = await get_or_create_user_with_status(user_data)
     response.headers[USER_CREATED_HEADER] = str(result.was_created).lower()
     user = result.user
+    # A sign-up's Google or Microsoft connection waits for the account this
+    # request sets up (integrations/sign_in_connection.py).
+    await keep_held_sign_in_connection(user.id)
     if not result.was_created:
         # A new account was just sent its properties, `is_internal` and the
         # tier included.

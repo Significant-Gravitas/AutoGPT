@@ -37,6 +37,7 @@ from backend.util.exceptions import (
     PreconditionFailed,
     SchedulerUnavailableError,
 )
+from backend.util.service import UnhealthyServiceError
 from backend.util.url_redaction import redact_url
 
 logger = logging.getLogger(__name__)
@@ -103,6 +104,10 @@ def add_exception_handlers(
         GraphActivationError: _handle_error(status.HTTP_400_BAD_REQUEST),
         ValueError: _handle_error(status.HTTP_400_BAD_REQUEST),
         # It's the backend's problem: HTTP 5XX
+        # A health check's failure, which logs itself when raised.
+        UnhealthyServiceError: _handle_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE, log_error=False
+        ),
         MissingConfigError: _handle_error(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             expose_detail=expose_missing_config_detail,

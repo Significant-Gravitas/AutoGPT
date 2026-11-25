@@ -44,4 +44,15 @@ describe("buildChainReply", () => {
       ].join("\n\n"),
     );
   });
+
+  it("says a line two cards share once", () => {
+    const retry = "I've connected the integration. Please retry the same call.";
+    const reply = buildChainReply([
+      entry(RERUN, { credentialsOnly: true }),
+      entry(retry),
+      entry(retry),
+    ]);
+
+    expect(reply).toBe([RERUN, retry].join("\n\n"));
+  });
 });

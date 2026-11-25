@@ -1,0 +1,32 @@
+{
+  "description": "Three short answers in one chat open in two tabs: the first tab's two messages, then a third message sent from the second tab. copilot-two-tabs-journey.spec.ts follows it.",
+  "title": "Two tabs",
+  "turns": [
+    {
+      "text": "Lima is answered.",
+      "usage": {
+        "input_tokens": 2400,
+        "output_tokens": 5,
+        "cache_read_input_tokens": 20000
+      }
+    },
+    {
+      "expect_user_text": "Mike, from the first tab.",
+      "text": "Mike is answered.",
+      "usage": {
+        "input_tokens": 2500,
+        "output_tokens": 5,
+        "cache_read_input_tokens": 20400
+      }
+    },
+    {
+      "expect_user_text": "November, from the second tab.",
+      "text": "November is answered.",
+      "usage": {
+        "input_tokens": 2600,
+        "output_tokens": 5,
+        "cache_read_input_tokens": 20800
+      }
+    }
+  ]
+}

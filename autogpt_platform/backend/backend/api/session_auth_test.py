@@ -42,7 +42,7 @@ async def test_a_signed_token_without_sid_must_be_renewed_on_http_and_websocket(
         receive=AsyncMock(return_value={"type": "websocket.connect"}),
         send=send,
     )
-    assert await ws_api.authenticate_websocket(websocket) == ""
+    assert await ws_api.authenticate_websocket(websocket) is None
     assert send.await_args is not None
     closed = send.await_args.args[0]
     assert (closed["code"], closed["reason"]) == (
