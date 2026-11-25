@@ -110,6 +110,9 @@ export const twMerge = extendTailwindMerge({
         "chip-glow-sky",
         "chip-glow-neutral",
       ],
+      // The easings in tokens/motion.css, so `ease-standard` replaces
+      // `ease-in-out` and another named easing, and the other way round.
+      ease: ["standard", "emphasized", "out-quint", "glide", "drawer"],
     },
     classGroups: {
       "font-size": [
@@ -166,6 +169,13 @@ export const twMerge = extendTailwindMerge({
             "tour-scrim",
             "tour",
           ],
+        },
+      ],
+      // The durations in tokens/motion.css, so `duration-fast` replaces
+      // `duration-200` and another named duration, and the other way round.
+      duration: [
+        {
+          duration: ["instant", "fast", "base", "slow", "slower", "slowest"],
         },
       ],
     },

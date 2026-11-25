@@ -115,3 +115,45 @@ describe("cn() knows the named layers", () => {
     expect(cn("z-auto", `z-${name}`)).toBe(`z-${name}`);
   });
 });
+
+function motionTokens(kind: "duration" | "ease") {
+  const css = readFileSync(
+    path.resolve(__dirname, "../../app/tokens/motion.css"),
+    "utf8",
+  ).replace(/\/\*[\s\S]*?\*\//g, "");
+  return [...css.matchAll(new RegExp(`--${kind}-([a-z-]+):`, "g"))].map(
+    ([, name]) => name,
+  );
+}
+
+describe("cn() knows the named durations and easings", () => {
+  const durations = motionTokens("duration");
+  const easings = motionTokens("ease");
+
+  it("has tokens to check", () => {
+    expect(durations).toEqual(expect.arrayContaining(["fast", "slow"]));
+    expect(easings).toEqual(expect.arrayContaining(["standard", "drawer"]));
+  });
+
+  it.each(durations)("duration-%s and a number replace each other", (name) => {
+    expect(cn("duration-200", `duration-${name}`)).toBe(`duration-${name}`);
+    expect(cn(`duration-${name}`, "duration-200")).toBe("duration-200");
+  });
+
+  it.each(easings)("ease-%s and ease-linear replace each other", (name) => {
+    expect(cn("ease-linear", `ease-${name}`)).toBe(`ease-${name}`);
+    expect(cn(`ease-${name}`, "ease-linear")).toBe("ease-linear");
+  });
+
+  it("keeps the last of two named values", () => {
+    expect(cn("duration-fast", "duration-slow")).toBe("duration-slow");
+    expect(cn("ease-standard", "ease-drawer")).toBe("ease-drawer");
+    expect(cn("ease-in-out", "ease-emphasized")).toBe("ease-emphasized");
+  });
+
+  it("keeps values under different variants", () => {
+    expect(cn("duration-fast", "hover:duration-slow")).toBe(
+      "duration-fast hover:duration-slow",
+    );
+  });
+});
