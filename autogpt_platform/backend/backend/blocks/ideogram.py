@@ -1,4 +1,5 @@
 from enum import Enum
+from io import BytesIO
 from typing import Any, Dict, Literal, Optional
 
 from pydantic import SecretStr
@@ -401,9 +402,9 @@ class IdeogramModelBlock(Block):
             image_content = response.content
 
             # Step 2: Send the downloaded image to the upscale API
-            files = {
-                "image_file": ("image.png", image_content, "image/png"),
-            }
+            files = [
+                ("image_file", ("image.png", BytesIO(image_content), "image/png")),
+            ]
 
             response = await Requests().post(
                 url,

@@ -221,17 +221,34 @@ The 10-minute windows for the first row start on the clock: at :00, :10, :20 and
 - **What you see:** `429`, with "Too many attempts. Please try again in 3 minutes." — the wait named in seconds under a minute — and an `X-Retry-After` header in seconds.
 - Where the Platform has no IP address for the caller, only the per-address limits apply; see [Client IP Addresses](client-ip.md#signing-in). None of these are configurable.
 
+### Confirming a sign-in with an emailed code
+
+When you continue with a sign-in provider such as Google or Microsoft, and an account already uses your email address, the Platform may email you a 6-digit code before that provider joins the account. It doesn't when the provider runs your mailbox (Gmail through Google, Outlook.com through Microsoft). You type the code into the login page that asked for it.
+
+| Limit                                                                      | Counted per   | What you see                                                                                              |
+| -------------------------------------------------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------- |
+| 5 codes in each clock hour, from sign-ins and **Send a new code** together | email address | The login page says several codes have already gone to the address, and no new one is sent                |
+| 20 wrong codes in a 30-day window                                          | email address | The sign-in ends, and no code goes to the address until the window ends: log in the way you usually do    |
+| **Send a new code** once a minute                                          | sign-in       | `429` and "Wait a moment before asking for another code."                                                 |
+| 5 tries per code                                                           | sign-in       | After the fifth wrong code the sign-in ends: sign in again for a new code                                 |
+| 10 code checks a minute                                                    | IP address    | `429`, with "Too many attempts. Please try again in 1 minute." — the wait named in seconds under a minute |
+
+- A code expires after 10 minutes, works once, and only in the browser that started the sign-in. A code that couldn't be sent doesn't count toward the five an hour.
+- The hour and the minute start on the clock, and the 30-day windows are fixed too, not rolling. None of these are configurable.
+
 ### The authentication API
 
 Requests to the authentication API under `/api/auth/` are limited per IP address and path:
 
-| Paths                                                 | Limit              |
-| ----------------------------------------------------- | ------------------ |
-| `/sign-in/*`, `/sign-up/*`, `/change-email`           | 3 per 10 seconds   |
-| `/request-password-reset`, `/send-verification-email` | 3 per 60 seconds   |
-| Every other path                                      | 100 per 10 seconds |
+| Paths                                                          | Limit              |
+| -------------------------------------------------------------- | ------------------ |
+| `/sign-in/*`, `/sign-in-code/*`, `/sign-up/*`, `/change-email` | 3 per 10 seconds   |
+| `/request-password-reset`, `/send-verification-email`          | 3 per 60 seconds   |
+| Every other path                                               | 100 per 10 seconds |
 
 Each path counts on its own. A path allows that many requests in a row, and starts counting again once a whole window has passed since the last request it let through. Past the limit, the answer is `429` with `{"message":"Too many requests. Please try again later."}` and an `X-Retry-After` header in seconds.
+
+Opening an admin page reads your role from your signed session cookie and counts toward none of these. Once that cookie has expired (it lasts five minutes), the frontend asks `/get-session` on your behalf, and that request is counted the same way as your own, by your IP address, when the authentication API can tell it. Where it can't (behind a proxy not listed in `TRUSTED_PROXIES`, or on a direct install whose browsers send no `X-Forwarded-For`), every visitor's lookups share one count; see [Client IP Addresses](client-ip.md). If that lookup is refused, for example past this limit, the admin page sends you to Home until a lookup is allowed again.
 
 These limits apply to production builds of the frontend and aren't configurable. On a self-hosted install behind a reverse proxy, see [Client IP Addresses](client-ip.md).
 

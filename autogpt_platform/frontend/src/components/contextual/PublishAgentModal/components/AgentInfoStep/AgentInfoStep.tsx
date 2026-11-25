@@ -102,6 +102,7 @@ export function AgentInfoStep({
     errors.agentOutputDemo
   );
   const thumbnailsHasError = !!errors.root;
+  const showKeepDescriptionHint = isMarketplaceUpdate && !errors.description;
   const basicsComplete =
     !basicsHasError &&
     !!watched.title &&
@@ -331,8 +332,26 @@ export function AgentInfoStep({
                         rows={2}
                         placeholder="Describe the outcome this workflow creates"
                         error={form.formState.errors.description?.message}
+                        aria-describedby={
+                          showKeepDescriptionHint
+                            ? `${field.name}-hint`
+                            : undefined
+                        }
+                        wrapperClassName={
+                          showKeepDescriptionHint ? "!mb-0" : undefined
+                        }
                         {...field}
                       />
+                      {showKeepDescriptionHint ? (
+                        <Text
+                          id={`${field.name}-hint`}
+                          variant="small"
+                          tone="subtle"
+                          className="mt-1 mb-6"
+                        >
+                          Leave empty to keep the current description.
+                        </Text>
+                      ) : null}
                     </CharCountedTextarea>
                   )}
                 />

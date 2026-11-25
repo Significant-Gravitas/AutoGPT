@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { router, useNavigation } from "expo-router";
 import { useRef, useState } from "react";
-import { BackHandler, type NativeEventSubscription } from "react-native";
+import { BackHandler, type NativeEventSubscription, Share } from "react-native";
 
 import {
   expertKeys,
@@ -9,15 +9,22 @@ import {
   listTemplates,
   templateKeys,
 } from "@/lib/api/experts";
+import { integrationKeys, listSystemProviders } from "@/lib/api/integrations";
+import { FRONTEND_URL } from "@/lib/env";
 import { isSessionGone, signOut } from "@/lib/session";
 import { useMountEffect } from "@/lib/useMountEffect";
 
 import { firstChatAfterHire, latestOrNewSession } from "./openExpertChat";
+import { accessProviders } from "./profileHelpers";
 import { useHireExpert } from "./useHireExpert";
 
 export function useTemplatePage(templateID: string) {
   const templates = useQuery({ queryKey: templateKeys.list, queryFn: listTemplates });
   const experts = useQuery({ queryKey: expertKeys.list, queryFn: listExperts });
+  const systemProviders = useQuery({
+    queryKey: integrationKeys.systemProviders,
+    queryFn: listSystemProviders,
+  });
   const [error, setError] = useState<string | null>(null);
   const [isOpeningChat, setIsOpeningChat] = useState(false);
   // State lands a render late; the ref stops a second tap in the same frame.
@@ -26,15 +33,18 @@ export function useTemplatePage(templateID: string) {
   // the old one must not push its chat over the new page.
   const isMounted = useRef(true);
   const navigation = useNavigation();
-  const { hire, isHiring, justHired } = useHireExpert({
+  const { hire, isHiring, justHired, newerHires } = useHireExpert({
     onHired: () => setError(null),
     onError: (message) => setError(message),
   });
   const template = templates.data?.find((item) => item.id === templateID) ?? null;
   const hiredNow = justHired(templateID);
+  // As on the list: once the team list has loaded after the hire, it decides,
+  // so an expert removed on the web offers Hire again.
   const hiredExpert =
     experts.data?.find((expert) => expert.source_template_id === templateID) ??
-    hiredNow;
+    newerHires(experts.dataUpdatedAt).get(templateID) ??
+    null;
 
   // While this page is in front, Android's back button returns to the list
   // (the drawer's own back goes to its first screen). Leaving drops any error,
@@ -94,8 +104,15 @@ export function useTemplatePage(templateID: string) {
     router.navigate("/marketplace");
   }
 
+  function share() {
+    void Share.share({
+      message: `${FRONTEND_URL}/marketplace/experts/${encodeURIComponent(templateID)}`,
+    });
+  }
+
   return {
     template,
+    services: accessProviders(template?.workflows, systemProviders.data),
     isLoading: templates.isPending,
     // Only when nothing is cached: a failed refetch keeps the list it had.
     isLoadError: templates.isError && !templates.data,
@@ -110,5 +127,6 @@ export function useTemplatePage(templateID: string) {
     hire: handleHire,
     openChat,
     back,
+    share,
   };
 }

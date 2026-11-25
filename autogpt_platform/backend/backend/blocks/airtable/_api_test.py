@@ -1,4 +1,6 @@
 from os import getenv
+from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import quote
 from uuid import uuid4
 
 import pytest
@@ -322,3 +324,67 @@ async def test_webhook_management():
     assert response is not None, f"Checking list webhook payloads response: {response}"
 
     response = await delete_webhook(credentials, base_id, webhook_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "table_name",
+    [
+        "Lieferungen 11/2026",
+        "Fragen & Antworten?",
+        "Retouren #2",
+        "A/B?C#D",
+    ],
+)
+async def test_record_endpoints_url_encode_table_name(table_name: str):
+    credentials = APIKeyCredentials(
+        provider="airtable",
+        api_key=SecretStr("patTestKey"),
+    )
+    base_id = "appTestBase"
+    record_id = "recTest123"
+    encoded_table = quote(table_name, safe="")
+    base_url = f"https://api.airtable.com/v0/{base_id}/{encoded_table}"
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"records": [], "id": record_id}
+
+    mock_requests = MagicMock()
+    mock_requests.get = AsyncMock(return_value=mock_response)
+    mock_requests.post = AsyncMock(return_value=mock_response)
+    mock_requests.patch = AsyncMock(return_value=mock_response)
+    mock_requests.delete = AsyncMock(return_value=mock_response)
+
+    with patch("backend.blocks.airtable._api.Requests", return_value=mock_requests):
+        await list_records(credentials, base_id, table_name)
+        assert mock_requests.get.call_args.args[0] == base_url
+
+        await get_record(credentials, base_id, table_name, record_id)
+        assert mock_requests.get.call_args.args[0] == f"{base_url}/{record_id}"
+
+        await create_record(credentials, base_id, table_name, fields={"Name": "x"})
+        assert mock_requests.post.call_args.args[0] == base_url
+
+        await update_record(
+            credentials, base_id, table_name, record_id, fields={"Name": "y"}
+        )
+        assert mock_requests.patch.call_args.args[0] == f"{base_url}/{record_id}"
+
+        await update_multiple_records(
+            credentials,
+            base_id,
+            table_name,
+            records=[{"id": record_id, "fields": {"Name": "z"}}],
+        )
+        assert mock_requests.patch.call_args.args[0] == base_url
+
+        await delete_record(credentials, base_id, table_name, record_id)
+        assert mock_requests.delete.call_args.args[0] == f"{base_url}/{record_id}"
+
+        await delete_multiple_records(
+            credentials, base_id, table_name, records=[record_id]
+        )
+        assert (
+            mock_requests.delete.call_args.args[0]
+            == f"{base_url}?records[]={record_id}"
+        )

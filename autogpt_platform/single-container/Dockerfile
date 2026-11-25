@@ -10,6 +10,7 @@ WORKDIR /app
 RUN corepack enable
 
 COPY autogpt_platform/frontend/package.json autogpt_platform/frontend/pnpm-lock.yaml ./
+COPY autogpt_platform/frontend/patches ./patches
 RUN --mount=type=cache,target=/root/.local/share/pnpm \
     pnpm install --frozen-lockfile
 
@@ -88,8 +89,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # APT_REFRESH is part of the cache key of every RUN after it, so a new value
 # re-runs the package install below and security fixes reach the image instead
-# of staying behind a cached layer. CI passes the UTC date, which refreshes it
-# once a day.
+# of staying behind a cached layer. CI passes the key from
+# .github/scripts/apt_refresh.py, which changes once a day and whenever Debian
+# publishes security updates.
 ARG APT_REFRESH
 
 # Block service auto-start during package installation; Supervisor owns every

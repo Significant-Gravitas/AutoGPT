@@ -85,6 +85,28 @@ export async function limitAuthAttempts({
   }
 }
 
+/**
+ * A per-IP limit for a route whose body names no address, called from the
+ * route itself (the code that finishes a provider sign-in:
+ * sign-in-code-plugin.ts). The same counts and refusal as the routes above.
+ */
+export async function limitAttemptsPerIP({
+  name,
+  limit,
+  headers,
+  context,
+}: {
+  name: string;
+  limit: WindowLimit;
+  headers: Headers | undefined;
+  context: AuthEmailContext & { options: BetterAuthOptions };
+}) {
+  const ip = headers
+    ? getTrustedClientIP(getIP(headers, context.options))
+    : null;
+  if (ip) await claimOrRefuse(context, `${name}-ip:${ip}`, limit);
+}
+
 /** A Better Auth after-hook: a successful sign-in frees the slot it claimed. */
 export async function refundSuccessfulAttempt({
   path,

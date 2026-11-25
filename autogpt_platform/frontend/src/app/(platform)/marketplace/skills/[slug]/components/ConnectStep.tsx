@@ -1,20 +1,18 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { formatProviderList } from "@/components/contextual/IntegrationsPanel/helpers";
 import { PlugSocketIcon } from "@hugeicons/core-free-icons";
 
 interface Props {
-  names: string[];
+  providers: string[];
   onConnect: () => void;
 }
 
 /** Offered after the install has already succeeded, so it reads as the next
  *  thing worth doing rather than something that went wrong. */
-export function ConnectStep({ names, onConnect }: Props) {
-  const providers = new Intl.ListFormat("en", {
-    style: "long",
-    type: "conjunction",
-  }).format(names);
+export function ConnectStep({ providers, onConnect }: Props) {
+  const services = formatProviderList(providers);
 
   return (
     <div
@@ -23,7 +21,7 @@ export function ConnectStep({ names, onConnect }: Props) {
     >
       <Icon icon={PlugSocketIcon} size={18} aria-hidden />
       <Text variant="small" tone="secondary">
-        Its steps use {providers}. Connect when you first need it.
+        Its steps use {services}. Connect when you first need it.
       </Text>
       <Button
         variant="secondary"

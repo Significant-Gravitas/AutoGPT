@@ -171,6 +171,7 @@ export function LibraryAgentList({
           onTabChange={onTabChange}
           allCount={displayedCount}
           favoritesCount={favoritesCount}
+          librarySort={librarySort}
           setLibrarySort={setLibrarySort}
           statusFilter={statusFilter}
           onStatusFilterChange={onStatusFilterChange}

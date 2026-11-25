@@ -38,7 +38,58 @@ export const workspaceKeys = {
   imageHeaders: ["workspace", "image-headers"] as const,
   // Apart from the viewer's, whose no-cache policy a shared entry would override.
   thumbnailHeaders: ["workspace", "thumbnail-headers"] as const,
+  library: (filter: LibraryFilter) => ["workspace", "files", "library", filter] as const,
+  folders: ["workspace", "folders"] as const,
+  storage: ["workspace", "storage"] as const,
 };
+
+/** A folder in the Files page (`WorkspaceFolder`). */
+export interface WorkspaceFolder {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  file_count: number;
+  updated_at: string;
+}
+
+export interface StorageUsage {
+  used_bytes: number;
+  limit_bytes: number;
+}
+
+/** What the Files page lists: a folder's files, or the whole workspace's when searching. */
+export interface LibraryFilter {
+  q: string | null;
+  origin: "uploaded" | null;
+  expertID: string | null;
+  folderID: string | null;
+}
+
+const LIBRARY_PAGE_SIZE = 50;
+
+/** One page of the Files page's list. Without a search, the top level holds only the files in no folder. */
+export function listLibraryPage(filter: LibraryFilter, offset: number) {
+  return apiRequest<FileList>("/api/workspace/files", {
+    query: {
+      limit: LIBRARY_PAGE_SIZE,
+      offset,
+      q: filter.q ?? undefined,
+      origin: filter.origin ?? undefined,
+      expert_id: filter.expertID ?? undefined,
+      folder_id: filter.folderID ?? undefined,
+      root_only: !filter.folderID && !filter.q ? true : undefined,
+    },
+  });
+}
+
+export async function listFolders() {
+  const data = await apiRequest<{ folders: WorkspaceFolder[] }>("/api/workspace/folders");
+  return data.folders;
+}
+
+export function getStorageUsage() {
+  return apiRequest<StorageUsage>("/api/workspace/storage/usage");
+}
 
 const FILES_PAGE_SIZE = 200;
 // A guard against a server that keeps saying there is more.

@@ -6,6 +6,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
+import groq
 import httpx
 import openai
 import pytest
@@ -16,6 +17,7 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import NodeExecutionStats
 from backend.util.exceptions import BlockExecutionError
 from backend.util.llm import saturation
+from backend.util.llm.http_attempts import HttpAttemptLog
 from backend.util.llm.prompt_refusal import PROMPT_REFUSED_MESSAGE
 from backend.util.llm.prompt_refusal_test import (
     OPENAI_INVALID_PROMPT_BODY,
@@ -1831,6 +1833,10 @@ class TestLLMRequestTimeout:
                 ),
                 id="anthropic-sdk",
             ),
+            pytest.param(
+                lambda: groq.APITimeoutError(request=httpx.Request("POST", "http://x")),
+                id="groq-sdk",
+            ),
         ],
     )
     @pytest.mark.asyncio
@@ -1926,10 +1932,12 @@ class TestLLMRequestTimeout:
     ):
         """The 0.9 threshold is the new business logic, so pin it either side.
         Both degenerate budgets (0 / 3600) leave it free to be any value."""
-        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", budget)
         with self._captured_logs() as records:
             llm._log_timeout_outcome(
-                elapsed=elapsed,
+                started=0.0,
+                cut_off=elapsed,
+                attempts=HttpAttemptLog(clock=llm._now),
+                timeout_seconds=budget,
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 execution_context=None,
                 error=TimeoutError("x"),
@@ -1939,10 +1947,12 @@ class TestLLMRequestTimeout:
     def test_a_bare_timeout_still_names_its_cause(self, monkeypatch):
         """``str(asyncio.TimeoutError())`` is "", and ``error`` is the only field
         in the alert that says what went wrong."""
-        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 100)
         with self._captured_logs() as records:
             llm._log_timeout_outcome(
-                elapsed=99.0,
+                started=0.0,
+                cut_off=99.0,
+                attempts=HttpAttemptLog(clock=llm._now),
+                timeout_seconds=100,
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 execution_context=None,
                 error=asyncio.TimeoutError(),
@@ -2029,16 +2039,29 @@ class TestLLMRequestTimeout:
         assert alerts[0].json_fields["user_id"] == "u-2"
         assert alerts[0].json_fields["node_exec_id"] == "ne-2"
 
+    @pytest.mark.parametrize(
+        "sdk_timeout",
+        [
+            pytest.param(openai.APITimeoutError, id="openai-sdk"),
+            pytest.param(anthropic.APITimeoutError, id="anthropic-sdk"),
+            # Unrelated to openai's class; a shortened per-attempt slice lets it
+            # surface before the outer wait_for, so the seam must name it too.
+            pytest.param(groq.APITimeoutError, id="groq-sdk"),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_fast_failure_warns_instead_of_alerting(self, monkeypatch):
+    async def test_fast_failure_warns_instead_of_alerting(
+        self, monkeypatch, sdk_timeout
+    ):
         """A connect-phase failure burns no provider spend; paging on it during an
         outage would bury the cutoffs that cost money. Asserts the warning is
-        actually emitted — absence alone would pass against a no-op helper."""
+        actually emitted — absence alone would pass against a no-op helper, and
+        the warning proves each SDK's timeout was classified at the seam."""
         monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 3600)
 
         with self._captured_logs() as records:
             await self._run_block_expecting_failure(
-                openai.APITimeoutError(request=httpx.Request("POST", "http://x"))
+                sdk_timeout(request=httpx.Request("POST", "http://x"))
             )
 
         assert not self._alerts(records)

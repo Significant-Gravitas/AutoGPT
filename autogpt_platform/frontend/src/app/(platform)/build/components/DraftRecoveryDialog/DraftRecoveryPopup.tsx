@@ -1,8 +1,8 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { cn } from "@/lib/utils";
-import { formatTimeAgo } from "@/lib/utils/time";
 import {
   Tooltip,
   TooltipContent,
@@ -112,7 +112,7 @@ export function DraftRecoveryPopup({
               <Text variant="small" tone="warning">
                 {diffSummary ||
                   `${nodeCount} block${nodeCount !== 1 ? "s" : ""}, ${edgeCount} connection${edgeCount !== 1 ? "s" : ""}`}{" "}
-                • {formatTimeAgo(new Date(savedAt).toISOString())}
+                • <RelativeTime date={savedAt} variant="short" />
               </Text>
             </div>
 
