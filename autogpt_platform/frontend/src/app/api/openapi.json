@@ -5421,7 +5421,9 @@
               }
             }
           },
-          "429": { "description": "Too many sandboxes are running" },
+          "429": {
+            "description": "Usage allowance spent, or too many sandboxes running"
+          },
           "502": { "description": "The desktop could not be started" },
           "503": { "description": "E2B is not configured" }
         }
@@ -8948,7 +8950,9 @@
               }
             }
           },
-          "429": { "description": "Too many sandboxes are running" },
+          "429": {
+            "description": "Usage allowance spent, or too many sandboxes running"
+          },
           "502": { "description": "The desktop could not be started" },
           "503": { "description": "E2B is not configured" }
         }
@@ -22305,6 +22309,10 @@
               { "$ref": "#/components/schemas/TokenRateDisplay" },
               { "type": "null" }
             ]
+          },
+          "max_cost": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Max Cost"
           }
         },
         "type": "object",

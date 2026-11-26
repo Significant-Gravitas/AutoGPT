@@ -28,6 +28,7 @@ import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.admin.test_data_routes
 import backend.api.features.admin.user_admin_routes
+import backend.api.features.anthropic_relay.routes as anthropic_relay_routes
 import backend.api.features.api_keys.routes as api_keys_routes
 import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.billing.credits.routes as credits_routes
@@ -529,6 +530,7 @@ app.include_router(
 app.include_router(home_routes.router, prefix="/api")
 app.include_router(feature_flags_routes.router, prefix="/api")
 app.include_router(platform_config_routes.router, prefix="/api")
+app.include_router(anthropic_relay_routes.router, prefix="/api")
 app.include_router(
     backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )

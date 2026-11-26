@@ -69,6 +69,15 @@ def _stub_block(
 
 
 @pytest.fixture(autouse=True)
+def stub_personal_org(monkeypatch: pytest.MonkeyPatch):
+    """The principal names no organization, so it acts in its owner's personal one."""
+    monkeypatch.setattr(
+        "backend.api.external.middleware.get_user_default_team",
+        AsyncMock(return_value=("personal-org", "personal-team")),
+    )
+
+
+@pytest.fixture(autouse=True)
 def stub_user_lookup(monkeypatch: pytest.MonkeyPatch, test_user_id: str):
     """The direct-block-execute route fetches the user to build an
     ExecutionContext; stub it so block-route tests don't need a real DB."""
@@ -357,6 +366,7 @@ def test_execute_graph_paywall_error_propagates_not_400(
         "add_graph_execution",
         AsyncMock(side_effect=UserPaywalledError("subscription required")),
     )
+    monkeypatch.setattr(routes_mod.graph_db, "get_graph", AsyncMock())
 
     with pytest.raises(UserPaywalledError):
         client.post(
@@ -373,6 +383,7 @@ def test_execute_graph_other_errors_still_return_400(monkeypatch: pytest.MonkeyP
         "add_graph_execution",
         AsyncMock(side_effect=ValueError("graph missing")),
     )
+    monkeypatch.setattr(routes_mod.graph_db, "get_graph", AsyncMock())
 
     response = client.post(
         "/graphs/00000000-0000-0000-0000-000000000001/execute/1",
@@ -413,7 +424,7 @@ def test_execute_graph_uses_key_org_not_user_default(
     # If the key-org path is honored, the user-default resolver is never hit.
     default_team = AsyncMock(return_value=("personal-org", "personal-team"))
     monkeypatch.setattr(
-        "backend.api.features.orgs.db.get_user_default_team", default_team
+        "backend.api.external.middleware.get_user_default_team", default_team
     )
 
     response = client.post(
