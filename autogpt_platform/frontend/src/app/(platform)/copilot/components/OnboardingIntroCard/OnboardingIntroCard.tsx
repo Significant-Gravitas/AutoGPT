@@ -121,7 +121,7 @@ export function OnboardingIntroCard({
           <AutopilotAvatar size={40} transparent className="size-full" />
         </motion.span>
         <motion.div {...reveal(HEADING_START)}>
-          <Text variant="large-medium" tone="primary">
+          <Text variant="large" weight="medium" tone="primary">
             Hey
             {name ? (
               <>

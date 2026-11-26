@@ -55,7 +55,8 @@ export function CardDescription({
 }: HTMLAttributes<HTMLParagraphElement>) {
   return (
     <Text
-      variant="body-tight"
+      variant="body"
+      leading="5"
       as="p"
       data-slot="card-description"
       tone="muted"

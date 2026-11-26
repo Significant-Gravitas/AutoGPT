@@ -159,7 +159,9 @@ export function TourSidebar({ variant = "tour" }: Props) {
                   <CollapsibleTrigger>
                     <Text
                       as="span"
-                      variant="body-sm-medium-inherit"
+                      variant="body-sm"
+                      weight="medium"
+                      leading="inherit"
                       tone="inherit"
                     >
                       Workspace

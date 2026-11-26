@@ -88,7 +88,7 @@ export function RecentChats() {
   if (!groups.length && !pinnedSessions.length && !newExperts.length) {
     return (
       <div className="px-2 py-2">
-        <Text variant="body-tight" as="p" tone="muted">
+        <Text variant="body" leading="5" as="p" tone="muted">
           No conversations yet
         </Text>
       </div>
@@ -158,7 +158,9 @@ export function RecentChats() {
             <div className="flex items-center gap-1.5 px-2 pb-1.5 text-foreground-tertiary">
               <Icon icon={PinIcon} className="size-3.5" />
               <Text
-                variant="small-medium-tight"
+                variant="small"
+                weight="medium"
+                leading="4"
                 as="span"
                 tone="muted"
                 className="truncate"

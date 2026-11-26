@@ -37,7 +37,8 @@ export function Breadcrumbs({ items }: Props) {
           )}
           {index < items.length - 1 && (
             <Text
-              variant="small-medium"
+              variant="small"
+              weight="medium"
               data-slot="breadcrumbs-separator"
               tone="secondary"
             >

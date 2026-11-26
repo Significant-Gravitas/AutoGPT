@@ -24,12 +24,18 @@ export function ResolutionModeBar({
     if (incompatibilities.missingInputs.length > 0) {
       sections.push(
         <div key="missing-inputs" className="mb-1">
-          <Text variant="small-semibold-tight" as="span" tone="inherit">
+          <Text
+            variant="small"
+            weight="semibold"
+            leading="4"
+            as="span"
+            tone="inherit"
+          >
             Missing inputs:{" "}
           </Text>
           {incompatibilities.missingInputs.map((name, i) => (
             <React.Fragment key={name}>
-              <Text variant="small-mono-tight" as="code" tone="inherit">
+              <Text variant="small" mono leading="4" as="code" tone="inherit">
                 {name}
               </Text>
               {i < incompatibilities.missingInputs.length - 1 && ", "}
@@ -41,12 +47,18 @@ export function ResolutionModeBar({
     if (incompatibilities.missingOutputs.length > 0) {
       sections.push(
         <div key="missing-outputs" className="mb-1">
-          <Text variant="small-semibold-tight" as="span" tone="inherit">
+          <Text
+            variant="small"
+            weight="semibold"
+            leading="4"
+            as="span"
+            tone="inherit"
+          >
             Missing outputs:{" "}
           </Text>
           {incompatibilities.missingOutputs.map((name, i) => (
             <React.Fragment key={name}>
-              <Text variant="small-mono-tight" as="code" tone="inherit">
+              <Text variant="small" mono leading="4" as="code" tone="inherit">
                 {name}
               </Text>
               {i < incompatibilities.missingOutputs.length - 1 && ", "}
@@ -58,12 +70,18 @@ export function ResolutionModeBar({
     if (incompatibilities.newRequiredInputs.length > 0) {
       sections.push(
         <div key="new-required" className="mb-1">
-          <Text variant="small-semibold-tight" as="span" tone="inherit">
+          <Text
+            variant="small"
+            weight="semibold"
+            leading="4"
+            as="span"
+            tone="inherit"
+          >
             New required inputs:{" "}
           </Text>
           {incompatibilities.newRequiredInputs.map((name, i) => (
             <React.Fragment key={name}>
-              <Text variant="small-mono-tight" as="code" tone="inherit">
+              <Text variant="small" mono leading="4" as="code" tone="inherit">
                 {name}
               </Text>
               {i < incompatibilities.newRequiredInputs.length - 1 && ", "}
@@ -75,12 +93,18 @@ export function ResolutionModeBar({
     if (incompatibilities.inputTypeMismatches.length > 0) {
       sections.push(
         <div key="type-mismatches" className="mb-1">
-          <Text variant="small-semibold-tight" as="span" tone="inherit">
+          <Text
+            variant="small"
+            weight="semibold"
+            leading="4"
+            as="span"
+            tone="inherit"
+          >
             Type changed:{" "}
           </Text>
           {incompatibilities.inputTypeMismatches.map((m, i) => (
             <React.Fragment key={m.name}>
-              <Text variant="small-mono-tight" as="code" tone="inherit">
+              <Text variant="small" mono leading="4" as="code" tone="inherit">
                 {m.name}
               </Text>
               <span className="text-foreground-subtle">
@@ -101,7 +125,7 @@ export function ResolutionModeBar({
     <div className="flex items-center justify-between gap-2 rounded-t-xl bg-warning-surface px-3 py-2">
       <div className="flex items-center gap-2">
         <Icon icon={Alert01Icon} tone="warning" className="h-4 w-4" />
-        <Text variant="body-tight" tone="warning" as="span">
+        <Text variant="body" leading="5" tone="warning" as="span">
           Remove incompatible connections
         </Text>
         <Tooltip>
@@ -114,16 +138,18 @@ export function ResolutionModeBar({
           </TooltipTrigger>
           <TooltipContent className="max-w-sm">
             <Text
-              variant="small-semibold-lh-normal"
+              variant="small"
+              weight="semibold"
+              leading="normal"
               tone="inherit"
               className="mb-2"
             >
               Incompatible changes:
             </Text>
-            <Text variant="small-tight" tone="inherit" as="div">
+            <Text variant="small" leading="4" tone="inherit" as="div">
               {renderIncompatibilities()}
             </Text>
-            <Text variant="small-tight" tone="subtle" className="mt-2">
+            <Text variant="small" leading="4" tone="subtle" className="mt-2">
               {(incompatibilities?.newRequiredInputs.length ?? 0) > 0
                 ? "Replace / delete"
                 : "Delete"}{" "}

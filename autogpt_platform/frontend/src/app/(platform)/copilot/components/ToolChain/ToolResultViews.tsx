@@ -125,7 +125,8 @@ export function SearchResults({ items, answer }: SearchResultsProps) {
             )}
             {domain && (
               <Text
-                variant="small-tight"
+                variant="small"
+                leading="4"
                 as="span"
                 tone="subtle"
                 className="ml-auto shrink-0"
@@ -233,7 +234,9 @@ export function FileCard({ row }: RowProps) {
           <Icon icon={fileIcon} size={15} tone="secondary" />
         </div>
         <Text
-          variant="small-mono-tight"
+          variant="small"
+          mono
+          leading="4"
           as="p"
           tone="body"
           className="min-w-0 flex-1 truncate"
@@ -242,7 +245,8 @@ export function FileCard({ row }: RowProps) {
         </Text>
         {typeof size === "number" && (
           <Text
-            variant="small-tight"
+            variant="small"
+            leading="4"
             as="span"
             tone="subtle"
             className="shrink-0"

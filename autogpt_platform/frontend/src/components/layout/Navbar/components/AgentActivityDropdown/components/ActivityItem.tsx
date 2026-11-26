@@ -140,7 +140,7 @@ export function ActivityItem({ execution }: Props) {
       {/* Icon + Agent Name */}
       <div className="flex items-center space-x-2">
         {getStatusIcon()}
-        <Text variant="small-medium" className="max-w-44 truncate">
+        <Text variant="small" weight="medium" className="max-w-44 truncate">
           {execution.agent_name}
         </Text>
       </div>

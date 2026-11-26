@@ -27,7 +27,7 @@ export function StepStrip({ currentStep }: Props) {
   return (
     <div className="flex flex-col gap-6 px-1 pb-6 sm:px-2">
       <div className="flex items-center gap-2 pr-12">
-        <Text variant="lead-medium" as="span">
+        <Text variant="lead" weight="medium" as="span">
           Publish workflow
         </Text>
       </div>
@@ -109,10 +109,10 @@ export function StepStrip({ currentStep }: Props) {
                   </AnimatePresence>
                 </motion.span>
                 <Text
-                  variant="small-medium"
+                  variant="small"
                   as="span"
                   tone="inherit"
-                  weight={!isCurrent && !isComplete ? "normal" : undefined}
+                  weight={!isCurrent && !isComplete ? "normal" : "medium"}
                   motion="colors"
                   className="whitespace-nowrap"
                 >

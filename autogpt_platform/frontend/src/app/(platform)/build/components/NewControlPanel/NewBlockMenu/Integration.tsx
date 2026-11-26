@@ -51,7 +51,8 @@ export const Integration: IntegrationComponent = ({
         <div className="flex items-center justify-between gap-2">
           {title && (
             <Text
-              variant="body-medium"
+              variant="body"
+              weight="medium"
               tone={rest.disabled ? "subtle" : "body"}
               className="line-clamp-1 flex-1"
             >
@@ -60,7 +61,8 @@ export const Integration: IntegrationComponent = ({
           )}
           <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-pill bg-surface-hover p-1.5">
             <Text
-              variant="body-medium"
+              variant="body"
+              weight="medium"
               as="span"
               tone={rest.disabled ? "subtle" : "muted"}
               className="block"
@@ -70,7 +72,8 @@ export const Integration: IntegrationComponent = ({
           </span>
         </div>
         <Text
-          variant="small-loose"
+          variant="small"
+          leading="5"
           as="span"
           tone={rest.disabled ? "subtle" : "muted"}
           className="line-clamp-1"

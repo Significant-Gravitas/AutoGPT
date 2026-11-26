@@ -35,6 +35,21 @@ type CustomProps = {
     | "display"
     | "caps"
     | "eyebrow";
+  /** Line height over the variant's own: a ratio, the parent's (`inherit`),
+   * or a fixed Tailwind step (`"4"` is 1rem, `"5"` 1.25rem, ...). */
+  leading?:
+    | "none"
+    | "tight"
+    | "snug"
+    | "normal"
+    | "relaxed"
+    | "inherit"
+    | "4"
+    | "5"
+    | "6"
+    | "8";
+  /** Below md, renders at body (14/20) or large (16/24) instead. */
+  narrowSize?: "body" | "large";
   align?: "left" | "center" | "right" | "start" | "end";
   /** Animates colour changes. */
   motion?: "colors";
@@ -60,6 +75,8 @@ export function Text({
   decoration,
   transform,
   tracking,
+  leading,
+  narrowSize,
   align,
   motion,
   className = "",
@@ -78,6 +95,8 @@ export function Text({
       decoration,
       transform,
       tracking,
+      leading,
+      narrowSize,
       align,
       motion,
     }),

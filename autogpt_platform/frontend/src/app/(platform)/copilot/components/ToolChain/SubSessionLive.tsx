@@ -310,7 +310,9 @@ export function SubSessionPendingCard({
           size={28}
         />
         <Text
-          variant="body-medium-tight"
+          variant="body"
+          weight="medium"
+          leading="5"
           tone="emphasis"
           className="min-w-0 flex-1 truncate"
         >

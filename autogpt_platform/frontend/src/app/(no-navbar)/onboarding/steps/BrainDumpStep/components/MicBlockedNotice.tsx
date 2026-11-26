@@ -55,7 +55,7 @@ export function MicBlockedNotice({
     >
       <Icon icon={MicOff01Icon} size={18} className="mt-0.5 shrink-0" />
       <Text variant="body" tone="secondary">
-        <Text variant="body-medium" as="span">
+        <Text variant="body" weight="medium" as="span">
           {copy.reason}
         </Text>{" "}
         {copy.howTo}{" "}

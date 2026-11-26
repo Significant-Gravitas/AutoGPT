@@ -42,7 +42,7 @@ export function SessionNotFound({ removedChat = null }: Props) {
         className="flex max-w-md flex-col items-center gap-3 text-center"
       >
         <Icon icon={BubbleChatBlockedIcon} size={28} tone="muted" />
-        <Text variant="large-medium" as="h2">
+        <Text variant="large" weight="medium" as="h2">
           {removedChat
             ? getRemovedChatTitle(removedChat)
             : "This chat isn't available on this account"}

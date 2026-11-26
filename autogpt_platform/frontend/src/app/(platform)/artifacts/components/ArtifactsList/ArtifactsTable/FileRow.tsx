@@ -113,7 +113,8 @@ export function FileRow({
               data-testid="artifacts-card-open"
             >
               <Text
-                variant="body-medium"
+                variant="body"
+                weight="medium"
                 as="span"
                 tone="primary"
                 className="truncate"

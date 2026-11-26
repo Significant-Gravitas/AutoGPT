@@ -29,7 +29,7 @@ export function SearchFilterChips({ onFilterChange, ...counts }: Props) {
       {getFilterOptions(counts).map((filter) => {
         const isSelected = selected === filter.value;
         const isDisabled = filter.value !== "all" && filter.count === 0;
-        const variant = isSelected ? "large-medium" : "large";
+        const weight = isSelected ? "medium" : undefined;
         return (
           <button
             key={filter.value}
@@ -46,10 +46,10 @@ export function SearchFilterChips({ onFilterChange, ...counts }: Props) {
                   : "border border-foreground-secondary text-foreground-emphasis",
             )}
           >
-            <Text variant={variant} as="span" tone="inherit">
+            <Text variant="large" weight={weight} as="span" tone="inherit">
               {filter.label}
             </Text>
-            <Text variant={variant} as="span" tone="inherit">
+            <Text variant="large" weight={weight} as="span" tone="inherit">
               {filter.count}
             </Text>
           </button>

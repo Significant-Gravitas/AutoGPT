@@ -66,7 +66,8 @@ export function AutopilotCard({
 
         <div className="mt-2 flex w-full flex-col items-start gap-1 px-2 pl-5 text-left">
           <Text
-            variant="lead-medium"
+            variant="lead"
+            weight="medium"
             tone="primary"
             className="mb-1 w-full truncate"
           >

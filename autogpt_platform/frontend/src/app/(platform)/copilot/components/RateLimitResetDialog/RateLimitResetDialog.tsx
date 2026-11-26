@@ -109,7 +109,7 @@ export function RateLimitResetDialog({
       variant="compact"
       title={
         <div className="pr-6">
-          <Text tone="muted" variant="small-tight" className="mb-2">
+          <Text tone="muted" variant="small" leading="4" className="mb-2">
             {checking
               ? "Checking your allowance"
               : unavailable
@@ -135,7 +135,7 @@ export function RateLimitResetDialog({
     >
       <Dialog.Content>
         {checking ? (
-          <Text tone="muted" variant="body-tight" role="status">
+          <Text tone="muted" variant="body" leading="5" role="status">
             Refreshing your plan and usage…
           </Text>
         ) : unavailable ? (
@@ -194,7 +194,9 @@ export function RateLimitResetDialog({
             {isBillingEnabled && model.isTopTier && (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-base p-4">
                 <div>
-                  <Text variant="small-medium">Need more capacity?</Text>
+                  <Text variant="small" weight="medium">
+                    Need more capacity?
+                  </Text>
                   <Text tone="muted" variant="small" className="mt-1">
                     We’ll help find the right fit.
                   </Text>

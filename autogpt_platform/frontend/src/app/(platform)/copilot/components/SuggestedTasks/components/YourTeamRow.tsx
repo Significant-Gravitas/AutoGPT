@@ -29,7 +29,7 @@ export function YourTeamRow({ experts }: Props) {
           <span aria-hidden className="contents">
             <AutopilotAvatar size={AVATAR_SIZE} />
           </span>
-          <Text variant="small-medium" as="span" tone="primary">
+          <Text variant="small" weight="medium" as="span" tone="primary">
             Otto
           </Text>
           <Text variant="small" as="span" tone="secondary">
@@ -49,7 +49,7 @@ export function YourTeamRow({ experts }: Props) {
                 size={AVATAR_SIZE}
               />
             </span>
-            <Text variant="small-medium" as="span" tone="primary">
+            <Text variant="small" weight="medium" as="span" tone="primary">
               {expert.name}
             </Text>
             {expert.role ? (

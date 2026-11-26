@@ -51,7 +51,8 @@ export function TourStepCard({
         <Text
           as="h2"
           id={titleID}
-          variant="large-semibold"
+          variant="large"
+          weight="semibold"
           tone="primary"
           className="text-balance [overflow-wrap:anywhere]"
         >

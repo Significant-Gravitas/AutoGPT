@@ -69,7 +69,12 @@ export function ToolAccordion({
               {title}
             </p>
             {description && (
-              <Text variant="small-tight" tone="body" className="truncate">
+              <Text
+                variant="small"
+                leading="4"
+                tone="body"
+                className="truncate"
+              >
                 {description}
               </Text>
             )}

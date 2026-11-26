@@ -75,7 +75,12 @@ export function LocalPCBadge({ sessionID, machineID, allowedRoot }: Props) {
             className="h-3.5 w-3.5 shrink-0"
             aria-hidden="true"
           />
-          <Text variant="small-medium-tight" className="min-w-0 break-words">
+          <Text
+            variant="small"
+            weight="medium"
+            leading="4"
+            className="min-w-0 break-words"
+          >
             {label}
           </Text>
         </button>

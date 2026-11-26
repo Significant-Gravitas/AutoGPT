@@ -174,7 +174,8 @@ function StatRow({ items }: { items: StatItem[] }) {
           </Text>
           <div className="tabular-nums">
             <Text
-              variant="body-medium"
+              variant="body"
+              weight="medium"
               tone={item.tone === "warn" ? undefined : "emphasis"}
               className={
                 // oxlint-disable-next-line design-system/no-restyle -- Text has no orange tone (deferred)

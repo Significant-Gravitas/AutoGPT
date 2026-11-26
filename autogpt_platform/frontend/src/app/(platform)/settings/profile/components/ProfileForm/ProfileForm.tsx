@@ -162,7 +162,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
       className="flex w-full flex-col gap-2"
     >
       <div className="flex items-center justify-between px-4">
-        <Text variant="body-medium" as="span">
+        <Text variant="body" weight="medium" as="span">
           Bio
         </Text>
         <Text

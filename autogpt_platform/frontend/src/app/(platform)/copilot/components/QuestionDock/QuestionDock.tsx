@@ -88,7 +88,13 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
   return (
     <div className="animate-fade-up rounded-2xl bg-surface p-3 shadow-popover-raised ring-1 ring-border-base/70 motion-reduce:animate-none">
       <div className="flex items-center justify-between px-0.5 pb-2">
-        <Text variant="small-medium-tight" as="span" tone="muted">
+        <Text
+          variant="small"
+          weight="medium"
+          leading="4"
+          as="span"
+          tone="muted"
+        >
           {questions.length === 1 ? "Quick question" : "Quick questions"}
         </Text>
         <button

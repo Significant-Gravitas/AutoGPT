@@ -85,7 +85,7 @@ export function StatsOverview({ stats, index = 0 }: Props) {
               <UIIcon icon={StarIcon} size={18} />
             </div>
             <div className="flex flex-col">
-              <Text variant="body-medium" as="span">
+              <Text variant="body" weight="medium" as="span">
                 Average rating
               </Text>
               <Text variant="small" tone="muted">
@@ -93,7 +93,7 @@ export function StatsOverview({ stats, index = 0 }: Props) {
               </Text>
             </div>
           </div>
-          <Text variant="h3" as="span" size="large-medium">
+          <Text variant="h3" as="span" size="large" weight="medium">
             {stats.averageRating.toFixed(1)}
             <span className="text-foreground-subtle"> / 5</span>
           </Text>

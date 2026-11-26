@@ -122,7 +122,7 @@ export function BriefingCard({ briefing, className }: Props) {
             // Separator would move the button, and its focus outline, 1px.
             className="flex w-full items-center justify-center gap-1.5 border-t border-separator px-4 py-3 text-foreground-tertiary transition-colors hover:bg-surface-muted hover:text-foreground-strong"
           >
-            <Text variant="small-medium" tone="inherit">
+            <Text variant="small" weight="medium" tone="inherit">
               {isShowingAll
                 ? "Show less"
                 : `Show all results (${run_items.length})`}

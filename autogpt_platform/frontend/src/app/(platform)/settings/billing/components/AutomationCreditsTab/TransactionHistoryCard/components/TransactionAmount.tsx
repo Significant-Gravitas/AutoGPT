@@ -1,12 +1,17 @@
-import { Text } from "@/components/atoms/Text/Text";
+import { Text, type TextProps } from "@/components/atoms/Text/Text";
 import { formatAmount } from "../helpers";
 
 type Props = {
   amount: number;
-  variant?: "body-medium" | "small-medium" | "small";
+  variant?: "body" | "small";
+  weight?: TextProps["weight"];
 };
 
-export function TransactionAmount({ amount, variant = "body-medium" }: Props) {
+export function TransactionAmount({
+  amount,
+  variant = "body",
+  weight = "medium",
+}: Props) {
   const isCredit = amount > 0;
   return (
     <span
@@ -16,7 +21,12 @@ export function TransactionAmount({ amount, variant = "body-medium" }: Props) {
           : "whitespace-nowrap tabular-nums"
       }
     >
-      <Text variant={variant} as="span" tone={isCredit ? "inherit" : undefined}>
+      <Text
+        variant={variant}
+        weight={weight}
+        as="span"
+        tone={isCredit ? "inherit" : undefined}
+      >
         {formatAmount(amount)}
       </Text>
     </span>

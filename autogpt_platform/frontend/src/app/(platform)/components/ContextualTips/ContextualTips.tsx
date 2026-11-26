@@ -119,14 +119,15 @@ function ContextualTip({
         <div className="flex flex-col gap-2">
           <span className="flex items-center gap-1.5 text-foreground-secondary">
             <Icon icon={BulbIcon} size={14} aria-hidden />
-            <Text variant="small-medium" tone="inherit">
+            <Text variant="small" weight="medium" tone="inherit">
               Tip
             </Text>
           </span>
           <Text
             as="h2"
             id={titleID}
-            variant="body-medium"
+            variant="body"
+            weight="medium"
             tone="primary"
             className="[overflow-wrap:anywhere]"
           >

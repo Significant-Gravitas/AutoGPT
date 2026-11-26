@@ -48,7 +48,9 @@ export function ExecutionCard({
           )}
         </div>
         <Text
-          variant="body-sm-medium-inherit"
+          variant="body-sm"
+          weight="medium"
+          leading="inherit"
           tone="emphasis"
           className="min-w-0 flex-1 truncate"
         >

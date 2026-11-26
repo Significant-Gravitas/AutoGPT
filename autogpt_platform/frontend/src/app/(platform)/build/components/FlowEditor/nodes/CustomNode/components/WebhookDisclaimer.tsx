@@ -32,7 +32,7 @@ export const WebhookDisclaimer = ({ nodeId }: { nodeId: string }) => {
       <div className="px-4 pt-4">
         <Alert className="mb-3 rounded-xlarge">
           <AlertDescription>
-            <Text variant="small-medium">
+            <Text variant="small" weight="medium">
               You can set up and manage this trigger in your{" "}
               <Link
                 href={
@@ -42,7 +42,13 @@ export const WebhookDisclaimer = ({ nodeId }: { nodeId: string }) => {
                 }
                 className="underline"
               >
-                <Text variant="small-medium-inherit" as="span" tone="inherit">
+                <Text
+                  variant="small"
+                  weight="medium"
+                  leading="inherit"
+                  as="span"
+                  tone="inherit"
+                >
                   Workflow Library
                 </Text>
               </Link>

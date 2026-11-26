@@ -43,7 +43,7 @@ export function SuccessView({
         </div>
 
         <div className="w-full rounded-xl bg-surface-hover px-6 py-5 text-center">
-          <Text variant="body-medium" tone="muted">
+          <Text variant="body" weight="medium" tone="muted">
             <strong>{label}</strong> is now connected to your AutoGPT account.
             <br />
             {detail}

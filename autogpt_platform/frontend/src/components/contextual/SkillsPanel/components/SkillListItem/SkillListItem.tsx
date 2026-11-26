@@ -54,7 +54,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
         </div>
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-2">
-            <Text variant="body-medium" className="break-words">
+            <Text variant="body" weight="medium" className="break-words">
               {skill.name}
             </Text>
             {isNew && (

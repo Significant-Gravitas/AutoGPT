@@ -51,7 +51,7 @@ export function ThumbnailImages({
     <div className="space-y-4">
       <div className="flex flex-col gap-1">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <Text variant="body-medium" as="h3">
+          <Text variant="body" weight="medium" as="h3">
             Media
           </Text>
           <Text variant="small" as="span" tone="muted">
@@ -63,7 +63,7 @@ export function ThumbnailImages({
           thumbnail.
         </Text>
         {errorMessage && (
-          <Text variant="body-tight" tone="error">
+          <Text variant="body" leading="5" tone="error">
             {errorMessage}
           </Text>
         )}

@@ -70,7 +70,7 @@ export function McpConnectPanel({
             className="mt-0.5"
           />
           <span className="flex flex-col">
-            <Text variant="body-medium" as="span">
+            <Text variant="body" weight="medium" as="span">
               Allow changes
             </Text>
             <Text variant="small" as="span" tone="muted">

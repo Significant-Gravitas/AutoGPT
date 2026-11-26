@@ -11,7 +11,7 @@ export function SubmissionLoadError() {
           <Icon icon={InboxIcon} className="h-8 w-8" />
         </div>
         <div className="space-y-2">
-          <Text variant="large-medium" tone="primary">
+          <Text variant="large" weight="medium" tone="primary">
             Failed to load workflows
           </Text>
           <Text variant="body" tone="secondary">

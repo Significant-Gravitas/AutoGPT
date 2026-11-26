@@ -83,14 +83,14 @@ export const IntegrationBlocks = () => {
                 setIntegration(undefined);
               }}
             >
-              <Text variant="body-medium" as="span" tone="inherit">
+              <Text variant="body" weight="medium" as="span" tone="inherit">
                 Integrations
               </Text>
             </button>
-            <Text variant="body-medium" tone="emphasis">
+            <Text variant="body" weight="medium" tone="emphasis">
               /
             </Text>
-            <Text variant="body-medium" tone="emphasis">
+            <Text variant="body" weight="medium" tone="emphasis">
               {integration}
             </Text>
           </div>

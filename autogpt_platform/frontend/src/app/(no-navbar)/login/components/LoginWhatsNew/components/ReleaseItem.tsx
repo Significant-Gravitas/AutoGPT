@@ -54,7 +54,13 @@ export function ReleaseItem({ release, isLatest, isLast }: Props) {
         </span>
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex items-center gap-2">
-            <Text as="span" variant="small-medium-tight" tone="secondary">
+            <Text
+              as="span"
+              variant="small"
+              weight="medium"
+              leading="4"
+              tone="secondary"
+            >
               {release.dateRange}
             </Text>
             {isLatest ? (
@@ -71,7 +77,8 @@ export function ReleaseItem({ release, isLatest, isLast }: Props) {
           </span>
           <Text
             as="span"
-            variant="body-medium"
+            variant="body"
+            weight="medium"
             tone="primary"
             title={headline.length > CLAMP_HINT_CHARS ? headline : undefined}
             className="mt-1 line-clamp-3 [overflow-wrap:anywhere]"
@@ -82,7 +89,8 @@ export function ReleaseItem({ release, isLatest, isLast }: Props) {
             <Text
               as="span"
               id={detailsID}
-              variant="body-tight"
+              variant="body"
+              leading="5"
               tone="secondary"
               title={details.length > CLAMP_HINT_CHARS ? details : undefined}
               className="mt-0.5 line-clamp-3 [overflow-wrap:anywhere]"

@@ -90,7 +90,8 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
       <div className="flex flex-1 flex-col items-start gap-0.5">
         {title && (
           <Text
-            variant="body-medium"
+            variant="body"
+            weight="medium"
             as="span"
             tone={rest.disabled ? "subtle" : "emphasis"}
             className="line-clamp-1"
@@ -103,12 +104,13 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
         )}
         {description && (
           <Text
-            variant="small-loose"
+            variant="small"
+            leading="5"
             as="span"
             tone={rest.disabled ? "subtle" : "muted"}
             className="line-clamp-1"
           >
-            {highlightText(description, highlightedText, "small-bold-loose")}
+            {highlightText(description, highlightedText, "small", "5")}
           </Text>
         )}
       </div>

@@ -26,7 +26,7 @@ export function SuggestedGoalCard({
         <Icon icon={BulbIcon} size={20} tone="warning" className="mt-0.5" />
         <div className="flex-1 space-y-3">
           <div>
-            <Text variant="body-medium" tone="primary">
+            <Text variant="body" weight="medium" tone="primary">
               {goalType === "unachievable"
                 ? "Goal cannot be accomplished"
                 : "Goal needs more detail"}
@@ -45,7 +45,7 @@ export function SuggestedGoalCard({
             >
               Suggested alternative:
             </Text>
-            <Text tone="primary" variant="body-medium">
+            <Text tone="primary" variant="body" weight="medium">
               {suggestedGoal}
             </Text>
           </div>

@@ -38,7 +38,7 @@ export function AgentSavedCard({
           height={24}
           className="relative top-1"
         />
-        <Text variant="large-medium" className="mb-2 leading-inherit">
+        <Text variant="large" weight="medium" className="mb-2 leading-inherit">
           Workflow <span className="text-brand">{agentName}</span> {message}
         </Text>
       </div>

@@ -664,7 +664,8 @@ export function ChatMessagesContainer({
                     <CredentialMentionText text={msg} />
                   </span>
                   <Text
-                    variant="small-tight"
+                    variant="small"
+                    leading="4"
                     as="span"
                     tone="muted"
                     className="flex items-center gap-1"

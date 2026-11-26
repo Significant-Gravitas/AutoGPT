@@ -6,7 +6,7 @@ interface Props {
 
 export function TrialTitle({ children }: Props) {
   return (
-    <Text variant="h5-semibold" as="h2" tone="emphasis">
+    <Text variant="h5" weight="semibold" as="h2" tone="emphasis">
       {children}
     </Text>
   );

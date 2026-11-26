@@ -89,7 +89,7 @@ export function EditSkillForm({
       <Input
         id="skill-edit-description"
         label="Description"
-        labelVariant="small-medium"
+        labelVariant="small"
         value={draft.description}
         maxLength={1024}
         required
@@ -99,7 +99,7 @@ export function EditSkillForm({
       <Input
         id="skill-edit-body"
         label="Procedure (Markdown)"
-        labelVariant="small-medium"
+        labelVariant="small"
         type="textarea"
         rows={12}
         value={draft.body}

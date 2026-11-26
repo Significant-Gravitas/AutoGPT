@@ -499,7 +499,7 @@ function DreamResultPanel({ result, onDismiss }: DreamResultPanelProps) {
   return (
     <div className="space-y-2" data-testid="dream-result-panel">
       <div className="flex items-center justify-between gap-2">
-        <Text variant="small-medium" as="span" tone="body">
+        <Text variant="small" weight="medium" as="span" tone="body">
           Last dream pass{" "}
           <span className="font-mono text-foreground-tertiary">
             {result.passID}

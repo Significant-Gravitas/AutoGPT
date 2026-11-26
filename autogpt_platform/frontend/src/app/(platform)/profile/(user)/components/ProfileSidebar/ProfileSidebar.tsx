@@ -26,7 +26,7 @@ export function ProfileSidebar({ links }: Props) {
       className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-foreground-emphasis hover:bg-action hover:text-action-foreground"
     >
       {link.icon}
-      <Text variant="large-medium-tight" as="div" tone="inherit">
+      <Text variant="large" weight="medium" leading="6" as="div" tone="inherit">
         {link.text}
       </Text>
     </Link>

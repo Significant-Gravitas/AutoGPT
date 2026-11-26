@@ -194,7 +194,9 @@ const MultiSelectorTrigger = forwardRef<
           variant="secondary"
         >
           <Text
-            variant="small-semibold-tight"
+            variant="small"
+            weight="semibold"
+            leading="4"
             as="span"
             tone="inherit"
             data-slot="multi-select-badge-label"
@@ -289,7 +291,8 @@ const MultiSelectorList = forwardRef<
       {children}
       <CommandEmpty data-slot="multi-select-empty">
         <Text
-          variant="body-tight"
+          variant="body"
+          leading="5"
           as="span"
           data-slot="multi-select-empty-text"
           tone="muted"
@@ -336,7 +339,8 @@ const MultiSelectorItem = forwardRef<
       onMouseDown={mousePreventDefault}
     >
       <Text
-        variant="body-tight"
+        variant="body"
+        leading="5"
         as="span"
         tone="inherit"
         data-slot="multi-select-item-label"

@@ -41,7 +41,7 @@ export function SelectionBar({
       data-testid="artifacts-selection-bar"
     >
       <div className="flex items-center gap-3">
-        <Text variant="body-medium" as="span" tone="primary">
+        <Text variant="body" weight="medium" as="span" tone="primary">
           {count} selected
         </Text>
         {count < totalCount ? (

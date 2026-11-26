@@ -17,7 +17,7 @@ export function SharedChatErrorState({ isDeadLink, onRetry }: Props) {
             <Icon icon={InformationCircleIcon} size={24} aria-hidden />
           </div>
           <div className="space-y-2">
-            <Text variant="lead-semibold" as="h3">
+            <Text variant="lead" weight="semibold" as="h3">
               {isDeadLink ? "Share link not found" : "Unable to load"}
             </Text>
             <Text variant="body" tone="muted">

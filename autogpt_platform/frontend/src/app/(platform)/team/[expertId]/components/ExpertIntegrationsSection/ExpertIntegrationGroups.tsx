@@ -126,7 +126,12 @@ export function ExpertIntegrationGroups({
                       size={20}
                     />
                   </span>
-                  <Text variant="body-md-medium" as="span" tone="primary">
+                  <Text
+                    variant="body-md"
+                    weight="medium"
+                    as="span"
+                    tone="primary"
+                  >
                     {group.name}
                   </Text>
                   <span className="inline-flex items-center justify-center rounded-md bg-surface-hover px-1.5 py-0.5 font-sans text-caption font-medium text-foreground-secondary tabular-nums">
@@ -170,7 +175,7 @@ function ExpertIntegrationRow({ integration, isRemoving, onRemove }: RowProps) {
     >
       <div className="flex flex-col gap-0.5">
         <div className="flex items-center gap-2">
-          <Text variant="body-md-medium" as="span" tone="primary">
+          <Text variant="body-md" weight="medium" as="span" tone="primary">
             {name}
           </Text>
           <span className="inline-flex items-center justify-center rounded-md bg-surface-hover px-1.5 py-0.5 font-sans text-caption leading-4 text-foreground-secondary">

@@ -68,11 +68,15 @@ export function RunFailures({ run }: Props) {
                 {steps.map((step) => (
                   <li key={step.id} className="flex flex-col gap-1">
                     {step.name ? (
-                      <Text variant="body-medium">{step.name}</Text>
+                      <Text variant="body" weight="medium">
+                        {step.name}
+                      </Text>
                     ) : isLoadingNames ? (
                       <Skeleton className="h-5 w-32" />
                     ) : (
-                      <Text variant="body-medium">Unknown step</Text>
+                      <Text variant="body" weight="medium">
+                        Unknown step
+                      </Text>
                     )}
                     <ShowMoreText
                       variant="small"

@@ -32,13 +32,15 @@ export function SkillLoadedCard({ output }: Props) {
       </div>
       <div className="min-w-0 flex-1">
         <Text
-          variant="body-sm-medium-inherit"
+          variant="body-sm"
+          weight="medium"
+          leading="inherit"
           tone="emphasis"
           className="truncate"
         >
           Skill loaded: {name} v{version} · {origin}
         </Text>
-        <Text variant="small-tight" tone="muted" className="truncate">
+        <Text variant="small" leading="4" tone="muted" className="truncate">
           Loaded for this task; loading is not a success record.
         </Text>
       </div>

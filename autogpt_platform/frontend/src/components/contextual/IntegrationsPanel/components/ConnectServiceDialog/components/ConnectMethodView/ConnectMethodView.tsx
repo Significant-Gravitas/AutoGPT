@@ -216,7 +216,9 @@ export function ConnectMethodView({
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <span className="flex items-center gap-2">
                           <Text
-                            variant="body-semibold-tight"
+                            variant="body"
+                            weight="semibold"
+                            leading="5"
                             as="span"
                             tone="primary"
                           >
@@ -228,7 +230,12 @@ export function ConnectMethodView({
                             </span>
                           )}
                         </span>
-                        <Text variant="small-tight" as="span" tone="muted">
+                        <Text
+                          variant="small"
+                          leading="4"
+                          as="span"
+                          tone="muted"
+                        >
                           {copy.description}
                         </Text>
                       </span>

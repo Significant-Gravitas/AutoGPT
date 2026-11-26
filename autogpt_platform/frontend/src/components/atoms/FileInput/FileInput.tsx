@@ -374,7 +374,8 @@ export function FileInput(props: Props) {
 
                 <Text
                   data-slot="file-input-file-name"
-                  variant="small-medium"
+                  variant="small"
+                  weight="medium"
                   className="truncate"
                 >
                   {fileInfo

@@ -116,7 +116,13 @@ export function TurnStatsBar({
         return (
           <span key={counter.category} className="flex items-center gap-1.5">
             {needsDot && (
-              <Text variant="small-tight" as="span" tone="disabled" aria-hidden>
+              <Text
+                variant="small"
+                leading="4"
+                as="span"
+                tone="disabled"
+                aria-hidden
+              >
                 &middot;
               </Text>
             )}

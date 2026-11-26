@@ -61,7 +61,7 @@ export function AccountCard({ user, index = 0 }: Props) {
     >
       <div className="flex flex-col divide-y divide-border-base rounded-large border border-border-base bg-surface shadow-message-table">
         <div className="flex items-center justify-between gap-4 px-4 py-4">
-          <Text variant="body-medium" as="span">
+          <Text variant="body" weight="medium" as="span">
             Email
           </Text>
 
@@ -147,7 +147,7 @@ export function AccountCard({ user, index = 0 }: Props) {
         </div>
 
         <div className="flex items-center justify-between gap-4 px-4 py-4">
-          <Text variant="body-medium" as="span">
+          <Text variant="body" weight="medium" as="span">
             Password
           </Text>
 

@@ -19,7 +19,7 @@ export function UsageBar({ label, percentUsed, resetsAt }: Props) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
-        <Text tone="body" variant="body-medium">
+        <Text tone="body" variant="body" weight="medium">
           {label}
         </Text>
         <Text variant="body" tone="muted" tabular>

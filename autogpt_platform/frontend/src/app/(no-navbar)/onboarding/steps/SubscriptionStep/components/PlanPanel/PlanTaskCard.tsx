@@ -40,7 +40,7 @@ export function PlanTaskCard({ task, owner, isFirst }: Props) {
             Start here
           </span>
         ) : null}
-        <Text variant="body-medium" as="span" className="text-pretty">
+        <Text variant="body" weight="medium" as="span" className="text-pretty">
           {task.title}
         </Text>
         {task.why ? (

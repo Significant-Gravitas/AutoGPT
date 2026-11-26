@@ -111,7 +111,7 @@ export function DraftRecoveryPopup({
             </div>
 
             <div className="flex flex-col">
-              <Text variant="small-medium" tone="warning">
+              <Text variant="small" weight="medium" tone="warning">
                 Unsaved changes found
               </Text>
               <Text variant="small" tone="warning">

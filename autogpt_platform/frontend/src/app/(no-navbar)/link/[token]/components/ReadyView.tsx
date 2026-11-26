@@ -39,7 +39,9 @@ export function ReadyView({
     >
       <div className="flex w-full flex-col items-center gap-6">
         <div className="w-full rounded-xl bg-surface-hover px-6 py-5 text-left">
-          <Text variant="body-medium">What happens when you confirm:</Text>
+          <Text variant="body" weight="medium">
+            What happens when you confirm:
+          </Text>
           {forUser ? (
             <ul className="mt-4 space-y-2.5 text-body leading-relaxed text-foreground-tertiary">
               <li>{contextLabel} will be linked to your AutoGPT account</li>
@@ -64,7 +66,7 @@ export function ReadyView({
         </div>
 
         <div className="w-full rounded-xl border border-border-base bg-surface-hover px-5 py-4">
-          <Text variant="small-relaxed" tone="muted">
+          <Text variant="small" leading="relaxed" tone="muted">
             Usage from {contextLabel} is billed to your AutoGPT account. You can
             unlink at any time in Settings → Bots.
           </Text>
@@ -88,7 +90,10 @@ export function ReadyView({
             </Text>
             <Button variant="ghost" size="small" onClick={onSwitchAccount}>
               <Text
-                variant="small-medium-loose-underline"
+                variant="small"
+                weight="medium"
+                leading="5"
+                decoration="underline"
                 as="span"
                 tone="muted"
               >

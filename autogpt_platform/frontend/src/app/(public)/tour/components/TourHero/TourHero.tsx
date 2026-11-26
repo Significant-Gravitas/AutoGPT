@@ -24,7 +24,7 @@ export function TourHero() {
               <span className="contents text-brand">
                 <Icon icon={SparklesIcon} className="h-4 w-4" />
               </span>
-              <Text variant="body-medium-tight" tone="body">
+              <Text variant="body" weight="medium" leading="5" tone="body">
                 Live demo, no signup required
               </Text>
             </span>

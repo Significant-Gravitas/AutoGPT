@@ -117,7 +117,9 @@ export function ExpandableRow({
           <td colSpan={7} className="p-0">
             <div className="bg-surface-hover/30 px-4 py-3">
               <Text
-                variant="body-semibold-tight"
+                variant="body"
+                weight="semibold"
+                leading="5"
                 as="h4"
                 tone="inherit"
                 className="mb-2"

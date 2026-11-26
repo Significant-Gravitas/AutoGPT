@@ -71,7 +71,12 @@ export function ConsultVerdictCard({ output }: Props) {
           size={28}
         />
         <div className="min-w-0 flex-1">
-          <Text tone="emphasis" variant="body-medium" className="truncate">
+          <Text
+            tone="emphasis"
+            variant="body"
+            weight="medium"
+            className="truncate"
+          >
             {str(reviewer, "name") ?? "A teammate"}
           </Text>
           <Text tone="muted" variant="small" className="truncate">
@@ -85,7 +90,9 @@ export function ConsultVerdictCard({ output }: Props) {
           )}
         >
           <Icon icon={style.icon} size={14} />
-          <Text variant="small-medium">{style.label}</Text>
+          <Text variant="small" weight="medium">
+            {style.label}
+          </Text>
         </span>
       </div>
       {reason ? (

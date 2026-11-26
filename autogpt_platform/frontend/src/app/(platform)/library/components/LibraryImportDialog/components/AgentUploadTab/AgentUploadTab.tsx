@@ -21,7 +21,7 @@ type AgentUploadTabProps = {
 export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
   return (
     <TabsLineContent value="agent">
-      <Text variant="body-tight" tone="muted" className="mb-4">
+      <Text variant="body" leading="5" tone="muted" className="mb-4">
         Upload a previously exported AutoGPT workflow file (.json).
       </Text>
       <Form

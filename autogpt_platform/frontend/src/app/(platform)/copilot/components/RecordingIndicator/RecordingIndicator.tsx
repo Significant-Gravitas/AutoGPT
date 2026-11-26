@@ -28,7 +28,9 @@ export function RecordingIndicator() {
           aria-hidden="true"
         />
       </span>
-      <Text variant="small-medium-tight">Recording</Text>
+      <Text variant="small" weight="medium" leading="4">
+        Recording
+      </Text>
     </div>
   );
 }

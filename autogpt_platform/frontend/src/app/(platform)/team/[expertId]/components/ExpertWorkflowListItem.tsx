@@ -67,7 +67,12 @@ export function ExpertWorkflowListItem({
 
       <div className="pointer-events-none min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <Text variant="body-md-medium" tone="primary" className="truncate">
+          <Text
+            variant="body-md"
+            weight="medium"
+            tone="primary"
+            className="truncate"
+          >
             {name}
           </Text>
           <span

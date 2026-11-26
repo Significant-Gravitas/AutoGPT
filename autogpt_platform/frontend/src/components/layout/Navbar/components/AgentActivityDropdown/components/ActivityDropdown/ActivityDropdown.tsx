@@ -151,7 +151,7 @@ export function ActivityDropdown({
               <Icon icon={BellIcon} tone="disabled" className="h-6 w-6" />
             </div>
             <div className="flex flex-col items-center justify-center">
-              <Text variant="body-medium">
+              <Text variant="body" weight="medium">
                 {searchQuery
                   ? "No matching workflows found"
                   : "No recent runs to show yet"}

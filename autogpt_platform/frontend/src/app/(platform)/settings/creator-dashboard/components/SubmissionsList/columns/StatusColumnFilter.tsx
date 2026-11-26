@@ -26,7 +26,7 @@ export function StatusColumnFilter({ value, onChange }: Props) {
   return (
     <ColumnFilter active={value.length > 0} label="Status" align="start">
       <div className="flex flex-col gap-2">
-        <Text variant="small-medium" as="span" className="mx-2">
+        <Text variant="small" weight="medium" as="span" className="mx-2">
           Filter by status
         </Text>
         <ul className="flex flex-col gap-1">

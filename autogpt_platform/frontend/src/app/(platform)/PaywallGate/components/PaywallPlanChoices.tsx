@@ -72,7 +72,9 @@ export function PaywallPlanChoices({
       {team && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-base px-4 py-3">
           <div>
-            <Text variant="small-medium">Team</Text>
+            <Text variant="small" weight="medium">
+              Team
+            </Text>
             <Text variant="small" tone="secondary">
               Custom capacity for your organization.
             </Text>
@@ -86,7 +88,12 @@ export function PaywallPlanChoices({
           </Button>
         </div>
       )}
-      <Text variant="small-tight" tone="secondary" className="text-center">
+      <Text
+        variant="small"
+        leading="4"
+        tone="secondary"
+        className="text-center"
+      >
         Your conversations and workflows stay saved. Cancel anytime.
       </Text>
     </section>
@@ -132,7 +139,7 @@ function PlanChoice({
           size={18}
           tone={isPro ? "brand-strong" : "secondary"}
         />
-        <Text variant="large-semibold" as="h2">
+        <Text variant="large" weight="semibold" as="h2">
           {plan.name}
         </Text>
       </div>
@@ -142,7 +149,7 @@ function PlanChoice({
           : "For bigger ideas and heavier work."}
       </Text>
       <div className="mb-5">
-        <Text variant="h3-tracking-tight" as="span">
+        <Text variant="h3" tracking="tight" as="span">
           {formatted ?? "Unavailable"}
         </Text>
         {formatted && (

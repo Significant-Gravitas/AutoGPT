@@ -53,7 +53,7 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
           <Icon icon={UserRemove01Icon} size={20} aria-hidden />
         </span>
         <div className="min-w-0">
-          <Text variant="large-medium" tone="primary">
+          <Text variant="large" weight="medium" tone="primary">
             Fire {expert.name}
           </Text>
           <Text variant="body-md" tone="secondary" className="mt-0.5">
@@ -84,7 +84,7 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
               onClick={() => void retryPreview()}
               className="mt-1 inline-flex text-foreground-body underline underline-offset-2 hover:text-foreground-base"
             >
-              <Text variant="body-md-medium" as="span" tone="inherit">
+              <Text variant="body-md" weight="medium" as="span" tone="inherit">
                 Retry
               </Text>
             </button>
@@ -97,7 +97,8 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
                   className="flex max-w-full min-w-0 rounded-pill border border-warning-border bg-warning-surface px-2.5 py-0.5"
                 >
                   <Text
-                    variant="small-tight"
+                    variant="small"
+                    leading="4"
                     as="span"
                     tone="warning-strong"
                     className="truncate"
@@ -108,7 +109,7 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
               ))}
               {hiddenPauseCount > 0 ? (
                 <span className="flex px-1 py-0.5">
-                  <Text variant="small-tight" as="span" tone="muted">
+                  <Text variant="small" leading="4" as="span" tone="muted">
                     +{hiddenPauseCount} more
                   </Text>
                 </span>
@@ -201,7 +202,9 @@ function Consequence({
               )}
             >
               <Text
-                variant="small-medium-tight"
+                variant="small"
+                weight="medium"
+                leading="4"
                 as="span"
                 tone={isWarn ? "warning" : "success-strong"}
               >

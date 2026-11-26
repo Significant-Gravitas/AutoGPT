@@ -52,7 +52,7 @@ export function HomeTileEmpty({
       </motion.div>
       <div className="flex max-w-xs flex-col items-center gap-1">
         <motion.div {...fadeUp(0.22)}>
-          <Text variant="large-medium" tone="primary">
+          <Text variant="large" weight="medium" tone="primary">
             {title}
           </Text>
         </motion.div>

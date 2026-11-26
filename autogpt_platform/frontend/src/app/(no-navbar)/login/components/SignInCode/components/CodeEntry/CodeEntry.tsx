@@ -55,7 +55,7 @@ export function CodeEntry(props: Props) {
         onResent={() => setCodesSent((count) => count + 1)}
       />
       <div className="mt-6 inline-flex items-center justify-center gap-1">
-        <Text variant="body-medium" tone="muted">
+        <Text variant="body" weight="medium" tone="muted">
           Wrong account?
         </Text>
         <Button

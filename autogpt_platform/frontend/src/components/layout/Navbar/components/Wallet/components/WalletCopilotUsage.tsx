@@ -23,7 +23,7 @@ export function WalletCopilotUsage() {
   return (
     <section aria-label="Chat usage" className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
-        <Text variant="large-medium" as="h2">
+        <Text variant="large" weight="medium" as="h2">
           Chat usage
         </Text>
         {tierLabel && (
@@ -85,7 +85,7 @@ function TrialUsage() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-3">
-        <Text variant="body-medium" tone="body">
+        <Text variant="body" weight="medium" tone="body">
           Trial allowance
         </Text>
         <Text variant="body" tone="muted" tabular>

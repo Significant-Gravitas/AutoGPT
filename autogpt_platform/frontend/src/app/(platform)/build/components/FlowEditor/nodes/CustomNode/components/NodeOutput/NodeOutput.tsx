@@ -35,14 +35,16 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
       <Accordion type="single" collapsible defaultValue="node-output">
         <AccordionItem value="node-output" className="border-none">
           <AccordionTrigger className="py-2 hover:no-underline">
-            <Text variant="body-semibold" tone="body">
+            <Text variant="body" weight="semibold" tone="body">
               Node Output
             </Text>
           </AccordionTrigger>
           <AccordionContent className="pt-2">
             <div className="flex max-w-[350px] flex-col gap-4">
               <div className="space-y-2">
-                <Text variant="small-medium">Input</Text>
+                <Text variant="small" weight="medium">
+                  Input
+                </Text>
 
                 <ContentRenderer value={latestInputData} shortContent={true} />
 
@@ -75,7 +77,11 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                   return (
                     <div key={key} className="flex flex-col gap-2">
                       <div className="flex items-center gap-2">
-                        <Text variant="small-semibold" tone="secondary">
+                        <Text
+                          variant="small"
+                          weight="semibold"
+                          tone="secondary"
+                        >
                           Pin:
                         </Text>
                         <Text variant="small" tone="body">
@@ -83,7 +89,11 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                         </Text>
                       </div>
                       <div className="w-full space-y-2">
-                        <Text variant="small-semibold" tone="secondary">
+                        <Text
+                          variant="small"
+                          weight="semibold"
+                          tone="secondary"
+                        >
                           Data:
                         </Text>
                         <div className="relative space-y-2">

@@ -330,7 +330,7 @@ export const MessageBranchPage = ({
 
   return (
     <div className={cn("flex items-center px-4", className)} {...props}>
-      <Text variant="body-medium-tight" tone="muted" as="span">
+      <Text variant="body" weight="medium" leading="5" tone="muted" as="span">
         {currentBranch + 1} of {totalBranches}
       </Text>
     </div>

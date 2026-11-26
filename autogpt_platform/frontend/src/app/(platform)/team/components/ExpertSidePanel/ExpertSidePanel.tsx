@@ -167,7 +167,8 @@ function PanelHeader({
             imageSize={28}
           />
           <Text
-            variant="body-medium"
+            variant="body"
+            weight="medium"
             as="h2"
             tone="primary"
             className="min-w-0 flex-1 truncate"

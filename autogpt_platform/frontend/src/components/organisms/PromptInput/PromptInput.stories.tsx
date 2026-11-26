@@ -77,7 +77,7 @@ function Composer({
               tooltip={{ content: "Search the web", shortcut: "⌘K" }}
             >
               <Icon icon={GlobalSearchIcon} className="size-4" />
-              <Text variant="body-medium" as="span" tone="body">
+              <Text variant="body" weight="medium" as="span" tone="body">
                 Search
               </Text>
             </PromptInputButton>

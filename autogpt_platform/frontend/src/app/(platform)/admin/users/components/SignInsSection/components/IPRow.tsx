@@ -120,7 +120,7 @@ export function IPRow({ ip, ownIP }: Props) {
 
 function Address({ ip }: { ip: AccountIP }) {
   const address = (
-    <Text variant="body-mono-tight" as="span" translate="no">
+    <Text variant="body" mono leading="5" as="span" translate="no">
       {ip.display_address}
     </Text>
   );

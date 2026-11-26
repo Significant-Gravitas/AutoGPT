@@ -65,7 +65,13 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
       <div className="flex items-center justify-between gap-2.5 border-b border-separator px-4 py-3">
         <span className="flex items-center gap-2.5">
           <Icon icon={Message01Icon} size={18} tone="subtle" />
-          <Text variant="body-medium-tight" as="span" tone="primary">
+          <Text
+            variant="body"
+            weight="medium"
+            leading="5"
+            as="span"
+            tone="primary"
+          >
             Answer a few questions
           </Text>
         </span>

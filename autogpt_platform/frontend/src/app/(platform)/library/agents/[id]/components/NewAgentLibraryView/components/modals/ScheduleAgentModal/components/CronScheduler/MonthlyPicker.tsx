@@ -25,7 +25,7 @@ export function MonthlyPicker({
 
   return (
     <div className="mb-6 space-y-2">
-      <Text variant="body-medium" as="span">
+      <Text variant="body" weight="medium" as="span">
         Days of Month
       </Text>
       <div className="flex gap-2">

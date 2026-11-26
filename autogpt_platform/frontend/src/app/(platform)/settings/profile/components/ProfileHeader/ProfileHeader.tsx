@@ -140,7 +140,7 @@ export function ProfileHeader({
 
       <div className="grid w-full gap-4 sm:grid-cols-2">
         <label htmlFor="profile-name" className="flex w-full flex-col gap-2">
-          <Text variant="body-medium" as="span" className="mx-4">
+          <Text variant="body" weight="medium" as="span" className="mx-4">
             Display name
           </Text>
           <Input
@@ -159,7 +159,7 @@ export function ProfileHeader({
           className="flex w-full flex-col gap-2"
         >
           <div className="flex items-center justify-between px-4">
-            <Text variant="body-medium" as="span">
+            <Text variant="body" weight="medium" as="span">
               Handle
             </Text>
             <Text variant="small" as="span" tone="subtle">

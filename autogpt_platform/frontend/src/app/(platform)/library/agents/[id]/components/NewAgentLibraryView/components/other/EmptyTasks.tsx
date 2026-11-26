@@ -167,14 +167,18 @@ export function EmptyTasks({
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-20">
             <div className="flex flex-col gap-0">
-              <Text variant="body-medium">Workflow created on</Text>
+              <Text variant="body" weight="medium">
+                Workflow created on
+              </Text>
               <Text variant="body" tone="body">
                 {createdAt}
               </Text>
             </div>
             {isUpdated ? (
               <div className="flex flex-col gap-0">
-                <Text variant="body-medium">Workflow updated on</Text>
+                <Text variant="body" weight="medium">
+                  Workflow updated on
+                </Text>
                 <Text variant="body" tone="body">
                   {updatedAt}
                 </Text>

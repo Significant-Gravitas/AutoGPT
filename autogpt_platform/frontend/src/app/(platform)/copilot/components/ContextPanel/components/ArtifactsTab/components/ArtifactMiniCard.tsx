@@ -28,7 +28,9 @@ export function ArtifactMiniCard({ file, onOpen, onDownload }: Props) {
         <Icon icon={fileIcon} size={18} tone="muted" className="shrink-0" />
         <span className="flex min-w-0 flex-col">
           <Text
-            variant="body-medium-tight"
+            variant="body"
+            weight="medium"
+            leading="5"
             as="span"
             tone="emphasis"
             className="truncate"
@@ -36,7 +38,8 @@ export function ArtifactMiniCard({ file, onOpen, onDownload }: Props) {
             {item.name}
           </Text>
           <Text
-            variant="small-tight"
+            variant="small"
+            leading="4"
             as="span"
             tone="subtle"
             className="truncate"

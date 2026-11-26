@@ -260,7 +260,8 @@ export const DateTimeInput = ({
         >
           <Text
             data-slot="date-time-input-error"
-            variant="small-medium"
+            variant="small"
+            weight="medium"
             as="span"
             tone="error"
             className="block"
@@ -284,7 +285,12 @@ export const DateTimeInput = ({
         data-slot="date-time-input-header"
         className="flex items-center justify-between"
       >
-        <Text data-slot="date-time-input-label" variant="body-medium" as="span">
+        <Text
+          data-slot="date-time-input-label"
+          variant="body"
+          weight="medium"
+          as="span"
+        >
           {label}
         </Text>
         {hint ? (

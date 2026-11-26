@@ -158,7 +158,12 @@ export function QuestionsCard({ questions }: QuestionsCardProps) {
               {str(entry, "question") ?? inline(entry)}
             </p>
             {str(entry, "example") && (
-              <Text variant="small-tight" tone="subtle" className="truncate">
+              <Text
+                variant="small"
+                leading="4"
+                tone="subtle"
+                className="truncate"
+              >
                 e.g. {str(entry, "example")}
               </Text>
             )}
@@ -183,13 +188,15 @@ export function SetupCard({ output, provider }: SetupCardProps) {
       </div>
       <div className="min-w-0 flex-1">
         <Text
-          variant="body-sm-medium-inherit"
+          variant="body-sm"
+          weight="medium"
+          leading="inherit"
           tone="emphasis"
           className="truncate"
         >
           {name}
         </Text>
-        <Text variant="small-tight" tone="muted" className="truncate">
+        <Text variant="small" leading="4" tone="muted" className="truncate">
           Connection required
         </Text>
       </div>
@@ -208,14 +215,16 @@ export function SkillCard({ output }: OutputProps) {
       </div>
       <div className="min-w-0 flex-1">
         <Text
-          variant="body-sm-medium-inherit"
+          variant="body-sm"
+          weight="medium"
+          leading="inherit"
           tone="emphasis"
           className="truncate"
         >
           {name}
         </Text>
         {str(output, "description") && (
-          <Text variant="small-tight" tone="muted" className="truncate">
+          <Text variant="small" leading="4" tone="muted" className="truncate">
             {str(output, "description")}
           </Text>
         )}
@@ -236,11 +245,11 @@ export function SuggestedGoalCard({ output }: OutputProps) {
 
   return (
     <div className={`${CARD} ${HALF} flex flex-col gap-2 p-3`}>
-      <Text variant="body-sm-medium-inherit" tone="emphasis">
+      <Text variant="body-sm" weight="medium" leading="inherit" tone="emphasis">
         {goal}
       </Text>
       {str(output, "reason") && (
-        <Text variant="small-tight" tone="muted">
+        <Text variant="small" leading="4" tone="muted">
           {str(output, "reason")}
         </Text>
       )}

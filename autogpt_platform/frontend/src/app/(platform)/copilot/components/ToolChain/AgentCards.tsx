@@ -71,7 +71,9 @@ export function AgentListCard({ agents }: AgentListCardProps) {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
                 <Text
-                  variant="body-sm-medium-inherit"
+                  variant="body-sm"
+                  weight="medium"
+                  leading="inherit"
                   tone="emphasis"
                   className="min-w-0 truncate"
                 >
@@ -84,7 +86,12 @@ export function AgentListCard({ agents }: AgentListCardProps) {
                 )}
               </div>
               {subtitle && (
-                <Text variant="small-tight" tone="muted" className="truncate">
+                <Text
+                  variant="small"
+                  leading="4"
+                  tone="muted"
+                  className="truncate"
+                >
                   {subtitle}
                 </Text>
               )}
@@ -128,7 +135,9 @@ export function AgentSavedCard({ output }: OutputCardProps) {
         <Icon icon={Robot01Icon} size={15} tone="secondary" />
       </div>
       <Text
-        variant="body-sm-medium-inherit"
+        variant="body-sm"
+        weight="medium"
+        leading="inherit"
         tone="emphasis"
         className="min-w-0 flex-1 truncate"
       >
@@ -164,14 +173,16 @@ export function AgentPreviewCard({ output }: OutputCardProps) {
       </div>
       <div className="min-w-0 flex-1">
         <Text
-          variant="body-sm-medium-inherit"
+          variant="body-sm"
+          weight="medium"
+          leading="inherit"
           tone="emphasis"
           className="truncate"
         >
           {name}
         </Text>
         {str(output, "description", "message") && (
-          <Text variant="small-tight" tone="muted" className="truncate">
+          <Text variant="small" leading="4" tone="muted" className="truncate">
             {str(output, "description", "message")}
           </Text>
         )}
@@ -216,7 +227,9 @@ export function SubSessionCard({
       <div className="flex items-center gap-2.5">
         <ExpertAvatar name={name} avatarUrl={avatarUrl ?? null} size={28} />
         <Text
-          variant="body-sm-medium-inherit"
+          variant="body-sm"
+          weight="medium"
+          leading="inherit"
           tone="emphasis"
           className="min-w-0 flex-1 truncate"
         >

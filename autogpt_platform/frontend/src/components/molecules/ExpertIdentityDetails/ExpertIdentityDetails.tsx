@@ -57,15 +57,9 @@ export function ExpertIdentityDetails({
       >
         <Text
           as={size === "page" ? "h1" : "span"}
-          variant={
-            size === "page"
-              ? "heading-md"
-              : compact
-                ? "body-medium"
-                : "lead-semibold"
-          }
+          variant={size === "page" ? "heading-md" : compact ? "body" : "lead"}
           tone="primary"
-          weight={size === "page" ? "semibold" : undefined}
+          weight={size !== "page" && compact ? "medium" : "semibold"}
           data-slot="expert-identity-name"
           className={cn(
             "min-w-0",
@@ -78,9 +72,10 @@ export function ExpertIdentityDetails({
         {titleOnNameLine ? (
           <Text
             as="span"
-            variant={size === "card" ? "body-sm-medium-inherit" : "body"}
+            variant={size === "card" ? "body-sm" : "body"}
             tone="secondary"
             weight={size === "card" ? "normal" : undefined}
+            leading={size === "card" ? "inherit" : undefined}
             data-slot="expert-identity-title"
             className={cn(
               "min-w-0",
@@ -132,7 +127,8 @@ export function ExpertIdentityDetails({
       {compact && area ? (
         <Text
           as="span"
-          variant="small-tight"
+          variant="small"
+          leading="4"
           data-slot="expert-identity-area"
           tone="secondary"
           // oxlint-disable-next-line design-system/require-static-classes -- forwards the caller's areaClassName

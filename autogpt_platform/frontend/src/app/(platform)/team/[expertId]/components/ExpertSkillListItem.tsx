@@ -63,7 +63,12 @@ export function ExpertSkillListItem({
             learning ? "pr-24" : "pr-16",
           )}
         >
-          <Text variant="body-md-medium" tone="primary" className="break-words">
+          <Text
+            variant="body-md"
+            weight="medium"
+            tone="primary"
+            className="break-words"
+          >
             {entry.name}
           </Text>
           <Text variant="small" tone="muted" className="line-clamp-2">
@@ -89,7 +94,8 @@ export function ExpertSkillListItem({
               className="flex max-w-full min-w-0 rounded-pill border border-border-base bg-surface-muted px-2.5 py-0.5"
             >
               <Text
-                variant="small-tight"
+                variant="small"
+                leading="4"
                 as="span"
                 tone="secondary"
                 className="truncate"
@@ -100,7 +106,7 @@ export function ExpertSkillListItem({
           ))}
           {hiddenCount > 0 ? (
             <span className="flex rounded-pill px-1.5 py-0.5">
-              <Text variant="small-tight" as="span" tone="muted">
+              <Text variant="small" leading="4" as="span" tone="muted">
                 +{hiddenCount}
               </Text>
             </span>

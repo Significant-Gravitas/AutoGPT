@@ -186,7 +186,8 @@ export function SearchCommandModal({
               {isError ? (
                 <div className="px-3 py-8">
                   <Text
-                    variant="body-tight"
+                    variant="body"
+                    leading="5"
                     as="div"
                     tone="error"
                     align="center"
@@ -216,7 +217,8 @@ export function SearchCommandModal({
               ) : showEmptyState ? (
                 <div className="px-3 py-8">
                   <Text
-                    variant="body-tight"
+                    variant="body"
+                    leading="5"
                     as="div"
                     tone="muted"
                     align="center"
@@ -264,7 +266,8 @@ export function SearchCommandModal({
                   </Text>
                 </span>
                 <Text
-                  variant="small-tight"
+                  variant="small"
+                  leading="4"
                   as="span"
                   tone="body"
                   data-slot="search-command-modal-hint-label"
@@ -288,7 +291,8 @@ export function SearchCommandModal({
                   </Text>
                 </span>
                 <Text
-                  variant="small-tight"
+                  variant="small"
+                  leading="4"
                   as="span"
                   tone="body"
                   data-slot="search-command-modal-hint-label"
@@ -313,7 +317,8 @@ export function SearchCommandModal({
                 </Text>
               </span>
               <Text
-                variant="small-tight"
+                variant="small"
+                leading="4"
                 as="span"
                 tone="body"
                 data-slot="search-command-modal-hint-label"
