@@ -260,6 +260,92 @@ def test_supabase_effect_map_names_exactly_the_published_tools():
     assert sorted(effects.irreversible) == SUPABASE_IRREVERSIBLE_TOOLS
 
 
+# Every tool https://api.databuddy.cc/v1/mcp listed on 2026-11-26. Changes preview
+# until the tool is called again with confirmed=true; deletes deactivate or
+# remove saved definitions, so they are mapped as irreversible.
+DATABUDDY_READ_TOOLS = [
+    "capabilities",
+    "check_tracking",
+    "execute_sql_query",
+    "get_account",
+    "get_business_context",
+    "get_conversion_attribution",
+    "get_data",
+    "get_experiment_results",
+    "get_funnel_analytics",
+    "get_funnel_analytics_by_referrer",
+    "get_goal_analytics",
+    "get_investigation",
+    "get_link_analytics",
+    "get_log_connection",
+    "get_schema",
+    "get_search_console",
+    "list_accounts",
+    "list_annotations",
+    "list_changes",
+    "list_flags",
+    "list_funnels",
+    "list_github_repos",
+    "list_goals",
+    "list_insights",
+    "list_integrations",
+    "list_investigations",
+    "list_links",
+    "list_log_sources",
+    "list_profile_traits",
+    "list_replay_issues",
+    "list_slack_channels",
+    "list_websites",
+    "query_logs",
+    "search_links",
+    "search_replays",
+]
+DATABUDDY_CHANGE_TOOLS = [
+    "add_users_to_flag",
+    "create_annotation",
+    "create_flag",
+    "create_funnel",
+    "create_goal",
+    "create_link",
+    "dismiss_investigation",
+    "reply_to_investigation",
+    "set_github_repo",
+    "set_slack_channel",
+    "submit_feedback",
+    "update_annotation",
+    "update_flag",
+    "update_funnel",
+    "update_goal",
+    "update_link",
+    "update_log_fields",
+    "update_log_links",
+]
+DATABUDDY_IRREVERSIBLE_TOOLS = [
+    "delete_annotation",
+    "delete_flag",
+    "delete_funnel",
+    "delete_goal",
+    "delete_link",
+]
+
+
+def test_databuddy_catalog_entry_uses_hosted_authentication():
+    entry = get_mcp_catalog_entry_for_url("https://api.databuddy.cc/v1/mcp")
+
+    assert entry is not None
+    assert entry.name == "mcp_databuddy"
+    assert entry.mcp_server.icon_id == "databuddy"
+    assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.auth_methods == ["oauth", "bearer"]
+
+
+def test_databuddy_effect_map_names_exactly_the_published_tools():
+    effects = get_mcp_effect_maps()["mcp_databuddy"]
+    assert sorted(effects.read) == DATABUDDY_READ_TOOLS
+    assert sorted(effects.external) == DATABUDDY_CHANGE_TOOLS
+    assert sorted(effects.irreversible) == DATABUDDY_IRREVERSIBLE_TOOLS
+
+
 def test_no_catalogued_server_is_limited_to_read_access():
     for entry in get_mcp_catalog():
         server = entry.mcp_server
