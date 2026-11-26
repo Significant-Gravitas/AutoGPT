@@ -3,6 +3,7 @@ import {
   File01Icon,
   HelpCircleIcon,
   Logout01Icon,
+  Notification03Icon,
   StarIcon,
 } from "@hugeicons/core-free-icons";
 import { ScrollView, Text, View } from "react-native";
@@ -60,6 +61,14 @@ export default function SettingsScreen() {
             />
           </SettingsGroup>
         ) : null}
+        <SettingsGroup>
+          <SettingsRow
+            icon={Notification03Icon}
+            label="Notifications"
+            trailing="page"
+            onPress={settings.openNotifications}
+          />
+        </SettingsGroup>
         <SettingsGroup>
           <AppearancePicker />
         </SettingsGroup>

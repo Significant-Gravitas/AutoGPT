@@ -32,6 +32,10 @@ export function useSettingsScreen() {
     router.navigate("/plan");
   }
 
+  function openNotifications() {
+    router.navigate("/notifications");
+  }
+
   function handleSignOut() {
     void signOut();
   }
@@ -47,6 +51,7 @@ export function useSettingsScreen() {
     openDelete: () => setIsDeleteOpen(true),
     closeDelete: () => setIsDeleteOpen(false),
     openPlan,
+    openNotifications,
     openHelp: () => openWeb(HELP_URL),
     openTerms: () => openWeb(TERMS_OF_USE_URL),
     openPrivacy: () => openWeb(PRIVACY_POLICY_URL),
