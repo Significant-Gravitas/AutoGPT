@@ -51,7 +51,7 @@ class _Upstream:
         return response
 
 
-@pytest_asyncio.fixture(loop_scope="function")
+@pytest_asyncio.fixture
 async def upstream() -> AsyncIterator[_Upstream]:
     upstream = _Upstream()
     application = web.Application()
@@ -65,7 +65,6 @@ async def upstream() -> AsyncIterator[_Upstream]:
     await runner.cleanup()
 
 
-@pytest.mark.asyncio(loop_scope="function")
 @pytest.mark.parametrize("path", ["/v1/messages", "/v1/messages/count_tokens"])
 @pytest.mark.parametrize(
     "credential",
@@ -90,7 +89,6 @@ async def test_a_call_with_a_live_token_goes_upstream_on_the_users_key(
     assert not any(_TOKEN in value for _, value in sent)
 
 
-@pytest.mark.asyncio(loop_scope="function")
 @pytest.mark.parametrize(
     "headers", [{}, {"x-api-key": "a-revoked-or-unknown-token"}], ids=["none", "dead"]
 )
@@ -105,7 +103,6 @@ async def test_a_call_without_a_live_token_is_refused(
     assert upstream.requests == []
 
 
-@pytest.mark.asyncio(loop_scope="function")
 @pytest.mark.parametrize(
     "credentials",
     [
@@ -126,7 +123,6 @@ async def test_a_token_reaches_only_the_users_own_anthropic_key(
     assert upstream.requests == []
 
 
-@pytest.mark.asyncio(loop_scope="function")
 async def test_an_unreachable_anthropic_api_is_an_api_error():
     closed = socket.socket()
     closed.bind(("127.0.0.1", 0))
@@ -142,7 +138,6 @@ async def test_an_unreachable_anthropic_api_is_an_api_error():
     assert response.json()["error"]["type"] == "api_error"
 
 
-@pytest.mark.asyncio(loop_scope="function")
 async def test_the_platform_serves_the_relay_where_sandboxes_are_sent():
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=rest_app), base_url="http://platform"
