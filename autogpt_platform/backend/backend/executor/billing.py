@@ -265,9 +265,10 @@ def redispatch_reconcile_baseline(node_exec: NodeExecutionEntry) -> int | None:
 def bills_stop_estimate(status: ExecutionStatus, stopped: bool) -> bool:
     """Whether a node's settlement adds the estimated input tokens of LLM
     requests it cut off mid-call (``abandoned_input_token_count``) to the
-    usage the provider reported: when a stop request ended the run
-    (``stopped``) and with it the node. This is the one case billed on an
-    estimate; every other settlement bills the reported usage alone.
+    usage the provider reported: when its user ended the run (``stopped``),
+    by a stop request or a known error such as a node the balance can't pay
+    for, and with it the node. This is the one case billed on an estimate;
+    every other settlement bills the reported usage alone.
     """
     return stopped and status == ExecutionStatus.TERMINATED
 
@@ -356,7 +357,7 @@ async def charge_reconciled_usage(
     would shift the baseline and skew the delta.
 
     ``bill_stop_estimate`` (see ``bills_stop_estimate``) adds the estimated
-    input tokens of LLM requests a stop cut off mid-call.
+    input tokens of LLM requests its user's ending of the run cut off mid-call.
 
     The node is priced on the model it recorded when it started
     (``stats.resolved_model``), so one still running at 00:00 UTC on its

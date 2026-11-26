@@ -2499,8 +2499,8 @@ class NodeExecutionProgress:
         # the task itself and then the bookkeeping. See wait_for_done.
         self._unwinding: dict[asyncio.Future, str] = {}
         self._settling: dict[asyncio.Future, str] = {}
-        # Set when a stop request, rather than the run ending some other way,
-        # cancels these nodes.
+        # Set when the run's user ended it (a stop request or a known error),
+        # rather than the platform failing, and that cancels these nodes.
         self.stop_requested = False
 
     def add_task(self, node_exec_id: str, task: Future):
@@ -2579,7 +2579,8 @@ class NodeExecutionProgress:
         """
         Stops all tasks and clears the output.
         This is useful for cleaning up when the execution is cancelled or terminated.
-        ``stop_requested`` says a stop request ended the run.
+        ``stop_requested`` says the run's user ended it: a stop request, or a
+        known error such as a node the balance can't pay for.
         Returns a list of execution IDs that were stopped.
         """
         self.stop_requested = stop_requested
