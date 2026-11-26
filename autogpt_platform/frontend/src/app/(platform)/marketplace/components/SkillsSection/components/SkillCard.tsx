@@ -6,7 +6,7 @@ import {
 } from "@/components/atoms/Avatar/Avatar";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
-import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
+import { formatProviderList } from "@/components/contextual/IntegrationsPanel/helpers";
 import { cn } from "@/lib/utils";
 import {
   ArrowRight02Icon,
@@ -139,12 +139,4 @@ export function SkillCard({ skill, isInstalled }: Props) {
       </div>
     </Link>
   );
-}
-
-function formatProviderList(providers: string[]): string {
-  const names = providers.map(formatProviderName).filter(Boolean);
-  return new Intl.ListFormat("en", {
-    style: "long",
-    type: "conjunction",
-  }).format(names);
 }

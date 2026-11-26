@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import {
   getGetV2ListLibraryAgentsMockHandler,
@@ -40,7 +45,10 @@ function setupHandlers() {
 
   server.use(
     getGetV2ListLibraryAgentsMockHandler({
-      agents: [makeAgent({ id: "all-1", name: "Plain Agent" })],
+      agents: [
+        // This card can still have a Remove button during the tab transition.
+        makeAgent({ id: "all-1", name: "Plain Agent", is_favorite: true }),
+      ],
       pagination: {
         total_items: 1,
         total_pages: 1,
@@ -93,7 +101,7 @@ function setupHandlers() {
     getGetV1ListAllExecutionsMockHandler([]),
   );
 
-  return { favoriteSearches };
+  return { favoriteSearches, unfavorited };
 }
 
 function getFavoritesTab() {
@@ -141,7 +149,7 @@ describe("LibraryPage favorites search", () => {
   });
 
   test("unfavoriting brings the Favorites badge back in line with the server", async () => {
-    setupHandlers();
+    const { unfavorited } = setupHandlers();
 
     render(<LibraryPage />);
 
@@ -149,17 +157,22 @@ describe("LibraryPage favorites search", () => {
       expect(getFavoritesTab()?.hasAttribute("data-disabled")).toBe(false),
     );
     await userEvent.click(getFavoritesTab()!);
-    await screen.findByText("Loaded Favorite 0");
+    const favorite = await screen.findByText("Loaded Favorite 0");
+    const favoriteCard = favorite.closest<HTMLElement>(
+      '[data-testid="library-agent-card"]',
+    )!;
 
-    const [firstHeart] = screen.getAllByRole("button", {
-      name: "Remove from favorites",
-    });
-    await userEvent.click(firstHeart);
+    await userEvent.click(
+      within(favoriteCard).getByRole("button", {
+        name: "Remove from favorites",
+      }),
+    );
 
-    await waitFor(() =>
+    await waitFor(() => {
+      expect(unfavorited).toEqual(new Set(["fav-0"]));
       expect(getFavoritesTab()?.textContent).toContain(
         `Favorites ${TOTAL_FAVORITES - 1}`,
-      ),
-    );
+      );
+    });
   });
 });

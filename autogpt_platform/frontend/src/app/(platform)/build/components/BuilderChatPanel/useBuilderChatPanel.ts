@@ -21,11 +21,11 @@ import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages";
 import { useCopilotStream } from "@/app/(platform)/copilot/useCopilotStream";
-import { useCopilotPendingChips } from "@/app/(platform)/copilot/useCopilotPendingChips";
 import { useGetV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
 import { isKey } from "@/lib/keyboard";
 import { retryUnlessClientError } from "../../helpers/graphLoadError";
 import { getDeploymentModelStatus, isNoModelError } from "./helpers";
+import { useBuilderChatSend } from "./useBuilderChatSend";
 
 interface UseBuilderChatPanelArgs {
   panelRef?: React.RefObject<HTMLElement | null>;
@@ -178,11 +178,14 @@ export function useBuilderChatPanel({
     copilotModel: undefined,
   });
 
-  const { queuedMessages, queueMessage } = useCopilotPendingChips({
+  const { onSend, queuedMessages } = useBuilderChatSend({
     sessionId,
     status,
+    isReconnecting,
+    isFinishProbing,
     messages,
     setMessages,
+    sendMessage,
   });
 
   // Track the currently-selected graph so the async bind effect can
@@ -530,28 +533,6 @@ export function useBuilderChatPanel({
         description: "Please try again.",
       });
     }
-  }
-
-  async function onSend(message: string, _files?: File[]) {
-    const trimmed = message.trim();
-    if (!trimmed) return;
-    if (!sessionId) return;
-    const isInFlight = status === "streaming" || status === "submitted";
-    if (isInFlight) {
-      queueMessage(trimmed);
-      try {
-        const { queueFollowUpMessage } = await import(
-          "@/app/(platform)/copilot/helpers/queueFollowUpMessage"
-        );
-        await queueFollowUpMessage(sessionId, trimmed);
-      } catch (err) {
-        Sentry.captureException(err);
-        // The composer restores the draft and shows the one toast for it.
-        throw err;
-      }
-      return;
-    }
-    sendMessage({ text: trimmed });
   }
 
   // While an error is active the panel surfaces a retry button instead of

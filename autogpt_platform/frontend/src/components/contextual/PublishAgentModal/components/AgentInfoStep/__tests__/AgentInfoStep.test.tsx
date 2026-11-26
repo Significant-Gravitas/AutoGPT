@@ -55,6 +55,20 @@ describe("AgentInfoStep", () => {
     expect(await screen.findByText("Describe the update")).toBeDefined();
   });
 
+  it("doesn't tell a new listing that an empty description keeps one", async () => {
+    render(<AgentInfoStep {...baseProps} />);
+    await screen.findByText("Build the store listing");
+    fireEvent.click(screen.getByText("Experience details"));
+
+    const description = await screen.findByRole("textbox", {
+      name: "Description",
+    });
+    expect(description.getAttribute("aria-describedby")).toBeNull();
+    expect(
+      screen.queryByText("Leave empty to keep the current description."),
+    ).toBeNull();
+  });
+
   it("disables the category field when the category list cannot be loaded", async () => {
     server.use(
       http.get("http://localhost:3000/api/proxy/api/store/categories", () =>

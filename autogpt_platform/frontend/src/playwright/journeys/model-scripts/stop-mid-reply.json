@@ -1,0 +1,15 @@
+{
+  "description": "A long answer streamed a word at a time, which copilot-stop-journey.spec.ts stops part-way. It takes about half a minute to stream in full, so a Claude CLI left running after the Stop is still reading it while the next turn starts.",
+  "title": "Stopped answer",
+  "turns": [
+    {
+      "text": "Here is the whole story of the garden, told slowly and in order, one season after another, so that you can stop me at any point. In early spring the soil was still cold and wet, so the first seeds went into small pots on the kitchen windowsill, where the light was steady and the air stayed warm through the night. By the middle of spring the seedlings were tall enough to move outside, and they spent a week on the back porch getting used to the wind and the sun before they went into the raised beds. The peas climbed the old fence, the lettuce came up in neat rows, and the beans needed poles that we cut from the hedge at the end of the lane. Summer brought long dry spells, which meant watering every evening, pulling weeds every weekend, and keeping a close eye on the tomatoes as they slowly turned from green to red. A family of birds nested in the apple tree that year, and they took their share of the cherries before anyone else could reach them. In the autumn the harvest came in all at once, far more than one kitchen could ever use, so most of it went to the neighbours in paper bags left on their doorsteps. The rest was dried, frozen or cooked down into sauce for the winter months, and the jars filled two shelves in the cellar by the time the first frost arrived. Then the beds were covered with straw and leaves, the tools were cleaned and hung up in the shed, and the seed catalogues began to arrive in the post, which is where the next year of the story begins.",
+      "usage": {
+        "input_tokens": 2600,
+        "output_tokens": 380,
+        "cache_read_input_tokens": 24000
+      },
+      "stream": { "chunk_words": 1, "delay_ms": 100 }
+    }
+  ]
+}

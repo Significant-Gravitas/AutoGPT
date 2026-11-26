@@ -250,19 +250,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=1500,
         description=(
             "Wall-clock cap on a single LLM provider request, covering the whole "
-            "generation (the block path is non-streaming). Raising it lengthens how "
+            "generation (the block path is non-streaming). An LLM block's retries "
+            "share it, each getting what is left. Raising it lengthens how "
             "long a stalled provider holds one of `num_graph_workers` slots. "
             "AgentExecutor and expert blocks opt out of the per-node cap, so for those "
             "this is the only per-call wall-clock bound."
-        ),
-    )
-    auth_legacy_token_deadline: int | None = Field(
-        default=None,
-        ge=0,
-        description=(
-            "Exclusive Unix timestamp cutoff for accepting user JWTs without sid "
-            "during auth rollout. Unset preserves legacy signature/expiry validation; "
-            "zero rejects them immediately. Tokens with sid always require an active session."
         ),
     )
     enable_subscription_credit_grant: bool = Field(
@@ -285,6 +277,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Whether the platform is paid for: an account without a plan "
         "is paywalled and the billing pages offer plans. Off for self-hosted "
         "installs; the hosted platform sets it.",
+    )
+    mobile_min_app_version: str = Field(
+        default="",
+        description="Oldest mobile app version (MAJOR.MINOR.PATCH) still allowed "
+        "in; an older app asks to be updated. Empty means no minimum.",
     )
     refund_credit_tolerance_threshold: int = Field(
         default=500,
@@ -584,6 +581,21 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "the API can't read them.",
     )
 
+    # Documented in docs/platform/deployment-environment-variables.md: update it
+    # with any change here.
+    server_keep_alive_timeout_seconds: int = Field(
+        # A proxy that sends a request on a connection just as the server closes
+        # it gets no answer, so the proxy has to be the one that closes an idle
+        # connection. Google's load balancer keeps one open for 600 s and asks
+        # backends for 620 s, or it answers 502
+        # (backend_connection_closed_before_data_sent_to_client):
+        # https://docs.cloud.google.com/load-balancing/docs/https/troubleshooting-ext-https-lbs
+        default=620,
+        ge=1,
+        description="How long the API and WebSocket servers keep an idle "
+        "connection open: longer than any proxy in front of them does.",
+    )
+
     notification_service_port: int = Field(
         default=8007,
         description="The port for notification service daemon to run on",
@@ -617,6 +629,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="",
         description="Must be set so the application knows where it's hosted at. "
         "This is necessary to make sure webhooks find their way.",
+    )
+
+    claude_code_key_in_sandbox: bool = Field(
+        default=False,
+        description="Give the Claude Code block's E2B sandbox the user's Anthropic "
+        "key instead of sending its model calls through this server's relay. Use it "
+        "only when E2B's cloud cannot reach this server at platform_base_url.",
     )
 
     # Documented in docs/platform/client-ip.md: update it with any change here.
@@ -1117,6 +1136,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "value: long enough that a few weeks away never makes a relied-on "
             "memory look unused, to be tuned from the eval driver's "
             "demotion-damage data (0-3650 days)"
+        ),
+    )
+
+    stripe_api_base: str = Field(
+        default="",
+        description=(
+            "Where the Stripe SDK sends API requests, e.g. a fake Stripe in a "
+            "test stack. Blank keeps Stripe's own (https://api.stripe.com)."
         ),
     )
 

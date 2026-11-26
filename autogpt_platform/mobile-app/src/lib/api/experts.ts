@@ -22,8 +22,9 @@ export const expertKeys = {
   list: ["experts"] as const,
 };
 
-export function listExperts() {
-  return apiRequest<Expert[]>("/api/experts");
+// Takes React Query's context as is, so a dropped query cancels its fetch.
+export function listExperts({ signal }: { signal?: AbortSignal } = {}) {
+  return apiRequest<Expert[]>("/api/experts", { signal });
 }
 
 export interface BundledSkill {
@@ -33,10 +34,34 @@ export interface BundledSkill {
   description: string;
 }
 
-/** A roster expert as the marketplace shows it. */
+/** A step the expert takes in its first days (`ExpertDayOneItem`). */
+export interface DayOneItem {
+  title: string;
+  description: string;
+  timing: string;
+}
+
+/** A workflow that comes with the expert (`ExpertWorkflowRef`). */
+export interface ExpertWorkflow {
+  id: string;
+  name: string | null;
+  description: string | null;
+  schedule_cron: string | null;
+  integration_providers?: string[];
+}
+
+/**
+ * A roster expert as the marketplace shows it. The profile's fields are
+ * optional: a list cached by an older build of the app has none of them.
+ */
 export interface ExpertTemplate extends Expert {
   bio: string | null;
   bundled_skills: BundledSkill[];
+  day_one?: DayOneItem[];
+  workflows?: ExpertWorkflow[];
+  protected_soul_rules?: string[];
+  /** In credits, 100 to the dollar. */
+  weekly_budget?: number | null;
 }
 
 export const templateKeys = {

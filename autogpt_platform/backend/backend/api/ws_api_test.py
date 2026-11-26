@@ -1,4 +1,6 @@
+import asyncio
 import json
+import logging
 from typing import cast, get_args
 from unittest.mock import AsyncMock
 
@@ -7,11 +9,19 @@ import pytest
 from annotated_types import MaxLen
 from fastapi import WebSocket, WebSocketDisconnect
 from pytest_snapshot.plugin import Snapshot
+from starlette.websockets import WebSocketState
 
 from backend.api import model as api_model
-from backend.api.conn_manager import ConnectionManager
+from backend.api import ws_api
+from backend.api.conn_manager import ConnectionManager, _StreamCapacityError
+from backend.api.model import WSRequestFailed
 from backend.api.test_helpers import override_config
-from backend.api.ws_api import AppEnvironment, WebsocketServer, WSMessage, WSMethod
+from backend.api.ws_api import (
+    AppEnvironment,
+    WebsocketServer,
+    WSMessage,
+    WSMethod,
+)
 from backend.api.ws_api import app as websocket_app
 from backend.api.ws_api import (
     handle_subscribe,
@@ -19,7 +29,13 @@ from backend.api.ws_api import (
     settings,
     websocket_router,
 )
+from backend.data.sharded_pubsub import EventStreamLostError
 from backend.data.user import DEFAULT_USER_ID
+from backend.util import cache_redis
+from backend.util.url_redaction import request_credentials
+
+# Only a step that never comes keeps a wait going this long.
+_HANG_SECONDS = 10.0
 
 
 @pytest.fixture(autouse=True)
@@ -28,9 +44,10 @@ def account_db(mocker):
     tests don't run; an account is open unless a test closes it."""
     db = mocker.patch("backend.api.ws_api.user_db").return_value
     db.is_account_closed = AsyncMock(return_value=False)
-    # The open socket's per-message check, through the same DatabaseManager.
-    db.refused = mocker.patch(
-        "backend.api.ws_api.is_user_refused", new=AsyncMock(return_value=False)
+    # The open socket's per-message closure check, through the same
+    # DatabaseManager.
+    db.closed = mocker.patch(
+        "backend.api.ws_api.is_user_account_closed", new=AsyncMock(return_value=False)
     )
     return db
 
@@ -87,7 +104,22 @@ def test_websocket_server_limits_incoming_message_size(mocker) -> None:
     with override_config(settings, "app_env", AppEnvironment.LOCAL):
         WebsocketServer().run()
 
-    assert serve_websockets.call_args.kwargs["ws_max_size"] <= 4096
+    assert serve_websockets.call_args.kwargs["ws_max_size"] <= 16384
+
+
+def test_websocket_server_keeps_idle_connections_as_long_as_the_api(
+    mocker, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ENABLE_METRICS", "false")
+    serve_websockets = mocker.patch("backend.api.ws_api.uvicorn.run")
+
+    with (
+        override_config(settings, "app_env", AppEnvironment.LOCAL),
+        override_config(settings, "server_keep_alive_timeout_seconds", 777),
+    ):
+        WebsocketServer().run()
+
+    assert serve_websockets.call_args.kwargs["timeout_keep_alive"] == 777
 
 
 def test_websocket_server_trusts_x_forwarded_for_from_trusted_proxies(
@@ -304,39 +336,125 @@ async def test_websocket_router_invalid_method(
         mock_websocket, user_id=DEFAULT_USER_ID
     )
     mock_websocket.send_text.assert_called_once()
-    assert '"method":"error"' in mock_websocket.send_text.call_args[0][0]
-    assert '"success":false' in mock_websocket.send_text.call_args[0][0]
+    reply = WSRequestFailed.model_validate_json(
+        mock_websocket.send_text.call_args[0][0]
+    )
+    assert reply.method == WSMethod.ERROR
+    assert reply.success is False
+    assert reply.request.model_dump(mode="json") == {
+        "method": "graph_execution_event",
+        "data": None,
+    }
+    assert reply.retryable is False
     mock_manager.disconnect_socket.assert_called_once_with(
         mock_websocket, user_id=DEFAULT_USER_ID
     )
 
 
-@pytest.mark.asyncio
-async def test_websocket_router_answers_a_subscribe_that_failed(
-    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker
-) -> None:
-    """The client waits for an ack; silence leaves it with no live updates."""
+async def _reply_to(
+    request: str, mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker
+) -> WSRequestFailed:
     mocker.patch(
         "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
     )
     mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False))
-    mock_websocket.receive_text.side_effect = [
-        WSMessage(
-            method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
-            data={"graph_exec_id": "test-graph-exec-1"},
-        ).model_dump_json(),
-        WebSocketDisconnect(),
-    ]
-    mock_manager.subscribe_graph_exec.side_effect = ConnectionError("internal detail")
+    mock_websocket.receive_text.side_effect = [request, WebSocketDisconnect()]
 
     await websocket_router(
         cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
     )
 
-    reply = WSMessage.model_validate_json(mock_websocket.send_text.call_args[0][0])
+    mock_websocket.send_text.assert_called_once()
+    return WSRequestFailed.model_validate_json(mock_websocket.send_text.call_args[0][0])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure, retryable",
+    [
+        # Redis didn't confirm the SSUBSCRIBE in time.
+        (TimeoutError(), True),
+        # The shard stream ended, or couldn't be opened.
+        (EventStreamLostError("internal detail"), True),
+        (ConnectionError("internal detail"), True),
+        (_StreamCapacityError("Server busy, try again later"), False),
+        (ValueError("Subscription limit reached (1000 per connection)"), False),
+        (ValueError("graph_exec #e-1 not found for user #u-1"), False),
+    ],
+)
+async def test_a_failed_subscribe_is_answered_with_itself_and_whether_to_send_it_again(
+    failure: Exception,
+    retryable: bool,
+    mock_websocket: AsyncMock,
+    mock_manager: AsyncMock,
+    mocker,
+) -> None:
+    """#16922: the error names the subscription and says whether sending it
+    again can succeed, so the client retries what may and drops what can't."""
+    mock_manager.subscribe_graph_execs.side_effect = failure
+    request = {"method": "subscribe_graph_executions", "data": {"graph_id": "g-1"}}
+
+    reply = await _reply_to(json.dumps(request), mock_websocket, mock_manager, mocker)
+
     assert reply.method == WSMethod.ERROR
     assert reply.success is False
+    assert reply.request.model_dump(mode="json") == request
+    assert reply.retryable is retryable
     assert "internal detail" not in (reply.error or "")
+
+
+@pytest.mark.asyncio
+async def test_a_socket_reports_each_kind_of_retryable_failure_once_as_an_error(
+    mock_websocket: AsyncMock,
+    mock_manager: AsyncMock,
+    mocker,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Sentry files error logs, and the client retries these failures: a
+    socket's retries of one failure must not each become an event."""
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False))
+    request = json.dumps(
+        {"method": "subscribe_graph_executions", "data": {"graph_id": "g-1"}}
+    )
+    mock_websocket.receive_text.side_effect = [request] * 3 + [WebSocketDisconnect()]
+    mock_manager.subscribe_graph_execs.side_effect = [
+        TimeoutError(),
+        TimeoutError(),
+        EventStreamLostError("lost"),
+    ]
+
+    with caplog.at_level(logging.WARNING, logger="backend.api.ws_api"):
+        await websocket_router(
+            cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+        )
+
+    levels = [
+        record.levelname
+        for record in caplog.records
+        if record.getMessage().startswith("Error while handling")
+    ]
+    assert levels == ["ERROR", "WARNING", "ERROR"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "data",
+    [{"graph_id": "g" * (api_model.WS_ID_MAX_LENGTH + 1)}, None],
+    ids=["invalid", "missing"],
+)
+async def test_a_subscribe_with_bad_data_is_not_worth_sending_again(
+    data: dict | None, mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker
+) -> None:
+    request = {"method": "subscribe_graph_executions", "data": data}
+
+    reply = await _reply_to(json.dumps(request), mock_websocket, mock_manager, mocker)
+
+    assert reply.request.model_dump(mode="json") == request
+    assert reply.retryable is False
+    mock_manager.subscribe_graph_execs.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -459,8 +577,16 @@ async def test_handle_unsubscribe_missing_data(
 
     mock_manager.unsubscribe_graph_exec.assert_not_called()
     mock_websocket.send_text.assert_called_once()
-    assert '"method":"error"' in mock_websocket.send_text.call_args[0][0]
-    assert '"success":false' in mock_websocket.send_text.call_args[0][0]
+    reply = WSRequestFailed.model_validate_json(
+        mock_websocket.send_text.call_args[0][0]
+    )
+    assert reply.method == WSMethod.ERROR
+    assert reply.success is False
+    assert reply.request.model_dump(mode="json") == {
+        "method": "unsubscribe",
+        "data": None,
+    }
+    assert reply.retryable is False
 
 
 # ---------- Per-graph subscribe branch ----------
@@ -525,18 +651,186 @@ async def test_handle_subscribe_rejects_unrelated_method(
 # ---------- authenticate_websocket branches ----------
 
 
-@pytest.mark.asyncio
-async def test_authenticate_websocket_missing_token_closes_4001() -> None:
-    from backend.api.ws_api import authenticate_websocket
+def _auth_frame(token: str = "first-message-token") -> str:
+    return json.dumps({"method": "authenticate", "data": {"token": token}})
 
+
+def _unsigned_socket() -> AsyncMock:
+    """A socket with no token in its URL, whose accept moves it to CONNECTED
+    as a real one's does."""
     ws = AsyncMock(spec=WebSocket)
     ws.query_params = {}
 
+    async def accepted() -> None:
+        ws.application_state = WebSocketState.CONNECTED
+
+    ws.accept.side_effect = accepted
+    return ws
+
+
+@pytest.mark.asyncio
+async def test_authenticate_websocket_reads_the_token_from_the_first_message(
+    mocker,
+) -> None:
+    from backend.api.ws_api import authenticate_websocket
+
+    parse = mocker.patch(
+        "backend.api.ws_api.parse_jwt_token_async",
+        new=AsyncMock(return_value={"sub": "user-X", "sid": "session-X"}),
+    )
+    mocker.patch("backend.api.ws_api.require_active_auth_session", new=AsyncMock())
+    ws = _unsigned_socket()
+    ws.receive_text.return_value = _auth_frame()
+
     user_id = await authenticate_websocket(ws)
 
-    ws.close.assert_awaited_once()
-    assert ws.close.call_args.kwargs["code"] == 4001
-    assert user_id == ""
+    assert user_id == "user-X"
+    ws.accept.assert_awaited_once()
+    ws.close.assert_not_awaited()
+    parse.assert_awaited_once_with("first-message-token")
+    # Masked in this connection's logs and error reports, as a URL's token is.
+    assert "first-message-token" in request_credentials()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "frame",
+    [
+        "not json",
+        json.dumps({"method": "heartbeat", "data": "ping"}),
+        json.dumps({"method": "authenticate", "data": {}}),
+        json.dumps({"method": "authenticate", "data": {"token": ""}}),
+        json.dumps({"method": "authenticate", "data": "a-token"}),
+    ],
+)
+async def test_authenticate_websocket_without_a_token_message_closes_4001(
+    mocker, frame: str
+) -> None:
+    from backend.api.ws_api import authenticate_websocket
+
+    parse = mocker.patch("backend.api.ws_api.parse_jwt_token_async", new=AsyncMock())
+    ws = _unsigned_socket()
+    ws.receive_text.return_value = frame
+
+    user_id = await authenticate_websocket(ws)
+
+    ws.accept.assert_awaited_once()
+    ws.close.assert_awaited_once_with(code=4001, reason="Missing authentication token")
+    assert user_id is None
+    parse.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_authenticate_websocket_closes_4001_on_a_binary_first_message(
+    mocker,
+) -> None:
+    from backend.api.ws_api import authenticate_websocket
+
+    ws = _unsigned_socket()
+    ws.receive_text.side_effect = KeyError("text")
+
+    assert await authenticate_websocket(ws) is None
+    ws.accept.assert_awaited_once()
+    ws.close.assert_awaited_once_with(code=4001, reason="Missing authentication token")
+
+
+@pytest.mark.asyncio
+async def test_authenticate_websocket_asks_for_a_retry_when_no_message_comes(
+    mocker,
+) -> None:
+    """A tab that paused before it could sign in reconnects; 4001 would stop
+    it for good."""
+    from backend.api.ws_api import authenticate_websocket
+
+    mocker.patch("backend.api.ws_api.AUTH_MESSAGE_TIMEOUT_S", 0.01)
+
+    async def never() -> str:
+        await asyncio.sleep(_HANG_SECONDS)
+        return _auth_frame()
+
+    ws = _unsigned_socket()
+    ws.receive_text.side_effect = never
+
+    assert (
+        await asyncio.wait_for(authenticate_websocket(ws), timeout=_HANG_SECONDS)
+        is None
+    )
+    ws.accept.assert_awaited_once()
+    ws.close.assert_awaited_once_with(code=1013, reason="Try again later")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("gone_on", ["accept", "receive"])
+async def test_authenticate_websocket_client_gone_before_its_token(
+    mocker, gone_on: str
+) -> None:
+    from backend.api.ws_api import authenticate_websocket
+
+    parse = mocker.patch("backend.api.ws_api.parse_jwt_token_async", new=AsyncMock())
+    ws = AsyncMock(spec=WebSocket)
+    ws.query_params = {}
+    if gone_on == "accept":
+        ws.accept.side_effect = BrokenPipeError()
+    else:
+        ws.receive_text.side_effect = WebSocketDisconnect(code=1001)
+
+    assert await authenticate_websocket(ws) is None
+    ws.close.assert_not_awaited()
+    parse.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_short_first_message_token_is_not_kept_for_masking(mocker) -> None:
+    """Masking a few characters would hide ordinary text in later reports."""
+    from backend.api.ws_api import authenticate_websocket
+
+    mocker.patch(
+        "backend.api.ws_api.parse_jwt_token_async",
+        new=AsyncMock(side_effect=ValueError("bad token")),
+    )
+    ws = _unsigned_socket()
+    ws.receive_text.return_value = _auth_frame(" ")
+
+    assert await authenticate_websocket(ws) is None
+    assert " " not in request_credentials()
+
+
+@pytest.mark.asyncio
+async def test_authenticate_websocket_still_reads_a_token_in_the_url(mocker) -> None:
+    """Tabs open on an older frontend send it there."""
+    from backend.api.ws_api import authenticate_websocket
+
+    parse = mocker.patch(
+        "backend.api.ws_api.parse_jwt_token_async",
+        new=AsyncMock(return_value={"sub": "user-X", "sid": "session-X"}),
+    )
+    mocker.patch("backend.api.ws_api.require_active_auth_session", new=AsyncMock())
+    ws = AsyncMock(spec=WebSocket)
+    ws.query_params = {"token": "url-token"}
+
+    assert await authenticate_websocket(ws) == "user-X"
+    parse.assert_awaited_once_with("url-token")
+    # The connection manager accepts it once it has room for the socket.
+    ws.accept.assert_not_awaited()
+    ws.receive_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_after_the_first_message_does_not_accept_again(
+    mocker,
+) -> None:
+    from backend.api.ws_api import authenticate_websocket
+
+    mocker.patch(
+        "backend.api.ws_api.parse_jwt_token_async",
+        new=AsyncMock(side_effect=ValueError("bad token")),
+    )
+    ws = _unsigned_socket()
+    ws.receive_text.return_value = _auth_frame()
+
+    assert await authenticate_websocket(ws) is None
+    ws.accept.assert_awaited_once()
+    ws.close.assert_awaited_once_with(code=4003, reason="Invalid token")
 
 
 @pytest.mark.asyncio
@@ -554,7 +848,7 @@ async def test_authenticate_websocket_invalid_token_closes_4003(mocker) -> None:
 
     ws.close.assert_awaited_once()
     assert ws.close.call_args.kwargs["code"] == 4003
-    assert user_id == ""
+    assert user_id is None
 
 
 @pytest.mark.asyncio
@@ -572,7 +866,7 @@ async def test_authenticate_websocket_missing_sub_closes_4002(mocker) -> None:
 
     ws.close.assert_awaited_once()
     assert ws.close.call_args.kwargs["code"] == 4002
-    assert user_id == ""
+    assert user_id is None
 
 
 @pytest.mark.asyncio
@@ -613,7 +907,7 @@ async def test_authenticate_websocket_closed_account_closes_4003(
     user_id = await authenticate_websocket(ws)
 
     ws.close.assert_awaited_once_with(code=4003, reason="This account is closed.")
-    assert user_id == ""
+    assert user_id is None
     account_db.is_account_closed.assert_awaited_once_with("user-closed")
 
 
@@ -639,7 +933,7 @@ async def test_authenticate_websocket_closed_lookup_failure_refuses_with_1011(
     user_id = await authenticate_websocket(ws)
 
     ws.close.assert_awaited_once_with(code=1011, reason="Try again")
-    assert user_id == ""
+    assert user_id is None
     banned.assert_not_awaited()
 
 
@@ -659,7 +953,7 @@ async def test_authenticate_websocket_refuses_a_banned_account(mocker) -> None:
 
     ws.close.assert_awaited_once()
     assert ws.close.call_args.kwargs["code"] == 4004
-    assert user_id == ""
+    assert user_id is None
 
 
 @pytest.mark.asyncio
@@ -685,7 +979,7 @@ async def test_authenticate_websocket_refuses_when_the_ban_is_unreadable(
 
     ws.close.assert_awaited_once()
     assert ws.close.call_args.kwargs["code"] == 1011
-    assert user_id == ""
+    assert user_id is None
 
 
 @pytest.mark.asyncio
@@ -726,7 +1020,7 @@ async def test_a_closed_account_ends_an_open_socket_at_its_next_message(
         "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
     )
     mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False))
-    account_db.refused.return_value = True
+    account_db.closed.return_value = True
     mock_websocket.receive_text.side_effect = [
         WSMessage(
             method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
@@ -742,7 +1036,7 @@ async def test_a_closed_account_ends_an_open_socket_at_its_next_message(
         code=4003, reason="This account is closed."
     )
     mock_manager.subscribe_graph_exec.assert_not_called()
-    account_db.refused.assert_awaited_once_with(DEFAULT_USER_ID)
+    account_db.closed.assert_awaited_once_with(DEFAULT_USER_ID)
 
 
 @pytest.mark.asyncio
@@ -753,7 +1047,7 @@ async def test_an_unreadable_closure_keeps_an_open_socket(
         "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
     )
     mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False))
-    account_db.refused.side_effect = ConnectionError()
+    account_db.closed.side_effect = ConnectionError()
     mock_websocket.receive_text.side_effect = [
         WSMessage(
             method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
@@ -801,6 +1095,112 @@ async def test_an_unreadable_ban_keeps_an_open_socket(
 
     mock_websocket.close.assert_not_called()
     mock_manager.subscribe_graph_exec.assert_called_once()
+
+
+async def _never_answers(user_id: str) -> bool:
+    await asyncio.Event().wait()
+    raise AssertionError("unreachable")
+
+
+async def _answers_allowed_once_cancelled(user_id: str) -> bool:
+    """A layer under the lookup that swallows the cancellation."""
+    try:
+        await asyncio.Event().wait()
+    except asyncio.CancelledError:
+        pass
+    return False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ban_lookup",
+    [_never_answers, _answers_allowed_once_cancelled],
+    ids=["never-answers", "swallows-the-cancel"],
+)
+async def test_an_account_check_that_runs_out_of_time_closes_the_socket_to_retry(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker, ban_lookup
+) -> None:
+    """The check never counts as allowed by running out of time: the message
+    isn't handled, and the socket closes with a code the client reconnects
+    on, which runs the connect-time checks. Nor does a ban lookup that
+    swallowed the cancellation start the closure lookup past the deadline,
+    which no second cancellation would end."""
+    closure_lookup_started = asyncio.Event()
+
+    async def closure_lookup(user_id: str) -> bool:
+        closure_lookup_started.set()
+        return await _never_answers(user_id)
+
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mocker.patch("backend.api.ws_api.is_user_banned", new=ban_lookup)
+    mocker.patch("backend.api.ws_api.is_user_account_closed", new=closure_lookup)
+    # The lookup never finishes on its own, so the bound decides when the
+    # check gives up, not whether.
+    mocker.patch.object(ws_api, "ACCOUNT_CHECK_TIMEOUT_S", 0.05)
+    mock_websocket.receive_text.side_effect = [
+        WSMessage(
+            method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
+            data={"graph_exec_id": "test-graph-exec-1"},
+        ).model_dump_json(),
+        WebSocketDisconnect(),
+    ]
+
+    async with asyncio.timeout(_HANG_SECONDS):
+        await websocket_router(
+            cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+        )
+
+    mock_websocket.close.assert_awaited_once_with(code=1013, reason="Try again")
+    mock_manager.subscribe_graph_exec.assert_not_called()
+    mock_websocket.send_text.assert_not_called()
+    assert not closure_lookup_started.is_set()
+
+
+@pytest.mark.asyncio
+async def test_a_closure_lookup_that_runs_out_of_time_closes_the_socket_to_retry(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker
+) -> None:
+    """The ban answers "not banned" and the closure lookup never answers: the
+    check runs out of time there, and closes the socket with the code the
+    client reconnects on, handling nothing."""
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False))
+    mocker.patch("backend.api.ws_api.is_user_account_closed", new=_never_answers)
+    # The lookup never finishes on its own, so the bound decides when the
+    # check gives up, not whether.
+    mocker.patch.object(ws_api, "ACCOUNT_CHECK_TIMEOUT_S", 0.05)
+    mock_websocket.receive_text.side_effect = [
+        WSMessage(
+            method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
+            data={"graph_exec_id": "test-graph-exec-1"},
+        ).model_dump_json(),
+        WebSocketDisconnect(),
+    ]
+
+    async with asyncio.timeout(_HANG_SECONDS):
+        await websocket_router(
+            cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+        )
+
+    mock_websocket.close.assert_awaited_once_with(code=1013, reason="Try again")
+    mock_manager.subscribe_graph_exec.assert_not_called()
+    mock_websocket.send_text.assert_not_called()
+
+
+# The shared cache's own bound, read at import: every test's autouse
+# ``patient_shared_cache`` fixture replaces it.
+_PRODUCT_REDIS_OP_TIMEOUT_S = cache_redis.REDIS_OP_TIMEOUT_S
+
+
+def test_the_account_checks_bound_fits_its_two_cache_reads() -> None:
+    """The check reads the cache twice, then the database, inside
+    ``ACCOUNT_CHECK_TIMEOUT_S``."""
+    assert _PRODUCT_REDIS_OP_TIMEOUT_S <= 1.0
+    assert 2 * _PRODUCT_REDIS_OP_TIMEOUT_S < ws_api.ACCOUNT_CHECK_TIMEOUT_S
 
 
 # ---------- get_connection_manager singleton ----------

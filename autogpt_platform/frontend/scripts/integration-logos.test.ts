@@ -1,10 +1,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
+import { formatProviderName } from "../src/components/contextual/IntegrationsPanel/helpers";
 import { integrationIconSrc } from "../src/components/molecules/IntegrationLogo/helpers";
 
 interface CatalogEntry {
   name: string;
+  display_name: string;
   mcp_server: { icon_id?: string };
 }
 
@@ -29,4 +31,27 @@ describe("integration logo assets", () => {
     expect(entry.mcp_server.icon_id).toBeTruthy();
     expectPNG(entry.mcp_server.icon_id!);
   });
+
+  // A skill names the MCP service it needs by the entry's name (#17313).
+  test.each(catalog)("$name, named as a provider, shows that logo", (entry) => {
+    expect(integrationIconSrc(entry.name)).toBe(
+      integrationIconSrc(entry.mcp_server.icon_id!),
+    );
+    expectPNG(entry.name);
+  });
+});
+
+describe("MCP catalog names", () => {
+  // Every catalog entry, named as a provider, reads as its display_name
+  // (#17336).
+  test.each(catalog)(
+    "$name, named as a provider, reads $display_name",
+    (entry) => {
+      expect(
+        formatProviderName(entry.name),
+        "a display_name the name after mcp_ doesn't format to belongs in " +
+          "MCP_DISPLAY_NAMES (src/components/contextual/IntegrationsPanel/helpers.ts)",
+      ).toBe(entry.display_name);
+    },
+  );
 });

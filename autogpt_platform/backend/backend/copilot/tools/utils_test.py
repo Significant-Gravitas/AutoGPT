@@ -221,7 +221,7 @@ async def _resolve_for(expert_id: str | None, allowed: list[str]):
     from backend.copilot.tools.helpers import resolve_block_credentials
 
     experts = MagicMock()
-    experts.expert_allowed_credential_ids = AsyncMock(return_value=allowed)
+    experts.seeded_expert_credential_ids = AsyncMock(return_value=allowed)
     with (
         patch(
             "backend.copilot.tools.utils.IntegrationCredentialsManager"
@@ -358,6 +358,31 @@ def test_a_runnable_sdk_default_still_counts_as_a_usable_credential(ask):
     )
     tavily_default = _key_cred("tavily-default", provider="tavily")
     assert _find([tavily_default], ask=ask, field=field) is tavily_default
+
+
+@pytest.mark.parametrize("ask", [True, False], ids=["watched", "unattended"])
+def test_an_expired_key_never_shadows_a_valid_one(ask):
+    # #16234: an expired key stored first must not be picked by a scheduled
+    # turn (only to be refused) or offered as a second account to choose from.
+    expired = _key_cred("expired")
+    expired.expires_at = 1_000_000_000  # 2001
+    valid = _key_cred("valid")
+
+    assert _find([expired, valid], ask=ask) is valid
+    # Alone it fits nothing, so the user is asked to connect a key.
+    assert _find([expired], ask=ask) is None
+
+
+@pytest.mark.parametrize("ask", [True, False], ids=["watched", "unattended"])
+def test_an_expired_key_the_user_picked_is_kept_not_swapped(ask):
+    # A pick never moves to another account: the run refuses the expired key
+    # and says so, rather than quietly running on a different one.
+    expired = _key_cred("expired")
+    expired.expires_at = 1_000_000_000  # 2001
+    valid = _key_cred("valid")
+
+    assert _find([valid, expired], {"github": "expired"}, ask=ask) is expired
+    assert _find([expired, valid], {"github": "valid"}, ask=ask) is valid
 
 
 # ---------------------------------------------------------------------------

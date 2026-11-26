@@ -312,6 +312,30 @@ async def test_execute_allows_non_trigger_edit(tool, mocker) -> None:
 
 
 @pytest.mark.asyncio
+async def test_an_edit_hands_the_pipeline_the_stored_version(tool, mocker) -> None:
+    """The fixer keeps a switched-off model on a node the stored version
+    already has it on, so the pipeline must get that version."""
+    session = make_session(_USER_ID)
+    session.metadata = ChatSessionMetadata(builder_graph_id="graph-x")
+    stored = {"id": "graph-x", "version": 3, "nodes": [{"id": "n1"}]}
+    mocker.patch(f"{_EDIT_MODULE}.get_agent_as_json", return_value=stored)
+    mocker.patch(f"{_EDIT_MODULE}.fetch_library_agents", return_value=[])
+    saved = mocker.patch(
+        f"{_EDIT_MODULE}.fix_validate_and_save",
+        return_value=ErrorResponse(message="pipeline-reached", error="sentinel"),
+    )
+
+    await tool._execute(
+        user_id=_USER_ID,
+        session=session,
+        agent_id="graph-x",
+        agent_json={"nodes": [{"id": "n1"}], "links": []},
+    )
+
+    assert saved.call_args.kwargs["saved_agent"] is stored
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "external_caller, permissions, moves",
     [

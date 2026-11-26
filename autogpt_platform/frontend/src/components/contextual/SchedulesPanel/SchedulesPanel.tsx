@@ -4,12 +4,12 @@ import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { SchedulesUnavailableNotice } from "../SchedulesUnavailableNotice/SchedulesUnavailableNotice";
 import { NEW_SCHEDULED_TASK_PROMPT } from "../guidedPrompts";
 import { EmptyFollowups } from "./components/EmptyFollowups/EmptyFollowups";
 import { FollowupListItem } from "./components/FollowupListItem/FollowupListItem";
 import { GraphScheduleListItem } from "./components/GraphScheduleListItem/GraphScheduleListItem";
 import { PausedChatListItem } from "./components/PausedChatListItem/PausedChatListItem";
-import { SchedulesUnavailable } from "./components/SchedulesUnavailable/SchedulesUnavailable";
 import { useSchedulesPanel } from "./useSchedulesPanel";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -68,8 +68,8 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
         </div>
       )}
 
-      <SchedulesUnavailable
-        unavailable={unavailable}
+      <SchedulesUnavailableNotice
+        show={unavailable}
         retrying={retrying}
         onRetry={retryUnavailable}
       />

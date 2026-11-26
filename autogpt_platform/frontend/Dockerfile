@@ -4,6 +4,7 @@ FROM node:24.22.1-alpine3.23 AS base
 WORKDIR /app
 RUN corepack enable
 COPY autogpt_platform/frontend/package.json autogpt_platform/frontend/pnpm-lock.yaml ./
+COPY autogpt_platform/frontend/patches ./patches
 RUN --mount=type=cache,target=/root/.local/share/pnpm pnpm install --frozen-lockfile
 
 # Build stage for prod
