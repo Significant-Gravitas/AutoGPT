@@ -1,4 +1,5 @@
 import { apiRequest } from "./client";
+import type { AutopilotMode } from "./expertManage";
 
 /** `ExpertRunStatus` in backend/api/features/experts/models.py. */
 export type ExpertRunStatus =
@@ -44,9 +45,18 @@ export interface ScheduleInfo {
   expert_id?: string | null;
 }
 
-/** The fields of the full `Expert` from `GET /experts/{id}` the panel reads. */
+/** The fields of the full `Expert` from `GET /experts/{id}` the app reads. */
 export interface ExpertDetail {
   id: string;
+  name: string;
+  identity: string;
+  voice_preferences: string;
+  boundaries: string;
+  /** In credits, 100 to the dollar; null is the platform default, 0 no cap. */
+  weekly_budget: number | null;
+  weekly_spend: number;
+  autopilot_mode: AutopilotMode | null;
+  source_template_id: string | null;
   schedules_paused_at: string | null;
   workflows: { schedule_id: string | null }[];
 }

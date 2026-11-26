@@ -32,6 +32,7 @@ export default function AppLayout() {
         <Drawer.Screen name="chats" />
         <Drawer.Screen name="team" />
         <Drawer.Screen name="create-expert" />
+        <Drawer.Screen name="expert/[expertId]" />
         <Drawer.Screen name="marketplace/index" />
         <Drawer.Screen name="marketplace/[templateId]" />
         <Drawer.Screen name="files/index" />

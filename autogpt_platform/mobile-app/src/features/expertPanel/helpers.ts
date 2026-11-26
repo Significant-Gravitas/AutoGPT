@@ -43,7 +43,7 @@ export function nextRunText(nextRunTime: string, now = new Date()) {
 
 interface ExpertSchedulesArgs {
   expertID: string;
-  detail: ExpertDetail | undefined;
+  detail: Pick<ExpertDetail, "id" | "schedules_paused_at" | "workflows"> | undefined;
   graphSchedules: ScheduleInfo[];
   followupSchedules: ScheduleInfo[];
 }

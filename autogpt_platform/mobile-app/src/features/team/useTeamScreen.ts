@@ -3,6 +3,8 @@ import { router, useNavigation } from "expo-router";
 import { useRef, useState } from "react";
 
 import { PLAN_REQUIRED_MESSAGE } from "@/features/chat/chatErrors";
+import { chooseAction } from "@/lib/actionMenu";
+import { tapMenu } from "@/lib/haptics";
 import { latestOrNewSession } from "@/features/marketplace/openExpertChat";
 import { ApiError } from "@/lib/api/client";
 import { type Expert, expertKeys, listExperts } from "@/lib/api/experts";
@@ -52,6 +54,16 @@ export function useTeamScreen() {
     }
   }
 
+  async function openExpertMenu(expert: Expert) {
+    tapMenu();
+    const action = await chooseAction(expert.name, [
+      { id: "chat", label: "Chat" },
+      { id: "manage", label: "Manage" },
+    ]);
+    if (action === "chat") void openExpert(expert);
+    if (action === "manage") router.push(`/expert/${expert.id}`);
+  }
+
   function openOtto() {
     openHome(null);
   }
@@ -73,6 +85,7 @@ export function useTeamScreen() {
     openingID,
     openError,
     openExpert,
+    openExpertMenu,
     openOtto,
     createExpert,
     browseMarketplace,

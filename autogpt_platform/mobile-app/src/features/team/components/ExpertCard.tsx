@@ -13,6 +13,7 @@ interface Props {
   status?: string | null;
   isOpening?: boolean;
   onPress: () => void;
+  onLongPress?: () => void;
 }
 
 export function ExpertCard({
@@ -23,6 +24,7 @@ export function ExpertCard({
   status,
   isOpening,
   onPress,
+  onLongPress,
 }: Props) {
   const styles = useStyles();
   const colors = useColors();
@@ -31,7 +33,10 @@ export function ExpertCard({
       accessibilityRole="button"
       accessibilityLabel={name}
       accessibilityState={{ busy: isOpening }}
+      accessibilityHint={onLongPress ? "Hold for options" : undefined}
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={350}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
       <ExpertAvatar name={name} source={avatar} tint={tint} size={AVATAR_SIZE} />

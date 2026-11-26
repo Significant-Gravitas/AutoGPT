@@ -9,6 +9,8 @@ interface Props {
   label: string;
   icon?: IconSvgElement;
   value?: string;
+  /** A second, smaller line under the label. */
+  detail?: string;
   /** `page` opens another screen here; `web` leaves the app. */
   trailing?: "page" | "web";
   isDestructive?: boolean;
@@ -19,6 +21,7 @@ export function SettingsRow({
   label,
   icon,
   value,
+  detail,
   trailing,
   isDestructive,
   onPress,
@@ -31,12 +34,19 @@ export function SettingsRow({
     return (
       <>
         {icon ? <Icon icon={icon} size={20} color={tint} /> : null}
-        <Text
-          numberOfLines={1}
-          style={[styles.label, isDestructive && styles.destructive]}
-        >
-          {label}
-        </Text>
+        <View style={styles.text}>
+          <Text
+            numberOfLines={1}
+            style={[styles.label, isDestructive && styles.destructive]}
+          >
+            {label}
+          </Text>
+          {detail ? (
+            <Text numberOfLines={1} style={styles.detail}>
+              {detail}
+            </Text>
+          ) : null}
+        </View>
         {value ? (
           <Text numberOfLines={1} style={styles.value}>
             {value}
@@ -75,7 +85,9 @@ const useStyles = createStyles((colors) => ({
     paddingVertical: spacing.sm,
   },
   pressed: { backgroundColor: colors.surfacePressed },
-  label: { ...type.body, flex: 1, color: colors.text },
+  text: { flex: 1 },
+  label: { ...type.body, color: colors.text },
+  detail: { ...type.small, color: colors.textTertiary },
   destructive: { color: colors.error },
   value: { ...type.label, fontWeight: "400", color: colors.textSecondary },
 }));
