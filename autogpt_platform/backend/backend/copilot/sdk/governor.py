@@ -13,6 +13,8 @@ didn't: ``max_budget_usd`` above the budget (in the CLI's price units) and
 ``max_turns`` a little past the check-in.
 """
 
+from collections.abc import Awaitable, Callable
+
 from claude_agent_sdk import AssistantMessage, Message, StreamEvent
 
 from backend.copilot.constants import PER_TURN_SPEND_FLOOR_USD
@@ -61,10 +63,24 @@ class TurnGovernor:
     failed was still spent.
     """
 
-    def __init__(self, *, budget: TurnBudget | None, step_checkin: int) -> None:
+    def __init__(
+        self,
+        *,
+        budget: TurnBudget | None,
+        step_checkin: int,
+        grow: Callable[[float], Awaitable[float]] | None = None,
+        room: Callable[[], float] | None = None,
+    ) -> None:
         # None on routes the account doesn't pay for (a ChatGPT subscription):
         # those only get the step check-in.
         self.budget = budget
+        # For a budget that grows (``CreditBilledTurn.grow``): asked to cover
+        # the spend plus the reserve once spend nears the budget, it answers
+        # the budget it could reach.
+        self.grow = grow
+        # What such a budget holds for the model now: cost recorded beside the
+        # model's, a tool's, shrinks it between two ``grow`` calls.
+        self.room = room
         self.step_checkin = step_checkin
         self.meter = UsageMeter()
         self.landing: PauseReason | None = None
@@ -75,6 +91,8 @@ class TurnGovernor:
         # Set once the turn has closed as a pause: queued follow-ups then wait
         # for the user to pick the task back up instead of auto-continuing.
         self.paused = False
+        # Set once a budget that grows was spent past (``stop``).
+        self.stopped = False
 
     def observe(self, message: Message) -> None:
         if isinstance(message, AssistantMessage):
@@ -84,6 +102,31 @@ class TurnGovernor:
         else:
             return
         self._update()
+
+    async def keep_up(self) -> None:
+        """Grow a budget that can grow once spend nears it, and land the turn
+        when it can't grow past the reserve."""
+        budget = self._live_budget()
+        if self.grow is None or budget is None or self.landing is not None:
+            return
+        if not self._near(budget):
+            return
+        usd = await self.grow(self.meter.spent_usd + self._reserve_usd(budget))
+        self.budget = budget = budget.model_copy(update={"usd": usd})
+        if self.landing is None and self._near(budget):
+            self.landing = budget.limiting
+
+    def stop(self) -> bool:
+        """True, once, when a budget that grows has landed and its spend has
+        passed it. The CLI's backstop sits on the most such a budget can grow
+        to, so the caller interrupts the CLI here instead."""
+        budget = self._live_budget()
+        if self.stopped or self.grow is None or budget is None:
+            return False
+        if self.landing is None or self.meter.spent_usd < budget.usd:
+            return False
+        self.stopped = True
+        return True
 
     def refusal(self) -> str | None:
         """Why the next tool call is refused, or None to let it run."""
@@ -99,16 +142,16 @@ class TurnGovernor:
         """The pause this turn ended in, or None if it finished or failed.
 
         A backstop subtype means the CLI stopped the turn itself, before (or
-        while) the agent wrote its checkpoint, so none is claimed. A genuine
-        error while landing stays an error, and a turn that ended normally
-        without a refused tool simply finished: only a turn that ended
-        normally after its tools were refused is a pause.
+        while) the agent wrote its checkpoint, so none is claimed; the same for
+        a turn stopped at a budget that grows (``stop``), whatever its CLI
+        reported. A genuine error while landing stays an error, and a turn
+        that ended normally without a refused tool simply finished: only a
+        turn that ended normally after its tools were refused is a pause.
         """
+        if self.stopped or result_subtype == "error_max_budget_usd":
+            return self._pause(self._spend_reason(), checkpoint_saved=False)
         if result_subtype == "error_max_turns":
             return self._pause("steps", checkpoint_saved=False)
-        if result_subtype == "error_max_budget_usd":
-            reason = self.budget.limiting if self.budget is not None else "task"
-            return self._pause(reason, checkpoint_saved=False)
         if self.landing is None or not self.refused:
             return None
         if result_subtype != "success":
@@ -121,6 +164,8 @@ class TurnGovernor:
         A hangup is otherwise a crash and keeps its own notice; once the tools
         were being refused it is the landing that ended, so it still pauses.
         """
+        if self.stopped:
+            return self._pause(self._spend_reason(), checkpoint_saved=False)
         if self.landing is None or not self.refused:
             return None
         return self._pause(self.landing, checkpoint_saved=False)
@@ -139,7 +184,8 @@ class TurnGovernor:
         if self.budget is None:
             return None
         if self.budget.hard_cap:
-            return self.budget.usd * cli_price_ratio(model)
+            most = self.budget.grows_to_usd or self.budget.usd
+            return most * cli_price_ratio(model)
         headroom = max(_BACKSTOP_MIN_USD, _BACKSTOP_SHARE * self.budget.usd)
         cli_usd = (self.budget.usd + headroom) * cli_price_ratio(model)
         return max(PER_TURN_SPEND_FLOOR_USD, cli_usd)
@@ -149,10 +195,22 @@ class TurnGovernor:
             return
         if self.meter.main_calls >= self.step_checkin:
             self.landing = "steps"
-        elif self.budget is not None and self.meter.spent_usd >= (
-            self.budget.usd - self._reserve_usd(self.budget)
-        ):
+        elif self.grow is None and self.budget is not None and self._near(self.budget):
+            # A budget that grows lands only once ``keep_up`` can't grow it.
             self.landing = self.budget.limiting
+
+    def _live_budget(self) -> TurnBudget | None:
+        if self.room is not None and self.budget is not None:
+            usd = self.room()
+            if usd != self.budget.usd:
+                self.budget = self.budget.model_copy(update={"usd": usd})
+        return self.budget
+
+    def _near(self, budget: TurnBudget) -> bool:
+        return self.meter.spent_usd >= budget.usd - self._reserve_usd(budget)
+
+    def _spend_reason(self) -> PauseReason:
+        return self.budget.limiting if self.budget is not None else "task"
 
     def _reserve_usd(self, budget: TurnBudget) -> float:
         latest = 2 * self.meter.last_main_call_usd

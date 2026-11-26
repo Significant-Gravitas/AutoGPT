@@ -346,6 +346,10 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/internal/integrations/providers/names",
     "GET /api/internal/integrations/providers/system",
     "POST /api/internal/integrations/{provider}/webhooks/{webhook_id}/ingress",
+    # A Claude Code block run's model calls, on the user's own Anthropic key and
+    # authenticated by the run's relay token; the run was admitted when it started.
+    "POST /api/internal/anthropic-relay/v1/messages",
+    "POST /api/internal/anthropic-relay/v1/messages/count_tokens",
     "POST /api/internal/oauth/introspect",
     "POST /api/internal/oauth/revoke",
     "POST /api/internal/oauth/token",
@@ -369,6 +373,7 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/internal/store/skills/{slug}",
     "GET /api/internal/store/skills/{slug}/files/{path:path}",
     "GET /health",
+    "GET /health/ready",
 }
 
 # One closed route per router, as the client calls it.

@@ -91,13 +91,18 @@ published ports instead: `http://<server>:3000` for the frontend,
 | `frontend/.env` | `BETTER_AUTH_URL` | `https://autogpt.example.com` | The login service's own address, used in password-reset and verification links and social sign-in callbacks |
 | `frontend/.env` | `NEXT_PUBLIC_AGPT_SERVER_URL` | `https://api.autogpt.example.com/api` | The backend API, as the browser reaches it |
 | `frontend/.env` | `NEXT_PUBLIC_AGPT_WS_SERVER_URL` | `wss://api.autogpt.example.com/ws` | The WebSocket server, as the browser reaches it |
-| `backend/.env` | `PLATFORM_BASE_URL` | `https://api.autogpt.example.com` | Webhook and MCP URLs the backend hands to other services |
+| `backend/.env` | `PLATFORM_BASE_URL` | `https://api.autogpt.example.com` | Webhook and MCP URLs the backend hands to other services, and where the Claude Code block's E2B sandbox sends its model calls |
 | `backend/.env` | `BACKEND_CORS_ALLOW_ORIGINS` | `["https://autogpt.example.com"]` | Origins the API and WebSocket server accept calls from (a JSON list; the default only allows `http://localhost:3000`) |
 
 Some of these lines are not in the files yet, so add them:
 `FRONTEND_BASE_URL` and `NEXT_PUBLIC_FRONTEND_BASE_URL` in
 `autogpt_platform/.env`, and `BACKEND_CORS_ALLOW_ORIGINS` in `backend/.env`.
 Leave out the trailing `/`.
+
+The Claude Code block needs E2B's cloud to reach `PLATFORM_BASE_URL`, and
+fails with an error saying so when it's empty, `localhost` or a private address.
+On a server E2B can't reach, set `CLAUDE_CODE_KEY_IN_SANDBOX=true` in
+`backend/.env` to give the block's sandbox the user's Anthropic key instead.
 
 The frontend's server also calls its own login service: to fetch a signed-in
 visitor's token, and to check that whoever opens an admin page is an admin.
