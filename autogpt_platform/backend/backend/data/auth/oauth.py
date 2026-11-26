@@ -501,6 +501,7 @@ async def create_authorization_code(
     code = _generate_authorization_code()
     now = datetime.now(timezone.utc)
     expires_at = now + AUTHORIZATION_CODE_TTL
+    await _mark_registered_client_used(application_id, now)
 
     saved_code = await PrismaOAuthAuthorizationCode.prisma().create(
         data={
@@ -515,7 +516,6 @@ async def create_authorization_code(
             "codeChallengeMethod": code_challenge_method,
         }
     )
-    await _mark_registered_client_used(application_id, now)
 
     return OAuthAuthorizationCodeInfo.from_db(saved_code)
 
@@ -576,6 +576,9 @@ async def consume_authorization_code(
             code_verifier, auth_code.codeChallenge, auth_code.codeChallengeMethod
         ):
             raise InvalidGrantError("PKCE verification failed")
+
+    # Before the claim, so a failure here leaves the code redeemable.
+    await _mark_registered_client_used(application_id, now)
 
     # Atomically claim the code. The checks above run on a possibly stale read,
     # so two concurrent redeems can both pass them; only the request whose
@@ -660,17 +663,8 @@ async def create_access_token(
             "refreshFamilyId": refresh_family_id,
         }
     )
-    await _mark_registered_client_used(application_id, now)
 
     return OAuthAccessToken.from_db(saved_token, plaintext_token=plaintext_token)
-
-
-async def _mark_registered_client_used(application_id: str, now: datetime) -> None:
-    # Only clients that registered themselves: an update would also move an owned
-    # app's `updatedAt`, which the owner's app list shows.
-    await PrismaOAuthApplication.prisma().update_many(
-        where={"id": application_id, "ownerId": None}, data={"lastUsedAt": now}
-    )
 
 
 async def validate_access_token(
@@ -874,6 +868,9 @@ async def refresh_tokens(
     if await is_user_banned(rt.userId):
         raise InvalidGrantError("the account this token belongs to is banned")
 
+    # Before the claim, so a failure here leaves the refresh token usable.
+    await _mark_registered_client_used(application_id, now)
+
     # Atomically claim the one-time refresh token before minting descendants.
     # Concurrent presentations can all pass the read checks, but only one may
     # revoke it. The server can't tell a racing replay from a racing client, so
@@ -920,6 +917,14 @@ async def refresh_tokens(
         )
 
     return new_access_token, new_refresh_token
+
+
+async def _mark_registered_client_used(application_id: str, now: datetime) -> None:
+    # Only clients that registered themselves: an update would also move an owned
+    # app's `updatedAt`, which the owner's app list shows.
+    await PrismaOAuthApplication.prisma().update_many(
+        where={"id": application_id, "ownerId": None}, data={"lastUsedAt": now}
+    )
 
 
 async def revoke_refresh_token(

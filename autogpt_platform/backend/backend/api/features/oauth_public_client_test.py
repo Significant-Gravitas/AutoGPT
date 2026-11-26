@@ -4,7 +4,7 @@ loosen for other clients."""
 
 import secrets
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
@@ -19,11 +19,13 @@ from prisma.models import OAuthApplication as PrismaOAuthApplication
 from backend.api.external.v2.mcp_scopes import mcp_scopes
 from backend.api.features import oauth_registration
 from backend.api.rest_api import app
+from backend.data.auth import oauth as oauth_data
 from backend.data.auth.oauth import (
     cleanup_expired_oauth_tokens,
-    create_access_token,
+    consume_authorization_code,
     create_authorization_code,
     create_refresh_token,
+    refresh_tokens,
     register_public_client,
 )
 from backend.data.user import get_or_create_user_with_status
@@ -195,26 +197,14 @@ async def test_cleanup_deletes_a_self_registered_client_after_30_idle_days(
     assert remaining == {c.id for c in kept}
 
 
-ISSUES = {
-    "authorization": lambda app_id: create_authorization_code(
-        app_id, USER_ID, [APIKeyPermission.READ_LIBRARY], REDIRECT_URI
-    ),
-    "token": lambda app_id: create_access_token(
-        app_id, USER_ID, [APIKeyPermission.READ_LIBRARY]
-    ),
-}
-
-
 @pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.parametrize("issue", ISSUES)
-async def test_an_authorization_or_a_token_counts_as_use(
-    client: httpx.AsyncClient, issue: str
-):
-    """A refresh issues a token too, so a client in use never goes idle."""
+async def test_authorizing_counts_as_use(client: httpx.AsyncClient):
     long_ago = datetime.now(UTC) - timedelta(days=60)
     registered = await _client(owner=None, created_at=long_ago, last_used=long_ago)
     try:
-        await ISSUES[issue](registered.id)
+        await create_authorization_code(
+            registered.id, USER_ID, [APIKeyPermission.READ_LIBRARY], REDIRECT_URI
+        )
         stored = await PrismaOAuthApplication.prisma().find_unique(
             where={"id": registered.id}
         )
@@ -223,6 +213,48 @@ async def test_an_authorization_or_a_token_counts_as_use(
 
     assert stored is not None
     assert stored.lastUsedAt > datetime.now(UTC) - timedelta(minutes=5)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("grant", ["code", "refresh token"])
+async def test_redeeming_a_code_or_refresh_token_counts_as_use(
+    client: httpx.AsyncClient, grant: str
+):
+    long_ago = datetime.now(UTC) - timedelta(days=60)
+    registered = await _client(owner=None, created_at=long_ago, last_used=long_ago)
+    try:
+        redeem = await GRANTS[grant](registered.id)
+        await PrismaOAuthApplication.prisma().update(
+            where={"id": registered.id}, data={"lastUsedAt": long_ago}
+        )
+        await redeem()
+        stored = await PrismaOAuthApplication.prisma().find_unique(
+            where={"id": registered.id}
+        )
+    finally:
+        await PrismaOAuthApplication.prisma().delete(where={"id": registered.id})
+
+    assert stored is not None
+    assert stored.lastUsedAt > datetime.now(UTC) - timedelta(minutes=5)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("grant", ["code", "refresh token"])
+async def test_a_failed_use_update_leaves_the_grant_redeemable(
+    client: httpx.AsyncClient, grant: str, monkeypatch: pytest.MonkeyPatch
+):
+    """Recording use must not consume a code or rotate a refresh token it then
+    fails to answer for: the client could not retry."""
+    registered = await _client(owner=None, created_at=datetime.now(UTC))
+    try:
+        redeem = await GRANTS[grant](registered.id)
+        with monkeypatch.context() as patched:
+            patched.setattr(oauth_data, "_mark_registered_client_used", _fail)
+            with pytest.raises(RuntimeError):
+                await redeem()
+        await redeem()
+    finally:
+        await PrismaOAuthApplication.prisma().delete(where={"id": registered.id})
 
 
 async def _authorize(
@@ -266,3 +298,22 @@ async def _client(
             "lastUsedAt": last_used or created_at,
         }
     )
+
+
+async def _issue_code(app_id: str) -> Callable[[], Awaitable[object]]:
+    code = await create_authorization_code(
+        app_id, USER_ID, [APIKeyPermission.READ_LIBRARY], REDIRECT_URI
+    )
+    return lambda: consume_authorization_code(code.code, app_id, REDIRECT_URI)
+
+
+async def _issue_refresh_token(app_id: str) -> Callable[[], Awaitable[object]]:
+    token = await create_refresh_token(app_id, USER_ID, [APIKeyPermission.READ_LIBRARY])
+    return lambda: refresh_tokens(token.token.get_secret_value(), app_id)
+
+
+async def _fail(*_: object) -> None:
+    raise RuntimeError("database unavailable")
+
+
+GRANTS = {"code": _issue_code, "refresh token": _issue_refresh_token}
