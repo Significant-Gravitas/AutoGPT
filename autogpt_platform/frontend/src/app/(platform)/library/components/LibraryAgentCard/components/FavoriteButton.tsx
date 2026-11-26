@@ -39,7 +39,7 @@ export function FavoriteButton({
       ref={buttonRef}
       onClick={handleClick}
       className={cn(
-        "rounded-full p-2 transition-all duration-200",
+        "rounded-pill p-2 transition-all duration-200",
         "hover:scale-110 active:scale-95",
         !isFavorite && "opacity-0 group-hover:opacity-100",
         isFavorite

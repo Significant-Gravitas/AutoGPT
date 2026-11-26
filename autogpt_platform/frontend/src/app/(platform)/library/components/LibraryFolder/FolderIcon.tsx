@@ -200,8 +200,8 @@ function Page({ color = "blue" }: PageProps) {
         <Text variant="h5">agent.json</Text>
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="flex gap-2">
-            <div className="h-1.5 flex-1 rounded-full bg-surface-hover" />
-            <div className="h-1.5 flex-1 rounded-full bg-surface-hover" />
+            <div className="h-1.5 flex-1 rounded-pill bg-surface-hover" />
+            <div className="h-1.5 flex-1 rounded-pill bg-surface-hover" />
           </div>
         ))}
       </div>

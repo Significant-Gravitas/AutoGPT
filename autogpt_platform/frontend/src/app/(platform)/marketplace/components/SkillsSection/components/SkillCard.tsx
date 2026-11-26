@@ -53,7 +53,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
           {icon && skill.categories[0] ? (
             <span
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-body font-medium",
+                "inline-flex items-center gap-1.5 rounded-pill px-3 py-1 text-body font-medium",
                 accent.pill,
               )}
             >

@@ -101,7 +101,13 @@
               },
               {
                 "pattern": "^Skeleton$",
-                "allow": ["layout", "z-*", "shape"]
+                "allow": [
+                  "layout",
+                  "z-*",
+                  "shape",
+                  "rounded-pill",
+                  "rounded-*-pill"
+                ]
               }
             ]
           }

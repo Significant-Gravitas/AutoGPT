@@ -31,11 +31,11 @@ export function AutopilotHeader() {
             <h1 className="text-heading-md font-semibold tracking-heading text-foreground-strong">
               {AUTOPILOT_NAME}
             </h1>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-border-base bg-surface-muted px-2.5 py-0.5 font-sans text-caption font-medium text-foreground-body">
+            <span className="inline-flex items-center gap-1.5 rounded-pill border border-border-base bg-surface-muted px-2.5 py-0.5 font-sans text-caption font-medium text-foreground-body">
               <Icon icon={SparklesIcon} size={12} />
               {AUTOPILOT_ROLE}
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-border-base bg-surface-muted px-2.5 py-0.5 font-sans text-caption font-medium text-foreground-body">
+            <span className="inline-flex items-center gap-1.5 rounded-pill border border-border-base bg-surface-muted px-2.5 py-0.5 font-sans text-caption font-medium text-foreground-body">
               <Icon icon={Tick02Icon} size={12} />
               Built in
             </span>

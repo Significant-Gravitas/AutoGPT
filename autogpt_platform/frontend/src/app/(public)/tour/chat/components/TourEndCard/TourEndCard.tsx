@@ -18,7 +18,7 @@ export function TourEndCard() {
   return (
     <div className="mx-auto w-full max-w-md rounded-2xl border border-border-base/70 bg-surface p-5 shadow-sm duration-500 animate-in fade-in slide-in-from-bottom-2 sm:p-6">
       <div className="flex flex-col items-center gap-2 text-center">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-success-surface px-3 py-1 text-success-foreground">
+        <span className="inline-flex items-center gap-1.5 rounded-pill bg-success-surface px-3 py-1 text-success-foreground">
           <Icon icon={Tick02Icon} className="size-3.5" />
           <Text variant="small-medium" tone="inherit">
             Workflow built &amp; first run complete — {TOUR_DEMO_CLAIM_SECONDS}{" "}

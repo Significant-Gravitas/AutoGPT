@@ -24,7 +24,7 @@ export function TourAgentCard({ agent, runCompleted }: Props) {
         </Text>
         <span
           className={cn(
-            "relative isolate flex shrink-0 items-center gap-2 rounded-full bg-success-surface px-3 py-1.5 text-body font-semibold text-success-foreground",
+            "relative isolate flex shrink-0 items-center gap-2 rounded-pill bg-success-surface px-3 py-1.5 text-body font-semibold text-success-foreground",
             !runCompleted &&
               "shadow-beacon ring-1 shadow-success/60 ring-success/70",
           )}

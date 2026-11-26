@@ -84,7 +84,7 @@ export const ViewMoreData = ({
                     <Text variant="body" tone="secondary">
                       Execution ID:
                     </Text>
-                    <div className="rounded-full border border-border-strong bg-surface-muted px-2 py-1">
+                    <div className="rounded-pill border border-border-strong bg-surface-muted px-2 py-1">
                       <Text variant="small-medium-mono-tight" as="p">
                         {result.node_exec_id}
                       </Text>

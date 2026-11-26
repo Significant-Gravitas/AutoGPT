@@ -36,7 +36,7 @@ export function WebhookTriggerSection({ preset, triggerSetupInfo }: Props) {
         <div className="flex items-center gap-2">
           <Text variant="large-medium">Status</Text>
           <span
-            className={`rounded-full px-2 py-0.5 text-caption font-medium ${
+            className={`rounded-pill px-2 py-0.5 text-caption font-medium ${
               status === "active"
                 ? "bg-success/30 text-success-foreground"
                 : status === "inactive"

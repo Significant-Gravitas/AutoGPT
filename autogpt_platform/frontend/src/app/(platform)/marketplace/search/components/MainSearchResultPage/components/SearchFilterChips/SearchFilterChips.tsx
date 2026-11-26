@@ -38,7 +38,7 @@ export function SearchFilterChips({ onFilterChange, ...counts }: Props) {
             onClick={() => handleFilterClick(filter.value)}
             disabled={isDisabled}
             className={cn(
-              "flex items-center gap-2.5 rounded-full px-5 py-2",
+              "flex items-center gap-2.5 rounded-pill px-5 py-2",
               isDisabled
                 ? "cursor-not-allowed border border-border-base text-foreground-disabled"
                 : isSelected

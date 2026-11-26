@@ -21,7 +21,7 @@ export function ReadOnlyBanner() {
       data-id="read-only-banner"
       role="status"
       aria-live="polite"
-      className="absolute top-4 left-1/2 z-sticky flex -translate-x-1/2 items-center gap-3 rounded-full bg-surface px-4 py-2 shadow-lg select-none"
+      className="absolute top-4 left-1/2 z-sticky flex -translate-x-1/2 items-center gap-3 rounded-pill bg-surface px-4 py-2 shadow-lg select-none"
     >
       <div className="px-2">
         <Text variant="body" tone="body">

@@ -24,7 +24,7 @@ export function YourTeamRow({ experts }: Props) {
         aria-labelledby={labelID}
         className="flex flex-wrap items-center gap-2"
       >
-        <li className="flex items-center gap-1.5 rounded-full border border-border-base bg-surface py-0.5 pr-2.5 pl-0.5">
+        <li className="flex items-center gap-1.5 rounded-pill border border-border-base bg-surface py-0.5 pr-2.5 pl-0.5">
           {/* The name beside it says who it is. */}
           <span aria-hidden className="contents">
             <AutopilotAvatar size={AVATAR_SIZE} />
@@ -39,7 +39,7 @@ export function YourTeamRow({ experts }: Props) {
         {experts.map((expert) => (
           <li
             key={expert.id}
-            className="flex items-center gap-1.5 rounded-full border border-border-base bg-surface py-0.5 pr-2.5 pl-0.5"
+            className="flex items-center gap-1.5 rounded-pill border border-border-base bg-surface py-0.5 pr-2.5 pl-0.5"
           >
             <span aria-hidden className="contents">
               <ExpertAvatar

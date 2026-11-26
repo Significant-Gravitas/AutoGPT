@@ -66,7 +66,7 @@ export const FilterChip: React.FC<Props> = ({
             animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
             exit={{ opacity: 0.5, scale: 0.5, filter: "blur(10px)" }}
             transition={{ duration: 0.3, type: "spring", bounce: 0.2 }}
-            className="flex h-[1.375rem] items-center rounded-full bg-accent-strong p-1.5 text-action-foreground"
+            className="flex h-[1.375rem] items-center rounded-pill bg-accent-strong p-1.5 text-action-foreground"
           >
             {number > 100 ? "100+" : number}
           </motion.span>

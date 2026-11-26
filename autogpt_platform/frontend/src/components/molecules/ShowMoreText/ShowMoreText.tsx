@@ -54,7 +54,7 @@ export function ShowMoreText({
         onClick={() => setIsExpanded(!isExpanded)}
         data-slot="show-more-text-toggle"
         className={cn(
-          "mt-2 flex h-[1rem] w-[1.75rem] items-center justify-center rounded-full bg-surface-hover pb-2 font-medium text-foreground-base",
+          "mt-2 flex h-[1rem] w-[1.75rem] items-center justify-center rounded-pill bg-surface-hover pb-2 font-medium text-foreground-base",
           toggleClassName,
         )}
         type="button"

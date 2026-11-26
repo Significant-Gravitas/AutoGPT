@@ -26,14 +26,14 @@ export function UsageBar({ label, percentUsed, resetsAt }: Props) {
           {percentLabel}
         </Text>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-surface-active">
+      <div className="h-2 w-full overflow-hidden rounded-pill bg-surface-active">
         <div
           role="progressbar"
           aria-label={`${label} usage`}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={percent}
-          className={`h-full rounded-full transition-[width] duration-300 ease-out ${
+          className={`h-full rounded-pill transition-[width] duration-300 ease-out ${
             isHigh ? "bg-orange" : "bg-info"
           }`}
           style={{ width: `${Math.max(percent > 0 ? 1 : 0, percent)}%` }}

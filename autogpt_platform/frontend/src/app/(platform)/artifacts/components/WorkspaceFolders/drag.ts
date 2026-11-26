@@ -43,7 +43,7 @@ export function createFileDragImage(label: string): HTMLElement {
     "align-items:center",
     "gap:8px",
     "padding:8px 12px",
-    "border-radius:12px",
+    "border-radius:var(--radius-xl)",
     "border:1px solid rgb(var(--color-border-base))",
     "background:rgb(var(--color-surface))",
     "color:rgb(var(--color-foreground-tertiary))",

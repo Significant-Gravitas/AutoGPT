@@ -142,7 +142,7 @@ export function FileRow({
         <button
           type="button"
           aria-label={`Rename ${file.name}`}
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-foreground-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-hover hover:text-foreground-strong focus-visible:opacity-100"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-pill text-foreground-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-hover hover:text-foreground-strong focus-visible:opacity-100"
           onClick={(e) => {
             e.stopPropagation();
             setIsRenameOpen(true);

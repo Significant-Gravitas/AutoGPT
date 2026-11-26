@@ -82,6 +82,7 @@ export const twMerge = extendTailwindMerge({
         "large",
         "xlarge",
         "2xlarge",
+        "2xl-inner",
         "pill",
       ],
       // The named shadow steps in tokens/shape.css, so `shadow-lift` replaces

@@ -38,7 +38,7 @@ export function TokenDevtoolBadge({ sessionId, className }: Props) {
             context === null ? "unknown" : formatTokenCount(context)
           }`}
           className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-full text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-foreground-body",
+            "flex h-8 w-8 items-center justify-center rounded-pill text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-foreground-body",
             className,
           )}
         >

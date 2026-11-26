@@ -64,7 +64,7 @@ export function FeatureRequestList({ results }: ResultsProps) {
             )}
           </div>
           {str(request, "identifier") && (
-            <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
+            <span className="shrink-0 rounded-pill bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
               {str(request, "identifier")}
             </span>
           )}
@@ -104,7 +104,7 @@ export function ScheduleList({ schedules }: SchedulesProps) {
               )}
             </div>
             {str(schedule, "kind") && (
-              <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
+              <span className="shrink-0 rounded-pill bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
                 {str(schedule, "kind") === "copilot_turn" ? "chat" : "workflow"}
               </span>
             )}
@@ -266,7 +266,7 @@ export function DocsList({ results }: ResultsProps) {
                 target="_blank"
                 rel="noreferrer"
                 aria-label="Open doc"
-                className="shrink-0 rounded-full p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
+                className="shrink-0 rounded-pill p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
               >
                 <Icon icon={LinkSquare01Icon} size={14} />
               </Link>

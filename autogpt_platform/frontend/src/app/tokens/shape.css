@@ -20,7 +20,13 @@
   --radius-xl: 0.75rem; /* 12px */
   --radius-2xl: 1rem; /* 16px */
   --radius-3xl: 1.5rem; /* 24px */
+  --radius-4xl: 2rem; /* 32px: the chat composer, the raise preview */
+  --radius-5xl: 2.5rem; /* 40px: the raise flow's stage */
+  /* A 2xl card's surface drawn inside its 1px gradient border. */
+  --radius-2xl-inner: calc(var(--radius-2xl) - 1px); /* 15px */
+  /* Circles: avatars, dots, spinners, thumbs. Round in every look. */
   --radius-full: 9999px;
+  /* Pills: buttons, chips, badges, tabs, tracks. A look may square them. */
   --radius-pill: 9999px;
   --radius-xsmall: var(--radius);
   --radius-small: var(--radius-lg);

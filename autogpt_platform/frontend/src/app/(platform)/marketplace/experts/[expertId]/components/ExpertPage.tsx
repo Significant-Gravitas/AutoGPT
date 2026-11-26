@@ -76,7 +76,7 @@ export function ExpertPage() {
             <Skeleton className="h-7 w-36" />
             <Skeleton className="h-5 w-24 rounded-md" />
           </div>
-          <Skeleton className="h-9 w-28 rounded-full" />
+          <Skeleton className="h-9 w-28 rounded-pill" />
         </div>
         <Skeleton className="mt-5 h-5 w-3/4" />
         <div className="mt-8 flex flex-col gap-3 border-t border-border-base pt-8">
@@ -113,7 +113,7 @@ export function ExpertPage() {
   );
   const stats = getExpertStats(expert, accessProviders.length);
 
-  let actions: ReactNode = <Skeleton className="h-9 w-full rounded-full" />;
+  let actions: ReactNode = <Skeleton className="h-9 w-full rounded-pill" />;
   if (isActionReady) {
     actions = (
       <ExpertHireActions

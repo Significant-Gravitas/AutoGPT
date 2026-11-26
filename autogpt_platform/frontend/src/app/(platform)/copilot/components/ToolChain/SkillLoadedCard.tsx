@@ -44,7 +44,7 @@ export function SkillLoadedCard({ output }: Props) {
       </div>
       <Link
         href={href}
-        className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-secondary hover:bg-surface-active"
+        className="shrink-0 rounded-pill bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-secondary hover:bg-surface-active"
       >
         View change
       </Link>

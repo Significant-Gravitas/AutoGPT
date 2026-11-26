@@ -183,6 +183,9 @@
   --radius-xl: var(--radius-xl);
   --radius-2xl: var(--radius-2xl);
   --radius-3xl: var(--radius-3xl);
+  --radius-4xl: var(--radius-4xl);
+  --radius-5xl: var(--radius-5xl);
+  --radius-2xl-inner: var(--radius-2xl-inner);
   --radius-full: var(--radius-full);
   --radius-pill: var(--radius-pill);
   --radius-xsmall: var(--radius-xsmall);

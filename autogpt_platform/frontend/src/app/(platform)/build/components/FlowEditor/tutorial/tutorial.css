@@ -40,7 +40,7 @@
 
 .shepherd-element.new-builder-tour {
   max-width: 420px !important;
-  border-radius: 1rem !important;
+  border-radius: var(--radius-2xl) !important;
   box-shadow:
     0 0 0 1px rgb(var(--color-foreground-base) / 0.08),
     0px 4px 6px -1px rgb(var(--color-foreground-base) / 0.1),
@@ -53,7 +53,7 @@
 
 .shepherd-element.new-builder-tour .shepherd-header {
   padding: 1rem 1.25rem 0.5rem !important;
-  border-radius: 1rem 1rem 0 0 !important;
+  border-radius: var(--radius-2xl) var(--radius-2xl) 0 0 !important;
   background: transparent !important;
 }
 
@@ -88,7 +88,7 @@
   font-family: var(--font-geist-sans), system-ui, sans-serif !important;
   @apply text-body! leading-5! font-medium!;
   transition: all 150ms ease !important;
-  border-radius: 9999px !important; /* rounded-full */
+  border-radius: var(--radius-pill) !important;
   min-width: 5rem !important;
   padding: 0.5rem 1rem !important;
   height: 2.25rem !important;

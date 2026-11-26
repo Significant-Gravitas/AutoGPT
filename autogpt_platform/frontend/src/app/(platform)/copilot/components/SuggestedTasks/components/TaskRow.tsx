@@ -186,7 +186,7 @@ function RowText({
           {isStartHere ? (
             <span
               id={pillID}
-              className="mr-2 inline-block -translate-y-px rounded-full bg-accent-strong/10 px-2 py-0.5 align-middle text-caption-sm font-semibold tracking-eyebrow text-accent-strong uppercase"
+              className="mr-2 inline-block -translate-y-px rounded-pill bg-accent-strong/10 px-2 py-0.5 align-middle text-caption-sm font-semibold tracking-eyebrow text-accent-strong uppercase"
             >
               Start here
             </span>

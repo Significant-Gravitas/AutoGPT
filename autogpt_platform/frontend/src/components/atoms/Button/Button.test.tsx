@@ -27,7 +27,7 @@ describe("Button compact sizes", () => {
     const el = screen.getByRole("button", { name: "Chat" });
     expect(el.className).toContain("h-7");
     expect(el.className).toContain("rounded-md");
-    expect(el.className).not.toContain("rounded-full");
+    expect(el.className).not.toContain("rounded-pill");
   });
 
   it("softens the outline border at xs", () => {
@@ -88,7 +88,7 @@ describe("Button compact variants", () => {
     expect(el.children).toHaveLength(2);
     expect(el.querySelector(".contents")).toBeNull();
     expect(el.className).toContain("rounded-md");
-    expect(el.className).not.toContain("rounded-full");
+    expect(el.className).not.toContain("rounded-pill");
     expect(el.className).toContain("border-border-base");
     expect(el.className).toContain("h-9 px-4 py-2");
     expect(el.className).toContain("space-x-3");
@@ -251,7 +251,7 @@ describe("Button quiet variants, row and inline sizes, and shape", () => {
   });
 
   it.each([
-    ["pill", "rounded-full"],
+    ["pill", "rounded-pill"],
     ["rounded", "rounded-xl"],
     ["soft", "rounded-lg"],
   ] as const)("renders shape %s over the size's radius", (shape, cls) => {

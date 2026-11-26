@@ -264,7 +264,7 @@ export const Shapes: Story = {
     docs: {
       description: {
         story:
-          "`shape` sets the corner radius over the variant's and size's own: `pill` (rounded-full), `rounded` (12px) and `soft` (8px).",
+          "`shape` sets the corner radius over the variant's and size's own: `pill` (rounded-pill), `rounded` (12px) and `soft` (8px).",
       },
     },
   },

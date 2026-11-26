@@ -32,8 +32,8 @@ function RowBody({
   pending?: boolean;
 }) {
   const barClasses = destructive
-    ? "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-error opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100"
-    : "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-action-hover opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100";
+    ? "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-pill bg-error opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100"
+    : "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-pill bg-action-hover opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100";
 
   return (
     <>

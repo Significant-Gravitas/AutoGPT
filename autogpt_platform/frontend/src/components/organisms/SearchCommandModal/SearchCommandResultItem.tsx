@@ -50,7 +50,7 @@ export function SearchCommandResultItem({
         aria-hidden="true"
         data-slot="search-command-result-item-indicator"
         className={cn(
-          "absolute inset-y-0 left-0 my-auto h-5 w-[3px] rounded-full bg-action-hover transition-opacity duration-150",
+          "absolute inset-y-0 left-0 my-auto h-5 w-[3px] rounded-pill bg-action-hover transition-opacity duration-150",
           isHighlighted ? "opacity-100" : "opacity-0",
         )}
       />

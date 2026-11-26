@@ -39,7 +39,7 @@ export function BreakdownSection({ breakdown }: Props) {
 
   return (
     <div className="pb-2.5">
-      <div className="flex h-1.5 w-full gap-px overflow-hidden rounded-full">
+      <div className="flex h-1.5 w-full gap-px overflow-hidden rounded-pill">
         {rows.map((row) => (
           <div
             key={row.label}

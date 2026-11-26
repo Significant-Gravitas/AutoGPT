@@ -198,7 +198,7 @@ export function TaskGroups({ groups }: Props) {
             {/* Reward and chevron */}
             <div className="flex items-center gap-2">
               {isGroupCompleted(group) ? (
-                <div className="rounded-full bg-success/40 px-2.5 py-0.5 font-sans text-caption font-medium text-success-foreground">
+                <div className="rounded-pill bg-success/40 px-2.5 py-0.5 font-sans text-caption font-medium text-success-foreground">
                   Done
                 </div>
               ) : (
@@ -279,7 +279,7 @@ export function TaskGroups({ groups }: Props) {
                 {/* Progress bar and counter text */}
                 {task.progress && !isTaskCompleted(task) && (
                   <div className="mb-1 flex w-full items-center justify-between pr-3 pl-6">
-                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-hover">
+                    <div className="h-2 flex-1 overflow-hidden rounded-pill bg-surface-hover">
                       <div
                         className="h-full bg-brand/60 transition-all duration-500 ease-in-out"
                         style={{
@@ -368,7 +368,7 @@ export function TaskGroups({ groups }: Props) {
                 <div className="flex h-4 w-4 items-center justify-center">
                   <Icon aria-hidden icon={HelpCircleIcon} size={24} />
                 </div>
-                <div className="h-4 w-64 rounded-full bg-surface-hover" />
+                <div className="h-4 w-64 rounded-pill bg-surface-hover" />
               </div>
             </div>
           </div>
@@ -379,7 +379,7 @@ export function TaskGroups({ groups }: Props) {
                 <div className="flex h-4 w-4 items-center justify-center">
                   <Icon aria-hidden icon={HelpCircleIcon} size={24} />
                 </div>
-                <div className="h-4 w-64 rounded-full bg-surface-hover" />
+                <div className="h-4 w-64 rounded-pill bg-surface-hover" />
               </div>
             </div>
           </div>

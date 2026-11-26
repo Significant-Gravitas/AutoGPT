@@ -72,7 +72,7 @@ function WorkflowLocation() {
   return (
     <ol
       aria-label="Where to find your workflows"
-      className="mt-3 flex w-fit flex-wrap items-center gap-2 rounded-full border border-border-base/80 bg-surface-muted px-3 py-1 text-caption text-foreground-secondary"
+      className="mt-3 flex w-fit flex-wrap items-center gap-2 rounded-pill border border-border-base/80 bg-surface-muted px-3 py-1 text-caption text-foreground-secondary"
     >
       {["Team", "Otto", "Workflows"].map((label, index) => (
         <li key={label} className="flex items-center gap-2">

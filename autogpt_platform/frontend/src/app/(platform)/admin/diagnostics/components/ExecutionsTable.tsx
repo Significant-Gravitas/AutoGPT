@@ -800,7 +800,7 @@ export function ExecutionsTable({
                             <TableCell>
                               <span
                                 className={cn(
-                                  "inline-flex rounded-full px-2 py-1 text-caption leading-4 font-semibold",
+                                  "inline-flex rounded-pill px-2 py-1 text-caption leading-4 font-semibold",
                                   execution.status === "RUNNING"
                                     ? "bg-success/30 text-success-foreground"
                                     : "bg-yellow/30 text-yellow-foreground",

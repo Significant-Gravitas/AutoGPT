@@ -45,7 +45,7 @@ function CardLink({ href, label }: CardLinkProps) {
     <Link
       href={href}
       aria-label={label}
-      className="shrink-0 rounded-full p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
+      className="shrink-0 rounded-pill p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
     >
       <Icon icon={LinkSquare01Icon} size={14} />
     </Link>
@@ -135,7 +135,7 @@ export function AgentSavedCard({ output }: OutputCardProps) {
         {name}
       </Text>
       {typeof version === "number" && (
-        <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
+        <span className="shrink-0 rounded-pill bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
           v{version}
         </span>
       )}
@@ -143,7 +143,7 @@ export function AgentSavedCard({ output }: OutputCardProps) {
         <Link
           href={builderLink}
           aria-label="Open in builder"
-          className="shrink-0 rounded-full p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
+          className="shrink-0 rounded-pill p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
         >
           <Icon icon={WrenchIcon} size={14} />
         </Link>
@@ -177,7 +177,7 @@ export function AgentPreviewCard({ output }: OutputCardProps) {
         )}
       </div>
       {count !== null && (
-        <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
+        <span className="shrink-0 rounded-pill bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
           {count} block{count === 1 ? "" : "s"}
         </span>
       )}

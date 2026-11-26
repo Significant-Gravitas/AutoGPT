@@ -94,7 +94,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
         <button
           type="button"
           onClick={() => setDismissedId(dockId)}
-          className="rounded-full px-2 py-0.5 text-caption text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-secondary"
+          className="rounded-pill px-2 py-0.5 text-caption text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-secondary"
         >
           Skip
         </button>
@@ -159,7 +159,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
             type="button"
             onClick={handleSubmit}
             aria-disabled={!allAnswered}
-            className="rounded-full bg-action-hover px-3.5 py-1.5 text-caption font-medium text-action-foreground transition-opacity hover:bg-action aria-disabled:opacity-40"
+            className="rounded-pill bg-action-hover px-3.5 py-1.5 text-caption font-medium text-action-foreground transition-opacity hover:bg-action aria-disabled:opacity-40"
           >
             Answer
           </button>

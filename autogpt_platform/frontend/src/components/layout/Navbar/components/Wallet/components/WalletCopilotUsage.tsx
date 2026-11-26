@@ -100,7 +100,7 @@ function TrialUsage() {
         aria-valuemax={100}
         aria-valuenow={percent}
         className={cn(
-          "bg-surface-active [&>div]:rounded-full",
+          "bg-surface-active [&>div]:rounded-pill",
           percent >= 80 ? "[&>div]:bg-orange" : "[&>div]:bg-info",
         )}
       />
@@ -132,7 +132,7 @@ function UsageLoading() {
             <Skeleton className="h-4 w-16" />
             <Skeleton className="h-4 w-14" />
           </div>
-          <Skeleton className="h-2 w-full rounded-full" />
+          <Skeleton className="h-2 w-full rounded-pill" />
           <Skeleton className="h-3 w-24" />
         </div>
       ))}

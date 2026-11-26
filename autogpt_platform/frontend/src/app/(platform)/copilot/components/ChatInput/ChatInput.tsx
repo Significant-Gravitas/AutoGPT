@@ -471,8 +471,7 @@ export const ChatInput = memo(function ChatInput({
           keeps the controls pinned to the bottom edge as the textarea grows. */}
       <InputGroup
         className={cn(
-          // oxlint-disable-next-line design-system/no-arbitrary-values -- the pill composer's 2rem radius; no radius token has it
-          "relative z-raised flex-col overflow-hidden !rounded-[2rem] border-border-base shadow-composer has-[[data-slot=input-group-control]:focus-visible]:border-border-strong has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-md:!rounded-3xl",
+          "relative z-raised flex-col overflow-hidden !rounded-4xl border-border-base shadow-composer has-[[data-slot=input-group-control]:focus-visible]:border-border-strong has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-md:!rounded-3xl",
           // Card composer: a hairline border and a shallow drop instead of
           // the pill's deep shadow, so it reads as a surface the text sits on.
           stacked &&
@@ -635,7 +634,7 @@ export const ChatInput = memo(function ChatInput({
                   hasAttachments ? undefined : () => void handleEnqueue()
                 }
                 className={cn(
-                  "size-[2.625rem] rounded-full border-action bg-action text-action-foreground hover:border-action-hover hover:bg-action-hover disabled:border-border-base disabled:bg-surface-active disabled:text-action-foreground disabled:opacity-100",
+                  "size-[2.625rem] rounded-pill border-action bg-action text-action-foreground hover:border-action-hover hover:bg-action-hover disabled:border-border-base disabled:bg-surface-active disabled:text-action-foreground disabled:opacity-100",
                   sendButtonClass,
                 )}
               >

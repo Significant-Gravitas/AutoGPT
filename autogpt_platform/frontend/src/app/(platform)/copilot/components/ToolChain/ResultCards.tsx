@@ -57,7 +57,7 @@ export function StatusPill({ status, className }: StatusPillProps) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-caption-sm leading-inherit font-medium",
+        "inline-flex shrink-0 items-center gap-1 rounded-pill px-2 py-0.5 text-caption-sm leading-inherit font-medium",
         STATUS_STYLES[normalized] ??
           "bg-surface-hover text-foreground-tertiary",
         className,
@@ -128,7 +128,7 @@ export function ChipList({ label, items }: ChipListProps) {
         {Array.from(new Set(items)).map((item) => (
           <span
             key={item}
-            className="max-w-full truncate rounded-full bg-surface-hover px-2 py-0.5 text-caption text-foreground-secondary"
+            className="max-w-full truncate rounded-pill bg-surface-hover px-2 py-0.5 text-caption text-foreground-secondary"
           >
             {item}
           </span>
@@ -180,7 +180,7 @@ export function LinkCard({ url, title, meta, secret }: LinkCardProps) {
         target="_blank"
         rel="noreferrer"
         aria-label="Open link"
-        className="shrink-0 rounded-full p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
+        className="shrink-0 rounded-pill p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
       >
         <Icon icon={LinkSquare01Icon} size={14} />
       </Link>

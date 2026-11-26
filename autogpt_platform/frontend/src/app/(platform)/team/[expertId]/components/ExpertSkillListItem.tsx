@@ -86,7 +86,7 @@ export function ExpertSkillListItem({
           {shown.map((trigger) => (
             <span
               key={trigger}
-              className="flex max-w-full min-w-0 rounded-full border border-border-base bg-surface-muted px-2.5 py-0.5"
+              className="flex max-w-full min-w-0 rounded-pill border border-border-base bg-surface-muted px-2.5 py-0.5"
             >
               <Text
                 variant="small-tight"
@@ -99,7 +99,7 @@ export function ExpertSkillListItem({
             </span>
           ))}
           {hiddenCount > 0 ? (
-            <span className="flex rounded-full px-1.5 py-0.5">
+            <span className="flex rounded-pill px-1.5 py-0.5">
               <Text variant="small-tight" as="span" tone="muted">
                 +{hiddenCount}
               </Text>

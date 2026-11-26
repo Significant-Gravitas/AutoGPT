@@ -37,10 +37,10 @@ export function MoneyBlock({ spend }: Props) {
         aria-valuenow={Math.round(share * 100)}
         aria-valuemin={0}
         aria-valuemax={100}
-        className="h-1 overflow-hidden rounded-full bg-surface-hover"
+        className="h-1 overflow-hidden rounded-pill bg-surface-hover"
       >
         <div
-          className="h-full rounded-full bg-warning"
+          className="h-full rounded-pill bg-warning"
           style={{ width: `${share * 100}%` }}
         />
       </div>

@@ -9,7 +9,7 @@ interface Props {
 }
 
 const buttonClassName =
-  "size-9 shrink-0 rounded-full hover:bg-surface-active/70";
+  "size-9 shrink-0 rounded-pill hover:bg-surface-active/70";
 
 /** The small tab on the composer's top-right edge that holds the files and
  *  integrations buttons on small viewports. It shares the task list's

@@ -67,7 +67,7 @@ export function TimelineBlockView({ block }: Props) {
                     ) : null}
                   </Text>
                   {item.date ? (
-                    <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5">
+                    <span className="shrink-0 rounded-pill bg-surface-hover px-2 py-0.5">
                       <Text
                         as="span"
                         variant="small-medium"

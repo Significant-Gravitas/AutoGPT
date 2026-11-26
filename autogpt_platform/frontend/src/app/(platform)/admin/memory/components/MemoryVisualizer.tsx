@@ -424,7 +424,7 @@ function Sidebar({
                   onClick={() =>
                     setHiddenNodeTypes(togglePill(hiddenNodeTypes, k))
                   }
-                  className={`rounded-full border px-2 py-0.5 text-caption ${
+                  className={`rounded-pill border px-2 py-0.5 text-caption ${
                     hidden
                       ? "border-border-strong text-foreground-subtle line-through"
                       : "border-foreground-emphasis text-foreground-body"
@@ -452,7 +452,7 @@ function Sidebar({
                   onClick={() =>
                     setHiddenEdgeTypes(togglePill(hiddenEdgeTypes, k))
                   }
-                  className={`rounded-full border px-2 py-0.5 text-caption ${
+                  className={`rounded-pill border px-2 py-0.5 text-caption ${
                     hidden
                       ? "border-border-strong text-foreground-subtle line-through"
                       : "border-foreground-emphasis text-foreground-body"

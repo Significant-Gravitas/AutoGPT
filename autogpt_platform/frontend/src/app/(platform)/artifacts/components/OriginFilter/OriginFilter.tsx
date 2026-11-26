@@ -69,7 +69,7 @@ function OriginTab({ option, active, onClick }: OriginTabProps) {
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "relative rounded-full px-4 py-2 text-body font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle",
+        "relative rounded-pill px-4 py-2 text-body font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle",
         active
           ? "text-foreground-strong"
           : "text-foreground-tertiary hover:text-foreground-strong",
@@ -79,7 +79,7 @@ function OriginTab({ option, active, onClick }: OriginTabProps) {
       {active ? (
         <motion.span
           layoutId="artifacts-origin-active"
-          className="absolute inset-0 rounded-full bg-surface-hover"
+          className="absolute inset-0 rounded-pill bg-surface-hover"
           transition={snappySpring}
         />
       ) : null}

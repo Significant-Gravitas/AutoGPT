@@ -189,7 +189,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => applyAction(action)}
               disabled={isPreview}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-foreground-secondary transition-colors hover:bg-surface-hover hover:text-foreground-base"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-pill text-foreground-secondary transition-colors hover:bg-surface-hover hover:text-foreground-base"
             >
               {action.icon}
             </button>
@@ -199,7 +199,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
           type="button"
           aria-pressed={isPreview}
           onClick={() => setIsPreview((v) => !v)}
-          className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-caption font-medium text-foreground-body transition-colors hover:bg-surface-hover hover:text-foreground-base"
+          className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-pill px-3 text-caption font-medium text-foreground-body transition-colors hover:bg-surface-hover hover:text-foreground-base"
         >
           {isPreview ? (
             <Icon icon={EyeClosedIcon} size={14} />

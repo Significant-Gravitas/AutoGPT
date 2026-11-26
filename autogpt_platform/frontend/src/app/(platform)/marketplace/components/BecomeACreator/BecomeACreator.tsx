@@ -16,7 +16,7 @@ export function BecomeACreator({
 }: BecomeACreatorProps) {
   const publishTrigger = (
     <button
-      className="inline-flex h-12 cursor-pointer items-center justify-center rounded-full bg-action-hover px-8 text-body-md leading-inherit font-medium text-action-foreground shadow-sm shadow-scrim/10 transition-all duration-200 hover:-translate-y-0.5 hover:bg-action hover:shadow-drop hover:shadow-scrim/40"
+      className="inline-flex h-12 cursor-pointer items-center justify-center rounded-pill bg-action-hover px-8 text-body-md leading-inherit font-medium text-action-foreground shadow-sm shadow-scrim/10 transition-all duration-200 hover:-translate-y-0.5 hover:bg-action hover:shadow-drop hover:shadow-scrim/40"
       onClick={onPublish}
     >
       {buttonText}

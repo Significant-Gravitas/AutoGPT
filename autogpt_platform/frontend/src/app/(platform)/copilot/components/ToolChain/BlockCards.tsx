@@ -90,7 +90,7 @@ export function BlockListCard({ blocks }: BlockListCardProps) {
               )}
             </div>
             {categories[0] && (
-              <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
+              <span className="shrink-0 rounded-pill bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
                 {categories[0].toLowerCase()}
               </span>
             )}

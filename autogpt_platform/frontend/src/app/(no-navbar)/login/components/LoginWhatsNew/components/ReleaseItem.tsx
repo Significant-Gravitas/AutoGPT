@@ -58,7 +58,7 @@ export function ReleaseItem({ release, isLatest, isLast }: Props) {
               {release.dateRange}
             </Text>
             {isLatest ? (
-              <span className="rounded-full bg-accent-surface px-2 py-px font-sans text-caption leading-4 font-medium text-accent-strong">
+              <span className="rounded-pill bg-accent-surface px-2 py-px font-sans text-caption leading-4 font-medium text-accent-strong">
                 Latest
               </span>
             ) : null}
