@@ -52,3 +52,16 @@ async def test_malformed_basic_client_credentials_get_a_401(authorization: bytes
         )
 
     assert response.status_code == 401, response.text
+
+
+def test_the_published_token_request_lets_http_basic_carry_the_client_id():
+    operation = app.openapi()["paths"]["/api/oauth/token"]["post"]
+    schemas = [
+        grant
+        for content in operation["requestBody"]["content"].values()
+        for grant in content["schema"]["oneOf"]
+    ]
+
+    assert len(schemas) == 4
+    assert all("client_id" in s["properties"] for s in schemas)
+    assert not [s["title"] for s in schemas if "client_id" in s["required"]]
