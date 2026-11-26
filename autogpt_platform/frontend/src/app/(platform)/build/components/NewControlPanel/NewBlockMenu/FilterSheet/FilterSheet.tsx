@@ -87,7 +87,7 @@ export function FilterSheet({
                       onCheckedChange={() =>
                         handleLocalCategoryChange(category.key)
                       }
-                      className="border border-border-strong shadow-none data-[state=checked]:border-none data-[state=checked]:bg-accent-strong data-[state=checked]:text-action-foreground"
+                      className="border border-border-strong shadow-none data-[state=checked]:border-none data-[state=checked]:bg-accent-strong data-[state=checked]:text-foreground-on-color"
                     />
                     <Text
                       variant="body"
@@ -114,7 +114,7 @@ export function FilterSheet({
                       id={`creator-${creator}`}
                       checked={localCreators.includes(creator)}
                       onCheckedChange={() => handleLocalCreatorChange(creator)}
-                      className="border border-border-strong shadow-none data-[state=checked]:border-none data-[state=checked]:bg-accent-strong data-[state=checked]:text-action-foreground"
+                      className="border border-border-strong shadow-none data-[state=checked]:border-none data-[state=checked]:bg-accent-strong data-[state=checked]:text-foreground-on-color"
                     />
                     <Text
                       variant="body"

@@ -96,8 +96,8 @@ export function ExpertIdentityDetails({
                     size === "page" && "text-lead",
                   )}
                   style={{
-                    // oxlint-disable-next-line design-system/no-inline-styles -- gradient mixes the runtime category colour with the primary role
-                    backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${areaColor} 60%, rgb(var(--color-action))), color-mix(in srgb, ${areaColor} 85%, rgb(var(--color-action))))`,
+                    // oxlint-disable-next-line design-system/no-inline-styles -- gradient mixes the runtime category colour with the emphasis text colour
+                    backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${areaColor} 60%, rgb(var(--color-foreground-emphasis))), color-mix(in srgb, ${areaColor} 85%, rgb(var(--color-foreground-emphasis))))`,
                     // oxlint-disable-next-line design-system/no-inline-styles -- glow in the runtime category colour
                     filter: `drop-shadow(0 0 6px color-mix(in srgb, ${areaColor} 45%, transparent))`,
                   }}

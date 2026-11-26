@@ -79,6 +79,6 @@ function statusDotColor(status: AgentStatus): string {
     case "scheduled":
       return "bg-yellow";
     case "idle":
-      return "bg-foreground-subtle";
+      return "bg-fill-subtle";
   }
 }

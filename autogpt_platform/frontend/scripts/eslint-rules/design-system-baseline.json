@@ -80,9 +80,6 @@
   "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/Integration.tsx": {
     "no-restyle": 9
   },
-  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/IntegrationBlocks/IntegrationBlocks.tsx": {
-    "no-restyle": 1
-  },
   "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/IntegrationChip.tsx": {
     "no-restyle": 6
   },
@@ -371,6 +368,12 @@
   },
   "src/app/(platform)/raise/components/NameStep/NameStep.tsx": {
     "no-restyle": 1
+  },
+  "src/components/atoms/Button/Button.tsx": {
+    "no-misused-role": 1
+  },
+  "src/components/atoms/Button/helpers.ts": {
+    "no-misused-role": 2
   },
   "src/components/atoms/FileInput/FileInput.tsx": {
     "no-restyle": 8

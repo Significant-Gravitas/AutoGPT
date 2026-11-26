@@ -109,7 +109,7 @@ export const STATUS_VISUAL: Record<SubmissionStatus, StatusVisual> = {
     Icon: Clock01Icon,
     pillClass:
       "bg-surface-hover text-foreground-body ring-1 ring-inset ring-border-base",
-    dotClass: "bg-foreground-subtle",
+    dotClass: "bg-fill-subtle",
   },
   [SubmissionStatus.PENDING]: {
     label: "In review",

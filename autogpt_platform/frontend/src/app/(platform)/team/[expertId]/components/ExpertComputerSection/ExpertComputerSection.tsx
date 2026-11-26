@@ -119,7 +119,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
             </div>
           </div>
         ) : (
-          <div className="relative flex min-h-[240px] flex-col items-center justify-center gap-4 overflow-hidden rounded-xl bg-gradient-to-br from-action via-action-hover to-foreground-base px-6 py-8 text-center sm:aspect-[16/7] sm:min-h-0 sm:py-0">
+          <div className="relative flex min-h-[240px] flex-col items-center justify-center gap-4 overflow-hidden rounded-xl bg-gradient-to-br from-surface-inverse via-surface-inverse-hover to-fill-strong px-6 py-8 text-center sm:aspect-[16/7] sm:min-h-0 sm:py-0">
             <div
               aria-hidden
               // oxlint-disable-next-line design-system/no-arbitrary-values -- a radial highlight; there is no radial-gradient utility
@@ -135,7 +135,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
                 aria-hidden
                 className={cn(
                   "size-1.5 rounded-full",
-                  running ? "bg-success" : "bg-foreground-subtle",
+                  running ? "bg-success" : "bg-fill-subtle",
                 )}
               />
               <Text

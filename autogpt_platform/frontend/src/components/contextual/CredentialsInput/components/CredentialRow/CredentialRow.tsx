@@ -99,8 +99,8 @@ export function CredentialRow({
       )}
       onClick={readOnly || showCaret || asSelectTrigger ? undefined : onSelect}
     >
-      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-action-hover">
-        <ProviderIcon className="h-3 w-3 text-action-foreground" />
+      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-inverse-hover">
+        <ProviderIcon className="h-3 w-3 text-foreground-inverse" />
       </div>
       <TypeIcon className="h-5 w-5 shrink-0 text-foreground-emphasis" />
       <div

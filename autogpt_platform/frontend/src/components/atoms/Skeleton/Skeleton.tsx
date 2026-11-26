@@ -9,7 +9,7 @@ interface Props extends React.HTMLAttributes<HTMLDivElement> {
 
 const variantClassName = {
   solid: "bg-surface-hover",
-  translucent: "bg-action/10",
+  translucent: "bg-surface-inverse/10",
 } as const;
 
 export function Skeleton({ className, variant = "solid", ...props }: Props) {

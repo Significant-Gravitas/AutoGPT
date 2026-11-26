@@ -91,7 +91,7 @@ function LiveCompaction({ phase, stats }: LiveProps) {
         className="h-1 w-full overflow-hidden rounded-pill bg-surface-hover"
       >
         <div
-          className="h-full rounded-pill bg-foreground-base"
+          className="h-full rounded-pill bg-fill-strong"
           style={{ width: `${width}%` }}
         />
       </div>

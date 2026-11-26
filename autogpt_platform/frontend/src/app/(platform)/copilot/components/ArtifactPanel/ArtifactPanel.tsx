@@ -117,7 +117,7 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
           <div
             onClick={clearArtifactPreview}
             // oxlint-disable-next-line design-system/no-arbitrary-values -- a light 2px backdrop blur; backdrop-blur-sm is 4px
-            className="fixed inset-0 z-drawer-scrim bg-foreground-base/20 backdrop-blur-[2px]"
+            className="fixed inset-0 z-drawer-scrim bg-scrim/20 backdrop-blur-[2px]"
             aria-hidden="true"
           />
           <Drawer.Content

@@ -45,7 +45,7 @@ const STEPS: Step[] = [
 ];
 
 const NODE_CLASS: Record<StepState, string> = {
-  done: "bg-success text-action-foreground",
+  done: "bg-success text-foreground-on-color",
   current:
     "bg-warning-surface text-warning-foreground ring-2 ring-warning-border",
   upcoming: "bg-surface-hover text-foreground-subtle",

@@ -292,7 +292,7 @@ const ROLE_FAMILIES: { utilities: RegExp; roles: RegExp }[] = [
   {
     utilities: /^(?:bg|from|via|to)$/,
     roles:
-      /^(?:canvas|surface.*|overlay|scrim|action|action-hover|brand|brand-hover|accent-surface|error|error-hover|error-surface|warning|warning-surface|success|success-surface|info|info-surface|orange|yellow|sky|indigo|pink)$/,
+      /^(?:canvas|surface.*|overlay|scrim|fill-.+|action|action-hover|brand|brand-hover|accent-surface|error|error-hover|error-surface|warning|warning-surface|success|success-surface|info|info-surface|orange|yellow|sky|indigo|pink)$/,
   },
   {
     utilities: /^(?:border.*|divide.*|ring.*|outline)$/,
@@ -879,6 +879,176 @@ const noArbitraryColour: Rule.RuleModule = {
 };
 
 // ---------------------------------------------------------------------------
+// A role means what it says: a text role is not a fill and a surface role is
+// not text, so a look can change one without the other.
+
+const CLASS_START = String.raw`(?<![\w\-/\[.#])((?:[^\s"'\`{}]*:)?!?)`;
+const CLASS_END = String.raw`(\/(?:\d+(?:\.\d+)?|\[[^\]\s]+\]))?(?![\w\-])`;
+// A background clipped to its text, gradient or solid, is that text's colour.
+const CLIPPED_TO_TEXT = new RegExp(`${CLASS_START}bg-clip-text(?![\\w-])`, "g");
+
+// The variants of a class's prefix (`md:hover:!` is md and hover), split at
+// the colons outside brackets and parentheses.
+function variantsOf(prefix: string) {
+  const text = prefix.replace(/!$/, "");
+  const variants: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "[" || text[i] === "(") depth++;
+    else if (text[i] === "]" || text[i] === ")") depth--;
+    else if (text[i] === ":" && depth === 0) {
+      variants.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  return variants;
+}
+
+// A fill is clipped to its text when a `bg-clip-text` applies whenever the
+// fill does: every variant of the clip is one of the fill's. So
+// `md:bg-clip-text` covers `md:hover:from-…`, and `hover:bg-clip-text` does
+// not cover a fill without hover.
+function isClipped(fillPrefix: string, clipText: string) {
+  const fill = new Set(variantsOf(fillPrefix));
+  return [...clipText.matchAll(CLIPPED_TO_TEXT)].some(([, clipPrefix]) =>
+    variantsOf(clipPrefix).every((variant) => fill.has(variant)),
+  );
+}
+
+type ClassPart = Extract<Node, { type: "CallExpression" }>["arguments"][number];
+
+// The class text of a part that always applies: a string, the static parts
+// of a template literal, the strings of an array.
+function staticClasses(part: ClassPart | null): string[] {
+  if (!part) return [];
+  if (part.type === "Literal")
+    return typeof part.value === "string" ? [part.value] : [];
+  if (part.type === "TemplateLiteral")
+    return [
+      ...part.quasis.map((quasi) => quasi.value.cooked ?? quasi.value.raw),
+      ...part.expressions.flatMap(staticClasses),
+    ];
+  if (part.type === "ArrayExpression")
+    return part.elements.flatMap(staticClasses);
+  return [];
+}
+
+const CLASS_CALLS = new Set(["cn", "clsx", "twMerge", "cva"]);
+// Expressions a class string can sit in on its way to a class call.
+const CLASS_CONTAINERS = new Set([
+  "TemplateLiteral",
+  "ArrayExpression",
+  "ObjectExpression",
+  "Property",
+  "ConditionalExpression",
+  "LogicalExpression",
+]);
+
+// The classes around a string that apply whenever it does: the static parts
+// of the template literals it sits in, and the static arguments of the cn(),
+// clsx() or twMerge() call it is passed to (cva()'s base classes). A
+// conditional part (`on && "…"`, a cva variant) is left out.
+function enclosingClasses(node: Node) {
+  const parts: string[] = [];
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    if (parent.type === "TemplateLiteral") parts.push(...staticClasses(parent));
+    else if (parent.type === "CallExpression") {
+      if (
+        parent.callee.type === "Identifier" &&
+        CLASS_CALLS.has(parent.callee.name)
+      )
+        parts.push(
+          ...(parent.callee.name === "cva"
+            ? parent.arguments.slice(0, 1)
+            : parent.arguments
+          ).flatMap(staticClasses),
+        );
+      break;
+    } else if (!CLASS_CONTAINERS.has(parent.type)) break;
+  }
+  return parts.join(" ");
+}
+
+let misusedRolePatterns: { fill: RegExp; text: RegExp } | undefined;
+
+function misusedRolePattern(kind: "fill" | "text") {
+  misusedRolePatterns ??= (() => {
+    const names = (test: RegExp) =>
+      roles()
+        .map((role) => role.name)
+        .filter((name) => test.test(name))
+        .sort((a, b) => b.length - a.length)
+        .join("|");
+    return {
+      fill: new RegExp(
+        `${CLASS_START}(bg|from|via|to)-(${names(/^foreground-/)})${CLASS_END}`,
+        "g",
+      ),
+      text: new RegExp(
+        `${CLASS_START}(text)-(${names(/^(?:canvas|surface.*)$/)})${CLASS_END}`,
+        "g",
+      ),
+    };
+  })();
+  return misusedRolePatterns[kind];
+}
+
+function sameColour(name: string, test: RegExp) {
+  const hex = roles().find((role) => role.name === name)?.hex;
+  return roles()
+    .filter((role) => role.hex === hex && test.test(role.name))
+    .map((role) => role.name);
+}
+
+export function misusedRoleAdvice(utility: string, role: string) {
+  if (utility === "text") {
+    const same = sameColour(role, /^foreground-/);
+    const use = same.length
+      ? `Use "text-${same[0]}", the text role with the same colour, or another text role`
+      : "Use a text role";
+    return `${use}: foreground-* on a page or card, "foreground-inverse" on the inverse surface, "foreground-on-color" on a saturated fill.`;
+  }
+  const same = sameColour(role, /^fill-/);
+  const use = same.length
+    ? `Use "${utility}-${same[0]}", the fill role with the same colour`
+    : "Use a fill role (fill-subtle to fill-strong)";
+  return `${use}. A backdrop is "scrim", a dark surface that shows content is "surface-inverse" and a selected or current marker is "action".`;
+}
+
+const noMisusedRole: Rule.RuleModule = {
+  meta: {
+    type: "problem",
+    docs: {
+      description:
+        "Disallow a text role as a fill and a surface role as a text colour",
+    },
+    schema: [],
+  },
+  create(context) {
+    return stringNodes((node, text) => {
+      const fills = [...text.matchAll(misusedRolePattern("fill"))];
+      const clipText = fills.length ? `${text} ${enclosingClasses(node)}` : "";
+      for (const match of fills) {
+        const [whole, prefix, utility, role] = match;
+        if (isClipped(prefix, clipText)) continue;
+        context.report({
+          node,
+          message: `"${whole}" paints a fill with a text role, so a look that changes text changes it too. ${misusedRoleAdvice(utility, role)}`,
+        });
+      }
+      for (const match of text.matchAll(misusedRolePattern("text"))) {
+        const [whole, , utility, role] = match;
+        context.report({
+          node,
+          message: `"${whole}" colours text with a surface role, so a look that changes surfaces changes it too. ${misusedRoleAdvice(utility, role)}`,
+        });
+      }
+    });
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Layers, read from src/app/tokens/shape.css so the advice never drifts.
 
 // A layer written as a number: `z-10`, `-z-10`, `hover:z-[21]`. A named
@@ -1010,6 +1180,7 @@ const plugin = {
     "no-hex-colours": ratchet("no-hex-colours", noHexColours),
     "no-colour-functions": ratchet("no-colour-functions", noColourFunctions),
     "no-arbitrary-colour": ratchet("no-arbitrary-colour", noArbitraryColour),
+    "no-misused-role": ratchet("no-misused-role", noMisusedRole),
     "no-raw-z-index": ratchet("no-raw-z-index", noRawZIndex),
     "no-dark-variant": ratchet("no-dark-variant", noDarkVariant),
     "no-raw-text-size": ratchet("no-raw-text-size", noRawTextSize),

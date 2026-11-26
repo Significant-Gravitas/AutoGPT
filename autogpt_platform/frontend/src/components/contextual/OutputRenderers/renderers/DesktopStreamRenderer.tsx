@@ -145,7 +145,7 @@ export function DesktopStreamPreview({
         )}
       </div>
       {ownerOnly ? (
-        <div className="flex aspect-video w-full items-center justify-center bg-action-hover px-6">
+        <div className="flex aspect-video w-full items-center justify-center bg-surface-inverse-hover px-6">
           <Text
             variant={textSize === "body-md" ? "body-md" : "body"}
             leading={textSize === "body-md" ? undefined : "5"}
@@ -161,7 +161,7 @@ export function DesktopStreamPreview({
           src={value.url}
           sandbox="allow-scripts allow-same-origin allow-popups"
           allow="clipboard-read; clipboard-write; fullscreen"
-          className="aspect-video w-full bg-action-hover"
+          className="aspect-video w-full bg-surface-inverse-hover"
           title={`Interactive desktop (${value.sandbox_id})`}
         />
       )}

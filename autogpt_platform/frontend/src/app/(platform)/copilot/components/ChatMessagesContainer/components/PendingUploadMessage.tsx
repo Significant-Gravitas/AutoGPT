@@ -126,7 +126,7 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
               isCompact
                 ? "text-body leading-6 group-[.is-user]:rounded-xl"
                 : "text-body-lg leading-relaxed group-[.is-user]:rounded-3xl",
-              "group-[.is-user]:bg-action-hover group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-action-foreground",
+              "group-[.is-user]:bg-surface-inverse-hover group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-foreground-inverse",
             )}
           >
             <div className="break-words whitespace-pre-wrap">

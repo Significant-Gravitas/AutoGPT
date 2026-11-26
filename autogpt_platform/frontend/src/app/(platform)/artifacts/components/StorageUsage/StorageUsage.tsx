@@ -52,7 +52,7 @@ export function StorageUsage() {
           // oxlint-disable-next-line design-system/no-restyle -- a slim grey meter; Progress has no size or tone variants
           "h-1.5 w-32 bg-surface-hover",
           // oxlint-disable-next-line design-system/no-restyle -- the meter turns red near the quota
-          percent > 95 ? "[&>div]:bg-error" : "[&>div]:bg-foreground-subtle",
+          percent > 95 ? "[&>div]:bg-error" : "[&>div]:bg-fill-subtle",
         )}
       />
       <Text variant="small" as="span" tone="secondary">

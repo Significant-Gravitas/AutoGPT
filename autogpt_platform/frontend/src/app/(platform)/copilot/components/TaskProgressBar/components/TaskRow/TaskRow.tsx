@@ -57,7 +57,7 @@ export function TaskRow({ todo, isStreaming, reduceMotion }: Props) {
           {completed && !reduceMotion && (
             <motion.span
               aria-hidden
-              className="pointer-events-none absolute inset-x-0 top-1/2 h-px origin-left -translate-y-1/2 bg-foreground-subtle"
+              className="pointer-events-none absolute inset-x-0 top-1/2 h-px origin-left -translate-y-1/2 bg-fill-subtle"
               initial={{ scaleX: 0 }}
               animate={{ scaleX: 1 }}
               transition={{

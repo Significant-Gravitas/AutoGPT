@@ -64,7 +64,7 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
               <Text variant="small" weight="medium" tone="emphasis">
                 {step.title}
               </Text>
-              <pre className="mt-1 max-w-full overflow-x-auto rounded-lg bg-action-hover px-3 py-2 text-left font-mono text-caption text-action-foreground">
+              <pre className="mt-1 max-w-full overflow-x-auto rounded-lg bg-surface-inverse-hover px-3 py-2 text-left font-mono text-caption text-foreground-inverse">
                 <code translate="no">
                   {step.command ?? "Loading deployment settings…"}
                 </code>
@@ -90,7 +90,7 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
         <Text variant="small" tone="secondary" className="mt-1">
           Run this in your terminal (PowerShell on Windows):
         </Text>
-        <pre className="mt-2 max-w-full overflow-x-auto rounded-lg bg-action-hover px-3 py-2 text-left font-mono text-caption text-action-foreground">
+        <pre className="mt-2 max-w-full overflow-x-auto rounded-lg bg-surface-inverse-hover px-3 py-2 text-left font-mono text-caption text-foreground-inverse">
           <code translate="no">
             {deployment?.startCommand ?? "Loading deployment settings…"}
           </code>
@@ -121,12 +121,12 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
             </li>
             <li>Windows: %APPDATA%\autogpt-local-executor\config.toml</li>
           </ul>
-          <pre className="max-w-full overflow-x-auto rounded-lg bg-action-hover px-3 py-2 text-caption text-action-foreground">
+          <pre className="max-w-full overflow-x-auto rounded-lg bg-surface-inverse-hover px-3 py-2 text-caption text-foreground-inverse">
             <code translate="no">
               {deployment?.config ?? "Loading deployment settings…"}
             </code>
           </pre>
-          <pre className="mt-2 max-w-full overflow-x-auto rounded-lg bg-action-hover px-3 py-2 text-caption text-action-foreground">
+          <pre className="mt-2 max-w-full overflow-x-auto rounded-lg bg-surface-inverse-hover px-3 py-2 text-caption text-foreground-inverse">
             <code translate="no">autogpt-shim install</code>
           </pre>
           <Text variant="small" tone="secondary" className="mt-2">

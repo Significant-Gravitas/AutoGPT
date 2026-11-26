@@ -18,6 +18,21 @@ const BODY_TEXT = [
   "foreground-tertiary",
 ];
 const PAGE = ["canvas", "surface", "surface-muted"];
+// Saturated fills that take foreground-on-color, and the pale ones it is too
+// light for, which take dark text. See "On colour" in the design-system doc.
+const SATURATED = [
+  "brand",
+  "brand-hover",
+  "accent-strong",
+  "error",
+  "error-hover",
+  "success",
+  "info",
+  "info-foreground",
+  "indigo",
+  "pink",
+];
+const PALE = ["warning", "yellow", "orange", "sky"];
 
 const PAIRS: [text: string, background: string, minimum: number][] = [
   ...BODY_TEXT.flatMap((text) =>
@@ -33,6 +48,12 @@ const PAIRS: [text: string, background: string, minimum: number][] = [
   ["success-foreground", "success-surface", TEXT],
   ["info-foreground", "info-surface", TEXT],
   ["placeholder", "surface", TEXT],
+  ...SATURATED.map(
+    (fill) => ["foreground-on-color", fill, TEXT] as [string, string, number],
+  ),
+  ...PALE.map(
+    (fill) => ["foreground-base", fill, TEXT] as [string, string, number],
+  ),
 ];
 
 // Pairs the light theme fails today, with the ratio measured. They are left
@@ -44,6 +65,11 @@ const LIGHT_BELOW_MINIMUM: Record<string, string> = {
   "foreground-tertiary on surface-muted": "3.57",
   "error-inverse on surface-inverse": "3.54",
   "placeholder on surface": "3.72",
+  "foreground-on-color on error": "3.73",
+  "foreground-on-color on success": "3.89",
+  "foreground-on-color on info": "3.65",
+  "foreground-on-color on indigo": "4.43",
+  "foreground-on-color on pink": "3.50",
 };
 
 function palette(tokens: Map<string, string>) {

@@ -116,7 +116,7 @@ export function ChangelogPopup() {
               <span
                 aria-hidden="true"
                 data-slot="changelog-popup-bullet"
-                className="mt-2.5 size-1 shrink-0 rounded-full bg-foreground-tertiary"
+                className="mt-2.5 size-1 shrink-0 rounded-full bg-fill-soft"
               />
               <Text variant="body" data-slot="changelog-popup-highlight-text">
                 {item}

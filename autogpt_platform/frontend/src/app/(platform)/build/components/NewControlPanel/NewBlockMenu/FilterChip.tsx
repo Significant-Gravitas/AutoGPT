@@ -45,7 +45,7 @@ export const FilterChip: React.FC<Props> = ({
             rest.disabled
               ? "subtle"
               : selected && !isHovered
-                ? "inverse"
+                ? "on-color"
                 : "secondary"
           }
         >
@@ -76,7 +76,7 @@ export const FilterChip: React.FC<Props> = ({
               type: "spring",
               bounce: 0.2,
             }}
-            className="flex h-[1.375rem] items-center rounded-pill bg-accent-strong p-1.5 text-action-foreground"
+            className="flex h-[1.375rem] items-center rounded-pill bg-accent-strong p-1.5 text-foreground-on-color"
           >
             {number > 100 ? "100+" : number}
           </motion.span>

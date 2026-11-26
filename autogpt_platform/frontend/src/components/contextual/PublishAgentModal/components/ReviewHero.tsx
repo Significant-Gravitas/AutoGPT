@@ -115,7 +115,7 @@ export function ReviewHero({
                     delay: 0.18,
                   }
             }
-            className="text-action-foreground"
+            className="text-foreground-on-color"
           >
             <Icon icon={hero.Icon} size={36} />
           </motion.span>
