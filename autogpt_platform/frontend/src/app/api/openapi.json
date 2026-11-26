@@ -33334,7 +33334,7 @@
             "type": "string",
             "format": "date-time",
             "title": "Last Active At",
-            "description": "When the app last got a token. An access token lasts an hour, so an app still calling the API gets a new one at least hourly."
+            "description": "When the app last got a token"
           }
         },
         "type": "object",

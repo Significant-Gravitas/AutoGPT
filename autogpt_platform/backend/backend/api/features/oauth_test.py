@@ -1636,7 +1636,7 @@ async def test_concurrent_refresh_replay_revokes_entire_family(
 ):
     push_revocation = AsyncMock()
     monkeypatch.setattr(
-        "backend.api.features.oauth._push_shim_revocation", push_revocation
+        "backend.api.features.oauth.push_shim_revocation", push_revocation
     )
     verifier, challenge = generate_pkce()
     auth_response = await client.post(
@@ -1867,7 +1867,7 @@ async def test_token_refresh_revoked(
     """Test token refresh with revoked refresh token."""
     push_revocation = AsyncMock()
     monkeypatch.setattr(
-        "backend.api.features.oauth._push_shim_revocation", push_revocation
+        "backend.api.features.oauth.push_shim_revocation", push_revocation
     )
 
     # Create a revoked refresh token directly in the database
@@ -2339,7 +2339,7 @@ async def test_revoke_access_token_updates_database(
     """Test that revoking access token updates database."""
     push_revocation = AsyncMock()
     monkeypatch.setattr(
-        "backend.api.features.oauth._push_shim_revocation", push_revocation
+        "backend.api.features.oauth.push_shim_revocation", push_revocation
     )
     verifier, challenge = generate_pkce()
 
@@ -2448,7 +2448,7 @@ async def test_revoke_refresh_token_updates_database(
     """Test that revoking refresh token updates database."""
     push_revocation = AsyncMock()
     monkeypatch.setattr(
-        "backend.api.features.oauth._push_shim_revocation", push_revocation
+        "backend.api.features.oauth.push_shim_revocation", push_revocation
     )
     verifier, challenge = generate_pkce()
 
@@ -2552,7 +2552,7 @@ async def test_revoke_token_from_different_app_fails_silently(
     Per RFC 7009, the endpoint still returns 200 OK (to prevent token scanning),
     but the token should remain valid in the database.
     """
-    monkeypatch.setattr("backend.api.features.oauth._push_shim_revocation", AsyncMock())
+    monkeypatch.setattr("backend.api.features.oauth.push_shim_revocation", AsyncMock())
     verifier, challenge = generate_pkce()
 
     # Get tokens for app 1
@@ -2677,7 +2677,7 @@ async def test_complete_oauth_flow_end_to_end(
     This is a comprehensive integration test that verifies the entire
     OAuth flow works correctly with real API calls and database operations.
     """
-    monkeypatch.setattr("backend.api.features.oauth._push_shim_revocation", AsyncMock())
+    monkeypatch.setattr("backend.api.features.oauth.push_shim_revocation", AsyncMock())
     verifier, challenge = pkce_credentials
 
     # Step 1: Authorization request with PKCE

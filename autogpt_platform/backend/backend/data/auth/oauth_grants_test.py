@@ -129,7 +129,7 @@ async def test_revoking_ends_only_that_apps_access_for_that_user(world: World):
     other_app = await _sign_in(world.other_app_id, world.user_id, scopes)
     bystander = await _sign_in(world.app_id, world.bystander_id, scopes)
 
-    assert await revoke_user_oauth_grant(world.user_id, world.app_id) == 4
+    assert await revoke_user_oauth_grant(world.user_id, world.app_id) == 5
 
     for grant in revoked:
         with pytest.raises(InvalidTokenError):

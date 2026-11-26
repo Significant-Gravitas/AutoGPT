@@ -121,14 +121,48 @@ describe("Settings › OAuth Apps", () => {
     );
   });
 
+  test("an app that already lost its access closes the dialog and leaves the list", async () => {
+    const calendar = makeGrant({
+      application_id: "app-cal",
+      name: "Calendar app",
+    });
+    let grants = [makeGrant(), calendar];
+    server.use(
+      getGetOauthListMyOauthGrantsMockHandler(() => grants),
+      http.delete(GRANT_URL, () => {
+        grants = [calendar];
+        return HttpResponse.json(
+          { detail: "This app has no access to your account" },
+          { status: 404 },
+        );
+      }),
+    );
+
+    render(<SettingsOAuthAppsPage />);
+    const dialog = await openRevokeDialog("Notes app");
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Revoke access" }),
+    );
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Revoke access for Notes app" }),
+      ).toBeNull(),
+    );
+    expect(
+      screen.getByRole("button", { name: "Revoke access for Calendar app" }),
+    ).toBeDefined();
+    expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Notes app no longer has access" }),
+    );
+  });
+
   test("a revoke the server refuses keeps the dialog open and says so", async () => {
     server.use(
       getGetOauthListMyOauthGrantsMockHandler([makeGrant()]),
       http.delete(GRANT_URL, () =>
-        HttpResponse.json(
-          { detail: "This app has no access to your account" },
-          { status: 404 },
-        ),
+        HttpResponse.json({ detail: "Database unavailable" }, { status: 500 }),
       ),
     );
 
@@ -142,7 +176,7 @@ describe("Settings › OAuth Apps", () => {
       expect(toastSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           title: "Couldn't revoke access for Notes app",
-          description: "This app has no access to your account",
+          description: "Database unavailable",
         }),
       ),
     );

@@ -5,7 +5,7 @@ import logging
 from autogpt_libs.auth import get_user_id
 from fastapi import APIRouter, HTTPException, Security, status
 
-from backend.api.features.oauth import _push_shim_revocation
+from backend.api.features.oauth import push_shim_revocation
 from backend.data.auth.oauth import get_oauth_application_by_id
 from backend.data.auth.oauth_grants import (
     OAuthGrantInfo,
@@ -43,4 +43,4 @@ async def revoke_my_oauth_grant(
         )
     logger.info(f"User #{user_id} revoked the OAuth grant of app #{app_id}")
     if app := await get_oauth_application_by_id(app_id):
-        await _push_shim_revocation(user_id, app.client_id)
+        await push_shim_revocation(user_id, app.client_id)

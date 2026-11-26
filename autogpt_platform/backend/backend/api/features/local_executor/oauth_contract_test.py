@@ -168,6 +168,7 @@ def test_public_pkce_token_exchange_accepts_form_and_json(encoding: str) -> None
             validate_client,
         ),
         patch("backend.api.features.oauth.consume_authorization_code", consume_code),
+        patch("backend.api.features.oauth.confirm_code_still_granted", AsyncMock()),
         patch(
             "backend.api.features.oauth.create_access_token",
             AsyncMock(return_value=_issued_token("access-token")),
@@ -299,7 +300,7 @@ def test_successful_revocation_pushes_connected_shim_shutdown() -> None:
             "backend.api.features.oauth.revoke_access_token",
             AsyncMock(return_value=SimpleNamespace(user_id="user-1")),
         ),
-        patch("backend.api.features.oauth._push_shim_revocation", push_revocation),
+        patch("backend.api.features.oauth.push_shim_revocation", push_revocation),
     ):
         response = client.post(
             "/api/oauth/revoke",
@@ -332,7 +333,7 @@ def test_public_client_can_revoke_with_presented_token_and_no_secret() -> None:
             validate_client,
         ),
         patch("backend.api.features.oauth.revoke_access_token", revoke_token),
-        patch("backend.api.features.oauth._push_shim_revocation", AsyncMock()),
+        patch("backend.api.features.oauth.push_shim_revocation", AsyncMock()),
     ):
         response = client.post(
             "/api/oauth/revoke",
@@ -369,7 +370,7 @@ def test_revocation_storage_failure_returns_server_error() -> None:
             "backend.api.features.oauth.revoke_access_token",
             AsyncMock(side_effect=ConnectionError("database unavailable")),
         ),
-        patch("backend.api.features.oauth._push_shim_revocation", push_revocation),
+        patch("backend.api.features.oauth.push_shim_revocation", push_revocation),
     ):
         response = client.post(
             "/api/oauth/revoke",

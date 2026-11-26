@@ -5,7 +5,6 @@ from typing import Optional
 
 from prisma.enums import APIKeyPermission
 from prisma.models import OAuthAccessToken as PrismaOAuthAccessToken
-from prisma.models import OAuthApplication as PrismaOAuthApplication
 from prisma.models import OAuthAuthorizationCode as PrismaOAuthAuthorizationCode
 from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 from pydantic import BaseModel, Field
@@ -18,12 +17,7 @@ class OAuthGrantInfo(BaseModel):
     name: str
     logo_url: Optional[str] = None
     scopes: list[APIKeyPermission]
-    last_active_at: datetime = Field(
-        description=(
-            "When the app last got a token. An access token lasts an hour, so an "
-            "app still calling the API gets a new one at least hourly."
-        )
-    )
+    last_active_at: datetime = Field(description="When the app last got a token")
 
 
 async def list_user_oauth_grants(user_id: str) -> list[OAuthGrantInfo]:
@@ -46,9 +40,15 @@ async def list_user_oauth_grants(user_id: str) -> list[OAuthGrantInfo]:
     for token in [*refresh_tokens, *access_tokens]:
         if not token.Application:
             continue
-        grant = grants.setdefault(
-            token.applicationId, _empty_grant(token.Application, token.createdAt)
-        )
+        grant = grants.get(token.applicationId)
+        if grant is None:
+            grant = grants[token.applicationId] = OAuthGrantInfo(
+                application_id=token.applicationId,
+                name=token.Application.name,
+                logo_url=token.Application.logoUrl,
+                scopes=[],
+                last_active_at=token.createdAt,
+            )
         grant.scopes = _ordered({*grant.scopes, *token.scopes})
         grant.last_active_at = max(grant.last_active_at, token.createdAt)
 
@@ -56,15 +56,14 @@ async def list_user_oauth_grants(user_id: str) -> list[OAuthGrantInfo]:
 
 
 async def revoke_user_oauth_grant(user_id: str, application_id: str) -> int:
-    """End every token and unused code one app holds for one user.
+    """End every token and authorization code one app holds for one user.
 
-    Returns how many tokens it revoked, so 0 means the app held none for this
-    user, whoever's app it is.
+    Returns how many it ended, so 0 means the app held none for this user,
+    whoever's app it is.
     """
     now = datetime.now(timezone.utc)
 
-    # No transaction, and the family mark first: a refresh already rotating
-    # this grant must see it committed, or the token pair it mints survives.
+    # Every use of a token checks its family, so this also ends a pair minted after it.
     await PrismaOAuthRefreshToken.prisma().update_many(
         where={
             "userId": user_id,
@@ -73,8 +72,8 @@ async def revoke_user_oauth_grant(user_id: str, application_id: str) -> int:
         },
         data={"familyRevokedAt": now},
     )
-    await PrismaOAuthAuthorizationCode.prisma().delete_many(
-        where={"userId": user_id, "applicationId": application_id, "usedAt": None}
+    codes = await PrismaOAuthAuthorizationCode.prisma().delete_many(
+        where={"userId": user_id, "applicationId": application_id}
     )
     refresh = await PrismaOAuthRefreshToken.prisma().update_many(
         where={"userId": user_id, "applicationId": application_id, "revokedAt": None},
@@ -84,17 +83,7 @@ async def revoke_user_oauth_grant(user_id: str, application_id: str) -> int:
         where={"userId": user_id, "applicationId": application_id, "revokedAt": None},
         data={"revokedAt": now},
     )
-    return refresh + access
-
-
-def _empty_grant(app: PrismaOAuthApplication, issued_at: datetime) -> OAuthGrantInfo:
-    return OAuthGrantInfo(
-        application_id=app.id,
-        name=app.name,
-        logo_url=app.logoUrl,
-        scopes=[],
-        last_active_at=issued_at,
-    )
+    return codes + refresh + access
 
 
 def _ordered(scopes: set[APIKeyPermission]) -> list[APIKeyPermission]:
