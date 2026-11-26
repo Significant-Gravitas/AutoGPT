@@ -14,7 +14,7 @@ export function OrbitLoader({ size = 24, className }: Props) {
     <div
       className={cn(
         // oxlint-disable-next-line design-system/no-arbitrary-values -- the orbit keyframes in globals.css
-        "relative animate-[orbit-loader-rotate_1s_infinite]",
+        "relative size-(--orbit-size) animate-[orbit-loader-rotate_1s_infinite]",
         "before:block before:h-[40%] before:w-[40%] before:rounded-full before:content-['']",
         "after:block after:h-[40%] after:w-[40%] after:rounded-full after:content-['']",
         // oxlint-disable-next-line design-system/no-arbitrary-values -- the ball geometry comes from the size prop through CSS variables
@@ -25,8 +25,7 @@ export function OrbitLoader({ size = 24, className }: Props) {
       )}
       style={
         {
-          width: size,
-          height: size,
+          "--orbit-size": `${size}px`,
           "--ball-size": `${ballSize}px`,
           "--spacing": `${spacing}px`,
           "--gap": `${gap}px`,

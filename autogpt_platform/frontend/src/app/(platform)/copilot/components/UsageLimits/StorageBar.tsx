@@ -31,10 +31,14 @@ export function StorageBar() {
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={percent}
-          className={`h-full rounded-pill transition-[width] duration-300 ease-out ${
+          className={`h-full w-(--fill) rounded-pill transition-[width] duration-300 ease-out ${
             isHigh ? "bg-orange" : "bg-info"
           }`}
-          style={{ width: `${Math.max(used_bytes > 0 ? 1 : 0, percent)}%` }}
+          style={
+            {
+              "--fill": `${Math.max(used_bytes > 0 ? 1 : 0, percent)}%`,
+            } as React.CSSProperties
+          }
         />
       </div>
       <Text tone="subtle" variant="small">

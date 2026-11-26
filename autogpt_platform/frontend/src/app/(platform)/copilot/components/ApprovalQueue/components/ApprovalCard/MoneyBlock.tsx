@@ -40,8 +40,8 @@ export function MoneyBlock({ spend }: Props) {
         className="h-1 overflow-hidden rounded-pill bg-surface-hover"
       >
         <div
-          className="h-full rounded-pill bg-warning"
-          style={{ width: `${share * 100}%` }}
+          className="h-full w-(--share) rounded-pill bg-warning"
+          style={{ "--share": `${share * 100}%` } as React.CSSProperties}
         />
       </div>
       <Text variant="small" leading="4" tone="muted">

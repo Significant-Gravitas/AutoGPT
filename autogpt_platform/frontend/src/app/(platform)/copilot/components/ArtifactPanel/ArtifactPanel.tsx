@@ -121,8 +121,8 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
             aria-hidden="true"
           />
           <Drawer.Content
-            className="fixed top-0 right-0 z-drawer flex h-full w-full flex-col overflow-hidden bg-surface shadow-xl outline-none"
-            style={{ userSelect: "text" }}
+            // !select-text beats the user-select:none vaul injects on its drawer.
+            className="fixed top-0 right-0 z-drawer flex h-full w-full flex-col overflow-hidden bg-surface shadow-xl !select-text outline-none"
             aria-describedby={undefined}
           >
             <Drawer.Title className="sr-only">

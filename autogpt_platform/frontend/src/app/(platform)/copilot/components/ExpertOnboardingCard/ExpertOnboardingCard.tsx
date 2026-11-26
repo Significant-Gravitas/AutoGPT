@@ -147,8 +147,10 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
         className="h-1 bg-surface-hover"
       >
         <div
-          className="h-full bg-action transition-[width] duration-300 ease-out"
-          style={{ width: `${(shown / total) * 100}%` }}
+          className="h-full w-(--progress) bg-action transition-[width] duration-300 ease-out"
+          style={
+            { "--progress": `${(shown / total) * 100}%` } as React.CSSProperties
+          }
         />
       </div>
 

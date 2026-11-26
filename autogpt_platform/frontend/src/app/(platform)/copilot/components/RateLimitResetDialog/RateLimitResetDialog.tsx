@@ -116,7 +116,7 @@ export function RateLimitResetDialog({
                 ? "Usage temporarily unavailable"
                 : copy.eyebrow}
           </Text>
-          <Text as="span" variant="h3" className="!leading-8">
+          <Text as="span" variant="h3" leading="8">
             {checking
               ? "One moment. Your work is saved."
               : unavailable
@@ -140,7 +140,7 @@ export function RateLimitResetDialog({
           </Text>
         ) : unavailable ? (
           <div className="space-y-5">
-            <Text tone="muted" variant="body" className="!text-body !leading-6">
+            <Text tone="muted" variant="body" leading="6">
               Your work is saved. Try again to check your allowance before
               continuing.
             </Text>
@@ -148,11 +148,7 @@ export function RateLimitResetDialog({
           </div>
         ) : (
           <>
-            <Text
-              tone="muted"
-              variant="body"
-              className="mb-5 !text-body !leading-6"
-            >
+            <Text tone="muted" variant="body" leading="6" className="mb-5">
               {waitTitle && wait ? resetSentence : copy.description}
             </Text>
             {copy.trialSpent && (

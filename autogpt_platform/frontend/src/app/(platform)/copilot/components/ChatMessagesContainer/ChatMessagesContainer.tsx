@@ -254,7 +254,8 @@ export function LoadMoreSentinel({
       {isLoading ? (
         <LoadingSpinner
           data-testid="load-more-spinner"
-          className="h-5 w-5 text-foreground-subtle"
+          tone="subtle"
+          className="h-5 w-5"
         />
       ) : (
         hasMore && (
@@ -586,7 +587,7 @@ export function ChatMessagesContainer({
             !isRestoringActiveSession &&
             !showPendingSend && (
               <div className="flex flex-1 items-center justify-center">
-                <LoadingSpinner className="text-foreground-secondary" />
+                <LoadingSpinner tone="secondary" />
               </div>
             )}
           {transcriptRows.length > 0 && (
@@ -605,18 +606,13 @@ export function ChatMessagesContainer({
             />
           )}
           {showIndicator && lastMessage?.role !== "assistant" && (
-            <Message
-              from="assistant"
-              className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
-            >
-              <MessageContent className="text-body-lg leading-relaxed">
-                {indicator}
-              </MessageContent>
+            <Message from="assistant" entrance="rise">
+              <MessageContent size="large">{indicator}</MessageContent>
             </Message>
           )}
           {!readOnly && isRestoringActiveSession && (
             <Message from="assistant">
-              <MessageContent className="text-body-lg leading-relaxed text-foreground-strong">
+              <MessageContent size="large" className="text-foreground-strong">
                 {showRestoreFallback ? (
                   <div className="flex flex-col gap-1 text-body text-foreground-tertiary">
                     <ThinkingIndicator
@@ -630,7 +626,7 @@ export function ChatMessagesContainer({
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 text-body text-foreground-tertiary">
-                    <LoadingSpinner className="h-4 w-4 text-foreground-tertiary" />
+                    <LoadingSpinner tone="muted" className="h-4 w-4" />
                     <span>Retrieving latest messages</span>
                   </div>
                 )}
@@ -653,11 +649,10 @@ export function ChatMessagesContainer({
             queuedMessages?.map((msg, idx) => (
               <Message key={idx} from="user">
                 <MessageContent
+                  size={isCompact ? "compact" : "large"}
                   className={cn(
                     "flex flex-col gap-1 border border-dashed border-border-strong bg-surface-hover px-4 py-2.5 text-foreground-strong opacity-60",
-                    isCompact
-                      ? "rounded-xl text-body leading-6"
-                      : "rounded-3xl text-body-lg leading-relaxed",
+                    isCompact ? "rounded-xl" : "rounded-3xl",
                   )}
                 >
                   <span>

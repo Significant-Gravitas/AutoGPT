@@ -118,14 +118,15 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
         from="user"
         data-testid="pending-upload-message"
         data-message-id={PENDING_UPLOAD_MESSAGE_ID}
-        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
+        entrance="rise"
       >
         {pendingSend.text && (
           <MessageContent
+            size={isCompact ? "compact" : "large"}
             className={cn(
               isCompact
-                ? "text-body leading-6 group-[.is-user]:rounded-xl"
-                : "text-body-lg leading-relaxed group-[.is-user]:rounded-3xl",
+                ? "group-[.is-user]:rounded-xl"
+                : "group-[.is-user]:rounded-3xl",
               "group-[.is-user]:bg-surface-inverse-hover group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-foreground-inverse",
             )}
           >
@@ -156,11 +157,8 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
           </div>
         )}
       </Message>
-      <Message
-        from="assistant"
-        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
-      >
-        <MessageContent className="text-body-lg leading-relaxed">
+      <Message from="assistant" entrance="rise">
+        <MessageContent size="large">
           {/* Announce the status on its own: the indicator's elapsed timer
               ticks every second, so a live region around the whole thing
               would re-read the upload state on every tick. */}
