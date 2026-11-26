@@ -1,8 +1,15 @@
+import { execSync } from "node:child_process";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { defineConfig } from "orval";
 
 const ENDPOINTS_DIR = "./src/app/api/__generated__/endpoints";
+
+function formatGeneratedClient() {
+  execSync("prettier --ignore-path= --write ./src/app/api/__generated__", {
+    stdio: "inherit",
+  });
+}
 
 // Orval 8 starts every infinite query key with "infinite"; orval 7 did not.
 // The app invalidates and updates infinite lists through the plain query key
@@ -133,10 +140,7 @@ export default defineConfig({
       },
     },
     hooks: {
-      afterAllFilesWrite: [
-        dropInfiniteQueryKeyPrefix,
-        "prettier --ignore-path= --write ./src/app/api/__generated__",
-      ],
+      afterAllFilesWrite: [dropInfiniteQueryKeyPrefix, formatGeneratedClient],
     },
   },
   // autogpt_zod_schema: {
