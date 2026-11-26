@@ -9,7 +9,7 @@ import { resetExpert } from "@/lib/api/expertManage";
 import { expertKeys } from "@/lib/api/experts";
 import { homeKeys } from "@/lib/api/home";
 
-import { resetOutcome } from "./dangerHelpers";
+import { isGoneError, resetOutcome } from "./dangerHelpers";
 
 type Phase = "confirm" | "busy" | "done";
 
@@ -29,7 +29,6 @@ export function useResetExpert({ expertID, name, isOpen, onReset, onClose }: Arg
   const [error, setError] = useState<string | null>(null);
   const [wasOpen, setWasOpen] = useState(isOpen);
 
-  // Each opening starts at the confirm step, whatever the last one ended on.
   if (isOpen !== wasOpen) {
     setWasOpen(isOpen);
     if (isOpen) {
@@ -46,9 +45,16 @@ export function useResetExpert({ expertID, name, isOpen, onReset, onClose }: Arg
       await resetExpert(expertID);
     } catch (caught) {
       setIsResetting(false);
-      // The sheet stays open, so the error shows in it: a toast would sit behind.
-      if (resetOutcome(caught) === "busy") setPhase("busy");
-      else setError(`Could not finish resetting ${name}`);
+      if (isGoneError(caught)) {
+        leave();
+        return;
+      }
+      if (resetOutcome(caught) === "busy") {
+        setPhase("busy");
+        return;
+      }
+      setPhase("confirm");
+      setError(`Could not finish resetting ${name}`);
       return;
     }
     setIsResetting(false);
@@ -57,7 +63,12 @@ export function useResetExpert({ expertID, name, isOpen, onReset, onClose }: Arg
     forgetExpert(queryClient, expertID);
   }
 
-  // The reset removed every chat, so the next one is new.
+  function leave() {
+    onClose();
+    void queryClient.invalidateQueries({ queryKey: expertKeys.list });
+    router.navigate("/team");
+  }
+
   async function openChat() {
     if (isOpeningChat) return;
     setIsOpeningChat(true);

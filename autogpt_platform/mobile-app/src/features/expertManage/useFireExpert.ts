@@ -8,7 +8,7 @@ import { expertManageKeys, fireExpert, getDetachPreview } from "@/lib/api/expert
 import { expertKeys } from "@/lib/api/experts";
 import { homeKeys } from "@/lib/api/home";
 
-import { firePauseLine } from "./dangerHelpers";
+import { firePauseLine, isGoneError } from "./dangerHelpers";
 
 interface Args {
   expertID: string;
@@ -27,7 +27,6 @@ export function useFireExpert({ expertID, isOpen, onFired }: Args) {
     enabled: isOpen,
   });
 
-  // Each opening starts without the last one's error.
   if (isOpen !== wasOpen) {
     setWasOpen(isOpen);
     if (isOpen) setError(null);
@@ -40,19 +39,19 @@ export function useFireExpert({ expertID, isOpen, onFired }: Args) {
   }
 
   async function fire() {
-    // Wait for the preview, so nobody fires before seeing what pauses.
     if (isFiring || preview.isFetching) return;
     setIsFiring(true);
     setError(null);
     try {
       await fireExpert(expertID);
-    } catch {
-      setError("Couldn't fire them. Try again.");
-      setIsFiring(false);
-      return;
+    } catch (caught) {
+      if (!isGoneError(caught)) {
+        setError("Couldn't fire them. Try again.");
+        setIsFiring(false);
+        return;
+      }
     }
     setIsFiring(false);
-    // The prefix covers this expert's page as well as the team list.
     void queryClient.invalidateQueries({ queryKey: expertKeys.list });
     void queryClient.invalidateQueries({ queryKey: chatKeys.sessions });
     void queryClient.invalidateQueries({ queryKey: homeKeys.dashboard });

@@ -42,12 +42,15 @@ export function ResetExpertSheet({
             {`${name} is reset`}
           </Text>
           {renderError()}
-          <Button
-            label={`Chat with ${name}`}
-            onPress={reset.chat}
-            isLoading={reset.isOpeningChat}
-            fullWidth
-          />
+          <View style={styles.buttons}>
+            <Button
+              label={`Chat with ${name}`}
+              onPress={reset.chat}
+              isLoading={reset.isOpeningChat}
+              fullWidth
+            />
+            {renderClose()}
+          </View>
         </>
       );
     }
@@ -59,12 +62,15 @@ export function ResetExpertSheet({
           </Text>
           <Text style={styles.text}>Reset once they finish.</Text>
           {renderError()}
-          <Button
-            label="Try again"
-            onPress={reset.confirm}
-            isLoading={reset.isResetting}
-            fullWidth
-          />
+          <View style={styles.buttons}>
+            <Button
+              label="Try again"
+              onPress={reset.confirm}
+              isLoading={reset.isResetting}
+              fullWidth
+            />
+            {renderClose()}
+          </View>
         </>
       );
     }
@@ -92,6 +98,18 @@ export function ResetExpertSheet({
           />
         </View>
       </>
+    );
+  }
+
+  function renderClose() {
+    return (
+      <Button
+        label="Close"
+        variant="secondary"
+        onPress={close}
+        disabled={reset.isResetting || reset.isOpeningChat}
+        fullWidth
+      />
     );
   }
 

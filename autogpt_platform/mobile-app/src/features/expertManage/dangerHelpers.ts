@@ -8,14 +8,17 @@ export function firePauseLine(preview: DetachPreview) {
   return `${count}: ${names.join(", ")}.`;
 }
 
-/**
- * The server refuses a reset with 409 while the expert has a turn running,
- * and that one is worth waiting out. Anything else just failed.
- */
+function statusOf(error: unknown) {
+  return typeof error === "object" && error !== null && "status" in error
+    ? error.status
+    : null;
+}
+
+/** The server refuses a reset with 409 while the expert has a turn running. */
 export function resetOutcome(error: unknown): "busy" | "failed" {
-  const status =
-    typeof error === "object" && error !== null && "status" in error
-      ? error.status
-      : null;
-  return status === 409 ? "busy" : "failed";
+  return statusOf(error) === 409 ? "busy" : "failed";
+}
+
+export function isGoneError(error: unknown) {
+  return statusOf(error) === 404;
 }
