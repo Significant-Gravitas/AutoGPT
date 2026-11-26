@@ -39,8 +39,9 @@ class Setup(BaseModel):
     """A user in two organizations. In ``home`` they keep a workflow, one they
     submitted to the marketplace (so also in their library), and a run of each and
     of an untagged workflow from before organizations; one run of their ``home``
-    workflow was recorded in ``elsewhere``. A teammate keeps a workflow and a run
-    in ``elsewhere``, visible to all its members."""
+    workflow was recorded in ``elsewhere``. In ``elsewhere`` they keep a workflow
+    and a run of it too, and a teammate keeps a workflow and a run, visible to all
+    its members."""
 
     user: str
     home: str
@@ -69,6 +70,7 @@ async def setup() -> AsyncIterator[Setup]:
         "untagged workflow": await _workflow_with_run(user, None, home),
         "submitted workflow": await _workflow_with_run(user, home, home),
         "run recorded elsewhere": await _workflow_with_run(user, home, elsewhere),
+        "workflow elsewhere": await _workflow_with_run(user, elsewhere, elsewhere),
         "teammate's workflow": await _workflow_with_run(teammate, elsewhere, elsewhere),
     }
     await _submit_to_marketplace(user, runs["submitted workflow"][0], home)
@@ -113,6 +115,12 @@ async def client(v1_counter) -> AsyncIterator[AsyncClient]:
 
 
 KEYS_AND_STATUSES = [("home", 200), ("elsewhere", 404), ("no organization", 200)]
+# A key that names no organization acts in its owner's personal one, ``home``.
+ELSEWHERE_KEYS_AND_STATUSES = [
+    ("home", 404),
+    ("elsewhere", 200),
+    ("no organization", 404),
+]
 
 
 @pytest.mark.parametrize("key, status", KEYS_AND_STATUSES)
@@ -129,6 +137,24 @@ async def test_run_results_are_found_only_through_a_key_for_their_organization(
     assert response.status_code == status, response.text
     if status == 200:
         assert response.json()["execution_id"] == run_id
+
+
+@pytest.mark.parametrize("key, status", ELSEWHERE_KEYS_AND_STATUSES)
+async def test_a_workflow_in_another_organization_is_reached_only_through_its_key(
+    setup: Setup, client: AsyncClient, queue: AsyncMock, key: str, status: int
+):
+    graph_id, run_id = setup.runs["workflow elsewhere"]
+    headers = {"X-API-Key": setup.keys[key]}
+
+    results = await client.get(
+        f"/v1/graphs/{graph_id}/executions/{run_id}/results", headers=headers
+    )
+    started = await client.post(
+        f"/v1/graphs/{graph_id}/execute/1", headers=headers, json={"node_input": {}}
+    )
+
+    assert (results.status_code, started.status_code) == (status, status)
+    assert queue.await_count == (1 if status == 200 else 0)
 
 
 async def test_run_results_are_not_found_under_another_workflow_id(
