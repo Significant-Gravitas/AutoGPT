@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Text, View } from "react-native";
+import { Platform, Text, View } from "react-native";
 
 import { Button } from "@/components/Button";
 import { BottomSheet } from "@/features/connections/components/BottomSheet";
@@ -7,6 +7,10 @@ import { SheetField } from "@/features/connections/components/CredentialSheet/co
 import { createStyles, spacing, type } from "@/lib/theme";
 
 import { budgetInput, parseBudget } from "../helpers";
+
+// iOS's decimal pad shows the region's separator, a comma in much of Europe,
+// and the field takes only a point.
+const BUDGET_KEYBOARD = Platform.OS === "ios" ? "numbers-and-punctuation" : "decimal-pad";
 
 interface Props {
   isOpen: boolean;
@@ -67,7 +71,7 @@ function BudgetForm({ saved, onSave }: FormProps) {
         value={text}
         onChangeText={handleChange}
         placeholder="e.g. 25"
-        keyboardType="decimal-pad"
+        keyboardType={BUDGET_KEYBOARD}
         autoFocus
         onSubmitEditing={submit}
       />

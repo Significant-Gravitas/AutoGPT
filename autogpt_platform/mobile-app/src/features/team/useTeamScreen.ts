@@ -61,7 +61,11 @@ export function useTeamScreen() {
       { id: "manage", label: "Manage" },
     ]);
     if (action === "chat") void openExpert(expert);
-    if (action === "manage") router.push(`/expert/${expert.id}`);
+    if (action === "manage") manageExpert(expert);
+  }
+
+  function manageExpert(expert: Expert) {
+    router.push(`/expert/${expert.id}`);
   }
 
   function openOtto() {
@@ -86,6 +90,7 @@ export function useTeamScreen() {
     openError,
     openExpert,
     openExpertMenu,
+    manageExpert,
     openOtto,
     createExpert,
     browseMarketplace,

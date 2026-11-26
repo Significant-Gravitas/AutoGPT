@@ -1,8 +1,10 @@
 import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
+import { router } from "expo-router";
 import { useState } from "react";
 import { Alert } from "react-native";
 
 import { useToast } from "@/components/useToast";
+import { isSessionID } from "@/lib/api/chat";
 import { ApiError } from "@/lib/api/client";
 import {
   type ExpertDetail,
@@ -16,7 +18,7 @@ import {
   updateExpertMode,
   updateExpertSoul,
 } from "@/lib/api/expertManage";
-import { expertKeys } from "@/lib/api/experts";
+import { type Expert, expertKeys } from "@/lib/api/experts";
 import { flagKeys, getFlags, isFlagOn } from "@/lib/api/flags";
 
 import { isExpertID, trimProfile, unsupervisedPrompt } from "./helpers";
@@ -25,8 +27,14 @@ const SAVE_FAILED = "Couldn't save. Try again.";
 
 type Sheet = "profile" | "budget";
 
-/** `routeExpertID` comes from the URL, which a link controls. */
-export function useManageExpert(routeExpertID: unknown) {
+interface Args {
+  /** From the URL, which a link controls. */
+  routeExpertID: unknown;
+  /** The chat whose panel opened this page; none means the Team page did. */
+  routeFrom: unknown;
+}
+
+export function useManageExpert({ routeExpertID, routeFrom }: Args) {
   const expertID = isExpertID(routeExpertID) ? routeExpertID : null;
   const queryClient = useQueryClient();
   const { toast, show } = useToast();
@@ -45,22 +53,34 @@ export function useManageExpert(routeExpertID: unknown) {
   // A refetch that 404s keeps the old data; the expert is gone all the same.
   const expert = isGone ? null : (detail.data ?? null);
 
-  // The page changes at once; a refused save puts it back as it was.
+  // The page and the team list change at once; a refused save puts both
+  // back as they were.
   async function save(
     patch: Partial<ExpertDetail>,
     request: (id: string) => Promise<ExpertDetail>,
   ) {
     if (!expertID) return false;
-    await queryClient.cancelQueries({ queryKey: detailKey });
+    const { name } = patch;
+    await Promise.all([
+      queryClient.cancelQueries({ queryKey: detailKey }),
+      queryClient.cancelQueries({ queryKey: expertKeys.list, exact: true }),
+    ]);
     const previous = queryClient.getQueryData<ExpertDetail>(detailKey);
+    const previousList = queryClient.getQueryData<Expert[]>(expertKeys.list);
     queryClient.setQueryData<ExpertDetail>(detailKey, (current) =>
       current ? { ...current, ...patch } : current,
     );
+    if (name !== undefined) {
+      queryClient.setQueryData<Expert[]>(expertKeys.list, (list) =>
+        list?.map((item) => (item.id === expertID ? { ...item, name } : item)),
+      );
+    }
     try {
       queryClient.setQueryData(detailKey, await request(expertID));
       return true;
     } catch (caught) {
       queryClient.setQueryData(detailKey, previous);
+      if (name !== undefined) queryClient.setQueryData(expertKeys.list, previousList);
       throw caught;
     } finally {
       void queryClient.invalidateQueries({ queryKey: expertKeys.list });
@@ -132,6 +152,11 @@ export function useManageExpert(routeExpertID: unknown) {
     setSheet(null);
   }
 
+  function goBack() {
+    if (isSessionID(routeFrom)) router.navigate(`/chat/${routeFrom}`);
+    else router.navigate("/team");
+  }
+
   function retry() {
     void detail.refetch();
   }
@@ -142,6 +167,7 @@ export function useManageExpert(routeExpertID: unknown) {
     isGone,
     isLoadError: !expert && detail.isError && !isGone,
     retry,
+    goBack,
     showApprovals: isFlagOn(flags.data, "copilot-auto-mode") && !isModeRefused,
     sheet,
     openProfile,

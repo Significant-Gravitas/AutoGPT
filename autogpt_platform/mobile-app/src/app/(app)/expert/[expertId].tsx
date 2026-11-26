@@ -1,10 +1,16 @@
-import { UserEdit01Icon, UserGroupIcon, Wallet01Icon } from "@hugeicons/core-free-icons";
+import {
+  ArrowLeft01Icon,
+  UserEdit01Icon,
+  UserGroupIcon,
+  Wallet01Icon,
+} from "@hugeicons/core-free-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
+import { IconButton } from "@/components/IconButton";
 import { PanelEmptyState } from "@/components/PanelEmptyState";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Toast } from "@/components/Toast";
@@ -18,17 +24,18 @@ import { SettingsRow } from "@/features/settings/components/SettingsRow";
 import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
 export default function ManageExpertScreen() {
-  const { expertId } = useLocalSearchParams<{ expertId: string }>();
+  const { expertId, from } = useLocalSearchParams<{ expertId: string; from?: string }>();
   // Keyed: the drawer keeps this screen mounted, and another expert starts fresh.
-  return <ManageExpert key={expertId} routeExpertID={expertId} />;
+  return <ManageExpert key={expertId} routeExpertID={expertId} routeFrom={from} />;
 }
 
 interface Props {
   routeExpertID: unknown;
+  routeFrom: unknown;
 }
 
-function ManageExpert({ routeExpertID }: Props) {
-  const manage = useManageExpert(routeExpertID);
+function ManageExpert({ routeExpertID, routeFrom }: Props) {
+  const manage = useManageExpert({ routeExpertID, routeFrom });
   const { expert } = manage;
   const styles = useStyles();
   const colors = useColors();
@@ -101,7 +108,10 @@ function ManageExpert({ routeExpertID }: Props) {
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader title={expert?.name ?? ""} />
+      <ScreenHeader
+        title={expert?.name ?? ""}
+        left={<IconButton icon={ArrowLeft01Icon} label="Back" onPress={manage.goBack} />}
+      />
       {renderBody()}
       {expert ? (
         <>

@@ -1,4 +1,10 @@
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import {
+  type AccessibilityActionEvent,
+  ActivityIndicator,
+  Pressable,
+  Text,
+  View,
+} from "react-native";
 
 import { ExpertAvatar } from "@/components/ExpertAvatar";
 import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
@@ -14,6 +20,8 @@ interface Props {
   isOpening?: boolean;
   onPress: () => void;
   onLongPress?: () => void;
+  /** Offered to screen readers, which can't reach the long-press menu. */
+  onManage?: () => void;
 }
 
 export function ExpertCard({
@@ -25,9 +33,15 @@ export function ExpertCard({
   isOpening,
   onPress,
   onLongPress,
+  onManage,
 }: Props) {
   const styles = useStyles();
   const colors = useColors();
+
+  function handleAccessibilityAction(event: AccessibilityActionEvent) {
+    if (event.nativeEvent.actionName === "manage") onManage?.();
+  }
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -37,6 +51,8 @@ export function ExpertCard({
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={350}
+      accessibilityActions={onManage ? [{ name: "manage", label: "Manage" }] : undefined}
+      onAccessibilityAction={handleAccessibilityAction}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
       <ExpertAvatar name={name} source={avatar} tint={tint} size={AVATAR_SIZE} />

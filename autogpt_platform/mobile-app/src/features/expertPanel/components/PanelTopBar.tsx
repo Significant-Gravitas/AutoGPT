@@ -21,7 +21,7 @@ export function PanelTopBar({ sessionID, expertID, expertName, onClose }: Props)
   function openManage() {
     if (!expertID) return;
     onClose();
-    router.push(`/expert/${expertID}`);
+    router.push(`/expert/${expertID}?from=${encodeURIComponent(sessionID)}`);
   }
 
   return (

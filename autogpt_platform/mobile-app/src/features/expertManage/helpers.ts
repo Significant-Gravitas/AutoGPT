@@ -41,8 +41,10 @@ export function formatDollars(credits: number) {
     : `$${dollars.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/** Null is the platform default (the server caps it); 0 lifts the cap. */
 export function formatBudget(credits: number | null) {
-  if (!credits) return "No limit";
+  if (credits === null) return "Default";
+  if (credits === 0) return "No limit";
   return formatDollars(credits);
 }
 

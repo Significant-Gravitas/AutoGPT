@@ -27,6 +27,7 @@ export default function TeamScreen() {
     openError,
     openExpert,
     openExpertMenu,
+    manageExpert,
     openOtto,
     createExpert,
     browseMarketplace,
@@ -94,6 +95,9 @@ export default function TeamScreen() {
     function handleLongPress() {
       void openExpertMenu(item);
     }
+    function handleManage() {
+      manageExpert(item);
+    }
     return (
       <ExpertCard
         name={item.name}
@@ -104,6 +108,7 @@ export default function TeamScreen() {
         isOpening={openingID === item.id}
         onPress={handlePress}
         onLongPress={handleLongPress}
+        onManage={handleManage}
       />
     );
   }

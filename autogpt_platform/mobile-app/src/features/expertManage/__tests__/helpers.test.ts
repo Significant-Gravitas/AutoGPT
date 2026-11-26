@@ -13,7 +13,7 @@ test("budget shows as dollars", () => {
   expect(formatBudget(2500)).toBe("$25");
   expect(formatBudget(1250)).toBe("$12.50");
   expect(formatBudget(0)).toBe("No limit");
-  expect(formatBudget(null)).toBe("No limit");
+  expect(formatBudget(null)).toBe("Default");
 });
 test("profile needs a name and an identity within the server's limits", () => {
   const ok = { name: "Mia", identity: "Bookkeeper", voice_preferences: "", boundaries: "" };
