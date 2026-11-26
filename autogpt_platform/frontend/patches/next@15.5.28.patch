@@ -29,6 +29,196 @@ index 9742dfaec8d4a4250b0634e2c7683cd04b59b281..24dcceb0e6d906bb21287e9c04670130
          // if the pending action was a server action, mark the queue as needing a refresh once events are processed
          if (actionQueue.pending.payload.type === _routerreducertypes.ACTION_SERVER_ACTION) {
              actionQueue.needsRefresh = true;
+diff --git a/dist/compiled/react-dom-experimental/cjs/react-dom-client.development.js b/dist/compiled/react-dom-experimental/cjs/react-dom-client.development.js
+index 00530847f2c96e18ef96e2b172ab1f0c5955e029..759846dfd34339c91bd986d623aba82948286d9b 100644
+--- a/dist/compiled/react-dom-experimental/cjs/react-dom-client.development.js
++++ b/dist/compiled/react-dom-experimental/cjs/react-dom-client.development.js
+@@ -18402,7 +18402,13 @@
+                   errorRetryLanes,
+                   !1
+                 );
+-                if (errorRetryLanes !== RootErrored) {
++                if (errorRetryLanes === RootSuspendedAtTheShell)
++                  wasRootDehydrated ||
++                    (yieldedFiber.errorRecoveryDisabledLanes =
++                      yieldedFiber.errorRecoveryDisabledLanes |
++                      startTime |
++                      workInProgressDeferredLane);
++                else if (errorRetryLanes !== RootErrored) {
+                   if (
+                     workInProgressRootDidAttachPingListener &&
+                     !wasRootDehydrated
+diff --git a/dist/compiled/react-dom-experimental/cjs/react-dom-client.production.js b/dist/compiled/react-dom-experimental/cjs/react-dom-client.production.js
+index 1f7a79567a3e6ff140709894f70c266498e5110d..8541b6ca3d9d49492c68f5a6cb79a85b9ea82771 100644
+--- a/dist/compiled/react-dom-experimental/cjs/react-dom-client.production.js
++++ b/dist/compiled/react-dom-experimental/cjs/react-dom-client.production.js
+@@ -12573,7 +12573,13 @@ function performWorkOnRoot(root$jscomp$0, lanes, forceSync) {
+               JSCompiler_inline_result,
+               !1
+             );
+-            if (2 !== JSCompiler_inline_result) {
++            if (6 === JSCompiler_inline_result)
++              wasRootDehydrated ||
++                (root.errorRecoveryDisabledLanes =
++                  root.errorRecoveryDisabledLanes |
++                  renderWasConcurrent |
++                  workInProgressDeferredLane);
++            else if (2 !== JSCompiler_inline_result) {
+               if (
+                 workInProgressRootDidAttachPingListener &&
+                 !wasRootDehydrated
+diff --git a/dist/compiled/react-dom-experimental/cjs/react-dom-profiling.development.js b/dist/compiled/react-dom-experimental/cjs/react-dom-profiling.development.js
+index ba87af29890227eeff25a3eb7ce8b3d604822227..cfc6ad89b5df5e61e90595cb43b5647ba58d65e2 100644
+--- a/dist/compiled/react-dom-experimental/cjs/react-dom-profiling.development.js
++++ b/dist/compiled/react-dom-experimental/cjs/react-dom-profiling.development.js
+@@ -18410,7 +18410,13 @@
+                   errorRetryLanes,
+                   !1
+                 );
+-                if (errorRetryLanes !== RootErrored) {
++                if (errorRetryLanes === RootSuspendedAtTheShell)
++                  wasRootDehydrated ||
++                    (yieldedFiber.errorRecoveryDisabledLanes =
++                      yieldedFiber.errorRecoveryDisabledLanes |
++                      startTime |
++                      workInProgressDeferredLane);
++                else if (errorRetryLanes !== RootErrored) {
+                   if (
+                     workInProgressRootDidAttachPingListener &&
+                     !wasRootDehydrated
+diff --git a/dist/compiled/react-dom-experimental/cjs/react-dom-profiling.profiling.js b/dist/compiled/react-dom-experimental/cjs/react-dom-profiling.profiling.js
+index 8c82c27064dcd3538105e677d375b8f43ff70bc7..25277a4969dbca0209295f5f4e38be3533a0a3dd 100644
+--- a/dist/compiled/react-dom-experimental/cjs/react-dom-profiling.profiling.js
++++ b/dist/compiled/react-dom-experimental/cjs/react-dom-profiling.profiling.js
+@@ -13857,7 +13857,13 @@ function performWorkOnRoot(root$jscomp$0, lanes, forceSync) {
+           wasRootDehydrated &&
+             (prepareFreshStack(root, JSCompiler_inline_result).flags |= 256);
+           exitStatus = renderRootSync(root, JSCompiler_inline_result, !1);
+-          2 !== exitStatus &&
++          6 === exitStatus
++            ? wasRootDehydrated ||
++              (root.errorRecoveryDisabledLanes =
++                root.errorRecoveryDisabledLanes |
++                renderWasConcurrent |
++                workInProgressDeferredLane)
++            : 2 !== exitStatus &&
+             (workInProgressRootDidAttachPingListener && !wasRootDehydrated
+               ? ((root.errorRecoveryDisabledLanes |= renderWasConcurrent),
+                 (workInProgressRootInterleavedUpdatedLanes |=
+diff --git a/dist/compiled/react-dom-experimental/cjs/react-dom-unstable_testing.development.js b/dist/compiled/react-dom-experimental/cjs/react-dom-unstable_testing.development.js
+index 38e4149c03dd00476195c7f9d886953551907ba3..8a4a9fb09fe9f6169fefbd1a65dd28137918f41b 100644
+--- a/dist/compiled/react-dom-experimental/cjs/react-dom-unstable_testing.development.js
++++ b/dist/compiled/react-dom-experimental/cjs/react-dom-unstable_testing.development.js
+@@ -18625,7 +18625,13 @@
+                   errorRetryLanes,
+                   !1
+                 );
+-                if (errorRetryLanes !== RootErrored) {
++                if (errorRetryLanes === RootSuspendedAtTheShell)
++                  wasRootDehydrated ||
++                    (yieldedFiber.errorRecoveryDisabledLanes =
++                      yieldedFiber.errorRecoveryDisabledLanes |
++                      startTime |
++                      workInProgressDeferredLane);
++                else if (errorRetryLanes !== RootErrored) {
+                   if (
+                     workInProgressRootDidAttachPingListener &&
+                     !wasRootDehydrated
+diff --git a/dist/compiled/react-dom-experimental/cjs/react-dom-unstable_testing.production.js b/dist/compiled/react-dom-experimental/cjs/react-dom-unstable_testing.production.js
+index 424eff78c13ddf87dca5ca385afdd6575519cd65..746ee3cd72b3833f4e9d46bb4ea087bc82a1abc8 100644
+--- a/dist/compiled/react-dom-experimental/cjs/react-dom-unstable_testing.production.js
++++ b/dist/compiled/react-dom-experimental/cjs/react-dom-unstable_testing.production.js
+@@ -12845,7 +12845,13 @@ function performWorkOnRoot(root$jscomp$0, lanes, forceSync) {
+               JSCompiler_inline_result,
+               !1
+             );
+-            if (2 !== JSCompiler_inline_result) {
++            if (6 === JSCompiler_inline_result)
++              wasRootDehydrated ||
++                (root.errorRecoveryDisabledLanes =
++                  root.errorRecoveryDisabledLanes |
++                  renderWasConcurrent |
++                  workInProgressDeferredLane);
++            else if (2 !== JSCompiler_inline_result) {
+               if (
+                 workInProgressRootDidAttachPingListener &&
+                 !wasRootDehydrated
+diff --git a/dist/compiled/react-dom/cjs/react-dom-client.development.js b/dist/compiled/react-dom/cjs/react-dom-client.development.js
+index 4376913076151ad78dcc4059ad4152fad25478da..7fc63a7d1bfd790ddc62288f3f99e371385f42ff 100644
+--- a/dist/compiled/react-dom/cjs/react-dom-client.development.js
++++ b/dist/compiled/react-dom/cjs/react-dom-client.development.js
+@@ -15035,7 +15035,13 @@
+                   errorRetryLanes$jscomp$0,
+                   !1
+                 );
+-                if (errorRetryLanes$jscomp$0 !== RootErrored) {
++                if (errorRetryLanes$jscomp$0 === RootSuspendedAtTheShell)
++                  wasRootDehydrated ||
++                    (exitStatus.errorRecoveryDisabledLanes =
++                      exitStatus.errorRecoveryDisabledLanes |
++                      renderWasConcurrent |
++                      workInProgressDeferredLane);
++                else if (errorRetryLanes$jscomp$0 !== RootErrored) {
+                   if (
+                     workInProgressRootDidAttachPingListener &&
+                     !wasRootDehydrated
+diff --git a/dist/compiled/react-dom/cjs/react-dom-client.production.js b/dist/compiled/react-dom/cjs/react-dom-client.production.js
+index 755076a5cf15273f024c18fdc6a8805f1e36860b..1749f108e7ad68e64051aad53b55b343aed8685a 100644
+--- a/dist/compiled/react-dom/cjs/react-dom-client.production.js
++++ b/dist/compiled/react-dom/cjs/react-dom-client.production.js
+@@ -10632,7 +10632,13 @@ function performWorkOnRoot(root$jscomp$0, lanes, forceSync) {
+               JSCompiler_inline_result,
+               !1
+             );
+-            if (2 !== JSCompiler_inline_result) {
++            if (6 === JSCompiler_inline_result)
++              wasRootDehydrated ||
++                (root.errorRecoveryDisabledLanes =
++                  root.errorRecoveryDisabledLanes |
++                  renderWasConcurrent |
++                  workInProgressDeferredLane);
++            else if (2 !== JSCompiler_inline_result) {
+               if (
+                 workInProgressRootDidAttachPingListener &&
+                 !wasRootDehydrated
+diff --git a/dist/compiled/react-dom/cjs/react-dom-profiling.development.js b/dist/compiled/react-dom/cjs/react-dom-profiling.development.js
+index 43d0363849598f796873fffaf33117d54b76de19..e78f2b762755355a34e4c2ecc0a2f0050556bcf4 100644
+--- a/dist/compiled/react-dom/cjs/react-dom-profiling.development.js
++++ b/dist/compiled/react-dom/cjs/react-dom-profiling.development.js
+@@ -15043,7 +15043,13 @@
+                   errorRetryLanes$jscomp$0,
+                   !1
+                 );
+-                if (errorRetryLanes$jscomp$0 !== RootErrored) {
++                if (errorRetryLanes$jscomp$0 === RootSuspendedAtTheShell)
++                  wasRootDehydrated ||
++                    (exitStatus.errorRecoveryDisabledLanes =
++                      exitStatus.errorRecoveryDisabledLanes |
++                      renderWasConcurrent |
++                      workInProgressDeferredLane);
++                else if (errorRetryLanes$jscomp$0 !== RootErrored) {
+                   if (
+                     workInProgressRootDidAttachPingListener &&
+                     !wasRootDehydrated
+diff --git a/dist/compiled/react-dom/cjs/react-dom-profiling.profiling.js b/dist/compiled/react-dom/cjs/react-dom-profiling.profiling.js
+index 85185b07d38d122ada8ed308523b181da102ccad..3cc9f2733227cd62ccec2c974e226a67cc9f6910 100644
+--- a/dist/compiled/react-dom/cjs/react-dom-profiling.profiling.js
++++ b/dist/compiled/react-dom/cjs/react-dom-profiling.profiling.js
+@@ -11172,7 +11172,13 @@ function performWorkOnRoot(root$jscomp$0, lanes, forceSync) {
+               JSCompiler_inline_result,
+               !1
+             );
+-            if (2 !== JSCompiler_inline_result) {
++            if (6 === JSCompiler_inline_result)
++              wasRootDehydrated ||
++                (root.errorRecoveryDisabledLanes =
++                  root.errorRecoveryDisabledLanes |
++                  renderWasConcurrent |
++                  workInProgressDeferredLane);
++            else if (2 !== JSCompiler_inline_result) {
+               if (
+                 workInProgressRootDidAttachPingListener &&
+                 !wasRootDehydrated
 diff --git a/dist/esm/client/components/app-router-instance.js b/dist/esm/client/components/app-router-instance.js
 index c6e1ee7ffcbea1a31215929ad56917849791c196..39c6524098b36c5ac1d39f71520bcaddc79c5d83 100644
 --- a/dist/esm/client/components/app-router-instance.js

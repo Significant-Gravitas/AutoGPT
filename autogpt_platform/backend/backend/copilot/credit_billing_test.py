@@ -8,12 +8,14 @@ credit as the cost reaches it, and the rest, rounded up, when it ends.
 
 import asyncio
 import logging
+from contextlib import AsyncExitStack
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
 from claude_agent_sdk import AssistantMessage, TextBlock
 
+from backend.copilot import deferred_cancel
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import AUTOPILOT_BLOCK_ID
 from backend.copilot.credit_billing import (
@@ -43,7 +45,7 @@ _CREDITS_ON = "backend.copilot.credit_billing.settings.config.enable_credit"
 
 
 @pytest.fixture
-def credits(mocker) -> MagicMock:
+def credits(mocker, own_ledger_holds) -> MagicMock:
     db = MagicMock()
     db.get_credits = AsyncMock(return_value=500)
     db.spend_credits = AsyncMock(return_value=0)
@@ -244,6 +246,44 @@ async def test_a_turn_cancelled_while_its_charge_waits_is_still_charged(credits)
     assert _charged(credits) == [100, 1]
 
 
+@pytest.mark.asyncio
+async def test_a_cancel_held_during_the_charge_outlasts_an_error_from_it(mocker):
+    """The cancel held back while the turn is charged is raised even when the
+    charge fails, and keeps the failure as its context."""
+    turn = CreditBilledTurn(
+        user_id="user-1", session_id="sess-1", cap_credits=10, refusal=OUT_OF_TODAY
+    )
+    charging, fail = asyncio.Event(), asyncio.Event()
+
+    async def end() -> None:
+        charging.set()
+        await fail.wait()
+        raise RuntimeError("charge failed")
+
+    mocker.patch.object(turn, "end", end)
+    left_with: list[BaseException] = []
+
+    async def leave_billing() -> None:
+        try:
+            async with credit_billing(turn):
+                pass
+        except BaseException as error:
+            left_with.append(error)
+            raise
+
+    leaving = asyncio.create_task(leave_billing())
+    # Waits on events; the bound only ends a run that hangs.
+    async with asyncio.timeout(30):
+        await charging.wait()
+        leaving.cancel()
+        fail.set()
+        await asyncio.wait({leaving})
+
+    assert leaving.cancelled()
+    assert isinstance(left_with[0], asyncio.CancelledError)
+    assert isinstance(left_with[0].__context__, RuntimeError)
+
+
 async def _bill(**tenancy) -> CreditBilledTurn | None:
     return await bill_to_credits(
         user_id="user-1",
@@ -261,6 +301,84 @@ async def _turn() -> CreditBilledTurn:
 
 
 @pytest.mark.asyncio
+async def test_a_turn_is_promised_only_what_its_ledgers_hold_leaves(
+    credits, mocker, own_ledger_holds
+):
+    mocker.patch.object(own_ledger_holds, "hold", AsyncMock(return_value=0))
+    credits.get_credits.return_value = 500
+    assert (
+        await bill_to_credits(
+            user_id="user-1",
+            session_id="sess-1",
+            tool_name="autopilot_block",
+            refusal=OUT_OF_TODAY,
+        )
+        is None
+    )
+
+
+async def test_a_hold_that_cannot_be_claimed_fails_closed(
+    credits, mocker, own_ledger_holds
+):
+    mocker.patch.object(
+        own_ledger_holds, "hold", AsyncMock(side_effect=ConnectionError("redis down"))
+    )
+    with pytest.raises(RateLimitUnavailable):
+        await _billed(credits, 500)
+
+
+async def test_a_debit_lowers_the_hold_and_the_end_releases_it(
+    credits, own_ledger_holds
+):
+    turn = await _billed(credits, 500)
+    async with credit_billing(turn):
+        await turn.record(2_000_000)
+    holds = own_ledger_holds.made[-1]
+    # It held a dollar, then the rest of the debit before taking it.
+    assert (turn.held_credits, holds.lowered, holds.released) == (200, [0], 1)
+
+
+async def test_cost_landing_after_the_end_holds_nothing_again(
+    credits, own_ledger_holds
+):
+    turn = await _billed(credits, 500)
+    async with credit_billing(turn):
+        pass
+    await turn.record(2_000_000)
+    holds = own_ledger_holds.made[-1]
+    assert (holds.taken, holds.lowered, holds.released) == ([100], [], 1)
+
+
+@pytest.mark.asyncio
+async def test_a_cancel_landing_while_the_turn_is_charged_still_releases_its_hold(
+    credits, own_ledger_holds, mocker
+):
+    turn = await _billed(credits, 500)
+    holds = own_ledger_holds.made[-1]
+    charging, go_on = asyncio.Event(), asyncio.Event()
+
+    async def charge_due() -> None:
+        charging.set()
+        await go_on.wait()
+
+    mocker.patch.object(turn, "_charge_due", charge_due)
+
+    async def leave_billing() -> None:
+        async with credit_billing(turn):
+            pass
+
+    leaving = asyncio.create_task(leave_billing())
+    # Waits on events; the bound only ends a run that hangs.
+    async with asyncio.timeout(30):
+        await charging.wait()
+        leaving.cancel()
+        go_on.set()
+        await asyncio.wait({leaving})
+
+    assert leaving.cancelled()
+    assert holds.released == 1
+
+
 async def test_an_unreadable_balance_fails_closed(credits):
     credits.get_credits.side_effect = ConnectionError("db down")
 
@@ -274,12 +392,115 @@ async def test_an_unreadable_balance_fails_closed(credits):
 
 
 @pytest.mark.asyncio
-async def test_the_budget_is_the_balance_within_the_per_turn_ceiling(credits):
+async def test_the_budget_starts_at_a_dollar_and_grows_to_the_balance_within_the_ceiling(
+    credits,
+):
     budget = (await _billed(credits, balance=75)).budget
-    assert (budget.usd, budget.hard_cap) == (0.75, True)
+    assert (budget.usd, budget.grows_to_usd, budget.hard_cap) == (0.75, 0.75, True)
     assert (budget.limiting, budget.resets_at) == ("daily", OUT_OF_TODAY.resets_at)
 
-    assert (await _billed(credits, balance=5_000)).budget.usd == 10.0
+    budget = (await _billed(credits, balance=5_000)).budget
+    assert (budget.usd, budget.grows_to_usd) == (1.0, 10.0)
+
+
+@pytest.mark.asyncio
+async def test_the_turn_holds_more_as_its_model_spends_and_lands_when_it_cannot(
+    credits, own_ledger_holds, mocker
+):
+    turn = await _billed(credits, balance=500)
+    meter = _Meter(spent=0.70, last=0.01)
+    governor = TurnGovernor(budget=turn.budget, step_checkin=450, grow=turn.grow)
+    governor.meter = meter
+    # The CLI's own stop sits on the most the turn may hold.
+    assert governor.cli_budget_usd(KIMI) == pytest.approx(5.0 * cli_price_ratio(KIMI))
+
+    meter.spent = 0.99
+    governor.observe(AssistantMessage(content=[TextBlock(text="x")], model="m"))
+    await governor.keep_up()
+    assert governor.landing is None
+    # The spend and the reserve, and a dollar more.
+    assert turn.held_credits == 201
+    assert governor.budget is not None
+    assert governor.budget.usd == pytest.approx(2.01)
+
+    # The balance's other turns hold the rest: no more can be held.
+    full = mocker.patch.object(
+        own_ledger_holds.made[-1], "hold", AsyncMock(return_value=0)
+    )
+    meter.spent = 2.0
+    await governor.keep_up()
+    full.assert_awaited_once()
+    assert governor.landing == "daily"
+    assert turn.held_credits == 201
+
+
+@pytest.mark.asyncio
+async def test_a_tools_cost_comes_out_of_what_the_model_may_spend(credits):
+    turn = await _billed(credits, balance=500)
+    async with credit_billing(turn):
+        await turn.record(300_000)
+        assert await turn.grow(0.5) == pytest.approx(0.7)
+
+
+@pytest.mark.asyncio
+async def test_a_debit_that_hangs_past_the_give_up_still_releases_the_hold(
+    credits, own_ledger_holds, mocker, monkeypatch
+):
+    """The processor's shape: a Stop, then a second cancel while the end's
+    debit hangs; the turn's task ends at the give-up, its hold released."""
+    monkeypatch.setattr(deferred_cancel, "HELD_CANCEL_LIMIT_SECONDS", 0.3)
+    turn = await _billed(credits, 500)
+    holds = own_ledger_holds.made[-1]
+    debiting, go_on, running = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    async def hung_debit(credits: int) -> None:
+        debiting.set()
+        await go_on.wait()
+
+    mocker.patch.object(turn, "_debit", hung_debit)
+
+    async def run_turn() -> None:
+        stack = AsyncExitStack()
+        stack.push_async_callback(turn.release)
+        await stack.enter_async_context(credit_billing(turn))
+        try:
+            turn.spent_microdollars = 2_000_000
+            running.set()
+            await asyncio.Event().wait()
+        finally:
+            deferred = deferred_cancel.DeferredCancel()
+            await deferred.run_here(stack.aclose())
+            if deferred.held is not None:
+                raise deferred.held
+
+    task = asyncio.create_task(run_turn())
+    try:
+        # Waits on events; the bound only ends a run that hangs.
+        async with asyncio.timeout(30):
+            await running.wait()
+            task.cancel()
+            await debiting.wait()
+            task.cancel()
+            done, _ = await asyncio.wait({task}, timeout=10)
+        assert done and task.cancelled()
+        assert holds.released == 1
+    finally:
+        go_on.set()
+        await asyncio.wait({task}, timeout=10)
+
+
+@pytest.mark.asyncio
+async def test_a_top_up_that_fails_holds_nothing_more(
+    credits, own_ledger_holds, mocker
+):
+    turn = await _billed(credits, balance=500)
+    mocker.patch.object(
+        own_ledger_holds.made[-1],
+        "hold",
+        AsyncMock(side_effect=ConnectionError("redis down")),
+    )
+    assert await turn.grow(1.5) == 1.0
+    assert turn.held_credits == 100
 
 
 @pytest.mark.asyncio
@@ -633,3 +854,13 @@ async def test_a_credit_billed_turns_tools_spend_up_to_its_cap(
         refusal = await tool_spend_refusal("user-1")
     assert (refusal is not None) is refused
     allowance.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_tool_past_what_the_turn_holds_holds_more_and_runs(credits, wallet):
+    turn = await _billed(credits, balance=500)
+    async with credit_billing(turn):
+        await record_credit_billed_cost("user-1", 1_000_000)
+        assert await tool_spend_refusal("user-1") is None
+        assert turn.held_credits == 201
+    assert wallet.debits == [100]

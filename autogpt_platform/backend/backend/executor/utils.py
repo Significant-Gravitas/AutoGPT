@@ -61,6 +61,7 @@ from backend.data.graph import GraphModel, Node
 from backend.data.model import (
     PLATFORM_FUNDED_COST_KEY,
     USER_TIMEZONE_NOT_SET,
+    APIKeyCredentials,
     CredentialsMetaInput,
     GraphInput,
     NodeExecutionStats,
@@ -358,11 +359,12 @@ def _coerce_usd(stats: NodeExecutionStats | None) -> float:
 def _with_schema_defaults(
     block: Block, input_data: BlockInput, resolved_model: str | None
 ) -> BlockInput:
-    """The input `Block._execute` runs on: `None` values dropped, schema defaults
-    filled in, and each LLM model as the block runs it
-    (`Block.with_retired_models_replaced`). Cost filters are matched against
-    this, with each credentials input marked by whether the platform pays for
-    its key.
+    """The input `Block._execute` runs on: `None` values dropped, values coerced
+    to the schema's types as `validate_exec` does (an Orchestrator tool call's
+    arguments are priced before it), schema defaults filled in, and each LLM
+    model as the block runs it (`Block.with_retired_models_replaced`). Cost
+    filters are matched against this, with each credentials input marked by
+    whether the platform pays for its key.
 
     ``resolved_model`` is the model a run recorded when it started
     (`NodeExecutionStats.resolved_model`), and a run that has started is
@@ -375,9 +377,13 @@ def _with_schema_defaults(
         for name, field in block.input_schema.model_fields.items()
         if not field.is_required()
     }
+    provided = {k: v for k, v in input_data.items() if v is not None}
+    try:
+        coerce_inputs_to_schema(provided, block.input_schema)
+    except ConversionError:
+        pass  # the others are coerced; the run refuses the one that can't be
     merged = block.with_retired_models_replaced(
-        {**defaults, **{k: v for k, v in input_data.items() if v is not None}},
-        resolved_model,
+        {**defaults, **provided}, resolved_model
     )
     for field_name in block.input_schema.get_credentials_fields():
         if isinstance(credentials := merged.get(field_name), dict):
@@ -643,6 +649,8 @@ async def _validate_node_input_credentials(
     user_credentials = CredentialsSnapshot(
         lambda: get_integration_credentials_store().get_all_creds(user_id)
     )
+    # Read only once an expired key needs dating in the user's own zone.
+    user_timezone: str | None = None
 
     for node in graph.nodes:
         block = node.block
@@ -770,6 +778,15 @@ async def _validate_node_input_credentials(
                     f"{credentials_meta.provider}<>{credentials.provider}"
                 )
                 credential_errors[node.id][field_name] = CRED_ERR_INVALID_TYPE_MISMATCH
+                continue
+
+            if isinstance(credentials, APIKeyCredentials) and credentials.is_expired():
+                if user_timezone is None:
+                    user_timezone = await _user_timezone(user_id)
+                expired = credentials.expired_error(user_timezone)
+                credential_errors[node.id][
+                    field_name
+                ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {expired}"
                 continue
 
         # Validate auto-credentials (GoogleDriveFileField-based)
@@ -901,6 +918,15 @@ async def _validate_node_input_credentials(
             nodes_to_skip.add(node.id)
 
     return credential_errors, nodes_to_skip
+
+
+async def _user_timezone(user_id: str) -> str:
+    """The user's time zone setting, for dating a message they read."""
+    users = user_db if prisma.is_connected() else get_database_manager_async_client()
+    try:
+        return (await users.get_user_by_id(user_id)).timezone
+    except ValueError:  # no such user
+        return "UTC"
 
 
 def _is_optional_picker(input_schema: type[BlockSchema], field_name: str) -> bool:
@@ -1526,12 +1552,13 @@ async def stop_graph_execution(
                 graph_exec_id=graph_exec.id,
                 status=ExecutionStatus.TERMINATED,
             )
-            # An executor can start the run between the read above and this
-            # write. It ignores a cancel for a run it has not registered, so the
-            # one sent before the read may have been lost on it. It has almost
-            # always registered the run by now and acts on this one; the gap
-            # that remains is #17182. Sent before the event, so a failure to
-            # publish that can't keep it from going out.
+            # An executor that started the run between the read above and this
+            # write may have taken the first cancel before it registered the
+            # run, and dropped it. It registers a run before handing it to a
+            # worker, so this cancel reaches any worker that started first;
+            # one that starts after this write finds the run stopped (#17182).
+            # Sent before the event, so a failure to publish that can't keep
+            # it from going out.
             try:
                 await _publish_cancel(queue_client, graph_exec_id)
             except Exception:
@@ -2477,8 +2504,8 @@ class NodeExecutionProgress:
         # the task itself and then the bookkeeping. See wait_for_done.
         self._unwinding: dict[asyncio.Future, str] = {}
         self._settling: dict[asyncio.Future, str] = {}
-        # Set when a stop request, rather than the run ending some other way,
-        # cancels these nodes.
+        # Set when the run's user ended it (a stop request or a known error),
+        # rather than the platform failing, and that cancels these nodes.
         self.stop_requested = False
 
     def add_task(self, node_exec_id: str, task: Future):
@@ -2557,7 +2584,8 @@ class NodeExecutionProgress:
         """
         Stops all tasks and clears the output.
         This is useful for cleaning up when the execution is cancelled or terminated.
-        ``stop_requested`` says a stop request ended the run.
+        ``stop_requested`` says the run's user ended it: a stop request, or a
+        known error such as a node the balance can't pay for.
         Returns a list of execution IDs that were stopped.
         """
         self.stop_requested = stop_requested

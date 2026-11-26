@@ -45,6 +45,7 @@ from backend.data.execution import (
 )
 from backend.data.graph import Link, Node
 from backend.data.model import (
+    APIKeyCredentials,
     Credentials,
     CredentialsMetaInput,
     GraphExecutionStats,
@@ -92,7 +93,7 @@ from backend.util.exceptions import (
     UserPaywalledError,
     get_execution_failure_reason,
 )
-from backend.util.file import clean_exec_files
+from backend.util.file import clean_exec_files, remove_staged_copies_on_exit
 from backend.util.llm.saturation import set_executor_id
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import AppProcess, freeze_startup_heap, set_service_name
@@ -166,23 +167,16 @@ def _get_execution_credit_balance(
     return db_client.get_credits(graph_exec.user_id)
 
 
-def _running_after_an_empty_start(
+def _stored_run(
     db_client: "DatabaseManagerClient",
     graph_exec: GraphExecutionEntry,
 ) -> GraphExecution | None:
-    """The run, when its start moved nothing and it is RUNNING all the same.
-
-    The database client retries a call that failed, so a start that committed
-    and lost its answer comes back empty with the run RUNNING, and that run is
-    this executor's to go on with. A run a stop got to first is terminal, and
-    None is returned for it.
-    """
-    run = db_client.get_graph_execution(
+    """The run as it is stored now, without its node executions."""
+    return db_client.get_graph_execution(
         user_id=graph_exec.user_id,
         execution_id=graph_exec.graph_exec_id,
         include_node_executions=False,
     )
-    return run if run is not None and run.status == ExecutionStatus.RUNNING else None
 
 
 def _write_the_final_state(
@@ -207,11 +201,7 @@ def _write_the_final_state(
         stats=stats,
     ):
         return True
-    stored = db_client.get_graph_execution(
-        user_id=graph_exec.user_id,
-        execution_id=graph_exec.graph_exec_id,
-        include_node_executions=False,
-    )
+    stored = _stored_run(db_client, graph_exec)
     if stored is not None and stored.status in TERMINAL_GRAPH_EXECUTION_STATUSES:
         send_execution_update(stored)
     return False
@@ -314,7 +304,8 @@ def _record_execution_failure(
 # Terminal conditions the platform already understands. Anything outside this
 # set is treated as an unexpected failure and pages via Discord, so a known
 # business outcome left out of it produces a spurious "Unknown Graph Execution
-# Error" alert with a stack trace.
+# Error" alert with a stack trace. A run one of these ends bills the requests
+# it cuts off mid-call, as a stop does (see _cleanup_graph_execution).
 KNOWN_GRAPH_EXECUTION_ERRORS = (
     InsufficientBalanceError,
     ModerationError,
@@ -699,6 +690,9 @@ async def execute_node(
     # Check for dry-run platform credentials (OrchestratorBlock uses the
     # platform's OpenRouter key instead of user credentials).
     _dry_run_creds = get_dry_run_credentials(input_data) if _dry_run_input else None
+    # The dry run simulates every other block, which never uses its credentials;
+    # its pre-run check drops credential errors for the same reason.
+    simulate = execution_context.dry_run and _dry_run_input is None
     # A dry run skips credits, so a block it runs for real on the platform's
     # key is bounded by the user's allowance instead.
     if _dry_run_creds is not None and (
@@ -810,6 +804,14 @@ async def execute_node(
                 raise ValueError(
                     f"Credentials #{credentials_meta.id} for user #{user_id} not found"
                 )
+            if (
+                not simulate
+                and isinstance(credentials, APIKeyCredentials)
+                and credentials.is_expired()
+            ):
+                # Outside the `except ValueError` above, so a field with a
+                # default can't fall back to running without the key.
+                raise credentials.expired_error(execution_context.user_timezone)
             if provider_matches(credentials.provider, "codex"):
                 await enforce_codex_access(user_id)
             extra_exec_kwargs[field_name] = credentials
@@ -852,7 +854,7 @@ async def execute_node(
         scope.set_tag(f"execution_context.{k}", v)
 
     try:
-        if execution_context.dry_run and _dry_run_input is None:
+        if simulate:
             block_iter = simulate_block(node_block, input_data, user_id=user_id)
         else:
             block_iter = node_block.execute(input_data, **extra_exec_kwargs)
@@ -1442,15 +1444,18 @@ class ExecutionProcessor:
             )
 
         async def _drive_execution() -> None:
-            async for output_name, output_data in execute_node(
-                node=node,
-                data=node_exec,
-                execution_processor=self,
-                execution_stats=stats,
-                nodes_input_masks=nodes_input_masks,
-                nodes_to_skip=nodes_to_skip,
-            ):
-                await persist_output(output_name, output_data)
+            # The local copies the block makes of its input files go when
+            # it's done; the run's folder goes when the run is.
+            with remove_staged_copies_on_exit():
+                async for output_name, output_data in execute_node(
+                    node=node,
+                    data=node_exec,
+                    execution_processor=self,
+                    execution_stats=stats,
+                    nodes_input_masks=nodes_input_masks,
+                    nodes_to_skip=nodes_to_skip,
+                ):
+                    await persist_output(output_name, output_data)
 
         try:
             log_metadata.info(f"Start node execution {node_exec.node_exec_id}")
@@ -1582,19 +1587,29 @@ class ExecutionProcessor:
             )
             if started is not None:
                 send_execution_update(started)
-            elif resumed := _running_after_an_empty_start(db_client, graph_exec):
+            elif (
+                stored := _stored_run(db_client, graph_exec)
+            ) is not None and stored.status == ExecutionStatus.RUNNING:
+                # The database client retries a call that failed, so a start
+                # that committed and lost its answer comes back empty with the
+                # run RUNNING. That run is this executor's to go on with, and
+                # the earlier try's RUNNING update was lost with its answer.
                 log_metadata.info(
                     f"Graph execution #{graph_exec.graph_exec_id} was already "
                     "started by an earlier try of its start, going on with it."
                 )
-                # That try's RUNNING update was lost with its answer.
-                send_execution_update(resumed)
+                send_execution_update(stored)
             else:
-                # The start only moves a run that is still queued, so a stop
-                # that wrote its status after the read above has won the race.
+                # The start only moves a run that is still queued or
+                # incomplete, so the run left that state after the read above:
+                # a stop wrote its status first, or the run is gone.
                 log_metadata.info(
-                    f"Skipped graph execution #{graph_exec.graph_exec_id}, "
-                    "it was stopped before it started."
+                    f"Skipped graph execution #{graph_exec.graph_exec_id}, it "
+                    + (
+                        "no longer exists."
+                        if stored is None
+                        else f"became {stored.status.value} before it started."
+                    )
                 )
                 return
             exec_meta.status = ExecutionStatus.RUNNING
@@ -2101,10 +2116,11 @@ class ExecutionProcessor:
         This method is decorated with @error_logged(swallow=True) to ensure cleanup
         never fails in the finally block.
         """
-        # Cancel and wait for all node executions to complete. Only a stop
-        # request ends a run TERMINATED, and its nodes are billed for the
-        # requests it cuts off (see billing.bills_stop_estimate).
-        stop_requested = execution_status == ExecutionStatus.TERMINATED
+        # Requests cut off mid-call are billed when the user ended the run: a stop,
+        # or a known error such as an unaffordable node (billing.bills_stop_estimate).
+        stop_requested = execution_status == ExecutionStatus.TERMINATED or isinstance(
+            error, KNOWN_GRAPH_EXECUTION_ERRORS
+        )
         for node_id, inflight_exec in running_node_execution.items():
             if inflight_exec.is_done():
                 continue
@@ -2603,6 +2619,12 @@ class ExecutionManager(AppProcess):
             )
 
             cancel_event = threading.Event()
+            # The run is registered, with a stand-in for its worker's future,
+            # before the worker exists, so a cancel the other consumer takes
+            # from here on reaches it. A stop's second cancel follows its own
+            # status write, so by then either the run is registered or the
+            # conditional start will skip it.
+            self.active_graph_runs[graph_exec_id] = (Future(), cancel_event)
             future = self.executor.submit(
                 execute_graph, graph_exec_entry, cancel_event, cluster_lock
             )
@@ -2613,6 +2635,7 @@ class ExecutionManager(AppProcess):
             logger.warning(
                 f"[{self.service_name}] Failed to setup execution for {graph_exec_id}: {type(e).__name__}: {e}"
             )
+            self.active_graph_runs.pop(graph_exec_id, None)
             # Release cluster lock before requeue
             cluster_lock.release()
             if graph_exec_id in self._execution_locks:

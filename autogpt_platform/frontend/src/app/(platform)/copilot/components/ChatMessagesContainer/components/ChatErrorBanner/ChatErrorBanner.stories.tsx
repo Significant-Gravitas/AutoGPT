@@ -1,6 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 
-import { UnconfirmedSendError } from "../../../../stream/turnRuntime";
+import {
+  DroppedSendError,
+  UnconfirmedSendError,
+} from "../../../../stream/turnRuntime";
 import { ChatErrorBanner } from "./ChatErrorBanner";
 
 const meta: Meta<typeof ChatErrorBanner> = {
@@ -31,5 +34,13 @@ export const UnconfirmedSend: Story = {
 export const UnconfirmedSendWhileBusy: Story = {
   args: {
     error: new UnconfirmedSendError("local:1"),
+  },
+};
+
+/** A send the network dropped, as when offline at send; it can go again too. */
+export const DroppedSend: Story = {
+  args: {
+    error: new DroppedSendError("local:1", new TypeError("Failed to fetch")),
+    onResend: () => {},
   },
 };

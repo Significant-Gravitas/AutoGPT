@@ -351,7 +351,7 @@ async def test_an_oversized_workflow_is_refused_before_the_fixer_runs(tool, sess
     node = {
         "id": "n1",
         "block_id": "b1",
-        "input_default": {"text": "x" * 1_100_000},
+        "input_default": {"text": "x" * MAX_AGENT_JSON_SIZE},
         "metadata": {},
     }
 

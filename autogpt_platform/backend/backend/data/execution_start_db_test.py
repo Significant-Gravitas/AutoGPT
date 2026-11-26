@@ -9,7 +9,7 @@ unconditional update as readily as a conditional one, so this runs on Postgres.
 import asyncio
 import uuid
 from collections.abc import AsyncIterator, Coroutine
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -142,7 +142,9 @@ async def test_a_start_that_waits_behind_a_stop_does_not_undo_it(
     await stopper.connect()
     start: asyncio.Task[Any] | None = None
     try:
-        async with stopper.tx(timeout=db.TRANSACTION_TIMEOUT) as stop:
+        # Longer than the wait inside it, so a test that fails says no race
+        # was forced rather than that this transaction expired.
+        async with stopper.tx(timeout=timedelta(seconds=WAIT_SECONDS * 2)) as stop:
             await AgentGraphExecution.prisma(stop).update_many(
                 where={"id": run_id},
                 data={"executionStatus": ExecutionStatus.TERMINATED},

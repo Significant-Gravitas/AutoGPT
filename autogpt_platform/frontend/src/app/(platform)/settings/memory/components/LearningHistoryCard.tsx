@@ -2,10 +2,10 @@
 
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import type { LearningHistoryItem } from "@/app/api/__generated__/models/learningHistoryItem";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Select } from "@/components/atoms/Select/Select";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
-import { formatWhen } from "../helpers";
 import { ORIGIN_FILTERS, STATE_FILTERS } from "../useLearningHistory";
 
 interface Props {
@@ -103,7 +103,7 @@ export function LearningHistoryCard({
                   tone="subtle"
                   className="shrink-0"
                 >
-                  {formatWhen(new Date(item.created_at).toISOString())}
+                  <RelativeTime date={item.created_at} />
                 </Text>
               </div>
               <Text variant="small" as="span" tone="secondary">

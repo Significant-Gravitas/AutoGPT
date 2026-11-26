@@ -1,10 +1,12 @@
 import { Input } from "@/components/atoms/Input/Input";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { useMemo } from "react";
 import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
 import { useRunAgentModalContext } from "../../context";
 import { ModalSection } from "../ModalSection/ModalSection";
+import { NodeCredentialsNotice } from "../NodeCredentialsNotice/NodeCredentialsNotice";
 import { WebhookTriggerBanner } from "../WebhookTriggerBanner/WebhookTriggerBanner";
 
 export function ModalRunSection() {
@@ -24,6 +26,13 @@ export function ModalRunSection() {
     agentCredentialsInputFields,
     inputCredentials,
     setInputCredentialsValue,
+    autoSelectInputCredentialsValue,
+    clearedCredentialFields,
+    nodeCredentials,
+    isResolvingCredentials,
+    nodeCredentialsUnknown,
+    isRetryingNodeCredentials,
+    retryNodeCredentials,
   } = useRunAgentModalContext();
 
   const triggerConfigFieldEntries = Object.entries(triggerConfigFields || {});
@@ -123,13 +132,33 @@ export function ModalRunSection() {
           title="Task Credentials"
           subtitle="These are the credentials the workflow will use to perform this task"
         >
-          <CredentialsGroupedView
-            credentialFields={credentialFields}
-            requiredCredentials={requiredCredentials}
-            inputCredentials={inputCredentials}
-            inputValues={inputValues}
-            onCredentialChange={setInputCredentialsValue}
-          />
+          {isResolvingCredentials ? (
+            <Skeleton
+              role="status"
+              aria-label="Loading credentials"
+              className="h-14 w-full"
+            />
+          ) : (
+            <div className="flex flex-col gap-4">
+              {nodeCredentialsUnknown ? (
+                <NodeCredentialsNotice
+                  isRetrying={isRetryingNodeCredentials}
+                  onRetry={retryNodeCredentials}
+                />
+              ) : null}
+              <CredentialsGroupedView
+                credentialFields={credentialFields}
+                requiredCredentials={requiredCredentials}
+                inputCredentials={inputCredentials}
+                inputValues={inputValues}
+                onCredentialChange={setInputCredentialsValue}
+                onAutoSelect={autoSelectInputCredentialsValue}
+                nodeCredentials={nodeCredentials}
+                nodeCredentialsUnknown={nodeCredentialsUnknown}
+                clearedFields={clearedCredentialFields}
+              />
+            </div>
+          )}
         </ModalSection>
       ) : null}
     </div>

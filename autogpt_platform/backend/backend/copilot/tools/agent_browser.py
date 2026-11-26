@@ -254,12 +254,13 @@ _pending_saves: dict[str, set[asyncio.Task[None]]] = {}
 # start a new one that nothing will ever stop.
 _closing_sessions: set[str] = set()
 
-# Turn-end teardown budget. Drain plus close must stay under the executor's
-# _CANCEL_GRACE_SECONDS (5s), with room for the rest of the turn's cleanup:
-# past the grace the worker re-cancels the turn task, the teardown never
-# reaps, and the cluster lock is released while it is still running. A save
-# slower than the drain is dropped; the next turn restores from the last one
-# that landed.
+# Turn-end teardown budget. Drain plus close should fit in the executor's
+# _CANCEL_GRACE_SECONDS (5s) with the rest of the turn's cleanup. Past the
+# grace the worker releases the chat while the teardown still runs: its
+# second cancel no longer cuts the teardown short (DeferredCancel), but the
+# chat's next turn can start meanwhile, and a teardown that finds a newer turn
+# of the chat on this pod leaves its browser alone. A save slower than the
+# drain is dropped; the next turn restores from the last one that landed.
 _SAVE_DRAIN_TIMEOUT = 2
 _TURN_END_CLOSE_TIMEOUT = 2
 
@@ -484,6 +485,12 @@ async def _ensure_session(
             return
         if await _restore_browser_state(session_name, user_id, session):
             _alive_sessions.add(session_name)
+
+
+def browser_daemon_may_run(session_name: str) -> bool:
+    """Whether this pod may run an agent-browser daemon for *session_name*:
+    a browser command reached it since its last close."""
+    return session_name in _touched_sessions
 
 
 async def close_browser_daemon(session_name: str) -> bool:
