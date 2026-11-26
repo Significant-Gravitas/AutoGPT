@@ -1,4 +1,4 @@
-import { Text, TextInput, View } from "react-native";
+import { Text, TextInput, View, type TextInputProps } from "react-native";
 
 import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
@@ -9,6 +9,7 @@ interface Props {
   placeholder?: string;
   isSecret?: boolean;
   autoFocus?: boolean;
+  autoCapitalize?: TextInputProps["autoCapitalize"];
   onSubmitEditing?: () => void;
 }
 
@@ -20,6 +21,7 @@ export function SheetField({
   placeholder,
   isSecret = false,
   autoFocus = false,
+  autoCapitalize = "none",
   onSubmitEditing,
 }: Props) {
   const styles = useStyles();
@@ -35,7 +37,7 @@ export function SheetField({
         accessibilityLabel={label}
         secureTextEntry={isSecret}
         autoCorrect={false}
-        autoCapitalize="none"
+        autoCapitalize={autoCapitalize}
         autoComplete="off"
         spellCheck={false}
         textContentType={isSecret ? "password" : "none"}

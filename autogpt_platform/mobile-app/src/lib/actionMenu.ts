@@ -10,16 +10,22 @@ export interface ActionOption<T extends string> {
 // Cancel button; a tap outside or Back still closes it.
 const ANDROID_MAX_BUTTONS = 3;
 
+interface MenuSettings {
+  /** The iOS sheet shows no title; an Android alert always needs one. */
+  hideTitleOnIOS?: boolean;
+}
+
 /** A native menu of options; resolves with the chosen id, or null on cancel. */
 export function chooseAction<T extends string>(
   title: string,
   options: ActionOption<T>[],
+  { hideTitleOnIOS = false }: MenuSettings = {},
 ) {
   return new Promise<T | null>((resolve) => {
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(
         {
-          title,
+          title: hideTitleOnIOS ? undefined : title,
           options: [...options.map((option) => option.label), "Cancel"],
           cancelButtonIndex: options.length,
           destructiveButtonIndex: options.flatMap((option, index) =>

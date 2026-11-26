@@ -36,6 +36,7 @@ export function SearchResultRow({ match, isActive, onOpenChat, onLongPress }: Pr
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityHint="Hold for options"
       accessibilityState={{ selected: isActive }}
       onPressIn={handlePressIn}
       onPress={handlePress}

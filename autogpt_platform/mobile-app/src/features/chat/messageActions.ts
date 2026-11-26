@@ -8,10 +8,14 @@ import { tapMenu } from "@/lib/haptics";
 export async function openMessageActions(text: string) {
   if (!text) return;
   tapMenu();
-  const action = await chooseAction("Message", [
-    { id: "copy", label: "Copy" },
-    { id: "share", label: "Share" },
-  ]);
+  const action = await chooseAction(
+    "Message",
+    [
+      { id: "copy", label: "Copy" },
+      { id: "share", label: "Share" },
+    ],
+    { hideTitleOnIOS: true },
+  );
   if (action === "copy") await Clipboard.setStringAsync(text);
   if (action === "share") await Share.share({ message: text }).catch(() => undefined);
 }

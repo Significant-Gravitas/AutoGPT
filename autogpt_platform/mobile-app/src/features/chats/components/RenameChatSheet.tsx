@@ -16,7 +16,6 @@ interface Props {
 export function RenameChatSheet({ isOpen, initialTitle, onClose, onSubmit }: Props) {
   return (
     <BottomSheet isOpen={isOpen} onClose={onClose}>
-      {/* Mounted only while open, so each opening starts from the current name. */}
       {isOpen ? <RenameForm initialTitle={initialTitle} onSubmit={onSubmit} /> : null}
     </BottomSheet>
   );
@@ -51,6 +50,7 @@ function RenameForm({ initialTitle, onSubmit }: FormProps) {
         value={text}
         onChangeText={handleChange}
         autoFocus
+        autoCapitalize="sentences"
         onSubmitEditing={handleSave}
       />
       {error ? (

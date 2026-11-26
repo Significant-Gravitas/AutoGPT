@@ -19,6 +19,10 @@ interface Props {
 export function ChatListRow({ session, isFirst, onOpenChat, onLongPress }: Props) {
   const styles = useStyles();
   const colors = useColors();
+  const time = shortTime(session.updated_at);
+  const label = [chatTitle(session), session.is_pinned && "Pinned", time]
+    .filter(Boolean)
+    .join(", ");
 
   function handlePressIn() {
     prefetchSession(queryClient, session.id);
@@ -35,6 +39,8 @@ export function ChatListRow({ session, isFirst, onOpenChat, onLongPress }: Props
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint="Hold for options"
       onPressIn={handlePressIn}
       onPress={handlePress}
       onLongPress={handleLongPress}
@@ -52,7 +58,7 @@ export function ChatListRow({ session, isFirst, onOpenChat, onLongPress }: Props
       {session.is_pinned ? (
         <Icon icon={PinIcon} size={14} color={colors.textTertiary} />
       ) : null}
-      <Text style={styles.time}>{shortTime(session.updated_at)}</Text>
+      <Text style={styles.time}>{time}</Text>
     </Pressable>
   );
 }
