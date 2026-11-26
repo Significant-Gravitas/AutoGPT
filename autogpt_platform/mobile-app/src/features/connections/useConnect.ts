@@ -15,7 +15,14 @@ import type { AccountChoice } from "./components/AccountPickerSheet";
 import type { SheetTarget } from "./components/CredentialSheet/helpers";
 import type { DeviceCodeTarget } from "./components/DeviceCodeSheet/DeviceCodeSheet";
 import type { PickedCredential } from "./connectedThisRun";
-import { AYRSHARE_PROVIDER, CODEX_PROVIDER, credentialLabel, MCP_PROVIDER, webChatURL } from "./helpers";
+import {
+  AYRSHARE_PROVIDER,
+  CODEX_PROVIDER,
+  credentialLabel,
+  isHTTPSURL,
+  MCP_PROVIDER,
+  webChatURL,
+} from "./helpers";
 import type { ServiceAction } from "./listHelpers";
 import { startOAuth, type OAuthOutcome } from "./oauth";
 import type { FlowOrigin, OAuthTarget } from "./oauthHelpers";
@@ -138,6 +145,10 @@ export function useConnect({ origin, onConnected }: Args) {
     const startedIn = sessionGeneration();
     try {
       const { sso_url } = await getAyrshareLink();
+      if (!isHTTPSURL(sso_url)) {
+        setError(rowKey, "Couldn't open the account link. Try again.");
+        return;
+      }
       await WebBrowser.openBrowserAsync(sso_url);
       const credentials = await queryClient.fetchQuery({
         queryKey: integrationKeys.credentials,

@@ -17,7 +17,7 @@ import { BottomSheet } from "../BottomSheet";
 import { ConnectionRow } from "../ConnectionRow";
 import { CredentialForm } from "../CredentialSheet/CredentialSheet";
 import { DeviceCodeForm } from "../DeviceCodeSheet/DeviceCodeSheet";
-import { cancelPendingDeviceLogin } from "../DeviceCodeSheet/useDeviceCodeSheet";
+import { closeDeviceLogin } from "../DeviceCodeSheet/useDeviceCodeSheet";
 import { ServerStep } from "./components/ServerStep";
 import { SheetSection } from "./components/SheetSection";
 import { SERVER_ROW } from "./helpers";
@@ -48,7 +48,7 @@ export function AddConnectionSheet({
 
   function handleClose() {
     // A ChatGPT sign-in still waiting for its code ends with the sheet.
-    cancelPendingDeviceLogin();
+    closeDeviceLogin();
     onClose();
   }
 

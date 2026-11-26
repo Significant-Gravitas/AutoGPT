@@ -143,6 +143,11 @@ export function connectMethod(
   return "web";
 }
 
+/** Whether a link is safe to open: https, with a host. */
+export function isHTTPSURL(url: string) {
+  return /^https:\/\/[^\s/?#]+/i.test(url.trim());
+}
+
 /** Mirrors the backend's `normalize_mcp_url`. */
 export function normalizeServerURL(url: string) {
   return url.trim().replace(/\/+$/, "");

@@ -5,6 +5,7 @@ import {
   connectMethod,
   credentialFits,
   hostScopeMatches,
+  isHTTPSURL,
   logoID,
   logoURL,
   parseCredentialRequests,
@@ -195,5 +196,18 @@ describe("logoURL", () => {
   it("points at the web's integration logos", () => {
     expect(logoURL("github")).toBe(`${FRONTEND_URL}/integrations/github.png`);
     expect(logoURL("../x")).toBe(`${FRONTEND_URL}/integrations/..%2Fx.png`);
+  });
+});
+
+describe("isHTTPSURL", () => {
+  it.each([
+    ["https://app.ayrshare.com/sso?jwt=x", true],
+    ["HTTPS://app.ayrshare.com", true],
+    ["http://app.ayrshare.com", false],
+    ["javascript:alert(1)", false],
+    ["https://", false],
+    ["", false],
+  ])("%s → %s", (url, expected) => {
+    expect(isHTTPSURL(url)).toBe(expected);
   });
 });

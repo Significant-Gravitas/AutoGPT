@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import * as WebBrowser from "expo-web-browser";
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 import { ApiError } from "@/lib/api/client";
 import {
@@ -14,7 +14,7 @@ import {
 import { sessionGeneration } from "@/lib/session";
 import { useMountEffect } from "@/lib/useMountEffect";
 
-import { parseDeviceLogin } from "../../deviceLogin";
+import { deviceLoginID, parseDeviceLogin } from "../../deviceLogin";
 import { CODEX_PROVIDER } from "../../helpers";
 import { rememberCredential } from "../../oauth";
 
@@ -24,16 +24,43 @@ const DIDNT_FINISH = "ChatGPT sign-in didn't finish.";
 
 // The backend runs one ChatGPT sign-in per user at a time, so one is tracked.
 let pendingLoginID: string | null = null;
+// Counts closes, so a sign-in that starts after its sheet closed is ended at once.
+let closeCount = 0;
 
 function settle(loginID: string) {
   if (pendingLoginID === loginID) pendingLoginID = null;
 }
 
 /** Ends the sign-in still waiting for its code, so the next one can start. */
-export function cancelPendingDeviceLogin() {
+function cancelPendingDeviceLogin() {
   const loginID = pendingLoginID;
   pendingLoginID = null;
   if (loginID) void cancelCodexLogin(loginID).catch(() => undefined);
+}
+
+/** Closing a sheet: ends its sign-in, even one still starting. */
+export function closeDeviceLogin() {
+  closeCount += 1;
+  cancelPendingDeviceLogin();
+}
+
+/** Ends a sign-in left open, so the backend lets a new one start. */
+async function endStaleLogin() {
+  const loginID = pendingLoginID;
+  pendingLoginID = null;
+  if (loginID) await cancelCodexLogin(loginID).catch(() => undefined);
+}
+
+async function startLogin(credentialID: string | undefined) {
+  await endStaleLogin();
+  const login = await startProviderLogin(CODEX_PROVIDER, { scopes: [], credentialID });
+  const device = parseDeviceLogin(login.loginURL);
+  if (!device) {
+    // Nothing to show, but the backend holds it open: end it now.
+    const loginID = deviceLoginID(login.loginURL, login.cancelURL);
+    if (loginID) await cancelCodexLogin(loginID).catch(() => undefined);
+  }
+  return { state: login.state, device };
 }
 
 async function pollLogin(loginID: string) {
@@ -65,18 +92,18 @@ interface Args {
 
 export function useDeviceCodeSheet({ credentialID, onSaved, onClose, onPlanRequired }: Args) {
   const [isCopied, setIsCopied] = useState(false);
-  // A sign-in that starts after the sheet closed is ended at once.
-  const isClosed = useRef(false);
+  // Finished after a sign-out: the account isn't this session's to show.
+  const [isAbandoned, setIsAbandoned] = useState(false);
 
   const start = useMutation({
-    async mutationFn() {
-      const login = await startProviderLogin(CODEX_PROVIDER, { scopes: [], credentialID });
-      return { state: login.state, device: parseDeviceLogin(login.loginURL) };
+    onMutate() {
+      return closeCount;
     },
-    onSuccess({ device }) {
+    mutationFn: () => startLogin(credentialID),
+    onSuccess({ device }, _variables, openedAt) {
       if (!device) return;
       pendingLoginID = device.loginID;
-      if (isClosed.current) cancelPendingDeviceLogin();
+      if (closeCount !== openedAt) cancelPendingDeviceLogin();
     },
     onError(error) {
       if (isPaywall(error)) onPlanRequired();
@@ -101,8 +128,10 @@ export function useDeviceCodeSheet({ credentialID, onSaved, onClose, onPlanRequi
     mutationFn: ({ loginID, state }: { loginID: string; state: string }) =>
       finishProviderLogin(CODEX_PROVIDER, loginID, state),
     onSuccess(credential, _variables, startedIn) {
-      // Signed out meanwhile: the account belongs to whoever started this.
-      if (startedIn !== sessionGeneration()) return;
+      if (startedIn !== sessionGeneration()) {
+        setIsAbandoned(true);
+        return;
+      }
       rememberCredential(credential);
       onSaved(credential);
     },
@@ -124,7 +153,9 @@ export function useDeviceCodeSheet({ credentialID, onSaved, onClose, onPlanRequi
   }
 
   function failure() {
-    if (loginStatus === "failed" || loginStatus === "canceled") return DIDNT_FINISH;
+    if (loginStatus === "failed" || loginStatus === "canceled" || isAbandoned) {
+      return DIDNT_FINISH;
+    }
     if (complete.isError) return "Couldn't connect ChatGPT. Try again.";
     return null;
   }
@@ -135,8 +166,8 @@ export function useDeviceCodeSheet({ credentialID, onSaved, onClose, onPlanRequi
   }
 
   function retry() {
-    cancelPendingDeviceLogin();
     setIsCopied(false);
+    setIsAbandoned(false);
     complete.reset();
     start.mutate();
   }
@@ -152,8 +183,7 @@ export function useDeviceCodeSheet({ credentialID, onSaved, onClose, onPlanRequi
   }
 
   function close() {
-    isClosed.current = true;
-    if (loginStatus === "pending") cancelPendingDeviceLogin();
+    closeDeviceLogin();
     onClose();
   }
 

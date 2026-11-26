@@ -134,6 +134,8 @@ export async function listCredentials() {
 export interface LoginStart {
   loginURL: string;
   state: string;
+  /** Where to end a ChatGPT sign-in early; null for every other sign-in. */
+  cancelURL: string | null;
 }
 
 function parseLogin(value: unknown): LoginStart {
@@ -143,7 +145,7 @@ function parseLogin(value: unknown): LoginStart {
   if (!loginURL || !state) {
     throw new ApiError(500, "The server sent no sign-in page.");
   }
-  return { loginURL, state };
+  return { loginURL, state, cancelURL: text(record?.cancel_url) };
 }
 
 interface ProviderLoginOptions {
