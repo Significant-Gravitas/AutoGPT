@@ -17,12 +17,18 @@ function statusOf(error: unknown) {
   return error instanceof ApiError ? error.status : null;
 }
 
+// A refusal the route names answers the same on a second try.
+function shouldRetry(failureCount: number, error: unknown) {
+  return cadenceErrorText(statusOf(error)) === null && failureCount < 1;
+}
+
 export function useRunLessOftenSheet({ scheduleKey, onSaved }: Args) {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
   const cadence = useQuery({
     queryKey: scheduledChatKeys.cadence(scheduleKey),
     queryFn: () => getCadence(scheduleKey),
+    retry: shouldRetry,
   });
 
   // The sheet is open, so a toast would sit behind it: errors show inside.

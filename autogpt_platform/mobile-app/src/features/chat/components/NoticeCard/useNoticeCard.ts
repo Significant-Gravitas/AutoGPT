@@ -11,7 +11,7 @@ import { homeKeys } from "@/lib/api/home";
 import { resumeScheduledChat } from "@/lib/api/scheduledChats";
 import { FRONTEND_URL } from "@/lib/env";
 
-import { noticeLinkTarget, type ChatNotice } from "../../notice";
+import { lowerFirst, noticeLinkTarget, type ChatNotice } from "../../notice";
 
 interface Args {
   notice: ChatNotice;
@@ -93,7 +93,7 @@ export function useNoticeCard({ notice, sessionID, onToast }: Args) {
 
   function handleCadenceSaved(label: string) {
     setIsLessOftenOpen(false);
-    onToast({ message: `Now runs ${label.toLowerCase()}`, tone: "success" });
+    onToast({ message: `Now runs ${lowerFirst(label)}`, tone: "success" });
   }
 
   return {

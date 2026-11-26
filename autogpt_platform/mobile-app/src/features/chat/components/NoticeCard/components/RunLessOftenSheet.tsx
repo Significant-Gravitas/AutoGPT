@@ -7,6 +7,7 @@ import { BottomSheet } from "@/features/connections/components/BottomSheet";
 import type { ScheduledChatCadence } from "@/lib/api/scheduledChats";
 import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
+import { lowerFirst } from "../../../notice";
 import { useRunLessOftenSheet } from "./useRunLessOftenSheet";
 
 interface Props {
@@ -106,9 +107,7 @@ function SheetBody({ scheduleKey, onSaved }: BodyProps) {
 }
 
 function introText(cadence: ScheduledChatCadence) {
-  const now = cadence.current
-    ? `It runs ${cadence.current.charAt(0).toLowerCase()}${cadence.current.slice(1)} now. `
-    : "";
+  const now = cadence.current ? `It runs ${lowerFirst(cadence.current)} now. ` : "";
   return `${now}Fewer runs use less of your allowance. Times are in ${cadence.timezone}.`;
 }
 

@@ -44,26 +44,26 @@ export function NoticeCard({ notice, sessionID, expertID, onToast }: Props) {
   const colors = useColors();
   const actions = notice.actions.filter((action) => action.kind !== "resume" || !card.isResumed);
 
-  function renderAction(action: NoticeAction) {
+  function renderAction(action: NoticeAction, index: number) {
     const common = { label: action.label, variant: "secondary", size: "small" } as const;
     switch (action.kind) {
       case "link":
         return (
-          <Button key={`link-${action.href}`} {...common} onPress={() => card.openLink(action.href)} />
+          <Button key={`link-${index}-${action.href}`} {...common} onPress={() => card.openLink(action.href)} />
         );
       case "reconnect":
         return (
           <Button
-            key={`reconnect-${action.provider}`}
+            key={`reconnect-${index}-${action.provider}`}
             {...common}
             onPress={() => card.openConnect(action.provider)}
           />
         );
       case "run_less_often":
-        return <Button key="run-less-often" {...common} onPress={card.openLessOften} />;
+        return <Button key={`run-less-often-${index}`} {...common} onPress={card.openLessOften} />;
       case "resume":
         return (
-          <Button key="resume" {...common} onPress={card.handleResume} isLoading={card.isResuming} />
+          <Button key={`resume-${index}`} {...common} onPress={card.handleResume} isLoading={card.isResuming} />
         );
     }
   }

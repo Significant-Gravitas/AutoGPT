@@ -81,6 +81,11 @@ export function noticeLinkTarget(
   return { kind: "web", url: `${frontendURL}${href}` };
 }
 
+/** "Every Monday at 09:00" reads "every Monday at 09:00" mid-sentence. */
+export function lowerFirst(text: string) {
+  return text.charAt(0).toLowerCase() + text.slice(1);
+}
+
 /** Why the cadence route refused, read or change, by status. */
 export function cadenceErrorText(status: number | null) {
   if (status === 402) return "Changing this needs an active plan. You can manage your plan on the web.";

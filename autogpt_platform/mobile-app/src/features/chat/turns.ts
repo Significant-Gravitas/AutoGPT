@@ -2,7 +2,7 @@ import type { UIMessage } from "ai";
 
 export interface TurnItem {
   message: UIMessage;
-  /** Text of the next message, or null when this one is the last. */
+  /** Text of the next user message, or null while none follows. */
   replyText: string | null;
 }
 
@@ -18,9 +18,15 @@ export interface Turn {
  */
 export function groupTurns(messages: UIMessage[]): Turn[] {
   const turns: Turn[] = [];
+  // Only a person answers a card; a routine's notice in between does not.
+  const replies: (string | null)[] = [];
+  let reply: string | null = null;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    replies[index] = reply;
+    if (messages[index].role === "user") reply = joinedText(messages[index]);
+  }
   messages.forEach((message, index) => {
-    const next = messages[index + 1];
-    const item = { message, replyText: next ? joinedText(next) : null };
+    const item = { message, replyText: replies[index] };
     const current = turns[turns.length - 1];
     if (message.role === "user" || !current) {
       turns.push({ key: message.id, items: [item] });
