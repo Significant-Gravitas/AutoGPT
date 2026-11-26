@@ -60,6 +60,9 @@ WAITS = [
 ]
 
 
+pytestmark = pytest.mark.usefixtures("own_ledger_holds")
+
+
 class _Balance:
     """The owner's credit balance, kept as the credit model keeps it, and
     every debit the turn takes from it."""

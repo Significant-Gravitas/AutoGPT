@@ -17,8 +17,10 @@ RUN echo 'Acquire::http::Pipeline-Depth 0;\nAcquire::http::No-Cache true;\nAcqui
 
 # APT_REFRESH is part of the cache key of every RUN after it, so a new value
 # re-runs the package installs below and security fixes reach the images
-# instead of staying behind a cached layer. CI passes the UTC date, which
-# refreshes them once a day. Every stage that installs packages declares it
+# instead of staying behind a cached layer. CI passes the key from
+# .github/scripts/apt_refresh.py: the UTC date plus a hash of Debian's security
+# package indexes, which refreshes them once a day and whenever Debian
+# publishes security updates. Every stage that installs packages declares it
 # before its first install.
 ARG APT_REFRESH
 

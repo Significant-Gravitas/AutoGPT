@@ -3584,7 +3584,9 @@ async def test_archive_pauses_detaches_and_revive_reattaches(
         where={"expertId": expert_id}
     )
     assert any(e.clearedAt is None for e in events)
-    sched.pause_schedule.assert_awaited_once_with("sched-1", user_id=test_user.id)
+    sched.pause_schedule.assert_awaited_once_with(
+        "sched-1", user_id=test_user.id, for_expert_archive=True
+    )
     # Paused, not deleted: the pointer survives so the same job is resumed
     # rather than a second one being created alongside it.
     wf_row = await prisma.models.ExpertWorkflow.prisma().find_first(
@@ -3595,7 +3597,10 @@ async def test_archive_pauses_detaches_and_revive_reattaches(
     with patch.object(scheduling, "get_scheduler_client", return_value=sched):
         revived = await experts_db.hire_expert(test_user.id, template.id, None)
 
-    sched.resume_schedule.assert_awaited_once_with("sched-1", user_id=test_user.id)
+    # Only a schedule the archive paused comes back; the scheduler checks.
+    sched.resume_schedule.assert_awaited_once_with(
+        "sched-1", user_id=test_user.id, only_if_paused_by_expert_archive=True
+    )
     # Resume has to look through the paused jobs; the default read hides them.
     sched.get_execution_schedules.assert_awaited_with(
         user_id=test_user.id, kind="graph", include_paused=True
@@ -3695,8 +3700,12 @@ async def test_user_created_schedule_survives_fire_and_rehire(
         await experts_db.archive_expert(test_user.id, expert_id)
         revived = await experts_db.hire_expert(test_user.id, template.id, None)
 
-    sched.pause_schedule.assert_awaited_once_with("user-sched", user_id=test_user.id)
-    sched.resume_schedule.assert_awaited_once_with("user-sched", user_id=test_user.id)
+    sched.pause_schedule.assert_awaited_once_with(
+        "user-sched", user_id=test_user.id, for_expert_archive=True
+    )
+    sched.resume_schedule.assert_awaited_once_with(
+        "user-sched", user_id=test_user.id, only_if_paused_by_expert_archive=True
+    )
     # Restored by resuming the original job, never by creating a new one.
     sched.add_execution_schedule.assert_not_awaited()
     assert revived.expert.is_archived is False

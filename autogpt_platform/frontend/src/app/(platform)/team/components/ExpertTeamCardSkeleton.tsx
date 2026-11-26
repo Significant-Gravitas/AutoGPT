@@ -12,15 +12,15 @@ export function ExpertTeamCardSkeleton() {
           <Skeleton className="-mt-11 ml-1 size-[5.75rem] shrink-0 rounded-full" />
           <div className="mt-2 flex flex-1 flex-col gap-1">
             <div className="flex items-baseline justify-between gap-2">
-              <Skeleton className="h-3 w-12 rounded-full" />
-              <Skeleton className="h-3 w-14 rounded-full" />
+              <Skeleton className="h-3 w-12 rounded-pill" />
+              <Skeleton className="h-3 w-14 rounded-pill" />
             </div>
             <Skeleton className="h-4 w-full rounded-sm" />
           </div>
         </div>
         <div className="mt-2 flex w-full flex-col items-start gap-2 pr-2 pl-5">
-          <Skeleton className="h-5 w-2/5 rounded-full" />
-          <Skeleton className="h-4 w-1/2 rounded-full" />
+          <Skeleton className="h-5 w-2/5 rounded-pill" />
+          <Skeleton className="h-4 w-1/2 rounded-pill" />
         </div>
 
         <div className="mx-2 mt-3 flex rounded-lg bg-surface-muted px-2 py-2 ring-1 ring-separator ring-inset">
@@ -29,8 +29,8 @@ export function ExpertTeamCardSkeleton() {
               key={stat}
               className="flex flex-1 flex-col items-center gap-1.5"
             >
-              <Skeleton className="h-5 w-7 rounded-full" />
-              <Skeleton className="h-3 w-12 rounded-full" />
+              <Skeleton className="h-5 w-7 rounded-pill" />
+              <Skeleton className="h-3 w-12 rounded-pill" />
             </div>
           ))}
         </div>

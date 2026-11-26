@@ -31,7 +31,8 @@ export function RunActions({
     <div className="flex justify-end gap-3">
       {!isTrigger && onSimulate && (
         <Button
-          variant="ghost-warning"
+          variant="ghost"
+          tone="quiet-warning"
           onClick={onSimulate}
           disabled={isExecuting || isSettingUpTrigger}
           loading={isExecuting}

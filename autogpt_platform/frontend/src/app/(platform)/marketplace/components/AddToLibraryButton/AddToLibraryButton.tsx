@@ -46,7 +46,7 @@ function UndoActions({
         variant="ghost"
         size="small"
         loading={isUndoing}
-        // oxlint-disable-next-line design-system/no-restyle -- a quiet text button on the dark toast; no Button variant is light-on-dark
+        // oxlint-disable-next-line design-system/no-restyle, design-system/no-misused-role -- a quiet text button on the dark toast; no Button variant is light-on-dark, and no text role has surface-active's #DADADC
         className="border-none text-surface-active hover:bg-transparent hover:text-foreground-subtle"
         onClick={async () => {
           setIsUndoing(true);
@@ -186,7 +186,7 @@ export function AddToLibraryButton({
       loading={isPending}
       leftIcon={<Icon icon={PlusSignIcon} size={14} />}
       onClick={handleClick}
-      className={`z-10 ${className ?? ""}`}
+      className={`z-raised ${className ?? ""}`}
       aria-label={`Add ${agentName} to library`}
     >
       {isPending ? "Adding..." : "Add"}

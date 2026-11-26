@@ -33,7 +33,7 @@ export function IntegrationsSelectionBar({
             onClick={onSelectAll}
             className="rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-action"
           >
-            <Text variant="body-medium" as="span">
+            <Text variant="body" weight="medium" as="span">
               Select All
             </Text>
           </button>
@@ -43,7 +43,7 @@ export function IntegrationsSelectionBar({
           onClick={onDeselectAll}
           className="rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-action"
         >
-          <Text variant="body-medium" as="span">
+          <Text variant="body" weight="medium" as="span">
             Deselect
           </Text>
         </button>

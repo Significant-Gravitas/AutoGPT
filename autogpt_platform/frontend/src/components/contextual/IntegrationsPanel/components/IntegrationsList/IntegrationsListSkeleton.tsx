@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { duration, ease } from "@/components/styles/motion";
 
 const SKELETON_CONTAINER_VARIANTS: Variants = {
   hidden: {},
@@ -17,7 +18,7 @@ const SKELETON_ITEM_VARIANTS: Variants = {
   show: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] },
+    transition: { duration: duration.slow, ease: ease.emphasized },
   },
 };
 

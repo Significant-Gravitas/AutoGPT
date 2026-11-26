@@ -8,7 +8,7 @@ export function DashboardSkeleton() {
           <Skeleton className="h-7 w-48" />
           <Skeleton className="mt-1 h-4 w-[420px] max-w-full" />
         </div>
-        <Skeleton className="h-12 w-36 rounded-full" />
+        <Skeleton className="h-12 w-36 rounded-pill" />
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -44,7 +44,7 @@ export function DashboardSkeleton() {
               <Skeleton className="h-4 w-1/3" />
               <Skeleton className="h-3 w-2/3" />
             </div>
-            <Skeleton className="h-6 w-24 rounded-full" />
+            <Skeleton className="h-6 w-24 rounded-pill" />
             <Skeleton className="h-4 w-20" />
             <Skeleton className="h-4 w-12" />
             <Skeleton className="h-4 w-12" />

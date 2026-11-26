@@ -14,6 +14,7 @@ import {
 import type { User } from "../types";
 import { ImpersonationState } from "@/lib/impersonation";
 import { isAbortError, isNetworkError } from "@/lib/transient-errors";
+import { isSessionCheckTimeout, withDeadline } from "./session-check-deadline";
 
 interface FetchUserResult {
   user: User | null;
@@ -23,7 +24,10 @@ interface FetchUserResult {
 
 export async function fetchUser(): Promise<FetchUserResult> {
   try {
-    const { user, error } = await getCurrentUser();
+    const { user, error } = await withDeadline(
+      "getCurrentUser",
+      getCurrentUser(),
+    );
 
     if (error || !user) {
       // Only mark as loaded if we got an explicit error (not just no user)
@@ -42,11 +46,12 @@ export async function fetchUser(): Promise<FetchUserResult> {
       isUserLoading: false,
     };
   } catch (error) {
-    // A check cut off by a full-page navigation (a login reloads the page) or
-    // a dropped connection is not a broken session.
+    // A check cut off by a full-page navigation (a login reloads the page), a
+    // dropped connection or no answer in time is not a broken session. Its
+    // deadline reports a timeout.
     if (isAbortError(error) || isNetworkError(error)) {
       console.warn("Get user deferred:", error);
-    } else {
+    } else if (!isSessionCheckTimeout(error)) {
       console.error("Get user error:", error);
     }
     return {
@@ -85,7 +90,10 @@ export async function validateSession(
   params: ValidateSessionParams,
 ): Promise<ValidateSessionResult> {
   try {
-    const result = await validateSessionAction(params.path);
+    const result = await withDeadline(
+      "validateSession",
+      validateSessionAction(params.path),
+    );
 
     if (result.isUnavailable) {
       return { isValid: true, shouldUpdateUser: false, unavailable: "network" };
@@ -128,7 +136,9 @@ export async function validateSession(
         unavailable: "deployment-skew",
       };
     }
-    console.warn("Session validation unavailable:", error);
+    if (!isSessionCheckTimeout(error)) {
+      console.warn("Session validation unavailable:", error);
+    }
     return { isValid: true, shouldUpdateUser: false, unavailable: "network" };
   }
 }
@@ -141,12 +151,17 @@ interface RefreshSessionResult {
 
 // Never rejects: callers get a result either way. A call that didn't reach
 // the server says nothing about the session, so it comes back unavailable.
+// One that missed its deadline may still finish on the server and set new
+// session cookies; the store's next check, guarded by the session epoch like
+// any other, reads them.
 export async function refreshSession(): Promise<RefreshSessionResult> {
   let result: RefreshSessionResult;
   try {
-    result = await refreshSessionAction();
+    result = await withDeadline("refreshSession", refreshSessionAction());
   } catch (error) {
-    console.warn("Session refresh unavailable:", error);
+    if (!isSessionCheckTimeout(error)) {
+      console.warn("Session refresh unavailable:", error);
+    }
     return {
       user: null,
       error: "Couldn't reach the server",

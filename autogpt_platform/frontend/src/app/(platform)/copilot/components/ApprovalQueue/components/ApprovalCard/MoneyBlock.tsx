@@ -37,14 +37,14 @@ export function MoneyBlock({ spend }: Props) {
         aria-valuenow={Math.round(share * 100)}
         aria-valuemin={0}
         aria-valuemax={100}
-        className="h-1 overflow-hidden rounded-full bg-surface-hover"
+        className="h-1 overflow-hidden rounded-pill bg-surface-hover"
       >
         <div
-          className="h-full rounded-full bg-warning"
-          style={{ width: `${share * 100}%` }}
+          className="h-full w-(--share) rounded-pill bg-warning"
+          style={{ "--share": `${share * 100}%` } as React.CSSProperties}
         />
       </div>
-      <Text variant="small-tight" tone="muted">
+      <Text variant="small" leading="4" tone="muted">
         Approving runs this step and adds {dollars(spend.unit)} to this
         chat&apos;s ceiling.
       </Text>

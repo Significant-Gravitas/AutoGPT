@@ -26,10 +26,8 @@ function RaiseSkeleton() {
           <Skeleton className="h-16 w-3/4 rounded-3xl" />
           <Skeleton className="h-40 w-full rounded-2xl" />
         </div>
-        {/* oxlint-disable-next-line design-system/no-arbitrary-values -- the 40px panel radius has no rounded-* step (4xl is 32px) */}
-        <div className="order-1 m-2 overflow-hidden rounded-[2.5rem] bg-surface-hover/40 p-4 sm:p-6 lg:order-2">
-          {/* oxlint-disable-next-line design-system/no-arbitrary-values -- the 32px radius has no rounded-* step in this theme (3xl is 24px) */}
-          <Skeleton className="h-80 w-full rounded-[2rem]" />
+        <div className="order-1 m-2 overflow-hidden rounded-5xl bg-surface-hover/40 p-4 sm:p-6 lg:order-2">
+          <Skeleton className="h-80 w-full rounded-4xl" />
         </div>
       </div>
     </main>

@@ -43,7 +43,7 @@ function GhostCard() {
   return (
     <div className="flex h-[64px] w-[320px] items-center gap-4 rounded-xl border border-border-base/80 bg-surface px-5 text-foreground-subtle shadow-message-table">
       <Icon icon={Key01Icon} size={18} className="shrink-0" />
-      <div className="h-2.5 flex-1 rounded-full bg-surface-hover" />
+      <div className="h-2.5 flex-1 rounded-pill bg-surface-hover" />
     </div>
   );
 }

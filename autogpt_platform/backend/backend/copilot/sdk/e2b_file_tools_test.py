@@ -13,7 +13,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from backend.copilot.context import E2B_WORKDIR, SDK_PROJECTS_DIR, _current_project_dir
+from backend.copilot.context import (
+    E2B_WORKDIR,
+    SDK_PROJECTS_DIR,
+    _current_project_dir,
+)
 from backend.copilot.context import (
     resolve_sandbox_path as canonical_resolve_sandbox_path,
 )

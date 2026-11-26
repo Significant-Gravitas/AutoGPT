@@ -1,0 +1,50 @@
+{
+  "description": "A hired expert's kickoff: it opens its two-question onboarding card, holds the rest of the turn open until the journey has answered the first question, then answers the card once it is sent. The marker rides in the expert's writing sample, since the platform writes the kickoff message itself. experts-journey.spec.ts follows it.",
+  "title": "Getting started",
+  "turns": [
+    {
+      "tool_calls": [
+        {
+          "name": "expert_onboarding",
+          "input": {
+            "greeting": "Hi, I'm here to clear the routine off your plate.",
+            "steps": [
+              {
+                "question": "Which outcome should I start with?",
+                "options": ["Meeting briefs", "Inbox triage"],
+                "keyword": "outcome"
+              },
+              {
+                "question": "Which calendar should I read?",
+                "options": ["Google Calendar", "Outlook"],
+                "keyword": "calendar"
+              }
+            ]
+          }
+        }
+      ],
+      "usage": {
+        "input_tokens": 3600,
+        "output_tokens": 90,
+        "cache_read_input_tokens": 22000,
+        "cache_creation_input_tokens": 1500
+      }
+    },
+    {
+      "expect_tool_results": [
+        {
+          "tool": "expert_onboarding",
+          "contains": "Which calendar should I read?"
+        }
+      ],
+      "text": "Tap an answer whenever you are ready and I will take it from there.",
+      "usage": { "input_tokens": 3900, "output_tokens": 15 },
+      "stream": { "chunk_words": 3, "delay_ms": 15, "hold_after_words": 3 }
+    },
+    {
+      "expect_user_text": "**Here are my answers:**",
+      "text": "Thanks. I will start with your meeting briefs and read Google Calendar.",
+      "usage": { "input_tokens": 4100, "output_tokens": 16 }
+    }
+  ]
+}

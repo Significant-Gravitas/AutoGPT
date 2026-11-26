@@ -24,7 +24,7 @@ from backend.blocks.code_executor import (
     ExecuteCodeStepBlock,
     InstantiateCodeSandboxBlock,
 )
-from backend.blocks.codex import CodeGenerationBlock, CodexModel
+from backend.blocks.codex import RETIRED_CODEX_MODELS, CodeGenerationBlock, CodexModel
 from backend.blocks.enrichlayer.linkedin import (
     GetLinkedinProfileBlock,
     GetLinkedinProfilePictureBlock,
@@ -395,7 +395,9 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     AIListGeneratorBlock: LLM_COST,
     # CodeGenerationBlock (Codex): block computes USD from response usage with
     # the selected model's rate and emits provider_cost + cost_usd. COST_USD
-    # 150 cr/$ matches the TOKEN_COST margin.
+    # 150 cr/$ matches the TOKEN_COST margin. A saved retired model gets the
+    # same entry: the gate's estimate and the spend check price a node's
+    # input before its schema reads the value as the model that runs.
     CodeGenerationBlock: [
         BlockCost(
             cost_type=BlockCostType.COST_USD,
@@ -409,7 +411,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
             cost_amount=150,
         )
-        for model in CodexModel
+        for model in [*CodexModel, *RETIRED_CODEX_MODELS]
     ],
     # D-ID: $5.90/min of generated video. Median 10-sec clip ≈ $0.98 →
     # 148 cr at 1.5x. 100 cr flat is a conservative middle; long clips

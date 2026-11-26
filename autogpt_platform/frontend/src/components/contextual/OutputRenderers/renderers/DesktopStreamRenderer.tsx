@@ -110,16 +110,22 @@ export function DesktopStreamPreview({
         <div className="flex items-center gap-2 text-foreground-body">
           <Icon icon={ComputerIcon} size={16} />
           <Text
-            variant={
-              textSize === "body-md" ? "body-md-medium" : "body-medium-tight"
-            }
+            variant={textSize === "body-md" ? "body-md" : "body"}
+            weight="medium"
+            leading={textSize === "body-md" ? undefined : "5"}
             as="span"
             tone="body"
           >
             Interactive Desktop
           </Text>
           <span className="flex rounded bg-surface-active px-1.5 py-0.5">
-            <Text variant="small-uppercase-tight" as="span" tone="secondary">
+            <Text
+              variant="small"
+              transform="uppercase"
+              leading="4"
+              as="span"
+              tone="secondary"
+            >
               {value.provider}
             </Text>
           </span>
@@ -134,7 +140,7 @@ export function DesktopStreamPreview({
                 aria-label="Fullscreen"
               >
                 <Icon icon={ArrowExpandIcon} size={14} />
-                <Text variant="small-tight" as="span" tone="secondary">
+                <Text variant="small" leading="4" as="span" tone="secondary">
                   Fullscreen
                 </Text>
               </button>
@@ -146,7 +152,7 @@ export function DesktopStreamPreview({
               className="flex items-center gap-1 rounded px-2 py-1 text-foreground-secondary hover:bg-surface-active"
             >
               <Icon icon={ArrowUpRight01Icon} size={14} />
-              <Text variant="small-tight" as="span" tone="secondary">
+              <Text variant="small" leading="4" as="span" tone="secondary">
                 Open in new tab
               </Text>
             </a>
@@ -176,19 +182,19 @@ export function DesktopStreamPreview({
           This live desktop has stopped.
         </FrameNotice>
       ) : liveness === "checking" ? (
-        <div className="aspect-video w-full bg-action-hover" />
+        <div className="aspect-video w-full bg-surface-inverse-hover" />
       ) : (
         <iframe
           ref={frameRef}
           src={value.url}
           sandbox="allow-scripts allow-same-origin allow-popups"
           allow="clipboard-read; clipboard-write; fullscreen"
-          className="aspect-video w-full bg-action-hover"
+          className="aspect-video w-full bg-surface-inverse-hover"
           title={`Interactive desktop (${value.sandbox_id})`}
         />
       )}
       <div className="border-t border-border-base bg-surface-muted px-3 py-2">
-        <Text variant="small-medium-tight" tone="body">
+        <Text variant="small" weight="medium" leading="4" tone="body">
           {value.requires_auth
             ? "Only the owner of this chat can view the live desktop. "
             : ""}
@@ -208,9 +214,10 @@ interface FrameNoticeProps {
 
 function FrameNotice({ textSize, children, action }: FrameNoticeProps) {
   return (
-    <div className="flex aspect-video w-full flex-col items-center justify-center gap-3 bg-action-hover px-6">
+    <div className="flex aspect-video w-full flex-col items-center justify-center gap-3 bg-surface-inverse-hover px-6">
       <Text
-        variant={textSize === "body-md" ? "body-md" : "body-tight"}
+        variant={textSize === "body-md" ? "body-md" : "body"}
+        leading={textSize === "body-md" ? undefined : "5"}
         tone="subtle"
         className="text-center"
       >

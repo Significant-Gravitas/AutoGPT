@@ -9,8 +9,8 @@ import {
 } from "framer-motion";
 import { useState } from "react";
 import { ShimmerText } from "./ShimmerText";
+import { duration, ease } from "@/components/styles/motion";
 
-const EASE_OUT_CUBIC = [0.33, 1, 0.68, 1] as const;
 // A label that changes again while the previous swap could still be playing
 // snaps instead of sliding — fast tools otherwise stack overlapping swap
 // animations and the text jitters.
@@ -66,8 +66,8 @@ export function SwapText({ text, className, shimmer = false }: SwapTextProps) {
             animate="animate"
             exit="exit"
             transition={{
-              duration: instant ? 0 : 0.18,
-              ease: EASE_OUT_CUBIC,
+              duration: instant ? 0 : duration.base,
+              ease: ease.out,
             }}
             className="block truncate"
           >

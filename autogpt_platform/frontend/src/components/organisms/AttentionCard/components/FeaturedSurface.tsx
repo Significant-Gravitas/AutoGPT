@@ -14,16 +14,15 @@ export function FeaturedSurface({ density, children }: FeaturedSurfaceProps) {
     <div
       data-slot="attention-card-featured-surface"
       className={cn(
-        // oxlint-disable-next-line design-system/no-arbitrary-values -- 15px is the 16px card radius inside its 1px gradient border
-        "relative overflow-hidden rounded-[15px] bg-surface",
+        "relative overflow-hidden rounded-2xl-inner bg-surface",
         densityVariants({ density }),
       )}
     >
       <div
         aria-hidden
         data-slot="attention-card-featured-glow"
-        // oxlint-disable-next-line design-system/no-arbitrary-values -- purple and indigo radial glow, no role holds these hues
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_60%_at_0%_0%,rgba(168,85,247,0.10),transparent_60%),radial-gradient(120%_60%_at_100%_100%,rgba(99,102,241,0.06),transparent_60%)]"
+        // oxlint-disable-next-line design-system/no-arbitrary-values -- the brand and indigo radial glow is a gradient, which has no token
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_60%_at_0%_0%,rgb(var(--color-brand)/0.10),transparent_60%),radial-gradient(120%_60%_at_100%_100%,rgb(var(--color-indigo)/0.06),transparent_60%)]"
       />
       <div data-slot="attention-card-featured-body" className="relative">
         {children}

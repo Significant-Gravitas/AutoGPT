@@ -1,0 +1,14 @@
+{
+  "description": "One short answer, to a message the network dropped before it left and the user sent again with Send again. copilot-reconnect-journey.spec.ts follows it.",
+  "title": "Dropped send",
+  "turns": [
+    {
+      "text": "Here is the answer to the message you sent again.",
+      "usage": {
+        "input_tokens": 2400,
+        "output_tokens": 11,
+        "cache_read_input_tokens": 20000
+      }
+    }
+  ]
+}

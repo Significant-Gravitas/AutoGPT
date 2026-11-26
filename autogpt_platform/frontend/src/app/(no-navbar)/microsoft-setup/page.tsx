@@ -33,7 +33,9 @@ export default function MicrosoftSetupPage() {
         <ul className="flex flex-col gap-2">
           {SERVICES.map(({ service, name }) => (
             <li key={service} className="flex flex-col">
-              <Text variant="body-medium">{name}</Text>
+              <Text variant="body" weight="medium">
+                {name}
+              </Text>
               <Text variant="small" tone="muted">
                 {MICROSOFT_SERVICE_PURPOSES[service]}
               </Text>

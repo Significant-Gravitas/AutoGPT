@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ReactNode } from "react";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   swapKey: string;
@@ -41,7 +42,7 @@ export function SwapFade({
         initial={states.initial}
         animate={states.animate}
         exit={states.exit}
-        transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
+        transition={{ duration: duration.base, ease: ease.drawer }}
         className={className}
       >
         {children}

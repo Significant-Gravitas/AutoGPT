@@ -138,7 +138,7 @@ function CSVTable({
                 >
                   {header}
                   {sortCol === i && (
-                    <Text variant="small-tight" as="span" tone="inherit">
+                    <Text variant="small" leading="4" as="span" tone="inherit">
                       {sortAsc ? "\u25B2" : "\u25BC"}
                     </Text>
                   )}

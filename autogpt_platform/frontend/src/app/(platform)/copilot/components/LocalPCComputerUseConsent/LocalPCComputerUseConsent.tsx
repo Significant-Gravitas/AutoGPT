@@ -117,7 +117,7 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
               <Icon icon={ViewIcon} className="h-5 w-5" aria-hidden="true" />
             </div>
             <div className="flex flex-col gap-2">
-              <Text variant="body-medium" tone="primary">
+              <Text variant="body" weight="medium" tone="primary">
                 For this chat session, Otto can:
               </Text>
               <ul className="ml-4 list-disc text-body text-foreground-body">
@@ -125,20 +125,20 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
                   <li key={line}>{line}</li>
                 ))}
               </ul>
-              <Text variant="body-tight" tone="body">
+              <Text variant="body" leading="5" tone="body">
                 Otto works mostly in the background through{" "}
                 <span className="font-mono text-caption">
                   {executor?.computer_use_driver}
                 </span>
                 , reading your windows and using their controls directly.
               </Text>
-              <Text variant="body-tight" tone="body">
+              <Text variant="body" leading="5" tone="body">
                 Before Otto runs a script or a program, opens a link or a file
                 in an app, saves a screenshot to a file, or hands an app or a
                 web page a file from your computer, it asks you in this chat,
                 unless the chat runs Unsupervised.
               </Text>
-              <Text variant="body-tight" tone="body">
+              <Text variant="body" leading="5" tone="body">
                 The shim writes operation records to its local audit log. Review
                 them with{" "}
                 <span className="font-mono text-caption">
@@ -151,12 +151,12 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
                 </span>
                 .
               </Text>
-              <Text variant="body-tight" tone="body">
+              <Text variant="body" leading="5" tone="body">
                 This consent applies only to the current chat session. New
                 sessions will ask again.
               </Text>
               {consentMutation.isError ? (
-                <Text variant="body-tight" role="alert" tone="danger">
+                <Text variant="body" leading="5" role="alert" tone="danger">
                   Could not update computer access. Try again.
                 </Text>
               ) : null}

@@ -1,5 +1,4 @@
 import type { Expert } from "@/app/api/__generated__/models/expert";
-import { formatDistanceToNow } from "date-fns";
 
 export const RECENT_FACTS_LIMIT = 6;
 
@@ -14,6 +13,30 @@ export const MEMORY_CHAT_PROMPTS = {
 } as const;
 
 export type MemoryChatSeed = keyof typeof MEMORY_CHAT_PROMPTS;
+
+interface MemoryChatHeldKeyArgs {
+  /** The signed-in user, who typed it. */
+  viewerID: string;
+  /** The user an admin is acting as, whose memory it is; null when none. */
+  actingAsID: string | null;
+  scopeExpertID: string | null;
+}
+
+/**
+ * Where the memory chat keeps a follow-up it is holding. Every open starts a
+ * new session, so one left behind waits for the next chat about the same
+ * memory rather than for its own session, which never opens again. It names
+ * who typed it and whose memory it is, so it never comes back in another
+ * account's chat: not after a sign-out and sign-in on the same tab, and not
+ * across an admin acting as a user.
+ */
+export function memoryChatHeldKey({
+  viewerID,
+  actingAsID,
+  scopeExpertID,
+}: MemoryChatHeldKeyArgs) {
+  return `memory-chat:${viewerID}:${actingAsID ?? viewerID}:${scopeExpertID ?? "personal"}`;
+}
 
 export function getActiveExperts(experts: Expert[] | undefined) {
   return (experts ?? []).filter((expert) => !expert.is_archived);
@@ -42,13 +65,6 @@ export function learningSheetScope(
     avatarUrl: expert ? expert.avatar_url : null,
     color: expert ? expert.color : null,
   };
-}
-
-export function formatWhen(createdAt: string | null | undefined) {
-  if (!createdAt) return "";
-  const parsed = new Date(createdAt);
-  if (Number.isNaN(parsed.getTime())) return "";
-  return formatDistanceToNow(parsed, { addSuffix: true });
 }
 
 /** The Soul drawer links here with ?expert=<id>. An id the caller no longer

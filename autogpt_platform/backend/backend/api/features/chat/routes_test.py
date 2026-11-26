@@ -6725,7 +6725,7 @@ def test_start_session_desktop_returns_the_stream(
     config = mocker.patch("backend.api.features.chat.routes.ChatConfig")
     config.return_value.active_e2b_api_key = "e2b-key"
     mocker.patch(
-        "backend.api.features.chat.routes.open_desktop",
+        "backend.api.features.chat.routes.open_desktop_from_ui",
         new_callable=AsyncMock,
         return_value=(
             DesktopStream(url="https://6080-sbx.e2b.app/vnc.html", sandbox_id="sbx"),
@@ -6749,13 +6749,40 @@ def test_start_session_desktop_refused_under_a_sandbox_limit_is_a_429_saying_so(
     config = mocker.patch("backend.api.features.chat.routes.ChatConfig")
     config.return_value.active_e2b_api_key = "e2b-key"
     mocker.patch(
-        "backend.api.features.chat.routes.open_desktop",
+        "backend.api.features.chat.routes.open_desktop_from_ui",
         new_callable=AsyncMock,
         side_effect=SandboxLimitError("Too many sandboxes are running right now."),
     )
     response = client.post("/sessions/sess-1/desktop")
     assert response.status_code == 429
     assert response.json()["detail"] == "Too many sandboxes are running right now."
+
+
+def test_start_session_desktop_past_the_usage_allowance_is_a_429_and_opens_nothing(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """No turn's admission stands behind the panel's open, so the route itself
+    must refuse a box on the platform's E2B key once the allowance is spent."""
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=_session_like(None),
+    )
+    config = mocker.patch("backend.api.features.chat.routes.ChatConfig")
+    config.return_value.active_e2b_api_key = "e2b-key"
+    mocker.patch(
+        "backend.copilot.computer.platform_spend_refusal",
+        new_callable=AsyncMock,
+        return_value="You've reached your daily usage limit.",
+    )
+    mocker.patch("backend.copilot.computer._charge_box_time", new_callable=AsyncMock)
+    open_desktop = mocker.patch(
+        "backend.copilot.computer.open_desktop", new_callable=AsyncMock
+    )
+    response = client.post("/sessions/sess-1/desktop")
+    assert response.status_code == 429
+    assert response.json()["detail"] == "You've reached your daily usage limit."
+    open_desktop.assert_not_awaited()
 
 
 def test_start_session_desktop_without_e2b_is_503(
@@ -6792,7 +6819,7 @@ def test_start_session_desktop_is_refused_for_a_local_pc_chat(
     config = mocker.patch("backend.api.features.chat.routes.ChatConfig")
     config.return_value.active_e2b_api_key = "e2b-key"
     open_desktop = mocker.patch(
-        "backend.api.features.chat.routes.open_desktop", new_callable=AsyncMock
+        "backend.api.features.chat.routes.open_desktop_from_ui", new_callable=AsyncMock
     )
 
     response = client.post("/sessions/sess-1/desktop")
@@ -6818,7 +6845,7 @@ def test_start_session_desktop_is_refused_for_an_archived_experts_chat(
         return_value=False,
     )
     open_desktop = mocker.patch(
-        "backend.api.features.chat.routes.open_desktop", new_callable=AsyncMock
+        "backend.api.features.chat.routes.open_desktop_from_ui", new_callable=AsyncMock
     )
     response = client.post("/sessions/sess-1/desktop")
     # Same non-enumerable 404 a turn gets for a fired or foreign expert.

@@ -19,11 +19,15 @@ function todo(
   return { content, status, activeForm };
 }
 
-function messageWithTodoWrite(todos: unknown, state?: string): UIMessage {
+function messageWithTodoWrite(
+  todos: unknown,
+  state?: string,
+  result?: { output?: unknown; preliminary?: boolean },
+): UIMessage {
   return {
     id: "m1",
     role: "assistant",
-    parts: [{ type: "tool-TodoWrite", state, input: { todos } }],
+    parts: [{ type: "tool-TodoWrite", state, input: { todos }, ...result }],
   } as unknown as UIMessage;
 }
 
@@ -61,6 +65,41 @@ describe("getLatestTaskList", () => {
     expect(result).toHaveLength(2);
     expect(result?.[0].content).toBe("Step 1");
   });
+
+  const earlierPlan = [todo("Earlier plan", "in_progress")];
+  const emptyResult = { type: "todo_write", todos: [] };
+
+  it.each([emptyResult, { oldTodos: earlierPlan, newTodos: [] }])(
+    "clears the previous list after an acknowledged empty update (%j)",
+    (output) => {
+      const messages = [
+        messageWithTodoWrite(earlierPlan),
+        messageWithTodoWrite([], "output-available", { output }),
+      ];
+
+      expect(getLatestTaskList(messages)).toBe(EMPTY_TODOS);
+    },
+  );
+
+  it.each([
+    ["input-streaming", undefined],
+    ["input-available", undefined],
+    ["output-error", undefined],
+    ["output-denied", undefined],
+    ["output-available", { output: "" }],
+    ["output-available", { output: { type: "error", todos: [] } }],
+    ["output-available", { output: emptyResult, preliminary: true }],
+  ] as const)(
+    "keeps the previous list for an unconfirmed empty update (%s, %j)",
+    (state, result) => {
+      const messages = [
+        messageWithTodoWrite(earlierPlan),
+        messageWithTodoWrite([], state, result),
+      ];
+
+      expect(getLatestTaskList(messages)).toEqual(earlierPlan);
+    },
+  );
 
   it("skips streaming (partial) TodoWrite inputs", () => {
     const messages = [

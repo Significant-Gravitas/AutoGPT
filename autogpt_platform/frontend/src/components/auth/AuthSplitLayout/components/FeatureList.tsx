@@ -11,7 +11,8 @@ export function FeatureList({ itemsTitle, items }: Props) {
     <div className="flex flex-col gap-2">
       {itemsTitle ? (
         <Text
-          variant="small-medium"
+          variant="small"
+          weight="medium"
           tone="muted"
           transform="uppercase"
           tracking="caps"

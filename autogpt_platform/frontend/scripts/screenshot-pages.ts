@@ -45,9 +45,9 @@ export const VIEWPORTS = [
   { name: "mobile", width: 390, height: 844 },
 ] as const;
 
-const FIXED_TIME = new Date("2026-01-15T12:00:00.000Z");
+export const FIXED_TIME = new Date("2026-01-15T12:00:00.000Z");
 
-const PUBLIC_ROUTES = ["/login", "/signup", "/reset-password"];
+export const PUBLIC_ROUTES = ["/login", "/signup", "/reset-password"];
 
 const SIGNED_IN_ROUTES = [
   "/marketplace",
@@ -65,14 +65,14 @@ const SIGNED_IN_ROUTES = [
 
 const DEFAULT_STORIES = ["tokens-", "atoms-button--", "atoms-text--"];
 
-const DEFAULT_DISMISS = ["Got it"];
+export const DEFAULT_DISMISS = ["Got it"];
 
 // Stories that animate on a timer by design and never hold still.
-const DEFAULT_SKIP = ["atoms-progress--live"];
+export const DEFAULT_SKIP = ["atoms-progress--live"];
 
 // Software rasterising on one thread with a fixed colour profile, so the
 // anti-aliased edge of a rounded border is the same pixel on every run.
-const DETERMINISTIC_CHROMIUM_ARGS = [
+export const DETERMINISTIC_CHROMIUM_ARGS = [
   "--disable-gpu",
   "--disable-gpu-rasterization",
   "--disable-partial-raster",
@@ -158,25 +158,25 @@ export function comparePngs(before: Buffer, after: Buffer) {
   return { diffPixels, sizeMismatch: null, diff: tools.writePng(out) };
 }
 
-function readFlag(argv: string[], name: string) {
+export function readFlag(argv: string[], name: string) {
   const index = argv.indexOf(name);
   if (index < 0) return undefined;
   const value = argv[index + 1];
   return value === undefined || value.startsWith("--") ? "" : value;
 }
 
-function listFlag(argv: string[], name: string, fallback: string[]) {
+export function listFlag(argv: string[], name: string, fallback: string[]) {
   const value = readFlag(argv, name);
   if (value === undefined) return fallback;
   return value.split(",").filter(Boolean);
 }
 
-function fileNameFor(kind: string, id: string, viewport: string) {
+export function fileNameFor(kind: string, id: string, viewport: string) {
   const slug = id.replace(/^\//, "").replace(/[^a-zA-Z0-9-]+/g, "_") || "root";
   return `${kind}__${slug}__${viewport}.png`;
 }
 
-async function settle(page: Page) {
+export async function settle(page: Page) {
   await page.waitForLoadState("networkidle").catch(() => undefined);
   await page.evaluate(async () => {
     await document.fonts.ready;
@@ -207,7 +207,7 @@ async function settle(page: Page) {
 // First-visit prompts (tab intros, tours) cover the page they introduce.
 // Close them the way a user would, then reload so the page renders without
 // the prompt or its closing fade. Returns whether anything was closed.
-async function dismissPrompts(page: Page, labels: string[]) {
+export async function dismissPrompts(page: Page, labels: string[]) {
   let dismissed = false;
   for (const label of labels) {
     const button = page.getByRole("button", { name: label, exact: true });
@@ -255,7 +255,7 @@ async function stableScreenshot(page: Page) {
   return { image: previous, stable: false };
 }
 
-async function newContext(
+export async function newContext(
   browser: Awaited<ReturnType<typeof chromium.launch>>,
   viewport: (typeof VIEWPORTS)[number],
 ) {
@@ -269,7 +269,7 @@ async function newContext(
   });
 }
 
-async function signIn(context: BrowserContext, baseUrl: string) {
+export async function signIn(context: BrowserContext, baseUrl: string) {
   const email = process.env.SCREENSHOT_EMAIL;
   const password = process.env.SCREENSHOT_PASSWORD;
   if (!email || !password) return false;
@@ -307,7 +307,7 @@ async function shoot(
   return stable;
 }
 
-async function storyIds(storybookUrl: string, prefixes: string[]) {
+export async function storyIds(storybookUrl: string, prefixes: string[]) {
   if (prefixes.length === 0) return [];
   const response = await fetch(`${storybookUrl}/index.json`);
   const index = (await response.json()) as {

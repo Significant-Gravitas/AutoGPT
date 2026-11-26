@@ -25,7 +25,7 @@ export const NodeExecutionBadge = ({ nodeId }: { nodeId: string }) => {
       <Badge
         variant="solid"
         // oxlint-disable-next-line design-system/require-static-classes -- statusStyles maps each status to whole, static class strings
-        className={cn(statusStyles[status], "gap-2 rounded-full bg-surface")}
+        className={cn(statusStyles[status], "gap-2 rounded-pill bg-surface")}
       >
         {status}
         {status === AgentExecutionStatus.RUNNING && (

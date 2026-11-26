@@ -4,6 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { LayoutGroup, motion, type Transition } from "framer-motion";
 import type { OriginFilter as OriginFilterValue } from "../../useArtifactsPage";
+import { spring } from "@/components/styles/motion";
 
 interface Props {
   value: OriginFilterValue;
@@ -21,10 +22,9 @@ const OPTIONS: Option[] = [
   { value: "generated", label: "Generated" },
 ];
 
-const snappySpring: Transition = {
+const pillSpring: Transition = {
   type: "spring",
-  stiffness: 350,
-  damping: 30,
+  ...spring.gentle,
   mass: 1,
 };
 
@@ -69,7 +69,7 @@ function OriginTab({ option, active, onClick }: OriginTabProps) {
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "relative rounded-full px-4 py-2 text-body font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle",
+        "relative rounded-pill px-4 py-2 text-body font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle",
         active
           ? "text-foreground-strong"
           : "text-foreground-tertiary hover:text-foreground-strong",
@@ -79,11 +79,11 @@ function OriginTab({ option, active, onClick }: OriginTabProps) {
       {active ? (
         <motion.span
           layoutId="artifacts-origin-active"
-          className="absolute inset-0 rounded-full bg-surface-hover"
-          transition={snappySpring}
+          className="absolute inset-0 rounded-pill bg-surface-hover"
+          transition={pillSpring}
         />
       ) : null}
-      <span className="relative z-10">{option.label}</span>
+      <span className="relative z-raised">{option.label}</span>
     </button>
   );
 }

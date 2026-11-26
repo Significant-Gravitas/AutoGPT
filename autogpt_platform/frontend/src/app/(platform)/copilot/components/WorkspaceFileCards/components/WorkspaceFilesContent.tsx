@@ -48,7 +48,8 @@ export function WorkspaceFilesContent({
           </span>
           {files.length > 0 && (
             <Button
-              variant="ghost-muted"
+              variant="ghost"
+              tone="quiet"
               size="icon-xs"
               shape="soft"
               withTooltip={false}
