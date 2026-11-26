@@ -183,7 +183,8 @@ async def test_a_removed_member_can_no_longer_create_in_the_former_organization(
     for key in (personal_key, pre_org_key, owner_key):
         assert await _status(key) == APIKeyStatus.ACTIVE
         assert (await _create(client, key)).status_code == 201
-    assert await _graphs(tenants.member, tenants.personal) == 1
+    # The pre-organization key creates in the personal organization too.
+    assert await _graphs(tenants.member, tenants.personal) == 2
     assert await _graphs(tenants.owner, tenants.shared) == 1
 
 
