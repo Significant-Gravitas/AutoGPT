@@ -1,12 +1,21 @@
+import * as WebBrowser from "expo-web-browser";
 import { useRef, useState } from "react";
 import { Linking } from "react-native";
 
-import type { CredentialMeta } from "@/lib/api/integrations";
+import { ApiError } from "@/lib/api/client";
+import {
+  getAyrshareLink,
+  integrationKeys,
+  listCredentials,
+  type CredentialMeta,
+} from "@/lib/api/integrations";
+import { queryClient, sessionGeneration } from "@/lib/session";
 
 import type { AccountChoice } from "./components/AccountPickerSheet";
 import type { SheetTarget } from "./components/CredentialSheet/helpers";
+import type { DeviceCodeTarget } from "./components/DeviceCodeSheet/DeviceCodeSheet";
 import type { PickedCredential } from "./connectedThisRun";
-import { credentialLabel, MCP_PROVIDER, webChatURL } from "./helpers";
+import { AYRSHARE_PROVIDER, CODEX_PROVIDER, credentialLabel, MCP_PROVIDER, webChatURL } from "./helpers";
 import type { ServiceAction } from "./listHelpers";
 import { startOAuth, type OAuthOutcome } from "./oauth";
 import type { FlowOrigin, OAuthTarget } from "./oauthHelpers";
@@ -47,6 +56,7 @@ export function useConnect({ origin, onConnected }: Args) {
   const [needsPlan, setNeedsPlan] = useState(false);
   const [sheet, setSheet] = useState<SheetTarget | null>(null);
   const [choice, setChoice] = useState<AccountChoice | null>(null);
+  const [deviceLogin, setDeviceLogin] = useState<DeviceCodeTarget | null>(null);
   // Rows whose MCP sign-in failed: they go straight to the token sheet.
   const [tokens, setTokens] = useState<Record<string, TokenRow>>({});
   // Only one system sign-in sheet can be open at a time.
@@ -116,6 +126,57 @@ export function useConnect({ origin, onConnected }: Args) {
     }
   }
 
+  /**
+   * Linking social accounts happens on Ayrshare's page. Asking for the link
+   * creates the managed Ayrshare account, which is what the row gets.
+   */
+  async function linkAyrshare(rowKey: string, providerName: string) {
+    if (isSigningIn.current) return;
+    isSigningIn.current = true;
+    setBusyKey(rowKey);
+    setError(rowKey, null);
+    const startedIn = sessionGeneration();
+    try {
+      const { sso_url } = await getAyrshareLink();
+      await WebBrowser.openBrowserAsync(sso_url);
+      const credentials = await queryClient.fetchQuery({
+        queryKey: integrationKeys.credentials,
+        queryFn: listCredentials,
+      });
+      if (startedIn !== sessionGeneration()) return;
+      const account = credentials.find(
+        (credential) => credential.provider === AYRSHARE_PROVIDER && !credential.isSystem,
+      );
+      if (account) onConnected(rowKey, toPicked(account));
+      else setError(rowKey, `Couldn't find your ${providerName} account. Try again.`);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 402) setNeedsPlan(true);
+      else {
+        setError(
+          rowKey,
+          error instanceof ApiError ? error.message : `Couldn't open ${providerName}. Try again.`,
+        );
+      }
+    } finally {
+      isSigningIn.current = false;
+      setBusyKey(null);
+    }
+  }
+
+  function openDeviceLogin(target: Omit<DeviceCodeTarget, "provider">) {
+    setError(target.rowKey, null);
+    setDeviceLogin({ ...target, provider: CODEX_PROVIDER });
+  }
+
+  function closeDeviceLogin() {
+    setDeviceLogin(null);
+  }
+
+  function handleDevicePlanRequired() {
+    setDeviceLogin(null);
+    setNeedsPlan(true);
+  }
+
   function openSheet(target: SheetTarget) {
     setError(target.rowKey, null);
     setSheet(target);
@@ -137,6 +198,7 @@ export function useConnect({ origin, onConnected }: Args) {
   function handleSaved(rowKey: string, credential: CredentialMeta) {
     // A save that ends after another sheet opened leaves that one alone.
     setSheet((open) => (open?.rowKey === rowKey ? null : open));
+    setDeviceLogin((open) => (open?.rowKey === rowKey ? null : open));
     onConnected(rowKey, toPicked(credential));
   }
 
@@ -180,6 +242,12 @@ export function useConnect({ origin, onConnected }: Args) {
           serverURL: action.serverURL,
         });
         return;
+      case "ayrshare":
+        void linkAyrshare(rowKey, providerName);
+        return;
+      case "device_code":
+        openDeviceLogin({ rowKey, providerName });
+        return;
       case "web":
         openOnWeb();
     }
@@ -195,6 +263,11 @@ export function useConnect({ origin, onConnected }: Args) {
     openSheet,
     closeSheet,
     handleSaved,
+    linkAyrshare,
+    deviceLogin,
+    openDeviceLogin,
+    closeDeviceLogin,
+    handleDevicePlanRequired,
     choice,
     openChoice,
     closeChoice,

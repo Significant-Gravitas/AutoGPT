@@ -173,7 +173,7 @@ export function rowStatus(request: CredentialRequest, context: RowContext): RowS
   const method = connectMethod(request);
   const onFile = (id: string | null) => !!id && credentials.some((c) => c.id === id);
   const reconnectID = request.gap?.credentialID ?? (onFile(rejectedID) ? rejectedID : null);
-  if (reconnectID && (method === "oauth" || method === "mcp")) {
+  if (reconnectID && (method === "oauth" || method === "mcp" || method === "device_code")) {
     return { kind: "reconnect", credentialID: reconnectID };
   }
   return { kind: "connect", method };
@@ -185,6 +185,8 @@ const CONNECT_LABELS: Record<ConnectMethod, string | null> = {
   api_key: "Add key",
   user_password: "Add login",
   host_scoped: "Add",
+  ayrshare: "Link accounts",
+  device_code: "Sign in",
   web: null,
 };
 
@@ -209,6 +211,8 @@ const CONNECT_INTROS: Partial<Record<ConnectMethod, (name: string) => string>> =
   mcp: (name) => `Sign in to ${name} to continue.`,
   api_key: (name) => `Add your ${name} key to continue.`,
   user_password: (name) => `Add your ${name} login to continue.`,
+  ayrshare: (name) => `Link your social accounts on ${name} to continue.`,
+  device_code: (name) => `Sign in to ${name} to continue.`,
   web: (name) => `Finish connecting ${name} on the web.`,
 };
 

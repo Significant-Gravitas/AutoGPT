@@ -16,6 +16,8 @@ import {
 import { BottomSheet } from "../BottomSheet";
 import { ConnectionRow } from "../ConnectionRow";
 import { CredentialForm } from "../CredentialSheet/CredentialSheet";
+import { DeviceCodeForm } from "../DeviceCodeSheet/DeviceCodeSheet";
+import { cancelPendingDeviceLogin } from "../DeviceCodeSheet/useDeviceCodeSheet";
 import { ServerStep } from "./components/ServerStep";
 import { SheetSection } from "./components/SheetSection";
 import { SERVER_ROW } from "./helpers";
@@ -43,6 +45,13 @@ export function AddConnectionSheet({
   onConnected,
 }: Props) {
   const body = { sessionID, expertID, onConnected, onDone: onClose };
+
+  function handleClose() {
+    // A ChatGPT sign-in still waiting for its code ends with the sheet.
+    cancelPendingDeviceLogin();
+    onClose();
+  }
+
   function renderBody() {
     if (!isOpen) return null;
     if (initialProvider) return <ServiceBody {...body} provider={initialProvider} />;
@@ -50,7 +59,7 @@ export function AddConnectionSheet({
   }
 
   return (
-    <BottomSheet isOpen={isOpen} onClose={onClose}>
+    <BottomSheet isOpen={isOpen} onClose={handleClose}>
       {/* Mounted only while open, so each opening starts fresh. */}
       {renderBody()}
     </BottomSheet>
@@ -89,6 +98,20 @@ function SheetBody({ sessionID, expertID, onDone, onConnected, initialService }:
       <View style={styles.body}>
         <CredentialForm key={`${connect.sheet.rowKey}:${connect.sheet.kind}`} target={connect.sheet} onSaved={connect.handleSaved} />
         <Button label="Back" onPress={connect.closeSheet} variant="ghost" size="small" />
+      </View>
+    );
+  }
+
+  if (connect.deviceLogin) {
+    return (
+      <View style={styles.body}>
+        <DeviceCodeForm
+          key={connect.deviceLogin.rowKey}
+          target={connect.deviceLogin}
+          onClose={connect.closeDeviceLogin}
+          onSaved={connect.handleSaved}
+          onPlanRequired={connect.handleDevicePlanRequired}
+        />
       </View>
     );
   }

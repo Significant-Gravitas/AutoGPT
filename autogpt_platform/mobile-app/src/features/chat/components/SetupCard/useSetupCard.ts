@@ -7,6 +7,7 @@ import {
   useCardRun,
 } from "@/features/connections/connectedThisRun";
 import {
+  connectMethod,
   logoID,
   MCP_PROVIDER,
   requestHost,
@@ -188,12 +189,16 @@ export function useSetupCard({ sessionID, toolCallID, setup, replyText, isBusy, 
       return;
     }
     if (status.kind === "reconnect") {
-      signInFor(request, name, status.credentialID);
+      if (connectMethod(request) === "device_code") {
+        connect.openDeviceLogin({ rowKey: request.key, providerName: name, credentialID: status.credentialID });
+      } else signInFor(request, name, status.credentialID);
       return;
     }
     if (status.kind !== "connect") return;
     const { method } = status;
     if (method === "oauth" || method === "mcp") signInFor(request, name);
+    else if (method === "ayrshare") void connect.linkAyrshare(request.key, name);
+    else if (method === "device_code") connect.openDeviceLogin({ rowKey: request.key, providerName: name });
     else if (method === "web") connect.openOnWeb();
     else {
       connect.openSheet({

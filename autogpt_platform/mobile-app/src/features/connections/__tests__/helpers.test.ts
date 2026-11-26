@@ -91,8 +91,8 @@ describe("connectMethod", () => {
     [{ types: ["host_scoped"] }, "host_scoped"],
     [{ types: ["device_code"] }, "web"],
     [{ provider: "mcp", types: ["oauth2"] }, "mcp"],
-    [{ provider: "codex", types: ["oauth2"] }, "web"],
-    [{ provider: "ayrshare", types: ["api_key"] }, "web"],
+    [{ provider: "codex", types: ["oauth2"] }, "device_code"],
+    [{ provider: "ayrshare", types: ["api_key"] }, "ayrshare"],
   ] as [Partial<CredentialRequest>, string][])("%j → %s", (extra, method) => {
     expect(connectMethod(request(extra))).toBe(method);
   });
