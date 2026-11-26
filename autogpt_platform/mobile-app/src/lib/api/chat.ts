@@ -21,7 +21,7 @@ export interface SessionDetail {
   oldest_sequence: number | null;
 }
 
-interface SessionList {
+export interface SessionList {
   sessions: SessionSummary[];
   total: number;
 }
@@ -123,6 +123,28 @@ export function cancelSession(sessionID: string) {
     `/api/chat/sessions/${encodeURIComponent(sessionID)}/cancel`,
     { method: "POST" },
   );
+}
+
+function sessionPath(sessionID: string) {
+  return `/api/chat/sessions/${encodeURIComponent(sessionID)}`;
+}
+
+export function renameSession(sessionID: string, title: string) {
+  return apiRequest<{ status: string }>(`${sessionPath(sessionID)}/title`, {
+    method: "PATCH",
+    body: { title },
+  });
+}
+
+export function setSessionPinned(sessionID: string, isPinned: boolean) {
+  return apiRequest<{ status: string }>(`${sessionPath(sessionID)}/pinned`, {
+    method: "PATCH",
+    body: { is_pinned: isPinned },
+  });
+}
+
+export function deleteSession(sessionID: string) {
+  return apiRequest<void>(sessionPath(sessionID), { method: "DELETE" });
 }
 
 export async function getSuggestedPrompts() {

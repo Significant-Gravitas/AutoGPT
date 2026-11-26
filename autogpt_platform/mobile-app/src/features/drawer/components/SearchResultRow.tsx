@@ -1,6 +1,6 @@
 import { Pressable, Text, View } from "react-native";
 
-import { prefetchSession } from "@/lib/api/chat";
+import { prefetchSession, type SessionSummary } from "@/lib/api/chat";
 import { queryClient } from "@/lib/session";
 import { ExpertAvatar } from "@/components/ExpertAvatar";
 import { chatTitle, type ChatMatch } from "@/features/drawer/helpers";
@@ -13,9 +13,10 @@ interface Props {
   match: ChatMatch;
   isActive: boolean;
   onOpenChat: (sessionID: string) => void;
+  onLongPress: (session: SessionSummary) => void;
 }
 
-export function SearchResultRow({ match, isActive, onOpenChat }: Props) {
+export function SearchResultRow({ match, isActive, onOpenChat, onLongPress }: Props) {
   const styles = useStyles();
   const { session, group } = match;
   const time = shortTime(session.updated_at);
@@ -28,12 +29,18 @@ export function SearchResultRow({ match, isActive, onOpenChat }: Props) {
     onOpenChat(session.id);
   }
 
+  function handleLongPress() {
+    onLongPress(session);
+  }
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected: isActive }}
       onPressIn={handlePressIn}
       onPress={handlePress}
+      onLongPress={handleLongPress}
+      delayLongPress={350}
       style={({ pressed }) => [
         styles.row,
         isActive && styles.active,
