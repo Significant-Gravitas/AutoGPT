@@ -14,11 +14,18 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.block import BlockInput
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
+    NodeExecutionStats,
     SchemaField,
+)
+from backend.integrations.claude_code_relay import (
+    mint_relay_token,
+    relay_base_url,
+    revoke_relay_token,
 )
 from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.providers import ProviderName
@@ -37,10 +44,14 @@ from backend.util.sandbox_files import (
 )
 from backend.util.sandbox_metadata import SandboxMetadata, owned_by_user
 from backend.util.sandbox_output import run_sandbox_command
+from backend.util.settings import Settings
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
 
+
+# A relay token outlives its run by this much only if the run never revokes it.
+_RELAY_TOKEN_GRACE_SECONDS = 60
 
 # Claude Code runs on the user's own Anthropic key; platform credits don't
 # apply to this block.
@@ -311,7 +322,7 @@ class ClaudeCodeBlock(Block):
     async def execute_claude_code(
         self,
         e2b_api_key: str,
-        anthropic_api_key: str,
+        anthropic_credentials: APIKeyCredentials,
         prompt: str,
         timeout: int,
         setup_commands: list[str],
@@ -347,6 +358,7 @@ class ClaudeCodeBlock(Block):
         sandbox_id = ""
         # The box this run is counted on (``hold_sandbox``) while it keeps it.
         held = ""
+        token = ""
         egress_owner = EgressOwner(
             kind="block",
             id=execution_context.user_id or "anonymous",
@@ -354,6 +366,9 @@ class ClaudeCodeBlock(Block):
         )
 
         try:
+            anthropic_env, token = await _anthropic_access(
+                anthropic_credentials, execution_context.user_id, timeout
+            )
             # Either reconnect to existing sandbox or create a new one
             if existing_sandbox_id:
                 # Reconnect to existing sandbox for conversation continuation.
@@ -395,7 +410,7 @@ class ClaudeCodeBlock(Block):
                     template=self.DEFAULT_TEMPLATE,
                     api_key=e2b_api_key,
                     timeout=timeout,
-                    envs={"ANTHROPIC_API_KEY": anthropic_api_key},
+                    envs=anthropic_env,
                     metadata=SandboxMetadata.for_block(
                         execution_context, "claude_code", self.id, self.DEFAULT_TEMPLATE
                     ).as_e2b(),
@@ -482,9 +497,8 @@ class ClaudeCodeBlock(Block):
             result = await run_sandbox_command(
                 sandbox,
                 claude_command,
-                # The key picked for this run, also on a resumed box that was
-                # created with another one.
-                envs={"ANTHROPIC_API_KEY": anthropic_api_key},
+                # This run's token, also on a resumed box an earlier run made.
+                envs=anthropic_env,
                 timeout=0,  # No command timeout - let sandbox timeout handle it
             )
 
@@ -552,6 +566,8 @@ class ClaudeCodeBlock(Block):
             raise ClaudeCodeExecutionError(str(e), sandbox_id) from e
 
         finally:
+            if token:
+                await revoke_relay_token(token)
             if dispose_sandbox and sandbox:
                 await kill_sandbox(sandbox)
             elif held:
@@ -562,6 +578,12 @@ class ClaudeCodeBlock(Block):
         # Use single quotes and escape any single quotes in the prompt
         escaped = prompt.replace("'", "'\"'\"'")
         return f"'{escaped}'"
+
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        # A reused box keeps any longer lifetime it already has; only the cap bounds it.
+        if input_data.get("sandbox_id"):
+            return self.walltime_bound(None)
+        return self.walltime_bound(input_data.get("timeout"))
 
     async def run(
         self,
@@ -587,7 +609,7 @@ class ClaudeCodeBlock(Block):
                 sandbox_id,
             ) = await self.execute_claude_code(
                 e2b_api_key=e2b_credentials.api_key.get_secret_value(),
-                anthropic_api_key=anthropic_credentials.api_key.get_secret_value(),
+                anthropic_credentials=anthropic_credentials,
                 prompt=input_data.prompt,
                 timeout=input_data.timeout,
                 setup_commands=input_data.setup_commands,
@@ -618,3 +640,21 @@ class ClaudeCodeBlock(Block):
                 yield "sandbox_id", e.sandbox_id
         except Exception as e:
             yield "error", str(e)
+
+
+async def _anthropic_access(
+    credentials: APIKeyCredentials, user_id: str | None, timeout: int
+) -> tuple[dict[str, str], str]:
+    """The sandbox's Anthropic settings, and the relay token to revoke when the
+    run ends ("" when there is none)."""
+    if Settings().config.claude_code_key_in_sandbox:
+        return {"ANTHROPIC_API_KEY": credentials.api_key.get_secret_value()}, ""
+    base_url = relay_base_url()
+    if not user_id:
+        raise ValueError("Claude Code runs only for a signed-in user")
+    token = await mint_relay_token(
+        user_id,
+        credentials.id,
+        ttl_seconds=max(timeout, 0) + _RELAY_TOKEN_GRACE_SECONDS,
+    )
+    return {"ANTHROPIC_BASE_URL": base_url, "ANTHROPIC_API_KEY": token}, token

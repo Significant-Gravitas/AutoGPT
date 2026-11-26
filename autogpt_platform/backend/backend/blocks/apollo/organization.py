@@ -18,6 +18,7 @@ from backend.blocks.apollo.models import (
     PrimaryPhone,
     SearchOrganizationsRequest,
 )
+from backend.data.block import BlockInput
 from backend.data.model import CredentialsField, NodeExecutionStats, SchemaField
 
 
@@ -122,6 +123,12 @@ To find IDs, identify the values for organization_id when you call this endpoint
     ) -> list[Organization]:
         client = ApolloClient(credentials)
         return await client.search_organizations(query)
+
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        return NodeExecutionStats(
+            provider_cost=float(input_data.get("max_results") or 0),
+            provider_cost_type="items",
+        )
 
     async def run(
         self, input_data: Input, *, credentials: ApolloCredentials, **kwargs
