@@ -1072,6 +1072,31 @@ assert_internal_tooling_is_private() {
   done
 }
 
+# An MCP client finds the OAuth provider from the /_agpt issuer and MCP server
+# alone, at the discovery URLs RFC 8414 and RFC 9728 derive from them.
+assert_oauth_discovery() {
+  local body
+  local value
+  body="$(
+    curl --fail-with-body --silent --show-error --max-time 30 \
+      "${PUBLIC_URL}/.well-known/oauth-authorization-server/_agpt"
+  )"
+  value="$(json_fields "${body}" issuer)"
+  [[ "${value%/}" == "${PUBLIC_URL}/_agpt" ]] || {
+    echo "OAuth metadata names issuer ${value}, expected ${PUBLIC_URL}/_agpt" >&2
+    return 1
+  }
+  body="$(
+    curl --fail-with-body --silent --show-error --max-time 30 \
+      "${PUBLIC_URL}/.well-known/oauth-protected-resource/_agpt/api/v2/mcp"
+  )"
+  value="$(json_fields "${body}" resource)"
+  [[ "${value%/}" == "${PUBLIC_URL}/_agpt/api/v2/mcp" ]] || {
+    echo "MCP resource metadata names ${value}, expected ${PUBLIC_URL}/_agpt/api/v2/mcp" >&2
+    return 1
+  }
+}
+
 assert_runtime_config_mode() {
   local ownership_and_mode
   ownership_and_mode="$(
@@ -1363,6 +1388,7 @@ assert_redirect http://127.0.0.1:3300/copilot \
   --header 'X-Forwarded-Proto: https'
 assert_prefixed_backend_redirect
 assert_internal_tooling_is_private
+assert_oauth_discovery
 assert_request_tokens_absent_from_logs
 record_timing "phase-two-contracts"
 

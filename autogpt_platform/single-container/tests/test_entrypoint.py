@@ -358,9 +358,9 @@ class ProxyIsolationTest(unittest.TestCase):
         passes = [line for line in directives if line.startswith("proxy_pass ")]
         forwarded = [line for line in directives if "X-Forwarded-For" in line]
 
-        self.assertEqual(len(passes), 4)
+        self.assertEqual(len(passes), 6)
         self.assertEqual(
-            forwarded, ["proxy_set_header X-Forwarded-For $remote_addr;"] * 4
+            forwarded, ["proxy_set_header X-Forwarded-For $remote_addr;"] * 6
         )
         self.assertIn("include /run/autogpt/nginx/real-ip.conf;", server)
         self.assertIn("export TRUSTED_PROXIES=127.0.0.1,::1\n", entrypoint)

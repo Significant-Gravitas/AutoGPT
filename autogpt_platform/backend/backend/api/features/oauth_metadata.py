@@ -12,6 +12,7 @@ from pydantic import AnyHttpUrl
 from backend.util.settings import Settings
 
 # RFC 8414 §3.1: an issuer with no path has its document at the origin root.
+# The single-container image's issuer ends in /_agpt; its nginx maps that here.
 WELL_KNOWN_AUTHORIZATION_SERVER_PATH = "/.well-known/oauth-authorization-server"
 
 # The consent page, which posts the user's approval to `/authorize` on this API.
@@ -19,7 +20,8 @@ AUTHORIZE_PAGE_PATH = "/auth/authorize"
 
 
 def oauth_issuer() -> AnyHttpUrl:
-    """The provider's issuer: the backend origin, where its metadata is served."""
+    """The provider's issuer: the backend's public URL, which has a path where
+    a proxy serves the backend under a prefix (`/_agpt` in the single container)."""
     return AnyHttpUrl(Settings().config.platform_base_url or "https://platform.agpt.co")
 
 
