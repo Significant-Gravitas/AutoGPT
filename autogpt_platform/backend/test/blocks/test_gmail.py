@@ -292,19 +292,6 @@ class TestGmailReadBlock:
         assert result == text
 
     @pytest.mark.asyncio
-    async def test_unknown_charset_falls_back_to_utf8(self):
-        text = "Grüße"
-        msg = {
-            "id": "test_msg_unknown_charset",
-            "payload": self._part(
-                "text/plain", text.encode("utf-8"), "text/plain; charset=x-unknown"
-            ),
-        }
-
-        result = await self.gmail_block._get_email_body(msg, self.mock_service)
-        assert result == text
-
-    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "content_type",
         ["text/plain; charset=UTF-8", "text/plain; charset=x-unknown", "text/plain"],
@@ -330,6 +317,20 @@ class TestGmailReadBlock:
                 "text/plain",
                 "Grüße".encode("utf-8"),
                 f'text/plain; charset="{charset}"',
+            ),
+        }
+
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
+        assert result == "Grüße"
+
+    @pytest.mark.asyncio
+    async def test_unparseable_charset_parameter_falls_back_to_utf8(self):
+        msg = {
+            "id": "test_msg_rfc2231_charset",
+            "payload": self._part(
+                "text/plain",
+                "Grüße".encode("utf-8"),
+                "text/plain; charset*=bad%00name''x",
             ),
         }
 

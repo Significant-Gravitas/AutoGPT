@@ -349,7 +349,10 @@ class GmailBase(Block, ABC):
                     return None  # Too long to be real; the stdlib parser is slow on it
                 message = Message()
                 message["Content-Type"] = value
-                return message.get_content_charset()
+                try:
+                    return message.get_content_charset()
+                except ValueError:
+                    return None  # e.g. an RFC 2231 charset* holding a NUL
         return None
 
     def _decode_base64(self, data, charset: str | None = None):
