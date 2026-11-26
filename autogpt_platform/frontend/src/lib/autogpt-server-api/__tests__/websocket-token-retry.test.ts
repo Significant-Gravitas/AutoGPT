@@ -1,8 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth/actions", () => ({ getWebSocketToken: vi.fn() }));
+vi.mock("@/lib/auth/deployment-reload", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/deployment-reload")>()),
+  promptForNewDeployment: vi.fn(),
+  reloadForNewDeployment: vi.fn(() => true),
+}));
 
 import { getWebSocketToken } from "@/lib/auth/actions";
+import {
+  promptForNewDeployment,
+  reloadForNewDeployment,
+} from "@/lib/auth/deployment-reload";
 import {
   clearWebSocketDisconnectIntent,
   setWebSocketDisconnectIntent,
@@ -24,6 +33,8 @@ describe("WebSocket token issuance recovery", () => {
     vi.mocked(getWebSocketToken)
       .mockReset()
       .mockResolvedValue({ token: "token" });
+    vi.mocked(promptForNewDeployment).mockClear();
+    vi.mocked(reloadForNewDeployment).mockClear();
     api = new BackendAPI("http://test", "ws://test/ws");
   });
   afterEach(() => {
@@ -109,6 +120,38 @@ describe("WebSocket token issuance recovery", () => {
       expect(getWebSocketToken).toHaveBeenCalledTimes(1);
       expect(FakeWebSocket.instances).toHaveLength(0);
       expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  it.each([
+    { visibility: "hidden", handOff: reloadForNewDeployment },
+    { visibility: "visible", handOff: promptForNewDeployment },
+  ] as const)(
+    "hands a $visibility tab left on a replaced deployment to the new build instead of retrying",
+    async ({ visibility, handOff }) => {
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue(visibility);
+      const warn = vi.spyOn(console, "warn");
+      vi.mocked(getWebSocketToken).mockRejectedValue(
+        Object.assign(new Error("Server Action was not found"), {
+          name: "UnrecognizedActionError",
+        }),
+      );
+      const outcome = api.subscribeToGraphExecution(executionID).then(
+        () => "sent",
+        () => "rejected",
+      );
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(getWebSocketToken).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(handOff).toHaveBeenCalledTimes(1);
+      const other =
+        handOff === reloadForNewDeployment
+          ? promptForNewDeployment
+          : reloadForNewDeployment;
+      expect(other).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+      expect(await outcome).toBe("rejected");
+      expect(FakeWebSocket.instances).toHaveLength(0);
     },
   );
 

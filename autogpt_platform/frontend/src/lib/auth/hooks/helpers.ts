@@ -5,6 +5,7 @@ import {
   refreshSession as refreshSessionAction,
   validateSession as validateSessionAction,
 } from "../actions";
+import { isUnrecognizedActionError } from "../deployment-reload";
 import {
   clearWebSocketDisconnectIntent,
   getRedirectPath,
@@ -60,12 +61,6 @@ export async function fetchUser(): Promise<FetchUserResult> {
       isUserLoading: false,
     };
   }
-}
-
-// Next's `unstable_isUnrecognizedActionError` uses `instanceof`; the name check
-// also holds when the error crosses a module or bundle boundary.
-function isUnrecognizedActionError(error: unknown): boolean {
-  return error instanceof Error && error.name === "UnrecognizedActionError";
 }
 
 interface ValidateSessionParams {

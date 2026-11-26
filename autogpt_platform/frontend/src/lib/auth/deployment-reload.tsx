@@ -36,8 +36,14 @@ export function reloadForNewDeployment(
     }
   }
 
-  promptForRefresh(reload);
+  promptForNewDeployment(reload);
   return false;
+}
+
+// Next's `unstable_isUnrecognizedActionError` uses `instanceof`; the name check
+// also holds when the error crosses a module or bundle boundary.
+export function isUnrecognizedActionError(error: unknown): boolean {
+  return error instanceof Error && error.name === "UnrecognizedActionError";
 }
 
 // The guard goes straight to the browser's sessionStorage, not the safe
@@ -61,7 +67,10 @@ function writeReloadGuard(value: string): boolean {
   }
 }
 
-function promptForRefresh(reload: () => void): void {
+/** Asks the user to refresh, once per page load, without reloading the page. */
+export function promptForNewDeployment(
+  reload: () => void = () => window.location.reload(),
+): void {
   if (hasPromptedForRefresh) return;
   hasPromptedForRefresh = true;
   toast({
