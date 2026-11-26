@@ -177,7 +177,7 @@ export function humanizeCronExpression(cronExpression: string): string {
     !hour.includes("/")
   ) {
     const days = getDayNames(dayOfWeek);
-    return `Every ${days} at ${formatTime(hour, minute)}`;
+    if (days) return `Every ${days} at ${formatTime(hour, minute)}`;
   }
 
   // Handle custom minute intervals with other fields as * (e.g., every N minutes)
@@ -288,23 +288,33 @@ function expandCronFieldList(field: string): number[] {
   return values;
 }
 
-function getDayNames(dayOfWeek: string): string {
-  const days = expandCronFieldList(dayOfWeek);
-  const dayNames = days
-    .map((d) => {
-      const names = [
-        "Sunday",
-        "Monday",
-        "Tuesday",
-        "Wednesday",
-        "Thursday",
-        "Friday",
-        "Saturday",
-      ];
-      return names[d] || `Unknown(${d})`;
-    })
-    .join(", ");
-  return dayNames;
+function getDayNames(dayOfWeek: string): string | null {
+  const names = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+  ];
+  function weekdayNumber(value: string): number {
+    if (/^0?[0-7]$/.test(value)) return Number(value);
+    return names.findIndex(
+      (name) => name.slice(0, 3).toLowerCase() === value.toLowerCase(),
+    );
+  }
+
+  const days = new Set<string>();
+  for (const token of dayOfWeek.split(",")) {
+    const [start, end = start, extra] = token.split("-");
+    const first = weekdayNumber(start);
+    const last = weekdayNumber(end);
+    if (first < 0 || last < 0 || extra !== undefined) return null;
+    const stop = last < first ? last + 7 : last;
+    for (let day = first; day <= stop; day++) days.add(names[day % 7]);
+  }
+  return [...days].join(", ");
 }
 
 function getMonthNames(month: string): string {
