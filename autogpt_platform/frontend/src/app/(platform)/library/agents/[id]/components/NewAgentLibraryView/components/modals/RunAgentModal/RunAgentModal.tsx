@@ -261,8 +261,8 @@ export function RunAgentModal({
               // oxlint-disable-next-line design-system/no-restyle -- a sticky footer over scrolling content needs its own fill and gap
               className={`sticky bottom-0 z-10 bg-surface pt-4 ${
                 hasOverflow
-                  ? // oxlint-disable-next-line design-system/no-restyle, design-system/no-arbitrary-values -- the overflow divider and its soft top shadow have no Dialog.Footer variant or shadow token
-                    "border-t border-separator shadow-[0_-2px_8px_rgba(0,0,0,0.04)]"
+                  ? // oxlint-disable-next-line design-system/no-restyle -- the overflow divider and its soft top shadow have no Dialog.Footer variant
+                    "border-t border-separator shadow-scroll-edge"
                   : ""
               }`}
             >

@@ -20,10 +20,7 @@ export function ComposerPanelTab({ expert }: Props) {
     // of pushing it up: the thread scrolls right to the input's edge, behind
     // the tab (ChatContainer pads the list to match).
     <div className="relative z-20 -mt-[41px] flex justify-end pr-6 lg:hidden">
-      <div
-        // oxlint-disable-next-line design-system/no-arbitrary-values -- inset highlight of the tab that joins the composer; no shadow token has it
-        className="flex items-center gap-0.5 rounded-t-2xl border border-b-0 border-border-base bg-surface-hover px-1.5 pt-1 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),inset_0_5px_6px_-4px_rgba(255,255,255,0.7)]"
-      >
+      <div className="flex items-center gap-0.5 rounded-t-2xl border border-b-0 border-border-base bg-surface-hover px-1.5 pt-1 shadow-sheen">
         <WorkspaceFilesTrigger className={buttonClassName} />
         {expert && (
           <IntegrationsToggle

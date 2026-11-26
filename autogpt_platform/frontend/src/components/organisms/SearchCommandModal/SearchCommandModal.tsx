@@ -241,10 +241,7 @@ export function SearchCommandModal({
                 data-slot="search-command-modal-hint"
                 className="flex items-center gap-1.5"
               >
-                <span
-                  // oxlint-disable-next-line design-system/no-arbitrary-values -- key-cap shadow, no shadow token holds it
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-border-base bg-surface shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
-                >
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-border-base bg-surface shadow-keycap">
                   <Text
                     variant="caption-sm"
                     as="kbd"
@@ -255,10 +252,7 @@ export function SearchCommandModal({
                     ↑
                   </Text>
                 </span>
-                <span
-                  // oxlint-disable-next-line design-system/no-arbitrary-values -- key-cap shadow, no shadow token holds it
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-border-base bg-surface shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
-                >
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-border-base bg-surface shadow-keycap">
                   <Text
                     variant="caption-sm"
                     as="kbd"
@@ -282,10 +276,7 @@ export function SearchCommandModal({
                 data-slot="search-command-modal-hint"
                 className="flex items-center gap-1.5"
               >
-                <span
-                  // oxlint-disable-next-line design-system/no-arbitrary-values -- key-cap shadow, no shadow token holds it
-                  className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-border-base bg-surface px-1 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
-                >
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-border-base bg-surface px-1 shadow-keycap">
                   <Text
                     variant="caption-sm"
                     as="kbd"
@@ -310,10 +301,7 @@ export function SearchCommandModal({
               data-slot="search-command-modal-hint"
               className="flex items-center gap-1.5"
             >
-              <span
-                // oxlint-disable-next-line design-system/no-arbitrary-values -- key-cap shadow, no shadow token holds it
-                className="inline-flex h-5 items-center justify-center rounded-md border border-border-base bg-surface px-1.5 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
-              >
+              <span className="inline-flex h-5 items-center justify-center rounded-md border border-border-base bg-surface px-1.5 shadow-keycap">
                 <Text
                   variant="caption-sm"
                   as="kbd"

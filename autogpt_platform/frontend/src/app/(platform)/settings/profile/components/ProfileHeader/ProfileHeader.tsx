@@ -79,8 +79,8 @@ export function ProfileHeader({
         aria-label="Change profile photo"
         className="group relative h-[112px] w-[112px] shrink-0 cursor-pointer rounded-full transition-transform duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-brand/80 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-wait"
       >
-        {/* oxlint-disable-next-line design-system/no-restyle, design-system/no-arbitrary-values -- the profile photo floats on a soft shadow with a white rim */}
-        <Avatar className="h-[112px] w-[112px] shadow-[0_8px_28px_-12px_rgba(15,15,20,0.18)] ring-2 ring-surface">
+        {/* oxlint-disable-next-line design-system/no-restyle -- the profile photo floats on a soft shadow with a white rim */}
+        <Avatar className="h-[112px] w-[112px] shadow-drop ring-2 shadow-scrim/18 ring-surface">
           <AvatarImage
             src={avatarUrl}
             alt={name || "Profile"}
@@ -127,8 +127,7 @@ export function ProfileHeader({
               duration: reduceMotion ? 0 : 0.32,
               ease: BADGE_ARC_EASE,
             }}
-            // oxlint-disable-next-line design-system/no-arbitrary-values -- the edit badge's lift shadow has no token
-            className="absolute right-1 bottom-1 flex h-9 w-9 origin-center items-center justify-center rounded-full border-2 border-surface bg-surface text-foreground-base shadow-[0_3px_10px_-2px_rgba(15,15,20,0.25)]"
+            className="absolute right-1 bottom-1 flex h-9 w-9 origin-center items-center justify-center rounded-full border-2 border-surface bg-surface text-foreground-base shadow-md shadow-scrim/25"
           >
             <Icon icon={PencilIcon} size={16} />
           </motion.span>

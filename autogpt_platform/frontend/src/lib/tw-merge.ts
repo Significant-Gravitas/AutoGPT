@@ -84,6 +84,31 @@ export const twMerge = extendTailwindMerge({
         "2xlarge",
         "pill",
       ],
+      // The named shadow steps in tokens/shape.css, so `shadow-lift` replaces
+      // `shadow-sm` and survives next to a colour (`shadow-brand/45`), as
+      // the arbitrary shadows they replaced did. `subtle` and `message-table`
+      // are left out: tailwind-merge has always read them as colours, and
+      // which class wins next to them is left to stylesheet order.
+      shadow: [
+        "lift",
+        "popover-raised",
+        "composer",
+        "drop",
+        "scroll-edge",
+        "keycap",
+        "gloss",
+        "sheen",
+        "outline",
+        "halo",
+        "spotlight",
+        "glow",
+        "status-glow",
+        "beacon",
+        "chip-glow-brand",
+        "chip-glow-warning",
+        "chip-glow-sky",
+        "chip-glow-neutral",
+      ],
     },
     classGroups: {
       "font-size": [

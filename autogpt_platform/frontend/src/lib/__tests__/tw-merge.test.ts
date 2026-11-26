@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { cn } from "@/lib/utils";
 
@@ -28,5 +30,51 @@ describe("cn() merges classes as tailwind-merge 2 did", () => {
     ["p-2 p-4", "p-4"],
   ])("cn(%j) is %j", (input, expected) => {
     expect(cn(input)).toBe(expected);
+  });
+});
+
+// Tailwind's own shadow steps, which tailwind-merge knows already, and the
+// two it has always read as colours (see tw-merge.ts).
+const UNREGISTERED_SHADOWS = new Set([
+  "",
+  "sm",
+  "md",
+  "lg",
+  "xl",
+  "2xl",
+  "inner",
+  "subtle",
+  "message-table",
+]);
+
+function shapeShadowSteps() {
+  const css = readFileSync(
+    path.resolve(__dirname, "../../app/tokens/shape.css"),
+    "utf8",
+  ).replace(/\/\*[\s\S]*?\*\//g, "");
+  const theme = /@theme[^{]*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+  return [...theme.matchAll(/--shadow(?:-([a-z0-9-]+))?:/g)].map(
+    ([, step]) => step ?? "",
+  );
+}
+
+describe("cn() knows the named shadow steps", () => {
+  const named = shapeShadowSteps().filter(
+    (step) => !UNREGISTERED_SHADOWS.has(step),
+  );
+
+  it("has steps to check", () => {
+    expect(named).toContain("lift");
+  });
+
+  it.each(named)("shadow-%s replaces another shadow step", (step) => {
+    expect(cn("shadow-sm", `shadow-${step}`)).toBe(`shadow-${step}`);
+    expect(cn(`shadow-${step}`, "shadow-md")).toBe("shadow-md");
+  });
+
+  it.each(named)("shadow-%s survives next to a shadow colour", (step) => {
+    expect(cn(`shadow-${step}`, "shadow-brand/45")).toBe(
+      `shadow-${step} shadow-brand/45`,
+    );
   });
 });
