@@ -176,11 +176,7 @@ function StatRow({ items }: { items: StatItem[] }) {
             <Text
               variant="body"
               weight="medium"
-              tone={item.tone === "warn" ? undefined : "emphasis"}
-              className={
-                // oxlint-disable-next-line design-system/no-restyle -- Text has no orange tone (deferred)
-                item.tone === "warn" ? "text-orange-foreground" : undefined
-              }
+              tone={item.tone === "warn" ? "orange" : "emphasis"}
             >
               {item.value}
             </Text>

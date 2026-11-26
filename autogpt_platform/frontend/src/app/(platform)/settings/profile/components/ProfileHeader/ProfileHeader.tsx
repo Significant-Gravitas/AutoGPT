@@ -99,7 +99,6 @@ export function ProfileHeader({
           className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-scrim/45 text-foreground-on-color backdrop-blur-[2px]"
         >
           {isUploading ? (
-            // oxlint-disable-next-line design-system/no-restyle -- the upload glyph spins while the photo uploads
             <Icon icon={Loading03Icon} size={26} spin />
           ) : (
             <Icon icon={Camera01Icon} size={26} />

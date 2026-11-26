@@ -10,6 +10,7 @@ interface Props {
   previewLimit?: number;
   variant?: ShowMoreTextVariant;
   weight?: TextProps["weight"];
+  tone?: TextProps["tone"];
   className?: string;
   toggleClassName?: string;
   defaultExpanded?: boolean;
@@ -20,6 +21,7 @@ export function ShowMoreText({
   previewLimit = 100,
   variant = "body",
   weight,
+  tone,
   className,
   toggleClassName,
   defaultExpanded = false,
@@ -37,6 +39,7 @@ export function ShowMoreText({
       <Text
         variant={variant}
         weight={weight}
+        tone={tone}
         data-slot="show-more-text"
         className={cn(className)}
       >
@@ -49,6 +52,7 @@ export function ShowMoreText({
     <Text
       variant={variant}
       weight={weight}
+      tone={tone}
       data-slot="show-more-text"
       className={cn("flex flex-wrap items-center", className)}
     >

@@ -114,18 +114,28 @@ const DropdownMenuContent = React.forwardRef<
 ));
 DropdownMenuContent.displayName = DropdownMenuPrimitive.Content.displayName;
 
+// A destructive item (delete, fire), red with a red wash on focus: `danger`
+// in the brighter red, `error-strong` in the darker.
+const ITEM_TONES = {
+  danger: "text-error-hover focus:bg-error-surface focus:text-error-foreground",
+  "error-strong":
+    "text-error-foreground focus:bg-error-surface focus:text-error-foreground",
+} as const;
+
 const DropdownMenuItem = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> & {
     inset?: boolean;
+    tone?: keyof typeof ITEM_TONES;
   }
->(({ className, inset, ...props }, ref) => (
+>(({ className, inset, tone, ...props }, ref) => (
   <DropdownMenuPrimitive.Item
     ref={ref}
     data-slot="menu-item"
     className={cn(
       "relative flex cursor-pointer items-center rounded-sm px-2 py-1.5 text-body leading-5 transition-colors outline-none select-none focus:bg-surface-hover focus:text-foreground-strong data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [@media(pointer:coarse)]:py-3",
       inset && "pl-8",
+      tone && ITEM_TONES[tone],
       className,
     )}
     {...props}
@@ -188,7 +198,8 @@ const DropdownMenuRadioItem = React.forwardRef<
           aria-hidden
           icon={CircleIcon}
           data-slot="menu-radio-item-icon"
-          className="h-1.5 w-1.5 fill-current"
+          fill="currentColor"
+          className="h-1.5 w-1.5"
         />
       </DropdownMenuPrimitive.ItemIndicator>
     </span>

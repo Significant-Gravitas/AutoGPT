@@ -22,7 +22,7 @@ interface Props {
 // Continue drives the same submit (Enter still works via the form).
 export function InlineApiKeyForm({ form, providerName, onSubmit }: Props) {
   return (
-    <Form form={form} onSubmit={onSubmit} className="space-y-2.5">
+    <Form form={form} onSubmit={onSubmit} spacing="compact">
       <FormField
         control={form.control}
         name="title"

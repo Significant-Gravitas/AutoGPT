@@ -123,7 +123,7 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                   Run Outputs
                 </Text>
               </SheetTitle>
-              <SheetDescription className="mt-1 text-foreground-tertiary">
+              <SheetDescription className="mt-1">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="rounded-md bg-yellow/30 px-2 py-0.5 text-yellow-foreground">
                     <Text
@@ -165,13 +165,13 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                         </Text>
                       </Label>
                       {group.metadata.description && (
-                        <Label className="mt-1 block text-foreground-secondary">
+                        <Label className="mt-1 block">
                           <Text
                             variant="body"
                             weight="medium"
                             leading="5"
                             as="span"
-                            tone="inherit"
+                            tone="secondary"
                           >
                             {group.metadata.description}
                           </Text>

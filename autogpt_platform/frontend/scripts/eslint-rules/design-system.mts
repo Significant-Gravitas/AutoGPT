@@ -32,16 +32,28 @@ import { RAW_TEXT_SIZE, rawTextSizeAdvice } from "../ds/text-size-scale.ts";
 // they share the baseline and so their raw-colour and arbitrary-value
 // messages can name the design token with the same value.
 
-// components.json keeps tailwind.css at globals.css, the stylesheet the app
-// loads and the shadcn CLI writes to. It has no `@import "tailwindcss"`
-// (Tailwind 3 compat), so @shadcn/lint reads the classes Tailwind knows from
-// tailwind-grammar.css instead and says so on every run; that is the setup,
-// not a fault, so the one notice is dropped.
-const EXPECTED_NOTICE =
-  "[@shadcn/lint] components.json sets tailwind.css to src/app/globals.css, which does not import Tailwind. Using src/app/tailwind-grammar.css";
+// Notices @shadcn/lint prints on every run about the setup, not a fault, so
+// they are dropped:
+// - components.json keeps tailwind.css at globals.css, the stylesheet the app
+//   loads and the shadcn CLI writes to. It has no `@import "tailwindcss"`
+//   (Tailwind 3 compat), so @shadcn/lint reads the classes Tailwind knows
+//   from tailwind-grammar.css instead.
+// - The Skeleton contract in .oxlintrc.json allows `rounded-pill`, a radius
+//   step of shape.css. @shadcn/lint's class grammar is cn's bundled one, which
+//   has no `pill` step and no way to add one short of installing cn, so it
+//   says the entry matches only the class of that exact name, which is what
+//   the entry is for.
+const EXPECTED_NOTICES = [
+  "[@shadcn/lint] components.json sets tailwind.css to src/app/globals.css, which does not import Tailwind. Using src/app/tailwind-grammar.css",
+  '[@shadcn/lint] Contract entry "rounded-pill" is not a category',
+];
 const warn = console.warn;
 console.warn = (...args: unknown[]) => {
-  if (typeof args[0] === "string" && args[0].startsWith(EXPECTED_NOTICE))
+  const first = args[0];
+  if (
+    typeof first === "string" &&
+    EXPECTED_NOTICES.some((notice) => first.startsWith(notice))
+  )
     return;
   warn(...args);
 };

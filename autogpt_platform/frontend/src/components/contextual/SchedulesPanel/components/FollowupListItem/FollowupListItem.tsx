@@ -48,11 +48,7 @@ export function FollowupListItem({ followup }: Props) {
   const detailContent = (
     <>
       <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-separator bg-warning-surface">
-        <Icon
-          icon={Comment01Icon}
-          size={18}
-          className="text-yellow-foreground"
-        />
+        <Icon icon={Comment01Icon} size={18} tone="yellow" />
       </div>
       <div className="flex min-w-0 flex-col gap-1">
         <Text

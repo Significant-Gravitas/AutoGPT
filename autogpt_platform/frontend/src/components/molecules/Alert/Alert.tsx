@@ -27,6 +27,12 @@ const alertVariants = cva(
   },
 );
 
+// `builder`: the builder's banners, on a node or over the canvas, rounder
+// than one in the flow of a page.
+const SHAPES = {
+  builder: "rounded-xlarge",
+} as const;
+
 const variantIcons = {
   default: createIconComponent(InformationCircleIcon),
   warning: createIconComponent(Alert02Icon),
@@ -39,10 +45,14 @@ interface AlertProps
   children: React.ReactNode;
   /** Override the default variant icon (e.g. a domain-specific icon). */
   icon?: React.ComponentType<{ className?: string }>;
+  shape?: keyof typeof SHAPES;
 }
 
 const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
-  ({ className, variant = "default", icon, children, ...props }, ref) => {
+  (
+    { className, variant = "default", icon, shape, children, ...props },
+    ref,
+  ) => {
     const currentVariant = variant || "default";
     const IconComponent = icon ?? variantIcons[currentVariant];
 
@@ -51,7 +61,11 @@ const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
         ref={ref}
         role="alert"
         data-slot="alert"
-        className={cn(alertVariants({ variant: currentVariant }), className)}
+        className={cn(
+          alertVariants({ variant: currentVariant }),
+          shape && SHAPES[shape],
+          className,
+        )}
         {...props}
       >
         <IconComponent

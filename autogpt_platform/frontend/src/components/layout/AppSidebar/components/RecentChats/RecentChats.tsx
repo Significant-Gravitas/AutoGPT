@@ -56,7 +56,7 @@ export function RecentChats() {
   if (isLoading) {
     return (
       <div className="flex justify-center py-4">
-        <LoadingSpinner size="small" className="text-foreground-tertiary" />
+        <LoadingSpinner size="small" tone="muted" />
       </div>
     );
   }

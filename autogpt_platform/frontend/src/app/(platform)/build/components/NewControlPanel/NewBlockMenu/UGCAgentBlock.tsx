@@ -145,19 +145,24 @@ const UGCAgentBlockSkeleton: React.FC<{ className?: string }> = ({
   return (
     <Skeleton
       className={cn(
-        "flex h-[4.375rem] w-full min-w-[7.5rem] animate-pulse items-center justify-start gap-3 rounded-xl bg-surface-hover p-2.5 pr-3.5",
+        "flex h-[4.375rem] w-full min-w-[7.5rem] items-center justify-start rounded-xl",
         className,
       )}
     >
-      <Skeleton className="h-[3.125rem] w-[5.625rem] rounded-md bg-surface-active" />
-      <div className="flex flex-1 flex-col items-start gap-0.5">
-        <Skeleton className="h-[1.375rem] w-24 rounded bg-surface-active" />
-        <div className="flex items-center gap-1">
-          <Skeleton className="h-5 w-16 rounded bg-surface-active" />
-          <Skeleton className="h-5 w-16 rounded bg-surface-active" />
+      <div className="flex w-full items-center justify-start gap-3 p-2.5 pr-3.5">
+        <Skeleton
+          variant="nested"
+          className="h-[3.125rem] w-[5.625rem] rounded-md"
+        />
+        <div className="flex flex-1 flex-col items-start gap-0.5">
+          <Skeleton variant="nested" className="h-[1.375rem] w-24 rounded" />
+          <div className="flex items-center gap-1">
+            <Skeleton variant="nested" className="h-5 w-16 rounded" />
+            <Skeleton variant="nested" className="h-5 w-16 rounded" />
+          </div>
         </div>
+        <Skeleton variant="nested" className="h-7 w-7 rounded-lg" />
       </div>
-      <Skeleton className="h-7 w-7 rounded-lg bg-surface-active" />
     </Skeleton>
   );
 };

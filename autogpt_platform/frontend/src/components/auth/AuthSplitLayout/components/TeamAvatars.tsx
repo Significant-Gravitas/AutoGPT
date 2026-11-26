@@ -2,9 +2,6 @@ import { cn } from "@/lib/utils";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 
-const AVATAR_CLASS =
-  "rounded-full border border-border-base ring-2 ring-surface-muted";
-
 const FLANK = [
   {
     name: "Maya",
@@ -28,12 +25,12 @@ export function TeamAvatars() {
             name={expert.name}
             avatarUrl={expert.avatarUrl}
             size={44}
-            className={AVATAR_CLASS}
+            frame="stacked"
           />
         </span>
       ))}
       <span className="absolute top-0 left-1/2 z-raised -translate-x-1/2">
-        <AutopilotAvatar size={52} className={AVATAR_CLASS} />
+        <AutopilotAvatar size={52} frame="stacked" />
       </span>
     </div>
   );

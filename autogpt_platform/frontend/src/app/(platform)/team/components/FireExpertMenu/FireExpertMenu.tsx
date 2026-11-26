@@ -31,13 +31,11 @@ export function FireExpertMenu({ expertName, onFire, testId }: Props) {
         />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={6}>
-        <DropdownMenuItem
-          onSelect={onFire}
-          // oxlint-disable-next-line design-system/no-restyle -- DropdownMenuItem has no destructive variant (src/components is P9's)
-          className="flex cursor-pointer items-center gap-2 text-error-foreground focus:bg-error-surface focus:text-error-foreground"
-        >
-          <Icon icon={Logout03Icon} size={14} />
-          Fire {expertName}
+        <DropdownMenuItem onSelect={onFire} tone="error-strong">
+          <span className="flex items-center gap-2">
+            <Icon icon={Logout03Icon} size={14} />
+            Fire {expertName}
+          </span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

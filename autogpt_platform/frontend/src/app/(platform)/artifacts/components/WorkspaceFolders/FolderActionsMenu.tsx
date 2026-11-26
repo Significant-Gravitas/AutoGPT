@@ -76,8 +76,7 @@ export function FolderActionsMenu({
             e.preventDefault();
             onDelete();
           }}
-          // oxlint-disable-next-line design-system/no-restyle -- a destructive item; the menu molecule has no destructive variant
-          className="text-error-hover focus:bg-error-surface focus:text-error-foreground"
+          tone="danger"
           data-testid="folder-delete-menu"
         >
           <Icon icon={Delete02Icon} size={16} className="mr-2" />

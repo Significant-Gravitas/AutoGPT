@@ -45,9 +45,13 @@ type CustomProps = {
     | "relaxed"
     | "inherit"
     | "4"
+    | "4.5"
     | "5"
     | "6"
-    | "8";
+    | "7"
+    | "8"
+    | "9"
+    | "10";
   /** Below md, renders at body (14/20) or large (16/24) instead. */
   narrowSize?: "body" | "large";
   align?: "left" | "center" | "right" | "start" | "end";

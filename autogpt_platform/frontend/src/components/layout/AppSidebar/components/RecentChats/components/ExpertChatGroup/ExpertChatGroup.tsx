@@ -143,7 +143,7 @@ export function ExpertChatGroup({
         </GroupBody>
       )}
 
-      <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
+      <CollapsibleContent motion="height" className="overflow-hidden">
         <GroupBody>
           <SidebarMenu>{visibleSessions.map(renderItem)}</SidebarMenu>
           {hasMore && (
@@ -223,18 +223,14 @@ export function ExpertGroupIdentity({
   return (
     <>
       {isAutopilot ? (
-        <AutopilotAvatar
-          size={32}
-          transparent
-          className="rounded-full border border-border-base"
-        />
+        <AutopilotAvatar size={32} transparent frame="outline" />
       ) : (
         <ExpertAvatar
           name={label}
           avatarUrl={avatarUrl}
           color={color}
           size={32}
-          className="rounded-full border border-border-base"
+          frame="outline"
         />
       )}
       <ExpertIdentityDetails
@@ -291,12 +287,7 @@ function NewChatIcon() {
   const { pending } = useLinkStatus();
 
   if (pending) {
-    return (
-      <LoadingSpinner
-        size="small"
-        className="!size-4 text-foreground-tertiary"
-      />
-    );
+    return <LoadingSpinner size="small" tone="muted" className="!size-4" />;
   }
 
   return <Icon icon={PlusSignIcon} className="size-4 max-md:size-5" />;

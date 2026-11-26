@@ -78,7 +78,7 @@ function PlatformShell({ children, persistedSidebarOpen }: Props) {
         }
       >
         <TourSidebar variant="marketplace" />
-        <SidebarInset className="bg-surface-muted">
+        <SidebarInset surface="muted">
           <div className="flex shrink-0 items-center px-4 pt-4 md:hidden">
             <SidebarTrigger />
           </div>
@@ -107,7 +107,7 @@ function PlatformShell({ children, persistedSidebarOpen }: Props) {
         {showChangelog && !isFirstRunTourOpen ? <ChangelogPopup /> : null}
         <FirstRunTour />
         <ContextualTips />
-        <SidebarInset className="bg-surface-muted">
+        <SidebarInset surface="muted">
           <header
             className={cn(
               "flex shrink-0 items-center pt-6 pb-4",

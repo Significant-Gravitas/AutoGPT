@@ -5,6 +5,8 @@ import { tones } from "@/components/styles/tones";
 import { cn } from "@/lib/utils";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { cleanup, render } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import type React from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -193,13 +195,29 @@ function html(element: React.ReactElement) {
   return result;
 }
 
+// A class the atom renamed to the role that means it, with the same colour
+// in the light theme (checked below against theme.css): old class -> new.
+const SAME_COLOUR_RENAMES: Record<string, string> = {
+  // The loading fill is a fill, not text.
+  "bg-foreground-tertiary": "bg-fill-soft",
+};
+
 // disabled:opacity-1 is not a Tailwind class and generated nothing; the
 // new atom no longer writes it.
 function classSet(className: string) {
   return className
     .split(/\s+/)
     .filter((name) => name && name !== "disabled:opacity-1")
+    .map((name) => SAME_COLOUR_RENAMES[name] ?? name)
     .sort();
+}
+
+function lightTriplet(role: string) {
+  const css = readFileSync(
+    path.resolve(__dirname, "../../src/app/tokens/theme.css"),
+    "utf8",
+  );
+  return new RegExp(`--color-${role}:\\s*([\\d ]+);`).exec(css)?.[1];
 }
 
 function compare(old: OldButtonStyle, extra: Record<string, unknown>) {
@@ -217,6 +235,17 @@ function compare(old: OldButtonStyle, extra: Record<string, unknown>) {
 function isCompact(style: OldButtonStyle) {
   return style.variant?.startsWith("compact-") ?? false;
 }
+
+describe("SAME_COLOUR_RENAMES", () => {
+  it.each(Object.entries(SAME_COLOUR_RENAMES))(
+    "%s and %s render the same light colour",
+    (from, to) => {
+      const role = (name: string) => name.replace(/^[a-z]+-/, "");
+      expect(lightTriplet(role(to))).toBeDefined();
+      expect(lightTriplet(role(to))).toBe(lightTriplet(role(from)));
+    },
+  );
+});
 
 describe("migrateButtonStyle", () => {
   it.each(USED.map((style) => [JSON.stringify(style), style] as const))(

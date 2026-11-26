@@ -32,11 +32,7 @@ export function ReadyView({
     : (serverName ?? `this ${platform} ${serverNoun}`);
 
   return (
-    <AuthCard
-      title={title}
-      // oxlint-disable-next-line design-system/no-restyle -- AuthCard has no roomy size; keeps today's p-8 padding and gap-6
-      className="max-w-[38rem] gap-6 p-8"
-    >
+    <AuthCard title={title} size="roomy" className="max-w-[38rem]">
       <div className="flex w-full flex-col items-center gap-6">
         <div className="w-full rounded-xl bg-surface-hover px-6 py-5 text-left">
           <Text variant="body" weight="medium">

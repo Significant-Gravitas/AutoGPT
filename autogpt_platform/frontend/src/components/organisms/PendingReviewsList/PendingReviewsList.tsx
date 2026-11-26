@@ -287,7 +287,7 @@ export function PendingReviewsList({
               <Text
                 variant="large"
                 weight="semibold"
-                className="overflow-hidden text-ellipsis text-foreground-base"
+                className="overflow-hidden text-ellipsis"
               >
                 Your review is needed
               </Text>

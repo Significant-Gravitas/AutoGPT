@@ -146,10 +146,11 @@ export function EditAgentForm({
             collapsible
             value={openAccordion}
             onValueChange={setOpenAccordion}
-            className="overflow-hidden rounded-xl border border-border-base bg-surface shadow-subtle [&>*+*]:border-t [&>*+*]:border-border-base"
+            variant="card"
+            className="overflow-hidden"
           >
-            <AccordionItem value="basics" className="border-0 px-4">
-              <AccordionTrigger className="hover:no-underline">
+            <AccordionItem value="basics">
+              <AccordionTrigger>
                 <Text
                   variant="body"
                   weight="medium"
@@ -166,7 +167,7 @@ export function EditAgentForm({
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pt-0 pb-4">
+              <AccordionContent>
                 <div className="grid gap-x-4 sm:grid-cols-2">
                   <FormField
                     control={form.control}
@@ -233,8 +234,8 @@ export function EditAgentForm({
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="thumbnails" className="border-0 px-4">
-              <AccordionTrigger className="hover:no-underline">
+            <AccordionItem value="thumbnails">
+              <AccordionTrigger>
                 <Text
                   variant="body"
                   weight="medium"
@@ -251,7 +252,7 @@ export function EditAgentForm({
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pt-0 pb-4">
+              <AccordionContent>
                 <ThumbnailImages
                   agentId={submission.graph_id}
                   onImagesChange={handleImagesChange}
@@ -264,8 +265,8 @@ export function EditAgentForm({
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="experience" className="border-0 px-4">
-              <AccordionTrigger className="hover:no-underline">
+            <AccordionItem value="experience">
+              <AccordionTrigger>
                 <Text
                   variant="body"
                   weight="medium"
@@ -282,7 +283,7 @@ export function EditAgentForm({
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pt-0 pb-4">
+              <AccordionContent>
                 <FormField
                   control={form.control}
                   name="description"

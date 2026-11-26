@@ -66,7 +66,8 @@ export function AccountMenuActivityRow() {
         side="right"
         align="end"
         sideOffset={12}
-        className="w-80 rounded-2xl border border-border-base p-0 shadow-lg"
+        variant="menu"
+        className="w-80"
         data-testid="account-menu-activity-popover"
       >
         <ActivityDropdown

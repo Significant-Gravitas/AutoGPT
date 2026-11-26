@@ -41,13 +41,15 @@ export function WalletEarnCredits({ groups, completedSteps }: Props) {
           open={open}
           available={available}
         />
-        <CollapsibleContent forceMount hidden={!open} className="px-2 pb-3">
-          {earnGroups.map((group) => (
-            <EarnGroupSection
-              key={`${group.key}:${group.defaultOpen}`}
-              group={group}
-            />
-          ))}
+        <CollapsibleContent forceMount hidden={!open}>
+          <div className="px-2 pb-3">
+            {earnGroups.map((group) => (
+              <EarnGroupSection
+                key={`${group.key}:${group.defaultOpen}`}
+                group={group}
+              />
+            ))}
+          </div>
         </CollapsibleContent>
       </section>
     </CollapsibleRoot>

@@ -63,11 +63,8 @@ export default function AuthFeedback({
       {/* Cloud-specific help */}
       {showCloudHelp &&
         (isSignupFlow ? (
-          <Card
-            variant="outlined"
-            className="overflow-hidden rounded-lg border border-border-base bg-surface shadow-sm"
-          >
-            <CardContent className="p-0">
+          <Card variant="panel" className="overflow-hidden">
+            <CardContent padding="none">
               <div className="divide-y divide-separator">
                 <Text
                   variant="body"
@@ -96,11 +93,8 @@ export default function AuthFeedback({
             </CardContent>
           </Card>
         ) : (
-          <Card
-            variant="outlined"
-            className="overflow-hidden rounded-lg border border-border-base bg-surface shadow-sm"
-          >
-            <CardContent className="p-0">
+          <Card variant="panel" className="overflow-hidden">
+            <CardContent padding="none">
               <div className="divide-y divide-separator">
                 <HelpItem
                   title="Having trouble logging in?"
@@ -115,10 +109,7 @@ export default function AuthFeedback({
 
       {/* Local-specific help */}
       {showLocalHelp && (
-        <Card
-          variant="outlined"
-          className="w-full overflow-hidden rounded-lg border border-border-base bg-surface shadow-sm"
-        >
+        <Card variant="panel" className="w-full overflow-hidden">
           <div className="w-full divide-y divide-separator">
             <HelpItem
               title="Having trouble getting AutoGPT running locally?"

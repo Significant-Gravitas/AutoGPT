@@ -32,15 +32,20 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
       data-tutorial-id={`node-output`}
       className="rounded-b-xl border-t border-border-base px-4 py-2"
     >
-      <Accordion type="single" collapsible defaultValue="node-output">
-        <AccordionItem value="node-output" className="border-none">
-          <AccordionTrigger className="py-2 hover:no-underline">
+      <Accordion
+        type="single"
+        collapsible
+        defaultValue="node-output"
+        variant="plain"
+      >
+        <AccordionItem value="node-output">
+          <AccordionTrigger>
             <Text variant="body" weight="semibold" tone="body">
               Node Output
             </Text>
           </AccordionTrigger>
-          <AccordionContent className="pt-2">
-            <div className="flex max-w-[350px] flex-col gap-4">
+          <AccordionContent>
+            <div className="flex max-w-[350px] flex-col gap-4 pt-2">
               <div className="space-y-2">
                 <Text variant="small" weight="medium">
                   Input

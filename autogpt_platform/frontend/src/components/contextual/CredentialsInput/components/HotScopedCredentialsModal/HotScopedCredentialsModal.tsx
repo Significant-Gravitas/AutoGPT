@@ -270,7 +270,7 @@ export function HostScopedCredentialsModal({
                   Headers
                 </Text>
               </FormLabel>
-              <FormDescription className="max-w-md text-body-sm leading-inherit">
+              <FormDescription size="body-sm" className="max-w-md">
                 Add sensitive headers (like Authorization, X-API-Key) that
                 should be automatically included in requests to the specified
                 host.

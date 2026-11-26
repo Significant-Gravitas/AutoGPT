@@ -70,7 +70,7 @@ export function FilterSheet({
               </Button>
             </div>
 
-            <Separator className="h-[1px] w-full text-foreground-disabled" />
+            <Separator className="h-[1px] w-full" />
 
             {/* Category section */}
             <div className="space-y-4 px-5">
@@ -87,7 +87,7 @@ export function FilterSheet({
                       onCheckedChange={() =>
                         handleLocalCategoryChange(category.key)
                       }
-                      className="border border-border-strong shadow-none data-[state=checked]:border-none data-[state=checked]:bg-accent-strong data-[state=checked]:text-foreground-on-color"
+                      tone="accent"
                     />
                     <Text
                       variant="body"
@@ -114,7 +114,7 @@ export function FilterSheet({
                       id={`creator-${creator}`}
                       checked={localCreators.includes(creator)}
                       onCheckedChange={() => handleLocalCreatorChange(creator)}
-                      className="border border-border-strong shadow-none data-[state=checked]:border-none data-[state=checked]:bg-accent-strong data-[state=checked]:text-foreground-on-color"
+                      tone="accent"
                     />
                     <Text
                       variant="body"

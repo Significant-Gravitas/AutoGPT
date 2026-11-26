@@ -38,6 +38,14 @@ export const tones = {
   // Green on a dark fill (toast, terminal), where `success` would lose its
   // contrast.
   "success-light": "text-success-inverse",
+  // Red on a dark fill (a tooltip), as `success-light`.
+  "error-light": "text-error-inverse", // #F26969
+  // Accent hues that are not a status: a follow-up's yellow, a cost
+  // warning's orange.
+  yellow: "text-yellow-foreground", // #AE8800
+  orange: "text-orange-foreground", // #E77B00
+  // The builder's node handles.
+  handle: "text-handle", // #9CA3AF
 } as const;
 
 export type Tone = keyof typeof tones;

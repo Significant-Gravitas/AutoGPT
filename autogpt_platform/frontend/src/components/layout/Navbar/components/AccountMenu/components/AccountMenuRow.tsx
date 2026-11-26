@@ -45,7 +45,7 @@ function RowBody({
       {pending ? (
         <LoadingSpinner
           size="small"
-          className="relative z-raised text-current"
+          className="relative z-raised"
           aria-hidden="true"
         />
       ) : external ? (

@@ -107,7 +107,7 @@ function OfferPrice({
           as="span"
           aria-label={presentation.price}
           tone="emphasis"
-          className="leading-9"
+          leading="9"
         >
           {presentation.price}
         </Text>
@@ -160,12 +160,7 @@ function OfferFeatures({
               tone={isTeam ? "muted" : "brand"}
             />
           </span>
-          <Text
-            variant="small"
-            as="span"
-            tone="primary"
-            className="text-body-sm leading-4.5"
-          >
+          <Text variant="body-sm" as="span" tone="primary" leading="4.5">
             {feature}
           </Text>
         </li>

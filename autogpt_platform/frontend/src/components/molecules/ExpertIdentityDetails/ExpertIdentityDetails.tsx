@@ -60,11 +60,11 @@ export function ExpertIdentityDetails({
           variant={size === "page" ? "heading-md" : compact ? "body" : "lead"}
           tone="primary"
           weight={size !== "page" && compact ? "medium" : "semibold"}
+          leading={compact ? "4.5" : undefined}
           data-slot="expert-identity-name"
           className={cn(
             "min-w-0",
             size === "page" ? "max-w-full break-words" : "truncate",
-            compact && "leading-4.5",
           )}
         >
           {name}
