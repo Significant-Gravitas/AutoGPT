@@ -57,6 +57,7 @@ export function useFireExpert({ expertID, isOpen, onFired }: Args) {
     void queryClient.invalidateQueries({ queryKey: homeKeys.dashboard });
     void queryClient.invalidateQueries({ queryKey: expertActivityKeys.graphSchedules });
     void queryClient.invalidateQueries({ queryKey: expertActivityKeys.followupSchedules });
+    void queryClient.invalidateQueries({ queryKey: expertActivityKeys.detail(expertID) });
     onFired();
     router.navigate("/team");
   }

@@ -29,8 +29,10 @@ import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
 export default function ManageExpertScreen() {
   const { expertId, from } = useLocalSearchParams<{ expertId: string; from?: string }>();
-  // Keyed: the drawer keeps this screen mounted, and another expert starts fresh.
-  return <ManageExpert key={expertId} routeExpertID={expertId} routeFrom={from} />;
+  // Keyed: the drawer keeps this screen mounted; another expert or origin starts fresh.
+  return (
+    <ManageExpert key={`${expertId}:${from ?? ""}`} routeExpertID={expertId} routeFrom={from} />
+  );
 }
 
 interface Props {

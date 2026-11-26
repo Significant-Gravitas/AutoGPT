@@ -8,7 +8,7 @@ test("offers Unpin for a pinned chat", () => {
 });
 test("refuses an empty or overlong name", () => {
   expect(validateTitle("   ")).toEqual({ error: "Give the chat a name." });
-  expect(validateTitle("x".repeat(201))).toEqual({ error: "Keep the name under 200 characters." });
+  expect(validateTitle("x".repeat(201))).toEqual({ error: "Keep the name to 200 characters or fewer." });
   expect(validateTitle("  Q4 plan ")).toEqual({ title: "Q4 plan" });
 });
 test("a pinned chat moves ahead of newer unpinned ones", () => {

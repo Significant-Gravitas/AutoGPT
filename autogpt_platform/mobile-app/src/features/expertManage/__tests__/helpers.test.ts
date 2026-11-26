@@ -19,9 +19,9 @@ test("profile needs a name and an identity within the server's limits", () => {
   const ok = { name: "Mia", identity: "Bookkeeper", voice_preferences: "", boundaries: "" };
   expect(validateProfile(ok)).toBeNull();
   expect(validateProfile({ ...ok, name: " " })).toBe("Give your expert a name.");
-  expect(validateProfile({ ...ok, name: "x".repeat(101) })).toBe("Keep the name under 100 characters.");
+  expect(validateProfile({ ...ok, name: "x".repeat(101) })).toBe("Keep the name to 100 characters or fewer.");
   expect(validateProfile({ ...ok, identity: "" })).toBe("Say who this expert is.");
-  expect(validateProfile({ ...ok, boundaries: "x".repeat(4001) })).toBe("Keep each section under 4,000 characters.");
+  expect(validateProfile({ ...ok, boundaries: "x".repeat(4001) })).toBe("Keep each section to 4,000 characters or fewer.");
   expect(isProfileDirty(ok, { ...ok, name: "Mia " })).toBe(false);
 });
 test("modes read as on the web", () => {

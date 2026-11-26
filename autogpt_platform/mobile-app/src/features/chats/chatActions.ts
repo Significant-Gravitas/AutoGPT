@@ -18,7 +18,7 @@ export function validateTitle(text: string): { title: string } | { error: string
   const title = text.trim();
   if (!title) return { error: "Give the chat a name." };
   if (title.length > MAX_TITLE_LENGTH) {
-    return { error: `Keep the name under ${MAX_TITLE_LENGTH} characters.` };
+    return { error: `Keep the name to ${MAX_TITLE_LENGTH} characters or fewer.` };
   }
   return { title };
 }

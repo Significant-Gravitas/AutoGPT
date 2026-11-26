@@ -51,7 +51,7 @@ export function formatBudget(credits: number | null) {
 export function validateProfile(form: ExpertSoul) {
   const name = form.name.trim();
   if (!name) return "Give your expert a name.";
-  if (name.length > NAME_MAX) return "Keep the name under 100 characters.";
+  if (name.length > NAME_MAX) return "Keep the name to 100 characters or fewer.";
   const identity = form.identity.trim();
   if (!identity) return "Say who this expert is.";
   if (identity.length > IDENTITY_MAX) return "Keep the identity under 10,000 characters.";
@@ -59,7 +59,7 @@ export function validateProfile(form: ExpertSoul) {
     form.voice_preferences.trim().length > SECTION_MAX ||
     form.boundaries.trim().length > SECTION_MAX
   ) {
-    return "Keep each section under 4,000 characters.";
+    return "Keep each section to 4,000 characters or fewer.";
   }
   return null;
 }

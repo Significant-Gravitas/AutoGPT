@@ -157,7 +157,7 @@ describe("toServices", () => {
       provider({ name: "mcp", authTypes: ["oauth2"] }),
     ]);
     expect(services.map((service) => [service.key, service.action])).toEqual([
-      ["codex", { kind: "web" }],
+      ["codex", { kind: "device_code" }],
       ["github", { kind: "oauth", provider: "github" }],
       ["microsoft", { kind: "web" }],
       ["openweathermap", { kind: "sheet", sheet: "api_key", provider: "openweathermap" }],
