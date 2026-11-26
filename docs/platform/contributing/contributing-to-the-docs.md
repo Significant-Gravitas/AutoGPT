@@ -24,8 +24,8 @@ We welcome contributions to our documentation! Our docs are hosted on GitBook an
 
 ## Adding a New Page
 
-1. Create a new markdown file in the appropriate `docs/` subdirectory
-2. Add the new page to the relevant `SUMMARY.md` file to include it in the navigation
+1. Create a new markdown file in the folder for its section of the site: `docs/home/`, `docs/platform/` or `docs/integrations/`
+2. Add the new page to that folder's `SUMMARY.md`. A page shows on the site only once it is listed there
 3. Submit a pull request to the `dev` branch
 
 ## Submitting a Pull Request

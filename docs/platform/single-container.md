@@ -275,7 +275,12 @@ callbacks, cookies, and generated links.
 For LAN or remote access, keep AutoGPT bound to loopback and place it behind a
 TLS reverse proxy running outside the AutoGPT container. The proxy provides
 HTTPS and forwards requests to port `3000`; AutoGPT handles application routing
-internally.
+internally. The container keeps an idle connection open for 620 seconds, longer
+than nginx, Caddy and Traefik keep one by default, so the proxy is the one that
+closes it. That limit is fixed in the image, not a setting, so if your proxy
+keeps idle connections longer than that, lower the proxy's idle timeout:
+otherwise it now and then sends a request on a connection the container is
+closing, and answers 502.
 
 Before exposing the proxy, complete the [Account policy](#account-policy)
 bootstrap, promote the intended administrator, and close new-account signup.
