@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -502,7 +503,7 @@ describe("the ratchet, end to end", () => {
         env: {
           ...process.env,
           DESIGN_SYSTEM_BASELINE_FILE: path.join(root, "baseline.json"),
-          NODE_OPTIONS: "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON",
+          NODE_OPTIONS: "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON", // pragma: allowlist secret
         },
       },
     );
@@ -510,7 +511,10 @@ describe("the ratchet, end to end", () => {
   }
 
   beforeAll(() => {
-    root = mkdtempSync(path.join(tmpdir(), "design-system-lint-"));
+    // Match the physical working directory seen by the spawned oxlint process.
+    root = realpathSync(
+      mkdtempSync(path.join(tmpdir(), "design-system-lint-")),
+    );
     write(
       ".oxlintrc.json",
       JSON.stringify({
