@@ -46,6 +46,7 @@ from backend.api.features.library.triggers import (
 from backend.api.features.onboarding_dump import db as onboarding_dump_db
 from backend.api.features.orgs.db import (
     get_user_default_team,
+    is_active_member,
     resolve_default_tenancy,
     resolve_member_tenancy,
 )
@@ -633,6 +634,7 @@ class DatabaseManager(AppService):
     # ============ Platform Linking ============ #
     # ============ Orgs ============ #
     get_user_default_team = _(get_user_default_team)
+    is_active_member = _(is_active_member)
     resolve_default_tenancy = _(resolve_default_tenancy)
     resolve_member_tenancy = _(resolve_member_tenancy)
 
@@ -1253,6 +1255,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner
     get_user_default_team = d.get_user_default_team
+    is_active_member = d.is_active_member
     resolve_default_tenancy = d.resolve_default_tenancy
     resolve_member_tenancy = d.resolve_member_tenancy
     find_user_link_owner = d.find_user_link_owner
