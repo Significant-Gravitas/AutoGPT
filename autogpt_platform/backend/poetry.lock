@@ -4131,6 +4131,29 @@ files = [
 ]
 
 [[package]]
+name = "nimble-python"
+version = "1.6.0"
+description = "The official Python library for the nimble API"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "nimble_python-1.6.0-py3-none-any.whl", hash = "sha256:b0f0700232e19d45e59dd24fd748c5b0f9bd796520aa878e3a2ef2c7ef82a2d1"},
+    {file = "nimble_python-1.6.0.tar.gz", hash = "sha256:f746b55244034e2ec427ed04c8fe0a5ff8f05d78e4a0e94ffa6870493b90734f"},
+]
+
+[package.dependencies]
+anyio = ">=3.5.0,<5"
+distro = ">=1.7.0,<2"
+httpx = ">=0.23.0,<1"
+pydantic = ">=1.9.0,<3"
+sniffio = "*"
+typing-extensions = ">=4.14,<5"
+
+[package.extras]
+aiohttp = ["aiohttp", "httpx-aiohttp (>=0.1.9)"]
+
+[[package]]
 name = "nodeenv"
 version = "1.10.0"
 description = "Node.js virtual environment builder"
@@ -8132,6 +8155,36 @@ files = [
 ]
 
 [[package]]
+name = "webrouter"
+version = "0.16.0"
+description = "WebRouter is an open source standard that connects your agent to the web"
+optional = false
+python-versions = ">=3.11"
+groups = ["main"]
+files = [
+    {file = "webrouter-0.16.0-py3-none-any.whl", hash = "sha256:3ee89bae0fd054501914447e42ace2d93f239295c3e1a9b01b3eeead204f311d"},
+    {file = "webrouter-0.16.0.tar.gz", hash = "sha256:26adcd03503a5f7459f495f84735992c2720951932d986004eeeb99d8dd747f9"},
+]
+
+[package.dependencies]
+httpx = ">=0.27"
+nimble-python = ">=1.5.0,<2"
+pydantic = ">=2.0.0,<3"
+tavily-python = ">=0.5.0"
+typing-extensions = ">=4.10"
+
+[package.extras]
+all = ["botocore (>=1.35)", "httpx (>=0.27)", "mcp (>=2.2,<3)", "pillow (>=10)", "playwright (>=1.63,<1.66)", "python-dotenv (>=1.0)"]
+aws = ["botocore (>=1.35)"]
+browser = ["pillow (>=10)", "playwright (>=1.63,<1.66)"]
+evals = ["anthropic (>=1.8,<3)", "openai (>=1.0,<4)", "pyarrow (>=15)"]
+evals-litellm = ["anthropic (>=1.8,<3)", "litellm (==1.110.2)", "openai (>=1.0,<4)", "pyarrow (>=15)"]
+langchain = ["langchain-core (>=1.0,<2)"]
+mcp = ["httpx (>=0.27)", "mcp (>=2.2,<3)", "pillow (>=10)", "playwright (>=1.63,<1.66)", "python-dotenv (>=1.0)"]
+remote = ["httpx (>=0.27)"]
+vendors = ["httpx (>=0.27)"]
+
+[[package]]
 name = "websocket-client"
 version = "1.9.0"
 description = "WebSocket client for Python with low level API options"
@@ -8726,4 +8779,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "0506e002b9ba4c623f617e6a987ba020b79c9cc337f0d81027d7384e558fd4b9"
+content-hash = "670d97010f7371ece90607566bc5a2b31f77c1128aa38fa3e7c197fcd6148038"

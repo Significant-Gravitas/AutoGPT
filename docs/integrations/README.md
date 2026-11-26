@@ -389,6 +389,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Treg Map Website](block-integrations/treg/pages.md#treg-map-website) | List the pages on a website, through Treg |
 | [Treg Web Search](block-integrations/treg/search.md#treg-web-search) | Search the web, news, Google, research papers or YouTube through Treg, which picks the cheapest working search provider |
 | [Validate Emails](block-integrations/zerobounce/validate_emails.md#validate-emails) | Validate emails |
+| [WebRouter Extract](block-integrations/webrouter/extract.md#webrouter-extract) | Reads web pages as markdown with no API key, through WebRouter: the page is fetched by a keyless extraction provider, which falls back to the next if it fails |
+| [WebRouter Search](block-integrations/webrouter/search.md#webrouter-search) | Searches the web with no API key, through WebRouter: each call goes to one keyless search provider and falls back to the next if it fails |
 
 ## Social Media and Content
 

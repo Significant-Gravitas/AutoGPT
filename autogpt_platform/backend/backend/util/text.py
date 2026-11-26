@@ -595,6 +595,7 @@ _CAMELCASE_EXCEPTIONS: dict[str, str] = {
     "Tik Tok": "TikTok",
     "All Quiet": "AllQuiet",
     "Any Search": "AnySearch",
+    "Web Router": "WebRouter",
 }
 
 _CAMELCASE_EXCEPTION_RE = re.compile(
