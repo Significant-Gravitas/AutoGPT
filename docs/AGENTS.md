@@ -15,7 +15,7 @@ Every Markdown page under `docs/platform/` must be listed in `docs/platform/SUMM
 
 ## Block Documentation Manual Sections
 
-When updating manual sections (`<!-- MANUAL: ... -->`) in block documentation files (e.g., `docs/integrations/basic.md`), follow these formats:
+When updating manual sections (`<!-- MANUAL: ... -->`) in block documentation files (e.g., `docs/integrations/block-integrations/basic.md`), follow these formats:
 
 ### How It Works Section
 
