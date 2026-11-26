@@ -892,6 +892,9 @@ class CoPilotProcessor:
                                 session.team_id if is_expert_session else entry.team_id
                             ),
                         )
+                        if credit_turn is not None:
+                            # Also when the turn ends before it is billed.
+                            cost_context_stack.push_async_callback(credit_turn.release)
                 except RateLimitUnavailable:
                     error_msg = RATE_LIMIT_UNAVAILABLE_MESSAGE
                     error_code = RATE_LIMIT_UNAVAILABLE_CODE
@@ -914,7 +917,8 @@ class CoPilotProcessor:
             if credit_turn is not None:
                 log.info(
                     f"The {credit_turn.refusal.reason} limit is used up: "
-                    f"billing this block turn to credits, up to "
+                    f"billing this block turn to credits, holding "
+                    f"{credit_turn.held_credits} of up to "
                     f"{credit_turn.cap_credits} credits"
                 )
                 await cost_context_stack.enter_async_context(
