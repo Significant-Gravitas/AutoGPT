@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from backend.api.external.v2.mcp_scopes import mcp_scopes
 from backend.api.utils.client_ip import ClientIP
 from backend.api.utils.rate_limit import RateLimiter
-from backend.data.auth.oauth import register_public_client
+from backend.data.auth.oauth import is_safe_oauth_redirect_uri, register_public_client
 from backend.util.settings import Settings
 from backend.util.text_limits import (
     MAX_DESCRIPTION_LENGTH,
@@ -175,12 +175,11 @@ def registration_problem(
 
 
 def _allowed_redirect(uri: str) -> bool:
-    """http on the loopback interface, on any port (RFC 8252 §7.3)."""
-    if len(uri) > MAX_REDIRECT_URI_LENGTH:
+    """A redirect `/authorize` accepts, as http on the loopback interface
+    (RFC 8252 §7.3)."""
+    if len(uri) > MAX_REDIRECT_URI_LENGTH or not is_safe_oauth_redirect_uri(uri):
         return False
     parsed = urlparse(uri)
-    if parsed.fragment or parsed.username or parsed.password:
-        return False
     return parsed.scheme == "http" and parsed.hostname in LOOPBACK_HOSTS
 
 

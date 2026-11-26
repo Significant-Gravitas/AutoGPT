@@ -64,7 +64,7 @@ def _hash_token(token: str) -> str:
 AUTHORIZATION_CODE_TTL = timedelta(minutes=10)
 ACCESS_TOKEN_TTL = timedelta(hours=1)
 REFRESH_TOKEN_TTL = timedelta(days=30)
-# A client that registered itself and holds no token after this is deleted.
+# A client that registered itself and holds no code or token after this is deleted.
 UNUSED_REGISTERED_CLIENT_TTL = timedelta(days=1)
 
 ACCESS_TOKEN_PREFIX = "agpt_xt_"
@@ -1123,7 +1123,7 @@ async def cleanup_expired_oauth_tokens() -> dict[str, int]:
     - Expired authorization codes (10 min TTL)
     - Expired access tokens (1 hour TTL)
     - Expired refresh tokens (30 day TTL)
-    - Clients that registered themselves and hold no token a day later
+    - Clients that registered themselves and hold no code or token a day later
 
     Returns a dict with counts of deleted tokens by type.
     """
@@ -1148,6 +1148,7 @@ async def cleanup_expired_oauth_tokens() -> dict[str, int]:
         where={
             "ownerId": None,
             "createdAt": {"lt": now - UNUSED_REGISTERED_CLIENT_TTL},
+            "AuthorizationCodes": {"none": {}},
             "AccessTokens": {"none": {}},
             "RefreshTokens": {"none": {}},
         }

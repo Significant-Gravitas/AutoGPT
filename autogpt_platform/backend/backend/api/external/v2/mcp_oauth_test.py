@@ -92,7 +92,7 @@ async def test_an_mcp_client_signs_in_with_a_pre_registered_app(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_an_mcp_client_registers_itself_and_signs_in(
-    mcp_user: str, monkeypatch: pytest.MonkeyPatch
+    mcp_user: str, monkeypatch: pytest.MonkeyPatch, fresh_registration_limits: None
 ):
     monkeypatch.setattr(
         oauth_registration.settings.config, "oauth_dynamic_client_registration", True

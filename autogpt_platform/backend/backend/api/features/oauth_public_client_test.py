@@ -20,9 +20,9 @@ from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 from backend.api.external.v2.mcp_scopes import mcp_scopes
 from backend.api.features import oauth_registration
 from backend.api.rest_api import app
-from backend.api.utils.rate_limit import RateLimiter
 from backend.data.auth.oauth import (
     cleanup_expired_oauth_tokens,
+    create_authorization_code,
     create_refresh_token,
     register_public_client,
 )
@@ -68,12 +68,13 @@ async def test_a_public_client_must_use_s256(client: httpx.AsyncClient):
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_client_that_names_no_scope_gets_the_mcp_server_permissions(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    fresh_registration_limits: None,
 ):
     monkeypatch.setattr(
         oauth_registration.settings.config, "oauth_dynamic_client_registration", True
     )
-    _fresh_registration_limits(monkeypatch)
     response = await client.post(
         "/api/oauth/register", json={"redirect_uris": [REDIRECT_URI]}
     )
@@ -163,9 +164,13 @@ async def test_cleanup_deletes_only_self_registered_clients_nobody_used(
     unused = await _client(owner=None, created_at=a_day_ago)
     signed_in = await _client(owner=None, created_at=a_day_ago)
     await create_refresh_token(signed_in.id, USER_ID, [APIKeyPermission.READ_LIBRARY])
+    signing_in = await _client(owner=None, created_at=a_day_ago)
+    await create_authorization_code(
+        signing_in.id, USER_ID, [APIKeyPermission.READ_LIBRARY], REDIRECT_URI
+    )
     fresh = await _client(owner=None, created_at=datetime.now(UTC))
     owned = await _client(owner=USER_ID, created_at=a_day_ago)
-    kept = [signed_in, fresh, owned]
+    kept = [signed_in, signing_in, fresh, owned]
     try:
         await cleanup_expired_oauth_tokens()
         remaining = {
@@ -183,20 +188,6 @@ async def test_cleanup_deletes_only_self_registered_clients_nobody_used(
         )
 
     assert remaining == {c.id for c in kept}
-
-
-def _fresh_registration_limits(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Registrations count per address for an hour; a window of the test's own
-    keeps reruns from reaching the cap."""
-    run = uuid.uuid4().hex
-    for limiter_name in ("_per_ip_limiter", "_overall_limiter"):
-        limiter: RateLimiter = getattr(oauth_registration, limiter_name)
-        fresh = RateLimiter(
-            f"{limiter.name}:test:{run}",
-            max_requests=limiter.max_requests,
-            window_seconds=limiter.window_seconds,
-        )
-        monkeypatch.setattr(oauth_registration, limiter_name, fresh)
 
 
 async def _authorize(

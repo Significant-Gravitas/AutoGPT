@@ -65,6 +65,8 @@ METADATA = "invalid_client_metadata"
         ({"redirect_uris": ["cursor://anysphere.cursor-retrieval/callback"]}, REDIRECT),
         ({"redirect_uris": [f"{LOOPBACK}#fragment"]}, REDIRECT),
         ({"redirect_uris": ["http://user:pass@localhost:8765/callback"]}, REDIRECT),
+        ({"redirect_uris": ["http://[::1/callback"]}, REDIRECT),
+        ({"redirect_uris": ["http://localhost:invalid/callback"]}, REDIRECT),
         ({"redirect_uris": []}, REDIRECT),
         ({"redirect_uris": [LOOPBACK] * 6}, REDIRECT),
         (
