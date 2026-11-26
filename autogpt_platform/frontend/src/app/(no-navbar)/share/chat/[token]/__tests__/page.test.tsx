@@ -1,13 +1,19 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { waitFor } from "@testing-library/react";
+import { onlineManager, QueryClient } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 
 import {
-  getGetV2GetSharedChatMockHandler200,
   getGetV2GetSharedChatMessagesMockHandler200,
+  getGetV2GetSharedChatMessagesMockHandler404,
+  getGetV2GetSharedChatMessagesMockHandler422,
+  getGetV2GetSharedChatMockHandler200,
+  getGetV2GetSharedChatMockHandler404,
+  getGetV2GetSharedChatMockHandler422,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { SharedChatMessagesPage } from "@/app/api/__generated__/models/sharedChatMessagesPage";
 import type { SharedChatSession } from "@/app/api/__generated__/models/sharedChatSession";
+import { resetClientRequestFailureLog } from "@/app/api/mutators/request-failure-log";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { server } from "@/mocks/mock-server";
 import {
@@ -57,6 +63,78 @@ beforeEach(() => {
   mockUseParams.mockReturnValue({ token: TOKEN });
   resetArtifactPanelStore();
 });
+
+afterEach(() => {
+  resetClientRequestFailureLog();
+});
+
+function deployChat(): SharedChatSession {
+  return {
+    id: "session-123",
+    title: "How to deploy",
+    created_at: new Date("2026-05-12T00:00:00Z"),
+    updated_at: new Date("2026-05-12T00:00:00Z"),
+    shared_at: new Date("2026-05-12T00:00:00Z"),
+    linked_executions: [],
+  };
+}
+
+function deployChatMessages(): SharedChatMessagesPage {
+  return {
+    messages: [
+      {
+        id: "m1",
+        role: "user",
+        content: "How do I deploy?",
+        name: null,
+        tool_call_id: null,
+        tool_calls: null,
+        function_call: null,
+        sequence: 0,
+        created_at: new Date("2026-05-12T00:00:01Z"),
+      },
+    ],
+    has_more: false,
+    oldest_sequence: 0,
+  };
+}
+
+// The app's client keeps React Query's three retries; this one only drops the
+// backoff between them, so a test can count them without waiting ~7 s.
+function createRetryingQueryClient() {
+  return new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } });
+}
+
+// No generated handler answers a 5xx or a network error, so these two answer
+// every read of the chat (or of its messages) with `respond` and count them.
+function answerChatWith(respond: () => Response) {
+  const reads: string[] = [];
+  server.use(
+    http.get("*/api/public/shared/chats/:shareToken", ({ params }) => {
+      reads.push(String(params.shareToken));
+      return respond();
+    }),
+  );
+  return reads;
+}
+
+function answerMessagesWith(respond: () => Response) {
+  const reads: string[] = [];
+  server.use(
+    http.get("*/api/public/shared/chats/:shareToken/messages", ({ params }) => {
+      reads.push(String(params.shareToken));
+      return respond();
+    }),
+  );
+  return reads;
+}
+
+function serverError() {
+  return HttpResponse.json(
+    { detail: "Internal Server Error" },
+    { status: 500 },
+  );
+}
 
 describe("SharedChatPage", () => {
   test("renders the read-only viewer with messages on happy path", async () => {
@@ -178,21 +256,184 @@ describe("SharedChatPage", () => {
     ).toBeDefined();
   });
 
-  test("renders the not-found card when the share token is revoked", async () => {
-    // Backend returns 404 for unknown/revoked tokens.
-    server.use(
-      http.get(
-        "*/api/public/shared/chats/:token",
-        () => new HttpResponse(null, { status: 404 }),
-      ),
+  describe("when the chat can't be read", () => {
+    test.each([
+      {
+        link: "a revoked link (404)",
+        token: TOKEN,
+        answer: (onRead: (token: string) => void) =>
+          getGetV2GetSharedChatMockHandler404(({ params }) => {
+            onRead(String(params.shareToken));
+          }),
+      },
+      {
+        link: "a truncated link (422)",
+        token: TOKEN.slice(0, -4),
+        answer: (onRead: (token: string) => void) =>
+          getGetV2GetSharedChatMockHandler422(({ params }) => {
+            onRead(String(params.shareToken));
+            return {
+              detail: [
+                {
+                  type: "string_pattern_mismatch",
+                  loc: ["path", "share_token"],
+                  msg: "String should match pattern",
+                },
+              ],
+            };
+          }),
+      },
+      {
+        link: "an answer with no chat in it (200)",
+        token: TOKEN,
+        answer: (onRead: (token: string) => void) =>
+          http.get("*/api/public/shared/chats/:shareToken", ({ params }) => {
+            onRead(String(params.shareToken));
+            return HttpResponse.json(null);
+          }),
+      },
+    ])(
+      "says 'Share link not found' for $link after one read, with no 'Try again'",
+      async ({ token, answer }) => {
+        mockUseParams.mockReturnValue({ token });
+        const reads: string[] = [];
+        server.use(answer((read) => reads.push(read)));
+
+        render(<SharedChatPage />, {
+          queryClient: createRetryingQueryClient(),
+        });
+
+        expect(
+          await screen.findByRole("heading", { name: "Share link not found" }),
+        ).toBeDefined();
+        expect(screen.getByText(/invalid or has been disabled/i)).toBeDefined();
+        expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+        expect(reads).toEqual([token]);
+      },
     );
 
-    render(<SharedChatPage />);
+    test.each([
+      { failure: "a 500 from the backend", respond: serverError },
+      {
+        failure: "a 502 from the proxy (backend down)",
+        respond: () =>
+          HttpResponse.json({ error: "Proxy request failed" }, { status: 502 }),
+      },
+      { failure: "a network error", respond: () => HttpResponse.error() },
+    ])(
+      "says 'Unable to load', not 'Share link not found', after retrying $failure",
+      async ({ respond }) => {
+        const reads = answerChatWith(respond);
 
-    expect(await screen.findByText(/share link not found/i)).toBeDefined();
-    expect(
-      await screen.findByText(/invalid or has been disabled/i),
-    ).toBeDefined();
+        render(<SharedChatPage />, {
+          queryClient: createRetryingQueryClient(),
+        });
+
+        expect(
+          await screen.findByRole("heading", { name: "Unable to load" }),
+        ).toBeDefined();
+        expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
+        expect(screen.queryByText(/share link not found/i)).toBeNull();
+        expect(screen.queryByText(/disabled by the owner/i)).toBeNull();
+        // The first read and three retries.
+        expect(reads).toEqual([TOKEN, TOKEN, TOKEN, TOKEN]);
+      },
+    );
+
+    test("shows the chat when 'Try again' gets through", async () => {
+      answerChatWith(serverError);
+      render(<SharedChatPage />, { queryClient: createRetryingQueryClient() });
+      expect(
+        await screen.findByRole("heading", { name: "Unable to load" }),
+      ).toBeDefined();
+
+      server.use(
+        getGetV2GetSharedChatMockHandler200(deployChat),
+        getGetV2GetSharedChatMessagesMockHandler200(deployChatMessages),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+      expect(await screen.findByText("How do I deploy?")).toBeDefined();
+      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
+        "How to deploy",
+      );
+      expect(
+        screen.queryByRole("heading", { name: "Unable to load" }),
+      ).toBeNull();
+    });
+
+    test("keeps the chat's header and offers 'Try again' when only its messages fail", async () => {
+      server.use(getGetV2GetSharedChatMockHandler200(deployChat));
+      const messageReads = answerMessagesWith(serverError);
+      render(<SharedChatPage />, { queryClient: createRetryingQueryClient() });
+
+      expect(
+        await screen.findByText(
+          "Couldn't load messages. The share link is valid.",
+        ),
+      ).toBeDefined();
+      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
+        "How to deploy",
+      );
+      expect(screen.queryByText(/share link not found/i)).toBeNull();
+      expect(messageReads).toHaveLength(4);
+
+      server.use(
+        getGetV2GetSharedChatMessagesMockHandler200(deployChatMessages),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+      expect(await screen.findByText("How do I deploy?")).toBeDefined();
+      expect(screen.queryByText(/couldn't load messages/i)).toBeNull();
+    });
+
+    test.each([
+      { status: 404, handler: getGetV2GetSharedChatMessagesMockHandler404 },
+      { status: 422, handler: getGetV2GetSharedChatMessagesMockHandler422 },
+    ])(
+      "says 'Share link not found' when the messages read answers $status after the chat loaded",
+      async ({ handler }) => {
+        const messageReads: string[] = [];
+        server.use(
+          getGetV2GetSharedChatMockHandler200(deployChat),
+          handler(({ params }) => {
+            messageReads.push(String(params.shareToken));
+          }),
+        );
+        render(<SharedChatPage />, {
+          queryClient: createRetryingQueryClient(),
+        });
+
+        expect(
+          await screen.findByRole("heading", { name: "Share link not found" }),
+        ).toBeDefined();
+        expect(screen.queryByText(/the share link is valid/i)).toBeNull();
+        expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+        expect(messageReads).toEqual([TOKEN]);
+      },
+    );
+
+    test("keeps loading while the visitor is offline, then shows the chat", async () => {
+      server.use(
+        getGetV2GetSharedChatMockHandler200(deployChat),
+        getGetV2GetSharedChatMessagesMockHandler200(deployChatMessages),
+      );
+      onlineManager.setOnline(false);
+      try {
+        render(<SharedChatPage />);
+
+        expect(
+          await screen.findByTestId("shared-chat-loading-state"),
+        ).toBeDefined();
+        expect(screen.queryByText(/share link not found/i)).toBeNull();
+
+        onlineManager.setOnline(true);
+
+        expect(await screen.findByText("How do I deploy?")).toBeDefined();
+      } finally {
+        onlineManager.setOnline(true);
+      }
+    });
   });
 
   test("wraps the error state in the branded share header", async () => {

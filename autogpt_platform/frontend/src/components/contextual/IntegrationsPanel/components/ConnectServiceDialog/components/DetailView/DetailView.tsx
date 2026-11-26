@@ -28,6 +28,7 @@ import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { MicrosoftConnectionPanel } from "@/components/contextual/MicrosoftConnection/MicrosoftConnectionPanel";
 import { MICROSOFT_PROVIDER } from "@/lib/microsoft-setup";
+import { duration, ease } from "@/components/styles/motion";
 
 const MCP_PROVIDER_ID = "mcp";
 
@@ -51,7 +52,7 @@ const TAB_PRIORITY: AuthMethod[] = [
 const lastTabByProvider = new Map<string, AuthMethod>();
 
 // Standard product-UI ease-out — keep transitions under Emil's 300ms ceiling.
-const PANEL_TRANSITION = { duration: 0.18, ease: [0, 0, 0.2, 1] as const };
+const PANEL_TRANSITION = { duration: duration.base, ease: ease.out };
 
 export function DetailView({
   provider,

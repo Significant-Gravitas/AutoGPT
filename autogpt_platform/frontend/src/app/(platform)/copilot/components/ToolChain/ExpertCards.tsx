@@ -29,9 +29,13 @@ import {
   handoffOutcomeOf,
   handoffSubject,
   handoffTaskOf,
+  NEW_EXPERT_COPY,
+  type NewExpertKind,
 } from "./expertHandoff";
+import { ExpertChatLink } from "./ExpertChatLink";
 import { HandoffProposal, HandoffReceipt } from "./ExpertHandoffParts";
 import { HandoffStatus } from "./HandoffStatus";
+import { useRefreshTeamOnApplied } from "./useRefreshTeamOnApplied";
 import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
@@ -60,6 +64,8 @@ interface Props {
   /** Sends a chat message (a hand-off that didn't start offers Try again);
    *  absent on a read-only transcript. */
   onSend?: (message: string) => void;
+  /** Share viewer / transcript: no links into the owner's chats. */
+  readOnly?: boolean;
 }
 
 export type StepDirection = "forward" | "back";
@@ -80,6 +86,12 @@ function kindOf(output: Record<string, unknown>): ExpertKind | null {
   const preview = asObject(output.preview);
   const kind = str(output, "kind") ?? (preview ? str(preview, "kind") : null);
   return kind === "hire" || kind === "raise" || kind === "update" ? kind : null;
+}
+
+/** The new-teammate kind the hand-off copy reads; anything else is a hire,
+ *  as before kinds were told apart. */
+function newExpertKindOf(kind: ExpertKind | "soul" | null): NewExpertKind {
+  return kind === "raise" ? "raise" : "hire";
 }
 
 function headerFor(
@@ -246,6 +258,7 @@ export function ExpertChangeCard({
   stepDirection,
   waiting = false,
   onSend,
+  readOnly = false,
 }: Props) {
   const [showCharter, setShowCharter] = useState(false);
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
@@ -273,14 +286,33 @@ export function ExpertChangeCard({
   const showDetails = panelAvailable || hasCharter;
   const showFooter = !!pager || !!onDecide || !!decision || !!action;
   const applied = output.applied === true;
-  const header = headerFor(kindOf(output), applied);
+  const kind = kindOf(output);
+  const header = headerFor(kind, applied);
   const task = applied ? null : handoffTaskOf(output);
   const outcome = applied ? handoffOutcomeOf(output) : null;
+  const expertId = str(expert, "id");
+  // A new teammate with no task has no chat yet: the card is the way in.
+  const chatExpertId =
+    applied && !readOnly && (kind === "hire" || kind === "raise")
+      ? expertId
+      : null;
   const stepClassName = cn(
     stepDirection &&
       "duration-300 animate-in fade-in fill-mode-both motion-reduce:animate-none",
     stepDirection === "forward" && "slide-in-from-right-4",
     stepDirection === "back" && "slide-in-from-left-4",
+  );
+  const detailsButton = (
+    <Button
+      variant="secondary"
+      size="row"
+      aria-expanded={panelAvailable ? undefined : showCharter}
+      onClick={handleShowMore}
+      leftIcon={<Icon icon={InformationCircleIcon} size={16} />}
+      className="shrink-0"
+    >
+      {showCharter ? "Hide details" : "Details"}
+    </Button>
   );
 
   if (outcome) {
@@ -291,8 +323,9 @@ export function ExpertChangeCard({
         <HandoffStatus
           key={artifactId ?? name}
           outcome={outcome}
+          kind={newExpertKindOf(kind)}
           name={name}
-          expertId={str(expert, "id")}
+          expertId={expertId}
           avatarUrl={str(expert, "avatar_url")}
           color={str(expert, "color")}
           onSend={onSend}
@@ -311,6 +344,7 @@ export function ExpertChangeCard({
     return (
       <div className={SHELL}>
         <HandoffProposal
+          kind={newExpertKindOf(kind)}
           name={name}
           role={role}
           avatarUrl={str(expert, "avatar_url")}
@@ -339,7 +373,7 @@ export function ExpertChangeCard({
             chosen={
               decision
                 ? decision === "approved"
-                  ? "Hire and start chosen"
+                  ? `${NEW_EXPERT_COPY[newExpertKindOf(kind)].Verb} and start chosen`
                   : "Not now chosen"
                 : undefined
             }
@@ -354,7 +388,9 @@ export function ExpertChangeCard({
       <div className={HEADER}>
         <Icon icon={header.icon} size={18} tone="subtle" />
         <Text
-          variant="body-medium-tight"
+          variant="body"
+          weight="medium"
+          leading="5"
           as="span"
           tone="primary"
           className="min-w-0 flex-1 truncate"
@@ -381,30 +417,26 @@ export function ExpertChangeCard({
           />
           <div className="min-w-0 flex-1">
             <Text
-              variant="body-sm-medium-inherit"
+              variant="body-sm"
+              weight="medium"
+              leading="inherit"
               tone="emphasis"
               className="truncate"
             >
               {name}
             </Text>
             {role && (
-              <Text variant="small-tight" tone="subtle" className="truncate">
+              <Text
+                variant="small"
+                leading="4"
+                tone="subtle"
+                className="truncate"
+              >
                 {role}
               </Text>
             )}
           </div>
-          {showDetails && (
-            <Button
-              variant="secondary"
-              size="row"
-              aria-expanded={panelAvailable ? undefined : showCharter}
-              onClick={handleShowMore}
-              leftIcon={<Icon icon={InformationCircleIcon} size={16} />}
-              className="shrink-0"
-            >
-              {showCharter ? "Hide details" : "Details"}
-            </Button>
-          )}
+          {showDetails && !chatExpertId && detailsButton}
         </div>
         {summary && (
           <p
@@ -427,15 +459,21 @@ export function ExpertChangeCard({
             className="flex flex-col gap-1 pt-1.5 pl-[42px]"
           >
             {tagline && about && (
-              <Text variant="body-tight" tone="muted">
+              <Text variant="body" leading="5" tone="muted">
                 {about}
               </Text>
             )}
             {boundaries && (
-              <Text variant="body-tight" tone="subtle">
+              <Text variant="body" leading="5" tone="subtle">
                 Stops at: {boundaries}
               </Text>
             )}
+          </div>
+        )}
+        {chatExpertId && (
+          <div className="flex flex-wrap items-center justify-end gap-2 pt-3">
+            {showDetails && detailsButton}
+            <ExpertChatLink expertId={chatExpertId} name={name} />
           </div>
         )}
       </div>
@@ -477,7 +515,9 @@ function SoulChangeCard({
       <div className={HEADER}>
         <Icon icon={PencilEdit02Icon} size={18} tone="subtle" />
         <Text
-          variant="body-medium-tight"
+          variant="body"
+          weight="medium"
+          leading="5"
           as="span"
           tone="primary"
           className="min-w-0 flex-1 truncate"
@@ -488,11 +528,12 @@ function SoulChangeCard({
       <div className="flex flex-col gap-3 px-4 py-3">
         {soulChanges(output).map((change) => (
           <section key={change.field} className="flex flex-col gap-0.5">
-            <Text variant="small-medium-tight" tone="body">
+            <Text variant="small" weight="medium" leading="4" tone="body">
               {SOUL_LABELS[change.field] ?? change.field}
             </Text>
             <Text
-              variant="body-tight"
+              variant="body"
+              leading="5"
               tone="body"
               className="whitespace-pre-line"
             >
@@ -500,7 +541,8 @@ function SoulChangeCard({
             </Text>
             {change.before && (
               <Text
-                variant="small-tight"
+                variant="small"
+                leading="4"
                 tone="subtle"
                 className="line-clamp-2"
               >
@@ -546,7 +588,7 @@ function DecisionFooter({
       <div className="min-w-0">{pager}</div>
       <div className="flex shrink-0 items-center gap-1.5">
         {chosen && (
-          <Text variant="small-tight" as="span" tone="muted">
+          <Text variant="small" leading="4" as="span" tone="muted">
             {chosen}
           </Text>
         )}
@@ -615,7 +657,13 @@ export function ExpertChangeCardSkeleton() {
     <div className={SHELL}>
       <div className={HEADER}>
         <Icon icon={UserAdd01Icon} size={18} tone="subtle" />
-        <Text variant="body-medium-tight" as="span" tone="primary">
+        <Text
+          variant="body"
+          weight="medium"
+          leading="5"
+          as="span"
+          tone="primary"
+        >
           Create an Expert
         </Text>
       </div>
@@ -642,6 +690,7 @@ export function ExpertChangeCardSkeleton() {
 interface PartProps {
   part: ToolUIPart;
   isCurrentlyStreaming?: boolean;
+  readOnly?: boolean;
   pager?: ReactNode;
   decision?: Decision | null;
   onDecide?: (decision: Decision) => void;
@@ -659,6 +708,7 @@ interface PartProps {
 export function ExpertChangePart({
   part,
   isCurrentlyStreaming,
+  readOnly,
   pager,
   decision,
   onDecide,
@@ -684,6 +734,7 @@ export function ExpertChangePart({
         stepDirection={stepDirection}
         waiting={waiting}
         onSend={onSend}
+        readOnly={readOnly}
       />
     );
   }
@@ -734,6 +785,11 @@ export function ExpertChangeGroup({
   useLiveTipMoment("first-expert", {
     happened: !readOnly && visible.some(isOpenExpertProposal),
     isLive: isCurrentlyStreaming,
+  });
+  useRefreshTeamOnApplied({
+    parts: visible,
+    isLive: isCurrentlyStreaming,
+    readOnly,
   });
   if (visible.length === 0) return null;
 
@@ -846,7 +902,7 @@ export function ExpertChangeGroup({
       >
         <Icon icon={ArrowRight01Icon} size={14} />
       </button>
-      <Text variant="small-tight" as="span" tone="subtle">
+      <Text variant="small" leading="4" as="span" tone="subtle">
         {current + 1} of {visible.length}
       </Text>
     </div>
@@ -892,6 +948,7 @@ export function ExpertChangeGroup({
       <ExpertChangePart
         part={part}
         isCurrentlyStreaming={isCurrentlyStreaming}
+        readOnly={readOnly}
         pager={pager || undefined}
         decision={decisions[part.toolCallId] ?? null}
         onDecide={currentProposal && !sent ? decide : undefined}
@@ -907,10 +964,11 @@ export function ExpertChangeGroup({
 
 /** The record of the choice, worded as the choice: the confirm runs after
  *  the send and can still fail, and the expert's own card says what came of
- *  it. Only a hire proposed for a task shrinks to a receipt. */
+ *  it. Only a hire or new expert proposed for a task shrinks to a receipt. */
 function receiptFor(proposal: Proposal, decision: Decision | undefined) {
+  const { verb } = NEW_EXPERT_COPY[newExpertKindOf(proposal.kind)];
   if (decision === "approved" && proposal.handoff) {
-    return `You chose to hire ${proposal.name} to take on ${proposal.handoff.title}.`;
+    return `You chose to ${verb} ${proposal.name} to take on ${proposal.handoff.title}.`;
   }
-  return `You chose not to hire ${proposal.name} for now.`;
+  return `You chose not to ${verb} ${proposal.name} for now.`;
 }

@@ -27,14 +27,21 @@ export function InputsSection({ requests }: Props) {
         >
           <div className="flex items-center gap-2.5 border-b border-separator px-4 py-3">
             <Icon icon={PencilEdit02Icon} size={18} tone="subtle" />
-            <Text variant="body-medium-tight" as="span" tone="primary">
+            <Text
+              variant="body"
+              weight="medium"
+              leading="5"
+              as="span"
+              tone="primary"
+            >
               {request.title
                 ? formatInputsTitle(request.title)
                 : "Fill in the details"}
             </Text>
             {request.title && (
               <Text
-                variant="small-tight"
+                variant="small"
+                leading="4"
                 as="span"
                 tone="subtle"
                 className="ml-auto"
@@ -66,7 +73,7 @@ export function InputsSection({ requests }: Props) {
             {request.hasAdvanced && (
               <button
                 type="button"
-                className="mt-1 mb-2 text-caption text-muted-foreground underline"
+                className="mt-1 mb-2 text-caption text-foreground-tertiary underline"
                 onClick={request.onToggleAdvanced}
               >
                 {request.showAdvanced

@@ -102,7 +102,13 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
         <div className="flex flex-col gap-4">
           {props.mode === "with-name" && (
             <div className="flex max-w-[448px] flex-col space-y-2">
-              <Text variant="body-medium-tight" as="label" tone="inherit">
+              <Text
+                variant="body"
+                weight="medium"
+                leading="5"
+                as="label"
+                tone="inherit"
+              >
                 Schedule Name
               </Text>
               <BaseInput
@@ -129,7 +135,7 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
                   className="h-4 w-4"
                 />
               </span>
-              <Text variant="body-tight" tone="warning-strong">
+              <Text variant="body" leading="5" tone="warning-strong">
                 No timezone set. Schedule will run in UTC.
                 <a href="/settings/account" className="ml-1 underline">
                   Set your timezone
@@ -137,15 +143,15 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
               </Text>
             </div>
           ) : (
-            <div className="flex items-center gap-2 rounded-md bg-muted/50 p-3">
-              <span className="flex text-muted-foreground">
+            <div className="flex items-center gap-2 rounded-md bg-surface-hover/50 p-3">
+              <span className="flex text-foreground-tertiary">
                 <Icon
                   aria-hidden
                   icon={InformationCircleIcon}
                   className="h-4 w-4"
                 />
               </span>
-              <Text variant="body-tight" tone="muted">
+              <Text variant="body" leading="5" tone="muted">
                 Schedule will run in your timezone:{" "}
                 <span className="font-medium">{timezoneDisplay}</span>
               </Text>

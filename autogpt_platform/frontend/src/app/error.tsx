@@ -6,6 +6,7 @@ import { CircleAlertGlyph } from "@/components/atoms/Icon/drawnIcons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { reloadForChunkLoadError } from "@/lib/chunk-load-reload";
+import * as Sentry from "@sentry/nextjs";
 import Link from "next/link";
 
 export default function Error({
@@ -16,20 +17,29 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error(error);
+    // Tagged, so the transient-failure filter keeps it: the user saw this page.
+    Sentry.captureException(error, {
+      tags: { errorBoundary: "true", context: "error-page" },
+    });
     reloadForChunkLoadError(error, "error_boundary");
   }, [error]);
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-background">
+    <div className="fixed inset-0 flex items-center justify-center bg-canvas">
       <div className="w-full max-w-md px-4 text-center sm:px-6">
-        <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted">
+        <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-surface-hover">
           <Icon icon={CircleAlertGlyph} aria-label="Icon" className="size-10" />
         </div>
-        <Text variant="heading-md-bold-tracking-tight" as="h1" className="mt-8">
+        <Text
+          variant="heading-md"
+          weight="bold"
+          tracking="tight"
+          as="h1"
+          className="mt-8"
+        >
           Oops, something went wrong!
         </Text>
-        <p className="mt-4 text-muted-foreground">
+        <p className="mt-4 text-foreground-tertiary">
           We&apos;re sorry, but an unexpected error has occurred. Please try
           again later or contact support if the issue persists.
         </p>

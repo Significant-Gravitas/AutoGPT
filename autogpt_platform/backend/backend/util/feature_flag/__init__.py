@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import uuid
@@ -45,6 +46,7 @@ class Flag(str, Enum):
     AUTOMOD = "AutoMod"
     CHAT_MODE_OPTION = "chat-mode-option"
     COPILOT_SDK = "copilot-sdk"
+    COPILOT_BACKGROUND_SUBTASKS = "copilot-background-subtasks"
     COPILOT_COST_LIMITS = "copilot-cost-limits"
     # AutoPilot auto mode: the permission gate in ``copilot/gate``.
     # A ROLLOUT control, not a safety control — off means today's
@@ -73,10 +75,40 @@ class Flag(str, Enum):
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     CARD_REQUIRED_TRIAL_OFFER = "card-required-trial-offer"
+    # Local PC Executor — route copilot execution to a user's local machine
+    # via the autogpt-local-executor shim, and let them link one. EXPERIMENTAL;
+    # the flag alone decides who gets it (per-user beta, then staged rollout).
+    # Default off. See `api/features/local_executor/gating.py`.
+    LOCAL_PC_EXECUTOR = "local-pc-executor"
+    # Computer use on a Local PC — Otto drives the user's apps through the
+    # shim's cua-driver tools. Needs LOCAL_PC_EXECUTOR too, the shim offering
+    # computer use, and the user's consent for the machine. Default off.
+    LOCAL_PC_COMPUTER_USE = "local-pc-computer-use"
+    # Workflow recording — record a task the user performs on their machine
+    # and generalize it into a reusable skill (UI-owned recording/review plus
+    # list/generate/dry-run MCP tools). Gated as `flag(LOCAL_PC_EXECUTOR) AND
+    # shim advertises recording AND flag(WORKFLOW_RECORDING, user)`; replaying
+    # a recorded skill drives the computer, so it needs LOCAL_PC_COMPUTER_USE.
+    # See `copilot/tools/recording_skill.py`. Default off; per-user rollout.
+    WORKFLOW_RECORDING = "workflow-recording"
+    # Local LLM routing — when on AND the user's shim advertises `local_llm`
+    # plus a non-empty `local_llm_models`, copilot turns that match the
+    # (mode, tier) policy are routed through the shim's LOCAL_LLM_COMPLETION
+    # wire op. See `copilot/tools/local_llm_router.py`. Default off.
+    LOCAL_LLM_ROUTING = "local-llm-routing"
+    # Per-tier preferred local-model lists used by LocalLLMRouter. JSON
+    # value, shape:
+    #   {"fast": ["llama3.2:3b", "llama3.2:1b"], "default": [...], "thinking": []}
+    # Missing tier → empty list → never route that tier locally.
+    LOCAL_LLM_TIER_PREFERENCES = "local-llm-tier-preferences"
 
     # Gates Otto voice mode end-to-end. The speech endpoint 404s when
     # off so a stale frontend cannot spend TTS budget. Fail-closed.
     COPILOT_VOICE_MODE = "copilot-voice-mode"
+
+    # Offers Otto the render_ui tool. The chat draws stored cards either way,
+    # so turning this off never breaks an old conversation.
+    COPILOT_VISUAL_ANSWERS = "copilot-visual-answers"
 
     # --- Dream-system gates (P0) ---
     #
@@ -363,8 +395,13 @@ async def _evaluate_flag_value(
     PostHog could not give. A degraded context lookup makes the answer
     unauthoritative too: the flag evaluates fine, it just answers for a user
     without the targeted attributes. Only a read of an experiment flag sends
-    PostHog its exposure event.
+    PostHog its exposure event. A JSON value forced from the environment
+    (:func:`_env_value_override`) answers without PostHog.
     """
+    forced = _env_value_override(flag_key)
+    if forced is not None:
+        logger.debug("Feature flag %s overridden by env", flag_key)
+        return forced, True
     if posthog.get_flag_client() is None:
         # No client means the default, without a user lookup.
         result = (default, False)
@@ -445,10 +482,11 @@ _TRUTHY = ("1", "true", "yes", "on")
 # Flags whose callers read a string / JSON value through
 # ``get_feature_flag_value`` rather than a bool. The master switch below skips
 # them so it never hands a bare ``True`` to a caller expecting a payload
-# (mirrors the frontend's ``ARRAY_TYPED_FLAGS``). ``get_feature_flag_value``
-# itself never consults the env override; this set only matters on the boolean
+# (mirrors the frontend's ``ARRAY_TYPED_FLAGS``). Only these flags take a JSON
+# value from ``FORCE_FLAG_<NAME>`` (``_env_value_override``); the boolean
 # paths (``evaluate_feature_flag``, ``feature_flag``,
-# ``create_feature_flag_dependency``).
+# ``create_feature_flag_dependency``) read that variable as true or false, as
+# for any other flag.
 _NON_BOOLEAN_FLAG_VALUES: frozenset[str] = frozenset(
     {
         Flag.STRIPE_PRODUCT_ID_TOPUP.value,
@@ -458,6 +496,7 @@ _NON_BOOLEAN_FLAG_VALUES: frozenset[str] = frozenset(
         Flag.COPILOT_TIER_WORKSPACE_STORAGE_LIMITS.value,
         Flag.COPILOT_TIER_STRIPE_PRICES.value,
         Flag.CARD_REQUIRED_TRIAL_OFFER.value,
+        Flag.LOCAL_LLM_TIER_PREFERENCES.value,
     }
 )
 
@@ -541,6 +580,47 @@ def _env_flag_override(flag_key: Flag | str) -> bool | None:
     if _force_all_flags_enabled() and key_value not in _NON_BOOLEAN_FLAG_VALUES:
         return True
     return None
+
+
+# The flags whose env value has been logged, so each warns once.
+_warned_value_overrides: set[str] = set()
+
+
+def _env_value_override(flag_key: str) -> dict | list | None:
+    """A JSON object or array forced from the environment for a non-boolean flag.
+
+    For a flag in ``_NON_BOOLEAN_FLAG_VALUES``, ``FORCE_FLAG_<NAME>`` holding a
+    JSON object or array is the flag's value, and PostHog is not asked: a
+    stack without PostHog, such as the journeys' compose stack, gets its
+    Stripe price map this way. These values are the backend's alone, so
+    ``NEXT_PUBLIC_FORCE_FLAG_<NAME>``, which is meant for the browser bundle,
+    doesn't set one. Any other value (``true``, a string, invalid JSON) is
+    ignored, and PostHog answers as it would with nothing set.
+
+    Either way the first read of each flag logs a warning that names the
+    variable, never its value: a forced price map, cost limit or model route
+    left in a deployed environment must not go unnoticed.
+    """
+    if flag_key not in _NON_BOOLEAN_FLAG_VALUES:
+        return None
+    name = "FORCE_FLAG_" + flag_key.upper().replace("-", "_")
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    try:
+        value = json.loads(raw)
+    except ValueError:
+        value = None
+    forced = isinstance(value, (dict, list))
+    if flag_key not in _warned_value_overrides:
+        _warned_value_overrides.add(flag_key)
+        logger.warning(
+            f"{name} sets {flag_key}, so PostHog is not asked for it"
+            if forced
+            else f"{name} is ignored: {flag_key} takes a JSON object or array,"
+            " so PostHog answers it"
+        )
+    return value if forced else None
 
 
 async def is_feature_enabled(

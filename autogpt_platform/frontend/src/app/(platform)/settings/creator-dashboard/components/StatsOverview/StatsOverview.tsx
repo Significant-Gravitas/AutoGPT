@@ -3,7 +3,7 @@ import { motion, useReducedMotion } from "framer-motion";
 
 import { Text } from "@/components/atoms/Text/Text";
 
-import { EASE_OUT, formatRuns, type DashboardStats } from "../../helpers";
+import { formatRuns, type DashboardStats } from "../../helpers";
 import {
   CheckmarkCircle02Icon,
   Clock01Icon,
@@ -13,6 +13,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   stats: DashboardStats;
@@ -53,8 +54,7 @@ export function StatsOverview({ stats, index = 0 }: Props) {
       label: "Total runs",
       value: formatRuns(stats.totalRuns),
       Icon: PlayIcon,
-      // oxlint-disable-next-line design-system/no-raw-colors -- sky tile kept until the cyan -> info hue change is approved
-      iconClass: "bg-sky-50 text-sky-700 ring-sky-200",
+      iconClass: "bg-info-surface text-sky-foreground ring-sky/30",
     },
   ];
 
@@ -66,8 +66,8 @@ export function StatsOverview({ stats, index = 0 }: Props) {
         reduceMotion
           ? undefined
           : {
-              duration: 0.32,
-              ease: EASE_OUT,
+              duration: duration.slow,
+              ease: ease.emphasized,
               delay: 0.04 + index * 0.05,
             }
       }
@@ -85,7 +85,7 @@ export function StatsOverview({ stats, index = 0 }: Props) {
               <UIIcon icon={StarIcon} size={18} />
             </div>
             <div className="flex flex-col">
-              <Text variant="body-medium" as="span">
+              <Text variant="body" weight="medium" as="span">
                 Average rating
               </Text>
               <Text variant="small" tone="muted">
@@ -93,7 +93,7 @@ export function StatsOverview({ stats, index = 0 }: Props) {
               </Text>
             </div>
           </div>
-          <Text variant="h3" as="span" size="large-medium">
+          <Text variant="h3" as="span" size="large" weight="medium">
             {stats.averageRating.toFixed(1)}
             <span className="text-foreground-subtle"> / 5</span>
           </Text>

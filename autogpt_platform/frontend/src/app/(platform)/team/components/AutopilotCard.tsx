@@ -10,6 +10,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { useId } from "react";
 import { AUTOPILOT_BLURB, AUTOPILOT_ROLE } from "../helpers";
 import {
   CHIP_SHAPE,
@@ -36,14 +37,20 @@ export function AutopilotCard({
   workflowCount,
   onChat,
 }: Props) {
+  const totalsID = useId();
+  const hasTotals = skillCount + scheduleCount + workflowCount > 0;
+
   return (
     <section
       aria-label={AUTOPILOT_NAME}
       className="flex flex-col overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm"
     >
+      {/* The aria-label replaces the link's content, so the totals and
+          their label reach a screen reader as its description. */}
       <Link
         href="/team/autopilot"
         aria-label={`View ${AUTOPILOT_NAME}`}
+        aria-describedby={hasTotals ? totalsID : undefined}
         className="flex flex-1 flex-col items-start p-2 pb-4"
       >
         <ExpertCover color={AUTOPILOT_COVER_COLOR} status="built-in" />
@@ -53,13 +60,14 @@ export function AutopilotCard({
             size={88}
             backgroundColor={AUTOPILOT_COVER_COLOR}
             // oxlint-disable-next-line design-system/no-restyle -- AutopilotAvatar has no bordered variant (src/components is P9's)
-            className="relative z-10 -mt-12 ml-1 rounded-full border border-border-base ring-4 ring-surface"
+            className="relative z-raised -mt-12 ml-1 rounded-full border border-border-base ring-4 ring-surface"
           />
         </div>
 
         <div className="mt-2 flex w-full flex-col items-start gap-1 px-2 pl-5 text-left">
           <Text
-            variant="lead-medium"
+            variant="lead"
+            weight="medium"
             tone="primary"
             className="mb-1 w-full truncate"
           >
@@ -84,7 +92,7 @@ export function AutopilotCard({
           </Text>
         </div>
 
-        <div className="w-full px-2 pl-5">
+        <div id={totalsID} className="w-full px-2 pl-5">
           <CardStats className="mt-3 w-full">
             <CardStat
               icon={Calendar03Icon}
@@ -105,6 +113,11 @@ export function AutopilotCard({
               count={workflowCount}
             />
           </CardStats>
+          {hasTotals ? (
+            <Text variant="small" tone="muted" className="mt-1">
+              Across your team
+            </Text>
+          ) : null}
         </div>
       </Link>
 

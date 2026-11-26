@@ -221,7 +221,7 @@ export function ConnectorRow({ row }: Props) {
       id: savedCredential.id,
       provider: savedCredential.provider,
       type: savedCredential.type as CredentialsMetaInput["type"],
-      title: savedCredential.title ?? undefined,
+      title: savedCredential.title ?? savedCredential.username ?? undefined,
     });
   });
   // row.select is rebuilt each render by the card, so only these decide.
@@ -316,7 +316,9 @@ export function ConnectorRow({ row }: Props) {
 
       <div className="flex min-w-32 flex-1 flex-col gap-1">
         <Text
-          variant="body-medium-tight"
+          variant="body"
+          weight="medium"
+          leading="5"
           as="span"
           tone="primary"
           className="truncate"
@@ -329,7 +331,8 @@ export function ConnectorRow({ row }: Props) {
           </span>
         ) : expertGrant && !isSatisfied ? (
           <Text
-            variant="small-tight"
+            variant="small"
+            leading="4"
             as="span"
             tone="muted"
             className="truncate"
@@ -341,7 +344,8 @@ export function ConnectorRow({ row }: Props) {
         ) : (
           row.description && (
             <Text
-              variant="small-tight"
+              variant="small"
+              leading="4"
               as="span"
               tone="muted"
               className="truncate"
@@ -352,7 +356,8 @@ export function ConnectorRow({ row }: Props) {
         )}
         {isSatisfied && row.selected?.title && (
           <Text
-            variant="small-tight"
+            variant="small"
+            leading="4"
             as="span"
             tone="muted"
             className="break-words"
@@ -502,7 +507,11 @@ function grantableAmong(
     row.schema.discriminator_values,
   );
   return match
-    ? { id: match.id, title: match.title ?? row.displayName, type: match.type }
+    ? {
+        id: match.id,
+        title: match.title ?? match.username ?? row.displayName,
+        type: match.type,
+      }
     : null;
 }
 

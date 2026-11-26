@@ -86,8 +86,8 @@ export function CronSchedulerDialog({
               </Text>
             </div>
           ) : (
-            <div className="flex items-center gap-2 rounded-xlarge bg-muted/50 p-3">
-              <span className="flex text-muted-foreground">
+            <div className="flex items-center gap-2 rounded-xlarge bg-surface-hover/50 p-3">
+              <span className="flex text-foreground-tertiary">
                 <Icon
                   aria-hidden
                   icon={InformationCircleIcon}
@@ -96,7 +96,7 @@ export function CronSchedulerDialog({
               </span>
               <Text variant="body">
                 Schedule will run in your timezone:{" "}
-                <Text variant="body-medium" as="span">
+                <Text variant="body" weight="medium" as="span">
                   {timezoneDisplay}
                 </Text>
               </Text>

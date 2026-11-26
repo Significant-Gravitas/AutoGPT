@@ -32,22 +32,20 @@ export function ReadyView({
     : (serverName ?? `this ${platform} ${serverNoun}`);
 
   return (
-    <AuthCard
-      title={title}
-      // oxlint-disable-next-line design-system/no-restyle -- AuthCard has no roomy size; keeps today's p-8 padding and gap-6
-      className="max-w-[38rem] gap-6 p-8"
-    >
+    <AuthCard title={title} size="roomy" className="max-w-[38rem]">
       <div className="flex w-full flex-col items-center gap-6">
-        <div className="w-full rounded-xl bg-muted px-6 py-5 text-left">
-          <Text variant="body-medium">What happens when you confirm:</Text>
+        <div className="w-full rounded-xl bg-surface-hover px-6 py-5 text-left">
+          <Text variant="body" weight="medium">
+            What happens when you confirm:
+          </Text>
           {forUser ? (
-            <ul className="mt-4 space-y-2.5 text-body leading-relaxed text-muted-foreground">
+            <ul className="mt-4 space-y-2.5 text-body leading-relaxed text-foreground-tertiary">
               <li>{contextLabel} will be linked to your AutoGPT account</li>
               <li>DMs with the bot run as your own private AutoGPT chat</li>
               <li>All usage from those DMs is billed to your account</li>
             </ul>
           ) : (
-            <ul className="mt-4 space-y-2.5 text-body leading-relaxed text-muted-foreground">
+            <ul className="mt-4 space-y-2.5 text-body leading-relaxed text-foreground-tertiary">
               <li>{contextLabel} will be connected to your AutoGPT account</li>
               <li>Anyone in the {serverNoun} can give AutoGPT tasks</li>
               <li>
@@ -63,8 +61,8 @@ export function ReadyView({
           )}
         </div>
 
-        <div className="w-full rounded-xl border border-border bg-muted px-5 py-4">
-          <Text variant="small-relaxed" tone="muted">
+        <div className="w-full rounded-xl border border-border-base bg-surface-hover px-5 py-4">
+          <Text variant="small" leading="relaxed" tone="muted">
             Usage from {contextLabel} is billed to your AutoGPT account. You can
             unlink at any time in Settings → Bots.
           </Text>
@@ -88,7 +86,10 @@ export function ReadyView({
             </Text>
             <Button variant="ghost" size="small" onClick={onSwitchAccount}>
               <Text
-                variant="small-medium-loose-underline"
+                variant="small"
+                weight="medium"
+                leading="5"
+                decoration="underline"
                 as="span"
                 tone="muted"
               >

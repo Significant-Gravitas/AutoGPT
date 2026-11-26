@@ -39,7 +39,7 @@ export function DecisionView({
       data-slot="skill-learning-sheet-decision"
       className="flex flex-col gap-3 rounded-xl border border-warning-border bg-warning-surface/60 p-3"
     >
-      <Text variant="small-medium" tone="primary">
+      <Text variant="small" weight="medium" tone="primary">
         Needs your decision
       </Text>
       <Text variant="small" tone="secondary">
@@ -56,7 +56,7 @@ export function DecisionView({
             data-slot="skill-learning-sheet-decision-item"
             className="rounded-md bg-surface p-2"
           >
-            <Text variant="small-medium" tone="primary">
+            <Text variant="small" weight="medium" tone="primary">
               {change.step}
             </Text>
             {change.before ? (
@@ -93,7 +93,7 @@ export function DecisionView({
       <Input
         id={`decision-edit-${proposal.id}`}
         label="Edited alternative (optional)"
-        labelVariant="small-medium"
+        labelVariant="small"
         type="textarea"
         rows={5}
         value={draft}

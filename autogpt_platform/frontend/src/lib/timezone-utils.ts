@@ -99,6 +99,16 @@ export function formatScheduleTime(
 }
 
 /**
+ * The timezone to show a viewer times in: their profile's, or the browser's
+ * while the profile's is unset or still loading.
+ */
+export function getViewerTimezone(userTimezone: string | undefined): string {
+  return userTimezone && userTimezone !== "not-set"
+    ? userTimezone
+    : Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+/**
  * Get a human-readable timezone name
  * @param timezone - IANA timezone identifier
  * @returns Human-readable name

@@ -14,10 +14,8 @@ import {
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useEffect, useRef, useState } from "react";
 import { ScheduleAgentModal } from "../ScheduleAgentModal/ScheduleAgentModal";
-import {
-  AIAgentSafetyPopup,
-  useAIAgentSafetyPopup,
-} from "./components/AIAgentSafetyPopup/AIAgentSafetyPopup";
+import { AIAgentSafetyPopup } from "./components/AIAgentSafetyPopup/AIAgentSafetyPopup";
+import { shouldShowSafetyPopup } from "./components/AIAgentSafetyPopup/helpers";
 import { ModalHeader } from "./components/ModalHeader/ModalHeader";
 import { ModalRunSection } from "./components/ModalRunSection/ModalRunSection";
 import { RunActions } from "./components/RunActions/RunActions";
@@ -28,6 +26,7 @@ interface Props {
   triggerSlot: React.ReactNode;
   agent: LibraryAgent;
   initialInputValues?: Record<string, any>;
+  initialTriggerConfigValues?: Record<string, any>;
   initialInputCredentials?: Record<string, any>;
   onRunCreated?: (execution: GraphExecutionMeta) => void;
   onTriggerSetup?: (preset: LibraryAgentPreset) => void;
@@ -42,6 +41,7 @@ export function RunAgentModal({
   triggerSlot,
   agent,
   initialInputValues,
+  initialTriggerConfigValues,
   initialInputCredentials,
   onRunCreated,
   onTriggerSetup,
@@ -61,9 +61,17 @@ export function RunAgentModal({
     inputValues,
     setInputValues,
 
+    // Form: trigger config (the trigger node's config on a triggered agent)
+    triggerConfigValues,
+    setTriggerConfigValues,
+    triggerConfigFields,
+
     // Form: credentials
     inputCredentials,
-    setInputCredentials,
+    handleCredentialChange,
+    handleCredentialAutoSelect,
+    clearedFields,
+    scheduleCredentials,
 
     // Preset/trigger labels
     presetName,
@@ -77,6 +85,12 @@ export function RunAgentModal({
     // Schemas
     agentInputFields,
     agentCredentialsInputFields,
+    nodeCredentials,
+    isResolvingCredentials,
+    nodeCredentialsUnknown,
+    isRetryingNodeCredentials,
+    retryNodeCredentials,
+    hasInputFields,
 
     // Async states
     isExecuting,
@@ -89,6 +103,7 @@ export function RunAgentModal({
     onRun: onRunCreated,
     onSetupTrigger: onTriggerSetup,
     initialInputValues,
+    initialTriggerConfigValues,
     initialInputCredentials,
   });
 
@@ -100,15 +115,8 @@ export function RunAgentModal({
   );
   const contentRef = useRef<HTMLDivElement>(null);
 
-  const { shouldShowPopup, dismissPopup } = useAIAgentSafetyPopup(
-    agent.id,
-    agent.has_sensitive_action,
-    agent.has_human_in_the_loop,
-  );
-
   const hasAnySetupFields =
-    Object.keys(agentInputFields || {}).length > 0 ||
-    Object.keys(agentCredentialsInputFields || {}).length > 0;
+    hasInputFields || Object.keys(agentCredentialsInputFields || {}).length > 0;
 
   const isTriggerRunType = defaultRunType.includes("trigger");
 
@@ -156,16 +164,11 @@ export function RunAgentModal({
     }));
   }
 
-  function handleCredentialsChange(key: string, value: any | undefined) {
-    setInputCredentials((prev) => {
-      const next = { ...prev } as Record<string, any>;
-      if (value === undefined) {
-        delete next[key];
-        return next;
-      }
-      next[key] = value;
-      return next;
-    });
+  function handleTriggerConfigChange(key: string, value: string) {
+    setTriggerConfigValues((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
   }
 
   function handleSetOpen(open: boolean) {
@@ -187,7 +190,7 @@ export function RunAgentModal({
   }
 
   function handleRunWithSafetyCheck() {
-    if (shouldShowPopup) {
+    if (shouldShowSafetyPopup(agent)) {
       setPendingRunAction(() => handleRun);
       setIsSafetyPopupOpen(true);
     } else {
@@ -197,7 +200,6 @@ export function RunAgentModal({
 
   function handleSafetyPopupAcknowledge() {
     setIsSafetyPopupOpen(false);
-    dismissPopup();
     if (pendingRunAction) {
       pendingRunAction();
       setPendingRunAction(null);
@@ -233,9 +235,20 @@ export function RunAgentModal({
                       inputValues,
                       setInputValue: handleInputChange,
                       agentInputFields,
+                      triggerConfigValues,
+                      setTriggerConfigValue: handleTriggerConfigChange,
+                      triggerConfigFields,
                       inputCredentials,
-                      setInputCredentialsValue: handleCredentialsChange,
+                      setInputCredentialsValue: handleCredentialChange,
+                      autoSelectInputCredentialsValue:
+                        handleCredentialAutoSelect,
+                      clearedCredentialFields: clearedFields,
                       agentCredentialsInputFields,
+                      nodeCredentials,
+                      isResolvingCredentials,
+                      nodeCredentialsUnknown,
+                      isRetryingNodeCredentials,
+                      retryNodeCredentials,
                     }}
                   >
                     <ModalRunSection />
@@ -246,10 +259,10 @@ export function RunAgentModal({
 
             <Dialog.Footer
               // oxlint-disable-next-line design-system/no-restyle -- a sticky footer over scrolling content needs its own fill and gap
-              className={`sticky bottom-0 z-10 bg-surface pt-4 ${
+              className={`sticky bottom-0 z-raised bg-surface pt-4 ${
                 hasOverflow
-                  ? // oxlint-disable-next-line design-system/no-restyle, design-system/no-arbitrary-values -- the overflow divider and its soft top shadow have no Dialog.Footer variant or shadow token
-                    "border-t border-separator shadow-[0_-2px_8px_rgba(0,0,0,0.04)]"
+                  ? // oxlint-disable-next-line design-system/no-restyle -- the overflow divider and its soft top shadow have no Dialog.Footer variant
+                    "border-t border-separator shadow-scroll-edge"
                   : ""
               }`}
             >
@@ -305,7 +318,8 @@ export function RunAgentModal({
                 onClose={handleCloseScheduleModal}
                 agent={agent}
                 inputValues={inputValues}
-                inputCredentials={inputCredentials}
+                inputCredentials={scheduleCredentials}
+                formCredentials={inputCredentials}
                 onScheduleCreated={handleScheduleCreated}
               />
             </Dialog.Footer>
@@ -314,7 +328,7 @@ export function RunAgentModal({
       </Dialog>
 
       <AIAgentSafetyPopup
-        agentId={agent.id}
+        agent={agent}
         isOpen={isSafetyPopupOpen}
         onAcknowledge={handleSafetyPopupAcknowledge}
       />

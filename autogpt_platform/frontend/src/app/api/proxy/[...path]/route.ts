@@ -7,11 +7,17 @@ import {
 } from "@/lib/constants";
 import { getClientIPToken } from "@/lib/auth/client-ip-token";
 import { getCountryToken } from "@/lib/auth/country-token";
+import { authTokenUnavailableResponse } from "@/lib/auth/server/authTokenUnavailableResponse";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import {
   isSessionRejection,
   readServerSession,
 } from "@/lib/auth/server/getServerSession";
+import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
+import {
+  fetchRetryingDroppedConnection,
+  getFetchFailureCode,
+} from "@/lib/dropped-connection-retry";
 import { ImpersonationState } from "@/lib/impersonation";
 import { environment } from "@/services/environment";
 import { NextRequest, NextResponse } from "next/server";
@@ -313,7 +319,9 @@ async function handler(
 
     let backendResponse: Response;
     try {
-      backendResponse = await fetch(backendUrl, {
+      // A GET or HEAD whose pooled connection turns out to be dead is sent
+      // once more, inside the same deadlines.
+      backendResponse = await fetchRetryingDroppedConnection(backendUrl, {
         method,
         headers,
         body: responseStart.body,
@@ -355,12 +363,25 @@ async function handler(
       headers: responseHeaders,
     });
   } catch (error) {
+    if (error instanceof AuthTokenUnavailableError) {
+      const response = authTokenUnavailableResponse(error);
+      if (isPrivateMedia) {
+        hardenPrivateMediaResponseHeaders(response.headers);
+      }
+      return response;
+    }
     const timedOut = isTimeoutError(error);
     const errorMessage = timedOut
       ? "Proxy request timed out"
       : "Proxy request failed";
+    // "fetch failed" alone doesn't say whether the connection was reset,
+    // refused or never resolved; the cause's code does.
+    const failureCode = getFetchFailureCode(error);
+    const failureKind = failureCode ? ` (${failureCode})` : "";
     if (isPrivateMedia) {
-      console.error(`Private media proxy ${method} failed: ${errorMessage}`);
+      console.error(
+        `Private media proxy ${method} failed: ${errorMessage}${failureKind}`,
+      );
       const response = NextResponse.json(
         { error: errorMessage },
         { status: timedOut ? 504 : 502 },
@@ -369,7 +390,10 @@ async function handler(
       return response;
     }
 
-    console.error(`Proxy error for ${method} /${path.join("/")}:`, error);
+    console.error(
+      `Proxy error for ${method} /${path.join("/")}${failureKind}:`,
+      error,
+    );
     return NextResponse.json(
       {
         error: errorMessage,

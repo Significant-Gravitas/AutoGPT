@@ -33,8 +33,7 @@ const InputNodeHandle = ({
           icon={CircleIcon}
           size={16}
           fill={isInputConnected ? "currentColor" : "none"}
-          tone={isInputBroken ? "error" : undefined}
-          className={isInputBroken ? undefined : "text-handle"}
+          tone={isInputBroken ? "error" : "handle"}
         />
       </div>
     </Handle>
@@ -44,18 +43,12 @@ const InputNodeHandle = ({
 const OutputNodeHandle = ({
   field_name,
   nodeId,
-  hexColor,
   isBroken,
 }: {
   field_name: string;
   nodeId: string;
-  hexColor: string;
   isBroken: boolean;
 }) => {
-  const isOutputConnected = useEdgeStore((state) =>
-    state.isOutputConnected(nodeId, field_name),
-  );
-
   return (
     <Handle
       type={"source"}
@@ -68,9 +61,7 @@ const OutputNodeHandle = ({
         <Icon
           icon={CircleIcon}
           size={16}
-          color={isOutputConnected ? hexColor : "gray"}
-          tone={isBroken ? "error" : undefined}
-          className={isBroken ? undefined : "text-handle"}
+          tone={isBroken ? "error" : "handle"}
         />
       </div>
     </Handle>

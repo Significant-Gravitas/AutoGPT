@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai";
+import { v5 as uuidv5 } from "uuid";
 
 import { CANCELLED_MARKER } from "../useCopilotStop";
 import {
@@ -26,6 +27,12 @@ export interface UserSegment {
   origin: "sent" | "chip";
   rawId: string | null;
   createdAt: string | null;
+  /** The id of the row the backend writes for a send: null for a chip, a
+   *  kickoff, or a send before any view named the session's user. */
+  persistedId: string | null;
+  /** The `message_id` its request named, which a send again reuses: null
+   *  for a chip. */
+  clientMessageId: string | null;
 }
 
 export interface TurnSegment {
@@ -37,6 +44,7 @@ export interface TurnSegment {
   /** Two drift events on one turn: the persisted view is shown instead. */
   frozen: boolean;
   reconciled: boolean;
+  recoveredError: LogRow | null;
   /** Fields that never stream, adopted at the reconcile. */
   durationMs: number | null;
   createdAt: string | null;
@@ -81,6 +89,7 @@ export function newTurnSegment(
     stopped: false,
     frozen: false,
     reconciled: false,
+    recoveredError: null,
     durationMs: null,
     createdAt: null,
     rowCreatedAt: {},
@@ -89,9 +98,22 @@ export function newTurnSegment(
   };
 }
 
+const CHIP_KEY_PREFIX = "pending-chip-";
+
+/** The row a promoted follow-up shows as until its drained row stands in. */
+export function chipKey(queuedId: string): string {
+  return `${CHIP_KEY_PREFIX}${queuedId}`;
+}
+
+export function isChipKey(key: string): boolean {
+  return key.startsWith(CHIP_KEY_PREFIX);
+}
+
 export function userSegment(
   message: UIMessage,
   origin: UserSegment["origin"],
+  persistedId: string | null = null,
+  clientMessageId: string | null = null,
 ): UserSegment {
   return {
     kind: "user",
@@ -101,7 +123,24 @@ export function userSegment(
     origin,
     rawId: null,
     createdAt: null,
+    persistedId,
+    clientMessageId,
   };
+}
+
+// `_CLIENT_MESSAGE_NAMESPACE` in backend/copilot/expert_kickoff.py.
+const CLIENT_MESSAGE_NAMESPACE = "d70473da-722b-55cb-963f-4729e64d7b06";
+
+/** The row id `scoped_client_message_id` gives a send: the prompt's identity in the session. */
+export function persistedPromptId(
+  userId: string,
+  sessionId: string,
+  clientMessageId: string,
+) {
+  return uuidv5(
+    `${userId}:${sessionId}:${clientMessageId}`,
+    CLIENT_MESSAGE_NAMESPACE,
+  );
 }
 
 /** Where a turn's rows start: its first checkpoint, its seed, or the row after its prompt. */
@@ -148,10 +187,18 @@ export function turnRows(
         return locatePrompt(later, rows, start + 1)?.sequence ?? null;
       })
       .find((n): n is number => typeof n === "number") ?? Infinity;
-  const raw = rows.filter(
+  const inRange = rows.filter(
     (r) =>
       typeof r.sequence === "number" && r.sequence >= start && r.sequence < end,
   );
+  // A stopped turn's rows end with the marker its stop saves; a read that
+  // comes after it was saved can show the next turn's rows too.
+  const marker = seg.stopped
+    ? inRange.findIndex(
+        (r) => r.role === "assistant" && r.content === CANCELLED_MARKER,
+      )
+    : -1;
+  const raw = marker === -1 ? inRange : inRange.slice(0, marker + 1);
   return { start, raw, rows: raw.map(logRowFromPersisted) };
 }
 
@@ -166,12 +213,17 @@ export function reconcileTurn(
 ): TurnSegment {
   const rows = seg.frozen
     ? [...persisted.rows]
-    : mergeRows(seg.log.rows, persisted.rows);
+    : mergeRows(
+        seg.log.rows.filter((row) => row.key !== seg.recoveredError?.key),
+        persisted.rows,
+      );
   const rowCreatedAt: Record<string, string> = {};
   rows.forEach((row, i) => {
     const at = createdAtOf(persisted.raw[i]);
     if (at) rowCreatedAt[row.key] = at;
   });
+  if (seg.recoveredError && (!rows.length || !isMarker(rows[rows.length - 1])))
+    rows.push(seg.recoveredError);
   const durations = persisted.raw
     .map((r) => (r as { duration_ms?: unknown }).duration_ms)
     .filter((d): d is number => typeof d === "number");
@@ -215,29 +267,76 @@ export function withPromptRow(
   seg: UserSegment,
   row: PersistedRow,
 ): UserSegment {
-  const rawId = (row as { id?: unknown }).id;
   return {
     ...seg,
     sequence: row.sequence ?? null,
-    rawId: typeof rawId === "string" ? rawId : null,
+    rawId: typeof row.id === "string" ? row.id : null,
     createdAt: createdAtOf(row),
   };
 }
 
-/** Rows persisted after the tail's end and before `start` that no segment holds. */
+/**
+ * Rows persisted after the tail's end and before `start` that no segment
+ * holds. None when the window starts past the tail's end: the rows it shows
+ * would follow the tail with a hole before them.
+ */
 export function gapSegment(
   segments: readonly Segment[],
   start: number,
   rows: readonly PersistedRow[],
+  windowStart = -Infinity,
 ): RowsSegment | null {
   const tailEnd = tailEndSequence(segments);
-  if (tailEnd === null) return null;
-  const gap = rows.filter(
-    (r) => (r.sequence ?? -1) > tailEnd && (r.sequence ?? -1) < start,
-  );
-  return gap.length
-    ? { kind: "rows", key: `rows:${gap[0].sequence}`, rows: gap }
-    : null;
+  if (tailEnd === null || windowStart > tailEnd + 1) return null;
+  return rowsBetween(tailEnd, start, rows);
+}
+
+/**
+ * Rows persisted between the tail before a prompt and the prompt's own row:
+ * another tab's or device's turn, which a tab that had not read it sent
+ * after. A tail that starts with the prompt owns every row from `ownedFrom`.
+ * None when the segment before ends at no known row, or the window starts
+ * past the gap.
+ */
+export function gapBeforePrompt(
+  segments: readonly Segment[],
+  index: number,
+  ownedFrom: number | null,
+  rows: readonly PersistedRow[],
+  windowStart: number,
+): RowsSegment | null {
+  const prompt = segments[index];
+  if (prompt?.kind !== "user" || prompt.sequence === null) return null;
+  const before = segments.slice(0, index);
+  const end =
+    before.length > 0
+      ? tailEndSequence(before)
+      : ownedFrom === null
+        ? null
+        : ownedFrom - 1;
+  if (end === null || windowStart > end + 1) return null;
+  return rowsBetween(end, prompt.sequence, rows);
+}
+
+/**
+ * Rows persisted between the tail's end and a running turn the tab attaches
+ * to, which starts at `start`. From a window that starts past the tail's end,
+ * only the user rows that turn answers: the rows before them may begin
+ * inside another turn.
+ */
+export function gapBeforeTurn(
+  segments: readonly Segment[],
+  start: number,
+  rows: readonly PersistedRow[],
+  windowStart: number,
+): RowsSegment | null {
+  const tailEnd = tailEndSequence(segments);
+  if (tailEnd === null || windowStart <= tailEnd + 1)
+    return gapSegment(segments, start, rows, windowStart);
+  let first = start;
+  while (rows.some((r) => r.sequence === first - 1 && r.role === "user"))
+    first -= 1;
+  return rowsBetween(first - 1, start, rows);
 }
 
 export function tailEndSequence(segments: readonly Segment[]) {
@@ -246,7 +345,10 @@ export function tailEndSequence(segments: readonly Segment[]) {
   if (last.kind === "rows")
     return last.rows[last.rows.length - 1]?.sequence ?? null;
   if (last.kind === "user") return last.sequence;
-  return last.log.rows[last.log.rows.length - 1]?.sequence ?? null;
+  const rows = last.log.rows.filter(
+    (row) => row.key !== last.recoveredError?.key,
+  );
+  return rows[rows.length - 1]?.sequence ?? null;
 }
 
 /** Rows equal to the ones on screen keep their object and key; others take the persisted content under the on-screen key. */
@@ -335,14 +437,18 @@ export function persistedRows(
 }
 
 /**
- * The prompt's row: the first user row in the tail whose text it carries
- * (the backend appends an attached-files block after it).
+ * The prompt's row: a send's is the row with its persisted id, wherever it
+ * is, since another tab's prompt can carry the same words. Without that id,
+ * the first user row in the tail whose text it carries (the backend appends
+ * an attached-files block after it).
  */
 export function locatePrompt(
   seg: UserSegment,
   rows: readonly PersistedRow[],
   from: number | null,
 ) {
+  if (seg.persistedId)
+    return rows.find((r) => r.id === seg.persistedId) ?? null;
   const text = seg.message.parts
     .map((p) => (p.type === "text" ? p.text : ""))
     .join("");
@@ -362,18 +468,19 @@ export function promptFloor(
   index: number,
   ownedFrom: number | null,
 ) {
-  const placed = segments.slice(0, index).flatMap((seg) => {
-    if (seg.kind === "user") return [seg.sequence];
-    return (seg.kind === "rows" ? seg.rows : seg.log.rows).map(
-      (r) => r.sequence,
-    );
-  });
-  return Math.max(
-    ownedFrom ?? 0,
-    ...placed
-      .filter((s): s is number => typeof s === "number")
-      .map((s) => s + 1),
-  );
+  let floor = ownedFrom ?? 0;
+  for (const seg of segments.slice(0, index)) {
+    const sequences =
+      seg.kind === "user"
+        ? [seg.sequence]
+        : (seg.kind === "rows" ? seg.rows : seg.log.rows).map(
+            (r) => r.sequence,
+          );
+    for (const sequence of sequences)
+      if (typeof sequence === "number" && sequence + 1 > floor)
+        floor = sequence + 1;
+  }
+  return floor;
 }
 
 export function lastCheckpoint(log: TurnLog): TurnCheckpoint | null {
@@ -417,6 +524,19 @@ function markerRow(key: string, content: string): LogRow {
     sequence: null,
     metadata: null,
   };
+}
+
+function rowsBetween(
+  after: number,
+  before: number,
+  rows: readonly PersistedRow[],
+): RowsSegment | null {
+  const gap = rows.filter(
+    (r) => (r.sequence ?? -1) > after && (r.sequence ?? -1) < before,
+  );
+  return gap.length
+    ? { kind: "rows", key: `rows:${gap[0].sequence}`, rows: gap }
+    : null;
 }
 
 function segmentStart(seg: Segment): number | null {

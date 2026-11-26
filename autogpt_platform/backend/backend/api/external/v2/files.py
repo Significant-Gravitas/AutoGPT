@@ -13,6 +13,7 @@ from starlette import status
 
 from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.features.workspace.service import store_workspace_upload
+from backend.copilot.tools.skills import invalidate_skills_index_for_path
 from backend.data.workspace import (
     count_workspace_files,
     get_workspace,
@@ -131,12 +132,21 @@ async def delete_file(
 
     # The manager also removes the stored blob and its search entry, as the
     # internal route does; soft-deleting the row alone freed no storage.
-    deleted = await WorkspaceManager(auth.user_id, workspace.id).delete_file(file_id)
-    if not deleted:
+    manager = WorkspaceManager(auth.user_id, workspace.id)
+    file = await manager.get_file_info(file_id)
+    if file is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"File #{file_id} not found",
         )
+    try:
+        if not await manager.delete_file(file_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"File #{file_id} not found",
+            )
+    finally:
+        await invalidate_skills_index_for_path(auth.user_id, file.path)
 
 
 @file_workspace_router.post(

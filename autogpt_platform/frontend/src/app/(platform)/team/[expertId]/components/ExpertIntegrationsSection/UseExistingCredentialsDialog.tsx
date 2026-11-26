@@ -60,6 +60,15 @@ function groupByProvider(
     .sort((a, b) => a.provider.name.localeCompare(b.provider.name));
 }
 
+/** Most OAuth sign-ins (Google among them) store no title, only the
+ *  account's email, which is what tells two accounts for one service apart. */
+function accountName(
+  credential: CredentialsMetaResponse,
+  fallback: string = credential.provider,
+) {
+  return credential.title ?? credential.username ?? fallback;
+}
+
 /** Credentials already on your account that this expert cannot use yet,
  *  grouped like the connect picker. A provider with one credential grants
  *  on click; with several, a second step asks which one. */
@@ -88,8 +97,10 @@ export function UseExistingCredentialsDialog({
     (group) =>
       !needle ||
       group.provider.name.toLowerCase().includes(needle) ||
-      group.credentials.some((credential) =>
-        (credential.title ?? "").toLowerCase().includes(needle),
+      group.credentials.some(
+        (credential) =>
+          accountName(credential).toLowerCase().includes(needle) ||
+          credential.username?.toLowerCase().includes(needle),
       ),
   );
   const selected = groups.find(
@@ -130,7 +141,7 @@ export function UseExistingCredentialsDialog({
                 <Icon icon={ArrowLeft02Icon} size={14} />
                 All connections
               </button>
-              <Text variant="body-tight" tone="muted">
+              <Text variant="body" leading="5" tone="muted">
                 You have {selected.credentials.length} {selected.provider.name}{" "}
                 connections. Choose which one {expertName} should use.
               </Text>
@@ -140,7 +151,7 @@ export function UseExistingCredentialsDialog({
               >
                 {selected.credentials.map((credential) => {
                   const name = formatCredentialName(
-                    credential.title ?? credential.provider,
+                    accountName(credential),
                     credential.provider,
                   );
                   return (
@@ -153,7 +164,8 @@ export function UseExistingCredentialsDialog({
                         size={24}
                       />
                       <Text
-                        variant="body-medium"
+                        variant="body"
+                        weight="medium"
                         as="span"
                         tone="primary"
                         className="min-w-0 flex-1 truncate"
@@ -176,7 +188,7 @@ export function UseExistingCredentialsDialog({
             </>
           ) : (
             <>
-              <Text variant="body-tight" tone="muted">
+              <Text variant="body" leading="5" tone="muted">
                 These connections are already set up on your account but{" "}
                 {expertName} can&apos;t use them yet. Choose one to give{" "}
                 {expertName} access. Nothing is re-authorised, and you can
@@ -209,8 +221,10 @@ export function UseExistingCredentialsDialog({
                           description={
                             group.credentials.length === 1
                               ? formatCredentialName(
-                                  group.credentials[0].title ??
+                                  accountName(
+                                    group.credentials[0],
                                     group.provider.name,
+                                  ),
                                   group.credentials[0].provider,
                                 )
                               : `${group.credentials.length} connections · choose one`

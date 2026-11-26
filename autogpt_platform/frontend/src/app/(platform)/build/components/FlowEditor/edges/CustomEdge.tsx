@@ -21,7 +21,6 @@ export type CustomEdgeData = {
   beadDown?: number;
   beadData?: Map<string, NodeExecutionResult["status"]>;
   edgeColorClass?: string;
-  edgeHexColor?: string;
 };
 
 export type CustomEdge = XYEdge<CustomEdgeData, "custom">;

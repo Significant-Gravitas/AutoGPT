@@ -33,7 +33,7 @@ export function ChangelogPopup() {
   return (
     <div
       data-slot="changelog-popup"
-      className={`fixed right-4 bottom-4 z-50 w-[360px] max-w-[calc(100vw-2rem)] transition-all duration-500 ease-out sm:right-6 sm:bottom-6 ${
+      className={`fixed right-4 bottom-4 z-overlay w-[360px] max-w-[calc(100vw-2rem)] transition-all duration-500 ease-out sm:right-6 sm:bottom-6 ${
         isFading
           ? "pointer-events-none translate-y-2 opacity-0"
           : "translate-y-0 opacity-100"
@@ -58,7 +58,7 @@ export function ChangelogPopup() {
     >
       <div
         data-slot="changelog-popup-card"
-        className="rounded-2xl border border-border bg-background p-5 shadow-lg"
+        className="rounded-2xl border border-border-base bg-canvas p-5 shadow-lg"
       >
         <div
           data-slot="changelog-popup-header"
@@ -66,7 +66,7 @@ export function ChangelogPopup() {
         >
           <div
             data-slot="changelog-popup-badge"
-            className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-secondary text-foreground"
+            className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-surface-hover text-foreground-base"
           >
             <Icon
               data-slot="changelog-popup-badge-icon"
@@ -75,7 +75,11 @@ export function ChangelogPopup() {
             />
           </div>
           <div data-slot="changelog-popup-heading" className="min-w-0 flex-1">
-            <Text variant="body-medium" data-slot="changelog-popup-title">
+            <Text
+              variant="body"
+              weight="medium"
+              data-slot="changelog-popup-title"
+            >
               What&apos;s new
             </Text>
             <Text variant="small" data-slot="changelog-popup-date" tone="muted">
@@ -84,8 +88,10 @@ export function ChangelogPopup() {
           </div>
           <Button
             type="button"
-            variant="ghost-muted"
+            variant="ghost"
+            tone="quiet"
             size="icon-sm"
+            shape="soft"
             withTooltip={false}
             onClick={dismiss}
             data-slot="changelog-popup-dismiss"
@@ -110,7 +116,7 @@ export function ChangelogPopup() {
               <span
                 aria-hidden="true"
                 data-slot="changelog-popup-bullet"
-                className="mt-2.5 size-1 shrink-0 rounded-full bg-muted-foreground"
+                className="mt-2.5 size-1 shrink-0 rounded-full bg-fill-soft"
               />
               <Text variant="body" data-slot="changelog-popup-highlight-text">
                 {item}
@@ -121,14 +127,14 @@ export function ChangelogPopup() {
 
         <div
           data-slot="changelog-popup-footer"
-          className="border-t border-border pt-3"
+          className="border-t border-border-base pt-3"
         >
           <Link
             href={latestEntry.url}
             isExternal
             onClick={dismiss}
             data-slot="changelog-popup-link"
-            className="inline-flex items-center gap-1.5 text-foreground"
+            className="inline-flex items-center gap-1.5 text-foreground-base"
           >
             View changelog
             <Icon

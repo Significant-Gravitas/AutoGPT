@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { CARD, HALF, RESULT_GRID, StatusPill } from "./ResultCards";
 import { asObject, inline, resultItemKey, str } from "./resultHelpers";
 import { SubSessionLive, useSubSessionEffectiveStatus } from "./SubSessionLive";
+import { BackgroundSubtaskStop } from "./BackgroundSubtaskStop";
 import { Text } from "@/components/atoms/Text/Text";
 
 function agentHref(agent: Record<string, unknown>): string | null {
@@ -44,7 +45,7 @@ function CardLink({ href, label }: CardLinkProps) {
     <Link
       href={href}
       aria-label={label}
-      className="shrink-0 rounded-full p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
+      className="shrink-0 rounded-pill p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
     >
       <Icon icon={LinkSquare01Icon} size={14} />
     </Link>
@@ -70,7 +71,9 @@ export function AgentListCard({ agents }: AgentListCardProps) {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
                 <Text
-                  variant="body-sm-medium-inherit"
+                  variant="body-sm"
+                  weight="medium"
+                  leading="inherit"
                   tone="emphasis"
                   className="min-w-0 truncate"
                 >
@@ -83,7 +86,12 @@ export function AgentListCard({ agents }: AgentListCardProps) {
                 )}
               </div>
               {subtitle && (
-                <Text variant="small-tight" tone="muted" className="truncate">
+                <Text
+                  variant="small"
+                  leading="4"
+                  tone="muted"
+                  className="truncate"
+                >
                   {subtitle}
                 </Text>
               )}
@@ -127,14 +135,16 @@ export function AgentSavedCard({ output }: OutputCardProps) {
         <Icon icon={Robot01Icon} size={15} tone="secondary" />
       </div>
       <Text
-        variant="body-sm-medium-inherit"
+        variant="body-sm"
+        weight="medium"
+        leading="inherit"
         tone="emphasis"
         className="min-w-0 flex-1 truncate"
       >
         {name}
       </Text>
       {typeof version === "number" && (
-        <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
+        <span className="shrink-0 rounded-pill bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
           v{version}
         </span>
       )}
@@ -142,7 +152,7 @@ export function AgentSavedCard({ output }: OutputCardProps) {
         <Link
           href={builderLink}
           aria-label="Open in builder"
-          className="shrink-0 rounded-full p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
+          className="shrink-0 rounded-pill p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
         >
           <Icon icon={WrenchIcon} size={14} />
         </Link>
@@ -163,20 +173,22 @@ export function AgentPreviewCard({ output }: OutputCardProps) {
       </div>
       <div className="min-w-0 flex-1">
         <Text
-          variant="body-sm-medium-inherit"
+          variant="body-sm"
+          weight="medium"
+          leading="inherit"
           tone="emphasis"
           className="truncate"
         >
           {name}
         </Text>
         {str(output, "description", "message") && (
-          <Text variant="small-tight" tone="muted" className="truncate">
+          <Text variant="small" leading="4" tone="muted" className="truncate">
             {str(output, "description", "message")}
           </Text>
         )}
       </div>
       {count !== null && (
-        <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
+        <span className="shrink-0 rounded-pill bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
           {count} block{count === 1 ? "" : "s"}
         </span>
       )}
@@ -196,19 +208,28 @@ export function SubSessionCard({
   const response = str(output, "response");
   const link = str(output, "sub_autopilot_session_link");
   const subSessionId = str(output, "sub_session_id");
-  const status = useSubSessionEffectiveStatus(subSessionId, frozenStatus);
+  const background = !!str(output, "background_task_id");
+  const status = useSubSessionEffectiveStatus(
+    subSessionId,
+    frozenStatus,
+    background,
+  );
   const elapsed =
     typeof output.elapsed_seconds === "number" ? output.elapsed_seconds : null;
   const expert = asObject(output.expert);
   const avatarUrl = expert && str(expert, "avatar_url");
   const role = expert && str(expert, "role");
-  const name = (expert && str(expert, "name")) ?? "Expert";
+  const name =
+    (expert && str(expert, "name")) ??
+    (background ? "Background subtask" : "Expert");
   return (
     <div className={cn(CARD, "w-full rounded-2xl p-2.5")}>
       <div className="flex items-center gap-2.5">
         <ExpertAvatar name={name} avatarUrl={avatarUrl ?? null} size={28} />
         <Text
-          variant="body-sm-medium-inherit"
+          variant="body-sm"
+          weight="medium"
+          leading="inherit"
           tone="emphasis"
           className="min-w-0 flex-1 truncate"
         >
@@ -227,6 +248,11 @@ export function SubSessionCard({
           </span>
         )}
         {status && <StatusPill status={status} />}
+        {background &&
+          subSessionId &&
+          ["running", "queued", "unknown"].includes(status ?? "") && (
+            <BackgroundSubtaskStop sessionId={subSessionId} />
+          )}
         {link && <CardLink href={link} label="Open sub-session" />}
       </div>
       {!minimal && response && (
@@ -240,6 +266,7 @@ export function SubSessionCard({
       {!minimal && subSessionId && (
         <SubSessionLive
           subSessionId={subSessionId}
+          background={background}
           active={["running", "queued"].includes(
             frozenStatus?.toLowerCase() ?? "",
           )}

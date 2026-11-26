@@ -18,14 +18,14 @@ from backend.api.features.search.rate_limit import enforce_public_search_rate_li
 from backend.api.utils.client_ip import ClientIP
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.util.exceptions import NotFoundError
-from backend.util.models import Pagination
+from backend.util.models import MAX_PAGE, MAX_PAGE_SIZE, Pagination
 from backend.util.product_analytics import track_listing_downloaded
 
 from . import cache as store_cache
 from . import categories as store_categories
 from . import db as store_db
 from . import image_gen as store_image_gen
-from . import local_media
+from . import live_submission, local_media
 from . import media as store_media
 from . import model as store_model
 from . import submission_media
@@ -33,6 +33,17 @@ from . import submission_media
 logger = logging.getLogger(__name__)
 
 router = fastapi.APIRouter()
+
+# The request's org (and team) must let the caller see its workflows to list
+# its submissions, and publish them to submit, edit or withdraw one.
+_view_submissions = autogpt_libs.auth.requires_resource_permission(
+    autogpt_libs.auth.OrgAction.VIEW_RESOURCES,
+    autogpt_libs.auth.TeamAction.VIEW_AGENTS,
+)
+_publish_submissions = autogpt_libs.auth.requires_resource_permission(
+    autogpt_libs.auth.OrgAction.PUBLISH_TO_STORE,
+    autogpt_libs.auth.TeamAction.PUBLISH_AGENTS,
+)
 
 SubmissionSortKey = Literal["submitted", "runs"]
 SubmissionSortDir = Literal["asc", "desc"]
@@ -95,8 +106,8 @@ async def unified_search(
         default=None,
         description="Content types to search. If not specified, searches all.",
     ),
-    page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, default=20),
+    page: int = Query(ge=1, le=MAX_PAGE, default=1),
+    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=20),
     user_id: str | None = Security(
         autogpt_libs.auth.get_optional_user_id, use_cache=False
     ),
@@ -175,8 +186,8 @@ async def get_agents(
         default=None,
         description="Property to sort results by. Ignored if search_query is provided.",
     ),
-    page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, default=20),
+    page: int = Query(ge=1, le=MAX_PAGE, default=1),
+    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=20),
     user_id: str | None = Security(
         autogpt_libs.auth.get_optional_user_id, use_cache=False
     ),
@@ -346,7 +357,7 @@ async def get_creators(
         default=None, description="Literal + semantic search on names and descriptions"
     ),
     sorted_by: store_db.StoreCreatorsSortOptions | None = None,
-    page: int = Query(ge=1, default=1),
+    page: int = Query(ge=1, le=MAX_PAGE, default=1),
     page_size: int = Query(ge=1, le=100, default=20),
 ) -> store_model.CreatorsResponse:
     """List or search marketplace creators"""
@@ -385,8 +396,8 @@ async def get_creator(username: str) -> store_model.CreatorDetails:
 )
 async def get_my_unpublished_agents(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
-    page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, default=20),
+    page: int = Query(ge=1, le=MAX_PAGE, default=1),
+    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=20),
     sort_by: store_model.MyAgentsSortBy = Query(
         default=store_model.MyAgentsSortBy.MOST_RECENT
     ),
@@ -412,17 +423,15 @@ async def get_my_unpublished_agents(
 async def delete_submission(
     submission_id: str,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
-    ctx: autogpt_libs.auth.RequestContext = Security(
-        autogpt_libs.auth.get_request_context
-    ),
+    ctx: autogpt_libs.auth.RequestContext = Security(_publish_submissions),
 ) -> bool:
     """Delete a marketplace listing submission"""
-    result = await store_db.delete_store_submission(
+    await store_db.delete_store_submission_or_raise(
         user_id=user_id,
         store_listing_version_id=submission_id,
         organization_id=getattr(ctx, "org_id", None),
     )
-    return result
+    return True
 
 
 @router.get(
@@ -433,11 +442,9 @@ async def delete_submission(
 )
 async def get_submissions(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
-    ctx: autogpt_libs.auth.RequestContext = Security(
-        autogpt_libs.auth.get_request_context
-    ),
-    page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, default=20),
+    ctx: autogpt_libs.auth.RequestContext = Security(_view_submissions),
+    page: int = Query(ge=1, le=MAX_PAGE, default=1),
+    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=20),
     search_query: str | None = Query(default=None, max_length=100),
     statuses: str | None = Query(default=None),
     sort_key: SubmissionSortKey | None = Query(default=None),
@@ -479,6 +486,27 @@ def _parse_status_filter(
         raise fastapi.HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@router.get(
+    "/submissions/live/{graph_id}",
+    summary="Get my live submission",
+    tags=["store", "private"],
+    dependencies=[Security(autogpt_libs.auth.requires_user)],
+)
+async def get_live_submission(
+    graph_id: str,
+    user_id: str = Security(autogpt_libs.auth.get_user_id),
+    ctx: autogpt_libs.auth.RequestContext = Security(_view_submissions),
+) -> store_model.LiveStoreSubmission | None:
+    """The version of your listing for this workflow that the Marketplace
+    shows, with its recommended schedule, or null when the workflow has no
+    listing of yours or none of it is live."""
+    return await live_submission.get_live_submission(
+        user_id=user_id,
+        graph_id=graph_id,
+        organization_id=getattr(ctx, "org_id", None),
+    )
+
+
 @router.post(
     "/submissions",
     summary="Create store submission",
@@ -491,9 +519,7 @@ def _parse_status_filter(
 async def create_submission(
     submission_request: store_model.StoreSubmissionRequest,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
-    ctx: autogpt_libs.auth.RequestContext = Security(
-        autogpt_libs.auth.get_request_context
-    ),
+    ctx: autogpt_libs.auth.RequestContext = Security(_publish_submissions),
 ) -> store_model.StoreSubmission:
     """Submit a new marketplace listing for review"""
     # Defensive: ``ctx`` may be the unresolved ``Security()`` sentinel when
@@ -534,9 +560,7 @@ async def edit_submission(
     store_listing_version_id: str,
     submission_request: store_model.StoreSubmissionEditRequest,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
-    ctx: autogpt_libs.auth.RequestContext = Security(
-        autogpt_libs.auth.get_request_context
-    ),
+    ctx: autogpt_libs.auth.RequestContext = Security(_publish_submissions),
 ) -> store_model.StoreSubmission:
     """Update a pending marketplace listing submission"""
     result = await store_db.edit_store_submission(
@@ -809,8 +833,11 @@ async def generate_image(
     summary="Get cache metrics in Prometheus format",
     tags=["store", "metrics"],
     response_class=fastapi.responses.PlainTextResponse,
+    dependencies=[Security(autogpt_libs.auth.requires_admin_user)],
 )
-async def get_cache_metrics():
+# Not async: cache_info() scans Redis with the blocking client, so this runs in
+# FastAPI's thread pool rather than on the event loop.
+def get_cache_metrics():
     """
     Get cache metrics in Prometheus text format.
 

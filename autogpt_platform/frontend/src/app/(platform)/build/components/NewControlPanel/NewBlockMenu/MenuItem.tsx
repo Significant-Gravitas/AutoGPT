@@ -34,7 +34,8 @@ export const MenuItem: React.FC<Props> = ({
       {...rest}
     >
       <Text
-        variant="body-medium"
+        variant="body"
+        weight="medium"
         as="span"
         tone="emphasis"
         className="truncate"

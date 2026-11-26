@@ -133,8 +133,8 @@ export const APIKeysModals = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center space-x-2">
-            <div className="ph-no-capture flex flex-1 rounded-md bg-secondary p-2">
-              <Text variant="body-mono-tight" as="code" tone="inherit">
+            <div className="ph-no-capture flex flex-1 rounded-md bg-surface-hover p-2">
+              <Text variant="body" mono leading="5" as="code" tone="inherit">
                 {keyState.newApiKey}
               </Text>
             </div>

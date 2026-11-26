@@ -14,9 +14,8 @@ export function isOverAutocompact(context: number): boolean {
 }
 
 export const BREAKDOWN_COLORS = {
-  system: "bg-foreground-subtle",
-  // oxlint-disable-next-line design-system/no-raw-colors -- cyan legend dot in the dev-only token badge; info is blue, a hue change deferred
-  user: "bg-sky-400",
+  system: "bg-fill-subtle",
+  user: "bg-sky",
   assistant: "bg-brand/60",
   tools: "bg-success",
 };

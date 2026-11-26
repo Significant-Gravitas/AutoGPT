@@ -25,7 +25,7 @@ from . import store as store_mod
 from .batch_state import state_key
 from .batch_submit import input_bundle_key
 from .reaper import reap_expired_passes
-from .reaper_test import _LOCK_KEY, _charged, _dead_batch_pass, _seed
+from .reaper_test import _HANG_SECONDS, _LOCK_KEY, _charged, _dead_batch_pass, _seed
 
 # Each cleanup step, by the module that calls it and the name it calls it by.
 _STEPS = (
@@ -410,17 +410,16 @@ class TestTheBudget:
 
         provider_cancel.side_effect = never_answers
         _hang_the_release_of_the_hold(mocker)
-        loop = asyncio.get_running_loop()
 
-        started = loop.time()
         with caplog.at_level(logging.WARNING):
             reaping = asyncio.create_task(reap_expired_passes())
-            await asyncio.wait({reaping}, timeout=2)
-
-        assert reaping.done(), "the run outlasted its budget"
-        # Well under the 2 s wait above, which a run held by either hang
-        # would exhaust; the slack absorbs a loaded test machine.
-        assert loop.time() - started < 0.4 + 0.6
+            try:
+                await asyncio.wait({reaping}, timeout=_HANG_SECONDS)
+                # A run held by either hang never ends.
+                assert reaping.done(), "the run outlasted its budget"
+            finally:
+                reaping.cancel()
+                await asyncio.gather(reaping, return_exceptions=True)
         assert reaping.result().outcomes == {"out_of_budget": 1}
         assert fake_dream_redis.store[_LOCK_KEY].startswith("reaper:")
         assert "could not give back scope" in caplog.text

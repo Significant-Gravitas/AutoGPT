@@ -1,21 +1,34 @@
+import { useBuilderChatSend } from "@/app/(platform)/build/components/BuilderChatPanel/useBuilderChatSend";
 import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages";
-import { queueFollowUpMessage } from "@/app/(platform)/copilot/helpers/queueFollowUpMessage";
-import { useCopilotPendingChips } from "@/app/(platform)/copilot/useCopilotPendingChips";
 import { useCopilotStream } from "@/app/(platform)/copilot/useCopilotStream";
 import {
   useGetV2GetSession,
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import { ImpersonationState } from "@/lib/impersonation";
 import * as Sentry from "@sentry/nextjs";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MEMORY_CHAT_PROMPTS, type MemoryChatSeed } from "../../helpers";
+import {
+  MEMORY_CHAT_PROMPTS,
+  memoryChatHeldKey,
+  type MemoryChatSeed,
+} from "../../helpers";
 
 type UiMessages = UIMessage<unknown, UIDataTypes, UITools>[];
 
 interface Args {
   scopeExpertID: string | null;
+}
+
+interface MemoryChatSession {
+  id: string;
+  /** Set with the id, so it always names the account and memory this session
+   *  is about. Null without a signed-in user: copies then wait under the
+   *  session, which no other account can open. */
+  heldKey: string | null;
 }
 
 /**
@@ -25,8 +38,10 @@ interface Args {
  * prompt ("summary" or "forget") as its first message.
  */
 export function useMemoryChatPanel({ scopeExpertID }: Args) {
+  const viewerID = useAuthStore((state) => state.user?.id ?? null);
   const [isOpen, setIsOpen] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [session, setSession] = useState<MemoryChatSession | null>(null);
+  const sessionId = session?.id ?? null;
   const [startError, setStartError] = useState(false);
   const pendingPromptRef = useRef<string | null>(null);
   // Session-create lock, keyed by scope generation: a stale in-flight create
@@ -75,11 +90,21 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
     copilotModel: undefined,
   });
 
-  const { queuedMessages, queueMessage } = useCopilotPendingChips({
-    sessionId,
+  // A follow-up the queue refuses waits until this panel has finished
+  // drawing the answer. One left behind when the panel closes or moves to
+  // another chat, or the page unmounts, comes back with the next chat of the
+  // same memory, which says why when it does. A closed panel shows no chat,
+  // and opening it again starts a new one, so it sends into none.
+  const { onSend, queuedMessages } = useBuilderChatSend({
+    sessionId: isOpen ? sessionId : null,
     status,
+    isReconnecting,
+    isFinishProbing,
     messages,
     setMessages,
+    sendMessage,
+    heldKey: session?.heldKey ?? null,
+    setAsideReason: null,
   });
 
   // The seed fires from an effect so it runs only after the stream hook has
@@ -107,7 +132,7 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
     scopeRef.current = scopeExpertID;
     scopeGenRef.current += 1;
     setIsOpen(false);
-    setSessionId(null);
+    setSession(null);
     setMessages([]);
     pendingPromptRef.current = null;
   }, [scopeExpertID, setMessages]);
@@ -121,7 +146,15 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
     if (openingGenRef.current === scopeGenRef.current) return;
     const generation = scopeGenRef.current;
     openingGenRef.current = generation;
-    setSessionId(null);
+    // Read before the session is created for whoever is signed in now.
+    const heldKey = viewerID
+      ? memoryChatHeldKey({
+          viewerID,
+          actingAsID: ImpersonationState.get(),
+          scopeExpertID,
+        })
+      : null;
+    setSession(null);
     setMessages([]);
     try {
       const response = (await createSession(
@@ -132,7 +165,7 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
       }
       if (generation !== scopeGenRef.current) return;
       pendingPromptRef.current = MEMORY_CHAT_PROMPTS[lastSeedRef.current];
-      setSessionId(response.data.id);
+      setSession({ id: response.data.id, heldKey });
     } catch (err) {
       if (generation !== scopeGenRef.current) return;
       if (toastIfPlanRequired(err, "The memory chat needs an active plan")) {
@@ -154,32 +187,6 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
 
   function close() {
     setIsOpen(false);
-  }
-
-  async function onSend(message: string) {
-    const trimmed = message.trim();
-    if (!trimmed || !sessionId) return;
-    const isInFlight = status === "streaming" || status === "submitted";
-    if (isInFlight) {
-      try {
-        await queueFollowUpMessage(sessionId, trimmed);
-        queueMessage(trimmed);
-      } catch (err) {
-        // The turn finished while we were queueing — send normally instead.
-        if (
-          err instanceof Error &&
-          err.name === "QueueFollowUpNotActiveError"
-        ) {
-          sendMessage({ text: trimmed });
-          return;
-        }
-        Sentry.captureException(err);
-        // The composer restores the draft and shows the one toast for it.
-        throw err;
-      }
-      return;
-    }
-    sendMessage({ text: trimmed });
   }
 
   return {

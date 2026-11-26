@@ -83,8 +83,8 @@ export function PendingImageThumbnail({ attachment, fallback }: PendingProps) {
         />
       )}
       {attachment.isUploading && (
-        <span className="absolute inset-0 flex items-center justify-center bg-foreground-base/20">
-          <Icon icon={Loading03Icon} size={20} spin tone="inverse" />
+        <span className="absolute inset-0 flex items-center justify-center bg-scrim/20">
+          <Icon icon={Loading03Icon} size={20} spin tone="on-color" />
         </span>
       )}
     </div>

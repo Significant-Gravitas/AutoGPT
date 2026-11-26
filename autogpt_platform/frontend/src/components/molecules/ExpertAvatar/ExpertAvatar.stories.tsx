@@ -51,7 +51,7 @@ export const TopicSurfaces: Story = {
                   avatarUrl={identity.url}
                   backgroundColor={color}
                   size={88}
-                  className="rounded-full ring-4 ring-white"
+                  className="rounded-full ring-4 ring-surface"
                 />
                 <p className="mt-2 font-semibold">{identity.name}</p>
                 <p className="text-body text-foreground-tertiary">
@@ -62,7 +62,7 @@ export const TopicSurfaces: Story = {
                     name={identity.name}
                     avatarUrl={identity.url}
                     size={32}
-                    className="rounded-full border border-[#e3e3e3]"
+                    className="rounded-full border border-border-base"
                   />
                   Sidebar
                 </div>

@@ -129,7 +129,7 @@ const ConfettiComponent = forwardRef<ConfettiRef, Props>(
           ref={canvasElRef}
           data-slot="confetti"
           className={cn(
-            "pointer-events-none fixed inset-0 z-50 h-full w-full",
+            "pointer-events-none fixed inset-0 z-overlay h-full w-full",
             className,
           )}
           {...rest}
@@ -143,4 +143,4 @@ const ConfettiComponent = forwardRef<ConfettiRef, Props>(
 ConfettiComponent.displayName = "Confetti";
 
 export { ConfettiComponent as Confetti, AGPT_CONFETTI_COLORS };
-export type { Props as ConfettiProps, ConfettiOptions };
+export type { ConfettiOptions };

@@ -5,14 +5,19 @@ All subprocess calls are mocked — no agent-browser binary or real browser need
 
 import asyncio
 import json
+import logging
 import os
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import urlparse
 
 import pytest
 
 from backend.copilot.executor.processor import _CANCEL_GRACE_SECONDS
 from backend.copilot.model import ChatSession
+from backend.data.workspace import WorkspaceFile
+from backend.util.workspace import WorkspaceManager
 
 from .agent_browser import (
     BrowserActTool,
@@ -85,6 +90,10 @@ def _run_result(rc: int = 0, stdout: str = "", stderr: str = "") -> tuple:
     return (rc, stdout, stderr)
 
 
+async def _checked_as_given(url: str, *args: Any, **kwargs: Any) -> tuple:
+    return urlparse(url), False, ["1.2.3.4"]
+
+
 # ---------------------------------------------------------------------------
 # SSRF protection via shared validate_url_host (backend.util.request)
 # ---------------------------------------------------------------------------
@@ -143,10 +152,34 @@ class TestSsrfViaValidateUrl:
         assert result.error == "blocked_url"
 
     @pytest.mark.asyncio
+    async def test_a_signed_paths_sub_delimiters_reach_the_browser_unchanged(self):
+        url = "https://1.1.1.1/a(b),c=d;e+f!g*h'i$j&k/x.png?sig=1"
+        with patch(
+            "backend.copilot.tools.agent_browser._run",
+            new_callable=AsyncMock,
+            return_value=_run_result(rc=1, stderr="stop"),
+        ) as mock_run:
+            await self.tool._execute(user_id=None, session=self.session, url=url)
+        mock_run.assert_any_await(self.session.session_id, "open", url)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("given", ["about:blank", "data:text/plain,hi"])
+    async def test_a_non_web_scheme_without_slashes_is_refused(self, given: str):
+        with patch(
+            "backend.copilot.tools.agent_browser._run", new_callable=AsyncMock
+        ) as mock_run:
+            result = await self.tool._execute(
+                user_id=None, session=self.session, url=given
+            )
+        assert isinstance(result, ErrorResponse)
+        assert result.error == "blocked_url"
+        mock_run.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_validate_url_host_called_without_trusted_hostnames(self):
         """Confirms no trusted-hostnames bypass is granted — all URLs are validated."""
         with patch(_VALIDATE_URL, new_callable=AsyncMock) as mock_validate:
-            mock_validate.return_value = (object(), False, ["1.2.3.4"])
+            mock_validate.side_effect = _checked_as_given
             with patch(
                 "backend.copilot.tools.agent_browser._run",
                 new_callable=AsyncMock,
@@ -163,6 +196,27 @@ class TestSsrfViaValidateUrl:
                         url="https://example.com",
                     )
         mock_validate.assert_called_once_with("https://example.com")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "given",
+        [
+            "https://someone@1.1.1.1/page",
+            "1.1.1.1/page",
+            "//1.1.1.1/page",
+            "\\\\1.1.1.1/page",
+        ],
+    )
+    async def test_opens_the_url_the_host_check_returned(self, given: str):
+        with patch(
+            "backend.copilot.tools.agent_browser._run",
+            new_callable=AsyncMock,
+            return_value=_run_result(rc=1, stderr="stop"),
+        ) as mock_run:
+            await self.tool._execute(user_id=None, session=self.session, url=given)
+        mock_run.assert_any_await(
+            self.session.session_id, "open", "https://1.1.1.1/page"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +298,7 @@ class TestBrowserNavigateExecute:
         with patch(
             _VALIDATE_URL,
             new_callable=AsyncMock,
-            return_value=(object(), False, ["1.2.3.4"]),
+            side_effect=_checked_as_given,
         ):
             with patch(
                 "backend.copilot.tools.agent_browser._run",
@@ -264,18 +318,19 @@ class TestBrowserNavigateExecute:
         with patch(
             _VALIDATE_URL,
             new_callable=AsyncMock,
-            return_value=(object(), False, ["1.2.3.4"]),
+            side_effect=_checked_as_given,
         ):
             with patch(
                 "backend.copilot.tools.agent_browser._run",
                 new_callable=AsyncMock,
             ) as mock_run:
-                # open → success; wait → success; get title; get url
+                # open → success; wait → success; get title; get url; eval
                 mock_run.side_effect = [
                     _run_result(rc=0),  # open
                     _run_result(rc=0),  # wait
                     _run_result(rc=0, stdout="Example Domain"),  # get title
                     _run_result(rc=0, stdout="https://example.com"),  # get url
+                    _run_result(rc=0, stdout='""'),  # eval: page check
                 ]
                 with patch(
                     "backend.copilot.tools.agent_browser._snapshot",
@@ -307,7 +362,7 @@ class TestBrowserNavigateExecute:
         with patch(
             _VALIDATE_URL,
             new_callable=AsyncMock,
-            return_value=(object(), False, ["1.2.3.4"]),
+            side_effect=_checked_as_given,
         ):
             with patch(
                 "backend.copilot.tools.agent_browser._run", side_effect=fake_run
@@ -746,6 +801,96 @@ class TestBrowserScreenshotExecute:
             assert "--annotate" in screenshot_call[0].args
         else:
             assert "--annotate" not in screenshot_call[0].args
+
+    @pytest.mark.asyncio
+    async def test_two_unnamed_captures_in_one_chat_both_save(self, chat_workspace):
+        first = await self.tool._execute(user_id="user1", session=self.session)
+        second = await self.tool._execute(user_id="user1", session=self.session)
+
+        assert isinstance(first, BrowserScreenshotResponse), first.message
+        assert isinstance(second, BrowserScreenshotResponse), second.message
+        assert first.filename != second.filename
+        assert first.file_id != second.file_id
+        assert sorted(chat_workspace) == sorted(
+            f"/sessions/test-session-123/{shot.filename}" for shot in (first, second)
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_refused_save_tells_the_model_why(self, chat_workspace, caplog):
+        first = await self.tool._execute(
+            user_id="user1", session=self.session, filename="page.png"
+        )
+        with caplog.at_level(
+            logging.WARNING, logger="backend.copilot.tools.agent_browser"
+        ):
+            second = await self.tool._execute(
+                user_id="user1", session=self.session, filename="page.png"
+            )
+
+        assert isinstance(first, BrowserScreenshotResponse)
+        assert first.filename == "page.png"
+        refusal = "File already exists at path: /sessions/test-session-123/page.png"
+        assert isinstance(second, ErrorResponse)
+        assert second.error == "workspace_write_failed"
+        assert refusal in second.message
+        assert [r.levelno for r in caplog.records if refusal in r.getMessage()] == [
+            logging.WARNING
+        ]
+
+
+@pytest.fixture
+def chat_workspace(monkeypatch) -> dict[str, WorkspaceFile]:
+    """The real write tool and WorkspaceManager over an in-memory file table, so
+    a repeated path is refused by ``WorkspaceManager.write_file`` itself."""
+    files: dict[str, WorkspaceFile] = {}
+
+    def capture(session_name: str, *args: str, **kwargs) -> tuple:
+        with open(args[-1], "wb") as f:
+            f.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
+        return _run_result(rc=0)
+
+    async def create_workspace_file(*, file_id: str, **row) -> WorkspaceFile:
+        files[row["path"]] = WorkspaceFile(
+            id=file_id,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            **{**row, "metadata": row["metadata"] or {}},
+        )
+        return files[row["path"]]
+
+    db = MagicMock()
+    db.get_workspace_total_size = AsyncMock(return_value=0)
+    db.get_workspace_file_by_path = AsyncMock(
+        side_effect=lambda _workspace_id, path: files.get(path)
+    )
+    db.create_workspace_file = AsyncMock(side_effect=create_workspace_file)
+
+    monkeypatch.setattr(
+        "backend.copilot.tools.agent_browser._run", AsyncMock(side_effect=capture)
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.workspace_files.get_workspace_manager",
+        AsyncMock(
+            side_effect=lambda user_id, session_id: WorkspaceManager(
+                user_id, "ws-1", session_id
+            )
+        ),
+    )
+    monkeypatch.setattr("backend.util.workspace.workspace_db", lambda: db)
+    monkeypatch.setattr(
+        "backend.util.workspace.get_workspace_storage",
+        AsyncMock(return_value=AsyncMock(store=AsyncMock(return_value="blob"))),
+    )
+    monkeypatch.setattr("backend.util.workspace.scan_content_safe", AsyncMock())
+    monkeypatch.setattr(
+        "backend.util.workspace.get_workspace_storage_limit_bytes",
+        AsyncMock(return_value=250 * 1024 * 1024),
+    )
+    monkeypatch.setattr(
+        "backend.api.features.workspace.embeddings.schedule_workspace_file_embedding",
+        MagicMock(),
+    )
+    return files
 
 
 # ---------------------------------------------------------------------------
@@ -1245,6 +1390,46 @@ class TestRestoreBrowserState:
             if len(c[1]) > 2 and c[1][:2] == ("storage", "local")
         ]
         assert len(storage_cmds) == 2
+
+    @pytest.mark.asyncio
+    async def test_restore_opens_the_url_the_host_check_returned(self):
+        session = make_session("checked-sess")
+        mock_mgr = _make_mock_manager()
+        mock_mgr.get_file_info_by_path.return_value = MagicMock(id="f-1")
+        mock_mgr.read_file.return_value = json.dumps(
+            {"url": "https://someone@1.1.1.1/page", "cookies": [], "local_storage": {}}
+        ).encode("utf-8")
+
+        with patch(
+            "backend.copilot.tools.agent_browser._run",
+            new_callable=AsyncMock,
+            return_value=_run_result(rc=0),
+        ) as mock_run:
+            with patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr):
+                await _restore_browser_state("checked-sess", "user1", session)
+
+        mock_run.assert_any_await("checked-sess", "open", "https://1.1.1.1/page")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("saved", ["about:blank", "data:text/plain,hi"])
+    async def test_restore_refuses_a_non_web_scheme_without_slashes(self, saved: str):
+        session = make_session("refused-sess")
+        mock_mgr = _make_mock_manager()
+        mock_mgr.get_file_info_by_path.return_value = MagicMock(id="f-1")
+        mock_mgr.read_file.return_value = json.dumps(
+            {"url": saved, "cookies": [], "local_storage": {}}
+        ).encode("utf-8")
+
+        with patch(
+            "backend.copilot.tools.agent_browser._run", new_callable=AsyncMock
+        ) as mock_run:
+            with patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr):
+                restored = await _restore_browser_state(
+                    "refused-sess", "user1", session
+                )
+
+        assert restored is False
+        mock_run.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_no_saved_state_returns_true(self):
@@ -1762,7 +1947,7 @@ class TestStatePersistenceIntegration:
         with patch(
             _VALIDATE_URL,
             new_callable=AsyncMock,
-            return_value=(object(), False, ["1.2.3.4"]),
+            side_effect=_checked_as_given,
         ):
             with patch(
                 "backend.copilot.tools.agent_browser._run",
@@ -1795,7 +1980,7 @@ class TestStatePersistenceIntegration:
         with patch(
             _VALIDATE_URL,
             new_callable=AsyncMock,
-            return_value=(object(), False, ["1.2.3.4"]),
+            side_effect=_checked_as_given,
         ):
             with patch(
                 "backend.copilot.tools.agent_browser._run",
@@ -1826,7 +2011,7 @@ class TestStatePersistenceIntegration:
         with patch(
             _VALIDATE_URL,
             new_callable=AsyncMock,
-            return_value=(object(), False, ["1.2.3.4"]),
+            side_effect=_checked_as_given,
         ):
             with patch(
                 "backend.copilot.tools.agent_browser._run",
@@ -2056,7 +2241,7 @@ class TestPartialFailures:
                 with patch(
                     _VALIDATE_URL,
                     new_callable=AsyncMock,
-                    return_value=(object(), False, ["1.2.3.4"]),
+                    side_effect=_checked_as_given,
                 ):
                     result = await _restore_browser_state(
                         "partial-restore", "user1", session
@@ -2088,7 +2273,7 @@ class TestPartialFailures:
                 with patch(
                     _VALIDATE_URL,
                     new_callable=AsyncMock,
-                    return_value=(object(), False, ["1.2.3.4"]),
+                    side_effect=_checked_as_given,
                 ):
                     result = await _restore_browser_state(
                         "url-fail-sess", "user1", session

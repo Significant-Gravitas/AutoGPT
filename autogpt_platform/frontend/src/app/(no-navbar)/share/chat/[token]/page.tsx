@@ -21,7 +21,7 @@ import { useSharedChatArtifacts } from "./useSharedChatArtifacts";
 // + CTAs.  Matches ``ExecutionShareChrome`` on the execution share
 // page so the two routes feel like the same surface.
 //
-// Uses ``bg-background`` (theme-aware) on the chrome wrappers so dark
+// Uses ``bg-canvas`` (theme-aware) on the chrome wrappers so dark
 // mode renders correctly.  Inner success-state wrappers still use the
 // owner-side copilot's hardcoded ``#f8f8f9`` so the in-chat surface
 // matches the owner experience pixel-for-pixel — see the
@@ -36,13 +36,13 @@ function SharedChatChrome({
   children: ReactNode;
 }) {
   return (
-    <div className="flex h-screen w-full flex-col bg-background">
+    <div className="flex h-screen w-full flex-col bg-canvas">
       <ShareHeader
         title={title}
         subtitle={subtitle}
         actions={<ShareActions />}
       />
-      <div className="flex min-h-0 w-full flex-1 flex-row overflow-hidden bg-background">
+      <div className="flex min-h-0 w-full flex-1 flex-row overflow-hidden bg-canvas">
         {children}
       </div>
       <CookieSettingsLink className="mb-1 shrink-0 self-center" />
@@ -81,9 +81,8 @@ export default function SharedChatPage() {
     turnStats,
     hasMore,
     isLoading,
-    sessionError,
+    isDeadLink,
     messagesError,
-    error,
     retry,
   } = useSharedChatPage(token);
 
@@ -117,19 +116,12 @@ export default function SharedChatPage() {
     );
   }
 
-  // ``sessionError`` (or a missing session payload) means the share
-  // link is dead — render the not-found card.  ``messagesError`` is
-  // transient (mid-deploy 5xx, network blip after retry exhaustion)
-  // and should NOT advertise the link as revoked.  We still surface
-  // the same error card with a Try-again button, but only when the
-  // session itself didn't load — otherwise we let the page fall
-  // through to render the chrome with an empty message list (an
-  // in-place retry would be ideal future work but the current
-  // ErrorState card carries the right affordance).
-  if (sessionError || !session) {
+  // A dead link gets the not-found card. A session that failed to load for
+  // any other reason gets a retry, since the link may well be fine.
+  if (isDeadLink || !session) {
     return (
       <SharedChatChrome>
-        <SharedChatErrorState reason={error} onRetry={retry} />
+        <SharedChatErrorState isDeadLink={isDeadLink} onRetry={retry} />
       </SharedChatChrome>
     );
   }

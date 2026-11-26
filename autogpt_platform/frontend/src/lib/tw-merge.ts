@@ -27,7 +27,7 @@ const fontWeights = defaults.classGroups["font-weight"].map((group) =>
 // Teach tailwind-merge the type scale's steps (tokens/typography.css) and the
 // other text token names in globals.css's theme, so that
 // `text-body` is read as a font size rather than a colour (and survives next
-// to `text-zinc-500`) and conflicting sizes, line-heights and letter-spacings
+// to `text-foreground-tertiary`) and conflicting sizes, line-heights and letter-spacings
 // collapse to the last one. The radius names do the same for every
 // `rounded-*` corner group, so `rounded-xl` and `rounded-2xlarge` no longer
 // both survive and leave the winner to stylesheet order.
@@ -75,7 +75,44 @@ export const twMerge = extendTailwindMerge({
   },
   extend: {
     theme: {
-      radius: ["xsmall", "small", "medium", "large", "xlarge", "2xlarge"],
+      radius: [
+        "xsmall",
+        "small",
+        "medium",
+        "large",
+        "xlarge",
+        "2xlarge",
+        "2xl-inner",
+        "pill",
+      ],
+      // The named shadow steps in tokens/shape.css, so `shadow-lift` replaces
+      // `shadow-sm` and survives next to a colour (`shadow-brand/45`), as
+      // the arbitrary shadows they replaced did. `subtle` and `message-table`
+      // are left out: tailwind-merge has always read them as colours, and
+      // which class wins next to them is left to stylesheet order.
+      shadow: [
+        "lift",
+        "popover-raised",
+        "composer",
+        "drop",
+        "scroll-edge",
+        "keycap",
+        "gloss",
+        "sheen",
+        "outline",
+        "halo",
+        "spotlight",
+        "glow",
+        "status-glow",
+        "beacon",
+        "chip-glow-brand",
+        "chip-glow-warning",
+        "chip-glow-sky",
+        "chip-glow-neutral",
+      ],
+      // The easings in tokens/motion.css, so `ease-standard` replaces
+      // `ease-in-out` and another named easing, and the other way round.
+      ease: ["standard", "emphasized", "out-quint", "glide", "drawer"],
     },
     classGroups: {
       "font-size": [
@@ -108,6 +145,38 @@ export const twMerge = extendTailwindMerge({
       ],
       tracking: [
         { tracking: ["display", "heading", "title", "caps", "eyebrow"] },
+      ],
+      // The layers in tokens/shape.css, so `z-overlay` replaces `z-raised`
+      // and `z-10`, and the other way round.
+      z: [
+        {
+          z: [
+            "behind",
+            "base",
+            "raised",
+            "sticky",
+            "search-bar",
+            "floating",
+            "header",
+            "prompt",
+            "overlay",
+            "drawer-scrim",
+            "drawer",
+            "command",
+            "canvas-loading",
+            "canvas-toolbar",
+            "blocking",
+            "tour-scrim",
+            "tour",
+          ],
+        },
+      ],
+      // The durations in tokens/motion.css, so `duration-fast` replaces
+      // `duration-200` and another named duration, and the other way round.
+      duration: [
+        {
+          duration: ["instant", "fast", "base", "slow", "slower", "slowest"],
+        },
       ],
     },
   },

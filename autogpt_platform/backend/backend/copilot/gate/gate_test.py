@@ -92,6 +92,7 @@ def clean_session_state():
         ),
         patch(f"{_GATE}.review_store.find_review", AsyncMock(return_value=None)),
         patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
+        patch(f"{_GATE}.held.kept_for_its_card", AsyncMock(return_value=True)),
         patch(f"{_GATE}.held._held", AsyncMock(return_value={})),
         patch(
             f"{_GATE}.review_store.open_review",
@@ -429,6 +430,11 @@ async def test_a_lost_consume_race_does_not_execute(gate_on, clean_session_state
     ):
         decision = await check_action("bash_exec", {"command": "ls"}, "u", _session())
     assert not decision.allowed
+    # The model reads this; it is the wording the gate has always used.
+    assert decision.reason == (
+        "This approval was already used by an identical call that ran. "
+        "Do not retry; tell the user what ran."
+    )
 
 
 async def test_a_rejection_makes_the_tool_ask_for_the_rest_of_the_chat(
@@ -570,6 +576,7 @@ async def test_a_rule_set_on_a_bare_tool_card_decides_its_next_call(
     supervisor = AsyncMock(return_value=Judgement(allowed=False, reason="unsure"))
     with (
         patch(f"{_GATE}.held.remember", remember),
+        patch(f"{_GATE}.held.kept_for_its_card", AsyncMock(return_value=True)),
         patch(f"{_GATE}.held._held", AsyncMock(side_effect=lambda _: held_calls)),
         patch(f"{_GATE}.review_store.open_review", _REAL_OPEN_REVIEW),
         patch(f"{_GATE}.review.review_db", return_value=reviews),

@@ -28,11 +28,16 @@ import { FindBlocksTool } from "../tools/FindBlocks/FindBlocks";
 import { RunAgentTool } from "../tools/RunAgent/RunAgent";
 import { RunBlockTool } from "../tools/RunBlock/RunBlock";
 import { SearchDocsTool } from "../tools/SearchDocs/SearchDocs";
-import { DrawnLineLoader } from "../components/DrawnLineLoader/DrawnLineLoader";
+import { StoneStackLoader } from "../components/StoneStackLoader/StoneStackLoader";
+import {
+  AUTOPILOT_HEX,
+  getCategoryHex,
+} from "@/components/molecules/ExpertAvatar/colors";
 import { ThinkingIndicator } from "../components/ChatMessagesContainer/components/ThinkingIndicator";
 import { ReasoningCollapse } from "../components/ChatMessagesContainer/components/ReasoningCollapse";
 import { GenericTool } from "../tools/GenericTool/GenericTool";
 import { ViewAgentOutputTool } from "../tools/ViewAgentOutput/ViewAgentOutput";
+import { RenderUISamples } from "./RenderUISamples";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -57,6 +62,7 @@ const SECTIONS = [
   "Tool: Schedule Agent",
   "Tool: Create Agent",
   "Tool: Edit Agent",
+  "Tool: Visual answers",
   "Tool: View Agent Output",
   "Tool: Search Feature Requests",
   "Tool: Create Feature Request",
@@ -210,7 +216,10 @@ export default function StyleguidePage() {
             <Section title="Messages">
               <SubSection label="User message">
                 <Message from="user">
-                  <MessageContent className="text-body-lg leading-relaxed group-[.is-user]:rounded-xl group-[.is-user]:rounded-br-none group-[.is-user]:bg-accent-surface group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-foreground-strong">
+                  <MessageContent
+                    size="large"
+                    className="group-[.is-user]:rounded-xl group-[.is-user]:rounded-br-none group-[.is-user]:bg-accent-surface group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-foreground-strong"
+                  >
                     <MessageResponse>
                       Find me an agent that can summarize YouTube videos
                     </MessageResponse>
@@ -220,7 +229,10 @@ export default function StyleguidePage() {
 
               <SubSection label="Assistant message (text)">
                 <Message from="assistant">
-                  <MessageContent className="text-body-lg leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong">
+                  <MessageContent
+                    size="large"
+                    className="group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong"
+                  >
                     <MessageResponse>
                       I found a few agents that can help with YouTube video
                       summarization. Let me search for the best options for you.
@@ -231,7 +243,10 @@ export default function StyleguidePage() {
 
               <SubSection label="Assistant message (markdown)">
                 <Message from="assistant">
-                  <MessageContent className="text-body-lg leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong">
+                  <MessageContent
+                    size="large"
+                    className="group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong"
+                  >
                     <MessageResponse>
                       {`Here's what I found:\n\n1. **YouTube Summarizer** — Extracts key points from any YouTube video\n2. **Video Digest** — Creates bullet-point summaries with timestamps\n\n> Both agents support videos up to 2 hours long.\n\n\`\`\`python\n# Example usage\nresult = agent.run(url="https://youtube.com/watch?v=...")\nprint(result.summary)\n\`\`\``}
                     </MessageResponse>
@@ -241,7 +256,7 @@ export default function StyleguidePage() {
 
               <SubSection label="Thinking state">
                 <Message from="assistant">
-                  <MessageContent className="text-body-lg leading-relaxed">
+                  <MessageContent size="large">
                     <span
                       // oxlint-disable-next-line design-system/no-arbitrary-values -- the shimmer needs a 200% wide background
                       className="inline-block animate-shimmer bg-gradient-to-r from-foreground-subtle via-foreground-secondary to-foreground-subtle bg-[length:200%_100%] bg-clip-text text-transparent"
@@ -255,10 +270,19 @@ export default function StyleguidePage() {
               <SubSection label="Thinking indicator">
                 <div className="flex flex-col gap-6">
                   <ThinkingIndicator active />
-                  <DrawnLineLoader
-                    size={64}
-                    className="text-foreground-secondary"
-                  />
+                  <ThinkingIndicator active color={AUTOPILOT_HEX} />
+                  <div className="flex gap-6 text-foreground-secondary">
+                    <StoneStackLoader size={64} />
+                    <StoneStackLoader size={64} color={AUTOPILOT_HEX} />
+                    <StoneStackLoader
+                      size={64}
+                      color={getCategoryHex("marketing")}
+                    />
+                    <StoneStackLoader
+                      size={64}
+                      color={getCategoryHex("operations")}
+                    />
+                  </div>
                 </div>
               </SubSection>
 
@@ -1350,6 +1374,12 @@ export default function StyleguidePage() {
             {/* VIEW AGENT OUTPUT                                              */}
             {/* ============================================================= */}
 
+            <Section title="Tool: Visual answers">
+              <SubSection label="Every block type">
+                <RenderUISamples />
+              </SubSection>
+            </Section>
+
             <Section title="Tool: View Agent Output">
               <SubSection label="Input streaming">
                 <ViewAgentOutputTool
@@ -1752,7 +1782,10 @@ export default function StyleguidePage() {
               <Conversation className="min-h-0 rounded-lg border bg-surface">
                 <ConversationContent className="gap-6 px-3 py-6">
                   <Message from="user">
-                    <MessageContent className="text-body-lg leading-relaxed group-[.is-user]:rounded-xl group-[.is-user]:rounded-br-none group-[.is-user]:bg-accent-surface group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-foreground-strong">
+                    <MessageContent
+                      size="large"
+                      className="group-[.is-user]:rounded-xl group-[.is-user]:rounded-br-none group-[.is-user]:bg-accent-surface group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-foreground-strong"
+                    >
                       <MessageResponse>
                         Find me a block that can fetch weather data
                       </MessageResponse>
@@ -1760,7 +1793,10 @@ export default function StyleguidePage() {
                   </Message>
 
                   <Message from="assistant">
-                    <MessageContent className="text-body-lg leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong">
+                    <MessageContent
+                      size="large"
+                      className="group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong"
+                    >
                       <MessageResponse>
                         Let me search for weather-related blocks for you.
                       </MessageResponse>
@@ -1804,7 +1840,10 @@ export default function StyleguidePage() {
                   </Message>
 
                   <Message from="user">
-                    <MessageContent className="text-body-lg leading-relaxed group-[.is-user]:rounded-xl group-[.is-user]:rounded-br-none group-[.is-user]:bg-accent-surface group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-foreground-strong">
+                    <MessageContent
+                      size="large"
+                      className="group-[.is-user]:rounded-xl group-[.is-user]:rounded-br-none group-[.is-user]:bg-accent-surface group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-foreground-strong"
+                    >
                       <MessageResponse>
                         Yes, run the Get Weather block for San Francisco
                       </MessageResponse>
@@ -1812,7 +1851,10 @@ export default function StyleguidePage() {
                   </Message>
 
                   <Message from="assistant">
-                    <MessageContent className="text-body-lg leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong">
+                    <MessageContent
+                      size="large"
+                      className="group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong"
+                    >
                       <RunBlockTool
                         part={{
                           type: "tool-run_block",
@@ -1866,7 +1908,10 @@ export default function StyleguidePage() {
                 <Conversation className="min-h-0 rounded-lg border bg-surface">
                   <ConversationContent className="gap-6 px-3 py-6">
                     <Message from="assistant">
-                      <MessageContent className="text-body-lg leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong">
+                      <MessageContent
+                        size="large"
+                        className="group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong"
+                      >
                         <ReasoningCollapse>
                           <GenericTool
                             part={{
@@ -1965,7 +2010,10 @@ export default function StyleguidePage() {
                 <Conversation className="min-h-0 rounded-lg border bg-surface">
                   <ConversationContent className="gap-6 px-3 py-6">
                     <Message from="assistant">
-                      <MessageContent className="text-body-lg leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong">
+                      <MessageContent
+                        size="large"
+                        className="group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong"
+                      >
                         <ReasoningCollapse>
                           <FindAgentsTool
                             part={{
@@ -2044,7 +2092,10 @@ export default function StyleguidePage() {
                 <Conversation className="min-h-0 rounded-lg border bg-surface">
                   <ConversationContent className="gap-6 px-3 py-6">
                     <Message from="assistant">
-                      <MessageContent className="text-body-lg leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong">
+                      <MessageContent
+                        size="large"
+                        className="group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong"
+                      >
                         <ReasoningCollapse>
                           <FindBlocksTool
                             part={{

@@ -384,10 +384,10 @@ describe.each(STREAM_PATHS)("on the %s path", { timeout: 30_000 }, (path) => {
           screen.getByText("Summarizing our conversation so far…"),
         ).toBeDefined();
         // CompactionCard owns its own spinner/label — the generic
-        // ThinkingIndicator must not double up alongside it. The tool row
-        // (or, before it opens, the step-start marker) keeps `hasInflight`
-        // true throughout the compaction turn, so this holds from the very
-        // first chunk onward — not just once the bar is visible.
+        // ThinkingIndicator must not double up alongside it. Once the
+        // compaction tool row opens it keeps `hasInflight` true for the
+        // rest of the turn. Before that nothing is on screen yet, so
+        // Thinking showing there is expected.
         expect(screen.queryByText("Thinking…")).toBeNull();
       }, HANG_TIMEOUT);
     });

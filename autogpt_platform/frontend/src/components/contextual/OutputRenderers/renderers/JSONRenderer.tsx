@@ -20,15 +20,21 @@ function canRenderJSON(value: unknown, _metadata?: OutputMetadata): boolean {
   }
 
   if (typeof value === "string") {
-    try {
-      JSON.parse(value);
-      return true;
-    } catch {
-      return false;
-    }
+    return holdsJSONObjectOrArray(value);
   }
 
   return false;
+}
+
+// Text that parses to a number, boolean or null stays text: shown parsed, 1e5
+// would read 100000 and 1.50 would read 1.5 (#17307).
+function holdsJSONObjectOrArray(text: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return typeof parsed === "object" && parsed !== null;
+  } catch {
+    return false;
+  }
 }
 
 function renderJSON(
@@ -104,9 +110,9 @@ function JSONViewer({ data }: { data: any }) {
 
   const renderValue = (value: any, key: string = ""): React.ReactNode => {
     if (value === null)
-      return <span className="text-muted-foreground">null</span>;
+      return <span className="text-foreground-tertiary">null</span>;
     if (value === undefined)
-      return <span className="text-muted-foreground">undefined</span>;
+      return <span className="text-foreground-tertiary">undefined</span>;
 
     if (typeof value === "boolean") {
       return <span className="text-info-foreground">{value.toString()}</span>;
@@ -117,8 +123,9 @@ function JSONViewer({ data }: { data: any }) {
     }
 
     if (typeof value === "string") {
-      // oxlint-disable-next-line design-system/no-raw-colors -- JSON string syntax colour; warning-foreground would be a hue change (deferred visual change)
-      return <span className="text-orange-600">&quot;{value}&quot;</span>;
+      return (
+        <span className="text-orange-foreground">&quot;{value}&quot;</span>
+      );
     }
 
     if (Array.isArray(value)) {
@@ -126,21 +133,21 @@ function JSONViewer({ data }: { data: any }) {
       const itemCount = value.length;
 
       if (itemCount === 0) {
-        return <span className="text-muted-foreground">[]</span>;
+        return <span className="text-foreground-tertiary">[]</span>;
       }
 
       return (
         <div className="inline-block">
           <button
             onClick={() => toggleCollapse(key)}
-            className="inline-flex items-center rounded px-1 hover:bg-muted"
+            className="inline-flex items-center rounded px-1 hover:bg-surface-hover"
           >
             {isCollapsed ? (
               <Icon icon={ArrowRight01Icon} className="size-3" />
             ) : (
               <Icon icon={ArrowDown01Icon} className="size-3" />
             )}
-            <span className="ml-1 text-muted-foreground">
+            <span className="ml-1 text-foreground-tertiary">
               Array({itemCount})
             </span>
           </button>
@@ -148,7 +155,9 @@ function JSONViewer({ data }: { data: any }) {
             <div className="mt-1 ml-4">
               {value.map((item, index) => (
                 <div key={index} className="flex">
-                  <span className="mr-2 text-muted-foreground">{index}:</span>
+                  <span className="mr-2 text-foreground-tertiary">
+                    {index}:
+                  </span>
                   {renderValue(item, `${key}[${index}]`)}
                 </div>
               ))}
@@ -163,21 +172,21 @@ function JSONViewer({ data }: { data: any }) {
       const keys = Object.keys(value);
 
       if (keys.length === 0) {
-        return <span className="text-muted-foreground">{"{}"}</span>;
+        return <span className="text-foreground-tertiary">{"{}"}</span>;
       }
 
       return (
         <div className="inline-block">
           <button
             onClick={() => toggleCollapse(key)}
-            className="inline-flex items-center rounded px-1 hover:bg-muted"
+            className="inline-flex items-center rounded px-1 hover:bg-surface-hover"
           >
             {isCollapsed ? (
               <Icon icon={ArrowRight01Icon} className="size-3" />
             ) : (
               <Icon icon={ArrowDown01Icon} className="size-3" />
             )}
-            <span className="ml-1 text-muted-foreground">Object</span>
+            <span className="ml-1 text-foreground-tertiary">Object</span>
           </button>
           {!isCollapsed && (
             <div className="mt-1 ml-4">
@@ -195,11 +204,11 @@ function JSONViewer({ data }: { data: any }) {
       );
     }
 
-    return <span className="text-muted-foreground">{String(value)}</span>;
+    return <span className="text-foreground-tertiary">{String(value)}</span>;
   };
 
   return (
-    <div className="overflow-x-auto rounded-md bg-muted p-3 font-mono text-body">
+    <div className="overflow-x-auto rounded-md bg-surface-hover p-3 font-mono text-body">
       {renderValue(data, "root")}
     </div>
   );

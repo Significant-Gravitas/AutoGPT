@@ -40,6 +40,12 @@
       }
     },
     {
+      "files": ["src/playwright/**"],
+      "rules": {
+        "autogpt/no-networkidle": "error"
+      }
+    },
+    {
       "files": ["src/app/(platform)/copilot/useCopilotStop.ts"],
       "rules": {
         "autogpt/no-hookless-use-function": "warn"
@@ -64,12 +70,13 @@
         "design-system/no-restyle": [
           "error",
           {
-            "allow": ["layout"],
+            "allow": ["layout", "z-*"],
             "contracts": [
               {
                 "pattern": "^Text$",
                 "allow": [
                   "layout",
+                  "z-*",
                   "truncate",
                   "line-clamp-*",
                   "whitespace-*",
@@ -90,11 +97,17 @@
               },
               {
                 "pattern": "^Icon$",
-                "allow": ["layout"]
+                "allow": ["layout", "z-*"]
               },
               {
                 "pattern": "^Skeleton$",
-                "allow": ["layout", "shape"]
+                "allow": [
+                  "layout",
+                  "z-*",
+                  "shape",
+                  "rounded-pill",
+                  "rounded-*-pill"
+                ]
               }
             ]
           }
@@ -117,6 +130,13 @@
             ]
           }
         ],
+        "design-system/no-shadcn-alias-colours": "error",
+        "design-system/no-raw-palette-classes": "error",
+        "design-system/no-hex-colours": "error",
+        "design-system/no-colour-functions": "error",
+        "design-system/no-arbitrary-colour": "error",
+        "design-system/no-misused-role": "error",
+        "design-system/no-raw-z-index": "error",
         "design-system/no-dark-variant": "error",
         "design-system/no-raw-text-size": "error",
         "design-system/no-legacy-import": "error",
@@ -136,12 +156,13 @@
         "design-system/no-restyle": [
           "error",
           {
-            "allow": ["layout"],
+            "allow": ["layout", "z-*"],
             "contracts": [
               {
                 "pattern": "^Text$",
                 "allow": [
                   "layout",
+                  "z-*",
                   "truncate",
                   "line-clamp-*",
                   "whitespace-*",
@@ -162,11 +183,11 @@
               },
               {
                 "pattern": "^Icon$",
-                "allow": ["layout"]
+                "allow": ["layout", "z-*"]
               },
               {
                 "pattern": "^Button$",
-                "allow": ["layout"]
+                "allow": ["layout", "z-*"]
               },
               {
                 "pattern": "^(?!(Text|Icon|Button)$)",
@@ -203,6 +224,13 @@
       ],
       "rules": {
         "design-system/no-raw-colors": "off",
+        "design-system/no-shadcn-alias-colours": "off",
+        "design-system/no-raw-palette-classes": "off",
+        "design-system/no-hex-colours": "off",
+        "design-system/no-colour-functions": "off",
+        "design-system/no-arbitrary-colour": "off",
+        "design-system/no-misused-role": "off",
+        "design-system/no-raw-z-index": "off",
         "design-system/no-arbitrary-values": "off",
         "design-system/no-restyle": "off",
         "design-system/no-inline-styles": "off",
@@ -218,6 +246,13 @@
       "files": ["src/app/api/__generated__/**"],
       "rules": {
         "design-system/no-raw-colors": "off",
+        "design-system/no-shadcn-alias-colours": "off",
+        "design-system/no-raw-palette-classes": "off",
+        "design-system/no-hex-colours": "off",
+        "design-system/no-colour-functions": "off",
+        "design-system/no-arbitrary-colour": "off",
+        "design-system/no-misused-role": "off",
+        "design-system/no-raw-z-index": "off",
         "design-system/no-arbitrary-values": "off",
         "design-system/no-restyle": "off",
         "design-system/no-inline-styles": "off",

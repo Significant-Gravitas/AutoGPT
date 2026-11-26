@@ -58,7 +58,7 @@ export function ExpertSkillsSection({
   return (
     <section>
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
-        <Text variant="large-medium" tone="primary">
+        <Text variant="large" weight="medium" tone="primary">
           {expert.name}&apos;s Skills
         </Text>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
@@ -108,8 +108,7 @@ export function ExpertSkillsSection({
       {!hasAny ? (
         <SectionEmptyState
           tiles={[
-            // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info blue would change the hue (deferred)
-            <span key="book" className="inline-flex text-sky-500">
+            <span key="book" className="inline-flex text-sky">
               <Icon icon={BookOpen01Icon} size={22} />
             </span>,
             <span key="bulb" className="inline-flex text-warning">

@@ -84,7 +84,7 @@ export function ConnectIntegrationTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex items-center gap-2 text-body text-muted-foreground">
+      <div className="flex items-center gap-2 text-body text-foreground-tertiary">
         <MorphingTextAnimation
           text={label}
           className={isError ? "text-error" : undefined}
@@ -92,13 +92,13 @@ export function ConnectIntegrationTool({ part }: Props) {
       </div>
 
       {isError && errorMessage && (
-        <Text variant="body-tight" tone="error" className="mt-1">
+        <Text variant="body" leading="5" tone="error" className="mt-1">
           {errorMessage}
         </Text>
       )}
 
       {isCorrupted && (
-        <Text variant="body-tight" tone="error" className="mt-1">
+        <Text variant="body" leading="5" tone="error" className="mt-1">
           The sign-in card data arrived corrupted and can&apos;t be shown. Ask
           your expert to retry connecting {providerName}.
         </Text>

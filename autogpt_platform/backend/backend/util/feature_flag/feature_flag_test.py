@@ -1,5 +1,6 @@
 import ast
 import datetime
+import json
 import logging
 import uuid
 from pathlib import Path
@@ -20,6 +21,7 @@ from backend.util.feature_flag import (
     create_feature_flag_dependency,
     evaluate_feature_flag,
     feature_flag,
+    get_feature_flag_value,
     is_feature_enabled,
 )
 from backend.util.settings import AppEnvironment
@@ -938,6 +940,106 @@ class TestRequestAttributes:
         _, properties = self._evaluated(posthog_client)
         assert "country" not in properties
         assert properties["is_anonymous"] is False
+
+
+class TestJsonEnvOverride:
+    """A JSON-valued flag forced from the environment, for a stack without
+    PostHog: the journeys' compose stack gets its Stripe price map this way."""
+
+    FLAG = Flag.COPILOT_TIER_STRIPE_PRICES.value
+    ENV = "FORCE_FLAG_COPILOT_TIER_STRIPE_PRICES"
+    PRICES = {"PRO": "price_pro_monthly", "PRO_YEARLY": "price_pro_yearly"}
+
+    @pytest.fixture(autouse=True)
+    def clear_env(self, monkeypatch: pytest.MonkeyPatch):
+        for name in (self.ENV, "FORCE_FLAG_AUTOMOD"):
+            monkeypatch.delenv(name, raising=False)
+            monkeypatch.delenv("NEXT_PUBLIC_" + name, raising=False)
+        monkeypatch.setattr(feature_flag_module, "_warned_value_overrides", set())
+
+    @pytest.fixture
+    def no_posthog(self, mocker):
+        """Any read that reaches PostHog fails the test."""
+        return mocker.patch.object(
+            ph, "get_flag_client", side_effect=AssertionError("PostHog was asked")
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("value", [PRICES, [{"tier": "PRO"}]])
+    async def test_a_json_object_or_array_answers_without_posthog(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        no_posthog,
+        caplog: pytest.LogCaptureFixture,
+        value,
+    ):
+        monkeypatch.setenv(self.ENV, json.dumps(value))
+        with caplog.at_level(logging.WARNING, logger="backend.util.feature_flag"):
+            for _ in range(2):
+                assert await get_feature_flag_value(self.FLAG, "system") == value
+        # The same answer reaches callers that ask whether it was authoritative.
+        assert await feature_flag_module._evaluate_flag_value(self.FLAG, "system") == (
+            value,
+            True,
+        )
+        # Replacing PostHog's answer is announced once per flag, never the value.
+        warnings = [
+            r.getMessage() for r in caplog.records if self.ENV in r.getMessage()
+        ]
+        assert len(warnings) == 1, warnings
+        assert json.dumps(value) not in warnings[0]
+        assert "price_pro_monthly" not in warnings[0]
+
+    @pytest.mark.asyncio
+    async def test_next_public_does_not_set_a_json_flag(
+        self, monkeypatch: pytest.MonkeyPatch, posthog_client
+    ):
+        """NEXT_PUBLIC_ values are meant for the browser bundle; a JSON flag's
+        value is the backend's alone."""
+        posthog_client.get_feature_flag_result.return_value = served(
+            True, payload={"PRO": "price_from_posthog"}
+        )
+        monkeypatch.setenv("NEXT_PUBLIC_" + self.ENV, json.dumps(self.PRICES))
+        assert await get_feature_flag_value(self.FLAG, "system") == {
+            "PRO": "price_from_posthog"
+        }
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("raw", ["true", "{not json", '"price_pro"', "7"])
+    async def test_a_value_that_is_not_a_json_object_or_array_is_ignored(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        posthog_client,
+        caplog: pytest.LogCaptureFixture,
+        raw,
+    ):
+        posthog_client.get_feature_flag_result.return_value = served(
+            True, payload={"PRO": "price_from_posthog"}
+        )
+        monkeypatch.setenv(self.ENV, raw)
+        with caplog.at_level(logging.WARNING, logger="backend.util.feature_flag"):
+            for _ in range(2):
+                assert await get_feature_flag_value(self.FLAG, "system") == {
+                    "PRO": "price_from_posthog"
+                }
+        warnings = [r for r in caplog.records if self.ENV in r.getMessage()]
+        assert len(warnings) == 1, "the ignored value is warned about once"
+        assert raw not in warnings[0].getMessage()
+
+    @pytest.mark.asyncio
+    async def test_boolean_flags_are_unaffected(
+        self, monkeypatch: pytest.MonkeyPatch, posthog_client
+    ):
+        posthog_client.get_feature_flag_result.return_value = served(True)
+        monkeypatch.setenv("FORCE_FLAG_AUTOMOD", json.dumps({"on": True}))
+        # A raw read of a boolean flag still asks PostHog,
+        assert await get_feature_flag_value(Flag.AUTOMOD.value, "u-1") is True
+        # and the boolean paths read the variable as before: not truthy, so off.
+        assert _env_flag_override(Flag.AUTOMOD) is False
+        assert await is_feature_enabled(Flag.AUTOMOD, "u-1", default=True) is False
+        # So does a JSON flag's variable, on the boolean paths.
+        monkeypatch.setenv(self.ENV, json.dumps(self.PRICES))
+        assert _env_flag_override(Flag.COPILOT_TIER_STRIPE_PRICES) is False
 
 
 def served(value, payload=None):

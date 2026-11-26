@@ -27,7 +27,7 @@ export function MaxUpgradeSummary({ preview }: Props) {
   return (
     <div className="overflow-hidden rounded-2xl border border-border-base">
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border-base bg-surface-muted px-5 py-4">
-        <Text variant="body-medium">
+        <Text variant="body" weight="medium">
           Max{" "}
           <span className="font-normal text-foreground-tertiary">
             · {preview.billing_cycle === "yearly" ? "Yearly" : "Monthly"}
@@ -73,7 +73,7 @@ export function MaxUpgradeSummary({ preview }: Props) {
           />
         </div>
         <div className="pt-2">
-          <Text variant="small-loose" tone="secondary">
+          <Text variant="small" leading="5" tone="secondary">
             Next renewal: {dateLabel(preview.period_end)}. Max’s regular price
             is {amount(preview.recurring_amount)} {recurringTax} per {unit},
             before any applicable discounts or account credits.
@@ -96,13 +96,15 @@ function SummaryRow({
   return (
     <div className="flex items-start justify-between gap-4">
       <Text
-        variant={emphasized ? "body-medium" : "small"}
+        variant={emphasized ? "body" : "small"}
+        weight={emphasized ? "medium" : undefined}
         tone={emphasized ? "primary" : "secondary"}
       >
         {label}
       </Text>
       <Text
-        variant={emphasized ? "body-medium" : "small"}
+        variant={emphasized ? "body" : "small"}
+        weight={emphasized ? "medium" : undefined}
         tone={emphasized ? "primary" : "secondary"}
         tabular
         className="shrink-0"

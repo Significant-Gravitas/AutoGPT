@@ -43,7 +43,8 @@ export function PaymentDueAction({
         {label}
       </Button>
       <Text
-        variant="small-tight"
+        variant="small"
+        leading="4"
         tone="muted"
         align={stacked ? "center" : undefined}
       >

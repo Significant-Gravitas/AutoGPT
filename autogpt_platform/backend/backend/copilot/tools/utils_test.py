@@ -221,7 +221,7 @@ async def _resolve_for(expert_id: str | None, allowed: list[str]):
     from backend.copilot.tools.helpers import resolve_block_credentials
 
     experts = MagicMock()
-    experts.expert_allowed_credential_ids = AsyncMock(return_value=allowed)
+    experts.seeded_expert_credential_ids = AsyncMock(return_value=allowed)
     with (
         patch(
             "backend.copilot.tools.utils.IntegrationCredentialsManager"
@@ -321,6 +321,68 @@ def test_a_system_credential_is_used_when_the_user_has_none_of_their_own():
     assert _find([openai_credentials], ask=True, field=field) is openai_credentials
     own = _key_cred("own-openai", provider="openai")
     assert _find([own, openai_credentials], ask=True, field=field) is own
+
+
+def _exa_field() -> CredentialsFieldInfo:
+    return CredentialsFieldInfo.model_validate(
+        {"credentials_provider": ["exa"], "credentials_types": ["api_key"]},
+        by_alias=True,
+    )
+
+
+@pytest.mark.parametrize("ask", [True, False], ids=["watched", "unattended"])
+def test_a_refused_sdk_default_is_never_picked_over_the_system_credential(ask):
+    # get_all_creds lists the system credential first and the SDK default
+    # after it. exa-default can't run (Exa isn't a runnable SDK default
+    # provider), so the system credential must be picked, watched or not.
+    from backend.integrations.credentials_store import exa_credentials
+
+    exa_default = _key_cred("exa-default", provider="exa")
+    picked = _find([exa_credentials, exa_default], ask=ask, field=_exa_field())
+    assert picked is exa_credentials
+    assert _find([exa_default], ask=ask, field=_exa_field()) is None
+
+
+def test_a_refused_sdk_default_does_not_stop_the_users_own_key_being_used():
+    own = _key_cred("own-exa", provider="exa")
+    exa_default = _key_cred("exa-default", provider="exa")
+    assert _find([own, exa_default], ask=True, field=_exa_field()) is own
+    assert _find([exa_default, own], field=_exa_field()) is own
+
+
+@pytest.mark.parametrize("ask", [True, False], ids=["watched", "unattended"])
+def test_a_runnable_sdk_default_still_counts_as_a_usable_credential(ask):
+    field = CredentialsFieldInfo.model_validate(
+        {"credentials_provider": ["tavily"], "credentials_types": ["api_key"]},
+        by_alias=True,
+    )
+    tavily_default = _key_cred("tavily-default", provider="tavily")
+    assert _find([tavily_default], ask=ask, field=field) is tavily_default
+
+
+@pytest.mark.parametrize("ask", [True, False], ids=["watched", "unattended"])
+def test_an_expired_key_never_shadows_a_valid_one(ask):
+    # #16234: an expired key stored first must not be picked by a scheduled
+    # turn (only to be refused) or offered as a second account to choose from.
+    expired = _key_cred("expired")
+    expired.expires_at = 1_000_000_000  # 2001
+    valid = _key_cred("valid")
+
+    assert _find([expired, valid], ask=ask) is valid
+    # Alone it fits nothing, so the user is asked to connect a key.
+    assert _find([expired], ask=ask) is None
+
+
+@pytest.mark.parametrize("ask", [True, False], ids=["watched", "unattended"])
+def test_an_expired_key_the_user_picked_is_kept_not_swapped(ask):
+    # A pick never moves to another account: the run refuses the expired key
+    # and says so, rather than quietly running on a different one.
+    expired = _key_cred("expired")
+    expired.expires_at = 1_000_000_000  # 2001
+    valid = _key_cred("valid")
+
+    assert _find([valid, expired], {"github": "expired"}, ask=ask) is expired
+    assert _find([expired, valid], {"github": "valid"}, ask=ask) is valid
 
 
 # ---------------------------------------------------------------------------

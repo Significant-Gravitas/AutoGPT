@@ -21,6 +21,7 @@ import {
   Target01Icon,
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
+import { duration, ease } from "@/components/styles/motion";
 
 const ICON_SIZE = 20;
 
@@ -90,7 +91,7 @@ export function RoleStep() {
           <Text variant="h4">What best describes you?</Text>
         </div>
 
-        <div className="scrollbar-none flex w-full max-w-[100vw] flex-nowrap gap-4 overflow-x-auto px-8 md:grid md:grid-cols-4 md:overflow-hidden md:px-0">
+        <div className="grid w-full max-w-lg grid-cols-2 gap-3 md:w-auto md:max-w-none md:grid-cols-4 md:gap-4 md:overflow-hidden">
           {ROLES.map((r) => (
             <SelectableCard
               key={r.id}
@@ -98,7 +99,7 @@ export function RoleStep() {
               label={r.label}
               selected={role === r.id}
               onClick={() => setRole(r.id)}
-              className="h-28 w-[11.5rem]"
+              className="h-20 w-full md:h-28 md:w-[11.5rem]"
             />
           ))}
         </div>
@@ -111,8 +112,8 @@ export function RoleStep() {
               animate={{ opacity: 1, height: "auto", y: 0 }}
               exit={{ opacity: 0, height: 0, y: reduceMotion ? 0 : -8 }}
               transition={{
-                duration: reduceMotion ? 0.15 : 0.24,
-                ease: [0.22, 1, 0.36, 1],
+                duration: reduceMotion ? duration.fast : duration.base,
+                ease: ease.glide,
               }}
               className="-my-1 w-full max-w-lg overflow-hidden"
             >

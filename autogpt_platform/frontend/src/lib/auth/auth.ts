@@ -7,12 +7,27 @@ import {
 } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { admin, jwt } from "better-auth/plugins";
+import { nativeSessionBearer } from "./native-session-bearer";
+import { appleOAuth } from "./apple-oauth";
+import {
+  assertAppleSignInRequest,
+  appleTrustedOrigins,
+  getAppleProvider,
+  type AppleAccountUser,
+} from "./apple-provider";
 import { compare, hash } from "bcryptjs";
 import { PostgresDialect } from "kysely";
-import { Pool } from "pg";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
+import { authDbPool } from "./auth-db-pool";
+import { assertNotBannedAddress } from "./ban-record";
+import {
+  AUTH_COOKIE_PREFIX,
+  getAuthBaseURL,
+  usesSecureCookies,
+} from "./base-url";
 import { getTrustedClientIP, trustedProxies } from "./client-ip";
 import { DISABLED_AUTH_PATHS } from "./disabled-paths";
+import { IP_ADDRESS_HEADERS } from "./ip-address-headers";
 import { assertNotDisposableEmail } from "./disposable-email";
 import { runAfterResponse } from "./background-tasks";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
@@ -35,13 +50,24 @@ import {
   platformUserExists,
   provisionPlatformUser,
 } from "./provision-platform-user";
+import { assertProviderVerifiedEmail } from "./provider-verified-email";
 import {
   recordResetLinkAddress,
   type ResetLinkContext,
   verifyAddressTheResetLinkWasMailedTo,
 } from "./reset-link-address";
 import { revokeResetLinksMailedElsewhere } from "./reset-links";
-import { RESET_LINK_EXPIRES_IN_SECONDS } from "./set-password-link";
+import {
+  RESET_LINK_EXPIRES_IN_SECONDS,
+  withResetCallback,
+} from "./set-password-link";
+import { requireSignInCode } from "./require-sign-in-code";
+import {
+  alertNewSignInMethod,
+  joinsAnAccount,
+  noteSignUp,
+} from "./sign-in-code-emails";
+import { signInCode } from "./sign-in-code-plugin";
 import { JWKS_ALG } from "./service-token";
 import {
   isSignupAllowed,
@@ -49,51 +75,55 @@ import {
   SIGN_UP_NOT_ALLOWED_CODE,
 } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
+import { getMicrosoftLoginProvider } from "./microsoft-login";
+import {
+  assertSignInScopes,
+  withoutProviderTokens,
+} from "./connect-at-sign-in";
+import {
+  connectSignIn,
+  googleLoginProvider,
+  microsoftLoginProvider,
+} from "./sign-in-connection";
+import { assertMicrosoftSignUpAllowed } from "./microsoft-sign-up-policy";
 import { assertTeamEmailUsesGoogle } from "./team-email-policy";
 import { sendVerificationLink } from "./verification-link";
 
-const baseURL =
-  process.env.BETTER_AUTH_URL ||
-  process.env.NEXT_PUBLIC_FRONTEND_BASE_URL ||
-  "http://localhost:3000";
+const baseURL = getAuthBaseURL();
 
 function getSocialProviders() {
-  const providers: Record<string, { clientId: string; clientSecret: string }> =
-    {};
+  const providers: NonNullable<BetterAuthOptions["socialProviders"]> = {};
 
   for (const provider of ["google", "github", "discord"] as const) {
     const prefix = `AUTH_${provider.toUpperCase()}`;
     const clientId = process.env[`${prefix}_CLIENT_ID`];
     const clientSecret = process.env[`${prefix}_CLIENT_SECRET`];
-    if (clientId && clientSecret) {
+    if (!clientId || !clientSecret) continue;
+    if (provider === "google") {
+      providers.google = googleLoginProvider(clientId, clientSecret);
+    } else {
       providers[provider] = { clientId, clientSecret };
     }
   }
 
-  return providers;
+  const apple = getAppleProvider(findAppleAccountUser);
+  if (apple) providers.apple = apple;
+
+  const microsoft = getMicrosoftLoginProvider();
+  return microsoft
+    ? { ...providers, microsoft: microsoftLoginProvider(microsoft) }
+    : providers;
 }
 
-// Shared with the databaseHooks below so the verified-email mirror reuses the
-// same connection/search_path instead of opening a second pool.
-// Cached on globalThis in development: `next dev` re-evaluates this module on
-// every hot reload, and a fresh Pool per reload leaks its idle connections
-// (the old one is never ended), eventually exhausting Postgres backends.
-// Production evaluates it once, so the cache is a no-op there.
-const globalForAuthDb = globalThis as { __authDbPool?: Pool };
-
-const authDbPool =
-  globalForAuthDb.__authDbPool ??
-  new Pool({
-    // No fallback: the database password is generated per install, and
-    // `make init-env` writes it into frontend/.env's DATABASE_URL.
-    connectionString: process.env.DATABASE_URL,
-    // Better Auth shares the platform Postgres; its tables live in the same
-    // schema as the Prisma-managed ones (created by the backend migrations).
-    options: `-c search_path=${process.env.AUTH_DB_SCHEMA || "platform"}`,
+async function findAppleAccountUser(
+  subject: string,
+): Promise<AppleAccountUser | null> {
+  const context = await auth.$context;
+  const owner = await context.internalAdapter.findAccountOwnerByKey({
+    providerId: "apple",
+    accountId: subject,
   });
-
-if (process.env.NODE_ENV !== "production") {
-  globalForAuthDb.__authDbPool = authDbPool;
+  return owner?.kind === "owned" ? owner.user : null;
 }
 
 const requireEmailVerification =
@@ -103,8 +133,6 @@ const emailVerificationExpiresIn = 60 * 60 * 24;
 
 const authSecret = process.env.BETTER_AUTH_SECRET;
 
-const resetRedirectTo = new URL("/reset-password", baseURL).toString();
-
 function hasPlatformUser(userId: string) {
   return platformUserExists(authDbPool, userId);
 }
@@ -112,6 +140,8 @@ function hasPlatformUser(userId: string) {
 // Better Auth hands database hooks the endpoint context, or null outside one.
 type HookContext = {
   path?: string;
+  params?: { id?: string };
+  body?: unknown;
   headers?: Headers;
   request?: Request;
   context?: { options: BetterAuthOptions };
@@ -131,6 +161,7 @@ function getRequestIP(ctx: HookContext) {
 export const auth = betterAuth({
   baseURL,
   secret: authSecret,
+  trustedOrigins: appleTrustedOrigins,
   // Without database transactions, as before Better Auth 1.7, which turns
   // them on for a bare pg Pool. A sign-up would then hold one of the pool's
   // connections throughout while the session hook (access blocks, IP log)
@@ -145,6 +176,8 @@ export const auth = betterAuth({
   disabledPaths: DISABLED_AUTH_PATHS,
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      assertAppleSignInRequest(ctx.path, ctx.body);
+      await assertSignInScopes(ctx.path, ctx.body);
       // Sign-in and reset emails are limited per IP and address (attempt-limits.ts).
       await limitAuthAttempts({
         path: ctx.path,
@@ -223,7 +256,15 @@ export const auth = betterAuth({
       create: {
         // Fires for both email/password signup AND a first OAuth sign-in,
         // since both create a user row. The SQL data-migration bypasses it.
-        before: async (user: { email: string }, ctx: HookContext) => {
+        before: async (
+          user: { email: string; emailVerified?: boolean | null },
+          ctx: HookContext,
+        ) => {
+          // First, so an unverified address is answered the same whether or
+          // not an account uses it, before any later check tells them apart.
+          assertProviderVerifiedEmail(user, ctx);
+          // Microsoft's next: its refusals carry codes /login explains.
+          assertMicrosoftSignUpAllowed(user, ctx);
           assertSignUpPolicy(user.email, ctx);
           // An email sign-up was already checked in hooks.before.
           if (
@@ -246,6 +287,8 @@ export const auth = betterAuth({
           },
           ctx: HookContext,
         ) => {
+          // So the provider row a sign-up writes next sends no notice.
+          noteSignUp(ctx, user.id);
           if (ctx?.path !== ADMIN_CREATE_USER_PATH) {
             await recordAuthIP(authDbPool, {
               userId: user.id,
@@ -281,6 +324,34 @@ export const auth = betterAuth({
         },
       },
     },
+    // A sign-in provider that joins an account it didn't create emails the
+    // account's owner (sign-in-code-emails.ts), alongside the response.
+    account: {
+      // Google's and Microsoft's tokens live only as the backend's encrypted
+      // connection (connect-at-sign-in.ts).
+      create: {
+        before: async (account: { providerId?: string }) => ({
+          data: withoutProviderTokens(account),
+        }),
+        after: async (
+          account: { userId: string; providerId: string },
+          ctx: HookContext,
+        ) => {
+          if (!joinsAnAccount(account, ctx)) return;
+          runAfterResponse(
+            getAuthContext().then((context) =>
+              alertNewSignInMethod(context, account),
+            ),
+          );
+        },
+      },
+      // A returning sign-in rewrites the tokens.
+      update: {
+        before: async (account: { providerId?: string }) => ({
+          data: withoutProviderTokens(account),
+        }),
+      },
+    },
     // Every sign-in method ends in a session, so this is where an IP block
     // refuses it and where its IP is logged. An impersonation session carries
     // the admin's IP, so it is neither.
@@ -299,12 +370,15 @@ export const auth = betterAuth({
             getTrustedClientIP(session.ipAddress),
           );
         },
-        after: async (session: {
-          userId: string;
-          ipAddress?: string | null;
-          userAgent?: string | null;
-          impersonatedBy?: string | null;
-        }) => {
+        after: async (
+          session: {
+            userId: string;
+            ipAddress?: string | null;
+            userAgent?: string | null;
+            impersonatedBy?: string | null;
+          },
+          ctx: HookContext,
+        ) => {
           if (session.impersonatedBy) return;
           await recordAuthIP(authDbPool, {
             userId: session.userId,
@@ -312,14 +386,24 @@ export const auth = betterAuth({
             ipAddress: getTrustedClientIP(session.ipAddress),
             userAgent: session.userAgent,
           });
+          // A Google or Microsoft sign-in that was granted the data scopes
+          // becomes the account's connection (sign-in-connection.ts).
+          await connectSignIn(ctx, session.userId);
         },
       },
     },
   },
   advanced: {
+    // Better Auth's own choices, made explicit: the middleware looks the
+    // session cookie and its cache up under the names these give them.
+    cookiePrefix: AUTH_COOKIE_PREFIX,
+    useSecureCookies: usesSecureCookies(baseURL),
     // Behind a proxy chain the client IP is only resolvable from the hops the
     // operator lists; without them every such caller shares one rate-limit bucket.
-    ipAddress: { trustedProxies: trustedProxies() },
+    ipAddress: {
+      ipAddressHeaders: IP_ADDRESS_HEADERS,
+      trustedProxies: trustedProxies(),
+    },
     database: {
       // Keep UUID ids: platform User rows reuse the auth user id, and all
       // pre-migration ids are Supabase UUIDs.
@@ -369,7 +453,6 @@ export const auth = betterAuth({
         user,
         getAuthContext,
         hasPlatformUser,
-        resetRedirectTo,
       });
     },
     password: {
@@ -398,7 +481,7 @@ export const auth = betterAuth({
       await sendAuthEmail({
         to: user.email,
         type: "reset_password",
-        url,
+        url: withResetCallback(url),
       });
     },
   },
@@ -421,12 +504,14 @@ export const auth = betterAuth({
         getAuthContext,
         hasPlatformUser,
         requireEmailVerification,
-        resetRedirectTo,
       });
     },
   },
   user: {
     modelName: "UserAuthIdentity",
+    // Before a provider sign-in joins an account or creates one: one that
+    // can't vouch for its address waits on a code emailed there.
+    validateUserInfo: requireSignInCode,
     additionalFields: {
       // Onboarding's "What should I call you?" answer; surfaced to
       // consumers as user_metadata.preferred_name (see mapSessionUser).
@@ -450,6 +535,7 @@ export const auth = betterAuth({
       updateEmailWithoutVerification: true,
       sendChangeEmailConfirmation: async ({
         user,
+        newEmail,
         url,
       }: {
         user: { email: string };
@@ -461,6 +547,7 @@ export const auth = betterAuth({
           to: user.email,
           type: "change_email",
           url,
+          newEmail,
         });
       },
     },
@@ -468,6 +555,8 @@ export const auth = betterAuth({
   socialProviders: getSocialProviders(),
   plugins: [
     admin(),
+    ...appleOAuth(),
+    nativeSessionBearer(),
     jwt({
       schema: {
         jwks: { modelName: "UserAuthJwks" },
@@ -484,7 +573,8 @@ export const auth = betterAuth({
         // interchangeable during the migration window.
         audience: "authenticated",
         expirationTime: "1h",
-        definePayload: ({ user }) => ({
+        definePayload: ({ user, session }) => ({
+          sid: session.id,
           email: user.email,
           role: user.role === "admin" ? "admin" : "authenticated",
           user_metadata: { name: user.name },
@@ -492,6 +582,7 @@ export const auth = betterAuth({
       },
     }),
     supabaseBridge(),
+    signInCode(),
     // Must be last so cookies set inside server actions stick.
     nextCookies(),
   ],
@@ -517,13 +608,15 @@ function assertSignUpPolicy(email: string, ctx: { path?: string } | null) {
   }
 }
 
-// IP and email-domain blocks from /admin/users (access-blocks.ts) answer
-// before the disposable list, so an admin's domain block keeps its message.
+// IP and email-domain blocks from /admin/users (access-blocks.ts) and the ban
+// record of an erased, banned account (ban-record.ts) answer before the
+// disposable list, so an admin's block keeps its message.
 async function assertEmailSignUpAllowed(
   email: string,
   ipAddress: string | null,
 ) {
   await assertSignUpAllowed(authDbPool, { email, ipAddress });
+  await assertNotBannedAddress(email);
   const dns = sharedLookups();
   await assertNotDisposableEmail(email, { dns });
   await assertEmailHasMailServer(email, { dns });

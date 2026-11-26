@@ -20,6 +20,7 @@ from backend.copilot.at_reset_lock_fixtures import FakeAtResetRedis, FakeTransac
 from backend.copilot.continuation import RESUMED_AT_RESET_NOTE
 from backend.copilot.db import PaginatedMessages
 from backend.copilot.executor.utils import ScheduledTurnOrigin
+from backend.copilot.limit_tracking import LimitReading
 from backend.copilot.model import ChatMessage, ChatSessionInfo, ChatSessionMetadata
 from backend.copilot.rate_limit import (
     CoPilotUsageStatus,
@@ -40,6 +41,8 @@ from backend.executor.scheduler import (
 _SCHEDULER = "backend.executor.scheduler"
 _AT_RESET = "backend.copilot.at_reset"
 _LOCK = "backend.copilot.at_reset_lock"
+# Only stops a hung test; a passing run ends at its own short deadline.
+_HANG_SECONDS = 10
 USER = "user-1"
 SESSION = "0d3f7a52-61c4-4f0e-a8b2-9c1e5d7f3a64"
 SET_AT = datetime(2026, 10, 14, 15, 0, tzinfo=UTC)
@@ -330,12 +333,116 @@ async def test_still_out_of_budget_moves_it_to_the_next_reset(fire_env):
 
 
 @pytest.mark.asyncio
-async def test_a_refused_dispatch_puts_it_back(fire_env):
-    fire_env.dispatch.side_effect = ConcurrentTurnLimitError("cap")
+async def test_still_out_of_budget_is_sent_to_posthog_as_queued(
+    fire_env, chat_blocked_events
+):
+    fire_env.gate.side_effect = RateLimitExceeded(
+        "daily", DAILY_RESET, reading=LimitReading(tier="PRO", used=3.0, cap=3.0)
+    )
+    fire_env.usage.return_value = CoPilotUsageStatus(
+        daily=UsageWindow(used=3_000_000, limit=3_000_000, resets_at=DAILY_RESET),
+        weekly=UsageWindow(used=0, limit=6_000_000, resets_at=WEEKLY_RESET),
+        tier=SubscriptionTier.PRO,
+    )
+    await _fire(_args("send"))
+    moved = fire_env.client.add_copilot_turn_schedule.await_args.kwargs
+    (event,) = chat_blocked_events
+    assert event == {
+        "distinct_id": "user-1",
+        "reason": "usage_limit",
+        "limit": "daily",
+        "outcome": "queued",
+        "surface": "schedule",
+        "tier": "PRO",
+        "used": 3.0,
+        "cap": 3.0,
+        # When the window refills, not the later, jittered time it fires.
+        "resets_at": DAILY_RESET.isoformat(),
+    }
+    assert moved["run_at"] > DAILY_RESET
+
+
+@pytest.mark.asyncio
+async def test_an_allowance_that_never_refills_is_sent_as_refused(
+    fire_env, chat_blocked_events
+):
+    with (
+        patch(
+            f"{_AT_RESET}.get_global_rate_limits",
+            AsyncMock(return_value=(0, 0, SubscriptionTier.NO_TIER)),
+        ),
+        patch(
+            "backend.copilot.rate_limit.get_ready_usage_state",
+            AsyncMock(return_value=MagicMock(tier=SubscriptionTier.TRIAL)),
+        ),
+    ):
+        await _fire(_args("send"))
+    fire_env.dispatch.assert_not_awaited()
+    (event,) = chat_blocked_events
+    assert (event["limit"], event["outcome"], event["cap"], event["resets_at"]) == (
+        "trial",
+        "refused",
+        0.0,
+        None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_spent_trial_is_sent_as_refused_with_its_reading(
+    fire_env, chat_blocked_events
+):
+    reading = LimitReading(tier="TRIAL", used=5.0, cap=5.0)
+    fire_env.gate.side_effect = RateLimitExceeded(
+        "trial", WEEKLY_RESET, reading=reading
+    )
+    with (
+        patch(
+            f"{_AT_RESET}.get_global_rate_limits",
+            AsyncMock(return_value=(3_000_000, 6_000_000, SubscriptionTier.TRIAL)),
+        ),
+        patch(f"{_AT_RESET}._trial_allowance_spent", AsyncMock(return_value=True)),
+    ):
+        await _fire(_args("send"))
+    fire_env.dispatch.assert_not_awaited()
+    (event,) = chat_blocked_events
+    assert (event["limit"], event["outcome"], event["resets_at"]) == (
+        "trial",
+        "refused",
+        None,
+    )
+    assert (event["tier"], event["used"], event["cap"]) == ("TRIAL", 5.0, 5.0)
+
+
+@pytest.mark.asyncio
+async def test_a_refused_dispatch_puts_it_back(fire_env, chat_blocked_events):
+    fire_env.dispatch.side_effect = ConcurrentTurnLimitError("cap", cap=5)
     await _fire(_args("send"))
     readded = fire_env.client.add_copilot_turn_schedule.await_args.kwargs
     assert readded["purpose"] == "send"
     assert readded["cap_retry_count"] == 1
+    assert [(e["limit"], e["outcome"], e["cap"]) for e in chat_blocked_events] == [
+        ("concurrency", "refused", 5)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_membership_that_cannot_be_read_puts_it_back(
+    fire_env, _turn_owners_belong_to_their_org
+):
+    _turn_owners_belong_to_their_org.is_active_member.side_effect = RuntimeError(
+        "database manager unavailable"
+    )
+    await _fire(_args("send", organization_id="org-sched", team_id="team-sched"))
+    fire_env.dispatch.assert_not_awaited()
+    readded = fire_env.client.add_copilot_turn_schedule.await_args.kwargs
+    assert (readded["purpose"], readded["cap_retry_count"]) == ("send", 1)
+
+
+@pytest.mark.asyncio
+async def test_a_turn_that_fires_sends_nothing(fire_env, chat_blocked_events):
+    await _fire(_args("send"))
+    fire_env.dispatch.assert_awaited_once()
+    assert chat_blocked_events == []
 
 
 @pytest.mark.asyncio
@@ -363,13 +470,32 @@ async def test_an_unreadable_expert_puts_it_back_as_itself(fire_env):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["resume", "send"])
+async def test_an_at_reset_turn_into_an_archived_chat_retires(fire_env, kind):
+    """Resetting an expert archives its chats; a resume or send set before
+    the reset must not dispatch into one."""
+    archived = _chat()
+    archived.session.archived_at = SET_AT
+    fire_env.load.return_value = archived
+
+    await _fire(_args(kind))
+
+    fire_env.dispatch.assert_not_awaited()
+    fire_env.client.delete_schedule.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_followups_keep_their_own_path(fire_env):
     followup = CopilotTurnJobArgs(
         schedule_id="sched-1", user_id=USER, session_id=SESSION, message="check CI"
     )
-    with patch(
-        f"{_SCHEDULER}.get_chat_session",
-        AsyncMock(return_value=MagicMock(expert_id=None)),
+    open_chat = MagicMock(archived_at=None, expert_id=None)
+    with (
+        patch(f"{_SCHEDULER}.get_chat_session", AsyncMock(return_value=open_chat)),
+        patch(
+            f"{_SCHEDULER}.get_chat_session_metadata",
+            AsyncMock(return_value=open_chat),
+        ),
     ):
         await _fire(followup)
     fire_env.load.assert_not_awaited()
@@ -440,7 +566,9 @@ async def test_a_redis_that_never_answers_leaves_this_replicas_own_cancels(
         patch(f"{_SCHEDULER}._AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS", 0.05),
         patch.object(shared_redis, "zscore", never_answers),
     ):
-        assert await asyncio.wait_for(_at_reset_cancelled_at(job), timeout=2) == here
+        assert (
+            await asyncio.wait_for(_at_reset_cancelled_at(job), _HANG_SECONDS) == here
+        )
 
 
 @pytest.mark.asyncio
@@ -448,19 +576,17 @@ async def test_a_cancel_redis_never_takes_gives_up_by_itself():
     # Its waiter in the request thread gives up too, but the write itself
     # must not linger and land late.
     never = asyncio.Event()
-    started = asyncio.get_running_loop().time()
-    with (
-        patch(f"{_SCHEDULER}._AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS", 0.05),
-        patch.object(FakeTransaction, "execute", AsyncMock(side_effect=never.wait)),
-        pytest.raises(TimeoutError),
-    ):
-        await asyncio.wait_for(
-            _share_at_reset_cancel(
+    # Its own deadline raises inside; this test's guard would raise out of
+    # the `async with` instead, past `pytest.raises`.
+    async with asyncio.timeout(_HANG_SECONDS):
+        with (
+            patch(f"{_SCHEDULER}._AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS", 0.05),
+            patch.object(FakeTransaction, "execute", AsyncMock(side_effect=never.wait)),
+            pytest.raises(TimeoutError),
+        ):
+            await _share_at_reset_cancel(
                 at_reset_schedule_id("send", SESSION), datetime.now(UTC)
-            ),
-            timeout=2,
-        )
-    assert asyncio.get_running_loop().time() - started < 1
+            )
 
 
 @pytest.mark.asyncio

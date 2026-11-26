@@ -43,7 +43,8 @@ function AccountMentionComposer({ expertId }: Props) {
         <div className="mb-8 flex justify-end">
           <Text
             as="div"
-            variant="large-loose"
+            variant="large"
+            leading="8"
             tone="primary"
             data-testid="sent-message"
             className="max-w-full rounded-3xl bg-surface-hover px-4 py-2.5 whitespace-pre-wrap"
@@ -77,9 +78,10 @@ function AccountMentionComposer({ expertId }: Props) {
           {attachments.map((name) => (
             <Text
               key={name}
-              variant="body-tight"
+              variant="body"
+              leading="5"
               as="span"
-              className="rounded-lg bg-surface-hover px-2 py-1 text-foreground"
+              className="rounded-lg bg-surface-hover px-2 py-1 text-foreground-base"
             >
               {name}
             </Text>
@@ -143,6 +145,21 @@ export const ExpertAccounts: Story = {
     await expect(
       canvas.queryByRole("option", { name: /Personal Gmail/ }),
     ).not.toBeInTheDocument();
+  },
+};
+
+export const SkillCommands: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(canvas.getByRole("textbox"), "/");
+    await expect(
+      await canvas.findByRole("option", { name: /\/fix-issue/ }),
+    ).toBeVisible();
+    await expect(
+      canvas.queryByRole("option", { name: /house-style/ }),
+    ).not.toBeInTheDocument();
+    await userEvent.type(canvas.getByRole("textbox"), "fi{Enter}");
+    await expect(canvas.getByRole("textbox")).toHaveValue("/fix-issue ");
   },
 };
 

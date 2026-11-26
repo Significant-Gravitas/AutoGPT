@@ -1,19 +1,20 @@
 import asyncio
 import contextlib
 import logging
-import platform
 from collections.abc import Awaitable, Callable
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 import fastapi
 import starlette.middleware.cors
 import uvicorn
 from autogpt_libs.auth import add_auth_responses_to_openapi
 from autogpt_libs.auth import verify_settings as verify_auth_settings
+from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from mcp.shared.auth import ProtectedResourceMetadata
 
+import backend.api.features.account_deletion.routes as account_deletion_routes
 import backend.api.features.admin.access_block_admin_routes
 import backend.api.features.admin.block_cost_admin_routes
 import backend.api.features.admin.bot_analytics_routes
@@ -27,6 +28,7 @@ import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.admin.test_data_routes
 import backend.api.features.admin.user_admin_routes
+import backend.api.features.anthropic_relay.routes as anthropic_relay_routes
 import backend.api.features.api_keys.routes as api_keys_routes
 import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.billing.credits.routes as credits_routes
@@ -45,6 +47,7 @@ import backend.api.features.desktop_preview
 import backend.api.features.experiments
 import backend.api.features.experts.routes as experts_routes
 import backend.api.features.feature_flags.routes as feature_flags_routes
+import backend.api.features.feedback_prompts.routes as feedback_prompt_routes
 import backend.api.features.graph_executions.review.routes
 import backend.api.features.graph_executions.routes as graph_executions_routes
 import backend.api.features.graphs.routes as graphs_routes
@@ -52,6 +55,7 @@ import backend.api.features.home.routes as home_routes
 import backend.api.features.library.db
 import backend.api.features.library.model
 import backend.api.features.library.routes
+import backend.api.features.local_executor.routes as local_executor_routes
 import backend.api.features.mailerlite.routes as mailerlite_routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.memory.routes as memory_routes
@@ -90,19 +94,27 @@ import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
 import backend.util.settings
+from backend.api.session_auth import require_active_auth_session
 from backend.api.utils.exceptions import add_exception_handlers
+from backend.api.utils.uvicorn_options import rest_api_uvicorn_options
 from backend.blocks.llm import DEFAULT_LLM_MODEL
+from backend.copilot.bot.adapters.base import WebhookAdapter
 from backend.copilot.bot.bot_backend import BotBackend
-from backend.copilot.bot.webhook_routes import register_webhook_adapters
+from backend.copilot.bot.webhook_routes import (
+    register_webhook_adapters,
+    run_webhook_adapter_startup,
+)
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi, start_metrics_server
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
 from backend.util.process import freeze_startup_heap
+from backend.util.request_credentials import remember_request_credentials
 from backend.util.service import UnhealthyServiceError
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
+from .external.v1.app import v1_app
 from .external.v2.app import v2_app
 from .external.v2.mcp_server import (
     WELL_KNOWN_PROTECTED_RESOURCE_PATH,
@@ -111,6 +123,7 @@ from .external.v2.mcp_server import (
 )
 from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
+from .features.integrations.sign_in_connection import sign_in_connection_router
 from .middleware.analytics import AnalyticsContextMiddleware
 from .middleware.body_limit import RequestBodyLimitMiddleware
 from .middleware.compression import BoundedGZipMiddleware
@@ -128,6 +141,8 @@ logging.getLogger("autogpt_libs").setLevel(logging.INFO)
 # mount on this API. Owned at module level so `lifespan_context` can close it on
 # shutdown; the routes themselves are mounted further down once `app` exists.
 _webhook_bot_backend = BotBackend()
+# Filled once the routes are mounted below; the lifespan runs their startup hooks.
+_webhook_adapters: list[WebhookAdapter] = []
 
 
 @contextlib.asynccontextmanager
@@ -177,8 +192,19 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     freeze_startup_heap()
 
-    async with mcp_mount.running():
-        yield
+    # Off the boot path: a chat platform that is slow or down must not delay
+    # or stop the API from serving.
+    webhook_startup = asyncio.create_task(
+        run_webhook_adapter_startup(_webhook_adapters)
+    )
+
+    try:
+        async with mcp_mount.running():
+            yield
+    finally:
+        webhook_startup.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await webhook_startup
 
     try:
         from backend.api.features.integrations.codex import codex_login_coordinator
@@ -233,6 +259,17 @@ async def _run_data_migrations() -> None:
         ),
         ("org bootstrap", backend.data.org_migration.run_migration),
         (
+            # Bounded because this one loops: the first boot after the data
+            # migration walks whatever it could not reach, a graph load and a
+            # transaction each. Presets commit individually, so a timeout
+            # defers the rest to the next boot.
+            "triggered-preset inputs",
+            lambda: asyncio.wait_for(
+                backend.integrations.webhooks.utils.migrate_flat_triggered_preset_inputs(),
+                timeout=30,
+            ),
+        ),
+        (
             "Otto transport",
             lambda: asyncio.wait_for(
                 backend.data.autopilot_migrate.migrate_autopilot_transport(apply=True),
@@ -243,6 +280,9 @@ async def _run_data_migrations() -> None:
     for name, migrate in migrations:
         try:
             await migrate()
+        except asyncio.TimeoutError:
+            # A bounded migration resumes on the next start; not worth an alert.
+            logger.warning(f"Start-up data migration '{name}' timed out")
         except Exception:
             logger.error(f"Start-up data migration '{name}' failed", exc_info=True)
 
@@ -292,6 +332,9 @@ app = fastapi.FastAPI(
     generate_unique_id_function=custom_generate_unique_id,
 )
 
+for authenticated_app in (app, external_api, v1_app, v2_app):
+    authenticated_app.state.jwt_payload_validator = require_active_auth_session
+
 # First, so it sits inside the others and its 413 carries their headers. It
 # covers the mounted apps too.
 app.add_middleware(RequestBodyLimitMiddleware)
@@ -302,6 +345,8 @@ app.add_middleware(AnalyticsContextMiddleware)
 
 # Add GZip compression middleware for large responses (like /api/blocks)
 app.add_middleware(BoundedGZipMiddleware)
+# Keeps each request's credentials for the error reports raised handling it.
+remember_request_credentials(app)
 
 # Add 401 responses to authenticated endpoints in OpenAPI spec
 add_auth_responses_to_openapi(app)
@@ -314,12 +359,16 @@ sort_openapi(app)
 instrument_fastapi(app, service_name="rest-api", expose_endpoint=False)
 
 
-add_exception_handlers(app)
+add_exception_handlers(
+    app, server_error_detail=False, expose_missing_config_detail=True
+)
 
 app.include_router(
     backend.api.features.desktop_preview.router, tags=["v1"], prefix="/api"
 )
 app.include_router(subscription_trial_routes.router, prefix="/api")
+app.include_router(account_deletion_routes.router, prefix="/api")
+app.include_router(account_deletion_routes.status_router, prefix="/api")
 app.include_router(subscription_activation_routes.router, prefix="/api")
 app.include_router(
     api_keys_routes.router,
@@ -375,6 +424,11 @@ app.include_router(
     auth_email_routes.auth_email_router,
     prefix="/api/auth/email",
     tags=["auth-email"],
+)
+app.include_router(
+    sign_in_connection_router,
+    prefix="/api/auth",
+    tags=["integrations"],
 )
 app.include_router(
     integrations_router,
@@ -492,6 +546,7 @@ app.include_router(
 app.include_router(home_routes.router, prefix="/api")
 app.include_router(feature_flags_routes.router, prefix="/api")
 app.include_router(platform_config_routes.router, prefix="/api")
+app.include_router(anthropic_relay_routes.router, prefix="/api")
 app.include_router(
     backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )
@@ -592,6 +647,11 @@ app.include_router(
     prefix="/api/transfers",
 )
 app.include_router(
+    feedback_prompt_routes.router,
+    tags=["v2", "feedback-prompts"],
+    prefix="/api/feedback-prompts",
+)
+app.include_router(
     push_routes.router,
     tags=["push"],
     prefix="/api/push",
@@ -607,10 +667,14 @@ app.include_router(
     prefix="/api/platform-linking",
 )
 
+app.include_router(
+    local_executor_routes.router,
+    tags=["experimental", "local-executor"],
+)
+
 # Mount inbound routes for webhook-driven chat adapters (Slack Events API, …).
 # No-op when no webhook platform is configured; errors surface at startup.
-register_webhook_adapters(app, _webhook_bot_backend)
-
+_webhook_adapters = register_webhook_adapters(app, _webhook_bot_backend)
 app.mount("/external-api", external_api)
 # No route of this app may start with /api/v<n>; rest_api_test.py checks it.
 app.mount("/api/v2", v2_app)
@@ -629,11 +693,48 @@ async def mcp_protected_resource_metadata() -> ProtectedResourceMetadata:
     return protected_resource_metadata()
 
 
+# The process alone. Liveness probes and the load balancer call this, so a
+# database outage must not fail it; /health/ready checks the database.
 @app.get(path="/health", tags=["health"], dependencies=[])
 async def health():
     if not backend.data.db.is_connected():
         raise UnhealthyServiceError("Database is not connected")
     return {"status": "healthy"}
+
+
+HEALTH_READY_DB_TIMEOUT_SECONDS = 2.0
+
+
+@app.get(
+    path="/health/ready",
+    tags=["health"],
+    dependencies=[],
+    include_in_schema=False,
+)
+async def health_ready():
+    """Whether this process can query the database now, for a readiness probe
+    that should take the pod out of service while it can't."""
+    if backend.data.db.is_connected() and await _database_answers():
+        return {"status": "healthy"}
+    # The cause is logged, not returned: it can name the database host and port.
+    return JSONResponse(
+        {"status": "unhealthy", "detail": "database unavailable"}, status_code=503
+    )
+
+
+async def _database_answers() -> bool:
+    try:
+        rows = await asyncio.wait_for(
+            backend.data.db.query_raw_with_schema("SELECT 1 as health_check"),
+            timeout=HEALTH_READY_DB_TIMEOUT_SECONDS,
+        )
+    except Exception as e:
+        logger.warning(f"Readiness check: the database probe failed: {e!r}")
+        return False
+    if rows and rows[0].get("health_check") == 1:
+        return True
+    logger.warning(f"Readiness check: the database probe returned {rows!r}")
+    return False
 
 
 # After the last route: a route added below this wouldn't check its token first.
@@ -653,6 +754,7 @@ class AgentServer(backend.util.service.AppProcess):
             allow_credentials=True,
             allow_methods=["*"],  # Allows all methods
             allow_headers=["*"],  # Allows all headers
+            expose_headers=["X-Error-Code"],
         )
 
         # Only add debug in local environment (not supported in all uvicorn versions)
@@ -666,25 +768,14 @@ class AgentServer(backend.util.service.AppProcess):
         start_metrics_server(settings.config.agent_api_metrics_port)
 
         # Configure uvicorn with performance optimizations from Kludex FastAPI tips
-        uvicorn.run(
-            app=server_app,
-            host=settings.config.agent_api_host,
-            port=settings.config.agent_api_port,
-            log_config=None,
-            # Use httptools for HTTP parsing (if available)
-            http="httptools",
-            # Only use uvloop on Unix-like systems (not supported on Windows)
-            loop="uvloop" if platform.system() != "Windows" else "auto",
-            # Disable WebSockets since this service doesn't have any WebSocket endpoints
-            ws="none",
-        )
+        uvicorn.run(app=server_app, **rest_api_uvicorn_options(settings.config))
 
     @staticmethod
     async def test_execute_graph(
         graph_id: str,
         user_id: str,
-        graph_version: Optional[int] = None,
-        node_input: Optional[dict[str, Any]] = None,
+        graph_version: int | None = None,
+        node_input: dict[str, Any] | None = None,
     ):
         from autogpt_libs.auth.models import RequestContext
 
@@ -780,9 +871,6 @@ class AgentServer(backend.util.service.AppProcess):
         """Used for clean-up after a test run"""
         from autogpt_libs.auth.models import RequestContext
 
-        await backend.api.features.library.db.delete_library_agent_by_graph_id(
-            graph_id=graph_id, user_id=user_id
-        )
         # team_id intentionally None: integration tests don't seed a Team
         # row, and the schema enforces a FK from AgentGraph.teamId →
         # Team.id (onDelete: SetNull). Setting a fake team_id here causes
@@ -841,7 +929,7 @@ class AgentServer(backend.util.service.AppProcess):
     async def test_execute_preset(
         preset_id: str,
         user_id: str,
-        inputs: Optional[dict[str, Any]] = None,
+        inputs: dict[str, Any] | None = None,
     ):
         from autogpt_libs.auth.models import RequestContext
 

@@ -56,7 +56,8 @@ export function ProviderBox({
       </span>
       <span className="flex w-full flex-col items-center gap-1">
         <Text
-          variant="body-medium"
+          variant="body"
+          weight="medium"
           as="span"
           tone={state === "coming-soon" ? "muted" : "base"}
           className="flex min-h-11 items-center justify-center"

@@ -16,7 +16,7 @@ import {
 } from "../types";
 import "highlight.js/styles/github-dark.css";
 import "katex/dist/katex.min.css";
-import { escapeCurrencyAmounts } from "@/lib/markdown-math";
+import { escapeLiteralDollars } from "@/lib/markdown-math";
 import { YouTubeEmbed } from "@/components/molecules/YouTubeEmbed/YouTubeEmbed";
 import {
   getYouTubeVideoId,
@@ -200,7 +200,7 @@ const MARKDOWN_COMPONENTS: Components = {
   // Custom components for better rendering
   pre: ({ children, ...props }) => (
     <pre
-      className="my-4 overflow-x-auto rounded-md bg-action-hover p-4"
+      className="my-4 overflow-x-auto rounded-md bg-surface-inverse-hover p-4"
       {...props}
     >
       {children}
@@ -221,7 +221,7 @@ const MARKDOWN_COMPONENTS: Components = {
     }
     // Block code is handled by rehype-highlight
     return (
-      <code className="font-mono text-body text-action-foreground" {...props}>
+      <code className="font-mono text-body text-foreground-inverse" {...props}>
         {children}
       </code>
     );
@@ -418,7 +418,7 @@ function renderMarkdown(
   value: unknown,
   _metadata?: OutputMetadata,
 ): React.ReactNode {
-  const markdownContent = escapeCurrencyAmounts(String(value));
+  const markdownContent = escapeLiteralDollars(String(value));
 
   return (
     <div className="markdown-output">

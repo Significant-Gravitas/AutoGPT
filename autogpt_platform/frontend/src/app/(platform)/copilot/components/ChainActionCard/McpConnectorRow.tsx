@@ -67,7 +67,9 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <Text
-            variant="body-medium-tight"
+            variant="body"
+            weight="medium"
+            leading="5"
             as="span"
             tone="primary"
             className="truncate"
@@ -76,7 +78,8 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
           </Text>
           {host && (
             <Text
-              variant="body-tight"
+              variant="body"
+              leading="5"
               as="span"
               tone="muted"
               className="truncate"
@@ -131,7 +134,7 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
             labelClassName="text-caption font-medium text-foreground-body"
             selectClassName="rounded-xl bg-surface-muted px-3 py-2 text-body text-foreground-emphasis ring-1 ring-separator"
           />
-          <Text variant="small-tight" tone="muted" id={hintId}>
+          <Text variant="small" leading="4" tone="muted" id={hintId}>
             {mcpAuthTokenHint(authScheme)}
           </Text>
           <div className="flex gap-2">

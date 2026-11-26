@@ -46,7 +46,9 @@ export function MicrosoftServiceList({
           className="flex items-center justify-between gap-3 px-3 py-2"
         >
           <div className="flex min-w-0 flex-col">
-            <Text variant="body-medium">{item.name}</Text>
+            <Text variant="body" weight="medium">
+              {item.name}
+            </Text>
             <Text variant="small" tone="muted">
               {MICROSOFT_SERVICE_PURPOSES[item.service]}
             </Text>

@@ -53,6 +53,10 @@ export interface ChainActionEntry {
 export interface ChainActions {
   register: (owner: string, entry: ChainActionEntry) => void;
   unregister: (owner: string) => void;
+  /** The chain can send its reply. False in a read-only chat, and in an
+   *  earlier answer, which sends nothing, so a card there saves what the user
+   *  picks on its own. */
+  canSend: boolean;
 }
 
 export const ChainActionsContext = createContext<ChainActions | null>(null);
@@ -70,13 +74,14 @@ export function uniqueChainEntries(
 
 /** The chain's single reply. Every card contributes its line, except that
  *  cards which only confirm credentials share one confirmation: two cards
- *  asking for the same account used to say so twice in one message. */
+ *  asking for the same account used to say so twice in one message. A line
+ *  another card already said (two MCP servers connected) is said once. */
 export function buildChainReply(entries: ChainActionEntry[]): string {
   let confirmed = false;
   const lines: string[] = [];
   for (const entry of entries) {
     const line = entry.buildMessage();
-    if (!line) continue;
+    if (!line || lines.includes(line)) continue;
     if (entry.credentialsOnly) {
       if (confirmed) continue;
       confirmed = true;

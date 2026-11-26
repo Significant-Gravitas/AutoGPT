@@ -83,7 +83,7 @@ export function OutputActions({
         ) : (
           <Icon
             icon={Copy01Icon}
-            tone={isPrimary ? "inverse" : "muted"}
+            tone={isPrimary ? undefined : "muted"}
             className="size-4"
           />
         )}
@@ -99,7 +99,7 @@ export function OutputActions({
       >
         <Icon
           icon={Download04Icon}
-          tone={isPrimary ? "inverse" : "muted"}
+          tone={isPrimary ? undefined : "muted"}
           className="size-4"
         />
         {isPrimary && <span>Download All</span>}

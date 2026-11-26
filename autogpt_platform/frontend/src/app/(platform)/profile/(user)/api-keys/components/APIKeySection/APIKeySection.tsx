@@ -51,7 +51,7 @@ export function APIKeysSection() {
                   <TableCell>{key.name}</TableCell>
                   <TableCell data-testid="api-key-id">
                     <div className="rounded-md border p-1 px-2">
-                      <Text variant="small-tight" as="div" tone="inherit">
+                      <Text variant="small" leading="4" as="div" tone="inherit">
                         {`${key.head}******************${key.tail}`}
                       </Text>
                     </div>
@@ -100,7 +100,7 @@ export function APIKeysSection() {
                           onClick={() => handleRevokeKey(key.id)}
                           disabled={isDeleting}
                         >
-                          <span className="text-destructive">Revoke</span>
+                          <span className="text-error">Revoke</span>
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

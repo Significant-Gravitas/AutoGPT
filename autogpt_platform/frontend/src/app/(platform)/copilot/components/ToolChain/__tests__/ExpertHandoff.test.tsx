@@ -42,10 +42,24 @@ function hire(id: string, name = "James", withTask = true): ToolUIPart {
   } as ToolUIPart;
 }
 
-function renderGroup(parts: ToolUIPart[]) {
+/** A new expert written from a charter, proposed the same way. */
+function raise(id: string, name = "Nadia", withTask = true): ToolUIPart {
+  const part = hire(id, name, withTask);
+  const output = part.output as Record<string, unknown>;
+  return {
+    ...part,
+    type: "tool-raise_expert",
+    output: {
+      ...output,
+      preview: { kind: "raise", name, role: "SEO & Content", tagline: TAGLINE },
+    },
+  } as ToolUIPart;
+}
+
+function renderGroup(parts: ToolUIPart[], readOnly = false) {
   return render(
     <CopilotChatActionsProvider onSend={onSend}>
-      <ExpertChangeGroup parts={parts} />
+      <ExpertChangeGroup parts={parts} readOnly={readOnly} />
     </CopilotChatActionsProvider>,
   );
 }
@@ -194,6 +208,146 @@ describe("hiring an expert for a task already in the chat", () => {
       "Approved: hire James (confirmation_id: c-a).",
     );
     expect(screen.queryByText(/You chose/)).toBeNull();
+  });
+});
+
+describe("creating an expert for a task already in the chat", () => {
+  // SECRT-3401: a created expert is never "hired", in any line of the card.
+  const CREATE = "Create and start";
+
+  beforeEach(() => onSend.mockClear());
+
+  it("asks one yes/no question: create and start, or not now", () => {
+    renderGroup([raise("a")]);
+
+    expect(screen.getByText(`Create Nadia to take on ${TITLE}?`)).toBeDefined();
+    const answers = screen
+      .getAllByRole("button")
+      .filter((b) => b.textContent === CREATE || b.textContent === NOT_NOW);
+    expect(answers.map((b) => b.textContent)).toEqual([CREATE, NOT_NOW]);
+    expect(screen.queryByText(/Hire/)).toBeNull();
+  });
+
+  it("creates and starts in one click, then records the choice", async () => {
+    const user = userEvent.setup();
+    renderGroup([raise("a")]);
+
+    await user.click(screen.getByRole("button", { name: CREATE }));
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend).toHaveBeenCalledWith(
+      `Approved: create Nadia to take on ${TITLE} (confirmation_id: h-a).`,
+    );
+    expect(
+      screen.getByText(`You chose to create Nadia to take on ${TITLE}.`),
+    ).toBeDefined();
+    expect(screen.queryByText(/hire/i)).toBeNull();
+  });
+
+  it("says not now to creating them, not just to the task", async () => {
+    const user = userEvent.setup();
+    renderGroup([raise("a")]);
+
+    await user.click(screen.getByRole("button", { name: NOT_NOW }));
+
+    expect(onSend).toHaveBeenCalledWith(
+      "Not approved: do not create Nadia, discard that proposal (confirmation_id: c-a).",
+    );
+    expect(
+      screen.getByText("You chose not to create Nadia for now."),
+    ).toBeDefined();
+  });
+
+  it("names the create choice when paging back before the send", async () => {
+    const user = userEvent.setup();
+    renderGroup([raise("a"), hire("b", "James")]);
+
+    await user.click(screen.getByRole("button", { name: CREATE }));
+    await user.click(screen.getByRole("button", { name: HAND_OFF }));
+    await user.click(screen.getByRole("button", { name: "Previous expert" }));
+
+    expect(screen.getByText(`${CREATE} chosen`)).toBeDefined();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("says the expert is created when the task did not start", () => {
+    render(
+      <ExpertChangeCard
+        output={{
+          ...appliedOutput("failed", null),
+          kind: "raise",
+          expert: { id: "exp-nadia", name: "Nadia", role: "SEO & Content" },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("status").textContent).toBe(
+      `Nadia is created, but ${TITLE} didn't start.`,
+    );
+  });
+});
+
+describe("a new expert with no task", () => {
+  const nadia = { id: "exp-nadia", name: "Nadia", role: "SEO & Content" };
+
+  function applied(
+    kind: "hire" | "raise" | "update",
+    who: Record<string, unknown>,
+  ) {
+    return { type: "expert_change_applied", applied: true, kind, expert: who };
+  }
+
+  it.each([
+    ["raise", "Expert created"],
+    ["hire", "Expert hired"],
+  ] as const)(
+    "opens their first chat from the %s card, beside Details",
+    (kind, header) => {
+      render(
+        <ExpertChangeCard output={applied(kind, nadia)} artifactId="c1" />,
+      );
+
+      expect(screen.getByText(header)).toBeDefined();
+      const chat = screen.getByRole("link", { name: "Chat with Nadia" });
+      // The kickoff link: the expert introduces themselves in a new chat,
+      // or the chat they already have opens.
+      expect(chat.getAttribute("href")).toBe(
+        "/copilot?expertId=exp-nadia&kickoff=1",
+      );
+      const details = screen.getByRole("button", { name: "Details" });
+      expect(details.parentElement).toBe(chat.parentElement);
+    },
+  );
+
+  it("has no chat link on a read-only transcript", () => {
+    renderGroup([confirmPart("confirm", applied("raise", nadia))], true);
+
+    expect(screen.getByText("Expert created")).toBeDefined();
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  it("has no chat link when the output names no expert to open", () => {
+    render(
+      <ExpertChangeCard
+        output={applied("raise", { name: "Nadia", role: "SEO & Content" })}
+      />,
+    );
+
+    expect(screen.getByText("Expert created")).toBeDefined();
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  it("has no chat link on an edit to an expert", () => {
+    render(<ExpertChangeCard output={applied("update", nadia)} />);
+
+    expect(screen.queryByRole("link", { name: /Chat with/ })).toBeNull();
+  });
+
+  it("has no chat link while the change is still a proposal", () => {
+    renderGroup([raise("a", "Nadia", false)]);
+
+    expect(screen.getByRole("button", { name: "Approve" })).toBeDefined();
+    expect(screen.queryByRole("link", { name: /Chat with/ })).toBeNull();
   });
 });
 
@@ -479,8 +633,21 @@ describe("after the hire and hand-off", () => {
     );
 
     expect(screen.getByText("Expert hired")).toBeDefined();
-    expect(screen.queryByRole("link")).toBeNull();
+    // No thread exists yet: the way in is the expert's first chat.
+    expect(
+      screen
+        .getByRole("link", { name: "Chat with James" })
+        .getAttribute("href"),
+    ).toBe("/copilot?expertId=exp-james&kickoff=1");
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("links no new chat once the task went to the expert's thread", async () => {
+    server.use(thread("running"));
+    render(sentCard("sent"));
+
+    await screen.findByText(/is working on/);
+    expect(screen.queryByRole("link", { name: /Chat with/ })).toBeNull();
   });
 });
 

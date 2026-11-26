@@ -3,7 +3,7 @@ from collections.abc import AsyncIterator, Mapping
 import aiohttp
 import prisma.enums
 import prisma.models
-from autogpt_libs.auth import User
+from autogpt_libs.auth import OrgAction, RequestContext, User, check_org_permission
 from gcloud.aio import storage as async_storage
 from google.cloud import storage as gcs_storage
 
@@ -24,13 +24,13 @@ _STREAM_TIMEOUT = aiohttp.ClientTimeout(total=None, sock_connect=10, sock_read=6
 async def can_read(user: User, owner_user_id: str) -> bool:
     """
     Whether `user` may read media stored under `owner_user_id`: their own, an
-    admin, or someone sharing an active organization with the owner, who can
-    see that owner's org listings, org avatar and shared agents. Leaving the
+    admin, or someone sharing an active organization with the owner whose role
+    there covers its workflows, as listing its submissions requires. Leaving the
     organization ends access.
     """
     if user.user_id == owner_user_id or user.role == "admin":
         return True
-    shared_membership = await prisma.models.OrgMember.prisma().find_first(
+    shared_memberships = await prisma.models.OrgMember.prisma().find_many(
         where={
             "userId": user.user_id,
             "status": prisma.enums.OrgMemberStatus.ACTIVE,
@@ -47,7 +47,24 @@ async def can_read(user: User, owner_user_id: str) -> bool:
             },
         }
     )
-    return shared_membership is not None
+    return any(
+        check_org_permission(_org_home_context(member), OrgAction.VIEW_RESOURCES)
+        for member in shared_memberships
+    )
+
+
+def _org_home_context(member: prisma.models.OrgMember) -> RequestContext:
+    return RequestContext(
+        user_id=member.userId,
+        org_id=member.orgId,
+        team_id=None,
+        is_org_owner=member.isOwner,
+        is_org_admin=member.isAdmin,
+        is_org_billing_manager=member.isBillingManager,
+        is_team_admin=False,
+        is_team_billing_manager=False,
+        seat_status="ACTIVE",
+    )
 
 
 def url(user_id: str, media_type: str, filename: str) -> str:

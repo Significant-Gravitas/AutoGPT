@@ -33,17 +33,15 @@ export function RunSummary({ run }: Props) {
               Success Estimate:
             </span>
             <div className="flex items-center gap-2">
-              <div className="relative h-2 w-16 overflow-hidden rounded-full bg-surface-active">
+              <div className="relative h-2 w-16 overflow-hidden rounded-pill bg-surface-active">
                 <div
                   className={`h-full w-[var(--score)] transition-all ${
                     correctnessScore >= 0.8
                       ? "bg-success"
                       : correctnessScore >= 0.6
-                        ? // oxlint-disable-next-line design-system/no-raw-colors -- yellow-500 #F5C000 has no role; the score bar's gold step is deferred (see PR)
-                          "bg-yellow-500"
+                        ? "bg-yellow"
                         : correctnessScore >= 0.4
-                          ? // oxlint-disable-next-line design-system/no-raw-colors -- orange-500 #FE8700 has no role; the score bar's orange step is deferred (see PR)
-                            "bg-orange-500"
+                          ? "bg-orange"
                           : "bg-error"
                   }`}
                   style={

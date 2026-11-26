@@ -9,12 +9,7 @@ export function EmptyFollowups() {
       data-testid="followups-empty"
     >
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-warning-surface">
-        <Icon
-          icon={Calendar03Icon}
-          size={24}
-          // oxlint-disable-next-line design-system/no-raw-colors -- orange/yellow hue kept; warning-foreground would be a hue change (deferred visual change)
-          className="text-yellow-700"
-        />
+        <Icon icon={Calendar03Icon} size={24} tone="yellow" />
       </div>
       <Text variant="h4" tone="primary">
         Nothing scheduled yet

@@ -10,10 +10,10 @@ import { ArtifactPanelHeader } from "./components/ArtifactPanelHeader";
 import { ComputerPanelContent } from "./components/ComputerPanelContent";
 import { useArtifactPanel } from "./useArtifactPanel";
 import { useArtifactFullscreen } from "./useArtifactFullscreen";
+import { duration, ease } from "@/components/styles/motion";
 
 // Matched to the context panel so the two side rails move as one system.
-const PANEL_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
-const PANEL_DURATION = 0.3;
+const PANEL_DURATION = duration.slow;
 
 interface Props {
   mobile?: boolean;
@@ -117,12 +117,12 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
           <div
             onClick={clearArtifactPreview}
             // oxlint-disable-next-line design-system/no-arbitrary-values -- a light 2px backdrop blur; backdrop-blur-sm is 4px
-            className="fixed inset-0 z-[60] bg-foreground-base/20 backdrop-blur-[2px]"
+            className="fixed inset-0 z-drawer-scrim bg-scrim/20 backdrop-blur-[2px]"
             aria-hidden="true"
           />
           <Drawer.Content
-            className="fixed top-0 right-0 z-[70] flex h-full w-full flex-col overflow-hidden bg-card shadow-xl outline-none"
-            style={{ userSelect: "text" }}
+            // !select-text beats the user-select:none vaul injects on its drawer.
+            className="fixed top-0 right-0 z-drawer flex h-full w-full flex-col overflow-hidden bg-surface shadow-xl !select-text outline-none"
             aria-describedby={undefined}
           >
             <Drawer.Title className="sr-only">
@@ -166,7 +166,7 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
   const transition =
     shouldReduceMotion || isResizing
       ? { duration: 0 }
-      : { duration: PANEL_DURATION, ease: PANEL_EASE };
+      : { duration: PANEL_DURATION, ease: ease.drawer };
 
   function closeDesktopPanel() {
     if (sessionId) {
@@ -204,7 +204,7 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
           animate={{ width: renderedWidth, opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
           transition={transition}
-          className="relative h-full shrink-0 bg-sidebar select-text"
+          className="relative h-full shrink-0 bg-surface-muted select-text"
         >
           {/* Sibling of the clip, not a child of it: the handle straddles the
               border, so clipping it here would halve the drag target. */}
@@ -224,7 +224,7 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
                   ? "100%"
                   : `calc(${renderedWidth}px - 0.75rem)`,
               }}
-              className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm [&:fullscreen]:rounded-none [&:fullscreen]:border-0"
+              className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border-base bg-surface shadow-sm [&:fullscreen]:rounded-none [&:fullscreen]:border-0"
             >
               <ArtifactPanelHeader
                 artifact={

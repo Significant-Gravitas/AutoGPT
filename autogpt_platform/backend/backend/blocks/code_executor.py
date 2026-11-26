@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
+from e2b import SandboxState
 from e2b_code_interpreter import AsyncSandbox
 from e2b_code_interpreter import Result as E2BExecutionResult
 from e2b_code_interpreter.charts import Chart as E2BExecutionResultChart
@@ -17,10 +18,12 @@ from backend.blocks.code_executor_helpers import (
     ProgrammingLanguage,
     build_variable_injection,
 )
+from backend.data.block import BlockInput
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
+    NodeExecutionStats,
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
@@ -30,6 +33,7 @@ from backend.util.e2b_network import (
     create_sandbox,
     hold_sandbox,
     kill_sandbox,
+    proxy_trust_envs,
     release_sandbox,
     uses_platform_e2b_key,
 )
@@ -38,6 +42,7 @@ from backend.util.sandbox_files import (
     extract_and_store_sandbox_files,
 )
 from backend.util.sandbox_metadata import SandboxMetadata, owned_by_user
+from backend.util.sandbox_output import OutputLimitedCodeSandbox, run_sandbox_command
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
@@ -181,9 +186,10 @@ class BaseE2BExecutorMixin:
                 # without waking it.
                 info = await AsyncSandbox.get_info(sandbox_id, api_key=api_key)
                 user_id = execution_context.user_id if execution_context else None
-                if not owned_by_user(info.metadata, user_id):
+                if not owned_by_user(info.metadata, user_id, kind="code"):
                     raise PermissionError(
-                        f"Sandbox {sandbox_id} does not belong to this user"
+                        f"Sandbox {sandbox_id} does not belong to this user, "
+                        "or is not a code sandbox"
                     )
                 if pause_when_kept and not dispose_sandbox:
                     # Counted before the connect: a run on this box returning
@@ -191,16 +197,19 @@ class BaseE2BExecutorMixin:
                     held = sandbox_id
                     await hold_sandbox(held)
                 sandbox = await connect_sandbox(
-                    AsyncSandbox,
+                    OutputLimitedCodeSandbox,
                     sandbox_id,
                     egress_owner,
+                    # A box read as running can be paused by another run's
+                    # release before our hold, so a held connect may wake it.
+                    resumes=bool(held) or info.state != SandboxState.RUNNING,
                     api_key=api_key,
                     timeout=RESUMED_SANDBOX_SECONDS,
                 )
             else:
                 # Create new sandbox (ExecuteCodeBlock/InstantiateCodeSandboxBlock case)
                 sandbox = await create_sandbox(
-                    AsyncSandbox,
+                    OutputLimitedCodeSandbox,
                     egress_owner,
                     api_key=api_key,
                     template=template_id,
@@ -212,7 +221,7 @@ class BaseE2BExecutorMixin:
                     await hold_sandbox(held)
                 if setup_commands:
                     for cmd in setup_commands:
-                        await sandbox.commands.run(cmd)
+                        await run_sandbox_command(sandbox, cmd)
 
             for path, data in (input_files or {}).items():
                 await sandbox.files.write(path, data)
@@ -220,14 +229,21 @@ class BaseE2BExecutorMixin:
             # Capture timestamp before execution to scope file extraction
             start_timestamp = None
             if extract_files:
-                ts_result = await sandbox.commands.run("date -u +%Y-%m-%dT%H:%M:%S")
+                ts_result = await run_sandbox_command(
+                    sandbox, "date -u +%Y-%m-%dT%H:%M:%S"
+                )
                 start_timestamp = ts_result.stdout.strip() if ts_result.stdout else None
 
             # Execute the code
+            # The kernel predates any login shell: it is given the proxy CA's
+            # paths itself.  The caller's own values win.
             execution = await sandbox.run_code(  # type: ignore[attr-defined]
                 code,
                 language=language.value,
-                envs=envs or {},
+                envs={
+                    **await proxy_trust_envs(sandbox),
+                    **(envs or {}),
+                },
                 on_error=lambda e: kill_sandbox(sandbox),  # Kill the sandbox on error
             )
 
@@ -423,6 +439,11 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
             test_mock={"execute_code": _mock_execute_code},
         )
 
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        # The box lives `timeout` seconds; at 0 or less it gets E2B's default instead,
+        # which isn't known here, so only the cap bounds the run.
+        return self.walltime_bound(input_data.get("timeout"))
+
     async def run(
         self,
         input_data: Input,
@@ -570,6 +591,11 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
             test_mock={"execute_code": _mock_execute_code},
         )
 
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        # The box lives `timeout` seconds; at 0 or less it gets E2B's default instead,
+        # which isn't known here, so only the cap bounds the run.
+        return self.walltime_bound(input_data.get("timeout"))
+
     async def run(
         self,
         input_data: Input,
@@ -680,6 +706,10 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
             ],
             test_mock={"execute_code": _mock_execute_code},
         )
+
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        # Its code stops at `run_code`'s own limit, inside the reconnect's margin.
+        return self.walltime_bound(RESUMED_SANDBOX_SECONDS)
 
     async def run(
         self,

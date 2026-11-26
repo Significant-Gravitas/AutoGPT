@@ -3,6 +3,7 @@
 import { Text } from "@/components/atoms/Text/Text";
 import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
+import { stashCopilotPrompt } from "@/services/copilot/prompt-handoff";
 import NextLink from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -25,16 +26,15 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { Chatting01Icon, EyeIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { spring } from "@/components/styles/motion";
 
-/* oxlint-disable design-system/no-raw-colors -- placeholder artwork for workflows without an image, not UI colour */
 const PLACEHOLDER_GRADIENTS = [
-  "bg-gradient-to-r from-green-200 to-blue-200",
-  "bg-gradient-to-r from-pink-200 to-purple-200",
-  "bg-gradient-to-r from-yellow-200 to-orange-200",
-  "bg-gradient-to-r from-blue-200 to-cyan-200",
-  "bg-gradient-to-r from-indigo-200 to-purple-200",
+  "bg-gradient-to-r from-success/45 to-info/30",
+  "bg-gradient-to-r from-pink/45 to-brand/30",
+  "bg-gradient-to-r from-warning-border to-orange/45",
+  "bg-gradient-to-r from-info/30 to-sky/30",
+  "bg-gradient-to-r from-indigo/30 to-brand/30",
 ];
-/* oxlint-enable design-system/no-raw-colors */
 
 interface Props {
   agent: LibraryAgent;
@@ -80,13 +80,19 @@ export function LibraryAgentCard({
         )}
         transition={{
           type: "spring",
-          damping: 25,
-          stiffness: 300,
+          ...spring.gentle,
         }}
       >
         <NextLink href={`/library/agents/${id}`} className="flex-shrink-0">
-          <div className="relative flex items-center gap-3 pt-3 pr-4 pl-2">
-            <StatusBadge status={statusInfo.status} />
+          <div
+            className={cn(
+              "relative flex items-center gap-3 pt-3 pr-4",
+              statusInfo.scheduleUnknown ? "pl-4" : "pl-2",
+            )}
+          >
+            {!statusInfo.scheduleUnknown && (
+              <StatusBadge status={statusInfo.status} />
+            )}
             <Text variant="small" tone="subtle">
               {statusInfo.totalRuns} tasks
             </Text>
@@ -149,10 +155,11 @@ export function LibraryAgentCard({
             <button
               type="button"
               onClick={() => {
-                const prompt = encodeURIComponent(
-                  `Tell me about my workflow "${name}" (library workflow ID: ${id}). Use find_library_agent with this exact agent_id to look it up, then summarize its current status, recent runs, and how I can get the most out of it.`,
-                );
-                router.push(`/home?autosubmit=true#prompt=${prompt}`);
+                stashCopilotPrompt({
+                  prompt: `Tell me about my workflow "${name}" (library workflow ID: ${id}). Use find_library_agent with this exact agent_id to look it up, then summarize its current status, recent runs, and how I can get the most out of it.`,
+                  autosubmit: true,
+                });
+                router.push("/home");
               }}
               className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm leading-inherit font-medium whitespace-nowrap text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
             >
@@ -171,8 +178,8 @@ export function LibraryAgentCard({
         <TooltipTrigger asChild>{card}</TooltipTrigger>
         <TooltipPortal>
           <TooltipContent
-            // oxlint-disable-next-line design-system/no-restyle, design-system/no-raw-colors -- red-300 #F69999 on the dark tooltip has no role; deferred (see PR)
-            className="max-w-xs text-red-300"
+            // oxlint-disable-next-line design-system/no-restyle -- Text has no tone for the dark tooltip (deferred)
+            className="max-w-xs text-error-inverse"
           >
             {statusInfo.lastError}
           </TooltipContent>

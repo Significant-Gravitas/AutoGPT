@@ -72,7 +72,7 @@ export function InstallSkillButton({
           aria-label={MENU_LABEL}
           disabled={isAdding}
           // oxlint-disable-next-line design-system/no-restyle -- the right half of a split button; Button has no split variant
-          className="!min-w-0 !rounded-l-none border-l border-l-white/25"
+          className="!min-w-0 !rounded-l-none border-l border-l-action-foreground/25"
         >
           <Icon icon={ArrowDown01Icon} size={16} aria-hidden />
         </Button>
@@ -99,7 +99,7 @@ export function ExpertInstallMenu({
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[15rem]">
         <DropdownMenuLabel>
-          <Text variant="small-tight" as="div" tone="muted">
+          <Text variant="small" leading="4" as="div" tone="muted">
             {MENU_LABEL}
           </Text>
         </DropdownMenuLabel>

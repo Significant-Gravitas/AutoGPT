@@ -35,13 +35,13 @@ export function YearlyPicker({
 
   return (
     <div className="mb-6 space-y-2">
-      <Text variant="body-medium" as="span">
+      <Text variant="body" weight="medium" as="span">
         Months
       </Text>
       <div className="flex gap-2">
         <button
           type="button"
-          className="h-[2.25rem] rounded-full border border-foreground-body px-4 py-2 text-body leading-4 font-medium text-foreground-base hover:bg-surface-hover"
+          className="h-[2.25rem] rounded-pill border border-foreground-body px-4 py-2 text-body leading-4 font-medium text-foreground-base hover:bg-surface-hover"
           onClick={toggleAll}
         >
           {values.length === months.length ? "Deselect All" : "Select All"}

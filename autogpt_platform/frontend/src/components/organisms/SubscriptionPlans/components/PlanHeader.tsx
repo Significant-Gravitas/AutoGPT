@@ -27,12 +27,11 @@ function DefaultHeading() {
   return (
     <>
       <AutoGPTLogo hideText className="relative right-5 mb-2 h-8 w-20" />
-      <Text variant="h3" as="h1" className="leading-9">
+      <Text variant="h3" as="h1" leading="9">
         Choose the plan that&apos;s right for{" "}
         <span
           data-slot="plan-header-heading-accent"
-          // oxlint-disable-next-line design-system/no-raw-colors -- brand-to-indigo gradient text, no to- role holds indigo
-          className="bg-gradient-to-r from-brand to-indigo-500 bg-clip-text text-transparent"
+          className="bg-gradient-to-r from-brand to-indigo bg-clip-text text-transparent"
         >
           you
         </span>

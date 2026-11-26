@@ -9,6 +9,9 @@ interface Props {
   artifactID: string;
   artifactTitle: string;
   artifactType: string;
+  /** The text being rendered. New text gets a fresh try, even under the same
+   *  id, title and type. */
+  content?: string | null;
 }
 
 interface State {
@@ -36,12 +39,16 @@ export class ArtifactErrorBoundary extends Component<Props, State> {
     });
   }
 
-  componentDidUpdate(prevProps: Props) {
+  componentDidUpdate(prevProps: Props, prevState: State) {
+    // An error caught in this very commit belongs to these props: clearing it
+    // would only crash and report the same render again.
     if (
       this.state.error &&
+      prevState.error === this.state.error &&
       (prevProps.artifactID !== this.props.artifactID ||
         prevProps.artifactTitle !== this.props.artifactTitle ||
-        prevProps.artifactType !== this.props.artifactType)
+        prevProps.artifactType !== this.props.artifactType ||
+        prevProps.content !== this.props.content)
     ) {
       this.setState({ error: null });
     }
@@ -73,11 +80,12 @@ export class ArtifactErrorBoundary extends Component<Props, State> {
         role="alert"
         className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <Text variant="body-medium-tight" tone="body">
+        <Text variant="body" weight="medium" leading="5" tone="body">
           This artifact couldn&apos;t be rendered
         </Text>
         <Text
-          variant="small-tight"
+          variant="small"
+          leading="4"
           tone="muted"
           className="max-w-md break-words"
         >
@@ -95,7 +103,7 @@ export class ArtifactErrorBoundary extends Component<Props, State> {
         >
           Copy error details
         </button>
-        <Text variant="small-tight" tone="subtle" className="max-w-md">
+        <Text variant="small" leading="4" tone="subtle" className="max-w-md">
           Paste this into the chat so a working version can be regenerated.
         </Text>
       </div>

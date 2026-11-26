@@ -9,9 +9,10 @@ type SavedCredential = {
   provider: string;
   type: string;
   title?: string | null;
+  username?: string | null;
 };
 
-function hasRequiredScopes(
+export function hasRequiredScopes(
   credential: { scopes?: string[]; type: string },
   requiredScopes?: string[],
 ) {
@@ -25,7 +26,7 @@ function hasRequiredScopes(
 }
 
 /** Check if a credential matches the discriminator values (e.g. MCP server URL). */
-function matchesDiscriminatorValues(
+export function matchesDiscriminatorValues(
   credential: { host?: string | null; provider: string; type: string },
   discriminatorValues?: string[],
 ) {

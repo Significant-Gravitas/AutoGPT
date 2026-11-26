@@ -33,6 +33,9 @@ class ServiceIdentity(BaseModel):
     service: str
     name: str | None = None
     icon: str | None = None
+    # A skill names an MCP service by its catalog entry ("mcp_amplitude"),
+    # which a stored sign-in's provider ("mcp") never equals.
+    catalog_entry: str | None = None
 
 
 def catalog_slug(entry: MCPCatalogEntry) -> str:
@@ -54,6 +57,7 @@ def service_for_catalog_entry(entry: MCPCatalogEntry) -> ServiceIdentity:
         service=server.provider or catalog_slug(entry),
         name=entry.display_name,
         icon=server.icon_id,
+        catalog_entry=entry.name,
     )
 
 
@@ -75,6 +79,20 @@ def service_for_credential(credential: Credentials) -> ServiceIdentity:
         _warn_once(credential.id, "has an unparseable server URL")
         return ServiceIdentity(service=UNKNOWN_MCP_SERVICE)
     return ServiceIdentity(service=f"mcp:{host}", name=host)
+
+
+def credential_display_name(credential: Credentials) -> str:
+    """What to call a stored credential when listing it beside others.
+
+    Most OAuth sign-ins (Google, GitHub, Discord, Reddit, X, Todoist) store no
+    title, only the account's email or handle, so falling back to the provider
+    alone would list every account for that provider under the same name.
+    """
+    if credential.title:
+        return credential.title
+    if isinstance(credential, OAuth2Credentials) and credential.username:
+        return credential.username
+    return str(credential.provider)
 
 
 def _warn_once(credential_id: str, reason: str) -> None:

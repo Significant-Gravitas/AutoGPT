@@ -316,21 +316,17 @@ async def test_private_media_signed_url_targets_private_bucket(mock_settings, mo
 
 
 @pytest.mark.parametrize(
-    "user, shares_an_org, allowed",
+    "user, allowed",
     [
-        (_user("owner"), False, True),
-        (_user("reviewer", role="admin"), False, True),
-        (_user("colleague"), True, True),
-        (_user("stranger"), False, False),
+        (_user("owner"), True),
+        (_user("reviewer", role="admin"), True),
+        (_user("stranger"), False),
     ],
 )
-async def test_private_media_is_readable_by_owner_admins_and_colleagues(
-    mocker, user, shares_an_org, allowed
-):
-    find_membership = mocker.patch("prisma.models.OrgMember.prisma")
-    find_membership.return_value.find_first = AsyncMock(
-        return_value=mocker.MagicMock() if shares_an_org else None
-    )
+async def test_private_media_is_readable_by_its_owner_and_admins(mocker, user, allowed):
+    """Colleagues are covered against real memberships in resource_roles_db_test."""
+    find_memberships = mocker.patch("prisma.models.OrgMember.prisma")
+    find_memberships.return_value.find_many = AsyncMock(return_value=[])
 
     assert await submission_media.can_read(user, "owner") is allowed
 
@@ -351,12 +347,12 @@ async def test_private_media_read_hides_media_from_other_users(mocker):
 
 
 async def test_colleague_access_requires_active_memberships_in_a_live_org(mocker):
-    find_membership = mocker.patch("prisma.models.OrgMember.prisma")
-    find_membership.return_value.find_first = AsyncMock(return_value=None)
+    find_memberships = mocker.patch("prisma.models.OrgMember.prisma")
+    find_memberships.return_value.find_many = AsyncMock(return_value=[])
 
     await submission_media.can_read(_user("colleague"), "owner")
 
-    assert find_membership.return_value.find_first.await_args.kwargs["where"] == {
+    assert find_memberships.return_value.find_many.await_args.kwargs["where"] == {
         "userId": "colleague",
         "status": prisma.enums.OrgMemberStatus.ACTIVE,
         "Org": {

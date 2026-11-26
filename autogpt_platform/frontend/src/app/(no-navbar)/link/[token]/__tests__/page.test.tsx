@@ -130,6 +130,38 @@ describe("PlatformLinkPage", () => {
     expect(infoHandler).not.toHaveBeenCalled();
   });
 
+  test("keeps the Telegram identity through sign-in and sign-up", () => {
+    // A Telegram group link only confirms with the identity Telegram signed
+    // onto the button, so a signed-out admin must come back with it.
+    mockUseAuth.mockReturnValue({
+      user: null,
+      isLoggedIn: false,
+      isUserLoading: false,
+      logOut: mockLogOut,
+    });
+    mockUseSearchParams.mockReturnValue(
+      new URLSearchParams({
+        platform: "TELEGRAM",
+        id: "424242",
+        first_name: "Bently",
+        auth_date: "1750000000",
+        hash: "abc123",
+      }),
+    );
+
+    render(<PlatformLinkPage />);
+
+    const next = encodeURIComponent(
+      "/link/token-123?id=424242&first_name=Bently&auth_date=1750000000&hash=abc123",
+    );
+    expect(
+      screen.getByRole("link", { name: /^sign in$/i }).getAttribute("href"),
+    ).toBe(`/login?next=${next}`);
+    expect(
+      screen.getByRole("link", { name: /^sign up$/i }).getAttribute("href"),
+    ).toBe(`/signup?next=${next}`);
+  });
+
   test("loads server link details and confirms the server link", async () => {
     server.use(
       getGetPlatformLinkingGetDisplayInfoForALinkTokenMockHandler200({

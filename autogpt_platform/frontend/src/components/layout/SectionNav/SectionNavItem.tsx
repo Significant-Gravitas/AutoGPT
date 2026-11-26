@@ -7,6 +7,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
 import type { IconSvgElement } from "@hugeicons/react";
+import { duration, ease } from "@/components/styles/motion";
 
 export interface SectionNavLink {
   label: string;
@@ -53,7 +54,7 @@ export function SectionNavItem({ item, isActive }: Props) {
   const variants: Variants = reduceMotion
     ? {
         hidden: { opacity: 0 },
-        show: { opacity: 1, transition: { duration: 0.15 } },
+        show: { opacity: 1, transition: { duration: duration.fast } },
       }
     : {
         hidden: { opacity: 0, x: -6 },
@@ -61,8 +62,8 @@ export function SectionNavItem({ item, isActive }: Props) {
           opacity: 1,
           x: 0,
           transition: {
-            duration: 0.22,
-            ease: [0, 0, 0.2, 1] as const,
+            duration: duration.base,
+            ease: ease.out,
           },
         },
       };

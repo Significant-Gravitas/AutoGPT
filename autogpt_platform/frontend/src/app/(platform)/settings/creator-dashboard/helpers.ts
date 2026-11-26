@@ -29,8 +29,6 @@ export function buildEditPayload(submission: StoreSubmission): EditPayload {
   };
 }
 
-export const EASE_OUT = [0.16, 1, 0.3, 1] as const;
-
 export type StatusFilterValue = "all" | SubmissionStatus;
 
 export type SortKey = "submitted" | "runs";
@@ -111,7 +109,7 @@ export const STATUS_VISUAL: Record<SubmissionStatus, StatusVisual> = {
     Icon: Clock01Icon,
     pillClass:
       "bg-surface-hover text-foreground-body ring-1 ring-inset ring-border-base",
-    dotClass: "bg-foreground-subtle",
+    dotClass: "bg-fill-subtle",
   },
   [SubmissionStatus.PENDING]: {
     label: "In review",
@@ -130,10 +128,9 @@ export const STATUS_VISUAL: Record<SubmissionStatus, StatusVisual> = {
   [SubmissionStatus.REJECTED]: {
     label: "Needs changes",
     Icon: UnavailableIcon,
-    // oxlint-disable-next-line design-system/no-raw-colors -- rose "Needs changes" pill kept until the rose -> error hue change is approved
-    pillClass: "bg-rose-50 text-rose-800 ring-1 ring-inset ring-rose-200",
-    // oxlint-disable-next-line design-system/no-raw-colors -- rose dot matches the pill above
-    dotClass: "bg-rose-500",
+    pillClass:
+      "bg-error-surface text-error-foreground ring-1 ring-inset ring-error/20",
+    dotClass: "bg-error",
   },
 };
 

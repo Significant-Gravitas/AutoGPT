@@ -10,9 +10,7 @@ export function UsageBar({ used, limit }: { used: number; limit: number }) {
     );
   }
   const pct = Math.min(Math.max(0, (used / limit) * 100), 100);
-  const color =
-    // oxlint-disable-next-line design-system/no-raw-colors -- yellow has no role; warning amber would change the hue (deferred)
-    pct >= 90 ? "bg-error" : pct >= 70 ? "bg-yellow-500" : "bg-success";
+  const color = pct >= 90 ? "bg-error" : pct >= 70 ? "bg-yellow" : "bg-success";
 
   return (
     <div className="space-y-1">
@@ -20,9 +18,9 @@ export function UsageBar({ used, limit }: { used: number; limit: number }) {
         <span>{formatMicrodollarsAsUsd(used)} spent</span>
         <span>{formatMicrodollarsAsUsd(limit)} limit</span>
       </div>
-      <div className="h-2 w-full rounded-full bg-surface-active">
+      <div className="h-2 w-full rounded-pill bg-surface-active">
         <div
-          className={`h-2 w-[var(--usage-width)] rounded-full ${color}`}
+          className={`h-2 w-[var(--usage-width)] rounded-pill ${color}`}
           style={{ "--usage-width": `${pct}%` } as CSSProperties}
         />
       </div>

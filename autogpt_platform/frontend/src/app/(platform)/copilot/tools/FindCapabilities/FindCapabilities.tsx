@@ -32,7 +32,7 @@ function CapabilityCard({ item }: { item: CapabilityListing }) {
         {badge && (
           <span
             className={
-              "shrink-0 rounded-full px-2 py-0.5 text-caption-sm leading-inherit " +
+              "shrink-0 rounded-pill px-2 py-0.5 text-caption-sm leading-inherit " +
               badge.className
             }
           >
@@ -67,7 +67,7 @@ export function FindCapabilitiesTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex items-center gap-2 text-body text-muted-foreground">
+      <div className="flex items-center gap-2 text-body text-foreground-tertiary">
         <ToolIcon isStreaming={isStreaming} isError={isError} />
         <MorphingTextAnimation
           text={text}

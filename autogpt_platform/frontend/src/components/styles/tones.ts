@@ -1,6 +1,6 @@
 /**
  * Semantic colours shared by the `Text` and `Icon` atoms (`tone` prop). Each
- * is a colour role from src/app/globals.css, noted at the hex it renders in
+ * is a colour role from src/app/tokens/theme.css, noted at the hex it renders in
  * the light theme. Text without a tone keeps its variant's colour
  * (foreground-base #141414); an Icon without one takes the colour around it.
  */
@@ -15,8 +15,10 @@ export const tones = {
   muted: "text-foreground-tertiary", // #83838C
   subtle: "text-foreground-subtle", // #ADADB3
   disabled: "text-foreground-disabled", // #C5C5C9
-  // Text and icons on a dark fill: the primary Button, a brand chip.
-  inverse: "text-action-foreground", // #FEFEFE
+  // Text and icons on the inverse surface: a toast, a tooltip, a dark tile.
+  inverse: "text-foreground-inverse", // #FEFEFE
+  // Text and icons on a saturated fill: a brand chip, a status badge.
+  "on-color": "text-foreground-on-color", // #FEFEFE
   brand: "text-brand", // #7733F5
   "brand-strong": "text-brand-hover", // #6C2EDF
   accent: "text-accent-strong", // #6D28D9
@@ -33,9 +35,17 @@ export const tones = {
   "info-strong": "text-info-foreground", // #2563EB
   // The parent's colour, for copy inside a control that changes it on hover.
   inherit: "text-inherit",
-  // TODO(tokens): no light-green role for text on a dark fill; `success`
-  // (#149443) would lose its contrast there, so emerald-300 #6EE7B7 stays.
-  "success-light": "text-emerald-300",
+  // Green on a dark fill (toast, terminal), where `success` would lose its
+  // contrast.
+  "success-light": "text-success-inverse",
+  // Red on a dark fill (a tooltip), as `success-light`.
+  "error-light": "text-error-inverse", // #F26969
+  // Accent hues that are not a status: a follow-up's yellow, a cost
+  // warning's orange.
+  yellow: "text-yellow-foreground", // #AE8800
+  orange: "text-orange-foreground", // #E77B00
+  // The builder's node handles.
+  handle: "text-handle", // #9CA3AF
 } as const;
 
 export type Tone = keyof typeof tones;

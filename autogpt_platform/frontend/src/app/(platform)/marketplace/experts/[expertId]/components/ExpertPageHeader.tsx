@@ -26,8 +26,7 @@ function getTopic(expert: Expert) {
 }
 
 const GLOSSY_STAT =
-  // oxlint-disable-next-line design-system/no-arbitrary-values -- the gloss highlight and drop shadow have no shadow token
-  "inline-flex h-8 items-center rounded-full border border-border-base bg-gradient-to-b from-surface to-surface-muted px-3.5 text-body font-medium text-foreground-body shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(16,24,40,0.05)]";
+  "inline-flex h-8 items-center rounded-pill border border-border-base bg-gradient-to-b from-surface to-surface-muted px-3.5 text-body font-medium text-foreground-body shadow-gloss";
 
 /** The hero band: the expert's colour with two soft glows and the category
  *  on it. The portrait (ExpertHeroIdentity) breaks out of its bottom edge,
@@ -43,8 +42,8 @@ export function ExpertHeroBand({ expert }: BandProps) {
       style={{
         backgroundColor: expertPastel(topic),
         backgroundImage: [
-          `radial-gradient(circle at 15% 0%, color-mix(in srgb, ${topic} 45%, rgb(var(--color-card))), transparent 55%)`,
-          `radial-gradient(circle at 90% 110%, color-mix(in srgb, ${topic} 35%, rgb(var(--color-card))), transparent 50%)`,
+          `radial-gradient(circle at 15% 0%, color-mix(in srgb, ${topic} 45%, rgb(var(--color-surface))), transparent 55%)`,
+          `radial-gradient(circle at 90% 110%, color-mix(in srgb, ${topic} 35%, rgb(var(--color-surface))), transparent 50%)`,
         ].join(", "),
       }}
       /* oxlint-enable design-system/no-inline-styles */
@@ -52,7 +51,7 @@ export function ExpertHeroBand({ expert }: BandProps) {
       <div
         aria-hidden
         // oxlint-disable-next-line design-system/no-arbitrary-values -- a fade over the band; no gradient token
-        className="absolute inset-0 bg-[linear-gradient(to_bottom,rgb(var(--color-card)/0.35),transparent_45%)]"
+        className="absolute inset-0 bg-[linear-gradient(to_bottom,rgb(var(--color-surface)/0.35),transparent_45%)]"
       />
       {area ? (
         <CategoryTag
@@ -81,8 +80,8 @@ export function ExpertHeroIdentity({ expert, stats }: IdentityProps) {
           backgroundColor={topic}
           size={128}
           /* oxlint-disable design-system/no-restyle -- the hero portrait's frame; ExpertAvatar has no framed size */
-          /* oxlint-disable design-system/no-arbitrary-values -- the 6px halo and drop shadow have no ring or shadow token */
-          className="ml-6 rounded-full border border-border-base shadow-[0_12px_32px_-12px_rgba(16,24,40,0.35)] ring-[6px] ring-surface-muted"
+          /* oxlint-disable design-system/no-arbitrary-values -- the 6px halo has no ring width step */
+          className="ml-6 rounded-full border border-border-base shadow-lift ring-[6px] shadow-scrim/35 ring-surface-muted"
           /* oxlint-enable design-system/no-arbitrary-values */
           /* oxlint-enable design-system/no-restyle */
         />

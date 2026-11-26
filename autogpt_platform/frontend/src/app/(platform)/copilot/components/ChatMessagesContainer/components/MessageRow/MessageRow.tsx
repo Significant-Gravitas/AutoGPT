@@ -1,11 +1,17 @@
 import { memo, type ReactNode } from "react";
-import type { UIDataTypes, UIMessage, UITools } from "ai";
+import type { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import {
   Message,
   MessageContent,
 } from "@/components/organisms/Message/Message";
 import type { TurnStats } from "../../../../helpers/convertChatSessionToUiMessages";
 import type { SentFrom } from "../../../../sentFrom";
+import { WorkCheckTool } from "../../../../tools/FeedbackPrompts/WorkCheckTool";
+import {
+  readFeedbackPrompt,
+  WORK_CHECK_PART_TYPE,
+} from "../../../../tools/FeedbackPrompts/helpers";
+import type { ExpertIdentity } from "../../../../useExpertMap";
 import { TurnStatsBar } from "../../../JobStatsBar/TurnStatsBar";
 import { ScheduledChatNoticeCard } from "../../../ScheduledChatNoticeCard/ScheduledChatNoticeCard";
 import { WorkCard } from "../../../WorkCard/WorkCard";
@@ -16,7 +22,11 @@ import { SentFromBadge } from "../SentFromBadge";
 import { UserMessageClamp } from "../UserMessageClamp";
 import { AssistantRowActions } from "./components/AssistantRowActions";
 import { UserRowActions } from "./components/UserRowActions";
-import { areMessageRowPropsEqual, getMessageContentClassName } from "./helpers";
+import {
+  areMessageRowPropsEqual,
+  getFeedbackCardTarget,
+  getMessageContentClassName,
+} from "./helpers";
 import { useMessageRow } from "./useMessageRow";
 
 type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
@@ -34,6 +44,10 @@ interface Props {
   /** Last rendered row and an assistant one. Only this row gets `onRetry`
    *  and keeps its actions visible without hover. */
   isLastAssistant: boolean;
+  /** Rendered from the newest message, an assistant one: only its cards
+   *  can send. True for every row a mid-turn follow-up split it into, not
+   *  just the last one. */
+  isLatestAnswer: boolean;
   /** `isLastAssistant` while the chat status is streaming or submitted. */
   isCurrentlyStreaming: boolean;
   /** Assistant row that closes its turn: shows the stats bar and actions. */
@@ -64,6 +78,8 @@ interface Props {
   filePattern?: RegExp;
   fileUrlBuilder?: (fileId: string) => string;
   onRetry?: () => void;
+  /** Whose name a work check on this row carries; set on the last row only. */
+  expert?: ExpertIdentity | null;
 }
 
 // memo-boundary: a transcript row. The transcript re-renders on every
@@ -72,6 +88,7 @@ interface Props {
 export const MessageRow = memo(function MessageRow({
   message,
   isLastAssistant,
+  isLatestAnswer,
   isCurrentlyStreaming,
   isLastInTurn,
   isLatestTurn,
@@ -89,6 +106,7 @@ export const MessageRow = memo(function MessageRow({
   filePattern,
   fileUrlBuilder,
   onRetry,
+  expert,
 }: Props) {
   const {
     runMetadata,
@@ -116,11 +134,7 @@ export const MessageRow = memo(function MessageRow({
   // fall through to normal rendering).
   if (runMetadata) {
     return (
-      <Message
-        from={message.role}
-        data-message-id={message.id}
-        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
-      >
+      <Message from={message.role} data-message-id={message.id} entrance="rise">
         <MessageContent className="group-[.is-assistant]:bg-transparent">
           <WorkCard metadata={runMetadata} preview={runPreview} />
         </MessageContent>
@@ -134,11 +148,7 @@ export const MessageRow = memo(function MessageRow({
   if (notice) {
     if (readOnly) return null;
     return (
-      <Message
-        from={message.role}
-        data-message-id={message.id}
-        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
-      >
+      <Message from={message.role} data-message-id={message.id} entrance="rise">
         <MessageContent className="group-[.is-assistant]:bg-transparent">
           <ScheduledChatNoticeCard notice={notice} sessionID={sessionID} />
         </MessageContent>
@@ -147,6 +157,21 @@ export const MessageRow = memo(function MessageRow({
   }
 
   const isAssistant = message.role === "assistant";
+  const feedbackTarget = getFeedbackCardTarget({
+    isLastAssistant,
+    isCurrentlyStreaming,
+    readOnly,
+    sessionID,
+    message,
+    savedMessageId: turnStat?.savedMessageId,
+  });
+  const workCheckPart = feedbackTarget
+    ? renderableParts.findLast(
+        (part) =>
+          part.type === WORK_CHECK_PART_TYPE &&
+          readFeedbackPrompt(part as ToolUIPart) !== null,
+      )
+    : undefined;
   const showActions =
     isLastInTurn &&
     !isCurrentlyStreaming &&
@@ -154,23 +179,22 @@ export const MessageRow = memo(function MessageRow({
     !hasErrorMarker;
 
   return (
-    <Message
-      from={message.role}
-      data-message-id={message.id}
-      className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
-    >
+    <Message from={message.role} data-message-id={message.id} entrance="rise">
       <MessageContent className={getMessageContentClassName(compact)}>
         {isAssistant ? (
           <ChainMessageParts
             parts={renderableParts}
             messageID={message.id}
             isCurrentlyStreaming={isCurrentlyStreaming}
+            canActOnCards={isLastAssistant && !isTurnSettling}
+            isLatestAnswer={isLatestAnswer}
             onRetry={isLastAssistant ? onRetry : undefined}
             fileUrlBuilder={fileUrlBuilder}
             readOnly={readOnly}
             compactionPhase={compactionPhase}
             liveCompactionCallId={liveCompactionCallId}
             liveCompactionStats={liveCompactionStats}
+            feedbackTarget={feedbackTarget}
           />
         ) : (
           <UserMessageClamp
@@ -232,6 +256,13 @@ export const MessageRow = memo(function MessageRow({
           copyText={copyText}
           sessionID={sessionID}
           savedMessageId={turnStat?.savedMessageId}
+        />
+      )}
+      {workCheckPart && feedbackTarget && (
+        <WorkCheckTool
+          part={workCheckPart as ToolUIPart}
+          target={feedbackTarget}
+          expert={expert}
         />
       )}
     </Message>

@@ -40,7 +40,7 @@ export function UserHeader({ user, isSelf, canAct }: Props) {
         </Avatar>
         <div className="flex min-w-0 flex-col">
           <div className="flex flex-wrap items-center gap-2">
-            <Text variant="large-medium" as="h2" className="break-all">
+            <Text variant="large" weight="medium" as="h2" className="break-all">
               {displayName}
             </Text>
             {isSelf ? (

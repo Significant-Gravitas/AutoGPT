@@ -12,11 +12,13 @@ import { usePreparingStep } from "./usePreparingStep";
 
 interface Props {
   onComplete: () => void;
+  canHire?: boolean;
 }
 
-export function PreparingStep({ onComplete }: Props) {
+export function PreparingStep({ onComplete, canHire = false }: Props) {
   const { started, progress, completedItems, checklist } = usePreparingStep({
     onComplete,
+    canHire,
   });
 
   return (

@@ -67,7 +67,7 @@ export const AgentTableRow = ({
       data-testid="agent-table-row"
       data-agent-id={graph_id}
       data-submission-id={listing_version_id}
-      className="hidden items-center border-b border-border-strong px-4 py-4 hover:bg-background md:flex"
+      className="hidden items-center border-b border-border-strong px-4 py-4 hover:bg-canvas md:flex"
     >
       <div className="grid w-full grid-cols-[minmax(400px,1fr)_180px_140px_100px_100px_40px] items-center gap-4">
         {/* Agent info column */}
@@ -92,7 +92,8 @@ export const AgentTableRow = ({
             <div className="flex items-center gap-2">
               <Text
                 variant="h3"
-                size="large-medium"
+                size="large"
+                weight="medium"
                 tone="emphasis"
                 className="line-clamp-1"
               >
@@ -148,7 +149,7 @@ export const AgentTableRow = ({
             >
               <Icon icon={MoreVerticalIcon} className="h-5 w-5" />
             </DropdownMenu.Trigger>
-            <DropdownMenu.Content className="z-10 rounded-xl border bg-surface p-1 shadow-md">
+            <DropdownMenu.Content className="z-raised rounded-xl border bg-surface p-1 shadow-md">
               {canModify ? (
                 <DropdownMenu.Item
                   onSelect={handleEdit}

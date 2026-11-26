@@ -12,12 +12,22 @@ import { getManagedAvatar, resolveExpertAvatarUrl } from "./helpers";
 
 import { ManagedExpertImage } from "./components/ManagedExpertImage";
 
+// A hairline around the circle (`outline`), and the same with a ring in the
+// sidebar's colour that cuts it out of avatars it overlaps (`stacked`).
+export const AVATAR_FRAMES = {
+  outline: "rounded-full border border-border-base",
+  stacked: "rounded-full border border-border-base ring-2 ring-surface-muted",
+} as const;
+
+export type AvatarFrame = keyof typeof AVATAR_FRAMES;
+
 interface Props {
   name: string | null;
   avatarUrl: string | null;
   color?: string | null;
   status?: AvatarStatus;
   size?: number;
+  frame?: AvatarFrame;
   className?: string;
   /** Pastel wash behind a custom upload or generated image. A managed
    *  identity ignores it: its opaque studio tile is the artwork. */
@@ -32,9 +42,13 @@ export function ExpertAvatar({
   avatarUrl,
   status = "idle",
   size = 40,
-  className,
+  frame,
+  className: callerClassName,
   backgroundColor,
 }: Props) {
+  const className = frame
+    ? cn(AVATAR_FRAMES[frame], callerClassName)
+    : callerClassName;
   const src = resolveExpertAvatarUrl(avatarUrl);
   const managed = getManagedAvatar(src, size);
   if (managed) {

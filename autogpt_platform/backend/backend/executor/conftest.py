@@ -31,15 +31,16 @@ def _bypass_paywall(mocker):
 
 @pytest.fixture(autouse=True)
 def _no_bans(mocker):
-    """No owner is banned unless a test says so. Without this the lookup goes
-    to a DatabaseManager these tests don't run, and waits out its retries."""
+    """No owner is banned or closed unless a test says so. Without this the
+    lookup goes to a DatabaseManager these tests don't run, and waits out its
+    retries."""
     for module in (
         "backend.executor.utils",
         "backend.executor.scheduler",
         "backend.copilot.turn_queue",
     ):
         mocker.patch(
-            f"{module}.is_user_banned", new=mocker.AsyncMock(return_value=False)
+            f"{module}.is_user_refused", new=mocker.AsyncMock(return_value=False)
         )
 
 
@@ -78,6 +79,17 @@ def _runners_belong_to_their_org(mocker):
             side_effect=lambda user_id, org_id, team_id: (org_id, team_id)
         ),
     )
+
+
+@pytest.fixture(autouse=True)
+def _turn_owners_belong_to_their_org(mocker):
+    """Treat a scheduled copilot turn's owner as a member of the org/team it was
+    scheduled in. Tests of an owner who has left override the returned mock."""
+    orgs = mocker.MagicMock()
+    orgs.is_active_member = mocker.AsyncMock(return_value=True)
+    orgs.resolve_default_tenancy = mocker.AsyncMock(return_value=(None, None))
+    mocker.patch("backend.executor.scheduler.orgs_db", return_value=orgs)
+    return orgs
 
 
 @pytest.fixture(autouse=True)

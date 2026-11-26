@@ -5,8 +5,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { motion, useReducedMotion } from "framer-motion";
 import { PlusSignIcon, Store01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-
-const EASE_OUT_QUINT = [0.22, 1, 0.36, 1] as const;
+import { duration, ease } from "@/components/styles/motion";
 
 export function LibraryEmptyState() {
   const shouldReduceMotion = useReducedMotion();
@@ -16,13 +15,13 @@ export function LibraryEmptyState() {
       return {
         initial: { opacity: 0 },
         animate: { opacity: 1 },
-        transition: { duration: 0.2, delay: 0 },
+        transition: { duration: duration.base, delay: 0 },
       };
     }
     return {
       initial: { opacity: 0, y: 8 },
       animate: { opacity: 1, y: 0 },
-      transition: { duration: 0.35, ease: EASE_OUT_QUINT, delay },
+      transition: { duration: duration.slow, ease: ease.glide, delay },
     };
   }
 
@@ -107,8 +106,8 @@ function StackedCardsIllustration() {
               : { opacity: card.opacity, y: 0, scale: 1 }
           }
           transition={{
-            duration: shouldReduceMotion ? 0.2 : 0.45,
-            ease: EASE_OUT_QUINT,
+            duration: shouldReduceMotion ? duration.base : duration.slower,
+            ease: ease.glide,
             delay: shouldReduceMotion ? 0 : i * 0.08,
           }}
           // oxlint-disable-next-line design-system/no-inline-styles -- framer-motion reads an SVG transform origin from style
@@ -142,14 +141,14 @@ function Card({ x, y, width }: CardProps) {
         height={height}
         rx={radius}
         ry={radius}
-        className="fill-card stroke-border"
+        className="fill-surface stroke-border-base"
         strokeWidth={1}
       />
       <circle
         cx={x + padding + dotRadius}
         cy={y + height / 2}
         r={dotRadius}
-        className="fill-border"
+        className="fill-border-base"
       />
       <rect
         x={x + padding + dotRadius * 2 + 12}
@@ -158,7 +157,7 @@ function Card({ x, y, width }: CardProps) {
         height={12}
         rx={6}
         ry={6}
-        className="fill-border"
+        className="fill-border-base"
       />
       <rect
         x={x + width - padding - 80}
@@ -167,7 +166,7 @@ function Card({ x, y, width }: CardProps) {
         height={12}
         rx={3}
         ry={3}
-        className="fill-border"
+        className="fill-border-base"
       />
       <rect
         x={x + width - padding - 60}
@@ -176,7 +175,7 @@ function Card({ x, y, width }: CardProps) {
         height={12}
         rx={3}
         ry={3}
-        className="fill-border"
+        className="fill-border-base"
       />
       <rect
         x={x + width - padding - 40}
@@ -185,7 +184,7 @@ function Card({ x, y, width }: CardProps) {
         height={12}
         rx={6}
         ry={6}
-        className="fill-border"
+        className="fill-border-base"
       />
     </g>
   );

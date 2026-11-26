@@ -20,10 +20,7 @@ export function AgentPageLoading() {
         <div className="mt-0 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 lg:mt-8 lg:flex-row lg:gap-12">
           {/* Left: Agent info panel */}
           <div className="w-full lg:w-2/5">
-            <div
-              // oxlint-disable-next-line design-system/no-raw-colors -- indigo has no role; info or brand would change the frame\'s hue (deferred)
-              className="rounded-2xl bg-gradient-to-r from-info/10 to-indigo-100/50 p-px"
-            >
+            <div className="rounded-2xl bg-gradient-to-r from-info/10 to-indigo/10 p-px">
               <div className="flex flex-col rounded-large bg-surface-muted p-4">
                 {/* Title */}
                 <Skeleton className="mb-3 h-9 w-3/4" />
@@ -41,8 +38,8 @@ export function AgentPageLoading() {
 
                 {/* Buttons */}
                 <div className="flex gap-3">
-                  <Skeleton className="h-12 w-36 rounded-full" />
-                  <Skeleton className="h-12 w-28 rounded-full" />
+                  <Skeleton className="h-12 w-36 rounded-pill" />
+                  <Skeleton className="h-12 w-28 rounded-pill" />
                 </div>
               </div>
             </div>
@@ -59,9 +56,9 @@ export function AgentPageLoading() {
             <div className="mt-6 space-y-3">
               <Skeleton className="h-6 w-24" />
               <div className="flex flex-wrap gap-2">
-                <Skeleton className="h-7 w-20 rounded-full" />
-                <Skeleton className="h-7 w-24 rounded-full" />
-                <Skeleton className="h-7 w-16 rounded-full" />
+                <Skeleton className="h-7 w-20 rounded-pill" />
+                <Skeleton className="h-7 w-24 rounded-pill" />
+                <Skeleton className="h-7 w-16 rounded-pill" />
               </div>
             </div>
           </div>

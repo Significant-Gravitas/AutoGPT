@@ -33,7 +33,7 @@ export function SetupNeeded() {
         <span className="flex text-warning-foreground">
           <Icon icon={Alert01Icon} size={14} aria-hidden />
         </span>
-        <Text variant="small-medium" as="h2" tone="body">
+        <Text variant="small" weight="medium" as="h2" tone="body">
           Setup needed ({items.length})
         </Text>
       </div>

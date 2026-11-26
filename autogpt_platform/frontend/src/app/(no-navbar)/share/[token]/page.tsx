@@ -1,8 +1,6 @@
 "use client";
 
 import { RunOutputs } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/SelectedRunView/components/RunOutputs";
-import { okData } from "@/app/api/helpers";
-import { useGetV1GetSharedExecution } from "@/app/api/__generated__/endpoints/default/default";
 import {
   Card,
   CardContent,
@@ -16,6 +14,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { useParams } from "next/navigation";
 import { ShareActions } from "../components/ShareHeader/ShareActions";
 import { ShareHeader } from "../components/ShareHeader/ShareHeader";
+import { useSharedExecutionPage } from "./useSharedExecutionPage";
 
 // Wraps the page in the shared header + a scrollable container.
 // Header is the same component used by the chat share viewer so the
@@ -28,7 +27,7 @@ function ExecutionShareChrome({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-screen w-full flex-col bg-background">
+    <div className="flex h-screen w-full flex-col bg-canvas">
       <ShareHeader title={title} actions={<ShareActions />} />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="container mx-auto px-4 py-8">{children}</div>
@@ -42,28 +41,25 @@ export default function SharePage() {
   const params = useParams();
   const token = params.token as string;
 
-  const {
-    data: executionData,
-    isLoading: loading,
-    error,
-  } = useGetV1GetSharedExecution(token, { query: { select: okData } });
+  const { executionData, isPending, isError, isDeadLink } =
+    useSharedExecutionPage(token);
 
-  const is404 = !loading && !executionData;
-
-  if (loading) {
+  if (isPending) {
     return (
       <ExecutionShareChrome>
         <div className="flex items-center justify-center py-16">
           <div className="text-center">
-            <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-primary"></div>
-            <p className="text-muted-foreground">Loading shared execution...</p>
+            <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-action"></div>
+            <p className="text-foreground-tertiary">
+              Loading shared execution...
+            </p>
           </div>
         </div>
       </ExecutionShareChrome>
     );
   }
 
-  if (error || is404 || !executionData) {
+  if (isError || !executionData) {
     return (
       <ExecutionShareChrome>
         <div className="flex items-center justify-center py-16">
@@ -71,7 +67,7 @@ export default function SharePage() {
             <div className="rounded-2xl border border-dashed border-border-strong bg-surface p-px text-foreground-base">
               <div className="p-6">
                 <div className="space-y-4 text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-surface-hover text-foreground-tertiary">
                     <Icon
                       aria-hidden
                       icon={InformationCircleIcon}
@@ -80,26 +76,28 @@ export default function SharePage() {
                   </div>
                   <div className="space-y-2">
                     <h3 className="text-lead font-semibold">
-                      {is404 ? "Share Link Not Found" : "Unable to Load"}
+                      {isDeadLink ? "Share Link Not Found" : "Unable to Load"}
                     </h3>
-                    <p className="text-body text-muted-foreground">
-                      {is404
+                    <p className="text-body text-foreground-tertiary">
+                      {isDeadLink
                         ? "This shared link is invalid or has been disabled by the owner. Please check with the person who shared this link."
                         : "There was an error loading this shared execution. Please try refreshing the page."}
                     </p>
                   </div>
-                  <div className="pt-2">
-                    <button
-                      onClick={() => window.location.reload()}
-                      className="text-body text-primary hover:underline"
-                    >
-                      Try again
-                    </button>
-                  </div>
+                  {!isDeadLink && (
+                    <div className="pt-2">
+                      <button
+                        onClick={() => window.location.reload()}
+                        className="text-body text-action hover:underline"
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
-            <div className="mt-8 text-center text-caption text-muted-foreground">
+            <div className="mt-8 text-center text-caption text-foreground-tertiary">
               <p>Powered by AutoGPT Platform</p>
             </div>
           </div>
@@ -131,7 +129,7 @@ export default function SharePage() {
               {executionData.graph_name}
             </h3>
             {executionData.graph_description && (
-              <p className="mt-2 text-muted-foreground">
+              <p className="mt-2 text-foreground-tertiary">
                 {executionData.graph_description}
               </p>
             )}
@@ -163,7 +161,7 @@ export default function SharePage() {
           </CardContent>
         </Card>
 
-        <div className="mt-8 text-center text-body text-muted-foreground">
+        <div className="mt-8 text-center text-body text-foreground-tertiary">
           <p>Powered by AutoGPT Platform</p>
         </div>
       </div>

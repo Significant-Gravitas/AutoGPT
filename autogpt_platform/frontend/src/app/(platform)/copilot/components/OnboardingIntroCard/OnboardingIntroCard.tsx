@@ -18,13 +18,16 @@ import {
 import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
-import { SuggestedTaskCards } from "../SuggestedTasks/SuggestedTaskCards";
+import { SuggestedTasksBlock } from "../SuggestedTasks/SuggestedTasksBlock";
+import type { useCollapsedSuggestions } from "../SuggestedTasks/useCollapsedSuggestions";
 import type { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   name: string | null;
   greeting: string;
   suggestions: ReturnType<typeof useSuggestedTasks>;
+  collapse: ReturnType<typeof useCollapsedSuggestions>;
   transcript?: string;
   disabled?: boolean;
 }
@@ -55,11 +58,14 @@ export function OnboardingIntroCard({
   name,
   greeting,
   suggestions,
+  collapse,
   transcript = "",
   disabled = false,
 }: Props) {
   const prefersReducedMotion = useReducedMotion();
   const [isCopied, setIsCopied] = useState(false);
+  const hasTasks = suggestions.tasks.length > 0;
+  const isListHeld = hasTasks && !suggestions.isRosterLoaded;
   const { toast } = useToast();
 
   async function handleCopyTranscript() {
@@ -85,13 +91,13 @@ export function OnboardingIntroCard({
       return {
         initial: { opacity: 0 },
         animate: { opacity: 1 },
-        transition: { duration: 0.3, delay },
+        transition: { duration: duration.slow, delay },
       };
     }
     return {
       initial: { opacity: 0, y: 10, filter: "blur(4px)" },
       animate: { opacity: 1, y: 0, filter: "blur(0px)" },
-      transition: { duration: 0.45, ease: [0, 0, 0.2, 1] as const, delay },
+      transition: { duration: duration.slower, ease: ease.out, delay },
     };
   }
 
@@ -115,7 +121,7 @@ export function OnboardingIntroCard({
           <AutopilotAvatar size={40} transparent className="size-full" />
         </motion.span>
         <motion.div {...reveal(HEADING_START)}>
-          <Text variant="large-medium" tone="primary">
+          <Text variant="large" weight="medium" tone="primary">
             Hey
             {name ? (
               <>
@@ -134,7 +140,7 @@ export function OnboardingIntroCard({
                   type="button"
                   onClick={handleCopyTranscript}
                   aria-label="Copy your recording's transcript"
-                  className="rounded-full p-2 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
+                  className="rounded-pill p-2 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
                 >
                   {isCopied ? (
                     <Icon icon={Tick02Icon} size={16} tone="success" />
@@ -159,25 +165,28 @@ export function OnboardingIntroCard({
         </Text>
       </motion.div>
 
-      {suggestions.tasks.length > 0 && (
+      {hasTasks && (
         <motion.div {...reveal(promptsStart)} className="mt-5">
-          <SuggestedTaskCards
-            tasks={suggestions.tasks}
-            sendingId={suggestions.sendingId}
+          <SuggestedTasksBlock
+            suggestions={suggestions}
+            collapse={collapse}
             disabled={disabled}
-            onSend={suggestions.sendTask}
-            onHide={suggestions.hideTask}
+            showTeam
           />
         </motion.div>
       )}
 
-      <motion.div {...reveal(footerStart)}>
-        <Text variant="body" tone="muted" className="mt-5">
-          {suggestions.tasks.length > 0
-            ? "Want to do something else? Just write it in the textbox below."
-            : "Tell me what you'd like to start with in the textbox below."}
-        </Text>
-      </motion.div>
+      {/* Folded away with the list, and held back with it while the team
+          can't be read: it would point at a list that isn't there. */}
+      {(hasTasks && collapse.isCollapsed) || isListHeld ? null : (
+        <motion.div {...reveal(footerStart)}>
+          <Text variant="body" tone="muted" className="mt-5">
+            {hasTasks
+              ? "Want to do something else? Just write it in the textbox below."
+              : "Tell me what you'd like to start with in the textbox below."}
+          </Text>
+        </motion.div>
+      )}
     </div>
   );
 }

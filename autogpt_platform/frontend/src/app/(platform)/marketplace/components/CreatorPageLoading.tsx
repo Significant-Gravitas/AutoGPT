@@ -19,10 +19,7 @@ export function CreatorPageLoading() {
           {/* Left: Creator info card */}
           <div className="w-full lg:w-2/5">
             <div className="w-full px-4 sm:px-6 lg:px-0">
-              <div
-                // oxlint-disable-next-line design-system/no-raw-colors -- indigo has no role; info or brand would change the frame\'s hue (deferred)
-                className="rounded-2xl bg-gradient-to-r from-info/10 to-indigo-100/50 p-px"
-              >
+              <div className="rounded-2xl bg-gradient-to-r from-info/10 to-indigo/10 p-px">
                 <div className="flex flex-col rounded-large bg-surface-muted p-4">
                   {/* Avatar */}
                   <Skeleton className="mb-4 h-20 w-20 rounded-full sm:h-24 sm:w-24" />
@@ -44,17 +41,17 @@ export function CreatorPageLoading() {
                   <div className="mb-6">
                     <Skeleton className="mb-2 h-5 w-28" />
                     <div className="flex flex-wrap gap-2">
-                      <Skeleton className="h-7 w-20 rounded-full" />
-                      <Skeleton className="h-7 w-24 rounded-full" />
-                      <Skeleton className="h-7 w-16 rounded-full" />
+                      <Skeleton className="h-7 w-20 rounded-pill" />
+                      <Skeleton className="h-7 w-24 rounded-pill" />
+                      <Skeleton className="h-7 w-16 rounded-pill" />
                     </div>
                   </div>
 
                   {/* Links */}
                   <Skeleton className="mb-2 h-5 w-14" />
                   <div className="flex flex-wrap gap-2">
-                    <Skeleton className="h-9 w-28 rounded-full" />
-                    <Skeleton className="h-9 w-32 rounded-full" />
+                    <Skeleton className="h-9 w-28 rounded-pill" />
+                    <Skeleton className="h-9 w-32 rounded-pill" />
                   </div>
                 </div>
               </div>

@@ -270,7 +270,13 @@ function getBashAccordionData(
       <div className="space-y-2">
         {command && (
           <div>
-            <Text variant="small-medium-tight" tone="muted" className="mb-1">
+            <Text
+              variant="small"
+              weight="medium"
+              leading="4"
+              tone="muted"
+              className="mb-1"
+            >
               command
             </Text>
             <ContentCodeBlock>{command}</ContentCodeBlock>
@@ -278,7 +284,13 @@ function getBashAccordionData(
         )}
         {stdout && (
           <div>
-            <Text variant="small-medium-tight" tone="muted" className="mb-1">
+            <Text
+              variant="small"
+              weight="medium"
+              leading="4"
+              tone="muted"
+              className="mb-1"
+            >
               stdout
             </Text>
             <ContentCodeBlock>{stdout}</ContentCodeBlock>
@@ -286,7 +298,13 @@ function getBashAccordionData(
         )}
         {stderr && (
           <div>
-            <Text variant="small-medium-tight" tone="muted" className="mb-1">
+            <Text
+              variant="small"
+              weight="medium"
+              leading="4"
+              tone="muted"
+              className="mb-1"
+            >
               stderr
             </Text>
             <ContentCodeBlock>{stderr}</ContentCodeBlock>
@@ -560,14 +578,22 @@ function getFileAccordionData(
         {oldString && newString != null ? (
           <>
             <div>
-              <Text variant="small-medium-tight" tone="error" className="mb-1">
+              <Text
+                variant="small"
+                weight="medium"
+                leading="4"
+                tone="error"
+                className="mb-1"
+              >
                 removed
               </Text>
               <ContentCodeBlock>{oldString}</ContentCodeBlock>
             </div>
             <div>
               <Text
-                variant="small-medium-tight"
+                variant="small"
+                weight="medium"
+                leading="4"
                 tone="success"
                 className="mb-1"
               >
@@ -643,10 +669,10 @@ function getTodoAccordionData(input: unknown): AccordionData {
             <span
               className={
                 todo.status === "completed"
-                  ? "text-muted-foreground line-through"
+                  ? "text-foreground-tertiary line-through"
                   : todo.status === "in_progress"
-                    ? "font-medium text-foreground"
-                    : "text-muted-foreground"
+                    ? "font-medium text-foreground-base"
+                    : "text-foreground-tertiary"
               }
             >
               {todo.content}
@@ -800,7 +826,7 @@ export function GenericTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex min-w-0 items-center gap-2 overflow-hidden text-caption text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden text-caption text-foreground-tertiary">
         <ToolIcon
           category={category}
           isStreaming={isStreaming}

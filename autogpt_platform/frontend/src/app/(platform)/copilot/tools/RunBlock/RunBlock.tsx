@@ -91,7 +91,7 @@ export function RunBlockTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex items-center gap-2 text-body text-muted-foreground">
+      <div className="flex items-center gap-2 text-body text-foreground-tertiary">
         <ToolIcon isStreaming={isStreaming} isError={isError} />
         <MorphingTextAnimation
           text={isCorrupted ? "Block result could not be displayed" : text}
@@ -100,7 +100,7 @@ export function RunBlockTool({ part }: Props) {
       </div>
 
       {isCorrupted && (
-        <Text variant="body-tight" tone="error" className="mt-1">
+        <Text variant="body" leading="5" tone="error" className="mt-1">
           The result data arrived corrupted, so any sign-in or setup card it
           contained can&apos;t be shown. Ask your expert to retry this step.
         </Text>

@@ -4,9 +4,11 @@ import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
 import { Text } from "@/components/atoms/Text/Text";
 import NextLink from "next/link";
 import { cn } from "@/lib/utils";
+import { stashCopilotPrompt } from "@/services/copilot/prompt-handoff";
 import { useRouter } from "next/navigation";
 import type { SitrepItemData, SitrepPriority } from "../../types";
 import { ContextualActionButton } from "../ContextualActionButton/ContextualActionButton";
+import { RunningForMessage } from "./components/RunningForMessage";
 import { buildAutoPilotPrompt } from "./helpers";
 import {
   Alert02Icon,
@@ -48,8 +50,7 @@ const PRIORITY_CONFIG: Record<
   },
   stale: {
     icon: ClockFadingIcon,
-    // oxlint-disable-next-line design-system/no-raw-colors -- yellow-600 #DFAF00 has no role; gold to amber change deferred (see PR)
-    color: "text-yellow-600",
+    color: "text-yellow-foreground",
     bg: "bg-warning-surface",
   },
   warning: {
@@ -69,8 +70,7 @@ const PRIORITY_CONFIG: Record<
   },
   scheduled: {
     icon: Calendar03Icon,
-    // oxlint-disable-next-line design-system/no-raw-colors -- yellow-600 #DFAF00 has no role; gold to amber change deferred (see PR)
-    color: "text-yellow-600",
+    color: "text-yellow-foreground",
     bg: "bg-warning-surface",
   },
   idle: {
@@ -86,9 +86,11 @@ export function SitrepItem({ item }: Props) {
   const router = useRouter();
 
   function handleAskAutoPilot() {
-    const prompt = buildAutoPilotPrompt(item);
-    const encoded = encodeURIComponent(prompt);
-    router.push(`/home?autosubmit=true#prompt=${encoded}`);
+    stashCopilotPrompt({
+      prompt: buildAutoPilotPrompt(item),
+      autosubmit: true,
+    });
+    router.push("/home");
   }
 
   return (
@@ -99,6 +101,7 @@ export function SitrepItem({ item }: Props) {
     >
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {showImage && item.agentImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- a workflow image URL from any host, which next/image would need configured
           <img
             src={item.agentImageUrl}
             alt={item.agentName}
@@ -125,14 +128,19 @@ export function SitrepItem({ item }: Props) {
         )}
 
         <div className="min-w-0 flex-1">
-          <Text variant="body-medium-lh-snug" tone="primary">
+          <Text variant="body" weight="medium" leading="snug" tone="primary">
             {item.agentName}
           </Text>
-          <OverflowText
-            value={item.message}
-            variant="small-lh-tight"
-            tone="muted"
-          />
+          {item.runningSince ? (
+            <RunningForMessage startedAt={item.runningSince} />
+          ) : (
+            <OverflowText
+              value={item.message}
+              variant="small"
+              leading="tight"
+              tone="muted"
+            />
+          )}
         </div>
       </div>
 

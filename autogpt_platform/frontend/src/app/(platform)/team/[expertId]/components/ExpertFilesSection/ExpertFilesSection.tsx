@@ -36,7 +36,7 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
   return (
     <section>
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
-        <Text variant="large-medium" tone="primary">
+        <Text variant="large" weight="medium" tone="primary">
           {expertName}&apos;s Files
         </Text>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
@@ -74,8 +74,7 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
       ) : files.files.length === 0 ? (
         <SectionEmptyState
           tiles={[
-            // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info blue would change the hue (deferred)
-            <span key="image" className="inline-flex text-sky-500">
+            <span key="image" className="inline-flex text-sky">
               <Icon icon={Image01Icon} size={22} />
             </span>,
             <span key="table" className="inline-flex text-success">

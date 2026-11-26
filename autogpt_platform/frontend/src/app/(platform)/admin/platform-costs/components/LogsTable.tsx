@@ -29,7 +29,7 @@ function LogsTable({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <span className="text-body text-muted-foreground">
+        <span className="text-body text-foreground-tertiary">
           {pagination
             ? `${pagination.total_items.toLocaleString()} total rows`
             : ""}
@@ -37,14 +37,14 @@ function LogsTable({
         <button
           onClick={onExport}
           disabled={exporting}
-          className="rounded border px-3 py-1.5 text-body hover:bg-muted disabled:opacity-50"
+          className="rounded border px-3 py-1.5 text-body hover:bg-surface-hover disabled:opacity-50"
         >
           {exporting ? "Exporting…" : "Export CSV"}
         </button>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-body">
-          <thead className="border-b text-caption text-muted-foreground uppercase">
+          <thead className="border-b text-caption text-foreground-tertiary uppercase">
             <tr>
               <th scope="col" className="px-3 py-3">
                 Time
@@ -89,7 +89,7 @@ function LogsTable({
           </thead>
           <tbody>
             {logs.map((log) => (
-              <tr key={log.id} className="border-b hover:bg-muted">
+              <tr key={log.id} className="border-b hover:bg-surface-hover">
                 <td className="px-3 py-2 text-caption whitespace-nowrap">
                   {formatLogDate(log.created_at)}
                 </td>
@@ -104,7 +104,7 @@ function LogsTable({
                 <td className="px-3 py-2 text-caption">
                   <ExecutionPathBadge executionPath={log.execution_path} />
                 </td>
-                <td className="px-3 py-2 text-caption text-muted-foreground">
+                <td className="px-3 py-2 text-caption text-foreground-tertiary">
                   {log.source || "—"}
                 </td>
                 <td className="px-3 py-2 text-caption">
@@ -138,7 +138,7 @@ function LogsTable({
               <tr>
                 <td
                   colSpan={13}
-                  className="px-4 py-8 text-center text-muted-foreground"
+                  className="px-4 py-8 text-center text-foreground-tertiary"
                 >
                   No logs found
                 </td>
@@ -150,7 +150,7 @@ function LogsTable({
 
       {pagination && pagination.total_pages > 1 && (
         <div className="flex items-center justify-between px-4">
-          <span className="text-body text-muted-foreground">
+          <span className="text-body text-foreground-tertiary">
             Page {pagination.current_page} of {pagination.total_pages} (
             {pagination.total_items} total)
           </span>
@@ -183,7 +183,7 @@ function ExecutionCell({ log }: { log: CostLogRow }) {
   return (
     <td
       className={[
-        "px-3 py-2 text-caption text-muted-foreground",
+        "px-3 py-2 text-caption text-foreground-tertiary",
         id ? "cursor-pointer" : "",
       ].join(" ")}
       title={id ? String(id) : undefined}

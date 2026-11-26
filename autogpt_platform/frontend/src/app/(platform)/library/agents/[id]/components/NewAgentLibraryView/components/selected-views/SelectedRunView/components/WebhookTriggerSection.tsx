@@ -34,14 +34,15 @@ export function WebhookTriggerSection({ preset, triggerSetupInfo }: Props) {
     <RunDetailCard title="Trigger Status">
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-2">
-          <Text variant="large-medium">Status</Text>
+          <Text variant="large" weight="medium">
+            Status
+          </Text>
           <span
-            className={`rounded-full px-2 py-0.5 text-caption font-medium ${
+            className={`rounded-pill px-2 py-0.5 text-caption font-medium ${
               status === "active"
                 ? "bg-success/30 text-success-foreground"
                 : status === "inactive"
-                  ? // oxlint-disable-next-line design-system/no-raw-colors -- yellow-800 #876A00 has no role; olive to orange-brown change deferred (see PR)
-                    "bg-warning-border text-yellow-800"
+                  ? "bg-warning-border text-yellow-foreground"
                   : "bg-error-surface text-error-foreground"
             }`}
           >
@@ -65,7 +66,9 @@ export function WebhookTriggerSection({ preset, triggerSetupInfo }: Props) {
               up the trigger connection with the service of your choosing.
             </Text>
             <div className="flex flex-col gap-1">
-              <Text variant="small-medium">Webhook URL:</Text>
+              <Text variant="small" weight="medium">
+                Webhook URL:
+              </Text>
               <div className="flex gap-2 rounded-md bg-surface-muted p-2">
                 <code className="ph-no-capture flex-1 text-body select-all">
                   {webhook.url}
