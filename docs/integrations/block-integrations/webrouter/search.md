@@ -47,7 +47,7 @@ The `context` output renders the results as markdown for LLM use. It is untruste
 <!-- MANUAL: additional_content -->
 ## Credentials and keys
 
-These blocks take no credential. WebRouter normally also uses any provider key it finds in the environment, and this server keeps its own Tavily, Exa, Jina and Parallel keys there for those providers' blocks. So the blocks pass WebRouter a fixed chain of keyless tiers, and never use those keys. Exa and Parallel are reached through their keyless MCP servers.
+These blocks take no credential. WebRouter normally also uses any provider key it finds in the environment, and this server keeps its own Tavily, Exa, Jina and Parallel keys there for those providers' blocks. So the blocks pass WebRouter a fixed chain of keyless tiers, and never use those keys. Exa and Parallel are reached through their keyless MCP servers. A keyless tier would still use its provider's own key if one were set, so when `NIMBLE_API_KEY`, `FIRECRAWL_API_KEY` or `KEENABLE_API_KEY` is set in the environment, that provider is left out of the chain.
 
 ## Billing and cost tracking
 

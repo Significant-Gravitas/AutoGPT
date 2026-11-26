@@ -12,7 +12,7 @@ Reads web pages as markdown with no API key, through WebRouter: the page is fetc
 <!-- MANUAL: how_it_works -->
 The block checks that every URL uses http or https, then calls WebRouter's `extract` with `format="markdown"`. The page is fetched by the extraction provider on its own servers (Nimble's keyless tier first, then Firecrawl's and Keenable's), so the AutoGPT server never connects to the page itself. When a provider fails, WebRouter moves to the next.
 
-Each page that was read becomes a WebRouterPage (url, title, content as markdown). A URL that could not be read (a 404, a timeout) appears in `failures` with the reason instead of failing the whole run. `provider` names the provider that answered. Page content is untrusted web content: treat it as data, not instructions.
+Each page that was read becomes a WebRouterPage (url, title, content as markdown). A URL that could not be read (a 404, a timeout) appears in `failures` with the reason instead of failing the whole run, including when no URL could be read. `provider` names the provider that answered. Page content is untrusted web content: treat it as data, not instructions.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -45,7 +45,7 @@ Each page that was read becomes a WebRouterPage (url, title, content as markdown
 <!-- MANUAL: additional_content -->
 ## Credentials and keys
 
-These blocks take no credential. WebRouter normally also uses any provider key it finds in the environment, and this server keeps its own Tavily, Exa, Jina and Parallel keys there for those providers' blocks. So the blocks pass WebRouter a fixed chain of keyless tiers, and never use those keys. Exa and Parallel are reached through their keyless MCP servers.
+These blocks take no credential. WebRouter normally also uses any provider key it finds in the environment, and this server keeps its own Tavily, Exa, Jina and Parallel keys there for those providers' blocks. So the blocks pass WebRouter a fixed chain of keyless tiers, and never use those keys. Exa and Parallel are reached through their keyless MCP servers. A keyless tier would still use its provider's own key if one were set, so when `NIMBLE_API_KEY`, `FIRECRAWL_API_KEY` or `KEENABLE_API_KEY` is set in the environment, that provider is left out of the chain.
 
 ## Billing and cost tracking
 

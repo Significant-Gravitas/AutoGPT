@@ -2,6 +2,7 @@ from urllib.parse import urlsplit
 
 from web_router import (
     ExtractedDocument,
+    ExtractFailedError,
     ExtractFailure,
     ExtractResponse,
     WebRouterError,
@@ -86,7 +87,7 @@ class WebRouterExtractBlock(Block):
 
     async def _extract(self, urls: list[str]) -> ExtractResponse:
         """Read the pages through a keyless WebRouter (mockable)."""
-        async with keyless_router() as router:
+        async with keyless_router("extract") as router:
             return await router.extract(
                 urls, format="markdown", timeout=EXTRACT_TIMEOUT
             )
@@ -101,6 +102,9 @@ class WebRouterExtractBlock(Block):
             )
         try:
             response = await self._extract(input_data.urls)
+        except ExtractFailedError as e:
+            # No URL could be read: report each one, as a partial read does.
+            response = ExtractResponse(provider=e.provider, failures=e.url_failures)
         except WebRouterError as e:
             raise BlockExecutionError(
                 message=f"Extract failed: {e}",

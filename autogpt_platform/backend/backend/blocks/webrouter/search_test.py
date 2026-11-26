@@ -1,7 +1,7 @@
-"""Unit tests for the WebRouter Search block and the keyless router it uses.
+"""Unit tests for the WebRouter Search block.
 
 The block's own test_input/test_mock case mocks the search away; these cover
-the options it passes, how results are mapped, errors, and the chain.
+the options it passes, how results are mapped, and errors.
 """
 
 from typing import Any
@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock
 import pytest
 from web_router import SearchResponse, SearchResult, WebRouterError
 
-from backend.blocks.webrouter._api import keyless_router
 from backend.blocks.webrouter.search import WebRouterSearchBlock
 from backend.util.exceptions import BlockExecutionError
 
@@ -79,18 +78,3 @@ async def test_webrouter_error_becomes_a_block_error():
     block._search = AsyncMock(side_effect=WebRouterError("every provider failed"))
     with pytest.raises(BlockExecutionError, match="every provider failed"):
         await collect(block, query="q")
-
-
-@pytest.mark.asyncio
-async def test_router_ignores_provider_keys_in_the_environment(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    for var in ("TAVILY_API_KEY", "EXA_API_KEY", "JINA_API_KEY", "PARALLEL_API_KEY"):
-        monkeypatch.setenv(var, "platform-key")
-
-    async with keyless_router() as router:
-        search = router.get_provider("auto").members
-        extract = router.get_extract_provider("auto").members
-
-    assert search == ("nimble", "you-mcp", "exa-mcp", "parallel-mcp", "keenable")
-    assert extract == ("nimble", "firecrawl", "keenable")

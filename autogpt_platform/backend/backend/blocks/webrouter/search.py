@@ -76,7 +76,7 @@ class WebRouterSearchBlock(Block):
         self, query: str, max_results: int, include_domains: list[str]
     ) -> SearchResponse:
         """Run the search through a keyless WebRouter (mockable)."""
-        async with keyless_router() as router:
+        async with keyless_router("search") as router:
             return await router.search(
                 query,
                 max_results=max_results,

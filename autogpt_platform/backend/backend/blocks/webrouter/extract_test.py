@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock
 import pytest
 from web_router import (
     ExtractedDocument,
+    ExtractFailedError,
     ExtractFailure,
     ExtractResponse,
     WebRouterError,
@@ -86,3 +87,25 @@ async def test_webrouter_error_becomes_a_block_error():
     block._extract = AsyncMock(side_effect=WebRouterError("every provider failed"))
     with pytest.raises(BlockExecutionError, match="every provider failed"):
         await collect(block, urls=["https://a.example"])
+
+
+@pytest.mark.parametrize("count", [1, 2])
+@pytest.mark.asyncio
+async def test_no_page_read_reports_every_url_as_a_failure(count: int):
+    urls = [f"https://a.example/{i}" for i in range(count)]
+    failures = [ExtractFailure(url=u, error="status 404") for u in urls]
+    block = WebRouterExtractBlock()
+    block._extract = AsyncMock(
+        side_effect=ExtractFailedError(
+            "firecrawl", "no URL could be extracted", failures
+        )
+    )
+
+    outputs = await collect(block, urls=urls)
+
+    assert outputs["results"] == []
+    assert outputs["result"] == []
+    assert [(f.url, f.error) for f in outputs["failures"]] == [
+        (u, "status 404") for u in urls
+    ]
+    assert outputs["provider"] == "firecrawl"
