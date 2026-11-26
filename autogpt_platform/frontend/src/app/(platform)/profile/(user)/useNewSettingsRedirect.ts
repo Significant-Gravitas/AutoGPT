@@ -15,7 +15,8 @@ const LEGACY_TO_NEW_SETTINGS: Record<string, string> = {
 // Legacy pages whose /settings replacement isn't ready to receive them yet —
 // redirecting would take working functionality away. Each is a one-line
 // removal once the new surface catches up.
-//   /profile/oauth-apps → /settings/oauth-apps is a "Coming soon" placeholder.
+//   /profile/oauth-apps lists the apps you own as a developer, while
+//     /settings/oauth-apps lists the apps you gave access to your account.
 //   /profile/settings   → /settings/account only shows notification
 //     preferences behind the ``settings-notifications`` flag (AGPT staff while
 //     the design is reworked), and this is exactly where every notification

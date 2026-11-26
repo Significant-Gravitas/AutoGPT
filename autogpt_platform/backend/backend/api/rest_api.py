@@ -59,6 +59,7 @@ import backend.api.features.mailerlite.routes as mailerlite_routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.memory.routes as memory_routes
 import backend.api.features.oauth
+import backend.api.features.oauth_grants
 import backend.api.features.onboarding.routes as onboarding_routes
 import backend.api.features.onboarding_dump.routes as onboarding_dump_routes
 import backend.api.features.orgs.invitation_routes
@@ -599,6 +600,11 @@ app.include_router(
 )
 app.include_router(
     backend.api.features.oauth.router,
+    tags=["oauth"],
+    prefix="/api/oauth",
+)
+app.include_router(
+    backend.api.features.oauth_grants.router,
     tags=["oauth"],
     prefix="/api/oauth",
 )

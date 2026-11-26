@@ -1,14 +1,13 @@
 "use client";
 
-import { Text } from "@/components/atoms/Text/Text";
+import { OAuthAppsHeader } from "./components/OAuthAppsHeader/OAuthAppsHeader";
+import { OAuthGrantList } from "./components/OAuthGrantList/OAuthGrantList";
 
 export default function SettingsOAuthAppsPage() {
   return (
     <>
-      <Text variant="h4">OAuth Apps</Text>
-      <Text variant="large" tone="secondary" className="mt-2">
-        Coming soon.
-      </Text>
+      <OAuthAppsHeader />
+      <OAuthGrantList />
     </>
   );
 }

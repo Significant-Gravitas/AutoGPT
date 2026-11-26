@@ -1,7 +1,6 @@
 import { render, screen } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import SettingsBillingPage from "../billing/page";
-import SettingsOAuthAppsPage from "../oauth-apps/page";
 
 let mockIsBillingEnabled = true;
 vi.mock("@/hooks/useIsBillingEnabled", () => ({
@@ -36,14 +35,5 @@ describe("Settings billing page", () => {
     expect(
       screen.getByRole("tab", { name: "Automation Credits" }),
     ).toBeDefined();
-  });
-});
-
-describe("Settings v2 placeholder pages", () => {
-  it("OAuth Apps renders title and coming soon body", () => {
-    render(<SettingsOAuthAppsPage />);
-
-    expect(screen.getByText("OAuth Apps")).toBeDefined();
-    expect(screen.getByText(/coming soon/i)).toBeDefined();
   });
 });
