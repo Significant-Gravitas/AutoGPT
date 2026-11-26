@@ -664,6 +664,33 @@ async def test_a_turn_runs_in_its_scheduled_org_only_while_its_owner_belongs(
         created = mock_create_session.await_args.kwargs
         assert (created["organization_id"], created["team_id"]) == tenancy
     orgs.is_active_member.assert_awaited_once_with("user-1", "org-sched", "team-sched")
+    if still_a_member:
+        orgs.resolve_default_tenancy.assert_not_awaited()
+    else:
+        orgs.resolve_default_tenancy.assert_awaited_once_with("user-1")
+
+
+@pytest.mark.asyncio
+async def test_a_follow_up_whose_membership_cannot_be_read_is_not_dispatched(
+    _turn_owners_belong_to_their_org,
+):
+    _turn_owners_belong_to_their_org.is_active_member.side_effect = RuntimeError(
+        "database manager unavailable"
+    )
+    args = _args(session_id=None, organization_id="org-sched", team_id="team-sched")
+    mock_schedule_turn = AsyncMock()
+    mock_create_session = AsyncMock()
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_create_session.assert_not_awaited()
+    mock_schedule_turn.assert_not_awaited()
 
 
 @pytest.mark.asyncio

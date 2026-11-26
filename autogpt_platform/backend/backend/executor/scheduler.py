@@ -540,7 +540,7 @@ def _routine_turn_permissions(routine: ExpertRoutine | None) -> CopilotPermissio
 
 async def _execute_copilot_turn(**kwargs):
     expert_scope_was_persisted = "expert_id" in kwargs
-    args = await _in_current_membership(CopilotTurnJobArgs(**kwargs))
+    args = CopilotTurnJobArgs(**kwargs)
     if args.purpose != "followup":
         await _execute_at_reset_turn(args, args.purpose)
         return
@@ -567,6 +567,7 @@ async def _execute_copilot_turn(**kwargs):
         args = args.model_copy(update={"session_id": routine.session_id})
     start_time = asyncio.get_event_loop().time()
     try:
+        args = await _in_current_membership(args)
         # Resolve the target session.  ``session_id=None`` means "fire into
         # a fresh chat" — create one now so the user has somewhere visible
         # for the scheduled message to land.  For an explicit session_id
@@ -1267,6 +1268,7 @@ async def _execute_at_reset_turn(args: "CopilotTurnJobArgs", kind: AtResetKind) 
             return
         _track_at_reset_verdict(args.user_id, verdict)
         if verdict.action == "fire":
+            args = await _in_current_membership(args)
             try:
                 await _dispatch_at_reset_turn(args, kind, chat.session)
             except ConcurrentTurnLimitError as cap:
