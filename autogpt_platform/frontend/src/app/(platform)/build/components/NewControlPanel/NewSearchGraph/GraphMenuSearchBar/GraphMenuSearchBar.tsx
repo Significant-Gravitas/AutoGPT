@@ -55,6 +55,7 @@ export const GraphMenuSearchBar: React.FC<GraphMenuSearchBarProps> = ({
         <Button
           variant="ghost"
           size="icon-xs"
+          shape="sharp"
           aria-label="Clear search"
           withTooltip={false}
           onClick={handleClear}

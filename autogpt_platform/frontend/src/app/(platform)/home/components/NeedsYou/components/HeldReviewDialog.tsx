@@ -70,6 +70,7 @@ export function HeldReviewDialog({ carousel, held, chatLink = true }: Props) {
               <Button
                 variant="secondary"
                 size="icon-sm"
+                shape="soft"
                 className="lg:hidden"
                 aria-label="All held calls"
                 aria-expanded={carousel.sheetOpen}
@@ -79,6 +80,7 @@ export function HeldReviewDialog({ carousel, held, chatLink = true }: Props) {
               <Button
                 variant="secondary"
                 size="icon-sm"
+                shape="soft"
                 aria-label="Previous"
                 disabled={!carousel.canPrev}
                 leadingIcon={ArrowLeft01Icon}
@@ -96,6 +98,7 @@ export function HeldReviewDialog({ carousel, held, chatLink = true }: Props) {
               <Button
                 variant="secondary"
                 size="icon-sm"
+                shape="soft"
                 aria-label="Next"
                 disabled={!carousel.canNext}
                 leadingIcon={ArrowRight01Icon}

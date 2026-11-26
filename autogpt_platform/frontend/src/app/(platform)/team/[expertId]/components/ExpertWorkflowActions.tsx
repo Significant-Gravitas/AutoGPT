@@ -32,6 +32,7 @@ export function ExpertWorkflowActions({
   variant = "floating",
   size = "icon-xs",
 }: Props) {
+  const shape = size === "icon-sm" ? "soft" : "sharp";
   return (
     <>
       {builderHref ? (
@@ -40,6 +41,7 @@ export function ExpertWorkflowActions({
           href={builderHref}
           variant={variant}
           size={size}
+          shape={shape}
           aria-label="Edit workflow"
           leadingIcon={PencilEdit02Icon}
         />
@@ -49,6 +51,7 @@ export function ExpertWorkflowActions({
           type="button"
           variant={variant}
           size={size}
+          shape={shape}
           aria-label="Ask about this workflow"
           leadingIcon={SparklesIcon}
           onClick={() => onAsk(chatPrompt)}
@@ -65,6 +68,7 @@ export function ExpertWorkflowActions({
           }}
           variant={variant}
           size={size}
+          shape={shape}
           aria-label="Ask about this workflow"
           leadingIcon={SparklesIcon}
         />

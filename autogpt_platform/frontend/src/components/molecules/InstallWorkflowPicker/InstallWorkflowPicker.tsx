@@ -156,6 +156,7 @@ export function InstallWorkflowPicker({
                   type="button"
                   variant="toggle"
                   size="xs"
+                  shape="sharp"
                   data-slot="install-workflow-picker-source"
                   aria-pressed={source === option.id}
                   onClick={() => setSource(option.id)}

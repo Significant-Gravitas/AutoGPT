@@ -138,6 +138,7 @@ export function TaskRow({
             type="button"
             variant="toggle"
             size="icon-xs"
+            shape="sharp"
             withTooltip={false}
             aria-label={`Remove: ${task.title}`}
             disabled={isRemoveDisabled}

@@ -9,15 +9,14 @@ import tailwindcssAnimate from "tailwindcss-animate";
 // src/app/tokens/theme.css, and `bg-red-500` generates nothing.
 
 // Classes Tailwind 3 generated nothing for, which Tailwind 4 would now turn
-// into CSS: bare numbers it accepts without a theme step (`z-12`, `flex-2`,
-// `opacity-1`), an `ease-[...]` arbitrary value Tailwind 3 rejected as
+// into CSS: bare numbers it accepts without a theme step (`z-12`, `flex-2`),
+// an `ease-[...]` arbitrary value Tailwind 3 rejected as
 // ambiguous, and streamdown's Tailwind 4 syntax (`content-(--x)`, a trailing
 // `!`, `wrap-anywhere`). Listing them keeps every element looking as it did;
 // the owning components can drop or fix them on their own.
 const TAILWIND_3_DEAD_CLASSES = [
   "z-12",
   "flex-2",
-  "disabled:opacity-1",
   "ease-[cubic-bezier(0.16,1,0.3,1)]",
   "ease-[cubic-bezier(0.33,1,0.68,1)]",
   "data-[state=open]:ease-[cubic-bezier(0.16,1,0.3,1)]",

@@ -144,6 +144,7 @@ function ContextualTip({
             type="button"
             variant="secondary"
             size="xs"
+            shape="sharp"
             onClick={onDismiss}
             className="mt-1 self-end"
           >

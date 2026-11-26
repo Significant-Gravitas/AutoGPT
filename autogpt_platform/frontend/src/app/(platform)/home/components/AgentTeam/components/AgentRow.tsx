@@ -70,6 +70,7 @@ export function AgentRow({ agent }: Props) {
           href={`/copilot?expertId=${agent.expert.id}`}
           variant="icon"
           size="icon-sm"
+          shape="soft"
           leadingIcon={BubbleChatIcon}
           aria-label={`Chat with ${agent.expert.name}`}
         />
@@ -78,6 +79,7 @@ export function AgentRow({ agent }: Props) {
           href={`/team/${agent.expert.id}`}
           variant="icon"
           size="icon-sm"
+          shape="soft"
           leadingIcon={Settings01Icon}
           aria-label={`Manage ${agent.expert.name}`}
           onClick={() =>

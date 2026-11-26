@@ -137,6 +137,7 @@ export function HeldCallRow({
           <Button
             variant="primary"
             size="icon-sm"
+            shape="soft"
             leadingIcon={Tick02Icon}
             loading={status === "approving"}
             disabled={busy}
@@ -157,6 +158,7 @@ export function HeldCallRow({
         <Button
           variant={confirmReject ? "destructive" : "icon"}
           size="icon-sm"
+          shape="soft"
           leadingIcon={Cancel01Icon}
           loading={status === "rejecting"}
           disabled={busy}

@@ -82,6 +82,7 @@ export function WalletCompactPanel({
           type="button"
           variant="ghost"
           size="xs"
+          shape="sharp"
           leadingIcon={InformationCircleIcon}
           onClick={onOpenExplainer}
         >
@@ -92,6 +93,7 @@ export function WalletCompactPanel({
           href="/settings/billing"
           variant="ghost"
           size="xs"
+          shape="sharp"
           rightIcon={<Icon icon={ArrowRight01Icon} size={14} aria-hidden />}
           onClick={onNavigate}
         >

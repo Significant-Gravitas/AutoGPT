@@ -38,7 +38,8 @@ export function PaywallPlanChoices({
           {(["monthly", "yearly"] as const).map((value) => (
             <Button
               key={value}
-              variant={cycle === value ? "ghost" : "ghost-muted"}
+              variant="ghost"
+              tone={cycle === value ? undefined : "quiet"}
               size="small"
               aria-pressed={cycle === value}
               onClick={() => onCycle(value)}

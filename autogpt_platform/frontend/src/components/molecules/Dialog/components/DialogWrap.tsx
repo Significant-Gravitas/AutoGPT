@@ -146,6 +146,7 @@ export function DialogWrap({
             <Button
               variant="icon"
               size={isCompact ? "icon-sm" : "icon"}
+              shape={isCompact ? "soft" : undefined}
               onClick={handleClose}
               aria-label="Close"
               data-slot="dialog-close"

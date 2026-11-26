@@ -50,11 +50,18 @@ export function ScheduledSendChip({ job, onEdit, onCancel, isBusy }: Props) {
       </div>
       {!isDue && (
         <div className="flex shrink-0 items-center gap-1">
-          <Button size="xs" variant="ghost" onClick={onEdit} disabled={isBusy}>
+          <Button
+            size="xs"
+            shape="sharp"
+            variant="ghost"
+            onClick={onEdit}
+            disabled={isBusy}
+          >
             Edit
           </Button>
           <Button
             size="xs"
+            shape="sharp"
             variant="ghost"
             onClick={onCancel}
             disabled={isBusy}

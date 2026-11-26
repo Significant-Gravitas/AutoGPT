@@ -45,6 +45,7 @@ export function PromptCard({
         <Button
           variant="ghost"
           size="icon-xs"
+          shape="sharp"
           aria-label="Close"
           withTooltip={false}
           onClick={onClose}

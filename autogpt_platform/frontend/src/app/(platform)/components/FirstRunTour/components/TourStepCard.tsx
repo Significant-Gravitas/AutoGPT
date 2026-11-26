@@ -71,6 +71,7 @@ export function TourStepCard({
             type="button"
             variant="ghost"
             size="xs"
+            shape="sharp"
             onClick={altAction.onClick}
             className="-ml-2.5 w-fit text-foreground-emphasis underline decoration-border-strong underline-offset-4 hover:bg-transparent hover:decoration-foreground-emphasis"
           >
@@ -83,6 +84,7 @@ export function TourStepCard({
           type="button"
           variant="ghost"
           size="xs"
+          shape="sharp"
           onClick={onSkip}
           tone="secondary"
           className="-ml-2.5"
@@ -95,6 +97,7 @@ export function TourStepCard({
               type="button"
               variant="secondary"
               size="xs"
+              shape="sharp"
               onClick={onBack}
             >
               Back
@@ -105,6 +108,7 @@ export function TourStepCard({
             type="button"
             variant="primary"
             size="xs"
+            shape="sharp"
             onClick={onNext}
             rightIcon={
               isLastStep ? (

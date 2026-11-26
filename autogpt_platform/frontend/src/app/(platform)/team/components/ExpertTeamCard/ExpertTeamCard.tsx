@@ -84,6 +84,7 @@ export function ExpertTeamCard({
         <Button
           variant="secondary"
           size="icon-sm"
+          shape="soft"
           aria-label="Edit Soul"
           leadingIcon={PencilEdit02Icon}
           onClick={handleEditSoulClick}

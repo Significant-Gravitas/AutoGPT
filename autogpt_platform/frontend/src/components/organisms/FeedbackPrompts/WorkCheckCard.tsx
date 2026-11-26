@@ -107,6 +107,7 @@ export function WorkCheckCard({
         <Button
           variant="ghost"
           size="xs"
+          shape="sharp"
           className="-mt-1 -mr-1"
           onClick={close}
         >

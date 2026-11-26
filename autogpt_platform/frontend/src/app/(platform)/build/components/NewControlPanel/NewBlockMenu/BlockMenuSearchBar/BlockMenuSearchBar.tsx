@@ -55,6 +55,7 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
         <Button
           variant="ghost"
           size="icon-xs"
+          shape="sharp"
           aria-label="Clear search"
           withTooltip={false}
           onClick={handleClear}

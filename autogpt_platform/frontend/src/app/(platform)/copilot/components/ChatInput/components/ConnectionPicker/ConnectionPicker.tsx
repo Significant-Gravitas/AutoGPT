@@ -164,7 +164,8 @@ export function ConnectionPicker({
     <PopoverTrigger asChild>
       <Button
         type="button"
-        variant={showsTier ? "ghost-muted" : "ghost"}
+        variant="ghost"
+        tone={showsTier ? "quiet" : undefined}
         size={showsTier ? "icon-sm" : "small"}
         shape={showsTier ? "pill" : undefined}
         withTooltip={false}

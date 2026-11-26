@@ -59,6 +59,7 @@ export function SelectionBar({
         <Button
           variant="outline"
           size="xs"
+          shape="sharp"
           onClick={() => setIsMoveOpen(true)}
           data-testid="artifacts-selection-move"
         >
@@ -68,6 +69,7 @@ export function SelectionBar({
         <Button
           variant="outline"
           size="xs"
+          shape="sharp"
           disabled={isDeleting}
           onClick={handleDelete}
           tone="danger"

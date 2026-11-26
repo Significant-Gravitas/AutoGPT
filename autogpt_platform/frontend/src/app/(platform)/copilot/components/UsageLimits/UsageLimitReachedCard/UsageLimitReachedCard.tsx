@@ -50,7 +50,8 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
             as="NextLink"
             href="/settings/billing"
             size="inline-xs"
-            variant="ghost-muted"
+            variant="ghost"
+            tone="quiet"
             className="min-w-[5.5rem]"
           >
             {state.experience.inactiveTrialStatus === "payment_failed"

@@ -48,6 +48,7 @@ export function ExpertBudgetSection({ expert, color, className }: Props) {
             type="button"
             variant="ghost"
             size="icon-xs"
+            shape="sharp"
             leadingIcon={PencilEdit02Icon}
             aria-label="Edit budget"
             tone={color ? "inherit" : undefined}

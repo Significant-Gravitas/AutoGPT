@@ -77,7 +77,6 @@ const CLASSES = [
   "size-13",
   "shadow-xs",
   "z-12",
-  "disabled:opacity-1",
   // The palette is reset: only the colour roles generate a class.
   "bg-red-500",
   "text-zinc-600",
@@ -371,7 +370,6 @@ describe("Tailwind 4 renders the app's classes as Tailwind 3 did", () => {
       ".size-13",
       ".shadow-xs",
       ".z-12",
-      ".disabled\\:opacity-1:disabled",
       ".bg-red-500",
       ".text-zinc-600",
       ".border-gray-200",

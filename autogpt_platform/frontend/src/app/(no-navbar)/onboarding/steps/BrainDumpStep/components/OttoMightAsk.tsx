@@ -70,6 +70,7 @@ export function OttoMightAsk({
           type="button"
           variant="ghost"
           size="xs"
+          shape="sharp"
           onClick={onAnother}
           className={isLeft ? "col-start-2 row-start-1 -mr-2.5" : "mt-1"}
         >
