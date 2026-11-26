@@ -19,9 +19,12 @@
    touch screen no longer shows it. Tailwind 3 applied it on every device. */
 @custom-variant hover (&:hover);
 
-/* `dark:` applies under a `.dark` ancestor, the one dark selector. The app
-   forces the light theme, so no `dark:` class renders today. */
-@custom-variant dark (&:is(.dark *));
+/* `dark:` applies under a `[data-theme="dark"]` ancestor, the one dark
+   selector, which next-themes sets on <html>. The app forces light, so no
+   `dark:` class renders today. The app's own code writes none
+   (design-system/no-dark-variant); this keeps vendored markup's dark styles
+   on the same attribute a dark theme would set. */
+@custom-variant dark (&:is([data-theme="dark"] *));
 
 /* The theme: the colour roles, type scale, radii, layers and motion, read by
    Tailwind from here instead of tailwind.config.ts. `inline` writes each

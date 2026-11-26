@@ -248,6 +248,23 @@ export function leaksOf(facts: ElementFacts, canary: Canary) {
   ].filter((leak): leak is Leak => leak !== null);
 }
 
+/** WCAG 2 relative luminance of an sRGB colour. */
+function relativeLuminance([r, g, b]: Rgb) {
+  const linear = (value: number) => {
+    const c = value / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+}
+
+/** WCAG 2 contrast ratio, from 1 to 21. */
+export function contrastRatio(a: Rgb, b: Rgb) {
+  const [high, low] = [relativeLuminance(a), relativeLuminance(b)].sort(
+    (x, y) => y - x,
+  );
+  return (high + 0.05) / (low + 0.05);
+}
+
 export interface GroupedLeak extends Leak {
   count: number;
   targets: string[];

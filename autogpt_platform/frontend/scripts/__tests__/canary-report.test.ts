@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildReport,
   coloursIn,
+  contrastRatio,
   formatReport,
   leaksOf,
   readCanary,
@@ -188,5 +189,19 @@ describe("buildReport", () => {
       "ours",
       "sonner",
     ]);
+  });
+});
+
+describe("contrastRatio", () => {
+  it("matches WCAG's figures", () => {
+    expect(contrastRatio([0, 0, 0], [255, 255, 255])).toBeCloseTo(21, 5);
+    expect(contrastRatio([118, 118, 118], [255, 255, 255])).toBeCloseTo(
+      4.54,
+      2,
+    );
+    expect(contrastRatio([255, 255, 255], [118, 118, 118])).toBeCloseTo(
+      4.54,
+      2,
+    );
   });
 });

@@ -5,7 +5,9 @@
    modifiers keep working. globals.css registers every role in its
    `@theme inline` block, so `bg-surface` is `rgb(var(--color-surface) / 1)`
    and follows these values at runtime. A theme is a second block that
-   redefines these same names, with no component edits; there is none yet.
+   redefines these same names, with no component edits. There is no second
+   theme yet; docs/engineering/design-system.md, "Dark mode", says how to
+   add one.
 
    The hex beside each value is the palette class it replaced. Pale tints and
    borders of a hue are its role at an opacity (`bg-orange/10`, `ring-sky/30`)

@@ -2,49 +2,26 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  declarations,
+  defaultTokens,
+  FRONTEND_ROOT,
+  readCss,
+  TRIPLET,
+} from "./token-css";
 
 // The canary look (src/app/tokens/themes/canary.css) proves that every pixel
 // follows the tokens, so it must give every token a value of its own: a token
 // it leaves out keeps its default and hides the elements that use it. See
 // docs/engineering/design-system.md.
 
-const FRONTEND_ROOT = path.resolve(__dirname, "../../..");
-const read = (file: string) =>
-  readFileSync(path.join(FRONTEND_ROOT, file), "utf8").replace(
-    /\/\*[\s\S]*?\*\//g,
-    "",
-  );
-
-const DEFAULT_FILES = [
-  "src/app/tokens/theme.css",
-  "src/app/tokens/typography.css",
-  "src/app/tokens/shape.css",
-  "src/app/tokens/motion.css",
-  "src/components/styles/fonts.css",
-];
 const CANARY_FILE = "src/app/tokens/themes/canary.css";
 
-function declarations(css: string, selector: RegExp) {
-  return new Map(
-    [...css.matchAll(selector)].flatMap(([, body]) =>
-      [...body.matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)].map(
-        ([, name, value]) => [name, value.replace(/\s+/g, " ").trim()] as const,
-      ),
-    ),
-  );
-}
-
-const defaults = new Map(
-  DEFAULT_FILES.flatMap((file) => [
-    ...declarations(read(file), /^:root\s*\{([^}]*)\}/gm),
-  ]),
-);
+const defaults = defaultTokens();
 const canary = declarations(
-  read(CANARY_FILE),
+  readCss(CANARY_FILE),
   /^html\[data-look="canary"\]\s*\{([^}]*)\}/gm,
 );
-
-const TRIPLET = /^\d{1,3} \d{1,3} \d{1,3}$/;
 
 function required() {
   return [...defaults.keys()].filter(
