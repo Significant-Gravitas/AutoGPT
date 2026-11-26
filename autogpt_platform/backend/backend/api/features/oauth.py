@@ -509,13 +509,16 @@ def _redirect_url_with_params(redirect_uri: str, params: dict[str, str]) -> str:
 # ============================================================================
 
 
+_CLIENT_ID_DESCRIPTION = "Required unless the client authenticates with HTTP Basic"
+
+
 class TokenRequestByCode(BaseModel):
     grant_type: Literal["authorization_code"]
     code: str = Field(description="Authorization code")
     redirect_uri: str = Field(
         description="Redirect URI (must match authorization request)"
     )
-    client_id: str
+    client_id: str = Field(description=_CLIENT_ID_DESCRIPTION)
     client_secret: str = ""
     code_verifier: str = Field(max_length=128, description="PKCE code verifier")
 
@@ -523,7 +526,7 @@ class TokenRequestByCode(BaseModel):
 class TokenRequestByRefreshToken(BaseModel):
     grant_type: Literal["refresh_token"]
     refresh_token: str
-    client_id: str
+    client_id: str = Field(description=_CLIENT_ID_DESCRIPTION)
     client_secret: str = ""
 
 
@@ -532,13 +535,22 @@ OAuthTokenRequest = Annotated[
     Field(discriminator="grant_type"),
 ]
 _TOKEN_REQUEST_ADAPTER = TypeAdapter(OAuthTokenRequest)
+
+
+def _published_schema(model: type[BaseModel]) -> dict:
+    # HTTP Basic can carry the client id; the parser copies it in before validating.
+    schema = model.model_json_schema()
+    schema["required"] = [f for f in schema["required"] if f != "client_id"]
+    return schema
+
+
 _TOKEN_REQUEST_BODY_SCHEMA = {
     "content": {
         content_type: {
             "schema": {
                 "oneOf": [
-                    TokenRequestByCode.model_json_schema(),
-                    TokenRequestByRefreshToken.model_json_schema(),
+                    _published_schema(TokenRequestByCode),
+                    _published_schema(TokenRequestByRefreshToken),
                 ],
                 "discriminator": {"propertyName": "grant_type"},
             }
@@ -571,11 +583,13 @@ async def token(
 
     Grant Types:
     1. authorization_code: Exchange authorization code for tokens
-       - Required: grant_type, code, redirect_uri, client_id, code_verifier
+       - Required: grant_type, code, redirect_uri, code_verifier, and client_id
+         unless the client authenticates with HTTP Basic
        - client_secret is required only for confidential clients
 
     2. refresh_token: Exchange refresh token for new access token
-       - Required: grant_type, refresh_token, client_id
+       - Required: grant_type, refresh_token, and client_id unless the client
+         authenticates with HTTP Basic
        - client_secret is required only for confidential clients
 
     Returns:
