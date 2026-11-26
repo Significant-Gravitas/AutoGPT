@@ -258,6 +258,12 @@ function collectFacts(config: CollectConfig): ElementFacts[] {
       continue;
     const text = hasOwnText(el);
     const base = { within: within(el), origin: origin(el) };
+    // The layout box, not the rect: a transform scales the rect but not the
+    // radius, so a scaled rounded square would measure as a circle.
+    const box =
+      el instanceof HTMLElement
+        ? { width: el.offsetWidth, height: el.offsetHeight }
+        : rect;
     facts.push({
       ...base,
       element: describe(el),
@@ -265,12 +271,17 @@ function collectFacts(config: CollectConfig): ElementFacts[] {
       radius:
         el instanceof SVGElement && !(el instanceof SVGSVGElement)
           ? null
-          : radiusOf(style, rect.width, rect.height),
+          : radiusOf(style, box.width, box.height),
       font: text ? style.fontFamily : null,
     });
     for (const pseudo of ["::before", "::after"]) {
       const pseudoStyle = getComputedStyle(el, pseudo);
-      if (pseudoStyle.content === "none" || pseudoStyle.display === "none")
+      if (
+        pseudoStyle.content === "none" ||
+        pseudoStyle.display === "none" ||
+        pseudoStyle.visibility === "hidden" ||
+        parseFloat(pseudoStyle.opacity) === 0
+      )
         continue;
       // `content: ""` draws a box and `content: url(…)` an image, not text.
       const pseudoText =
@@ -332,6 +343,30 @@ interface TargetResult {
   error?: string;
 }
 
+// The classes Storybook puts on <body> when a story threw or does not exist,
+// and where each one's message is. That markup is skipped, so without this
+// the story would count as checked.
+const STORY_FAILED: Record<string, string> = {
+  "sb-show-errordisplay": "#error-message",
+  "sb-show-nopreview": ".sb-nopreview_heading",
+};
+
+async function assertStoryRendered(page: Page, id: string) {
+  const state = await page.evaluate(
+    (failed) => failed.find((name) => document.body.classList.contains(name)),
+    Object.keys(STORY_FAILED),
+  );
+  if (!state) return;
+  const message = await page
+    .locator(STORY_FAILED[state])
+    .first()
+    .innerText({ timeout: 1_000 })
+    .catch(() => "");
+  throw new Error(
+    `story ${id} did not render (${state})${message ? `: ${message.trim().split("\n")[0]}` : ""}`,
+  );
+}
+
 async function checkTarget(
   page: Page,
   target: Target,
@@ -345,6 +380,7 @@ async function checkTarget(
     target.url,
   );
   await settle(page);
+  if (target.kind === "story") await assertStoryRendered(page, target.id);
   if (target.kind === "app" && (await dismissPrompts(page, dismiss))) {
     assertLoaded(
       await page.reload({ waitUntil: "load", timeout: 60_000 }),
