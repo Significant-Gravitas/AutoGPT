@@ -8,11 +8,7 @@ export function EmptySchedules() {
     <div className="flex h-full flex-col items-center justify-center gap-20">
       <EmptySchedulesIllustration />
       <div className="flex flex-col items-center gap-2">
-        <Text
-          variant="h4"
-          // oxlint-disable-next-line design-system/no-restyle -- no heading variant keeps the parent line height; h4 alone would move the empty state by 9px
-          className="text-center leading-inherit"
-        >
+        <Text variant="h4" leading="inherit" align="center">
           Nothing scheduled yet
         </Text>
         <Text variant="large" tone="body">

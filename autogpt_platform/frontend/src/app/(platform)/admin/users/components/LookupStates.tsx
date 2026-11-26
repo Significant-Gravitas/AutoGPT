@@ -14,7 +14,7 @@ export function EmptyState() {
       <span className="flex text-foreground-subtle">
         <Icon icon={UserSearch01Icon} size={32} aria-hidden />
       </span>
-      <Text variant="large-medium" as="h2">
+      <Text variant="large" weight="medium" as="h2">
         Look up a user
       </Text>
       <Text variant="body" tone="secondary">
@@ -30,7 +30,7 @@ export function NotFoundState({ query }: { query: string }) {
       <span className="flex text-foreground-subtle">
         <Icon icon={UserQuestion01Icon} size={32} aria-hidden />
       </span>
-      <Text variant="large-medium" as="h2" className="break-all">
+      <Text variant="large" weight="medium" as="h2" className="break-all">
         No user matches <span className="font-medium">{query}</span>
       </Text>
       <Text variant="body" tone="secondary">

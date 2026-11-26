@@ -29,8 +29,7 @@ export function CreatorCard({
   return (
     <button
       type="button"
-      // oxlint-disable-next-line design-system/no-arbitrary-values -- the card's hover lift shadow has no shadow token
-      className={`relative flex h-[16rem] w-full cursor-pointer flex-col items-start rounded-2xl border p-4 text-left shadow-message-table transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] ${backgroundColor(index)}`}
+      className={`relative flex h-[16rem] w-full cursor-pointer flex-col items-start rounded-2xl border p-4 text-left shadow-message-table transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lift ${backgroundColor(index)}`}
       onClick={onClick}
       data-testid="creator-card"
     >

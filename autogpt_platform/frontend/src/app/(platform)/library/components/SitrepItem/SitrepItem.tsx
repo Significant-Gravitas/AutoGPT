@@ -128,7 +128,7 @@ export function SitrepItem({ item }: Props) {
         )}
 
         <div className="min-w-0 flex-1">
-          <Text variant="body-medium-lh-snug" tone="primary">
+          <Text variant="body" weight="medium" leading="snug" tone="primary">
             {item.agentName}
           </Text>
           {item.runningSince ? (
@@ -136,7 +136,8 @@ export function SitrepItem({ item }: Props) {
           ) : (
             <OverflowText
               value={item.message}
-              variant="small-lh-tight"
+              variant="small"
+              leading="tight"
               tone="muted"
             />
           )}

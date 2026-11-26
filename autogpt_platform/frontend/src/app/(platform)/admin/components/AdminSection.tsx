@@ -29,7 +29,7 @@ export function AdminSection({
     >
       {title ? (
         <div className="mb-4 flex flex-col">
-          <Text variant="body-medium" as="h2" id={titleId}>
+          <Text variant="body" weight="medium" as="h2" id={titleId}>
             {title}
           </Text>
           {description ? (

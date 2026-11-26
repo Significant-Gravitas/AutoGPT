@@ -47,7 +47,7 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
             // enable (so they can audit what the public viewer sees
             // right now).
             <div className="rounded-md border border-border-base bg-surface-muted p-3">
-              <Text variant="small-medium" tone="primary">
+              <Text variant="small" weight="medium" tone="primary">
                 {state.isShared ? "Currently sharing" : "About to share"}
               </Text>
               <ul className="mt-1 list-disc pl-5 text-caption text-foreground-body">
@@ -75,7 +75,7 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
               state always matches what the viewer sees. */}
           <div className="flex items-center justify-between gap-3 rounded border border-border-base px-3 py-2.5">
             <div className="min-w-0">
-              <Text variant="body-medium">
+              <Text variant="body" weight="medium">
                 Share workflow runs in this chat
               </Text>
               <Text variant="small" tone="muted">
@@ -93,7 +93,9 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
 
           {state.isShared && state.shareUrl && (
             <div className="space-y-2">
-              <Text variant="small-medium">Share link</Text>
+              <Text variant="small" weight="medium">
+                Share link
+              </Text>
               <div className="flex items-center gap-2">
                 <input
                   readOnly

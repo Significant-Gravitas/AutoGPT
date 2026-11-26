@@ -185,8 +185,8 @@ function renderCustomStyledDialog() {
       title="Custom Styled Dialog"
       styling={{
         maxWidth: "800px",
-        backgroundColor: "rgb(248 250 252)",
-        border: "2px solid rgb(59 130 246)",
+        backgroundColor: "rgb(var(--color-surface-muted))",
+        border: "2px solid rgb(var(--color-info))",
       }}
     >
       <Dialog.Trigger>

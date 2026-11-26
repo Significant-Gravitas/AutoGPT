@@ -23,7 +23,7 @@ export function CheckoutAction({
   onClick,
 }: Props) {
   return (
-    <div className="sticky bottom-0 z-10 -mx-5 mt-auto flex flex-col gap-2.5 border-t border-border-base bg-surface px-5 pt-3 pb-4 sm:-mx-8 sm:px-8 lg:static lg:mx-0 lg:border-t-0 lg:px-0 lg:pt-0 lg:pb-0">
+    <div className="sticky bottom-0 z-raised -mx-5 mt-auto flex flex-col gap-2.5 border-t border-border-base bg-surface px-5 pt-3 pb-4 sm:-mx-8 sm:px-8 lg:static lg:mx-0 lg:border-t-0 lg:px-0 lg:pt-0 lg:pb-0">
       <Button
         variant="primary"
         size="large"

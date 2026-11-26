@@ -98,10 +98,11 @@ export function CredentialsGroupedView({
           type="single"
           collapsible
           onValueChange={handleSystemSectionChange}
+          variant="plain"
           className={visibleFields.length > 0 ? "mt-4" : ""}
         >
-          <AccordionItem value={SYSTEM_SECTION} className="border-none">
-            <AccordionTrigger className="py-2 text-body text-foreground-tertiary hover:no-underline">
+          <AccordionItem value={SYSTEM_SECTION}>
+            <AccordionTrigger className="text-body text-foreground-tertiary">
               <div className="flex items-center gap-1">
                 <Icon icon={SlidersHorizontalIcon} size={16} /> System
                 credentials

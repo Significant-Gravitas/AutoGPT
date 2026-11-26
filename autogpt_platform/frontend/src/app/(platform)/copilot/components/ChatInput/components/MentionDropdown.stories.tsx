@@ -43,7 +43,8 @@ function AccountMentionComposer({ expertId }: Props) {
         <div className="mb-8 flex justify-end">
           <Text
             as="div"
-            variant="large-loose"
+            variant="large"
+            leading="8"
             tone="primary"
             data-testid="sent-message"
             className="max-w-full rounded-3xl bg-surface-hover px-4 py-2.5 whitespace-pre-wrap"
@@ -77,7 +78,8 @@ function AccountMentionComposer({ expertId }: Props) {
           {attachments.map((name) => (
             <Text
               key={name}
-              variant="body-tight"
+              variant="body"
+              leading="5"
               as="span"
               className="rounded-lg bg-surface-hover px-2 py-1 text-foreground-base"
             >

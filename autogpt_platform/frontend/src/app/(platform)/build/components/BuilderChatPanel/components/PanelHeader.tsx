@@ -24,7 +24,13 @@ export function PanelHeader({
     <div className="flex items-center justify-between border-b border-separator px-4 py-3">
       <div className="flex items-center gap-2">
         <Icon icon={BubbleChatIcon} size={18} tone="brand" />
-        <Text variant="body-semibold-tight" tone="body" as="span">
+        <Text
+          variant="body"
+          weight="semibold"
+          leading="5"
+          tone="body"
+          as="span"
+        >
           Chat with Builder
         </Text>
       </div>

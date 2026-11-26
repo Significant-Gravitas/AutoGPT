@@ -35,10 +35,10 @@ export function RecoveryPrompt({
           Use that recording
         </Button>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="xs" onClick={onDownload}>
+          <Button variant="ghost" size="xs" shape="sharp" onClick={onDownload}>
             Download recording
           </Button>
-          <Button variant="ghost" size="xs" onClick={onDiscard}>
+          <Button variant="ghost" size="xs" shape="sharp" onClick={onDiscard}>
             Start over
           </Button>
         </div>

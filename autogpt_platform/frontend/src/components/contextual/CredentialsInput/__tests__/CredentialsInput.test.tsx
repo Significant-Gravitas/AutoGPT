@@ -1089,6 +1089,53 @@ describe("CredentialsInput – a removed connection", () => {
   });
 });
 
+describe("CredentialsInput – a run's read-only inputs", () => {
+  const mcpSchema: BlockIOCredentialsSubSchema = {
+    type: "object",
+    properties: {},
+    credentials_provider: ["mcp"],
+    credentials_types: ["oauth2"],
+  };
+  const runKey = {
+    id: "mcp-key",
+    provider: "mcp",
+    type: "oauth2" as const,
+    title: "My MCP server",
+  };
+
+  it("names a key the field's filters leave out instead of calling it deleted", () => {
+    // A workflow whose server address comes from an upstream link: the field
+    // knows no host, so the picker's own list leaves the saved key out.
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        provider: "mcp",
+        providerName: "MCP",
+        schema: mcpSchema,
+        savedCredentials: [],
+        allProviderCredentials: [runKey],
+      }),
+    );
+
+    render(
+      <CredentialsInput
+        schema={mcpSchema}
+        selectedCredentials={{
+          id: runKey.id,
+          provider: "mcp",
+          type: "oauth2",
+          title: runKey.title,
+        }}
+        onSelectCredentials={vi.fn()}
+        readOnly
+        showTitle={false}
+      />,
+    );
+
+    expect(screen.getByText("My MCP server")).toBeDefined();
+    expect(screen.queryByText(/\(deleted\)/)).toBeNull();
+  });
+});
+
 describe("CredentialsInput default variant", () => {
   it("opens the unified connect dialog instead of the per-type action flow", async () => {
     mockUseCredentials.mockReturnValue(makeCredentialsReturn());

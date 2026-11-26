@@ -50,6 +50,9 @@ class TurnBudget(BaseModel):
     # allowance is real money with no plan behind it, so the CLI backstop
     # sits exactly on the budget instead of above it.
     hard_cap: bool = False
+    # The most a budget that grows while the turn runs can reach: a turn
+    # billed to credits holds its balance a step at a time.
+    grows_to_usd: float | None = None
     # The plan tier the budget was worked out for, for analytics.
     tier: str | None = None
 

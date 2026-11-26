@@ -92,8 +92,8 @@ function NotesList({
       <Link
         href={`/settings/memory?expert=${encodeURIComponent(expertId)}`}
         variant="secondary"
-        // oxlint-disable-next-line design-system/no-restyle -- Link has no secondary-colour tone (src/components is P9's)
-        className="mt-3 inline-block text-foreground-secondary"
+        tone="secondary"
+        className="mt-3 inline-block"
       >
         See all in memory settings
       </Link>

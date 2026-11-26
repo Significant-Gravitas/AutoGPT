@@ -19,13 +19,13 @@ export function StepItem({ index, description, blockName, status }: Props) {
         <StepStatusIcon status={status} />
       </div>
       <div className="min-w-0 flex-1">
-        <Text variant="body-medium-tight">
+        <Text variant="body" weight="medium" leading="5">
           {index + 1}. {description}
         </Text>
         {blockName && (
           <div className="mt-0.5 flex items-center gap-1">
             <Icon icon={CubeIcon} size={12} tone="muted" />
-            <Text variant="small-mono-tight" as="p" tone="muted">
+            <Text variant="small" mono leading="4" as="p" tone="muted">
               {blockName}
             </Text>
           </div>

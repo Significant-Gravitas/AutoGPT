@@ -64,7 +64,7 @@ export function LocalPCRecordingConsent({
           </Text>
 
           <div className="flex flex-col gap-1">
-            <Text variant="body-medium" tone="primary">
+            <Text variant="body" weight="medium" tone="primary">
               Worth knowing:
             </Text>
             <ul className="ml-4 list-disc text-body text-foreground-body">
@@ -84,14 +84,14 @@ export function LocalPCRecordingConsent({
             </ul>
           </div>
 
-          <Text variant="body-tight" tone="body">
+          <Text variant="body" leading="5" tone="body">
             Prefer to keep raw screenshots on your machine? Install a local
             model and re-record. The hygiene-redacted structured steps shown in
             review have already been transferred to this authenticated browser.
           </Text>
 
           {errorMessage ? (
-            <Text variant="body-tight" role="alert" tone="danger">
+            <Text variant="body" leading="5" role="alert" tone="danger">
               {errorMessage}
             </Text>
           ) : null}

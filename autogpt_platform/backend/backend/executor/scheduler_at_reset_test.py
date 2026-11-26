@@ -426,6 +426,19 @@ async def test_a_refused_dispatch_puts_it_back(fire_env, chat_blocked_events):
 
 
 @pytest.mark.asyncio
+async def test_a_membership_that_cannot_be_read_puts_it_back(
+    fire_env, _turn_owners_belong_to_their_org
+):
+    _turn_owners_belong_to_their_org.is_active_member.side_effect = RuntimeError(
+        "database manager unavailable"
+    )
+    await _fire(_args("send", organization_id="org-sched", team_id="team-sched"))
+    fire_env.dispatch.assert_not_awaited()
+    readded = fire_env.client.add_copilot_turn_schedule.await_args.kwargs
+    assert (readded["purpose"], readded["cap_retry_count"]) == ("send", 1)
+
+
+@pytest.mark.asyncio
 async def test_a_turn_that_fires_sends_nothing(fire_env, chat_blocked_events):
     await _fire(_args("send"))
     fire_env.dispatch.assert_awaited_once()

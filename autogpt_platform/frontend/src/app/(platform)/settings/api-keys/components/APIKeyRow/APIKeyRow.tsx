@@ -63,7 +63,7 @@ export function APIKeyRow({
         </button>
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <Text variant="body-medium" as="span">
+            <Text variant="body" weight="medium" as="span">
               {apiKey.name}
             </Text>
             <TooltipProvider>
@@ -86,7 +86,7 @@ export function APIKeyRow({
             <Text variant="label" as="span" tone="body">
               {maskedKey}
             </Text>
-            <Text variant="small-loose" as="span" tone="muted">
+            <Text variant="small" leading="5" as="span" tone="muted">
               {apiKey.last_used_at ? (
                 <>
                   Used <RelativeTime date={apiKey.last_used_at} />

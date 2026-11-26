@@ -38,7 +38,7 @@ export function FollowupListItem({ followup }: Props) {
   const kindBadgeLabel = followup.session_id ? "Same chat" : "New chat";
   const kindBadge = (
     <span
-      className="rounded-full bg-surface-hover px-2 py-0.5 text-caption text-foreground-secondary"
+      className="rounded-pill bg-surface-hover px-2 py-0.5 text-caption text-foreground-secondary"
       data-testid="followup-kind-badge"
     >
       {kindBadgeLabel}
@@ -48,14 +48,14 @@ export function FollowupListItem({ followup }: Props) {
   const detailContent = (
     <>
       <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-separator bg-warning-surface">
-        <Icon
-          icon={Comment01Icon}
-          size={18}
-          className="text-yellow-foreground"
-        />
+        <Icon icon={Comment01Icon} size={18} tone="yellow" />
       </div>
       <div className="flex min-w-0 flex-col gap-1">
-        <Text variant="body-medium" className="block w-full text-ellipsis">
+        <Text
+          variant="body"
+          weight="medium"
+          className="block w-full text-ellipsis"
+        >
           {messagePreview}
         </Text>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">

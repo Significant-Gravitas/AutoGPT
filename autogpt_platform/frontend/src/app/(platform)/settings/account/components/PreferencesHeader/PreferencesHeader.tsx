@@ -3,8 +3,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 
 import { Text } from "@/components/atoms/Text/Text";
-
-import { EASE_OUT } from "../../helpers";
+import { duration, ease } from "@/components/styles/motion";
 
 export function PreferencesHeader() {
   const reduceMotion = useReducedMotion();
@@ -13,7 +12,11 @@ export function PreferencesHeader() {
     <motion.header
       initial={reduceMotion ? false : { opacity: 0, y: 8 }}
       animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-      transition={reduceMotion ? undefined : { duration: 0.32, ease: EASE_OUT }}
+      transition={
+        reduceMotion
+          ? undefined
+          : { duration: duration.slow, ease: ease.emphasized }
+      }
       className="flex min-w-0 flex-col pb-2 pl-4"
     >
       <Text variant="h4" as="h1">

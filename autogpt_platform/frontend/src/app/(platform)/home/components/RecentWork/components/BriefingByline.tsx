@@ -15,7 +15,7 @@ export function BriefingByline({ briefing }: Props) {
     <div data-testid="briefing-byline" className="px-4 py-3">
       <div className="mb-1.5 flex items-center gap-2">
         <AutopilotAvatar size={20} />
-        <Text variant="small-medium" as="span" tone="primary">
+        <Text variant="small" weight="medium" as="span" tone="primary">
           {author.name}
         </Text>
         <span aria-hidden="true" className="text-foreground-disabled">
@@ -25,7 +25,7 @@ export function BriefingByline({ briefing }: Props) {
           {author.role}
         </Text>
       </div>
-      <Text variant="body-tight" tone="secondary" className="text-pretty">
+      <Text variant="body" leading="5" tone="secondary" className="text-pretty">
         {narrative}
       </Text>
     </div>
