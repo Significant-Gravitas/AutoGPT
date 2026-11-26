@@ -36,6 +36,10 @@ export function useSettingsScreen() {
     router.navigate("/notifications");
   }
 
+  function openMemory() {
+    router.navigate("/memory");
+  }
+
   function handleSignOut() {
     void signOut();
   }
@@ -52,6 +56,7 @@ export function useSettingsScreen() {
     closeDelete: () => setIsDeleteOpen(false),
     openPlan,
     openNotifications,
+    openMemory,
     openHelp: () => openWeb(HELP_URL),
     openTerms: () => openWeb(TERMS_OF_USE_URL),
     openPrivacy: () => openWeb(PRIVACY_POLICY_URL),

@@ -39,6 +39,7 @@ export default function AppLayout() {
         <Drawer.Screen name="files/[folderId]" />
         <Drawer.Screen name="settings" />
         <Drawer.Screen name="notifications" />
+        <Drawer.Screen name="memory" />
         <Drawer.Screen name="plan" />
       </Drawer>
     </View>

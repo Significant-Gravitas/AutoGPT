@@ -1,4 +1,5 @@
 import {
+  BrainIcon,
   Delete02Icon,
   File01Icon,
   HelpCircleIcon,
@@ -67,6 +68,12 @@ export default function SettingsScreen() {
             label="Notifications"
             trailing="page"
             onPress={settings.openNotifications}
+          />
+          <SettingsRow
+            icon={BrainIcon}
+            label="Memory"
+            trailing="page"
+            onPress={settings.openMemory}
           />
         </SettingsGroup>
         <SettingsGroup>
