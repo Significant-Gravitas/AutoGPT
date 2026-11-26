@@ -48,7 +48,7 @@ export function SettingsRow({
           ) : null}
         </View>
         {value ? (
-          <Text numberOfLines={1} style={styles.value}>
+          <Text numberOfLines={2} style={styles.value}>
             {value}
           </Text>
         ) : null}
@@ -89,5 +89,12 @@ const useStyles = createStyles((colors) => ({
   label: { ...type.body, color: colors.text },
   detail: { ...type.small, color: colors.textTertiary },
   destructive: { color: colors.error },
-  value: { ...type.label, fontWeight: "400", color: colors.textSecondary },
+  value: {
+    ...type.label,
+    flexShrink: 1,
+    maxWidth: "60%",
+    fontWeight: "400",
+    textAlign: "right",
+    color: colors.textSecondary,
+  },
 }));

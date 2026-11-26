@@ -50,7 +50,7 @@ export default function NotificationsScreen() {
             title="Time zone"
             note="Briefings and routines use this time zone."
           >
-            <SettingsRow label="Time zone" value={timezoneLabel(zone)} />
+            <SettingsRow label="Current" value={timezoneLabel(zone)} />
             {zoneOffer ? (
               <Pressable
                 accessibilityRole="button"
@@ -66,15 +66,21 @@ export default function NotificationsScreen() {
         </ScrollView>
       );
     }
-    if (screen.isLoading) {
-      return <ActivityIndicator style={styles.loading} color={colors.textTertiary} />;
+    if (screen.isLoadError) {
+      return (
+        <View style={styles.center}>
+          <Text style={styles.notice}>{"Your settings didn't load. Try again."}</Text>
+          <Button
+            label="Try again"
+            variant="secondary"
+            size="small"
+            isLoading={screen.isRetrying}
+            onPress={screen.retry}
+          />
+        </View>
+      );
     }
-    return (
-      <View style={styles.center}>
-        <Text style={styles.notice}>{"Your settings didn't load. Try again."}</Text>
-        <Button label="Try again" variant="secondary" size="small" onPress={screen.retry} />
-      </View>
-    );
+    return <ActivityIndicator style={styles.loading} color={colors.textTertiary} />;
   }
 
   return (

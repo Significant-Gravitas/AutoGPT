@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
+import { useRef } from "react";
 
 import { useToast } from "@/components/useToast";
 import {
@@ -25,19 +26,27 @@ export function useNotificationsScreen() {
     queryFn: getNotificationPreferences,
   });
   const timezone = useQuery({ queryKey: preferenceKeys.timezone, queryFn: getTimezone });
+  // Per cache key, the number of the last save; an older one's answer is stale.
+  const lastSave = useRef<Record<string, number>>({});
 
-  // Shown at once, then saved; a refused save puts the old value back.
+  // Shown at once, then saved; a refused save puts the old value back. Each
+  // save sends every field, so only the newest may write what came back.
   async function save<T>(
     queryKey: readonly string[],
     next: T,
     request: () => Promise<T>,
   ) {
+    const id = queryKey.join("/");
+    const number = (lastSave.current[id] ?? 0) + 1;
+    lastSave.current[id] = number;
     await queryClient.cancelQueries({ queryKey });
     const previous = queryClient.getQueryData<T>(queryKey);
     queryClient.setQueryData<T>(queryKey, next);
     try {
-      queryClient.setQueryData<T>(queryKey, await request());
+      const answer = await request();
+      if (lastSave.current[id] === number) queryClient.setQueryData<T>(queryKey, answer);
     } catch {
+      if (lastSave.current[id] !== number) return;
       queryClient.setQueryData<T>(queryKey, previous);
       show({ message: SAVE_FAILED, tone: "error" });
       void queryClient.invalidateQueries({ queryKey });
@@ -81,9 +90,9 @@ export function useNotificationsScreen() {
     preferences: preferences.data ?? null,
     zone,
     zoneOffer: zone === null ? null : timezoneOffer(zone, phoneTimezone()),
-    isLoading: preferences.isPending || timezone.isPending,
     isLoadError:
       (preferences.isError && !preferences.data) || (timezone.isError && !timezone.data),
+    isRetrying: preferences.isFetching || timezone.isFetching,
     retry,
     goBack,
     chooseBriefing,
