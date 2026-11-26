@@ -99,7 +99,7 @@ export function ExpertInstallMenu({
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[15rem]">
         <DropdownMenuLabel>
-          <Text variant="small-tight" as="div" tone="muted">
+          <Text variant="small" leading="4" as="div" tone="muted">
             {MENU_LABEL}
           </Text>
         </DropdownMenuLabel>

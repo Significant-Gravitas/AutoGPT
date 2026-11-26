@@ -7,8 +7,8 @@ const animate = vi.fn();
 
 // The scope keeps one ref object across renders, as Motion's does, so the
 // effect sees `scope.current` go from null to the element.
-vi.mock("motion/react", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("motion/react")>();
+vi.mock("framer-motion", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("framer-motion")>();
   return {
     ...actual,
     useAnimate: () => [useRef(null), animate],

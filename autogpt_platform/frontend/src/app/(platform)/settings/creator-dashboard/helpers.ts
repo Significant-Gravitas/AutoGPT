@@ -29,8 +29,6 @@ export function buildEditPayload(submission: StoreSubmission): EditPayload {
   };
 }
 
-export const EASE_OUT = [0.16, 1, 0.3, 1] as const;
-
 export type StatusFilterValue = "all" | SubmissionStatus;
 
 export type SortKey = "submitted" | "runs";
@@ -111,7 +109,7 @@ export const STATUS_VISUAL: Record<SubmissionStatus, StatusVisual> = {
     Icon: Clock01Icon,
     pillClass:
       "bg-surface-hover text-foreground-body ring-1 ring-inset ring-border-base",
-    dotClass: "bg-foreground-subtle",
+    dotClass: "bg-fill-subtle",
   },
   [SubmissionStatus.PENDING]: {
     label: "In review",

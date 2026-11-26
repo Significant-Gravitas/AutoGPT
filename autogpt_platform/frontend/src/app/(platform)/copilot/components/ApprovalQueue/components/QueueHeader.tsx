@@ -26,7 +26,7 @@ export function QueueHeader({
       </span>
       <div className="flex items-center gap-3">
         {modeLabel(mode) && (
-          <Text variant="small-tight" as="span" tone="muted">
+          <Text variant="small" leading="4" as="span" tone="muted">
             {modeLabel(mode)}
           </Text>
         )}

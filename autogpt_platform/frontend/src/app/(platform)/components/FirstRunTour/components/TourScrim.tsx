@@ -23,7 +23,7 @@ export function TourScrim({ boxes, dim = true }: Props) {
       aria-hidden
       data-testid="first-run-tour-scrim"
       className={cn(
-        "fixed inset-0 z-[110]",
+        "fixed inset-0 z-tour-scrim",
         dim ? "pointer-events-auto" : "pointer-events-none",
       )}
     >
@@ -50,7 +50,7 @@ export function TourScrim({ boxes, dim = true }: Props) {
           <rect
             width="100%"
             height="100%"
-            className="fill-foreground-base/55"
+            className="fill-scrim/55"
             mask={`url(#${maskID})`}
           />
         </svg>
@@ -63,10 +63,8 @@ export function TourScrim({ boxes, dim = true }: Props) {
             // Over the dim the lit hole is the highlight; the edge only
             // crisps it. On an undimmed page a dark ring has to carry it.
             dim
-              ? // oxlint-disable-next-line design-system/no-arbitrary-values -- the spotlight's two-ring halo has no shadow token
-                "shadow-[0_0_0_1.5px_rgb(255_255_255/0.9),0_0_0_6px_rgb(255_255_255/0.14)]"
-              : // oxlint-disable-next-line design-system/no-arbitrary-values -- the spotlight's two-ring halo has no shadow token
-                "shadow-[0_0_0_2px_rgb(var(--color-surface)),0_0_0_4px_rgb(var(--color-foreground-strong)),0_8px_24px_-8px_rgb(0_0_0/0.25)]",
+              ? "shadow-spotlight"
+              : "shadow-drop ring-2 ring-foreground-strong ring-offset-2 ring-offset-surface",
           )}
           style={
             {

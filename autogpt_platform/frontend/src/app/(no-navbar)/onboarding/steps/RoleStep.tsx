@@ -21,6 +21,7 @@ import {
   Target01Icon,
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
+import { duration, ease } from "@/components/styles/motion";
 
 const ICON_SIZE = 20;
 
@@ -111,8 +112,8 @@ export function RoleStep() {
               animate={{ opacity: 1, height: "auto", y: 0 }}
               exit={{ opacity: 0, height: 0, y: reduceMotion ? 0 : -8 }}
               transition={{
-                duration: reduceMotion ? 0.15 : 0.24,
-                ease: [0.22, 1, 0.36, 1],
+                duration: reduceMotion ? duration.fast : duration.base,
+                ease: ease.glide,
               }}
               className="-my-1 w-full max-w-lg overflow-hidden"
             >

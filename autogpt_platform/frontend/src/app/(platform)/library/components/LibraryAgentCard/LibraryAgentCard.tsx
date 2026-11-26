@@ -26,6 +26,7 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { Chatting01Icon, EyeIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { spring } from "@/components/styles/motion";
 
 const PLACEHOLDER_GRADIENTS = [
   "bg-gradient-to-r from-success/45 to-info/30",
@@ -79,8 +80,7 @@ export function LibraryAgentCard({
         )}
         transition={{
           type: "spring",
-          damping: 25,
-          stiffness: 300,
+          ...spring.gentle,
         }}
       >
         <NextLink href={`/library/agents/${id}`} className="flex-shrink-0">

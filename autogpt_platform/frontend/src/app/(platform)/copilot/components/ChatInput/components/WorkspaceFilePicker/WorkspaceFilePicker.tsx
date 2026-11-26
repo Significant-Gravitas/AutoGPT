@@ -63,7 +63,7 @@ export function WorkspaceFilePicker({
               width={18}
               height={18}
               tone="muted"
-              className="absolute top-1/2 left-4 z-20 -translate-y-1/2"
+              className="absolute top-1/2 left-4 z-sticky -translate-y-1/2"
             />
             <Input
               label="Search workspace files"
@@ -87,7 +87,7 @@ export function WorkspaceFilePicker({
                   onCheckedChange={picker.setExpertOnly}
                 />
                 <label htmlFor="picker-expert-only">
-                  <Text tone="body" variant="small-medium" as="span">
+                  <Text tone="body" variant="small" weight="medium" as="span">
                     Only {who}&rsquo;s files
                   </Text>
                 </label>

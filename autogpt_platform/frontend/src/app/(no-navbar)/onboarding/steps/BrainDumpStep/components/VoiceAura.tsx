@@ -43,7 +43,7 @@ export function VoiceAura({ colors, size, levels, isActive, children }: Props) {
         layer="behind"
         store={storeRef.current}
       />
-      <div className="relative z-10">{children}</div>
+      <div className="relative z-raised">{children}</div>
       <VoiceStreaks
         field={fieldRef.current.field}
         levels={levels}

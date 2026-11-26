@@ -14,7 +14,7 @@ export function isOverAutocompact(context: number): boolean {
 }
 
 export const BREAKDOWN_COLORS = {
-  system: "bg-foreground-subtle",
+  system: "bg-fill-subtle",
   user: "bg-sky",
   assistant: "bg-brand/60",
   tools: "bg-success",

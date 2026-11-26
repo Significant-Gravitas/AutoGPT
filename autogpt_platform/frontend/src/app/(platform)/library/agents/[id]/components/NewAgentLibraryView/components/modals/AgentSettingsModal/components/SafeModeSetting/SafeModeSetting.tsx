@@ -25,7 +25,8 @@ export function SafeModeSetting({
       <div className="flex w-full items-start justify-between gap-4">
         <div className="flex-1">
           <Text
-            variant="large-semibold"
+            variant="large"
+            weight="semibold"
             as="label"
             htmlFor={switchID}
             className="block"

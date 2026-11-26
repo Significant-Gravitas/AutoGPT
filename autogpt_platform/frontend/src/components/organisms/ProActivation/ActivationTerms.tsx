@@ -12,7 +12,7 @@ interface Props {
 export function ActivationTerms({ terms }: Props) {
   return (
     <div data-slot="activation-terms" className="space-y-5">
-      <Text variant="body" tone="secondary" className="leading-relaxed">
+      <Text variant="body" tone="secondary" leading="relaxed">
         {trialEndNotice(terms)}
       </Text>
       <ActivationSummary terms={terms} />

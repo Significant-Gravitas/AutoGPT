@@ -32,25 +32,27 @@ function RowBody({
   pending?: boolean;
 }) {
   const barClasses = destructive
-    ? "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-error opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100"
-    : "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-action-hover opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100";
+    ? "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-pill bg-error opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100"
+    : "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-pill bg-action-hover opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100";
 
   return (
     <>
       <span className={barClasses} aria-hidden="true" />
-      <span className="relative z-10 flex shrink-0 items-center">{icon}</span>
-      <span className="relative z-10 flex-1 truncate">{label}</span>
+      <span className="relative z-raised flex shrink-0 items-center">
+        {icon}
+      </span>
+      <span className="relative z-raised flex-1 truncate">{label}</span>
       {pending ? (
         <LoadingSpinner
           size="small"
-          className="relative z-10 text-current"
+          className="relative z-raised"
           aria-hidden="true"
         />
       ) : external ? (
         <Icon
           icon={LinkSquare01Icon}
           tone="body"
-          className="relative z-10 shrink-0"
+          className="relative z-raised shrink-0"
           size={16}
           aria-hidden="true"
         />

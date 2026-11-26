@@ -5,7 +5,9 @@
    modifiers keep working. globals.css registers every role in its
    `@theme inline` block, so `bg-surface` is `rgb(var(--color-surface) / 1)`
    and follows these values at runtime. A theme is a second block that
-   redefines these same names, with no component edits; there is none yet.
+   redefines these same names, with no component edits. There is no second
+   theme yet; docs/engineering/design-system.md, "Dark mode", says how to
+   add one.
 
    The hex beside each value is the palette class it replaced. Pale tints and
    borders of a hue are its role at an opacity (`bg-orange/10`, `ring-sky/30`)
@@ -98,12 +100,30 @@
   --color-edge: 131 131 140; /* zinc-500 #83838C, an untyped edge (at /50, solid on hover) */
   --color-handle: 156 163 175; /* gray-400 #9CA3AF, a node's input and output handles */
 
-  /* The hairline ring of the smooth-shadow-ring-* utilities. */
-  --smooth-ring-color: rgb(0 0 0 / 0.05);
-}
+  /* Inverse: a dark surface that shows content on the light theme (toast,
+     tooltip, terminal, code header, a dark chip) and the text on it. The same
+     colours as action today, so a look can change the button alone. */
+  --color-surface-inverse: 62 62 67; /* zinc-800 #3E3E43, as action */
+  --color-surface-inverse-hover: 44 44 48; /* zinc-900 #2C2C30, as action-hover */
+  --color-foreground-inverse: 254 254 254; /* white #FEFEFE, as action-foreground */
 
-.dark {
-  --smooth-ring-color: rgb(255 255 255 / 0.18);
+  /* Text and icons on a saturated fill (brand, a status, an accent). */
+  --color-foreground-on-color: 254 254 254; /* white #FEFEFE, as action-foreground */
+
+  /* Fills: solid marks that are not text (dots, bars, tracks, icon tiles),
+     lightest first. Each has the value of the text role it replaced. */
+  --color-fill-subtle: 173 173 179; /* zinc-400 #ADADB3, as foreground-subtle */
+  --color-fill-soft: 131 131 140; /* zinc-500 #83838C, as foreground-tertiary */
+  --color-fill-medium: 104 104 111; /* zinc-600 #68686F, as foreground-secondary */
+  --color-fill-bold: 80 80 87; /* zinc-700 #505057, as foreground-body */
+  --color-fill-strong: 20 20 20; /* black #141414, as foreground-base */
+
+  /* Shell: the app frame around the page, the sidebar. Not read yet. */
+  --color-shell: 249 249 250; /* zinc-50 #F9F9FA, as surface-muted */
+  --color-shell-foreground: 62 62 67; /* zinc-800 #3E3E43, as foreground-emphasis */
+  --color-shell-hover: 239 239 240; /* zinc-100 #EFEFF0, as surface-hover */
+  --color-shell-active: 218 218 220; /* zinc-200 #DADADC, as surface-active */
+  --color-shell-border: 218 218 220; /* zinc-200 #DADADC, as border-base */
 }
 
 /* The shadcn names streamdown's prebuilt classes use (`bg-muted`,
@@ -124,8 +144,8 @@
 
 /* The palette classes streamdown's prebuilt markup still writes: the veil over
    a hovered image and the mermaid error box. The palette is gone, so they are
-   drawn here, inside streamdown's markup only, with the values the palette
-   gave them (a role where one has the same colour). */
+   drawn here, inside streamdown's markup only, from the roles: the role with
+   the same colour, or a mix within a step of the palette's value. */
 :where([data-streamdown] *) {
   &.bg-black\/10 {
     background-color: rgb(var(--color-scrim) / 0.1);
@@ -134,10 +154,20 @@
     background-color: rgb(var(--color-error-surface) / 1);
   }
   &.bg-red-100 {
-    background-color: rgb(253 236 236); /* red-100 #FDECEC */
+    /* red-100 was 253 236 236; this is 253 235 235 */
+    background-color: color-mix(
+      in srgb,
+      rgb(var(--color-error)) 10%,
+      rgb(var(--color-surface))
+    );
   }
   &.border-red-200 {
-    border-color: rgb(250 197 197); /* red-200 #FAC5C5 */
+    /* red-200 was 250 197 197; this is 250 198 198 */
+    border-color: color-mix(
+      in srgb,
+      rgb(var(--color-error)) 30%,
+      rgb(var(--color-surface))
+    );
   }
   &.text-red-600 {
     color: rgb(var(--color-error-hover) / 1);
@@ -146,6 +176,11 @@
     color: rgb(var(--color-error-foreground) / 1);
   }
   &.text-red-800 {
-    color: rgb(131 37 37); /* red-800 #832525 */
+    /* red-800 was 131 37 37; this is 131 41 41 */
+    color: color-mix(
+      in srgb,
+      rgb(var(--color-error-foreground)) 74%,
+      rgb(var(--color-foreground-base))
+    );
   }
 }

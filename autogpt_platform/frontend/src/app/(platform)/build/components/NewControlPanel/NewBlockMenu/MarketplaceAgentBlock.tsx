@@ -69,7 +69,8 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
       <div className="flex flex-1 flex-col items-start gap-0.5">
         {title && (
           <Text
-            variant="body-medium"
+            variant="body"
+            weight="medium"
             as="span"
             tone={rest.disabled ? "subtle" : "emphasis"}
             className="line-clamp-1"
@@ -79,7 +80,8 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
         )}
         <div className="flex items-center space-x-2.5">
           <Text
-            variant="small-loose"
+            variant="small"
+            leading="5"
             as="span"
             tone={rest.disabled ? "subtle" : "muted"}
             className="truncate"
@@ -87,19 +89,32 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             By {creator_name}
           </Text>
 
-          <Text variant="body-medium-tight" as="span" tone="subtle">
+          <Text
+            variant="body"
+            weight="medium"
+            leading="5"
+            as="span"
+            tone="subtle"
+          >
             •
           </Text>
 
           <Text
-            variant="small-loose"
+            variant="small"
+            leading="5"
             as="span"
             tone={rest.disabled ? "subtle" : "muted"}
             className="truncate"
           >
             {number_of_runs} runs
           </Text>
-          <Text variant="body-medium-tight" as="span" tone="subtle">
+          <Text
+            variant="body"
+            weight="medium"
+            leading="5"
+            as="span"
+            tone="subtle"
+          >
             •
           </Text>
           <Link
@@ -108,7 +123,10 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             onClick={(e) => e.stopPropagation()}
           >
             <Text
-              variant="small-medium-loose-underline"
+              variant="small"
+              weight="medium"
+              leading="5"
+              decoration="underline"
               as="span"
               tone="info-strong"
             >
@@ -125,7 +143,7 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
       </div>
       <div
         className={cn(
-          "flex h-7 min-w-7 items-center justify-center rounded-lg bg-foreground-body group-disabled:bg-foreground-subtle",
+          "flex h-7 min-w-7 items-center justify-center rounded-lg bg-fill-bold group-disabled:bg-fill-subtle",
         )}
       >
         {!loading ? (
@@ -149,20 +167,25 @@ const MarketplaceAgentBlockSkeleton: React.FC<{ className?: string }> = ({
   return (
     <Skeleton
       className={cn(
-        "flex h-[4.375rem] w-full min-w-[7.5rem] animate-pulse items-center justify-start gap-3 rounded-xl bg-surface-hover p-2.5 pr-3.5",
+        "flex h-[4.375rem] w-full min-w-[7.5rem] items-center justify-start rounded-xl",
         className,
       )}
     >
-      <Skeleton className="h-[3.125rem] w-[5.625rem] rounded-md bg-surface-active" />
-      <div className="flex flex-1 flex-col items-start gap-0.5">
-        <Skeleton className="h-[1.375rem] w-24 rounded bg-surface-active" />
-        <div className="flex items-center gap-1">
-          <Skeleton className="h-5 w-16 rounded bg-surface-active" />
+      <div className="flex w-full items-center justify-start gap-3 p-2.5 pr-3.5">
+        <Skeleton
+          variant="nested"
+          className="h-[3.125rem] w-[5.625rem] rounded-md"
+        />
+        <div className="flex flex-1 flex-col items-start gap-0.5">
+          <Skeleton variant="nested" className="h-[1.375rem] w-24 rounded" />
+          <div className="flex items-center gap-1">
+            <Skeleton variant="nested" className="h-5 w-16 rounded" />
 
-          <Skeleton className="h-5 w-16 rounded bg-surface-active" />
+            <Skeleton variant="nested" className="h-5 w-16 rounded" />
+          </div>
         </div>
+        <Skeleton variant="nested" className="h-7 w-7 rounded-lg" />
       </div>
-      <Skeleton className="h-7 w-7 rounded-lg bg-surface-active" />
     </Skeleton>
   );
 };

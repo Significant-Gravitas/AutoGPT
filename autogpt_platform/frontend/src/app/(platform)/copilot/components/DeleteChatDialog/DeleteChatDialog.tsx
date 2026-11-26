@@ -33,7 +33,7 @@ export function DeleteChatDialog({
       <Dialog.Content>
         <Text variant="body">
           Are you sure you want to delete{" "}
-          <Text variant="body-medium" as="span">
+          <Text variant="body" weight="medium" as="span">
             &quot;{session?.title || "Untitled chat"}&quot;
           </Text>
           ? This action cannot be undone.

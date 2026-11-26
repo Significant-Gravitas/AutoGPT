@@ -126,7 +126,13 @@ export function PlanOffer({
               ? `Start Pro now${amount ? ` · ${amount}` : ""}`
               : "Start Pro")}
       </Button>
-      <Text variant="small-tight" tone="muted" align="center" className="mt-3">
+      <Text
+        variant="small"
+        leading="4"
+        tone="muted"
+        align="center"
+        className="mt-3"
+      >
         {freshUsage
           ? "You’ll see the full charge before you pay."
           : tier === "MAX"

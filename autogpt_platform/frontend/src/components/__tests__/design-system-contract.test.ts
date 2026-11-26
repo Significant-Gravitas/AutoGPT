@@ -80,15 +80,18 @@ describe("colour tokens", () => {
     for (const [, , role] of vendor) expect(COLOR_ROLES).toContain(role);
   });
 
-  it("only overrides names :root declares in .dark", () => {
-    expect(root.size).toBeGreaterThan(0);
-    const dark = declaredColors(".dark");
-    expect([...dark].filter((name) => !root.has(name))).toEqual([]);
-  });
-
-  it("has one dark selector, `.dark`", () => {
-    expect(globalsCss).toContain("@custom-variant dark (&:is(.dark *));");
-    expect(globalsCss).not.toMatch(/\.dark-mode|data-theme=["']?dark/);
+  it('has one dark selector, `[data-theme="dark"]`, and no `.dark`', () => {
+    expect(globalsCss).toContain(
+      '@custom-variant dark (&:is([data-theme="dark"] *));',
+    );
+    for (const file of [
+      "src/app/globals.css",
+      "src/app/tokens/theme.css",
+      "src/app/tokens/shape.css",
+    ]) {
+      const css = readFileSync(path.join(FRONTEND_ROOT, file), "utf8");
+      expect(css, file).not.toMatch(/\.dark\b/);
+    }
   });
 
   it("has no raw palette: new colours are roles in theme.css", () => {

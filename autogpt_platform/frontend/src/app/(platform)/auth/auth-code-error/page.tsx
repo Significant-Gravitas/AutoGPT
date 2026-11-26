@@ -43,7 +43,7 @@ export default function AuthErrorPage() {
   if (isWaitlistErr) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <Card className="w-full max-w-md p-8">
+        <Card size="roomy" className="w-full max-w-md">
           <WaitlistErrorContent onBackToLogin={() => router.push("/login")} />
         </Card>
       </div>

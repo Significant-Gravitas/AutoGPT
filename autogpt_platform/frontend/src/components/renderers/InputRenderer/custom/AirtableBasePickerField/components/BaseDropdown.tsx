@@ -173,7 +173,8 @@ export function BaseDropdown({
                 <span className="min-w-0 flex-1 break-words">{base.name}</span>
                 {locked && (
                   <Text
-                    variant="small-tight"
+                    variant="small"
+                    leading="4"
                     as="span"
                     tone="muted"
                     className="shrink-0"

@@ -520,14 +520,21 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
               selectClassName="rounded border bg-canvas px-2 py-1.5 text-body"
             />
             <Text
-              variant="small-medium-tight"
+              variant="small"
+              weight="medium"
+              leading="4"
               as="label"
               tone="body"
               htmlFor={manualTokenInputId}
             >
               {`${mcpAuthTokenLabel(manualAuthScheme)} for ${service}`}
             </Text>
-            <Text variant="small-tight" tone="muted" id={manualTokenHintId}>
+            <Text
+              variant="small"
+              leading="4"
+              tone="muted"
+              id={manualTokenHintId}
+            >
               {mcpAuthTokenHint(manualAuthScheme)}
             </Text>
             <div className="flex gap-2">

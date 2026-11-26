@@ -59,7 +59,7 @@ export function BuilderChatPanel({ className }: Props) {
   return (
     <div
       className={cn(
-        "pointer-events-none fixed right-4 bottom-4 z-50 flex flex-col items-end gap-2",
+        "pointer-events-none fixed right-4 bottom-4 z-overlay flex flex-col items-end gap-2",
         className,
       )}
     >
@@ -84,15 +84,21 @@ export function BuilderChatPanel({ className }: Props) {
               ) : activeError && activeRetry ? (
                 <div className="flex flex-1 flex-col px-4 py-6">
                   <Text
-                    variant="body-tight"
+                    variant="body"
+                    leading="5"
                     tone="secondary"
                     as="div"
                     className="flex flex-1 flex-col items-center justify-center gap-3 text-center"
                   >
-                    <Text variant="body-medium-tight" tone="body">
+                    <Text
+                      variant="body"
+                      weight="medium"
+                      leading="5"
+                      tone="body"
+                    >
                       {activeErrorTitle}
                     </Text>
-                    <Text variant="body-tight" tone="muted">
+                    <Text variant="body" leading="5" tone="muted">
                       Something went wrong. Retry to try again.
                     </Text>
                     <button
@@ -101,7 +107,9 @@ export function BuilderChatPanel({ className }: Props) {
                       className="rounded-md border border-border-strong bg-surface px-3 py-1.5 text-foreground-body shadow-sm hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none"
                     >
                       <Text
-                        variant="body-medium-tight"
+                        variant="body"
+                        weight="medium"
+                        leading="5"
                         as="span"
                         tone="inherit"
                       >
@@ -112,7 +120,7 @@ export function BuilderChatPanel({ className }: Props) {
                 </div>
               ) : isBootstrapping ? (
                 <div className="flex flex-1 items-center justify-center px-4 py-6">
-                  <Text variant="body-tight" tone="muted" as="div">
+                  <Text variant="body" leading="5" tone="muted" as="div">
                     Preparing builder chat…
                   </Text>
                 </div>
@@ -145,7 +153,7 @@ export function BuilderChatPanel({ className }: Props) {
                 </>
               ) : (
                 <div className="flex flex-1 items-center justify-center px-4 py-6">
-                  <Text variant="body-tight" tone="muted" as="div">
+                  <Text variant="body" leading="5" tone="muted" as="div">
                     Open a workflow to start chatting with the builder.
                   </Text>
                 </div>
@@ -161,10 +169,10 @@ export function BuilderChatPanel({ className }: Props) {
         aria-expanded={isOpen}
         aria-label={isOpen ? "Close chat" : "Chat with builder"}
         className={cn(
-          "pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-colors",
+          "pointer-events-auto flex h-12 w-12 items-center justify-center rounded-pill shadow-lg transition-colors",
           "focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:outline-none",
           isOpen
-            ? "bg-action text-action-foreground hover:bg-foreground-body"
+            ? "bg-action text-action-foreground hover:bg-fill-bold"
             : "border border-node-border bg-surface text-foreground-body hover:bg-surface-muted",
         )}
       >

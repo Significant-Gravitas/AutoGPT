@@ -34,7 +34,7 @@ export function SourcesView({ version, isBusy, onExclude }: Props) {
         >
           {source.accessible ? (
             <>
-              <Text variant="small-medium" tone="primary">
+              <Text variant="small" weight="medium" tone="primary">
                 {source.title || "Conversation"}
               </Text>
               <Text variant="small" tone="muted">

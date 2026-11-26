@@ -55,6 +55,7 @@ import {
 } from "./helpers";
 import { SwapText } from "./SwapText";
 import { ToolResult } from "./ToolResult";
+import { duration, ease } from "@/components/styles/motion";
 
 const COLLAPSED_WINDOW = 2;
 
@@ -413,30 +414,30 @@ export function ToolChain({
                                   y: -6,
                                   scale: 0.985,
                                   transition: {
-                                    duration: 0.12,
-                                    ease: [0.22, 1, 0.36, 1],
+                                    duration: duration.instant,
+                                    ease: ease.glide,
                                   },
                                 }
                           }
                           transition={{
                             opacity: {
-                              duration: reducedMotion ? 0 : 0.18,
+                              duration: reducedMotion ? 0 : duration.base,
                               delay: stagger,
-                              ease: [0.22, 1, 0.36, 1],
+                              ease: ease.glide,
                             },
                             y: {
-                              duration: reducedMotion ? 0 : 0.22,
+                              duration: reducedMotion ? 0 : duration.base,
                               delay: stagger,
-                              ease: [0.22, 1, 0.36, 1],
+                              ease: ease.glide,
                             },
                             scale: {
-                              duration: reducedMotion ? 0 : 0.22,
+                              duration: reducedMotion ? 0 : duration.base,
                               delay: stagger,
-                              ease: [0.22, 1, 0.36, 1],
+                              ease: ease.glide,
                             },
                             layout: {
-                              duration: reducedMotion ? 0 : 0.22,
-                              ease: [0.22, 1, 0.36, 1],
+                              duration: reducedMotion ? 0 : duration.base,
+                              ease: ease.glide,
                             },
                           }}
                         >

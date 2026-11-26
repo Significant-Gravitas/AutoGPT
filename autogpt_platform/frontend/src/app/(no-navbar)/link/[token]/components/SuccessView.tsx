@@ -32,18 +32,14 @@ export function SuccessView({
     : `Everyone in the ${serverNoun} can start using AutoGPT right away.`;
 
   return (
-    <AuthCard
-      title="AutoGPT is ready!"
-      // oxlint-disable-next-line design-system/no-restyle -- AuthCard has no roomy size; keeps today's p-8 padding and gap-6
-      className="max-w-[38rem] gap-6 p-8"
-    >
+    <AuthCard title="AutoGPT is ready!" size="roomy" className="max-w-[38rem]">
       <div className="flex w-full flex-col items-center gap-7">
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success-surface text-success">
           <Icon icon={CheckmarkCircle02Icon} size={40} />
         </div>
 
         <div className="w-full rounded-xl bg-surface-hover px-6 py-5 text-center">
-          <Text variant="body-medium" tone="muted">
+          <Text variant="body" weight="medium" tone="muted">
             <strong>{label}</strong> is now connected to your AutoGPT account.
             <br />
             {detail}

@@ -79,8 +79,8 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
         <div className="flex items-center gap-2">
           {folder.color ? (
             <span
-              className="inline-block h-3 w-3 rounded-full"
-              style={{ backgroundColor: folder.color }}
+              className="inline-block h-3 w-3 rounded-full bg-(--folder-color)"
+              style={{ "--folder-color": folder.color } as React.CSSProperties}
             />
           ) : (
             <Icon icon={Folder01Icon} size={14} tone="secondary" />
@@ -98,7 +98,7 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
           {folder.agents.map((a) => (
             <div key={a.id} className="flex items-center gap-1.5">
               <Icon icon={FileEmpty02Icon} size={12} tone="secondary" />
-              <Text variant="small-tight" as="span" tone="secondary">
+              <Text variant="small" leading="4" as="span" tone="secondary">
                 {a.name}
               </Text>
             </div>
@@ -163,7 +163,7 @@ function FolderTreeNodes({ element }: { element: TreeNode }) {
         value={element.id}
         fileIcon={<Icon icon={FileEmpty02Icon} size={14} tone="secondary" />}
       >
-        <Text variant="body-tight" as="span" tone="body">
+        <Text variant="body" leading="5" as="span" tone="body">
           {element.name}
         </Text>
       </TreeFile>

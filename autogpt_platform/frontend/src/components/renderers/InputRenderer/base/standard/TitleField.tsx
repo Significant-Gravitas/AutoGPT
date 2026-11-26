@@ -41,7 +41,8 @@ export default function TitleField(props: TitleFieldProps) {
         <InputNodeHandle handleId={uiOptions.handleId} nodeId={nodeId} />
       )}
       <Text
-        variant={smallText ? "body-tight" : "body"}
+        variant="body"
+        leading={smallText ? "5" : undefined}
         id={getFieldDomId(id, registry.formContext)}
         tone={isInputBroken ? "error" : smallText ? "body" : undefined}
         decoration={isInputBroken ? "line-through" : undefined}

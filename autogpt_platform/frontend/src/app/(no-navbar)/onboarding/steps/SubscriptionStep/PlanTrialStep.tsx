@@ -39,7 +39,7 @@ function PaywallPlanStep() {
         <div className="flex flex-col gap-4 bg-surface p-8" aria-busy>
           <Skeleton className="h-8 w-2/3 rounded-lg" />
           <Skeleton className="h-64 rounded-2xl" />
-          <Skeleton className="h-12 rounded-full" />
+          <Skeleton className="h-12 rounded-pill" />
         </div>
       ) : paywall.offer ? (
         <TrialPanel
