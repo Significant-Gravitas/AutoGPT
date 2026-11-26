@@ -14,7 +14,6 @@ Flow:
 """
 
 import base64
-import binascii
 import io
 import logging
 import os
@@ -770,7 +769,7 @@ def _basic_credentials(authorization: Optional[str]) -> Optional[tuple[str, str]
         return None
     try:
         decoded = base64.b64decode(encoded.strip(), validate=True).decode()
-    except (binascii.Error, UnicodeDecodeError):
+    except ValueError:  # bad base64, non-ASCII characters or non-UTF-8 bytes
         decoded = ""
     client_id, separator, client_secret = decoded.partition(":")
     if not separator:

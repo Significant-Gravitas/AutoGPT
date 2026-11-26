@@ -1,6 +1,7 @@
 """The token endpoint refuses a malformed request without writing the client
 secret it carried to the logs, which go to Sentry."""
 
+import base64
 import logging
 
 import httpx
@@ -30,3 +31,24 @@ async def test_a_malformed_token_request_does_not_log_its_client_secret(
     assert "code_verifier" in response.text
     assert SECRET not in caplog.text
     assert SECRET not in response.text
+
+
+@pytest.mark.parametrize(
+    "authorization",
+    [
+        b"Basic not-base64!",
+        b"Basic " + base64.b64encode(b"\xff:secret"),
+        "Basic Y2xpZW50OnNlY3JldA==\u00e9".encode("latin-1"),
+    ],
+)
+async def test_malformed_basic_client_credentials_get_a_401(authorization: bytes):
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/api/oauth/token",
+            data={"grant_type": "authorization_code", "code": "code"},
+            headers={"Authorization": authorization},
+        )
+
+    assert response.status_code == 401, response.text
