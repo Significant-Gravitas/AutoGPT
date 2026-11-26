@@ -11,8 +11,9 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 
-import { EASE_OUT, getSectionMotionProps } from "../../../helpers";
+import { getSectionMotionProps } from "../../../helpers";
 import { useUsageCard, type DailyUsageRow } from "./useUsageCard";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   index?: number;
@@ -156,8 +157,8 @@ function UsageBar({
                 reduceMotion
                   ? undefined
                   : {
-                      duration: 0.5,
-                      ease: EASE_OUT,
+                      duration: duration.slowest,
+                      ease: ease.emphasized,
                       delay: 0.15 + index * 0.015,
                     }
               }

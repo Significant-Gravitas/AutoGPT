@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import React, { ButtonHTMLAttributes, useState } from "react";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration } from "@/components/styles/motion";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   selected?: boolean;
@@ -54,7 +55,11 @@ export const FilterChip: React.FC<Props> = ({
             initial={{ opacity: 0.5, scale: 0.5, filter: "blur(20px)" }}
             animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
             exit={{ opacity: 0.5, scale: 0.5, filter: "blur(20px)" }}
-            transition={{ duration: 0.3, type: "spring", bounce: 0.2 }}
+            transition={{
+              duration: duration.slow,
+              type: "spring",
+              bounce: 0.2,
+            }}
             className="flex h-4 w-4 items-center justify-center rounded-full bg-surface-muted"
           >
             <Icon icon={Cancel01Icon} size={12} tone="accent" />
@@ -65,7 +70,11 @@ export const FilterChip: React.FC<Props> = ({
             initial={{ opacity: 0.5, scale: 0.5, filter: "blur(10px)" }}
             animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
             exit={{ opacity: 0.5, scale: 0.5, filter: "blur(10px)" }}
-            transition={{ duration: 0.3, type: "spring", bounce: 0.2 }}
+            transition={{
+              duration: duration.slow,
+              type: "spring",
+              bounce: 0.2,
+            }}
             className="flex h-[1.375rem] items-center rounded-pill bg-accent-strong p-1.5 text-action-foreground"
           >
             {number > 100 ? "100+" : number}

@@ -10,10 +10,10 @@ import { ArtifactPanelHeader } from "./components/ArtifactPanelHeader";
 import { ComputerPanelContent } from "./components/ComputerPanelContent";
 import { useArtifactPanel } from "./useArtifactPanel";
 import { useArtifactFullscreen } from "./useArtifactFullscreen";
+import { duration, ease } from "@/components/styles/motion";
 
 // Matched to the context panel so the two side rails move as one system.
-const PANEL_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
-const PANEL_DURATION = 0.3;
+const PANEL_DURATION = duration.slow;
 
 interface Props {
   mobile?: boolean;
@@ -166,7 +166,7 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
   const transition =
     shouldReduceMotion || isResizing
       ? { duration: 0 }
-      : { duration: PANEL_DURATION, ease: PANEL_EASE };
+      : { duration: PANEL_DURATION, ease: ease.drawer };
 
   function closeDesktopPanel() {
     if (sessionId) {

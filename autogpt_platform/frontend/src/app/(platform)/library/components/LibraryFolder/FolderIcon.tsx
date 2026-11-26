@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { Text } from "@/components/atoms/Text/Text";
+import { duration } from "@/components/styles/motion";
 
 type FolderSize = "xs" | "sm" | "md" | "lg" | "xl";
 export type FolderColorName = "blue" | "purple" | "emerald" | "orange" | "pink";
@@ -162,7 +163,11 @@ export function FolderIcon({
           animate={{
             rotateX: isOpen ? -15 : 0,
           }}
-          transition={{ type: "spring", duration: 0.5, bounce: 0.25 }}
+          transition={{
+            type: "spring",
+            duration: duration.slowest,
+            bounce: 0.25,
+          }}
           className="absolute inset-x-0 -bottom-px z-floating mx-auto flex h-44 w-[87.5%] origin-bottom items-end justify-center overflow-visible [transform-style:preserve-3d]"
         >
           <svg

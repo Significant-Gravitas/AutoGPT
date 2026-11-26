@@ -4,6 +4,7 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { FavouriteIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration, spring } from "@/components/styles/motion";
 
 interface FlyingHeartProps {
   startPosition: { x: number; y: number } | null;
@@ -50,9 +51,8 @@ export function FlyingHeart({
               ? { duration: 0 }
               : {
                   type: "spring",
-                  damping: 20,
-                  stiffness: 200,
-                  duration: 0.5,
+                  ...spring.bouncy,
+                  duration: duration.slowest,
                 }
           }
           onAnimationComplete={() => {

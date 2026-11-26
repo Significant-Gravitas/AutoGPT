@@ -9,6 +9,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef } from "react";
 import { getFocusableElements } from "./helpers";
 import { isKey, isKeyIgnoringComposition } from "@/lib/keyboard";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Action {
   label: string;
@@ -113,7 +114,7 @@ export function TabIntroCard({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+          transition={{ duration: duration.slower, ease: ease.standard }}
           // Only the backdrop itself dismisses — a click that started on the
           // card and drifted out (text selection) must not close it.
           onClick={(event) => {
@@ -128,7 +129,7 @@ export function TabIntroCard({
           <motion.div
             initial={{ opacity: 0, y: 16, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.45, ease: [0, 0, 0.2, 1] }}
+            transition={{ duration: duration.slower, ease: ease.out }}
             className="w-full max-w-[26rem] overflow-hidden rounded-3xl bg-surface shadow-2xl outline-none"
             ref={dialogRef}
             tabIndex={-1}

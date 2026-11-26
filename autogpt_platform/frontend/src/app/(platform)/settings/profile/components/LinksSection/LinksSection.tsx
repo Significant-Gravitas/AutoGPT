@@ -11,6 +11,7 @@ import {
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   links: LinkRow[];
@@ -18,8 +19,6 @@ interface Props {
   onAdd: () => void;
   onRemove: (index: number) => void;
 }
-
-const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 
 export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
   const reduceMotion = useReducedMotion();
@@ -29,7 +28,11 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
     <motion.div
       initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.32, ease: EASE_OUT, delay: 0.12 }}
+      transition={{
+        duration: duration.slow,
+        ease: ease.emphasized,
+        delay: 0.12,
+      }}
       className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-1 px-4">
@@ -56,7 +59,7 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
                 exit={
                   reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }
                 }
-                transition={{ duration: 0.18, ease: EASE_OUT }}
+                transition={{ duration: duration.base, ease: ease.emphasized }}
               >
                 <div className="flex items-center gap-2">
                   <div className="flex flex-1 items-center gap-2 rounded-3xl border border-border-base bg-surface px-4 text-foreground-subtle transition-colors duration-150 focus-within:border-brand/80 focus-within:ring-1 focus-within:ring-brand/80">

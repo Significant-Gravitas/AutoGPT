@@ -21,6 +21,7 @@ import {
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration, ease, spring } from "@/components/styles/motion";
 
 interface Props {
   onSelect: (agentId: string, agentVersion: number) => void;
@@ -225,16 +226,16 @@ export function AgentSelectStep({
                         opacity: 1,
                         x: 0,
                         transition: {
-                          duration: shouldReduceMotion ? 0 : 0.2,
-                          ease: [0.16, 1, 0.3, 1],
+                          duration: shouldReduceMotion ? 0 : duration.base,
+                          ease: ease.emphasized,
                         },
                       },
                       exit: (dir: number) => ({
                         opacity: 0,
                         x: shouldReduceMotion ? 0 : dir * -16,
                         transition: {
-                          duration: shouldReduceMotion ? 0 : 0.12,
-                          ease: [0.4, 0, 1, 1],
+                          duration: shouldReduceMotion ? 0 : duration.instant,
+                          ease: ease.in,
                         },
                       }),
                     }}
@@ -425,7 +426,7 @@ function PaginationBar({
                   layoutId="pagination-active-pill"
                   aria-hidden
                   className="absolute inset-0 rounded-pill bg-brand shadow-md shadow-brand/55"
-                  transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                  transition={{ type: "spring", ...spring.snappy }}
                 />
               ) : null}
               <Text

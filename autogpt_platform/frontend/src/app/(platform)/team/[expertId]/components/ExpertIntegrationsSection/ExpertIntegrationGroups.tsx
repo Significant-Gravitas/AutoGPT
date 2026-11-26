@@ -17,6 +17,7 @@ import {
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import { Delete02Icon, Loading03Icon } from "@hugeicons/core-free-icons";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { duration, ease } from "@/components/styles/motion";
 
 export const TYPE_LABELS: Record<string, string> = {
   api_key: "API Key",
@@ -43,7 +44,7 @@ const ITEM_VARIANTS: Variants = {
   show: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] },
+    transition: { duration: duration.slow, ease: ease.emphasized },
   },
 };
 const REDUCED_ITEM_VARIANTS: Variants = {

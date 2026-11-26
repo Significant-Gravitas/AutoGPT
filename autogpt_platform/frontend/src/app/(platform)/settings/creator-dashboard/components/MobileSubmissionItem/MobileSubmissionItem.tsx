@@ -29,6 +29,7 @@ import {
   StarIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   submission: StoreSubmission;
@@ -39,10 +40,9 @@ interface Props {
   creatorUsername?: string;
 }
 
-const ROW_EASE = [0.16, 1, 0.3, 1] as const;
 const ROW_STAGGER = 0.025;
 const ROW_STAGGER_CAP = 6;
-const ROW_DURATION = 0.22;
+const ROW_DURATION = duration.base;
 
 export function MobileSubmissionItem({
   submission,
@@ -87,7 +87,7 @@ export function MobileSubmissionItem({
           ? undefined
           : {
               duration: ROW_DURATION,
-              ease: ROW_EASE,
+              ease: ease.emphasized,
               delay: Math.min(rowIndex, ROW_STAGGER_CAP) * ROW_STAGGER,
             }
       }

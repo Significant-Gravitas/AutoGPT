@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import type { ReactNode, Ref } from "react";
 import { cn } from "@/lib/utils";
 import { PausedDraftNote } from "./PausedDraftNote";
+import { duration } from "@/components/styles/motion";
 
 interface Props {
   children: ReactNode;
@@ -23,7 +24,7 @@ export function ChatComposerFrame({
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
+      transition={{ duration: duration.slow }}
       className={cn(
         // oxlint-disable-next-line design-system/no-arbitrary-values -- keeps the composer above the iOS home indicator
         "relative mx-auto w-full max-w-3xl px-3 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))]",

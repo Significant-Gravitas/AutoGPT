@@ -40,6 +40,7 @@ import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
+import { duration } from "@/components/styles/motion";
 
 function DisabledMenuItem({
   icon,
@@ -69,7 +70,7 @@ interface Props {
 
 // Matches the mobile sidebar sheet's closing animation
 // (`data-[state=closed]:duration-200` in `@/components/molecules/Sidebar/Sidebar`).
-const SHEET_CLOSE_MS = 200;
+const SHEET_CLOSE_MS = duration.base * 1000;
 
 export function TourSidebar({ variant = "tour" }: Props) {
   const reduceMotion = useReducedMotion();

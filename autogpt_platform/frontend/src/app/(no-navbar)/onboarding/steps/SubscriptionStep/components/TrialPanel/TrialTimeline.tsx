@@ -7,8 +7,8 @@ import {
 import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
 import { type Milestone, toLocalISODate } from "./helpers";
+import { duration, ease } from "@/components/styles/motion";
 
-const EASE = [0.22, 1, 0.36, 1] as const;
 // Otto's lavender at the design system's 24% tint, behind the first row.
 const OTTO_TINT = expertPastel(AUTOPILOT_HEX);
 
@@ -29,7 +29,11 @@ export function TrialTimeline({ label, milestones }: Props) {
             key={milestone.key}
             initial={reduceMotion ? false : { opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 + index * 0.1, duration: 0.4, ease: EASE }}
+            transition={{
+              delay: 0.1 + index * 0.1,
+              duration: duration.slower,
+              ease: ease.glide,
+            }}
             className="relative grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-3.5"
           >
             {isLast ? null : (

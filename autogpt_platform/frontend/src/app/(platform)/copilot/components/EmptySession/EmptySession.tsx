@@ -30,6 +30,7 @@ import {
 } from "./helpers";
 import { useHomeComposer } from "./useHomeComposer";
 import { useRecipientPicker } from "./useRecipientPicker";
+import { duration } from "@/components/styles/motion";
 
 interface Props {
   isCreatingSession: boolean;
@@ -157,7 +158,7 @@ export function EmptySession({
         className={cn("relative z-raised w-full text-center", "max-w-[1120px]")}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 0.3 }}
+        transition={{ duration: duration.slow }}
       >
         <div className="mx-auto max-w-[52rem] pt-6">
           {intro.isVisible ? (

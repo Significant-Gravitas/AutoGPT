@@ -8,10 +8,10 @@ import { Text } from "@/components/atoms/Text/Text";
 
 import {
   BRIEFING_OPTIONS,
-  EASE_OUT,
   type BriefingFrequency,
   type NotificationSettings,
 } from "../../helpers";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   values: NotificationSettings;
@@ -37,7 +37,11 @@ export function NotificationsCard({
       transition={
         reduceMotion
           ? undefined
-          : { duration: 0.32, ease: EASE_OUT, delay: 0.04 + index * 0.05 }
+          : {
+              duration: duration.slow,
+              ease: ease.emphasized,
+              delay: 0.04 + index * 0.05,
+            }
       }
       className="flex w-full flex-col"
     >

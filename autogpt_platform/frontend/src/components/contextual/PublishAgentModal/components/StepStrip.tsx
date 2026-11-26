@@ -4,6 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { Tick02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration, ease } from "@/components/styles/motion";
 
 type Props = {
   currentStep: "select" | "info" | "review";
@@ -55,7 +56,7 @@ export function StepStrip({ currentStep }: Props) {
                   transition={
                     shouldReduceMotion
                       ? { duration: 0 }
-                      : { duration: 0.22, ease: [0.16, 1, 0.3, 1] }
+                      : { duration: duration.base, ease: ease.emphasized }
                   }
                   className={cn(
                     "flex size-6 shrink-0 items-center justify-center rounded-full text-caption leading-inherit font-medium transition-colors",
@@ -81,7 +82,7 @@ export function StepStrip({ currentStep }: Props) {
                             ? { opacity: 0 }
                             : { opacity: 0, scale: 0.6 }
                         }
-                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        transition={{ duration: duration.base, ease: ease.out }}
                         className="flex items-center justify-center"
                       >
                         <Icon icon={Tick02Icon} size={12} />
@@ -100,7 +101,7 @@ export function StepStrip({ currentStep }: Props) {
                             ? { opacity: 0 }
                             : { opacity: 0, y: -4 }
                         }
-                        transition={{ duration: 0.18, ease: "easeOut" }}
+                        transition={{ duration: duration.base, ease: ease.out }}
                       >
                         {index + 1}
                       </motion.span>
@@ -127,7 +128,7 @@ export function StepStrip({ currentStep }: Props) {
                     transition={
                       shouldReduceMotion
                         ? { duration: 0 }
-                        : { duration: 0.32, ease: [0.16, 1, 0.3, 1] }
+                        : { duration: duration.slow, ease: ease.emphasized }
                     }
                     className="absolute inset-x-0 top-0 origin-left border-t border-solid border-action-hover"
                   />

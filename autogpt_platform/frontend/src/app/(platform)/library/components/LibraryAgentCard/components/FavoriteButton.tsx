@@ -6,6 +6,7 @@ import { useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { FavouriteIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { spring } from "@/components/styles/motion";
 
 interface FavoriteButtonProps {
   isFavorite: boolean;
@@ -55,7 +56,7 @@ export function FavoriteButton({
           initial={{ scale: 0.5, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.5, opacity: 0 }}
-          transition={{ type: "spring", damping: 15, stiffness: 300 }}
+          transition={{ type: "spring", ...spring.bouncy }}
         >
           <Icon icon={FavouriteIcon} size={20} />
         </motion.div>

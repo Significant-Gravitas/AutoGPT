@@ -19,6 +19,7 @@ import {
   type TaskOwner,
 } from "../helpers";
 import { OwnerAvatar, OwnerLabel } from "./TaskOwner";
+import { duration } from "@/components/styles/motion";
 
 interface Props {
   task: SuggestedTask;
@@ -65,7 +66,7 @@ export function TaskRow({
   return (
     <motion.li
       exit={prefersReducedMotion ? undefined : { height: 0, opacity: 0 }}
-      transition={{ duration: 0.15 }}
+      transition={{ duration: duration.fast }}
       className={cn(
         "group/row flex items-start transition-colors duration-150 sm:items-center",
         isStartHere ? "bg-accent-surface" : "hover:bg-surface-muted",

@@ -8,6 +8,7 @@ import {
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
+import { duration, ease } from "@/components/styles/motion";
 
 type StepState = "done" | "current" | "upcoming";
 
@@ -59,7 +60,7 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
     <motion.div
       initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.24, ease: "easeOut", delay: 0.24 }}
+      transition={{ duration: duration.base, ease: ease.out, delay: 0.24 }}
       className="mt-6 flex w-full max-w-md flex-col gap-3 px-2"
     >
       <Text variant="body-medium" as="span">

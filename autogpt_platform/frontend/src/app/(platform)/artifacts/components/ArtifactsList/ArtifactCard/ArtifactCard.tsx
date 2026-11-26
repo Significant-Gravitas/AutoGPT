@@ -16,6 +16,7 @@ import {
 } from "../helpers";
 import { STAGGER_CAP, STAGGER_STEP_S } from "../ArtifactsTable/row-layout";
 import { CardPreview } from "./CardPreview";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   file: WorkspaceFileItem;
@@ -34,8 +35,8 @@ const CARD_VARIANTS: Variants = {
     scale: 1,
     filter: "blur(0px)",
     transition: {
-      duration: 0.4,
-      ease: [0.16, 1, 0.3, 1],
+      duration: duration.slower,
+      ease: ease.emphasized,
       delay: Math.min(index, STAGGER_CAP) * STAGGER_STEP_S,
     },
   }),
@@ -43,7 +44,7 @@ const CARD_VARIANTS: Variants = {
 
 const REDUCED_CARD_VARIANTS: Variants = {
   hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { duration: 0.2 } },
+  show: { opacity: 1, transition: { duration: duration.base } },
 };
 
 export function ArtifactCard({ file, onOpen, index = 0 }: Props) {

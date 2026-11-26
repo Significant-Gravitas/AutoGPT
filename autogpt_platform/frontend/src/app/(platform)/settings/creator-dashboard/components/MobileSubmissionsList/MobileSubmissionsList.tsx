@@ -10,16 +10,12 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 
-import {
-  EASE_OUT,
-  type FilterState,
-  type SortDir,
-  type SortKey,
-} from "../../helpers";
+import { type FilterState, type SortDir, type SortKey } from "../../helpers";
 import { MobileSubmissionItem } from "../MobileSubmissionItem/MobileSubmissionItem";
 import { Pagination } from "../Pagination/Pagination";
 import { SortColumnFilter } from "../SubmissionsList/columns/SortColumnFilter";
 import { StatusColumnFilter } from "../SubmissionsList/columns/StatusColumnFilter";
+import { duration, ease } from "@/components/styles/motion";
 
 interface EditPayload extends StoreSubmissionEditRequest {
   store_listing_version_id: string;
@@ -80,7 +76,11 @@ export function MobileSubmissionsList({
       transition={
         reduceMotion
           ? undefined
-          : { duration: 0.28, ease: EASE_OUT, delay: 0.04 + index * 0.05 }
+          : {
+              duration: duration.slow,
+              ease: ease.emphasized,
+              delay: 0.04 + index * 0.05,
+            }
       }
       className="flex w-full max-w-full min-w-0 flex-col gap-3"
       data-testid="mobile-submissions-list"

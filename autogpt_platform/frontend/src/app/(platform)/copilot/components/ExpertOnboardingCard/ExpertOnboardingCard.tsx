@@ -18,6 +18,7 @@ import { OnboardingReview } from "./components/OnboardingReview";
 import { parseExpertOnboarding, type ExpertOnboardingOutput } from "./helpers";
 import { PendingOnboardingContext } from "./PendingOnboardingContext";
 import { useExpertOnboardingCard } from "./useExpertOnboardingCard";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   part: ToolUIPart;
@@ -158,7 +159,7 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
           key={currentStep?.keyword ?? "review"}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
+          transition={{ duration: duration.base, ease: ease.outQuint }}
           className="flex flex-col gap-4 px-4 pt-4 sm:px-5 sm:pt-5"
         >
           {currentStep ? (

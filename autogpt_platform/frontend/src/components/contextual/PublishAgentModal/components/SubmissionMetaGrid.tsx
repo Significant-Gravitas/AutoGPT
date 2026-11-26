@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 
 import { Text } from "@/components/atoms/Text/Text";
 import type { SubmissionMetaItem } from "../helpers";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   items: SubmissionMetaItem[];
@@ -17,7 +18,7 @@ export function SubmissionMetaGrid({ items, shouldReduceMotion }: Props) {
     <motion.div
       initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.24, ease: "easeOut", delay: 0.21 }}
+      transition={{ duration: duration.base, ease: ease.out, delay: 0.21 }}
       className="mt-4 grid w-full max-w-md grid-cols-2 gap-x-4 gap-y-3 rounded-xl border border-border-base bg-surface-muted/60 p-4"
       data-testid="submission-meta"
     >

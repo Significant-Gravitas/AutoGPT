@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration, ease } from "@/components/styles/motion";
 
 interface ScrollAreaProps
   extends React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> {
@@ -154,7 +155,7 @@ function ScrollToTopFab({ visible, onClick }: ScrollToTopFabProps) {
           exit={
             reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95, y: 8 }
           }
-          transition={{ duration: 0.15, ease: [0, 0, 0.2, 1] }}
+          transition={{ duration: duration.fast, ease: ease.out }}
         >
           <Icon icon={ArrowUp02Icon} size={20} />
         </motion.button>

@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { RunRow } from "./components/RunRow";
 import { COLLAPSED_ROWS, formatBriefingDate, hasRecapContent } from "./helpers";
 import { useBriefingCard } from "./useBriefingCard";
+import { duration } from "@/components/styles/motion";
 
 interface Props {
   briefing: BriefingResponse;
@@ -155,7 +156,7 @@ function ScrollArrow({
     <motion.div
       initial={false}
       animate={{ opacity: isVisible ? 1 : 0 }}
-      transition={{ duration: shouldReduceMotion ? 0 : 0.15 }}
+      transition={{ duration: shouldReduceMotion ? 0 : duration.fast }}
       data-slot="briefing-card-scroll-arrow"
       className={cn(
         "pointer-events-none absolute inset-x-0 flex h-12 items-center justify-center",

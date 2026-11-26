@@ -17,6 +17,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   attachments: Attachment[];
@@ -28,8 +29,7 @@ interface Props {
 }
 
 // ease-out so chips settle naturally; kept under 300ms (Emil's timing rules).
-const EASE_OUT = [0.16, 1, 0.3, 1] as const;
-const DURATION = 0.2;
+const DURATION = duration.base;
 
 export function FileChips({
   attachments,
@@ -49,7 +49,7 @@ export function FileChips({
             reduceMotion ? { opacity: 1 } : { opacity: 1, height: "auto" }
           }
           exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
-          transition={{ duration: DURATION, ease: EASE_OUT }}
+          transition={{ duration: DURATION, ease: ease.emphasized }}
           // The pull towards the textarea belongs on the clipping box, not
           // inside it: a negative bottom margin on the row would shrink this
           // wrapper's auto height by the same amount and crop the chips.
@@ -111,7 +111,7 @@ export function FileChips({
                         ? { opacity: 0 }
                         : { opacity: 0, scale: 0.95, filter: "blur(4px)" }
                     }
-                    transition={{ duration: DURATION, ease: EASE_OUT }}
+                    transition={{ duration: DURATION, ease: ease.emphasized }}
                     style={{ willChange: "transform, opacity, filter" }}
                     aria-label={
                       isFolder ? `Folder: ${name}, ${count}` : undefined

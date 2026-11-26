@@ -25,6 +25,7 @@ import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner
 import { useAgentStatusMap, getAgentStatus } from "../../hooks/useAgentStatus";
 import { ArrowLeft02Icon, FavouriteIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration, spring } from "@/components/styles/motion";
 
 // cancels the current spring and starts a new one from current state.
 const containerVariants = {
@@ -33,7 +34,7 @@ const containerVariants = {
   exit: {
     opacity: 0,
     filter: "blur(4px)",
-    transition: { duration: 0.12 },
+    transition: { duration: duration.instant },
   },
 };
 
@@ -42,7 +43,7 @@ const reducedContainerVariants = {
   show: {},
   exit: {
     opacity: 0,
-    transition: { duration: 0.12 },
+    transition: { duration: duration.instant },
   },
 };
 
@@ -58,15 +59,14 @@ const itemAnimate = {
 
 const itemTransition = {
   type: "spring" as const,
-  stiffness: 300,
-  damping: 25,
-  opacity: { duration: 0.2 },
-  filter: { duration: 0.15 },
+  ...spring.gentle,
+  opacity: { duration: duration.base },
+  filter: { duration: duration.fast },
 };
 
 const reducedItemInitial = { opacity: 0 };
 const reducedItemAnimate = { opacity: 1 };
-const reducedItemTransition = { duration: 0.15 };
+const reducedItemTransition = { duration: duration.fast };
 
 interface Props {
   searchTerm: string;

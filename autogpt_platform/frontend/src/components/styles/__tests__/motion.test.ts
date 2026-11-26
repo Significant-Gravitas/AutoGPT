@@ -53,6 +53,17 @@ describe("motion.ts", () => {
     }
   });
 
+  it("steps the durations from instant to slowest", () => {
+    expect(duration).toEqual({
+      instant: 0.1,
+      fast: 0.15,
+      base: 0.2,
+      slow: 0.3,
+      slower: 0.4,
+      slowest: 0.5,
+    });
+  });
+
   it("has the spring presets, which CSS has no equivalent of", () => {
     expect(spring).toEqual({
       snappy: { stiffness: 520, damping: 30 },
