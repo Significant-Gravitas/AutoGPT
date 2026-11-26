@@ -32,7 +32,8 @@ function superProperties() {
 // Made only once the user allows it: even a client that sends no events
 // fetches its project's settings from PostHog when it starts.
 function openClient() {
-  if (!client && KEY && !__DEV__) {
+  if (!KEY || !isAllowed()) return;
+  if (!client) {
     try {
       client = new PostHog(KEY, {
         host: HOST,
@@ -49,7 +50,7 @@ function openClient() {
       client = null;
     }
   }
-  if (!client || !isAllowed()) return;
+  if (!client) return;
   void client.optIn();
   if (userID) client.identify(userID);
 }
@@ -68,6 +69,8 @@ export function startAnalytics() {
 export function setAnalyticsConsent(allowed: boolean) {
   consent = allowed ? "allowed" : "declined";
   saveConsent(consent);
+  // A screen sent before the change goes again once allowed.
+  lastScreen = null;
   if (allowed) openClient();
   else void client?.optOut();
 }
