@@ -1,7 +1,9 @@
 import {
   ArrowLeft01Icon,
+  RefreshIcon,
   UserEdit01Icon,
   UserGroupIcon,
+  UserRemove01Icon,
   Wallet01Icon,
 } from "@hugeicons/core-free-icons";
 import { router, useLocalSearchParams } from "expo-router";
@@ -16,7 +18,9 @@ import { ScreenHeader } from "@/components/ScreenHeader";
 import { Toast } from "@/components/Toast";
 import { BudgetSheet } from "@/features/expertManage/components/BudgetSheet";
 import { EditProfileSheet } from "@/features/expertManage/components/EditProfileSheet";
+import { FireExpertSheet } from "@/features/expertManage/components/FireExpertSheet";
 import { ModePicker } from "@/features/expertManage/components/ModePicker";
+import { ResetExpertSheet } from "@/features/expertManage/components/ResetExpertSheet";
 import { formatBudget, formatDollars } from "@/features/expertManage/helpers";
 import { useManageExpert } from "@/features/expertManage/useManageExpert";
 import { SettingsGroup } from "@/features/settings/components/SettingsGroup";
@@ -77,6 +81,20 @@ function ManageExpert({ routeExpertID, routeFrom }: Props) {
               onPress={manage.openBudget}
             />
           </SettingsGroup>
+          <SettingsGroup>
+            <SettingsRow
+              icon={RefreshIcon}
+              label="Reset"
+              isDestructive
+              onPress={manage.openReset}
+            />
+            <SettingsRow
+              icon={UserRemove01Icon}
+              label="Fire"
+              isDestructive
+              onPress={manage.openFire}
+            />
+          </SettingsGroup>
         </ScrollView>
       );
     }
@@ -131,6 +149,20 @@ function ManageExpert({ routeExpertID, routeFrom }: Props) {
             saved={expert.weekly_budget}
             onClose={manage.closeSheet}
             onSave={manage.saveBudget}
+          />
+          <ResetExpertSheet
+            expertID={expert.id}
+            name={expert.name}
+            hasTemplate={expert.source_template_id !== null}
+            isOpen={manage.sheet === "reset"}
+            onClose={manage.closeSheet}
+            onReset={manage.forgetOrigin}
+          />
+          <FireExpertSheet
+            expertID={expert.id}
+            name={expert.name}
+            isOpen={manage.sheet === "fire"}
+            onClose={manage.closeSheet}
           />
         </>
       ) : null}

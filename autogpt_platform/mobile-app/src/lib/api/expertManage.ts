@@ -38,3 +38,32 @@ export function updateExpertMode(expertID: string, mode: AutopilotMode | null) {
     body: { autopilot_mode: mode },
   });
 }
+
+/** `ExpertDetachPreview`: what firing the expert would pause. */
+export interface DetachPreview {
+  schedule_names: string[];
+  trigger_names: string[];
+}
+
+export const expertManageKeys = {
+  detachPreview: (expertID: string) => ["experts", expertID, "detach-preview"] as const,
+};
+
+export function getDetachPreview(expertID: string) {
+  return apiRequest<DetachPreview>(expertPath(expertID, "detach-preview"));
+}
+
+/** Archives the expert: their schedules pause, their chats stay readable. 204. */
+export function fireExpert(expertID: string) {
+  return apiRequest<void>(`/api/experts/${encodeURIComponent(expertID)}`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * Erases the expert's memory, computer and chats; cannot be undone. A 409
+ * means a turn is still running; a 503 is safe to try again.
+ */
+export function resetExpert(expertID: string) {
+  return apiRequest<unknown>(expertPath(expertID, "reset"), { method: "POST" });
+}

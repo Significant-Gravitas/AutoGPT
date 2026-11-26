@@ -25,7 +25,7 @@ import { isExpertID, trimProfile, unsupervisedPrompt } from "./helpers";
 
 const SAVE_FAILED = "Couldn't save. Try again.";
 
-type Sheet = "profile" | "budget";
+type Sheet = "profile" | "budget" | "reset" | "fire";
 
 interface Args {
   /** From the URL, which a link controls. */
@@ -40,6 +40,8 @@ export function useManageExpert({ routeExpertID, routeFrom }: Args) {
   const { toast, show } = useToast();
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [isModeRefused, setIsModeRefused] = useState(false);
+  // A reset removes the chat this page was opened from.
+  const [isOriginGone, setIsOriginGone] = useState(false);
   const detailKey = expertActivityKeys.detail(expertID ?? "");
   const detail = useQuery({
     queryKey: detailKey,
@@ -148,12 +150,24 @@ export function useManageExpert({ routeExpertID, routeFrom }: Args) {
     setSheet("budget");
   }
 
+  function openReset() {
+    setSheet("reset");
+  }
+
+  function openFire() {
+    setSheet("fire");
+  }
+
+  function forgetOrigin() {
+    setIsOriginGone(true);
+  }
+
   function closeSheet() {
     setSheet(null);
   }
 
   function goBack() {
-    if (isSessionID(routeFrom)) router.navigate(`/chat/${routeFrom}`);
+    if (isSessionID(routeFrom) && !isOriginGone) router.navigate(`/chat/${routeFrom}`);
     else router.navigate("/team");
   }
 
@@ -172,6 +186,9 @@ export function useManageExpert({ routeExpertID, routeFrom }: Args) {
     sheet,
     openProfile,
     openBudget,
+    openReset,
+    openFire,
+    forgetOrigin,
     closeSheet,
     saveProfile,
     saveBudget,
