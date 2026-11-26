@@ -50,6 +50,7 @@ export function DetailsSection({ user }: Props) {
             <Button
               variant="icon"
               size="icon-xs"
+              shape="sharp"
               aria-label="Copy user ID"
               onClick={() => void copyUserID()}
             >

@@ -66,7 +66,7 @@ export const Basic: Story = {
                 marginBottom: 8,
                 background: "rgb(var(--color-surface))",
                 border: "1px solid rgb(var(--color-border-base))",
-                borderRadius: 8,
+                borderRadius: "var(--radius-lg)",
               }}
             >
               Item {n}
@@ -106,7 +106,7 @@ export const LongList: Story = {
                 marginBottom: 8,
                 background: "rgb(var(--color-surface))",
                 border: "1px solid rgb(var(--color-border-base))",
-                borderRadius: 8,
+                borderRadius: "var(--radius-lg)",
               }}
             >
               Row {n}
@@ -146,7 +146,7 @@ export const WithLoadingIndicator: Story = {
                 marginBottom: 8,
                 background: "rgb(var(--color-surface))",
                 border: "1px solid rgb(var(--color-border-base))",
-                borderRadius: 8,
+                borderRadius: "var(--radius-lg)",
               }}
             >
               #{n}

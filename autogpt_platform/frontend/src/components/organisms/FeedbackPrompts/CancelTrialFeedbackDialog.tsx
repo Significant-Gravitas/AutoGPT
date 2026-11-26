@@ -74,7 +74,7 @@ export function CancelTrialFeedbackDialog({
             </Text>
           </div>
           <div className="flex flex-col gap-3">
-            <Text variant="body-medium" tone="primary">
+            <Text variant="body" weight="medium" tone="primary">
               {REASON_LABEL}
             </Text>
             <ReasonTiles

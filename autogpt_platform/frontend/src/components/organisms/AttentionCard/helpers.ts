@@ -10,10 +10,10 @@ export const cardVariants = cva("", {
       default: "rounded-xl border border-border-base bg-surface",
       outline: "rounded-2xl bg-surface ring-1 ring-inset ring-border-base/60",
       elevated:
-        "overflow-hidden rounded-3xl bg-surface shadow-foreground-base smooth-shadow-ring-sm",
+        "overflow-hidden rounded-3xl bg-surface shadow-scrim smooth-shadow-ring-sm",
       muted: "rounded-2xl border border-border-base bg-surface-hover/40",
       featured:
-        "rounded-2xl bg-gradient-to-br from-border-strong via-foreground-subtle to-foreground-tertiary p-px",
+        "rounded-2xl bg-gradient-to-br from-border-strong via-fill-subtle to-fill-soft p-px",
       info: "rounded-2xl bg-info-surface text-body leading-5 text-info-foreground",
       success:
         "rounded-2xl bg-success-surface text-body leading-5 text-success-foreground",
@@ -108,7 +108,7 @@ export const iconTints: Record<Variant, string> = {
   warning: "shrink-0",
   "warning-strong": "shrink-0",
   "warning-outline": "shrink-0",
-  caution: "fill-yellow-foreground text-action-foreground",
+  caution: "fill-yellow-foreground text-foreground-on-color",
   error: "shrink-0",
 };
 

@@ -76,7 +76,8 @@ function SessionRecordWorkflow({ sessionID }: Props) {
       {flow.phase === "ready" ? (
         <div className="flex flex-wrap items-center gap-2">
           <Text
-            variant="small-tight"
+            variant="small"
+            leading="4"
             role="status"
             aria-live="polite"
             tone="success-strong"
@@ -90,7 +91,7 @@ function SessionRecordWorkflow({ sessionID }: Props) {
       ) : null}
 
       {flow.errorMessage && flow.phase !== "review" ? (
-        <Text variant="small-tight" role="alert" tone="danger">
+        <Text variant="small" leading="4" role="alert" tone="danger">
           {flow.errorMessage}
         </Text>
       ) : null}

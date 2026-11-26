@@ -424,7 +424,7 @@ function Sidebar({
                   onClick={() =>
                     setHiddenNodeTypes(togglePill(hiddenNodeTypes, k))
                   }
-                  className={`rounded-full border px-2 py-0.5 text-caption ${
+                  className={`rounded-pill border px-2 py-0.5 text-caption ${
                     hidden
                       ? "border-border-strong text-foreground-subtle line-through"
                       : "border-foreground-emphasis text-foreground-body"
@@ -452,7 +452,7 @@ function Sidebar({
                   onClick={() =>
                     setHiddenEdgeTypes(togglePill(hiddenEdgeTypes, k))
                   }
-                  className={`rounded-full border px-2 py-0.5 text-caption ${
+                  className={`rounded-pill border px-2 py-0.5 text-caption ${
                     hidden
                       ? "border-border-strong text-foreground-subtle line-through"
                       : "border-foreground-emphasis text-foreground-body"
@@ -499,7 +499,7 @@ function DreamResultPanel({ result, onDismiss }: DreamResultPanelProps) {
   return (
     <div className="space-y-2" data-testid="dream-result-panel">
       <div className="flex items-center justify-between gap-2">
-        <Text variant="small-medium" as="span" tone="body">
+        <Text variant="small" weight="medium" as="span" tone="body">
           Last dream pass{" "}
           <span className="font-mono text-foreground-tertiary">
             {result.passID}

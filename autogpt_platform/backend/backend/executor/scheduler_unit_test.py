@@ -628,6 +628,72 @@ async def test_execute_copilot_turn_creates_fresh_expert_session_in_same_scope()
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("session_id", [None, "session-1"], ids=["new", "existing"])
+@pytest.mark.parametrize(
+    "still_a_member, tenancy",
+    [(True, ("org-sched", "team-sched")), (False, ("personal-org", "personal-team"))],
+)
+async def test_a_turn_runs_in_its_scheduled_org_only_while_its_owner_belongs(
+    _turn_owners_belong_to_their_org, still_a_member, tenancy, session_id
+):
+    orgs = _turn_owners_belong_to_their_org
+    orgs.is_active_member.return_value = still_a_member
+    orgs.resolve_default_tenancy.return_value = ("personal-org", "personal-team")
+    args = _args(
+        session_id=session_id, organization_id="org-sched", team_id="team-sched"
+    )
+    chat = MagicMock(archived_at=None, session_id="new-session", expert_id=None)
+    mock_schedule_turn = AsyncMock()
+    mock_create_session = AsyncMock(return_value=chat)
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", AsyncMock(return_value=chat)),
+        patch(
+            f"{_SCHEDULER_PATH}.get_chat_session_metadata", AsyncMock(return_value=chat)
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    dispatched = mock_schedule_turn.call_args.kwargs
+    assert (dispatched["organization_id"], dispatched["team_id"]) == tenancy
+    if session_id is None:
+        created = mock_create_session.await_args.kwargs
+        assert (created["organization_id"], created["team_id"]) == tenancy
+    orgs.is_active_member.assert_awaited_once_with("user-1", "org-sched", "team-sched")
+    if still_a_member:
+        orgs.resolve_default_tenancy.assert_not_awaited()
+    else:
+        orgs.resolve_default_tenancy.assert_awaited_once_with("user-1")
+
+
+@pytest.mark.asyncio
+async def test_a_follow_up_whose_membership_cannot_be_read_is_not_dispatched(
+    _turn_owners_belong_to_their_org,
+):
+    _turn_owners_belong_to_their_org.is_active_member.side_effect = RuntimeError(
+        "database manager unavailable"
+    )
+    args = _args(session_id=None, organization_id="org-sched", team_id="team-sched")
+    mock_schedule_turn = AsyncMock()
+    mock_create_session = AsyncMock()
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_create_session.assert_not_awaited()
+    mock_schedule_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_execute_copilot_turn_rejects_missing_expert_before_fresh_session():
     args = _args(session_id=None, expert_id="archived-expert")
     mock_schedule_turn = AsyncMock()

@@ -146,11 +146,12 @@ export function DialogWrap({
             <Button
               variant="icon"
               size={isCompact ? "icon-sm" : "icon"}
+              shape={isCompact ? "soft" : undefined}
               onClick={handleClose}
               aria-label="Close"
               data-slot="dialog-close"
               className={cn(
-                "absolute top-4 right-4 z-50",
+                "absolute top-4 right-4 z-overlay",
                 isCompact ? "top-3 right-3" : "size-[2.5rem]",
               )}
               withTooltip={false}

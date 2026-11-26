@@ -31,6 +31,7 @@ export function DownloadAgentAdminButton({
   return (
     <Button
       size="xs"
+      shape="sharp"
       variant="secondary"
       onClick={handleDownload}
       disabled={isLoading}

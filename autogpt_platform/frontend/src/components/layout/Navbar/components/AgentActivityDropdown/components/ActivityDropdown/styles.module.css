@@ -2,7 +2,7 @@
   min-height: 10rem;
   padding-left: 0.5rem;
   padding-right: 0.5rem;
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
 }
 
 /* Target the scrollable div created by react-window */
@@ -18,12 +18,12 @@
 
 .scrollContainer div[style*="overflow"]::-webkit-scrollbar-track {
   background: rgb(var(--color-surface));
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 .scrollContainer div[style*="overflow"]::-webkit-scrollbar-thumb {
   background: rgb(var(--color-border-strong));
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 .scrollContainer div[style*="overflow"]::-webkit-scrollbar-thumb:hover {

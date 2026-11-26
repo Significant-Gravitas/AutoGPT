@@ -140,7 +140,13 @@ export const RunInputDialog = ({
                       className="size-5 group-hover:scale-110"
                     />
                   )}
-                  <Text variant="body-semibold-tight" as="span" tone="inherit">
+                  <Text
+                    variant="body"
+                    weight="semibold"
+                    leading="5"
+                    as="span"
+                    tone="inherit"
+                  >
                     Manual Run
                   </Text>
                 </Button>
@@ -158,7 +164,13 @@ export const RunInputDialog = ({
                     motion="transform"
                     className="size-5 group-hover:scale-110"
                   />
-                  <Text variant="body-semibold-tight" as="span" tone="inherit">
+                  <Text
+                    variant="body"
+                    weight="semibold"
+                    leading="5"
+                    as="span"
+                    tone="inherit"
+                  >
                     Schedule Run
                   </Text>
                 </Button>

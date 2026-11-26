@@ -58,7 +58,7 @@ function UsageCreditsAnswers() {
     <dl className="flex flex-col gap-4">
       {answers.map((item) => (
         <div key={item.question} className="flex flex-col gap-1">
-          <Text as="dt" variant="body-medium" tone="primary">
+          <Text as="dt" variant="body" weight="medium" tone="primary">
             {item.question}
           </Text>
           <Text as="dd" variant="body" tone="body">

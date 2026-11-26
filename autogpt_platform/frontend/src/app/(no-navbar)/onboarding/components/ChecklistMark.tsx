@@ -1,6 +1,7 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Tick02Icon } from "@hugeicons/core-free-icons";
 import { motion } from "framer-motion";
+import { spring } from "@/components/styles/motion";
 
 export type ChecklistState = "done" | "active" | "pending";
 
@@ -14,8 +15,8 @@ export function ChecklistMark({ state }: Props) {
       <motion.span
         initial={{ scale: 0.4, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: "spring", stiffness: 500, damping: 22 }}
-        className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand text-action-foreground"
+        transition={{ type: "spring", ...spring.snappy }}
+        className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand text-foreground-on-color"
       >
         <Icon icon={Tick02Icon} size={14} aria-hidden />
         <span className="sr-only">Completed</span>

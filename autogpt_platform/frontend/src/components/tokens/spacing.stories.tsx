@@ -233,7 +233,8 @@ export function AllVariants() {
             >
               <div className="flex w-32 flex-col">
                 <Text
-                  variant="body-medium"
+                  variant="body"
+                  weight="medium"
                   className="font-mono text-foreground-emphasis"
                 >
                   {space.name}

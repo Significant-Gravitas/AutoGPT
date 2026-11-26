@@ -26,7 +26,7 @@ export function ExternalLinkModal({ url, isOpen, onClose, onConfirm }: Props) {
           You&apos;re about to visit an external website:
         </Text>
         <div className="mt-2 rounded-md bg-surface-hover p-3">
-          <Text variant="small-mono" className="break-all">
+          <Text variant="small" mono className="break-all">
             {url}
           </Text>
         </div>

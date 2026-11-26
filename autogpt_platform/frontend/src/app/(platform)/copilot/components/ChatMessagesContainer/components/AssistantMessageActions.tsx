@@ -3,6 +3,7 @@
 import {
   MessageAction,
   MessageActions,
+  type MessageActionsProps,
 } from "@/components/organisms/Message/Message";
 import { cn } from "@/lib/utils";
 import { UIDataTypes, UIMessage, UITools } from "ai";
@@ -20,6 +21,7 @@ interface Props {
   message: UIMessage<unknown, UIDataTypes, UITools>;
   sessionID: string | null;
   savedMessageId?: string | null;
+  reveal?: MessageActionsProps["reveal"];
   className?: string;
 }
 
@@ -37,6 +39,7 @@ export function AssistantMessageActions({
   message,
   sessionID,
   savedMessageId,
+  reveal,
   className,
 }: Props) {
   const {
@@ -54,7 +57,7 @@ export function AssistantMessageActions({
 
   return (
     <>
-      <MessageActions className={cn("mt-1", className)}>
+      <MessageActions reveal={reveal} className={cn("mt-1", className)}>
         <MessageAction
           tooltip="Copy"
           onClick={() => handleCopy(text)}

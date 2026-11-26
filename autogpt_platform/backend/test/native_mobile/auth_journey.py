@@ -15,14 +15,20 @@ from uuid import uuid4
 import pytest
 import pytest_asyncio
 from autogpt_libs.auth import config as auth_config
+from autogpt_libs.auth.closed_accounts import (
+    ACCOUNT_CLOSED_DETAIL,
+    forget_account_state,
+)
 from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
-from prisma.models import AuthSession, AuthUser, User
+from prisma.enums import AccountDeletionSource
+from prisma.models import AccountDeletionRequest, AuthSession, AuthUser, User
 from starlette.websockets import WebSocket
 
 from backend.api import session_auth, ws_api
 from backend.api.rest_api import app
 from backend.data import db
+from backend.data.account_deletion import close_account
 
 
 @pytest_asyncio.fixture
@@ -178,7 +184,8 @@ async def test_native_email_login_renewal_and_signout_revoke_backend_access(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "change", ["expire", "ban", "revoked_ban", "past_ban", "future_ban", "change_owner"]
+    "change",
+    ["expire", "ban", "revoked_ban", "past_ban", "future_ban", "change_owner", "close"],
 )
 async def test_backend_rechecks_session_authority(
     auth_service: tuple[AsyncClient, str], change: str
@@ -217,6 +224,11 @@ async def test_backend_rechecks_session_authority(
         )
         if change == "revoked_ban":
             await AuthSession.prisma().delete_many(where={"userId": user.id})
+    elif change == "close":
+        # Ends every session. Forgetting this process's cached "open" answer
+        # stands in for a worker that didn't close it, once its cache expires.
+        await close_account(user.id, AccountDeletionSource.SETTINGS)
+        forget_account_state(user.id)
     else:
         second_email = f"{prefix}-second@example.test"
         await sign_in_native(client, second_email)
@@ -234,8 +246,16 @@ async def test_backend_rechecks_session_authority(
         if change in {"ban", "revoked_ban", "future_ban"}:
             assert response.status_code == 403
             assert response.json()["detail"]["code"] == "account_banned"
+        elif change == "past_ban":
+            assert response.status_code == 200
+        elif change == "close":
+            assert response.status_code == 401
+            assert response.json()["detail"] == ACCOUNT_CLOSED_DETAIL
+            await AccountDeletionRequest.prisma().delete_many(where={"userId": user.id})
+            forget_account_state(user.id)
         else:
-            assert response.status_code == (200 if change == "past_ban" else 401)
+            assert response.status_code == 401
+            assert response.json()["detail"]["code"] == "session_revoked"
     if change in {"ban", "revoked_ban", "future_ban"}:
         send = AsyncMock()
         websocket = WebSocket(
