@@ -20,10 +20,10 @@ export function WorkflowsMovedDialog({ isOpen, onDismiss }: Props) {
   return (
     <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onDismiss()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[100] bg-foreground-base/25 backdrop-blur-sm motion-safe:animate-fade-in" />
+        <Dialog.Overlay className="fixed inset-0 z-blocking bg-scrim/25 backdrop-blur-sm motion-safe:animate-fade-in" />
         <Dialog.Content
           data-workflows-moved-notice=""
-          className="fixed top-1/2 left-1/2 z-[100] flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-[44rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl border border-surface/80 bg-surface shadow-2xl outline-none motion-safe:animate-fade-in"
+          className="fixed top-1/2 left-1/2 z-blocking flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-[44rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl border border-surface/80 bg-surface shadow-2xl outline-none motion-safe:animate-fade-in"
           onEscapeKeyDown={(event) => {
             if (isComposingEvent(event)) event.preventDefault();
           }}
@@ -49,7 +49,7 @@ export function WorkflowsMovedDialog({ isOpen, onDismiss }: Props) {
             aria-label="Close notice"
             onClick={onDismiss}
             withTooltip={false}
-            className="absolute top-4 right-4 z-10 border-surface/80 bg-surface/80"
+            className="absolute top-4 right-4 z-raised border-surface/80 bg-surface/80"
           >
             <Icon icon={Cancel01Icon} size={16} aria-hidden />
           </Button>

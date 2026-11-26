@@ -61,7 +61,7 @@ export function TourCopilot() {
     // must stay fully legible, so the column keeps full opacity.
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <TourBackdrop />
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+      <div className="relative z-raised flex min-h-0 flex-1 flex-col">
         <TourChatHeader
           scenarioLabel={scenario.label}
           scenarioIcon={scenario.icon}
@@ -98,7 +98,11 @@ export function TourCopilot() {
 
   return (
     <SidebarProvider
-      style={{ "--sidebar-width": "19rem" } as CSSProperties}
+      style={
+        {
+          "--sidebar-width": "var(--shell-sidebar-width-tour)",
+        } as CSSProperties
+      }
       className="h-dvh min-h-0"
     >
       <TourSidebar />

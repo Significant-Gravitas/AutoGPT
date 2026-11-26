@@ -2,6 +2,7 @@
 Meeting BaaS bot (recording) blocks.
 """
 
+import math
 from typing import Optional
 
 from backend.data.model import NodeExecutionStats
@@ -151,7 +152,14 @@ class BaasBotLeaveMeetingBlock(Block):
         yield "left", left
 
 
-@cost(BlockCost(cost_type=BlockCostType.COST_USD, cost_amount=150))
+# Held before a fetch, since nothing says how long the meeting was until it returns: a
+# 30-minute meeting at list price, 52 credits. Settled to the meeting's real length.
+_FETCH_HOLD = math.ceil(30 * 60 * _MEETING_BAAS_USD_PER_SECOND * 150)
+
+
+@cost(
+    BlockCost(cost_type=BlockCostType.COST_USD, cost_amount=150, max_cost=_FETCH_HOLD)
+)
 class BaasBotFetchMeetingDataBlock(Block):
     """
     Pull MP4 URL, transcript & metadata for a completed meeting.

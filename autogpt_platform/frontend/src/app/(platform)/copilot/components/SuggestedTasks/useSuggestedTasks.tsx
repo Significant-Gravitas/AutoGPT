@@ -180,6 +180,7 @@ export function useSuggestedTasks({
         <Button
           variant="secondary"
           size="xs"
+          shape="sharp"
           onClick={() => {
             sonnerToast.dismiss(toastId);
             undoRemove(before, [task.id]);

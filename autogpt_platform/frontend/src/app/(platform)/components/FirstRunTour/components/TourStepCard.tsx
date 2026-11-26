@@ -51,7 +51,8 @@ export function TourStepCard({
         <Text
           as="h2"
           id={titleID}
-          variant="large-semibold"
+          variant="large"
+          weight="semibold"
           tone="primary"
           className="text-balance [overflow-wrap:anywhere]"
         >
@@ -70,6 +71,7 @@ export function TourStepCard({
             type="button"
             variant="ghost"
             size="xs"
+            shape="sharp"
             onClick={altAction.onClick}
             className="-ml-2.5 w-fit text-foreground-emphasis underline decoration-border-strong underline-offset-4 hover:bg-transparent hover:decoration-foreground-emphasis"
           >
@@ -82,6 +84,7 @@ export function TourStepCard({
           type="button"
           variant="ghost"
           size="xs"
+          shape="sharp"
           onClick={onSkip}
           tone="secondary"
           className="-ml-2.5"
@@ -94,6 +97,7 @@ export function TourStepCard({
               type="button"
               variant="secondary"
               size="xs"
+              shape="sharp"
               onClick={onBack}
             >
               Back
@@ -104,6 +108,7 @@ export function TourStepCard({
             type="button"
             variant="primary"
             size="xs"
+            shape="sharp"
             onClick={onNext}
             rightIcon={
               isLastStep ? (
@@ -132,9 +137,9 @@ function StepProgress({ stepNumber, stepCount }: StepProgressProps) {
           <span
             key={index}
             className={cn(
-              "h-1 rounded-full transition-[width,background-color] duration-300 ease-out motion-reduce:transition-none",
-              index + 1 === stepNumber ? "w-4 bg-foreground-emphasis" : "w-1.5",
-              index + 1 < stepNumber && "bg-foreground-tertiary",
+              "h-1 rounded-pill transition-[width,background-color] duration-300 ease-out motion-reduce:transition-none",
+              index + 1 === stepNumber ? "w-4 bg-action" : "w-1.5",
+              index + 1 < stepNumber && "bg-fill-soft",
               index + 1 > stepNumber && "bg-surface-active",
             )}
           />

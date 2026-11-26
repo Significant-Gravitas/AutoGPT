@@ -1,6 +1,6 @@
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
-import { render, screen } from "@/tests/integrations/test-utils";
-import { describe, expect, it } from "vitest";
+import { act, render, screen } from "@/tests/integrations/test-utils";
+import { describe, expect, it, vi } from "vitest";
 
 import type { AgentExecutionWithInfo } from "../../helpers";
 import { ActivityItem } from "../ActivityItem";
@@ -58,6 +58,69 @@ describe("ActivityItem", () => {
 
     expect(screen.getByRole("link")).toBeDefined();
     expect(screen.getByText("Weather Agent")).toBeDefined();
+  });
+
+  it("counts a running execution's duration up each second", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-21T12:00:10Z"));
+    try {
+      render(
+        <ActivityItem
+          execution={makeExecution({
+            status: AgentExecutionStatus.RUNNING,
+            ended_at: null,
+          })}
+        />,
+      );
+      expect(screen.getByText(/, 10s running$/)).toBeDefined();
+      act(() => {
+        vi.advanceTimersByTime(6_000);
+      });
+      expect(screen.getByText(/, 16s running$/)).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    [AgentExecutionStatus.RUNNING, /, 16s running$/],
+    [AgentExecutionStatus.QUEUED, /, 16s queued$/],
+  ])("counts a %s run up to now, past a stale ended_at", (status, line) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-21T12:00:16Z"));
+    try {
+      render(
+        <ActivityItem
+          execution={makeExecution({
+            status,
+            ended_at: new Date("2026-07-21T12:00:03Z"),
+          })}
+        />,
+      );
+      expect(screen.getByText(line)).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows a few seconds, not Unknown, when a running execution started after the floored now", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-21T12:00:00.400Z"));
+    try {
+      render(
+        <ActivityItem
+          execution={makeExecution({
+            status: AgentExecutionStatus.RUNNING,
+            started_at: new Date("2026-07-21T12:00:00.400Z"),
+            ended_at: null,
+          })}
+        />,
+      );
+      expect(screen.queryByText(/Unknown/)).toBeNull();
+      expect(screen.getByText(/, a few seconds running$/)).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("says a completed run with a failed step completed with errors", () => {

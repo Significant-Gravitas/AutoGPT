@@ -6,11 +6,13 @@ import {
   useGetV2GetASpecificPreset,
   usePatchV2UpdateAnExistingPreset,
 } from "@/app/api/__generated__/endpoints/presets/presets";
+import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import type { LibraryAgentPresetUpdatable } from "@/app/api/__generated__/models/libraryAgentPresetUpdatable";
 import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { retryUnlessClientError } from "../../../helpers";
+import { withCalendarDates } from "../../modals/RunAgentInputs/helpers";
 import { mergeTriggerPresetInputs, splitTriggerPresetInputs } from "./helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -18,9 +20,19 @@ import { useEffect, useState } from "react";
 type Args = {
   triggerId: string;
   graphId: string;
+  // The schemas the form shows, so a stored date is read as the day it shows.
+  inputSchema?: LibraryAgent["input_schema"];
+  triggerConfigSchema?: NonNullable<
+    LibraryAgent["trigger_setup_info"]
+  >["config_schema"];
 };
 
-export function useSelectedTriggerView({ triggerId, graphId }: Args) {
+export function useSelectedTriggerView({
+  triggerId,
+  graphId,
+  inputSchema,
+  triggerConfigSchema,
+}: Args) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -41,17 +53,33 @@ export function useSelectedTriggerView({ triggerId, graphId }: Args) {
     Record<string, CredentialsMetaInput>
   >({});
 
+  // The stored inputs, split into the graph's and the trigger's, each date as
+  // the day the form shows.
+  function applyPresetInputs(args: {
+    presetInputs: Record<string, unknown> | undefined;
+    inputSchema: Args["inputSchema"];
+    triggerConfigSchema: Args["triggerConfigSchema"];
+  }) {
+    const split = splitTriggerPresetInputs(args.presetInputs);
+    setInputs(withCalendarDates(args.inputSchema, split.inputs));
+    setTriggerConfig(
+      withCalendarDates(args.triggerConfigSchema, split.triggerConfig),
+    );
+    setMaskKey(split.maskKey);
+  }
+
   useEffect(() => {
     if (query.data) {
       setName(query.data.name || "");
       setDescription(query.data.description || "");
-      const split = splitTriggerPresetInputs(query.data.inputs);
-      setInputs(split.inputs);
-      setTriggerConfig(split.triggerConfig);
-      setMaskKey(split.maskKey);
+      applyPresetInputs({
+        presetInputs: query.data.inputs,
+        inputSchema,
+        triggerConfigSchema,
+      });
       setCredentials(query.data.credentials || {});
     }
-  }, [query.data]);
+  }, [query.data, inputSchema, triggerConfigSchema]);
 
   const updateMutation = usePatchV2UpdateAnExistingPreset({
     mutation: {
@@ -150,13 +178,14 @@ export function useSelectedTriggerView({ triggerId, graphId }: Args) {
     if (updateMutation.isSuccess && query.data) {
       setName(query.data.name || "");
       setDescription(query.data.description || "");
-      const split = splitTriggerPresetInputs(query.data.inputs);
-      setInputs(split.inputs);
-      setTriggerConfig(split.triggerConfig);
-      setMaskKey(split.maskKey);
+      applyPresetInputs({
+        presetInputs: query.data.inputs,
+        inputSchema,
+        triggerConfigSchema,
+      });
       setCredentials(query.data.credentials || {});
     }
-  }, [updateMutation.isSuccess, query.data]);
+  }, [updateMutation.isSuccess, query.data, inputSchema, triggerConfigSchema]);
 
   return {
     trigger: query.data,

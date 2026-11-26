@@ -9,11 +9,7 @@ export function EmptyFollowups() {
       data-testid="followups-empty"
     >
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-warning-surface">
-        <Icon
-          icon={Calendar03Icon}
-          size={24}
-          className="text-yellow-foreground"
-        />
+        <Icon icon={Calendar03Icon} size={24} tone="yellow" />
       </div>
       <Text variant="h4" tone="primary">
         Nothing scheduled yet

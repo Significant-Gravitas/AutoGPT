@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import logging
 import os
 import threading
@@ -30,6 +31,8 @@ from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.db_accessors import experts_db
 from backend.data.dynamic_fields import parse_execution_output, sanitize_pin_name
 from backend.data.execution import (
+    STARTABLE_GRAPH_EXECUTION_STATUSES,
+    TERMINAL_GRAPH_EXECUTION_STATUSES,
     ExecutionContext,
     ExecutionQueue,
     ExecutionStatus,
@@ -42,6 +45,7 @@ from backend.data.execution import (
 )
 from backend.data.graph import Link, Node
 from backend.data.model import (
+    APIKeyCredentials,
     Credentials,
     CredentialsMetaInput,
     GraphExecutionStats,
@@ -89,7 +93,7 @@ from backend.util.exceptions import (
     UserPaywalledError,
     get_execution_failure_reason,
 )
-from backend.util.file import clean_exec_files
+from backend.util.file import clean_exec_files, remove_staged_copies_on_exit
 from backend.util.llm.saturation import set_executor_id
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import AppProcess, freeze_startup_heap, set_service_name
@@ -163,6 +167,46 @@ def _get_execution_credit_balance(
     return db_client.get_credits(graph_exec.user_id)
 
 
+def _stored_run(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+) -> GraphExecution | None:
+    """The run as it is stored now, without its node executions."""
+    return db_client.get_graph_execution(
+        user_id=graph_exec.user_id,
+        execution_id=graph_exec.graph_exec_id,
+        include_node_executions=False,
+    )
+
+
+def _write_the_final_state(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+    status: ExecutionStatus,
+    stats: GraphExecutionStats,
+) -> bool:
+    """Write the run's final status and stats, and broadcast them. Returns
+    whether the write was applied.
+
+    A stop that ended the run first left it TERMINATED, which this write can't
+    follow, so the write publishes nothing. The stop publishes on its own
+    connection, so its TERMINATED can reach a page before this executor's
+    RUNNING. The stored terminal state is then broadcast again, after RUNNING
+    on this executor's own bus.
+    """
+    if update_graph_execution_state(
+        db_client=db_client,
+        graph_exec_id=graph_exec.graph_exec_id,
+        status=status,
+        stats=stats,
+    ):
+        return True
+    stored = _stored_run(db_client, graph_exec)
+    if stored is not None and stored.status in TERMINAL_GRAPH_EXECUTION_STATUSES:
+        send_execution_update(stored)
+    return False
+
+
 RUN_OUTSIDE_ITS_ORG_ERROR = (
     "This run was stopped because it was queued in an organization or team "
     "you aren't a member of. New runs go to your own."
@@ -219,11 +263,8 @@ def _stop_outside_its_org(
             status=ExecutionStatus.FAILED,
         )
     exec_stats.error = RUN_OUTSIDE_ITS_ORG_ERROR
-    if not update_graph_execution_state(
-        db_client=db_client,
-        graph_exec_id=graph_exec.graph_exec_id,
-        status=ExecutionStatus.FAILED,
-        stats=exec_stats,
+    if not _write_the_final_state(
+        db_client, graph_exec, ExecutionStatus.FAILED, exec_stats
     ):
         return
     exec_meta.status = ExecutionStatus.FAILED
@@ -263,7 +304,8 @@ def _record_execution_failure(
 # Terminal conditions the platform already understands. Anything outside this
 # set is treated as an unexpected failure and pages via Discord, so a known
 # business outcome left out of it produces a spurious "Unknown Graph Execution
-# Error" alert with a stack trace.
+# Error" alert with a stack trace. A run one of these ends bills the requests
+# it cuts off mid-call, as a stop does (see _cleanup_graph_execution).
 KNOWN_GRAPH_EXECUTION_ERRORS = (
     InsufficientBalanceError,
     ModerationError,
@@ -324,7 +366,8 @@ def execute_graph(
     cluster_lock: ClusterLock,
 ):
     """Execute graph using thread-local ExecutionProcessor instance"""
-    processor: ExecutionProcessor = _tls.processor
+    # Each run keeps its state on a copy of its own, sharing the thread's loops.
+    processor: ExecutionProcessor = copy.copy(_tls.processor)
     try:
         return processor.on_graph_execution(
             graph_exec_entry, cancel_event, cluster_lock
@@ -365,19 +408,20 @@ MODERATION_NODE_UPDATE_SECONDS = 30.0
 
 
 def _await_moderation(
-    moderation: Coroutine[Any, Any, Exception | None],
+    moderation: Coroutine[Any, Any, ModerationError | None],
     loop: asyncio.AbstractEventLoop,
     *,
     moderation_type: Literal["input", "output"],
     graph_exec: GraphExecutionEntry,
     log_metadata: LogMetadata,
 ) -> None:
-    """Run an AutoMod check on *loop* and raise the error it returns, if any.
+    """Run an AutoMod check on *loop* and fail the run if it refuses it.
 
-    A check that outlasts its wait is cancelled and counts as AutoMod failing,
-    so the run only goes on without it when ``automod_fail_open`` is set. A run
-    failed this way has its nodes failed as a refused check of the same kind
-    fails them.
+    The wait bounds the check alone. A check that outlasts it is cancelled and
+    counts as AutoMod failing, so the run only goes on without it when
+    ``automod_fail_open`` is set. A refused run has its nodes failed and
+    masked, with a bound of their own, before the refusal is raised, so the
+    time those writes take can't turn a refusal into a timeout.
     With AutoMod off there is nothing to wait for, so the check is not run.
     """
     if not automod_manager.config.enabled:
@@ -385,7 +429,7 @@ def _await_moderation(
         return
     future = asyncio.run_coroutine_threadsafe(moderation, loop)
     try:
-        moderation_error = future.result(timeout=MODERATION_WAIT_SECONDS)
+        refusal = future.result(timeout=MODERATION_WAIT_SECONDS)
     except TimeoutError:
         future.cancel()
         fail_open = automod_manager.config.fail_open
@@ -396,8 +440,7 @@ def _await_moderation(
         )
         if fail_open:
             return
-        _fail_nodes_for_moderation(loop, graph_exec, moderation_type, log_metadata)
-        raise ModerationError(
+        refusal = ModerationError(
             message=(
                 f"Execution failed due to {moderation_type} content moderation error"
             ),
@@ -405,23 +448,29 @@ def _await_moderation(
             graph_exec_id=graph_exec.graph_exec_id,
             moderation_type=moderation_type,
         )
-    if moderation_error:
-        raise moderation_error
+    if refusal is None:
+        return
+    _fail_nodes_for_moderation(
+        loop, graph_exec, moderation_type, refusal.content_id, log_metadata
+    )
+    raise refusal
 
 
 def _fail_nodes_for_moderation(
     loop: asyncio.AbstractEventLoop,
     graph_exec: GraphExecutionEntry,
     moderation_type: Literal["input", "output"],
+    content_id: str | None,
     log_metadata: LogMetadata,
 ) -> None:
-    """Fail the run's nodes as a refused check of this kind fails them. At the
-    input check the run fails before its queue is filled, so nothing would ever
-    run its nodes, and they would otherwise stay queued in a failed run; at the
-    output check, the nodes whose outputs went unchecked."""
+    """Fail and mask the run's nodes as a refused check of this kind does. At
+    the input check the run fails before its queue is filled, so nothing would
+    ever run its nodes, and they would otherwise stay queued in a failed run; at
+    the output check, the completed nodes whose outputs were refused or went
+    unchecked. The run fails whether or not this finishes in time."""
     update = asyncio.run_coroutine_threadsafe(
         automod_manager.update_failed_nodes_for_moderation(
-            get_db_async_client(), graph_exec.graph_exec_id, moderation_type
+            get_db_async_client(), graph_exec.graph_exec_id, moderation_type, content_id
         ),
         loop,
     )
@@ -431,7 +480,7 @@ def _fail_nodes_for_moderation(
         update.cancel()
         log_metadata.error(
             f"Could not fail the nodes of graph execution {graph_exec.graph_exec_id} "
-            f"after its {moderation_type} moderation timed out: {e!r}"
+            f"after its {moderation_type} moderation refused it: {e!r}"
         )
 
 
@@ -569,8 +618,9 @@ async def execute_node(
     if isinstance(node_block, AgentExecutorBlock):
         _input_data = AgentExecutorBlock.Input(**node.input_default)
         _input_data.inputs = input_data
-        if nodes_input_masks:
-            _input_data.nodes_input_masks = nodes_input_masks
+        # Like user_id, the masks are the run's own: a mask saved on the node
+        # would rewrite the sub-graph's inputs behind every check that reads it.
+        _input_data.nodes_input_masks = nodes_input_masks
         _input_data.user_id = user_id
         input_data = _input_data.model_dump()
     elif isinstance(node_block, MCPToolBlock):
@@ -640,6 +690,9 @@ async def execute_node(
     # Check for dry-run platform credentials (OrchestratorBlock uses the
     # platform's OpenRouter key instead of user credentials).
     _dry_run_creds = get_dry_run_credentials(input_data) if _dry_run_input else None
+    # The dry run simulates every other block, which never uses its credentials;
+    # its pre-run check drops credential errors for the same reason.
+    simulate = execution_context.dry_run and _dry_run_input is None
     # A dry run skips credits, so a block it runs for real on the platform's
     # key is bounded by the user's allowance instead.
     if _dry_run_creds is not None and (
@@ -751,6 +804,14 @@ async def execute_node(
                 raise ValueError(
                     f"Credentials #{credentials_meta.id} for user #{user_id} not found"
                 )
+            if (
+                not simulate
+                and isinstance(credentials, APIKeyCredentials)
+                and credentials.is_expired()
+            ):
+                # Outside the `except ValueError` above, so a field with a
+                # default can't fall back to running without the key.
+                raise credentials.expired_error(execution_context.user_timezone)
             if provider_matches(credentials.provider, "codex"):
                 await enforce_codex_access(user_id)
             extra_exec_kwargs[field_name] = credentials
@@ -793,7 +854,7 @@ async def execute_node(
         scope.set_tag(f"execution_context.{k}", v)
 
     try:
-        if execution_context.dry_run and _dry_run_input is None:
+        if simulate:
             block_iter = simulate_block(node_block, input_data, user_id=user_id)
         else:
             block_iter = node_block.execute(input_data, **extra_exec_kwargs)
@@ -843,7 +904,9 @@ async def execute_node(
             await track_dry_run_block_cost(
                 node_block.execution_stats,
                 user_id=user_id,
-                model=input_data.get("model"),
+                model=node_block.with_retired_models_replaced(
+                    input_data, node_block.execution_stats.resolved_model
+                ).get("model"),
             )
 
 
@@ -1381,15 +1444,18 @@ class ExecutionProcessor:
             )
 
         async def _drive_execution() -> None:
-            async for output_name, output_data in execute_node(
-                node=node,
-                data=node_exec,
-                execution_processor=self,
-                execution_stats=stats,
-                nodes_input_masks=nodes_input_masks,
-                nodes_to_skip=nodes_to_skip,
-            ):
-                await persist_output(output_name, output_data)
+            # The local copies the block makes of its input files go when
+            # it's done; the run's folder goes when the run is.
+            with remove_staged_copies_on_exit():
+                async for output_name, output_data in execute_node(
+                    node=node,
+                    data=node_exec,
+                    execution_processor=self,
+                    execution_stats=stats,
+                    nodes_input_masks=nodes_input_masks,
+                    nodes_to_skip=nodes_to_skip,
+                ):
+                    await persist_output(output_name, output_data)
 
         try:
             log_metadata.info(f"Start node execution {node_exec.node_exec_id}")
@@ -1514,12 +1580,39 @@ class ExecutionProcessor:
             )
             return
 
-        if exec_meta.status in [ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE]:
+        if exec_meta.status in STARTABLE_GRAPH_EXECUTION_STATUSES:
             log_metadata.info(f"⚙️ Starting graph execution #{graph_exec.graph_exec_id}")
-            exec_meta.status = ExecutionStatus.RUNNING
-            send_execution_update(
-                db_client.update_graph_execution_start_time(graph_exec.graph_exec_id)
+            started = db_client.update_graph_execution_start_time(
+                graph_exec.graph_exec_id
             )
+            if started is not None:
+                send_execution_update(started)
+            elif (
+                stored := _stored_run(db_client, graph_exec)
+            ) is not None and stored.status == ExecutionStatus.RUNNING:
+                # The database client retries a call that failed, so a start
+                # that committed and lost its answer comes back empty with the
+                # run RUNNING. That run is this executor's to go on with, and
+                # the earlier try's RUNNING update was lost with its answer.
+                log_metadata.info(
+                    f"Graph execution #{graph_exec.graph_exec_id} was already "
+                    "started by an earlier try of its start, going on with it."
+                )
+                send_execution_update(stored)
+            else:
+                # The start only moves a run that is still queued or
+                # incomplete, so the run left that state after the read above:
+                # a stop wrote its status first, or the run is gone.
+                log_metadata.info(
+                    f"Skipped graph execution #{graph_exec.graph_exec_id}, it "
+                    + (
+                        "no longer exists."
+                        if stored is None
+                        else f"became {stored.status.value} before it started."
+                    )
+                )
+                return
+            exec_meta.status = ExecutionStatus.RUNNING
         elif exec_meta.status == ExecutionStatus.RUNNING:
             log_metadata.info(
                 f"⚙️ Graph execution #{graph_exec.graph_exec_id} is already running, continuing where it left off."
@@ -1618,12 +1711,7 @@ class ExecutionProcessor:
             )
             product_analytics.handle_run_finished(graph_exec, exec_meta, exec_stats)
 
-            update_graph_execution_state(
-                db_client=db_client,
-                graph_exec_id=graph_exec.graph_exec_id,
-                status=exec_meta.status,
-                stats=exec_stats,
-            )
+            _write_the_final_state(db_client, graph_exec, exec_meta.status, exec_stats)
 
     async def charge_node_usage(
         self,
@@ -1798,13 +1886,33 @@ class ExecutionProcessor:
                         queued_node_exec.pre_flight_charge = block_pre_flight
                         with execution_stats_lock:
                             execution_stats.cost += cost
-                        # Check if we crossed the low balance threshold
-                        billing.handle_low_balance(
-                            db_client=db_client,
-                            user_id=graph_exec.user_id,
-                            current_balance=remaining_balance,
-                            transaction_cost=cost,
-                        )
+                        # Check if we crossed the low balance threshold.
+                        # The charge has landed, so a failed check is logged
+                        # instead of failing the run and keeping the charge.
+                        try:
+                            billing.handle_low_balance(
+                                db_client=db_client,
+                                user_id=graph_exec.user_id,
+                                current_balance=remaining_balance,
+                                transaction_cost=cost,
+                            )
+                        except Exception as low_balance_error:
+                            log_metadata.exception(
+                                f"Low-balance check failed after charging node "
+                                f"{queued_node_exec.node_exec_id}"
+                            )
+                            send_rate_limited_discord_alert(
+                                "handle_low_balance",
+                                low_balance_error,
+                                "low_balance_check",
+                                f"🚨 **Low-Balance Check Failed**\n"
+                                f"User: {graph_exec.user_id}\n"
+                                f"Graph ID: {graph_exec.graph_id}\n"
+                                f"Execution ID: {graph_exec.graph_exec_id}\n"
+                                f"Node Execution ID: {queued_node_exec.node_exec_id}\n"
+                                f"Error Type: {type(low_balance_error).__name__}\n"
+                                f"Error: {str(low_balance_error)[:200]}\n",
+                            )
                 except InsufficientBalanceError as balance_error:
                     error = balance_error  # Set error to trigger FAILED status
                     node_exec_id = queued_node_exec.node_exec_id
@@ -2008,10 +2116,11 @@ class ExecutionProcessor:
         This method is decorated with @error_logged(swallow=True) to ensure cleanup
         never fails in the finally block.
         """
-        # Cancel and wait for all node executions to complete. Only a stop
-        # request ends a run TERMINATED, and its nodes are billed for the
-        # requests it cuts off (see billing.bills_stop_estimate).
-        stop_requested = execution_status == ExecutionStatus.TERMINATED
+        # Requests cut off mid-call are billed when the user ended the run: a stop,
+        # or a known error such as an unaffordable node (billing.bills_stop_estimate).
+        stop_requested = execution_status == ExecutionStatus.TERMINATED or isinstance(
+            error, KNOWN_GRAPH_EXECUTION_ERRORS
+        )
         for node_id, inflight_exec in running_node_execution.items():
             if inflight_exec.is_done():
                 continue
@@ -2510,6 +2619,12 @@ class ExecutionManager(AppProcess):
             )
 
             cancel_event = threading.Event()
+            # The run is registered, with a stand-in for its worker's future,
+            # before the worker exists, so a cancel the other consumer takes
+            # from here on reaches it. A stop's second cancel follows its own
+            # status write, so by then either the run is registered or the
+            # conditional start will skip it.
+            self.active_graph_runs[graph_exec_id] = (Future(), cancel_event)
             future = self.executor.submit(
                 execute_graph, graph_exec_entry, cancel_event, cluster_lock
             )
@@ -2520,6 +2635,7 @@ class ExecutionManager(AppProcess):
             logger.warning(
                 f"[{self.service_name}] Failed to setup execution for {graph_exec_id}: {type(e).__name__}: {e}"
             )
+            self.active_graph_runs.pop(graph_exec_id, None)
             # Release cluster lock before requeue
             cluster_lock.release()
             if graph_exec_id in self._execution_locks:

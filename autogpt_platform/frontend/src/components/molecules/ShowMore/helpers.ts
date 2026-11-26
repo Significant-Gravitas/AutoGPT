@@ -10,14 +10,10 @@ export function getIconSize(variant: ShowMoreTextVariant): number {
     case "lead":
       return 20;
     case "large":
-    case "large-medium":
-    case "large-semibold":
       return 16;
     case "body":
-    case "body-medium":
       return 14;
     case "small":
-    case "small-medium":
       return 12;
     default:
       return 14;

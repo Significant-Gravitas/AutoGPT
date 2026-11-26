@@ -162,7 +162,9 @@ export function SelectedRunView({
                       <RunDetailCard
                         title={
                           <div className="flex items-center gap-1">
-                            <Text variant="lead-semibold">Summary</Text>
+                            <Text variant="lead" weight="semibold">
+                              Summary
+                            </Text>
                             <InformationTooltip
                               iconSize={20}
                               description="This AI-generated summary describes how the workflow handled your task. It's an experimental feature and may occasionally be inaccurate."
@@ -204,7 +206,9 @@ export function SelectedRunView({
                     <RunDetailCard
                       title={
                         <div className="flex items-center gap-1">
-                          <Text variant="lead-semibold">Your input</Text>
+                          <Text variant="lead" weight="semibold">
+                            Your input
+                          </Text>
                           <InformationTooltip
                             iconSize={20}
                             description="This is the input that was provided to the workflow for running this task."

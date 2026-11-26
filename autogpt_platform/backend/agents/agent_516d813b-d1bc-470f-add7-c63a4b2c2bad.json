@@ -45,7 +45,7 @@
       "id": "c5d16ee4-de9e-4d93-bf32-ac2d15760d5b",
       "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
       "input_default": {
-        "model": "o3-mini",
+        "model": "gpt-6.1-terra",
         "retry": 3,
         "prompt": "{{ARGS}}",
         "sys_prompt": "You are now the following python function:\n\n```\n# {{DESCRIPTION}}\n{{FUNCTION}}\n```\n\nThe user will provide your input arguments.\nOnly respond with your `return` value.\nDo not include any commentary or additional text in your response. \nDo not include ``` backticks or any other decorators.",

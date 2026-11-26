@@ -10,17 +10,13 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 
-import {
-  EASE_OUT,
-  type FilterState,
-  type SortDir,
-  type SortKey,
-} from "../../helpers";
+import { type FilterState, type SortDir, type SortKey } from "../../helpers";
 import { Pagination } from "../Pagination/Pagination";
 import { SubmissionItem } from "../SubmissionItem/SubmissionItem";
 import { ColumnHeader } from "./columns/ColumnHeader";
 import { SortColumnFilter } from "./columns/SortColumnFilter";
 import { StatusColumnFilter } from "./columns/StatusColumnFilter";
+import { duration, ease } from "@/components/styles/motion";
 
 interface EditPayload extends StoreSubmissionEditRequest {
   store_listing_version_id: string;
@@ -83,14 +79,18 @@ export function SubmissionsList({
       transition={
         reduceMotion
           ? undefined
-          : { duration: 0.28, ease: EASE_OUT, delay: 0.04 + index * 0.05 }
+          : {
+              duration: duration.slow,
+              ease: ease.emphasized,
+              delay: 0.04 + index * 0.05,
+            }
       }
       className="flex w-full flex-col gap-3"
       data-testid="submissions-list"
     >
       <div className="flex items-center justify-between pr-1 pl-4">
         <div className="flex items-center gap-2">
-          <Text variant="body-medium" as="span">
+          <Text variant="body" weight="medium" as="span">
             Submissions
           </Text>
         </div>
@@ -180,7 +180,7 @@ export function SubmissionsList({
                 <tr>
                   <td colSpan={COLUMN_COUNT} className="px-4 py-12">
                     <div className="flex flex-col items-center justify-center gap-3 text-center">
-                      <Text variant="body-medium">
+                      <Text variant="body" weight="medium">
                         {debouncedSearch
                           ? `No submissions match "${debouncedSearch}"`
                           : "No submissions match these filters"}

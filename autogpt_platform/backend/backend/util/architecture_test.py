@@ -18,44 +18,8 @@ import pytest
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
-# ---------------------------------------------------------------------------
-# Rule: no process-wide @cached(...) around event-loop-bound async clients
-# ---------------------------------------------------------------------------
-#
-# Motivation: `backend.util.cache.cached` stores its result in a process-wide
-# dict for ttl_seconds. Async clients (AsyncOpenAI, httpx.AsyncClient,
-# AsyncRabbitMQ, ...) wrap connection pools whose internal
-# asyncio primitives lazily bind to the first event loop that uses them. The
-# executor runs two long-lived loops on separate threads; once the cache is
-# populated from loop A, any subsequent call from loop B raises
-# `RuntimeError: ... bound to a different event loop`, surfaced as an opaque
-# `APIConnectionError: Connection error.` and poisons the cache for a full
-# TTL window.
-#
-# Use `per_loop_cached` (keyed on id(running loop)) or construct per-call.
-
-LOOP_BOUND_TYPES = frozenset(
-    {
-        "AsyncOpenAI",
-        "AsyncClient",  # httpx, openai internal
-        "AsyncRabbitMQ",
-        "AsyncRedisExecutionEventBus",
-    }
-)
-
-# Pre-existing offenders tracked for future cleanup. Exclude from this test
-# so the rule can still catch NEW violations without blocking unrelated PRs.
-_KNOWN_OFFENDERS = frozenset(
-    {
-        "util/clients.py get_openai_client",
-        # Inner helper extracted from ``get_openai_client`` so the local-
-        # transport branch shares one cached client across both
-        # ``prefer_openrouter`` arms (no semantic change vs the parent
-        # offender — same loop-binding caveat applies, will be migrated
-        # together when ``get_openai_client`` is moved to ``per_loop_cached``).
-        "util/clients.py _get_local_openai_client",
-    }
-)
+# Async clients shared by the whole process (AsyncOpenAI, httpx.AsyncClient,
+# ...) are rejected by architecture_loop_bound_clients_test.py.
 
 
 def _decorator_name(node: ast.expr) -> str | None:
@@ -810,57 +774,18 @@ def _enclosing_functions(tree: ast.Module) -> dict[ast.AST, str]:
 
 
 def test_known_offenders_use_posix_separators():
-    """_KNOWN_OFFENDERS must use forward slashes since the comparison key
-    is built from pathlib.Path.relative_to() which uses OS-native separators.
-    On Windows this would be backslashes, causing false positives.
+    """Known-offender entries must use forward slashes since the comparison
+    key is built from pathlib.Path.relative_to() which uses OS-native
+    separators. On Windows this would be backslashes, causing false positives.
 
     Ensure the key construction normalises to forward slashes.
     """
-    for entry in (
-        _KNOWN_OFFENDERS
-        | _DATACLASS_KNOWN_OFFENDERS
-        | set(_GLOBAL_CLOCK_PATCH_OFFENDERS)
-    ):
+    for entry in _DATACLASS_KNOWN_OFFENDERS | set(_GLOBAL_CLOCK_PATCH_OFFENDERS):
         path_part = entry.split()[0]
         assert "\\" not in path_part, (
             f"known-offenders entry uses backslash: {entry!r}. "
             "Use forward slashes — the test should normalise Path separators."
         )
-
-
-def test_no_process_cached_loop_bound_clients():
-    offenders: list[str] = []
-    for py in _iter_backend_py_files():
-        try:
-            tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
-        except SyntaxError:
-            continue
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            decorators = {_decorator_name(d) for d in node.decorator_list}
-            if "cached" not in decorators:
-                continue
-            bound = _annotation_names(node.returns) & LOOP_BOUND_TYPES
-            if bound:
-                rel = py.relative_to(BACKEND_ROOT)
-                key = f"{rel.as_posix()} {node.name}"
-                if key in _KNOWN_OFFENDERS:
-                    continue
-                offenders.append(
-                    f"{rel}:{node.lineno} {node.name}() -> {sorted(bound)}"
-                )
-
-    assert not offenders, (
-        "Process-wide @cached(...) must not wrap functions returning event-"
-        "loop-bound async clients. These objects lazily bind their connection "
-        "pool to the first event loop that uses them; caching them across "
-        "loops poisons the cache and surfaces as opaque connection errors.\n\n"
-        "Offenders:\n  " + "\n  ".join(offenders) + "\n\n"
-        "Fix: construct the client per-call, or introduce a per-loop factory "
-        "keyed on id(asyncio.get_running_loop()). See "
-        "backend/util/clients.py::get_openai_client for context."
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -1454,8 +1379,11 @@ _ORG_LEDGER_CALL_SITES: dict[str, tuple[int, str]] = {
         "picks the low-balance alert only, after the charge has landed",
     ),
     "executor/billing.py charge_reconciled_usage spend_org_credits": (1, _PINNED),
-    "executor/billing.py charge_usage get_org_credits": (1, _PINNED),
     "executor/billing.py charge_usage spend_org_credits": (2, _PINNED),
+    "executor/billing.py redispatch_reconcile_baseline spend_org_credits": (
+        1,
+        _PINNED,
+    ),
     "executor/manager.py _get_execution_credit_balance get_org_credits": (
         1,
         _PINNED,

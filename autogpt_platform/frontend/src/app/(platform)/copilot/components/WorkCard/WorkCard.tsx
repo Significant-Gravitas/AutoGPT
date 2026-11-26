@@ -24,7 +24,13 @@ export function WorkCard({ metadata, preview }: Props) {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <Text variant="body-medium-tight" tone="primary" className="truncate">
+          <Text
+            variant="body"
+            weight="medium"
+            leading="5"
+            tone="primary"
+            className="truncate"
+          >
             {metadata.graphName}
           </Text>
           <div className="mt-1">
@@ -40,7 +46,12 @@ export function WorkCard({ metadata, preview }: Props) {
         </Button>
       </div>
       {preview ? (
-        <Text variant="body-tight" tone="muted" className="mt-2 line-clamp-2">
+        <Text
+          variant="body"
+          leading="5"
+          tone="muted"
+          className="mt-2 line-clamp-2"
+        >
           {preview}
         </Text>
       ) : null}

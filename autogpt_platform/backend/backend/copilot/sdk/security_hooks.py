@@ -13,6 +13,8 @@ from claude_agent_sdk.types import HookEvent, HookMatcher
 from backend.copilot.ai_spans import ToolSpanTimer
 from backend.copilot.context import get_execution_context, is_allowed_local_path
 from backend.copilot.pending_messages import drain_and_format_for_injection
+from backend.copilot.tools import deferred_name_message, is_deferred_name_slip
+from backend.copilot.tools.capability_gates import tool_refused_message
 
 from .governor import TurnGovernor
 from .tool_adapter import (
@@ -69,7 +71,7 @@ def _deny(reason: str) -> dict[str, Any]:
     }
 
 
-def _landing_refusal(governor: TurnGovernor | None) -> str | None:
+async def _landing_refusal(governor: TurnGovernor | None) -> str | None:
     """The governor's refusal for the next tool call, if it is landing the turn.
 
     A governor failure lets the call run: the CLI's own budget and turn limits
@@ -78,6 +80,7 @@ def _landing_refusal(governor: TurnGovernor | None) -> str | None:
     if governor is None:
         return None
     try:
+        await governor.keep_up()
         return governor.refusal()
     except Exception:
         logger.warning("[SDK] Turn governor could not decide a refusal", exc_info=True)
@@ -140,9 +143,14 @@ def _validate_tool_access(
 
 def _deny_unlisted(tool_name: str) -> dict[str, Any]:
     logger.warning(f"Blocked tool outside the session's allowed set: {tool_name}")
+    name = tool_name.removeprefix(MCP_TOOL_PREFIX)
+    # Defensive: deferred tools are never registered on the MCP server, so
+    # the CLI is likely to answer a named one before this hook runs.
+    if is_deferred_name_slip(name):
+        return _deny(deferred_name_message(name))
     return _deny(
-        f"[SECURITY] Tool '{tool_name}' is not available in this session. "
-        "This is enforced by the platform and cannot be bypassed."
+        f"[SECURITY] {tool_refused_message(name)} This is enforced by the "
+        "platform and cannot be bypassed."
     )
 
 
@@ -256,7 +264,7 @@ def create_security_hooks(
             tool_name = cast(str, input_data.get("tool_name", ""))
             tool_input = cast(dict[str, Any], input_data.get("tool_input", {}))
 
-            refusal = _landing_refusal(governor)
+            refusal = await _landing_refusal(governor)
             if governor is not None and refusal is not None:
                 logger.info(
                     "[SDK] Refusing %s: turn is landing (%s), user=%s",

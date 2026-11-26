@@ -24,7 +24,11 @@ from pytest_snapshot.plugin import Snapshot
 from backend.api.model import RECOGNIZED_TERMS_VERSIONS, UserConsentResponse
 from backend.api.rest_api import app as real_app
 from backend.data.model import User
-from backend.data.notifications import AudienceAction, NotificationResult
+from backend.data.notifications import (
+    AudienceAction,
+    NotificationPreference,
+    NotificationResult,
+)
 from backend.data.user import (
     generate_preference_link,
     get_or_create_user,
@@ -74,6 +78,16 @@ def setup_app_auth(mock_jwt_user, setup_test_user, test_user_id):
     app.dependency_overrides[get_request_context] = _fake_request_context
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def held_sign_in_connection(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """The connection a sign-up's Google or Microsoft sign-in left waiting."""
+    return mocker.patch(
+        "backend.api.features.user.routes.keep_held_sign_in_connection",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
 
 
 # Auth endpoints tests
@@ -129,6 +143,29 @@ def test_get_or_create_user_route_reports_creation(
 
     assert response.status_code == 200
     assert response.headers["X-AutoGPT-User-Created"] == "true"
+
+
+def test_setting_up_an_account_keeps_the_connection_its_sign_up_brought(
+    mocker: pytest_mock.MockFixture,
+    held_sign_in_connection: AsyncMock,
+    test_user_id: str,
+) -> None:
+    # The sign-up's handoff came before this request created the account, so
+    # its connection waited for it; this request still reports the creation.
+    mock_user = Mock()
+    mock_user.id = test_user_id
+    mock_user.created_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    mock_user.model_dump.return_value = {"id": test_user_id}
+    mocker.patch(
+        "backend.api.features.user.routes.get_or_create_user_with_status",
+        return_value=Mock(user=mock_user, was_created=True),
+    )
+
+    response = client.post("/auth/user")
+
+    assert response.status_code == 200
+    assert response.headers["X-AutoGPT-User-Created"] == "true"
+    held_sign_in_connection.assert_awaited_once_with(test_user_id)
 
 
 @pytest.mark.parametrize("was_created", [False, True])
@@ -550,6 +587,33 @@ def test_the_frontend_terms_version_is_recognized() -> None:
 
     assert shown is not None
     assert shown.group(1) in RECOGNIZED_TERMS_VERSIONS
+
+
+def test_update_preferences_accepts_a_reserved_domain_address(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """The settings pages post the account's own address back with every save.
+    Validating it failed every save with a 422 for a stored address EmailStr
+    rejects, such as a reserved `.test` domain (AUTOGPT-SERVER-5E4)."""
+    stored = NotificationPreference(user_id=test_user_id, email="test-1@autogpt.test")
+    update = mocker.patch(
+        "backend.api.features.user.routes.update_user_notification_preference",
+        return_value=stored,
+    )
+
+    response = client.post(
+        "/auth/user/preferences",
+        json={
+            "email": "test-1@autogpt.test",
+            "briefing_frequency": "WEEKLY",
+            "alerts_enabled": True,
+            "store_verdicts_enabled": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["email"] == "test-1@autogpt.test"
+    assert update.call_args.args[1].email == "test-1@autogpt.test"
 
 
 # Invalid request tests

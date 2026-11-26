@@ -15,7 +15,7 @@ export function CycleToggle({ value, onChange, disabled }: Props) {
     <div
       role="radiogroup"
       aria-label="Billing cycle"
-      className="inline-flex rounded-full border border-border-base bg-surface-hover p-0.5"
+      className="inline-flex rounded-pill border border-border-base bg-surface-hover p-0.5"
     >
       {CYCLES.map((cycle) => {
         const selected = value === cycle;
@@ -28,7 +28,7 @@ export function CycleToggle({ value, onChange, disabled }: Props) {
             disabled={disabled}
             onClick={() => onChange(cycle)}
             className={cn(
-              "rounded-full border-none px-3 py-1 text-caption font-medium transition-all",
+              "rounded-pill border-none px-3 py-1 text-caption font-medium transition-all",
               selected
                 ? "bg-surface text-foreground-strong shadow-sm"
                 : "bg-transparent text-foreground-tertiary hover:text-foreground-body",

@@ -99,6 +99,42 @@ export const COLOR_ROLE_GROUPS = [
       "handle",
     ],
   },
+  {
+    name: "Inverse",
+    description:
+      "A dark surface that shows content on the light theme (toast, tooltip, terminal, a dark chip), its hover and the text on it. Not the primary Button: that is action.",
+    roles: ["surface-inverse", "surface-inverse-hover", "foreground-inverse"],
+  },
+  {
+    name: "On colour",
+    description:
+      "Text and icons on a saturated fill: brand, a status or an accent.",
+    roles: ["foreground-on-color"],
+  },
+  {
+    name: "Fills",
+    description:
+      "Solid marks that are not text: dots, bars, tracks and icon tiles, lightest first.",
+    roles: [
+      "fill-subtle",
+      "fill-soft",
+      "fill-medium",
+      "fill-bold",
+      "fill-strong",
+    ],
+  },
+  {
+    name: "Shell",
+    description:
+      "The app frame around the page: the sidebar, its items and its border. Not used yet.",
+    roles: [
+      "shell",
+      "shell-foreground",
+      "shell-hover",
+      "shell-active",
+      "shell-border",
+    ],
+  },
 ] as const;
 
 export const COLOR_ROLES = COLOR_ROLE_GROUPS.flatMap((group) => group.roles);

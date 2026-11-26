@@ -10,7 +10,7 @@ export function TourHero() {
   return (
     <section className="relative flex flex-1 flex-col overflow-hidden border-b border-separator">
       <TourBackground />
-      <div className="relative z-10 flex flex-1 flex-col items-center overflow-y-auto px-6 pt-16 pb-4">
+      <div className="relative z-raised flex flex-1 flex-col items-center overflow-y-auto px-6 pt-16 pb-4">
         <div className="flex w-full max-w-2xl flex-1 flex-col items-center justify-center text-center">
           <AutoGPTLogo
             hideText
@@ -18,14 +18,13 @@ export function TourHero() {
             className="mb-6 h-20 w-20"
           />
 
-          {/* oxlint-disable-next-line design-system/no-arbitrary-values -- hero glass badge's indigo gradient ring and glow, no token */}
-          <span className="relative mb-6 inline-flex overflow-hidden rounded-full bg-[linear-gradient(135deg,rgba(99,102,241,0.6),rgba(59,130,246,0.35),rgba(165,180,252,0.6))] p-px shadow-[0_6px_20px_-6px_rgba(59,130,246,0.35)]">
-            {/* oxlint-disable-next-line design-system/no-arbitrary-values -- glass highlight, no shadow token */}
-            <span className="relative inline-flex items-center gap-2 rounded-full bg-surface/50 px-4 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl">
+          {/* oxlint-disable-next-line design-system/no-arbitrary-values -- hero glass badge's indigo gradient ring, no token */}
+          <span className="relative mb-6 inline-flex overflow-hidden rounded-pill bg-[linear-gradient(135deg,rgb(var(--color-indigo)/0.6),rgb(var(--color-info)/0.35),rgb(var(--color-indigo)/0.35))] p-px shadow-drop shadow-info/35">
+            <span className="relative inline-flex items-center gap-2 rounded-pill bg-surface/50 px-4 py-1.5 shadow-gloss backdrop-blur-xl">
               <span className="contents text-brand">
                 <Icon icon={SparklesIcon} className="h-4 w-4" />
               </span>
-              <Text variant="body-medium-tight" tone="body">
+              <Text variant="body" weight="medium" leading="5" tone="body">
                 Live demo, no signup required
               </Text>
             </span>

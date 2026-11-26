@@ -15,10 +15,10 @@ import {
   FormItem,
 } from "@/components/molecules/Form/Form";
 
-import { EASE_OUT } from "../../helpers";
 import { useAccountCard } from "./useAccountCard";
 import { PencilIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   user: User;
@@ -52,8 +52,8 @@ export function AccountCard({ user, index = 0 }: Props) {
         reduceMotion
           ? undefined
           : {
-              duration: 0.32,
-              ease: EASE_OUT,
+              duration: duration.slow,
+              ease: ease.emphasized,
               delay: 0.04 + index * 0.05,
             }
       }
@@ -61,7 +61,7 @@ export function AccountCard({ user, index = 0 }: Props) {
     >
       <div className="flex flex-col divide-y divide-border-base rounded-large border border-border-base bg-surface shadow-message-table">
         <div className="flex items-center justify-between gap-4 px-4 py-4">
-          <Text variant="body-medium" as="span">
+          <Text variant="body" weight="medium" as="span">
             Email
           </Text>
 
@@ -147,7 +147,7 @@ export function AccountCard({ user, index = 0 }: Props) {
         </div>
 
         <div className="flex items-center justify-between gap-4 px-4 py-4">
-          <Text variant="body-medium" as="span">
+          <Text variant="body" weight="medium" as="span">
             Password
           </Text>
 

@@ -41,7 +41,11 @@ from backend.data.model import UserCreditTransactionAdminView
 from backend.data.notifications import NotificationEventModel, OpsData
 from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.stripe_authentication import requires_authentication
-from backend.data.stripe_client import stripe_call, stripe_list_items
+from backend.data.stripe_client import (
+    api_base_override,
+    stripe_call,
+    stripe_list_items,
+)
 from backend.data.subscription_checkout import (
     ensure_no_unconverted_trial,
     expire_all_open_checkouts,
@@ -85,6 +89,10 @@ if TYPE_CHECKING:
 
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
+if api_base := api_base_override(
+    settings.config.stripe_api_base, settings.secrets.stripe_api_key
+):
+    stripe.api_base = api_base
 logger = logging.getLogger(__name__)
 base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
@@ -853,7 +861,20 @@ class UserCredit(UserCreditBase):
             fail_insufficient_credits=fail_insufficient_credits,
         )
 
-        # Auto top-up if balance is below threshold.
+        # The debit is committed, so nothing after it may fail the call: the
+        # database manager's client retries a failed spend, debiting it again.
+        try:
+            await self._auto_top_up_after_spend(user_id, balance, metadata)
+        except Exception:
+            logger.exception(
+                f"Auto top-up check failed for user {user_id}, balance: {balance}"
+            )
+        return balance
+
+    async def _auto_top_up_after_spend(
+        self, user_id: str, balance: int, metadata: UsageTransactionMetadata
+    ) -> None:
+        """Top the user up if the spend left *balance* below their threshold."""
         auto_top_up = await get_auto_top_up(user_id)
         if (
             auto_top_up.threshold
@@ -873,8 +894,6 @@ class UserCredit(UserCreditBase):
                 logger.error(
                     f"Auto top-up failed for user {user_id}, balance: {balance}, amount: {auto_top_up.amount}, error: {e}"
                 )
-
-        return balance
 
     async def top_up_credits(
         self,

@@ -53,12 +53,13 @@ export function WalletCompactPanel({
           <Text
             as="h2"
             id={creditsHeadingID}
-            variant="large-medium"
+            variant="large"
+            weight="medium"
             tone="primary"
           >
             Automation credits
           </Text>
-          <Text variant="large-semibold" tone="primary" tabular>
+          <Text variant="large" weight="semibold" tone="primary" tabular>
             {formattedCredits}
           </Text>
         </div>
@@ -81,6 +82,7 @@ export function WalletCompactPanel({
           type="button"
           variant="ghost"
           size="xs"
+          shape="sharp"
           leadingIcon={InformationCircleIcon}
           onClick={onOpenExplainer}
         >
@@ -91,6 +93,7 @@ export function WalletCompactPanel({
           href="/settings/billing"
           variant="ghost"
           size="xs"
+          shape="sharp"
           rightIcon={<Icon icon={ArrowRight01Icon} size={14} aria-hidden />}
           onClick={onNavigate}
         >

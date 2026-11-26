@@ -24,7 +24,11 @@ import z from "zod";
 import { login as loginAction } from "./actions";
 import { getPostLoginPath, getSignInErrorNotice } from "./helpers";
 import { isTeamEmail } from "@/lib/auth/team-email";
+import { SIGN_IN_CODE_SENT } from "@/lib/auth/sign-in-code";
 import { clearImpersonationEverywhere } from "@/lib/impersonation";
+import { rememberConnectAttempt } from "@/lib/auth/connect-attempt";
+import { useConnectFallback } from "@/components/auth/useConnectFallback";
+import { usePageRestored } from "@/components/auth/usePageRestored";
 
 export function useLoginPage() {
   useCaptureMarketingPrompt();
@@ -40,6 +44,12 @@ export function useLoginPage() {
   const [loadingProvider, setLoadingProvider] = useState<LoginProvider | null>(
     null,
   );
+  // Back from the provider can bring the page back as it was left, still
+  // starting that sign-in.
+  usePageRestored(() => {
+    setLoadingProvider(null);
+    setIsLoggingIn(false);
+  });
   // A social sign-in that fails returns here with Better Auth's error code.
   // Microsoft's own copy (microsoft-login.ts) is for a Microsoft sign-in only,
   // which the with-provider route marks with `provider=microsoft`.
@@ -48,6 +58,7 @@ export function useLoginPage() {
       ? searchParams.get("error")
       : null;
   const isWaitlisted = isWaitlistSignInError(microsoftErrorCode);
+  const connectFallback = useConnectFallback();
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(isWaitlisted);
   const [verificationEmail, setVerificationEmail] = useState<string | null>(
     null,
@@ -68,6 +79,9 @@ export function useLoginPage() {
     searchParams.get("error"),
     searchParams.get("provider"),
   );
+  // A provider sign-in that can't vouch for its address waits on a code
+  // emailed there (require-sign-in-code.ts).
+  const isWaitingOnCode = searchParams.get("error") === SIGN_IN_CODE_SENT;
   const showBannedNotice = isBannedNotice(searchParams);
 
   // Only honour explicit `?next=` deep links here. Generic "already logged in
@@ -90,7 +104,10 @@ export function useLoginPage() {
   });
   const { formRef, isHydrated } = useServerRenderedForm(form);
 
-  async function handleProviderLogin(provider: LoginProvider) {
+  async function handleProviderLogin(
+    provider: LoginProvider,
+    { connect }: { connect?: boolean } = {},
+  ) {
     setLoadingProvider(provider);
     setIsLoggingIn(true);
     // Leftover impersonation (expired admin session, pre-fix cookie) would 403 a non-admin.
@@ -103,7 +120,11 @@ export function useLoginPage() {
       const response = await fetch("/api/auth/login/with-provider", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, redirectTo: fullCallbackUrl }),
+        body: JSON.stringify({
+          provider,
+          redirectTo: fullCallbackUrl,
+          connect,
+        }),
       });
 
       if (!response.ok) {
@@ -111,7 +132,8 @@ export function useLoginPage() {
         throw new Error(error || "Failed to start OAuth flow");
       }
 
-      const { url } = await response.json();
+      const { url, connecting } = await response.json();
+      if (connecting) rememberConnectAttempt(provider);
       if (url) window.location.href = url as string;
     } catch (error) {
       setLoadingProvider(null);
@@ -176,16 +198,26 @@ export function useLoginPage() {
     }
   }
 
+  // Back to the form, keeping only the deep link.
+  function handleLeaveSignInCode() {
+    router.replace(
+      safeNext ? `/login?next=${encodeURIComponent(safeNext)}` : "/login",
+    );
+  }
+
   return {
     form,
     formRef,
     feedback:
       feedback ??
       signInErrorNotice ??
-      (isWaitlisted ? null : getSocialSignInError(microsoftErrorCode)),
+      (isWaitlisted || isWaitingOnCode
+        ? null
+        : getSocialSignInError(microsoftErrorCode)),
     nextUrl: safeNext,
     verificationEmail,
     verificationNotice,
+    isWaitingOnCode,
     showBannedNotice,
     user,
     isLoading,
@@ -200,7 +232,9 @@ export function useLoginPage() {
     showNotAllowedModal,
     handleSubmit: form.handleSubmit(handleLogin),
     handleProviderLogin,
+    connectFallback,
     handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
     handleBackToLogin: () => setVerificationEmail(null),
+    handleLeaveSignInCode,
   };
 }

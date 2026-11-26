@@ -2,7 +2,10 @@ from pathlib import Path
 from unittest.mock import ANY, AsyncMock, Mock, patch
 
 import pytest
+from aiohttp import web
+from aiohttp.test_utils import TestServer
 
+from backend.blocks.slant3d import base as slant3d_base
 from backend.blocks.slant3d._api import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from backend.blocks.slant3d.filament import Slant3DFilamentBlock
 from backend.blocks.slant3d.order import (
@@ -11,6 +14,7 @@ from backend.blocks.slant3d.order import (
 )
 from backend.data.execution import ExecutionContext
 from backend.util import file as file_module
+from backend.util.request import Requests
 
 CUSTOMER = {
     "name": "John Doe",
@@ -198,6 +202,7 @@ async def test_upload_confirms_exact_placeholder_without_forwarding_api_key(
 
     async def put(url, **kwargs):
         uploaded.append(kwargs["data"].read())
+        return Mock(ok=True, status=200)
 
     block = Slant3DFilamentBlock()
     placeholder = {
@@ -242,6 +247,7 @@ async def test_upload_confirms_exact_placeholder_without_forwarding_api_key(
         "https://upload.example.com/object",
         data=ANY,
         headers={"Content-Type": "application/octet-stream"},
+        allow_redirects=False,
     )
     assert uploaded == [b"STL bytes"]
     assert api.await_args_list[0].kwargs["json"] == {
@@ -280,3 +286,62 @@ async def test_failed_upload_is_not_confirmed(tmp_path, monkeypatch):
             )
     media.assert_awaited_once()
     api.assert_awaited_once()
+
+
+class _LocalRequests(Requests):
+    """The real client, as the upload builds it, let through to a local
+    server."""
+
+    def __init__(self, **kwargs):
+        super().__init__(trusted_origins=["127.0.0.1"], **kwargs)
+
+
+@pytest.mark.parametrize("status", [307, 403])
+async def test_an_upload_storage_did_not_keep_is_not_confirmed(
+    status: int, tmp_path, monkeypatch
+):
+    """The upload follows no redirect, so a 307 comes back as the response,
+    as a 403 does. Neither stored the file: the block fails, naming the status
+    but not the presigned URL, which carries a signature, and never confirms
+    the upload."""
+    source = _stage_exec_file(tmp_path, monkeypatch)
+    received: list[bytes] = []
+
+    async def storage(request: web.Request) -> web.Response:
+        received.append(await request.read())
+        headers = {"Location": "/elsewhere"} if status == 307 else {}
+        return web.Response(status=status, headers=headers)
+
+    app = web.Application()
+    app.router.add_put("/object", storage)
+    async with TestServer(app, host="127.0.0.1") as server:
+        presigned = server.make_url("/object").with_query(
+            {"X-Amz-Signature": "the-signature"}
+        )
+        api = AsyncMock(
+            return_value={
+                "data": {"presignedUrl": str(presigned), "filePlaceholder": {}}
+            }
+        )
+        block = Slant3DFilamentBlock()
+        monkeypatch.setattr(slant3d_base, "Requests", _LocalRequests)
+        with patch.object(block, "_make_request", api), patch(
+            "backend.blocks.slant3d.base.store_media_file",
+            AsyncMock(return_value=str(source)),
+        ):
+            with pytest.raises(RuntimeError, match=f"HTTP {status}") as raised:
+                await block._upload_file(
+                    "https://example.com/model.stl",
+                    "platform-1",
+                    "key",
+                    execution_context=TEST_EXECUTION_CONTEXT,
+                )
+
+    assert received == [b"STL bytes"]
+    assert "the-signature" not in str(raised.value)
+    api.assert_awaited_once_with(
+        "POST",
+        "files/direct-upload",
+        "key",
+        json={"name": "model.stl", "platformId": "platform-1"},
+    )

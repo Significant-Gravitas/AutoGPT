@@ -22,6 +22,7 @@ from backend.blocks.zerobounce._auth import (
     ZeroBounceCredentials,
     ZeroBounceCredentialsInput,
 )
+from backend.data.block import BlockInput
 from backend.data.model import CredentialsField, NodeExecutionStats, SchemaField
 
 
@@ -84,6 +85,10 @@ class Response(BaseModel):
     country: Optional[str] = SchemaField(
         description="The country of the email address.", default=None
     )
+
+
+# ZeroBounce bills $0.008 per validated email on the paid tier.
+_USD_PER_VALIDATION = 0.008
 
 
 class ValidateEmailsBlock(Block):
@@ -169,6 +174,9 @@ class ValidateEmailsBlock(Block):
         client = ZeroBounceClient(credentials.api_key.get_secret_value())
         return client.validate_email(email, ip_address)
 
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        return _validation_cost()
+
     async def run(
         self,
         input_data: Input,
@@ -180,13 +188,14 @@ class ValidateEmailsBlock(Block):
             input_data.email, input_data.ip_address, credentials
         )
 
-        # ZeroBounce bills $0.008 per validated email on the paid tier.
-        # Routed through COST_USD so platform cost telemetry captures real
-        # USD spend; the resolver still bills 2 credits per call.
-        self.merge_stats(
-            NodeExecutionStats(provider_cost=0.008, provider_cost_type="cost_usd")
-        )
+        self.merge_stats(_validation_cost())
 
         response_model = Response(**response.__dict__)
 
         yield "response", response_model
+
+
+def _validation_cost() -> NodeExecutionStats:
+    return NodeExecutionStats(
+        provider_cost=_USD_PER_VALIDATION, provider_cost_type="cost_usd"
+    )

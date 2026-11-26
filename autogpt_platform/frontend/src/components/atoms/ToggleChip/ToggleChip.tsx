@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { ArrowDataTransferVerticalIcon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { ReactNode } from "react";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   icon: ReactNode;
@@ -49,7 +50,7 @@ export function ToggleChip({
           onClick={onToggle}
           aria-label={ariaLabel}
           className={cn(
-            "group inline-flex h-7 items-center justify-center gap-1 rounded-full px-2.5 text-caption leading-4 font-medium text-foreground-base transition-colors hover:bg-surface",
+            "group inline-flex h-7 items-center justify-center gap-1 rounded-pill px-2.5 text-caption leading-4 font-medium text-foreground-base transition-colors hover:bg-surface",
             locked && "cursor-not-allowed opacity-70 hover:bg-transparent",
             className,
           )}
@@ -84,7 +85,7 @@ export function ToggleChip({
               initial={{ filter: blurred, opacity: 0 }}
               animate={{ filter: "blur(0px)", opacity: 1 }}
               exit={{ filter: blurred, opacity: 0 }}
-              transition={{ duration: 0.12, ease: [0, 0, 0.2, 1] }}
+              transition={{ duration: duration.instant, ease: ease.out }}
               className="hidden sm:inline"
             >
               {label}

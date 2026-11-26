@@ -230,7 +230,8 @@ local_path = await store_media_file(
     execution_context=ctx,
     return_format="for_local_processing"
 )
-# Returns: "image.png" (relative path in exec_file dir)
+# Returns: "3f2a…/image.png" (relative path in exec_file dir; each file
+# stored locally keeps its name, in a folder of its own)
 
 # For external APIs (Replicate, OpenAI, etc.)
 data_uri = await store_media_file(
@@ -361,20 +362,27 @@ Store for user access
 ### Block Processing a User's File
 
 ```python
-async def run(self, input_data, *, execution_context, **kwargs):
-    # Normalize input to local path
+async def run(self, input_data, *, execution_context, node_exec_id, **kwargs):
+    # Copy the input into the run's folder. local_path is relative to that
+    # folder ("3f2a…/video.mp4") and keeps the file's own name.
     local_path = await store_media_file(
         file=input_data.video,
         execution_context=execution_context,
         return_format="for_local_processing",
     )
-    
-    # Process with local tools
-    output_path = process_video(local_path)
-    
+    graph_exec_id = execution_context.graph_exec_id
+
+    # Process with local tools, on absolute paths. Write the output into the
+    # run's folder under a name of the block's own.
+    output_name = MediaFileType(f"{node_exec_id}_processed.mp4")
+    process_video(
+        get_exec_file_path(graph_exec_id, local_path),
+        get_exec_file_path(graph_exec_id, output_name),
+    )
+
     # Return (auto-saves to workspace in CoPilot)
     result = await store_media_file(
-        file=output_path,
+        file=output_name,
         execution_context=execution_context,
         return_format="for_block_output",
     )

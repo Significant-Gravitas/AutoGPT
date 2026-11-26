@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext } from "react";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { RunVariant } from "./useAgentRunModal";
 
 export interface RunAgentModalContextValue {
@@ -20,10 +21,25 @@ export interface RunAgentModalContextValue {
   triggerConfigValues: Record<string, any>;
   setTriggerConfigValue: (key: string, value: any) => void;
   triggerConfigFields: Record<string, any>;
-  // Credentials
+  // Credentials: the user's changes, and the keys the form picks itself
   inputCredentials: Record<string, any>;
-  setInputCredentialsValue: (key: string, value: any | undefined) => void;
+  setInputCredentialsValue: (
+    key: string,
+    value: CredentialsMetaInput | undefined,
+  ) => void;
+  autoSelectInputCredentialsValue: (
+    key: string,
+    value: CredentialsMetaInput,
+  ) => void;
+  clearedCredentialFields: string[];
   agentCredentialsInputFields: Record<string, any>;
+  // The keys picked on the workflow's steps, whether the form waits for them,
+  // and whether reading them failed
+  nodeCredentials: CredentialsMetaInput[];
+  isResolvingCredentials: boolean;
+  nodeCredentialsUnknown: boolean;
+  isRetryingNodeCredentials: boolean;
+  retryNodeCredentials: () => void;
 }
 
 const RunAgentModalContext = createContext<RunAgentModalContextValue | null>(

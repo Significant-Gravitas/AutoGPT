@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import Image from "next/image";
 import { Text } from "@/components/atoms/Text/Text";
 
@@ -38,8 +39,8 @@ export function LlmIcon({ value, size = 20 }: Props) {
   if (src) {
     return (
       <div
-        className="flex items-center justify-center overflow-hidden rounded-xsmall"
-        style={{ width: size, height: size }}
+        className="flex size-(--icon-size) items-center justify-center overflow-hidden rounded-xsmall"
+        style={{ "--icon-size": `${size}px` } as CSSProperties}
       >
         <Image
           src={src}
@@ -55,8 +56,8 @@ export function LlmIcon({ value, size = 20 }: Props) {
   const fallback = value?.trim().slice(0, 1).toUpperCase() || "?";
   return (
     <div
-      className="flex items-center justify-center rounded-xsmall bg-surface-hover"
-      style={{ width: size, height: size }}
+      className="flex size-(--icon-size) items-center justify-center rounded-xsmall bg-surface-hover"
+      style={{ "--icon-size": `${size}px` } as CSSProperties}
     >
       <Text variant="small" tone="muted">
         {fallback}

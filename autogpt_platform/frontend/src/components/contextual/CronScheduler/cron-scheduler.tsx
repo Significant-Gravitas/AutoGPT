@@ -246,7 +246,13 @@ export function CronScheduler({
     <div className="max-w-md space-y-6">
       <div className="space-y-4">
         <Label>
-          <Text variant="large-medium-tight" as="span" tone="inherit">
+          <Text
+            variant="large"
+            weight="medium"
+            leading="6"
+            as="span"
+            tone="inherit"
+          >
             Repeat
           </Text>
         </Label>
@@ -318,7 +324,12 @@ export function CronScheduler({
               </Select>
             </div>
             {intervalField.error && (
-              <Text id={intervalErrorId} variant="body-tight" tone="error">
+              <Text
+                id={intervalErrorId}
+                variant="body"
+                leading="5"
+                tone="error"
+              >
                 {intervalField.error}
               </Text>
             )}
@@ -341,7 +352,13 @@ export function CronScheduler({
                 }
               }}
             >
-              <Text variant="small-medium-tight" as="span" tone="inherit">
+              <Text
+                variant="small"
+                weight="medium"
+                leading="4"
+                as="span"
+                tone="inherit"
+              >
                 {selectedWeekDays.length === weekDays.length
                   ? "Deselect All"
                   : "Select All"}
@@ -352,7 +369,13 @@ export function CronScheduler({
               size="compact-sm"
               onClick={() => setSelectedWeekDays([1, 2, 3, 4, 5])}
             >
-              <Text variant="small-medium-tight" as="span" tone="inherit">
+              <Text
+                variant="small"
+                weight="medium"
+                leading="4"
+                as="span"
+                tone="inherit"
+              >
                 Weekdays
               </Text>
             </Button>
@@ -361,7 +384,13 @@ export function CronScheduler({
               size="compact-sm"
               onClick={() => setSelectedWeekDays([0, 6])}
             >
-              <Text variant="small-medium-tight" as="span" tone="inherit">
+              <Text
+                variant="small"
+                weight="medium"
+                leading="4"
+                as="span"
+                tone="inherit"
+              >
                 Weekends
               </Text>
             </Button>
@@ -390,7 +419,7 @@ export function CronScheduler({
             ))}
           </div>
           {selectedWeekDays.length === 0 && (
-            <Text variant="body-tight" tone="error">
+            <Text variant="body" leading="5" tone="error">
               Please select at least one day of the week
             </Text>
           )}
@@ -469,7 +498,7 @@ export function CronScheduler({
             </div>
           )}
           {selectedMonthDays.length === 0 && (
-            <Text variant="body-tight" tone="error">
+            <Text variant="body" leading="5" tone="error">
               Please select at least one day of the month
             </Text>
           )}
@@ -492,7 +521,13 @@ export function CronScheduler({
                 }
               }}
             >
-              <Text variant="small-medium-tight" as="span" tone="inherit">
+              <Text
+                variant="small"
+                weight="medium"
+                leading="4"
+                as="span"
+                tone="inherit"
+              >
                 {selectedMonths.length === months.length
                   ? "Deselect All"
                   : "Select All"}
@@ -526,7 +561,7 @@ export function CronScheduler({
             })}
           </div>
           {selectedMonths.length === 0 && (
-            <Text variant="body-tight" tone="error">
+            <Text variant="body" leading="5" tone="error">
               Please select at least one month
             </Text>
           )}

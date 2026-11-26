@@ -81,7 +81,9 @@ export function PublishSkillButton({ skillName }: Props) {
                 options={categoryOptions}
               />
               <div className="flex flex-col gap-2">
-                <Text variant="large-medium">Works with</Text>
+                <Text variant="large" weight="medium">
+                  Works with
+                </Text>
                 <Text variant="small" tone="muted">
                   Integrations your instructions assume. Installers see these
                   and connect them when they first need one.

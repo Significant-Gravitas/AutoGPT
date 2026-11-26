@@ -200,6 +200,7 @@ async def test_parallel_uploads_preserve_different_files_with_the_same_name(tmp_
 
     async def put(url, **kwargs):
         uploaded.append(kwargs["data"].read())
+        return Mock(ok=True, status=200)
 
     downloader = Mock()
     downloader.get = AsyncMock(

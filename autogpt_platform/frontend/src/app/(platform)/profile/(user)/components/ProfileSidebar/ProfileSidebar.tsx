@@ -26,7 +26,7 @@ export function ProfileSidebar({ links }: Props) {
       className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-foreground-emphasis hover:bg-action hover:text-action-foreground"
     >
       {link.icon}
-      <Text variant="large-medium-tight" as="div" tone="inherit">
+      <Text variant="large" weight="medium" leading="6" as="div" tone="inherit">
         {link.text}
       </Text>
     </Link>
@@ -38,7 +38,7 @@ export function ProfileSidebar({ links }: Props) {
         <SheetTrigger asChild>
           <button
             aria-label="Open sidebar menu"
-            className="fixed top-4 left-4 z-50 flex h-14 w-14 items-center justify-center overflow-hidden rounded-lg border border-foreground-tertiary bg-surface-active px-4 py-2 font-sans text-body leading-5 font-medium tracking-tight whitespace-nowrap text-foreground-base transition-colors hover:bg-surface-active/50 focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 md:block lg:hidden"
+            className="fixed top-4 left-4 z-overlay flex h-14 w-14 items-center justify-center overflow-hidden rounded-lg border border-foreground-tertiary bg-surface-active px-4 py-2 font-sans text-body leading-5 font-medium tracking-tight whitespace-nowrap text-foreground-base transition-colors hover:bg-surface-active/50 focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 md:block lg:hidden"
           >
             <Icon aria-hidden icon={Menu01Icon} className="h-8 w-8" />
             <span className="sr-only">Open sidebar menu</span>
@@ -47,7 +47,7 @@ export function ProfileSidebar({ links }: Props) {
         <SheetContent
           side="left"
           // oxlint-disable-next-line design-system/no-restyle -- the sheet is the sidebar panel itself: no padding or border, as before
-          className="z-50 w-[280px] border-none p-0 sm:w-[280px]"
+          className="z-overlay w-[280px] border-none p-0 sm:w-[280px]"
         >
           <div className="h-full w-full rounded-2xl bg-surface-active">
             <div className="inline-flex h-[264px] flex-col items-start justify-start gap-6 p-3">
