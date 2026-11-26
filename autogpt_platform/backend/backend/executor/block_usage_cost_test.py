@@ -550,6 +550,7 @@ BEFORE_A_RUN = {
     "blocks/_base.py::_execute": "the swap itself: the run starts now",
     "executor/billing.py::resolve_block_cost": "the pre-flight charge",
     "executor/billing.py::_block_has_paid_cost_entry": "the pre-flight balance check",
+    "executor/billing.py::usage_hold": "the hold taken before a run",
     "executor/billing.py::redispatch_reconcile_baseline": (
         "a run parked for review, which ran no model"
     ),

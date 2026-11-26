@@ -22247,6 +22247,10 @@
               { "$ref": "#/components/schemas/TokenRateDisplay" },
               { "type": "null" }
             ]
+          },
+          "max_cost": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Max Cost"
           }
         },
         "type": "object",

@@ -269,6 +269,25 @@ class CodeGenerationBlock(Block):
         CodexModel.GPT5_3_CODEX: (1.75, 14.0),
     }
 
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        if input_data.get("transport") not in (
+            None,
+            CodexExecutionTransport.OPENAI_API,
+        ):
+            return None
+        # A token is at least one UTF-8 byte, so the prompt's bytes bound its tokens.
+        prompt = (
+            f"{input_data.get('prompt') or ''}{input_data.get('system_prompt') or ''}"
+        )
+        return NodeExecutionStats(
+            provider_cost=self._compute_token_usd(
+                CodexModel(input_data.get("model") or CodexModel.GPT5_6_SOL),
+                len(prompt.encode()),
+                int(input_data.get("max_output_tokens") or 128_000),
+            ),
+            provider_cost_type="cost_usd",
+        )
+
     @classmethod
     def _compute_token_usd(
         cls,

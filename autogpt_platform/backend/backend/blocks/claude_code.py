@@ -14,10 +14,12 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.block import BlockInput
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
+    NodeExecutionStats,
     SchemaField,
 )
 from backend.integrations.credentials_store import is_system_credential
@@ -562,6 +564,12 @@ class ClaudeCodeBlock(Block):
         # Use single quotes and escape any single quotes in the prompt
         escaped = prompt.replace("'", "'\"'\"'")
         return f"'{escaped}'"
+
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        # A reused box keeps any longer lifetime it already has; only the cap bounds it.
+        if input_data.get("sandbox_id"):
+            return self.walltime_bound(None)
+        return self.walltime_bound(input_data.get("timeout"))
 
     async def run(
         self,

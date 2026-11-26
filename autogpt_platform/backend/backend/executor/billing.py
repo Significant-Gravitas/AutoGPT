@@ -24,6 +24,7 @@ from backend.util.exceptions import InsufficientBalanceError
 from backend.util.logging import TruncatedLogger
 from backend.util.metrics import DiscordChannel
 from backend.util.settings import Settings
+from backend.util.type import coerce_inputs_to_schema
 
 from .utils import LogMetadata, block_usage_cost, execution_usage_cost
 
@@ -139,6 +140,8 @@ def charge_usage(
     block, cost, matching_filter = resolve_block_cost(node_exec)
     if not block:
         return total_cost, 0, block_pre_flight
+    # A usage-priced block is billed after it runs, so what it may cost is held first.
+    cost = max(cost, usage_hold(block, node_exec.inputs))
 
     org_id = billed_org_id(node_exec.execution_context)
     if cost > 0:
@@ -168,26 +171,6 @@ def charge_usage(
             )
         total_cost += cost
         block_pre_flight = cost
-    elif _block_has_paid_cost_entry(block, node_exec.inputs):
-        # Dynamic-cost blocks (SECOND/ITEMS/COST_USD) compute 0 pre-flight
-        # because the real charge is settled post-flight against stats. Guard
-        # execution here: a user with non-positive balance cannot start a
-        # paid block even if the pre-flight estimate is zero, otherwise
-        # reconciliation leaks real provider spend as an uncollectable debit.
-        if org_id:
-            remaining_balance = db_client.get_org_credits(org_id=org_id)
-        else:
-            remaining_balance = db_client.get_credits(user_id=node_exec.user_id)
-        if remaining_balance <= 0:
-            raise InsufficientBalanceError(
-                user_id=node_exec.user_id,
-                message=(
-                    f"Insufficient balance to run {block.name}: "
-                    "dynamic-cost blocks require a positive balance."
-                ),
-                balance=remaining_balance,
-                amount=0,
-            )
 
     # execution_count=0 is used by charge_node_usage for nested tool calls
     # which must not be pushed into higher execution-count tiers.
@@ -228,6 +211,46 @@ def charge_usage(
     return total_cost, remaining_balance, block_pre_flight
 
 
+# Held for a usage-priced block whose inputs don't bound its cost and whose
+# cost entry names no `max_cost`: $0.10, the most of the measured pre-flight means.
+DEFAULT_USAGE_HOLD = 10
+_USAGE_PRICED = frozenset({"second", "items", "cost_usd"})
+
+
+def usage_hold(block: Block, input_data: "dict[str, Any]") -> int:
+    """Credits to hold before a usage-priced block (SECOND, ITEMS, COST_USD)
+    runs: the price of the most usage its inputs allow (``Block.max_usage``),
+    else its cost entry's ``max_cost``, else ``DEFAULT_USAGE_HOLD``. 0 for any
+    other block. Reconciliation settles the hold against the real cost."""
+    from backend.data.block_cost_config import BLOCK_COSTS
+
+    from .utils import _is_cost_filter_match, _with_schema_defaults
+
+    input_data = _with_schema_defaults(block, input_data, resolved_model=None)
+    entry = next(
+        (
+            bc
+            for bc in BLOCK_COSTS.get(type(block), [])
+            if _is_cost_filter_match(bc.cost_filter, input_data)
+        ),
+        None,
+    )
+    if entry is None or entry.is_free or entry.cost_type.value not in _USAGE_PRICED:
+        return 0
+    # A tool call is held on the model's raw arguments: price what validate_exec will run.
+    run_input = dict(input_data)
+    try:
+        coerce_inputs_to_schema(run_input, block.input_schema)
+        most = block.max_usage(run_input)
+    except (TypeError, ValueError):
+        most = None
+    if most is not None:
+        bound, _ = block_usage_cost(block=block, input_data=run_input, stats=most)
+        if bound > 0:
+            return bound
+    return entry.max_cost if entry.max_cost is not None else DEFAULT_USAGE_HOLD
+
+
 def billed_org_id(context: ExecutionContext) -> str | None:
     """The org whose balance pays for the run, or None for its user's own wallet.
 
@@ -237,29 +260,60 @@ def billed_org_id(context: ExecutionContext) -> str | None:
 
 
 def redispatch_reconcile_baseline(node_exec: NodeExecutionEntry) -> int | None:
-    """What a re-dispatched node still has billed, for its reconciliation to
-    settle against. Its first dispatch was charged and this one is not (#15272).
+    """What a re-dispatched node has billed, for its reconciliation to settle
+    against. Its first dispatch was charged and this one is not (#15272).
 
     - REVIEW: the run that parked the block returned without doing anything,
       and ``on_node_execution`` reconciled it as a COMPLETED run with empty
       stats. That settled the charge down to the block's price for empty
       stats: the run price for per-run blocks, 0 for usage-priced ones. (A
       SECOND-priced park would have settled to 1 credit, since a sub-second
-      run bills one unit; no block that can pause is SECOND-priced.) That
-      price is returned, so the resumed run settles to one run's cost.
-    - RUNNING: the pod died before reconciling, so the pre-flight charge still
-      stands. ``None`` makes reconciliation read the block's pre-flight price,
-      which equals that charge unless the price changed in between.
+      run bills one unit; no block that can pause is SECOND-priced.) A
+      usage-priced block's hold (``usage_hold``) is taken again here, as at
+      its first dispatch; that price plus the hold is returned, so the resumed
+      run settles to one run's cost. Raises ``InsufficientBalanceError`` when
+      the balance can't cover the hold.
+    - RUNNING: the pod died before reconciling, so the pre-flight charge
+      still stands. ``None`` lets reconciliation derive it again for the model
+      the rerun records. A charge that held a usage-priced block's cost is
+      derived here instead, hold included, and equals that charge unless the
+      price changed in between.
     """
-    if node_exec.redispatched_from != ExecutionStatus.REVIEW:
-        return None
     block = get_block(node_exec.block_id)
     if not block:
         return None
+    hold = usage_hold(block, node_exec.inputs)
+    if node_exec.redispatched_from != ExecutionStatus.REVIEW:
+        if not hold:
+            return None
+        pre_flight, _ = block_usage_cost(block=block, input_data=node_exec.inputs)
+        return max(pre_flight, hold)
     settled, _ = block_usage_cost(
         block=block, input_data=node_exec.inputs, stats=NodeExecutionStats()
     )
-    return settled
+    if hold > 0:
+        metadata = UsageTransactionMetadata(
+            graph_exec_id=node_exec.graph_exec_id,
+            graph_id=node_exec.graph_id,
+            node_exec_id=node_exec.node_exec_id,
+            node_id=node_exec.node_id,
+            block_id=node_exec.block_id,
+            block=block.name,
+            reason=f"Resumed block {node_exec.block_id} {block.name}",
+        )
+        if org_id := billed_org_id(node_exec.execution_context):
+            get_db_client().spend_org_credits(
+                org_id=org_id,
+                user_id=node_exec.user_id,
+                cost=hold,
+                metadata=metadata,
+                team_id=node_exec.execution_context.team_id,
+            )
+        else:
+            get_db_client().spend_credits(
+                user_id=node_exec.user_id, cost=hold, metadata=metadata
+            )
+    return settled + hold
 
 
 def bills_stop_estimate(status: ExecutionStatus, stopped: bool) -> bool:
