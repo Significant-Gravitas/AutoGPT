@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import urlparse
 
 import pytest
 from prisma.enums import ReviewStatus
@@ -1383,7 +1384,11 @@ async def test_browser_navigates_refused_page_notice_is_not_judged(rows):
     with (
         patch(f"{_READS}.judge_content", judge),
         _no_action_gate(),
-        patch.object(agent_browser, "validate_url_host", AsyncMock()),
+        patch.object(
+            agent_browser,
+            "validate_url_host",
+            AsyncMock(side_effect=lambda u, *a, **k: (urlparse(u), False, ["1.2.3.4"])),
+        ),
         patch.object(agent_browser, "_ensure_session", AsyncMock()),
         patch.object(agent_browser, "_fire_and_forget_save", MagicMock()),
         patch.object(agent_browser, "_run", side_effect=run),
