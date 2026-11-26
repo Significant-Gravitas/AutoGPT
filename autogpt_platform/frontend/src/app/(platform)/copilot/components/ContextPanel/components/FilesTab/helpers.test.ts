@@ -150,6 +150,25 @@ describe("isInternalToolOutput", () => {
 });
 
 describe("downloadFilesAsZip", () => {
+  test("rejects an incomplete archive when a selected file cannot be fetched", async () => {
+    const saved: string[] = [];
+    const fetchImpl = async (url: string) =>
+      url.includes("unavailable")
+        ? new Response(null, { status: 404 })
+        : new Response(new Blob(["first file"]));
+
+    await expect(
+      downloadFilesAsZip(
+        [
+          { id: "available", name: "first.txt" },
+          { id: "unavailable", name: "second.txt" },
+        ],
+        { fetchImpl, save: (_, filename) => saved.push(filename) },
+      ),
+    ).rejects.toThrow();
+    expect(saved).toEqual([]);
+  });
+
   test("fetches each file and produces a zip blob via the sink", async () => {
     const fetched: string[] = [];
     const fetchImpl = async (url: string) => {
