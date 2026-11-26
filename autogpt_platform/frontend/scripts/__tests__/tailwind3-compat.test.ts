@@ -204,14 +204,16 @@ describe("Tailwind 4 renders the app's classes as Tailwind 3 did", () => {
 
   it("keeps Tailwind 3's theme values and breakpoints", async () => {
     const root = await compile();
+    // The values are in src/app/tokens/shape.css (--shadow-color: 0 0 0,
+    // --radius: 0.25rem, --radius-sm: calc(var(--radius-lg) - 4px)).
     expect(declarations(root, ".shadow-sm")["--tw-shadow"]).toBe(
-      "0 1px 2px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.05))",
+      "0 1px 2px 0 var(--tw-shadow-color, rgb(var(--shadow-color) / 0.05))",
     );
     expect(declarations(root, ".rounded")).toEqual({
-      "border-radius": "0.25rem",
+      "border-radius": "var(--radius)",
     });
     expect(declarations(root, ".rounded-sm")).toEqual({
-      "border-radius": "calc(var(--radius) - 4px)",
+      "border-radius": "var(--radius-sm)",
     });
     expect(declarations(root, ".blur-sm")["--tw-blur"]).toBe("blur(4px)");
     expect(declarations(root, ".bg-\\[\\#9ca3af\\]")).toEqual({

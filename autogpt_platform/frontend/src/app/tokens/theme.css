@@ -98,12 +98,22 @@
   --color-edge: 131 131 140; /* zinc-500 #83838C, an untyped edge (at /50, solid on hover) */
   --color-handle: 156 163 175; /* gray-400 #9CA3AF, a node's input and output handles */
 
-  /* The hairline ring of the smooth-shadow-ring-* utilities. */
-  --smooth-ring-color: rgb(0 0 0 / 0.05);
-}
+  /* Inverse: a dark fill on the light theme and the text on it. Not read
+     yet; today the same colours as action. */
+  --color-surface-inverse: 62 62 67; /* zinc-800 #3E3E43, as action */
+  --color-surface-inverse-hover: 44 44 48; /* zinc-900 #2C2C30, as action-hover */
+  --color-foreground-inverse: 254 254 254; /* white #FEFEFE, as action-foreground */
 
-.dark {
-  --smooth-ring-color: rgb(255 255 255 / 0.18);
+  /* Fills: solid marks that are not text (dots, bars, tracks). Not read yet. */
+  --color-fill-subtle: 173 173 179; /* zinc-400 #ADADB3, as foreground-subtle */
+  --color-fill-strong: 20 20 20; /* black #141414, as foreground-base */
+
+  /* Shell: the app frame around the page, the sidebar. Not read yet. */
+  --color-shell: 249 249 250; /* zinc-50 #F9F9FA, as surface-muted */
+  --color-shell-foreground: 62 62 67; /* zinc-800 #3E3E43, as foreground-emphasis */
+  --color-shell-hover: 239 239 240; /* zinc-100 #EFEFF0, as surface-hover */
+  --color-shell-active: 218 218 220; /* zinc-200 #DADADC, as surface-active */
+  --color-shell-border: 218 218 220; /* zinc-200 #DADADC, as border-base */
 }
 
 /* The shadcn names streamdown's prebuilt classes use (`bg-muted`,
