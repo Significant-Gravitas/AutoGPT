@@ -142,6 +142,31 @@ export const twMerge = extendTailwindMerge({
       tracking: [
         { tracking: ["display", "heading", "title", "caps", "eyebrow"] },
       ],
+      // The layers in tokens/shape.css, so `z-overlay` replaces `z-raised`
+      // and `z-10`, and the other way round.
+      z: [
+        {
+          z: [
+            "behind",
+            "base",
+            "raised",
+            "sticky",
+            "search-bar",
+            "floating",
+            "header",
+            "prompt",
+            "overlay",
+            "drawer-scrim",
+            "drawer",
+            "command",
+            "canvas-loading",
+            "canvas-toolbar",
+            "blocking",
+            "tour-scrim",
+            "tour",
+          ],
+        },
+      ],
     },
   },
 });

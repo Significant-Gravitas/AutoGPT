@@ -63,7 +63,7 @@ export function WorkspaceFilePicker({
               width={18}
               height={18}
               tone="muted"
-              className="absolute top-1/2 left-4 z-20 -translate-y-1/2"
+              className="absolute top-1/2 left-4 z-sticky -translate-y-1/2"
             />
             <Input
               label="Search workspace files"

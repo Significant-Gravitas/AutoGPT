@@ -63,7 +63,7 @@ export function ThreadHeader({
   const hasSidebarButton = floatingControls === "newLayout" && hasSidebar;
 
   return (
-    <div data-testid="expert-thread-header" className="relative z-20 h-0">
+    <div data-testid="expert-thread-header" className="relative z-sticky h-0">
       <div
         className={cn(
           "pointer-events-none absolute inset-x-0 top-3 flex justify-start px-4",

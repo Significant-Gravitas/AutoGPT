@@ -83,7 +83,7 @@ function OriginTab({ option, active, onClick }: OriginTabProps) {
           transition={snappySpring}
         />
       ) : null}
-      <span className="relative z-10">{option.label}</span>
+      <span className="relative z-raised">{option.label}</span>
     </button>
   );
 }

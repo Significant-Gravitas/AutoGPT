@@ -31,7 +31,7 @@ export function FlyingHeart({
     <AnimatePresence>
       {isVisible && (
         <motion.div
-          className="pointer-events-none fixed z-50 text-error drop-shadow-md"
+          className="pointer-events-none fixed z-overlay text-error drop-shadow-md"
           initial={{
             x: startPosition.x,
             y: startPosition.y,

@@ -79,8 +79,8 @@ Every design value lives in one of four files in `src/app/tokens/`. Change a val
   - Shadows: `shadow-sm` to `shadow-2xl`, `shadow-inner`, `shadow-subtle` and `shadow-message-table`. Their colour is `--shadow-color`, an RGB triplet read at runtime. The steps themselves are in the file's own `@theme` block, because Tailwind reads each shadow's colour from the value to make a coloured shadow (`shadow-md shadow-scrim/10`).
   - Named effects, one per purpose: `shadow-lift` (a card raised on hover), `shadow-popover-raised` (a card floating over the composer), `shadow-composer`, `shadow-drop` (under a badge, avatar or filled button), `shadow-scroll-edge` (above a footer content scrolls under), `shadow-keycap`, `shadow-gloss` (a glossy pill's white top edge and hairline drop), `shadow-sheen` (the inner sheen of a tab joining the composer), `shadow-outline` (a 1px edge that leaves `ring` to focus), `shadow-halo` (a selected card), `shadow-spotlight` (the tour's lit hole), `shadow-glow` (a call to action), `shadow-status-glow` (a status chip), `shadow-beacon` (the tour's next thing to click) and `shadow-chip-glow-brand`, `-warning`, `-sky` and `-neutral` (the marketplace's accent chips). A step with one colour takes another from a shadow colour class: `shadow-drop shadow-brand/45`, `shadow-status-glow shadow-info/70`. That class sets every layer to the one colour and alpha, so a step that mixes a white edge with a tinted glow names its colours (`rgb(var(--color-surface) / 0.9)`) and comes once per accent. A white highlight is `surface`.
   - Write no shadow by hand (`shadow-[…]`, an inline `boxShadow`, a drag image's `box-shadow`): use a step, or add one here named for what it is for. What is left: keyframes that animate a shadow (the orbit loader, the builder tutorial's pulse), the builder tutorial's Shepherd card, the category chip's runtime-coloured selected state, the expert title's runtime-coloured glow, and the exempt artwork (`GlassSurface`, the sticky note); all of them read roles.
-  - Layers: `z-behind` (-10), `z-base` (0), `z-raised` (10), `z-sticky` (20), `z-floating` (30), `z-header` (40), `z-overlay` (50: dialogs, sheets, menus, popovers, tooltips), `z-drawer-scrim` (60), `z-drawer` (70), `z-command` (80), `z-blocking` (100), `z-tour-scrim` (110) and `z-tour` (120). A bare number (`z-10`) still works.
-  - Shell: `--shell-sidebar-width`, `--shell-sidebar-width-collapsed`, `--shell-sidebar-width-mobile` and `--shell-content-max`. Read them with `w-(--shell-sidebar-width)`.
+  - Layers: see [Layers](#layers).
+  - Shell: `--shell-sidebar-width` (18.25rem, the app's sidebar), `--shell-sidebar-width-tour` (19rem, the tour's and the logged-out marketplace's), `--shell-sidebar-width-default` (20rem, a `SidebarProvider` that sets no width), `--shell-sidebar-width-mobile` (20rem, the phone sheet), `--shell-sidebar-width-collapsed` (3rem, the icon rail) and `--shell-content-max`. The Sidebar's constants and the providers in `PlatformChrome` and `TourCopilot` read them as `--sidebar-width: var(--shell-sidebar-width)`; elsewhere read them with `w-(--shell-sidebar-width)`.
 - `motion.css`: durations (`duration-instant`, `-fast`, `-base`, `-slow`, `-slower`) and easings (`ease-standard`, `ease-in`, `ease-out`, `ease-emphasized`, `ease-out-quint`, `ease-glide`, `ease-drawer`; `ease-in-out` is the standard curve). A bare number (`duration-200`) still works. `src/components/styles/motion.ts` has the same values for Framer Motion: `duration` in seconds, `ease` as cubic-bezier numbers, and three `spring` presets.
 
 `tailwind.config.ts` holds no colour, text size, radius, shadow, layer, duration or easing.
@@ -88,6 +88,35 @@ Every design value lives in one of four files in `src/app/tokens/`. Change a val
 To add a token, write its value in the file above that owns it, and register it in `globals.css`'s `@theme inline reference` block, which turns it into a class: `--radius-<step>: var(--radius-<step>)`, `--z-index-<name>: var(--z-<name>)`, `--transition-duration-<name>: var(--duration-<name>)` or `--ease-<name>: var(--ease-<name>)`. A shadow goes in `shape.css`'s own `@theme` block, coloured with `rgb(var(--shadow-color) / <alpha>)` or a role (`rgb(var(--color-<role>) / <alpha>)`), and its name in `src/lib/tw-merge.ts`, so `cn()` treats it as a shadow rather than a colour. A colour role is also listed in `color-roles.ts`. A motion value is also written in `motion.ts`.
 
 `src/components/__tests__/shape-motion-tokens.test.ts` checks that every variable in `shape.css` and `motion.css` is registered and compiles to a class that reads it, that every shadow step reads only `--shadow-color` or a colour role and compiles to a class a shadow colour class can recolour, and that no such value is left in `tailwind.config.ts` or in `globals.css`'s `@theme`. `src/lib/__tests__/tw-merge.test.ts` checks that `cn()` knows every named shadow step. `src/components/styles/__tests__/motion.test.ts` checks that `motion.ts` matches `motion.css`.
+
+### Layers
+
+Every z-index is a named layer from `shape.css`, lowest first:
+
+| Class              | z-index | What sits there                                               |
+| ------------------ | ------- | ------------------------------------------------------------- |
+| `z-behind`         | -10     | decoration behind its own content                             |
+| `z-base`           | 0       |                                                               |
+| `z-raised`         | 10      | lifted over a sibling in the same component                   |
+| `z-sticky`         | 20      | search bars, banners and bars pinned in a pane                |
+| `z-search-bar`     | 21      | the library search bar, over the sticky bars it overlaps      |
+| `z-floating`       | 30      | buttons floating over a pane (jump to bottom)                 |
+| `z-header`         | 40      | the inset header floating over the chat                       |
+| `z-prompt`         | 40      | a feedback prompt fixed in a corner (NPS), under dialogs      |
+| `z-overlay`        | 50      | dialogs, sheets, menus, popovers, tooltips                    |
+| `z-drawer-scrim`   | 60      | the backdrop of a drawer above dialogs                        |
+| `z-drawer`         | 70      | the artifact panel on a phone                                 |
+| `z-command`        | 80      | the command palette; popovers over a drawer                   |
+| `z-canvas-loading` | 99      | the builder's loading box, over the nodes                     |
+| `z-canvas-toolbar` | 100     | the builder's run toolbar, over the nodes and the loading box |
+| `z-blocking`       | 100     | modals that must cover everything else                        |
+| `z-tour-scrim`     | 110     | the tour's dim                                                |
+| `z-tour`           | 120     | the tour's spotlight card and contextual tips                 |
+
+- **Rule `design-system/no-raw-z-index`:** a layer set by number in any string (`z-10`, `-z-10`, `hover:z-[21]`) or a style object (`zIndex: 50`). The error names the layer with that number. Its baseline is empty. A stylesheet reads the variable (`z-index: var(--z-raised)`); a style object does too (`zIndex: "var(--z-overlay)"`), and a class that reads it (`z-(--z-overlay)`, `z-[var(--z-overlay)]`) is not a number either.
+- A new layer goes in `shape.css` with the number it needs, a `--z-index-<name>: var(--z-<name>)` entry in `globals.css`, and its name in `src/lib/tw-merge.ts`, so `cn("z-raised", "z-overlay")` keeps the last. Name it for what sits there. Two names share a number only when they are different layers that happen to sit at the same height today (`z-header` and `z-prompt`, `z-canvas-toolbar` and `z-blocking`), so either can move without the other.
+- `design-system/no-restyle` allows `z-*` wherever it allows layout classes, as it allowed the numbers.
+- Third-party numbers stay as their libraries need them: the Google Drive picker (`[class*="picker-dialog"]`) is forced to `z-index: 10000 !important` in `globals.css`, over its own inline value, and while it is open the app's dialog overlay and popup drop to `z-index: 1 !important` beneath it.
 
 ### The canary look
 

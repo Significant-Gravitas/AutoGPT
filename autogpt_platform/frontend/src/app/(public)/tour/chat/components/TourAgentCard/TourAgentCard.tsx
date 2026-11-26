@@ -39,7 +39,7 @@ export function TourAgentCard({ agent, runCompleted }: Props) {
               {/* Breathing halo behind the badge while the run is live. */}
               <span
                 aria-hidden="true"
-                className="absolute -inset-1.5 -z-10 animate-pulse rounded-full bg-success/50 blur-md"
+                className="absolute -inset-1.5 z-behind animate-pulse rounded-full bg-success/50 blur-md"
               />
               <span className="relative flex size-2 shrink-0">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />

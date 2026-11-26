@@ -38,19 +38,21 @@ function RowBody({
   return (
     <>
       <span className={barClasses} aria-hidden="true" />
-      <span className="relative z-10 flex shrink-0 items-center">{icon}</span>
-      <span className="relative z-10 flex-1 truncate">{label}</span>
+      <span className="relative z-raised flex shrink-0 items-center">
+        {icon}
+      </span>
+      <span className="relative z-raised flex-1 truncate">{label}</span>
       {pending ? (
         <LoadingSpinner
           size="small"
-          className="relative z-10 text-current"
+          className="relative z-raised text-current"
           aria-hidden="true"
         />
       ) : external ? (
         <Icon
           icon={LinkSquare01Icon}
           tone="body"
-          className="relative z-10 shrink-0"
+          className="relative z-raised shrink-0"
           size={16}
           aria-hidden="true"
         />

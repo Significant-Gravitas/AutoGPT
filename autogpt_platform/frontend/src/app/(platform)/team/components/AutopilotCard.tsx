@@ -60,7 +60,7 @@ export function AutopilotCard({
             size={88}
             backgroundColor={AUTOPILOT_COVER_COLOR}
             // oxlint-disable-next-line design-system/no-restyle -- AutopilotAvatar has no bordered variant (src/components is P9's)
-            className="relative z-10 -mt-12 ml-1 rounded-full border border-border-base ring-4 ring-surface"
+            className="relative z-raised -mt-12 ml-1 rounded-full border border-border-base ring-4 ring-surface"
           />
         </div>
 

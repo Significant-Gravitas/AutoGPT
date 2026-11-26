@@ -78,3 +78,40 @@ describe("cn() knows the named shadow steps", () => {
     );
   });
 });
+
+function shapeLayers() {
+  const css = readFileSync(
+    path.resolve(__dirname, "../../app/tokens/shape.css"),
+    "utf8",
+  ).replace(/\/\*[\s\S]*?\*\//g, "");
+  return [...css.matchAll(/--z-([a-z-]+):/g)].map(([, name]) => name);
+}
+
+describe("cn() knows the named layers", () => {
+  const layers = shapeLayers();
+
+  it("has layers to check", () => {
+    expect(layers).toEqual(expect.arrayContaining(["raised", "overlay"]));
+  });
+
+  it("keeps the last of two layers", () => {
+    expect(cn("z-raised", "z-overlay")).toBe("z-overlay");
+    expect(cn("z-overlay", "z-raised")).toBe("z-raised");
+  });
+
+  it("lets a named layer and a number replace each other", () => {
+    expect(cn("z-10", "z-overlay")).toBe("z-overlay");
+    expect(cn("z-overlay", "z-10")).toBe("z-10");
+    expect(cn("hover:z-raised", "hover:z-sticky")).toBe("hover:z-sticky");
+  });
+
+  it("keeps layers under different variants", () => {
+    expect(cn("z-raised", "focus-visible:z-sticky")).toBe(
+      "z-raised focus-visible:z-sticky",
+    );
+  });
+
+  it.each(layers)("z-%s replaces another layer", (name) => {
+    expect(cn("z-auto", `z-${name}`)).toBe(`z-${name}`);
+  });
+});

@@ -148,7 +148,7 @@ export const AgentTableRow = ({
             >
               <Icon icon={MoreVerticalIcon} className="h-5 w-5" />
             </DropdownMenu.Trigger>
-            <DropdownMenu.Content className="z-10 rounded-xl border bg-surface p-1 shadow-md">
+            <DropdownMenu.Content className="z-raised rounded-xl border bg-surface p-1 shadow-md">
               {canModify ? (
                 <DropdownMenu.Item
                   onSelect={handleEdit}

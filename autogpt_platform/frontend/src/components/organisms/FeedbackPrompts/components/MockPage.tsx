@@ -35,7 +35,7 @@ export function MockPage({ title, children, corner, centered }: Props) {
         {children ?? <SkeletonBlocks />}
       </main>
       {corner ? (
-        <div className="fixed right-6 bottom-6 z-40">{corner}</div>
+        <div className="fixed right-6 bottom-6 z-prompt">{corner}</div>
       ) : null}
     </div>
   );

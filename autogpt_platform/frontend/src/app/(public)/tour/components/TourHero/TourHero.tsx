@@ -10,7 +10,7 @@ export function TourHero() {
   return (
     <section className="relative flex flex-1 flex-col overflow-hidden border-b border-separator">
       <TourBackground />
-      <div className="relative z-10 flex flex-1 flex-col items-center overflow-y-auto px-6 pt-16 pb-4">
+      <div className="relative z-raised flex flex-1 flex-col items-center overflow-y-auto px-6 pt-16 pb-4">
         <div className="flex w-full max-w-2xl flex-1 flex-col items-center justify-center text-center">
           <AutoGPTLogo
             hideText

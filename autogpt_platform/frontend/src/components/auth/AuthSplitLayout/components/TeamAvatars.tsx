@@ -32,7 +32,7 @@ export function TeamAvatars() {
           />
         </span>
       ))}
-      <span className="absolute top-0 left-1/2 z-10 -translate-x-1/2">
+      <span className="absolute top-0 left-1/2 z-raised -translate-x-1/2">
         <AutopilotAvatar size={52} className={AVATAR_CLASS} />
       </span>
     </div>

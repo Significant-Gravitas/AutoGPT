@@ -92,7 +92,7 @@ export function VoiceStreaks({ field, levels, isActive, layer, store }: Props) {
       aria-hidden
       className={cn(
         "pointer-events-none absolute inset-[var(--streak-inset)] size-[var(--streak-box)]",
-        layer === "front" ? "z-20" : "z-0",
+        layer === "front" ? "z-sticky" : "z-base",
       )}
       style={
         {

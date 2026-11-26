@@ -10,7 +10,7 @@
 
 .new-builder-tutorial-highlight {
   position: relative;
-  z-index: 10;
+  z-index: var(--z-raised);
 }
 
 .new-builder-tutorial-highlight * {

@@ -119,7 +119,7 @@ export function TabIntroCard({
           onClick={(event) => {
             if (event.target === event.currentTarget) onDismiss();
           }}
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/30 px-4 backdrop-blur-sm"
+          className="fixed inset-0 z-blocking flex items-center justify-center bg-surface/30 px-4 backdrop-blur-sm"
           data-testid="tab-intro-overlay"
           role="dialog"
           aria-modal="true"

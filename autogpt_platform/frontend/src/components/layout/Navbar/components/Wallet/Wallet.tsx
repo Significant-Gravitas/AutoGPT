@@ -69,7 +69,7 @@ export function Wallet({ compact = false }: Props) {
           aria-label={compact ? "Usage and credits" : "Automation credits"}
           aria-describedby={compact ? trialNoteID : undefined}
           className={cn(
-            "z-50",
+            "z-overlay",
             compact
               ? "scrollbar-thin max-h-[var(--radix-popover-content-available-height)] w-[22rem] max-w-[calc(100vw-2rem)] scrollbar-thumb-surface-active scrollbar-track-transparent overflow-y-auto overscroll-contain !rounded-2xlarge p-0"
               : "relative -top-12 w-[28.5rem] px-4 py-4",

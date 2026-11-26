@@ -59,7 +59,7 @@ export function LoadingSpinner({
     return (
       <div
         data-slot="loading-spinner-cover"
-        className="fixed inset-0 z-50 flex items-center justify-center"
+        className="fixed inset-0 z-overlay flex items-center justify-center"
       >
         {spinner}
       </div>

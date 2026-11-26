@@ -1,8 +1,10 @@
 // Common styles as Tailwind class strings
 const commonStyles = {
   title: "font-poppins md:text-lead leading-none",
-  overlay: "fixed inset-0 z-50 bg-overlay/20 backdrop-blur-md animate-fade-in",
-  content: "bg-surface p-6 fixed rounded-2xlarge flex flex-col z-50 w-full",
+  overlay:
+    "fixed inset-0 z-overlay bg-overlay/20 backdrop-blur-md animate-fade-in",
+  content:
+    "bg-surface p-6 fixed rounded-2xlarge flex flex-col z-overlay w-full",
 };
 
 // Modal specific styles

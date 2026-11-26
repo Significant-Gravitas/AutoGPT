@@ -81,7 +81,7 @@ export function APIKeyList() {
                 : { opacity: 0, height: 0, marginBottom: -12 }
             }
             transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
-            className="sticky top-0 z-20 overflow-hidden bg-surface-muted"
+            className="sticky top-0 z-sticky overflow-hidden bg-surface-muted"
           >
             <APIKeySelectionBar
               selectedCount={selection.selectedCount}

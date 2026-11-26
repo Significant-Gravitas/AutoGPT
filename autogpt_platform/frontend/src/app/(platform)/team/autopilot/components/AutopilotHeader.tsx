@@ -24,7 +24,7 @@ export function AutopilotHeader() {
           size={96}
           transparent={false}
           // oxlint-disable-next-line design-system/no-restyle -- AutopilotAvatar has no bordered variant (src/components is P9's)
-          className="relative z-10 -mt-12 ml-4 rounded-full border border-border-base"
+          className="relative z-raised -mt-12 ml-4 rounded-full border border-border-base"
         />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">

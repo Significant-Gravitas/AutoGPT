@@ -305,6 +305,61 @@ tester.run("no-arbitrary-colour", rule("no-arbitrary-colour"), {
   ],
 });
 
+tester.run("no-raw-z-index", rule("no-raw-z-index"), {
+  valid: [
+    jsx("relative z-raised hover:z-overlay focus-visible:z-sticky z-auto"),
+    // Words and other utilities that end in a z and a number.
+    jsx("size-10 translate-z-10 blur-10 [--z-10:1]"),
+    // A named layer read through its variable, in either spelling.
+    jsx("z-(--z-overlay) hover:z-[var(--z-overlay)] md:z-[var(--z-tour)]"),
+    {
+      code: 'const a = { zIndex: "var(--z-overlay)" }; const b = { zIndex: layer };',
+      filename: FILE,
+    },
+  ],
+  invalid: [
+    {
+      code: '<div className="z-10 -z-10 hover:z-[21]" />',
+      filename: FILE,
+      errors: [
+        { message: /^"z-10" sets a layer by number\. Use "z-raised"/ },
+        { message: /^"-z-10" sets a layer by number\. Use "z-behind"/ },
+        {
+          message:
+            /^"hover:z-\[21\]" sets a layer by number\. Use "z-search-bar"/,
+        },
+      ],
+    },
+    {
+      // Two layers at one height: the message names both.
+      code: 'const corner = cn("fixed z-40", isOpen && "z-[42]");',
+      filename: FILE,
+      errors: [
+        {
+          message:
+            /Use the layer with that number that names what sits there: "z-header" or "z-prompt"/,
+        },
+        {
+          message:
+            /^"z-\[42\]" sets a layer by number\. No layer has this number/,
+        },
+      ],
+    },
+    {
+      code: 'const a = { zIndex: 50 }; const b = { zIndex: -1 }; const c = { "z-index": "10" };',
+      filename: FILE,
+      errors: [
+        { message: /^"zIndex: 50" sets a layer by number\. Use "z-overlay"/ },
+        {
+          message:
+            /^"zIndex: -1" sets a layer by number\. No layer has this number/,
+        },
+        { message: /^"zIndex: 10" sets a layer by number\. Use "z-raised"/ },
+      ],
+    },
+  ],
+});
+
 tester.run("no-arbitrary-values", rule("no-arbitrary-values"), {
   // An arbitrary colour is no-arbitrary-colour's.
   valid: [jsx("bg-surface"), jsx("bg-[#EFEFF0]")],

@@ -70,12 +70,13 @@
         "design-system/no-restyle": [
           "error",
           {
-            "allow": ["layout"],
+            "allow": ["layout", "z-*"],
             "contracts": [
               {
                 "pattern": "^Text$",
                 "allow": [
                   "layout",
+                  "z-*",
                   "truncate",
                   "line-clamp-*",
                   "whitespace-*",
@@ -96,11 +97,11 @@
               },
               {
                 "pattern": "^Icon$",
-                "allow": ["layout"]
+                "allow": ["layout", "z-*"]
               },
               {
                 "pattern": "^Skeleton$",
-                "allow": ["layout", "shape"]
+                "allow": ["layout", "z-*", "shape"]
               }
             ]
           }
@@ -128,6 +129,7 @@
         "design-system/no-hex-colours": "error",
         "design-system/no-colour-functions": "error",
         "design-system/no-arbitrary-colour": "error",
+        "design-system/no-raw-z-index": "error",
         "design-system/no-dark-variant": "error",
         "design-system/no-raw-text-size": "error",
         "design-system/no-legacy-import": "error",
@@ -147,12 +149,13 @@
         "design-system/no-restyle": [
           "error",
           {
-            "allow": ["layout"],
+            "allow": ["layout", "z-*"],
             "contracts": [
               {
                 "pattern": "^Text$",
                 "allow": [
                   "layout",
+                  "z-*",
                   "truncate",
                   "line-clamp-*",
                   "whitespace-*",
@@ -173,11 +176,11 @@
               },
               {
                 "pattern": "^Icon$",
-                "allow": ["layout"]
+                "allow": ["layout", "z-*"]
               },
               {
                 "pattern": "^Button$",
-                "allow": ["layout"]
+                "allow": ["layout", "z-*"]
               },
               {
                 "pattern": "^(?!(Text|Icon|Button)$)",
@@ -219,6 +222,7 @@
         "design-system/no-hex-colours": "off",
         "design-system/no-colour-functions": "off",
         "design-system/no-arbitrary-colour": "off",
+        "design-system/no-raw-z-index": "off",
         "design-system/no-arbitrary-values": "off",
         "design-system/no-restyle": "off",
         "design-system/no-inline-styles": "off",
@@ -239,6 +243,7 @@
         "design-system/no-hex-colours": "off",
         "design-system/no-colour-functions": "off",
         "design-system/no-arbitrary-colour": "off",
+        "design-system/no-raw-z-index": "off",
         "design-system/no-arbitrary-values": "off",
         "design-system/no-restyle": "off",
         "design-system/no-inline-styles": "off",

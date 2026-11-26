@@ -100,7 +100,7 @@ export function FloatingSafeModeToggle({
   }
 
   return (
-    <div className={cn("fixed z-50 flex flex-col gap-2", className)}>
+    <div className={cn("fixed z-overlay flex flex-col gap-2", className)}>
       {showHITLToggle && (
         <SafeModeButton
           isEnabled={currentHITLSafeMode}

@@ -119,7 +119,7 @@ export function FolderIcon({
                 stiffness: 160,
                 damping: 22,
               },
-              className: "z-10",
+              className: "z-raised",
             },
             {
               initial: { rotate: 0, x: 0, y: 0 },
@@ -131,7 +131,7 @@ export function FolderIcon({
                 stiffness: 190,
                 damping: 24,
               },
-              className: "z-20",
+              className: "z-sticky",
             },
             {
               initial: { rotate: 3.5, x: 42, y: 1 },
@@ -143,7 +143,7 @@ export function FolderIcon({
                 stiffness: 170,
                 damping: 21,
               },
-              className: "z-10",
+              className: "z-raised",
             },
           ].map((page, i) => (
             <motion.div
@@ -163,7 +163,7 @@ export function FolderIcon({
             rotateX: isOpen ? -15 : 0,
           }}
           transition={{ type: "spring", duration: 0.5, bounce: 0.25 }}
-          className="absolute inset-x-0 -bottom-px z-30 mx-auto flex h-44 w-[87.5%] origin-bottom items-end justify-center overflow-visible [transform-style:preserve-3d]"
+          className="absolute inset-x-0 -bottom-px z-floating mx-auto flex h-44 w-[87.5%] origin-bottom items-end justify-center overflow-visible [transform-style:preserve-3d]"
         >
           <svg
             className="h-auto w-full"

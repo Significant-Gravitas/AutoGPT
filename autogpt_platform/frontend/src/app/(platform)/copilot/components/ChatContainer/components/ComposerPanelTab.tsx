@@ -19,7 +19,7 @@ export function ComposerPanelTab({ expert }: Props) {
     // Pulled up by its own height so it rides over the message list instead
     // of pushing it up: the thread scrolls right to the input's edge, behind
     // the tab (ChatContainer pads the list to match).
-    <div className="relative z-20 -mt-[41px] flex justify-end pr-6 lg:hidden">
+    <div className="relative z-sticky -mt-[41px] flex justify-end pr-6 lg:hidden">
       <div className="flex items-center gap-0.5 rounded-t-2xl border border-b-0 border-border-base bg-surface-hover px-1.5 pt-1 shadow-sheen">
         <WorkspaceFilesTrigger className={buttonClassName} />
         {expert && (

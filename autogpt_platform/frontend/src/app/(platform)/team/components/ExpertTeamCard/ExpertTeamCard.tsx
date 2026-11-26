@@ -80,7 +80,7 @@ export function ExpertTeamCard({
   return (
     <div className="relative flex flex-col overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm">
       {/* Floated over the cover so the whole body stays one link target. */}
-      <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5">
+      <div className="absolute top-4 right-4 z-raised flex items-center gap-1.5">
         <Button
           variant="secondary"
           size="icon-sm"
@@ -107,7 +107,7 @@ export function ExpertTeamCard({
         />
 
         <div className="flex w-full items-start gap-3 px-2">
-          <span className="relative z-10 -mt-12 ml-1 block shrink-0">
+          <span className="relative z-raised -mt-12 ml-1 block shrink-0">
             <ExpertAvatar
               name={expert.name}
               avatarUrl={expert.avatar_url}

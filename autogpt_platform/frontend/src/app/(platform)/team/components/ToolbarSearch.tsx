@@ -37,7 +37,7 @@ export function ToolbarSearch({
         className,
       )}
     >
-      <span className="pointer-events-none absolute top-1/2 left-4 z-20 flex -translate-y-1/2 text-foreground-tertiary">
+      <span className="pointer-events-none absolute top-1/2 left-4 z-sticky flex -translate-y-1/2 text-foreground-tertiary">
         <Icon icon={Search01Icon} size={16} />
       </span>
       <Input

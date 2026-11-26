@@ -24,7 +24,7 @@ export function ArtifactsSearchBar({ searchTerm, setSearchTerm }: Props) {
         icon={Search01Icon}
         width={16}
         height={16}
-        className="pointer-events-none absolute top-1/2 left-4 z-20 -translate-y-1/2"
+        className="pointer-events-none absolute top-1/2 left-4 z-sticky -translate-y-1/2"
       />
       <Input
         label="Search files"

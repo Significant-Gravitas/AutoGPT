@@ -71,7 +71,7 @@ export function ThumbnailImages({
 
       <div
         ref={thumbnailsContainerRef}
-        className="relative z-10 flex flex-col gap-3"
+        className="relative z-raised flex flex-col gap-3"
       >
         {images.length === 0 ? (
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -143,7 +143,7 @@ export function ThumbnailImages({
                       e.stopPropagation();
                       handleRemoveImage(index);
                     }}
-                    className="absolute top-1.5 right-1.5 z-30 inline-flex size-7 cursor-pointer items-center justify-center rounded-full bg-action-hover/85 text-action-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-action-hover"
+                    className="absolute top-1.5 right-1.5 z-floating inline-flex size-7 cursor-pointer items-center justify-center rounded-full bg-action-hover/85 text-action-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-action-hover"
                     aria-label={`Remove image ${index + 1}`}
                     data-testid={`thumbnail-remove-${index}`}
                   >

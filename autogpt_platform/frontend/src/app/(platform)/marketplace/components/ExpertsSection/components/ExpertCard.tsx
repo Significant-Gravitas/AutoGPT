@@ -153,7 +153,7 @@ export function ExpertCard({ expert, isHired, category }: Props) {
           </span>
         </div>
       </Link>
-      <div className="absolute top-5 right-5 z-10">
+      <div className="absolute top-5 right-5 z-raised">
         <ExpertHireControl expert={expert} isHired={isHired} />
       </div>
     </div>

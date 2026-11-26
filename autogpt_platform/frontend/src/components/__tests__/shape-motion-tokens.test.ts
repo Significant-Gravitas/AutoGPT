@@ -65,7 +65,7 @@ function registration(name: string) {
 
 // Variables on :root that are not a class of their own: the shadow colour
 // (read by the shadow steps), the smooth-shadow-ring-sm ring colour (read by
-// that utility) and the app shell's sizes (read by nothing yet).
+// that utility) and the app shell's sizes (read by the Sidebar's providers).
 const NOT_CLASSES = /^--(?:shadow-color|smooth-ring-color|shell-.+)$/;
 
 const TOKENS = [...rootVariables(shapeCss), ...rootVariables(motionCss)];
@@ -135,6 +135,33 @@ describe("shape and motion tokens", () => {
         THEME_FAMILIES.test(name) && !/^var\(--[a-z0-9-]+\)$/.test(value),
     );
     expect(literal).toEqual([]);
+  });
+
+  it("give the sidebar its widths from the shell variables", () => {
+    const shell = Object.fromEntries(
+      [...shapeCss.matchAll(/(--shell-[a-z-]+):\s*([^;]+);/g)].map(
+        ([, name, value]) => [name, value.trim()],
+      ),
+    );
+    // The widths the sidebar had before it read them, kept to the pixel.
+    expect(shell).toMatchObject({
+      "--shell-sidebar-width": "18.25rem",
+      "--shell-sidebar-width-tour": "19rem",
+      "--shell-sidebar-width-default": "20rem",
+      "--shell-sidebar-width-mobile": "20rem",
+      "--shell-sidebar-width-collapsed": "3rem",
+    });
+    const readers = [
+      "src/components/molecules/Sidebar/Sidebar.tsx",
+      "src/app/(platform)/PlatformChrome/PlatformChrome.tsx",
+      "src/app/(public)/tour/chat/TourCopilot.tsx",
+    ].map(read);
+    for (const source of readers) {
+      expect(source).not.toMatch(/"--sidebar-width[a-z-]*":\s*"[\d.]+rem"/);
+      expect(source).not.toMatch(/SIDEBAR_WIDTH\w* = "[\d.]+rem"/);
+    }
+    expect(readers.join("\n")).toContain("var(--shell-sidebar-width)");
+    expect(readers.join("\n")).toContain("var(--shell-sidebar-width-tour)");
   });
 
   it("leave none in tailwind.config.ts", () => {

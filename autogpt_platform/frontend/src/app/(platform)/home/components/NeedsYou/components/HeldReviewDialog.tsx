@@ -180,7 +180,7 @@ export function HeldReviewDialog({ carousel, held, chatLink = true }: Props) {
             ) : null}
           </section>
           {carousel.sheetOpen ? (
-            <div className="absolute inset-x-0 top-16 bottom-0 z-10 flex rounded-t-2xl border-t border-border-base bg-surface shadow-lg lg:hidden">
+            <div className="absolute inset-x-0 top-16 bottom-0 z-raised flex rounded-t-2xl border-t border-border-base bg-surface shadow-lg lg:hidden">
               <ReviewSidebar carousel={carousel} sheet />
             </div>
           ) : null}
