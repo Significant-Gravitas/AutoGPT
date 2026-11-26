@@ -48,7 +48,7 @@ export function createFileDragImage(label: string): HTMLElement {
     "background:rgb(var(--color-surface))",
     "color:rgb(var(--color-foreground-tertiary))",
     "font:500 13px ui-sans-serif,system-ui,sans-serif",
-    "box-shadow:0 4px 12px rgba(0,0,0,0.08)",
+    "box-shadow:0 4px 12px rgb(var(--shadow-color) / 0.08)",
   ].join(";");
   el.innerHTML = `${FILE_GLYPH}<span style="color:rgb(var(--color-foreground-strong));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;">${escapeHtml(
     label,

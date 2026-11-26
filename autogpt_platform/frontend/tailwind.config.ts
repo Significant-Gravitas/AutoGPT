@@ -50,11 +50,13 @@ const TAILWIND_3_DEAD_CLASSES = [
   src/app/tokens/, so those keys are not here. A bare number (`z-10`,
   `duration-150`) needs no theme step: Tailwind 4 writes it as is.
 
-  Two keys differ from the original. `maxWidth` writes out its `screen-*`
+  Three keys differ from the original. `maxWidth` writes out its `screen-*`
   steps, because Tailwind 4 passes no `breakpoints` helper. The
   `backgroundImage` `gradient-to-*` entries drop their direction: Tailwind 4
   puts it inside `--tw-gradient-stops`, so the original
   `linear-gradient(to right, var(--tw-gradient-stops))` would name it twice.
+  `dropShadow` is coloured by `--shadow-color` (black, as before), like the
+  shadows in src/app/tokens/shape.css.
 */
 const TAILWIND_3_THEME: Config["theme"] = {
   animation: {
@@ -234,12 +236,24 @@ const TAILWIND_3_THEME: Config["theme"] = {
   divideOpacity: ({ theme }) => theme("borderOpacity"),
   divideWidth: ({ theme }) => theme("borderWidth"),
   dropShadow: {
-    sm: "0 1px 1px rgb(0 0 0 / 0.05)",
-    DEFAULT: ["0 1px 2px rgb(0 0 0 / 0.1)", "0 1px 1px rgb(0 0 0 / 0.06)"],
-    md: ["0 4px 3px rgb(0 0 0 / 0.07)", "0 2px 2px rgb(0 0 0 / 0.06)"],
-    lg: ["0 10px 8px rgb(0 0 0 / 0.04)", "0 4px 3px rgb(0 0 0 / 0.1)"],
-    xl: ["0 20px 13px rgb(0 0 0 / 0.03)", "0 8px 5px rgb(0 0 0 / 0.08)"],
-    "2xl": "0 25px 25px rgb(0 0 0 / 0.15)",
+    sm: "0 1px 1px rgb(var(--shadow-color) / 0.05)",
+    DEFAULT: [
+      "0 1px 2px rgb(var(--shadow-color) / 0.1)",
+      "0 1px 1px rgb(var(--shadow-color) / 0.06)",
+    ],
+    md: [
+      "0 4px 3px rgb(var(--shadow-color) / 0.07)",
+      "0 2px 2px rgb(var(--shadow-color) / 0.06)",
+    ],
+    lg: [
+      "0 10px 8px rgb(var(--shadow-color) / 0.04)",
+      "0 4px 3px rgb(var(--shadow-color) / 0.1)",
+    ],
+    xl: [
+      "0 20px 13px rgb(var(--shadow-color) / 0.03)",
+      "0 8px 5px rgb(var(--shadow-color) / 0.08)",
+    ],
+    "2xl": "0 25px 25px rgb(var(--shadow-color) / 0.15)",
     none: "0 0 #0000",
   },
   flex: {
@@ -1007,10 +1021,6 @@ const config = {
         "7.5": "1.875rem",
         "8.5": "2.125rem",
       },
-      backgroundImage: {
-        "message-table-header":
-          "radial-gradient(35% 160% at 8% 0%, rgba(139,92,246,0.05), transparent), radial-gradient(35% 160% at 50% 0%, rgba(99,102,241,0.04), transparent), radial-gradient(35% 160% at 92% 0%, rgba(59,130,246,0.05), transparent), linear-gradient(to bottom, rgb(var(--color-surface) / 1), rgb(var(--color-surface-muted) / 1))",
-      },
       keyframes: {
         "accordion-down": {
           from: {
@@ -1074,32 +1084,9 @@ const config = {
             backgroundPosition: "-200% 0",
           },
         },
-        loader: {
-          "0%": {
-            boxShadow: "0 0 0 0 rgba(0, 0, 0, 0.25)",
-          },
-          "100%": {
-            boxShadow: "0 0 0 30px rgba(0, 0, 0, 0)",
-          },
-        },
-        shake: {
-          "0%, 100%": { transform: "translateX(0)" },
-          "20%": { transform: "translateX(-4px)" },
-          "40%": { transform: "translateX(4px)" },
-          "60%": { transform: "translateX(-3px)" },
-          "80%": { transform: "translateX(3px)" },
-        },
-        "marquee-x": {
-          "0%": { transform: "translateX(0)" },
-          "100%": { transform: "translateX(-50%)" },
-        },
         "progress-bar": {
           "0%": { transform: "translateX(-100%)" },
           "100%": { transform: "translateX(400%)" },
-        },
-        "caret-blink": {
-          "0%, 100%": { opacity: "1" },
-          "50%": { opacity: "0" },
         },
         "shimmer-text": {
           "0%": { backgroundPosition: "100% 0" },
@@ -1125,12 +1112,8 @@ const config = {
         "collapsible-up": "collapsible-up 0.2s cubic-bezier(0.33, 1, 0.68, 1)",
         "fade-in": "fade-in 0.2s ease-out",
         shimmer: "shimmer 4s ease-in-out infinite",
-        loader: "loader 1s infinite",
-        shake: "shake 0.5s ease-in-out",
-        "marquee-x": "marquee-x 40s linear infinite",
         "progress-bar":
           "progress-bar 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite",
-        "caret-blink": "caret-blink 1s step-end infinite",
         "shimmer-text": "shimmer-text 2s linear infinite",
         "fade-up": "fade-up 320ms cubic-bezier(0.23, 1, 0.32, 1) both",
         "grow-line": "grow-line 500ms cubic-bezier(0.23, 1, 0.32, 1) both",

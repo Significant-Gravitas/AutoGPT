@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -201,6 +202,62 @@ tester.run("no-hex-colours", rule("no-hex-colours"), {
         { message: /"#123456"/ },
         { message: /"#fff"/ },
         { message: /"#0000"/ },
+      ],
+    },
+  ],
+});
+
+tester.run("no-colour-functions", rule("no-colour-functions"), {
+  valid: [
+    // A role read, with or without an alpha, and words that end in "rgb".
+    {
+      code: 'const a = "rgb(var(--color-edge))"; const b = `box-shadow:0 1px 2px rgb(var(--shadow-color) / 0.1)`; const c = "hsl(var(--x))"; const d = "brgb(1 2 3)";',
+      filename: FILE,
+    },
+    jsx(
+      "bg-[radial-gradient(120%_100%_at_50%_0%,rgb(var(--color-brand)/0.10),transparent_70%)]",
+    ),
+    // A class whose whole arbitrary value is the colour is
+    // no-arbitrary-colour's.
+    jsx("hover:text-[rgb(131,131,140)] ring-[oklch(0.7_0.1_200)]"),
+    // ds-colour-exempt.json: a whole file, or one value a file may keep.
+    {
+      code: "const glass = `rgba(255,255,255,${tint})`;",
+      filename: "src/components/molecules/GlassOrb/GlassSurface.tsx",
+    },
+    {
+      code: `const grid = "<rect stroke='rgba(0,0,0,0.08)' />";`,
+      filename: "src/app/(public)/tour/components/TourHero/TourBackground.tsx",
+    },
+  ],
+  invalid: [
+    {
+      code: 'const a = { backgroundColor: "rgb(248 250 252)" }; const b = `border:1px solid hsla(0, 0%, 50%, 0.4)`;',
+      filename: FILE,
+      errors: [
+        { message: /^"rgb\(248 250 252\)" hardcodes a colour\. Read a role/ },
+        { message: /^"hsla\(0, 0%, 50%, 0\.4\)" hardcodes a colour/ },
+      ],
+    },
+    {
+      // Inside a gradient or a shadow, and a template literal's partial
+      // colour.
+      code: 'const wash = "bg-[linear-gradient(180deg,rgba(14,165,233,0.10),transparent)] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"; const rim = `1px solid rgba(255,255,255,${edge})`;',
+      filename: FILE,
+      errors: [
+        { message: /^"rgba\(14,165,233,0\.10\)"/ },
+        { message: /^"rgba\(0,0,0,0\.05\)"/ },
+        { message: /^"rgba\(255,255,255,"/ },
+      ],
+    },
+    {
+      // A signed first argument: CSS wraps a negative hue into range.
+      code: 'const a = "hsl(-30 100% 50%)"; const b = "oklch( +0.7 0.1 200)"; const c = "rgb(-.5 0 0)";',
+      filename: FILE,
+      errors: [
+        { message: /^"hsl\(-30 100% 50%\)" hardcodes a colour/ },
+        { message: /^"oklch\( \+0\.7 0\.1 200\)" hardcodes a colour/ },
+        { message: /^"rgb\(-\.5 0 0\)" hardcodes a colour/ },
       ],
     },
   ],
@@ -510,7 +567,11 @@ describe("the ratchet, end to end", () => {
   }
 
   beforeAll(() => {
-    root = mkdtempSync(path.join(tmpdir(), "design-system-lint-"));
+    // oxlint reports real paths; macOS's tmpdir is under the /var symlink, so
+    // the baseline keys must be written from the real path too.
+    root = realpathSync(
+      mkdtempSync(path.join(tmpdir(), "design-system-lint-")),
+    );
     write(
       ".oxlintrc.json",
       JSON.stringify({

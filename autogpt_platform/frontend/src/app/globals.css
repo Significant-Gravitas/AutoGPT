@@ -268,6 +268,32 @@
   }
 }
 
+/* The chat message table's header: brand, indigo and blue glows over a
+   surface-to-muted fade. */
+@utility bg-message-table-header {
+  background-image:
+    radial-gradient(
+      35% 160% at 8% 0%,
+      rgb(var(--color-brand) / 0.05),
+      transparent
+    ),
+    radial-gradient(
+      35% 160% at 50% 0%,
+      rgb(var(--color-indigo) / 0.04),
+      transparent
+    ),
+    radial-gradient(
+      35% 160% at 92% 0%,
+      rgb(var(--color-info) / 0.05),
+      transparent
+    ),
+    linear-gradient(
+      to bottom,
+      rgb(var(--color-surface) / 1),
+      rgb(var(--color-surface-muted) / 1)
+    );
+}
+
 /* The chat message table's glowing header text. The violet glow is the
    brand purple. */
 @utility text-shadow-message-table-violet {

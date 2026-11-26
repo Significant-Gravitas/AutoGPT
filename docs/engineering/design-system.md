@@ -4,7 +4,7 @@ The rules for styling in `autogpt_platform/frontend`, and the lint rule that enf
 
 ## How the rules are enforced
 
-`pnpm lint` runs oxlint with `.oxlintrc.json`, which loads two local plugins: `scripts/eslint-rules/plugin.mts` (`autogpt/*`, the React Compiler rules) and `scripts/eslint-rules/design-system.mts` (`design-system/*`, the rules on this page). The `design-system/*` rules apply to `src/**`. They don't apply to tests, `src/tests`, `src/playwright`, `src/mocks` or the generated API client. Stories skip four styling rules (`no-raw-colors`, `no-arbitrary-values`, `no-restyle`, `no-inline-styles`) but not the colour-system rules (`no-shadcn-alias-colours`, `no-raw-palette-classes`, `no-hex-colours`). CI runs `pnpm lint` in the frontend `lint` job, so a violation fails the pull request.
+`pnpm lint` runs oxlint with `.oxlintrc.json`, which loads two local plugins: `scripts/eslint-rules/plugin.mts` (`autogpt/*`, the React Compiler rules) and `scripts/eslint-rules/design-system.mts` (`design-system/*`, the rules on this page). The `design-system/*` rules apply to `src/**`. They don't apply to tests, `src/tests`, `src/playwright`, `src/mocks` or the generated API client. Stories skip four styling rules (`no-raw-colors`, `no-arbitrary-values`, `no-restyle`, `no-inline-styles`) but not the colour-system rules (`no-shadcn-alias-colours`, `no-raw-palette-classes`, `no-hex-colours`, `no-colour-functions`). CI runs `pnpm lint` in the frontend `lint` job, so a violation fails the pull request.
 
 Six of the rules are [`@shadcn/lint`](https://github.com/shadcn-ui/lint) rules, wrapped by `design-system.mts`. The rest are our own.
 
@@ -33,7 +33,7 @@ Never raise a count to make new code pass. Fix the code, or suppress the one lin
 
 ## Tokens
 
-The app has one colour system: the role tokens. Their values live in one place, `src/app/tokens/theme.css`, as RGB triplets on `:root` (`--color-<role>`); `src/app/globals.css` registers each in its `@theme inline` block, so `bg-surface` reads `rgb(var(--color-surface) / 1)` at runtime. A theme is a second block that redefines the same names, with no component edit (the T3 Code layout). Use the roles with any colour utility, opacity modifiers included: `bg-surface`, `text-foreground-secondary`, `border-border-base`, `ring-focus`, `bg-overlay/20`. In a string that needs a colour (an inline style, a drag image, an xyflow marker) write `rgb(var(--color-<role>))`.
+The app has one colour system: the role tokens. Their values live in one place, `src/app/tokens/theme.css`, as RGB triplets on `:root` (`--color-<role>`); `src/app/globals.css` registers each in its `@theme inline` block, so `bg-surface` reads `rgb(var(--color-surface) / 1)` at runtime. A theme is a second block that redefines the same names, with no component edit (the T3 Code layout). Use the roles with any colour utility, opacity modifiers included: `bg-surface`, `text-foreground-secondary`, `border-border-base`, `ring-focus`, `bg-overlay/20`. In a string that needs a colour (an inline style, a drag image, an xyflow marker) write `rgb(var(--color-<role>))`, with an alpha if it needs one (`rgb(var(--color-brand) / 0.1)`); a shadow's colour is `rgb(var(--shadow-color) / <alpha>)`.
 
 - Surfaces: `canvas`, `surface`, `surface-muted`, `surface-hover`, `surface-active`, `overlay`, `scrim` (the dark backdrop behind dialogs, and the colour of a coloured shadow)
 - Text: `foreground-base`, `foreground-strong`, `foreground-emphasis`, `foreground-body`, `foreground-secondary`, `foreground-tertiary`, `foreground-subtle`, `foreground-disabled`, `placeholder`
@@ -46,19 +46,21 @@ The app has one colour system: the role tokens. Their values live in one place, 
 
 `src/components/styles/color-roles.ts` lists every role (the Tokens/Colors story draws it). To add one, write its triplet in `theme.css`, register it in `globals.css`'s `@theme` and list it there; add one only when real, repeated uses need a colour no role has.
 
-The roles are the only colour system. Tailwind's palette is reset (`--color-*: initial` at the top of `theme.css`) and `tailwind.config.ts` has no colours, so `bg-red-500`, `text-zinc-600` or `bg-white` generate nothing. Four rules keep the other colour systems out of the source, in every string (`className`, `cn()`/`cva()`, style objects, template literals), stories included:
+The roles are the only colour system. Tailwind's palette is reset (`--color-*: initial` at the top of `theme.css`) and `tailwind.config.ts` has no colours, so `bg-red-500`, `text-zinc-600` or `bg-white` generate nothing. Five rules keep the other colour systems out of the source, in every string (`className`, `cn()`/`cva()`, style objects, template literals), stories included:
 
 - **Rule `design-system/no-shadcn-alias-colours`:** the shadcn names (`bg-background`, `text-muted-foreground`, `border-border`, `ring-ring`, `bg-accent`, `bg-sidebar`, …). The error names the role each one aliased, which renders the same colour. `theme.css` keeps seven of them (`background`, `foreground`, `muted`, `muted-foreground`, `border`, `primary`, `primary-foreground`) for streamdown's prebuilt markup, which Tailwind scans in `node_modules`; they are not for app code.
 - **Rule `design-system/no-raw-palette-classes`:** the Tailwind palette (`bg-zinc-200`, `text-orange-600`, `bg-white`, `shadow-black/10`). The error names the role `scripts/ds/palette-map.json` maps the class to.
 - **Rule `design-system/no-hex-colours`:** hex colours in any string (`"#fff"`, `border:1px solid #E4E4E7`).
+- **Rule `design-system/no-colour-functions`:** `rgb()`, `rgba()`, `hsl()`, `hsla()` and `oklch()` with numbers for arguments, signed ones included (`hsl(-30 100% 50%)`), in any string: an inline style (`"rgb(248 250 252)"`), a gradient or shadow inside a class (`bg-[linear-gradient(180deg,rgba(14,165,233,0.1),transparent)]`), a template literal (`` `rgba(255,255,255,${alpha})` ``). A role read (`rgb(var(--color-sky) / 0.1)`) is not one. A class whose whole arbitrary value is the colour (`text-[rgb(20,20,20)]`) is `no-arbitrary-colour`'s. The hand-written `shadow-[…]` strings are its last violations, grandfathered by the baseline until they move onto the shadow tokens.
 - **Rule `design-system/no-arbitrary-colour`:** a colour class whose arbitrary value is a colour (`bg-[#123456]`, `text-[rgb(131,131,140)]`, `border-[color:hsl(…)]`, `[color:#fff]`). The error names the role with the same colour when there is one. A role read through `var()` is not one.
 - `design-system/no-raw-colors` still fails named colours in SVG attributes (`fill="white"`).
 
-Artwork, logos, chart series (recharts writes them as SVG attributes, where CSS variables do not resolve), user-picked colour palettes and markup that never reaches the app's stylesheet keep their colours through `ds-colour-exempt.json`: a file glob, optionally the classes or hex values allowed in it, and a reason. It is the only way: a suppression comment for these rules fails `scripts/__tests__/colour-exempt.test.ts`, which also checks every entry still matches a file and every allowed value is still used, and that no stylesheet other than `theme.css` (and exempt ones) writes a hex colour.
+Artwork, logos, chart series (recharts writes them as SVG attributes, where CSS variables do not resolve), user-picked colour palettes and markup that never reaches the app's stylesheet (an SVG data-URI image, an iframe's document) keep their colours through `ds-colour-exempt.json`: a file glob, optionally the classes, hex values or colour functions allowed in it, and a reason. It is the only way: a suppression comment for these rules fails `scripts/__tests__/colour-exempt.test.ts`, which also checks every entry still matches a file and every allowed value is still used, and that no stylesheet other than `theme.css` (and exempt ones) writes a hex colour.
 
-The codemods that did the migration stay for branches that still use the old names: `npx tsx scripts/ds/alias-to-role.ts --write <dir>` (the shadcn names; no pixel moves, `scripts/check-token-equivalence.ts` proves it against a base checkout) and `npx tsx scripts/ds/palette-to-role.ts --write <dir>` (the palette, by `palette-map.json`, whose rows say whether the colour stays the same, shifts a shade, or changes hue).  The palette itself is gone: the exempt user-picked palettes write their hex as arbitrary values (`bg-[#fde68a]`), and the few palette classes streamdown's prebuilt markup writes (its mermaid error box and image hover veil) are drawn by a block at the end of `theme.css`, inside streamdown's markup only.
+The codemods that did the migration stay for branches that still use the old names: `npx tsx scripts/ds/alias-to-role.ts --write <dir>` (the shadcn names; no pixel moves, `scripts/check-token-equivalence.ts` proves it against a base checkout) and `npx tsx scripts/ds/palette-to-role.ts --write <dir>` (the palette, by `palette-map.json`, whose rows say whether the colour stays the same, shifts a shade, or changes hue). The palette itself is gone: the exempt user-picked palettes write their hex as arbitrary values (`bg-[#fde68a]`), and the few palette classes streamdown's prebuilt markup writes (its mermaid error box and image hover veil) are drawn by a block at the end of `theme.css`, inside streamdown's markup only.
 
 `src/components/__tests__/design-system-contract.test.ts` checks that:
+
 - every role on `theme.css`'s `:root` is registered in `globals.css`'s `@theme`, and the other way round, and `color-roles.ts` lists them all;
 - no shadcn name is left but streamdown's, each aliasing a role;
 - `.dark` only redefines names that `:root` declares;
@@ -84,6 +86,14 @@ Every design value lives in one of four files in `src/app/tokens/`. Change a val
 To add a token, write its value in the file above that owns it, and register it in `globals.css`'s `@theme inline reference` block, which turns it into a class: `--radius-<step>: var(--radius-<step>)`, `--z-index-<name>: var(--z-<name>)`, `--transition-duration-<name>: var(--duration-<name>)` or `--ease-<name>: var(--ease-<name>)`. A shadow goes in `shape.css`'s own `@theme` block, coloured with `rgb(var(--shadow-color) / <alpha>)`. A colour role is also listed in `color-roles.ts`. A motion value is also written in `motion.ts`.
 
 `src/components/__tests__/shape-motion-tokens.test.ts` checks that every variable in `shape.css` and `motion.css` is registered and compiles to a class that reads it, and that no such value is left in `tailwind.config.ts` or in `globals.css`'s `@theme`. `src/components/styles/__tests__/motion.test.ts` checks that `motion.ts` matches `motion.css`.
+
+### The canary look
+
+`src/app/tokens/themes/canary.css` is a second look, a dev tool the app never imports. Under `html[data-look="canary"]` it gives every colour role a loud value no default has (surfaces green, text magenta, borders cyan, each status and accent its own hue), every radius but `--radius-full` 0px, `--shadow-color` pure red, the sans font Papyrus and the mono font Comic Sans, and every text size a quarter more. Anything that keeps its normal colour, corner or font under it does not read a token. (`data-theme` is for light and dark; a look is `data-look`.)
+
+- In Storybook, switch the toolbar's **Look** to Canary.
+- `npx tsx scripts/ds/canary-check.ts --storybook-url <url>` (or `--base-url <url> --routes /login,/signup` for the app) loads each story or page, screenshots it in both looks, and reports every visible element whose computed colour (text, background, border, outline, SVG fill and stroke, and the colours in a shadow or gradient), corner radius or font is not a canary value, grouped by kind, de-duplicated and counted, as `report.json` and `report.txt`. A full radius on a box that is not square is reported apart, as `border-radius (full)`, until circles and pills have tokens of their own. Images, canvas, iframes and the artwork `ds-colour-exempt.json` lists are not checked; third-party markup (xyflow, streamdown, shiki, KaTeX, sonner) is labelled with its library. Public routes and stories are checked signed out; a route behind sign-in needs `SCREENSHOT_EMAIL` and `SCREENSHOT_PASSWORD`, or the run stops before it starts. It exits 1 when a target failed to render. The header of the script lists its flags.
+- `src/components/__tests__/canary-look.test.ts` keeps the canary complete: it must redefine every `--color-*` role, every `--radius-*` but `full`, `--shadow-color` and every `--text-*` the token files declare on `:root`, and nothing they don't. A new token needs a canary value.
 
 ## Dark mode
 
@@ -125,22 +135,22 @@ Text renders through the `Text` atom by default: `<Text variant="body">`, with `
 
 Use a scale class only where `Text` can't render the element identically, and inside primitives. The type scale is the app's only set of text sizes: its values are in `src/app/tokens/typography.css` (one `:root` block, mapped to `text-<step>` by `@theme` in `globals.css`), so a redesign changes that file and every size follows. Each step bundles its line-height:
 
-| Step | Size / line-height | Replaced (SECRT-3152) |
-| --- | --- | --- |
-| `text-tiny` | 10/14px | |
-| `text-caption-sm` | 11/16px | |
-| `text-caption` | 12/18px | Tailwind `xs` (12/16) |
-| `text-body-sm` | 13/20px | |
-| `text-body` | 14/22px | Tailwind `sm` (14/20) |
-| `text-body-md` | 15/24px | |
-| `text-body-lg` | 16/26px | Tailwind `base` (16/24) |
-| `text-lead` | 20/28px | Tailwind `lg` (18/28) and `xl` (20/28) |
-| `text-heading-sm` | 22/24px | |
-| `text-heading-md` | 24/32px | Tailwind `2xl` (24/32) |
-| `text-heading` | 28/40px | Tailwind `3xl` (30/36) |
-| `text-title` | 32/40px | Tailwind `4xl` (36/40) |
-| `text-display` | 44/56px | Tailwind `5xl` (48/48) |
-| `text-hero` | 64/64px | Tailwind `6xl` to `9xl` |
+| Step              | Size / line-height | Replaced (SECRT-3152)                  |
+| ----------------- | ------------------ | -------------------------------------- |
+| `text-tiny`       | 10/14px            |                                        |
+| `text-caption-sm` | 11/16px            |                                        |
+| `text-caption`    | 12/18px            | Tailwind `xs` (12/16)                  |
+| `text-body-sm`    | 13/20px            |                                        |
+| `text-body`       | 14/22px            | Tailwind `sm` (14/20)                  |
+| `text-body-md`    | 15/24px            |                                        |
+| `text-body-lg`    | 16/26px            | Tailwind `base` (16/24)                |
+| `text-lead`       | 20/28px            | Tailwind `lg` (18/28) and `xl` (20/28) |
+| `text-heading-sm` | 22/24px            |                                        |
+| `text-heading-md` | 24/32px            | Tailwind `2xl` (24/32)                 |
+| `text-heading`    | 28/40px            | Tailwind `3xl` (30/36)                 |
+| `text-title`      | 32/40px            | Tailwind `4xl` (36/40)                 |
+| `text-display`    | 44/56px            | Tailwind `5xl` (48/48)                 |
+| `text-hero`       | 64/64px            | Tailwind `6xl` to `9xl`                |
 
 - **Line-height:** override it only with `leading-inherit`, `leading-4.5`, `leading-5.5`, `leading-6.5` or a Tailwind step.
 - **Letter-spacing:** `tracking-display`, `tracking-heading`, `tracking-title`, `tracking-caps` or `tracking-eyebrow`.
@@ -151,6 +161,7 @@ Tailwind's own sizes are reset in the theme (`--text-*: initial`), so `text-sm` 
 ## Icons
 
 Hugeicons only: icon data from `@hugeicons/core-free-icons`, rendered with the `Icon` atom (`<Icon icon={Delete02Icon} size={16} />`), which applies the 2px stroke. Type icon props with `IconSvgElement` from `@hugeicons/react`. Rule `design-system/hugeicons-only` reports:
+
 - importing `lucide-react`, `@phosphor-icons/react`, `react-icons` or `@radix-ui/react-icons`;
 - rendering `HugeiconsIcon` outside `atoms/Icon`.
 
@@ -166,7 +177,9 @@ Feature code never imports from `src/components/__legacy__`, from any other `leg
 Fix the code first. When a suppression is unavoidable, scope it to one line and one rule, and give the reason on the same line after `--`:
 
 ```tsx
-{/* oxlint-disable-next-line design-system/no-arbitrary-values -- xyflow positions handles in px */}
+{
+  /* oxlint-disable-next-line design-system/no-arbitrary-values -- xyflow positions handles in px */
+}
 ```
 
 The `design-system/*` rules are oxlint rules, so suppress them with `oxlint-disable-next-line`. Rule `design-system/require-suppression-reason` fails any `eslint-disable` or `oxlint-disable` comment without a `-- reason`. Like every rule here, it grandfathers the files that already had some.
@@ -178,6 +191,7 @@ The pull request template has a design-system checklist. For a change to `src/co
 ## Owners
 
 `.github/CODEOWNERS` routes these to `@Significant-Gravitas/frontend-maintainers` and `@Significant-Gravitas/design`:
+
 - the design-system directories (`atoms`, `molecules`, `organisms`, `tokens`, `styles`);
 - `globals.css` and `tailwind-grammar.css`;
 - the Tailwind config files and `components.json`;
