@@ -1,12 +1,17 @@
 import type { OptionsBlock } from "@/app/api/__generated__/models/optionsBlock";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { isPaywallError } from "@/components/contextual/PaywallToast/helpers";
 import { cn } from "@/lib/utils";
 import { capturePostHogEvent } from "@/services/analytics/posthog-capture";
 import { VisualAnswerEvent } from "@/services/analytics/posthog-events";
 import { AlertCircleIcon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { useCopilotChatActions } from "../../../components/CopilotChatActionsProvider/useCopilotChatActions";
+import { CopilotAuthError } from "../../../helpers";
+import { QueueFollowUpFullError } from "../../../helpers/queueFollowUpMessage";
+import { toastSendFailure } from "../../../helpers/sendFailureToast";
+import { SendInFlightError } from "../../../stream/turnRuntime";
 import { type BlockTone, TEXT_TONE } from "../helpers";
 
 const ICON_BADGE: Record<BlockTone, string> = {
@@ -23,14 +28,35 @@ interface Props {
 
 export function OptionsBlockView({ block, canAct }: Props) {
   const { onSend } = useCopilotChatActions();
-  const [isSent, setIsSent] = useState(false);
-  const isDisabled = !canAct || isSent;
+  const [hasSelected, setHasSelected] = useState(false);
+  const isDisabled = !canAct || hasSelected;
 
-  function handleSelect(title: string) {
+  async function handleSelect(title: string) {
     if (isDisabled) return;
-    setIsSent(true);
+    setHasSelected(true);
     capturePostHogEvent(VisualAnswerEvent.VISUAL_OPTION_CLICKED, {});
-    void onSend(title);
+    try {
+      await onSend(title);
+    } catch (error) {
+      const canRetry =
+        error instanceof CopilotAuthError ||
+        error instanceof SendInFlightError ||
+        error instanceof QueueFollowUpFullError ||
+        isPaywallError(error);
+      // A request that failed in transit may already have started a turn.
+      if (canRetry) setHasSelected(false);
+      toastSendFailure({
+        title: canRetry
+          ? "Couldn't send the message"
+          : "Couldn't confirm the message was sent",
+        error,
+        description: canRetry
+          ? undefined
+          : "Check the chat to see whether the message arrived.",
+        recovery: "you can select the option again",
+        paywallRecovery: "you can select the same option once you have a plan",
+      });
+    }
   }
 
   return (
@@ -43,7 +69,7 @@ export function OptionsBlockView({ block, canAct }: Props) {
             key={index}
             type="button"
             disabled={isDisabled}
-            onClick={() => handleSelect(item.title)}
+            onClick={() => void handleSelect(item.title)}
             className="group flex min-w-0 items-start gap-3 rounded-2xl bg-gradient-to-br from-surface to-accent-surface/40 p-4 text-left smooth-shadow-ring-sm transition-transform duration-150 hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none disabled:pointer-events-none disabled:opacity-60 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
           >
             <span

@@ -15,6 +15,8 @@ import { ReportedSendError } from "./reportedSendError";
 interface Args {
   title: string;
   error: unknown;
+  /** Complete user-facing copy when the raw error would misstate recovery. */
+  description?: string;
   /** Lowercase clause saying where the user's text went. */
   recovery: string;
   /** Replaces `recovery` on the paywall toast when `recovery` tells the user
@@ -27,6 +29,7 @@ interface Args {
 export function toastSendFailure({
   title,
   error,
+  description,
   recovery,
   paywallRecovery = recovery,
 }: Args) {
@@ -46,7 +49,7 @@ export function toastSendFailure({
   }
   toast({
     title,
-    description: describeSendFailure(failure, recovery),
+    description: description ?? describeSendFailure(failure, recovery),
     variant: "destructive",
   });
 }

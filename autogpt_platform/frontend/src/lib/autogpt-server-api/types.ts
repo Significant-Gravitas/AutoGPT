@@ -521,13 +521,7 @@ export type NodeExecutionResult = {
 };
 
 /* Structured validation error types for graph execution */
-export type GraphValidationErrorResponse = {
-  detail: {
-    type: "validation_error";
-    message: string;
-    node_errors: Record<string, Record<string, string>>;
-  };
-};
+export type { GraphValidationErrorResponse } from "@/lib/api-error";
 
 /* *** LIBRARY *** */
 
