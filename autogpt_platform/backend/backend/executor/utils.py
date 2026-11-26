@@ -359,11 +359,12 @@ def _coerce_usd(stats: NodeExecutionStats | None) -> float:
 def _with_schema_defaults(
     block: Block, input_data: BlockInput, resolved_model: str | None
 ) -> BlockInput:
-    """The input `Block._execute` runs on: `None` values dropped, schema defaults
-    filled in, and each LLM model as the block runs it
-    (`Block.with_retired_models_replaced`). Cost filters are matched against
-    this, with each credentials input marked by whether the platform pays for
-    its key.
+    """The input `Block._execute` runs on: `None` values dropped, values coerced
+    to the schema's types as `validate_exec` does (an Orchestrator tool call's
+    arguments are priced before it), schema defaults filled in, and each LLM
+    model as the block runs it (`Block.with_retired_models_replaced`). Cost
+    filters are matched against this, with each credentials input marked by
+    whether the platform pays for its key.
 
     ``resolved_model`` is the model a run recorded when it started
     (`NodeExecutionStats.resolved_model`), and a run that has started is
@@ -376,9 +377,13 @@ def _with_schema_defaults(
         for name, field in block.input_schema.model_fields.items()
         if not field.is_required()
     }
+    provided = {k: v for k, v in input_data.items() if v is not None}
+    try:
+        coerce_inputs_to_schema(provided, block.input_schema)
+    except ConversionError:
+        pass  # the others are coerced; the run refuses the one that can't be
     merged = block.with_retired_models_replaced(
-        {**defaults, **{k: v for k, v in input_data.items() if v is not None}},
-        resolved_model,
+        {**defaults, **provided}, resolved_model
     )
     for field_name in block.input_schema.get_credentials_fields():
         if isinstance(credentials := merged.get(field_name), dict):
