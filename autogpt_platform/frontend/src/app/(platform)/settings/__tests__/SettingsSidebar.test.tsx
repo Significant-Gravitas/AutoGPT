@@ -66,6 +66,7 @@ const expectedItems = [
   { label: "Billing", href: "/settings/billing" },
   { label: "Integrations", href: "/settings/integrations" },
   { label: "AutoGPT API Keys", href: "/settings/api-keys" },
+  { label: "OAuth Apps", href: "/settings/oauth-apps" },
   { label: "Creator Dashboard", href: "/settings/creator-dashboard" },
 ];
 
@@ -92,7 +93,7 @@ describe("SettingsSidebar", () => {
     expect(screen.getByRole("link", { name: /integrations/i })).toBeDefined();
   });
 
-  it("renders a Back link to /copilot and all 6 nav items with correct hrefs", () => {
+  it("renders a Back link to /copilot and all 7 nav items with correct hrefs", () => {
     render(<SettingsSidebar />);
 
     const back = screen.getByRole("link", { name: /back/i });
