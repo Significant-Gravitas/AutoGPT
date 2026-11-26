@@ -634,8 +634,9 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     oauth_dynamic_client_registration: bool = Field(
         default=False,
         description="Let OAuth clients register themselves (RFC 7591), as MCP "
-        "clients do to sign in without a client ID. Registered clients are public "
-        "and must use PKCE; the consent page tells users the app is unreviewed.",
+        "clients do to sign in without a client ID. Registered clients are public, "
+        "must use PKCE, redirect to the loopback interface and get only the MCP "
+        "server's permissions; the consent page tells users the app is unreviewed.",
     )
 
     # Documented in docs/platform/client-ip.md: update it with any change here.

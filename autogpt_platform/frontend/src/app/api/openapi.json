@@ -23708,7 +23708,7 @@
               { "type": "null" }
             ],
             "title": "Scope",
-            "description": "Space-separated; every permission if omitted"
+            "description": "Space-separated; every MCP server permission if omitted"
           }
         },
         "type": "object",

@@ -42,7 +42,7 @@ Before integrating, you need an OAuth application registered with AutoGPT Platfo
 - **Client Secret** - Secret key for authenticating your application (keep this secure!)
 - **Registered Redirect URIs** - URLs where users will be redirected after authorization
 
-A self-hosted instance with `OAUTH_DYNAMIC_CLIENT_REGISTRATION=true` also lets a client register itself at `POST /api/oauth/register` ([RFC 7591](https://www.rfc-editor.org/rfc/rfc7591)), as MCP clients do. Such a client is public: it gets no secret, omits `client_secret` when it redeems a code, and must use `S256` PKCE. Its redirect URIs must be `http` on the loopback interface or `https`. The instance's `/.well-known/oauth-authorization-server` document lists the registration endpoint when it is on.
+A self-hosted instance with `OAUTH_DYNAMIC_CLIENT_REGISTRATION=true` also lets a client register itself at `POST /api/oauth/register` ([RFC 7591](https://www.rfc-editor.org/rfc/rfc7591)), as MCP clients do. Such a client is public: it gets no secret, omits `client_secret` when it redeems a code, and must use `S256` PKCE. Its redirect URIs must be `http` on the loopback interface, on any port, and it can request only the permissions the [MCP server's tools](mcp-server.md#tools) need: a `scope` with any other is refused, and a client that names none gets all of those. The instance's `/.well-known/oauth-authorization-server` document lists the registration endpoint when it is on.
 
 ## OAuth Flow
 

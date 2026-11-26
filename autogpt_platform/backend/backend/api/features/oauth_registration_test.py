@@ -1,5 +1,6 @@
 """Who may register an OAuth client: nobody unless the instance enables it, and
-then only a public client that comes back to the loopback interface or https."""
+then only a public client that comes back to the loopback interface and asks
+for no more than the MCP server's permissions."""
 
 import httpx
 import pytest
@@ -51,28 +52,42 @@ async def test_the_metadata_advertises_registration_once_enabled(
     assert "none" in metadata["token_endpoint_auth_methods_supported"]
 
 
+REDIRECT = "invalid_redirect_uri"
+METADATA = "invalid_client_metadata"
+
+
 @pytest.mark.parametrize(
-    "metadata",
+    "metadata, error",
     [
-        {"redirect_uris": ["http://evil.example/callback"]},
-        {"redirect_uris": ["cursor://anysphere.cursor-retrieval/oauth/callback"]},
-        {"redirect_uris": ["https://example.com/callback#fragment"]},
-        {"redirect_uris": ["https://user:pass@example.com/callback"]},
-        {"redirect_uris": []},
-        {"redirect_uris": [LOOPBACK] * 6},
-        {
-            "redirect_uris": [LOOPBACK],
-            "token_endpoint_auth_method": "client_secret_post",
-        },
-        {"redirect_uris": [LOOPBACK], "grant_types": ["implicit"]},
-        {"redirect_uris": [LOOPBACK], "grant_types": ["refresh_token"]},
-        {"redirect_uris": [LOOPBACK], "response_types": ["token"]},
-        {"redirect_uris": [LOOPBACK], "scope": "READ_LIBRARY ADMIN"},
-        {"redirect_uris": [LOOPBACK], "client_name": "x" * 101},
+        ({"redirect_uris": ["http://evil.example/callback"]}, REDIRECT),
+        ({"redirect_uris": ["https://vscode.dev/redirect"]}, REDIRECT),
+        ({"redirect_uris": ["https://localhost:8765/callback"]}, REDIRECT),
+        ({"redirect_uris": ["cursor://anysphere.cursor-retrieval/callback"]}, REDIRECT),
+        ({"redirect_uris": [f"{LOOPBACK}#fragment"]}, REDIRECT),
+        ({"redirect_uris": ["http://user:pass@localhost:8765/callback"]}, REDIRECT),
+        ({"redirect_uris": []}, REDIRECT),
+        ({"redirect_uris": [LOOPBACK] * 6}, REDIRECT),
+        (
+            {
+                "redirect_uris": [LOOPBACK],
+                "token_endpoint_auth_method": "client_secret_post",
+            },
+            METADATA,
+        ),
+        ({"redirect_uris": [LOOPBACK], "grant_types": ["implicit"]}, METADATA),
+        ({"redirect_uris": [LOOPBACK], "grant_types": ["refresh_token"]}, METADATA),
+        ({"redirect_uris": [LOOPBACK], "response_types": ["token"]}, METADATA),
+        ({"redirect_uris": [LOOPBACK], "scope": "READ_LIBRARY ADMIN"}, METADATA),
+        (
+            {"redirect_uris": [LOOPBACK], "scope": "READ_LIBRARY MANAGE_INTEGRATIONS"},
+            METADATA,
+        ),
+        ({"redirect_uris": [LOOPBACK], "client_name": "x" * 101}, METADATA),
     ],
 )
-def test_a_client_outside_the_policy_is_refused(metadata: dict):
-    assert registration_problem(ClientRegistrationRequest(**metadata)) is not None
+def test_a_client_outside_the_policy_is_refused(metadata: dict, error: str):
+    problem = registration_problem(ClientRegistrationRequest(**metadata))
+    assert problem is not None and problem.error == error
 
 
 @pytest.mark.parametrize(
@@ -80,11 +95,11 @@ def test_a_client_outside_the_policy_is_refused(metadata: dict):
     [
         "http://localhost:8765/callback",
         LOOPBACK,
+        "http://127.0.0.1/callback",
         "http://[::1]:9000/callback",
-        "https://vscode.dev/redirect",
     ],
 )
-def test_a_public_client_with_a_loopback_or_https_redirect_is_accepted(
+def test_a_public_client_with_a_loopback_redirect_is_accepted(
     redirect_uri: str,
 ):
     metadata = ClientRegistrationRequest(

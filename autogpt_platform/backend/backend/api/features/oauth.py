@@ -50,6 +50,7 @@ from PIL import Image
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
+from backend.api.external.v2.mcp_scopes import mcp_scopes
 from backend.api.features.local_executor.gating import is_local_executor_enabled
 from backend.api.features.oauth_registration import router as registration_router
 from backend.api.utils.validation_errors import bounded_validation_errors
@@ -390,6 +391,18 @@ async def authorize(
                 "invalid_scope",
                 "Application is not authorized for all requested scopes. "
                 f"Allowed: {', '.join(s.value for s in app.scopes)}",
+            )
+        # Checked here as well as at registration: the MCP tools can need less
+        # by now than when the client registered.
+        if app.owner_id is None and (
+            outside := {s.value for s in requested_scopes} - set(mcp_scopes())
+        ):
+            return _error_redirect_url(
+                request.redirect_uri,
+                request.state,
+                "invalid_scope",
+                "A self-registered application can only request the MCP "
+                f"server's permissions, not {', '.join(sorted(outside))}",
             )
 
         # Linking a computer belongs to the Local PC rollout, like every Local

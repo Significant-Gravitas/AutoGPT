@@ -199,7 +199,7 @@ claude mcp add --transport http --scope user autogpt "$AUTOGPT_API_URL/mcp/" \
 
 It asks for the client secret. Then run `/mcp` in Claude Code and pick the server to sign in.
 
-A self-hosted instance can also let clients register themselves, so they sign in with no client ID at all: set `OAUTH_DYNAMIC_CLIENT_REGISTRATION=true` for the backend. A client registered that way has no secret and must use PKCE, its redirect URIs must be `http` on `localhost`, `127.0.0.1` or `[::1]`, or `https`, and the consent page tells the user AutoGPT hasn't reviewed it. AutoGPT Cloud doesn't allow this yet.
+A self-hosted instance can also let clients register themselves, so they sign in with no client ID at all: set `OAUTH_DYNAMIC_CLIENT_REGISTRATION=true` for the backend. A client registered that way has no secret and must use PKCE, and its redirect URIs must be `http` on `localhost`, `127.0.0.1` or `[::1]`, on any port. It can ask only for the permissions the [tools](#tools) need, and gets all of them if it names none. The consent page tells the user AutoGPT hasn't reviewed it. AutoGPT Cloud doesn't allow this yet.
 
 ## Tools
 

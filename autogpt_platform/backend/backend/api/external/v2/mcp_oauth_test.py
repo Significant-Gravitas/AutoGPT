@@ -21,11 +21,8 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAu
 from prisma.enums import APIKeyPermission
 from prisma.models import OAuthApplication as PrismaOAuthApplication
 
-from backend.api.external.v2.mcp_server import (
-    mcp_mount,
-    mcp_scopes,
-    protected_resource_metadata,
-)
+from backend.api.external.v2.mcp_scopes import mcp_scopes
+from backend.api.external.v2.mcp_server import mcp_mount, protected_resource_metadata
 from backend.api.features import oauth_registration
 from backend.api.features.oauth_metadata import AUTHORIZE_PAGE_PATH
 from backend.api.rest_api import app

@@ -1,5 +1,6 @@
 """Public clients, which registered themselves and have no secret: what they
-must do instead, and what their existence must not loosen for other clients."""
+must do instead, what they may be granted, and what their existence must not
+loosen for other clients."""
 
 import secrets
 import uuid
@@ -16,7 +17,10 @@ from prisma.enums import APIKeyPermission
 from prisma.models import OAuthApplication as PrismaOAuthApplication
 from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 
+from backend.api.external.v2.mcp_scopes import mcp_scopes
+from backend.api.features import oauth_registration
 from backend.api.rest_api import app
+from backend.api.utils.rate_limit import RateLimiter
 from backend.data.auth.oauth import (
     cleanup_expired_oauth_tokens,
     create_refresh_token,
@@ -60,6 +64,51 @@ async def test_a_public_client_must_use_s256(client: httpx.AsyncClient):
     query = parse_qs(urlparse(response.json()["redirect_url"]).query)
     assert query["error"] == ["invalid_request"]
     assert "code" not in query
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_client_that_names_no_scope_gets_the_mcp_server_permissions(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(
+        oauth_registration.settings.config, "oauth_dynamic_client_registration", True
+    )
+    _fresh_registration_limits(monkeypatch)
+    response = await client.post(
+        "/api/oauth/register", json={"redirect_uris": [REDIRECT_URI]}
+    )
+    assert response.status_code == 201, response.text
+    client_id = response.json()["client_id"]
+    try:
+        stored = await PrismaOAuthApplication.prisma().find_unique(
+            where={"clientId": client_id}
+        )
+    finally:
+        await PrismaOAuthApplication.prisma().delete_many(where={"clientId": client_id})
+
+    assert set(response.json()["scope"].split()) == set(mcp_scopes())
+    assert stored is not None and set(stored.scopes) == set(mcp_scopes())
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("owner, granted", [(None, False), (USER_ID, True)])
+async def test_only_a_self_registered_client_is_held_to_the_mcp_permissions(
+    client: httpx.AsyncClient, owner: str | None, granted: bool
+):
+    """Its row can hold more: it registered before a tool stopped needing one."""
+    assert "MANAGE_INTEGRATIONS" not in mcp_scopes()
+    scopes = ["READ_LIBRARY", "MANAGE_INTEGRATIONS"]
+    registered = await _client(owner=owner, created_at=datetime.now(UTC), scopes=scopes)
+    try:
+        response = await _authorize(
+            client, registered.clientId, method="S256", scopes=scopes
+        )
+    finally:
+        await PrismaOAuthApplication.prisma().delete(where={"id": registered.id})
+
+    query = parse_qs(urlparse(response.json()["redirect_url"]).query)
+    assert ("code" in query) == granted
+    assert query.get("error") == (None if granted else ["invalid_scope"])
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -136,15 +185,33 @@ async def test_cleanup_deletes_only_self_registered_clients_nobody_used(
     assert remaining == {c.id for c in kept}
 
 
+def _fresh_registration_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Registrations count per address for an hour; a window of the test's own
+    keeps reruns from reaching the cap."""
+    run = uuid.uuid4().hex
+    for limiter_name in ("_per_ip_limiter", "_overall_limiter"):
+        limiter: RateLimiter = getattr(oauth_registration, limiter_name)
+        fresh = RateLimiter(
+            f"{limiter.name}:test:{run}",
+            max_requests=limiter.max_requests,
+            window_seconds=limiter.window_seconds,
+        )
+        monkeypatch.setattr(oauth_registration, limiter_name, fresh)
+
+
 async def _authorize(
-    client: httpx.AsyncClient, client_id: str, method: str, challenge: str = "x" * 43
+    client: httpx.AsyncClient,
+    client_id: str,
+    method: str,
+    challenge: str = "x" * 43,
+    scopes: list[str] = SCOPES,
 ) -> httpx.Response:
     response = await client.post(
         "/api/oauth/authorize",
         json={
             "client_id": client_id,
             "redirect_uri": REDIRECT_URI,
-            "scopes": SCOPES,
+            "scopes": scopes,
             "state": "state",
             "response_type": "code",
             "code_challenge": challenge,
@@ -155,14 +222,16 @@ async def _authorize(
     return response
 
 
-async def _client(owner: str | None, created_at: datetime) -> PrismaOAuthApplication:
+async def _client(
+    owner: str | None, created_at: datetime, scopes: list[str] = SCOPES
+) -> PrismaOAuthApplication:
     return await PrismaOAuthApplication.prisma().create(
         data={
             "id": str(uuid.uuid4()),
-            "name": "Cleanup test",
+            "name": "Public client test",
             "clientId": f"test_client_{secrets.token_urlsafe(8)}",
             "redirectUris": [REDIRECT_URI],
-            "scopes": [APIKeyPermission.READ_LIBRARY],
+            "scopes": [APIKeyPermission(s) for s in scopes],
             "ownerId": owner,
             "createdAt": created_at,
         }

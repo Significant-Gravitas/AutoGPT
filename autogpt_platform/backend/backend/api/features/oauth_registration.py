@@ -1,9 +1,10 @@
 """Dynamic client registration (RFC 7591), off unless the instance enables it.
 
 MCP clients register themselves when they aren't given a client ID. Anyone can
-call this, so it registers public clients only: no secret, PKCE with S256, and
-redirect URIs on the loopback interface or over https. The consent page marks
-such a client as unreviewed and names where it sends the user.
+call this, so it registers public clients only: no secret, PKCE with S256,
+redirect URIs on the loopback interface, and the MCP server's permissions. The
+consent page marks such a client as unreviewed and names where it sends the
+user.
 """
 
 import logging
@@ -15,6 +16,7 @@ from fastapi.responses import JSONResponse
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field
 
+from backend.api.external.v2.mcp_scopes import mcp_scopes
 from backend.api.utils.client_ip import ClientIP
 from backend.api.utils.rate_limit import RateLimiter
 from backend.data.auth.oauth import register_public_client
@@ -62,7 +64,7 @@ class ClientRegistrationRequest(BaseModel):
     scope: Optional[str] = Field(
         default=None,
         max_length=MAX_DESCRIPTION_LENGTH,
-        description="Space-separated; every permission if omitted",
+        description="Space-separated; every MCP server permission if omitted",
     )
 
 
@@ -113,7 +115,7 @@ async def register_client(
             status_code=status.HTTP_400_BAD_REQUEST, content=problem.model_dump()
         )
 
-    scopes = _requested_scopes(metadata.scope)
+    scopes = [APIKeyPermission(s) for s in _requested_scopes(metadata.scope)]
     app = await register_public_client(
         name=(metadata.client_name or "").strip() or DEFAULT_CLIENT_NAME,
         redirect_uris=metadata.redirect_uris,
@@ -144,9 +146,7 @@ def registration_problem(
     if not 1 <= len(metadata.redirect_uris) <= MAX_REDIRECT_URIS:
         return _invalid_redirect(f"Register 1 to {MAX_REDIRECT_URIS} redirect URIs")
     if bad := [uri for uri in metadata.redirect_uris if not _allowed_redirect(uri)]:
-        return _invalid_redirect(
-            f"Not a loopback http or an https redirect URI: {', '.join(bad)}"
-        )
+        return _invalid_redirect(f"Not a loopback http redirect URI: {', '.join(bad)}")
     if metadata.token_endpoint_auth_method != "none":
         return _invalid_metadata(
             "Only public clients can register: token_endpoint_auth_method must be "
@@ -164,28 +164,30 @@ def registration_problem(
         return _invalid_metadata(
             f"client_name is longer than {MAX_CLIENT_NAME_LENGTH} characters"
         )
-    known = {p.value for p in APIKeyPermission}
-    if unknown := [s for s in (metadata.scope or "").split() if s not in known]:
-        return _invalid_metadata(f"Unknown scope: {', '.join(unknown)}")
+    registrable = set(mcp_scopes())
+    if outside := [
+        s for s in _requested_scopes(metadata.scope) if s not in registrable
+    ]:
+        return _invalid_metadata(
+            f"Not a permission the MCP server uses: {', '.join(outside)}"
+        )
     return None
 
 
 def _allowed_redirect(uri: str) -> bool:
-    """https anywhere, or http on the loopback interface (RFC 8252 §7.3)."""
+    """http on the loopback interface, on any port (RFC 8252 §7.3)."""
     if len(uri) > MAX_REDIRECT_URI_LENGTH:
         return False
     parsed = urlparse(uri)
-    if parsed.fragment or parsed.username or parsed.password or not parsed.hostname:
+    if parsed.fragment or parsed.username or parsed.password:
         return False
-    if parsed.scheme == "https":
-        return True
     return parsed.scheme == "http" and parsed.hostname in LOOPBACK_HOSTS
 
 
-def _requested_scopes(scope: Optional[str]) -> list[APIKeyPermission]:
+def _requested_scopes(scope: Optional[str]) -> list[str]:
     if not scope:
-        return list(APIKeyPermission)
-    return [APIKeyPermission(s) for s in dict.fromkeys(scope.split())]
+        return mcp_scopes()
+    return list(dict.fromkeys(scope.split()))
 
 
 def _invalid_redirect(description: str) -> ClientRegistrationError:
