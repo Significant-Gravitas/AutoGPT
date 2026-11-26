@@ -117,7 +117,7 @@ export function MoveToFolderDialog({
             className="w-full"
           />
           <div className="max-h-[280px] overflow-y-auto">
-            {folders.length === 0 ? (
+            {folders.length === 0 && !currentFolderId ? (
               <div className="flex h-20 items-center justify-center">
                 <Text variant="small" tone="subtle">
                   No folders found
