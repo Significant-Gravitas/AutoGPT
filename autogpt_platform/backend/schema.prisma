@@ -3367,6 +3367,9 @@ model OAuthApplication {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  // Last authorization or token issue, kept for a client that registered
+  // itself: the cleanup deletes one after 30 days without either
+  lastUsedAt DateTime @default(now())
 
   // Application metadata
   name             String

@@ -15,13 +15,13 @@ from autogpt_libs.api_key.keysmith import APIKeySmith
 from autogpt_libs.auth import get_user_id
 from prisma.enums import APIKeyPermission
 from prisma.models import OAuthApplication as PrismaOAuthApplication
-from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 
 from backend.api.external.v2.mcp_scopes import mcp_scopes
 from backend.api.features import oauth_registration
 from backend.api.rest_api import app
 from backend.data.auth.oauth import (
     cleanup_expired_oauth_tokens,
+    create_access_token,
     create_authorization_code,
     create_refresh_token,
     register_public_client,
@@ -157,37 +157,72 @@ async def test_a_confidential_client_still_needs_its_secret(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_cleanup_deletes_only_self_registered_clients_nobody_used(
+async def test_cleanup_deletes_a_self_registered_client_after_30_idle_days(
     client: httpx.AsyncClient,
 ):
-    a_day_ago = datetime.now(UTC) - timedelta(days=1, minutes=1)
-    unused = await _client(owner=None, created_at=a_day_ago)
-    signed_in = await _client(owner=None, created_at=a_day_ago)
+    now = datetime.now(UTC)
+    long_ago = now - timedelta(days=60)
+    idle_since = now - timedelta(days=30, minutes=1)
+    idle = await _client(owner=None, created_at=long_ago, last_used=idle_since)
+    recently_used = await _client(
+        owner=None, created_at=long_ago, last_used=now - timedelta(days=29, hours=23)
+    )
+    signed_in = await _client(owner=None, created_at=long_ago, last_used=idle_since)
     await create_refresh_token(signed_in.id, USER_ID, [APIKeyPermission.READ_LIBRARY])
-    signing_in = await _client(owner=None, created_at=a_day_ago)
+    signing_in = await _client(owner=None, created_at=long_ago, last_used=idle_since)
     await create_authorization_code(
         signing_in.id, USER_ID, [APIKeyPermission.READ_LIBRARY], REDIRECT_URI
     )
-    fresh = await _client(owner=None, created_at=datetime.now(UTC))
-    owned = await _client(owner=USER_ID, created_at=a_day_ago)
-    kept = [signed_in, signing_in, fresh, owned]
+    # Issuing the code counted as use; age it again so only the code keeps it.
+    await PrismaOAuthApplication.prisma().update(
+        where={"id": signing_in.id}, data={"lastUsedAt": idle_since}
+    )
+    owned = await _client(owner=USER_ID, created_at=long_ago, last_used=idle_since)
+    kept = [recently_used, signed_in, signing_in, owned]
     try:
         await cleanup_expired_oauth_tokens()
         remaining = {
             row.id
             for row in await PrismaOAuthApplication.prisma().find_many(
-                where={"id": {"in": [unused.id, *(c.id for c in kept)]}}
+                where={"id": {"in": [idle.id, *(c.id for c in kept)]}}
             )
         }
     finally:
-        await PrismaOAuthRefreshToken.prisma().delete_many(
-            where={"applicationId": signed_in.id}
-        )
         await PrismaOAuthApplication.prisma().delete_many(
-            where={"id": {"in": [unused.id, *(c.id for c in kept)]}}
+            where={"id": {"in": [idle.id, *(c.id for c in kept)]}}
         )
 
     assert remaining == {c.id for c in kept}
+
+
+ISSUES = {
+    "authorization": lambda app_id: create_authorization_code(
+        app_id, USER_ID, [APIKeyPermission.READ_LIBRARY], REDIRECT_URI
+    ),
+    "token": lambda app_id: create_access_token(
+        app_id, USER_ID, [APIKeyPermission.READ_LIBRARY]
+    ),
+}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("issue", ISSUES)
+async def test_an_authorization_or_a_token_counts_as_use(
+    client: httpx.AsyncClient, issue: str
+):
+    """A refresh issues a token too, so a client in use never goes idle."""
+    long_ago = datetime.now(UTC) - timedelta(days=60)
+    registered = await _client(owner=None, created_at=long_ago, last_used=long_ago)
+    try:
+        await ISSUES[issue](registered.id)
+        stored = await PrismaOAuthApplication.prisma().find_unique(
+            where={"id": registered.id}
+        )
+    finally:
+        await PrismaOAuthApplication.prisma().delete(where={"id": registered.id})
+
+    assert stored is not None
+    assert stored.lastUsedAt > datetime.now(UTC) - timedelta(minutes=5)
 
 
 async def _authorize(
@@ -214,7 +249,10 @@ async def _authorize(
 
 
 async def _client(
-    owner: str | None, created_at: datetime, scopes: list[str] = SCOPES
+    owner: str | None,
+    created_at: datetime,
+    scopes: list[str] = SCOPES,
+    last_used: datetime | None = None,
 ) -> PrismaOAuthApplication:
     return await PrismaOAuthApplication.prisma().create(
         data={
@@ -225,5 +263,6 @@ async def _client(
             "scopes": [APIKeyPermission(s) for s in scopes],
             "ownerId": owner,
             "createdAt": created_at,
+            "lastUsedAt": last_used or created_at,
         }
     )

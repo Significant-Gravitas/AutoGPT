@@ -64,8 +64,9 @@ def _hash_token(token: str) -> str:
 AUTHORIZATION_CODE_TTL = timedelta(minutes=10)
 ACCESS_TOKEN_TTL = timedelta(hours=1)
 REFRESH_TOKEN_TTL = timedelta(days=30)
-# A client that registered itself and holds no code or token after this is deleted.
-UNUSED_REGISTERED_CLIENT_TTL = timedelta(days=1)
+# A client that registered itself is deleted after this long without an
+# authorization or a token issued to it.
+IDLE_REGISTERED_CLIENT_TTL = timedelta(days=30)
 
 ACCESS_TOKEN_PREFIX = "agpt_xt_"
 REFRESH_TOKEN_PREFIX = "agpt_rt_"
@@ -514,6 +515,7 @@ async def create_authorization_code(
             "codeChallengeMethod": code_challenge_method,
         }
     )
+    await _mark_registered_client_used(application_id, now)
 
     return OAuthAuthorizationCodeInfo.from_db(saved_code)
 
@@ -658,8 +660,17 @@ async def create_access_token(
             "refreshFamilyId": refresh_family_id,
         }
     )
+    await _mark_registered_client_used(application_id, now)
 
     return OAuthAccessToken.from_db(saved_token, plaintext_token=plaintext_token)
+
+
+async def _mark_registered_client_used(application_id: str, now: datetime) -> None:
+    # Only clients that registered themselves: an update would also move an owned
+    # app's `updatedAt`, which the owner's app list shows.
+    await PrismaOAuthApplication.prisma().update_many(
+        where={"id": application_id, "ownerId": None}, data={"lastUsedAt": now}
+    )
 
 
 async def validate_access_token(
@@ -1123,7 +1134,8 @@ async def cleanup_expired_oauth_tokens() -> dict[str, int]:
     - Expired authorization codes (10 min TTL)
     - Expired access tokens (1 hour TTL)
     - Expired refresh tokens (30 day TTL)
-    - Clients that registered themselves and hold no code or token a day later
+    - Clients that registered themselves and went 30 days without an authorization
+      or a token
 
     Returns a dict with counts of deleted tokens by type.
     """
@@ -1147,7 +1159,7 @@ async def cleanup_expired_oauth_tokens() -> dict[str, int]:
     unused_clients_result = await PrismaOAuthApplication.prisma().delete_many(
         where={
             "ownerId": None,
-            "createdAt": {"lt": now - UNUSED_REGISTERED_CLIENT_TTL},
+            "lastUsedAt": {"lt": now - IDLE_REGISTERED_CLIENT_TTL},
             "AuthorizationCodes": {"none": {}},
             "AccessTokens": {"none": {}},
             "RefreshTokens": {"none": {}},
