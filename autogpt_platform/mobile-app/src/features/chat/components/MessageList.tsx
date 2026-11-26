@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, Text, type LayoutChangeEvent } from "reac
 import type { SharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import type { ToastState } from "@/components/useToast";
 import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
 import { groupTurns, type Turn } from "../turns";
@@ -14,12 +15,14 @@ import { MessageTurn } from "./MessageTurn";
 
 interface Props {
   sessionID: string;
+  expertID: string | null;
   messages: UIMessage[];
   status: ChatStatus;
   hasEarlier: boolean;
   isLoadingEarlier: boolean;
   onLoadEarlier: () => void;
   onSend: (text: string) => boolean;
+  onToast: (toast: ToastState) => void;
   /** The floating header's height; the first turn starts below it. */
   topInset: number;
   listRef: RefObject<FlashListRef<Turn> | null>;
@@ -34,12 +37,14 @@ interface Props {
 
 export function MessageList({
   sessionID,
+  expertID,
   messages,
   status,
   hasEarlier,
   isLoadingEarlier,
   onLoadEarlier,
   onSend,
+  onToast,
   topInset,
   listRef,
   blankSpace,
@@ -101,9 +106,11 @@ export function MessageList({
           <MessageTurn
             turn={item}
             sessionID={sessionID}
+            expertID={expertID}
             isLast={index === lastIndex}
             status={status}
             onSend={onSend}
+            onToast={onToast}
             onLayout={index === lastIndex ? handleLastTurnLayout : undefined}
           />
         )}

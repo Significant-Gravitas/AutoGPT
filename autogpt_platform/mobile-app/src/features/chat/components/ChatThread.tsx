@@ -3,6 +3,8 @@ import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { FLOATING_HEADER_HEIGHT } from "@/components/FloatingHeader";
+import { Toast } from "@/components/Toast";
+import { useToast } from "@/components/useToast";
 import type { SessionDetail } from "@/lib/api/chat";
 import { tapSend, tapStop } from "@/lib/haptics";
 import { createStyles, spacing, type } from "@/lib/theme";
@@ -35,6 +37,7 @@ export function ChatThread({ sessionID, detail, isCached }: Props) {
     loadEarlier,
   } = useChatThread({ sessionID, detail, isCached });
   const files = useAttachments(sessionID);
+  const { toast, show: showToast } = useToast();
   const insets = useSafeAreaInsets();
   // The chat's header floats over the thread, which starts below it.
   const topInset = insets.top + FLOATING_HEADER_HEIGHT;
@@ -79,12 +82,14 @@ export function ChatThread({ sessionID, detail, isCached }: Props) {
     <View style={styles.thread}>
       <MessageList
         sessionID={sessionID}
+        expertID={detail.expert_id}
         messages={messages}
         status={status}
         hasEarlier={hasEarlier}
         isLoadingEarlier={isLoadingEarlier}
         onLoadEarlier={handleLoadEarlier}
         onSend={handleAnswer}
+        onToast={showToast}
         topInset={topInset}
         listRef={list.listRef}
         blankSpace={list.blankSpace}
@@ -116,6 +121,7 @@ export function ChatThread({ sessionID, detail, isCached }: Props) {
           />
         </View>
       </KeyboardStickyView>
+      {toast ? <Toast toast={toast} /> : null}
     </View>
   );
 }

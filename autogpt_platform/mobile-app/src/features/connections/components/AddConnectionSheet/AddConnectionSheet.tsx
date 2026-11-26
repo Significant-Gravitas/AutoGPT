@@ -6,14 +6,20 @@ import { Icon } from "@/components/Icon";
 import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
 import { logoID } from "../../helpers";
-import { actionLabel, signInServerURL } from "../../listHelpers";
+import {
+  actionLabel,
+  serviceFor,
+  signInServerURL,
+  toServices,
+  type ConnectableService,
+} from "../../listHelpers";
 import { BottomSheet } from "../BottomSheet";
 import { ConnectionRow } from "../ConnectionRow";
 import { CredentialForm } from "../CredentialSheet/CredentialSheet";
 import { ServerStep } from "./components/ServerStep";
 import { SheetSection } from "./components/SheetSection";
 import { SERVER_ROW } from "./helpers";
-import { useAddConnectionSheet } from "./useAddConnectionSheet";
+import { useAddConnectionSheet, useProviders } from "./useAddConnectionSheet";
 
 interface Props {
   isOpen: boolean;
@@ -21,14 +27,32 @@ interface Props {
   sessionID: string;
   /** Set in an expert's chat: their accounts can be allowed, and new ones are. */
   expertID: string | null;
+  /** A provider name: the sheet opens on its service; an unknown one shows the list. */
+  initialProvider?: string;
+  /** An account was added or allowed. */
+  onConnected?: () => void;
 }
 
 /** Add a connection by hand: allow an account you have, or connect a new one. */
-export function AddConnectionSheet({ isOpen, onClose, sessionID, expertID }: Props) {
+export function AddConnectionSheet({
+  isOpen,
+  onClose,
+  sessionID,
+  expertID,
+  initialProvider,
+  onConnected,
+}: Props) {
+  const body = { sessionID, expertID, onConnected, onDone: onClose };
+  function renderBody() {
+    if (!isOpen) return null;
+    if (initialProvider) return <ServiceBody {...body} provider={initialProvider} />;
+    return <SheetBody {...body} />;
+  }
+
   return (
     <BottomSheet isOpen={isOpen} onClose={onClose}>
       {/* Mounted only while open, so each opening starts fresh. */}
-      {isOpen ? <SheetBody sessionID={sessionID} expertID={expertID} onDone={onClose} /> : null}
+      {renderBody()}
     </BottomSheet>
   );
 }
@@ -37,10 +61,24 @@ interface BodyProps {
   sessionID: string;
   expertID: string | null;
   onDone: () => void;
+  onConnected?: () => void;
+  initialService?: ConnectableService | null;
 }
 
-function SheetBody({ sessionID, expertID, onDone }: BodyProps) {
-  const sheet = useAddConnectionSheet({ sessionID, expertID, onDone });
+/** Waits for the services, so the body mounts knowing which one to start. */
+function ServiceBody({ provider, ...body }: BodyProps & { provider: string }) {
+  const providers = useProviders();
+  const styles = useStyles();
+  const colors = useColors();
+  if (providers.isPending) {
+    return <ActivityIndicator style={styles.loading} color={colors.textTertiary} />;
+  }
+  const service = serviceFor(toServices(providers.data ?? []), [provider]);
+  return <SheetBody {...body} initialService={service} />;
+}
+
+function SheetBody({ sessionID, expertID, onDone, onConnected, initialService }: BodyProps) {
+  const sheet = useAddConnectionSheet({ sessionID, expertID, onDone, onConnected, initialService });
   const { connect, lists } = sheet;
   const styles = useStyles();
   const colors = useColors();
