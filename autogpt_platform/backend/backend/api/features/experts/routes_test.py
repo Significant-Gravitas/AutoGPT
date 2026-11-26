@@ -2230,7 +2230,7 @@ def test_start_expert_desktop_returns_the_stream(
     config = mocker.patch("backend.api.features.experts.routes.ChatConfig")
     config.return_value.active_e2b_api_key = "e2b-key"
     open_desktop = mocker.patch(
-        "backend.api.features.experts.routes.open_desktop",
+        "backend.api.features.experts.routes.open_desktop_from_ui",
         new_callable=AsyncMock,
         return_value=(
             DesktopStream(url="https://6080-sbx.e2b.app/vnc.html", sandbox_id="sbx"),
@@ -2258,7 +2258,7 @@ def test_start_expert_desktop_failure_is_a_502_with_a_fixed_message(
     config = mocker.patch("backend.api.features.experts.routes.ChatConfig")
     config.return_value.active_e2b_api_key = "e2b-key"
     mocker.patch(
-        "backend.api.features.experts.routes.open_desktop",
+        "backend.api.features.experts.routes.open_desktop_from_ui",
         new_callable=AsyncMock,
         side_effect=RuntimeError("sandbox sbx-123 rejected by api.e2b.app"),
     )
@@ -2279,13 +2279,40 @@ def test_start_expert_desktop_refused_under_a_sandbox_limit_is_a_429_saying_so(
     config = mocker.patch("backend.api.features.experts.routes.ChatConfig")
     config.return_value.active_e2b_api_key = "e2b-key"
     mocker.patch(
-        "backend.api.features.experts.routes.open_desktop",
+        "backend.api.features.experts.routes.open_desktop_from_ui",
         new_callable=AsyncMock,
         side_effect=SandboxLimitError("Too many sandboxes are running right now."),
     )
     response = client.post("/experts/expert-1/computer/desktop")
     assert response.status_code == 429
     assert response.json()["detail"] == "Too many sandboxes are running right now."
+
+
+def test_start_expert_desktop_past_the_usage_allowance_is_a_429_and_opens_nothing(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """No turn's admission stands behind the Computer tab's open, so the route
+    itself must refuse a box on the platform's E2B key once the allowance is spent."""
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
+    config = mocker.patch("backend.api.features.experts.routes.ChatConfig")
+    config.return_value.active_e2b_api_key = "e2b-key"
+    mocker.patch(
+        "backend.copilot.computer.platform_spend_refusal",
+        new_callable=AsyncMock,
+        return_value="You've reached your daily usage limit.",
+    )
+    mocker.patch("backend.copilot.computer._charge_box_time", new_callable=AsyncMock)
+    open_desktop = mocker.patch(
+        "backend.copilot.computer.open_desktop", new_callable=AsyncMock
+    )
+    response = client.post("/experts/expert-1/computer/desktop")
+    assert response.status_code == 429
+    assert response.json()["detail"] == "You've reached your daily usage limit."
+    open_desktop.assert_not_awaited()
 
 
 def test_start_expert_desktop_without_e2b_is_503(

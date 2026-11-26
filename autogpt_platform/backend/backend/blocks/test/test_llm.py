@@ -17,6 +17,7 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import NodeExecutionStats
 from backend.util.exceptions import BlockExecutionError
 from backend.util.llm import saturation
+from backend.util.llm.http_attempts import HttpAttemptLog
 from backend.util.llm.prompt_refusal import PROMPT_REFUSED_MESSAGE
 from backend.util.llm.prompt_refusal_test import (
     OPENAI_INVALID_PROMPT_BODY,
@@ -1974,7 +1975,9 @@ class TestLLMRequestTimeout:
         Both degenerate budgets (0 / 3600) leave it free to be any value."""
         with self._captured_logs() as records:
             llm._log_timeout_outcome(
-                elapsed=elapsed,
+                started=0.0,
+                cut_off=elapsed,
+                attempts=HttpAttemptLog(clock=llm._now),
                 timeout_seconds=budget,
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 execution_context=None,
@@ -1987,7 +1990,9 @@ class TestLLMRequestTimeout:
         in the alert that says what went wrong."""
         with self._captured_logs() as records:
             llm._log_timeout_outcome(
-                elapsed=99.0,
+                started=0.0,
+                cut_off=99.0,
+                attempts=HttpAttemptLog(clock=llm._now),
                 timeout_seconds=100,
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 execution_context=None,

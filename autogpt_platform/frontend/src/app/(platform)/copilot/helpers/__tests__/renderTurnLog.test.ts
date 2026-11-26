@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import {
+  EMPTY_TODOS,
+  getLatestTaskList,
+} from "../../components/TaskProgressBar/helpers";
 import { foldEntries, type WireChunk } from "../../stream/turnConverter";
-import { emptyTurnLog, type TurnLog } from "../../stream/turnLog";
+import { emptyTurnLog, seedTurnLog, type TurnLog } from "../../stream/turnLog";
 import {
   entriesOf,
   loadRecordedTurn,
@@ -10,6 +14,7 @@ import {
 import {
   convertChatSessionMessagesToUiMessages,
   createTurnLogRenderer,
+  savedTurnBubbleIds,
 } from "../convertChatSessionToUiMessages";
 
 function fold(chunks: WireChunk[], log: TurnLog = emptyTurnLog()) {
@@ -38,6 +43,129 @@ const toolRound: WireChunk[] = [
 ];
 
 describe("rendering a turn log", () => {
+  describe("orphan TodoWrite updates", () => {
+    const earlierTodos = [{ content: "Earlier plan", status: "in_progress" }];
+    const clearResult = { type: "todo_write", todos: [] };
+    const earlier = fold([
+      {
+        type: "tool-input-available",
+        toolCallId: "earlier",
+        toolName: "TodoWrite",
+        input: { todos: earlierTodos },
+      },
+      {
+        type: "tool-output-available",
+        toolCallId: "earlier",
+        output: { type: "todo_write", todos: earlierTodos },
+      },
+    ]);
+
+    it("clears the live plan and lets a subsequent matched update replace it", () => {
+      const renderer = createTurnLogRenderer((id) => id);
+      expect(getLatestTaskList(renderer(earlier))).toEqual(earlierTodos);
+
+      const cleared = fold(
+        [
+          {
+            type: "tool-output-available",
+            toolCallId: "clear",
+            output: clearResult,
+          },
+        ],
+        earlier,
+      );
+      const [clearedBubble] = renderer(cleared);
+      expect(getLatestTaskList([clearedBubble])).toBe(EMPTY_TODOS);
+      expect(renderer(cleared)[0]).toBe(clearedBubble);
+
+      const nextTodos = [{ content: "New plan", status: "pending" }];
+      const next = fold(
+        [
+          {
+            type: "tool-input-available",
+            toolCallId: "next",
+            toolName: "TodoWrite",
+            input: { todos: nextTodos },
+          },
+          {
+            type: "tool-output-available",
+            toolCallId: "next",
+            output: { type: "todo_write", todos: nextTodos },
+          },
+        ],
+        cleared,
+      );
+      expect(getLatestTaskList(renderer(next))).toEqual(nextTodos);
+    });
+
+    it("shows a later identified orphan plan after a clear", () => {
+      const renderer = createTurnLogRenderer((id) => id);
+      const nextTodos = [{ content: "New plan", status: "pending" }];
+      const cleared = fold(
+        [
+          {
+            type: "tool-output-available",
+            toolCallId: "clear",
+            output: clearResult,
+          },
+          {
+            type: "tool-output-available",
+            toolCallId: "untyped",
+            output: { todos: nextTodos },
+          },
+        ],
+        earlier,
+      );
+      expect(getLatestTaskList(renderer(cleared))).toBe(EMPTY_TODOS);
+
+      const next = fold(
+        [
+          {
+            type: "tool-output-available",
+            toolCallId: "next",
+            output: { type: "todo_write", todos: nextTodos },
+          },
+        ],
+        cleared,
+      );
+      expect(getLatestTaskList(renderer(next))).toEqual(nextTodos);
+    });
+
+    it.each([false, true])(
+      "restores a clear from an active checkpoint (with assistant text: %s)",
+      (withAssistantText) => {
+        const rows = [
+          ...(withAssistantText
+            ? [{ role: "assistant", content: "Finished.", sequence: 4 }]
+            : []),
+          {
+            role: "tool",
+            content: JSON.stringify(clearResult),
+            tool_call_id: "clear",
+            sequence: 5,
+          },
+        ];
+        const checkpointed = seedTurnLog({
+          turnId: "t",
+          rows,
+          checkpoint: {
+            entry_id: "1-0",
+            sequence: rows[0].sequence,
+            rows: rows.length,
+          },
+        });
+
+        expect(
+          getLatestTaskList([...render(earlier), ...render(checkpointed)]),
+        ).toBe(EMPTY_TODOS);
+        const reloaded = convertChatSessionMessagesToUiMessages("s", rows);
+        expect(savedTurnBubbleIds("s", checkpointed).get("turn:t")).toBe(
+          reloaded.messages[0].id,
+        );
+      },
+    );
+  });
+
   it("marks the block still writing as streaming, and done once it ends", () => {
     const open = fold([
       { type: "reasoning-start", id: "r" },

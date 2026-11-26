@@ -70,9 +70,6 @@ const ONBOARDING_EXEMPT_PREFIXES = [
   "/link/",
   // Signing out from the wizard must not bounce the user back into it.
   "/logout",
-  // A sign-up in the mobile app's verification link lands here; the person
-  // finishes onboarding in the app.
-  "/app-verified",
 ];
 
 export function getOnboardingRoute(pathname: string) {

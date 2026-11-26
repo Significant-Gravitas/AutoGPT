@@ -1,11 +1,13 @@
 """Tests for credentials API security: no secret leakage, SDK defaults filtered."""
 
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
 import fastapi.testclient
+import httpx
 import pytest
 from pydantic import SecretStr
 
@@ -34,6 +36,14 @@ async def _not_found_handler(
 ) -> fastapi.responses.JSONResponse:
     """Mirror the production NotFoundError → 404 mapping from the REST app."""
     return fastapi.responses.JSONResponse(status_code=404, content={"detail": str(exc)})
+
+
+@app.exception_handler(ValueError)
+async def _value_error_handler(
+    request: fastapi.Request, exc: ValueError
+) -> fastapi.responses.JSONResponse:
+    """Mirror the production ValueError → 400 mapping from the REST app."""
+    return fastapi.responses.JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
 client = fastapi.testclient.TestClient(app)
@@ -444,6 +454,96 @@ class TestCreateScopedUserPasswordCredential:
 
         assert resp.status_code == 201
         assert resp.json()["scope"] is None
+
+
+class TestCreateCredentialRejectsBlankSecrets:
+    """POST /{provider}/credentials must reject blank secrets and strip padding
+    before anything is stored (#15727)."""
+
+    @staticmethod
+    def _post(body: dict) -> tuple[httpx.Response, AsyncMock]:
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.create = AsyncMock()
+            resp = client.post("/openai/credentials", json=body)
+        return resp, mock_mgr.create
+
+    @pytest.mark.parametrize(
+        "secret, detail",
+        [
+            ({"type": "api_key", "api_key": "   "}, "API key must not be empty"),
+            (
+                {"type": "user_password", "username": " ", "password": "hunter2-pw"},
+                "Username must not be empty",
+            ),
+        ],
+    )
+    def test_blank_secret_rejected(self, secret: dict, detail: str):
+        # credential_input_test.py covers each rule; this checks the route
+        # applies them before storing, and quotes no secret back.
+        resp, create = self._post({"provider": "openai", "title": "K", **secret})
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == detail
+        assert "hunter2-pw" not in resp.text
+        create.assert_not_called()
+
+    def test_padded_api_key_stored_stripped(self):
+        resp, create = self._post(
+            {
+                "provider": "openai",
+                "type": "api_key",
+                "title": "  My key  ",
+                "api_key": "  sk-padded \n",
+            }
+        )
+
+        assert resp.status_code == 201
+        create.assert_awaited_once()
+        stored = create.await_args.args[1]
+        assert isinstance(stored, APIKeyCredentials)
+        assert stored.api_key.get_secret_value() == "sk-padded"
+        assert stored.title == "My key"
+        assert "sk-padded" not in resp.text
+
+
+class TestCreateCredentialChecksExpiry:
+    """POST /{provider}/credentials rejects an API key whose expiry has passed
+    (#16234)."""
+
+    @staticmethod
+    def _post(expires_at: int | None) -> tuple[httpx.Response, AsyncMock]:
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.create = AsyncMock()
+            resp = client.post(
+                "/openai/credentials",
+                json={
+                    "provider": "openai",
+                    "type": "api_key",
+                    "title": "K",
+                    "api_key": "sk-x",
+                    "expires_at": expires_at,
+                },
+            )
+        return resp, mock_mgr.create
+
+    def test_past_expiry_rejected(self):
+        resp, create = self._post(int(time.time()) - 60)
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Expiry must be in the future"
+        create.assert_not_called()
+
+    @pytest.mark.parametrize("offset", [86400, None], ids=["future", "none"])
+    def test_future_or_no_expiry_stored(self, offset: int | None):
+        expires_at = None if offset is None else int(time.time()) + offset
+        resp, create = self._post(expires_at)
+
+        assert resp.status_code == 201
+        assert create.await_args.args[1].expires_at == expires_at
 
 
 class TestManagedCredentials:

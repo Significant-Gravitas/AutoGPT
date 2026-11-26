@@ -23,6 +23,7 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWA
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset, split_trigger_inputs
 from backend.api.middleware.body_limit import MiB, request_body_limit
+from backend.blocks.mcp.helpers import is_manual_mcp_credential
 from backend.copilot.rate_limit import enforce_payment_paywall, is_user_paywalled
 from backend.copilot.scheduled_chats.reconnect import (
     resume_after_reconnect_in_background,
@@ -60,6 +61,7 @@ from backend.integrations.codex.login import (
     CodexLoginFailedError,
     CodexLoginPendingError,
 )
+from backend.integrations.credential_input import normalize_user_supplied_credentials
 from backend.integrations.credentials_store import (
     is_system_credential,
     provider_matches,
@@ -329,6 +331,11 @@ class CredentialsMetaResponse(BaseModel):
     service: str = ""
     service_name: str | None = None
     service_icon: str | None = None
+    mcp_catalog_entry: str | None = Field(
+        default=None,
+        description="The MCP catalog entry (e.g. mcp_linear) whose server this "
+        "sign-in connects; null for other credentials and uncatalogued servers",
+    )
     microsoft_identity: MicrosoftIdentity | None = None
 
     @model_validator(mode="before")
@@ -387,6 +394,7 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         service=identity.service,
         service_name=identity.name,
         service_icon=identity.icon,
+        mcp_catalog_entry=identity.catalog_entry,
         microsoft_identity=(
             microsoft_identity(cred)
             if isinstance(cred, OAuth2Credentials)
@@ -1211,6 +1219,7 @@ async def create_credentials(
         error := scope_error(provider.value, credentials.scope)
     ):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
+    normalize_user_supplied_credentials(credentials)
     credentials.provider = provider
     try:
         await creds_manager.create(user_id, credentials)
@@ -1348,6 +1357,13 @@ async def delete_and_revoke_credentials(
     await creds_manager.delete(user_id, creds.id)
 
     if not isinstance(creds, OAuth2Credentials):
+        return None
+    if provider_matches(
+        provider.value, ProviderName.MCP.value
+    ) and is_manual_mcp_credential(creds):
+        # A token the user pasted is stored like an OAuth grant but was never
+        # issued through one: there is no endpoint to revoke it at, and no
+        # metadata to build an OAuth handler from.
         return None
     return await _revocation_handler(creds, provider).revoke_tokens(creds)
 

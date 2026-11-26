@@ -2,7 +2,14 @@
   "expo": {
     "name": "AutoGPT",
     "slug": "autogpt-mobile",
+    "owner": "autogpt",
     "version": "0.1.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/3fdedc8c-8a9e-4002-a95a-ab366d15cd71"
+    },
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "autogpt-app",
@@ -10,7 +17,10 @@
     "backgroundColor": "#0B0B0D",
     "ios": {
       "bundleIdentifier": "co.agpt.autogpt.app",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "co.agpt.autogpt.app",
@@ -18,11 +28,16 @@
         "backgroundColor": "#0B0B0D",
         "foregroundImage": "./assets/images/icon.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      "expo-sharing",
       [
         "expo-splash-screen",
         {
@@ -46,11 +61,29 @@
           "enableBackgroundPlayback": false
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "@sentry/react-native",
+        {
+          "organization": "significant-gravitas",
+          "project": "autogpt-mobile",
+          "url": "https://sentry.io/"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "3fdedc8c-8a9e-4002-a95a-ab366d15cd71"
+      }
     }
   }
 }

@@ -24,6 +24,12 @@ from jsonschema.validators import validator_for as _jsonschema_validator_for
 from pydantic import BaseModel, Field
 
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
+from backend.data.llm_registry.llm_models import (
+    is_llm_model_field,
+    llm_model_named,
+    resolved_model_value,
+    retired_model_fallback,
+)
 from backend.data.model import (
     Credentials,
     CredentialsFieldInfo,
@@ -53,6 +59,12 @@ logger = logging.getLogger(__name__)
 # The account behind a file picker: GoogleDriveFile's ``credentials_id`` field
 # and its ``_credentials_id`` alias, either of which it accepts.
 _PICKER_ACCOUNT_KEYS = frozenset({"_credentials_id", "credentials_id"})
+
+# The LLM model input billing prices: every LLM block names it ``model``, the
+# block costs match on it and the cost log names it. A run records the model
+# this input runs (``NodeExecutionStats.resolved_model``); the record belongs
+# to this input alone.
+RECORDED_MODEL_INPUT = "model"
 
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
@@ -196,6 +208,9 @@ class BlockCost(BaseModel):
     # entries whose model isn't in TOKEN_COST yet (those render
     # "Pay-as-you-go" / flat-tier).
     token_rate: Optional[TokenRateDisplay] = None
+    # SECOND / ITEMS / COST_USD: credits held before a run whose inputs don't bound
+    # its usage (``Block.max_usage``), settled against the real cost afterwards.
+    max_cost: Optional[int] = None
 
     def __init__(
         self,
@@ -768,6 +783,21 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.execution_stats += stats
         return self.execution_stats
 
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        """The most usage one run with *input_data* can report, for a block priced
+        on its usage (SECOND, ITEMS, COST_USD); None when its inputs don't bound it."""
+        return None
+
+    def walltime_bound(self, seconds: float | None) -> NodeExecutionStats | None:
+        """A ``max_usage`` for a block priced per second: *seconds* when positive,
+        never past the executor's wall-clock cap, which bounds the run otherwise."""
+        cap = self.execution_timeout_seconds
+        if seconds is None or seconds <= 0:
+            return None if cap is None else NodeExecutionStats(walltime=float(cap))
+        return NodeExecutionStats(
+            walltime=float(seconds if cap is None else min(seconds, cap))
+        )
+
     @property
     def name(self):
         return self.__class__.__name__
@@ -1022,6 +1052,60 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             ) from e
         return approved
 
+    def with_retired_models_replaced(
+        self, input_data: BlockInput, resolved_model: str | None
+    ) -> BlockInput:
+        """*input_data* with each LLM model replaced by the model this block
+        runs, and is billed for, in its place.
+
+        A run keeps the model it started on. *resolved_model* is the model a
+        run recorded when it started (``NodeExecutionStats.resolved_model``,
+        see ``_record_resolved_model``): given it, it is the run's model for
+        the input it was read from, ``RECORDED_MODEL_INPUT``, so the run's
+        settlement, cost log and usage record price and name the model it
+        ran, on whatever date they read it. Given None, for a run that hasn't
+        started or recorded none, and for any other ``LLMModel`` input, a
+        model the catalog has switched off, and names a fallback for, is
+        replaced by that fallback once the model's shutdown date, if it has
+        one, has come: the model a run starting now runs. Returns
+        *input_data* itself when no value changes."""
+        started_on = llm_model_named(resolved_model)
+        replaced = {
+            name: runs.value
+            for name, field in self.input_schema.model_fields.items()
+            if is_llm_model_field(field)
+            and (
+                runs := (
+                    started_on
+                    if started_on is not None and name == RECORDED_MODEL_INPUT
+                    else retired_model_fallback(input_data.get(name))
+                )
+            )
+            is not None
+            and runs.value != input_data.get(name)
+        }
+        return {**input_data, **replaced} if replaced else input_data
+
+    def _record_resolved_model(self, input_data: BlockInput) -> None:
+        """Record the model this run's ``RECORDED_MODEL_INPUT`` input runs,
+        resolved as it starts, in its stats (``resolved_model``): the run's
+        settlement, cost log and usage record price and name it, whatever the
+        date when they read it, and the node's stats show it, while its
+        recorded inputs keep the stored model.
+
+        The record belongs to that one input, and is applied to it alone, so
+        a block with a second ``LLMModel`` input can't have that input's model
+        priced as this one. No block has one:
+        ``test_a_blocks_only_llm_model_input_is_the_one_its_run_records``."""
+        field = self.input_schema.model_fields.get(RECORDED_MODEL_INPUT)
+        if field is None or not is_llm_model_field(field):
+            return
+        value = input_data.get(RECORDED_MODEL_INPUT)
+        if value is None and not field.is_required():
+            value = field.get_default(call_default_factory=True)
+        if (model := llm_model_named(value)) is not None:
+            self.execution_stats.resolved_model = model.value
+
     async def _execute(
         self,
         input_data: BlockInput,
@@ -1038,6 +1122,22 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             )
             if should_pause:
                 return
+
+        serving = self.with_retired_models_replaced(input_data, resolved_model=None)
+        if serving is not input_data:
+            # One line per run: it carries the node execution id, and the
+            # run's recorded inputs keep the stored model.
+            moved = ", ".join(
+                f"{name} {resolved_model_value(input_data[name])} -> {value}"
+                for name, value in serving.items()
+                if value != input_data.get(name)
+            )
+            logger.info(
+                f"Block {self.name} runs switched-off models' catalog fallbacks "
+                f"(node exec {execution_context.node_exec_id}): {moved}"
+            )
+            input_data = serving
+        self._record_resolved_model(input_data)
 
         # Validate the input data (original or reviewer-modified) once.
         # In dry-run mode, credential fields may contain sentinel None values
