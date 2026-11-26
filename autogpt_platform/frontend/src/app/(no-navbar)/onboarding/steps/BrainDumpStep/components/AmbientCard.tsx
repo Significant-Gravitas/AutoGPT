@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import type { AmbientContent } from "./useAmbientPrompts";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   position: string;
@@ -14,8 +15,6 @@ interface Props {
   reduceMotion: boolean;
   onClick?: () => void;
 }
-
-const EASE = [0.16, 1, 0.3, 1] as const;
 
 export function AmbientCard({
   position,
@@ -42,7 +41,7 @@ export function AmbientCard({
               repeat: Infinity,
               ease: "easeInOut",
             }
-          : { duration: 0.6, ease: EASE }
+          : { duration: 0.6, ease: ease.emphasized }
       }
     >
       <AnimatePresence mode="wait" initial={false}>
@@ -59,7 +58,10 @@ export function AmbientCard({
               ? { opacity: 0 }
               : { opacity: 0, scale: 0.96, filter: "blur(6px)" }
           }
-          transition={{ duration: reduceMotion ? 0 : 0.45, ease: EASE }}
+          transition={{
+            duration: reduceMotion ? 0 : duration.slower,
+            ease: ease.emphasized,
+          }}
           className={cn(content.isQuote && "italic")}
         >
           <span className="block font-sans text-caption-sm font-semibold tracking-eyebrow text-accent-strong uppercase">

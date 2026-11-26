@@ -161,7 +161,7 @@ function renderWorkspaceFile(
           {metadata?.filename || label}
         </span>
         {mimeType && (
-          <Text variant="small-tight" as="span" tone="muted">
+          <Text variant="small" leading="4" as="span" tone="muted">
             {mimeType}
           </Text>
         )}

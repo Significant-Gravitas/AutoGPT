@@ -32,16 +32,28 @@ import { RAW_TEXT_SIZE, rawTextSizeAdvice } from "../ds/text-size-scale.ts";
 // they share the baseline and so their raw-colour and arbitrary-value
 // messages can name the design token with the same value.
 
-// components.json keeps tailwind.css at globals.css, the stylesheet the app
-// loads and the shadcn CLI writes to. It has no `@import "tailwindcss"`
-// (Tailwind 3 compat), so @shadcn/lint reads the classes Tailwind knows from
-// tailwind-grammar.css instead and says so on every run; that is the setup,
-// not a fault, so the one notice is dropped.
-const EXPECTED_NOTICE =
-  "[@shadcn/lint] components.json sets tailwind.css to src/app/globals.css, which does not import Tailwind. Using src/app/tailwind-grammar.css";
+// Notices @shadcn/lint prints on every run about the setup, not a fault, so
+// they are dropped:
+// - components.json keeps tailwind.css at globals.css, the stylesheet the app
+//   loads and the shadcn CLI writes to. It has no `@import "tailwindcss"`
+//   (Tailwind 3 compat), so @shadcn/lint reads the classes Tailwind knows
+//   from tailwind-grammar.css instead.
+// - The Skeleton contract in .oxlintrc.json allows `rounded-pill`, a radius
+//   step of shape.css. @shadcn/lint's class grammar is cn's bundled one, which
+//   has no `pill` step and no way to add one short of installing cn, so it
+//   says the entry matches only the class of that exact name, which is what
+//   the entry is for.
+const EXPECTED_NOTICES = [
+  "[@shadcn/lint] components.json sets tailwind.css to src/app/globals.css, which does not import Tailwind. Using src/app/tailwind-grammar.css",
+  '[@shadcn/lint] Contract entry "rounded-pill" is not a category',
+];
 const warn = console.warn;
 console.warn = (...args: unknown[]) => {
-  if (typeof args[0] === "string" && args[0].startsWith(EXPECTED_NOTICE))
+  const first = args[0];
+  if (
+    typeof first === "string" &&
+    EXPECTED_NOTICES.some((notice) => first.startsWith(notice))
+  )
     return;
   warn(...args);
 };
@@ -292,7 +304,7 @@ const ROLE_FAMILIES: { utilities: RegExp; roles: RegExp }[] = [
   {
     utilities: /^(?:bg|from|via|to)$/,
     roles:
-      /^(?:canvas|surface.*|overlay|scrim|action|action-hover|brand|brand-hover|accent-surface|error|error-hover|error-surface|warning|warning-surface|success|success-surface|info|info-surface|orange|yellow|sky|indigo|pink)$/,
+      /^(?:canvas|surface.*|overlay|scrim|fill-.+|action|action-hover|brand|brand-hover|accent-surface|error|error-hover|error-surface|warning|warning-surface|success|success-surface|info|info-surface|orange|yellow|sky|indigo|pink)$/,
   },
   {
     utilities: /^(?:border.*|divide.*|ring.*|outline)$/,
@@ -787,6 +799,45 @@ const noHexColours: Rule.RuleModule = {
   },
 };
 
+// A colour function with numbers for arguments, in any string:
+// `rgba(0,0,0,0.08)`, `rgb(248 250 252)`, `hsl(0 0% 50%)`, `oklch(0.7 0.1 200)`
+// and `rgba(255,255,255,${alpha})`, a signed number included (`hsl(-30 …)`).
+// A role read (`rgb(var(--color-x) / 0.5)`) is not one.
+const COLOUR_FUNCTION =
+  /(?<![a-z0-9-])(?:rgba?|hsla?|oklch)\(\s*[+-]?[\d.][^()"'`]*(?:\([^()"'`]*\)[^()"'`]*)*\)?/gi;
+
+export function colourFunctions(text: string) {
+  return [...text.matchAll(COLOUR_FUNCTION)].map((match) => match[0]);
+}
+
+const noColourFunctions: Rule.RuleModule = {
+  meta: {
+    type: "problem",
+    docs: { description: "Disallow rgb(), hsl() and oklch() colour literals" },
+    schema: [],
+  },
+  create(context) {
+    const file = relativeToFrontend(context.filename);
+    if (isWholeFileExempt(file)) return {};
+    return stringNodes((node, text) => {
+      // A class whose whole arbitrary value is the colour
+      // (`text-[rgb(20,20,20)]`) is no-arbitrary-colour's.
+      const owned = new Set(
+        arbitraryColours(text).map((match) => match.valueIndex),
+      );
+      for (const match of text.matchAll(COLOUR_FUNCTION)) {
+        const colour = match[0];
+        if (isExempt(file, colour)) continue;
+        if (owned.has(match.index)) continue;
+        context.report({
+          node,
+          message: `"${colour}" hardcodes a colour. Read a role instead: rgb(var(--color-<role>) / <alpha>) in a string, or a role class with an opacity modifier (bg-brand/10). Artwork, logos and chart series go in ds-colour-exempt.json, with a reason.`,
+        });
+      }
+    });
+  },
+};
+
 // A colour class whose arbitrary value is a colour literal: `bg-[#fff]`,
 // `text-[rgb(20,20,20)]`, `border-[color:hsl(0_0%_90%)]/50`, or an arbitrary
 // colour property (`[color:#fff]`). A value read from a role
@@ -839,6 +890,267 @@ const noArbitraryColour: Rule.RuleModule = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// A role means what it says: a text role is not a fill and a surface role is
+// not text, so a look can change one without the other.
+
+const CLASS_START = String.raw`(?<![\w\-/\[.#])((?:[^\s"'\`{}]*:)?!?)`;
+const CLASS_END = String.raw`(\/(?:\d+(?:\.\d+)?|\[[^\]\s]+\]))?(?![\w\-])`;
+// A background clipped to its text, gradient or solid, is that text's colour.
+const CLIPPED_TO_TEXT = new RegExp(`${CLASS_START}bg-clip-text(?![\\w-])`, "g");
+
+// The variants of a class's prefix (`md:hover:!` is md and hover), split at
+// the colons outside brackets and parentheses.
+function variantsOf(prefix: string) {
+  const text = prefix.replace(/!$/, "");
+  const variants: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "[" || text[i] === "(") depth++;
+    else if (text[i] === "]" || text[i] === ")") depth--;
+    else if (text[i] === ":" && depth === 0) {
+      variants.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  return variants;
+}
+
+// A fill is clipped to its text when a `bg-clip-text` applies whenever the
+// fill does: every variant of the clip is one of the fill's. So
+// `md:bg-clip-text` covers `md:hover:from-…`, and `hover:bg-clip-text` does
+// not cover a fill without hover.
+function isClipped(fillPrefix: string, clipText: string) {
+  const fill = new Set(variantsOf(fillPrefix));
+  return [...clipText.matchAll(CLIPPED_TO_TEXT)].some(([, clipPrefix]) =>
+    variantsOf(clipPrefix).every((variant) => fill.has(variant)),
+  );
+}
+
+type ClassPart = Extract<Node, { type: "CallExpression" }>["arguments"][number];
+
+// The class text of a part that always applies: a string, the static parts
+// of a template literal, the strings of an array.
+function staticClasses(part: ClassPart | null): string[] {
+  if (!part) return [];
+  if (part.type === "Literal")
+    return typeof part.value === "string" ? [part.value] : [];
+  if (part.type === "TemplateLiteral")
+    return [
+      ...part.quasis.map((quasi) => quasi.value.cooked ?? quasi.value.raw),
+      ...part.expressions.flatMap(staticClasses),
+    ];
+  if (part.type === "ArrayExpression")
+    return part.elements.flatMap(staticClasses);
+  return [];
+}
+
+const CLASS_CALLS = new Set(["cn", "clsx", "twMerge", "cva"]);
+// Expressions a class string can sit in on its way to a class call.
+const CLASS_CONTAINERS = new Set([
+  "TemplateLiteral",
+  "ArrayExpression",
+  "ObjectExpression",
+  "Property",
+  "ConditionalExpression",
+  "LogicalExpression",
+]);
+
+// The classes around a string that apply whenever it does: the static parts
+// of the template literals it sits in, and the static arguments of the cn(),
+// clsx() or twMerge() call it is passed to (cva()'s base classes). A
+// conditional part (`on && "…"`, a cva variant) is left out.
+function enclosingClasses(node: Node) {
+  const parts: string[] = [];
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    if (parent.type === "TemplateLiteral") parts.push(...staticClasses(parent));
+    else if (parent.type === "CallExpression") {
+      if (
+        parent.callee.type === "Identifier" &&
+        CLASS_CALLS.has(parent.callee.name)
+      )
+        parts.push(
+          ...(parent.callee.name === "cva"
+            ? parent.arguments.slice(0, 1)
+            : parent.arguments
+          ).flatMap(staticClasses),
+        );
+      break;
+    } else if (!CLASS_CONTAINERS.has(parent.type)) break;
+  }
+  return parts.join(" ");
+}
+
+let misusedRolePatterns: { fill: RegExp; text: RegExp } | undefined;
+
+function misusedRolePattern(kind: "fill" | "text") {
+  misusedRolePatterns ??= (() => {
+    const names = (test: RegExp) =>
+      roles()
+        .map((role) => role.name)
+        .filter((name) => test.test(name))
+        .sort((a, b) => b.length - a.length)
+        .join("|");
+    return {
+      fill: new RegExp(
+        `${CLASS_START}(bg|from|via|to)-(${names(/^foreground-/)})${CLASS_END}`,
+        "g",
+      ),
+      text: new RegExp(
+        `${CLASS_START}(text)-(${names(/^(?:canvas|surface.*)$/)})${CLASS_END}`,
+        "g",
+      ),
+    };
+  })();
+  return misusedRolePatterns[kind];
+}
+
+function sameColour(name: string, test: RegExp) {
+  const hex = roles().find((role) => role.name === name)?.hex;
+  return roles()
+    .filter((role) => role.hex === hex && test.test(role.name))
+    .map((role) => role.name);
+}
+
+export function misusedRoleAdvice(utility: string, role: string) {
+  if (utility === "text") {
+    const same = sameColour(role, /^foreground-/);
+    const use = same.length
+      ? `Use "text-${same[0]}", the text role with the same colour, or another text role`
+      : "Use a text role";
+    return `${use}: foreground-* on a page or card, "foreground-inverse" on the inverse surface, "foreground-on-color" on a saturated fill.`;
+  }
+  const same = sameColour(role, /^fill-/);
+  const use = same.length
+    ? `Use "${utility}-${same[0]}", the fill role with the same colour`
+    : "Use a fill role (fill-subtle to fill-strong)";
+  return `${use}. A backdrop is "scrim", a dark surface that shows content is "surface-inverse" and a selected or current marker is "action".`;
+}
+
+const noMisusedRole: Rule.RuleModule = {
+  meta: {
+    type: "problem",
+    docs: {
+      description:
+        "Disallow a text role as a fill and a surface role as a text colour",
+    },
+    schema: [],
+  },
+  create(context) {
+    return stringNodes((node, text) => {
+      const fills = [...text.matchAll(misusedRolePattern("fill"))];
+      const clipText = fills.length ? `${text} ${enclosingClasses(node)}` : "";
+      for (const match of fills) {
+        const [whole, prefix, utility, role] = match;
+        if (isClipped(prefix, clipText)) continue;
+        context.report({
+          node,
+          message: `"${whole}" paints a fill with a text role, so a look that changes text changes it too. ${misusedRoleAdvice(utility, role)}`,
+        });
+      }
+      for (const match of text.matchAll(misusedRolePattern("text"))) {
+        const [whole, , utility, role] = match;
+        context.report({
+          node,
+          message: `"${whole}" colours text with a surface role, so a look that changes surfaces changes it too. ${misusedRoleAdvice(utility, role)}`,
+        });
+      }
+    });
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Layers, read from src/app/tokens/shape.css so the advice never drifts.
+
+// A layer written as a number: `z-10`, `-z-10`, `hover:z-[21]`. A named
+// layer (`z-overlay`), one read through its variable (`z-(--z-overlay)`,
+// `z-[var(--z-overlay)]`) and `z-auto` are not one.
+const RAW_Z_CLASS =
+  /(?<![\w\-/[.#])((?:[^\s"'`{}]*:)?!?)(-?)z-(\d+|\[(?!var\(--z-[a-z0-9-]+\)\])[^\]\s]+\])(?![\w\-\]])/g;
+
+let layersByValue: Map<number, string[]> | undefined;
+
+function layers() {
+  if (layersByValue) return layersByValue;
+  const css = readFileSync(
+    path.join(FRONTEND_ROOT, "src/app/tokens/shape.css"),
+    "utf8",
+  ).replace(/\/\*[\s\S]*?\*\//g, "");
+  layersByValue = new Map();
+  for (const [, name, value] of css.matchAll(/--z-([a-z0-9-]+):\s*(-?\d+);/g)) {
+    const names = layersByValue.get(Number(value)) ?? [];
+    layersByValue.set(Number(value), [...names, `z-${name}`]);
+  }
+  return layersByValue;
+}
+
+export function layerAdvice(value: number | null) {
+  if (value === null)
+    return "Use a named layer from src/app/tokens/shape.css (z-raised, z-overlay, ...).";
+  const names = layers().get(value);
+  if (!names)
+    return "No layer has this number: add one to src/app/tokens/shape.css, named for what sits there, and register it in globals.css.";
+  if (names.length === 1)
+    return `Use "${names[0]}", the layer with that number.`;
+  return `Use the layer with that number that names what sits there: ${names.map((name) => `"${name}"`).join(" or ")}.`;
+}
+
+function zValue(sign: string, raw: string) {
+  const digits = /^\[?(-?\d+)\]?$/.exec(raw)?.[1];
+  return digits === undefined ? null : Number(sign + digits);
+}
+
+function numericZIndex(node: Node): number | null {
+  if (node.type === "Literal" && typeof node.value === "number")
+    return node.value;
+  if (node.type === "Literal" && typeof node.value === "string")
+    return /^-?\d+$/.test(node.value.trim()) ? Number(node.value) : null;
+  if (
+    node.type === "UnaryExpression" &&
+    node.operator === "-" &&
+    node.argument.type === "Literal" &&
+    typeof node.argument.value === "number"
+  )
+    return -node.argument.value;
+  return null;
+}
+
+const noRawZIndex: Rule.RuleModule = {
+  meta: {
+    type: "problem",
+    docs: { description: "Disallow z-index numbers outside the named layers" },
+    schema: [],
+  },
+  create(context) {
+    return {
+      ...stringNodes((node, text) => {
+        for (const match of text.matchAll(RAW_Z_CLASS)) {
+          context.report({
+            node,
+            message: `"${match[0]}" sets a layer by number. ${layerAdvice(zValue(match[2], match[3]))}`,
+          });
+        }
+      }),
+      Property(node: Node) {
+        if (node.type !== "Property") return;
+        const key = node.key;
+        const named =
+          (key.type === "Identifier" && key.name === "zIndex") ||
+          (key.type === "Literal" &&
+            (key.value === "zIndex" || key.value === "z-index"));
+        if (!named) return;
+        const value = numericZIndex(node.value as Node);
+        if (value === null) return;
+        context.report({
+          node,
+          message: `"zIndex: ${value}" sets a layer by number. ${layerAdvice(value)} In a style object, read it: zIndex: "var(--z-<name>)".`,
+        });
+      },
+    };
+  },
+};
+
 const shadcnRules = shadcn.rules as unknown as Record<string, Rule.RuleModule>;
 
 const plugin = {
@@ -878,7 +1190,10 @@ const plugin = {
       noRawPaletteClasses,
     ),
     "no-hex-colours": ratchet("no-hex-colours", noHexColours),
+    "no-colour-functions": ratchet("no-colour-functions", noColourFunctions),
     "no-arbitrary-colour": ratchet("no-arbitrary-colour", noArbitraryColour),
+    "no-misused-role": ratchet("no-misused-role", noMisusedRole),
+    "no-raw-z-index": ratchet("no-raw-z-index", noRawZIndex),
     "no-dark-variant": ratchet("no-dark-variant", noDarkVariant),
     "no-raw-text-size": ratchet("no-raw-text-size", noRawTextSize),
     "no-legacy-import": ratchet("no-legacy-import", noLegacyImport),

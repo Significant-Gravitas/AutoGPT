@@ -20,7 +20,8 @@ export function OutputItem({
     <div className="relative">
       {label && (
         <Text
-          variant="large-medium"
+          variant="large"
+          weight="medium"
           transform="capitalize"
           data-testid="output-item-label"
         >

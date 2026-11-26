@@ -11,7 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 import * as React from "react";
 import { ReactNode } from "react";
-import { Text } from "../Text/Text";
+import { Text, type TextProps } from "../Text/Text";
 import type { Variant } from "../Text/helpers";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 
@@ -38,6 +38,7 @@ export interface SelectFieldProps {
   options: SelectOption[];
   size?: "small" | "medium";
   labelVariant?: Variant;
+  labelWeight?: TextProps["weight"];
   labelClassName?: string;
   labelTooltip?: string;
   renderItem?: (option: SelectOption) => React.ReactNode;
@@ -59,7 +60,8 @@ export function Select({
   onValueChange,
   options,
   size = "medium",
-  labelVariant = "large-medium",
+  labelVariant = "large",
+  labelWeight = "medium",
   labelClassName,
   labelTooltip,
   renderItem,
@@ -160,7 +162,8 @@ export function Select({
       >
         <Text
           data-slot="select-error"
-          variant="small-medium"
+          variant="small"
+          weight="medium"
           as="span"
           tone="error"
           className="block"
@@ -184,6 +187,7 @@ export function Select({
           <Text
             data-slot="select-label"
             variant={labelVariant}
+            weight={labelWeight}
             as="span"
             tone="base"
             // oxlint-disable-next-line design-system/require-static-classes -- labelClassName is a caller override that existing call sites outside the design system still use

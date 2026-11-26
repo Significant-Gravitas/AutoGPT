@@ -7,8 +7,7 @@ import { PlusSignIcon, Upload03Icon } from "@hugeicons/core-free-icons";
 import { motion, useReducedMotion } from "framer-motion";
 import { useNewMenu } from "../NewMenu/useNewMenu";
 import type { EmptyStateContent } from "./helpers";
-
-const EASE_OUT_QUINT = [0.22, 1, 0.36, 1] as const;
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   content: EmptyStateContent;
@@ -37,13 +36,13 @@ export function EmptyState({ content, compact = false }: Props) {
       return {
         initial: { opacity: 0 },
         animate: { opacity: 1 },
-        transition: { duration: 0.2, delay: 0 },
+        transition: { duration: duration.base, delay: 0 },
       };
     }
     return {
       initial: { opacity: 0, y: 8 },
       animate: { opacity: 1, y: 0 },
-      transition: { duration: 0.35, ease: EASE_OUT_QUINT, delay },
+      transition: { duration: duration.slow, ease: ease.glide, delay },
     };
   }
 
@@ -150,8 +149,8 @@ function StackedFilesIllustration() {
               : { opacity: sheet.opacity, y: 0, scale: 1 }
           }
           transition={{
-            duration: shouldReduceMotion ? 0.2 : 0.45,
-            ease: EASE_OUT_QUINT,
+            duration: shouldReduceMotion ? duration.base : duration.slower,
+            ease: ease.glide,
             delay: shouldReduceMotion ? 0 : i * 0.08,
           }}
           // oxlint-disable-next-line design-system/no-inline-styles -- framer-motion writes the SVG transform origin inline, so a class would be overridden

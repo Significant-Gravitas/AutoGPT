@@ -531,7 +531,7 @@ export const ChatContainer = ({
             <SessionNotFound removedChat={removedChat} />
           ) : sessionId ? (
             <div className="relative flex h-full min-h-0 w-full flex-col bg-surface">
-              <div className="absolute top-0 right-0 z-30">
+              <div className="absolute top-0 right-0 z-floating">
                 <ContextPanelToggle
                   sessionId={sessionId}
                   expert={chatExpert}
@@ -595,7 +595,7 @@ export const ChatContainer = ({
                   <SharedChatNotice sessionId={sessionId} />
                   {hasComposerTab && <ComposerPanelTab expert={chatExpert} />}
                   {isTaskBarEnabled && (
-                    <div className="relative z-10">
+                    <div className="relative z-raised">
                       <TaskProgressBar
                         todos={getLatestTaskList(messages)}
                         isStreaming={isStreaming}

@@ -85,7 +85,8 @@ export function WorkspaceFolder({
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
         <Text
-          variant="body-medium"
+          variant="body"
+          weight="medium"
           tone="primary"
           className="truncate"
           data-testid="workspace-folder-name"

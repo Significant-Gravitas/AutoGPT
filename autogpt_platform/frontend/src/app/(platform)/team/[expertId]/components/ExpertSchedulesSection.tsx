@@ -55,7 +55,7 @@ export function ExpertSchedulesSection({
     <section>
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
-          <Text variant="large-medium" tone="primary">
+          <Text variant="large" weight="medium" tone="primary">
             {title}
           </Text>
           {lastRun ? (

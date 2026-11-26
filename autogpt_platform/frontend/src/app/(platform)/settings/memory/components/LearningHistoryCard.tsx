@@ -38,7 +38,7 @@ export function LearningHistoryCard({
       className="flex flex-col rounded-large border border-border-base bg-surface px-4 py-4 shadow-message-table"
       data-testid="learning-history-card"
     >
-      <Text variant="body-medium" as="span">
+      <Text variant="body" weight="medium" as="span">
         Learning history
       </Text>
       <Text variant="small" as="span" tone="muted">
@@ -80,7 +80,8 @@ export function LearningHistoryCard({
             <div key={item.id} className="flex flex-col gap-0.5 py-2.5">
               <div className="flex items-center justify-between gap-3">
                 <Text
-                  variant="small-medium"
+                  variant="small"
+                  weight="medium"
                   as="span"
                   className="min-w-0 truncate"
                 >

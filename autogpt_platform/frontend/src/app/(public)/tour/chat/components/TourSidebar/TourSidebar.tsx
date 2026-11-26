@@ -40,6 +40,7 @@ import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
+import { duration } from "@/components/styles/motion";
 
 function DisabledMenuItem({
   icon,
@@ -69,7 +70,7 @@ interface Props {
 
 // Matches the mobile sidebar sheet's closing animation
 // (`data-[state=closed]:duration-200` in `@/components/molecules/Sidebar/Sidebar`).
-const SHEET_CLOSE_MS = 200;
+const SHEET_CLOSE_MS = duration.base * 1000;
 
 export function TourSidebar({ variant = "tour" }: Props) {
   const reduceMotion = useReducedMotion();
@@ -103,8 +104,10 @@ export function TourSidebar({ variant = "tour" }: Props) {
           className="flex min-h-0 flex-1 flex-col gap-2"
         >
           <motion.div variants={itemVariants}>
-            {/* oxlint-disable-next-line design-system/no-restyle -- the copilot sidebar's tighter group padding; SidebarGroup has no size for it */}
-            <SidebarGroup className="mt-2 py-1 group-data-[collapsible=icon]:mt-0">
+            <SidebarGroup
+              spacing="tight"
+              className="mt-2 group-data-[collapsible=icon]:mt-0"
+            >
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem>
@@ -124,11 +127,12 @@ export function TourSidebar({ variant = "tour" }: Props) {
           </motion.div>
 
           <motion.div variants={itemVariants}>
-            {/* oxlint-disable-next-line design-system/no-restyle -- the copilot sidebar's tighter group padding; SidebarGroup has no size for it */}
-            <SidebarGroup className="mt-2 py-1 group-data-[collapsible=icon]:mt-0">
+            <SidebarGroup
+              spacing="tight"
+              className="mt-2 group-data-[collapsible=icon]:mt-0"
+            >
               <SidebarGroupContent>
-                {/* oxlint-disable-next-line design-system/no-restyle -- the copilot sidebar's collapsed item gap; SidebarMenu has no size for it */}
-                <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
+                <SidebarMenu>
                   <DisabledMenuItem icon={Search01Icon} label="Search" />
                   <DisabledMenuItem icon={GridViewIcon} label="Workflows" />
                   <SidebarMenuItem>
@@ -152,13 +156,14 @@ export function TourSidebar({ variant = "tour" }: Props) {
 
           <motion.div variants={itemVariants}>
             <CollapsibleRoot defaultOpen className="group/collapsible">
-              {/* oxlint-disable-next-line design-system/no-restyle -- the copilot sidebar's tighter group padding; SidebarGroup has no size for it */}
-              <SidebarGroup className="py-1">
+              <SidebarGroup spacing="tight">
                 <SidebarGroupLabel asChild>
                   <CollapsibleTrigger>
                     <Text
                       as="span"
-                      variant="body-sm-medium-inherit"
+                      variant="body-sm"
+                      weight="medium"
+                      leading="inherit"
                       tone="inherit"
                     >
                       Workspace
@@ -168,11 +173,9 @@ export function TourSidebar({ variant = "tour" }: Props) {
                     </span>
                   </CollapsibleTrigger>
                 </SidebarGroupLabel>
-                {/* oxlint-disable-next-line design-system/no-restyle -- Radix sets the open state and height on this element, so the collapse animation can't move to a wrapper */}
-                <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
+                <CollapsibleContent motion="height" className="overflow-hidden">
                   <SidebarGroupContent>
-                    {/* oxlint-disable-next-line design-system/no-restyle -- the copilot sidebar's collapsed item gap; SidebarMenu has no size for it */}
-                    <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
+                    <SidebarMenu>
                       <DisabledMenuItem icon={Folder01Icon} label="Files" />
                     </SidebarMenu>
                   </SidebarGroupContent>

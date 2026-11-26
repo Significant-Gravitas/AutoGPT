@@ -22,7 +22,9 @@ AuthCard.BottomText = function BottomText({
         "mt-4 inline-flex w-full items-center justify-center gap-1",
       )}
     >
-      <Text variant="body-medium">{text}</Text>
+      <Text variant="body" weight="medium">
+        {text}
+      </Text>
       {link ? (
         <Link href={link.href} variant="secondary">
           {link.text}
@@ -36,20 +38,30 @@ interface Props {
   children: ReactNode;
   title: string;
   className?: string;
+  /** `roomy`: more padding and closer rows, for a card with a summary box. */
+  size?: "roomy";
 }
 
-export function AuthCard({ children, title, className }: Props) {
+export function AuthCard({ children, title, className, size }: Props) {
   return (
     <Card
+      size={size}
       className={cn(
-        "mx-auto flex min-h-[40vh] w-full max-w-[32rem] flex-col items-center justify-center gap-8",
+        "mx-auto flex min-h-[40vh] w-full max-w-[32rem] flex-col",
         className,
       )}
     >
-      <Text variant="h3" as="h2" className="mb-3">
-        {title}
-      </Text>
-      {children}
+      <div
+        className={cn(
+          "flex flex-1 flex-col items-center justify-center",
+          size === "roomy" ? "gap-6" : "gap-8",
+        )}
+      >
+        <Text variant="h3" as="h2" className="mb-3">
+          {title}
+        </Text>
+        {children}
+      </div>
     </Card>
   );
 }

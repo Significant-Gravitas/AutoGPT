@@ -57,7 +57,8 @@ export function AgentTeam({ dashboard, className }: Props) {
           className="group flex items-center justify-between border-t border-separator px-4 py-2 transition-colors outline-none hover:bg-surface-muted focus-visible:bg-surface-muted"
         >
           <Text
-            variant="small-medium"
+            variant="small"
+            weight="medium"
             as="span"
             tone="muted"
             motion="colors"

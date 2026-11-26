@@ -38,10 +38,7 @@ export function ExpertAbout({ text }: Props) {
             icon={ArrowDown01Icon}
             size={14}
             motion="transform"
-            className={cn(
-              // oxlint-disable-next-line design-system/no-restyle -- the chevron turns as the section opens; Icon has no motion prop
-              isExpanded && "rotate-180",
-            )}
+            className={cn(isExpanded && "rotate-180")}
           />
         </button>
       ) : null}

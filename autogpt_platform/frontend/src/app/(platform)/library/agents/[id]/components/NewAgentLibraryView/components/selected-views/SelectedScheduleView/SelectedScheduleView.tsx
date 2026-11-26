@@ -123,11 +123,15 @@ export function SelectedScheduleView({
                 ) : (
                   <div className="relative flex flex-col gap-8">
                     <div className="flex flex-col gap-1.5">
-                      <Text variant="large-medium">Name</Text>
+                      <Text variant="large" weight="medium">
+                        Name
+                      </Text>
                       <Text variant="body">{schedule.name}</Text>
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <Text variant="large-medium">Recurrence</Text>
+                      <Text variant="large" weight="medium">
+                        Recurrence
+                      </Text>
                       <div className="flex items-center gap-3">
                         <Text variant="body" as="span">
                           {humanizeCronExpression(schedule.cron)}
@@ -141,7 +145,9 @@ export function SelectedScheduleView({
                       </div>
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <Text variant="large-medium">Next run</Text>
+                      <Text variant="large" weight="medium">
+                        Next run
+                      </Text>
                       <div className="flex items-center gap-3">
                         <Text variant="body" as="span">
                           {formatInTimezone(

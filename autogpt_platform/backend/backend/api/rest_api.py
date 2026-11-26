@@ -28,6 +28,7 @@ import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.admin.test_data_routes
 import backend.api.features.admin.user_admin_routes
+import backend.api.features.anthropic_relay.routes as anthropic_relay_routes
 import backend.api.features.api_keys.routes as api_keys_routes
 import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.billing.credits.routes as credits_routes
@@ -97,8 +98,12 @@ from backend.api.session_auth import require_active_auth_session
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.api.utils.uvicorn_options import rest_api_uvicorn_options
 from backend.blocks.llm import DEFAULT_LLM_MODEL
+from backend.copilot.bot.adapters.base import WebhookAdapter
 from backend.copilot.bot.bot_backend import BotBackend
-from backend.copilot.bot.webhook_routes import register_webhook_adapters
+from backend.copilot.bot.webhook_routes import (
+    register_webhook_adapters,
+    run_webhook_adapter_startup,
+)
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi, start_metrics_server
@@ -141,6 +146,8 @@ logging.getLogger("autogpt_libs").setLevel(logging.INFO)
 # mount on this API. Owned at module level so `lifespan_context` can close it on
 # shutdown; the routes themselves are mounted further down once `app` exists.
 _webhook_bot_backend = BotBackend()
+# Filled once the routes are mounted below; the lifespan runs their startup hooks.
+_webhook_adapters: list[WebhookAdapter] = []
 
 
 @contextlib.asynccontextmanager
@@ -190,8 +197,19 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     freeze_startup_heap()
 
-    async with mcp_mount.running():
-        yield
+    # Off the boot path: a chat platform that is slow or down must not delay
+    # or stop the API from serving.
+    webhook_startup = asyncio.create_task(
+        run_webhook_adapter_startup(_webhook_adapters)
+    )
+
+    try:
+        async with mcp_mount.running():
+            yield
+    finally:
+        webhook_startup.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await webhook_startup
 
     try:
         from backend.api.features.integrations.codex import codex_login_coordinator
@@ -533,6 +551,7 @@ app.include_router(
 app.include_router(home_routes.router, prefix="/api")
 app.include_router(feature_flags_routes.router, prefix="/api")
 app.include_router(platform_config_routes.router, prefix="/api")
+app.include_router(anthropic_relay_routes.router, prefix="/api")
 app.include_router(
     backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )
@@ -660,7 +679,7 @@ app.include_router(
 
 # Mount inbound routes for webhook-driven chat adapters (Slack Events API, …).
 # No-op when no webhook platform is configured; errors surface at startup.
-register_webhook_adapters(app, _webhook_bot_backend)
+_webhook_adapters = register_webhook_adapters(app, _webhook_bot_backend)
 app.mount("/external-api", external_api)
 # No route of this app may start with /api/v<n>; rest_api_test.py checks it.
 app.mount("/api/v2", v2_app)
