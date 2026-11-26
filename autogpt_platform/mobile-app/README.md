@@ -66,6 +66,8 @@ Set these in `.env.local` (see `.env.example`). Trailing slashes are dropped.
 | `EXPO_PUBLIC_SENTRY_DSN` | none | Where crash and error reports go. Without it, or while developing, nothing is sent. |
 | `EXPO_PUBLIC_SENTRY_ENVIRONMENT` | `production` | The Sentry environment on each report; `eas.json` sets it per profile. |
 | `EXPO_PUBLIC_APP_STORE_ID` | none | The app's numeric App Store ID, for the update screen's button on iOS. Without it, iOS shows the screen with no button. |
+| `EXPO_PUBLIC_POSTHOG_KEY` | none | The PostHog project key for usage analytics. Without it, the app never asks and sends nothing; while developing, it asks but sends nothing. |
+| `EXPO_PUBLIC_POSTHOG_HOST` | `https://eu.i.posthog.com` | Where usage analytics go. |
 
 ## Builds
 
@@ -90,6 +92,7 @@ Builds read the profile's `env` in `eas.json`, then the EAS environment named by
 | `EXPO_PUBLIC_SENTRY_DSN` | preview, production | Plain text | Turns crash reporting on. It ships in the app, so it isn't a secret. |
 | `SENTRY_AUTH_TOKEN` | preview, production | Secret | Lets the build upload source maps to the `autogpt-mobile` project in the `significant-gravitas` Sentry org. |
 | `EXPO_PUBLIC_APP_STORE_ID` | production | Plain text | Once the App Store record exists. |
+| `EXPO_PUBLIC_POSTHOG_KEY` | preview, production | Plain text | Turns usage analytics on, for people who allow it. The project key ships in the app, so it isn't a secret. |
 
 ### Over-the-air updates
 

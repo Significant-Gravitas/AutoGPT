@@ -35,6 +35,7 @@ export function useMarketplaceScreen() {
   // Marketplace stays mounted in the drawer: someone who left meanwhile stays where they went.
   const navigation = useNavigation();
   const { hire, isHiring, justHired, newerHires } = useHireExpert({
+    surface: "marketplace_list",
     onHired: handleHired,
     onError: handleError,
   });

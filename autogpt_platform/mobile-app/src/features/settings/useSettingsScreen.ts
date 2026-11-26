@@ -6,6 +6,8 @@ import { Linking } from "react-native";
 
 import { planName } from "@/features/plan/helpers";
 import { usePlanCheck } from "@/features/plan/usePlanGate";
+import { hasAnalyticsKey, setAnalyticsConsent } from "@/lib/analytics/client";
+import { readConsent } from "@/lib/analytics/consent";
 import { billingKeys, getSubscription } from "@/lib/api/billing";
 import { useSession } from "@/lib/auth/nativeSession";
 import { signOut } from "@/lib/session";
@@ -23,6 +25,7 @@ export function useSettingsScreen() {
     enabled: isPaymentEnabled,
   });
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [sharesUsage, setSharesUsage] = useState(() => readConsent() === "allowed");
 
   function openWeb(url: string) {
     Linking.openURL(url).catch(() => undefined);
@@ -40,6 +43,11 @@ export function useSettingsScreen() {
     router.navigate("/memory");
   }
 
+  function changeSharesUsage(allowed: boolean) {
+    setSharesUsage(allowed);
+    setAnalyticsConsent(allowed);
+  }
+
   function handleSignOut() {
     void signOut();
   }
@@ -51,6 +59,10 @@ export function useSettingsScreen() {
     isPaymentEnabled,
     planLabel: subscription.data ? planName(subscription.data.tier) : undefined,
     version: Constants.expoConfig?.version ?? null,
+    // A build with nowhere to send usage data has nothing to ask.
+    canShareUsage: hasAnalyticsKey(),
+    sharesUsage,
+    changeSharesUsage,
     isDeleteOpen,
     openDelete: () => setIsDeleteOpen(true),
     closeDelete: () => setIsDeleteOpen(false),

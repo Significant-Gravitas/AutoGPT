@@ -5,6 +5,9 @@ import { useRef, useState } from "react";
 import { isUploading } from "@/features/chat/attachmentHelpers";
 import { PLAN_REQUIRED_MESSAGE } from "@/features/chat/chatErrors";
 import { useAttachments } from "@/features/chat/useAttachments";
+import { hasAnalyticsKey, track } from "@/lib/analytics/client";
+import { readConsent } from "@/lib/analytics/consent";
+import { EVENTS } from "@/lib/analytics/rules";
 import { chatKeys, getSuggestedPrompts } from "@/lib/api/chat";
 import { ApiError } from "@/lib/api/client";
 import { expertKeys, listExperts } from "@/lib/api/experts";
@@ -44,6 +47,10 @@ export function useHomeScreen() {
     setHandledAt(params.at);
     setSelectedID(recipientFromParam(params.recipient));
   }
+  // Asked once, the first time Home opens after sign-in; Settings changes it later.
+  const [asksConsent, setAsksConsent] = useState(
+    () => hasAnalyticsKey() && readConsent() === "unset",
+  );
   // State lands a render late; the ref stops a second tap in the same frame.
   const isStartingRef = useRef(false);
   const { data } = useQuery({
@@ -72,6 +79,11 @@ export function useHomeScreen() {
         upcomingTask: dashboard?.upcoming_tasks[0],
         prompts: ottoPrompts,
       });
+
+  function select(expertID: string | null) {
+    setSelectedID(expertID);
+    if (expertID) track(EVENTS.homeTeamMemberClicked, { expert_id: expertID });
+  }
 
   async function refresh() {
     setIsRefreshing(true);
@@ -140,9 +152,12 @@ export function useHomeScreen() {
   return {
     experts: team,
     selected,
-    select: setSelectedID,
+    select,
     placeholder: inputPlaceholder(selected, hasExistingWork(dashboard)),
     rows,
+    hasDashboard: dashboard !== undefined,
+    asksConsent,
+    answerConsent: () => setAsksConsent(false),
     files,
     isStarting,
     error,

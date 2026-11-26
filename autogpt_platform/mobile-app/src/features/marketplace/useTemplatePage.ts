@@ -9,6 +9,8 @@ import {
   listTemplates,
   templateKeys,
 } from "@/lib/api/experts";
+import { track } from "@/lib/analytics/client";
+import { EVENTS } from "@/lib/analytics/rules";
 import { integrationKeys, listSystemProviders } from "@/lib/api/integrations";
 import { FRONTEND_URL } from "@/lib/env";
 import { isSessionGone, signOut } from "@/lib/session";
@@ -34,6 +36,7 @@ export function useTemplatePage(templateID: string) {
   const isMounted = useRef(true);
   const navigation = useNavigation();
   const { hire, isHiring, justHired, newerHires } = useHireExpert({
+    surface: "expert_page",
     onHired: () => setError(null),
     onError: (message) => setError(message),
   });
@@ -48,7 +51,7 @@ export function useTemplatePage(templateID: string) {
 
   // While this page is in front, Android's back button returns to the list
   // (the drawer's own back goes to its first screen). Leaving drops any error,
-  // so a return visit starts clean.
+  // so a return visit starts clean. Each visit counts as the profile opened.
   useMountEffect(() => {
     let backPress: NativeEventSubscription | null = null;
     function handleBackPress() {
@@ -56,6 +59,8 @@ export function useTemplatePage(templateID: string) {
       return true;
     }
     function handleFocus() {
+      // The first focus can come twice, from the check below and the event.
+      if (!backPress) track(EVENTS.expertProfileOpened, { template_id: templateID });
       backPress?.remove();
       backPress = BackHandler.addEventListener("hardwareBackPress", handleBackPress);
     }

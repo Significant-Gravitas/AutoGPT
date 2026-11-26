@@ -16,6 +16,7 @@ import { AppearancePicker } from "@/features/settings/components/AppearancePicke
 import { DeleteAccountSheet } from "@/features/settings/components/DeleteAccountSheet/DeleteAccountSheet";
 import { SettingsGroup } from "@/features/settings/components/SettingsGroup";
 import { SettingsRow } from "@/features/settings/components/SettingsRow";
+import { SwitchRow } from "@/features/settings/components/SwitchRow";
 import { useSettingsScreen } from "@/features/settings/useSettingsScreen";
 import { avatarSource } from "@/features/team/helpers";
 import { createStyles, spacing, type } from "@/lib/theme";
@@ -78,6 +79,14 @@ export default function SettingsScreen() {
         </SettingsGroup>
         <SettingsGroup>
           <AppearancePicker />
+          {settings.canShareUsage ? (
+            <SwitchRow
+              label="Share usage data"
+              description="Which screens you open and which buttons you tap. Never what you write or what your experts do."
+              value={settings.sharesUsage}
+              onValueChange={settings.changeSharesUsage}
+            />
+          ) : null}
         </SettingsGroup>
         <SettingsGroup>
           <SettingsRow icon={HelpCircleIcon} label="Help" trailing="web" onPress={settings.openHelp} />
