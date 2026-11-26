@@ -41,7 +41,6 @@ export function useMemoryScreen() {
     if (action === "forget") void forgetFact(fact.uuid);
   }
 
-  // The row goes at once; a refused forget puts it back.
   async function forgetFact(uuid: string) {
     await queryClient.cancelQueries({ queryKey: memoryKeys.facts });
     const before = queryClient.getQueryData<MemoryFactList>(memoryKeys.facts);
@@ -123,7 +122,9 @@ export function useMemoryScreen() {
     understandingRows: understanding.data ? understandingRows(understanding.data) : null,
     facts: facts.data?.items ?? null,
     overview: overview.data ?? null,
-    isLoading: queries.some((query) => query.isPending),
+    isLoading: queries.every((query) => query.isPending),
+    isUnderstandingPending: understanding.isPending,
+    isFactsPending: facts.isPending,
     isLoadError: queries.every((query) => query.isError && !query.data),
     isRetrying: queries.some((query) => query.isFetching),
     isErasing,

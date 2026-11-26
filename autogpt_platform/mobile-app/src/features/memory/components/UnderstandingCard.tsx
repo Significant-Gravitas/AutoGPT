@@ -10,7 +10,6 @@ interface Props {
   onForget: () => void;
 }
 
-/** What Otto keeps about the person's work, with a way to forget it. */
 export function UnderstandingCard({ rows, onForget }: Props) {
   const styles = useStyles();
 

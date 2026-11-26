@@ -15,7 +15,6 @@ import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
 const UNAVAILABLE = "Memory isn't available right now.";
 
-/** What Otto remembers about the account, and ways to forget it. */
 export default function MemoryScreen() {
   const screen = useMemoryScreen();
   const styles = useStyles();
@@ -43,6 +42,10 @@ export default function MemoryScreen() {
     );
   }
 
+  function renderSectionLoading() {
+    return <ActivityIndicator style={styles.sectionLoading} color={colors.textTertiary} />;
+  }
+
   function renderUnderstanding() {
     if (screen.understandingRows) {
       return (
@@ -54,13 +57,15 @@ export default function MemoryScreen() {
     }
     return (
       <SettingsGroup title="What Otto knows about your work">
-        {renderUnavailable()}
+        {screen.isUnderstandingPending ? renderSectionLoading() : renderUnavailable()}
       </SettingsGroup>
     );
   }
 
   function renderFacts() {
-    if (!screen.facts) return renderUnavailable();
+    if (!screen.facts) {
+      return screen.isFactsPending ? renderSectionLoading() : renderUnavailable();
+    }
     if (!screen.facts.length) {
       return (
         <Text style={styles.empty}>
@@ -134,6 +139,7 @@ const useStyles = createStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.menuBackground },
   content: { gap: spacing.xl, padding: spacing.lg },
   loading: { marginTop: spacing.xxl },
+  sectionLoading: { padding: spacing.lg },
   center: { alignItems: "center", gap: spacing.lg, padding: spacing.xl },
   inline: { alignItems: "center", gap: spacing.md, padding: spacing.lg },
   notice: { ...type.body, color: colors.textSecondary, textAlign: "center" },

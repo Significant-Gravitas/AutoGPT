@@ -1,4 +1,3 @@
-// No native imports, so tests can load this without a phone.
 import type {
   MemoryFact,
   MemoryFactList,
@@ -29,7 +28,6 @@ const UNDERSTANDING_FIELDS: [keyof MemoryUnderstanding, string][] = [
   ["additional_notes", "Notes"],
 ];
 
-/** The kept fields, in reading order, with empty ones left out. */
 export function understandingRows(understanding: Partial<MemoryUnderstanding>) {
   return UNDERSTANDING_FIELDS.flatMap<UnderstandingRow>(([key, label]) => {
     const value = understandingValue(understanding[key]);
