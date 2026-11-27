@@ -1,10 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { ApiError } from "@/lib/api/client";
 import { expertActivityKeys } from "@/lib/api/expertActivity";
 import { homeKeys } from "@/lib/api/home";
 import { getCadence, scheduledChatKeys, setCadence } from "@/lib/api/scheduledChats";
+import { sessionGeneration } from "@/lib/session";
 
 import { cadenceErrorText } from "../../../notice";
 
@@ -22,8 +23,15 @@ function shouldRetry(failureCount: number, error: unknown) {
   return cadenceErrorText(statusOf(error)) === null && failureCount < 1;
 }
 
+export function cadenceSaveKey(scheduleKey: string, generation: number) {
+  return ["saveCadence", scheduleKey, generation];
+}
+
 export function useRunLessOftenSheet({ scheduleKey, onSaved }: Args) {
   const queryClient = useQueryClient();
+  const generation = sessionGeneration();
+  const mutationKey = cadenceSaveKey(scheduleKey, generation);
+  const isSaving = useIsMutating({ mutationKey }) > 0;
   const [selected, setSelected] = useState<string | null>(null);
   const cadence = useQuery({
     queryKey: scheduledChatKeys.cadence(scheduleKey),
@@ -33,8 +41,10 @@ export function useRunLessOftenSheet({ scheduleKey, onSaved }: Args) {
 
   // The sheet is open, so a toast would sit behind it: errors show inside.
   const save = useMutation({
+    mutationKey,
     mutationFn: (cron: string) => setCadence(scheduleKey, cron),
     onSuccess(changed, cron) {
+      if (generation !== sessionGeneration()) return;
       const chosen = cadence.data?.options.find((option) => option.cron === cron);
       void queryClient.invalidateQueries({ queryKey: expertActivityKeys.graphSchedules });
       void queryClient.invalidateQueries({ queryKey: expertActivityKeys.followupSchedules });
@@ -44,12 +54,17 @@ export function useRunLessOftenSheet({ scheduleKey, onSaved }: Args) {
   });
 
   function choose(cron: string) {
+    if (queryClient.isMutating({ mutationKey })) return;
     setSelected(cron);
     save.reset();
   }
 
   function submit() {
-    if (!selected || save.isPending) return;
+    if (
+      !selected ||
+      generation !== sessionGeneration() ||
+      queryClient.isMutating({ mutationKey })
+    ) return;
     save.mutate(selected);
   }
 
@@ -68,7 +83,7 @@ export function useRunLessOftenSheet({ scheduleKey, onSaved }: Args) {
     selected,
     choose,
     submit,
-    isSaving: save.isPending,
+    isSaving,
     saveError: save.isError
       ? (cadenceErrorText(statusOf(save.error)) ?? "Couldn't change how often it runs. Try again.")
       : null,

@@ -1,14 +1,16 @@
 import { Tick02Icon } from "@hugeicons/core-free-icons";
+import { useQueryClient } from "@tanstack/react-query";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
 import { BottomSheet } from "@/features/connections/components/BottomSheet";
 import type { ScheduledChatCadence } from "@/lib/api/scheduledChats";
+import { sessionGeneration } from "@/lib/session";
 import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
 import { lowerFirst } from "../../../notice";
-import { useRunLessOftenSheet } from "./useRunLessOftenSheet";
+import { cadenceSaveKey, useRunLessOftenSheet } from "./useRunLessOftenSheet";
 
 interface Props {
   scheduleKey: string;
@@ -19,8 +21,15 @@ interface Props {
 }
 
 export function RunLessOftenSheet({ scheduleKey, isOpen, onClose, onSaved }: Props) {
+  const queryClient = useQueryClient();
+
+  function close() {
+    const mutationKey = cadenceSaveKey(scheduleKey, sessionGeneration());
+    if (!queryClient.isMutating({ mutationKey })) onClose();
+  }
+
   return (
-    <BottomSheet isOpen={isOpen} onClose={onClose}>
+    <BottomSheet isOpen={isOpen} onClose={close}>
       {/* Mounted only while open, so each opening loads afresh. */}
       {isOpen ? <SheetBody scheduleKey={scheduleKey} onSaved={onSaved} /> : null}
     </BottomSheet>
@@ -66,7 +75,8 @@ function SheetBody({ scheduleKey, onSaved }: BodyProps) {
                 key={option.cron}
                 accessibilityRole="radio"
                 accessibilityLabel={option.label}
-                accessibilityState={{ checked: isSelected }}
+                accessibilityState={{ checked: isSelected, disabled: sheet.isSaving }}
+                disabled={sheet.isSaving}
                 onPress={() => sheet.choose(option.cron)}
                 style={({ pressed }) => [
                   styles.option,
