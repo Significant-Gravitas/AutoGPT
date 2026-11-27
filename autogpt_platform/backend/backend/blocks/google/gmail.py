@@ -13,6 +13,7 @@ from typing import List, Literal, Optional, Protocol, runtime_checkable
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from pydantic import BaseModel, Field
 
 from backend.blocks._base import (
@@ -395,6 +396,14 @@ class GmailBase(Block, ABC):
         labels = results.get("labels", [])
         for label in labels:
             if label["name"] == label_name:
+                return label["id"]
+        # Gmail treats user label names as case-insensitive: "work" and
+        # "Work" are the same label, and creating one beside the other
+        # conflicts. System labels (INBOX, TRASH, UNREAD...) still need their
+        # exact name, so "trash" doesn't quietly move a message to the bin.
+        wanted = label_name.lower()
+        for label in labels:
+            if label.get("type") == "user" and label["name"].lower() == wanted:
                 return label["id"]
         return None
 
@@ -928,15 +937,29 @@ class GmailAddLabelBlock(GmailBase):
 
     async def _get_or_create_label(self, service, label_name: str) -> str:
         label_id = await self._get_label_id(service, label_name)
-        if not label_id:
+        if label_id:
+            return label_id
+        try:
             label = await asyncio.to_thread(
                 lambda: service.users()
                 .labels()
                 .create(userId="me", body={"name": label_name})
                 .execute()
             )
-            label_id = label["id"]
-        return label_id
+        except HttpError as e:
+            if e.resp.status != 409:
+                raise
+            # The label appeared since the lookup, or the name clashes
+            # with one Gmail reserves.
+            label_id = await self._get_label_id(service, label_name)
+            if label_id:
+                return label_id
+            raise ValueError(
+                f'Gmail can\'t create the label "{label_name}" because it '
+                "clashes with an existing or reserved label name. "
+                "Try a different name."
+            ) from e
+        return label["id"]
 
 
 class GmailRemoveLabelBlock(GmailBase):

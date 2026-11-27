@@ -2,6 +2,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { motion } from "framer-motion";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
+import { duration, ease } from "@/components/styles/motion";
 
 const POINTS = [
   "I help plan and coordinate your work.",
@@ -10,10 +11,12 @@ const POINTS = [
   "I suggest Experts you can hire.",
 ];
 
-const EASE = [0.22, 1, 0.36, 1] as const;
-
 function reveal(i: number) {
-  return { delay: 0.25 + i * 0.15, duration: 0.5, ease: EASE };
+  return {
+    delay: 0.25 + i * 0.15,
+    duration: duration.slowest,
+    ease: ease.glide,
+  };
 }
 
 export function AutopilotScene() {

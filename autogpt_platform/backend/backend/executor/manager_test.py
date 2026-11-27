@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi.responses
 import prisma
@@ -773,3 +773,74 @@ def test_sync_wrapper_counts_only_an_applied_terminal_transition():
             db, "ge-1", status=execution.ExecutionStatus.RUNNING
         )
         assert _run_completions("FAILED") == before + 1
+
+
+def _final_write(applied, stored):
+    """``_write_the_final_state`` with the status write applied or refused,
+    and *stored* as the run's stored state; returns the broadcasts."""
+    from backend.executor.manager import _write_the_final_state
+
+    db = MagicMock()
+    db.get_graph_execution = MagicMock(return_value=stored)
+    with (
+        patch(
+            "backend.executor.manager.update_graph_execution_state",
+            return_value=MagicMock() if applied else None,
+        ),
+        patch("backend.executor.manager.send_execution_update") as send,
+    ):
+        _write_the_final_state(
+            db,
+            MagicMock(user_id="user-1", graph_exec_id="ge-1"),
+            execution.ExecutionStatus.TERMINATED,
+            MagicMock(),
+        )
+    return db, send
+
+
+def test_a_run_a_stop_ended_is_broadcast_after_the_executors_refused_final_write():
+    """The stop's TERMINATED can reach a page before this executor's RUNNING,
+    and the executor's own final write is refused (TERMINATED can't follow
+    TERMINATED), so the executor broadcasts the stored terminal state."""
+    stopped = MagicMock(status=execution.ExecutionStatus.TERMINATED)
+
+    db, send = _final_write(applied=False, stored=stopped)
+
+    db.get_graph_execution.assert_called_once_with(
+        user_id="user-1", execution_id="ge-1", include_node_executions=False
+    )
+    send.assert_called_once_with(stopped)
+
+
+@pytest.mark.parametrize(
+    "status",
+    [execution.ExecutionStatus.COMPLETED, execution.ExecutionStatus.FAILED],
+)
+def test_a_refused_final_write_broadcasts_whatever_terminal_state_it_finds(status):
+    """A write is refused for any stored terminal state, as when an earlier try
+    of the same write committed and lost its answer: that state is the run's,
+    and nothing else announced it."""
+    stored = MagicMock(status=status)
+
+    _, send = _final_write(applied=False, stored=stored)
+
+    send.assert_called_once_with(stored)
+
+
+def test_an_applied_final_write_is_not_broadcast_again():
+    db, send = _final_write(applied=True, stored=None)
+
+    db.get_graph_execution.assert_not_called()
+    send.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [None, MagicMock(status=execution.ExecutionStatus.QUEUED)],
+    ids=["gone", "requeued"],
+)
+def test_a_refused_final_write_broadcasts_nothing_but_a_terminal_state(stored):
+    """A run requeued meanwhile (or gone) isn't this executor's to report."""
+    _, send = _final_write(applied=False, stored=stored)
+
+    send.assert_not_called()

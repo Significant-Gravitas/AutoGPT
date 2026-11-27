@@ -48,8 +48,8 @@ function getHeroContent(
         description:
           "This workflow isn't submitted yet. Finish the details and submit it for review.",
         Icon: NoteEditIcon,
-        pulse: "bg-foreground-subtle/40",
-        gradient: "from-foreground-subtle to-foreground-secondary",
+        pulse: "bg-fill-subtle/40",
+        gradient: "from-fill-subtle to-fill-medium",
       };
     default:
       return {

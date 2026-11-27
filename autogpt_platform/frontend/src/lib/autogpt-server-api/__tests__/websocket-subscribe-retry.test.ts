@@ -77,6 +77,8 @@ function failingFor(graphID: string, times: number) {
 function serve(socket: FakeWebSocket, answer: (request: Request) => unknown) {
   socket.send.mockImplementation((data: string) => {
     const request: Request = JSON.parse(data);
+    // Signing in gets no answer of its own: the pong after it confirms it.
+    if (request.method === "authenticate") return;
     const reply =
       request.method === "heartbeat"
         ? { method: "heartbeat", data: "pong" }
@@ -89,8 +91,11 @@ function serve(socket: FakeWebSocket, answer: (request: Request) => unknown) {
   });
 }
 
+// What the socket sent after signing in.
 function sent(socket: FakeWebSocket): Request[] {
-  return socket.send.mock.calls.map(([data]) => JSON.parse(data));
+  return socket.send.mock.calls
+    .map(([data]) => JSON.parse(data))
+    .filter((message) => message.method !== "authenticate");
 }
 
 function subscribes(socket: FakeWebSocket) {

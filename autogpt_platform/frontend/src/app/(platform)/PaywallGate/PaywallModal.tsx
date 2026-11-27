@@ -67,7 +67,8 @@ export function PaywallModal() {
             )}
           >
             <Button
-              variant="ghost-muted"
+              variant="ghost"
+              tone="quiet"
               size="small"
               onClick={handleLogout}
               leftIcon={<Icon icon={Logout03Icon} size={16} />}

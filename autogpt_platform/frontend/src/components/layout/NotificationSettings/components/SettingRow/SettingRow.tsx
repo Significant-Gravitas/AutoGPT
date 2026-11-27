@@ -33,7 +33,7 @@ export function SettingRow({
           htmlFor={switchId}
           className={disabled ? "cursor-not-allowed" : "cursor-pointer"}
         >
-          <Text variant="body-medium" as="span">
+          <Text variant="body" weight="medium" as="span">
             {label}
           </Text>
         </label>

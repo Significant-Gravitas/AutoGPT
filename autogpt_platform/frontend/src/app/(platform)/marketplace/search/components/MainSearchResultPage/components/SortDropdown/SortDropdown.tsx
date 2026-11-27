@@ -57,7 +57,8 @@ export function SortDropdown({ onSort }: Props) {
               onClick={() => handleSelect(option)}
             >
               <Text
-                variant={isSelected ? "large-medium" : "large"}
+                variant="large"
+                weight={isSelected ? "medium" : undefined}
                 as="span"
                 tone={isSelected ? "emphasis" : "secondary"}
               >

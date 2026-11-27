@@ -8,7 +8,10 @@ from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.execution import ExecutionTrigger, GraphExecutionMeta
 from backend.data.model import CredentialsMetaInput
 from backend.data.tenancy import require_role_where_resource_lives
-from backend.executor.utils import add_graph_execution
+from backend.executor.utils import (
+    _enforce_expert_credential_scope,
+    add_graph_execution,
+)
 from backend.util.exceptions import (
     ExpertRunPausedError,
     WebhookRegistrationError,
@@ -121,13 +124,13 @@ async def create_preset(
     # Errors are answered by the global handlers in rest_api.py: NotFoundError
     # → 404, MissingConfigError → 503, any other ValueError → 400.
     if isinstance(preset, models.LibraryAgentPresetCreatable):
-        return await db.create_preset(
-            user_id,
-            preset,
-            expert_id=await experts_db.resolve_expert_for_graph(
-                user_id, preset.graph_id
-            ),
-        )
+        expert_id = await experts_db.resolve_expert_for_graph(user_id, preset.graph_id)
+        if expert_id:
+            # Its runs would be refused for a key the expert was never granted.
+            await _enforce_expert_credential_scope(
+                user_id, expert_id, preset.credentials
+            )
+        return await db.create_preset(user_id, preset, expert_id=expert_id)
     return await db.create_preset_from_graph_execution(user_id, preset)
 
 

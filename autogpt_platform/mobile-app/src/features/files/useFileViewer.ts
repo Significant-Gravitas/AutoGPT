@@ -24,7 +24,7 @@ export function useFileViewer(file: WorkspaceFile) {
   const text = useQuery({
     queryKey: workspaceKeys.fileText(file.id),
     queryFn: () => downloadFileText(file),
-    enabled: kind === "markdown" || kind === "text",
+    enabled: kind === "markdown" || kind === "text" || kind === "table",
     gcTime: CONTENT_GC_TIME,
     select: capText,
     retry: shouldRetryFileText,
@@ -34,13 +34,14 @@ export function useFileViewer(file: WorkspaceFile) {
   const headers = useQuery({
     queryKey: workspaceKeys.imageHeaders,
     queryFn: authHeaders,
-    enabled: kind === "image",
+    enabled: kind === "image" || kind === "pdf",
     gcTime: 0,
   });
-  const active = kind === "image" ? headers : text;
+  const usesHeaders = kind === "image" || kind === "pdf";
+  const active = usesHeaders ? headers : text;
 
   function retry() {
-    if (kind === "image") {
+    if (usesHeaders) {
       setImageFailed(false);
       setImageAttempt((attempt) => attempt + 1);
     }
@@ -59,6 +60,8 @@ export function useFileViewer(file: WorkspaceFile) {
     image: headers.data
       ? { uri: fileDownloadURL(file.id), headers: headers.data }
       : null,
+    headers: headers.data ?? null,
+    downloadURL: fileDownloadURL(file.id),
     isLoading: kind !== "other" && active.isPending,
     imageAttempt,
     isError: imageFailed || (kind !== "other" && active.isError),

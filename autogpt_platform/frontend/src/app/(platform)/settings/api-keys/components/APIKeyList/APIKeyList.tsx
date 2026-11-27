@@ -11,6 +11,7 @@ import { APIKeyRow } from "../APIKeyRow/APIKeyRow";
 import { APIKeySelectionBar } from "../APIKeySelectionBar/APIKeySelectionBar";
 import { DeleteAPIKeyDialog } from "../DeleteAPIKeyDialog/DeleteAPIKeyDialog";
 import { useAPIKeyListView } from "./useAPIKeyListView";
+import { duration, ease } from "@/components/styles/motion";
 
 const LIST_CONTAINER_VARIANTS: Variants = {
   hidden: {},
@@ -24,7 +25,7 @@ const LIST_ITEM_VARIANTS: Variants = {
   show: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.28, ease: [0.16, 1, 0.3, 1] },
+    transition: { duration: duration.slow, ease: ease.emphasized },
   },
 };
 
@@ -80,8 +81,8 @@ export function APIKeyList() {
                 ? { opacity: 0 }
                 : { opacity: 0, height: 0, marginBottom: -12 }
             }
-            transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
-            className="sticky top-0 z-20 overflow-hidden bg-surface-muted"
+            transition={{ duration: duration.base, ease: ease.out }}
+            className="sticky top-0 z-sticky overflow-hidden bg-surface-muted"
           >
             <APIKeySelectionBar
               selectedCount={selection.selectedCount}

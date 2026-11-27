@@ -213,6 +213,8 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // ``liveHasCred=false`` (e.g. cred revoked) and keep the Connected
   // pill stuck.
   const [localConnected, setLocalConnected] = useState(false);
+  // The chain sent this card's line; a later send must not repeat it.
+  const [lineSent, setLineSent] = useState(false);
   // When Reconnect fails (or any in-card flow errors out), force the
   // not-connected branch even though the live cred row still exists —
   // otherwise ``liveHasCred=true`` would keep the pill rendered and the
@@ -241,6 +243,8 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // Setter compatible with the existing call-sites — they only ever set
   // ``true`` after a successful flow or ``false`` to drop the pill.
   const setConnected = setLocalConnected;
+  const retryMessage = retryInstruction ?? "I've connected. Please retry.";
+  const owesLine = localConnected && !lineSent;
 
   useEffect(() => () => oauthRequest.current?.abort(), []);
 
@@ -267,7 +271,10 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       }
     }
     setConnected(true);
-    onSend(retryInstruction ?? "I've connected. Please retry.");
+    setLineSent(false);
+    // Inside a tool chain the chain sends one reply for every card, this
+    // one's line included.
+    if (!chainActions) onSend(retryMessage);
   }
 
   function handleGrantExisting() {
@@ -377,11 +384,13 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   const handleConnectRef = useRef(handleConnect);
   const handleManualTokenRef = useRef(handleManualToken);
   const handleGrantRef = useRef(handleGrantExisting);
+  const retryMessageRef = useRef(retryMessage);
 
   useEffect(() => {
     handleConnectRef.current = handleConnect;
     handleManualTokenRef.current = handleManualToken;
     handleGrantRef.current = handleGrantExisting;
+    retryMessageRef.current = retryMessage;
   });
 
   // Inside a tool chain the card renders nothing itself — it registers an
@@ -392,7 +401,11 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     chainActions.register(actionId, {
       id: actionId,
       ready: connected,
-      buildMessage: () => null,
+      // Only a sign-in completed here owes Otto a line; a server that was
+      // already connected when the chat loaded stays silent.
+      justConnected: owesLine,
+      buildMessage: () => (owesLine ? retryMessageRef.current : null),
+      onSent: () => setLineSent(true),
       mcp: {
         id: actionId,
         service,
@@ -417,6 +430,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     chainActions,
     actionId,
     connected,
+    owesLine,
     loading,
     error,
     grantError,
@@ -506,14 +520,21 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
               selectClassName="rounded border bg-canvas px-2 py-1.5 text-body"
             />
             <Text
-              variant="small-medium-tight"
+              variant="small"
+              weight="medium"
+              leading="4"
               as="label"
               tone="body"
               htmlFor={manualTokenInputId}
             >
               {`${mcpAuthTokenLabel(manualAuthScheme)} for ${service}`}
             </Text>
-            <Text variant="small-tight" tone="muted" id={manualTokenHintId}>
+            <Text
+              variant="small"
+              leading="4"
+              tone="muted"
+              id={manualTokenHintId}
+            >
               {mcpAuthTokenHint(manualAuthScheme)}
             </Text>
             <div className="flex gap-2">

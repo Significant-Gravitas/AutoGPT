@@ -20,13 +20,18 @@ import { z } from "zod";
 import dynamic from "next/dynamic";
 import {
   usePatchV2UpdateFolder,
+  getGetV2GetFolderQueryKey,
   getGetV2ListLibraryFoldersQueryKey,
 } from "@/app/api/__generated__/endpoints/folders/folders";
 import { useQueryClient } from "@tanstack/react-query";
 import type { LibraryFolder } from "@/app/api/__generated__/models/libraryFolder";
-import type { getV2ListLibraryFoldersResponseSuccess } from "@/app/api/__generated__/endpoints/folders/folders";
+import type {
+  getV2GetFolderResponseSuccess,
+  getV2ListLibraryFoldersResponseSuccess,
+} from "@/app/api/__generated__/endpoints/folders/folders";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { FOLDER_COLORS } from "../folder-constants";
+import { applyFolderEdit } from "./helpers";
 
 const LazyEmojiPicker = dynamic(
   () =>
@@ -77,14 +82,20 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
   const { mutate: updateFolder, isPending } = usePatchV2UpdateFolder({
     mutation: {
       onMutate: async ({ folderId, data }) => {
+        // The folder's own read is keyed apart from the lists; an open
+        // folder shows its name from it.
+        const folderKey = getGetV2GetFolderQueryKey(folderId);
         await queryClient.cancelQueries({
           queryKey: getGetV2ListLibraryFoldersQueryKey(),
         });
+        await queryClient.cancelQueries({ queryKey: folderKey });
 
         const previousData =
           queryClient.getQueriesData<getV2ListLibraryFoldersResponseSuccess>({
             queryKey: getGetV2ListLibraryFoldersQueryKey(),
           });
+        const previousFolder =
+          queryClient.getQueryData<getV2GetFolderResponseSuccess>(folderKey);
 
         queryClient.setQueriesData<getV2ListLibraryFoldersResponseSuccess>(
           { queryKey: getGetV2ListLibraryFoldersQueryKey() },
@@ -95,27 +106,31 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
               data: {
                 ...old.data,
                 folders: old.data.folders.map((f) =>
-                  f.id === folderId
-                    ? {
-                        ...f,
-                        name: data.name ?? f.name,
-                        color: data.color ?? f.color,
-                        icon: data.icon ?? f.icon,
-                      }
-                    : f,
+                  f.id === folderId ? applyFolderEdit(f, data) : f,
                 ),
               },
             };
           },
         );
+        queryClient.setQueryData<getV2GetFolderResponseSuccess>(
+          folderKey,
+          (old) =>
+            old?.data ? { ...old, data: applyFolderEdit(old.data, data) } : old,
+        );
 
-        return { previousData };
+        return { previousData, previousFolder };
       },
-      onError: (error: unknown, _variables, context) => {
+      onError: (error: unknown, { folderId }, context) => {
         if (context?.previousData) {
           for (const [queryKey, data] of context.previousData) {
             queryClient.setQueryData(queryKey, data);
           }
+        }
+        if (context?.previousFolder) {
+          queryClient.setQueryData(
+            getGetV2GetFolderQueryKey(folderId),
+            context.previousFolder,
+          );
         }
         if (error instanceof ApiError) {
           const detail = (error.response as any)?.detail ?? "";
@@ -142,9 +157,12 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
           description: "Your folder has been updated successfully.",
         });
       },
-      onSettled: () => {
+      onSettled: (_data, _error, { folderId }) => {
         queryClient.invalidateQueries({
           queryKey: getGetV2ListLibraryFoldersQueryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetV2GetFolderQueryKey(folderId),
         });
       },
     },
@@ -174,8 +192,9 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
         <Form
           form={form}
           onSubmit={(values) => onSubmit(values)}
-          // oxlint-disable-next-line design-system/no-restyle -- the folder form spaces its fields; Form has no gap or padding option
-          className="flex flex-col justify-center gap-2 px-1"
+          spacing="stack-tight"
+          focusInset
+          className="justify-center"
         >
           <FormField
             control={form.control}
@@ -240,7 +259,7 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
             render={({ field }) => (
               <FormItem>
                 <div className="flex flex-col gap-2">
-                  <Text variant="large-medium" as="span">
+                  <Text variant="large" weight="medium" as="span">
                     Folder icon
                   </Text>
                   <div className="flex flex-col gap-3">

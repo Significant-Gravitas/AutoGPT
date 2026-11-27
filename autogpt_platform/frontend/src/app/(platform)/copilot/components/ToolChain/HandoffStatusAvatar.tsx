@@ -64,9 +64,9 @@ export function StatusAvatar({
         <span
           aria-hidden
           data-testid="handoff-badge"
-          style={{ width: badgeSize, height: badgeSize }}
+          style={{ "--badge-size": `${badgeSize}px` } as React.CSSProperties}
           className={cn(
-            "absolute -end-0.5 -bottom-0.5 flex items-center justify-center rounded-full ring-2 ring-surface",
+            "absolute -end-0.5 -bottom-0.5 flex size-(--badge-size) items-center justify-center rounded-full ring-2 ring-surface",
             badge.className,
           )}
         >

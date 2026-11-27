@@ -37,6 +37,7 @@ from backend.copilot.sdk.launch_env import launch_options
 from backend.data.dynamic_fields import (
     extract_base_field_name,
     get_dynamic_field_description,
+    get_dynamic_field_schema,
     is_dynamic_field,
     is_tool_pin,
 )
@@ -679,6 +680,26 @@ class OrchestratorBlock(Block):
         )
 
     @staticmethod
+    def _dynamic_pin_schema(input_schema: Any, field_name: str) -> dict[str, Any]:
+        """Tool parameter schema for a dynamic (`_#_`/`_$_`/`_@_`) sink pin."""
+        description = get_dynamic_field_description(field_name)
+        base_name = extract_base_field_name(field_name)
+        try:
+            base_schema = input_schema.jsonschema().get("properties", {}).get(base_name)
+        except (KeyError, AttributeError, ValueError):
+            base_schema = None
+        leaf = (
+            get_dynamic_field_schema(base_schema, field_name)
+            if isinstance(base_schema, dict)
+            else None
+        )
+        if leaf is None:
+            return {"type": "string", "description": description}
+        if leaf_description := leaf.get("description"):
+            description = f"{description}: {leaf_description}"
+        return {**leaf, "description": description}
+
+    @staticmethod
     async def _create_block_function_signature(
         sink_node: "Node", links: list["Link"]
     ) -> dict[str, Any]:
@@ -717,11 +738,12 @@ class OrchestratorBlock(Block):
             field_mapping[clean_field_name] = field_name
 
             if is_dynamic:
-                # For dynamic fields, use cleaned name but preserve original in description
-                properties[clean_field_name] = {
-                    "type": "string",
-                    "description": get_dynamic_field_description(field_name),
-                }
+                # For dynamic fields, use cleaned name but preserve original in
+                # description, and take the type from the base field's schema
+                # so the sink block gets the value type it expects.
+                properties[clean_field_name] = OrchestratorBlock._dynamic_pin_schema(
+                    sink_block_input_schema, field_name
+                )
             else:
                 # For regular fields, use the block's schema directly
                 try:

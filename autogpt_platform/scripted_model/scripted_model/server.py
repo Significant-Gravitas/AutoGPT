@@ -12,8 +12,10 @@ from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
 
 from . import chat_completions, embeddings, messages, responses
+from .fake_stripe.fake import FakeStripe
+from .fake_stripe.fake import serves as stripe_serves
 from .holds import Holds
-from .journal import Journal, Request
+from .journal import Journal, Request, fingerprint
 from .planner import Conversation, Plan, Reply, plan
 from .scripts import ScriptError
 from .streaming import Event, sse
@@ -55,11 +57,17 @@ OPENAI = Dialect(
 class ScriptedModelServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], scripts_dir: Path) -> None:
+    def __init__(
+        self,
+        address: tuple[str, int],
+        scripts_dir: Path,
+        stripe: FakeStripe | None = None,
+    ) -> None:
         super().__init__(address, Handler)
         self.scripts_dir = scripts_dir
         self.journal = Journal()
         self.holds = Holds()
+        self.stripe = stripe or FakeStripe.from_env()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -78,12 +86,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         url = urlparse(self.path)
-        if url.path == "/healthz":
+        if stripe_serves(url.path):
+            self._serve_stripe()
+        elif url.path == "/healthz":
             self._send_json(HTTPStatus.OK, {"ok": True})
         elif url.path == JOURNAL_PATH:
             query = {key: values[-1] for key, values in parse_qs(url.query).items()}
             entries = self.model_server.journal.find(
-                script=query.get("script"), nonce=query.get("nonce")
+                script=query.get("script"),
+                nonce=query.get("nonce"),
+                credential=query.get("credential"),
             )
             self._send_json(HTTPStatus.OK, {"entries": entries})
         elif url.path.endswith("/api/hello"):
@@ -94,7 +106,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         url = urlparse(self.path)
         path = url.path
-        if path == RELEASE_PATH:
+        if stripe_serves(path):
+            self._serve_stripe()
+        elif path == RELEASE_PATH:
             self._read_body()
             self._release(parse_qs(url.query).get("nonce", [""])[-1])
         elif path.endswith("/messages/count_tokens"):
@@ -111,6 +125,28 @@ class Handler(BaseHTTPRequestHandler):
             self._structured_response()
         else:
             self._unexpected()
+
+    def do_DELETE(self) -> None:
+        if stripe_serves(urlparse(self.path).path):
+            self._serve_stripe()
+        else:
+            self._unexpected()
+
+    def _serve_stripe(self) -> None:
+        """The fake Stripe's API, checkout pages and journey controls."""
+        url = urlparse(self.path)
+        body = self._read_body() if self.command in ("POST", "DELETE") else b""
+        headers = {name.lower(): value for name, value in self.headers.items()}
+        response = self.model_server.stripe.handle(
+            self.command, url.path, url.query, body, headers
+        )
+        self.send_response(response.status)
+        self.send_header("Content-Type", response.content_type)
+        if response.location:
+            self.send_header("Location", response.location)
+        self.send_header("Content-Length", str(len(response.body)))
+        self.end_headers()
+        self.wfile.write(response.body)
 
     def _embedding_response(self) -> None:
         body = self._read_json()
@@ -131,7 +167,7 @@ class Handler(BaseHTTPRequestHandler):
 
         model = str(body["model"])
         entry = self.model_server.journal.record_side_call(
-            Request("openai-embeddings", self.path), model, ""
+            Request("openai-embeddings", self.path, self._credential()), model, ""
         )
         logger.info("openai-embeddings side call (%s)", model)
         self._send_json(HTTPStatus.OK, payload)
@@ -156,7 +192,9 @@ class Handler(BaseHTTPRequestHandler):
 
         model = str(body["model"])
         entry = self.model_server.journal.record_side_call(
-            Request("openai-responses", self.path), model, output_text
+            Request("openai-responses", self.path, self._credential()),
+            model,
+            output_text,
         )
         logger.info("openai-responses side call (%s)", model)
         self._send_json(HTTPStatus.OK, payload)
@@ -208,7 +246,16 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json(HTTPStatus.BAD_REQUEST, dialect.error(reason))
 
     def _request(self, dialect: Dialect) -> Request:
-        return Request(dialect.name, self.path)
+        return Request(dialect.name, self.path, self._credential())
+
+    def _credential(self) -> str | None:
+        """The API key the request presented: Anthropic's ``x-api-key``, or a
+        bearer token (OpenAI clients, the CLI's auth token)."""
+        key = self.headers.get("x-api-key") or ""
+        authorization = self.headers.get("Authorization") or ""
+        if not key and authorization.lower().startswith("bearer "):
+            key = authorization[len("bearer ") :].strip()
+        return fingerprint(key) if key else None
 
     def _stream(self, events: Iterator[Event], entry: dict[str, Any]) -> None:
         self.send_response(HTTPStatus.OK)
@@ -275,7 +322,7 @@ class Handler(BaseHTTPRequestHandler):
         return b"".join(parts)
 
     def _unexpected(self) -> None:
-        if self.command in ("POST", "PUT", "PATCH"):
+        if self.command in ("POST", "PUT", "PATCH", "DELETE"):
             # Unread, the body would be taken for the next request's start.
             self._read_body()
         logger.warning("unexpected request: %s %s", self.command, self.path)

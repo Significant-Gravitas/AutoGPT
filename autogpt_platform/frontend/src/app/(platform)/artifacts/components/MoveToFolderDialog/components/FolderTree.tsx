@@ -145,7 +145,8 @@ export function FolderTree({
               />
             </span>
             <Text
-              variant="small-medium"
+              variant="small"
+              weight="medium"
               as="span"
               className="min-w-0 truncate"
               title={row.name}

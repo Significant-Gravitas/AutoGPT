@@ -5,21 +5,19 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/molecules/Accordion/Accordion";
+import { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
+import { CredentialField } from "./helpers";
 import {
-  CredentialsMetaInput,
-  CredentialsType,
-} from "@/lib/autogpt-server-api/types";
-import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import { useContext, useEffect, useMemo, useRef } from "react";
-import {
-  areSystemCredentialProvidersLoading,
-  CredentialField,
-  findSavedCredentialByProviderAndType,
-  hasMissingRequiredSystemCredentials,
-  splitCredentialFieldsBySystem,
-} from "./helpers";
+  PickerField,
+  useCredentialsGroupedView,
+} from "./useCredentialsGroupedView";
+import { ProviderKeyNotice } from "./components/ProviderKeyNotice";
 import { SlidersHorizontalIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+
+const SYSTEM_SECTION = "system-credentials";
+const NO_NODE_CREDENTIALS: CredentialsMetaInput[] = [];
+const NO_CLEARED_FIELDS: string[] = [];
 
 type Props = {
   credentialFields: CredentialField[];
@@ -27,6 +25,14 @@ type Props = {
   inputCredentials: Record<string, CredentialsMetaInput | undefined>;
   inputValues: Record<string, any>;
   onCredentialChange: (key: string, value?: CredentialsMetaInput) => void;
+  /** Called instead of onCredentialChange for a key the view picks itself. */
+  onAutoSelect?: (key: string, value: CredentialsMetaInput) => void;
+  /** The credentials picked on the workflow's steps; a field starts on the user's own key among them. */
+  nodeCredentials?: CredentialsMetaInput[];
+  /** The steps' keys couldn't be read: a field the user has a key of their own for is left for them to pick. */
+  nodeCredentialsUnknown?: boolean;
+  /** Fields the user set to none: nothing fills them again. */
+  clearedFields?: string[];
 };
 
 export function CredentialsGroupedView({
@@ -35,118 +41,68 @@ export function CredentialsGroupedView({
   inputCredentials,
   inputValues,
   onCredentialChange,
+  onAutoSelect,
+  nodeCredentials = NO_NODE_CREDENTIALS,
+  nodeCredentialsUnknown = false,
+  clearedFields = NO_CLEARED_FIELDS,
 }: Props) {
-  const allProviders = useContext(CredentialsProvidersContext);
-
-  const { userCredentialFields, systemCredentialFields } = useMemo(
-    () => splitCredentialFieldsBySystem(credentialFields, allProviders),
-    [credentialFields, allProviders],
-  );
-
-  const hasSystemCredentials = systemCredentialFields.length > 0;
-  const hasUserCredentials = userCredentialFields.length > 0;
-  const hasAttemptedAutoSelect = useRef(false);
-
-  const isLoadingProviders = useMemo(
-    () =>
-      areSystemCredentialProvidersLoading(systemCredentialFields, allProviders),
-    [systemCredentialFields, allProviders],
-  );
-
-  const hasMissingSystemCredentials = useMemo(() => {
-    if (isLoadingProviders) return false;
-    return hasMissingRequiredSystemCredentials(
-      systemCredentialFields,
-      requiredCredentials,
-      inputCredentials,
-      allProviders,
-    );
-  }, [
-    isLoadingProviders,
-    systemCredentialFields,
-    requiredCredentials,
-    inputCredentials,
-    allProviders,
-  ]);
-
-  useEffect(() => {
-    if (hasAttemptedAutoSelect.current) return;
-    if (!hasSystemCredentials) return;
-    if (isLoadingProviders) return;
-
-    for (const [key, schema] of systemCredentialFields) {
-      const alreadySelected = inputCredentials?.[key];
-      const isRequired = requiredCredentials.has(key);
-      if (alreadySelected || !isRequired) continue;
-
-      const providerNames = schema.credentials_provider || [];
-      const credentialTypes = schema.credentials_types || [];
-      const requiredScopes = schema.credentials_scopes;
-      const discriminatorValues = schema.discriminator_values;
-      const savedCredential = findSavedCredentialByProviderAndType(
-        providerNames,
-        credentialTypes,
-        requiredScopes,
-        allProviders,
-        discriminatorValues,
-      );
-
-      if (savedCredential) {
-        onCredentialChange(key, {
-          id: savedCredential.id,
-          provider: savedCredential.provider,
-          type: savedCredential.type as CredentialsType,
-          title: savedCredential.title,
-        });
-      }
-    }
-
-    hasAttemptedAutoSelect.current = true;
-  }, [
-    allProviders,
-    hasSystemCredentials,
-    systemCredentialFields,
+  const {
+    visibleFields,
+    collapsedFields,
+    hasMissingSystemCredentials,
+    handleFieldChange,
+    handleSystemSectionChange,
+  } = useCredentialsGroupedView({
+    credentialFields,
     requiredCredentials,
     inputCredentials,
     onCredentialChange,
-    isLoadingProviders,
-  ]);
+    onAutoSelect,
+    nodeCredentials,
+    nodeCredentialsUnknown,
+    clearedFields,
+  });
+
+  function renderField({ key, schema, pickerSchema }: PickerField) {
+    const isOptional = !requiredCredentials.has(key);
+    if (!pickerSchema) {
+      return (
+        <ProviderKeyNotice
+          key={key}
+          providers={schema.credentials_provider ?? []}
+          isOptional={isOptional}
+        />
+      );
+    }
+    return (
+      <CredentialsInput
+        key={key}
+        schema={pickerSchema}
+        selectedCredentials={inputCredentials?.[key]}
+        onSelectCredentials={(value) => {
+          handleFieldChange(key, value);
+        }}
+        siblingInputs={inputValues}
+        isOptional={isOptional}
+        autoSelect={!clearedFields.includes(key)}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {hasUserCredentials && (
-        <>
-          {userCredentialFields.map(
-            ([key, inputSubSchema]: CredentialField) => {
-              const selectedCred = inputCredentials?.[key];
+      {visibleFields.map(renderField)}
 
-              return (
-                <CredentialsInput
-                  key={key}
-                  schema={
-                    { ...inputSubSchema, discriminator: undefined } as any
-                  }
-                  selectedCredentials={selectedCred}
-                  onSelectCredentials={(value) => {
-                    onCredentialChange(key, value);
-                  }}
-                  siblingInputs={inputValues}
-                  isOptional={!requiredCredentials.has(key)}
-                />
-              );
-            },
-          )}
-        </>
-      )}
-
-      {hasSystemCredentials && (
+      {collapsedFields.length > 0 && (
         <Accordion
           type="single"
           collapsible
-          className={hasUserCredentials ? "mt-4" : ""}
+          onValueChange={handleSystemSectionChange}
+          variant="plain"
+          className={visibleFields.length > 0 ? "mt-4" : ""}
         >
-          <AccordionItem value="system-credentials" className="border-none">
-            <AccordionTrigger className="py-2 text-body text-foreground-tertiary hover:no-underline">
+          <AccordionItem value={SYSTEM_SECTION}>
+            <AccordionTrigger className="text-body text-foreground-tertiary">
               <div className="flex items-center gap-1">
                 <Icon icon={SlidersHorizontalIcon} size={16} /> System
                 credentials
@@ -157,26 +113,7 @@ export function CredentialsGroupedView({
             </AccordionTrigger>
             <AccordionContent>
               <div className="space-y-6 px-1 pt-2">
-                {systemCredentialFields.map(
-                  ([key, inputSubSchema]: CredentialField) => {
-                    const selectedCred = inputCredentials?.[key];
-
-                    return (
-                      <CredentialsInput
-                        key={key}
-                        schema={
-                          { ...inputSubSchema, discriminator: undefined } as any
-                        }
-                        selectedCredentials={selectedCred}
-                        onSelectCredentials={(value) => {
-                          onCredentialChange(key, value);
-                        }}
-                        siblingInputs={inputValues}
-                        isOptional={!requiredCredentials.has(key)}
-                      />
-                    );
-                  },
-                )}
+                {collapsedFields.map(renderField)}
               </div>
             </AccordionContent>
           </AccordionItem>

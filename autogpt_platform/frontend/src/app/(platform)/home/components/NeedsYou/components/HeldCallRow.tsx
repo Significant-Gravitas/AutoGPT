@@ -69,7 +69,12 @@ export function HeldCallRow({
               onClick={onOpen}
               className="line-clamp-2 min-w-0 rounded-md text-left [overflow-wrap:anywhere] text-foreground-strong hover:opacity-80 focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none"
             >
-              <Text variant="body-medium" as="span" className="text-pretty">
+              <Text
+                variant="body"
+                weight="medium"
+                as="span"
+                className="text-pretty"
+              >
                 <HeadlineText item={approval} />
               </Text>
             </button>
@@ -132,6 +137,7 @@ export function HeldCallRow({
           <Button
             variant="primary"
             size="icon-sm"
+            shape="soft"
             leadingIcon={Tick02Icon}
             loading={status === "approving"}
             disabled={busy}
@@ -152,6 +158,7 @@ export function HeldCallRow({
         <Button
           variant={confirmReject ? "destructive" : "icon"}
           size="icon-sm"
+          shape="soft"
           leadingIcon={Cancel01Icon}
           loading={status === "rejecting"}
           disabled={busy}
@@ -180,7 +187,13 @@ function Tag({
 }) {
   return (
     <span className={`shrink-0 rounded px-1.5 py-px ${className}`}>
-      <Text variant="small-medium" as="span" tone={tone} className="block">
+      <Text
+        variant="small"
+        weight="medium"
+        as="span"
+        tone={tone}
+        className="block"
+      >
         {children}
       </Text>
     </span>

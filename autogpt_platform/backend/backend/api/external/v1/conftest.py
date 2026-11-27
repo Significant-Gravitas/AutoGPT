@@ -8,7 +8,7 @@ from httpx import ASGITransport, AsyncClient
 from prisma.enums import APIKeyPermission, APIKeyStatus
 from prisma.models import OAuthAccessToken, OAuthApplication
 
-from backend.api.external import rate_limit
+from backend.api.external import middleware, rate_limit
 from backend.api.external.fastapi_app import external_api
 from backend.api.external.v1.routes import UserInfoResponse
 from backend.data.auth import api_key
@@ -119,7 +119,24 @@ def v1_clock(mocker):
 
 
 @pytest.fixture
-async def v1_client(mocker, v1_auth_storage, v1_clock):
+def v1_admission(mocker) -> AsyncMock:
+    """The API-key auth admission limiter, patched at the names middleware.py
+    calls: it reserves nothing and never throttles, so a request carrying a
+    key doesn't reach Redis. A test that wants a throttle sets the returned
+    mock's side_effect."""
+    mocker.patch.object(
+        middleware, "refund_api_key_validate_rate_limit", new_callable=AsyncMock
+    )
+    return mocker.patch.object(
+        middleware,
+        "enforce_api_key_validate_rate_limit",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+
+@pytest.fixture
+async def v1_client(mocker, v1_auth_storage, v1_clock, v1_admission):
     async def user_by_id(user_id):
         return UserInfoResponse(
             id=user_id, name="Test user", email="test@example.com", timezone="UTC"

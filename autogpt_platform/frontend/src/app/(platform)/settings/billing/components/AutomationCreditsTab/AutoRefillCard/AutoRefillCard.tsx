@@ -42,7 +42,7 @@ export function AutoRefillCard({ index = 0 }: Props) {
           <Icon icon={ReloadIcon} size={20} />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
-          <Text variant="body-medium" as="span">
+          <Text variant="body" weight="medium" as="span">
             Auto-refill
           </Text>
           <Text variant="body" as="span" tone="muted">

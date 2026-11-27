@@ -63,7 +63,7 @@ function Swatch({ name, detail }: SwatchProps) {
         style={{ backgroundColor: `rgb(var(--color-${name}))` }}
       />
       <div className="min-w-0 space-y-1">
-        <Text variant="body-medium" className="font-mono">
+        <Text variant="body" weight="medium" className="font-mono">
           {name}
         </Text>
         <Text variant="small" tone="muted" className="font-mono">

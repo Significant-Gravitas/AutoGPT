@@ -14,7 +14,12 @@ export function ErrorView({ message }: Props) {
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-error-surface text-error-foreground">
           <Icon icon={Unlink01Icon} size={40} />
         </div>
-        <Text variant="body-medium" tone="muted" className="text-center">
+        <Text
+          variant="body"
+          weight="medium"
+          tone="muted"
+          className="text-center"
+        >
           {message}
         </Text>
         <Text variant="small" tone="muted" className="text-center">

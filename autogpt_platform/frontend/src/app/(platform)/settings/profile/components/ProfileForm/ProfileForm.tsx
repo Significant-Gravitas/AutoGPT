@@ -24,6 +24,7 @@ import {
   TextStrikethroughIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   formState: ProfileFormState;
@@ -33,8 +34,6 @@ interface Props {
     value: ProfileFormState[K],
   ) => void;
 }
-
-const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 
 interface MarkdownAction {
   label: string;
@@ -155,11 +154,15 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
     <motion.div
       initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.32, ease: EASE_OUT, delay: 0.06 }}
+      transition={{
+        duration: duration.slow,
+        ease: ease.emphasized,
+        delay: 0.06,
+      }}
       className="flex w-full flex-col gap-2"
     >
       <div className="flex items-center justify-between px-4">
-        <Text variant="body-medium" as="span">
+        <Text variant="body" weight="medium" as="span">
           Bio
         </Text>
         <Text
@@ -189,7 +192,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => applyAction(action)}
               disabled={isPreview}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-foreground-secondary transition-colors hover:bg-surface-hover hover:text-foreground-base"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-pill text-foreground-secondary transition-colors hover:bg-surface-hover hover:text-foreground-base"
             >
               {action.icon}
             </button>
@@ -199,7 +202,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
           type="button"
           aria-pressed={isPreview}
           onClick={() => setIsPreview((v) => !v)}
-          className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-caption font-medium text-foreground-body transition-colors hover:bg-surface-hover hover:text-foreground-base"
+          className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-pill px-3 text-caption font-medium text-foreground-body transition-colors hover:bg-surface-hover hover:text-foreground-base"
         >
           {isPreview ? (
             <Icon icon={EyeClosedIcon} size={14} />

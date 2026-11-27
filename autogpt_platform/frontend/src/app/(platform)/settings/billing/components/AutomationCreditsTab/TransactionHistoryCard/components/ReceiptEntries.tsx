@@ -63,7 +63,7 @@ export function ReceiptEntries({ transaction }: Props) {
           <Text variant="small" tone="secondary">
             {referenceLabel(transaction)}
           </Text>
-          <Text variant="small-mono" as="code" className="break-all">
+          <Text variant="small" mono as="code" className="break-all">
             {reference}
           </Text>
         </div>
@@ -106,7 +106,11 @@ function ChargeEntries({ transaction }: Props) {
                   <Text variant="small">{chargeLabel(charge.charge_type)}</Text>
                 </td>
                 <td className="py-2 text-right align-top">
-                  <TransactionAmount amount={charge.amount} variant="small" />
+                  <TransactionAmount
+                    amount={charge.amount}
+                    variant="small"
+                    weight="normal"
+                  />
                 </td>
               </tr>
             );

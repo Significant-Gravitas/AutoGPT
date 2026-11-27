@@ -22,12 +22,17 @@ afterEach(() => {
 });
 
 describe("Button compact sizes", () => {
-  it("renders xs as a 28px rounded-rectangle chip", () => {
-    renderButton({ variant: "secondary", size: "xs", children: "Chat" });
+  it("renders xs with the sharp shape as a 28px rounded-rectangle chip", () => {
+    renderButton({
+      variant: "secondary",
+      size: "xs",
+      shape: "sharp",
+      children: "Chat",
+    });
     const el = screen.getByRole("button", { name: "Chat" });
     expect(el.className).toContain("h-7");
     expect(el.className).toContain("rounded-md");
-    expect(el.className).not.toContain("rounded-full");
+    expect(el.className).not.toContain("rounded-pill");
   });
 
   it("softens the outline border at xs", () => {
@@ -88,7 +93,7 @@ describe("Button compact variants", () => {
     expect(el.children).toHaveLength(2);
     expect(el.querySelector(".contents")).toBeNull();
     expect(el.className).toContain("rounded-md");
-    expect(el.className).not.toContain("rounded-full");
+    expect(el.className).not.toContain("rounded-pill");
     expect(el.className).toContain("border-border-base");
     expect(el.className).toContain("h-9 px-4 py-2");
     expect(el.className).toContain("space-x-3");
@@ -209,15 +214,20 @@ describe("Button textSize", () => {
   });
 });
 
-describe("Button quiet variants, row and inline sizes, and shape", () => {
+describe("Button quiet tones, row and inline sizes, and shape", () => {
   it.each([
-    ["ghost-muted", "text-foreground-tertiary", "hover:text-foreground-body"],
-    ["ghost-subtle", "text-foreground-subtle", "hover:text-foreground-body"],
-    ["ghost-danger", "text-foreground-tertiary", "hover:text-error"],
-  ] as const)("renders %s with a ghost box", (variant, rest, hover) => {
-    renderButton({ variant, size: "icon-xs", "aria-label": variant });
+    ["quiet", "text-foreground-tertiary", "hover:text-foreground-body"],
+    ["quiet-subtle", "text-foreground-subtle", "hover:text-foreground-body"],
+    ["quiet-danger", "text-foreground-tertiary", "hover:text-error"],
+  ] as const)("renders a ghost with the %s tone", (tone, rest, hover) => {
+    renderButton({
+      variant: "ghost",
+      tone,
+      size: "icon-xs",
+      "aria-label": tone,
+    });
     const classes = screen
-      .getByRole("button", { name: variant })
+      .getByRole("button", { name: tone })
       .className.split(" ");
     expect(classes).toEqual(
       expect.arrayContaining([
@@ -251,20 +261,58 @@ describe("Button quiet variants, row and inline sizes, and shape", () => {
   });
 
   it.each([
-    ["pill", "rounded-full"],
+    ["pill", "rounded-pill"],
     ["rounded", "rounded-xl"],
     ["soft", "rounded-lg"],
-  ] as const)("renders shape %s over the size's radius", (shape, cls) => {
+    ["sharp", "rounded-md"],
+  ] as const)("renders shape %s as the only radius", (shape, cls) => {
     renderButton({ variant: "primary", size: "xs", shape, children: "Go" });
     const classes = screen
       .getByRole("button", { name: "Go" })
       .className.split(" ");
-    expect(classes).toContain(cls);
-    expect(classes).not.toContain("rounded-md");
+    expect(classes.filter((name) => name.startsWith("rounded"))).toEqual([cls]);
   });
 
-  it("keeps a ghost-* variant's look while loading", () => {
-    renderButton({ variant: "ghost-muted", loading: true, children: "Saving" });
+  it.each([
+    ["primary", "xs", "rounded-pill"],
+    ["ghost", "icon-sm", "rounded-pill"],
+    ["toggle", "small", "rounded-md"],
+    ["floating", "icon-xs", "rounded-md"],
+    ["link", "inline", "rounded-sm"],
+  ] as const)("gives %s at %s the default corner %s", (variant, size, cls) => {
+    renderButton({ variant, size, children: "Go" });
+    const classes = screen
+      .getByRole("button", { name: "Go" })
+      .className.split(" ");
+    expect(classes.filter((name) => name.startsWith("rounded"))).toEqual([cls]);
+  });
+
+  it("keeps the primary corner while loading", () => {
+    renderButton({ variant: "toggle", loading: true, children: "Saving" });
+    const classes = screen
+      .getByRole("button", { name: "Saving" })
+      .className.split(" ");
+    expect(classes).toContain("rounded-pill");
+  });
+
+  it("fades only the variants that fade when disabled", () => {
+    renderButton({ variant: "primary", disabled: true, children: "Primary" });
+    renderButton({ variant: "link", disabled: true, children: "Link" });
+    expect(
+      screen.getByRole("button", { name: "Primary" }).className,
+    ).not.toMatch(/disabled:opacity/);
+    expect(screen.getByRole("button", { name: "Link" }).className).toContain(
+      "disabled:opacity-50",
+    );
+  });
+
+  it("keeps a quiet ghost's look while loading", () => {
+    renderButton({
+      variant: "ghost",
+      tone: "quiet",
+      loading: true,
+      children: "Saving",
+    });
     const classes = screen
       .getByRole("button", { name: "Saving" })
       .className.split(" ");
@@ -304,11 +352,6 @@ describe("Button fill variants, tone and icon-2xs", () => {
       ],
       "shadow-sm",
     ],
-    [
-      "ghost-warning",
-      ["text-warning-foreground", "hover:bg-warning-surface"],
-      "text-foreground-base",
-    ],
   ] as const)(
     "renders the %s variant's own classes",
     (variant, defining, conflicting) => {
@@ -320,6 +363,27 @@ describe("Button fill variants, tone and icon-2xs", () => {
       expect(classes).not.toContain(conflicting);
     },
   );
+
+  it("renders a ghost with the quiet-warning tone on a warning hover", () => {
+    renderButton({
+      variant: "ghost",
+      tone: "quiet-warning",
+      size: "small",
+      children: "Run anyway",
+    });
+    const classes = screen
+      .getByRole("button", { name: "Run anyway" })
+      .className.split(" ");
+    expect(classes).toEqual(
+      expect.arrayContaining([
+        "text-warning-foreground",
+        "hover:bg-warning-surface",
+        "hover:border-warning-surface",
+      ]),
+    );
+    expect(classes).not.toContain("text-foreground-base");
+    expect(classes).not.toContain("hover:bg-surface-muted");
+  });
 
   it.each(Object.entries(tones).filter(([tone]) => tone !== "base"))(
     "replaces the variant's text colour with the %s tone",
@@ -340,7 +404,8 @@ describe("Button fill variants, tone and icon-2xs", () => {
 
   it("renders icon-2xs as a 24px icon-only button", () => {
     renderButton({
-      variant: "ghost-subtle",
+      variant: "ghost",
+      tone: "quiet-subtle",
       size: "icon-2xs",
       leadingIcon: PencilEdit02Icon,
       "aria-label": "Rename",

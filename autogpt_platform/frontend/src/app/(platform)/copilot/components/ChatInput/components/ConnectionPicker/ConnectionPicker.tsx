@@ -78,12 +78,14 @@ export function ConnectionPicker({
       <span
         aria-label="AI connections unavailable"
         className={cn(
-          "inline-flex h-9 items-center rounded-full border border-error/20 bg-error/10 px-2.5",
+          "inline-flex h-9 items-center rounded-pill border border-error/20 bg-error/10 px-2.5",
           className,
         )}
       >
         <Text
-          variant="small-medium-tight"
+          variant="small"
+          weight="medium"
+          leading="4"
           as="span"
           tone="error"
           className="inline-flex items-center gap-1.5"
@@ -101,13 +103,15 @@ export function ConnectionPicker({
         href="/settings/integrations"
         aria-label="Set up an AI connection"
         className={cn(
-          "inline-flex h-9 items-center gap-1.5 rounded-full border border-border-base bg-surface-hover px-2.5 text-foreground-base transition-colors hover:bg-surface-hover/80",
+          "inline-flex h-9 items-center gap-1.5 rounded-pill border border-border-base bg-surface-hover px-2.5 text-foreground-base transition-colors hover:bg-surface-hover/80",
           className,
         )}
       >
         <Icon icon={AlertCircleIcon} size={14} />
         <Text
-          variant="small-medium-tight"
+          variant="small"
+          weight="medium"
+          leading="4"
           as="span"
           tone="inherit"
           className="hidden sm:inline"
@@ -160,7 +164,8 @@ export function ConnectionPicker({
     <PopoverTrigger asChild>
       <Button
         type="button"
-        variant={showsTier ? "ghost-muted" : "ghost"}
+        variant="ghost"
+        tone={showsTier ? "quiet" : undefined}
         size={showsTier ? "icon-sm" : "small"}
         shape={showsTier ? "pill" : undefined}
         withTooltip={false}
@@ -210,7 +215,7 @@ export function ConnectionPicker({
       <PopoverContent
         align="end"
         className={cn(
-          "max-h-[var(--radix-popover-content-available-height)] w-[24rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border-border-base bg-surface-muted p-3 pt-4 text-foreground-strong shadow-lg",
+          "max-h-[var(--radix-popover-content-available-height)] w-[24rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl bg-surface-muted p-3 pt-4 shadow-lg",
           showMaxUpgrade && "bg-surface",
         )}
       >

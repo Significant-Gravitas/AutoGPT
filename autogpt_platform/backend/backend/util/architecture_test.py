@@ -1379,8 +1379,11 @@ _ORG_LEDGER_CALL_SITES: dict[str, tuple[int, str]] = {
         "picks the low-balance alert only, after the charge has landed",
     ),
     "executor/billing.py charge_reconciled_usage spend_org_credits": (1, _PINNED),
-    "executor/billing.py charge_usage get_org_credits": (1, _PINNED),
     "executor/billing.py charge_usage spend_org_credits": (2, _PINNED),
+    "executor/billing.py redispatch_reconcile_baseline spend_org_credits": (
+        1,
+        _PINNED,
+    ),
     "executor/manager.py _get_execution_credit_balance get_org_credits": (
         1,
         _PINNED,
