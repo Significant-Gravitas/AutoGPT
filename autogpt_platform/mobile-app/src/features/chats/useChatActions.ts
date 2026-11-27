@@ -18,39 +18,44 @@ import { queryClient, sessionGeneration } from "@/lib/session";
 
 import {
   chatActionOptions,
+  restoreSession,
   validateTitle,
   withoutSession,
   withPinned,
   withRenamed,
 } from "./chatActions";
 
+const pendingActions = new Map<number, Set<string>>();
+
 /** The long-press menu on a chat: rename, pin or delete it. */
 export function useChatActions() {
   const navigation = useNavigationContainerRef();
-  const [renameTarget, setRenameTarget] = useState<SessionSummary | null>(null);
+  const [rename, setRename] = useState<{ chat: SessionSummary; generation: number } | null>(null);
   const { toast, show } = useToast();
 
   async function openMenu(session: SessionSummary) {
     const startedIn = sessionGeneration();
+    if (pendingActions.get(startedIn)?.has(session.id)) return;
     tapMenu();
     const action = await chooseAction(chatTitle(session), chatActionOptions(session));
     if (startedIn !== sessionGeneration()) return;
-    if (action === "rename") setRenameTarget(session);
+    if (action === "rename") setRename({ chat: session, generation: startedIn });
     if (action === "pin") void togglePin(session);
     if (action === "delete") confirmDelete(session);
   }
 
   function closeRename() {
-    setRenameTarget(null);
+    setRename(null);
   }
 
   function submitRename(text: string) {
-    if (!renameTarget) return null;
+    if (!rename || rename.generation !== sessionGeneration()) return null;
     const result = validateTitle(text);
     if ("error" in result) return result.error;
-    const sessionID = renameTarget.id;
-    setRenameTarget(null);
+    const sessionID = rename.chat.id;
+    setRename(null);
     void mutateList(
+      sessionID,
       (list) => withRenamed(list, sessionID, result.title),
       () => renameSession(sessionID, result.title),
       "Couldn't update this chat. Try again.",
@@ -61,6 +66,7 @@ export function useChatActions() {
   function togglePin(session: SessionSummary) {
     const isPinned = !session.is_pinned;
     return mutateList(
+      session.id,
       (list) => withPinned(list, session.id, isPinned),
       () => setSessionPinned(session.id, isPinned),
       "Couldn't update this chat. Try again.",
@@ -84,6 +90,7 @@ export function useChatActions() {
   async function removeChat(sessionID: string) {
     const startedIn = sessionGeneration();
     const isDeleted = await mutateList(
+      sessionID,
       (list) => withoutSession(list, sessionID),
       () => deleteSession(sessionID),
       "Couldn't delete this chat. Try again.",
@@ -101,33 +108,48 @@ export function useChatActions() {
     queryClient.removeQueries({ queryKey: chatKeys.session(sessionID) });
   }
 
-  // The list changes at once; a failed request puts it back as it was.
   async function mutateList(
+    sessionID: string,
     patch: (list: SessionList) => SessionList,
     request: () => Promise<unknown>,
     errorMessage: string,
   ) {
     const startedIn = sessionGeneration();
-    await queryClient.cancelQueries({ queryKey: chatKeys.sessions });
-    if (startedIn !== sessionGeneration()) return false;
-    const previous = queryClient.getQueryData<SessionList>(chatKeys.sessions);
-    queryClient.setQueryData<SessionList>(chatKeys.sessions, (list) =>
-      list ? patch(list) : list,
-    );
+    const pending = pendingActions.get(startedIn) ?? new Set<string>();
+    if (pending.has(sessionID)) return false;
+    pending.add(sessionID);
+    pendingActions.set(startedIn, pending);
+    let previous: SessionSummary | undefined;
+    let optimistic: SessionSummary | undefined;
     try {
+      await queryClient.cancelQueries({ queryKey: chatKeys.sessions });
+      if (startedIn !== sessionGeneration()) return false;
+      const list = queryClient.getQueryData<SessionList>(chatKeys.sessions);
+      if (list) {
+        previous = list.sessions.find((session) => session.id === sessionID);
+        const updated = patch(list);
+        optimistic = updated.sessions.find((session) => session.id === sessionID);
+        queryClient.setQueryData(chatKeys.sessions, updated);
+      }
       await request();
       return true;
     } catch {
       if (startedIn !== sessionGeneration()) return false;
-      queryClient.setQueryData(chatKeys.sessions, previous);
+      queryClient.setQueryData<SessionList>(chatKeys.sessions, (list) =>
+        list && previous ? restoreSession(list, previous, optimistic) : list,
+      );
       show({ message: errorMessage, tone: "error" });
       return false;
     } finally {
-      if (startedIn === sessionGeneration()) {
-        void queryClient.invalidateQueries({ queryKey: chatKeys.sessions });
+      pending.delete(sessionID);
+      if (pending.size === 0) {
+        pendingActions.delete(startedIn);
+        if (startedIn === sessionGeneration()) {
+          void queryClient.invalidateQueries({ queryKey: chatKeys.sessions });
+        }
       }
     }
   }
 
-  return { openMenu, renameTarget, closeRename, submitRename, toast };
+  return { openMenu, renameTarget: rename?.chat ?? null, closeRename, submitRename, toast };
 }

@@ -67,6 +67,30 @@ test("a late rollback cannot put the prior account's chats back in the cache", a
   expect(queryClient.getQueryData(chatKeys.sessions)).toEqual(nextAccount);
 });
 
+test("a failed pin leaves a successful pin on another chat in place", async () => {
+  let fail = () => {};
+  jest.mocked(chooseAction).mockResolvedValue("pin");
+  jest.mocked(setSessionPinned)
+    .mockImplementationOnce(
+      () => new Promise((_resolve, reject) => {
+        fail = () => reject(new Error("request failed"));
+      }),
+    )
+    .mockResolvedValueOnce({ status: "ok" });
+  const otherChat = { ...chat, id: "chat-b", title: "Second chat" };
+  queryClient.setQueryData(chatKeys.sessions, { sessions: [chat, otherChat], total: 2 });
+  const { result } = await renderHook(useChatActions);
+  await act(() => result.current.openMenu(chat));
+  await act(() => result.current.openMenu(otherChat));
+  expect(setSessionPinned).toHaveBeenNthCalledWith(2, otherChat.id, true);
+  await act(async () => fail());
+
+  expect(queryClient.getQueryData(chatKeys.sessions)).toEqual({
+    sessions: [{ ...otherChat, is_pinned: true }, chat],
+    total: 2,
+  });
+});
+
 test.each(["chat-a", "chat-b"])("checks the active chat %s after deleting", async (activeID) => {
   let finish = () => {};
   jest.mocked(chooseAction).mockResolvedValue("delete");

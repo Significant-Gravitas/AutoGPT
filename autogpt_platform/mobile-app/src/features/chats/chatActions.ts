@@ -26,7 +26,7 @@ export function validateTitle(text: string): { title: string } | { error: string
 export function withRenamed(
   list: SessionList,
   sessionID: string,
-  title: string,
+  title: string | null,
 ): SessionList {
   return {
     ...list,
@@ -52,6 +52,30 @@ export function withoutSession(list: SessionList, sessionID: string): SessionLis
   const sessions = list.sessions.filter((session) => session.id !== sessionID);
   const removed = list.sessions.length - sessions.length;
   return { sessions, total: Math.max(0, list.total - removed) };
+}
+
+export function restoreSession(
+  list: SessionList,
+  previous: SessionSummary,
+  optimistic: SessionSummary | undefined,
+): SessionList {
+  const current = list.sessions.find((session) => session.id === previous.id);
+  if (!optimistic) {
+    if (current) return list;
+    const sessions = [...list.sessions, previous].sort(compareSessions);
+    return { ...list, sessions, total: list.total + 1 };
+  }
+  if (!current) return list;
+  if (previous.title !== optimistic.title && current.title === optimistic.title) {
+    return withRenamed(list, previous.id, previous.title);
+  }
+  if (
+    previous.is_pinned !== optimistic.is_pinned &&
+    current.is_pinned === optimistic.is_pinned
+  ) {
+    return withPinned(list, previous.id, previous.is_pinned);
+  }
+  return list;
 }
 
 function compareSessions(a: SessionSummary, b: SessionSummary) {
