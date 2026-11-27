@@ -13,8 +13,8 @@ export function PreferencesSkeleton() {
       <NotificationsSkeleton />
 
       <div className="flex items-center justify-end gap-2 px-4">
-        <Skeleton className="h-12 w-32 rounded-full" />
-        <Skeleton className="h-12 w-28 rounded-full" />
+        <Skeleton className="h-12 w-32 rounded-pill" />
+        <Skeleton className="h-12 w-28 rounded-pill" />
       </div>
     </div>
   );
@@ -37,7 +37,7 @@ function AccountSkeleton() {
         </div>
         <div className="flex items-center justify-between gap-4 px-4 py-4">
           <Skeleton className="h-4 w-20" />
-          <Skeleton className="h-9 w-32 rounded-full" />
+          <Skeleton className="h-9 w-32 rounded-pill" />
         </div>
       </div>
     </div>
@@ -54,8 +54,8 @@ function TimezoneSkeleton() {
             <Skeleton className="h-4 w-4 rounded-full" />
           </div>
           <div className="flex items-center gap-2">
-            <Skeleton className="h-9 w-40 rounded-full" />
-            <Skeleton className="h-7 w-20 rounded-full" />
+            <Skeleton className="h-9 w-40 rounded-pill" />
+            <Skeleton className="h-7 w-20 rounded-pill" />
           </div>
         </div>
       </div>
@@ -86,7 +86,7 @@ function NotificationsSkeleton() {
                 <Skeleton className="h-4 w-56" />
                 <Skeleton className="h-3 w-72" />
               </div>
-              <Skeleton className="h-5 w-9 rounded-full" />
+              <Skeleton className="h-5 w-9 rounded-pill" />
             </div>
           ))}
         </div>

@@ -72,12 +72,12 @@ function TourPlanStepItem({
         <Icon icon={CheckmarkCircle02Icon} size={18} aria-label="completed" />
       </span>
       <div className="min-w-0 flex-1">
-        <Text variant="large-medium-tight">
+        <Text variant="large" weight="medium" leading="6">
           {index + 1}. {step.description}
         </Text>
         <div className="mt-0.5 flex items-center gap-1 text-foreground-tertiary">
           <Icon icon={CubeIcon} size={12} />
-          <Text variant="small-mono-tight" as="p" tone="muted">
+          <Text variant="small" mono leading="4" as="p" tone="muted">
             {step.blockName}
           </Text>
         </div>

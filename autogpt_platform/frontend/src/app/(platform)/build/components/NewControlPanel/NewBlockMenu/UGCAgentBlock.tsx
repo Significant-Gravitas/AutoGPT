@@ -1,3 +1,4 @@
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { blockMenuButtonBase } from "./style";
@@ -6,7 +7,6 @@ import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import React, { ButtonHTMLAttributes } from "react";
 import { highlightText } from "./helpers";
-import { formatTimeAgo } from "@/lib/utils/time";
 import { Loading03Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useImageFallback } from "@/hooks/useImageFallback";
@@ -63,7 +63,8 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
       <div className="flex flex-1 flex-col items-start gap-0.5">
         {title && (
           <Text
-            variant="body-medium"
+            variant="body"
+            weight="medium"
             as="span"
             tone={rest.disabled ? "subtle" : "emphasis"}
             className="line-clamp-1"
@@ -74,21 +75,29 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
         <div className="flex items-center space-x-1.5">
           {edited_time && (
             <Text
-              variant="small-loose"
+              variant="small"
+              leading="5"
               as="span"
               tone={rest.disabled ? "subtle" : "muted"}
               className="line-clamp-1"
             >
-              Edited {formatTimeAgo(edited_time.toISOString())}
+              Edited <RelativeTime date={edited_time} variant="short" />
             </Text>
           )}
 
-          <Text variant="body-medium-tight" as="span" tone="subtle">
+          <Text
+            variant="body"
+            weight="medium"
+            leading="5"
+            as="span"
+            tone="subtle"
+          >
             •
           </Text>
 
           <Text
-            variant="small-loose"
+            variant="small"
+            leading="5"
             as="span"
             tone={rest.disabled ? "subtle" : "muted"}
             className="line-clamp-1"
@@ -98,7 +107,9 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
 
           <span className="rounded-xl bg-surface-active px-2">
             <Text
-              variant="small-medium-loose"
+              variant="small"
+              weight="medium"
+              leading="5"
               as="span"
               tone="muted"
               className="block"
@@ -110,7 +121,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
       </div>
       <div
         className={cn(
-          "flex h-7 w-7 items-center justify-center rounded-lg bg-foreground-body group-disabled:bg-foreground-subtle",
+          "flex h-7 w-7 items-center justify-center rounded-lg bg-fill-bold group-disabled:bg-fill-subtle",
         )}
       >
         {isLoading ? (
@@ -134,19 +145,24 @@ const UGCAgentBlockSkeleton: React.FC<{ className?: string }> = ({
   return (
     <Skeleton
       className={cn(
-        "flex h-[4.375rem] w-full min-w-[7.5rem] animate-pulse items-center justify-start gap-3 rounded-xl bg-surface-hover p-2.5 pr-3.5",
+        "flex h-[4.375rem] w-full min-w-[7.5rem] items-center justify-start rounded-xl",
         className,
       )}
     >
-      <Skeleton className="h-[3.125rem] w-[5.625rem] rounded-md bg-surface-active" />
-      <div className="flex flex-1 flex-col items-start gap-0.5">
-        <Skeleton className="h-[1.375rem] w-24 rounded bg-surface-active" />
-        <div className="flex items-center gap-1">
-          <Skeleton className="h-5 w-16 rounded bg-surface-active" />
-          <Skeleton className="h-5 w-16 rounded bg-surface-active" />
+      <div className="flex w-full items-center justify-start gap-3 p-2.5 pr-3.5">
+        <Skeleton
+          variant="nested"
+          className="h-[3.125rem] w-[5.625rem] rounded-md"
+        />
+        <div className="flex flex-1 flex-col items-start gap-0.5">
+          <Skeleton variant="nested" className="h-[1.375rem] w-24 rounded" />
+          <div className="flex items-center gap-1">
+            <Skeleton variant="nested" className="h-5 w-16 rounded" />
+            <Skeleton variant="nested" className="h-5 w-16 rounded" />
+          </div>
         </div>
+        <Skeleton variant="nested" className="h-7 w-7 rounded-lg" />
       </div>
-      <Skeleton className="h-7 w-7 rounded-lg bg-surface-active" />
     </Skeleton>
   );
 };

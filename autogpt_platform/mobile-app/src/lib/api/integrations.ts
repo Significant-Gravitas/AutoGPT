@@ -1,5 +1,4 @@
 import { assertSameSession, sessionMark } from "@/lib/auth/token";
-import { APP_SCHEME } from "@/lib/env";
 
 import { ApiError, apiRequest } from "./client";
 
@@ -72,13 +71,14 @@ export interface ExpertSetupItem {
 export const integrationKeys = {
   credentials: ["integrations", "credentials"] as const,
   providers: ["integrations", "providers"] as const,
+  systemProviders: ["integrations", "providers", "system"] as const,
   expertCredentials: (expertID: string) =>
     ["experts", expertID, "credentials"] as const,
   expertSetup: ["experts", "setup"] as const,
 };
 
 /** Where every sign-in started from the app comes back to. */
-export const OAUTH_RETURN_URL = `${APP_SCHEME}://integrations/oauth`;
+export const OAUTH_RETURN_URL = "autogpt-app://integrations/oauth";
 
 function toRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -337,6 +337,11 @@ export function parseProviders(value: unknown): ProviderInfo[] {
 
 export async function listProviders() {
   return parseProviders(await apiRequest<unknown>("/api/integrations/providers"));
+}
+
+/** The services the platform pays for, which nobody has to connect. */
+export async function listSystemProviders() {
+  return strings(await apiRequest<unknown>("/api/integrations/providers/system"));
 }
 
 const SETUP_RESOLUTIONS = ["connect", "allow", "inputs", "workflow"] as const;

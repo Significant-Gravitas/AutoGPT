@@ -192,8 +192,9 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
         <Form
           form={form}
           onSubmit={(values) => onSubmit(values)}
-          // oxlint-disable-next-line design-system/no-restyle -- the folder form spaces its fields; Form has no gap or padding option
-          className="flex flex-col justify-center gap-2 px-1"
+          spacing="stack-tight"
+          focusInset
+          className="justify-center"
         >
           <FormField
             control={form.control}
@@ -258,7 +259,7 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
             render={({ field }) => (
               <FormItem>
                 <div className="flex flex-col gap-2">
-                  <Text variant="large-medium" as="span">
+                  <Text variant="large" weight="medium" as="span">
                     Folder icon
                   </Text>
                   <div className="flex flex-col gap-3">

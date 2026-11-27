@@ -82,19 +82,40 @@ async def test_a_role_that_covers_workflows_passes(roles_cover_workflows: AsyncM
     roles_cover_workflows.assert_awaited_once_with("user-1", "org-1", "team-1")
 
 
-async def test_a_credential_without_an_organization_reads_no_role(
+async def test_a_credential_without_an_organization_acts_in_the_personal_one(
     mocker: pytest_mock.MockFixture,
 ):
-    """It acts in its owner's personal organization, which its owner owns."""
+    """Its owner owns that organization, so no role is read."""
     lookup = mocker.patch(
         "backend.api.external.middleware.resource_role_refusal",
         new_callable=AsyncMock,
         return_value=BILLING_ONLY_ORG_ROLE,
     )
-    auth = _auth(None)
+    mocker.patch(
+        "backend.api.external.middleware.get_user_default_team",
+        new_callable=AsyncMock,
+        return_value=("personal-org", "personal-team"),
+    )
 
-    assert await require_resource_permission()(auth=auth) is auth
+    bound = await require_resource_permission()(auth=_auth(None))
+
+    assert (bound.organization_id, bound.team_id_restriction) == ("personal-org", None)
     lookup.assert_not_awaited()
+
+
+async def test_a_credential_without_an_organization_is_refused_without_a_personal_one(
+    mocker: pytest_mock.MockFixture,
+):
+    mocker.patch(
+        "backend.api.external.middleware.get_user_default_team",
+        new_callable=AsyncMock,
+        return_value=(None, None),
+    )
+
+    with pytest.raises(HTTPException) as raised:
+        await require_resource_permission()(auth=_auth(None))
+
+    assert raised.value.status_code == 403
 
 
 def _routes():

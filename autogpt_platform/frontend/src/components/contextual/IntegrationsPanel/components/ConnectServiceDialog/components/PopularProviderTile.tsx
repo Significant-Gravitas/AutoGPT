@@ -21,7 +21,8 @@ export function PopularProviderTile({ provider, onSelect }: Props) {
       <ProviderLogo provider={provider} size="sm" />
       <span className="flex min-w-0 flex-1 flex-col">
         <Text
-          variant="body-medium"
+          variant="body"
+          weight="medium"
           as="span"
           tone="emphasis"
           className="truncate"
@@ -30,7 +31,8 @@ export function PopularProviderTile({ provider, onSelect }: Props) {
         </Text>
         {provider.description && (
           <Text
-            variant="small-tight"
+            variant="small"
+            leading="4"
             as="span"
             tone="secondary"
             className="truncate"

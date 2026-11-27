@@ -108,7 +108,7 @@ export default function AutopilotPage() {
             title="Team schedules"
             expertName="your team"
             schedules={schedules}
-            lastRunLabel={null}
+            lastRun={null}
           />
         </TabsLineContent>
 

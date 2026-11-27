@@ -20,7 +20,8 @@ export function MarketingFooter({ footerText }: Props) {
   return (
     <div className="flex flex-col gap-3">
       <Text
-        variant="small-medium"
+        variant="small"
+        weight="medium"
         tone="muted"
         transform="uppercase"
         tracking="caps"

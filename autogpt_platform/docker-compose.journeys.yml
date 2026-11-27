@@ -41,6 +41,15 @@ services:
   scripted_model:
     build:
       context: ./scripted_model
+    environment:
+      # It is also the stack's Stripe (scripted_model/README.md), which the
+      # hosted configuration points the backend at
+      # (.github/scripts/hosted_journeys_env.py). Its checkout page is opened
+      # by the browser on the host; its webhooks go to the REST server, signed
+      # with the secret that configuration gives the backend.
+      FAKE_STRIPE_PUBLIC_URL: http://localhost:4010
+      FAKE_STRIPE_WEBHOOK_URL: http://rest_server:8006/api/credits/stripe_webhook
+      FAKE_STRIPE_WEBHOOK_SECRET: "whsec_journeys_fake_stripe" # pragma: allowlist secret
     volumes:
       - ./frontend/src/playwright/journeys/model-scripts:/scripts:ro
     # Journeys read the journal from the host.

@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 import { domAnimation, LazyMotion, m, useReducedMotion } from "framer-motion";
 import type { ChainRowState } from "./helpers";
+import { duration } from "@/components/styles/motion";
 
 interface Props {
   state: ChainRowState;
@@ -31,7 +32,7 @@ export function ToolStatusBadge({ state, label, children }: Props) {
           initial={{ opacity: 0 }}
           animate={{ opacity: running ? 1 : 0 }}
           transition={{
-            duration: reducedMotion ? 0 : 0.16,
+            duration: reducedMotion ? 0 : duration.fast,
             delay: running && !reducedMotion ? 0.15 : 0,
           }}
         />
@@ -44,7 +45,7 @@ export function ToolStatusBadge({ state, label, children }: Props) {
           initial={{ opacity: 0 }}
           animate={{ opacity: running ? 1 : 0 }}
           transition={{
-            duration: reducedMotion ? 0 : 0.12,
+            duration: reducedMotion ? 0 : duration.instant,
             delay: running && !reducedMotion ? 0.15 : 0,
           }}
         />

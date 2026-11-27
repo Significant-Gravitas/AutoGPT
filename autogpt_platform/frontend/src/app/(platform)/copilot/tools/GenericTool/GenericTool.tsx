@@ -270,7 +270,13 @@ function getBashAccordionData(
       <div className="space-y-2">
         {command && (
           <div>
-            <Text variant="small-medium-tight" tone="muted" className="mb-1">
+            <Text
+              variant="small"
+              weight="medium"
+              leading="4"
+              tone="muted"
+              className="mb-1"
+            >
               command
             </Text>
             <ContentCodeBlock>{command}</ContentCodeBlock>
@@ -278,7 +284,13 @@ function getBashAccordionData(
         )}
         {stdout && (
           <div>
-            <Text variant="small-medium-tight" tone="muted" className="mb-1">
+            <Text
+              variant="small"
+              weight="medium"
+              leading="4"
+              tone="muted"
+              className="mb-1"
+            >
               stdout
             </Text>
             <ContentCodeBlock>{stdout}</ContentCodeBlock>
@@ -286,7 +298,13 @@ function getBashAccordionData(
         )}
         {stderr && (
           <div>
-            <Text variant="small-medium-tight" tone="muted" className="mb-1">
+            <Text
+              variant="small"
+              weight="medium"
+              leading="4"
+              tone="muted"
+              className="mb-1"
+            >
               stderr
             </Text>
             <ContentCodeBlock>{stderr}</ContentCodeBlock>
@@ -560,14 +578,22 @@ function getFileAccordionData(
         {oldString && newString != null ? (
           <>
             <div>
-              <Text variant="small-medium-tight" tone="error" className="mb-1">
+              <Text
+                variant="small"
+                weight="medium"
+                leading="4"
+                tone="error"
+                className="mb-1"
+              >
                 removed
               </Text>
               <ContentCodeBlock>{oldString}</ContentCodeBlock>
             </div>
             <div>
               <Text
-                variant="small-medium-tight"
+                variant="small"
+                weight="medium"
+                leading="4"
                 tone="success"
                 className="mb-1"
               >

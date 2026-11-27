@@ -64,8 +64,11 @@ describe("block drag preview", () => {
       );
       const preview = dataTransfer.setDragImage.mock.calls[0][0] as HTMLElement;
       expect(preview.textContent).toBe("Calculator");
-      expect(preview.className).toBe("text-body font-medium leading-inherit");
+      expect(preview.className).toBe(
+        "text-body font-medium leading-inherit shadow-md",
+      );
       expect(preview.style.fontSize).toBe("");
+      expect(preview.style.boxShadow).toBe("");
       expect(preview.style.position).toBe("absolute");
       expect(useControlPanelStore.getState().blockMenuOpen).toBe(false);
     },

@@ -1,15 +1,20 @@
 import { describe, expect, it } from "vitest";
 
+import { ease } from "@/components/styles/motion";
 import {
-  EASE_OUT,
   formatCents,
   formatRelativeReset,
   formatShortDate,
+  getSectionMotionProps,
+  rowVariants,
 } from "../helpers";
 
-describe("EASE_OUT", () => {
-  it("is a 4-tuple of cubic-bezier control points", () => {
-    expect(EASE_OUT).toEqual([0.16, 1, 0.3, 1]);
+describe("billing motion", () => {
+  it("eases the sections and rows on the emphasized curve", () => {
+    expect(getSectionMotionProps(0, false).transition?.ease).toBe(
+      ease.emphasized,
+    );
+    expect(rowVariants.show.transition.ease).toBe(ease.emphasized);
   });
 });
 

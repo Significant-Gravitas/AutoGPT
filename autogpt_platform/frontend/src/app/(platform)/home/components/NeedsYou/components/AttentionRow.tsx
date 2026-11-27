@@ -58,13 +58,19 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
         )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Text variant="body-medium" tone="primary" className="text-pretty">
+            <Text
+              variant="body"
+              weight="medium"
+              tone="primary"
+              className="text-pretty"
+            >
               <AttentionTitle item={item} />
             </Text>
             {item.priority === "high" ? (
               <span className="rounded bg-warning-surface px-1.5 py-px ring-1 ring-warning-foreground/10 ring-inset">
                 <Text
-                  variant="small-medium"
+                  variant="small"
+                  weight="medium"
                   tone="warning"
                   as="span"
                   className="block"

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { APIKeyInfo } from "@/app/api/__generated__/models/aPIKeyInfo";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   Tooltip,
@@ -11,7 +12,7 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 
 import { APIKeyInfoDialog } from "../APIKeyInfoDialog/APIKeyInfoDialog";
-import { formatLastUsed, maskAPIKey } from "../APIKeyList/helpers";
+import { maskAPIKey } from "../APIKeyList/helpers";
 import {
   CheckmarkSquare02Icon,
   Delete02Icon,
@@ -35,7 +36,6 @@ export function APIKeyRow({
 }: Props) {
   const [infoOpen, setInfoOpen] = useState(false);
   const maskedKey = maskAPIKey(apiKey.head, apiKey.tail);
-  const lastUsedLabel = formatLastUsed(apiKey.last_used_at);
 
   return (
     <div
@@ -63,7 +63,7 @@ export function APIKeyRow({
         </button>
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <Text variant="body-medium" as="span">
+            <Text variant="body" weight="medium" as="span">
               {apiKey.name}
             </Text>
             <TooltipProvider>
@@ -86,8 +86,14 @@ export function APIKeyRow({
             <Text variant="label" as="span" tone="body">
               {maskedKey}
             </Text>
-            <Text variant="small-loose" as="span" tone="muted">
-              {lastUsedLabel}
+            <Text variant="small" leading="5" as="span" tone="muted">
+              {apiKey.last_used_at ? (
+                <>
+                  Used <RelativeTime date={apiKey.last_used_at} />
+                </>
+              ) : (
+                "Never used"
+              )}
             </Text>
           </div>
         </div>

@@ -146,7 +146,11 @@ export function PendingReviewCard({
       )}
 
       <div data-slot="pending-review-card-body" className="space-y-3">
-        {instructions && <Text variant="body-semibold">{instructions}</Text>}
+        {instructions && (
+          <Text variant="body" weight="semibold">
+            {instructions}
+          </Text>
+        )}
 
         {isPlainObject(currentData) ? (
           renderFields(!isDataEditable || autoApproveFuture)

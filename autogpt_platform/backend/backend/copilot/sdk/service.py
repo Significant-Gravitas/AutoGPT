@@ -550,14 +550,27 @@ async def _consume_sdk_until_done(
         # output count arrives. Metering must never fail the turn it meters;
         # the CLI's own budget and turn limits still back it up.
         if state.governor is not None:
+            stop = False
             try:
                 state.governor.observe(sdk_msg)
+                await state.governor.keep_up()
+                stop = state.governor.stop()
             except Exception:
                 logger.warning(
                     "%s Turn governor could not meter a message",
                     ctx.log_prefix,
                     exc_info=True,
                 )
+            if stop:
+                # Spent past what a credit-billed turn holds: its CLI backstop
+                # sits on the most it may hold, so the turn ends here.
+                logger.info(f"{ctx.log_prefix} Turn spent what it holds; interrupting")
+                try:
+                    await client.interrupt()
+                except Exception as exc:
+                    logger.warning(
+                        f"{ctx.log_prefix} Interrupt at the turn's hold failed: {exc}"
+                    )
 
         if loop_state.provider_refused:
             if isinstance(sdk_msg, ResultMessage):
@@ -5945,8 +5958,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         # Lands the turn with a checkpoint near its budget or step check-in.
         # A ChatGPT subscription pays for its own turns, so it gets the
-        # check-in only. A turn billed to credits gets what its balance covers.
+        # check-in only. A turn billed to credits gets what it holds of its
+        # balance.
         credit_turn = credit_billed_turn(user_id)
+        growing = None if is_codex_transport else credit_turn
         governor = TurnGovernor(
             budget=(
                 None
@@ -5958,6 +5973,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 )
             ),
             step_checkin=config.sdk_step_checkin,
+            # It holds the balance a step at a time, so its budget grows.
+            grow=growing.grow if growing is not None else None,
+            room=growing.model_room_usd if growing is not None else None,
         )
 
         if permissions is not None:

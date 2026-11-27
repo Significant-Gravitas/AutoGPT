@@ -15,7 +15,7 @@ export function TourArtifactCard({ artifact }: Props) {
         <span>Artifact · {artifact.caption}</span>
       </div>
 
-      <Text variant="large-medium" tone="primary">
+      <Text variant="large" weight="medium" tone="primary">
         {artifact.title}
       </Text>
 

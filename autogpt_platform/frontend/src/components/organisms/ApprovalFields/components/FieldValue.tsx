@@ -44,7 +44,7 @@ export function FieldValue({ name, value, clipped, format }: Props) {
           translate="no"
           data-slot="field-value-code"
           // max-h-64: twelve lines at leading-5 plus py-2.
-          className="max-h-64 overflow-auto rounded-lg bg-action-hover px-3 py-2 font-mono text-body-sm leading-5 whitespace-pre-wrap text-action-foreground"
+          className="max-h-64 overflow-auto rounded-lg bg-surface-inverse-hover px-3 py-2 font-mono text-body-sm leading-5 whitespace-pre-wrap text-foreground-inverse"
         >
           {String(value)}
           {shortened}

@@ -111,7 +111,8 @@ export function InstallWorkflowPicker({
                     className="min-w-0 flex-1"
                   >
                     <Text
-                      variant="body-medium"
+                      variant="body"
+                      weight="medium"
                       data-slot="install-workflow-picker-option-title"
                       className="truncate"
                     >
@@ -155,6 +156,7 @@ export function InstallWorkflowPicker({
                   type="button"
                   variant="toggle"
                   size="xs"
+                  shape="sharp"
                   data-slot="install-workflow-picker-source"
                   aria-pressed={source === option.id}
                   onClick={() => setSource(option.id)}
@@ -221,7 +223,8 @@ export function InstallWorkflowPicker({
                           className="min-w-0 flex-1"
                         >
                           <Text
-                            variant="body-medium"
+                            variant="body"
+                            weight="medium"
                             data-slot="install-workflow-picker-option-title"
                             className="truncate"
                           >
@@ -260,7 +263,8 @@ export function InstallWorkflowPicker({
                           className="min-w-0 flex-1"
                         >
                           <Text
-                            variant="body-medium"
+                            variant="body"
+                            weight="medium"
                             data-slot="install-workflow-picker-option-title"
                             className="truncate"
                           >

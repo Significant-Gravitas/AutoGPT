@@ -17,7 +17,7 @@ export function UsageMeter({ label, percent, detail }: Props) {
         data-slot="usage-meter-header"
         className="flex justify-between gap-2"
       >
-        <Text variant="small-medium" tone="body">
+        <Text variant="small" weight="medium" tone="body">
           {label}
         </Text>
         <Text variant="small" tone="muted" tabular>
@@ -31,19 +31,19 @@ export function UsageMeter({ label, percent, detail }: Props) {
         aria-valuemax={100}
         aria-valuenow={value}
         data-slot="usage-meter-track"
-        className="h-1.5 overflow-hidden rounded-full bg-surface-hover"
+        className="h-1.5 overflow-hidden rounded-pill bg-surface-hover"
       >
         <div
           data-slot="usage-meter-fill"
           className={cn(
-            "h-full w-(--usage-meter-width) rounded-full transition-[width]",
+            "h-full w-(--usage-meter-width) rounded-pill transition-[width]",
             value >= 100 ? "bg-orange" : "bg-brand",
           )}
           style={{ "--usage-meter-width": `${value}%` } as CSSProperties}
         />
       </div>
       {detail && (
-        <Text variant="small-tight" tone="muted">
+        <Text variant="small" leading="4" tone="muted">
           {detail}
         </Text>
       )}

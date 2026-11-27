@@ -72,7 +72,7 @@ export function MultiToggle({
               "inline-flex items-center justify-center font-medium whitespace-nowrap transition-colors",
               "focus-visible:ring-2 focus-visible:ring-brand-hover focus-visible:ring-offset-2 focus-visible:outline-none",
               "disabled:pointer-events-none disabled:opacity-50",
-              "rounded-full border font-sans",
+              "rounded-pill border font-sans",
               "h-[2.25rem] px-4 py-2 text-body leading-5.5",
               // Default outline styles
               "border-foreground-body bg-transparent text-foreground-base hover:bg-surface-hover",

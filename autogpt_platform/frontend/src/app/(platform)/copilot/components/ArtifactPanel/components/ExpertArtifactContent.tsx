@@ -81,14 +81,16 @@ export function ExpertArtifactContent({ expert: artifact }: Props) {
         />
         <div className="min-w-0">
           <Text
-            variant="large-semibold-tight"
+            variant="large"
+            weight="semibold"
+            leading="6"
             tone="primary"
             className="truncate"
           >
             {expert.name}
           </Text>
           {expert.role && (
-            <Text variant="body-tight" tone="muted" className="truncate">
+            <Text variant="body" leading="5" tone="muted" className="truncate">
               {expert.role}
             </Text>
           )}

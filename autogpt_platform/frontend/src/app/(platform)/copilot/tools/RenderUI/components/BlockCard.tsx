@@ -11,7 +11,8 @@ export function BlockCard({ title, children }: Props) {
     <section className="min-w-0 rounded-2xl bg-gradient-to-b from-surface to-surface-muted p-5 smooth-shadow-ring-sm">
       {title ? (
         <Text
-          variant="small-medium"
+          variant="small"
+          weight="medium"
           tone="secondary"
           transform="uppercase"
           tracking="caps"

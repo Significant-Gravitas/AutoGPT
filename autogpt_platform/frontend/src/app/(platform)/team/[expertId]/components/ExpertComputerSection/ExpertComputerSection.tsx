@@ -69,7 +69,10 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
     <section className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <Text variant="large-medium">{`${expertName}'s computer`}</Text>
+          <Text
+            variant="large"
+            weight="medium"
+          >{`${expertName}'s computer`}</Text>
           <Text variant="small" tone="muted" className="mt-1 max-w-prose">
             One persistent cloud machine only {expertName} uses: the shell it
             runs commands in and, when needed, its screen. It is suspended
@@ -116,7 +119,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
             </div>
           </div>
         ) : (
-          <div className="relative flex min-h-[240px] flex-col items-center justify-center gap-4 overflow-hidden rounded-xl bg-gradient-to-br from-action via-action-hover to-foreground-base px-6 py-8 text-center sm:aspect-[16/7] sm:min-h-0 sm:py-0">
+          <div className="relative flex min-h-[240px] flex-col items-center justify-center gap-4 overflow-hidden rounded-xl bg-gradient-to-br from-surface-inverse via-surface-inverse-hover to-fill-strong px-6 py-8 text-center sm:aspect-[16/7] sm:min-h-0 sm:py-0">
             <div
               aria-hidden
               // oxlint-disable-next-line design-system/no-arbitrary-values -- a radial highlight; there is no radial-gradient utility
@@ -124,7 +127,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
             />
             <span
               className={cn(
-                "relative flex items-center gap-1.5 rounded-full px-2.5 py-1",
+                "relative flex items-center gap-1.5 rounded-pill px-2.5 py-1",
                 running ? "bg-success/15" : "bg-surface/10",
               )}
             >
@@ -132,11 +135,13 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
                 aria-hidden
                 className={cn(
                   "size-1.5 rounded-full",
-                  running ? "bg-success" : "bg-foreground-subtle",
+                  running ? "bg-success" : "bg-fill-subtle",
                 )}
               />
               <Text
-                variant="small-medium-tight"
+                variant="small"
+                weight="medium"
+                leading="4"
                 as="span"
                 tone={running ? "success-light" : "disabled"}
               >
@@ -153,6 +158,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
             <Button
               variant="secondary"
               size="xs"
+              shape="sharp"
               className="relative"
               loading={isOpening}
               disabled={!computer.e2b_active}
@@ -179,7 +185,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
 
       {mounts.length > 0 ? (
         <div className="rounded-2xl bg-surface p-4 smooth-shadow-ring-sm">
-          <Text variant="small-medium" tone="body">
+          <Text variant="small" weight="medium" tone="body">
             Volumes
           </Text>
           <ul className="mt-2 divide-y divide-separator">
@@ -189,12 +195,24 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
                   <Icon icon={Folder01Icon} size={15} aria-hidden />
                 </span>
                 <span className="flex min-w-0 flex-col gap-0.5">
-                  <Text variant="small-mono-tight" as="code" tone="emphasis">
+                  <Text
+                    variant="small"
+                    mono
+                    leading="4"
+                    as="code"
+                    tone="emphasis"
+                  >
                     {path}
                   </Text>
                   <Text variant="small" tone="muted">
                     {describeMount(path, computer)}{" "}
-                    <Text variant="small-mono-tight" as="span" tone="subtle">
+                    <Text
+                      variant="small"
+                      mono
+                      leading="4"
+                      as="span"
+                      tone="subtle"
+                    >
                       {name}
                     </Text>
                   </Text>
@@ -232,7 +250,7 @@ function DetailTile({ icon, label, children }: DetailTileProps) {
         <Icon icon={icon} size={15} aria-hidden />
       </span>
       <span className="flex min-w-0 flex-col gap-0.5">
-        <Text variant="small-medium" tone="body">
+        <Text variant="small" weight="medium" tone="body">
           {label}
         </Text>
         <Text variant="small" tone="muted">

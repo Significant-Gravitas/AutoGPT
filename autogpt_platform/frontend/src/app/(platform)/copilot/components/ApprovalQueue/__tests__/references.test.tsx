@@ -132,6 +132,49 @@ test("a card with nothing but its kind shows only the kind, title and ID", async
   expect(lines).toEqual(["Expert workflow", "Receipt matcher", "wf-receipts"]);
 });
 
+// A fact with neither text nor a readable time has nothing to show.
+const EMPTY_FACTS = [
+  { text: "", cron: null, label: null, at: null },
+  { text: "", cron: null, label: "Last run", at: "not a date" },
+];
+
+function withFacts(story: string, meta: object[]) {
+  const review = referenceCard(story);
+  const payload = review.payload as { references: { meta: object[] }[] };
+  payload.references[0].meta = meta;
+  return review;
+}
+
+test("a card whose facts have nothing to show has no facts line", async () => {
+  renderCard(withFacts("Remove workflow", EMPTY_FACTS));
+
+  const view = await card();
+  await userEvent.hover(view.getByRole("link", { name: "Receipt matcher" }));
+
+  const tip = await screen.findByRole("tooltip");
+  const lines = [...tip.querySelectorAll("p")].map((p) => p.textContent);
+  expect(lines).toEqual(["Expert workflow", "Receipt matcher", "wf-receipts"]);
+});
+
+test("a card's facts line skips the facts with nothing to show, separators and all", async () => {
+  renderCard(
+    withFacts("Remove workflow", [
+      EMPTY_FACTS[0],
+      { text: "Version 3", cron: null, label: null, at: null },
+      EMPTY_FACTS[1],
+      { text: "In Finance", cron: null, label: null, at: null },
+    ]),
+  );
+
+  const view = await card();
+  await userEvent.hover(view.getByRole("link", { name: "Receipt matcher" }));
+
+  const tip = await screen.findByRole("tooltip");
+  expect(
+    tip.querySelector('[data-slot="reference-card-facts"]')?.textContent,
+  ).toBe("Version 3 · In Finance");
+});
+
 test("a held team change names who joins, never its one-time id", async () => {
   renderCard(referenceCard("Confirm team change"));
 
