@@ -193,9 +193,7 @@ def _allowed_redirect(uri: str) -> bool:
 
 
 def _requested_scopes(scope: Optional[str]) -> list[str]:
-    if not scope:
-        return mcp_scopes()
-    return list(dict.fromkeys(scope.split()))
+    return list(dict.fromkeys((scope or "").split())) or mcp_scopes()
 
 
 def _invalid_redirect(description: str) -> ClientRegistrationError:

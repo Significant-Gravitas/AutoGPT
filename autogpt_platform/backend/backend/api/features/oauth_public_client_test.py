@@ -72,16 +72,18 @@ async def test_a_public_client_must_use_s256(client: httpx.AsyncClient):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("scope", [{}, {"scope": "  "}], ids=["omitted", "blank"])
 async def test_a_client_that_names_no_scope_gets_the_mcp_server_permissions(
     client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
     fresh_registration_limits: None,
+    scope: dict[str, str],
 ):
     monkeypatch.setattr(
         oauth_registration.settings.config, "oauth_dynamic_client_registration", True
     )
     response = await client.post(
-        "/api/oauth/register", json={"redirect_uris": [REDIRECT_URI]}
+        "/api/oauth/register", json={"redirect_uris": [REDIRECT_URI], **scope}
     )
     assert response.status_code == 201, response.text
     client_id = response.json()["client_id"]
