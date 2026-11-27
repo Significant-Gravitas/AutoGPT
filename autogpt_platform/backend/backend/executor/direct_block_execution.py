@@ -23,13 +23,17 @@ database through the database manager, as it does in the executor.
 import asyncio
 import concurrent.futures
 import contextvars
+import inspect
 import itertools
 import logging
 import threading
 from collections import defaultdict
 from collections.abc import Callable
 
-from backend.data.block import BlockOutput, CompletedBlockOutput
+from backend.blocks._base import AnyBlockSchema, Block
+from backend.copilot.capabilities.block_meta import is_graph_only_block
+from backend.data.block import BlockInput, BlockOutput, CompletedBlockOutput
+from backend.util.exceptions import BlockInputError
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +45,49 @@ DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER = 4
 # A held run keeps its user's slot, so one user's runs fill at most
 # DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER of these.
 DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS = 8
+
+_GRAPH_RUN_PARAMS = frozenset({"graph_id", "graph_exec_id", "node_exec_id"})
+
+
+def block_requires_graph_run(block: AnyBlockSchema) -> bool:
+    """Return True when *block* cannot run outside a workflow execution.
+
+    Combines ``is_graph_only_block`` (structural graph-only types/IDs) with a
+    signature check for required ``graph_id``, ``graph_exec_id``, or
+    ``node_exec_id`` parameters on ``block.run``, which direct block execution
+    does not supply.
+    """
+    if is_graph_only_block(block):
+        return True
+    run_fn = getattr(block, "run", None)
+    if not callable(run_fn):
+        return False
+    try:
+        params = inspect.signature(run_fn).parameters
+    except (TypeError, ValueError):
+        return False
+    return any(
+        name in _GRAPH_RUN_PARAMS and param.default is inspect.Parameter.empty
+        for name, param in params.items()
+    )
+
+
+def validate_direct_block_input(block: AnyBlockSchema, input_data: BlockInput) -> None:
+    """Validate *input_data* against *block*'s schema before charging credits.
+
+    Mirrors ``Block._execute``: applies retired-model fallbacks first so a
+    retired model with a fallback validates cleanly, then checks
+    ``input_schema.validate_data``. Raises ``BlockInputError`` on invalid input.
+    """
+    if not isinstance(block, Block):
+        return
+    serving = block.with_retired_models_replaced(input_data, resolved_model=None)
+    if error := block.input_schema.validate_data(serving):
+        raise BlockInputError(
+            message=f"Unable to execute block with invalid input data: {error}",
+            block_name=block.name,
+            block_id=block.id,
+        )
 
 
 class DirectBlockExecutionTimeoutError(Exception):
