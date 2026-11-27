@@ -4,9 +4,13 @@ The blocks' own test_input/test_mock cases mock the API calls away, so
 these drive the real code with a fake Gmail service.
 """
 
+import httplib2
 import pytest
+from googleapiclient.errors import HttpError
 
+from backend.blocks.google._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from backend.blocks.google.gmail import (
+    GmailAddLabelBlock,
     GmailGetThreadBlock,
     GmailReadBlock,
     GmailRemoveLabelBlock,
@@ -20,7 +24,10 @@ class _Request:
         self._result = result
 
     def execute(self):
-        return self._result
+        result = self._result() if callable(self._result) else self._result
+        if isinstance(result, Exception):
+            raise result
+        return result
 
 
 class _Resource:
@@ -38,7 +45,11 @@ class _Resource:
 
 
 class _FakeGmail:
-    """Canned responses keyed by "resource.method", e.g. "messages.get"."""
+    """Canned responses keyed by "resource.method", e.g. "messages.get".
+
+    A response can be an exception to raise, or a function returning the
+    response, for a call whose answer changes between calls.
+    """
 
     def __init__(self, responses: dict):
         self.responses = responses
@@ -120,7 +131,11 @@ async def test_get_thread_drops_blank_recipients():
 
 
 _LABELS = {
-    "labels": [{"id": "UNREAD", "name": "UNREAD"}, {"id": "Label_7", "name": "Todo"}]
+    "labels": [
+        {"id": "UNREAD", "name": "UNREAD", "type": "system"},
+        {"id": "TRASH", "name": "TRASH", "type": "system"},
+        {"id": "Label_7", "name": "Todo", "type": "user"},
+    ]
 }
 
 
@@ -164,4 +179,101 @@ async def test_remove_label_reports_a_label_that_was_not_applied():
         "status": "Label already removed or not applied",
         "label_id": "Label_7",
     }
+    assert fake.called("messages.modify") == []
+
+
+def _http_error(status: int, message: str) -> HttpError:
+    return HttpError(
+        httplib2.Response({"status": status}),
+        f'{{"error": {{"code": {status}, "message": "{message}"}}}}'.encode(),
+    )
+
+
+def _conflict() -> HttpError:
+    return _http_error(409, "Label name exists or conflicts")
+
+
+_MODIFIED = {"id": "m1", "threadId": "t1", "labelIds": ["INBOX", "Label_7"]}
+_LATER = {"id": "Label_9", "name": "Later", "type": "user"}
+
+
+@pytest.mark.asyncio
+async def test_add_label_uses_an_existing_label_whatever_its_case():
+    fake = _FakeGmail({"labels.list": _LABELS, "messages.modify": _MODIFIED})
+    result = await GmailAddLabelBlock()._add_label(fake, "m1", "todo")
+    assert result == {"status": "Label added successfully", "label_id": "Label_7"}
+    assert fake.called("labels.create") == []
+    assert fake.called("messages.modify") == [
+        {"userId": "me", "id": "m1", "body": {"addLabelIds": ["Label_7"]}}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_remove_label_finds_a_label_whatever_its_case():
+    fake = _FakeGmail(
+        {
+            "labels.list": _LABELS,
+            "messages.get": {"id": "m1", "threadId": "t1", "labelIds": ["Label_7"]},
+            "messages.modify": {"id": "m1", "threadId": "t1"},
+        }
+    )
+    result = await GmailRemoveLabelBlock()._remove_label(fake, "m1", "TODO")
+    assert result == {"status": "Label removed successfully", "label_id": "Label_7"}
+
+
+@pytest.mark.asyncio
+async def test_add_label_uses_the_label_when_creating_it_conflicts():
+    # Another run creates "Later" between the lookup and the create of "later".
+    lists = iter([_LABELS, {"labels": [*_LABELS["labels"], _LATER]}])
+    fake = _FakeGmail(
+        {
+            "labels.list": lambda: next(lists),
+            "labels.create": _conflict(),
+            "messages.modify": _MODIFIED,
+        }
+    )
+    result = await GmailAddLabelBlock()._add_label(fake, "m1", "later")
+    assert result == {"status": "Label added successfully", "label_id": "Label_9"}
+    assert fake.called("messages.modify") == [
+        {"userId": "me", "id": "m1", "body": {"addLabelIds": ["Label_9"]}}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_add_label_conflict_with_no_matching_label_is_a_plain_error(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    fake = _FakeGmail({"labels.list": _LABELS, "labels.create": _conflict()})
+    block = GmailAddLabelBlock()
+    monkeypatch.setattr(block, "_build_service", lambda *args, **kwargs: fake)
+    input_data = GmailAddLabelBlock.Input(
+        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        message_id="m1",
+        label_name="Chats",
+    )
+    # A ValueError reaches the user as a block execution error with this
+    # message, where the raw HttpError became an unknown error.
+    with pytest.raises(ValueError, match='label "Chats"'):
+        async for _ in block.run(input_data, credentials=TEST_CREDENTIALS):
+            pass
+    assert fake.called("messages.modify") == []
+
+
+@pytest.mark.asyncio
+async def test_add_label_passes_other_create_errors_through():
+    denied = _http_error(403, "Insufficient Permission")
+    fake = _FakeGmail({"labels.list": _LABELS, "labels.create": denied})
+    with pytest.raises(HttpError) as raised:
+        await GmailAddLabelBlock()._add_label(fake, "m1", "Later")
+    assert raised.value is denied
+    assert len(fake.called("labels.list")) == 1
+
+
+@pytest.mark.asyncio
+async def test_system_labels_still_need_their_exact_name():
+    fake = _FakeGmail({"labels.list": _LABELS, "labels.create": _conflict()})
+    with pytest.raises(ValueError, match='label "trash"'):
+        await GmailAddLabelBlock()._add_label(fake, "m1", "trash")
+    removed = await GmailRemoveLabelBlock()._remove_label(fake, "m1", "unread")
+    assert removed == {"status": "Label not found", "label_id": ""}
     assert fake.called("messages.modify") == []
