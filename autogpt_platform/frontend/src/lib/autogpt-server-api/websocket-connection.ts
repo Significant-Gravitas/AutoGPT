@@ -152,6 +152,10 @@ export class BackendWebSocket {
       this.attach(socket, generation, token);
     } catch (error) {
       if (generation !== this.generation) return;
+      if (hasDisconnectIntent()) {
+        this.finishConnecting();
+        return;
+      }
       if (isUnrecognizedActionError(error)) {
         // A deploy replaced the server this build talks to, so no retry can
         // get a token until the tab loads the new build.

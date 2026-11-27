@@ -175,21 +175,31 @@ describe("WebSocket token issuance recovery", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("does not retry a token failure arriving after logout", async () => {
-    let rejectToken: ((error: Error) => void) | undefined;
-    vi.mocked(getWebSocketToken).mockImplementationOnce(
-      () =>
-        new Promise((_, reject) => {
-          rejectToken = reject;
-        }),
-    );
-    const pending = api.connectWebSocket();
-    setWebSocketDisconnectIntent();
-    rejectToken?.(new Error("Network error"));
-    await vi.advanceTimersByTimeAsync(60_000);
-    await pending;
-    expect(getWebSocketToken).toHaveBeenCalledTimes(1);
-    expect(FakeWebSocket.instances).toHaveLength(0);
-    expect(vi.getTimerCount()).toBe(0);
-  });
+  it.each([
+    new Error("Network error"),
+    Object.assign(new Error("Server Action was not found"), {
+      name: "UnrecognizedActionError",
+    }),
+  ])(
+    "does not retry or hand off a token failure arriving after logout: %s",
+    async (failure) => {
+      let rejectToken: ((error: Error) => void) | undefined;
+      vi.mocked(getWebSocketToken).mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            rejectToken = reject;
+          }),
+      );
+      const pending = api.connectWebSocket();
+      setWebSocketDisconnectIntent();
+      rejectToken?.(failure);
+      await vi.advanceTimersByTimeAsync(60_000);
+      await pending;
+      expect(getWebSocketToken).toHaveBeenCalledTimes(1);
+      expect(FakeWebSocket.instances).toHaveLength(0);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(promptForNewDeployment).not.toHaveBeenCalled();
+      expect(reloadForNewDeployment).not.toHaveBeenCalled();
+    },
+  );
 });
