@@ -59,7 +59,7 @@ export function AppDrawerContent({ navigation }: Props) {
     handleSignOut,
   } = useAppDrawer(navigation);
   const { openMenu, renameTarget, closeRename, submitRename, toast } =
-    useChatActions({ activeSessionID });
+    useChatActions();
   const styles = useStyles();
   const colors = useColors();
   const footerBottom = insets.bottom + spacing.sm;

@@ -30,7 +30,7 @@ export default function AllChatsScreen() {
     openChat,
   } = useAllChats();
   const { openMenu, renameTarget, closeRename, submitRename, toast } =
-    useChatActions({});
+    useChatActions();
   const insets = useSafeAreaInsets();
   const styles = useStyles();
   const colors = useColors();

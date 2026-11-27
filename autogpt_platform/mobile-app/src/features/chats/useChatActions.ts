@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+import { router, useNavigationContainerRef } from "expo-router";
 import { useState } from "react";
 import { Alert } from "react-native";
 
@@ -14,7 +14,7 @@ import {
   type SessionSummary,
 } from "@/lib/api/chat";
 import { tapMenu } from "@/lib/haptics";
-import { queryClient } from "@/lib/session";
+import { queryClient, sessionGeneration } from "@/lib/session";
 
 import {
   chatActionOptions,
@@ -24,18 +24,17 @@ import {
   withRenamed,
 } from "./chatActions";
 
-interface Args {
-  activeSessionID?: string;
-}
-
 /** The long-press menu on a chat: rename, pin or delete it. */
-export function useChatActions({ activeSessionID }: Args) {
+export function useChatActions() {
+  const navigation = useNavigationContainerRef();
   const [renameTarget, setRenameTarget] = useState<SessionSummary | null>(null);
   const { toast, show } = useToast();
 
   async function openMenu(session: SessionSummary) {
+    const startedIn = sessionGeneration();
     tapMenu();
     const action = await chooseAction(chatTitle(session), chatActionOptions(session));
+    if (startedIn !== sessionGeneration()) return;
     if (action === "rename") setRenameTarget(session);
     if (action === "pin") void togglePin(session);
     if (action === "delete") confirmDelete(session);
@@ -69,24 +68,36 @@ export function useChatActions({ activeSessionID }: Args) {
   }
 
   function confirmDelete(session: SessionSummary) {
+    const startedIn = sessionGeneration();
     Alert.alert("Delete this chat?", "Its messages are deleted for good.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => void removeChat(session.id),
+        onPress: () => {
+          if (startedIn === sessionGeneration()) void removeChat(session.id);
+        },
       },
     ]);
   }
 
   async function removeChat(sessionID: string) {
+    const startedIn = sessionGeneration();
     const isDeleted = await mutateList(
       (list) => withoutSession(list, sessionID),
       () => deleteSession(sessionID),
       "Couldn't delete this chat. Try again.",
     );
-    if (!isDeleted) return;
-    if (sessionID === activeSessionID) router.navigate("/");
+    if (!isDeleted || startedIn !== sessionGeneration()) return;
+    const route = navigation.getCurrentRoute() as
+      | { name: string; params?: { sessionId?: unknown } }
+      | undefined;
+    if (
+      route?.name === "chat/[sessionId]" &&
+      route.params?.sessionId === sessionID
+    ) {
+      router.navigate("/");
+    }
     queryClient.removeQueries({ queryKey: chatKeys.session(sessionID) });
   }
 
@@ -96,7 +107,9 @@ export function useChatActions({ activeSessionID }: Args) {
     request: () => Promise<unknown>,
     errorMessage: string,
   ) {
+    const startedIn = sessionGeneration();
     await queryClient.cancelQueries({ queryKey: chatKeys.sessions });
+    if (startedIn !== sessionGeneration()) return false;
     const previous = queryClient.getQueryData<SessionList>(chatKeys.sessions);
     queryClient.setQueryData<SessionList>(chatKeys.sessions, (list) =>
       list ? patch(list) : list,
@@ -105,11 +118,14 @@ export function useChatActions({ activeSessionID }: Args) {
       await request();
       return true;
     } catch {
+      if (startedIn !== sessionGeneration()) return false;
       queryClient.setQueryData(chatKeys.sessions, previous);
       show({ message: errorMessage, tone: "error" });
       return false;
     } finally {
-      void queryClient.invalidateQueries({ queryKey: chatKeys.sessions });
+      if (startedIn === sessionGeneration()) {
+        void queryClient.invalidateQueries({ queryKey: chatKeys.sessions });
+      }
     }
   }
 
