@@ -5,7 +5,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
 import { IconButton } from "@/components/IconButton";
 import { ScreenHeader } from "@/components/ScreenHeader";
-import { Toast } from "@/components/Toast";
 import { BriefingPicker } from "@/features/settings/components/BriefingPicker";
 import { SettingsGroup } from "@/features/settings/components/SettingsGroup";
 import { SettingsRow } from "@/features/settings/components/SettingsRow";
@@ -31,6 +30,11 @@ export default function NotificationsScreen() {
             { paddingBottom: insets.bottom + spacing.xxl },
           ]}
         >
+          {screen.isSaveError ? (
+            <Text accessibilityLiveRegion="polite" style={styles.error}>
+              {"Couldn't save. Try again."}
+            </Text>
+          ) : null}
           <SettingsGroup
             title="Email"
             note="Billing and account messages are always sent — they are about your account, not a promotion."
@@ -94,7 +98,6 @@ export default function NotificationsScreen() {
         left={<IconButton icon={ArrowLeft01Icon} label="Back" onPress={screen.goBack} />}
       />
       {renderBody()}
-      {screen.toast ? <Toast toast={screen.toast} /> : null}
     </View>
   );
 }
@@ -105,6 +108,7 @@ const useStyles = createStyles((colors) => ({
   loading: { marginTop: spacing.xxl },
   center: { alignItems: "center", gap: spacing.lg, padding: spacing.xl },
   notice: { ...type.body, color: colors.textSecondary, textAlign: "center" },
+  error: { ...type.small, color: colors.error },
   action: {
     justifyContent: "center",
     minHeight: 52,

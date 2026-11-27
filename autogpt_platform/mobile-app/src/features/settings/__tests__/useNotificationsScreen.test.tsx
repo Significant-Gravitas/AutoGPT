@@ -109,3 +109,24 @@ test("a response after sign-out leaves the current account's preferences alone",
 
   expect(client.getQueryData(preferenceKeys.notifications)).toEqual(newAccount);
 });
+
+test("a save error is visible after returning to notifications", async () => {
+  let fail = () => {};
+  jest.mocked(updateNotificationPreferences).mockImplementationOnce(
+    () =>
+      new Promise((_resolve, reject) => {
+        fail = () => reject(new Error("Couldn't save"));
+      }),
+  );
+  const first = await renderHook(useNotificationsScreen, { wrapper: Wrapper });
+  await waitFor(() => expect(first.result.current.preferences).toEqual(saved));
+  await act(() => first.result.current.chooseBriefing("DAILY"));
+  await first.unmount();
+
+  const second = await renderHook(useNotificationsScreen, { wrapper: Wrapper });
+  expect(second.result.current.isSaveError).toBe(false);
+  await act(async () => fail());
+
+  await waitFor(() => expect(second.result.current.isSaveError).toBe(true));
+  expect(second.result.current.preferences).toEqual(saved);
+});

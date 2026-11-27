@@ -1,7 +1,6 @@
-import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 
-import { useToast } from "@/components/useToast";
 import {
   type BriefingFrequency,
   getNotificationPreferences,
@@ -16,17 +15,17 @@ import { sessionGeneration } from "@/lib/session";
 
 import { phoneTimezone, timezoneOffer, withChange } from "./notificationHelpers";
 
-const SAVE_FAILED = "Couldn't save. Try again.";
-
 function usePreferenceSave<T>(
   queryKey: readonly string[],
   request: (next: T) => Promise<T>,
-  onError: () => void,
 ) {
   const queryClient = useQueryClient();
   const generation = sessionGeneration();
   const mutationKey = ["savePreference", ...queryKey, generation];
-  const isSaving = useIsMutating({ mutationKey }) > 0;
+  const status = useMutationState({
+    filters: { mutationKey, exact: true },
+    select: (entry) => entry.state.status,
+  }).at(-1);
   const mutation = useMutation({
     mutationKey,
     async mutationFn(next: T) {
@@ -39,11 +38,11 @@ function usePreferenceSave<T>(
         if (generation !== sessionGeneration()) return;
         await queryClient.cancelQueries({ queryKey });
         if (generation === sessionGeneration()) queryClient.setQueryData<T>(queryKey, answer);
-      } catch {
+      } catch (error) {
         if (generation !== sessionGeneration()) return;
         queryClient.setQueryData<T>(queryKey, previous);
-        onError();
         void queryClient.invalidateQueries({ queryKey });
+        throw error;
       }
     },
   });
@@ -53,7 +52,7 @@ function usePreferenceSave<T>(
     mutation.mutate(next);
   }
 
-  return { isSaving, save };
+  return { isSaving: status === "pending", isSaveError: status === "error", save };
 }
 
 function saveTimezone(next: Timezone) {
@@ -62,7 +61,6 @@ function saveTimezone(next: Timezone) {
 
 export function useNotificationsScreen() {
   const queryClient = useQueryClient();
-  const { toast, show } = useToast();
   const preferences = useQuery({
     queryKey: preferenceKeys.notifications,
     queryFn: getNotificationPreferences,
@@ -71,13 +69,8 @@ export function useNotificationsScreen() {
   const preferencesSave = usePreferenceSave(
     preferenceKeys.notifications,
     updateNotificationPreferences,
-    showSaveError,
   );
-  const timezoneSave = usePreferenceSave(preferenceKeys.timezone, saveTimezone, showSaveError);
-
-  function showSaveError() {
-    show({ message: SAVE_FAILED, tone: "error" });
-  }
+  const timezoneSave = usePreferenceSave(preferenceKeys.timezone, saveTimezone);
 
   function changeNotifications(change: Partial<NotificationPreferences>) {
     const saved = queryClient.getQueryData<NotificationPreferences>(
@@ -120,11 +113,11 @@ export function useNotificationsScreen() {
     isRetrying: preferences.isFetching || timezone.isFetching,
     isSavingPreferences: preferencesSave.isSaving,
     isSavingTimezone: timezoneSave.isSaving,
+    isSaveError: preferencesSave.isSaveError || timezoneSave.isSaveError,
     retry,
     goBack,
     chooseBriefing,
     setAlerts,
     chooseZone,
-    toast,
   };
 }
