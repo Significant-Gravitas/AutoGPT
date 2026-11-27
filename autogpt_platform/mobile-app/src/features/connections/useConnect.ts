@@ -6,7 +6,6 @@ import { ApiError } from "@/lib/api/client";
 import {
   getAyrshareLink,
   integrationKeys,
-  listCredentials,
   type CredentialMeta,
 } from "@/lib/api/integrations";
 import { queryClient, sessionGeneration } from "@/lib/session";
@@ -16,7 +15,6 @@ import type { SheetTarget } from "./components/CredentialSheet/helpers";
 import type { DeviceCodeTarget } from "./components/DeviceCodeSheet/DeviceCodeSheet";
 import type { PickedCredential } from "./connectedThisRun";
 import {
-  AYRSHARE_PROVIDER,
   CODEX_PROVIDER,
   credentialLabel,
   isHTTPSURL,
@@ -133,10 +131,7 @@ export function useConnect({ origin, onConnected }: Args) {
     }
   }
 
-  /**
-   * Linking social accounts happens on Ayrshare's page. Asking for the link
-   * creates the managed Ayrshare account, which is what the row gets.
-   */
+  // Opening the page can provision a profile, but only the user knows if linking finished.
   async function linkAyrshare(rowKey: string, providerName: string) {
     if (isSigningIn.current) return;
     isSigningIn.current = true;
@@ -145,22 +140,17 @@ export function useConnect({ origin, onConnected }: Args) {
     const startedIn = sessionGeneration();
     try {
       const { sso_url } = await getAyrshareLink();
+      if (startedIn !== sessionGeneration()) return;
       if (!isHTTPSURL(sso_url)) {
         setError(rowKey, "Couldn't open the account link. Try again.");
         return;
       }
       await WebBrowser.openBrowserAsync(sso_url);
-      const credentials = await queryClient.fetchQuery({
-        queryKey: integrationKeys.credentials,
-        queryFn: listCredentials,
-      });
       if (startedIn !== sessionGeneration()) return;
-      const account = credentials.find(
-        (credential) => credential.provider === AYRSHARE_PROVIDER && !credential.isSystem,
-      );
-      if (account) onConnected(rowKey, toPicked(account));
-      else setError(rowKey, `Couldn't find your ${providerName} account. Try again.`);
+      void queryClient.invalidateQueries({ queryKey: integrationKeys.credentials });
+      void queryClient.invalidateQueries({ queryKey: integrationKeys.expertSetup });
     } catch (error) {
+      if (startedIn !== sessionGeneration()) return;
       if (error instanceof ApiError && error.status === 402) setNeedsPlan(true);
       else {
         setError(

@@ -67,7 +67,7 @@ export function SetupCard(props: Props) {
               label={run.error ? "Try again" : "Continue"}
               onPress={card.handleContinue}
               size="small"
-              disabled={props.isBusy}
+              disabled={props.isBusy || card.isAnyBusy}
             />
           ) : null}
         </View>
@@ -91,7 +91,7 @@ export function SetupCard(props: Props) {
           hint={rowHint(request, status, props.setup)}
           error={connect.errors[request.key] ?? null}
           isConnected={status.kind === "connected"}
-          actionLabel={usesToken ? "Add token" : actionLabel(status)}
+          actionLabel={usesToken ? "Add token" : actionLabel(status, request.provider)}
           isBusy={connect.busyKey === request.key}
           isLoading={card.isLoading && !run.picks[request.key]}
           isLocked={card.isAnyBusy || run.followUp !== "idle"}

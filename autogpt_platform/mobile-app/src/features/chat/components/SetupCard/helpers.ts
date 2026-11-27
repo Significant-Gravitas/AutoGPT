@@ -1,5 +1,6 @@
 import type { PickedCredential } from "@/features/connections/connectedThisRun";
 import {
+  AYRSHARE_PROVIDER,
   connectMethod,
   credentialLabel,
   fittingCredentials,
@@ -191,10 +192,10 @@ const CONNECT_LABELS: Record<ConnectMethod, string | null> = {
 };
 
 /** The row's button, or null when it has none. */
-export function actionLabel(status: RowStatus) {
+export function actionLabel(status: RowStatus, provider?: string) {
   switch (status.kind) {
     case "connected":
-      return null;
+      return provider === AYRSHARE_PROVIDER ? CONNECT_LABELS.ayrshare : null;
     case "allow":
       return "Allow";
     case "choose":
@@ -284,9 +285,12 @@ export function buildSelections(rows: ConnectedRow[]) {
   return selections;
 }
 
-/** A trigger card's reply names the accounts, so it waits for a tap, as on the web. */
+/** Trigger and Ayrshare cards wait for the user to continue. */
 export function needsManualContinue(setup: SetupRequest) {
-  return setup.toolName === TRIGGER_TOOL;
+  return (
+    setup.toolName === TRIGGER_TOOL ||
+    setup.requests.some((request) => request.provider === AYRSHARE_PROVIDER)
+  );
 }
 
 const CREDENTIALS_DONE = "I've configured the required credentials.";

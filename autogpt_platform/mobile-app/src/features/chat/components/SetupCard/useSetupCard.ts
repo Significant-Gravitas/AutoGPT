@@ -7,6 +7,7 @@ import {
   useCardRun,
 } from "@/features/connections/connectedThisRun";
 import {
+  AYRSHARE_PROVIDER,
   connectMethod,
   logoID,
   MCP_PROVIDER,
@@ -174,6 +175,10 @@ export function useSetupCard({ sessionID, toolCallID, setup, replyText, isBusy, 
 
   function handleRow(index: number) {
     const { request, name, logoID: rowLogoID, status } = rows[index];
+    if (status.kind === "connected" && request.provider === AYRSHARE_PROVIDER) {
+      void connect.linkAyrshare(request.key, name);
+      return;
+    }
     if (status.kind === "allow" || status.kind === "choose") {
       if (status.kind === "allow" && status.accounts.length === 1) {
         markConnected(cardKey, request.key, status.accounts[0]);

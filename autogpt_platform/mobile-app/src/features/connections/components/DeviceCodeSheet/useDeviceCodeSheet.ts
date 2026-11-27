@@ -8,7 +8,6 @@ import {
   cancelCodexLogin,
   finishProviderLogin,
   getCodexLoginStatus,
-  startProviderLogin,
   type CredentialMeta,
 } from "@/lib/api/integrations";
 import { sessionGeneration } from "@/lib/session";
@@ -16,46 +15,52 @@ import { useMountEffect } from "@/lib/useMountEffect";
 
 import { deviceLoginID, parseDeviceLogin } from "../../deviceLogin";
 import { CODEX_PROVIDER } from "../../helpers";
-import { rememberCredential } from "../../oauth";
+import { rememberCredential, startProviderLoginWithFallback } from "../../oauth";
 
 const POLL_MS = 3000;
 const CANT_START = "ChatGPT sign-in can't start right now. Try again later.";
 const DIDNT_FINISH = "ChatGPT sign-in didn't finish.";
 
 // The backend runs one ChatGPT sign-in per user at a time, so one is tracked.
-let pendingLoginID: string | null = null;
+let pendingLogin: { id: string; generation: number } | null = null;
 // Counts closes, so a sign-in that starts after its sheet closed is ended at once.
 let closeCount = 0;
 
 function settle(loginID: string) {
-  if (pendingLoginID === loginID) pendingLoginID = null;
+  if (pendingLogin?.id === loginID) pendingLogin = null;
 }
 
 /** Ends the sign-in still waiting for its code, so the next one can start. */
 function cancelPendingDeviceLogin() {
-  const loginID = pendingLoginID;
-  pendingLoginID = null;
-  if (loginID) void cancelCodexLogin(loginID).catch(() => undefined);
+  const login = pendingLogin;
+  pendingLogin = null;
+  if (login?.generation === sessionGeneration()) {
+    return cancelCodexLogin(login.id).catch(() => undefined);
+  }
 }
 
 /** Closing a sheet: ends its sign-in, even one still starting. */
 export function closeDeviceLogin() {
   closeCount += 1;
-  cancelPendingDeviceLogin();
+  void cancelPendingDeviceLogin();
 }
 
-/** Ends a sign-in left open, so the backend lets a new one start. */
-async function endStaleLogin() {
-  const loginID = pendingLoginID;
-  pendingLoginID = null;
-  if (loginID) await cancelCodexLogin(loginID).catch(() => undefined);
+interface LoginAttempt {
+  closedAt: number;
+  generation: number;
 }
 
-async function startLogin(credentialID: string | undefined) {
-  await endStaleLogin();
-  const login = await startProviderLogin(CODEX_PROVIDER, { scopes: [], credentialID });
+function isCurrent(attempt: LoginAttempt) {
+  return attempt.closedAt === closeCount && attempt.generation === sessionGeneration();
+}
+
+async function startLogin(credentialID: string | undefined, attempt: LoginAttempt) {
+  if (!isCurrent(attempt)) return null;
+  await cancelPendingDeviceLogin();
+  if (!isCurrent(attempt)) return null;
+  const login = await startProviderLoginWithFallback(CODEX_PROVIDER, { scopes: [], credentialID });
   const device = parseDeviceLogin(login.loginURL);
-  if (!device) {
+  if (!device && attempt.generation === sessionGeneration()) {
     // Nothing to show, but the backend holds it open: end it now.
     const loginID = deviceLoginID(login.loginURL, login.cancelURL);
     if (loginID) await cancelCodexLogin(loginID).catch(() => undefined);
@@ -96,17 +101,20 @@ export function useDeviceCodeSheet({ credentialID, onSaved, onClose, onPlanRequi
   const [isAbandoned, setIsAbandoned] = useState(false);
 
   const start = useMutation({
-    onMutate() {
-      return closeCount;
-    },
-    mutationFn: () => startLogin(credentialID),
-    onSuccess({ device }, _variables, openedAt) {
+    mutationFn: (attempt: LoginAttempt) => startLogin(credentialID, attempt),
+    onSuccess(login, attempt) {
+      const device = login?.device;
       if (!device) return;
-      pendingLoginID = device.loginID;
-      if (closeCount !== openedAt) cancelPendingDeviceLogin();
+      if (!isCurrent(attempt)) {
+        if (attempt.generation === sessionGeneration()) {
+          void cancelCodexLogin(device.loginID).catch(() => undefined);
+        }
+        return;
+      }
+      pendingLogin = { id: device.loginID, generation: attempt.generation };
     },
-    onError(error) {
-      if (isPaywall(error)) onPlanRequired();
+    onError(error, attempt) {
+      if (isCurrent(attempt) && isPaywall(error)) onPlanRequired();
     },
   });
   const device = start.data?.device ?? null;
@@ -141,8 +149,12 @@ export function useDeviceCodeSheet({ credentialID, onSaved, onClose, onPlanRequi
   });
 
   useMountEffect(() => {
-    start.mutate();
+    begin();
   });
+
+  function begin() {
+    start.mutate({ closedAt: closeCount, generation: sessionGeneration() });
+  }
 
   function startError() {
     if (start.isError) {
@@ -169,7 +181,7 @@ export function useDeviceCodeSheet({ credentialID, onSaved, onClose, onPlanRequi
     setIsCopied(false);
     setIsAbandoned(false);
     complete.reset();
-    start.mutate();
+    begin();
   }
 
   async function copyCode() {

@@ -119,13 +119,26 @@ export function rememberCredential(credential: CredentialMeta) {
 
 async function requestLogin(target: OAuthTarget) {
   if (target.kind === "mcp") return startMCPLogin(target.serverURL);
-  const options = { scopes: target.scopes, credentialID: target.credentialID };
+  return startProviderLoginWithFallback(target.provider, {
+    scopes: target.scopes,
+    credentialID: target.credentialID,
+  });
+}
+
+export async function startProviderLoginWithFallback(
+  provider: string,
+  options: Parameters<typeof startProviderLogin>[1],
+) {
+  const startedIn = sessionGeneration();
   try {
-    return await startProviderLogin(target.provider, options);
+    return await startProviderLogin(provider, options);
   } catch (error) {
-    // The account to widen may be gone by now; a fresh sign-in still works.
-    if (!target.credentialID || !isMissingUpgradeTarget(error)) throw error;
-    return startProviderLogin(target.provider, { scopes: target.scopes });
+    if (
+      !options.credentialID ||
+      !isMissingUpgradeTarget(error) ||
+      startedIn !== sessionGeneration()
+    ) throw error;
+    return startProviderLogin(provider, { scopes: options.scopes });
   }
 }
 
