@@ -399,9 +399,9 @@ class GmailBase(Block, ABC):
                 return label["id"]
         # Gmail treats label names as case-insensitive: "work" and "Work"
         # are the same label, and creating one beside the other conflicts.
-        wanted = label_name.casefold()
+        wanted = label_name.lower()
         for label in labels:
-            if label["name"].casefold() == wanted:
+            if label["name"].lower() == wanted:
                 return label["id"]
         return None
 

@@ -178,11 +178,15 @@ async def test_remove_label_reports_a_label_that_was_not_applied():
     assert fake.called("messages.modify") == []
 
 
-def _conflict() -> HttpError:
+def _http_error(status: int, message: str) -> HttpError:
     return HttpError(
-        httplib2.Response({"status": 409}),
-        b'{"error": {"code": 409, "message": "Label name exists or conflicts"}}',
+        httplib2.Response({"status": status}),
+        f'{{"error": {{"code": {status}, "message": "{message}"}}}}'.encode(),
     )
+
+
+def _conflict() -> HttpError:
+    return _http_error(409, "Label name exists or conflicts")
 
 
 _MODIFIED = {"id": "m1", "threadId": "t1", "labelIds": ["INBOX", "Label_7"]}
@@ -215,7 +219,7 @@ async def test_remove_label_finds_a_label_whatever_its_case():
 
 @pytest.mark.asyncio
 async def test_add_label_uses_the_label_when_creating_it_conflicts():
-    # Another run creates "Later" between the lookup and the create.
+    # Another run creates "Later" between the lookup and the create of "later".
     lists = iter([_LABELS, {"labels": [*_LABELS["labels"], _LATER]}])
     fake = _FakeGmail(
         {
@@ -224,7 +228,7 @@ async def test_add_label_uses_the_label_when_creating_it_conflicts():
             "messages.modify": _MODIFIED,
         }
     )
-    result = await GmailAddLabelBlock()._add_label(fake, "m1", "Later")
+    result = await GmailAddLabelBlock()._add_label(fake, "m1", "later")
     assert result == {"status": "Label added successfully", "label_id": "Label_9"}
     assert fake.called("messages.modify") == [
         {"userId": "me", "id": "m1", "body": {"addLabelIds": ["Label_9"]}}
@@ -249,3 +253,13 @@ async def test_add_label_conflict_with_no_matching_label_is_a_plain_error(
         async for _ in block.run(input_data, credentials=TEST_CREDENTIALS):
             pass
     assert fake.called("messages.modify") == []
+
+
+@pytest.mark.asyncio
+async def test_add_label_passes_other_create_errors_through():
+    denied = _http_error(403, "Insufficient Permission")
+    fake = _FakeGmail({"labels.list": _LABELS, "labels.create": denied})
+    with pytest.raises(HttpError) as raised:
+        await GmailAddLabelBlock()._add_label(fake, "m1", "Later")
+    assert raised.value is denied
+    assert len(fake.called("labels.list")) == 1
