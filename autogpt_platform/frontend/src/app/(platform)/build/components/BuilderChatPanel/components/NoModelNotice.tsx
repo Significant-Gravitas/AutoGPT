@@ -10,7 +10,8 @@ export function NoModelNotice() {
     <div className="flex flex-1 items-center justify-center px-4 py-6">
       <div className="w-full rounded-2xl bg-warning-surface px-3 py-2">
         <Text
-          variant="body-tight"
+          variant="body"
+          leading="5"
           tone="warning"
           as="div"
           role="status"
@@ -31,7 +32,13 @@ export function NoModelNotice() {
               rel="noopener noreferrer"
               className="underline underline-offset-2"
             >
-              <Text variant="body-medium-tight" as="span" tone="inherit">
+              <Text
+                variant="body"
+                weight="medium"
+                leading="5"
+                as="span"
+                tone="inherit"
+              >
                 (setup guide)
               </Text>
             </a>

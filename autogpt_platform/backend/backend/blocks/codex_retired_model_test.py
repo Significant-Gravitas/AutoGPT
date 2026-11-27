@@ -101,6 +101,7 @@ def test_a_raw_saved_gpt_5_1_codex_is_priced_as_gpt_5_3_codex():
 
     cost, cost_filter = block_usage_cost(block, raw)
 
-    assert cost_filter["model"] == GPT_5_1_CODEX
+    # Pricing coerces the input as the run does, so this is the model that runs.
+    assert cost_filter["model"] == CodexModel.GPT5_3_CODEX
     assert cost == block_usage_cost(block, current)[0]
     assert _pre_run_charge(block, raw)[0] == _pre_run_charge(block, current)[0] > 0

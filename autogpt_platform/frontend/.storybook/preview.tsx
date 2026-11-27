@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { mswLoader } from "msw-storybook-addon/csf3";
 import React from "react";
 import "../src/app/globals.css";
+import "../src/app/tokens/themes/canary.css";
 import "../src/components/styles/fonts.css";
 import { theme } from "./theme";
 
@@ -24,7 +25,29 @@ const storyQueryClient = new QueryClient({
   },
 });
 
+// The toolbar's "Look": canary gives every token a loud value, so whatever
+// keeps its normal colour, corner or font is not reading a token.
+function applyLook(look: unknown) {
+  if (look === "canary") document.documentElement.dataset.look = "canary";
+  else delete document.documentElement.dataset.look;
+}
+
 const preview: Preview = {
+  globalTypes: {
+    look: {
+      description: "Token look",
+      toolbar: {
+        title: "Look",
+        icon: "paintbrush",
+        items: [
+          { value: "default", title: "Default" },
+          { value: "canary", title: "Canary (shows what bypasses the tokens)" },
+        ],
+        dynamicTitle: true,
+      },
+    },
+  },
+  initialGlobals: { look: "default" },
   parameters: {
     nextjs: {
       appDirectory: true,
@@ -46,13 +69,16 @@ const preview: Preview = {
   },
   loaders: [mswLoader()],
   decorators: [
-    (Story) => (
-      <QueryClientProvider client={storyQueryClient}>
-        <div className="bg-canvas p-8">
-          <Story />
-        </div>
-      </QueryClientProvider>
-    ),
+    (Story, context) => {
+      applyLook(context.globals.look);
+      return (
+        <QueryClientProvider client={storyQueryClient}>
+          <div className="bg-canvas p-8">
+            <Story />
+          </div>
+        </QueryClientProvider>
+      );
+    },
   ],
 };
 

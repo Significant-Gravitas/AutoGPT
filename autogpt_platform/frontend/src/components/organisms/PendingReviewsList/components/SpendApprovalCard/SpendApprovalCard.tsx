@@ -30,7 +30,7 @@ export function SpendApprovalCard({
         />
       </SpendRing>
       <div className="min-w-0 flex-1">
-        <Text variant="body-semibold" tone="primary">
+        <Text variant="body" weight="semibold" tone="primary">
           {summary.expertName} has done {summary.spent} credits of work{" "}
           {summary.period}
         </Text>

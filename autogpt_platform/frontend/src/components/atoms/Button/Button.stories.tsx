@@ -16,6 +16,43 @@ import { Icon } from "../Icon/Icon";
 import { Text } from "../Text/Text";
 import { Button } from "./Button";
 
+const ROLES = [
+  "primary",
+  "secondary",
+  "destructive",
+  "outline",
+  "ghost",
+  "icon",
+  "toggle",
+  "floating",
+  "tray",
+  "brand",
+  "warning",
+  "success",
+] as const;
+
+const SIZES = [
+  "large",
+  "small",
+  "row",
+  "xs",
+  "icon",
+  "icon-sm",
+  "icon-xs",
+  "icon-2xs",
+  "inline",
+  "inline-xs",
+] as const;
+
+const SHAPES = ["pill", "rounded", "soft", "sharp"] as const;
+
+const QUIET_TONES = [
+  "quiet",
+  "quiet-subtle",
+  "quiet-danger",
+  "quiet-warning",
+] as const;
+
 const meta: Meta<typeof Button> = {
   title: "Atoms/Button",
   tags: ["autodocs"],
@@ -39,24 +76,24 @@ const meta: Meta<typeof Button> = {
   argTypes: {
     variant: {
       control: "select",
-      options: [
-        "primary",
-        "secondary",
-        "destructive",
-        "outline",
-        "ghost",
-        "icon",
-        "floating",
-        "toggle",
-        "link",
-        "loading",
-      ],
-      description: "Button style variant",
+      options: [...ROLES, "link"],
+      description: "The button's role",
     },
     size: {
       control: "select",
-      options: ["small", "large", "icon", "xs", "icon-xs", "icon-sm"],
+      options: SIZES,
       description: "Button size",
+    },
+    shape: {
+      control: "select",
+      options: SHAPES,
+      description:
+        "Corner radius. Every variant but toggle, floating and link defaults to pill",
+    },
+    tone: {
+      control: "select",
+      options: [undefined, ...QUIET_TONES],
+      description: "Text colour over the variant's own",
     },
     loading: {
       control: "boolean",
@@ -204,7 +241,7 @@ export const ActionButtons: Story = {
     docs: {
       description: {
         story:
-          '`size="xs"` is the 28px rounded-rectangle chip used for row and header actions across Home and Team. Pair with `leadingIcon` for a 14px Hugeicon.',
+          '`size="xs" shape="sharp"` is the 28px rounded-rectangle chip used for row and header actions across Home and Team. Pair with `leadingIcon` for a 14px Hugeicon.',
       },
     },
   },
@@ -234,13 +271,13 @@ export const ToggleButtons: Story = {
   },
 };
 
-export const QuietVariants: Story = {
-  render: renderQuietVariants,
+export const QuietTones: Story = {
+  render: renderQuietTones,
   parameters: {
     docs: {
       description: {
         story:
-          '`ghost-muted`, `ghost-subtle` and `ghost-danger` are ghost Buttons with a quieter label for secondary actions in rows and cards: grey until hovered, and `ghost-danger` turns red for remove actions. `size="icon-2xs"` is a 24px icon-only action.',
+          "A ghost Button takes a quieter label from its `tone`, for secondary actions in rows and cards: `quiet` and `quiet-subtle` are grey until hovered, `quiet-danger` turns red for remove actions and `quiet-warning` is amber with an amber hover. Each tone at every size, at rest and disabled.",
       },
     },
   },
@@ -264,7 +301,7 @@ export const Shapes: Story = {
     docs: {
       description: {
         story:
-          "`shape` sets the corner radius over the variant's and size's own: `pill` (rounded-full), `rounded` (12px) and `soft` (8px).",
+          "`shape` is the corner radius, and the only one: `pill` (rounded-pill, the default), `rounded` (12px), `soft` (8px) and `sharp` (6px). Toggle and floating default to `sharp`; a link has no box. Every role at every shape, as a labelled button and as an icon.",
       },
     },
   },
@@ -306,7 +343,8 @@ export const AllVariants: Story = {
   render: renderAllVariants,
 };
 
-// Every variant at every size, at rest, disabled and loading.
+// Every role at every size at its default shape, then disabled, loading and
+// pressed.
 export const VariantMatrix: Story = {
   render: renderVariantMatrix,
 };
@@ -337,7 +375,7 @@ function renderCompactVariants() {
     <div className="space-y-6 p-8">
       {COMPACT_VARIANTS.map((variant) => (
         <div key={variant} className="space-y-2">
-          <Text variant="small-medium" tone="muted">
+          <Text variant="small" weight="medium" tone="muted">
             {variant}
           </Text>
           <div className="flex flex-wrap items-center gap-3">
@@ -360,37 +398,16 @@ function renderCompactVariants() {
   );
 }
 
-const MATRIX_VARIANTS = [
-  "primary",
-  "secondary",
-  "destructive",
-  "outline",
-  "ghost",
-  "icon",
-  "toggle",
-  "floating",
-  "link",
-] as const;
-
-const MATRIX_SIZES = [
-  "small",
-  "large",
-  "icon",
-  "xs",
-  "icon-xs",
-  "icon-sm",
-] as const;
-
 function renderVariantMatrix() {
   return (
     <div className="space-y-6 p-8">
-      {MATRIX_VARIANTS.map((variant) => (
+      {[...ROLES, "link" as const].map((variant) => (
         <div key={variant} className="space-y-2">
-          <Text variant="small-medium" tone="muted">
+          <Text variant="small" weight="medium" tone="muted">
             {variant}
           </Text>
           <div className="flex flex-wrap items-center gap-3">
-            {MATRIX_SIZES.map((size) => (
+            {SIZES.map((size) => (
               <Button
                 key={size}
                 variant={variant}
@@ -421,35 +438,51 @@ function renderActionButtons() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="primary" size="xs">
+        <Button variant="primary" size="xs" shape="sharp">
           Chat
         </Button>
-        <Button variant="secondary" size="xs">
+        <Button variant="secondary" size="xs" shape="sharp">
           Manage
         </Button>
-        <Button variant="outline" size="xs">
+        <Button variant="outline" size="xs" shape="sharp">
           New Pod
         </Button>
-        <Button variant="ghost" size="xs">
+        <Button variant="ghost" size="xs" shape="sharp">
           Open in library
         </Button>
-        <Button variant="destructive" size="xs">
+        <Button variant="destructive" size="xs" shape="sharp">
           Fire Maria
         </Button>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="primary" size="xs" leadingIcon={SparklesIcon}>
+        <Button
+          variant="primary"
+          size="xs"
+          shape="sharp"
+          leadingIcon={SparklesIcon}
+        >
           New Expert
         </Button>
-        <Button variant="secondary" size="xs" leadingIcon={PencilEdit02Icon}>
+        <Button
+          variant="secondary"
+          size="xs"
+          shape="sharp"
+          leadingIcon={PencilEdit02Icon}
+        >
           Edit Soul
         </Button>
-        <Button variant="secondary" size="xs" leadingIcon={PlusSignIcon}>
+        <Button
+          variant="secondary"
+          size="xs"
+          shape="sharp"
+          leadingIcon={PlusSignIcon}
+        >
           Install workflow
         </Button>
         <Button
           variant="ghost"
           size="xs"
+          shape="sharp"
           leadingIcon={FilterHorizontalIcon}
           className="text-foreground-secondary"
         >
@@ -457,13 +490,19 @@ function renderActionButtons() {
         </Button>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="secondary" size="xs" loading>
+        <Button variant="secondary" size="xs" shape="sharp" loading>
           Resuming...
         </Button>
-        <Button variant="secondary" size="xs" disabled>
+        <Button variant="secondary" size="xs" shape="sharp" disabled>
           Disabled
         </Button>
-        <Button as="NextLink" href="#" variant="secondary" size="xs">
+        <Button
+          as="NextLink"
+          href="#"
+          variant="secondary"
+          size="xs"
+          shape="sharp"
+        >
           Review
         </Button>
       </div>
@@ -478,24 +517,28 @@ function renderIconButtons() {
         <Button
           variant="icon"
           size="icon-xs"
+          shape="sharp"
           leadingIcon={FilterHorizontalIcon}
           aria-label="Filter workflows"
         />
         <Button
           variant="primary"
           size="icon-xs"
+          shape="sharp"
           leadingIcon={Tick02Icon}
           aria-label="Approve"
         />
         <Button
           variant="destructive"
           size="icon-xs"
+          shape="sharp"
           leadingIcon={Cancel01Icon}
           aria-label="Confirm decline"
         />
         <Button
           variant="ghost"
           size="icon-xs"
+          shape="sharp"
           leadingIcon={MoreHorizontalIcon}
           aria-label="More actions"
         />
@@ -504,18 +547,21 @@ function renderIconButtons() {
         <Button
           variant="floating"
           size="icon-xs"
+          shape="sharp"
           leadingIcon={PencilEdit02Icon}
           aria-label="Edit workflow"
         />
         <Button
           variant="floating"
           size="icon-xs"
+          shape="sharp"
           leadingIcon={SparklesIcon}
           aria-label="Ask about this workflow"
         />
         <Button
           variant="floating"
           size="icon-sm"
+          shape="soft"
           leadingIcon={PencilEdit02Icon}
           aria-label="Edit Soul"
         />
@@ -527,12 +573,13 @@ function renderIconButtons() {
 function renderToggleButtons() {
   return (
     <div className="flex flex-wrap items-center gap-4">
-      <Button variant="toggle" size="xs" aria-pressed={false}>
+      <Button variant="toggle" size="xs" shape="sharp" aria-pressed={false}>
         Needs review (3)
       </Button>
       <Button
         variant="toggle"
         size="xs"
+        shape="sharp"
         aria-pressed
         className="border-border-base bg-surface aria-pressed:border-warning-border aria-pressed:bg-warning-surface aria-pressed:text-warning-foreground"
       >
@@ -542,6 +589,7 @@ function renderToggleButtons() {
         <Button
           variant="toggle"
           size="icon-xs"
+          shape="sharp"
           className="size-6 rounded"
           leadingIcon={ListViewIcon}
           aria-label="List view"
@@ -550,6 +598,7 @@ function renderToggleButtons() {
         <Button
           variant="toggle"
           size="icon-xs"
+          shape="sharp"
           className="size-6 rounded"
           leadingIcon={GridViewIcon}
           aria-label="Grid view"
@@ -1016,27 +1065,43 @@ function renderAllVariants() {
   );
 }
 
-function renderQuietVariants() {
+function renderQuietTones() {
   return (
-    <div className="flex items-center gap-4 p-8">
-      <Button variant="ghost-muted" size="small" leadingIcon={PencilEdit02Icon}>
-        Rename
-      </Button>
-      <Button variant="ghost-subtle" size="xs">
-        Dismiss
-      </Button>
-      <Button
-        variant="ghost-danger"
-        size="icon-xs"
-        leadingIcon={Cancel01Icon}
-        aria-label="Remove"
-      />
-      <Button
-        variant="ghost-muted"
-        size="icon-2xs"
-        leadingIcon={MoreHorizontalIcon}
-        aria-label="More"
-      />
+    <div className="space-y-6 p-8">
+      {QUIET_TONES.map((tone) => (
+        <div key={tone} className="space-y-2">
+          <Text variant="small" weight="medium" tone="muted">
+            {tone}
+          </Text>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="ghost" tone={tone} size="small">
+              Rename
+            </Button>
+            <Button variant="ghost" tone={tone} size="xs" shape="sharp">
+              Dismiss
+            </Button>
+            <Button
+              variant="ghost"
+              tone={tone}
+              size="icon-xs"
+              shape="sharp"
+              leadingIcon={Cancel01Icon}
+              aria-label="Remove"
+            />
+            <Button
+              variant="ghost"
+              tone={tone}
+              size="icon-2xs"
+              shape="soft"
+              leadingIcon={MoreHorizontalIcon}
+              aria-label="More"
+            />
+            <Button variant="ghost" tone={tone} size="small" disabled>
+              Disabled
+            </Button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1073,16 +1138,31 @@ function renderRowAndInlineSizes() {
 
 function renderShapes() {
   return (
-    <div className="flex items-center gap-4 p-8">
-      <Button variant="primary" size="small" shape="pill">
-        Pill
-      </Button>
-      <Button variant="primary" size="small" shape="rounded">
-        Rounded
-      </Button>
-      <Button variant="secondary" size="small" shape="soft">
-        Soft
-      </Button>
+    <div className="space-y-6 p-8">
+      {ROLES.map((variant) => (
+        <div key={variant} className="space-y-2">
+          <Text variant="small" weight="medium" tone="muted">
+            {variant}
+          </Text>
+          <div className="flex flex-wrap items-center gap-3">
+            {SHAPES.map((shape) => (
+              <Button key={shape} variant={variant} size="small" shape={shape}>
+                {shape}
+              </Button>
+            ))}
+            {SHAPES.map((shape) => (
+              <Button
+                key={shape}
+                variant={variant}
+                size="icon-sm"
+                shape={shape}
+                leadingIcon={PlusSignIcon}
+                aria-label={`${variant} ${shape}`}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

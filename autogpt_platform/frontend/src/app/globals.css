@@ -1,13 +1,15 @@
 @import "./tailwind-v3-preflight.css";
 @import "./tokens/theme.css";
 @import "./tokens/typography.css";
+@import "./tokens/shape.css";
+@import "./tokens/motion.css";
 @config "../../tailwind.config.ts";
 
 /* Defaults Tailwind 4 reads from its own theme, which is not loaded: the
    values Tailwind 3 used for a bare `transition`, `ring` and `outline`. */
 @theme inline {
-  --default-transition-duration: 150ms;
-  --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  --default-transition-duration: var(--duration-fast);
+  --default-transition-timing-function: var(--ease-standard);
   --default-ring-width: 3px;
   --default-ring-color: rgb(var(--color-info) / 0.5);
   --default-outline-width: medium;
@@ -17,21 +19,18 @@
    touch screen no longer shows it. Tailwind 3 applied it on every device. */
 @custom-variant hover (&:hover);
 
-/* `dark:` applies under a `.dark` ancestor, the one dark selector. The app
-   forces the light theme, so no `dark:` class renders today. */
-@custom-variant dark (&:is(.dark *));
+/* `dark:` applies under a `[data-theme="dark"]` ancestor, the one dark
+   selector, which next-themes sets on <html>. The app forces light, so no
+   `dark:` class renders today. The app's own code writes none
+   (design-system/no-dark-variant); this keeps vendored markup's dark styles
+   on the same attribute a dark theme would set. */
+@custom-variant dark (&:is([data-theme="dark"] *));
 
-/* The shadcn radius steps (`rounded-sm`, `rounded-md`, `rounded-lg`) read
-   this one. The colour roles are in tokens/theme.css. */
-:root {
-  --radius: 0.5rem;
-}
-
-/* The theme: the colour roles, type scale and radii, read by Tailwind from
-   here instead of tailwind.config.ts. `inline` writes each value into the
-   class, and `reference` keeps Tailwind from also writing these variables
-   onto `:root`, so a role's entry can share the name of its RGB triplet in
-   tokens/theme.css and read it: `bg-surface` is
+/* The theme: the colour roles, type scale, radii, layers and motion, read by
+   Tailwind from here instead of tailwind.config.ts. `inline` writes each
+   value into the class, and `reference` keeps Tailwind from also writing
+   these variables onto `:root`, so an entry can share the name of its value
+   in tokens/ and read it: `rounded-lg` is `var(--radius-lg)`, `bg-surface` is
    `rgb(var(--color-surface) / 1)` and `bg-surface/50` is
    `rgb(var(--color-surface) / 0.5)`. These roles are the only colours:
    tokens/theme.css resets Tailwind's palette, so a palette class generates
@@ -97,6 +96,20 @@
   --color-node-selected: rgb(var(--color-node-selected) / 1);
   --color-edge: rgb(var(--color-edge) / 1);
   --color-handle: rgb(var(--color-handle) / 1);
+  --color-surface-inverse: rgb(var(--color-surface-inverse) / 1);
+  --color-surface-inverse-hover: rgb(var(--color-surface-inverse-hover) / 1);
+  --color-foreground-inverse: rgb(var(--color-foreground-inverse) / 1);
+  --color-foreground-on-color: rgb(var(--color-foreground-on-color) / 1);
+  --color-fill-subtle: rgb(var(--color-fill-subtle) / 1);
+  --color-fill-soft: rgb(var(--color-fill-soft) / 1);
+  --color-fill-medium: rgb(var(--color-fill-medium) / 1);
+  --color-fill-bold: rgb(var(--color-fill-bold) / 1);
+  --color-fill-strong: rgb(var(--color-fill-strong) / 1);
+  --color-shell: rgb(var(--color-shell) / 1);
+  --color-shell-foreground: rgb(var(--color-shell-foreground) / 1);
+  --color-shell-hover: rgb(var(--color-shell-hover) / 1);
+  --color-shell-active: rgb(var(--color-shell-active) / 1);
+  --color-shell-border: rgb(var(--color-shell-border) / 1);
 
   /* Type. A size bundles its line-height. */
   --font-sans: var(--font-geist-sans);
@@ -168,23 +181,62 @@
   --tracking-caps: 0.12em;
   --tracking-eyebrow: 0.06em;
 
-  /* Radius. `rounded` reads --radius here, 0.25rem; the shadcn steps
-     read the --radius on :root, 0.5rem. */
-  --radius-none: 0px;
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius: 0.25rem;
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: 0.75rem;
-  --radius-2xl: 1rem;
-  --radius-3xl: 1.5rem;
-  --radius-full: 9999px;
-  --radius-xsmall: 0.25rem;
-  --radius-small: 0.5rem;
-  --radius-medium: 0.75rem;
-  --radius-large: 1rem;
-  --radius-xlarge: 1.25rem;
-  --radius-2xlarge: 1.5rem;
+  /* Radius, the values in tokens/shape.css. */
+  --radius-none: var(--radius-none);
+  --radius-sm: var(--radius-sm);
+  --radius: var(--radius);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+  --radius-3xl: var(--radius-3xl);
+  --radius-4xl: var(--radius-4xl);
+  --radius-5xl: var(--radius-5xl);
+  --radius-2xl-inner: var(--radius-2xl-inner);
+  --radius-full: var(--radius-full);
+  --radius-pill: var(--radius-pill);
+  --radius-xsmall: var(--radius-xsmall);
+  --radius-small: var(--radius-small);
+  --radius-medium: var(--radius-medium);
+  --radius-large: var(--radius-large);
+  --radius-xlarge: var(--radius-xlarge);
+  --radius-2xlarge: var(--radius-2xlarge);
+
+  /* Layers, the values in tokens/shape.css. */
+  --z-index-behind: var(--z-behind);
+  --z-index-base: var(--z-base);
+  --z-index-raised: var(--z-raised);
+  --z-index-sticky: var(--z-sticky);
+  --z-index-search-bar: var(--z-search-bar);
+  --z-index-floating: var(--z-floating);
+  --z-index-header: var(--z-header);
+  --z-index-prompt: var(--z-prompt);
+  --z-index-overlay: var(--z-overlay);
+  --z-index-drawer-scrim: var(--z-drawer-scrim);
+  --z-index-drawer: var(--z-drawer);
+  --z-index-command: var(--z-command);
+  --z-index-canvas-loading: var(--z-canvas-loading);
+  --z-index-canvas-toolbar: var(--z-canvas-toolbar);
+  --z-index-blocking: var(--z-blocking);
+  --z-index-tour-scrim: var(--z-tour-scrim);
+  --z-index-tour: var(--z-tour);
+
+  /* Motion, the values in tokens/motion.css. `ease-in-out` is the
+     standard curve. The shadows are registered in tokens/shape.css. */
+  --transition-duration-instant: var(--duration-instant);
+  --transition-duration-fast: var(--duration-fast);
+  --transition-duration-base: var(--duration-base);
+  --transition-duration-slow: var(--duration-slow);
+  --transition-duration-slower: var(--duration-slower);
+  --transition-duration-slowest: var(--duration-slowest);
+  --ease-standard: var(--ease-standard);
+  --ease-in: var(--ease-in);
+  --ease-out: var(--ease-out);
+  --ease-emphasized: var(--ease-emphasized);
+  --ease-out-quint: var(--ease-out-quint);
+  --ease-glide: var(--ease-glide);
+  --ease-drawer: var(--ease-drawer);
+  --ease-in-out: var(--ease-standard);
 }
 
 /* Base styles of the utilities below. */
@@ -229,6 +281,32 @@
     mix-blend-mode: soft-light;
     pointer-events: none;
   }
+}
+
+/* The chat message table's header: brand, indigo and blue glows over a
+   surface-to-muted fade. */
+@utility bg-message-table-header {
+  background-image:
+    radial-gradient(
+      35% 160% at 8% 0%,
+      rgb(var(--color-brand) / 0.05),
+      transparent
+    ),
+    radial-gradient(
+      35% 160% at 50% 0%,
+      rgb(var(--color-indigo) / 0.04),
+      transparent
+    ),
+    radial-gradient(
+      35% 160% at 92% 0%,
+      rgb(var(--color-info) / 0.05),
+      transparent
+    ),
+    linear-gradient(
+      to bottom,
+      rgb(var(--color-surface) / 1),
+      rgb(var(--color-surface-muted) / 1)
+    );
 }
 
 /* The chat message table's glowing header text. The violet glow is the
@@ -664,30 +742,30 @@ body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
 
 @keyframes orbit-loader-ball1 {
   0% {
-    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-foreground-strong));
+    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-action-hover));
   }
   50% {
-    box-shadow: 0 0 0 rgb(var(--color-foreground-strong));
+    box-shadow: 0 0 0 rgb(var(--color-action-hover));
     margin-bottom: 0;
     transform: translate(calc(var(--spacing) / 2), calc(var(--spacing) / 2));
   }
   100% {
-    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-foreground-strong));
+    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-action-hover));
     margin-bottom: calc(var(--gap));
   }
 }
 
 @keyframes orbit-loader-ball2 {
   0% {
-    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-foreground-subtle));
+    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-fill-subtle));
   }
   50% {
-    box-shadow: 0 0 0 rgb(var(--color-foreground-subtle));
+    box-shadow: 0 0 0 rgb(var(--color-fill-subtle));
     margin-top: calc(var(--ball-size) * -1);
     transform: translate(calc(var(--spacing) / 2), calc(var(--spacing) / 2));
   }
   100% {
-    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-foreground-subtle));
+    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-fill-subtle));
     margin-top: 0;
   }
 }

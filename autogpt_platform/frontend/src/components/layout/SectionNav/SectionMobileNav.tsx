@@ -43,7 +43,7 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="flex w-fit items-center gap-2 rounded-full border border-border-base bg-surface px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-action"
+            className="flex w-fit items-center gap-2 rounded-pill border border-border-base bg-surface px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-action"
             aria-label={`${sectionName} navigation, current: ${current.label}`}
           >
             <span className="flex items-center gap-2">

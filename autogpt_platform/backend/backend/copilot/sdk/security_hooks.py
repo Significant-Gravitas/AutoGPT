@@ -71,7 +71,7 @@ def _deny(reason: str) -> dict[str, Any]:
     }
 
 
-def _landing_refusal(governor: TurnGovernor | None) -> str | None:
+async def _landing_refusal(governor: TurnGovernor | None) -> str | None:
     """The governor's refusal for the next tool call, if it is landing the turn.
 
     A governor failure lets the call run: the CLI's own budget and turn limits
@@ -80,6 +80,7 @@ def _landing_refusal(governor: TurnGovernor | None) -> str | None:
     if governor is None:
         return None
     try:
+        await governor.keep_up()
         return governor.refusal()
     except Exception:
         logger.warning("[SDK] Turn governor could not decide a refusal", exc_info=True)
@@ -263,7 +264,7 @@ def create_security_hooks(
             tool_name = cast(str, input_data.get("tool_name", ""))
             tool_input = cast(dict[str, Any], input_data.get("tool_input", {}))
 
-            refusal = _landing_refusal(governor)
+            refusal = await _landing_refusal(governor)
             if governor is not None and refusal is not None:
                 logger.info(
                     "[SDK] Refusing %s: turn is landing (%s), user=%s",

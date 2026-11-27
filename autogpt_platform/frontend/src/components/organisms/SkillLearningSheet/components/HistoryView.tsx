@@ -47,7 +47,7 @@ export function HistoryView({
                 data-slot="skill-learning-sheet-history-item-info"
                 className="min-w-0"
               >
-                <Text variant="small-medium" tone="primary">
+                <Text variant="small" weight="medium" tone="primary">
                   v{version.version} · {version.origin_label}
                   {version.id === currentVersionId ? " · current" : ""}
                 </Text>

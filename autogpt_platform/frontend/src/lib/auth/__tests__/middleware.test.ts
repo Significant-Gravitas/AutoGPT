@@ -167,6 +167,58 @@ describe("authMiddleware", () => {
     fetchSpy.mockRestore();
   });
 
+  describe("the session lookup's address", () => {
+    function answerAsAdmin() {
+      return vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify({ user: { role: "admin" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+
+    function lookedUpAt(lookups: ReturnType<typeof answerAsAdmin>) {
+      expect(lookups).toHaveBeenCalledOnce();
+      return String(lookups.mock.calls[0][0]);
+    }
+
+    it("is BETTER_AUTH_INTERNAL_URL behind a proxy that ends TLS", async () => {
+      vi.stubEnv("BETTER_AUTH_INTERNAL_URL", "http://127.0.0.1:3001");
+      getSessionCookie.mockReturnValue("session-token");
+      const lookups = answerAsAdmin();
+
+      // What Next builds there: its own address, with the proxy's
+      // X-Forwarded-Proto.
+      const response = await authMiddleware(
+        new NextRequest("https://127.0.0.1:3001/admin"),
+      );
+
+      expect(lookedUpAt(lookups)).toBe(
+        "http://127.0.0.1:3001/api/auth/get-session",
+      );
+      expect(response.headers.get("location")).toBeNull();
+    });
+
+    it.each([
+      ["unset", undefined],
+      ["empty", ""],
+    ])(
+      "is the request's own origin when BETTER_AUTH_INTERNAL_URL is %s",
+      async (_how, internalURL) => {
+        vi.stubEnv("BETTER_AUTH_INTERNAL_URL", internalURL);
+        getSessionCookie.mockReturnValue("session-token");
+        const lookups = answerAsAdmin();
+
+        const response = await authMiddleware(makeRequest("/admin"));
+
+        expect(lookedUpAt(lookups)).toBe(
+          "http://localhost:3000/api/auth/get-session",
+        );
+        expect(response.headers.get("location")).toBeNull();
+      },
+    );
+  });
+
   it.each([
     ["is turned down for too many requests", 429],
     ["fails on the server", 500],

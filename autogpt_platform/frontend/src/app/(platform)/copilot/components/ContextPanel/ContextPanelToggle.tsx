@@ -29,9 +29,10 @@ interface Props {
 }
 
 // Sized and stroked like the sidebar's nav icons so the chat's top-right
-// controls read as the same family.
+// controls read as the same family. The Buttons' compact-ghost variant
+// brings the hover fill the integrations toggle's plain buttons add here.
 const toggleClass =
-  "shrink-0 rounded-full transition-[background-color,transform] duration-150 ease-out hover:bg-surface-hover active:scale-[0.97] motion-reduce:transition-none";
+  "shrink-0 rounded-pill transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] motion-reduce:transition-none";
 
 /** The chat's top-right controls: the expert's integrations, the files
  *  toggle and the Computer toggle, each opening its face of the side panel. The
@@ -81,9 +82,12 @@ export function ContextPanelToggle({
   return (
     // The same translucent pill as the thread chip on the left (ThreadHeader),
     // level with it and as tall, so the two corners read as one header.
-    <div className="mt-3 mr-4 flex shrink-0 items-center gap-1 rounded-full border border-border-base/70 bg-surface/75 p-1.5 shadow-sm backdrop-blur-md max-lg:shadow-md">
+    <div className="mt-3 mr-4 flex shrink-0 items-center gap-1 rounded-pill border border-border-base/70 bg-surface/75 p-1.5 shadow-sm backdrop-blur-md max-lg:shadow-md">
       {showIntegrations && expert && (
-        <IntegrationsToggle expert={expert} className={toggleClass} />
+        <IntegrationsToggle
+          expert={expert}
+          className={cn(toggleClass, "hover:bg-surface-hover")}
+        />
       )}
       {showFilesToggle && (
         <Tooltip inheritDelay>
@@ -112,7 +116,9 @@ export function ContextPanelToggle({
               />
               {documentCount > 0 && (
                 <Text
-                  variant="small-medium-tight"
+                  variant="small"
+                  weight="medium"
+                  leading="4"
                   as="span"
                   tone="emphasis-soft"
                 >

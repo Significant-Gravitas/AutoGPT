@@ -36,11 +36,11 @@ export function PlanTaskCard({ task, owner, isFirst }: Props) {
       )}
       <div className="flex min-w-0 flex-col items-start">
         {isFirst ? (
-          <span className="mb-1.5 rounded-full bg-accent-surface px-2 py-0.5 text-caption-sm font-semibold tracking-eyebrow text-accent-strong uppercase">
+          <span className="mb-1.5 rounded-pill bg-accent-surface px-2 py-0.5 text-caption-sm font-semibold tracking-eyebrow text-accent-strong uppercase">
             Start here
           </span>
         ) : null}
-        <Text variant="body-medium" as="span" className="text-pretty">
+        <Text variant="body" weight="medium" as="span" className="text-pretty">
           {task.title}
         </Text>
         {task.why ? (

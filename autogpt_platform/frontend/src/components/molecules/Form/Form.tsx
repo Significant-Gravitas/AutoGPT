@@ -15,16 +15,30 @@ import {
 import { cn } from "@/lib/utils";
 import type { UseFormReturn } from "react-hook-form";
 
+// How far apart the fields sit: `compact` (10px, an inline credential form),
+// `stack` and `stack-tight` (a 16px or 8px column).
+const SPACING = {
+  compact: "space-y-2.5",
+  stack: "flex flex-col gap-4",
+  "stack-tight": "flex flex-col gap-2",
+} as const;
+
 type FormProps<TFieldValues extends FieldValues = FieldValues> = {
   form: UseFormReturn<TFieldValues>;
   onSubmit: (values: TFieldValues) => void | Promise<void>;
   className?: string;
+  spacing?: keyof typeof SPACING;
+  /** 4px each side, so the fields' focus rings are not clipped by a
+   *  scrolling parent. */
+  focusInset?: boolean;
 } & Omit<React.FormHTMLAttributes<HTMLFormElement>, "onSubmit">;
 
 function Form<TFieldValues extends FieldValues = FieldValues>({
   form,
   onSubmit,
   className,
+  spacing,
+  focusInset = false,
   children,
   ...props
 }: FormProps<TFieldValues>) {
@@ -33,7 +47,12 @@ function Form<TFieldValues extends FieldValues = FieldValues>({
       <form
         onSubmit={form.handleSubmit(onSubmit)}
         data-slot="form"
-        className={cn("space-y-4", className)}
+        className={cn(
+          "space-y-4",
+          spacing && SPACING[spacing],
+          focusInset && "px-1",
+          className,
+        )}
         {...props}
       >
         {children}
@@ -160,8 +179,11 @@ FormControl.displayName = "FormControl";
 
 const FormDescription = React.forwardRef<
   HTMLParagraphElement,
-  React.HTMLAttributes<HTMLParagraphElement>
->(({ className, ...props }, ref) => {
+  React.HTMLAttributes<HTMLParagraphElement> & {
+    /** `body-sm`: 13px, at the line height of the text around it. */
+    size?: "body-sm";
+  }
+>(({ className, size, ...props }, ref) => {
   const { formDescriptionId } = useFormField();
 
   return (
@@ -171,6 +193,7 @@ const FormDescription = React.forwardRef<
       data-slot="form-description"
       className={cn(
         "font-sans text-caption leading-4.5 font-normal text-foreground-tertiary",
+        size === "body-sm" && "text-body-sm leading-inherit",
         className,
       )}
       {...props}

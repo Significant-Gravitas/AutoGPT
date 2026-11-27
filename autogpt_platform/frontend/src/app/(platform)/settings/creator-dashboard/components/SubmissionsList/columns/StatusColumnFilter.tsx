@@ -26,7 +26,7 @@ export function StatusColumnFilter({ value, onChange }: Props) {
   return (
     <ColumnFilter active={value.length > 0} label="Status" align="start">
       <div className="flex flex-col gap-2">
-        <Text variant="small-medium" as="span" className="mx-2">
+        <Text variant="small" weight="medium" as="span" className="mx-2">
           Filter by status
         </Text>
         <ul className="flex flex-col gap-1">
@@ -47,7 +47,7 @@ export function StatusColumnFilter({ value, onChange }: Props) {
                   )}
                 >
                   <span
-                    className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-caption font-medium ${visual.pillClass}`}
+                    className={`inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-caption font-medium ${visual.pillClass}`}
                   >
                     {option.label}
                   </span>
@@ -56,7 +56,7 @@ export function StatusColumnFilter({ value, onChange }: Props) {
                       "flex h-4 w-4 items-center justify-center rounded-xsmall border",
                       "transition-[background-color,border-color,transform] duration-200",
                       checked
-                        ? "scale-100 border-brand bg-brand text-action-foreground"
+                        ? "scale-100 border-brand bg-brand text-foreground-on-color"
                         : "scale-95 border-border-strong bg-surface text-transparent",
                     )}
                   >

@@ -22,7 +22,7 @@ An Expo Router app for iOS and Android that talks to the same web app and backen
 
 ## What it does not do
 
-Sign-up, onboarding, buying or changing a plan, adding credits, social login, push notifications, choosing a model, pausing a single routine, uploading or generating an expert's picture, deleting or downloading files, store builds, and CI.
+Sign-up, onboarding, buying or changing a plan, adding credits, social login, push notifications, choosing a model, pausing a single routine, uploading or generating an expert's picture, deleting or uploading files from the Files page, and CI.
 
 ## Run it
 
@@ -63,6 +63,9 @@ Set these in `.env.local` (see `.env.example`). Trailing slashes are dropped.
 | --- | --- | --- |
 | `EXPO_PUBLIC_FRONTEND_URL` | `http://localhost:3000` | The web app: sign-in (`/api/auth`) and the sign-up page the no-plan screen opens. |
 | `EXPO_PUBLIC_API_URL` | `http://localhost:8006` | The backend: chats and experts. |
+| `EXPO_PUBLIC_SENTRY_DSN` | none | Where crash and error reports go. Without it, or while developing, nothing is sent. |
+| `EXPO_PUBLIC_SENTRY_ENVIRONMENT` | `production` | The Sentry environment on each report; `eas.json` sets it per profile. |
+| `EXPO_PUBLIC_APP_STORE_ID` | none | The app's numeric App Store ID, for the update screen's button on iOS. Without it, iOS shows the screen with no button. |
 
 ## Builds
 
@@ -78,6 +81,30 @@ eas build --profile dev --platform android
 eas build --profile production --platform all
 ```
 
+### Variables in EAS
+
+Builds read the profile's `env` in `eas.json`, then the EAS environment named by the profile's `environment` (`dev` reads `preview`, `production` reads `production`). Set these in the Expo dashboard, under the project's environment variables:
+
+| Variable | Environments | Visibility | Why |
+| --- | --- | --- | --- |
+| `EXPO_PUBLIC_SENTRY_DSN` | preview, production | Plain text | Turns crash reporting on. It ships in the app, so it isn't a secret. |
+| `SENTRY_AUTH_TOKEN` | preview, production | Secret | Lets the build upload source maps to the `autogpt-mobile` project in the `significant-gravitas` Sentry org. |
+| `EXPO_PUBLIC_APP_STORE_ID` | production | Plain text | Once the App Store record exists. |
+
+### Over-the-air updates
+
+A JavaScript-only fix can reach phones without a store release. Each profile builds on its own channel (`dev`, `production`), and an update only reaches builds of the same `version` (the `appVersion` runtime policy), so any native change needs a new version and a store build.
+
+```sh
+pnpm update:production   # or pnpm update:dev
+```
+
+The scripts set the channel's server addresses themselves, because `eas update` doesn't read a build profile's `env`, then upload the update's source maps to Sentry (needs `SENTRY_AUTH_TOKEN` in your shell). A phone downloads an update at launch and runs it from the next launch.
+
+### Minimum version
+
+The backend's `MOBILE_MIN_APP_VERSION` setting (for example `0.2.0`) is the oldest app version it still lets in. The app reads it from the public `/api/platform-config` at launch and whenever it comes back to the front, before sign-in. An older app shows "Update AutoGPT" with a button to its store page and goes no further. An empty setting, the default, lets every version in. If the initial check fails or the server does not answer within four seconds, the app lets you in. A failed check on return to the foreground keeps the last answer, so an app already blocked stays blocked.
+
 Both builds share one app ID, so a phone holds one of them at a time. On Android, moving between a `dev` APK and the Play build means uninstalling first, because the two are signed with different keys. Only submit builds from the `production` profile to the stores.
 
 ## Scripts
@@ -86,6 +113,7 @@ Both builds share one app ID, so a phone holds one of them at a time. On Android
 - `pnpm test`: unit tests (jest-expo).
 - `pnpm types`: type check.
 - `pnpm lint`: lint.
+- `pnpm update:dev`, `pnpm update:production`: publish an over-the-air update (see above).
 
 ## Known limits
 

@@ -6,8 +6,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { DeleteAccountFlow } from "@/components/organisms/DeleteAccountFlow/DeleteAccountFlow";
 import { useDeleteAccountFlowOpener } from "@/components/organisms/DeleteAccountFlow/useDeleteAccountFlowOpener";
-
-import { EASE_OUT } from "../../helpers";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   index?: number;
@@ -26,8 +25,8 @@ export function DeleteAccountCard({ index = 0 }: Props) {
         reduceMotion
           ? undefined
           : {
-              duration: 0.32,
-              ease: EASE_OUT,
+              duration: duration.slow,
+              ease: ease.emphasized,
               delay: 0.04 + index * 0.05,
             }
       }
@@ -35,7 +34,7 @@ export function DeleteAccountCard({ index = 0 }: Props) {
     >
       <div className="flex flex-col items-start gap-3 rounded-large border border-border-base bg-surface px-4 py-4 shadow-message-table sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <Text variant="body-medium" as="span">
+          <Text variant="body" weight="medium" as="span">
             Delete account
           </Text>
           <Text variant="small" as="span" tone="muted">

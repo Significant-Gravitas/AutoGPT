@@ -227,7 +227,7 @@ describe("minimap helpers", () => {
     expect(tickScale(4, 3)).toBeCloseTo(0.8);
     expect(tickScale(9, 3)).toBe(0.6);
     expect(tickColor(0)).toBe("bg-action");
-    expect(tickColor(1)).toBe("bg-foreground-tertiary");
-    expect(tickColor(4)).toBe("bg-foreground-subtle");
+    expect(tickColor(1)).toBe("bg-fill-soft");
+    expect(tickColor(4)).toBe("bg-fill-subtle");
   });
 });

@@ -78,7 +78,7 @@ export function RunMCPToolComponent({ part }: Props) {
       </div>
 
       {isCorrupted && (
-        <Text variant="body-tight" tone="error" className="mt-1">
+        <Text variant="body" leading="5" tone="error" className="mt-1">
           The result data arrived corrupted, so any sign-in or setup card it
           contained can&apos;t be shown. Ask your expert to retry this step.
         </Text>

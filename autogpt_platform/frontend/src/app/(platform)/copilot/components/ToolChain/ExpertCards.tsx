@@ -388,7 +388,9 @@ export function ExpertChangeCard({
       <div className={HEADER}>
         <Icon icon={header.icon} size={18} tone="subtle" />
         <Text
-          variant="body-medium-tight"
+          variant="body"
+          weight="medium"
+          leading="5"
           as="span"
           tone="primary"
           className="min-w-0 flex-1 truncate"
@@ -415,14 +417,21 @@ export function ExpertChangeCard({
           />
           <div className="min-w-0 flex-1">
             <Text
-              variant="body-sm-medium-inherit"
+              variant="body-sm"
+              weight="medium"
+              leading="inherit"
               tone="emphasis"
               className="truncate"
             >
               {name}
             </Text>
             {role && (
-              <Text variant="small-tight" tone="subtle" className="truncate">
+              <Text
+                variant="small"
+                leading="4"
+                tone="subtle"
+                className="truncate"
+              >
                 {role}
               </Text>
             )}
@@ -450,12 +459,12 @@ export function ExpertChangeCard({
             className="flex flex-col gap-1 pt-1.5 pl-[42px]"
           >
             {tagline && about && (
-              <Text variant="body-tight" tone="muted">
+              <Text variant="body" leading="5" tone="muted">
                 {about}
               </Text>
             )}
             {boundaries && (
-              <Text variant="body-tight" tone="subtle">
+              <Text variant="body" leading="5" tone="subtle">
                 Stops at: {boundaries}
               </Text>
             )}
@@ -506,7 +515,9 @@ function SoulChangeCard({
       <div className={HEADER}>
         <Icon icon={PencilEdit02Icon} size={18} tone="subtle" />
         <Text
-          variant="body-medium-tight"
+          variant="body"
+          weight="medium"
+          leading="5"
           as="span"
           tone="primary"
           className="min-w-0 flex-1 truncate"
@@ -517,11 +528,12 @@ function SoulChangeCard({
       <div className="flex flex-col gap-3 px-4 py-3">
         {soulChanges(output).map((change) => (
           <section key={change.field} className="flex flex-col gap-0.5">
-            <Text variant="small-medium-tight" tone="body">
+            <Text variant="small" weight="medium" leading="4" tone="body">
               {SOUL_LABELS[change.field] ?? change.field}
             </Text>
             <Text
-              variant="body-tight"
+              variant="body"
+              leading="5"
               tone="body"
               className="whitespace-pre-line"
             >
@@ -529,7 +541,8 @@ function SoulChangeCard({
             </Text>
             {change.before && (
               <Text
-                variant="small-tight"
+                variant="small"
+                leading="4"
                 tone="subtle"
                 className="line-clamp-2"
               >
@@ -575,7 +588,7 @@ function DecisionFooter({
       <div className="min-w-0">{pager}</div>
       <div className="flex shrink-0 items-center gap-1.5">
         {chosen && (
-          <Text variant="small-tight" as="span" tone="muted">
+          <Text variant="small" leading="4" as="span" tone="muted">
             {chosen}
           </Text>
         )}
@@ -644,7 +657,13 @@ export function ExpertChangeCardSkeleton() {
     <div className={SHELL}>
       <div className={HEADER}>
         <Icon icon={UserAdd01Icon} size={18} tone="subtle" />
-        <Text variant="body-medium-tight" as="span" tone="primary">
+        <Text
+          variant="body"
+          weight="medium"
+          leading="5"
+          as="span"
+          tone="primary"
+        >
           Create an Expert
         </Text>
       </div>
@@ -883,7 +902,7 @@ export function ExpertChangeGroup({
       >
         <Icon icon={ArrowRight01Icon} size={14} />
       </button>
-      <Text variant="small-tight" as="span" tone="subtle">
+      <Text variant="small" leading="4" as="span" tone="subtle">
         {current + 1} of {visible.length}
       </Text>
     </div>

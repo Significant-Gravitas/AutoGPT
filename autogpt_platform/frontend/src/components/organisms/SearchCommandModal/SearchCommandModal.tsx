@@ -118,10 +118,10 @@ export function SearchCommandModal({
       }}
     >
       <RXDialog.Portal>
-        <RXDialog.Overlay className="fixed inset-0 z-[80] bg-scrim/20 backdrop-blur-sm" />
+        <RXDialog.Overlay className="fixed inset-0 z-command bg-scrim/20 backdrop-blur-sm" />
         <RXDialog.Content
           onOpenAutoFocus={handleOpenAutoFocus}
-          className="fixed top-[18vh] left-1/2 z-[80] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-3xl bg-surface shadow-2xl ring-1 ring-border-base focus:outline-none"
+          className="fixed top-[18vh] left-1/2 z-command w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-3xl bg-surface shadow-2xl ring-1 ring-border-base focus:outline-none"
           onKeyDown={handleKeyDown}
         >
           <RXDialog.Title className="sr-only">Search</RXDialog.Title>
@@ -186,7 +186,8 @@ export function SearchCommandModal({
               {isError ? (
                 <div className="px-3 py-8">
                   <Text
-                    variant="body-tight"
+                    variant="body"
+                    leading="5"
                     as="div"
                     tone="error"
                     align="center"
@@ -216,7 +217,8 @@ export function SearchCommandModal({
               ) : showEmptyState ? (
                 <div className="px-3 py-8">
                   <Text
-                    variant="body-tight"
+                    variant="body"
+                    leading="5"
                     as="div"
                     tone="muted"
                     align="center"
@@ -241,10 +243,7 @@ export function SearchCommandModal({
                 data-slot="search-command-modal-hint"
                 className="flex items-center gap-1.5"
               >
-                <span
-                  // oxlint-disable-next-line design-system/no-arbitrary-values -- key-cap shadow, no shadow token holds it
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-border-base bg-surface shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
-                >
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-border-base bg-surface shadow-keycap">
                   <Text
                     variant="caption-sm"
                     as="kbd"
@@ -255,10 +254,7 @@ export function SearchCommandModal({
                     ↑
                   </Text>
                 </span>
-                <span
-                  // oxlint-disable-next-line design-system/no-arbitrary-values -- key-cap shadow, no shadow token holds it
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-border-base bg-surface shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
-                >
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-border-base bg-surface shadow-keycap">
                   <Text
                     variant="caption-sm"
                     as="kbd"
@@ -270,7 +266,8 @@ export function SearchCommandModal({
                   </Text>
                 </span>
                 <Text
-                  variant="small-tight"
+                  variant="small"
+                  leading="4"
                   as="span"
                   tone="body"
                   data-slot="search-command-modal-hint-label"
@@ -282,10 +279,7 @@ export function SearchCommandModal({
                 data-slot="search-command-modal-hint"
                 className="flex items-center gap-1.5"
               >
-                <span
-                  // oxlint-disable-next-line design-system/no-arbitrary-values -- key-cap shadow, no shadow token holds it
-                  className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-border-base bg-surface px-1 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
-                >
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-border-base bg-surface px-1 shadow-keycap">
                   <Text
                     variant="caption-sm"
                     as="kbd"
@@ -297,7 +291,8 @@ export function SearchCommandModal({
                   </Text>
                 </span>
                 <Text
-                  variant="small-tight"
+                  variant="small"
+                  leading="4"
                   as="span"
                   tone="body"
                   data-slot="search-command-modal-hint-label"
@@ -310,10 +305,7 @@ export function SearchCommandModal({
               data-slot="search-command-modal-hint"
               className="flex items-center gap-1.5"
             >
-              <span
-                // oxlint-disable-next-line design-system/no-arbitrary-values -- key-cap shadow, no shadow token holds it
-                className="inline-flex h-5 items-center justify-center rounded-md border border-border-base bg-surface px-1.5 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
-              >
+              <span className="inline-flex h-5 items-center justify-center rounded-md border border-border-base bg-surface px-1.5 shadow-keycap">
                 <Text
                   variant="caption-sm"
                   as="kbd"
@@ -325,7 +317,8 @@ export function SearchCommandModal({
                 </Text>
               </span>
               <Text
-                variant="small-tight"
+                variant="small"
+                leading="4"
                 as="span"
                 tone="body"
                 data-slot="search-command-modal-hint-label"

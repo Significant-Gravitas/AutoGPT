@@ -61,7 +61,7 @@ function OfferHeading({
       {plan.usage && (
         <span
           data-slot="offer-heading-usage"
-          className="rounded-full bg-accent-surface px-2 py-0.5 text-caption text-accent-strong"
+          className="rounded-pill bg-accent-surface px-2 py-0.5 text-caption text-accent-strong"
         >
           {plan.usage} usage
         </span>
@@ -70,7 +70,7 @@ function OfferHeading({
         <span
           data-slot="offer-heading-badge"
           className={cn(
-            "rounded-full px-2 py-0.5 text-caption",
+            "rounded-pill px-2 py-0.5 text-caption",
             plan.highlighted
               ? "bg-accent-surface text-accent-strong"
               : "bg-surface-hover text-foreground-tertiary",
@@ -82,7 +82,7 @@ function OfferHeading({
       {trial && (
         <span
           data-slot="offer-heading-trial"
-          className="ml-auto rounded-full bg-accent-surface px-2 py-0.5 text-caption font-medium text-accent-strong"
+          className="ml-auto rounded-pill bg-accent-surface px-2 py-0.5 text-caption font-medium text-accent-strong"
         >
           {trial.duration_days} days free
         </span>
@@ -107,7 +107,7 @@ function OfferPrice({
           as="span"
           aria-label={presentation.price}
           tone="emphasis"
-          className="leading-9"
+          leading="9"
         >
           {presentation.price}
         </Text>
@@ -160,12 +160,7 @@ function OfferFeatures({
               tone={isTeam ? "muted" : "brand"}
             />
           </span>
-          <Text
-            variant="small"
-            as="span"
-            tone="primary"
-            className="text-body-sm leading-4.5"
-          >
+          <Text variant="body-sm" as="span" tone="primary" leading="4.5">
             {feature}
           </Text>
         </li>

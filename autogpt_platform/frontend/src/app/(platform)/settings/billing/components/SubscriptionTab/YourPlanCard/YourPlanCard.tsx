@@ -90,7 +90,7 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
   return (
     <motion.section {...sectionMotion} className="flex w-full flex-col gap-4">
       <div className="sr-only">
-        <Text variant="body-medium" as="span">
+        <Text variant="body" weight="medium" as="span">
           Your plan
         </Text>
       </div>
@@ -98,7 +98,7 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3 py-4">
         <div className="flex min-w-0 flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <Text variant="large-semibold" as="h2">
+            <Text variant="large" weight="semibold" as="h2">
               {plan.label}
             </Text>
             {plan.isPendingCancel ||
