@@ -11,16 +11,21 @@ import {
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV2ListPresetsMockHandler } from "@/app/api/__generated__/endpoints/presets/presets.msw";
 import { getGetV1ListExecutionSchedulesForAGraphMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import { getGetV2GetSpecificAgentQueryKey } from "@/app/api/__generated__/endpoints/store/store";
 import {
   getGetV2GetSpecificAgentMockHandler,
   getGetV2GetSpecificAgentResponseMock,
+  getGetV2ListMySubmissionsMockHandler,
+  getGetV2ListMySubmissionsResponseMock,
 } from "@/app/api/__generated__/endpoints/store/store.msw";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { QueryClient } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import AgentLibraryPage from "../page";
 
 vi.mock("next/navigation", async (importOriginal) => ({
@@ -47,6 +52,10 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => ({
   useFlagStatus: () => ({ enabled: false, ready: true }),
 }));
 
+afterEach(() => {
+  useAuthStore.setState({ user: null });
+});
+
 const run = {
   ...getGetV1ListGraphExecutionsResponseMock().executions[0],
   id: "run-1",
@@ -59,18 +68,27 @@ const run = {
   stats: null,
 };
 
-function serveMarketplaceCopy(
-  listedVersions: string[],
-  { withRun = false }: { withRun?: boolean } = {},
-) {
-  const storeRequests = vi.fn();
+interface ServeOptions {
+  libraryVersion?: number;
+  listedVersions: string[];
+  withRun?: boolean;
+  submittedVersion?: number;
+}
+
+function serveMarketplaceCopy({
+  libraryVersion = 1,
+  listedVersions,
+  withRun = false,
+  submittedVersion,
+}: ServeOptions) {
   const updateRequests = vi.fn();
+  const isCreator = submittedVersion !== undefined;
   const agent = getGetV2GetLibraryAgentResponseMock({
     id: "library-agent",
     graph_id: "graph-1",
-    graph_version: 1,
+    graph_version: libraryVersion,
     name: "Morning digest",
-    can_access_graph: false,
+    can_access_graph: isCreator,
     marketplace_listing: {
       id: "listing-1",
       name: "Morning digest",
@@ -78,6 +96,12 @@ function serveMarketplaceCopy(
       creator: { id: "creator-1", name: "Creator", slug: "creator" },
     },
   });
+  if (isCreator) {
+    useAuthStore.setState({
+      user: { id: "user-1", email: "u@example.com", user_metadata: {} },
+    });
+  }
+  const submissions = getGetV2ListMySubmissionsResponseMock();
   server.use(
     getGetV2GetLibraryAgentMockHandler(agent),
     getGetV1ListGraphExecutionsMockHandler({
@@ -106,32 +130,47 @@ function serveMarketplaceCopy(
         page_size: 100,
       },
     }),
-    getGetV2GetSpecificAgentMockHandler(() => {
-      storeRequests();
-      return getGetV2GetSpecificAgentResponseMock({
+    getGetV2GetSpecificAgentMockHandler(
+      getGetV2GetSpecificAgentResponseMock({
         slug: "morning-digest",
         graph_id: "graph-1",
         graph_versions: listedVersions,
-      });
+      }),
+    ),
+    getGetV2ListMySubmissionsMockHandler({
+      ...submissions,
+      submissions:
+        submittedVersion === undefined
+          ? []
+          : [
+              {
+                ...submissions.submissions[0],
+                graph_id: "graph-1",
+                graph_version: submittedVersion,
+              },
+            ],
     }),
     getPatchV2UpdateLibraryAgentMockHandler(async ({ request }) => {
       updateRequests(await request.json());
       return agent;
     }),
   );
-  return { storeRequests, updateRequests };
+  return { updateRequests };
 }
 
-function renderPage() {
+function renderPage(queryClient?: QueryClient) {
   render(
     <NuqsTestingAdapter hasMemory>
       <AgentLibraryPage />
     </NuqsTestingAdapter>,
+    queryClient ? { queryClient } : undefined,
   );
 }
 
 test("a workflow never run offers the newer Marketplace version and updates to it", async () => {
-  const { updateRequests } = serveMarketplaceCopy(["1", "2"]);
+  const { updateRequests } = serveMarketplaceCopy({
+    listedVersions: ["1", "2"],
+  });
   renderPage();
 
   expect(await screen.findByText("Ready to get started?")).toBeDefined();
@@ -147,18 +186,43 @@ test("a workflow never run offers the newer Marketplace version and updates to i
 });
 
 test("a workflow never run on the latest Marketplace version shows no update", async () => {
-  const { storeRequests } = serveMarketplaceCopy(["1"]);
-  renderPage();
+  serveMarketplaceCopy({ listedVersions: ["1"] });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  renderPage(queryClient);
 
   expect(await screen.findByText("Ready to get started?")).toBeDefined();
-  await waitFor(() => expect(storeRequests).toHaveBeenCalled());
+  // Wait for the listing to be applied, not just requested.
+  await waitFor(() =>
+    expect(
+      queryClient.getQueryState(
+        getGetV2GetSpecificAgentQueryKey("creator", "morning-digest", {}),
+      )?.status,
+    ).toBe("success"),
+  );
 
   expect(screen.queryByText("Update available")).toBeNull();
   expect(screen.queryByRole("button", { name: "Update workflow" })).toBeNull();
 });
 
+test("a creator's workflow never run offers to publish its unpublished changes", async () => {
+  serveMarketplaceCopy({
+    libraryVersion: 3,
+    listedVersions: ["2"],
+    submittedVersion: 2,
+  });
+  renderPage();
+
+  expect(await screen.findByText("Ready to get started?")).toBeDefined();
+  expect(await screen.findByText("Unpublished changes")).toBeDefined();
+  expect(screen.getByRole("button", { name: "Publish changes" })).toBeDefined();
+  expect(screen.queryByText("Update available")).toBeNull();
+});
+
 test("a workflow with runs offers the newer Marketplace version too", async () => {
-  const { updateRequests } = serveMarketplaceCopy(["1", "2"], {
+  const { updateRequests } = serveMarketplaceCopy({
+    listedVersions: ["1", "2"],
     withRun: true,
   });
   renderPage();

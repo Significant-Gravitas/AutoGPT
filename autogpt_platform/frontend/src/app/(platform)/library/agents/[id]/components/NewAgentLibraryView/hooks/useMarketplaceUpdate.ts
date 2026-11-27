@@ -11,7 +11,6 @@ import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { okData } from "@/app/api/helpers";
-import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import * as React from "react";
 import { useState } from "react";
 
@@ -92,18 +91,15 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
 
     const isUserCreator = !!(agent?.can_access_graph && user?.id);
 
-    const submissionsResponse = okData(submissionsData) as any;
     const agentSubmissions =
-      submissionsResponse?.submissions?.filter(
-        (submission: StoreSubmission) => submission.graph_id === agent.graph_id,
-      ) || [];
+      okData(submissionsData)?.submissions.filter(
+        (submission) => submission.graph_id === agent.graph_id,
+      ) ?? [];
 
     const highestSubmittedVersion =
       agentSubmissions.length > 0
         ? Math.max(
-            ...agentSubmissions.map(
-              (submission: StoreSubmission) => submission.graph_version,
-            ),
+            ...agentSubmissions.map((submission) => submission.graph_version),
           )
         : 0;
 
