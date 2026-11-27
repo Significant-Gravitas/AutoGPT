@@ -15,6 +15,7 @@ from httpx import ASGITransport, AsyncClient
 from prisma.enums import AgentExecutionStatus, APIKeyPermission, SubmissionStatus
 from prisma.models import (
     AgentGraphExecution,
+    APIKey,
     LibraryAgent,
     Organization,
     OrgMember,
@@ -360,10 +361,15 @@ async def _org(name: str, owner: str, *, personal: bool = False) -> str:
 
 
 async def _key(user_id: str, organization_id: str | None) -> str:
-    _, plaintext = await api_key.create_api_key(
+    info, plaintext = await api_key.create_api_key(
         name="org scope",
         user_id=user_id,
         permissions=[APIKeyPermission.READ_GRAPH, APIKeyPermission.EXECUTE_GRAPH],
         organization_id=organization_id,
     )
+    if organization_id is None:
+        # A key from before organizations; create_api_key now tags every new one.
+        await APIKey.prisma().update(
+            where={"id": info.id}, data={"organizationId": None}
+        )
     return plaintext
