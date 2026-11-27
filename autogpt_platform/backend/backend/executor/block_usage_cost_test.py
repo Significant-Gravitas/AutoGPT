@@ -560,6 +560,9 @@ BEFORE_A_RUN = {
     "copilot/tools/helpers.py::_pre_run_charge": "AutoPilot's debit before a run",
     "copilot/gate/subject.py::block_subject": "an approval card's price",
     "copilot/gate/subject.py::graph_cost_credits": "an approval card's price",
+    "executor/direct_block_execution.py::validate_direct_block_input": (
+        "direct block execution validates inputs before a run starts"
+    ),
 }
 
 
