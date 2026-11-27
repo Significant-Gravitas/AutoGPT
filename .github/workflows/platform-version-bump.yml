@@ -2,15 +2,14 @@ name: AutoGPT Platform - Bump version after a release
 
 # A published platform release sets the backend's pyproject.toml and the
 # frontend's package.json to the release's version, through a pull request to
-# dev that merges itself: nobody runs this by hand or merges the bump.
+# dev with auto-merge on: nobody runs this by hand.
 #
 # The pull request is opened as the batch-bot App, so its CI runs (a PR
 # opened with GITHUB_TOKEN gets none), and auto-merge puts it in the merge
-# queue. dev's rules still need one approving review. The PR reviewer bot
-# gives it when it lists the App's login, autogpt-batch-bot[bot], as an
-# author to review automatically (its repository page, Review triggers);
-# a `/review` from a bot is ignored. Until then, one `/review` comment from
-# a person starts that review. Nothing here bypasses dev's rules.
+# queue once it is approved. dev's rules still need one approving review, so
+# each bump PR needs one `/review` comment from a person (a `/review` from a
+# bot is ignored); the PR reviewer bot's approval then lets it merge. Nothing
+# here bypasses dev's rules.
 #
 # The version set is always the newest platform release's, so a hotfix on
 # an older line can't move dev, or a pending bump, back. A second release
@@ -90,7 +89,7 @@ jobs:
 
             Sets the backend's `pyproject.toml` and the frontend's `package.json` to ${{ steps.bump.outputs.version }}, the newest platform release's version. Started by the release [${{ github.event.release.tag_name }}](${{ github.event.release.html_url }}). Only the version lines change, and a file already at that version or later is left as is.
 
-            Opened by `.github/workflows/platform-version-bump.yml` when the release was published. Auto-merge is on, so it merges once it is approved and CI passes.
+            Opened by `.github/workflows/platform-version-bump.yml` when the release was published. Auto-merge is on. It needs one `/review` comment from a person; it merges once the PR reviewer bot approves it and CI passes.
 
             ### Agents and large language models used
 
