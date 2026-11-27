@@ -24,6 +24,8 @@ from backend.data.auth.oauth import (
 
 # The grants the Local Executor app is registered for.
 _GRANTS = ["authorization_code", "refresh_token"]
+# An app AutoGPT registered has an owner, unlike one that registered itself.
+_OWNER = "user-owner"
 
 
 def _make_client(*, raise_server_exceptions: bool = True) -> TestClient:
@@ -148,7 +150,7 @@ async def test_confidential_client_cannot_use_public_refresh_exception() -> None
 def test_public_pkce_token_exchange_accepts_form_and_json(encoding: str) -> None:
     client = _make_client()
     application = SimpleNamespace(
-        id="app-1", name="Local Executor", grant_types=_GRANTS
+        id="app-1", name="Local Executor", grant_types=_GRANTS, owner_id=_OWNER
     )
     validate_client = AsyncMock(return_value=application)
     consume_code = AsyncMock(
@@ -192,7 +194,7 @@ def test_public_pkce_token_exchange_accepts_form_and_json(encoding: str) -> None
 def test_public_refresh_form_uses_refresh_token_as_bearer_credential() -> None:
     client = _make_client()
     application = SimpleNamespace(
-        id="app-1", name="Local Executor", grant_types=_GRANTS
+        id="app-1", name="Local Executor", grant_types=_GRANTS, owner_id=_OWNER
     )
     validate_client = AsyncMock(return_value=application)
     refresh_tokens = AsyncMock(
@@ -221,7 +223,7 @@ def test_public_refresh_form_uses_refresh_token_as_bearer_credential() -> None:
         "",
         allow_public_without_secret=True,
     )
-    refresh_tokens.assert_awaited_once_with("old-refresh", "app-1")
+    refresh_tokens.assert_awaited_once_with("old-refresh", "app-1", grantable=None)
 
 
 @pytest.mark.parametrize("encoding", ["form", "json"])
@@ -474,6 +476,7 @@ def test_refresh_replay_push_failure_does_not_change_oauth_result() -> None:
         name="Local Executor",
         client_id="autogpt-local-executor",
         grant_types=_GRANTS,
+        owner_id=_OWNER,
     )
 
     def refresh_error():
