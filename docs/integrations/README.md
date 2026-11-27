@@ -183,6 +183,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [JSON Decoder](block-integrations/data.md#json-decoder) | Decodes a JSON string into the value or data structure, it represents, e |
 | [JSON Encoder](block-integrations/data.md#json-encoder) | Encodes any value or data structure into a JSON string |
 | [Keyword Suggestion Extractor](block-integrations/dataforseo/keyword_suggestions.md#keyword-suggestion-extractor) | Extract individual fields from a KeywordSuggestion object |
+| [MrScraper Status](block-integrations/mrscraper/status.md#mrscraper-status) | Return the raw account status API response without summarizing, redacting body fields, or adding calculated fields |
 | [Persist Information](block-integrations/data.md#persist-information) | Persists a key-value pair for use across multiple runs of an agent |
 | [RMFG Analyze Design](block-integrations/rmfg/designs.md#rmfg-analyze-design) | Uploads a STEP file to RMFG, a manufacturer that makes and ships real sheet-metal and tube-laser parts, and returns its analyzed parts: the first step before a live quote, cart or order |
 | [RMFG Create Cart](block-integrations/rmfg/carts.md#rmfg-create-cart) | Creates an RMFG cart with a website checkout link for one or more configured designs, priced live with shipping and tax once an address is set |
@@ -275,6 +276,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Jev Yes No](block-integrations/typesafe/yes_no.md#jev-yes-no) | Ask Jev a plain-language yes/no question and forward data to the chosen pin, or unsure below your confidence threshold |
 | [Jina Chunking](block-integrations/jina/chunking.md#jina-chunking) | Chunks texts using Jina AI's segmentation service |
 | [Jina Embedding](block-integrations/jina/embeddings.md#jina-embedding) | Generates embeddings using Jina AI |
+| [MrScraper Scrape JSON](block-integrations/mrscraper/scrape_json.md#mrscraper-scrape-json) | Extract structured JSON from a page using a natural-language prompt |
 | [Orchestrator](block-integrations/llm.md#orchestrator) | Uses AI to intelligently decide what tool to use |
 | [Perplexity](block-integrations/llm.md#perplexity) | Query Perplexity's sonar models with real-time web search capabilities and receive annotated responses with source citations |
 | [Replicate Flux Advanced Model](block-integrations/replicate/flux_advanced.md#replicate-flux-advanced-model) | This block runs Flux models on Replicate with advanced settings |
@@ -372,6 +374,11 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Hacker News Get Stories](block-integrations/hacker_news/stories.md#hacker-news-get-stories) | Get the top (front page), new, best, Ask HN, Show HN or job stories from Hacker News, in the order Hacker News ranks them |
 | [Hacker News Get User](block-integrations/hacker_news/users.md#hacker-news-get-user) | Get a Hacker News user's profile by username: karma, when the account was created, the about text and how many items they have posted |
 | [Hacker News Search](block-integrations/hacker_news/search.md#hacker-news-search) | Search Hacker News stories and comments by keyword, author, date, points or linked domain, sorted by relevance or newest first |
+| [MrScraper Get Screenshot](block-integrations/mrscraper/get_screenshot.md#mrscraper-get-screenshot) | Capture a base64 PNG screenshot of the full page, the first viewport, or a custom viewport |
+| [MrScraper Scrape Brand](block-integrations/mrscraper/scrape_brand.md#mrscraper-scrape-brand) | Extract a website's colors, typography, logos, and social links as JSON |
+| [MrScraper Scrape HTML](block-integrations/mrscraper/scrape_html.md#mrscraper-scrape-html) | Retrieve the raw HTML of a page |
+| [MrScraper Scrape Markdown](block-integrations/mrscraper/scrape_markdown.md#mrscraper-scrape-markdown) | Retrieve a page as clean Markdown |
+| [MrScraper Web Search](block-integrations/mrscraper/web_search.md#mrscraper-web-search) | Search the web and return ranked results with titles, URLs, descriptions, and sources |
 | [Parallel Ask Many Decisions](block-integrations/parallel/ask_many.md#parallel-ask-many-decisions) | Ask several yes/no, choice and score questions about one subject in a single Parallel request, answered from shared current web evidence |
 | [Parallel Score Decision](block-integrations/parallel/score.md#parallel-score-decision) | Rate something on an ordered scale you define, using current web evidence from Parallel |
 | [Search Filter Typeahead](block-integrations/dataforb2b/typeahead.md#search-filter-typeahead) | Resolve the exact filter value (company, industry, job title, skill, school, investor, location, category) for people and company searches with DataForB2B |

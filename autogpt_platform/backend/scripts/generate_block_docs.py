@@ -239,6 +239,8 @@ def file_path_to_title(file_path: str) -> str:
         "Ai": "AI",
         "Oauth": "OAuth",
         "Url": "URL",
+        "Html": "HTML",
+        "Json": "JSON",
         "Ci": "CI",
         "Pr": "PR",
         "Gmb": "GMB",  # Google My Business
@@ -246,6 +248,7 @@ def file_path_to_title(file_path: str) -> str:
         "Hubspot": "HubSpot",
         "Allquiet": "All Quiet",
         "Anysearch": "AnySearch",
+        "Mrscraper": "MrScraper",
         "Linkedin": "LinkedIn",
         "Tiktok": "TikTok",
         "Youtube": "YouTube",

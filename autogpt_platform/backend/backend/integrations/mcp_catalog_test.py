@@ -203,6 +203,41 @@ def test_anysearch_takes_an_api_key_and_only_its_feedback_tool_asks():
     assert mcp_tool_effect(url, "unlisted_tool") is None
 
 
+# Every tool the MrScraper server listed on 2026-11-24 to a caller with a valid
+# key. The six scraping and search tools fetch public pages and spend
+# MrScraper tokens, as the MrScraper blocks do on the same key, so they run
+# without asking; status reads the caller's own account.
+MRSCRAPER_TOOLS = [
+    "getScreenshot",
+    "scrapeBrand",
+    "scrapeHtml",
+    "scrapeJson",
+    "scrapeMarkdown",
+    "status",
+    "webSearch",
+]
+
+
+def test_mrscraper_signs_in_or_takes_an_api_key_and_every_tool_is_a_read():
+    url = "https://mcp.mrscraper.com/mcp"
+    entry = get_mcp_catalog_entry_for_url(url)
+
+    assert entry is not None
+    assert entry.name == "mcp_mrscraper"
+    assert entry.display_name == "MrScraper"
+    assert entry.mcp_server.icon_id == "mrscraper"
+    assert entry.mcp_server.provider == "mrscraper"
+    assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.auth_methods == ["oauth", "bearer"]
+    assert entry.mcp_server.oauth_scopes is None
+    effects = get_mcp_effect_maps()["mcp_mrscraper"]
+    assert sorted(effects.read) == MRSCRAPER_TOOLS
+    assert effects.external == []
+    assert effects.irreversible == []
+    assert mcp_tool_effect(url, "scrapeJson") == "read"
+    assert mcp_tool_effect(url, "unlisted_tool") is None
+
+
 # Every tool Supabase's MCP docs listed on 2026-11-17. The reads run without
 # asking. execute_sql both reads and writes, so it asks like the other changes.
 SUPABASE_READ_TOOLS = [

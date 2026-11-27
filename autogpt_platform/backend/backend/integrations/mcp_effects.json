@@ -649,5 +649,17 @@
     "external": [
       "score"
     ]
+  },
+  "mcp_mrscraper": {
+    "source": "https://docs.mrscraper.com/docs/getting-started/mcp-server",
+    "read": [
+      "getScreenshot",
+      "scrapeBrand",
+      "scrapeHtml",
+      "scrapeJson",
+      "scrapeMarkdown",
+      "status",
+      "webSearch"
+    ]
   }
 }
