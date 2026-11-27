@@ -67,7 +67,7 @@ def test_task_to_dict_keeps_legacy_keys():
     assert data["creator_id"] == "2671355"
     assert data["url"] == task.url
     assert data["is_completed"] is False
-    assert data["comment_count"] == 0
+    assert data["comment_count"] is None
     assert data["sync_id"] is None
     assert data["due"]["date"] == "2026-10-05"
     assert data["due"]["datetime"] is None
@@ -92,6 +92,26 @@ def test_task_to_dict_splits_due_datetime():
     assert data["due"]["date"] == "2026-10-05"
     assert data["due"]["datetime"].startswith("2026-10-05T15:00:00")
     json.dumps(data)
+
+
+def test_task_to_dict_gives_due_date_in_the_task_timezone():
+    # 8am on Oct 5 in Tokyo is still Oct 4 in UTC; REST v2 reported Oct 5.
+    task = Task.from_dict(
+        _task_payload(
+            {
+                "date": "2026-10-04T23:00:00Z",
+                "string": "Oct 5 8am",
+                "lang": "en",
+                "is_recurring": False,
+                "timezone": "Asia/Tokyo",
+            }
+        )
+    )
+
+    data = task_to_dict(task)
+
+    assert data["due"]["date"] == "2026-10-05"
+    assert data["due"]["datetime"].startswith("2026-10-04T23:00:00")
 
 
 def test_project_to_dict_keeps_legacy_keys():
@@ -119,6 +139,6 @@ def test_project_to_dict_keeps_legacy_keys():
     assert data["name"] == "Shopping List"
     assert data["order"] == 1
     assert data["url"] == project.url
-    assert data["comment_count"] == 0
+    assert data["comment_count"] is None
     assert data["is_team_inbox"] is None
     json.dumps(data)

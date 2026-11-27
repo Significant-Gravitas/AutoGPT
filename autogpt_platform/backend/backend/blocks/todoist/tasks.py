@@ -290,16 +290,18 @@ class TodoistGetTasksBlock(Block):
         ids: Optional[list[str]] = None,
     ):
         with get_api(credentials) as api:
-            # A filter query takes precedence over the other filters, as it did
-            # on the REST v2 endpoint; API v1 serves it from its own endpoint.
+            # REST v2's precedence: a filter query, then ids, then the project,
+            # section and label filters. API v1 serves a filter query from its
+            # own endpoint and would otherwise combine ids with the rest.
             if filter is not None:
                 pages = api.filter_tasks(query=filter, lang=lang)
+            elif ids:
+                pages = api.get_tasks(ids=ids)
             else:
                 pages = api.get_tasks(
                     project_id=project_id,
                     section_id=section_id,
                     label=label,
-                    ids=ids,
                 )
             return [task_to_dict(task) for task in flatten_pages(pages)]
 

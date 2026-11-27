@@ -3,6 +3,7 @@
 from collections.abc import Iterable
 from datetime import datetime
 from typing import Any, Literal, TypeVar
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from todoist_api_python.api import TodoistAPI
 from todoist_api_python.models import Project, Task
@@ -36,12 +37,13 @@ def task_to_dict(task: Task) -> dict[str, Any]:
     Serialize a task, keeping the keys the blocks returned before
     todoist-api-python 4.0 (``url``, ``is_completed``, ``comment_count``,
     ``sync_id``, ``due.datetime``). The API no longer returns a comment count
-    or sync ID, so those are filled with ``0`` and ``None``.
+    or sync ID, so both are ``None``. ``due.date`` is the day in the task's own
+    timezone, as REST v2 gave it, not the day of the UTC timestamp.
     """
     data = task.to_dict()
     data["url"] = task.url
     data["is_completed"] = task.is_completed
-    data["comment_count"] = 0
+    data["comment_count"] = None
     data["sync_id"] = None
 
     due = data.get("due")
@@ -49,6 +51,11 @@ def task_to_dict(task: Task) -> dict[str, Any]:
         due_date = task.due.date
         if isinstance(due_date, datetime):
             due["datetime"] = due.get("date")
+            if due_date.tzinfo is not None and task.due.timezone:
+                try:
+                    due_date = due_date.astimezone(ZoneInfo(task.due.timezone))
+                except ZoneInfoNotFoundError:
+                    pass
             due["date"] = due_date.date().isoformat()
         else:
             due["datetime"] = None
@@ -60,10 +67,10 @@ def project_to_dict(project: Project) -> dict[str, Any]:
     """
     Serialize a project, keeping the keys the blocks returned before
     todoist-api-python 4.0. The API no longer returns a comment count or team
-    inbox flag, so those are filled with ``0`` and ``None``.
+    inbox flag, so both are ``None``.
     """
     data = project.to_dict()
     data["url"] = project.url
-    data["comment_count"] = 0
+    data["comment_count"] = None
     data["is_team_inbox"] = None
     return data
