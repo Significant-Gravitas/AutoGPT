@@ -1,4 +1,10 @@
-import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  skipToken,
+  useIsMutating,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useState } from "react";
 import { Alert } from "react-native";
@@ -20,12 +26,19 @@ import {
 } from "@/lib/api/expertManage";
 import { type Expert, expertKeys } from "@/lib/api/experts";
 import { flagKeys, getFlags, isFlagOn } from "@/lib/api/flags";
+import { sessionGeneration } from "@/lib/session";
 
 import { isExpertID, trimProfile, unsupervisedPrompt } from "./helpers";
 
 const SAVE_FAILED = "Couldn't save. Try again.";
 
 type Sheet = "profile" | "budget" | "reset" | "fire";
+
+interface ExpertSave {
+  generation: number;
+  patch: Partial<ExpertDetail>;
+  request: (id: string) => Promise<ExpertDetail>;
+}
 
 interface Args {
   /** From the URL, which a link controls. */
@@ -38,7 +51,7 @@ export function useManageExpert({ routeExpertID, routeFrom }: Args) {
   const expertID = isExpertID(routeExpertID) ? routeExpertID : null;
   const queryClient = useQueryClient();
   const { toast, show } = useToast();
-  const [sheet, setSheet] = useState<Sheet | null>(null);
+  const [sheet, setSheet] = useState<{ kind: Sheet } | null>(null);
   const [isModeRefused, setIsModeRefused] = useState(false);
   // A reset removes the chat this page was opened from.
   const [isOriginGone, setIsOriginGone] = useState(false);
@@ -55,20 +68,31 @@ export function useManageExpert({ routeExpertID, routeFrom }: Args) {
   // A refetch that 404s keeps the old data; the expert is gone all the same.
   const expert = isGone ? null : (detail.data ?? null);
 
-  // The page and the team list change at once; a refused save puts both
-  // back as they were.
-  async function save(
-    patch: Partial<ExpertDetail>,
-    request: (id: string) => Promise<ExpertDetail>,
-  ) {
-    if (!expertID) return false;
+  const generation = sessionGeneration();
+  const mutationKey = ["saveExpert", expertID, generation];
+  const save = useMutation({
+    mutationKey,
+    mutationFn: saveExpert,
+    onSettled(_data, _error, { generation: startedIn, patch }) {
+      if (startedIn === sessionGeneration() && patch.name !== undefined) {
+        void queryClient.invalidateQueries({ queryKey: expertKeys.list });
+      }
+    },
+  });
+  const isSaving = useIsMutating({ mutationKey }) > 0;
+
+  async function saveExpert({ patch, request, generation: startedIn }: ExpertSave) {
+    if (!expertID || startedIn !== sessionGeneration()) return false;
     const { name } = patch;
     await Promise.all([
       queryClient.cancelQueries({ queryKey: detailKey }),
       queryClient.cancelQueries({ queryKey: expertKeys.list, exact: true }),
     ]);
+    if (startedIn !== sessionGeneration()) return false;
     const previous = queryClient.getQueryData<ExpertDetail>(detailKey);
-    const previousList = queryClient.getQueryData<Expert[]>(expertKeys.list);
+    const previousName = queryClient
+      .getQueryData<Expert[]>(expertKeys.list)
+      ?.find((item) => item.id === expertID)?.name;
     queryClient.setQueryData<ExpertDetail>(detailKey, (current) =>
       current ? { ...current, ...patch } : current,
     );
@@ -78,44 +102,62 @@ export function useManageExpert({ routeExpertID, routeFrom }: Args) {
       );
     }
     try {
-      queryClient.setQueryData(detailKey, await request(expertID));
+      const updated = await request(expertID);
+      if (startedIn !== sessionGeneration()) return false;
+      await queryClient.cancelQueries({ queryKey: detailKey });
+      if (startedIn !== sessionGeneration()) return false;
+      queryClient.setQueryData(detailKey, updated);
       return true;
     } catch (caught) {
+      if (startedIn !== sessionGeneration()) return false;
       queryClient.setQueryData(detailKey, previous);
-      if (name !== undefined) queryClient.setQueryData(expertKeys.list, previousList);
+      if (name !== undefined && previousName !== undefined) {
+        queryClient.setQueryData<Expert[]>(expertKeys.list, (list) =>
+          list?.map((item) =>
+            item.id === expertID && item.name === name ? { ...item, name: previousName } : item,
+          ),
+        );
+      }
       throw caught;
-    } finally {
-      void queryClient.invalidateQueries({ queryKey: expertKeys.list });
     }
   }
 
-  // A sheet keeps the edits and shows the error itself: a toast would sit
-  // behind it.
-  async function saveProfile(form: ExpertSoul) {
+  function canSave() {
+    return generation === sessionGeneration() && queryClient.isMutating({ mutationKey }) === 0;
+  }
+
+  async function saveSheet(patch: ExpertSave["patch"], request: ExpertSave["request"]) {
+    if (!canSave()) return SAVE_FAILED;
+    try {
+      const updated = await save.mutateAsync({ patch, request, generation });
+      if (updated && generation === sessionGeneration()) {
+        setSheet((current) => (current === sheet ? null : current));
+      }
+      return null;
+    } catch {
+      return SAVE_FAILED;
+    }
+  }
+
+  function saveProfile(form: ExpertSoul) {
     const soul = trimProfile(form);
-    try {
-      await save(soul, (id) => updateExpertSoul(id, soul));
-      setSheet(null);
-      return null;
-    } catch {
-      return SAVE_FAILED;
-    }
+    return saveSheet(soul, (id) => updateExpertSoul(id, soul));
   }
 
-  async function saveBudget(credits: number | null) {
-    try {
-      await save({ weekly_budget: credits }, (id) => updateExpertBudget(id, credits));
-      setSheet(null);
-      return null;
-    } catch {
-      return SAVE_FAILED;
-    }
+  function saveBudget(credits: number | null) {
+    return saveSheet({}, (id) => updateExpertBudget(id, credits));
   }
 
   async function saveMode(mode: AutopilotMode | null) {
+    if (!canSave()) return;
     try {
-      await save({ autopilot_mode: mode }, (id) => updateExpertMode(id, mode));
+      await save.mutateAsync({
+        patch: { autopilot_mode: mode },
+        request: (id) => updateExpertMode(id, mode),
+        generation,
+      });
     } catch (caught) {
+      if (generation !== sessionGeneration()) return;
       if (caught instanceof ApiError && caught.status === 403) {
         setIsModeRefused(true);
         show({ message: "Approval modes aren't on for your account.", tone: "error" });
@@ -126,7 +168,7 @@ export function useManageExpert({ routeExpertID, routeFrom }: Args) {
   }
 
   function chooseMode(mode: AutopilotMode | null) {
-    if (!expert || mode === expert.autopilot_mode) return;
+    if (isSaving || !expert || mode === expert.autopilot_mode) return;
     if (mode !== "unsupervised") {
       void saveMode(mode);
       return;
@@ -143,19 +185,19 @@ export function useManageExpert({ routeExpertID, routeFrom }: Args) {
   }
 
   function openProfile() {
-    setSheet("profile");
+    setSheet({ kind: "profile" });
   }
 
   function openBudget() {
-    setSheet("budget");
+    setSheet({ kind: "budget" });
   }
 
   function openReset() {
-    setSheet("reset");
+    setSheet({ kind: "reset" });
   }
 
   function openFire() {
-    setSheet("fire");
+    setSheet({ kind: "fire" });
   }
 
   function forgetOrigin() {
@@ -183,7 +225,8 @@ export function useManageExpert({ routeExpertID, routeFrom }: Args) {
     retry,
     goBack,
     showApprovals: isFlagOn(flags.data, "copilot-auto-mode") && !isModeRefused,
-    sheet,
+    sheet: sheet?.kind ?? null,
+    isSaving,
     openProfile,
     openBudget,
     openReset,

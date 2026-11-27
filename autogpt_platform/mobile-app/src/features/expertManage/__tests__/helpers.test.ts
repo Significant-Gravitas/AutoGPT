@@ -1,4 +1,4 @@
-import { formatBudget, formatDollars, isExpertID, isProfileDirty, MODE_OPTIONS, parseBudget, validateProfile } from "../helpers";
+import { budgetInput, formatBudget, formatDollars, isExpertID, isProfileDirty, MODE_OPTIONS, parseBudget, validateProfile } from "../helpers";
 
 test("budget: dollars in, credits out", () => {
   expect(parseBudget("25")).toEqual({ credits: 2500 });
@@ -12,8 +12,8 @@ test.each(["12,50", "-5", "abc", "10001", "1.234"])("budget refuses %s", (text) 
 test("budget shows as dollars", () => {
   expect(formatBudget(2500)).toBe("$25");
   expect(formatBudget(1250)).toBe("$12.50");
-  expect(formatBudget(0)).toBe("No limit");
-  expect(formatBudget(null)).toBe("Default");
+  expect(formatBudget(null)).toBe("No limit");
+  expect(parseBudget(budgetInput(null))).toEqual({ credits: 0 });
 });
 test("profile needs a name and an identity within the server's limits", () => {
   const ok = { name: "Mia", identity: "Bookkeeper", voice_preferences: "", boundaries: "" };

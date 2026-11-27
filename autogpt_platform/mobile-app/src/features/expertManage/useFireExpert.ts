@@ -7,6 +7,7 @@ import { expertActivityKeys } from "@/lib/api/expertActivity";
 import { expertManageKeys, fireExpert, getDetachPreview } from "@/lib/api/expertManage";
 import { expertKeys } from "@/lib/api/experts";
 import { homeKeys } from "@/lib/api/home";
+import { sessionGeneration } from "@/lib/session";
 
 import { firePauseLine, isGoneError } from "./dangerHelpers";
 
@@ -40,17 +41,20 @@ export function useFireExpert({ expertID, isOpen, onFired }: Args) {
 
   async function fire() {
     if (isFiring || preview.isFetching) return;
+    const generation = sessionGeneration();
     setIsFiring(true);
     setError(null);
     try {
       await fireExpert(expertID);
     } catch (caught) {
+      if (generation !== sessionGeneration()) return;
       if (!isGoneError(caught)) {
         setError("Couldn't fire them. Try again.");
         setIsFiring(false);
         return;
       }
     }
+    if (generation !== sessionGeneration()) return;
     setIsFiring(false);
     void queryClient.invalidateQueries({ queryKey: expertKeys.list });
     void queryClient.invalidateQueries({ queryKey: chatKeys.sessions });

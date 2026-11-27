@@ -52,7 +52,7 @@ export interface ExpertDetail {
   identity: string;
   voice_preferences: string;
   boundaries: string;
-  /** In credits, 100 to the dollar; null is the platform default, 0 no cap. */
+  /** Effective cap in credits, 100 to the dollar. Null means there is no cap. */
   weekly_budget: number | null;
   weekly_spend: number;
   autopilot_mode: AutopilotMode | null;

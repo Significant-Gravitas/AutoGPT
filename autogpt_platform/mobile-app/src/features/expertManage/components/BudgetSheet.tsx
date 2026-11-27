@@ -14,7 +14,7 @@ const BUDGET_KEYBOARD = Platform.OS === "ios" ? "numbers-and-punctuation" : "dec
 
 interface Props {
   isOpen: boolean;
-  /** In credits; null is the platform default. */
+  /** Effective cap in credits. Null means there is no cap. */
   saved: number | null;
   onClose: () => void;
   /** Resolves with an error to show, or null once saved. */
@@ -46,6 +46,7 @@ function BudgetForm({ saved, onSave }: FormProps) {
   }
 
   async function handleSave() {
+    if (isSaving || text === budgetInput(saved)) return;
     const parsed = parseBudget(text);
     if ("error" in parsed) {
       setError(parsed.error);
@@ -81,7 +82,13 @@ function BudgetForm({ saved, onSave }: FormProps) {
           {error}
         </Text>
       ) : null}
-      <Button label="Save" onPress={submit} isLoading={isSaving} fullWidth />
+      <Button
+        label="Save"
+        onPress={submit}
+        isLoading={isSaving}
+        disabled={text === budgetInput(saved)}
+        fullWidth
+      />
     </View>
   );
 }

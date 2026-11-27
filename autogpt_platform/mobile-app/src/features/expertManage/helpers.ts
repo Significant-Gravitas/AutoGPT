@@ -27,9 +27,9 @@ export function parseBudget(text: string): { credits: number | null } | { error:
   return { credits };
 }
 
-/** The saved budget as the field starts out: "25", "12.50", or empty. */
+/** The effective budget as the field starts out. */
 export function budgetInput(credits: number | null) {
-  if (credits === null) return "";
+  if (credits === null) return "0";
   const dollars = credits / CREDITS_PER_DOLLAR;
   return Number.isInteger(dollars) ? String(dollars) : dollars.toFixed(2);
 }
@@ -41,10 +41,9 @@ export function formatDollars(credits: number) {
     : `$${dollars.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-/** Null is the platform default (the server caps it); 0 lifts the cap. */
+/** The server returns null when there is no cap. */
 export function formatBudget(credits: number | null) {
-  if (credits === null) return "Default";
-  if (credits === 0) return "No limit";
+  if (credits === null) return "No limit";
   return formatDollars(credits);
 }
 
@@ -107,10 +106,10 @@ export const MODE_OPTIONS: ModeOption[] = [
   },
 ];
 
-/** The warning before an expert's new chats stop asking, as the web words it. */
+/** The warning before an expert's new chats stop asking. */
 export function unsupervisedPrompt(name: string) {
   return {
     title: `Run ${name} unsupervised by default?`,
-    body: `${name} will not ask before anything in new chats. Edits, commands and actions outside the platform, like sending a message or an email, run without your approval unless you switch a chat back from the composer.`,
+    body: `${name} will not ask before edits, commands or outside actions in new chats. You can change the default here or switch modes for a single chat on the web.`,
   };
 }

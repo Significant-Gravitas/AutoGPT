@@ -70,7 +70,11 @@ function ManageExpert({ routeExpertID, routeFrom }: Props) {
           </SettingsGroup>
           {manage.showApprovals ? (
             <SettingsGroup title="Approvals">
-              <ModePicker value={expert.autopilot_mode} onChoose={manage.chooseMode} />
+              <ModePicker
+                value={expert.autopilot_mode}
+                disabled={manage.isSaving}
+                onChoose={manage.chooseMode}
+              />
             </SettingsGroup>
           ) : null}
           <SettingsGroup title="Spending">

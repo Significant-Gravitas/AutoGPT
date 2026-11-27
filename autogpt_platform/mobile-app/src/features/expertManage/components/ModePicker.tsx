@@ -10,6 +10,7 @@ import { MODE_OPTIONS } from "../helpers";
 interface Props {
   /** Null follows the platform default. */
   value: AutopilotMode | null;
+  disabled: boolean;
   onChoose: (mode: AutopilotMode | null) => void;
 }
 
@@ -20,7 +21,7 @@ const DEFAULT_OPTION = {
 };
 
 /** How new chats with this expert start: how often it asks before acting. */
-export function ModePicker({ value, onChoose }: Props) {
+export function ModePicker({ value, disabled, onChoose }: Props) {
   const styles = useStyles();
   const colors = useColors();
   const options = [...MODE_OPTIONS, DEFAULT_OPTION];
@@ -35,7 +36,8 @@ export function ModePicker({ value, onChoose }: Props) {
             accessibilityRole="radio"
             accessibilityLabel={option.label}
             accessibilityHint={option.description}
-            accessibilityState={{ checked: isSelected }}
+            accessibilityState={{ checked: isSelected, disabled }}
+            disabled={disabled}
             onPress={() => onChoose(option.value)}
             style={({ pressed }) => [
               styles.row,

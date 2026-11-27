@@ -8,6 +8,7 @@ import { expertActivityKeys } from "@/lib/api/expertActivity";
 import { resetExpert } from "@/lib/api/expertManage";
 import { expertKeys } from "@/lib/api/experts";
 import { homeKeys } from "@/lib/api/home";
+import { sessionGeneration } from "@/lib/session";
 
 import { isGoneError, resetOutcome } from "./dangerHelpers";
 
@@ -39,11 +40,13 @@ export function useResetExpert({ expertID, name, isOpen, onReset, onClose }: Arg
 
   async function reset() {
     if (isResetting) return;
+    const generation = sessionGeneration();
     setIsResetting(true);
     setError(null);
     try {
       await resetExpert(expertID);
     } catch (caught) {
+      if (generation !== sessionGeneration()) return;
       setIsResetting(false);
       if (isGoneError(caught)) {
         leave();
@@ -57,6 +60,7 @@ export function useResetExpert({ expertID, name, isOpen, onReset, onClose }: Arg
       setError(`Could not finish resetting ${name}`);
       return;
     }
+    if (generation !== sessionGeneration()) return;
     setIsResetting(false);
     setPhase("done");
     onReset();
@@ -71,14 +75,16 @@ export function useResetExpert({ expertID, name, isOpen, onReset, onClose }: Arg
 
   async function openChat() {
     if (isOpeningChat) return;
+    const generation = sessionGeneration();
     setIsOpeningChat(true);
     setError(null);
     try {
       const sessionID = await latestOrNewSession(expertID);
+      if (generation !== sessionGeneration()) return;
       onClose();
       router.push(`/chat/${sessionID}`);
     } catch {
-      setError("Couldn't open that chat. Try again.");
+      if (generation === sessionGeneration()) setError("Couldn't open that chat. Try again.");
     } finally {
       setIsOpeningChat(false);
     }
