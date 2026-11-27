@@ -308,7 +308,10 @@ class MCPClient:
                 self.server_url, json=payload, allow_redirects=self.follow_redirects
             )
         except ResponseTooLargeError as e:
-            raise MCPClientError(f"MCP server reply is too large: {e}") from e
+            message = f"MCP server reply is too large: {e}"
+            if is_tool_call:
+                message += "; the server may already have applied its side effects"
+            raise MCPClientError(message) from e
 
     def _decode_reply(self, response: Response, *, strict: bool) -> _Reply:
         """Decode a reply body as JSON or SSE.

@@ -900,16 +900,22 @@ class TestReplySize:
             await client._post({"jsonrpc": "2.0", "id": 1, "method": method}, {})
         assert MockRequests.call_args.kwargs["max_response_bytes"] == limit
 
-    async def test_a_reply_over_the_limit_is_a_client_error(self):
+    @pytest.mark.parametrize(
+        ("method", "may_have_run"), [("tools/call", True), ("tools/list", False)]
+    )
+    async def test_a_reply_over_the_limit_is_a_client_error(
+        self, method: str, may_have_run: bool
+    ):
         client = MCPClient(SERVER_URL)
         with patch("backend.blocks.mcp.client.Requests") as MockRequests:
             MockRequests.return_value.post = AsyncMock(
                 side_effect=ResponseTooLargeError(MAX_REPLY_BYTES)
             )
-            with pytest.raises(MCPClientError, match="too large"):
-                await client._post(
-                    {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, {}
-                )
+            with pytest.raises(MCPClientError, match="too large") as raised:
+                await client._post({"jsonrpc": "2.0", "id": 1, "method": method}, {})
+        assert ("may already have applied its side effects" in str(raised.value)) is (
+            may_have_run
+        )
 
     async def test_an_oversized_notification_reply_is_a_client_error(self):
         client = MCPClient(SERVER_URL)
