@@ -397,11 +397,13 @@ class GmailBase(Block, ABC):
         for label in labels:
             if label["name"] == label_name:
                 return label["id"]
-        # Gmail treats label names as case-insensitive: "work" and "Work"
-        # are the same label, and creating one beside the other conflicts.
+        # Gmail treats user label names as case-insensitive: "work" and
+        # "Work" are the same label, and creating one beside the other
+        # conflicts. System labels (INBOX, TRASH, UNREAD...) still need their
+        # exact name, so "trash" doesn't quietly move a message to the bin.
         wanted = label_name.lower()
         for label in labels:
-            if label["name"].lower() == wanted:
+            if label.get("type") == "user" and label["name"].lower() == wanted:
                 return label["id"]
         return None
 

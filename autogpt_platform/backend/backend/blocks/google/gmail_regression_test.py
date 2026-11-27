@@ -131,7 +131,11 @@ async def test_get_thread_drops_blank_recipients():
 
 
 _LABELS = {
-    "labels": [{"id": "UNREAD", "name": "UNREAD"}, {"id": "Label_7", "name": "Todo"}]
+    "labels": [
+        {"id": "UNREAD", "name": "UNREAD", "type": "system"},
+        {"id": "TRASH", "name": "TRASH", "type": "system"},
+        {"id": "Label_7", "name": "Todo", "type": "user"},
+    ]
 }
 
 
@@ -190,7 +194,7 @@ def _conflict() -> HttpError:
 
 
 _MODIFIED = {"id": "m1", "threadId": "t1", "labelIds": ["INBOX", "Label_7"]}
-_LATER = {"id": "Label_9", "name": "Later"}
+_LATER = {"id": "Label_9", "name": "Later", "type": "user"}
 
 
 @pytest.mark.asyncio
@@ -263,3 +267,13 @@ async def test_add_label_passes_other_create_errors_through():
         await GmailAddLabelBlock()._add_label(fake, "m1", "Later")
     assert raised.value is denied
     assert len(fake.called("labels.list")) == 1
+
+
+@pytest.mark.asyncio
+async def test_system_labels_still_need_their_exact_name():
+    fake = _FakeGmail({"labels.list": _LABELS, "labels.create": _conflict()})
+    with pytest.raises(ValueError, match='label "trash"'):
+        await GmailAddLabelBlock()._add_label(fake, "m1", "trash")
+    removed = await GmailRemoveLabelBlock()._remove_label(fake, "m1", "unread")
+    assert removed == {"status": "Label not found", "label_id": ""}
+    assert fake.called("messages.modify") == []
