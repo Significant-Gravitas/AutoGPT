@@ -16,3 +16,17 @@ minimumReleaseAgeExclude:
   - "@better-auth/prisma-adapter@1.7.16"
   - "@better-auth/telemetry@1.7.16"
   - better-call@1.4.5
+
+# pnpm refuses a version published with weaker trust evidence (provenance or a
+# trusted publisher) than an earlier version of the same package. It checks
+# versions as it resolves them (pnpm add/update, Dependabot), not on
+# --frozen-lockfile installs. Exclude a version only after checking why it lost
+# that evidence; the entries below were published that way and are in the lockfile.
+# A downgrade reported for a package that npm shows as trusted-publisher-built can
+# come from a metadata cache written by an older pnpm: delete the
+# metadata-ff-v1.3 folder in pnpm's cache (~/Library/Caches/pnpm on macOS,
+# ~/.cache/pnpm on Linux) and try again.
+trustPolicy: no-downgrade
+trustPolicyExclude:
+  - eslint-import-resolver-typescript@3.10.1
+  - semver@6.3.1
