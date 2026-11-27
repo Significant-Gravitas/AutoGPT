@@ -61,6 +61,26 @@ class VersionFromTag(unittest.TestCase):
                 bump.version_from_tag(tag)
 
 
+class NewerRelease(unittest.TestCase):
+    TAGS = [
+        "autogpt-platform-beta-v0.11.3",
+        "autogpt-platform-beta-v0.12.0",
+        "autogpt-platform-beta-v0.12.1",
+        "preview-seed-fixture",
+        "v99.0.0",
+    ]
+
+    def test_the_newest_release_bumps(self) -> None:
+        self.assertIsNone(bump.newer_release("0.12.1", self.TAGS))
+        self.assertIsNone(bump.newer_release("0.13.0", self.TAGS))
+
+    def test_an_older_lines_hotfix_does_not(self) -> None:
+        # Other products' tags and unprefixed ones don't count.
+        self.assertEqual(
+            bump.newer_release("0.11.4", self.TAGS), "autogpt-platform-beta-v0.12.1"
+        )
+
+
 class BumpText(unittest.TestCase):
     def test_pyproject_changes_only_the_poetry_version(self) -> None:
         text, changed = bump.bump_pyproject(PYPROJECT, "0.12.1")
@@ -146,6 +166,34 @@ class BumpRepository(unittest.TestCase):
         for path in (bump.PYPROJECT, bump.PACKAGE_JSON):
             self.assertEqual((self.root / path).read_text(), (REPO / path).read_text())
 
+    def test_a_hotfix_older_than_the_newest_release_changes_nothing(self) -> None:
+        # dev still has the old versions, but a newer release exists, so its
+        # pending bump must not be replaced with the hotfix's version.
+        tags = self.root / "tags"
+        tags.write_text(
+            "autogpt-platform-beta-v999.1.0\nautogpt-platform-beta-v999.0.1\n"
+        )
+        output = self.root / "github_output"
+        with unittest.mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(output)}):
+            code = bump.main(
+                [
+                    "autogpt-platform-beta-v999.0.1",
+                    "--root",
+                    str(self.root),
+                    "--tags",
+                    str(tags),
+                ]
+            )
+        self.assertEqual(code, 0)
+        self.assertEqual(output.read_text(), "version=999.0.1\nchanged=false\n")
+        for path in (bump.PYPROJECT, bump.PACKAGE_JSON):
+            self.assertEqual((self.root / path).read_text(), (REPO / path).read_text())
+
+    def test_an_unreadable_file_fails_the_run(self) -> None:
+        (self.root / bump.PACKAGE_JSON).write_text('{\n  "version": "0.3.4",\n')
+        tag = "autogpt-platform-beta-v999.0.0"
+        self.assertEqual(bump.main([tag, "--root", str(self.root)]), 1)
+
     def test_a_bad_tag_fails_the_run(self) -> None:
         self.assertEqual(bump.main(["v0.12.1", "--root", str(self.root)]), 1)
 
@@ -184,6 +232,21 @@ class Workflow(unittest.TestCase):
         self.assertEqual(pr["token"], "${{ steps.app-token.outputs.token }}")
         self.assertEqual(self.workflow["permissions"], {})
         self.assertEqual(self.job["permissions"], {"contents": "read"})
+        token = self.steps["app-token"]["with"]
+        self.assertEqual(token["permission-contents"], "write")
+        self.assertEqual(token["permission-pull-requests"], "write")
+        self.assertIs(pr["sign-commits"], True)
+        auto_merge = self.steps["auto-merge"]
+        self.assertEqual(
+            auto_merge["env"]["GH_TOKEN"], "${{ steps.app-token.outputs.token }}"
+        )
+        self.assertIn("steps.pr.outputs.pull-request-number", auto_merge["if"])
+
+    def test_concurrency_is_on_the_job(self) -> None:
+        # A workflow-level group would let a skipped run for another
+        # product's release replace a pending platform run.
+        self.assertNotIn("concurrency", self.workflow)
+        self.assertEqual(self.job["concurrency"]["cancel-in-progress"], False)
 
 
 if __name__ == "__main__":

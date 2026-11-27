@@ -2,14 +2,16 @@
 """Set the platform's package versions to a published release's version.
 
     bump_platform_version.py <release tag> [--root <repository root>]
+        [--tags <file with the repository's tag names, one per line>]
 
 The tag is a platform release tag, autogpt-platform-beta-v0.12.1, and the
 version is the part after the "v". It goes into the backend's pyproject.toml
 ([tool.poetry] version) and the frontend's package.json (top-level
 "version"). Only those lines change, so the rest of each file stays as it is.
 
-A file whose version is already the same or newer is left alone: a hotfix
-release on an older line must not move dev back.
+Only the newest platform release bumps: a hotfix release on an older line
+changes nothing, whether or not the newer release's bump has merged yet. A
+file whose version is already the same or newer is left alone too.
 
 When GITHUB_OUTPUT is set, it gets version=<version> and changed=true|false.
 """
@@ -90,6 +92,17 @@ def bump_package_json(text: str, version: str) -> tuple[str, bool]:
     return new_text, changed
 
 
+def newer_release(version: str, tags: list[str]) -> str | None:
+    """A platform release tag among *tags* newer than *version*, if any."""
+    newer = [
+        tag
+        for tag in tags
+        if (match := TAG_RE.fullmatch(tag))
+        and _as_tuple(match.group(1)) > _as_tuple(version)
+    ]
+    return max(newer, key=lambda tag: _as_tuple(version_from_tag(tag)), default=None)
+
+
 def bump(root: pathlib.Path, version: str) -> bool:
     changed_any = False
     for path, bump_text in (
@@ -97,8 +110,11 @@ def bump(root: pathlib.Path, version: str) -> bool:
         (PACKAGE_JSON, bump_package_json),
     ):
         file = root / path
-        text = file.read_text(encoding="utf-8")
-        new_text, changed = bump_text(text, version)
+        try:
+            text = file.read_text(encoding="utf-8")
+            new_text, changed = bump_text(text, version)
+        except (OSError, ValueError) as error:  # ValueError: invalid JSON
+            raise BumpError(f"{path}: {error}") from error
         if changed:
             file.write_text(new_text, encoding="utf-8")
             changed_any = True
@@ -109,10 +125,19 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("tag")
     parser.add_argument("--root", type=pathlib.Path, default=pathlib.Path("."))
+    parser.add_argument("--tags", type=pathlib.Path)
     args = parser.parse_args(argv)
     try:
         version = version_from_tag(args.tag)
-        changed = bump(args.root, version)
+        try:
+            tags = args.tags.read_text(encoding="utf-8").split() if args.tags else []
+        except OSError as error:
+            raise BumpError(f"Can't read the tag list: {error}") from error
+        if newer := newer_release(version, tags):
+            print(f"{newer} is newer than {args.tag}; nothing to bump.")
+            changed = False
+        else:
+            changed = bump(args.root, version)
     except BumpError as error:
         print(f"::error::{error}", file=sys.stderr)
         return 1

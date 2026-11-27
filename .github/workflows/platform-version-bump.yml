@@ -12,9 +12,9 @@ name: AutoGPT Platform - Bump version after a release
 # a `/review` from a bot is ignored. Until then, one `/review` comment from
 # a person starts that review. Nothing here bypasses dev's rules.
 #
-# A version that dev already has, or passed, opens nothing: a hotfix on an
-# older line can't move dev back. A second release before the first bump
-# merges updates the same pull request.
+# Only the newest platform release bumps: a hotfix on an older line opens
+# nothing, so it can't move dev, or a pending bump, back. A second release
+# before the first bump merges updates the same pull request.
 
 on:
   release:
@@ -22,15 +22,16 @@ on:
 
 permissions: {}
 
-concurrency:
-  group: platform-version-bump
-  cancel-in-progress: false
-
 jobs:
   bump:
     # Every published release starts this workflow, and not all of them are
     # the platform's (the rolling preview-seed-fixture is a prerelease).
     if: startsWith(github.event.release.tag_name, 'autogpt-platform-') && !github.event.release.prerelease
+    # On the job, not the workflow: a skipped run for another product's
+    # release would otherwise replace a pending platform run in the group.
+    concurrency:
+      group: platform-version-bump
+      cancel-in-progress: false
     name: Open the version bump PR
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -44,9 +45,16 @@ jobs:
 
       - name: Set the versions from the release tag
         id: bump
+        shell: bash # pipefail: a failed tag listing fails the step
         env:
           TAG: ${{ github.event.release.tag_name }}
-        run: python3 .github/workflows/scripts/bump_platform_version.py "$TAG"
+        # The tags tell an older line's hotfix from the newest release, so
+        # the hotfix can't replace a pending bump to a newer version.
+        run: |
+          git ls-remote --tags --refs origin 'autogpt-platform-*' \
+            | sed 's|.*refs/tags/||' > "$RUNNER_TEMP/platform-tags"
+          python3 .github/workflows/scripts/bump_platform_version.py "$TAG" \
+            --tags "$RUNNER_TEMP/platform-tags"
 
       # Minted after the files are changed, and handed only to the PR steps.
       - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -78,7 +86,7 @@ jobs:
           body: |
             ### Changes 🏗️
 
-            Sets the backend's `pyproject.toml` and the frontend's `package.json` to ${{ steps.bump.outputs.version }}, the version of release [${{ github.event.release.tag_name }}](${{ github.event.release.html_url }}). Only the two version lines change.
+            Sets the backend's `pyproject.toml` and the frontend's `package.json` to ${{ steps.bump.outputs.version }}, the version of release [${{ github.event.release.tag_name }}](${{ github.event.release.html_url }}). Only the version lines change, and a file already at that version or later is left as is.
 
             Opened by `.github/workflows/platform-version-bump.yml` when the release was published. Auto-merge is on, so it merges once it is approved and CI passes.
 
@@ -88,7 +96,7 @@ jobs:
 
             ### Checklist 📋
 
-            - [x] Only the version lines of `pyproject.toml` and `package.json` changed
+            - [x] Only version lines changed
 
       - name: Turn on auto-merge
         if: steps.pr.outputs.pull-request-number != '' && steps.pr.outputs.pull-request-operation != 'closed'
