@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 import {
+  postV1ConfigureAutoTopUp,
   useGetV1GetAutoTopUp,
   usePostV1ConfigureAutoTopUp,
 } from "@/app/api/__generated__/endpoints/credits/credits";
@@ -27,14 +28,26 @@ export function useAutoRefillCard() {
     },
   });
 
-  // Names this save, so a retry after a lost response can't charge again.
-  // Kept through retries, even across closing the dialog after a lost
-  // response; replaced once a save succeeds, when the values change, and
-  // after a decline, which Stripe would otherwise replay for it.
-  const [saveKey, setSaveKey] = useState(newSaveKey);
+  const pendingSave = useRef<{ data: AutoTopUpConfig; key: string } | null>(
+    null,
+  );
   const { mutateAsync: configureAutoTopUp, isPending: isSaving } =
     usePostV1ConfigureAutoTopUp({
-      request: { headers: { "Idempotency-Key": saveKey } },
+      mutation: {
+        mutationFn: ({ data }) => {
+          if (data.amount === 0) return postV1ConfigureAutoTopUp(data);
+          const previous = pendingSave.current;
+          const attempt =
+            previous?.data.amount === data.amount &&
+            previous.data.threshold === data.threshold
+              ? previous
+              : { data, key: uuidv4({}) };
+          pendingSave.current = attempt;
+          return postV1ConfigureAutoTopUp(data, {
+            headers: { "Idempotency-Key": attempt.key },
+          });
+        },
+      },
     });
 
   const isEnabled = Boolean(config && (config.amount || config.threshold));
@@ -63,8 +76,11 @@ export function useAutoRefillCard() {
     initializedForOpenRef.current = true;
     // Backend minimum is $5 — pre-fill with the floor so the form is valid
     // by default and matches the "$5 minimum" copy in the empty state.
-    setThreshold(config?.threshold ? (config.threshold / 100).toString() : "5");
-    setRefillAmount(config?.amount ? (config.amount / 100).toString() : "5");
+    const initial = pendingSave.current?.data ?? config;
+    setThreshold(
+      initial?.threshold ? (initial.threshold / 100).toString() : "5",
+    );
+    setRefillAmount(initial?.amount ? (initial.amount / 100).toString() : "5");
   }, [open, config, isLoading]);
 
   const thresholdValue = Number.parseFloat(threshold);
@@ -87,6 +103,12 @@ export function useAutoRefillCard() {
     configuringRef.current = true;
     try {
       await configureAutoTopUp({ data });
+      pendingSave.current = null;
+    } catch (error) {
+      if (data.amount && error instanceof ApiError && error.status === 402) {
+        pendingSave.current = null;
+      }
+      throw error;
     } finally {
       configuringRef.current = false;
     }
@@ -102,12 +124,8 @@ export function useAutoRefillCard() {
       });
       if (!sent) return;
       await refetch();
-      setSaveKey(newSaveKey());
       setOpen(false);
     } catch (error) {
-      if (error instanceof ApiError && error.status === 402) {
-        setSaveKey(newSaveKey());
-      }
       toast({
         title: "Couldn't save auto top-up",
         description:
@@ -137,17 +155,6 @@ export function useAutoRefillCard() {
     }
   }
 
-  // Different values are a different save.
-  function changeThreshold(value: string) {
-    setThreshold(value);
-    setSaveKey(newSaveKey());
-  }
-
-  function changeRefillAmount(value: string) {
-    setRefillAmount(value);
-    setSaveKey(newSaveKey());
-  }
-
   return {
     config,
     isEnabled,
@@ -156,16 +163,11 @@ export function useAutoRefillCard() {
     open,
     setOpen,
     threshold,
-    setThreshold: changeThreshold,
+    setThreshold,
     refillAmount,
-    setRefillAmount: changeRefillAmount,
+    setRefillAmount,
     isValid,
     save: () => void save(),
     disable: () => void disable(),
   };
-}
-
-function newSaveKey() {
-  // uuidv4({}) rather than crypto.randomUUID, which Chrome added only in 92.
-  return uuidv4({});
 }

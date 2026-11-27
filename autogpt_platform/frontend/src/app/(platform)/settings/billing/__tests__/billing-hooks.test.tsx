@@ -413,56 +413,91 @@ describe("useAutoRefillCard", () => {
     expect(bodies[1]).toEqual({ amount: 0, threshold: 0 });
   });
 
-  it("names each save, keeping the name through a retry so it can't charge twice", async () => {
-    const keys: (string | null)[] = [];
-    // What the server answers each save, in order.
-    const answers = [504, 200, 402, 200, 200];
+  function renderAutoRefillWithResponses(
+    statuses: number[],
+    config = { amount: 1000, threshold: 500 },
+  ) {
+    const requests: { key: string | null; body: JsonBodyType }[] = [];
     server.use(
-      jsonHandler("get", "/api/credits/auto-top-up", {
-        amount: 0,
-        threshold: 0,
-      }),
-      http.post("*/api/credits/auto-top-up", ({ request }) => {
-        keys.push(request.headers.get("Idempotency-Key"));
-        const status = answers[keys.length - 1];
-        return status === 200
-          ? HttpResponse.json({})
-          : HttpResponse.json({ detail: "refused" }, { status });
+      jsonHandler("get", "/api/credits/auto-top-up", config),
+      http.post("*/api/credits/auto-top-up", async ({ request }) => {
+        requests.push({
+          key: request.headers.get("Idempotency-Key"),
+          body: await request.json(),
+        });
+        const status = statuses[requests.length - 1];
+        return HttpResponse.json({}, { status });
       }),
     );
-
     const { result } = renderHook(() => useAutoRefillCard(), {
       wrapper: makeWrapper(),
     });
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    async function submit(action: "save" | "disable" = "save") {
+      const count = requests.length;
+      act(() => result.current[action]());
+      await waitFor(() => expect(requests).toHaveLength(count + 1));
+      await waitFor(() => expect(result.current.isSaving).toBe(false));
+      return requests[count];
+    }
+    return { result, submit };
+  }
+
+  it("reopens an uncertain save with the submitted values and retries the same request", async () => {
+    const { result, submit } = renderAutoRefillWithResponses([504, 200], {
+      amount: 0,
+      threshold: 0,
+    });
     act(() => result.current.setOpen(true));
     await waitFor(() => expect(result.current.threshold).toBe("5"));
-    act(() => result.current.setRefillAmount("10"));
-
-    async function saveAgain() {
-      const before = keys.length;
-      act(() => result.current.save());
-      await waitFor(() => expect(keys).toHaveLength(before + 1));
-      await waitFor(() => expect(result.current.isSaving).toBe(false));
-    }
-
-    // A lost response: the user closes the dialog, reopens it and saves again.
-    await saveAgain();
+    act(() => {
+      result.current.setThreshold("10");
+      result.current.setRefillAmount("10");
+    });
+    const first = await submit();
+    expect(first).toEqual({
+      key: expect.any(String),
+      body: { amount: 1000, threshold: 1000 },
+    });
     act(() => result.current.setOpen(false));
     act(() => result.current.setOpen(true));
-    await saveAgain();
-    // That one succeeded, so the next save is a new one; it's declined.
-    await saveAgain();
-    // The retry after fixing the card, then a save with other values.
-    await saveAgain();
-    act(() => result.current.setRefillAmount("20"));
-    await saveAgain();
+    expect(result.current.threshold).toBe("10");
+    expect(result.current.refillAmount).toBe("10");
+    act(() => result.current.setRefillAmount("10.00"));
+    expect(await submit()).toEqual(first);
+  });
 
-    expect(keys[0]).toBeTruthy();
-    expect(keys[1]).toBe(keys[0]);
-    expect(keys[2]).not.toBe(keys[1]);
-    expect(keys[3]).not.toBe(keys[2]);
-    expect(keys[4]).not.toBe(keys[3]);
+  it.each([
+    ["a successful save", 200],
+    ["a card decline", 402],
+    ["a changed threshold", 504],
+    ["a changed refill amount", 504],
+    ["a successful disable", 504],
+  ] as const)("uses a fresh key after %s", async (reason, status) => {
+    const { result, submit } = renderAutoRefillWithResponses([
+      status,
+      200,
+      200,
+    ]);
+    act(() => result.current.setOpen(true));
+    await waitFor(() => expect(result.current.refillAmount).toBe("10"));
+    const first = await submit();
+    if (reason === "a successful disable") {
+      expect((await submit("disable")).body).toEqual({
+        amount: 0,
+        threshold: 0,
+      });
+    }
+    if (reason === "a successful save" || reason === "a successful disable") {
+      await waitFor(() => expect(result.current.open).toBe(false));
+      act(() => result.current.setOpen(true));
+    }
+    if (reason === "a changed threshold")
+      act(() => result.current.setThreshold("6"));
+    if (reason === "a changed refill amount")
+      act(() => result.current.setRefillAmount("11"));
+    const next = await submit();
+    expect(next.key).toEqual(expect.any(String));
+    expect(next.key).not.toBe(first.key);
   });
 
   it("save() catches mutation failures and stops the spinner", async () => {
