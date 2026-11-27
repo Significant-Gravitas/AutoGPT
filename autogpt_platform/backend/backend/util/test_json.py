@@ -78,6 +78,20 @@ def test_sanitize_encoded_recurses_through_keys_lists_and_subclasses():
     assert type(result["topkey"][1]) is str
 
 
+@pytest.mark.parametrize("depth", [3, 600])
+@pytest.mark.parametrize(
+    "wrap", [lambda value: {"k": value}, lambda value: [value]], ids=["dict", "list"]
+)
+def test_safe_json_keeps_deeply_nested_data_structured(wrap, depth: int):
+    """600 levels fit the default recursion limit, also on Python 3.11."""
+    data: Any = "leaf\x00"
+    expected: Any = "leaf"
+    for _ in range(depth):
+        data, expected = wrap(data), wrap(expected)
+
+    assert SafeJson(data).data == expected
+
+
 class TestSafeJson:
     """Test cases for SafeJson function."""
 

@@ -536,14 +536,16 @@ def _sanitize_encoded(value: Any) -> Any:
     kind = type(value)
     if kind is str:
         return _strip_control_chars("", value)
+    # No comprehensions here: before Python 3.12 each one adds a frame per
+    # level, which halves the nesting depth that fits the recursion limit.
     if kind is dict:
-        return {
-            _sanitize_encoded(k): _sanitize_encoded(v)
-            for k, v in value.items()
-            if not (isinstance(k, str) and k.startswith("_sa"))
-        }
+        result = {}
+        for k, v in value.items():
+            if not (isinstance(k, str) and k.startswith("_sa")):
+                result[_sanitize_encoded(k)] = _sanitize_encoded(v)
+        return result
     if kind is list:
-        return [_sanitize_encoded(v) for v in value]
+        return list(map(_sanitize_encoded, value))
     if isinstance(value, str):
         # A str subclass. re.sub returns a plain str, which is what the second
         # to_dict pass used to produce here, so keep it unconditional.
