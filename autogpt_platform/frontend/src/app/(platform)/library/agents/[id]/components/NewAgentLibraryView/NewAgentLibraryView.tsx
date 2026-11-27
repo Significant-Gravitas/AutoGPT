@@ -217,7 +217,8 @@ export function NewAgentLibraryView() {
     return (
       <>
         <div className="flex h-full flex-col">
-          <div className="mx-6 flex flex-col gap-4 pt-4">
+          <div className="mx-6 flex flex-col pt-4">
+            {renderMarketplaceUpdateBanner()}
             <div className="flex items-center justify-between">
               <Breadcrumbs
                 items={[
