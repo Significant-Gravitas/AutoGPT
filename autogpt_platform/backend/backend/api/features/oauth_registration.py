@@ -96,6 +96,7 @@ class ClientRegistrationError(BaseModel):
         400: {"model": ClientRegistrationError},
         404: {"description": "Dynamic client registration is not enabled"},
         429: {"description": "Too many registrations"},
+        503: {"description": "Registrations can't be counted right now"},
     },
 )
 async def register_client(
@@ -107,8 +108,16 @@ async def register_client(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Dynamic client registration is not enabled",
         )
-    await _per_ip_limiter.check(ip)
-    await _overall_limiter.check("all")
+    # Each registration leaves a row behind, so an uncounted one is refused
+    # rather than let through as the limiter does elsewhere.
+    if (
+        await _per_ip_limiter.check(ip) is None
+        or await _overall_limiter.check("all") is None
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Registration is unavailable right now. Try again shortly.",
+        )
 
     if problem := registration_problem(metadata):
         return JSONResponse(

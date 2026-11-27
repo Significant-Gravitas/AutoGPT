@@ -17,6 +17,7 @@ import logging
 import re
 import secrets
 import uuid
+from collections.abc import Collection
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
@@ -821,11 +822,15 @@ async def _revoke_refresh_family(family_id: str, now: datetime) -> None:
 
 
 async def refresh_tokens(
-    refresh_token: str, application_id: str
+    refresh_token: str,
+    application_id: str,
+    grantable: Optional[Collection[str]] = None,
 ) -> tuple[OAuthAccessToken, OAuthRefreshToken]:
     """
     Use a refresh token to create new access and refresh tokens.
     Returns (new_access_token, new_refresh_token) both with plaintext tokens included.
+    With `grantable`, a token carrying a scope outside it is refused, so the
+    client has to authorize again.
 
     Raises:
         InvalidGrantError: If refresh token is invalid, expired, or revoked
@@ -868,6 +873,16 @@ async def refresh_tokens(
     if await is_user_banned(rt.userId):
         raise InvalidGrantError("the account this token belongs to is banned")
 
+    scopes = [APIPermission(s) for s in rt.scopes]
+    # Before the claim: a refused token isn't spent, so a retry isn't read as reuse.
+    if grantable is not None and (
+        outside := {s.value for s in scopes} - set(grantable)
+    ):
+        raise InvalidGrantError(
+            "refresh token carries permissions this application can no longer "
+            f"get: {', '.join(sorted(outside))}; authorize again"
+        )
+
     # Before the claim, so a failure here leaves the refresh token usable.
     await _mark_registered_client_used(application_id, now)
 
@@ -894,7 +909,6 @@ async def refresh_tokens(
         )
 
     # Create new access and refresh tokens with same scopes
-    scopes = [APIPermission(s) for s in rt.scopes]
     new_refresh_token = await create_refresh_token(
         rt.applicationId,
         rt.userId,

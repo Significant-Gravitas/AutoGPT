@@ -13812,7 +13812,8 @@
               }
             }
           },
-          "429": { "description": "Too many registrations" }
+          "429": { "description": "Too many registrations" },
+          "503": { "description": "Registrations can't be counted right now" }
         }
       }
     },

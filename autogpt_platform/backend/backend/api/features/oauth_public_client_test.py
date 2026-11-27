@@ -2,6 +2,8 @@
 must do instead, what they may be granted, and what their existence must not
 loosen for other clients."""
 
+import base64
+import hashlib
 import secrets
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
@@ -15,6 +17,7 @@ from autogpt_libs.api_key.keysmith import APIKeySmith
 from autogpt_libs.auth import get_user_id
 from prisma.enums import APIKeyPermission
 from prisma.models import OAuthApplication as PrismaOAuthApplication
+from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 
 from backend.api.external.v2.mcp_scopes import mcp_scopes
 from backend.api.features import oauth_registration
@@ -96,10 +99,14 @@ async def test_a_client_that_names_no_scope_gets_the_mcp_server_permissions(
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize("owner, granted", [(None, False), (USER_ID, True)])
 async def test_only_a_self_registered_client_is_held_to_the_mcp_permissions(
-    client: httpx.AsyncClient, owner: str | None, granted: bool
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    owner: str | None,
+    granted: bool,
 ):
     """Its row can hold more: it registered before a tool stopped needing one."""
     assert "MANAGE_INTEGRATIONS" not in mcp_scopes()
+    _allow_registration(monkeypatch, True)
     scopes = ["READ_LIBRARY", "MANAGE_INTEGRATIONS"]
     registered = await _client(owner=owner, created_at=datetime.now(UTC), scopes=scopes)
     try:
@@ -257,6 +264,131 @@ async def test_a_failed_use_update_leaves_the_grant_redeemable(
         await PrismaOAuthApplication.prisma().delete(where={"id": registered.id})
 
 
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_turning_registration_off_stops_every_self_registered_client(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, enabled: bool
+):
+    """Not only new registrations: one that registered while it was on, too."""
+    _allow_registration(monkeypatch, enabled)
+    public = await _public_client(SCOPES)
+    verifier = secrets.token_urlsafe(48)
+    try:
+        authorized = await _authorize(
+            client, public.client_id, method="S256", challenge=_s256(verifier)
+        )
+        code = await create_authorization_code(
+            public.id,
+            USER_ID,
+            [APIKeyPermission.READ_LIBRARY],
+            REDIRECT_URI,
+            code_challenge=_s256(verifier),
+            code_challenge_method="S256",
+        )
+        exchanged = await client.post(
+            "/api/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "code": code.code,
+                "redirect_uri": REDIRECT_URI,
+                "client_id": public.client_id,
+                "code_verifier": verifier,
+            },
+        )
+        refreshed = await _refresh(client, public.client_id, public.id, SCOPES)
+    finally:
+        await PrismaOAuthApplication.prisma().delete(where={"id": public.id})
+
+    query = parse_qs(urlparse(authorized.json()["redirect_url"]).query)
+    assert ("code" in query) == enabled
+    assert query.get("error") == (None if enabled else ["unauthorized_client"])
+    assert exchanged.status_code == (200 if enabled else 400), exchanged.text
+    assert refreshed.status_code == (200 if enabled else 400), refreshed.text
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "scopes, refreshes",
+    [(["READ_LIBRARY"], True), (["READ_LIBRARY", "MANAGE_INTEGRATIONS"], False)],
+)
+async def test_a_self_registered_client_refreshes_only_what_the_mcp_server_grants(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    scopes: list[str],
+    refreshes: bool,
+):
+    """Its token can hold more: granted before a tool stopped needing one."""
+    assert "MANAGE_INTEGRATIONS" not in mcp_scopes()
+    _allow_registration(monkeypatch, True)
+    public = await _public_client(scopes)
+    try:
+        response = await _refresh(client, public.client_id, public.id, scopes)
+        unspent = await PrismaOAuthRefreshToken.prisma().count(
+            where={"applicationId": public.id, "revokedAt": None}
+        )
+    finally:
+        await PrismaOAuthApplication.prisma().delete(where={"id": public.id})
+
+    assert (response.status_code == 200) == refreshes, response.text
+    if not refreshes:
+        assert "MANAGE_INTEGRATIONS" in response.json()["detail"]
+        # Refused before it was spent, so trying again isn't taken for reuse.
+        assert unspent == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_registrations_past_the_per_address_cap_get_429_with_retry_after(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    fresh_registration_limits: None,
+):
+    _allow_registration(monkeypatch, True)
+    client_ids: list[str] = []
+    try:
+        for _ in range(oauth_registration._per_ip_limiter.max_requests):
+            accepted = await client.post(
+                "/api/oauth/register", json={"redirect_uris": [REDIRECT_URI]}
+            )
+            assert accepted.status_code == 201, accepted.text
+            client_ids.append(accepted.json()["client_id"])
+        refused = await client.post(
+            "/api/oauth/register", json={"redirect_uris": [REDIRECT_URI]}
+        )
+    finally:
+        await PrismaOAuthApplication.prisma().delete_many(
+            where={"clientId": {"in": client_ids}}
+        )
+
+    assert refused.status_code == 429, refused.text
+    assert int(refused.headers["Retry-After"]) > 0
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("limiter", ["_per_ip_limiter", "_overall_limiter"])
+async def test_a_registration_that_cannot_be_counted_is_refused(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    fresh_registration_limits: None,
+    limiter: str,
+):
+    """The limiter lets a request through when Redis fails, and here each one
+    would leave a row behind."""
+    _allow_registration(monkeypatch, True)
+    monkeypatch.setattr(getattr(oauth_registration, limiter), "_count", _fail)
+    name = f"Uncounted {uuid.uuid4().hex[:8]}"
+    try:
+        response = await client.post(
+            "/api/oauth/register",
+            json={"redirect_uris": [REDIRECT_URI], "client_name": name},
+        )
+        registered = await PrismaOAuthApplication.prisma().count(where={"name": name})
+    finally:
+        await PrismaOAuthApplication.prisma().delete_many(where={"name": name})
+
+    assert response.status_code == 503, response.text
+    assert registered == 0
+
+
 async def _authorize(
     client: httpx.AsyncClient,
     client_id: str,
@@ -298,6 +430,42 @@ async def _client(
             "lastUsedAt": last_used or created_at,
         }
     )
+
+
+def _allow_registration(monkeypatch: pytest.MonkeyPatch, enabled: bool) -> None:
+    monkeypatch.setattr(
+        oauth_registration.settings.config, "oauth_dynamic_client_registration", enabled
+    )
+
+
+async def _public_client(scopes: list[str]):
+    return await register_public_client(
+        name="Public client test",
+        redirect_uris=[REDIRECT_URI],
+        grant_types=["authorization_code", "refresh_token"],
+        scopes=[APIKeyPermission(s) for s in scopes],
+    )
+
+
+async def _refresh(
+    client: httpx.AsyncClient, client_id: str, app_id: str, scopes: list[str]
+) -> httpx.Response:
+    token = await create_refresh_token(
+        app_id, USER_ID, [APIKeyPermission(s) for s in scopes]
+    )
+    return await client.post(
+        "/api/oauth/token",
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": token.token.get_secret_value(),
+            "client_id": client_id,
+        },
+    )
+
+
+def _s256(verifier: str) -> str:
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
 
 
 async def _issue_code(app_id: str) -> Callable[[], Awaitable[object]]:

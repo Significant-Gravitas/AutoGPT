@@ -51,6 +51,7 @@ from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from backend.api.external.v2.mcp_scopes import mcp_scopes
 from backend.api.features.local_executor.gating import is_local_executor_enabled
+from backend.api.features.oauth_registration import registration_enabled
 from backend.api.features.oauth_registration import router as registration_router
 from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.copilot.rate_limit import enforce_payment_paywall
@@ -391,8 +392,15 @@ async def authorize(
                 "Application is not authorized for all requested scopes. "
                 f"Allowed: {', '.join(s.value for s in app.scopes)}",
             )
-        # Checked here as well as at registration: the MCP tools can need less
-        # by now than when the client registered.
+        # Self-registered clients stop with the setting that admits them, and get
+        # only what the MCP tools need now, which can be less than at registration.
+        if app.owner_id is None and not registration_enabled():
+            return _error_redirect_url(
+                request.redirect_uri,
+                request.state,
+                "unauthorized_client",
+                "This server no longer accepts self-registered applications",
+            )
         if app.owner_id is None and (
             outside := {s.value for s in requested_scopes} - set(mcp_scopes())
         ):
@@ -635,6 +643,16 @@ async def token(
                 f"{request.grant_type} grant"
             ),
         )
+    # Turning the setting off stops every self-registered client, not only
+    # new registrations.
+    if app.owner_id is None and not registration_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "unauthorized_client: this server no longer accepts "
+                "self-registered applications"
+            ),
+        )
 
     # Handle authorization_code grant
     if request.grant_type == "authorization_code":
@@ -685,7 +703,10 @@ async def token(
         # Refresh access token
         try:
             new_access_token, new_refresh_token = await refresh_tokens(
-                request.refresh_token, app.id
+                request.refresh_token,
+                app.id,
+                # The MCP tools can need less by now than when the token was granted.
+                grantable=set(mcp_scopes()) if app.owner_id is None else None,
             )
         except RefreshTokenFamilyRevokedError as e:
             await _push_shim_revocation(e.user_id, app.client_id)

@@ -13,9 +13,9 @@ export function UnreviewedAppNotice({ redirectURI }: Props) {
     <Alert variant="warning">
       <AlertTitle>AutoGPT hasn&apos;t reviewed this app</AlertTitle>
       <AlertDescription>
-        It added itself to ask for access, so its name could be anything.
-        Authorize only if you just started this sign-in yourself, from an app on
-        this computer. Afterwards you&apos;ll be sent back to it at{" "}
+        It added itself to ask for access, so its name could be anything. Go
+        ahead only if you just started this yourself, from an app on this
+        computer. Afterwards you&apos;ll be sent back to it at{" "}
         <strong>{hostOf(redirectURI)}</strong>.
       </AlertDescription>
     </Alert>
