@@ -1,18 +1,19 @@
 # This file contains a lot of prompt block strings that would trigger "line too long"
 # flake8: noqa: E501
 import asyncio
+import hashlib
 import logging
 import math
 import re
-import secrets
 import time
 from abc import ABC
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from enum import Enum
 from json import JSONDecodeError
 from typing import TYPE_CHECKING, Any, Literal, Optional, cast, get_args
 
 import anthropic
+import groq
 import openai
 from anthropic.types import ToolParam
 from openai.types.chat import ChatCompletion as OpenAIChatCompletion
@@ -28,6 +29,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.llm_errors import format_llm_error_message, is_invalid_model_error
 from backend.data.llm_registry.llm_models import DEFAULT_LLM_MODEL as DEFAULT_LLM_MODEL
 from backend.data.llm_registry.llm_models import (
     LEGACY_MODEL_MAPPINGS as LEGACY_MODEL_MAPPINGS,
@@ -53,12 +55,18 @@ from backend.util import json
 # them here so existing ``from backend.blocks.llm import
 # ToolContentBlock`` imports keep working.
 from backend.util.llm.conversions import ToolCall, ToolContentBlock
+from backend.util.llm.http_attempts import HttpAttemptLog, current_http_attempts
+from backend.util.llm.prompt_refusal import PromptRefusedError, is_prompt_refused
 from backend.util.llm.provider_billing import (
     ProviderUnavailableError,
     is_provider_out_of_credits,
     report_provider_out_of_credits,
 )
 from backend.util.llm.providers import timeout_error
+from backend.util.llm.request_too_large import (
+    RequestTooLargeError,
+    is_request_too_large,
+)
 from backend.util.llm.saturation import track_llm_call
 from backend.util.logging import TruncatedLogger
 from backend.util.prompt import compress_context, estimate_token_count
@@ -73,6 +81,25 @@ settings = Settings()
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
 fmt = TextFormatter(autoescape=False)
 
+# str.strip() keeps U+FEFF, which the builder's JavaScript trim() removes.
+_KEY_PADDING = re.compile(r"^[\s\ufeff]+|[\s\ufeff]+$")
+
+
+def strip_prompt_value_keys(values: dict[str, str]) -> dict[str, str]:
+    """Strip whitespace around prompt-value keys so `{{name}}` finds `name `.
+
+    A key that is already clean wins over one that only matches once stripped;
+    among padded keys that strip to the same name, the first one wins. A key
+    that is only whitespace is dropped.
+    """
+    stripped: dict[str, str] = {}
+    for key, value in values.items():
+        clean = _KEY_PADDING.sub("", key)
+        if clean and (clean == key or clean not in values):
+            stripped.setdefault(clean, value)
+    return stripped
+
+
 # HTTP status codes for user-caused errors that should not be reported to Sentry.
 USER_ERROR_STATUS_CODES = (401, 403, 429)
 
@@ -83,6 +110,19 @@ LLM_REQUEST_TIMEOUT_SECONDS: int = settings.config.llm_request_timeout_seconds
 # Only a cutoff that ate most of the budget was mid-inference; a fast fail burns
 # nothing, and paging on those during an outage would bury the ones that cost.
 _SPEND_BURNED_ELAPSED_FRACTION = 0.9
+
+# A request still open after this long was generating, whatever the slice was.
+# Matches the lowest llm_request_timeout_seconds the settings allow.
+_SPEND_BURNED_MIN_IN_FLIGHT_SECONDS = 30
+
+# A retry gets only what is left of the shared deadline. Below this it would
+# almost surely be cut off mid-inference, billed and wasted, so stop instead.
+# Capped at half the budget: at the shortest budget the settings allow (30s),
+# a 30s floor would rule out every retry.
+LLM_MIN_ATTEMPT_SECONDS = 30
+
+# One clock for the retry deadline and timeout classification; tests patch it.
+_now = time.monotonic
 
 # Stable, greppable Sentry title — never interpolate into it (see #14292).
 SPEND_BURNED_ALERT = "LLM call cut off mid-inference — provider billed, user refunded"
@@ -259,6 +299,12 @@ def get_parallel_tool_calls_param(
     return parallel_tool_calls
 
 
+def remaining_attempt_timeout(
+    deadline: float, per_attempt_timeout: float, now: float
+) -> float:
+    return min(deadline - now, per_attempt_timeout)
+
+
 async def llm_call(
     credentials: APIKeyCredentials | None,
     llm_model: LLMModel,
@@ -270,6 +316,9 @@ async def llm_call(
     parallel_tool_calls=None,
     compress_prompt_to_fit: bool = True,
     execution_context: "ExecutionContext | None" = None,
+    *,
+    on_abandoned: Callable[[NodeExecutionStats], object] | None,
+    timeout_seconds: float | None = None,
 ) -> LLMResponse:
     """Block-side LLM entry point. Wraps the provider dispatch in a hard timeout
     so that no single request can park an executor thread indefinitely.
@@ -278,13 +327,29 @@ async def llm_call(
     classified for spend alerting (#14292), including callers that never reach
     the block retry loop. Copilot and dream call the provider layer directly and
     raise no spend alert; they carry no execution context to attribute one to.
+
+    ``on_abandoned`` receives the estimated usage of a request that reached
+    the provider and was then cancelled, which never gets a reply to read
+    usage from: see ``abandoned_call_stats``. Blocks pass their
+    ``merge_stats``; ``None`` is for callers with no node to bill.
+
+    ``timeout_seconds`` can only shorten the request: the provider layer
+    still stops at ``LLM_REQUEST_TIMEOUT_SECONDS``.
     """
-    started = time.monotonic()
+    timeout = (
+        LLM_REQUEST_TIMEOUT_SECONDS
+        if timeout_seconds is None
+        else min(timeout_seconds, LLM_REQUEST_TIMEOUT_SECONDS)
+    )
+    sent_input_tokens: list[int] = []
+    started = _now()
+    attempts = HttpAttemptLog(clock=_now)
     with track_llm_call(
         graph_exec_id=execution_context.graph_exec_id if execution_context else None,
         provider=llm_model.metadata.provider,
         now=started,
     ):
+        attempts_token = current_http_attempts.set(attempts)
         try:
             return await asyncio.wait_for(
                 _llm_call(
@@ -297,27 +362,40 @@ async def llm_call(
                     ollama_host=ollama_host,
                     parallel_tool_calls=parallel_tool_calls,
                     compress_prompt_to_fit=compress_prompt_to_fit,
+                    on_request_sent=sent_input_tokens.append,
                 ),
                 # Same budget as the provider layer, but this one starts before
                 # prompt compression, so it always fires first for block callers;
                 # the provider deadline is there for callers that skip this seam.
-                timeout=LLM_REQUEST_TIMEOUT_SECONDS,
+                # Retry loops may pass a leftover shared-deadline slice.
+                timeout=timeout,
             )
-        # SDK-native timeouts never reach the wait_for, so both are caught here
+        except asyncio.CancelledError:
+            if on_abandoned is not None and sent_input_tokens:
+                on_abandoned(abandoned_call_stats(sent_input_tokens[-1]))
+            raise
+        # SDK-native timeouts never reach the wait_for, so they are caught here
         # to keep this the single place that reports burned spend.
         except (
             asyncio.TimeoutError,
             openai.APITimeoutError,
             anthropic.APITimeoutError,
+            groq.APITimeoutError,
         ) as e:
             _log_timeout_outcome(
-                elapsed=time.monotonic() - started,
+                started=started,
+                # The deadline, not when wait_for raises: it waits for the
+                # cancelled call to unwind and close its HTTP client first, and
+                # that cleanup was not time in flight.
+                cut_off=min(_now(), started + timeout),
+                attempts=attempts,
+                timeout_seconds=timeout,
                 llm_model=llm_model,
                 execution_context=execution_context,
                 error=e,
             )
             if isinstance(e, asyncio.TimeoutError):
-                raise _block_timeout_error(llm_model, max_tokens) from e
+                raise _block_timeout_error(llm_model, max_tokens, timeout) from e
             raise
         except Exception as e:
             if is_provider_out_of_credits(e) and _is_platform_credential(credentials):
@@ -332,7 +410,23 @@ async def llm_call(
                     node_exec_id=ctx.node_exec_id if ctx else None,
                 )
                 raise ProviderUnavailableError() from e
+            if is_prompt_refused(e):
+                raise PromptRefusedError() from e
+            if is_request_too_large(e):
+                raise RequestTooLargeError(
+                    llm_model.metadata.provider_name, str(e)
+                ) from e
             raise
+        finally:
+            current_http_attempts.reset(attempts_token)
+
+
+def abandoned_call_stats(estimated_input_tokens: int) -> NodeExecutionStats:
+    """The usage of a request that reached the provider and was cancelled
+    before its reply: the estimated input tokens, as no reply reports the real
+    count, with the output unknown. They are kept apart from the reported
+    usage, since only a run its user ended is billed for them."""
+    return NodeExecutionStats(abandoned_input_token_count=estimated_input_tokens)
 
 
 def _is_platform_credential(credentials: APIKeyCredentials | None) -> bool:
@@ -354,6 +448,7 @@ async def _llm_call(
     ollama_host: str = "localhost:11434",
     parallel_tool_calls=None,
     compress_prompt_to_fit: bool = True,
+    on_request_sent: Callable[[int], None] | None = None,
 ) -> LLMResponse:
     """
     Make a call to a language model.
@@ -366,6 +461,8 @@ async def _llm_call(
         max_tokens: The maximum number of tokens to generate in the chat completion.
         tools: The tools to use in the chat completion.
         ollama_host: The host for ollama to use.
+        on_request_sent: Called with the estimated input tokens just before
+            the request goes to the provider.
 
     Returns:
         LLMResponse object containing:
@@ -431,6 +528,8 @@ async def _llm_call(
     # shape (caller), ``NodeExecutionStats`` (caller).
     from backend.util.llm.providers import ProviderResponse, call_provider
 
+    if on_request_sent is not None:
+        on_request_sent(estimated_input_tokens)
     provider_response = await call_provider(
         provider=cast(Any, provider),
         model=llm_model.value,
@@ -478,6 +577,17 @@ class AIBlockBase(Block, ABC):
     def merge_llm_stats(self, block: "AIBlockBase"):
         self.merge_stats(block.execution_stats)
         self.prompt = block.prompt
+
+    async def run_inner_block(
+        self, block: "AIBlockBase", input_data: Any, output: str, **kwargs
+    ) -> Any:
+        """``block.run_once`` on this block's behalf, keeping the inner
+        block's usage as this block's whether it returns, fails or is
+        stopped."""
+        try:
+            return await block.run_once(input_data, output, **kwargs)
+        finally:
+            self.merge_llm_stats(block)
 
 
 class AIStructuredResponseGeneratorBlock(AIBlockBase):
@@ -606,6 +716,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         tools: list[dict] | None = None,
         ollama_host: str = "localhost:11434",
         execution_context: "ExecutionContext | None" = None,
+        timeout_seconds: float | None = None,
     ) -> LLMResponse:
         """
         Test mocks work only on class functions, this wraps the llm_call function
@@ -622,6 +733,8 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             ollama_host=ollama_host,
             compress_prompt_to_fit=compress_prompt_to_fit,
             execution_context=execution_context,
+            on_abandoned=self.merge_stats,
+            timeout_seconds=timeout_seconds,
         )
 
     async def run(
@@ -634,8 +747,8 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         logger.debug(f"Calling LLM with input data: {input_data}")
         prompt = [json.to_dict(p) for p in input_data.conversation_history or [] if p]
 
-        values = input_data.prompt_values
-        if values:
+        if input_data.prompt_values:
+            values = strip_prompt_value_keys(input_data.prompt_values)
             input_data.prompt = await fmt.format_string(input_data.prompt, values)
             input_data.sys_prompt = await fmt.format_string(
                 input_data.sys_prompt, values
@@ -644,8 +757,11 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         if input_data.sys_prompt:
             prompt.append({"role": "system", "content": input_data.sys_prompt})
 
-        # Use a one-time unique tag to prevent collisions with user/LLM content
-        output_tag_id = self.get_collision_proof_output_tag_id()
+        # Deterministic collision-proof tag from the output spec keeps the Anthropic
+        # ephemeral system-prefix cache stable across calls with the same format.
+        output_tag_id = self.get_collision_proof_output_tag_id(
+            input_data.expected_format
+        )
         output_tag_start = f'<json_output id="{output_tag_id}">'
         if input_data.expected_format:
             sys_prompt = self.response_format_instructions(
@@ -671,10 +787,27 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 return f"JSON decode error: {e}"
 
         error_feedback_message = ""
+        refusal: PromptRefusedError | RequestTooLargeError | None = None
         llm_model = input_data.model
         total_provider_cost: float | None = None
+        per_attempt_timeout = LLM_REQUEST_TIMEOUT_SECONDS
+        min_attempt_timeout = min(LLM_MIN_ATTEMPT_SECONDS, per_attempt_timeout / 2)
+        deadline = _now() + per_attempt_timeout
 
+        attempt_timeout = per_attempt_timeout
         for retry_count in range(input_data.retry):
+            if retry_count:
+                attempt_timeout = remaining_attempt_timeout(
+                    deadline, per_attempt_timeout, _now()
+                )
+                if attempt_timeout < min_attempt_timeout:
+                    # Keep the last attempt's error: it says why none succeeded.
+                    error_feedback_message = (
+                        f"LLM retry budget of {per_attempt_timeout}s ran out after "
+                        f"{retry_count} attempt(s) without a valid response. "
+                        f"Last error: {error_feedback_message}"
+                    )
+                    break
             logger.debug(f"LLM request: {prompt}")
             try:
                 llm_response = await self.llm_call(
@@ -689,6 +822,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     ollama_host=input_data.ollama_host,
                     max_tokens=input_data.max_tokens,
                     execution_context=kwargs.get("execution_context"),
+                    timeout_seconds=attempt_timeout,
                 )
                 response_text = llm_response.response
                 # Accumulate token counts and provider_cost for every attempt
@@ -813,20 +947,35 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     # account stays empty however many times we ask.
                     error_feedback_message = str(e)
                     break
-                is_user_error = (
+                if isinstance(e, (PromptRefusedError, RequestTooLargeError)):
+                    # A judgement on the prompt itself, like the user errors below;
+                    # the same request is refused the same way every time.
+                    refusal = e
+                    break
+                # Invalid models cannot recover on retry; other 400s can still
+                # use the context-length recovery below.
+                invalid_model_error = is_invalid_model_error(e)
+                is_user_error = invalid_model_error or (
                     isinstance(e, (anthropic.APIStatusError, openai.APIStatusError))
                     and e.status_code in USER_ERROR_STATUS_CODES
                 )
                 if is_user_error:
-                    logger.warning(f"Error calling LLM: {e}")
-                    error_feedback_message = f"Error calling LLM: {e}"
+                    error_feedback_message = format_llm_error_message(
+                        e, llm_model, is_invalid_model=invalid_model_error
+                    )
+                    logger.warning(error_feedback_message)
                     break
                 # The SDKs' own timeout types do NOT subclass builtin
                 # TimeoutError, so they must be named explicitly or a
                 # connect/read timeout burns the full retry budget.
                 if isinstance(
                     e,
-                    (TimeoutError, openai.APITimeoutError, anthropic.APITimeoutError),
+                    (
+                        TimeoutError,
+                        openai.APITimeoutError,
+                        anthropic.APITimeoutError,
+                        groq.APITimeoutError,
+                    ),
                 ):
                     # Already classified and logged at the llm_call seam.
                     # A request that hung once will most likely hang again on
@@ -842,7 +991,8 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 ):
                     if input_data.max_tokens is None:
                         input_data.max_tokens = llm_model.max_output_tokens or 4096
-                    input_data.max_tokens = int(input_data.max_tokens * 0.85)
+                    # Zero means "use the model cap" downstream, undoing the reduction.
+                    input_data.max_tokens = max(1, int(input_data.max_tokens * 0.85))
                     logger.debug(
                         f"Reducing max_tokens to {input_data.max_tokens} for next attempt"
                     )
@@ -860,6 +1010,8 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     provider_cost_type="cost_usd",
                 )
             )
+        if refusal is not None:
+            raise refusal
         raise RuntimeError(error_feedback_message)
 
     def response_format_instructions(
@@ -974,8 +1126,14 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         )
         return json.loads(json_output)
 
-    def get_collision_proof_output_tag_id(self) -> str:
-        return secrets.token_hex(8)
+    def get_collision_proof_output_tag_id(
+        self, expected_format: dict[str, str] | None = None
+    ) -> str:
+        # Hash the output spec so the tag is identical across calls with the same
+        # format (stable Anthropic cache_control prefix) while remaining
+        # collision-resistant against user/LLM content.
+        spec = repr(sorted((expected_format or {}).items()))
+        return hashlib.sha256(spec.encode("utf-8")).hexdigest()[:16]
 
 
 def trim_prompt(s: str) -> str:
@@ -986,7 +1144,10 @@ def trim_prompt(s: str) -> str:
 
 def _log_timeout_outcome(
     *,
-    elapsed: float,
+    started: float,
+    cut_off: float,
+    attempts: HttpAttemptLog,
+    timeout_seconds: float,
     llm_model: LLMModel,
     execution_context: "ExecutionContext | None",
     error: BaseException,
@@ -998,11 +1159,19 @@ def _log_timeout_outcome(
     a provider incident aggregates into one issue instead of thousands. Sentry
     is the only surface — see #14292 for the paging decision.
     """
-    budget = LLM_REQUEST_TIMEOUT_SECONDS
-    if elapsed < budget * _SPEND_BURNED_ELAPSED_FRACTION:
+    budget = timeout_seconds
+    elapsed = cut_off - started
+    in_flight, in_flight_source = _in_flight_at_cut_off(started, cut_off, attempts)
+    threshold = budget * _SPEND_BURNED_ELAPSED_FRACTION
+    if attempts.starts:
+        threshold = min(threshold, _SPEND_BURNED_MIN_IN_FLIGHT_SECONDS)
+    if in_flight < threshold:
         logger.warning(
-            f"LLM call timed out after {elapsed:.1f}s, below the "
-            f"mid-inference alert threshold, not retrying: {error}"
+            f"LLM call timed out after {elapsed:.1f}s and "
+            f"{len(attempts.starts)} HTTP attempt(s) (statuses "
+            f"{attempts.statuses}); final request open {in_flight:.1f}s "
+            f"({in_flight_source}), below the mid-inference alert threshold, "
+            f"not retrying: {error}"
         )
         return
 
@@ -1015,6 +1184,10 @@ def _log_timeout_outcome(
             "json_fields": {
                 "elapsed_seconds": round(elapsed, 1),
                 "configured_timeout_seconds": budget,
+                "last_request_in_flight_seconds": round(in_flight, 1),
+                "http_attempts": len(attempts.starts),
+                "response_statuses": attempts.statuses,
+                "in_flight_source": in_flight_source,
                 "provider": llm_model.metadata.provider,
                 "model": llm_model.value,
                 # A bare asyncio.TimeoutError stringifies to "", which would
@@ -1030,12 +1203,39 @@ def _log_timeout_outcome(
     )
 
 
-def _block_timeout_error(llm_model: LLMModel, max_tokens: int | None) -> TimeoutError:
-    """Provider-agnostic timeout text plus the one remedy only blocks expose."""
+def _in_flight_at_cut_off(
+    started: float, cut_off: float, attempts: HttpAttemptLog
+) -> tuple[float, str]:
+    """How long the request the timeout cut off had been open at ``cut_off``,
+    and how that was measured.
+
+    Only the last request can have been cut off: every earlier one had already
+    ended. An error response bills nothing, so if the last request has one, the
+    SDK was only waiting out its retry backoff and nothing was cut off (#16173).
+    """
+    if not attempts.starts:
+        # A provider path without the hooks: the whole call is all there is.
+        return cut_off - started, "elapsed_fallback"
+    status = attempts.statuses[-1]
+    if status is not None and status >= 400:
+        return 0.0, "retry_backoff"
+    # No response yet, or a 2xx whose body was still arriving.
+    return cut_off - attempts.starts[-1], "last_request"
+
+
+def _block_timeout_error(
+    llm_model: LLMModel, max_tokens: int | None, timeout_seconds: float
+) -> TimeoutError:
+    """Provider-agnostic timeout text plus the one remedy only blocks expose.
+
+    A retry's timeout is what was left of the shared deadline on the real
+    clock, so the message rounds it to a tenth of a second.
+    """
     budget = max_tokens or llm_model.max_output_tokens
     hint = f" (currently {budget})" if budget else ""
+    target = f"{llm_model.metadata.provider}/{llm_model.value}"
     return TimeoutError(
-        f"{timeout_error(f'{llm_model.metadata.provider}/{llm_model.value}', LLM_REQUEST_TIMEOUT_SECONDS)}"
+        f"{timeout_error(target, round(timeout_seconds, 1))}"
         f" You can also lower the advanced Max Tokens setting{hint}."
     )
 
@@ -1112,13 +1312,13 @@ class AITextGeneratorBlock(AIBlockBase):
         execution_context: "ExecutionContext | None" = None,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
-        response = await block.run_once(
+        response = await self.run_inner_block(
+            block,
             input_data,
             "response",
             credentials=credentials,
             execution_context=execution_context,
         )
-        self.merge_llm_stats(block)
         return response["response"]
 
     async def run(
@@ -1290,13 +1490,13 @@ class AITextSummarizerBlock(AIBlockBase):
         execution_context: "ExecutionContext | None" = None,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
-        response = await block.run_once(
+        response = await self.run_inner_block(
+            block,
             input_data,
             "response",
             credentials=credentials,
             execution_context=execution_context,
         )
-        self.merge_llm_stats(block)
         return response
 
     async def _summarize_chunk(
@@ -1376,7 +1576,8 @@ class AITextSummarizerBlock(AIBlockBase):
         else:
             # If combined summaries are still too long, recursively summarize
             block = AITextSummarizerBlock()
-            return await block.run_once(
+            return await self.run_inner_block(
+                block,
                 AITextSummarizerBlock.Input(
                     text=combined_text,
                     credentials=input_data.credentials,
@@ -1467,13 +1668,13 @@ class AIConversationBlock(AIBlockBase):
         execution_context: "ExecutionContext | None" = None,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
-        response = await block.run_once(
+        response = await self.run_inner_block(
+            block,
             input_data,
             "response",
             credentials=credentials,
             execution_context=execution_context,
         )
-        self.merge_llm_stats(block)
         return response
 
     async def run(
@@ -1625,13 +1826,13 @@ class AIListGeneratorBlock(AIBlockBase):
         execution_context: "ExecutionContext | None" = None,
     ) -> dict[str, Any]:
         llm_block = AIStructuredResponseGeneratorBlock()
-        response = await llm_block.run_once(
+        response = await self.run_inner_block(
+            llm_block,
             input_data,
             "response",
             credentials=credentials,
             execution_context=execution_context,
         )
-        self.merge_llm_stats(llm_block)
         return response
 
     async def run(

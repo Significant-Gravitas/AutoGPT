@@ -30,9 +30,9 @@ export const WebhookDisclaimer = ({ nodeId }: { nodeId: string }) => {
   return (
     <>
       <div className="px-4 pt-4">
-        <Alert className="mb-3 rounded-xlarge">
+        <Alert shape="builder" className="mb-3">
           <AlertDescription>
-            <Text variant="small-medium">
+            <Text variant="small" weight="medium">
               You can set up and manage this trigger in your{" "}
               <Link
                 href={
@@ -42,15 +42,23 @@ export const WebhookDisclaimer = ({ nodeId }: { nodeId: string }) => {
                 }
                 className="underline"
               >
-                Agent Library
+                <Text
+                  variant="small"
+                  weight="medium"
+                  leading="inherit"
+                  as="span"
+                  tone="inherit"
+                >
+                  Workflow Library
+                </Text>
               </Link>
-              {!isNodeSaved && " (after saving the graph)"}.
+              {!isNodeSaved && " (after saving the workflow)"}.
             </Text>
           </AlertDescription>
         </Alert>
       </div>
 
-      <Text variant="small" className="mb-4 ml-6 !text-purple-700">
+      <Text variant="small" tone="accent" className="mb-4 ml-6">
         Below inputs are only for display purposes and cannot be edited.
       </Text>
     </>

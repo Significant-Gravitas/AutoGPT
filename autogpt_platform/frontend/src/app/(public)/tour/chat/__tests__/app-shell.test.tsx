@@ -9,12 +9,21 @@ import {
 
 // DotDistortionShader paints a canvas/WebGL frame that happy-dom cannot run and
 // that is purely decorative — stub it so the real chat tree can render.
-vi.mock("@/components/ui/dot-distortion-shader", () => ({
+vi.mock("../components/DotDistortionShader/DotDistortionShader", () => ({
   DotDistortionShader: () => null,
 }));
 
 vi.mock("@/app/(platform)/copilot/useIsMobile", () => ({
   useIsMobile: () => false,
+}));
+
+// A signed-out visitor, answered at once: the auth store's session checks
+// settle before their deadlines are armed, so teardown's timer sweep never
+// fires one.
+vi.mock("@/lib/auth/actions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/actions")>()),
+  getCurrentUser: async () => ({ user: null }),
+  validateSession: async () => ({ user: null, isValid: false }),
 }));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
@@ -112,7 +121,7 @@ describe("Tour chat app shell", () => {
     expect(
       screen.getByRole("link", { name: "AutoGPT" }).getAttribute("href"),
     ).toBe("/marketplace");
-    for (const label of ["New Task", "Search", "Agents", "Build", "Files"]) {
+    for (const label of ["New Task", "Search", "Workflows", "Build", "Files"]) {
       const item = screen.getByRole("button", { name: label });
       expect(item.getAttribute("aria-disabled")).toBe("true");
     }

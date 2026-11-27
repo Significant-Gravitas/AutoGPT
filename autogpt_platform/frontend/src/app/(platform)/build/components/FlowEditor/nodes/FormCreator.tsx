@@ -9,6 +9,9 @@ import { CredentialsProvidersContext } from "@/providers/agent-credentials/crede
 import { gateDiscriminatorOptions } from "@/components/renderers/InputRenderer/custom/CredentialField/gateDiscriminatorOptions";
 import { credentialNotApplicable } from "@/components/renderers/InputRenderer/custom/CredentialField/helpers";
 import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
+import type { CustomNodeData } from "./CustomNode/CustomNode";
+
+const NO_HARDCODED_VALUES: CustomNodeData["hardcodedValues"] = {};
 
 function isCredentialsProperty(schema: RJSFSchema, key: string): boolean {
   const property = schema.properties?.[key];
@@ -107,7 +110,13 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
       updateNodeData(nodeId, { hardcodedValues: updatedValues });
     };
 
-    const hardcodedValues = getHardCodedValues(nodeId);
+    // Subscribed rather than read during render: CustomNode memoizes the schema
+    // it passes in, so this component no longer re-renders with its parent.
+    const hardcodedValues =
+      useNodeStore(
+        (state) =>
+          state.nodes.find((n) => n.id === nodeId)?.data?.hardcodedValues,
+      ) || NO_HARDCODED_VALUES;
 
     // Memoized so the object identity is stable across renders. FormRenderer
     // memoizes its schema preprocessing on these props, so a fresh object each

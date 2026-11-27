@@ -19,6 +19,7 @@ from backend.api.features.experts import routine_jobs
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.api.features.experts.models import ExpertDetachPreview
 from backend.copilot import db as chat_db
+from backend.copilot.dream.registry import sync_expert_scope
 from backend.data.expert_spend import get_weekly_spend, reset_weekly_spend
 from backend.data.model import CredentialsMetaInput
 from backend.data.user import get_user_by_id
@@ -33,6 +34,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 settings = Settings()
 
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 _BUDGET_WARN_FRACTION = 0.8
 # Namespace for deterministic post ids: one warning / one pause message per
 # expert per ISO week, deduplicated by append_expert_run_message.
@@ -285,6 +287,10 @@ async def detach_expert_triggers(user_id: str, expert_id: str) -> None:
     through the scheduling UI or chat. Deleting used to lose the latter set
     permanently, because only template-seeded cadences are recoverable from
     ``ExpertWorkflow.scheduleCron``.
+
+    Each pause marks its job as the archive's (``paused_by_expert_archive``),
+    so re-hire resumes exactly these. Only running schedules are listed, so
+    one the user had paused is never marked and stays paused.
     """
     # Only presets this flow turns off are marked, so re-hire restores
     # exactly them — one the user had deliberately disabled before archiving
@@ -306,7 +312,9 @@ async def detach_expert_triggers(user_id: str, expert_id: str) -> None:
     scheduler = get_scheduler_client()
     for schedule in await _get_expert_schedules(user_id, expert_id):
         try:
-            await scheduler.pause_schedule(schedule.id, user_id=user_id)
+            await scheduler.pause_schedule(
+                schedule.id, user_id=user_id, for_expert_archive=True
+            )
         except Exception as e:
             # A schedule that refuses to pause keeps firing, so the run-time
             # gate is what actually stops it. Log by id so the survivor is
@@ -389,10 +397,10 @@ async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
     reactivate the presets archiving deactivated (never ones the user had
     turned off themselves) and resume the schedules archiving paused.
 
-    Resume is by expert attribution, the same key the pause used, so every
-    schedule comes back regardless of who created it. APScheduler recomputes
-    the next fire from the trigger, so a long-archived expert resumes at her
-    next cadence rather than replaying every run she missed.
+    Only schedules marked ``paused_by_expert_archive`` resume, whoever
+    created them; an unmarked paused schedule stays paused. APScheduler
+    recomputes the next fire from the trigger, so a long-archived expert
+    resumes at her next cadence rather than replaying every run she missed.
     """
     # Local import avoids the experts_db -> scheduling module cycle. Re-hire
     # may happen after a personal-org conversion, so restoring a trigger also
@@ -423,7 +431,9 @@ async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
         user_id, expert_id, include_paused=True
     ):
         try:
-            await scheduler.resume_schedule(schedule.id, user_id=user_id)
+            await scheduler.resume_schedule(
+                schedule.id, user_id=user_id, only_if_paused_by_expert_archive=True
+            )
         except Exception as e:
             logger.warning(
                 f"Failed to resume schedule #{schedule.id} while reviving "
@@ -434,6 +444,8 @@ async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
 async def pause_expert_schedules(user_id: str, expert_id: str, reason: str) -> bool:
     """Pause the expert's scheduled/triggered runs (chat is untouched) and
     log the pause. Returns False when already paused (no double events).
+    Its memory crons (nightly dream) and weekly community rebuild pause with
+    them; that part is bounded by the registry deadline and fails soft.
 
     Refuses archived experts so a pause can't silently mutate a row the rest
     of the API reports as not-found; the archive flow itself pauses BEFORE
@@ -454,6 +466,7 @@ async def pause_expert_schedules(user_id: str, expert_id: str, reason: str) -> b
     await prisma.models.ExpertPauseEvent.prisma().create(
         data={"expertId": expert_id, "reason": reason}
     )
+    await sync_expert_scope(user_id, expert_id, active=False)
     return True
 
 
@@ -470,7 +483,11 @@ async def resume_expert_schedules(user_id: str, expert_id: str) -> bool:
     Refuses archived experts: resuming one would un-pause schedules for an
     expert every other surface 404s on (the route would then report 404
     anyway, AFTER the mutation already landed). Revival goes through the
-    re-hire flow, which clears ``isArchived`` before resuming."""
+    re-hire flow, which clears ``isArchived`` before resuming.
+
+    The expert's memory crons resume with the schedules (registered if the
+    expert never had any); that part is bounded by the registry deadline
+    and fails soft."""
     updated = await prisma.models.Expert.prisma().update_many(
         where={
             "id": expert_id,
@@ -488,6 +505,7 @@ async def resume_expert_schedules(user_id: str, expert_id: str) -> bool:
         where={"expertId": expert_id, "clearedAt": None},
         data={"clearedAt": datetime.now(timezone.utc)},
     )
+    await sync_expert_scope(user_id, expert_id, active=True)
     return True
 
 

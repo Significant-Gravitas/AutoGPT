@@ -3,6 +3,7 @@ import os
 import requests
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 
 CHECK_INTERVAL = 30
@@ -14,11 +15,39 @@ PASSING_CONCLUSIONS = {"success", "skipped", "neutral"}
 # through this check. Other review bots report "neutral" in that case, which
 # PASSING_CONCLUSIONS already accepts; this is the same treatment for one
 # that does not.
-ADVISORY_CHECK_RUNS = {"copilot-pull-request-reviewer"}
+ADVISORY_CHECK_RUNS = {
+    "copilot-pull-request-reviewer",
+}
+# The journeys e2e legs, one per Playwright shard ("end-to-end tests
+# (journeys 1/2)"), are advisory while they bed in: their failures show on the
+# PR but don't block merging. Matched by prefix, because a shard's name holds
+# the shard count and adding a shard renames every leg. This check runs the
+# base branch's copy, so a list of exact names would leave a renamed leg
+# blocking until the rename reached the base. Drop this once they have proven
+# stable.
+ADVISORY_CHECK_RUN_PREFIXES = ("end-to-end tests (journeys",)
 
 
 def is_advisory(check_run: Dict) -> bool:
-    return str(check_run.get("name")) in ADVISORY_CHECK_RUNS
+    name = str(check_run.get("name"))
+    return name in ADVISORY_CHECK_RUNS or name.startswith(ADVISORY_CHECK_RUN_PREFIXES)
+
+
+# Codecov finishes its runs within seconds but now and then abandons one
+# in_progress for good; one this old will never post a verdict.
+ABANDONED_CODECOV_RUN_AFTER = timedelta(minutes=10)
+
+
+def is_abandoned_codecov_run(check_run: Dict, now: datetime) -> bool:
+    if check_run.get("status") == "completed":
+        return False
+    if (check_run.get("app") or {}).get("slug") != "codecov":
+        return False
+    started_at = check_run.get("started_at")
+    if not started_at:
+        return False
+    started = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+    return now - started > ABANDONED_CODECOV_RUN_AFTER
 
 
 def get_environment_variables() -> Tuple[str, str, str, str, str]:
@@ -45,9 +74,7 @@ def get_environment_variables() -> Tuple[str, str, str, str, str]:
         sys.exit(1)
 
 
-def make_api_request(
-    url: str, headers: Dict[str, str]
-) -> Tuple[Dict, Optional[str]]:
+def make_api_request(url: str, headers: Dict[str, str]) -> Tuple[Dict, Optional[str]]:
     """Make an API request and return its JSON and next-page URL."""
     try:
         print("Making API request to:", url)
@@ -60,9 +87,7 @@ def make_api_request(
         sys.exit(1)
 
 
-def get_paginated_items(
-    url: str, headers: Dict[str, str], item_key: str
-) -> List[Dict]:
+def get_paginated_items(url: str, headers: Dict[str, str], item_key: str) -> List[Dict]:
     """Retrieve all pages from a GitHub list endpoint."""
     items = []
 
@@ -96,9 +121,7 @@ def action_run_order(run: Dict) -> Tuple[int, int, int]:
     )
 
 
-def is_superseded_cancellation(
-    check_run: Dict, workflow_runs: List[Dict]
-) -> bool:
+def is_superseded_cancellation(check_run: Dict, workflow_runs: List[Dict]) -> bool:
     """Return whether a canceled check belongs to a superseded workflow run."""
     action_run_id = get_action_run_id(check_run)
     if action_run_id is None:
@@ -134,10 +157,13 @@ def is_superseded_cancellation(
 
 
 def process_check_runs(
-    check_runs: List[Dict], workflow_runs: Optional[List[Dict]] = None
+    check_runs: List[Dict],
+    workflow_runs: Optional[List[Dict]] = None,
+    now: Optional[datetime] = None,
 ) -> Tuple[bool, bool]:
     """Process check runs and return their status."""
     workflow_runs = workflow_runs or []
+    now = now or datetime.now(timezone.utc)
     runs_in_progress = False
     all_others_passed = True
 
@@ -146,6 +172,13 @@ def process_check_runs(
             print(
                 f"Ignoring advisory check run {run['name']} (ID: {run['id']}): "
                 "its result never gates a merge."
+            )
+            continue
+        if is_abandoned_codecov_run(run, now):
+            print(
+                f"Ignoring Codecov check run {run['name']} (ID: {run['id']}): "
+                f"still {run['status']} since {run['started_at']}, so Codecov "
+                "abandoned it."
             )
             continue
         if str(run["name"]) != "Check PR Status":
@@ -197,14 +230,14 @@ def main():
     print(f"Current run ID: {current_run_id}")
 
     while True:
-        check_runs = get_paginated_items(
-            check_runs_endpoint, headers, "check_runs"
-        )
+        check_runs = get_paginated_items(check_runs_endpoint, headers, "check_runs")
         print(f"Processing {len(check_runs)} check runs...")
+        now = datetime.now(timezone.utc)
 
         runs_in_progress = any(
             str(run["name"]) != "Check PR Status"
             and not is_advisory(run)
+            and not is_abandoned_codecov_run(run, now)
             and run["status"] != "completed"
             for run in check_runs
         )
@@ -214,7 +247,7 @@ def main():
                 workflow_runs_endpoint, headers, "workflow_runs"
             )
             _, all_others_passed = process_check_runs(
-                check_runs, workflow_runs
+                check_runs, workflow_runs, now
             )
             break
 

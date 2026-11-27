@@ -11,7 +11,7 @@ import backend.api.features.library.db as library_db
 import backend.api.features.library.model as library_model
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
-from backend.blocks import load_all_blocks
+from backend.blocks import get_block, load_all_blocks
 from backend.blocks._base import (
     AnyBlockSchema,
     BlockCategory,
@@ -197,44 +197,38 @@ def get_block_by_id(block_id: str) -> BlockInfo | None:
     """
     Get a specific block by its ID.
     """
-    for block_type in load_all_blocks().values():
-        block: AnyBlockSchema = block_type()
-        if block.id == block_id:
-            return block.get_info()
-    return None
+    block = get_block(block_id)
+    return block.get_info() if block else None
 
 
 async def update_search(
     user_id: str, search: SearchEntry, organization_id: str | None = None
 ) -> str:
     """
-    Upsert a search request for the user and return the search ID.
+    Update the user's search entry with ``search.search_id``, or create one when
+    that id is missing or not the user's, and return the entry's ID.
     """
     if search.search_id:
-        # Update existing search
-        await prisma.models.BuilderSearchHistory.prisma().update(
-            where={
-                "id": search.search_id,
-            },
+        updated = await prisma.models.BuilderSearchHistory.prisma().update_many(
+            where={"id": search.search_id, "userId": user_id},
             data={
                 "searchQuery": search.search_query or "",
                 "filter": search.filter or [],  # type: ignore
                 "byCreator": search.by_creator or [],
             },
         )
-        return search.search_id
-    else:
-        # Create new search
-        new_search = await prisma.models.BuilderSearchHistory.prisma().create(
-            data={
-                "userId": user_id,
-                "searchQuery": search.search_query or "",
-                "filter": search.filter or [],  # type: ignore
-                "byCreator": search.by_creator or [],
-                **({"organizationId": organization_id} if organization_id else {}),
-            }
-        )
-        return new_search.id
+        if updated:
+            return search.search_id
+    new_search = await prisma.models.BuilderSearchHistory.prisma().create(
+        data={
+            "userId": user_id,
+            "searchQuery": search.search_query or "",
+            "filter": search.filter or [],  # type: ignore
+            "byCreator": search.by_creator or [],
+            **({"organizationId": organization_id} if organization_id else {}),
+        }
+    )
+    return new_search.id
 
 
 async def get_recent_searches(user_id: str, limit: int = 5) -> list[SearchEntry]:

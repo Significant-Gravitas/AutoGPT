@@ -2,7 +2,7 @@
 
 import React from "react";
 import { cn } from "@/lib/utils";
-import { Text } from "@/components/atoms/Text/Text";
+import { Text, type TextProps } from "@/components/atoms/Text/Text";
 import { getIconSize, ShowMoreTextVariant } from "./helpers";
 import { ArrowDown01Icon, ArrowUp01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -11,6 +11,7 @@ interface ShowMoreProps {
   children: string;
   previewLimit?: number;
   variant?: ShowMoreTextVariant;
+  weight?: TextProps["weight"];
   className?: string;
   toggleClassName?: string;
   defaultExpanded?: boolean;
@@ -20,6 +21,7 @@ export function ShowMore({
   children,
   previewLimit = 100,
   variant = "body",
+  weight,
   className,
   toggleClassName,
   defaultExpanded = false,
@@ -35,7 +37,12 @@ export function ShowMore({
 
   if (!shouldTruncate) {
     return (
-      <Text variant={variant} className={cn(className)}>
+      <Text
+        variant={variant}
+        weight={weight}
+        data-slot="show-more"
+        className={cn(className)}
+      >
         {children}
       </Text>
     );
@@ -44,32 +51,38 @@ export function ShowMore({
   return (
     <Text
       variant={variant}
-      className={cn(
-        isExpanded
-          ? "flex-end flex flex-wrap items-center"
-          : "flex-start flex flex-wrap items-center",
-        className,
-      )}
+      weight={weight}
+      data-slot="show-more"
+      className={cn("flex flex-wrap items-center", className)}
     >
       {displayText}
       {!isExpanded && "..."}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
+        data-slot="show-more-toggle"
         className={cn(
-          "ml-1 inline-flex items-center gap-1 font-medium text-black",
+          "ml-1 inline-flex items-center gap-1 font-medium text-foreground-base",
           toggleClassName,
         )}
         type="button"
       >
         {isExpanded ? (
           <>
-            <Icon icon={ArrowUp01Icon} size={iconSize} />
-            <span>less</span>
+            <Icon
+              data-slot="show-more-toggle-icon"
+              icon={ArrowUp01Icon}
+              size={iconSize}
+            />
+            <span data-slot="show-more-toggle-label">less</span>
           </>
         ) : (
           <>
-            <Icon icon={ArrowDown01Icon} size={iconSize} />
-            <span>more</span>
+            <Icon
+              data-slot="show-more-toggle-icon"
+              icon={ArrowDown01Icon}
+              size={iconSize}
+            />
+            <span data-slot="show-more-toggle-label">more</span>
           </>
         )}
       </button>

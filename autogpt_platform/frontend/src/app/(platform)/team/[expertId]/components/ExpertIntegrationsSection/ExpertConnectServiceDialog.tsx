@@ -1,7 +1,7 @@
 "use client";
 
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
-import { ConnectProviderRow } from "@/app/(platform)/copilot/components/OnboardingWelcomeDialog/ConnectProviderRow";
+import { ConnectProviderRow } from "@/app/(platform)/copilot/components/ConnectToolsDialog/ConnectProviderRow";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
@@ -20,9 +20,10 @@ import {
   SERVICE_FILTERS,
   useExpertConnectServiceDialog,
 } from "./useExpertConnectServiceDialog";
+import { duration, ease } from "@/components/styles/motion";
 
-const STEP_TRANSITION = { duration: 0.15, ease: [0, 0, 0.2, 1] as const };
-const HEIGHT_TRANSITION = { duration: 0.2, ease: [0, 0, 0.2, 1] as const };
+const STEP_TRANSITION = { duration: duration.fast, ease: ease.out };
+const HEIGHT_TRANSITION = { duration: duration.base, ease: ease.out };
 
 const stepVariants = {
   initial: (direction: number) => ({ x: 16 * direction, opacity: 0 }),
@@ -144,7 +145,12 @@ export function ExpertConnectServiceDialog({
                     className="flex flex-col gap-4"
                   >
                     <div className="flex flex-col gap-1">
-                      <Text variant="lead-medium" as="h3" tone="primary">
+                      <Text
+                        variant="lead"
+                        weight="medium"
+                        as="h3"
+                        tone="primary"
+                      >
                         Connect a service for {expertName}
                       </Text>
                       <Text variant="small" tone="muted">
@@ -195,12 +201,10 @@ export function ExpertConnectServiceDialog({
                           ))}
                         </div>
                         {providers.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[#DADADC] py-8 text-center">
-                            <Icon
-                              icon={Plug01Icon}
-                              size={24}
-                              className="text-[#83838C]"
-                            />
+                          <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border-base py-8 text-center">
+                            <span className="inline-flex text-foreground-tertiary">
+                              <Icon icon={Plug01Icon} size={24} />
+                            </span>
                             <Text variant="body" tone="secondary">
                               {query.trim()
                                 ? `No services match "${query.trim()}"`
@@ -233,7 +237,7 @@ export function ExpertConnectServiceDialog({
                             <div
                               aria-hidden="true"
                               className={cn(
-                                "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent transition-opacity duration-200",
+                                "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent transition-opacity duration-200",
 
                                 hasMoreBelow ? "opacity-100" : "opacity-0",
                               )}

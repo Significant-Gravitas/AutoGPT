@@ -15,17 +15,17 @@ export function BriefingByline({ briefing }: Props) {
     <div data-testid="briefing-byline" className="px-4 py-3">
       <div className="mb-1.5 flex items-center gap-2">
         <AutopilotAvatar size={20} />
-        <Text variant="small-medium" as="span" tone="primary">
+        <Text variant="small" weight="medium" as="span" tone="primary">
           {author.name}
         </Text>
-        <span aria-hidden="true" className="text-zinc-300">
+        <span aria-hidden="true" className="text-foreground-disabled">
           ·
         </span>
         <Text variant="small" as="span" tone="muted">
           {author.role}
         </Text>
       </div>
-      <Text variant="body" tone="secondary" className="text-pretty leading-5">
+      <Text variant="body" leading="5" tone="secondary" className="text-pretty">
         {narrative}
       </Text>
     </div>

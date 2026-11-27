@@ -11,6 +11,7 @@ import {
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   links: LinkRow[];
@@ -18,8 +19,6 @@ interface Props {
   onAdd: () => void;
   onRemove: (index: number) => void;
 }
-
-const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 
 export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
   const reduceMotion = useReducedMotion();
@@ -29,14 +28,18 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
     <motion.div
       initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.32, ease: EASE_OUT, delay: 0.12 }}
+      transition={{
+        duration: duration.slow,
+        ease: ease.emphasized,
+        delay: 0.12,
+      }}
       className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-1 px-4">
-        <Text variant="body-medium" as="span" className="text-black">
+        <Text variant="body" weight="medium" as="span">
           Your links
         </Text>
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" tone="muted">
           Add up to {MAX_LINKS} links. Site, GitHub, X, anything you want
           visible.
         </Text>
@@ -56,22 +59,18 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
                 exit={
                   reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }
                 }
-                transition={{ duration: 0.18, ease: EASE_OUT }}
+                transition={{ duration: duration.base, ease: ease.emphasized }}
               >
                 <div className="flex items-center gap-2">
-                  <div className="flex flex-1 items-center gap-2 rounded-3xl border border-zinc-200 bg-white px-4 transition-colors duration-150 focus-within:border-purple-400 focus-within:ring-1 focus-within:ring-purple-400">
-                    <Icon
-                      icon={Link02Icon}
-                      size={16}
-                      className="text-zinc-400"
-                    />
+                  <div className="flex flex-1 items-center gap-2 rounded-3xl border border-border-base bg-surface px-4 text-foreground-subtle transition-colors duration-150 focus-within:border-brand/80 focus-within:ring-1 focus-within:ring-brand/80">
+                    <Icon icon={Link02Icon} size={16} />
                     <input
                       type="url"
                       value={link.value}
                       placeholder="https://"
                       aria-label={`Link ${index + 1}`}
                       onChange={(e) => onChange(index, e.target.value)}
-                      className="h-[2.875rem] w-full border-none bg-transparent text-sm text-black placeholder:text-zinc-400 focus:outline-none"
+                      className="h-[2.875rem] w-full border-none bg-transparent text-body text-foreground-base placeholder:text-foreground-subtle focus:outline-none"
                     />
                   </div>
                   <Button
@@ -89,7 +88,7 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
         </div>
 
         {links.length === 0 ? (
-          <Text variant="small" className="px-4 text-zinc-400">
+          <Text variant="small" tone="subtle" className="mx-4">
             No links yet.
           </Text>
         ) : null}

@@ -1,7 +1,14 @@
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { FileUIPart, UIMessage, UIDataTypes, UITools } from "ai";
 import type { LogRow, OverlayPart, TurnLog } from "../stream/turnLog";
+import {
+  TURN_PAUSED_PART_TYPE,
+  turnPauseOfMetadata,
+  type TurnPause,
+} from "../turnPause";
 import { toolDisplayName } from "./toolDisplay";
+import { backgroundNotice } from "./backgroundSubtasks";
+import { getStandaloneBubbleMetadata } from "./standaloneMessages";
 import {
   WORKSPACE_FOLDER_PART_TYPE,
   type WorkspaceFolderPartData,
@@ -16,6 +23,10 @@ export interface TurnStats {
    *  "Queued" badge anchors on this row whenever the OWNING session's
    *  ``chat_status === "queued"`` (checked at render time). */
   isLatestUserMessage?: boolean;
+  /** The ``<session>-seq-N`` id a reload gives this bubble, once its rows are
+   *  saved. A live turn's bubble is keyed by the turn instead, and a rating
+   *  has to name the saved row. */
+  savedMessageId?: string | null;
 }
 
 export type TurnStatsMap = Map<string, TurnStats>;
@@ -30,14 +41,6 @@ interface SessionChatMessage {
   duration_ms: number | null;
   created_at: string | null;
   metadata: Record<string, unknown> | null;
-}
-
-function getRunMetadata(metadata: unknown): Record<string, unknown> | null {
-  return metadata &&
-    typeof metadata === "object" &&
-    (metadata as Record<string, unknown>).kind === "expert_run"
-    ? (metadata as Record<string, unknown>)
-    : null;
 }
 
 function coerceSessionChatMessages(
@@ -197,9 +200,9 @@ function toToolInput(rawArguments: unknown): unknown {
  * list from the orphan result's ``todos`` and synthesize the missing part.
  */
 function orphanTodoWriteResultToPart(
-  msg: SessionChatMessage,
+  msg: Pick<SessionChatMessage, "tool_call_id" | "content">,
   consumedToolCallIds: ReadonlySet<string>,
-): UIMessage<unknown, UIDataTypes, UITools>["parts"][number] | null {
+) {
   const toolCallId = msg.tool_call_id?.trim();
   if (!toolCallId || consumedToolCallIds.has(toolCallId)) {
     return null;
@@ -207,15 +210,17 @@ function orphanTodoWriteResultToPart(
   if (typeof msg.content !== "string") return null;
   const parsed = safeJsonParse(msg.content);
   if (!parsed || typeof parsed !== "object") return null;
-  const todos = (parsed as { todos?: unknown }).todos;
-  if (!Array.isArray(todos) || todos.length === 0) return null;
+  const output = parsed as { type?: unknown; todos?: unknown };
+  const { type, todos } = output;
+  if (!Array.isArray(todos) || (todos.length === 0 && type !== "todo_write"))
+    return null;
   return {
     type: "tool-TodoWrite",
     toolCallId,
     state: "output-available",
     input: { todos },
-    output: parsed,
-  } as UIMessage<unknown, UIDataTypes, UITools>["parts"][number];
+    output,
+  } satisfies UiPart;
 }
 
 function collectConsumedToolCallIds(
@@ -435,10 +440,11 @@ export function convertChatSessionMessagesToUiMessages(
     // contributing a reasoning part to the surrounding assistant bubble —
     // the consecutive-assistant merge below then folds them into the same
     // UIMessage as the text that follows.
+    const notice = backgroundNotice(msg.metadata);
     const uiRole: "user" | "assistant" =
-      msg.role === "reasoning" ? "assistant" : msg.role;
+      msg.role === "reasoning" || notice ? "assistant" : msg.role;
 
-    const parts = buildRowParts(msg, {
+    const parts = buildRowParts(notice ? { ...msg, content: notice } : msg, {
       toolOutputsByCallId,
       fileUrlBuilder,
       unanswered: options?.isComplete ? "completed" : "input-available",
@@ -455,10 +461,11 @@ export function convertChatSessionMessagesToUiMessages(
     // be keyed ``-seq-5``, and a cross-page assistant at seq=7 would fail
     // the ``firstSeq === lastSeq + 1`` check (7 !== 5+1) and split into two
     // bubbles instead of joining the ongoing turn.
-    // A run-post carries structured ``metadata`` the thread renders as a
-    // WorkCard. Keep it as its own bubble — never fold it into a neighbouring
-    // assistant turn (either direction), or the card loses its identity.
-    const runMetadata = getRunMetadata(msg.metadata);
+    // A run-post or a skipped-run note carries structured ``metadata`` the
+    // thread renders as a card. Keep it as its own bubble — never fold it
+    // into a neighbouring assistant turn (either direction), or the card
+    // loses its identity.
+    const standaloneMetadata = getStandaloneBubbleMetadata(msg.metadata);
     // The still-running turn opens its own bubble even when it follows an
     // assistant row: merging it into the completed answer above would make
     // the resume path (which replays that turn alone) drop both.
@@ -467,11 +474,12 @@ export function convertChatSessionMessagesToUiMessages(
     const prevUI = uiMessages[uiMessages.length - 1];
     if (
       uiRole === "assistant" &&
+      !notice &&
       !opensActiveTurn &&
       prevUI &&
       prevUI.role === "assistant" &&
-      !getRunMetadata(prevUI.metadata) &&
-      !runMetadata
+      !getStandaloneBubbleMetadata(prevUI.metadata) &&
+      !standaloneMetadata
     ) {
       prevUI.parts.push(...parts);
       const oldId = prevUI.id;
@@ -556,6 +564,12 @@ interface RowPartsContext {
 }
 
 function buildRowParts(msg: SessionChatMessage, ctx: RowPartsContext) {
+  // A pause marker draws the Paused card. The pause rides on the part rather
+  // than the message, because merged assistant bubbles drop row metadata.
+  const pause =
+    msg.role === "assistant" ? turnPauseOfMetadata(msg.metadata) : null;
+  if (pause) return [pausePart(msg, pause)];
+
   const textState = ctx.streaming ? "streaming" : "done";
   const parts: UiPart[] = [];
 
@@ -590,6 +604,17 @@ function buildRowParts(msg: SessionChatMessage, ctx: RowPartsContext) {
     parts.push({ type: "text", text: "", state: "done" });
   }
   return parts;
+}
+
+// Keyed by the row, so whatever the card remembers about itself (a "Stop
+// here") outlives the bubble id, which moves as later rows merge in.
+function pausePart(msg: SessionChatMessage, pause: TurnPause): UiPart {
+  const id = msg.sequence != null ? `seq-${msg.sequence}` : msg.id;
+  return {
+    type: TURN_PAUSED_PART_TYPE,
+    ...(id ? { id } : {}),
+    data: pause,
+  } as UiPart;
 }
 
 function toolCallPart(rawToolCall: unknown, ctx: RowPartsContext) {
@@ -666,7 +691,7 @@ export function createTurnLogRenderer(
       unanswered: turnOver ? "interrupted" : "input-available",
     };
 
-    const groups = groupTurnRows(log);
+    const { groups, orphanParts } = groupTurnRows(log);
     const next = new Map<string, { deps: unknown[]; message: UiMessage }>();
     const messages = groups.map((group, index) => {
       const trailingStep = stepIsEmpty && index === groups.length - 1;
@@ -688,6 +713,7 @@ export function createTurnLogRenderer(
               streamingRows,
               trailingStep,
               ctx,
+              orphanParts,
             );
       next.set(group.key, { deps, message });
       return message;
@@ -697,10 +723,32 @@ export function createTurnLogRenderer(
   };
 }
 
+/**
+ * The id a reload gives each assistant bubble of a turn: its last saved row's
+ * sequence, as ``convertChatSessionMessagesToUiMessages`` keys a merged bubble.
+ */
+export function savedTurnBubbleIds(
+  sessionId: string,
+  log: TurnLog,
+): Map<string, string> {
+  const ids = new Map<string, string>();
+  for (const group of groupTurnRows(log).groups) {
+    if (group.role !== "assistant") continue;
+    const messageRows = group.rows
+      .map((i) => log.rows[i])
+      .filter((row) => row.role !== "tool");
+    const sequence = messageRows.length
+      ? messageRows.findLast((row) => row.sequence !== null)?.sequence
+      : log.rows[group.rows[0]]?.sequence;
+    if (sequence != null) ids.set(group.key, `${sessionId}-seq-${sequence}`);
+  }
+  return ids;
+}
+
 interface TurnGroup {
   key: string;
   role: "user" | "assistant";
-  /** Indices of the rows that draw parts; tool rows only feed outputs. */
+  /** Indices of rows that emit parts, including identified orphan task-list updates. */
   rows: number[];
   overlay: OverlayPart[];
 }
@@ -710,20 +758,31 @@ interface TurnGroup {
  * keys never depend on sequences: the first assistant bubble is the turn's,
  * and a later one is keyed by the drained follow-up it answers.
  */
-function groupTurnRows(log: TurnLog): TurnGroup[] {
+function groupTurnRows(log: TurnLog) {
   const turn = log.turnId ?? "";
   const groups: TurnGroup[] = [];
+  const orphanParts = new Map<number, UiPart>();
+  const consumedToolCallIds = new Set(
+    log.rows.flatMap((row) => row.toolCalls.map((call) => call.id.trim())),
+  );
   const groupOfRow: number[] = [];
   let afterUser: string | null = null;
   const assistantKey = () =>
     afterUser ? `turn:${turn}:after:${afterUser}` : `turn:${turn}`;
 
   log.rows.forEach((row, i) => {
+    if (row.role === "tool") {
+      const orphan = orphanTodoWriteResultToPart(
+        { tool_call_id: row.toolCallId, content: row.content },
+        consumedToolCallIds,
+      );
+      if (orphan?.output.type === "todo_write") orphanParts.set(i, orphan);
+    }
     const last = groups[groups.length - 1];
     if (row.role === "user") {
       groups.push({ key: row.key, role: "user", rows: [i], overlay: [] });
       afterUser = row.key;
-    } else if (row.role !== "tool") {
+    } else if (row.role !== "tool" || orphanParts.has(i)) {
       if (last?.role === "assistant") last.rows.push(i);
       else {
         groups.push({
@@ -754,7 +813,7 @@ function groupTurnRows(log: TurnLog): TurnGroup[] {
     }
     groups[target].overlay.push(part);
   }
-  return groups;
+  return { groups, orphanParts };
 }
 
 function buildGroupMessage(
@@ -763,6 +822,7 @@ function buildGroupMessage(
   streamingRows: Set<number | null>,
   trailingStep: boolean,
   ctx: RowPartsContext,
+  orphanParts: ReadonlyMap<number, UiPart>,
 ): UiMessage {
   const parts: UiPart[] = [];
   let overlayIndex = 0;
@@ -777,6 +837,11 @@ function buildGroupMessage(
   };
   for (const index of group.rows) {
     flushOverlayBefore(index);
+    const orphan = orphanParts.get(index);
+    if (orphan) {
+      parts.push(orphan);
+      continue;
+    }
     parts.push(
       ...buildRowParts(sessionRowOf(rows[index]), {
         ...ctx,
@@ -786,7 +851,11 @@ function buildGroupMessage(
   }
   flushOverlayBefore(Infinity);
   if (trailingStep) parts.push({ type: "step-start" });
-  const metadata = group.rows.length ? rows[group.rows[0]].metadata : null;
+  const firstMessageRow = group.rows.find(
+    (index) => rows[index].role !== "tool",
+  );
+  const metadata =
+    firstMessageRow !== undefined ? rows[firstMessageRow].metadata : null;
   return {
     id: group.key,
     role: group.role,

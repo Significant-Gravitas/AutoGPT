@@ -1,8 +1,8 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { cn } from "@/lib/utils";
-import { formatTimeAgo } from "@/lib/utils/time";
 import {
   Tooltip,
   TooltipContent,
@@ -14,6 +14,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { DraftDiff } from "@/lib/dexie/draft-utils";
 import { Cancel01Icon, HistoryIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration } from "@/components/styles/motion";
 
 interface DraftRecoveryPopupProps {
   isInitialLoadComplete: boolean;
@@ -72,7 +73,7 @@ export function DraftRecoveryPopup({
       {isOpen && (
         <motion.div
           ref={popupRef}
-          className={cn("absolute left-1/2 top-4 z-50")}
+          className={cn("absolute top-4 left-1/2 z-overlay")}
           initial={{
             opacity: 0,
             x: "-50%",
@@ -92,33 +93,31 @@ export function DraftRecoveryPopup({
             y: "-150%",
             scale: 0.5,
             filter: "blur(20px)",
-            transition: { duration: 0.4, type: "spring", bounce: 0.2 },
+            transition: {
+              duration: duration.slower,
+              type: "spring",
+              bounce: 0.2,
+            },
           }}
-          transition={{ duration: 0.2, type: "spring", bounce: 0.2 }}
+          transition={{ duration: duration.base, type: "spring", bounce: 0.2 }}
         >
           <div
             className={cn(
-              "flex items-center gap-3 rounded-xlarge border border-amber-200 bg-amber-50 px-4 py-3 shadow-lg",
+              "flex items-center gap-3 rounded-xlarge border border-warning-border bg-warning-surface px-4 py-3 shadow-lg",
             )}
           >
-            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+            <div className="flex items-center gap-2 text-warning-foreground">
               <Icon icon={HistoryIcon} className="h-5 w-5" />
             </div>
 
             <div className="flex flex-col">
-              <Text
-                variant="small-medium"
-                className="text-amber-900 dark:text-amber-100"
-              >
+              <Text variant="small" weight="medium" tone="warning">
                 Unsaved changes found
               </Text>
-              <Text
-                variant="small"
-                className="text-amber-700 dark:text-amber-400"
-              >
+              <Text variant="small" tone="warning">
                 {diffSummary ||
                   `${nodeCount} block${nodeCount !== 1 ? "s" : ""}, ${edgeCount} connection${edgeCount !== 1 ? "s" : ""}`}{" "}
-                • {formatTimeAgo(new Date(savedAt).toISOString())}
+                • <RelativeTime date={savedAt} variant="short" />
               </Text>
             </div>
 
@@ -127,9 +126,10 @@ export function DraftRecoveryPopup({
                 <TooltipTrigger asChild>
                   <Button
                     variant="primary"
-                    size="small"
+                    size="icon-sm"
+                    shape="pill"
                     onClick={onLoad}
-                    className="aspect-square min-w-0 p-1.5"
+                    className="size-9"
                   >
                     <Icon icon={HistoryIcon} size={20} />
                     <span className="sr-only">Restore changes</span>
@@ -141,10 +141,12 @@ export function DraftRecoveryPopup({
                 <TooltipTrigger asChild>
                   <Button
                     variant="destructive"
-                    size="icon"
+                    size="icon-sm"
+                    shape="pill"
+                    withTooltip={false}
                     onClick={onDiscard}
                     aria-label="Discard changes"
-                    className="aspect-square min-w-0 p-1.5"
+                    className="size-9"
                   >
                     <Icon icon={Cancel01Icon} size={20} />
                     <span className="sr-only">Discard changes</span>

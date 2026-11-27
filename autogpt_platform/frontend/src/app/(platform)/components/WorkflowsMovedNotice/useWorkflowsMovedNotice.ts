@@ -7,18 +7,17 @@ import {
 } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import { PostV1CompleteOnboardingStepStep } from "@/app/api/__generated__/models/postV1CompleteOnboardingStepStep";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useNoticeAdmission } from "./useNoticeAdmission";
 import {
-  isPreExpertsUser,
   hasPendingChatHandoff,
+  isPreExpertsUser,
   isWorkflowsMovedNoticeRoute,
   peekWorkflowsMovedNoticeSeen,
   setWorkflowsMovedNoticeSeen,
 } from "./helpers";
+import { useNoticeAdmission } from "./useNoticeAdmission";
 
 const STEP = PostV1CompleteOnboardingStepStep.WORKFLOWS_MOVED;
 
@@ -27,16 +26,11 @@ export function useWorkflowsMovedNotice(canShow = true) {
   const { user } = useAuth();
   const userID = user?.id ?? null;
   const isSafeLanding = useNoticeLandingRoute();
-  const experts = useFlagStatus(Flag.HIRE_EXPERTS);
-  const layout = useFlagStatus(Flag.AUTOGPT_NEW_LAYOUT);
+
   const [dismissedUsers, setDismissedUsers] = useState<string[]>([]);
   const isEligible = Boolean(
     canShow &&
       userID &&
-      experts.ready &&
-      experts.enabled &&
-      layout.ready &&
-      layout.enabled &&
       isPreExpertsUser(user?.created_at) &&
       isSafeLanding &&
       !dismissedUsers.includes(userID) &&

@@ -31,9 +31,11 @@ export function AgentRow({ agent }: Props) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <Text
-            variant="body-medium"
+            variant="body"
+            weight="medium"
+            leading="5"
             tone="primary"
-            className="truncate leading-5"
+            className="truncate"
           >
             {agent.expert.name}
           </Text>
@@ -52,9 +54,10 @@ export function AgentRow({ agent }: Props) {
         {secondLine ? (
           <Text
             variant="small"
+            leading="4"
             tone="muted"
-            className="truncate tabular-nums leading-4"
-            unmask={false}
+            tabular
+            className="truncate"
           >
             {secondLine}
           </Text>
@@ -67,6 +70,7 @@ export function AgentRow({ agent }: Props) {
           href={`/copilot?expertId=${agent.expert.id}`}
           variant="icon"
           size="icon-sm"
+          shape="soft"
           leadingIcon={BubbleChatIcon}
           aria-label={`Chat with ${agent.expert.name}`}
         />
@@ -75,6 +79,7 @@ export function AgentRow({ agent }: Props) {
           href={`/team/${agent.expert.id}`}
           variant="icon"
           size="icon-sm"
+          shape="soft"
           leadingIcon={Settings01Icon}
           aria-label={`Manage ${agent.expert.name}`}
           onClick={() =>

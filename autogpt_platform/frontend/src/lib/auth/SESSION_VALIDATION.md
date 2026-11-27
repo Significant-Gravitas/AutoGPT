@@ -142,6 +142,18 @@ const mediaUrl = await api.uploadStoreSubmissionMedia(file);
 - `serverLogout()` - Logs out the user server-side
 - `refreshSession()` - Re-reads (and slides) the current cookie session
 
+## When a Session Check Signs the User Out
+
+The client re-validates the session whenever the tab becomes visible again and when the browser comes back online (`useAuthStore`). Only a definite answer from Better Auth signs the user out: no session, or an expired, revoked or rejected (401) one. In that case `validateSession` returns `isValid: false` with a login redirect.
+
+The backend also checks the session of every signed-in request whose token carries one (`sid`). A token without `sid`, signed before the claim was added, skips that check until `AUTH_LEGACY_TOKEN_DEADLINE` passes, so ending a session does not stop such a token before it expires. The backend's 401 `session_revoked` starts the same check a refocus does, so the user is signed out only when Better Auth confirms the session has ended; a 503 signs nobody out.
+
+Every other failure leaves the user signed in:
+
+- **Auth backend unreachable** (database down, timeout): the action returns `isUnavailable: true`.
+- **Action call failed** (offline, aborted fetch, 5xx): the client keeps the current user and retries with backoff (1 s doubling to 30 s, six attempts). The next focus or `online` event also retries.
+- **Deploy skew** (the server no longer recognises this bundle's server action IDs after a deploy): the page reloads once to load the new deployment. If the reloaded page is rejected too within a minute, reloading can't help, so the tab stops reloading and asks the user to refresh.
+
 ## Internal Architecture
 
 ### Request Flow

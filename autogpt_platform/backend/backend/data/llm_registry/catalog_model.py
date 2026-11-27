@@ -12,7 +12,7 @@ anything per-install (retirement records live in the DB, see
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -65,12 +65,19 @@ class CatalogModelCost(BaseModel):
     output_credits_per_1m: float | None = Field(default=None, ge=0)
     cache_read_credits_per_1m: float | None = Field(default=None, ge=0)
     cache_creation_credits_per_1m: float | None = Field(default=None, ge=0)
-    # What the PROVIDER charges us (USD list price per 1M tokens), for
-    # in-turn cost estimation — authored per model when it diverges from
-    # the transport module's family default (e.g. copilot/moonshot.py).
-    # Not the billing source; the credits fields above are what users pay.
+    # What the PROVIDER charges us (USD list price per 1M tokens). Read for
+    # in-turn cost estimation where it diverges from a transport module's
+    # family default (e.g. copilot/moonshot.py), and as the price source for
+    # background inference's USD spend accounting (copilot/price_card.py,
+    # e.g. the dream pass's cost rows). Still not the billing source: the
+    # credits fields above are what users pay.
     provider_input_usd_per_1m: float | None = Field(default=None, ge=0)
     provider_output_usd_per_1m: float | None = Field(default=None, ge=0)
+    # The provider's prompt-cache list prices (USD per 1M tokens), billed
+    # on top of the uncached input, never instead of it. Read by the
+    # background-inference price card (``backend/copilot/price_card.py``).
+    provider_cache_read_usd_per_1m: float | None = Field(default=None, ge=0)
+    provider_cache_creation_usd_per_1m: float | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def _provider_usd_both_or_neither(self) -> "CatalogModelCost":
@@ -83,6 +90,24 @@ class CatalogModelCost(BaseModel):
             raise ValueError(
                 "provider_input_usd_per_1m and provider_output_usd_per_1m "
                 "must be set together"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _provider_cache_usd_needs_base_price(self) -> "CatalogModelCost":
+        # A cache price alone would price the cache buckets of a call while
+        # its plain input and output stayed unpriced.
+        has_cache_price = (
+            self.provider_cache_read_usd_per_1m is not None
+            or self.provider_cache_creation_usd_per_1m is not None
+        )
+        if has_cache_price and (
+            self.provider_input_usd_per_1m is None
+            or self.provider_output_usd_per_1m is None
+        ):
+            raise ValueError(
+                "provider cache USD prices require provider_input_usd_per_1m "
+                "and provider_output_usd_per_1m"
             )
         return self
 
@@ -107,9 +132,15 @@ class CatalogModel(BaseModel):
     # picker hides); visibility="HIDDEN" still SERVES when explicitly
     # routed — the pre-launch testing state.
     visibility: ModelVisibility = "GA"
-    # Standing replacement pointer: pre-fills the retirement CLI's
-    # replacement and is the hook for future runtime failover.
+    # Standing replacement pointer. A block given this model while it is
+    # switched off runs, and is billed for, the fallback instead, when the
+    # fallback is enabled and from the same provider; it also pre-fills the
+    # retirement CLI's replacement.
     fallback_model_slug: str | None = Field(default=None, pattern=_SLUG_PATTERN)
+    # The day (UTC) the provider stops serving a switched-off model. Until
+    # then a block given it runs the model itself; from that day on, the
+    # fallback. Without a date the fallback applies at once.
+    shutdown_at: date | None = None
     supports_tools: bool = False
     supports_json_output: bool = False
     supports_reasoning: bool = False

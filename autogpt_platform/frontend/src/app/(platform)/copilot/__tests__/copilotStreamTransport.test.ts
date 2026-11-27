@@ -23,8 +23,15 @@ vi.mock("../tokenDevtool/usageTap", () => ({
     createUsageCapturingFetch(sessionId),
 }));
 
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { createCopilotTransport } from "../copilotStreamTransport";
 import { buildKickoffMessage } from "../expertKickoff";
+
+const validateSession = vi.hoisted(() => vi.fn().mockResolvedValue(true));
+
+vi.mock("@/lib/auth/hooks/useAuthStore", () => ({
+  useAuthStore: { getState: () => ({ validateSession }) },
+}));
 
 beforeEach(() => {
   isDevelopmentBuild.mockReturnValue(false);
@@ -70,6 +77,83 @@ describe("copilotStreamTransport devtool wiring", () => {
     createCopilotTransport({ sessionId: "s-1", ...makeRefs() });
 
     expect(createUsageCapturingFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("copilotStreamTransport refusals", () => {
+  it("keeps a 402's status, so the chat can offer plans", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            detail:
+              "A subscription is required to use this feature. Upgrade to continue.",
+          }),
+          { status: 402, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    try {
+      const transport = createCopilotTransport({
+        sessionId: "sess-no-plan",
+        ...makeRefs(),
+      });
+      const sent = transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "sess-no-plan",
+        messageId: undefined,
+        messages: lastMessage("one more thing"),
+        abortSignal: undefined,
+      });
+
+      await expect(sent).rejects.toBeInstanceOf(ApiError);
+      await expect(sent).rejects.toMatchObject({
+        status: 402,
+        message:
+          "A subscription is required to use this feature. Upgrade to continue.",
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("checks the session with the auth backend when the one behind the token has ended", async () => {
+    const replace = vi.fn();
+    vi.stubGlobal("location", { pathname: "/copilot", replace });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            detail: { code: "session_revoked", message: "Session ended" },
+          }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    try {
+      const transport = createCopilotTransport({
+        sessionId: "sess-ended",
+        ...makeRefs(),
+      });
+      await transport
+        .sendMessages({
+          trigger: "submit-message",
+          chatId: "sess-ended",
+          messageId: undefined,
+          messages: lastMessage("hello"),
+          abortSignal: undefined,
+        })
+        .catch(() => undefined);
+
+      await vi.waitFor(() =>
+        expect(validateSession).toHaveBeenCalledWith({ force: true }),
+      );
+      expect(replace).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

@@ -27,7 +27,7 @@ test("an Expert's page reviews its held calls with Home's row and dialog", async
     ),
   );
 
-  render(<ExpertNeedsYouSection expert={{ id: ada.id } as Expert} enabled />);
+  render(<ExpertNeedsYouSection expert={{ id: ada.id } as Expert} />);
 
   expect(
     await screen.findByRole("button", { name: `Review: ${email.title}` }),

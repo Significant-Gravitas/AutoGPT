@@ -60,7 +60,7 @@ export const useMarketplaceAgentsContent = () => {
       onError: (error) => {
         Sentry.captureException(error);
         toast({
-          title: "Failed to add agent to library",
+          title: "Failed to add workflow to library",
           description:
             ((error as any).message as string) ||
             "An unexpected error occurred.",
@@ -106,13 +106,13 @@ export const useMarketplaceAgentsContent = () => {
       addAgentToBuilder(libraryAgentDetails as LibraryAgent);
 
       toast({
-        title: "Agent Added",
-        description: "Agent has been added to your library and builder",
+        title: "Workflow Added",
+        description: "Workflow has been added to your library and builder",
       });
     } catch (error) {
       Sentry.captureException(error);
       toast({
-        title: "Failed to add agent to library",
+        title: "Failed to add workflow to library",
         description:
           ((error as any).message as string) || "An unexpected error occurred.",
         variant: "destructive",

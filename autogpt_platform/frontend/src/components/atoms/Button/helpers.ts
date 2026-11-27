@@ -4,62 +4,127 @@ import {
   linkVariantClasses,
 } from "@/components/atoms/Link/Link";
 import { cn } from "@/lib/utils";
+import { tones } from "@/components/styles/tones";
 import { cva, VariantProps } from "class-variance-authority";
 import { IconSvgElement } from "@hugeicons/react";
 import { LinkProps } from "next/link";
 
-// Extended button variants based on our design system
+// A ghost Button's box: no fill or border until hover. A ghost `tone` (below)
+// gives it a quieter text colour.
+const GHOST =
+  "bg-transparent border-transparent hover:bg-surface-muted hover:border-surface-muted disabled:text-surface-active";
+
+// Text colour over the variant's own: the shared tones (see
+// src/components/styles/tones.ts), and four for a ghost Button that also
+// change on hover.
+const BUTTON_TONES = {
+  ...tones,
+  // A secondary action in a row or card: grey until hovered.
+  quiet: "text-foreground-tertiary hover:text-foreground-body",
+  "quiet-subtle": "text-foreground-subtle hover:text-foreground-body",
+  // A remove or delete action that turns red on hover.
+  "quiet-danger": "text-foreground-tertiary hover:text-error",
+  "quiet-warning":
+    "text-warning-foreground hover:bg-warning-surface hover:border-warning-surface",
+  // A small icon action on a file: preview turns blue, clear turns red.
+  "quiet-info": "text-foreground-tertiary hover:text-info-foreground",
+  "quiet-remove": "text-foreground-tertiary hover:text-error-hover",
+} as const;
+
+// Corner radius, from the radius tokens. A look that squares controls
+// changes every Button through these.
+const BUTTON_SHAPES = {
+  pill: "rounded-pill",
+  rounded: "rounded-xl",
+  soft: "rounded-lg",
+  sharp: "rounded-md",
+} as const;
+
+// The shape a variant takes when the call site sets none: `pill`, except the
+// toggle's and the floating button's squarer corner. A link has no box, so
+// no shape (it keeps the Link atom's `rounded-sm` focus ring).
+export function defaultButtonShape(variant: string | null | undefined) {
+  if (variant === "link") return null;
+  if (variant === "toggle" || variant === "floating") return "sharp";
+  return undefined;
+}
+
+// Extended button variants based on our design system. The base sets no
+// disabled opacity: a variant that fades while disabled sets its own.
+// TODO(tokens): no spacing step is min-w-[7.7rem], min-w-[5.5rem] or
+// h-[2.875rem], so they stay raw.
 export const extendedButtonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50 font-sans leading-snug border min-w-[7.7rem]",
+  "inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus disabled:pointer-events-none font-sans leading-snug border min-w-[7.7rem]",
   {
     variants: {
       variant: {
         primary:
-          "bg-zinc-800 border-zinc-800 text-white hover:bg-zinc-900 hover:border-zinc-900 rounded-full disabled:text-white disabled:bg-zinc-200 disabled:border-zinc-200 disabled:opacity-1",
+          "bg-action border-action text-action-foreground hover:bg-action-hover hover:border-action-hover disabled:text-action-foreground disabled:bg-surface-active disabled:border-border-base",
         secondary:
-          "bg-white border-zinc-200 text-zinc-800 shadow-sm hover:bg-zinc-50 hover:border-zinc-300 rounded-full disabled:text-zinc-300 disabled:bg-zinc-50 disabled:border-zinc-100 disabled:shadow-none disabled:opacity-1",
+          "bg-surface border-border-base text-foreground-emphasis shadow-sm hover:bg-surface-muted hover:border-border-strong disabled:text-foreground-disabled disabled:bg-surface-muted disabled:border-separator disabled:shadow-none",
         destructive:
-          "bg-red-500 border-red-500 text-white hover:bg-red-600 hover:border-red-600 rounded-full disabled:text-white disabled:bg-zinc-200 disabled:border-zinc-200 disabled:opacity-1",
+          "bg-error border-error text-action-foreground hover:bg-error-hover hover:border-error-hover disabled:text-action-foreground disabled:bg-surface-active disabled:border-border-base",
         outline:
-          "bg-transparent border-[#a6a6a6] text-black hover:bg-zinc-100 hover:border-[#a6a6a6] rounded-full disabled:border-zinc-200 disabled:text-zinc-200 disabled:opacity-1",
-        ghost:
-          "bg-transparent border-transparent text-black hover:bg-zinc-50 hover:border-zinc-50 rounded-full disabled:text-zinc-200 disabled:opacity-1",
-        icon: "bg-white text-zinc-800 border border-zinc-200 shadow-sm hover:bg-zinc-50 hover:border-zinc-300 rounded-[96px] disabled:shadow-none disabled:opacity-1 !min-w-0",
+          "bg-transparent border-border-strong text-foreground-base hover:bg-surface-hover hover:border-border-strong disabled:border-border-base disabled:text-surface-active",
+        ghost: `${GHOST} text-foreground-base`,
+        // An upgrade or promotion call to action.
+        brand:
+          "bg-brand border-brand text-action-foreground hover:bg-accent-strong hover:border-accent-strong disabled:text-action-foreground disabled:bg-surface-active disabled:border-border-base disabled:opacity-100",
+        // Goes ahead despite a warning, e.g. an update that breaks links.
+        warning:
+          "bg-warning-foreground border-warning-foreground text-action-foreground hover:bg-warning-foreground/90 hover:border-warning-foreground disabled:text-action-foreground disabled:bg-surface-active disabled:border-border-base disabled:opacity-100",
+        // A secondary Button showing that its action worked, e.g. "Copied".
+        success:
+          "bg-success/30 border-success text-foreground-base shadow-sm hover:bg-success/40 hover:border-success disabled:shadow-none disabled:opacity-100",
+        // An icon action in a toolbar such as the chat composer: no box
+        // until hovered, faded while disabled.
+        tray: "bg-transparent border-transparent text-foreground-base hover:bg-surface-hover hover:border-transparent disabled:opacity-40 !min-w-0",
+        icon: "bg-surface text-foreground-emphasis border border-border-base shadow-sm hover:bg-surface-muted hover:border-border-strong disabled:shadow-none !min-w-0",
         toggle:
-          "bg-transparent border-transparent text-zinc-500 hover:bg-transparent hover:border-transparent hover:text-zinc-800 aria-pressed:bg-zinc-100 aria-pressed:text-zinc-900 rounded-md disabled:opacity-50",
+          "bg-transparent border-transparent text-foreground-tertiary hover:bg-transparent hover:border-transparent hover:text-foreground-emphasis aria-pressed:bg-surface-hover aria-pressed:text-foreground-strong disabled:opacity-50",
+        // An icon action floating over a cover image.
         floating:
-          "bg-white/90 border-transparent text-zinc-700 backdrop-blur hover:bg-white hover:border-transparent hover:text-zinc-900 rounded-md disabled:text-zinc-300 disabled:opacity-1",
+          "bg-surface/90 border-transparent text-foreground-body backdrop-blur hover:bg-surface hover:border-transparent hover:text-foreground-strong disabled:text-foreground-disabled",
         link: cn(
           linkBaseClasses,
           linkVariantClasses.secondary,
           linkFocusClasses,
-          "inline-flex items-center gap-2 border-none bg-transparent px-0 py-0 text-left",
+          "inline-flex items-center gap-2 border-none bg-transparent px-0 py-0 text-left disabled:opacity-50",
         ),
       },
       size: {
-        small: "px-3 py-2 text-sm gap-1.5 h-[2.25rem] min-w-[5.5rem]",
-        large: "px-4 py-2.5 text-sm gap-2 h-[2.875rem]",
+        small: "px-3 py-2 text-body leading-5 gap-1.5 h-9 min-w-[5.5rem]",
+        large: "px-4 py-2.5 text-body leading-5 gap-2 h-[2.875rem]",
         icon: "p-3 !min-w-0",
-        xs: "h-7 min-w-0 gap-1.5 rounded-md px-2.5 text-xs",
-        "icon-xs": "size-7 min-w-0 rounded-md p-0",
-        "icon-sm": "size-8 min-w-0 rounded-lg p-0",
+        xs: "h-7 min-w-0 gap-1.5 px-2.5 text-caption leading-4",
+        "icon-xs": "size-7 min-w-0 p-0",
+        "icon-sm": "size-8 min-w-0 p-0",
+        "icon-2xs": "size-6 min-w-0 p-0",
+        // 32px, for actions inside a list row or card.
+        row: "h-8 min-w-0 gap-1.5 px-3 py-2 text-body leading-5",
+        // No box: a text button inside copy, usually with variant="link".
+        inline: "h-auto min-w-0 gap-1.5 p-0 text-body leading-5",
+        "inline-xs": "h-auto min-w-0 gap-1 p-0 text-caption leading-4",
       },
+      tone: BUTTON_TONES,
+      shape: BUTTON_SHAPES,
     },
     compoundVariants: [
       {
         variant: "outline",
         size: ["xs", "icon-xs", "icon-sm"],
-        class: "border-[#a6a6a6] hover:border-[#a6a6a6]",
+        class: "border-border-strong hover:border-border-strong",
       },
       {
         variant: "icon",
         size: ["icon-xs", "icon-sm"],
-        class: "text-zinc-600",
+        class: "text-foreground-secondary",
       },
     ],
     defaultVariants: {
       variant: "primary",
       size: "large",
+      shape: "pill",
     },
   },
 );
@@ -71,11 +136,16 @@ export const BUTTON_ICON_SIZE = {
   xs: 14,
   "icon-xs": 14,
   "icon-sm": 16,
+  "icon-2xs": 14,
+  row: 16,
+  inline: 16,
+  "inline-xs": 14,
 } as const;
 
 export const ICON_ONLY_SIZES: ReadonlySet<string> = new Set([
   "icon-xs",
   "icon-sm",
+  "icon-2xs",
 ]);
 
 type BaseButtonProps = {
@@ -86,11 +156,9 @@ type BaseButtonProps = {
   rightIcon?: React.ReactNode;
   asChild?: boolean;
   withTooltip?: boolean;
-  /**
-   * Adds the sentry-unmask class for static button labels.
-   * Disable for user-provided or dynamic strings.
-   */
-  unmask?: boolean;
+  /** `body-md` sets the label at the text-body-md role (15px/1.5rem) for
+   *  sizes whose label is text-body, e.g. inside a profile tab. */
+  textSize?: "body" | "body-md";
 } & VariantProps<typeof extendedButtonVariants>;
 
 type ButtonAsButton = BaseButtonProps &

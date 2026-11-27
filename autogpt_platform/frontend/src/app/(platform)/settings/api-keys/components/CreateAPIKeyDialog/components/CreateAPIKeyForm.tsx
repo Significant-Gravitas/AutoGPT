@@ -23,7 +23,7 @@ interface Props {
 
 export function CreateAPIKeyForm({ form, onSubmit, isPending }: Props) {
   return (
-    <Form form={form} onSubmit={onSubmit} className="flex flex-col gap-4 px-1">
+    <Form form={form} onSubmit={onSubmit} spacing="stack" focusInset>
       <FormField
         control={form.control}
         name="name"

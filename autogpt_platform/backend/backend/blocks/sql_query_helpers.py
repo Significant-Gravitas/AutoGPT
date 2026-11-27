@@ -62,6 +62,13 @@ _DATABASE_TYPE_TO_DRIVER = {
 _CONNECT_TIMEOUT_SECONDS = 10
 
 # Default ports for each database type.
+# The scheme of a database login's scope (see backend/data/credential_scope.py).
+_DATABASE_TYPE_SCOPE_SCHEME = {
+    DatabaseType.POSTGRES: "postgresql",
+    DatabaseType.MYSQL: "mysql",
+    DatabaseType.MSSQL: "mssql",
+}
+
 _DATABASE_TYPE_DEFAULT_PORT = {
     DatabaseType.POSTGRES: 5432,
     DatabaseType.MYSQL: 3306,

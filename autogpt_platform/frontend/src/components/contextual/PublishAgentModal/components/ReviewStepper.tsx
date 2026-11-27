@@ -8,6 +8,7 @@ import {
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
+import { duration, ease } from "@/components/styles/motion";
 
 type StepState = "done" | "current" | "upcoming";
 
@@ -29,7 +30,7 @@ const STEPS: Step[] = [
   {
     title: "In review",
     description:
-      "Our team checks the details, media, and safety of your agent.",
+      "Our team checks the details, media, and safety of your workflow.",
     note: "Typically reviewed within 2–3 days.",
     state: "current",
     Icon: Clock01Icon,
@@ -44,9 +45,10 @@ const STEPS: Step[] = [
 ];
 
 const NODE_CLASS: Record<StepState, string> = {
-  done: "bg-emerald-500 text-white",
-  current: "bg-amber-50 text-amber-700 ring-2 ring-amber-300",
-  upcoming: "bg-zinc-100 text-zinc-400",
+  done: "bg-success text-foreground-on-color",
+  current:
+    "bg-warning-surface text-warning-foreground ring-2 ring-warning-border",
+  upcoming: "bg-surface-hover text-foreground-subtle",
 };
 
 interface Props {
@@ -58,10 +60,10 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
     <motion.div
       initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.24, ease: "easeOut", delay: 0.24 }}
+      transition={{ duration: duration.base, ease: ease.out, delay: 0.24 }}
       className="mt-6 flex w-full max-w-md flex-col gap-3 px-2"
     >
-      <Text variant="body-medium" as="span" className="text-textBlack">
+      <Text variant="body" weight="medium" as="span">
         What happens next
       </Text>
       <ol className="flex flex-col">
@@ -82,35 +84,30 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
                   <span
                     className={cn(
                       "mt-1 min-h-[18px] w-px flex-1",
-                      step.state === "done" ? "bg-emerald-300" : "bg-zinc-200",
+                      step.state === "done"
+                        ? "bg-success/60"
+                        : "bg-surface-active",
                     )}
                   />
                 ) : null}
               </div>
               <div className={cn("flex min-w-0 flex-col", !isLast && "pb-4")}>
                 <Text
-                  variant="small-medium"
+                  variant="small"
+                  weight="medium"
                   as="span"
-                  className={
-                    step.state === "upcoming"
-                      ? "text-zinc-400"
-                      : "text-textBlack"
-                  }
+                  tone={step.state === "upcoming" ? "subtle" : "base"}
                 >
                   {step.title}
                 </Text>
                 <Text
                   variant="small"
-                  className={
-                    step.state === "upcoming"
-                      ? "text-zinc-400"
-                      : "text-zinc-500"
-                  }
+                  tone={step.state === "upcoming" ? "subtle" : "muted"}
                 >
                   {step.description}
                 </Text>
                 {step.note ? (
-                  <Text variant="small" className="mt-1 text-amber-700">
+                  <Text variant="small" tone="warning" className="mt-1">
                     {step.note}
                   </Text>
                 ) : null}

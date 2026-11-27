@@ -1,6 +1,7 @@
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import Link from "next/link";
 import React from "react";
+import { getBuilderHref } from "@/app/(platform)/build/helpers/builderHref";
 
 type ValidationErrorDetail = {
   type: string;
@@ -10,7 +11,6 @@ type ValidationErrorDetail = {
 
 type AgentInfo = {
   graph_id: string;
-  graph_version: number;
 };
 
 export function formatValidationError(
@@ -49,16 +49,16 @@ export function formatValidationError(
     if (errorItems.length > 0) {
       return (
         <div className="space-y-1">
-          <div className="font-medium text-white">
+          <div className="font-medium text-foreground-inverse">
             {detail.message || "Validation failed"}
           </div>
-          <div className="mt-2 space-y-1 text-xs">{errorItems}</div>
+          <div className="mt-2 space-y-1 text-caption">{errorItems}</div>
           {agentInfo && (
-            <div className="mt-3 text-xs">
-              Check the agent graph and try to run from there for further
+            <div className="mt-3 text-caption">
+              Open the workflow in the builder and try running it there for more
               details.{" "}
               <Link
-                href={`/build?flowID=${agentInfo.graph_id}&flowVersion=${agentInfo.graph_version}`}
+                href={getBuilderHref(agentInfo.graph_id)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="cursor-pointer underline hover:no-underline"
@@ -91,7 +91,7 @@ export function showExecutionErrorToast(
   const errorMessage = formatValidationError(error, agentInfo);
 
   toast({
-    title: "Failed to execute agent",
+    title: "Failed to execute workflow",
     description: errorMessage,
     variant: "destructive",
     duration: 10000, // 10 seconds - long enough to read and close

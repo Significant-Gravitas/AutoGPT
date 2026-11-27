@@ -20,8 +20,9 @@ export function FireExpertMenu({ expertName, onFire, testId }: Props) {
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
-          variant="floating"
+          variant="secondary"
           size="icon-sm"
+          shape="soft"
           leadingIcon={MoreVerticalIcon}
           aria-label={`${expertName} actions`}
           withTooltip={false}
@@ -30,12 +31,11 @@ export function FireExpertMenu({ expertName, onFire, testId }: Props) {
         />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={6}>
-        <DropdownMenuItem
-          onSelect={onFire}
-          className="flex cursor-pointer items-center gap-2 text-red-600 focus:bg-red-50 focus:text-red-700"
-        >
-          <Icon icon={Logout03Icon} size={14} />
-          Fire {expertName}
+        <DropdownMenuItem onSelect={onFire} tone="error-strong">
+          <span className="flex items-center gap-2">
+            <Icon icon={Logout03Icon} size={14} />
+            Fire {expertName}
+          </span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

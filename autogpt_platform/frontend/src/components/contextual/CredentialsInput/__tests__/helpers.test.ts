@@ -229,6 +229,12 @@ describe("isSystemCredential", () => {
     expect(isSystemCredential({ is_system: false })).toBe(false);
   });
 
+  it("trusts is_system: false over a title that says system", () => {
+    expect(
+      isSystemCredential({ is_system: false, title: "Production system key" }),
+    ).toBe(false);
+  });
+
   it("returns false when title is null", () => {
     expect(isSystemCredential({ title: null })).toBe(false);
   });

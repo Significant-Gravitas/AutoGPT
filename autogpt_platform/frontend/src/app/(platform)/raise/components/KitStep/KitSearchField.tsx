@@ -28,13 +28,14 @@ export function KitSearchField({
 }: Props) {
   return (
     // The Input atom wraps itself in two positioned divs that follow these
-    // adornments in the DOM, so without z-10 the opaque field paints over them.
+    // adornments in the DOM, so without z-raised the opaque field paints over them.
     <div className="relative w-full max-w-[42rem]">
       <Icon
         icon={Search01Icon}
         size={16}
         aria-hidden
-        className="pointer-events-none absolute left-3.5 top-1/2 z-10 -translate-y-1/2 text-muted-foreground"
+        tone="muted"
+        className="pointer-events-none absolute top-1/2 left-3.5 z-raised -translate-y-1/2"
       />
       <Input
         id={`raise-${scope}-search`}
@@ -44,7 +45,7 @@ export function KitSearchField({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="pl-10 pr-11"
+        className="pr-11 pl-10"
         wrapperClassName="mb-0 w-full [&_input]:h-[2.625rem] [&_input]:py-3"
       />
       {/* The spinner replaces the clear button rather than sitting beside it:
@@ -54,14 +55,16 @@ export function KitSearchField({
           icon={Loading03Icon}
           size={16}
           aria-hidden
-          className="absolute right-3.5 top-1/2 z-10 -translate-y-1/2 animate-spin text-muted-foreground motion-reduce:animate-none"
+          spin
+          tone="muted"
+          className="absolute top-1/2 right-3.5 z-raised -translate-y-1/2"
         />
       ) : value ? (
         <button
           type="button"
           onClick={() => onChange("")}
           aria-label="Clear search"
-          className="absolute right-2.5 top-1/2 z-10 grid size-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground transition-colors duration-200 hover:bg-zinc-100 hover:text-foreground"
+          className="absolute top-1/2 right-2.5 z-raised grid size-7 -translate-y-1/2 place-items-center rounded-pill text-foreground-tertiary transition-colors duration-200 hover:bg-surface-hover hover:text-foreground-base"
         >
           <Icon icon={Cancel01Icon} size={14} aria-hidden />
         </button>

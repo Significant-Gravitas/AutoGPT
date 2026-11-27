@@ -1,11 +1,9 @@
-import { formatDistanceToNow } from "date-fns";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 
 export const REDACTED = "[redacted]";
 export const MAX_FIELDS = 6;
 export const CLAMP_LINES = 3;
 export const CLAMP_CHARS = 280;
-export const CODE_MAX_LINES = 12;
 export const ARRAY_SHOWN = 3;
 export const ARRAY_MAX = 5;
 
@@ -24,6 +22,8 @@ export type FieldKind =
 export interface FieldSpec {
   key: string;
   label: string;
+  // How the value is worded, from the tool's schema; anything else shows as is.
+  format?: string | null;
 }
 
 // What an id argument names, resolved by the server when the call was held.
@@ -53,12 +53,19 @@ export interface Fact {
 
 export function factText(fact: Fact) {
   if (fact.cron) return cronText(fact.cron) ?? fact.text;
-  if (fact.label && fact.at) {
-    const at = new Date(fact.at);
-    if (!Number.isNaN(at.getTime()))
-      return `${fact.label} ${formatDistanceToNow(at, { addSuffix: true })}`;
-  }
   return fact.text;
+}
+
+// The time a labelled fact names, which the card words relative to now.
+export function factTime(fact: Fact) {
+  if (fact.cron || !fact.label || !fact.at) return null;
+  const at = new Date(fact.at);
+  return Number.isNaN(at.getTime()) ? null : at;
+}
+
+// The facts a card shows: those with a time or some text to read.
+export function shownFacts(facts: Fact[]) {
+  return facts.filter((fact) => Boolean(factTime(fact) || factText(fact)));
 }
 
 function cronText(cron: string) {
@@ -67,6 +74,45 @@ function cronText(cron: string) {
   } catch {
     return null;
   }
+}
+
+export function formattedText(
+  format: string | null | undefined,
+  value: unknown,
+) {
+  if (format === "seconds" && typeof value === "number" && value >= 0)
+    return durationText(value);
+  if (format !== "cron") return null;
+  const crons = Array.isArray(value) ? value : [value];
+  const texts = crons.map((cron) =>
+    typeof cron === "string" ? cronText(cron) : null,
+  );
+  return texts.every(Boolean) ? listText(texts) : null;
+}
+
+const UNITS = [
+  ["day", 86_400],
+  ["hour", 3_600],
+  ["minute", 60],
+  ["second", 1],
+] as const;
+
+// The two largest units, the smaller one rounded: 183420 is "2 days 3 hours".
+function durationText(seconds: number) {
+  const at = UNITS.findIndex(([, size]) => seconds >= size);
+  if (at === -1 || at === UNITS.length - 1)
+    return unitText(Math.round(seconds), "second");
+  const [big, bigSize] = UNITS[at];
+  const [small, smallSize] = UNITS[at + 1];
+  const total = Math.round(seconds / smallSize);
+  const perBig = bigSize / smallSize;
+  const rest = total % perBig;
+  const head = unitText(Math.floor(total / perBig), big);
+  return rest ? `${head} ${unitText(rest, small)}` : head;
+}
+
+function unitText(count: number, unit: string) {
+  return `${count} ${unit}${count === 1 ? "" : "s"}`;
 }
 
 export function fieldKind(key: string, value: unknown): FieldKind {

@@ -8,10 +8,10 @@ import { Text } from "@/components/atoms/Text/Text";
 
 import {
   BRIEFING_OPTIONS,
-  EASE_OUT,
   type BriefingFrequency,
   type NotificationSettings,
 } from "../../helpers";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   values: NotificationSettings;
@@ -37,16 +37,20 @@ export function NotificationsCard({
       transition={
         reduceMotion
           ? undefined
-          : { duration: 0.32, ease: EASE_OUT, delay: 0.04 + index * 0.05 }
+          : {
+              duration: duration.slow,
+              ease: ease.emphasized,
+              delay: 0.04 + index * 0.05,
+            }
       }
       className="flex w-full flex-col"
     >
-      <div className="flex h-fit flex-col gap-4 rounded-[18px] border border-zinc-200 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+      <div className="flex h-fit flex-col gap-4 rounded-large border border-border-base bg-surface px-4 py-3 shadow-message-table">
         <div className="flex flex-col gap-1">
-          <Text variant="body-medium" as="span" className="text-textBlack">
+          <Text variant="body" weight="medium" as="span">
             Email
           </Text>
-          <Text variant="small" as="span" className="text-zinc-500">
+          <Text variant="small" as="span" tone="muted">
             Billing and account messages are always sent — they are about your
             account, not a promotion.
           </Text>
@@ -65,18 +69,18 @@ export function NotificationsCard({
               onBriefingFrequencyChange(value as BriefingFrequency)
             }
           />
-          <Text variant="small" as="span" className="text-zinc-500">
-            What your agents got done, at around 07:30 your time. Never sent
+          <Text variant="small" as="span" tone="muted">
+            What your workflows got done, at around 07:30 your time. Never sent
             when nothing ran.
           </Text>
         </div>
 
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-col">
-            <Text variant="body-medium" as="span" className="text-textBlack">
+            <Text variant="body" weight="medium" as="span">
               Alerts
             </Text>
-            <Text variant="small" as="span" className="text-zinc-500">
+            <Text variant="small" as="span" tone="muted">
               Only when something is waiting on you — never for a successful
               run. At most two a day.
             </Text>
@@ -90,11 +94,11 @@ export function NotificationsCard({
 
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-col">
-            <Text variant="body-medium" as="span" className="text-textBlack">
+            <Text variant="body" weight="medium" as="span">
               Marketplace reviews
             </Text>
-            <Text variant="small" as="span" className="text-zinc-500">
-              When an agent you submitted is approved or needs changes.
+            <Text variant="small" as="span" tone="muted">
+              When a workflow you submitted is approved or needs changes.
             </Text>
           </div>
           <Switch

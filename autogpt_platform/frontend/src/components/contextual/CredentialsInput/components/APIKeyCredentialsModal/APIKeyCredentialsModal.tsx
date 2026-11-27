@@ -1,11 +1,10 @@
-import {
-  Form,
-  FormDescription,
-  FormField,
-} from "@/components/__legacy__/ui/form";
+import { FormProvider } from "react-hook-form";
+import { FormDescription, FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { toDateTimeLocalValue } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/schema";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
@@ -57,10 +56,18 @@ export function APIKeyCredentialsModal({
     >
       <Dialog.Content>
         {schemaDescription && (
-          <p className="mb-4 text-sm text-zinc-600">{schemaDescription}</p>
+          <Text
+            variant="body"
+            leading="5"
+            as="p"
+            tone="secondary"
+            className="mb-4"
+          >
+            {schemaDescription}
+          </Text>
         )}
 
-        <Form {...form}>
+        <FormProvider {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
             className="space-y-2 px-2"
@@ -90,11 +97,20 @@ export function APIKeyCredentialsModal({
                     placeholder="Enter API Key..."
                     hint={
                       schema.credentials_scopes ? (
-                        <FormDescription>
+                        <FormDescription size="body-sm">
                           Required scope(s) for this block:{" "}
                           {schema.credentials_scopes?.map((s, i, a) => (
                             <span key={i}>
-                              <code className="text-xs font-bold">{s}</code>
+                              <Text
+                                variant="small"
+                                weight="bold"
+                                mono
+                                leading="4"
+                                as="code"
+                                tone="inherit"
+                              >
+                                {s}
+                              </Text>
                               {i < a.length - 1 && ", "}
                             </span>
                           ))}
@@ -110,30 +126,16 @@ export function APIKeyCredentialsModal({
             <FormField
               control={form.control}
               name="expiresAt"
-              render={({ field }) => (
+              render={({ field, fieldState }) => (
                 <Input
                   id="expiresAt"
                   label="Expiration Date"
                   type="datetime-local"
                   placeholder="Select expiration date..."
                   value={field.value}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value) {
-                      const dateTime = new Date(value);
-                      dateTime.setHours(0, 0, 0, 0);
-                      const year = dateTime.getFullYear();
-                      const month = String(dateTime.getMonth() + 1).padStart(
-                        2,
-                        "0",
-                      );
-                      const day = String(dateTime.getDate()).padStart(2, "0");
-                      const normalizedValue = `${year}-${month}-${day}T00:00`;
-                      field.onChange(normalizedValue);
-                    } else {
-                      field.onChange(value);
-                    }
-                  }}
+                  error={fieldState.error?.message}
+                  min={toDateTimeLocalValue(new Date())}
+                  onChange={(e) => field.onChange(e.target.value)}
                   onBlur={field.onBlur}
                   name={field.name}
                 />
@@ -148,7 +150,7 @@ export function APIKeyCredentialsModal({
               Add API Key
             </Button>
           </form>
-        </Form>
+        </FormProvider>
       </Dialog.Content>
     </Dialog>
   );

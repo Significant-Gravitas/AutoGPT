@@ -32,12 +32,9 @@ const MAX_CRUMBS_BESIDE_ROOT = 3;
 export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
   const { hidden, visible } = splitForOverflow(items);
   const separator = (
-    <Icon
-      icon={ArrowRight01Icon}
-      size={compact ? 12 : 14}
-      className="shrink-0 text-zinc-400"
-      aria-hidden
-    />
+    <span aria-hidden className="flex shrink-0 text-foreground-subtle">
+      <Icon icon={ArrowRight01Icon} size={compact ? 12 : 14} />
+    </span>
   );
 
   return (
@@ -48,7 +45,7 @@ export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
     >
       <ol
         className={cn(
-          "flex min-w-0 items-center gap-1.5 text-zinc-500",
+          "flex min-w-0 items-center gap-1.5 text-foreground-tertiary",
           compact && "gap-1",
         )}
       >
@@ -60,7 +57,7 @@ export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
             data-testid="folder-breadcrumb-root"
           >
             <Icon icon={Home01Icon} size={compact ? 14 : 16} />
-            <Text variant="small-medium" as="span">
+            <Text variant="small" weight="medium" as="span">
               Files
             </Text>
           </button>
@@ -76,7 +73,7 @@ export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
                   className={CRUMB_BUTTON_CLASS}
                   data-testid="folder-breadcrumb-overflow"
                 >
-                  <Text variant="small-medium" as="span">
+                  <Text variant="small" weight="medium" as="span">
                     …
                   </Text>
                 </button>
@@ -107,10 +104,12 @@ export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
               {separator}
               {isCurrent ? (
                 <Text
-                  variant="small-medium"
+                  variant="small"
+                  weight="medium"
                   as="span"
                   aria-current="page"
-                  className="max-w-[12rem] truncate text-zinc-800"
+                  tone="emphasis"
+                  className="max-w-[12rem] truncate"
                   title={item.name}
                 >
                   {item.name}
@@ -123,7 +122,8 @@ export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
                   title={item.name}
                 >
                   <Text
-                    variant="small-medium"
+                    variant="small"
+                    weight="medium"
                     as="span"
                     className="max-w-[12rem] truncate"
                   >
@@ -140,7 +140,7 @@ export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
 }
 
 const CRUMB_BUTTON_CLASS =
-  "inline-flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-zinc-100 hover:text-zinc-800";
+  "inline-flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-surface-hover hover:text-foreground-emphasis";
 
 function splitForOverflow(items: BreadcrumbItem[]): {
   hidden: BreadcrumbItem[];

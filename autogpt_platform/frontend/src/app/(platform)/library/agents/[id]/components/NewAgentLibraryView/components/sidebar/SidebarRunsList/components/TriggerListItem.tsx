@@ -2,12 +2,12 @@
 
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
-import { formatDistanceToNow } from "date-fns";
 import { IconWrapper } from "./IconWrapper";
 import { SidebarItemCard } from "./SidebarItemCard";
 import { TriggerActionsDropdown } from "./TriggerActionsDropdown";
 import { FlashIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 
 interface Props {
   trigger: LibraryAgentPreset;
@@ -27,14 +27,15 @@ export function TriggerListItem({
   return (
     <SidebarItemCard
       icon={
-        <IconWrapper className="border-purple-50 bg-purple-50">
-          <Icon icon={FlashIcon} size={16} className="text-zinc-700" />
+        <IconWrapper className="border-accent-surface bg-accent-surface text-foreground-body">
+          <Icon icon={FlashIcon} size={16} />
         </IconWrapper>
       }
       title={trigger.name}
-      description={formatDistanceToNow(trigger.updated_at, { addSuffix: true })}
+      description={<RelativeTime date={trigger.updated_at} />}
       onClick={onClick}
       selected={selected}
+      testID={`library-trigger-item-${trigger.id}`}
       actions={
         <TriggerActionsDropdown
           agent={agent}

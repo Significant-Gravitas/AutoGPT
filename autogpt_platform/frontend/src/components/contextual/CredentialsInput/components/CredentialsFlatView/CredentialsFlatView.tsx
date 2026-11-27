@@ -5,9 +5,11 @@ import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { Alert02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { useState } from "react";
 import { AyrshareConnectButton } from "../AyrshareConnectButton/AyrshareConnectButton";
+import { getCredentialDisplayName } from "../../helpers";
 import { CredentialRow } from "../CredentialRow/CredentialRow";
 import { CredentialsSelect } from "../CredentialsSelect/CredentialsSelect";
 
@@ -18,6 +20,7 @@ type Credential = {
   type: string;
   provider: string;
   is_managed?: boolean;
+  is_system?: boolean;
 };
 
 function ProviderConnectRow({
@@ -35,16 +38,16 @@ function ProviderConnectRow({
   const [broken, setBroken] = useState(false);
 
   return (
-    <div className="flex h-14 w-full items-center gap-2.5 rounded-xl bg-neutral-100 px-3">
+    <div className="flex h-14 w-full items-center gap-2.5 rounded-xl bg-surface-hover px-3">
       {broken ? (
         <div
           aria-hidden
-          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-white text-[12px] font-semibold uppercase text-zinc-600"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-surface text-caption leading-inherit font-semibold text-foreground-secondary uppercase"
         >
           {displayName.charAt(0)}
         </div>
       ) : (
-        // eslint-disable-next-line @next/next/no-img-element
+        // eslint-disable-next-line @next/next/no-img-element -- remote URL from any host, which next/image would need configured
         <img
           src={src}
           alt=""
@@ -55,7 +58,7 @@ function ProviderConnectRow({
           onError={() => setBroken(true)}
         />
       )}
-      <span className="min-w-0 flex-1 truncate text-[14px] font-medium leading-[22px] text-zinc-800">
+      <span className="min-w-0 flex-1 truncate text-body leading-5.5 font-medium text-foreground-emphasis">
         {displayName}
       </span>
       <Button
@@ -76,6 +79,8 @@ type Props = {
   provider: string;
   displayName: string;
   credentials: Credential[];
+  /** Every key saved for the provider, to tell a filtered-out key from a deleted one. */
+  allProviderCredentials?: Credential[];
   selectedCredential?: CredentialsMetaInput;
   actionButtonText: string;
   isOptional: boolean;
@@ -93,6 +98,7 @@ export function CredentialsFlatView({
   provider,
   displayName,
   credentials,
+  allProviderCredentials = [],
   selectedCredential,
   actionButtonText,
   isOptional,
@@ -104,7 +110,21 @@ export function CredentialsFlatView({
   onAddCredential,
   onDeleteCredential,
 }: Props) {
-  const hasCredentials = credentials.length > 0;
+  // A run's read-only view shows the credential it used, or a deleted marker,
+  // never the other keys saved for the provider.
+  const shownCredentials: Credential[] =
+    readOnly && selectedCredential
+      ? [
+          credentials.find(({ id }) => id === selectedCredential.id) ??
+            allProviderCredentials.find(
+              ({ id }) => id === selectedCredential.id,
+            ) ?? {
+              ...selectedCredential,
+              title: `${getCredentialDisplayName(selectedCredential, displayName)} (deleted)`,
+            },
+        ]
+      : credentials;
+  const hasCredentials = shownCredentials.length > 0;
   // Ayrshare has no user-settable credential — provisioning runs on the
   // server after the user clicks the Connect Social Media Accounts
   // button rendered below. Exposing "Add API key" / "Use a new API key"
@@ -118,14 +138,16 @@ export function CredentialsFlatView({
       {showTitle && (
         <div className="mb-2 flex items-center gap-2">
           <Text variant="small" className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 text-zinc-600">
+            <span className="inline-flex items-center gap-1 text-foreground-secondary">
               {displayName} credentials
               {isOptional && (
-                <span className="font-normal text-gray-500">(optional)</span>
+                <span className="font-normal text-foreground-tertiary">
+                  (optional)
+                </span>
               )}
               {!isOptional && !selectedCredential && (
-                <span className="inline-flex items-center gap-1 text-red-600">
-                  <ExclamationTriangleIcon className="size-3.5" />
+                <span className="inline-flex items-center gap-1 text-error-foreground">
+                  <Icon aria-hidden icon={Alert02Icon} className="size-3.5" />
                   <span className="font-normal">required</span>
                 </span>
               )}
@@ -153,7 +175,7 @@ export function CredentialsFlatView({
             />
           ) : (
             <div className="mb-4 space-y-2">
-              {credentials.map((credential) => (
+              {shownCredentials.map((credential) => (
                 <CredentialRow
                   key={credential.id}
                   credential={credential}
@@ -161,7 +183,10 @@ export function CredentialsFlatView({
                   displayName={displayName}
                   onSelect={() => onSelectCredential(credential.id)}
                   onDelete={
-                    onDeleteCredential && !credential.is_managed
+                    // The platform's own keys can't be deleted, only replaced.
+                    onDeleteCredential &&
+                    !credential.is_managed &&
+                    !credential.is_system
                       ? () =>
                           onDeleteCredential({
                             id: credential.id,

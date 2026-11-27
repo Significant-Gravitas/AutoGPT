@@ -74,6 +74,7 @@ class TodoistCreateLabelBlock(Block):
                     "is_favorite": False,
                 }
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -166,6 +167,7 @@ class TodoistListLabelsBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -233,6 +235,7 @@ class TodoistGetLabelBlock(Block):
                     "is_favorite": False,
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -300,6 +303,7 @@ class TodoistUpdateLabelBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"update_label": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -421,6 +425,7 @@ class TodoistGetSharedLabelsBlock(Block):
                     "Label3",
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -470,6 +475,7 @@ class TodoistRenameSharedLabelsBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"rename_shared_labels": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

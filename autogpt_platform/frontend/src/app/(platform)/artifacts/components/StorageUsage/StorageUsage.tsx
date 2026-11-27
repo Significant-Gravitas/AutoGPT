@@ -4,7 +4,6 @@ import { useGetWorkspaceStorageUsage } from "@/app/api/__generated__/endpoints/w
 import { Progress } from "@/components/atoms/Progress/Progress";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
-import { cn } from "@/lib/utils";
 import { formatFileSize } from "../ArtifactsList/helpers";
 
 export function StorageUsage() {
@@ -20,7 +19,7 @@ export function StorageUsage() {
         className="flex items-center gap-3"
         data-testid="storage-usage-loading"
       >
-        <Skeleton className="h-1.5 w-32 rounded-full" />
+        <Skeleton className="h-1.5 w-32 rounded-pill" />
         <Skeleton className="h-3 w-28" />
       </div>
     );
@@ -30,6 +29,7 @@ export function StorageUsage() {
 
   const percent = Math.min(Math.max(data.used_percent, 0), 100);
   const usedLabel = `${Math.round(percent)}% of storage used`;
+  const internalBytes = data.internal_bytes ?? 0;
 
   return (
     <div
@@ -37,7 +37,7 @@ export function StorageUsage() {
       title={usedLabel}
       data-testid="storage-usage"
     >
-      <Text variant="small" as="span" className="text-zinc-500">
+      <Text variant="small" as="span" tone="secondary">
         Storage
       </Text>
       <Progress
@@ -47,17 +47,26 @@ export function StorageUsage() {
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label={usedLabel}
-        className={cn(
-          "h-1.5 w-32 bg-zinc-100",
-          percent > 95 ? "[&>div]:bg-red-400" : "[&>div]:bg-zinc-400",
-        )}
+        track="subtle"
+        tone={percent > 95 ? "error" : "muted"}
+        className="h-1.5 w-32"
       />
-      <Text variant="small" as="span" className="text-zinc-500">
-        <span className="font-medium text-zinc-700">
+      <Text variant="small" as="span" tone="secondary">
+        <span className="font-medium text-foreground-body">
           {formatFileSize(data.used_bytes)}
         </span>{" "}
         of {formatFileSize(data.limit_bytes)}
       </Text>
+      {internalBytes > 0 ? (
+        <Text
+          variant="small"
+          as="span"
+          tone="secondary"
+          className="hidden lg:inline"
+        >
+          {`${formatFileSize(internalBytes)} is your team's skills and working files`}
+        </Text>
+      ) : null}
     </div>
   );
 }

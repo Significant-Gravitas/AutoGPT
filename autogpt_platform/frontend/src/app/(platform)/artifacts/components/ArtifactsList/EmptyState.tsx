@@ -7,8 +7,7 @@ import { PlusSignIcon, Upload03Icon } from "@hugeicons/core-free-icons";
 import { motion, useReducedMotion } from "framer-motion";
 import { useNewMenu } from "../NewMenu/useNewMenu";
 import type { EmptyStateContent } from "./helpers";
-
-const EASE_OUT_QUINT = [0.22, 1, 0.36, 1] as const;
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   content: EmptyStateContent;
@@ -24,13 +23,11 @@ export function EmptyState({ content, compact = false }: Props) {
 
   if (compact) {
     return (
-      <Text
-        variant="body"
-        className="px-2 py-6 text-zinc-500"
-        data-testid="artifacts-empty"
-      >
-        {content.title}
-      </Text>
+      <div className="px-2 py-6">
+        <Text variant="body" tone="muted" data-testid="artifacts-empty">
+          {content.title}
+        </Text>
+      </div>
     );
   }
 
@@ -39,13 +36,13 @@ export function EmptyState({ content, compact = false }: Props) {
       return {
         initial: { opacity: 0 },
         animate: { opacity: 1 },
-        transition: { duration: 0.2, delay: 0 },
+        transition: { duration: duration.base, delay: 0 },
       };
     }
     return {
       initial: { opacity: 0, y: 8 },
       animate: { opacity: 1, y: 0 },
-      transition: { duration: 0.35, ease: EASE_OUT_QUINT, delay },
+      transition: { duration: duration.slow, ease: ease.glide, delay },
     };
   }
 
@@ -62,12 +59,12 @@ export function EmptyState({ content, compact = false }: Props) {
 
       <div className="flex max-w-md flex-col items-center gap-2">
         <motion.div {...fadeUp(0.28)}>
-          <Text variant="h3" className="text-zinc-900">
+          <Text variant="h3" tone="primary">
             {content.title}
           </Text>
         </motion.div>
         <motion.div {...fadeUp(0.36)}>
-          <Text variant="body" className="text-zinc-500">
+          <Text variant="body" tone="muted">
             {content.description}
           </Text>
         </motion.div>
@@ -152,10 +149,11 @@ function StackedFilesIllustration() {
               : { opacity: sheet.opacity, y: 0, scale: 1 }
           }
           transition={{
-            duration: shouldReduceMotion ? 0.2 : 0.45,
-            ease: EASE_OUT_QUINT,
+            duration: shouldReduceMotion ? duration.base : duration.slower,
+            ease: ease.glide,
             delay: shouldReduceMotion ? 0 : i * 0.08,
           }}
+          // oxlint-disable-next-line design-system/no-inline-styles -- framer-motion writes the SVG transform origin inline, so a class would be overridden
           style={{ transformOrigin: "160px 96px", transformBox: "fill-box" }}
         >
           <Sheet x={sheet.x} rotate={sheet.rotate} />
@@ -178,14 +176,12 @@ function Sheet({ x, rotate }: { x: number; rotate: number }) {
     <g transform={`rotate(${rotate} ${cx} ${cy})`}>
       <path
         d={`M${x + 12} ${y}H${x + width - fold}L${x + width} ${y + fold}V${y + height - 12}a12 12 0 0 1-12 12H${x + 12}a12 12 0 0 1-12-12V${y + 12}a12 12 0 0 1 12-12Z`}
-        fill="white"
-        stroke="#E4E4E7"
+        className="fill-surface stroke-border-base"
         strokeWidth={1}
       />
       <path
         d={`M${x + width - fold} ${y}V${y + fold}H${x + width}`}
-        fill="#F4F4F5"
-        stroke="#E4E4E7"
+        className="fill-surface-hover stroke-border-base"
         strokeWidth={1}
       />
       {[0, 1, 2, 3].map((line) => (
@@ -196,7 +192,7 @@ function Sheet({ x, rotate }: { x: number; rotate: number }) {
           width={line === 3 ? width * 0.4 : width - padding * 2}
           height={6}
           rx={3}
-          fill="#E4E4E7"
+          className="fill-border-base"
         />
       ))}
     </g>

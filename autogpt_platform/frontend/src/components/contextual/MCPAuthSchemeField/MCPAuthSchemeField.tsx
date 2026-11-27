@@ -2,6 +2,8 @@
 
 import { useId } from "react";
 
+import { Text, type TextProps } from "@/components/atoms/Text/Text";
+import type { Variant } from "@/components/atoms/Text/helpers";
 import type { MCPAuthScheme } from "@/lib/mcp-auth";
 
 interface Props {
@@ -12,6 +14,10 @@ interface Props {
   nameSuffix?: string;
   className?: string;
   labelClassName?: string;
+  /** Renders the label as a `<Text>` in this variant, in the parent's colour. */
+  labelVariant?: Variant;
+  labelWeight?: TextProps["weight"];
+  labelLeading?: TextProps["leading"];
   selectClassName?: string;
 }
 
@@ -23,6 +29,9 @@ export function MCPAuthSchemeField({
   nameSuffix,
   className,
   labelClassName,
+  labelVariant,
+  labelWeight,
+  labelLeading,
   selectClassName,
 }: Props) {
   const id = useId();
@@ -32,9 +41,23 @@ export function MCPAuthSchemeField({
 
   return (
     <div className={className}>
-      <label htmlFor={id} className={labelClassName}>
-        Authentication type
-      </label>
+      {labelVariant ? (
+        <Text
+          variant={labelVariant}
+          weight={labelWeight}
+          leading={labelLeading}
+          as="label"
+          tone="inherit"
+          htmlFor={id}
+          className={labelClassName}
+        >
+          Authentication type
+        </Text>
+      ) : (
+        <label htmlFor={id} className={labelClassName}>
+          Authentication type
+        </label>
+      )}
       <select
         id={id}
         aria-label={accessibleName}

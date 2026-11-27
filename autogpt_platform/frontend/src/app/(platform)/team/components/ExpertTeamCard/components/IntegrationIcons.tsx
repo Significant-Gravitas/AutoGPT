@@ -49,9 +49,11 @@ export function IntegrationIcons({ expertName, providers }: Props) {
           <Tooltip>
             <TooltipTrigger asChild>
               <Text
-                variant="body-medium"
+                variant="body"
+                weight="medium"
                 as="span"
-                className="cursor-default whitespace-nowrap !text-zinc-800"
+                tone="emphasis"
+                className="cursor-default whitespace-nowrap"
               >
                 +{hidden.length} more
                 <span className="sr-only">: {hiddenNames}</span>
@@ -78,14 +80,14 @@ function ProviderLogo({ provider }: LogoProps) {
       <span
         role="img"
         aria-label={name}
-        className="flex size-5 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-[9px] font-semibold uppercase leading-none text-zinc-600 ring-1 ring-zinc-200"
+        className="flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-hover text-tiny leading-none font-semibold text-foreground-secondary uppercase ring-1 ring-border-base"
       >
         {name.charAt(0)}
       </span>
     );
   }
   return (
-    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-white p-[3px] ring-1 ring-zinc-200">
+    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-surface p-0.5 ring-1 ring-border-base">
       <Image
         src={`/integrations/${provider}.png`}
         alt={name}

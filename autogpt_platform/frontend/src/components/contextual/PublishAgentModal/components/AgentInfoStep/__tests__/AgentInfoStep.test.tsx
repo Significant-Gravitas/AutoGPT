@@ -6,6 +6,8 @@ import { http, HttpResponse } from "msw";
 
 vi.mock("@sentry/nextjs", () => ({
   captureException: vi.fn(),
+  withServerActionInstrumentation: (...args: unknown[]) =>
+    (args.at(-1) as () => unknown)(),
 }));
 
 vi.mock("@/components/contextual/CronScheduler/cron-scheduler-dialog", () => ({
@@ -51,6 +53,20 @@ describe("AgentInfoStep", () => {
   it("renders the marketplace-update copy when isMarketplaceUpdate is true", async () => {
     render(<AgentInfoStep {...baseProps} isMarketplaceUpdate />);
     expect(await screen.findByText("Describe the update")).toBeDefined();
+  });
+
+  it("doesn't tell a new listing that an empty description keeps one", async () => {
+    render(<AgentInfoStep {...baseProps} />);
+    await screen.findByText("Build the store listing");
+    fireEvent.click(screen.getByText("Experience details"));
+
+    const description = await screen.findByRole("textbox", {
+      name: "Description",
+    });
+    expect(description.getAttribute("aria-describedby")).toBeNull();
+    expect(
+      screen.queryByText("Leave empty to keep the current description."),
+    ).toBeNull();
   });
 
   it("disables the category field when the category list cannot be loaded", async () => {

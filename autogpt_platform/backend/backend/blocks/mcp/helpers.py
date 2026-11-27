@@ -74,20 +74,32 @@ def mcp_authorization_header(credentials: OAuth2Credentials) -> str:
     return f"Bearer {token}"
 
 
-def parse_mcp_content(content: list[dict[str, Any]]) -> Any:
+def parse_mcp_content(
+    content: list[dict[str, Any]],
+    structured_content: Any = None,
+) -> Any:
     """Parse MCP tool response content into a plain Python value.
 
     - text items: parsed as JSON when possible, kept as str otherwise
     - image items: kept as ``{type, data, mimeType}`` dict for frontend rendering
     - resource items: unwrapped to their resource payload dict
 
+    ``structured_content`` (any JSON value, even an empty one) stands in for
+    the text when a tool sends structured content and no text, beside any
+    image and resource items.  Text wins when both are sent: FastMCP sends a
+    ``-> int`` tool's ``3`` as the text ``"3"`` with ``{"result": 3}`` as
+    structured content.
+
     Single-item responses are unwrapped from the list; multiple items are
     returned as a list; empty content returns ``None``.
     """
-    output_parts: list[Any] = []
+    use_structured = structured_content is not None and not any(
+        item.get("type") == "text" and item.get("text") for item in content
+    )
+    output_parts: list[Any] = [structured_content] if use_structured else []
     for item in content:
         item_type = item.get("type")
-        if item_type == "text":
+        if item_type == "text" and not use_structured:
             text = item.get("text", "")
             try:
                 output_parts.append(json.loads(text))

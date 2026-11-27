@@ -24,8 +24,7 @@ export function AttentionRowActions({
       as="NextLink"
       href={item.primary_action.href}
       variant="secondary"
-      size="small"
-      className="h-8 min-w-0 px-3"
+      size="row"
     >
       {item.primary_action.label}
     </Button>
@@ -41,6 +40,7 @@ export function AttentionRowActions({
       <Button
         variant="primary"
         size="icon-sm"
+        shape="soft"
         leadingIcon={Tick02Icon}
         disabled={isProcessing}
         aria-label={`Approve: ${item.title}`}
@@ -49,6 +49,7 @@ export function AttentionRowActions({
       <Button
         variant={confirmDecline ? "destructive" : "icon"}
         size="icon-sm"
+        shape="soft"
         leadingIcon={Cancel01Icon}
         disabled={isProcessing}
         aria-label={`${confirmDecline ? "Confirm decline" : "Decline"}: ${item.title}`}

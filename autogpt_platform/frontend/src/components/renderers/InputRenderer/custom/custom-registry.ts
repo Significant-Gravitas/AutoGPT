@@ -1,4 +1,7 @@
+import type { JSX } from "react";
 import { FieldProps, RJSFSchema, RegistryFieldsType } from "@rjsf/utils";
+import { AirtableBasePickerField } from "./AirtableBasePickerField/AirtableBasePickerField";
+import { isAirtableBasePickerSchema } from "./AirtableBasePickerField/helpers";
 import { CredentialsField } from "./CredentialField/CredentialField";
 import { GoogleDrivePickerField } from "./GoogleDrivePickerField/GoogleDrivePickerField";
 import { JsonTextField } from "./JsonTextField/JsonTextField";
@@ -19,58 +22,71 @@ export interface CustomFieldDefinition {
 /** Field ID for JsonTextField - used to render nested complex types as text input */
 export const JSON_TEXT_FIELD_ID = "custom/json_text_field";
 
-export const CUSTOM_FIELDS: CustomFieldDefinition[] = [
-  {
-    id: "custom/credential_field",
-    matcher: (schema: any) => {
-      return (
-        typeof schema === "object" &&
-        schema !== null &&
-        "credentials_provider" in schema
-      );
+let customFields: CustomFieldDefinition[] | undefined;
+
+// Listed on first use, not when this module loads: listing them reads every
+// custom field component, and loaded in the middle of an import cycle, this
+// module would run before some of them exist.
+function getCustomFields(): CustomFieldDefinition[] {
+  customFields ??= [
+    {
+      id: "custom/credential_field",
+      matcher: (schema: any) => {
+        return (
+          typeof schema === "object" &&
+          schema !== null &&
+          "credentials_provider" in schema
+        );
+      },
+      component: CredentialsField,
     },
-    component: CredentialsField,
-  },
-  {
-    id: "custom/google_drive_picker_field",
-    matcher: isGoogleDrivePickerSchema,
-    component: GoogleDrivePickerField,
-  },
-  {
-    id: "custom/json_text_field",
-    // Not matched by schema - assigned via uiSchema for nested complex types
-    matcher: () => false,
-    component: JsonTextField,
-  },
-  {
-    id: "custom/multi_select_field",
-    matcher: isMultiSelectSchema,
-    component: MultiSelectField,
-  },
-  {
-    id: "custom/table_field",
-    matcher: (schema: any) => {
-      return (
-        schema.type === "array" &&
-        "format" in schema &&
-        schema.format === "table"
-      );
+    {
+      id: "custom/google_drive_picker_field",
+      matcher: isGoogleDrivePickerSchema,
+      component: GoogleDrivePickerField,
     },
-    component: TableField,
-  },
-  {
-    id: "custom/llm_model_field",
-    matcher: (schema: any) => {
-      return (
-        typeof schema === "object" && schema !== null && "llm_model" in schema
-      );
+    {
+      id: "custom/airtable_base_picker_field",
+      matcher: isAirtableBasePickerSchema,
+      component: AirtableBasePickerField,
     },
-    component: LlmModelField,
-  },
-];
+    {
+      id: "custom/json_text_field",
+      // Not matched by schema - assigned via uiSchema for nested complex types
+      matcher: () => false,
+      component: JsonTextField,
+    },
+    {
+      id: "custom/multi_select_field",
+      matcher: isMultiSelectSchema,
+      component: MultiSelectField,
+    },
+    {
+      id: "custom/table_field",
+      matcher: (schema: any) => {
+        return (
+          schema.type === "array" &&
+          "format" in schema &&
+          schema.format === "table"
+        );
+      },
+      component: TableField,
+    },
+    {
+      id: "custom/llm_model_field",
+      matcher: (schema: any) => {
+        return (
+          typeof schema === "object" && schema !== null && "llm_model" in schema
+        );
+      },
+      component: LlmModelField,
+    },
+  ];
+  return customFields;
+}
 
 export function findCustomFieldId(schema: any): string | null {
-  for (const field of CUSTOM_FIELDS) {
+  for (const field of getCustomFields()) {
     if (field.matcher(schema)) {
       return field.id;
     }
@@ -79,7 +95,7 @@ export function findCustomFieldId(schema: any): string | null {
 }
 
 export function generateCustomFields(): RegistryFieldsType {
-  return CUSTOM_FIELDS.reduce(
+  return getCustomFields().reduce(
     (acc, field) => {
       acc[field.id] = field.component;
       return acc;

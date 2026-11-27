@@ -54,7 +54,7 @@ class ConductorManageSessionBlock(Block):
             description="Rename, cancel or archive a Conductor agent session. "
             "Cancel stops the running turn and drops queued prompts.",
             categories={BlockCategory.DEVELOPER_TOOLS},
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={

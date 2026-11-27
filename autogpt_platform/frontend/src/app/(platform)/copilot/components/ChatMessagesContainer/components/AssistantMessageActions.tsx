@@ -3,7 +3,8 @@
 import {
   MessageAction,
   MessageActions,
-} from "@/components/ai-elements/message";
+  type MessageActionsProps,
+} from "@/components/organisms/Message/Message";
 import { cn } from "@/lib/utils";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { useMessageFeedback } from "../useMessageFeedback";
@@ -19,6 +20,8 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 interface Props {
   message: UIMessage<unknown, UIDataTypes, UITools>;
   sessionID: string | null;
+  savedMessageId?: string | null;
+  reveal?: MessageActionsProps["reveal"];
   className?: string;
 }
 
@@ -35,6 +38,8 @@ function extractTextFromParts(
 export function AssistantMessageActions({
   message,
   sessionID,
+  savedMessageId,
+  reveal,
   className,
 }: Props) {
   const {
@@ -46,13 +51,13 @@ export function AssistantMessageActions({
     handleDownvoteClick,
     handleDownvoteSubmit,
     handleDownvoteCancel,
-  } = useMessageFeedback({ sessionID, message });
+  } = useMessageFeedback({ sessionID, message, savedMessageId });
 
   const text = extractTextFromParts(message.parts);
 
   return (
     <>
-      <MessageActions className={cn("mt-1", className)}>
+      <MessageActions reveal={reveal} className={cn("mt-1", className)}>
         <MessageAction
           tooltip="Copy"
           onClick={() => handleCopy(text)}
@@ -67,13 +72,16 @@ export function AssistantMessageActions({
           onClick={handleUpvote}
           variant="ghost"
           size="icon-sm"
-          disabled={!canRate || feedback === "downvote"}
+          disabled={feedback === "downvote"}
+          aria-disabled={!canRate || undefined}
           className={cn(
-            feedback === "upvote" && "text-green-300 hover:text-green-300",
+            feedback === "upvote" && "text-success/60 hover:text-success/60",
             feedback === "downvote" && "!opacity-20",
           )}
         >
-          <Icon icon={ThumbsUpIcon} size={16} />
+          <span className={cn("flex", !canRate && "opacity-50")}>
+            <Icon icon={ThumbsUpIcon} size={16} />
+          </span>
         </MessageAction>
 
         <MessageAction
@@ -81,13 +89,16 @@ export function AssistantMessageActions({
           onClick={handleDownvoteClick}
           variant="ghost"
           size="icon-sm"
-          disabled={!canRate || feedback === "upvote"}
+          disabled={feedback === "upvote"}
+          aria-disabled={!canRate || undefined}
           className={cn(
-            feedback === "downvote" && "text-red-300 hover:text-red-300",
+            feedback === "downvote" && "text-error/60 hover:text-error/60",
             feedback === "upvote" && "!opacity-20",
           )}
         >
-          <Icon icon={ThumbsDownIcon} size={16} />
+          <span className={cn("flex", !canRate && "opacity-50")}>
+            <Icon icon={ThumbsDownIcon} size={16} />
+          </span>
         </MessageAction>
 
         <TTSButton text={text} sessionID={sessionID} />

@@ -4,13 +4,14 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { Tick02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration, ease } from "@/components/styles/motion";
 
 type Props = {
   currentStep: "select" | "info" | "review";
 };
 
 const steps = [
-  { key: "select", label: "Agent" },
+  { key: "select", label: "Workflow" },
   { key: "info", label: "Listing" },
   { key: "review", label: "Review" },
 ] as const;
@@ -26,8 +27,8 @@ export function StepStrip({ currentStep }: Props) {
   return (
     <div className="flex flex-col gap-6 px-1 pb-6 sm:px-2">
       <div className="flex items-center gap-2 pr-12">
-        <Text variant="lead-medium" as="span" className="text-textBlack">
-          Publish agent
+        <Text variant="lead" weight="medium" as="span">
+          Publish workflow
         </Text>
       </div>
 
@@ -55,15 +56,15 @@ export function StepStrip({ currentStep }: Props) {
                   transition={
                     shouldReduceMotion
                       ? { duration: 0 }
-                      : { duration: 0.22, ease: [0.16, 1, 0.3, 1] }
+                      : { duration: duration.base, ease: ease.emphasized }
                   }
                   className={cn(
-                    "flex size-6 shrink-0 items-center justify-center rounded-full text-[12px] font-medium transition-colors",
+                    "flex size-6 shrink-0 items-center justify-center rounded-full text-caption leading-inherit font-medium transition-colors",
                     isCurrent
-                      ? "bg-zinc-900 text-white"
+                      ? "bg-action-hover text-action-foreground"
                       : isComplete
-                        ? "bg-zinc-900 text-white"
-                        : "border border-zinc-300 bg-white text-zinc-400",
+                        ? "bg-action-hover text-action-foreground"
+                        : "border border-border-strong bg-surface text-foreground-subtle",
                   )}
                 >
                   <AnimatePresence mode="wait" initial={false}>
@@ -81,7 +82,7 @@ export function StepStrip({ currentStep }: Props) {
                             ? { opacity: 0 }
                             : { opacity: 0, scale: 0.6 }
                         }
-                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        transition={{ duration: duration.base, ease: ease.out }}
                         className="flex items-center justify-center"
                       >
                         <Icon icon={Tick02Icon} size={12} />
@@ -100,7 +101,7 @@ export function StepStrip({ currentStep }: Props) {
                             ? { opacity: 0 }
                             : { opacity: 0, y: -4 }
                         }
-                        transition={{ duration: 0.18, ease: "easeOut" }}
+                        transition={{ duration: duration.base, ease: ease.out }}
                       >
                         {index + 1}
                       </motion.span>
@@ -108,33 +109,28 @@ export function StepStrip({ currentStep }: Props) {
                   </AnimatePresence>
                 </motion.span>
                 <Text
-                  variant="small-medium"
+                  variant="small"
                   as="span"
-                  className={cn(
-                    "whitespace-nowrap !text-current transition-colors",
-                    isCurrent
-                      ? "text-zinc-950"
-                      : isComplete
-                        ? "text-zinc-700"
-                        : "font-normal text-zinc-400",
-                  )}
+                  tone="inherit"
+                  weight={!isCurrent && !isComplete ? "normal" : "medium"}
+                  motion="colors"
+                  className="whitespace-nowrap"
                 >
                   {step.label}
                 </Text>
               </li>
               {!isLast ? (
                 <li aria-hidden className="relative h-0 flex-1">
-                  <span className="absolute inset-x-0 top-0 border-t border-solid border-zinc-200" />
+                  <span className="absolute inset-x-0 top-0 border-t border-solid border-border-base" />
                   <motion.span
                     initial={false}
                     animate={{ scaleX: isComplete ? 1 : 0 }}
-                    style={{ transformOrigin: "left" }}
                     transition={
                       shouldReduceMotion
                         ? { duration: 0 }
-                        : { duration: 0.32, ease: [0.16, 1, 0.3, 1] }
+                        : { duration: duration.slow, ease: ease.emphasized }
                     }
-                    className="absolute inset-x-0 top-0 border-t border-solid border-zinc-900"
+                    className="absolute inset-x-0 top-0 origin-left border-t border-solid border-action-hover"
                   />
                 </li>
               ) : null}

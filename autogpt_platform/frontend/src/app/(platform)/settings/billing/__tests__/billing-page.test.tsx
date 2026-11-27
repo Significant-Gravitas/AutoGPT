@@ -1,11 +1,26 @@
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, type JsonBodyType } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import type { User } from "@/lib/auth/types";
 import { server } from "@/mocks/mock-server";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 
 import { AutomationCreditsTab } from "../components/AutomationCreditsTab/AutomationCreditsTab";
 import SettingsBillingPage from "../page";
+
+// These cover the hosted billing UI, which self-hosted builds hide.
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => true,
+  useBillingStatus: () => ({ isBillingEnabled: true, isResolved: true }),
+}));
 
 // Allow per-test override of the search params Next.js exposes to the page.
 const mockSearchParams = { current: new URLSearchParams() };
@@ -29,6 +44,7 @@ vi.mock("next/navigation", async (importOriginal) => {
 });
 
 afterEach(() => {
+  useAuthStore.setState({ user: null });
   mockSearchParams.current = new URLSearchParams();
   mockRouterReplace.mockReset();
 });
@@ -55,6 +71,9 @@ const COPILOT_USAGE_RESPONSE = {
 
 const INVOICES_RESPONSE: never[] = [];
 
+// Where a top-up return leaves the address: the tab it started on.
+const AUTOMATION_CREDITS_URL = "/settings/billing?tab=automation-credits";
+
 function jsonHandler(method: "get" | "post", path: string, body: JsonBodyType) {
   return http[method](`*${path}`, () => HttpResponse.json(body));
 }
@@ -76,7 +95,9 @@ describe("Settings billing page (integration)", () => {
     useDefaultBillingHandlers();
     render(<SettingsBillingPage />);
 
-    expect(screen.getByRole("heading", { name: "Billing" })).toBeDefined();
+    expect(
+      screen.getByRole("heading", { name: "Billing & usage" }),
+    ).toBeDefined();
 
     const subscriptionTab = screen.getByRole("tab", { name: "Subscription" });
     expect(subscriptionTab.getAttribute("data-state")).toBe("active");
@@ -89,6 +110,23 @@ describe("Settings billing page (integration)", () => {
     expect(await screen.findByText(/No invoices yet/i)).toBeDefined();
   });
 
+  it("explains usage and credits in a dialog from the info button by the title", async () => {
+    useDefaultBillingHandlers();
+    render(<SettingsBillingPage />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "How usage and credits work" }),
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "How usage and credits work",
+    });
+    expect(dialog.textContent).toContain("What are automation credits for?");
+    expect(
+      screen.queryByRole("link", { name: /Go to billing settings/ }),
+    ).toBeNull();
+  });
+
   it("AutomationCreditsTab renders the balance + add-credits CTA from API data", async () => {
     useDefaultBillingHandlers();
     render(<AutomationCreditsTab />);
@@ -99,27 +137,31 @@ describe("Settings billing page (integration)", () => {
     expect(screen.getByRole("button", { name: /add credits/i })).toBeDefined();
   });
 
-  it("clears the ?topup=success query and shows a success toast after a Stripe redirect", async () => {
+  it("fulfils the checkout and clears the ?topup=success query, keeping the Automation Credits tab, after a Stripe redirect", async () => {
     useDefaultBillingHandlers();
+    let fulfilCalls = 0;
     server.use(
-      http.patch("*/api/credits/fulfill_checkout", () =>
-        HttpResponse.json({}, { status: 200 }),
-      ),
+      http.patch("*/api/credits", () => {
+        fulfilCalls += 1;
+        return new HttpResponse(null, { status: 200 });
+      }),
     );
     mockSearchParams.current = new URLSearchParams({ topup: "success" });
+    useAuthStore.setState({ user: { id: "user-a" } as User });
 
     render(<SettingsBillingPage />);
 
     await waitFor(() =>
-      expect(mockRouterReplace).toHaveBeenCalledWith("/settings/billing"),
+      expect(mockRouterReplace).toHaveBeenCalledWith(AUTOMATION_CREDITS_URL),
     );
+    await waitFor(() => expect(fulfilCalls).toBe(1));
   });
 
-  it("clears the ?topup=cancel query without firing fulfillCheckout", async () => {
+  it("clears the ?topup=cancel query, keeping the tab, without firing fulfillCheckout", async () => {
     useDefaultBillingHandlers();
     let fulfillCalled = false;
     server.use(
-      http.patch("*/api/credits/fulfill_checkout", () => {
+      http.patch("*/api/credits", () => {
         fulfillCalled = true;
         return HttpResponse.json({}, { status: 200 });
       }),
@@ -129,11 +171,48 @@ describe("Settings billing page (integration)", () => {
     render(<SettingsBillingPage />);
 
     await waitFor(() =>
-      expect(mockRouterReplace).toHaveBeenCalledWith("/settings/billing"),
+      expect(mockRouterReplace).toHaveBeenCalledWith(AUTOMATION_CREDITS_URL),
     );
     // Cancel branch must NOT fulfill — webhook is the source of truth and
     // the user explicitly aborted the checkout.
     expect(fulfillCalled).toBe(false);
+  });
+
+  it("waits for the first authenticated identity before fulfilling a topup", async () => {
+    useDefaultBillingHandlers();
+    let fulfillCalls = 0;
+    server.use(
+      http.patch("*/api/credits", () => {
+        fulfillCalls += 1;
+        return HttpResponse.json({}, { status: 200 });
+      }),
+    );
+    mockSearchParams.current = new URLSearchParams({ topup: "success" });
+    // The redirect handler replaces the query string as its last step, so its
+    // calls show whether it ran. (Onboarding may also replace the route once
+    // someone signs in, so only these count.)
+    function topupRedirectsHandled() {
+      return mockRouterReplace.mock.calls.filter(
+        ([path]) => path === AUTOMATION_CREDITS_URL,
+      ).length;
+    }
+
+    render(<SettingsBillingPage />);
+    expect(topupRedirectsHandled()).toBe(0);
+
+    act(() => {
+      useAuthStore.setState({ user: { id: "user-a" } as User });
+    });
+    await waitFor(() => expect(fulfillCalls).toBe(1));
+    expect(topupRedirectsHandled()).toBe(1);
+
+    act(() => {
+      useAuthStore.setState({ user: { id: "user-b" } as User });
+    });
+    await act(async () => {});
+
+    expect(topupRedirectsHandled()).toBe(1);
+    expect(fulfillCalls).toBe(1);
   });
 
   it("clears the ?subscription=success query after a Stripe redirect", async () => {
@@ -162,11 +241,6 @@ describe("Settings billing page (integration)", () => {
 
   it("activates the Automation Credits tab when a Stripe topup redirect lands on the page", async () => {
     useDefaultBillingHandlers();
-    server.use(
-      http.patch("*/api/credits/fulfill_checkout", () =>
-        HttpResponse.json({}, { status: 200 }),
-      ),
-    );
     // Topup flow originates from the Automation Credits tab; the redirect
     // back from Stripe must NOT bounce the user to Subscription.
     mockSearchParams.current = new URLSearchParams({ topup: "success" });
@@ -191,6 +265,22 @@ describe("Settings billing page (integration)", () => {
       name: /automation credits/i,
     });
     expect(automationCreditsTab.getAttribute("data-state")).toBe("active");
+  });
+
+  it("writes the tab someone opens into the address, keeping its other params", async () => {
+    useDefaultBillingHandlers();
+    mockSearchParams.current = new URLSearchParams({
+      utm_source: "newsletter",
+    });
+
+    render(<SettingsBillingPage />);
+    await userEvent.click(
+      screen.getByRole("tab", { name: "Automation Credits" }),
+    );
+
+    expect(mockRouterReplace.mock.lastCall?.[0]).toBe(
+      "/settings/billing?utm_source=newsletter&tab=automation-credits",
+    );
   });
 
   it("ignores an unknown ?tab= value and falls back to the Subscription default", async () => {

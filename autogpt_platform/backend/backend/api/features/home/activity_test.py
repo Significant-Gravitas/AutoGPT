@@ -173,7 +173,7 @@ def test_active_task_falls_back_when_the_graph_is_unknown() -> None:
         {},
     )
 
-    assert tasks[0].title == "Agent task"
+    assert tasks[0].title == "Workflow task"
     assert tasks[0].link is None
 
 

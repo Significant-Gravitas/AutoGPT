@@ -7,6 +7,11 @@ Bot setup checklist (once per bot, via @BotFather):
 - ``/setprivacy`` -> Disable — group privacy mode ON (the default) means the
   bot never receives plain group messages, so @mentions and reply-to-bot go
   unseen. After changing it, remove + re-add the bot to existing groups.
+- ``/setdomain`` -> the domain of ``PLATFORM_LINK_BASE_URL`` (the frontend's
+  /link page, over HTTPS). Setup links go out as login_url buttons, which
+  Telegram only sends for that domain; a group can't be linked without
+  them, because confirming a group link needs the identity Telegram signs
+  onto the button.
 - The command menu registers itself on startup (setMyCommands).
 
 The webhook itself is registered once, out of band, with the secret Telegram

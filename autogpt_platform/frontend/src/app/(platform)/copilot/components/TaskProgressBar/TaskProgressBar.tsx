@@ -2,13 +2,13 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useState } from "react";
-import { EASE_OUT } from "./animations";
+import { memo, useState } from "react";
 import { StatusIcon } from "./components/StatusIcon/StatusIcon";
 import { TaskRow } from "./components/TaskRow/TaskRow";
 import {
   getCurrentLabel,
   getCurrentTask,
+  haveSameTodos,
   isAllComplete,
   toDisplayStatus,
   type TodoItem,
@@ -19,6 +19,7 @@ import {
   CheckmarkBadge01Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration, ease } from "@/components/styles/motion";
 
 // BlurText-style swap for the collapsed header's cycling current task only.
 const BLUR_SWAP = {
@@ -27,13 +28,17 @@ const BLUR_SWAP = {
     filter: ["blur(10px)", "blur(4px)", "blur(0px)"],
     opacity: [0, 0.6, 1],
     y: [-10, 3, 0],
-    transition: { duration: 0.22, times: [0, 0.5, 1], ease: EASE_OUT },
+    transition: { duration: duration.base, times: [0, 0.5, 1], ease: ease.out },
   },
   exit: {
     filter: ["blur(0px)", "blur(4px)", "blur(10px)"],
     opacity: [1, 0.6, 0],
     y: [0, 4, 10],
-    transition: { duration: 0.14, times: [0, 0.5, 1], ease: EASE_OUT },
+    transition: {
+      duration: duration.instant,
+      times: [0, 0.5, 1],
+      ease: ease.out,
+    },
   },
 };
 
@@ -49,7 +54,9 @@ interface Props {
   defaultExpanded?: boolean;
 }
 
-export function TaskProgressBar({
+// memo-boundary: the chat derives `todos` afresh on every streamed flush;
+// the comparator below renders the bar again only when the tasks change.
+export const TaskProgressBar = memo(function TaskProgressBar({
   todos,
   isStreaming = false,
   defaultExpanded = false,
@@ -65,10 +72,10 @@ export function TaskProgressBar({
 
   const reveal = reduceMotion
     ? { duration: 0 }
-    : { duration: 0.22, ease: EASE_OUT };
+    : { duration: duration.base, ease: ease.out };
 
   return (
-    <div className="mx-auto w-[95%] overflow-hidden rounded-t-3xl border border-b-0 border-zinc-200 bg-neutral-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),inset_0_5px_6px_-4px_rgba(255,255,255,0.7)]">
+    <div className="mx-auto w-[95%] overflow-hidden rounded-t-3xl border border-b-0 border-border-base bg-surface-hover shadow-sheen">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -81,11 +88,15 @@ export function TaskProgressBar({
               <Icon
                 icon={CheckmarkBadge01Icon}
                 size={22}
-                className="flex-shrink-0 text-[#00a656]"
+                tone="success"
+                className="flex-shrink-0"
               />
               <Text
-                variant="body-medium"
-                className="min-w-0 flex-1 truncate text-sm text-zinc-800"
+                variant="body"
+                weight="medium"
+                leading="5"
+                tone="emphasis"
+                className="min-w-0 flex-1 truncate"
               >
                 All tasks complete
               </Text>
@@ -101,8 +112,11 @@ export function TaskProgressBar({
                   status={toDisplayStatus(current.status, isStreaming)}
                 />
                 <Text
-                  variant="body-medium"
-                  className="min-w-0 flex-1 truncate text-sm text-zinc-800"
+                  variant="body"
+                  weight="medium"
+                  leading="5"
+                  tone="emphasis"
+                  className="min-w-0 flex-1 truncate"
                 >
                   {toDisplayStatus(current.status, isStreaming) === "stopped"
                     ? current.content
@@ -115,11 +129,15 @@ export function TaskProgressBar({
               <Icon
                 icon={CheckListIcon}
                 size={16}
-                className="flex-shrink-0 text-zinc-500"
+                tone="muted"
+                className="flex-shrink-0"
               />
               <Text
-                variant="body-medium"
-                className="min-w-0 flex-1 text-sm text-zinc-800"
+                variant="body"
+                weight="medium"
+                leading="5"
+                tone="emphasis"
+                className="min-w-0 flex-1"
               >
                 Task Progress
               </Text>
@@ -127,15 +145,24 @@ export function TaskProgressBar({
           )}
         </div>
 
-        <span className="flex-shrink-0 text-sm tabular-nums text-zinc-900">
+        <Text
+          variant="body"
+          leading="5"
+          as="span"
+          tone="primary"
+          tabular
+          className="flex-shrink-0"
+        >
           {allDone ? todos.length : currentIndex + 1}/{todos.length}
-        </span>
+        </Text>
         <motion.span
           animate={{ rotate: expanded ? 180 : 0 }}
           transition={
-            reduceMotion ? { duration: 0 } : { duration: 0.2, ease: EASE_OUT }
+            reduceMotion
+              ? { duration: 0 }
+              : { duration: duration.base, ease: ease.out }
           }
-          className="flex-shrink-0 text-zinc-400"
+          className="flex-shrink-0 text-foreground-subtle"
         >
           <Icon icon={ArrowDown01Icon} size={14} />
         </motion.span>
@@ -165,5 +192,13 @@ export function TaskProgressBar({
         )}
       </AnimatePresence>
     </div>
+  );
+}, areSameTaskBarProps);
+
+function areSameTaskBarProps(prev: Props, next: Props) {
+  return (
+    prev.isStreaming === next.isStreaming &&
+    prev.defaultExpanded === next.defaultExpanded &&
+    haveSameTodos(prev.todos, next.todos)
   );
 }

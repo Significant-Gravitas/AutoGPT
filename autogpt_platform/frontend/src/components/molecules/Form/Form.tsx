@@ -15,16 +15,30 @@ import {
 import { cn } from "@/lib/utils";
 import type { UseFormReturn } from "react-hook-form";
 
+// How far apart the fields sit: `compact` (10px, an inline credential form),
+// `stack` and `stack-tight` (a 16px or 8px column).
+const SPACING = {
+  compact: "space-y-2.5",
+  stack: "flex flex-col gap-4",
+  "stack-tight": "flex flex-col gap-2",
+} as const;
+
 type FormProps<TFieldValues extends FieldValues = FieldValues> = {
   form: UseFormReturn<TFieldValues>;
   onSubmit: (values: TFieldValues) => void | Promise<void>;
   className?: string;
+  spacing?: keyof typeof SPACING;
+  /** 4px each side, so the fields' focus rings are not clipped by a
+   *  scrolling parent. */
+  focusInset?: boolean;
 } & Omit<React.FormHTMLAttributes<HTMLFormElement>, "onSubmit">;
 
 function Form<TFieldValues extends FieldValues = FieldValues>({
   form,
   onSubmit,
   className,
+  spacing,
+  focusInset = false,
   children,
   ...props
 }: FormProps<TFieldValues>) {
@@ -32,7 +46,13 @@ function Form<TFieldValues extends FieldValues = FieldValues>({
     <FormProvider {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
-        className={cn("space-y-4", className)}
+        data-slot="form"
+        className={cn(
+          "space-y-4",
+          spacing && SPACING[spacing],
+          focusInset && "px-1",
+          className,
+        )}
         {...props}
       >
         {children}
@@ -104,7 +124,12 @@ const FormItem = React.forwardRef<
 
   return (
     <FormItemContext.Provider value={{ id }}>
-      <div ref={ref} className={cn("space-y-2", className)} {...props} />
+      <div
+        ref={ref}
+        data-slot="form-item"
+        className={cn("space-y-2", className)}
+        {...props}
+      />
     </FormItemContext.Provider>
   );
 });
@@ -119,7 +144,8 @@ const FormLabel = React.forwardRef<
   return (
     <LabelPrimitive.Root
       ref={ref}
-      className={cn(error && "text-red-500 dark:text-red-900", className)}
+      data-slot="form-label"
+      className={cn(error && "text-error", className)}
       htmlFor={formItemId}
       {...props}
     />
@@ -137,6 +163,7 @@ const FormControl = React.forwardRef<
   return (
     <Slot
       ref={ref}
+      data-slot="form-control"
       id={formItemId}
       aria-describedby={
         !error
@@ -152,16 +179,21 @@ FormControl.displayName = "FormControl";
 
 const FormDescription = React.forwardRef<
   HTMLParagraphElement,
-  React.HTMLAttributes<HTMLParagraphElement>
->(({ className, ...props }, ref) => {
+  React.HTMLAttributes<HTMLParagraphElement> & {
+    /** `body-sm`: 13px, at the line height of the text around it. */
+    size?: "body-sm";
+  }
+>(({ className, size, ...props }, ref) => {
   const { formDescriptionId } = useFormField();
 
   return (
     <p
       ref={ref}
       id={formDescriptionId}
+      data-slot="form-description"
       className={cn(
-        "font-sans text-[0.75rem] font-[400] leading-[1.125rem] text-neutral-500 dark:text-neutral-400",
+        "font-sans text-caption leading-4.5 font-normal text-foreground-tertiary",
+        size === "body-sm" && "text-body-sm leading-inherit",
         className,
       )}
       {...props}
@@ -185,8 +217,9 @@ const FormMessage = React.forwardRef<
     <p
       ref={ref}
       id={formMessageId}
+      data-slot="form-message"
       className={cn(
-        "font-sans text-[0.75rem] font-[500] leading-[1.125rem] text-red-500 dark:text-red-900",
+        "font-sans text-caption leading-4.5 font-medium text-error",
         className,
       )}
       {...props}

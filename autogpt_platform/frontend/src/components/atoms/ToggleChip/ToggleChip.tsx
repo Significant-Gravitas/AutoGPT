@@ -5,11 +5,13 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
 import { ArrowDataTransferVerticalIcon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { ReactNode } from "react";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   icon: ReactNode;
@@ -38,22 +40,27 @@ export function ToggleChip({
   const blurred = prefersReducedMotion ? "blur(0px)" : "blur(3px)";
 
   return (
-    <Tooltip>
+    <Tooltip inheritDelay>
       <TooltipTrigger asChild>
         <button
+          data-slot="toggle-chip"
           type="button"
           aria-pressed={pressed}
           aria-disabled={locked}
           onClick={onToggle}
           aria-label={ariaLabel}
           className={cn(
-            "group inline-flex h-7 items-center justify-center gap-1 rounded-full px-2.5 text-xs font-medium text-zinc-950 transition-colors hover:bg-white",
+            "group inline-flex h-7 items-center justify-center gap-1 rounded-pill px-2.5 text-caption leading-4 font-medium text-foreground-base transition-colors hover:bg-surface",
             locked && "cursor-not-allowed opacity-70 hover:bg-transparent",
             className,
           )}
         >
-          <span className="relative inline-flex size-3.5 items-center justify-center">
+          <span
+            data-slot="toggle-chip-icon"
+            className="relative inline-flex size-3.5 items-center justify-center"
+          >
             <span
+              data-slot="toggle-chip-icon-default"
               className={cn(
                 "transition-opacity duration-150 ease-out",
                 !locked && "group-hover:opacity-0",
@@ -63,19 +70,22 @@ export function ToggleChip({
             </span>
             {!locked && (
               <Icon
+                data-slot="toggle-chip-icon-hover"
                 icon={ArrowDataTransferVerticalIcon}
                 size={14}
-                className="absolute opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100"
+                motion="opacity"
+                className="absolute opacity-0 group-hover:opacity-100"
               />
             )}
           </span>
           <AnimatePresence mode="wait" initial={false}>
             <motion.span
               key={label}
+              data-slot="toggle-chip-label"
               initial={{ filter: blurred, opacity: 0 }}
               animate={{ filter: "blur(0px)", opacity: 1 }}
               exit={{ filter: blurred, opacity: 0 }}
-              transition={{ duration: 0.12, ease: [0, 0, 0.2, 1] }}
+              transition={{ duration: duration.instant, ease: ease.out }}
               className="hidden sm:inline"
             >
               {label}
@@ -83,7 +93,11 @@ export function ToggleChip({
           </AnimatePresence>
         </button>
       </TooltipTrigger>
-      <TooltipContent>{tooltip}</TooltipContent>
+      <TooltipPortal>
+        <TooltipContent data-slot="toggle-chip-tooltip">
+          {tooltip}
+        </TooltipContent>
+      </TooltipPortal>
     </Tooltip>
   );
 }

@@ -10,11 +10,11 @@ interface Props {
 export function ProfileEntry({ label, value }: Props) {
   return (
     <div>
-      <Text variant="large-medium" as="dt" tone="primary">
+      <Text variant="large" weight="medium" as="dt" tone="primary">
         {label}
       </Text>
       <Text
-        variant="body"
+        variant="body-md"
         as="dd"
         tone="secondary"
         className="mt-1 whitespace-pre-line"

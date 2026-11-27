@@ -7,7 +7,7 @@ frontend can list available tools on an MCP server before placing a block.
 
 import asyncio
 import logging
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
 
 import fastapi
@@ -21,6 +21,11 @@ from backend.api.features.integrations.router import (
 )
 from backend.api.features.mcp.oauth_registration import (
     MCPClientRegistration,
+    check_preregistered_endpoints,
+    preregistered_client,
+    preregistered_revocation_endpoint,
+    requested_scopes,
+    requires_registered_client,
     select_client_auth_method,
 )
 from backend.blocks.mcp.client import (
@@ -36,11 +41,13 @@ from backend.blocks.mcp.helpers import (
     server_host,
 )
 from backend.blocks.mcp.oauth import MCPOAuthHandler, MCPTokenEndpointAuthMethod
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.model import OAuth2Credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.mcp_catalog import get_mcp_catalog_entry_for_url
 from backend.integrations.providers import ProviderName
 from backend.util.request import (
+    ALLOWED_SCHEMES,
     AUTH_STATUS_CODES,
     CREDENTIAL_REJECTED_STATUS_CODES,
     HTTPClientError,
@@ -53,7 +60,10 @@ from backend.util.settings import Settings
 logger = logging.getLogger(__name__)
 
 settings = Settings()
-router = fastapi.APIRouter(tags=["mcp"])
+# Every route here reaches a server the user names.
+router = fastapi.APIRouter(
+    tags=["mcp"], dependencies=[fastapi.Depends(enforce_payment_paywall)]
+)
 creds_manager = IntegrationCredentialsManager()
 
 # Verifying a token is best-effort; it must never outlast a user's patience.
@@ -151,6 +161,7 @@ async def discover_tools(
             authorization = mcp_authorization_header(stored_credential)
 
     client = MCPClient(request.server_url, authorization=authorization)
+    hostname = server_host(request.server_url)
 
     try:
         init_result = await client.initialize()
@@ -162,7 +173,24 @@ async def discover_tools(
                 detail="This MCP server requires authentication. "
                 "Please provide a valid auth credential.",
             )
-        raise fastapi.HTTPException(status_code=502, detail=str(e))
+        if e.status_code == 429:
+            raise fastapi.HTTPException(
+                status_code=429,
+                detail=f"{hostname} is rate-limiting requests (HTTP 429). "
+                "Please try again shortly.",
+            )
+        # The error text carries the site's whole error page; keep only the status.
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f"No MCP server answered at {hostname} (HTTP {e.status_code}). "
+            "Please check the URL.",
+        )
+    except HTTPServerError as e:
+        raise fastapi.HTTPException(
+            status_code=502,
+            detail=f"{hostname} failed to answer (HTTP {e.status_code}). "
+            "Please try again later.",
+        )
     except MCPClientError as e:
         raise fastapi.HTTPException(status_code=502, detail=str(e))
     except Exception as e:
@@ -184,9 +212,7 @@ async def discover_tools(
             for t in tools
         ],
         server_name=(
-            init_result.get("serverInfo", {}).get("name")
-            or server_host(request.server_url)
-            or "MCP"
+            init_result.get("serverInfo", {}).get("name") or hostname or "MCP"
         ),
         protocol_version=init_result.get("protocolVersion"),
     )
@@ -203,6 +229,10 @@ class MCPOAuthLoginRequest(BaseModel):
         default=None,
         description="OAuth scopes to request. Omit or use null to use catalogue or discovered defaults; "
         "an empty list requests no scopes.",
+    )
+    client: Literal["native"] | None = Field(
+        default=None,
+        description="Set to native when the mobile app starts the sign-in",
     )
 
     @field_validator("scopes")
@@ -255,19 +285,16 @@ async def mcp_oauth_login(
     server_url = normalize_mcp_url(request.server_url)
     frontend_base_url = settings.config.frontend_base_url
     catalog_entry = get_mcp_catalog_entry_for_url(server_url)
-    catalog_scopes: list[str] | None = None
-    if catalog_entry:
-        if "oauth" not in catalog_entry.mcp_server.auth_methods:
-            raise fastapi.HTTPException(
-                status_code=400,
-                detail={
-                    "code": NO_OAUTH_CODE,
-                    "message": f"{catalog_entry.display_name} uses "
-                    f"{' / '.join(catalog_entry.mcp_server.auth_methods)} "
-                    f"authentication. {catalog_entry.mcp_server.setup_instructions}",
-                },
-            )
-        catalog_scopes = catalog_entry.mcp_server.oauth_scopes
+    if catalog_entry and "oauth" not in catalog_entry.mcp_server.auth_methods:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail={
+                "code": NO_OAUTH_CODE,
+                "message": f"{catalog_entry.display_name} uses "
+                f"{' / '.join(catalog_entry.mcp_server.auth_methods)} "
+                f"authentication. {catalog_entry.mcp_server.setup_instructions}",
+            },
+        )
     client = MCPClient(server_url)
 
     # Step 1: Discover protected-resource metadata (RFC 9728)
@@ -321,6 +348,18 @@ async def mcp_oauth_login(
         )
 
     authorize_url = metadata["authorization_endpoint"]
+    # The only endpoint here we hand to the browser instead of fetching
+    # ourselves, so nothing downstream vets its scheme.
+    if not _is_http_url(authorize_url):
+        logger.warning(
+            f"Rejecting metadata from {server_host(request.server_url)}: its "
+            "authorization endpoint is not an http(s) URL"
+        )
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail="This MCP server's authorization server metadata names a "
+            "sign-in page that is not an http(s) URL. Sign-in was stopped.",
+        )
     token_url = metadata["token_endpoint"]
     registration_endpoint = metadata.get("registration_endpoint")
     revoke_url = metadata.get("revocation_endpoint")
@@ -336,11 +375,10 @@ async def mcp_oauth_login(
     scopes = (
         request.scopes
         if request.scopes is not None
-        else (
-            catalog_scopes
-            if catalog_scopes is not None
-            else (protected_resource or {}).get("scopes_supported")
-            or metadata.get("scopes_supported", [])
+        else requested_scopes(
+            catalog_entry.mcp_server if catalog_entry else None,
+            protected_resource,
+            metadata,
         )
     )
     issuer = _validated_issuer(metadata, expected_issuer)
@@ -408,8 +446,54 @@ async def mcp_oauth_login(
             client_id = registration.client_id
             client_secret = registration.client_secret.get_secret_value()
             token_endpoint_auth_method = registration.token_endpoint_auth_method
+    elif (
+        preregistered := preregistered_client(server_url, settings.secrets)
+    ) is not None:
+        client_id, client_secret = preregistered
+        if not (client_id and client_secret):
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail={
+                    "code": NO_OAUTH_CODE,
+                    "message": f"Sign-in to {server_host(server_url)} is not "
+                    "set up on this platform yet: the server only accepts an "
+                    "OAuth app registered with it in advance. "
+                    "You may need to provide an auth credential manually.",
+                },
+            )
+        try:
+            check_preregistered_endpoints(server_url, metadata)
+        except ValueError as e:
+            logger.warning("Refusing pre-registered client sign-in: %s", e)
+            raise fastapi.HTTPException(status_code=400, detail=str(e))
+        trusted_revoke_url = preregistered_revocation_endpoint(server_url, revoke_url)
+        if revoke_url and not trusted_revoke_url:
+            logger.warning(
+                "Ignoring off-host revocation endpoint advertised by %s",
+                server_host(server_url),
+            )
+        revoke_url = trusted_revoke_url
+        try:
+            token_endpoint_auth_method = select_client_auth_method(metadata)
+        except ValueError as e:
+            raise fastapi.HTTPException(status_code=400, detail=str(e))
 
     if not client_id:
+        # A server with no DCR that only takes secret-holding clients rejects
+        # the placeholder with "invalid client id" on its own page, after the
+        # user has left the platform. Say so here instead.
+        if requires_registered_client(metadata):
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail={
+                    "code": NO_OAUTH_CODE,
+                    "message": f"Sign-in to {server_host(server_url)} is not "
+                    "available on this platform: the server only accepts an "
+                    "OAuth app registered with it in advance, and none is "
+                    "registered for it here. "
+                    "You may need to provide an auth credential manually.",
+                },
+            )
         client_id = "autogpt-platform"
 
     # Step 4: Store state token with OAuth metadata for the callback
@@ -429,6 +513,7 @@ async def mcp_oauth_login(
             "issuer": issuer,
             "iss_required": iss_required,
         },
+        native=request.client == "native",
     )
 
     # Step 5: Build and return the login URL
@@ -636,7 +721,7 @@ async def mcp_store_token(
     Used by the Copilot MCPSetupCard when the server doesn't support the MCP
     OAuth discovery flow (returns 400 from /oauth/login).  Subsequent
     ``run_capability`` MCP calls will automatically pick up the credential via
-    ``_auto_lookup_credential``.
+    ``auto_lookup_mcp_credential``.
     """
     try:
         authorization = normalize_mcp_authorization(request.token.get_secret_value())
@@ -820,6 +905,22 @@ def _canonical_issuer(url: str) -> str:
     """
     scheme, host = _origin(url)
     return f"{scheme}://{host}{urlparse(url).path.rstrip('/')}"
+
+
+def _is_http_url(url: Any) -> bool:
+    """Whether *url* is an absolute http(s) URL with a host.
+
+    Endpoints we fetch ourselves go through ``Requests``, which refuses other
+    schemes; this is for the one we only hand on.
+    """
+    if not isinstance(url, str):
+        return False
+    try:
+        parsed = urlparse(url)
+        return parsed.scheme in ALLOWED_SCHEMES and bool(parsed.hostname)
+    except ValueError:
+        # A malformed authority, e.g. an unclosed IPv6 bracket.
+        return False
 
 
 def _validated_issuer(metadata: dict[str, Any], expected_issuer: str) -> str:

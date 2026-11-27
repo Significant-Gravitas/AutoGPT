@@ -1,8 +1,7 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-
-const EASE_OUT_QUINT = [0.22, 1, 0.36, 1] as const;
+import { duration, ease } from "@/components/styles/motion";
 
 // A compact take on the library's stacked-cards illustration, sized for a
 // panel rather than a page: three ghost rows settling into place.
@@ -39,8 +38,8 @@ export function HomeEmptyIllustration() {
               : { opacity: card.opacity, y: 0, scale: 1 }
           }
           transition={{
-            duration: shouldReduceMotion ? 0.2 : 0.45,
-            ease: EASE_OUT_QUINT,
+            duration: shouldReduceMotion ? duration.base : duration.slower,
+            ease: ease.glide,
             delay: shouldReduceMotion ? 0 : index * 0.08,
           }}
           className="origin-[120px_52px] [transform-box:fill-box]"
@@ -75,13 +74,13 @@ function Card({ x, y, width }: CardProps) {
         rx={radius}
         ry={radius}
         strokeWidth={1}
-        className="fill-white stroke-zinc-200"
+        className="fill-surface stroke-border-base"
       />
       <circle
         cx={x + padding + dotRadius}
         cy={midY}
         r={dotRadius}
-        className="fill-zinc-200"
+        className="fill-surface-active"
       />
       <rect
         x={x + padding + dotRadius * 2 + 8}
@@ -90,7 +89,7 @@ function Card({ x, y, width }: CardProps) {
         height={8}
         rx={4}
         ry={4}
-        className="fill-zinc-200"
+        className="fill-surface-active"
       />
       <rect
         x={x + width - padding - 52}
@@ -99,7 +98,7 @@ function Card({ x, y, width }: CardProps) {
         height={8}
         rx={2}
         ry={2}
-        className="fill-zinc-200"
+        className="fill-surface-active"
       />
       <rect
         x={x + width - padding - 38}
@@ -108,7 +107,7 @@ function Card({ x, y, width }: CardProps) {
         height={8}
         rx={2}
         ry={2}
-        className="fill-zinc-200"
+        className="fill-surface-active"
       />
       <rect
         x={x + width - padding - 24}
@@ -117,7 +116,7 @@ function Card({ x, y, width }: CardProps) {
         height={8}
         rx={4}
         ry={4}
-        className="fill-zinc-200"
+        className="fill-surface-active"
       />
     </g>
   );

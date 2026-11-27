@@ -4,15 +4,19 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Callable
 from functools import wraps
 from uuid import uuid4
 
 from tenacity import (
+    RetryCallState,
     retry,
+    retry_if_exception,
     retry_if_not_exception_type,
     stop_after_attempt,
     wait_exponential_jitter,
 )
+from tenacity.retry import retry_base
 from tenacity.stop import stop_base
 
 from backend.util.settings import get_service_name
@@ -149,6 +153,9 @@ def create_retry_decorator(
     max_wait: float = 30.0,
     context: str = "",
     reraise: bool = True,
+    retry_if: Callable[[BaseException], bool] | None = None,
+    also_stop: stop_base | None = None,
+    wait: Callable[[RetryCallState], float] | None = None,
 ):
     """
     Create a preconfigured retry decorator with sensible defaults.
@@ -161,16 +168,24 @@ def create_retry_decorator(
         max_wait: Maximum wait time in seconds (default: 30)
         context: Optional context string for log messages
         reraise: Whether to reraise the final exception (default: True)
+        retry_if: Retries only an exception this accepts, in place of exclude_exceptions
+        also_stop: Another stop condition, ending the retries when either does
+        wait: The seconds to wait before each retry, in place of the backoff up to max_wait
 
     Returns:
         Configured retry decorator
     """
-    stop = stop_after_attempt(max_attempts) | _StopOnShutdown()
-    wait = wait_exponential_jitter(max=max_wait)
+    stop: stop_base = stop_after_attempt(max_attempts) | _StopOnShutdown()
+    if also_stop is not None:
+        stop = stop | also_stop
+    if wait is None:
+        wait = wait_exponential_jitter(max=max_wait)
     before_sleep = _create_retry_callback(context)
-    retry_on = (
+    retry_on: retry_base | None = (
         retry_if_not_exception_type(exclude_exceptions) if exclude_exceptions else None
     )
+    if retry_if is not None:
+        retry_on = retry_if_exception(retry_if)
 
     def decorator(func):
         # Pick the interruptible sleep matching the wrapped function so a

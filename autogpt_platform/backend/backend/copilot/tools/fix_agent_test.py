@@ -4,6 +4,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.tools.agent_generator.pipeline import (
+    MAX_AGENT_JSON_SIZE,
+    fix_validate_and_save,
+)
 from backend.copilot.tools.fix_agent import FixAgentGraphTool
 from backend.copilot.tools.models import ErrorResponse, FixResultResponse
 
@@ -189,6 +193,33 @@ async def test_fixer_exception_returns_error(tool, session):
     assert "fix_exception" in result.error
 
 
+@pytest.mark.parametrize("external_caller", [True, False])
+@pytest.mark.asyncio
+async def test_a_fixer_failure_tells_an_external_caller_no_internals(
+    tool, session, external_caller
+):
+    session.external_caller = external_caller
+    agent_json = {
+        "nodes": [{"id": "n1", "block_id": "b1", "input_default": {}, "metadata": {}}],
+        "links": [],
+    }
+    mock_fixer = MagicMock()
+    mock_fixer.apply_all_fixes = MagicMock(
+        side_effect=KeyError("internal_registry_slot")
+    )
+
+    with (
+        patch("backend.copilot.tools.fix_agent.get_blocks_as_dicts", return_value=[]),
+        patch("backend.copilot.tools.fix_agent.AgentFixer", return_value=mock_fixer),
+    ):
+        result = await tool._execute(
+            user_id=_TEST_USER_ID, session=session, agent_json=agent_json
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert ("internal_registry_slot" in result.message) is not external_caller
+
+
 def _agent(nodes_extra: dict | None = None) -> dict:
     node = {
         "id": "node-1",
@@ -311,3 +342,58 @@ async def test_write_to_failure_falls_back_inline(tool, session):
     assert result.fixed_agent_ref is None
     assert result.fixed_agent_json is not None
     assert "could not write" in result.message
+
+
+@pytest.mark.asyncio
+async def test_an_oversized_workflow_is_refused_before_the_fixer_runs(tool, session):
+    """The same bound as the save path: the fixer's cost grows with the
+    workflow, and it runs on the event loop."""
+    node = {
+        "id": "n1",
+        "block_id": "b1",
+        "input_default": {"text": "x" * MAX_AGENT_JSON_SIZE},
+        "metadata": {},
+    }
+
+    with patch("backend.copilot.tools.fix_agent.AgentFixer") as fixer:
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_json={"nodes": [node], "links": []},
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "agent_json_too_large"
+    assert "This workflow is too large" in result.message
+    fixer.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_the_save_path_refuses_an_oversized_workflow_before_the_fixer_runs():
+    """create_agent and edit_agent save through fix_validate_and_save, which
+    checks the same bound before its fixer runs, and saves nothing."""
+    node = {
+        "id": "n1",
+        "block_id": "b1",
+        "input_default": {"text": "x" * MAX_AGENT_JSON_SIZE},
+        "metadata": {},
+    }
+    pipeline = "backend.copilot.tools.agent_generator.pipeline"
+    save = AsyncMock()
+
+    with (
+        patch(f"{pipeline}.AgentFixer") as fixer,
+        patch(f"{pipeline}.save_agent_to_library", save),
+    ):
+        result = await fix_validate_and_save(
+            {"nodes": [node], "links": []},
+            user_id=_TEST_USER_ID,
+            session_id="session-1",
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "agent_json_too_large"
+    assert "This workflow is too large" in result.message
+    assert result.session_id == "session-1"
+    fixer.assert_not_called()
+    save.assert_not_awaited()

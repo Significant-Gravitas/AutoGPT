@@ -49,7 +49,7 @@ export function GenerateTestDataButton() {
         styling={{ maxWidth: "32rem" }}
       >
         <Dialog.Content>
-          <Text variant="body" className="pb-4 text-neutral-600">
+          <Text variant="body" className="mb-4" tone="secondary">
             This will populate the database with sample test data including
             users, agents, graphs, store listings, and more.
           </Text>
@@ -68,7 +68,7 @@ export function GenerateTestDataButton() {
 
             <Alert variant="warning">
               <Text variant="small" as="span">
-                <Text variant="small-medium" as="span">
+                <Text variant="small" weight="medium" as="span">
                   Warning:
                 </Text>{" "}
                 This will add significant data to your database. This endpoint
@@ -81,7 +81,9 @@ export function GenerateTestDataButton() {
                 role="status"
                 variant={result.success ? "default" : "error"}
               >
-                <Text variant="small-medium">{result.message}</Text>
+                <Text variant="small" weight="medium">
+                  {result.message}
+                </Text>
                 {result.details && (
                   <ul className="mt-2 list-inside list-disc">
                     {Object.entries(result.details).map(([key, value]) => (

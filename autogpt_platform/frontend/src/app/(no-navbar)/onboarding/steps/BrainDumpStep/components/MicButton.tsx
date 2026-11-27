@@ -18,6 +18,7 @@ import { useAudioBars } from "./useAudioBars";
 import { useSimulatedVoice } from "./useSimulatedVoice";
 import { VoiceAura } from "./VoiceAura";
 import { DOT, VoiceDots } from "./VoiceDots";
+import { duration, spring } from "@/components/styles/motion";
 
 export type OrbScreen = "rest" | "recording" | "processing" | "failed";
 
@@ -28,19 +29,17 @@ const DOT_COLOR = AUTOPILOT_DOT_COLOR;
 // Quick and near-critically damped: fast in, a whisper of settle, no wobble.
 const COLLAPSE = {
   type: "spring",
-  stiffness: 520,
-  damping: 32,
+  ...spring.snappy,
   mass: 0.7,
 } as const;
 const SPLIT = {
   type: "spring",
-  stiffness: 560,
-  damping: 30,
+  ...spring.snappy,
   mass: 0.7,
 } as const;
 // A full tumble on the avatar's pitch axis, overlapping the fold so the
 // body is mid-flip as it becomes the dot.
-const REDUCED = { duration: 0.15 } as const;
+const REDUCED = { duration: duration.fast } as const;
 // The next stage starts this soon after the previous one begins, so the
 // stages overlap instead of waiting for each bounce to die down.
 const OVERLAP_MS = 120;
@@ -128,12 +127,9 @@ export function MicButton({
         isActive={isFolding && !reduceMotion}
       >
         <motion.div
-          style={{
-            scale: bodyScale,
-            opacity: bodyOpacity,
-            transformOrigin: `${CENTRE.x}px ${CENTRE.y}px`,
-            willChange: "transform, opacity",
-          }}
+          className="origin-center will-change-[transform,opacity]"
+          // oxlint-disable-next-line design-system/no-inline-styles -- framer-motion MotionValues
+          style={{ scale: bodyScale, opacity: bodyOpacity }}
         >
           <AutopilotAvatar size={AVATAR_SIZE} transparent />
         </motion.div>

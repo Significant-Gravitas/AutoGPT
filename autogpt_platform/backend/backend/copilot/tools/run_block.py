@@ -4,9 +4,10 @@ import logging
 import uuid
 from typing import Any
 
+from backend.blocks import get_block
 from backend.blocks.llm import LLM_PROVIDER_NAMES
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
-from backend.copilot.context import get_current_permissions
+from backend.copilot.gate import unified_approvals
 from backend.copilot.model import ChatSession
 from backend.data.activity_event import ActivityEventDraft
 
@@ -46,7 +47,7 @@ class RunBlockTool(BaseTool):
             "Call with empty input_data to see schema, then with data to execute. "
             "Pass `validate_only: true` to inspect a block without running it "
             "(safe pre-flight — returns schema + detected missing inputs). "
-            "If review_required, use resume_capability."
+            "If review_required, say where its card is, then use resume_capability."
         )
 
     @property
@@ -98,10 +99,11 @@ class RunBlockTool(BaseTool):
             or result.provider in LLM_PROVIDER_NAMES
         ):
             return None
+        block = get_block(result.block_id)
         return ActivityEventDraft(
             category="INTEGRATION",
             event_type="integration.action",
-            title=result.block_name,
+            title=block.display_name if block else result.block_name,
             provider=result.provider,
             object_id=result.block_id,
         )
@@ -115,6 +117,8 @@ class RunBlockTool(BaseTool):
         input_data: dict | None = None,
         validate_only: bool = False,
         gate_approved: bool = False,
+        gate_decided: bool = False,
+        refs_resolved: bool = False,
         **kwargs,  # dry_run is intentionally not accepted; read from session.dry_run
     ) -> ToolResponseBase:
         """Execute a block with the given input data.
@@ -126,6 +130,10 @@ class RunBlockTool(BaseTool):
             input_data: Input values for the block
             gate_approved: The user approved this exact call on a card, so the
                 irreversible-action pause would ask the same question twice.
+            gate_decided: The chat's approval gate reached a verdict on this
+                call; with unified approvals on, its yes is the block's review.
+            refs_resolved: The input's file references were resolved before
+                the gate reviewed the call, so it runs as reviewed.
 
         Returns:
             BlockOutputResponse: Block execution outputs
@@ -167,55 +175,11 @@ class RunBlockTool(BaseTool):
             session_id=session_id,
             dry_run=dry_run,
             validate_only=validate_only,
+            refs_resolved=refs_resolved,
         )
         if isinstance(prep_or_err, ToolResponseBase):
             return prep_or_err
         prep: BlockPreparation = prep_or_err
-
-        # Check block-level permissions before execution.
-        perms = get_current_permissions()
-        if perms is not None and not perms.is_block_allowed(block_id, prep.block.name):
-            available_hint = (
-                f"Allowed identifiers: {perms.blocks!r}. "
-                if not perms.blocks_exclude and perms.blocks
-                else (
-                    f"Blocked identifiers: {perms.blocks!r}. "
-                    if perms.blocks_exclude and perms.blocks
-                    else ""
-                )
-            )
-            return ErrorResponse(
-                message=(
-                    f"Block '{prep.block.name}' ({block_id}) is not permitted "
-                    f"by the current execution permissions. {available_hint}"
-                    "Use find_capability to discover blocks that are allowed."
-                ),
-                session_id=session_id,
-            ).from_outside()
-
-        # Dry-run fast-path: skip credential/HITL checks — simulation never calls
-        # the real service so credentials and review gates are not needed.
-        # Input field validation (unrecognized fields) is already handled by
-        # prepare_block_for_execution above.
-        if dry_run:
-            synthetic_node_exec_id = (
-                f"{prep.synthetic_node_id}"
-                f"{COPILOT_NODE_EXEC_ID_SEPARATOR}"
-                f"{uuid.uuid4().hex[:8]}"
-            )
-            return await execute_block(
-                block=prep.block,
-                block_id=block_id,
-                input_data=prep.input_data,
-                user_id=user_id,
-                session_id=session_id,
-                node_exec_id=synthetic_node_exec_id,
-                matched_credentials=prep.matched_credentials,
-                dry_run=True,
-                organization_id=session.organization_id,
-                team_id=session.team_id,
-                expert_id=session.expert_id,
-            )
 
         # Show block details when required inputs are not yet provided
         # (two-step UX: first call returns the schema, second call actually
@@ -248,7 +212,9 @@ class RunBlockTool(BaseTool):
             llm_input_schema = _strip_credentials_from_schema(
                 prep.input_schema, prep.credentials_fields
             )
-            llm_input_schema = _strip_presentation_annotations(llm_input_schema)
+            llm_input_schema = _strip_presentation_annotations(
+                _offered_models_only(llm_input_schema)
+            )
             output_schema = _strip_presentation_annotations(output_schema)
             if validate_only and not missing:
                 detail_msg = (
@@ -281,12 +247,38 @@ class RunBlockTool(BaseTool):
                 user_authenticated=True,
             ).from_outside()
 
-        if not dry_run:
-            spend_gate = await check_spend_approval(prep, user_id, session)
-            if spend_gate is not None:
-                return spend_gate
+        # A dry run simulates the block instead of running it. Only a call that
+        # would run the block gets here: validate_only and missing required
+        # inputs got the block's details above, as in a real session.
+        # Simulation never calls the real service, so the spend, credential
+        # and review gates below don't apply. Unrecognized input fields were
+        # already rejected by prepare_block_for_execution.
+        if dry_run:
+            synthetic_node_exec_id = (
+                f"{prep.synthetic_node_id}"
+                f"{COPILOT_NODE_EXEC_ID_SEPARATOR}"
+                f"{uuid.uuid4().hex[:8]}"
+            )
+            return await execute_block(
+                block=prep.block,
+                block_id=block_id,
+                input_data=prep.input_data,
+                user_id=user_id,
+                session_id=session_id,
+                node_exec_id=synthetic_node_exec_id,
+                matched_credentials=prep.matched_credentials,
+                dry_run=True,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+                expert_id=session.expert_id,
+            )
 
-        if gate_approved:
+        spend_gate = await check_spend_approval(prep, user_id, session)
+        if spend_gate is not None:
+            return spend_gate
+
+        # Named args from run_capability._run_block, never gate markers in kwargs.
+        if gate_approved or (gate_decided and await unified_approvals(user_id)):
             synthetic_node_exec_id = (
                 f"{prep.synthetic_node_id}"
                 f"{COPILOT_NODE_EXEC_ID_SEPARATOR}"
@@ -300,6 +292,7 @@ class RunBlockTool(BaseTool):
                 session_id,
                 organization_id=session.organization_id,
                 team_id=session.team_id,
+                metadata=session.metadata,
             )
             if isinstance(hitl_or_err, ToolResponseBase):
                 return hitl_or_err
@@ -333,17 +326,23 @@ _SCHEMA_MAP_KEYS = frozenset(
 )
 
 
-def _strip_presentation_annotations(node: Any) -> Any:
-    """Return *node* with the builder-UI annotation keys removed, recursively."""
+def _strip_presentation_annotations(node: Any, name: str | None = None) -> Any:
+    """Return *node* without the annotations the model cannot act on.
+
+    *name* is the property the node is filed under, when there is one — a title
+    that only re-cases that name is dropped too.
+    """
     if isinstance(node, dict):
         cleaned: dict[str, Any] = {}
         for key, value in node.items():
             if key in _PRESENTATION_ONLY_KEYS:
                 continue
+            if key == "title" and name is not None and value == _derived_title(name):
+                continue
             if key in _SCHEMA_MAP_KEYS and isinstance(value, dict):
                 cleaned[key] = {
-                    name: _strip_presentation_annotations(sub)
-                    for name, sub in value.items()
+                    sub_name: _strip_presentation_annotations(sub, sub_name)
+                    for sub_name, sub in value.items()
                 }
             else:
                 cleaned[key] = _strip_presentation_annotations(value)
@@ -351,6 +350,35 @@ def _strip_presentation_annotations(node: Any) -> Any:
     if isinstance(node, list):
         return [_strip_presentation_annotations(item) for item in node]
     return node
+
+
+def _offered_models_only(node: Any) -> Any:
+    """*node* with each LLM model list cut to the models the block picker
+    offers (``llm_model_metadata``). The enum keeps the models the catalog
+    has switched off, so stored workflows keep validating, but new work
+    must not pick one."""
+    if isinstance(node, list):
+        return [_offered_models_only(item) for item in node]
+    if not isinstance(node, dict):
+        return node
+    cleaned = {key: _offered_models_only(value) for key, value in node.items()}
+    offered = node.get("llm_model_metadata")
+    if (
+        node.get("llm_model") is True
+        and isinstance(offered, dict)
+        and isinstance(node.get("enum"), list)
+    ):
+        cleaned["enum"] = [model for model in node["enum"] if model in offered]
+    return cleaned
+
+
+def _derived_title(property_name: str) -> str:
+    """The label BlockDetailsCard renders when a property carries no title.
+
+    Must stay in step with ``deriveFieldTitle`` in that component: a title this
+    reproduces is dropped, so any drift changes what the card displays.
+    """
+    return " ".join(w[:1].upper() + w[1:] for w in property_name.split("_"))
 
 
 def _strip_credentials_from_schema(

@@ -77,6 +77,7 @@ class TodoistListProjectsBlock(Block):
                     None,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -158,6 +159,7 @@ class TodoistCreateProjectBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"create_project": lambda *args, **kwargs: (True)},
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -257,6 +259,7 @@ class TodoistGetProjectBlock(Block):
                     },
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -333,6 +336,7 @@ class TodoistUpdateProjectBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"update_project": lambda *args, **kwargs: (True)},
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -498,6 +502,7 @@ class TodoistListCollaboratorsBlock(Block):
                     ],
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

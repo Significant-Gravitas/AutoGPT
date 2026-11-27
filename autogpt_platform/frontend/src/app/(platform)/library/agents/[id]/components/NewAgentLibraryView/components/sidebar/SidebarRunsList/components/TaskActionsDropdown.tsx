@@ -71,7 +71,8 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
 
   async function handleCreateTemplate(name: string, description: string) {
     try {
-      const res = await createPreset({
+      // A failed save throws: the API client raises on any non-2xx answer.
+      await createPreset({
         data: {
           name,
           description,
@@ -79,19 +80,17 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
         },
       });
 
-      if (res.status === 200) {
-        toast({
-          title: "Template created",
-        });
+      toast({
+        title: "Template created",
+      });
 
-        queryClient.invalidateQueries({
-          queryKey: getGetV2ListPresetsQueryKey({
-            graph_id: agent.graph_id,
-          }),
-        });
+      queryClient.invalidateQueries({
+        queryKey: getGetV2ListPresetsQueryKey({
+          graph_id: agent.graph_id,
+        }),
+      });
 
-        setIsCreateTemplateModalOpen(false);
-      }
+      return true;
     } catch (error: unknown) {
       toast({
         title: "Failed to create template",
@@ -101,6 +100,7 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
             : "An unexpected error occurred.",
         variant: "destructive",
       });
+      return false;
     }
   }
 
@@ -109,11 +109,11 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="ml-auto shrink-0 rounded p-1 hover:bg-gray-100"
+            className="ml-auto shrink-0 rounded p-1 text-foreground-subtle hover:bg-surface-hover"
             onClick={(e) => e.stopPropagation()}
             aria-label="More actions"
           >
-            <Icon icon={MoreVerticalIcon} className="h-5 w-5 text-gray-400" />
+            <Icon icon={MoreVerticalIcon} className="h-5 w-5" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -122,7 +122,6 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
               e.stopPropagation();
               setIsCreateTemplateModalOpen(true);
             }}
-            className="flex items-center gap-2"
           >
             Save as template
           </DropdownMenuItem>
@@ -132,7 +131,6 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
               e.stopPropagation();
               setShowDeleteDialog(true);
             }}
-            className="flex items-center gap-2"
           >
             Delete task
           </DropdownMenuItem>

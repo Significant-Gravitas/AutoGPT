@@ -18,6 +18,7 @@ from backend.blocks.apollo.models import (
     PrimaryPhone,
     SearchOrganizationsRequest,
 )
+from backend.data.block import BlockInput
 from backend.data.model import CredentialsField, NodeExecutionStats, SchemaField
 
 
@@ -101,109 +102,17 @@ To find IDs, identify the values for organization_id when you call this endpoint
             test_output=[
                 (
                     "organization",
-                    Organization(
-                        id="1",
-                        name="Google",
-                        website_url="https://google.com",
-                        blog_url="https://google.com/blog",
-                        angellist_url="https://angel.co/google",
-                        linkedin_url="https://linkedin.com/company/google",
-                        twitter_url="https://twitter.com/google",
-                        facebook_url="https://facebook.com/google",
-                        primary_phone=PrimaryPhone(
-                            source="google",
-                            number="1234567890",
-                            sanitized_number="1234567890",
-                        ),
-                        languages=["en"],
-                        alexa_ranking=1000,
-                        phone="1234567890",
-                        linkedin_uid="1234567890",
-                        founded_year=2000,
-                        publicly_traded_symbol="GOOGL",
-                        publicly_traded_exchange="NASDAQ",
-                        logo_url="https://google.com/logo.png",
-                        chrunchbase_url="https://chrunchbase.com/google",
-                        primary_domain="google.com",
-                        sanitized_phone="1234567890",
-                        owned_by_organization_id="1",
-                        intent_strength="strong",
-                        show_intent=True,
-                        has_intent_signal_account=True,
-                        intent_signal_account="1",
-                    ),
+                    _sample_organization(),
                 ),
                 (
                     "organizations",
                     [
-                        Organization(
-                            id="1",
-                            name="Google",
-                            website_url="https://google.com",
-                            blog_url="https://google.com/blog",
-                            angellist_url="https://angel.co/google",
-                            linkedin_url="https://linkedin.com/company/google",
-                            twitter_url="https://twitter.com/google",
-                            facebook_url="https://facebook.com/google",
-                            primary_phone=PrimaryPhone(
-                                source="google",
-                                number="1234567890",
-                                sanitized_number="1234567890",
-                            ),
-                            languages=["en"],
-                            alexa_ranking=1000,
-                            phone="1234567890",
-                            linkedin_uid="1234567890",
-                            founded_year=2000,
-                            publicly_traded_symbol="GOOGL",
-                            publicly_traded_exchange="NASDAQ",
-                            logo_url="https://google.com/logo.png",
-                            chrunchbase_url="https://chrunchbase.com/google",
-                            primary_domain="google.com",
-                            sanitized_phone="1234567890",
-                            owned_by_organization_id="1",
-                            intent_strength="strong",
-                            show_intent=True,
-                            has_intent_signal_account=True,
-                            intent_signal_account="1",
-                        ),
+                        _sample_organization(),
                     ],
                 ),
             ],
             test_mock={
-                "search_organizations": lambda *args, **kwargs: [
-                    Organization(
-                        id="1",
-                        name="Google",
-                        website_url="https://google.com",
-                        blog_url="https://google.com/blog",
-                        angellist_url="https://angel.co/google",
-                        linkedin_url="https://linkedin.com/company/google",
-                        twitter_url="https://twitter.com/google",
-                        facebook_url="https://facebook.com/google",
-                        primary_phone=PrimaryPhone(
-                            source="google",
-                            number="1234567890",
-                            sanitized_number="1234567890",
-                        ),
-                        languages=["en"],
-                        alexa_ranking=1000,
-                        phone="1234567890",
-                        linkedin_uid="1234567890",
-                        founded_year=2000,
-                        publicly_traded_symbol="GOOGL",
-                        publicly_traded_exchange="NASDAQ",
-                        logo_url="https://google.com/logo.png",
-                        chrunchbase_url="https://chrunchbase.com/google",
-                        primary_domain="google.com",
-                        sanitized_phone="1234567890",
-                        owned_by_organization_id="1",
-                        intent_strength="strong",
-                        show_intent=True,
-                        has_intent_signal_account=True,
-                        intent_signal_account="1",
-                    )
-                ]
+                "search_organizations": lambda *args, **kwargs: [_sample_organization()]
             },
             effect=BlockEffect.READ,
         )
@@ -214,6 +123,12 @@ To find IDs, identify the values for organization_id when you call this endpoint
     ) -> list[Organization]:
         client = ApolloClient(credentials)
         return await client.search_organizations(query)
+
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        return NodeExecutionStats(
+            provider_cost=float(input_data.get("max_results") or 0),
+            provider_cost_type="items",
+        )
 
     async def run(
         self, input_data: Input, *, credentials: ApolloCredentials, **kwargs
@@ -228,3 +143,37 @@ To find IDs, identify the values for organization_id when you call this endpoint
         for organization in organizations:
             yield "organization", organization
         yield "organizations", organizations
+
+
+def _sample_organization() -> Organization:
+    return Organization(
+        id="1",
+        name="Google",
+        website_url="https://google.com",
+        blog_url="https://google.com/blog",
+        angellist_url="https://angel.co/google",
+        linkedin_url="https://linkedin.com/company/google",
+        twitter_url="https://twitter.com/google",
+        facebook_url="https://facebook.com/google",
+        primary_phone=PrimaryPhone(
+            source="google",
+            number="1234567890",
+            sanitized_number="1234567890",
+        ),
+        languages=["en"],
+        alexa_ranking=1000,
+        phone="1234567890",
+        linkedin_uid="1234567890",
+        founded_year=2000,
+        publicly_traded_symbol="GOOGL",
+        publicly_traded_exchange="NASDAQ",
+        logo_url="https://google.com/logo.png",
+        chrunchbase_url="https://chrunchbase.com/google",
+        primary_domain="google.com",
+        sanitized_phone="1234567890",
+        owned_by_organization_id="1",
+        intent_strength="strong",
+        show_intent=True,
+        has_intent_signal_account=True,
+        intent_signal_account="1",
+    )

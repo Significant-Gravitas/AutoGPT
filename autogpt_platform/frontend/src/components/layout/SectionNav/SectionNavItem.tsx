@@ -1,0 +1,89 @@
+"use client";
+
+import Link, { useLinkStatus } from "next/link";
+import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { cn } from "@/lib/utils";
+import { Text } from "@/components/atoms/Text/Text";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
+import type { IconSvgElement } from "@hugeicons/react";
+import { duration, ease } from "@/components/styles/motion";
+
+export interface SectionNavLink {
+  label: string;
+  href: string;
+  Icon: IconSvgElement;
+}
+
+type Props = {
+  item: SectionNavLink;
+  isActive: boolean;
+};
+
+function NavItemContent({
+  label,
+  Icon,
+  isActive,
+}: {
+  label: string;
+  Icon: IconSvgElement;
+  isActive: boolean;
+}) {
+  const { pending } = useLinkStatus();
+
+  return (
+    <>
+      <UIIcon icon={Icon} size={16} tone="base" />
+      <Text
+        variant="body"
+        as="span"
+        tone={isActive ? "base" : "body"}
+        weight={isActive ? "medium" : "normal"}
+        className="flex-1"
+      >
+        {label}
+      </Text>
+      {pending ? <LoadingSpinner size="small" /> : null}
+    </>
+  );
+}
+
+export function SectionNavItem({ item, isActive }: Props) {
+  const reduceMotion = useReducedMotion();
+
+  const variants: Variants = reduceMotion
+    ? {
+        hidden: { opacity: 0 },
+        show: { opacity: 1, transition: { duration: duration.fast } },
+      }
+    : {
+        hidden: { opacity: 0, x: -6 },
+        show: {
+          opacity: 1,
+          x: 0,
+          transition: {
+            duration: duration.base,
+            ease: ease.out,
+          },
+        },
+      };
+
+  return (
+    <motion.div variants={variants} className="w-full">
+      <Link
+        href={item.href}
+        aria-current={isActive ? "page" : undefined}
+        className={cn(
+          "flex h-[38px] w-full items-center gap-2 rounded-lg px-3 text-foreground-body transition-colors",
+          isActive ? "bg-surface-hover" : "hover:bg-surface-hover/60",
+        )}
+      >
+        <NavItemContent
+          label={item.label}
+          Icon={item.Icon}
+          isActive={isActive}
+        />
+      </Link>
+    </motion.div>
+  );
+}

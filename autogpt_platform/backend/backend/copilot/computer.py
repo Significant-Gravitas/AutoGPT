@@ -25,6 +25,7 @@ would wake it.
 
 import asyncio
 import logging
+import time
 import uuid
 from datetime import datetime
 from typing import Literal, Mapping, Optional
@@ -38,16 +39,22 @@ from backend.blocks.desktop._common import (
     WORKSPACE_PATH,
     workspace_volume_mounts,
 )
+from backend.copilot.rate_limit import platform_spend_refusal
 from backend.copilot.sdk.env import config as chat_config
+from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.tools.e2b_sandbox import (
+    KEEP_CEILING,
     METADATA_MOUNTS,
+    Ceiling,
     SandboxLookupError,
     SandboxOwner,
     get_or_create_owner_sandbox,
     list_owned_sandboxes,
 )
+from backend.copilot.trial_cost_context import attributed_usage
 from backend.data.redis_client import get_redis_async
 from backend.util.desktop_preview import create_preview_link
+from backend.util.sandbox_limits import SandboxLimitError
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +73,25 @@ _UNLOCK_SCRIPT = (
     'if redis.call("get", KEYS[1]) == ARGV[1] then '
     'return redis.call("del", KEYS[1]) else return 0 end'
 )
+
+_DESKTOP_BLOCK_NAME = "copilot:desktop"
+# Per owner, the end of the running time UI opens have already been charged
+# for: an open is charged only for what it adds past it.
+_CHARGED_UNTIL_KEY_PREFIX = "copilot:e2b:desktop-charged-until:"
+# ARGV: now, the end this open arms, the key's TTL (all whole seconds).
+_CHARGE_SCRIPT = (
+    'local charged = tonumber(redis.call("get", KEYS[1]) or "0") '
+    "local now = tonumber(ARGV[1]) "
+    "local armed = tonumber(ARGV[2]) "
+    "if armed <= charged then return 0 end "
+    'redis.call("set", KEYS[1], ARGV[2], "EX", ARGV[3]) '
+    "return armed - math.max(now, charged)"
+)
+
+
+class DesktopRefused(Exception):
+    """An open from the UI refused under the user's usage allowance.  The
+    message is written for the user."""
 
 
 class SandboxSummary(BaseModel):
@@ -133,6 +159,38 @@ async def describe_computer(
     return info
 
 
+async def open_desktop_from_ui(
+    owner: SandboxOwner,
+    mounts: Mapping[str, str],
+    api_key: str,
+    *,
+    user_id: str,
+    session_id: Optional[str] = None,
+) -> tuple[DesktopStream, bool, bool]:
+    """``open_desktop`` for the Computer tab and side panel, which no turn stands behind.
+
+    A turn that opens the box was admitted against the user's usage allowance;
+    this open checks the allowance itself, raising :class:`DesktopRefused` once
+    it is spent, and charges the user for the running time it arms on the box.
+    """
+    if refusal := await platform_spend_refusal(user_id, surface="chat"):
+        raise DesktopRefused(refusal)
+    charge = True
+    try:
+        return await open_desktop(
+            owner, mounts, api_key, user_id=user_id, session_id=session_id
+        )
+    except SandboxLimitError:
+        # Refused before any box was started or woken.
+        charge = False
+        raise
+    finally:
+        # A failed open is charged too: the connect arms the box before its
+        # display can fail.
+        if charge:
+            await _charge_box_time(owner, user_id=user_id, session_id=session_id)
+
+
 async def open_desktop(
     owner: SandboxOwner,
     mounts: Mapping[str, str],
@@ -140,6 +198,7 @@ async def open_desktop(
     *,
     user_id: Optional[str],
     session_id: Optional[str] = None,
+    providers: Ceiling = KEEP_CEILING,
 ) -> tuple[DesktopStream, bool, bool]:
     """Turn the screen on in the owner's box; return ``(stream, first_time, shared)``.
 
@@ -147,8 +206,11 @@ async def open_desktop(
     the display and stream inside it.  Opening from outside a turn does not
     count as one, so the turn-end pause still fires when the agent finishes;
     an idle box opened from the UI is paused by the lifecycle timeout instead.
+    A caller outside a turn goes through ``open_desktop_from_ui``.
     *user_id* is who the stream link is issued to (see ``_owner_bound``) and,
     with *session_id*, provenance stamped on a newly created box.
+    *providers* is the turn's ceiling on connected accounts when a turn opens
+    it (``start_desktop``); the UI has none and keeps the box's.
 
     One opener at a time per owner: the panel's button and the model's
     ``start_desktop`` (or two tabs) would otherwise race to start a second
@@ -169,7 +231,12 @@ async def open_desktop(
     try:
         return await asyncio.wait_for(
             _open_desktop_locked(
-                owner, mounts, api_key, user_id=user_id, session_id=session_id
+                owner,
+                mounts,
+                api_key,
+                user_id=user_id,
+                session_id=session_id,
+                providers=providers,
             ),
             timeout=_DESKTOP_OPEN_DEADLINE_SECONDS,
         )
@@ -184,6 +251,7 @@ async def _open_desktop_locked(
     *,
     user_id: str,
     session_id: Optional[str],
+    providers: Ceiling = KEEP_CEILING,
 ) -> tuple[DesktopStream, bool, bool]:
     sandbox = await get_or_create_owner_sandbox(
         owner,
@@ -195,6 +263,7 @@ async def _open_desktop_locked(
         user_id=user_id,
         session_id=session_id,
         count_turn=False,
+        providers=providers,
     )
     was_on = await screen_is_on(owner, sandbox.sandbox_id)
     desktop = DesktopSession(sandbox)
@@ -210,6 +279,46 @@ async def _open_desktop_locked(
     )
     await _remember_screen(owner, sandbox.sandbox_id, password)
     return _owner_bound(stream, user_id), not was_on, shared
+
+
+@attributed_usage
+async def _charge_box_time(
+    owner: SandboxOwner, *, user_id: str, session_id: Optional[str]
+) -> None:
+    """Charge *user_id* for the running time an open arms on *owner*'s box,
+    at ``e2b_desktop_usd_per_hour``, less what earlier opens already paid for."""
+    running_time = chat_config.e2b_sandbox_timeout
+    rate = chat_config.e2b_desktop_usd_per_hour
+    if running_time <= 0 or rate <= 0:
+        return
+    now = int(time.time())
+    redis = await get_redis_async()
+    seconds = int(
+        await redis.eval(
+            _CHARGE_SCRIPT,
+            1,
+            f"{_CHARGED_UNTIL_KEY_PREFIX}{owner.kind}:{owner.id}",
+            now,
+            now + running_time,
+            running_time,
+        )
+    )
+    if seconds <= 0:
+        return
+    await persist_and_record_usage(
+        session=None,
+        user_id=user_id,
+        prompt_tokens=0,
+        completion_tokens=0,
+        log_prefix="[Desktop]",
+        cost_usd=seconds * rate / 3600,
+        model=chat_config.e2b_sandbox_template,
+        provider="e2b",
+        block_name_override=_DESKTOP_BLOCK_NAME,
+        chat_session_id_override=session_id,
+        expert_id=owner.id if owner.is_expert else None,
+        extra_metadata={"surface": "desktop", "seconds": seconds},
+    )
 
 
 async def screen_is_on(owner: SandboxOwner, sandbox_id: str) -> bool:

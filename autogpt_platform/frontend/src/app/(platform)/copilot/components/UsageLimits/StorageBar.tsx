@@ -17,27 +17,31 @@ export function StorageBar() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
-        <Text variant="body-medium" className="text-neutral-700">
+        <Text tone="body" variant="body" weight="medium">
           File storage
         </Text>
-        <Text variant="body" className="tabular-nums text-neutral-500">
+        <Text variant="body" tone="muted" tabular>
           {percentLabel}
         </Text>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
+      <div className="h-2 w-full overflow-hidden rounded-pill bg-surface-active">
         <div
           role="progressbar"
           aria-label="File storage usage"
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={percent}
-          className={`h-full rounded-full transition-[width] duration-300 ease-out ${
-            isHigh ? "bg-orange-500" : "bg-blue-500"
+          className={`h-full w-(--fill) rounded-pill transition-[width] duration-300 ease-out ${
+            isHigh ? "bg-orange" : "bg-info"
           }`}
-          style={{ width: `${Math.max(used_bytes > 0 ? 1 : 0, percent)}%` }}
+          style={
+            {
+              "--fill": `${Math.max(used_bytes > 0 ? 1 : 0, percent)}%`,
+            } as React.CSSProperties
+          }
         />
       </div>
-      <Text variant="small" className="text-neutral-400">
+      <Text tone="subtle" variant="small">
         {formatBytes(used_bytes)} of {formatBytes(limit_bytes)} &middot;{" "}
         {file_count} {file_count === 1 ? "file" : "files"}
       </Text>

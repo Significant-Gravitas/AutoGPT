@@ -1,8 +1,10 @@
+import { parseTurnPause, TURN_PAUSED_PART_TYPE } from "../turnPause";
 import {
   addToolCall,
   addToolResult,
   appendDrainedUserRows,
   appendErrorMarker,
+  appendPauseMarker,
   appendReasoning,
   appendText,
   canonicalRows,
@@ -109,6 +111,14 @@ function applyChunk(log: TurnLog, entryId: string, chunk: WireChunk): TurnLog {
         ...addOverlay(log, entryId, chunk),
         providerFailure: record(chunk.data),
       };
+    // A row, not an overlay: the server stores the pause as a marker row, and
+    // the card renders from that row live and on reload alike.
+    case TURN_PAUSED_PART_TYPE: {
+      const pause = parseTurnPause(chunk.data);
+      return pause
+        ? appendPauseMarker(log, entryId, pause)
+        : protocolError(log, entryId, chunk.type, "unknown pause");
+    }
     default:
       if (chunk.type.startsWith("data-"))
         return addOverlay(log, entryId, chunk);
@@ -286,10 +296,15 @@ function protocolError(
 
 function drainedMessages(data: unknown) {
   const messages = record(data).messages;
-  return (Array.isArray(messages) ? messages : []).map((m) => ({
-    id: str(record(m).id),
-    content: str(record(m).content),
-  }));
+  return (Array.isArray(messages) ? messages : []).map((m) => {
+    const metadata = record(m).metadata;
+    return {
+      id: str(record(m).id),
+      content: str(record(m).content),
+      metadata:
+        metadata && typeof metadata === "object" ? record(metadata) : null,
+    };
+  });
 }
 
 export function jsonEqual(a: unknown, b: unknown): boolean {

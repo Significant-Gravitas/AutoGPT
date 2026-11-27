@@ -1,11 +1,11 @@
 "use client";
 
+import { FormProvider } from "react-hook-form";
 import {
-  Form,
   FormControl,
   FormField,
   FormItem,
-} from "@/components/__legacy__/ui/form";
+} from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
@@ -24,10 +24,10 @@ export function EmailForm({ user }: EmailFormProps) {
 
   return (
     <div>
-      <Text variant="h3" size="large-semibold">
+      <Text variant="h3" size="large" weight="semibold">
         Security & Access
       </Text>
-      <Form {...form}>
+      <FormProvider {...form}>
         <form
           onSubmit={form.handleSubmit(onSubmit)}
           className="mt-4 flex flex-col gap-0"
@@ -74,7 +74,7 @@ export function EmailForm({ user }: EmailFormProps) {
             </Button>
           </div>
         </form>
-      </Form>
+      </FormProvider>
     </div>
   );
 }

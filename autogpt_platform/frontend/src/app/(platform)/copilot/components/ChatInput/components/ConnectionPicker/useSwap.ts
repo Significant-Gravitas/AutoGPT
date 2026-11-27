@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { duration } from "@/components/styles/motion";
 
 /** Matches the duration the exit transition is given in {@link Swap}. */
-const SWAP_MS = 150;
+const SWAP_MS = duration.fast * 1000;
 
 function prefersReducedMotion(): boolean {
   if (typeof window === "undefined" || !window.matchMedia) return false;

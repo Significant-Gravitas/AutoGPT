@@ -1,0 +1,183 @@
+import {
+  extendTailwindMerge,
+  getDefaultConfig,
+  validators,
+} from "tailwind-merge";
+
+const defaults = getDefaultConfig();
+
+// A quoted arbitrary font (`font-['Geist']`) is a family, as tailwind-merge 2
+// read it; 3 reads it as a weight unless it says `family-name:`.
+function isQuotedFamily(value: string) {
+  return /^\[['"]/.test(value);
+}
+
+const fontWeights = defaults.classGroups["font-weight"].map((group) =>
+  typeof group === "object" && "font" in group
+    ? {
+        font: group.font.map((definition) =>
+          typeof definition === "function" && !("isThemeGetter" in definition)
+            ? (value: string) => !isQuotedFamily(value) && definition(value)
+            : definition,
+        ),
+      }
+    : group,
+);
+
+// Teach tailwind-merge the type scale's steps (tokens/typography.css) and the
+// other text token names in globals.css's theme, so that
+// `text-body` is read as a font size rather than a colour (and survives next
+// to `text-foreground-tertiary`) and conflicting sizes, line-heights and letter-spacings
+// collapse to the last one. The radius names do the same for every
+// `rounded-*` corner group, so `rounded-xl` and `rounded-2xlarge` no longer
+// both survive and leave the winner to stylesheet order.
+//
+// The overrides keep tailwind-merge 3 merging the way 2 did, since the
+// classes still render as in Tailwind 3 (see postcss.tailwind3-compat.cjs):
+// - a bare `outline` sets only the style, so it survives next to `outline-2`;
+// - `bg-gradient-to-*` is an image, so it no longer replaces `bg-<colour>`;
+// - `border-x` / `border-y` survive next to `border-2`, and `max-h-none` next
+//   to another `max-h-*`, leaving the winner to stylesheet order as before;
+// - the `scrollbar-*` classes are globals.css's port of tailwind-scrollbar,
+//   not Tailwind 4's scrollbar utilities, so none of them replaces another.
+export const twMerge = extendTailwindMerge({
+  override: {
+    classGroups: {
+      "outline-w": [
+        {
+          outline: [
+            validators.isNumber,
+            validators.isArbitraryVariableLength,
+            validators.isArbitraryLength,
+          ],
+        },
+      ],
+      "font-weight": fontWeights,
+      "max-h": [
+        {
+          "max-h": defaults.classGroups["max-h"].flatMap((group) =>
+            typeof group === "object" && "max-h" in group
+              ? group["max-h"].filter((value) => value !== "none")
+              : [],
+          ),
+        },
+      ],
+      "scrollbar-thumb-color": [],
+      "scrollbar-track-color": [],
+      "scrollbar-w": [],
+      "scrollbar-gutter": [],
+    },
+    conflictingClassGroups: {
+      "border-w": defaults.conflictingClassGroups["border-w"].filter(
+        (group) => group !== "border-w-x" && group !== "border-w-y",
+      ),
+    },
+  },
+  extend: {
+    theme: {
+      radius: [
+        "xsmall",
+        "small",
+        "medium",
+        "large",
+        "xlarge",
+        "2xlarge",
+        "2xl-inner",
+        "pill",
+      ],
+      // The named shadow steps in tokens/shape.css, so `shadow-lift` replaces
+      // `shadow-sm` and survives next to a colour (`shadow-brand/45`), as
+      // the arbitrary shadows they replaced did. `subtle` and `message-table`
+      // are left out: tailwind-merge has always read them as colours, and
+      // which class wins next to them is left to stylesheet order.
+      shadow: [
+        "lift",
+        "popover-raised",
+        "composer",
+        "drop",
+        "scroll-edge",
+        "keycap",
+        "gloss",
+        "sheen",
+        "outline",
+        "halo",
+        "spotlight",
+        "glow",
+        "status-glow",
+        "beacon",
+        "chip-glow-brand",
+        "chip-glow-warning",
+        "chip-glow-sky",
+        "chip-glow-neutral",
+      ],
+      // The easings in tokens/motion.css, so `ease-standard` replaces
+      // `ease-in-out` and another named easing, and the other way round.
+      ease: ["standard", "emphasized", "out-quint", "glide", "drawer"],
+    },
+    classGroups: {
+      "font-size": [
+        {
+          text: [
+            "tiny",
+            "caption-sm",
+            "caption",
+            "body-sm",
+            "body",
+            "body-md",
+            "body-lg",
+            "lead",
+            "heading-sm",
+            "heading-md",
+            "heading",
+            "title",
+            "display",
+            "hero",
+          ],
+        },
+      ],
+      "font-family": [{ font: [isQuotedFamily] }],
+      leading: [{ leading: ["inherit"] }],
+      "outline-style": [{ outline: [""] }],
+      "bg-image": [
+        {
+          "bg-gradient-to": ["t", "tr", "r", "br", "b", "bl", "l", "tl"],
+        },
+      ],
+      tracking: [
+        { tracking: ["display", "heading", "title", "caps", "eyebrow"] },
+      ],
+      // The layers in tokens/shape.css, so `z-overlay` replaces `z-raised`
+      // and `z-10`, and the other way round.
+      z: [
+        {
+          z: [
+            "behind",
+            "base",
+            "raised",
+            "sticky",
+            "search-bar",
+            "floating",
+            "header",
+            "prompt",
+            "overlay",
+            "drawer-scrim",
+            "drawer",
+            "command",
+            "canvas-loading",
+            "canvas-toolbar",
+            "blocking",
+            "tour-scrim",
+            "tour",
+          ],
+        },
+      ],
+      // The durations in tokens/motion.css, so `duration-fast` replaces
+      // `duration-200` and another named duration, and the other way round.
+      duration: [
+        {
+          duration: ["instant", "fast", "base", "slow", "slower", "slowest"],
+        },
+      ],
+    },
+  },
+});

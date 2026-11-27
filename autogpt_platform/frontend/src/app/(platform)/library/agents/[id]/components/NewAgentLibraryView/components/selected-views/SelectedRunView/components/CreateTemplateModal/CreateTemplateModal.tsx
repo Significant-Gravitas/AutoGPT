@@ -10,7 +10,8 @@ import { useState } from "react";
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (name: string, description: string) => Promise<void>;
+  /** Resolves true once the template exists; the dialog keeps its fields otherwise. */
+  onCreate: (name: string, description: string) => Promise<boolean>;
   run?: GraphExecution;
 }
 
@@ -24,7 +25,8 @@ export function CreateTemplateModal({ isOpen, onClose, onCreate }: Props) {
 
     setIsCreating(true);
     try {
-      await onCreate(name.trim(), description.trim());
+      const created = await onCreate(name.trim(), description.trim());
+      if (!created) return;
       setName("");
       setDescription("");
       onClose();
@@ -48,7 +50,7 @@ export function CreateTemplateModal({ isOpen, onClose, onCreate }: Props) {
       <Dialog.Content>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <Text variant="body" className="text-zinc-600">
+            <Text variant="body" tone="secondary">
               Save this task as a template to reuse later with the same inputs
               and credentials.
             </Text>

@@ -4,6 +4,7 @@ import mimetypes
 from enum import Enum
 from pathlib import Path
 from typing import Any, Literal, cast
+from urllib.parse import unquote_to_bytes, urlparse
 
 import discord
 from pydantic import SecretStr
@@ -18,7 +19,7 @@ from backend.blocks._base import (
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import APIKeyCredentials, SchemaField
-from backend.util.file import store_media_file
+from backend.util.file import get_exec_file_path, store_media_file
 from backend.util.request import Requests
 from backend.util.type import MediaFileType
 
@@ -34,6 +35,9 @@ DiscordCredentials = DiscordBotCredentialsInput
 DiscordCredentialsField = DiscordBotCredentialsField
 TEST_CREDENTIALS = TEST_BOT_CREDENTIALS
 TEST_CREDENTIALS_INPUT = TEST_BOT_CREDENTIALS_INPUT
+
+# How much of a .txt/.py attachment ReadDiscordMessagesBlock adds to the message.
+MAX_TEXT_ATTACHMENT_BYTES = 1024 * 1024
 
 
 class ThreadArchiveDuration(str, Enum):
@@ -137,8 +141,16 @@ class ReadDiscordMessagesBlock(Block):
             if message.attachments:
                 attachment = message.attachments[0]  # Process the first attachment
                 if attachment.filename.endswith((".txt", ".py")):
-                    response = await Requests().get(attachment.url)
+                    # A response limit at or below the cap would refuse the file, not cut it.
+                    response = await Requests(
+                        max_response_bytes=MAX_TEXT_ATTACHMENT_BYTES + 1
+                    ).get(attachment.url, max_body_bytes=MAX_TEXT_ATTACHMENT_BYTES)
+                    # A capped read keeps one byte past the cap when the file is longer.
+                    truncated = len(response.content) > MAX_TEXT_ATTACHMENT_BYTES
+                    response.content = response.content[:MAX_TEXT_ATTACHMENT_BYTES]
                     file_content = response.text()
+                    if truncated:
+                        file_content += f"\n[File truncated to its first {MAX_TEXT_ATTACHMENT_BYTES} bytes.]"
                     self.output_data += f"\n\nFile from user: {attachment.filename}\nContent: {file_content}"
 
             await client.close()
@@ -236,7 +248,7 @@ class SendDiscordMessageBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def send_message(
@@ -254,51 +266,76 @@ class SendDiscordMessageBlock(Block):
 
         @client.event
         async def on_ready():
-            print(f"Logged in as {client.user}")
+            # discord.py runs event handlers as tasks and only logs their
+            # exceptions, so anything raised here never reaches client.start().
+            # Always close the client, or start() runs until the block cap.
             channel = None
-
-            # Try to parse as channel ID first
-            try:
-                channel_id = int(channel_name)
-                channel = client.get_channel(channel_id)
-            except ValueError:
-                # Not a valid ID, will try name lookup
-                pass
-
-            # If not found by ID (or not an ID), try name lookup
-            if not channel:
-                for guild in client.guilds:
-                    if server_name and guild.name != server_name:
-                        continue
-                    for ch in guild.text_channels:
-                        if ch.name == channel_name:
-                            channel = ch
-                            break
-                    if channel:
-                        break
-
-            if not channel:
-                result["status"] = f"Channel not found: {channel_name}"
-                await client.close()
-                return
-
-            # Type check - ensure it's a text channel that can send messages
-            if not hasattr(channel, "send"):
-                result["status"] = (
-                    f"Channel {channel_name} cannot receive messages (not a text channel)"
-                )
-                await client.close()
-                return
-
-            # Split message into chunks if it exceeds 2000 characters
-            chunks = self.chunk_message(message_content)
             last_message = None
-            for chunk in chunks:
-                last_message = await channel.send(chunk)  # type: ignore
-            result["status"] = "Message sent"
-            result["message_id"] = str(last_message.id) if last_message else ""
-            result["channel_id"] = str(channel.id)
-            await client.close()
+            try:
+                print(f"Logged in as {client.user}")
+
+                # Try to parse as channel ID first
+                try:
+                    channel_id = int(channel_name)
+                    channel = client.get_channel(channel_id)
+                except ValueError:
+                    # Not a valid ID, will try name lookup
+                    pass
+
+                # If not found by ID (or not an ID), try name lookup
+                if not channel:
+                    for guild in client.guilds:
+                        if server_name and guild.name != server_name:
+                            continue
+                        for ch in guild.text_channels:
+                            if ch.name == channel_name:
+                                channel = ch
+                                break
+                        if channel:
+                            break
+
+                if not channel:
+                    result["status"] = f"Channel not found: {channel_name}"
+                    return
+
+                # Type check - ensure it's a text channel that can send messages
+                if not hasattr(channel, "send"):
+                    result["status"] = (
+                        f"Channel {channel_name} cannot receive messages (not a text channel)"
+                    )
+                    return
+
+                # Split message into chunks if it exceeds 2000 characters
+                chunks = self.chunk_message(message_content)
+                for chunk in chunks:
+                    last_message = await channel.send(chunk)  # type: ignore
+                if last_message is None:
+                    result["status"] = "Error: no message was sent"
+                    return
+                result["status"] = "Message sent"
+                result["message_id"] = str(last_message.id)
+                result["channel_id"] = str(channel.id)
+            except discord.errors.Forbidden as e:
+                result["status"] = (
+                    f"Error: bot lacks permission to send to {channel_name}: {e}"
+                )
+            except discord.errors.HTTPException as e:
+                result["status"] = f"Error sending message: {e}"
+            except Exception as e:
+                result["status"] = f"Error sending message: {e}"
+            finally:
+                try:
+                    if last_message is not None and channel is not None:
+                        # A later chunk failed after earlier ones were posted;
+                        # report what was delivered so the caller can see it.
+                        status = result.get("status", "Error sending message")
+                        if status != "Message sent":
+                            status += " (earlier chunks were already sent)"
+                        result["status"] = status
+                        result["message_id"] = str(last_message.id)
+                        result["channel_id"] = str(channel.id)
+                finally:
+                    await client.close()
 
         await client.start(token)
         return result
@@ -310,6 +347,10 @@ class SendDiscordMessageBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        # Empty content produces no chunks (nothing is sent) and whitespace-only
+        # content is rejected by Discord; fail before logging in.
+        if not input_data.message_content.strip():
+            raise ValueError("Message content is empty")
         try:
             result = await self.send_message(
                 token=credentials.api_key.get_secret_value(),
@@ -372,7 +413,7 @@ class SendDiscordDMBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def send_dm(self, token: str, user_id: str, message_content: str) -> dict:
@@ -493,7 +534,7 @@ class SendDiscordEmbedBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def send_embed(
@@ -666,7 +707,7 @@ class SendDiscordFileBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def send_file(
@@ -716,14 +757,11 @@ class SendDiscordFileBlock(Block):
                 detected_filename = filename
 
                 if file.startswith("data:"):
-                    # Data URI - extract the base64 content
-                    header, encoded = file.split(",", 1)
-                    file_bytes = base64.b64decode(encoded)
+                    mime_type, file_bytes = _decode_data_uri(file)
 
-                    # Try to get MIME type and suggest filename if not provided
-                    if not filename and ";" in header:
-                        mime_match = header.split(":")[1].split(";")[0]
-                        ext = mimetypes.guess_extension(mime_match) or ".bin"
+                    # Suggest a filename from the MIME type if not provided
+                    if not filename:
+                        ext = mimetypes.guess_extension(mime_type) or ".bin"
                         detected_filename = f"file{ext}"
 
                 elif file.startswith(("http://", "https://")):
@@ -733,24 +771,31 @@ class SendDiscordFileBlock(Block):
 
                     # Try to get filename from URL if not provided
                     if not filename:
-                        from urllib.parse import urlparse
-
                         path = urlparse(file).path
                         detected_filename = Path(path).name or "download"
                 else:
-                    # Local file path - read from stored media file
-                    # This would be a path from a previous block's output
-                    stored_file = await store_media_file(
+                    # A workspace://, cloud or local file. store_media_file
+                    # names its local copy after the file itself, which a
+                    # reference such as workspace://<id>#text/csv doesn't
+                    # spell out.
+                    local_path = await store_media_file(
                         file=file,
                         execution_context=execution_context,
-                        return_format="for_external_api",  # Get content to send to Discord
+                        return_format="for_local_processing",
                     )
-                    # Now process as data URI
-                    header, encoded = stored_file.split(",", 1)
-                    file_bytes = base64.b64decode(encoded)
+                    if not execution_context.graph_exec_id:
+                        raise ValueError("execution_context.graph_exec_id is required")
+                    stored = Path(
+                        get_exec_file_path(execution_context.graph_exec_id, local_path)
+                    )
+                    # Read the copy before anything else is awaited. A workflow
+                    # run keeps every node's copies in one folder, so another
+                    # node sending a file of the same name could replace this
+                    # copy while this one waited.
+                    file_bytes = stored.read_bytes()
 
                     if not filename:
-                        detected_filename = Path(file).name or "file"
+                        detected_filename = stored.name
 
                 if not file_bytes:
                     result["status"] = "Error: Could not read file content"
@@ -814,6 +859,20 @@ class SendDiscordFileBlock(Block):
             raise ValueError(f"An error occurred: {e}")
 
 
+def _decode_data_uri(data_uri: str) -> tuple[str, bytes]:
+    """The MIME type and the bytes of a ``data:`` URI.
+
+    Per RFC 2397 the data is percent-encoded, and base64 under that when
+    ``;base64`` ends the header; a URI that names no MIME type holds text/plain.
+    """
+    header, _, data = data_uri.removeprefix("data:").partition(",")
+    mime_type, *parameters = header.split(";")
+    content = unquote_to_bytes(data)
+    if parameters and parameters[-1].strip().lower() == "base64":
+        content = base64.b64decode(content)
+    return mime_type.strip().lower() or "text/plain", content
+
+
 class ReplyToDiscordMessageBlock(Block):
     class Input(BlockSchemaInput):
         credentials: DiscordCredentials = DiscordCredentialsField()
@@ -856,7 +915,7 @@ class ReplyToDiscordMessageBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def send_reply(
@@ -1253,7 +1312,7 @@ class CreateDiscordThreadBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def create_thread(

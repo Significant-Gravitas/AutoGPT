@@ -6,7 +6,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/molecules/Accordion/Accordion";
-import { beautifyString, cn } from "@/lib/utils";
+import { beautifyString } from "@/lib/utils";
 import { NodeDataViewer } from "./components/NodeDataViewer/NodeDataViewer";
 import { ContentRenderer } from "./components/ContentRenderer";
 import { useNodeOutput } from "./useNodeOutput";
@@ -30,22 +30,26 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
   return (
     <div
       data-tutorial-id={`node-output`}
-      className="rounded-b-xl border-t border-zinc-200 px-4 py-2"
+      className="rounded-b-xl border-t border-border-base px-4 py-2"
     >
-      <Accordion type="single" collapsible defaultValue="node-output">
-        <AccordionItem value="node-output" className="border-none">
-          <AccordionTrigger className="py-2 hover:no-underline">
-            <Text
-              variant="body-medium"
-              className="!font-semibold text-slate-700"
-            >
+      <Accordion
+        type="single"
+        collapsible
+        defaultValue="node-output"
+        variant="plain"
+      >
+        <AccordionItem value="node-output">
+          <AccordionTrigger>
+            <Text variant="body" weight="semibold" tone="body">
               Node Output
             </Text>
           </AccordionTrigger>
-          <AccordionContent className="pt-2">
-            <div className="flex max-w-[350px] flex-col gap-4">
+          <AccordionContent>
+            <div className="flex max-w-[350px] flex-col gap-4 pt-2">
               <div className="space-y-2">
-                <Text variant="small-medium">Input</Text>
+                <Text variant="small" weight="medium">
+                  Input
+                </Text>
 
                 <ContentRenderer value={latestInputData} shortContent={true} />
 
@@ -57,21 +61,14 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                     dataType="input"
                   />
                   <Button
-                    variant="secondary"
-                    size="small"
+                    variant={copiedKey === "input" ? "success" : "secondary"}
+                    size="icon-sm"
+                    shape="pill"
                     onClick={() => handleCopy("input", latestInputData)}
-                    className={cn(
-                      "h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900",
-                      copiedKey === "input" &&
-                        "border-green-400 bg-green-100 hover:border-green-400 hover:bg-green-200",
-                    )}
+                    tone="base"
                   >
                     {copiedKey === "input" ? (
-                      <Icon
-                        icon={Tick02Icon}
-                        size={12}
-                        className="text-green-600"
-                      />
+                      <Icon icon={Tick02Icon} size={12} tone="success" />
                     ) : (
                       <Icon icon={Copy01Icon} size={12} />
                     )}
@@ -86,19 +83,21 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                     <div key={key} className="flex flex-col gap-2">
                       <div className="flex items-center gap-2">
                         <Text
-                          variant="small-medium"
-                          className="!font-semibold text-slate-600"
+                          variant="small"
+                          weight="semibold"
+                          tone="secondary"
                         >
                           Pin:
                         </Text>
-                        <Text variant="small" className="text-slate-700">
+                        <Text variant="small" tone="body">
                           {beautifyString(key)}
                         </Text>
                       </div>
                       <div className="w-full space-y-2">
                         <Text
                           variant="small"
-                          className="!font-semibold text-slate-600"
+                          weight="semibold"
+                          tone="secondary"
                         >
                           Data:
                         </Text>
@@ -119,20 +118,19 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                               execId={executionResultId}
                             />
                             <Button
-                              variant="secondary"
-                              size="small"
+                              variant={
+                                copiedKey === key ? "success" : "secondary"
+                              }
+                              size="icon-sm"
+                              shape="pill"
                               onClick={() => handleCopy(key, value)}
-                              className={cn(
-                                "h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900",
-                                copiedKey === key &&
-                                  "border-green-400 bg-green-100 hover:border-green-400 hover:bg-green-200",
-                              )}
+                              tone="base"
                             >
                               {copiedKey === key ? (
                                 <Icon
                                   icon={Tick02Icon}
                                   size={12}
-                                  className="text-green-600"
+                                  tone="success"
                                 />
                               ) : (
                                 <Icon icon={Copy01Icon} size={12} />

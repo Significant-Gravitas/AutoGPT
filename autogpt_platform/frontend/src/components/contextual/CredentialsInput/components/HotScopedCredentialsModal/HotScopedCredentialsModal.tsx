@@ -1,16 +1,16 @@
 import { useContext, useEffect, useState } from "react";
 import { z } from "zod";
-import { useForm } from "react-hook-form";
+import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
-  Form,
   FormDescription,
   FormField,
   FormLabel,
-} from "@/components/__legacy__/ui/form";
+} from "@/components/molecules/Form/Form";
 import useCredentials from "@/hooks/useCredentials";
 import {
   BlockIOCredentialsSubSchema,
@@ -23,6 +23,7 @@ import {
   addHeaderPairToList,
   findExistingHostCredentials,
   hasExistingHostCredential,
+  hasRepeatedHeaderName,
   headerPairsToRecord,
   removeHeaderPairFromList,
   updateHeaderPairInList,
@@ -56,6 +57,7 @@ export function HostScopedCredentialsModal({
   const formSchema = z.object({
     host: z
       .string()
+      .trim()
       .min(1, "Host is required")
       .refine((val) => !/^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(val), {
         message: "Enter only the host (e.g. api.example.com), not a full URL",
@@ -120,6 +122,9 @@ export function HostScopedCredentialsModal({
     currentHost || form.getValues("host"),
   );
 
+  const hasUsableHeader =
+    Object.keys(headerPairsToRecord(headerPairs)).length > 0;
+
   const addHeaderPair = () => {
     setHeaderPairs((prev) => addHeaderPairToList(prev));
   };
@@ -138,6 +143,26 @@ export function HostScopedCredentialsModal({
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     const headers = headerPairsToRecord(headerPairs);
+
+    // Check before touching the existing credentials: a submit the backend
+    // will refuse must not delete a working credential for this host.
+    if (Object.keys(headers).length === 0) {
+      toast({
+        title: "Add at least one header",
+        description: "Each header needs a name and a value.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (hasRepeatedHeaderName(headerPairs)) {
+      toast({
+        title: "Use each header name once",
+        description:
+          "Authorization and authorization count as the same header.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     // Delete existing host-scoped credentials for the same host to avoid duplicates.
     // Uses unfiltered provider credentials (not the hook's pre-filtered list).
@@ -195,10 +220,18 @@ export function HostScopedCredentialsModal({
     >
       <Dialog.Content>
         {schema.description && (
-          <p className="mb-4 text-sm text-zinc-600">{schema.description}</p>
+          <Text
+            variant="body"
+            leading="5"
+            as="p"
+            tone="secondary"
+            className="mb-4"
+          >
+            {schema.description}
+          </Text>
         )}
 
-        <Form {...form}>
+        <FormProvider {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-2">
             <FormField
               control={form.control}
@@ -226,8 +259,18 @@ export function HostScopedCredentialsModal({
             />
 
             <div className="space-y-2">
-              <FormLabel>Headers</FormLabel>
-              <FormDescription className="max-w-md">
+              <FormLabel className="peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                <Text
+                  variant="body"
+                  weight="medium"
+                  leading="none"
+                  as="span"
+                  tone="inherit"
+                >
+                  Headers
+                </Text>
+              </FormLabel>
+              <FormDescription size="body-sm" className="max-w-md">
                 Add sensitive headers (like Authorization, X-API-Key) that
                 should be automatically included in requests to the specified
                 host.
@@ -252,7 +295,6 @@ export function HostScopedCredentialsModal({
                     label="Header Value"
                     size="small"
                     type="password"
-                    className="flex-2"
                     placeholder="Header value (e.g., Bearer token123)"
                     value={pair.value}
                     onChange={(e) =>
@@ -283,14 +325,19 @@ export function HostScopedCredentialsModal({
             </div>
 
             <div className="pt-8">
-              <Button type="submit" className="w-full" size="small">
+              <Button
+                type="submit"
+                className="w-full"
+                size="small"
+                disabled={!hasUsableHeader}
+              >
                 {hasExistingForHost
                   ? "Update & use these credentials"
                   : "Save & use these credentials"}
               </Button>
             </div>
           </form>
-        </Form>
+        </FormProvider>
       </Dialog.Content>
     </Dialog>
   );

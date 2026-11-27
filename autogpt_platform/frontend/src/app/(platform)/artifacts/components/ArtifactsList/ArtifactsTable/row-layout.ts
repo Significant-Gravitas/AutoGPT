@@ -1,4 +1,5 @@
 import type { Variants } from "framer-motion";
+import { duration, ease } from "@/components/styles/motion";
 
 // Column template shared by the header and every row so cells line up.
 // Modified and Size collapse on narrow screens. The trailing column has a
@@ -6,14 +7,12 @@ import type { Variants } from "framer-motion";
 // actions don't shift the other columns.
 export const ROW_GRID_CLASS =
   "grid grid-cols-[minmax(0,1fr)_4.5rem] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_7rem_4.5rem] md:grid-cols-[minmax(0,1fr)_8rem_6rem_4.5rem]";
-export const DATE_CELL_CLASS = "hidden truncate sm:block";
-export const SIZE_CELL_CLASS = "hidden tabular-nums md:block";
 export const ACTIONS_CELL_CLASS = "flex justify-end";
 
 // Sized to its content (its wrapper is not stretched across the column) so
 // the hover preview, which anchors to this button, opens beside the name.
 export const NAME_BUTTON_CLASS =
-  "flex min-w-0 items-center gap-4 rounded-xl py-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-zinc-400";
+  "flex min-w-0 items-center gap-4 rounded-xl py-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle";
 
 // Rows animate on their own mount (not via the list's orchestration) so a row
 // added by an upload or a refetch is never left in its hidden start state.
@@ -27,8 +26,8 @@ export const ROW_VARIANTS: Variants = {
     opacity: 1,
     y: 0,
     transition: {
-      duration: 0.3,
-      ease: [0.16, 1, 0.3, 1],
+      duration: duration.slow,
+      ease: ease.emphasized,
       delay: Math.min(index, STAGGER_CAP) * STAGGER_STEP_S,
     },
   }),
@@ -36,5 +35,5 @@ export const ROW_VARIANTS: Variants = {
 
 export const REDUCED_ROW_VARIANTS: Variants = {
   hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { duration: 0.2 } },
+  show: { opacity: 1, transition: { duration: duration.base } },
 };

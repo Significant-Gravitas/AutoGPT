@@ -15,14 +15,22 @@ to our own hosts.
 import asyncio
 import logging
 import re
+from typing import Self, get_args
 from urllib.parse import urlparse
 
 from autogpt_libs.auth import requires_frontend_service
 from fastapi import APIRouter, HTTPException, Security, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
-from backend.notifications.auth import AuthEmailType, render_auth_email
+from backend.data.account_erasure.ban_record import is_banned_address
+from backend.notifications.auth import AuthLinkEmailType, render_auth_email
+from backend.notifications.sign_in_email import (
+    SIGN_IN_CODE_PATTERN,
+    AuthSignInEmailType,
+    SignInProvider,
+)
 from backend.util.clients import get_notification_manager_client
+from backend.util.exceptions import EmailUndeliverableError
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -32,12 +40,57 @@ auth_email_router = APIRouter()
 
 # Module-level so tests can override the exact dependency instance.
 requires_auth_email_service = requires_frontend_service("auth-email:send")
+requires_sign_up_check_service = requires_frontend_service("auth-sign-up:check")
 
 
 class AuthEmailRequest(BaseModel):
-    type: AuthEmailType
+    # Link and sign-in emails only: the account-deleted confirmation is sent by
+    # the deletion service, never on a service token's say-so.
+    type: AuthLinkEmailType | AuthSignInEmailType
     to: EmailStr
-    url: str
+    # The action link, which every link email has and no sign-in email does.
+    url: str | None = None
+    # For change_email: the address the account is moving to, shown to the
+    # current address so its owner can check the request before approving it.
+    new_email: EmailStr | None = None
+    # For sign_in_code: the code to type into the page that asked for it.
+    code: str | None = Field(default=None, pattern=SIGN_IN_CODE_PATTERN)
+    # For the sign-in emails: the provider the sign-in is with.
+    provider: SignInProvider | None = None
+
+    @model_validator(mode="after")
+    def _fields_match_type(self) -> Self:
+        if self.type in get_args(AuthLinkEmailType):
+            if self.url is None:
+                raise ValueError(f"A {self.type} email needs a url")
+            if self.code is not None or self.provider is not None:
+                raise ValueError(f"A {self.type} email takes no code or provider")
+            return self
+        if self.url is not None:
+            raise ValueError(f"A {self.type} email has no link")
+        if self.provider is None:
+            raise ValueError(f"A {self.type} email needs a provider")
+        if self.type == "sign_in_code" and self.code is None:
+            raise ValueError("A sign_in_code email needs a code")
+        if self.type != "sign_in_code" and self.code is not None:
+            raise ValueError(f"A {self.type} email takes no code")
+        return self
+
+
+class AuthEmailSuppressionRequest(BaseModel):
+    to: EmailStr
+
+
+class AuthEmailSuppressionResponse(BaseModel):
+    suppressed: bool
+
+
+class AuthEmailBanRecordRequest(BaseModel):
+    email: EmailStr = Field(max_length=320)
+
+
+class AuthEmailBanRecordResponse(BaseModel):
+    banned: bool
 
 
 @auth_email_router.post(
@@ -51,33 +104,101 @@ class AuthEmailRequest(BaseModel):
     responses={
         400: {"description": "url does not point at a trusted frontend origin"},
         403: {"description": "Service token is missing the required scope"},
+        422: {
+            "description": "Invalid request, or detail `email_undeliverable`: "
+            "the mail provider won't deliver to this address"
+        },
         503: {"description": "Service-token verification is not configured"},
     },
     # The tag comes from the router include in rest_api.py; repeating it here
     # duplicates it in the generated spec.
 )
 async def send_auth_email(request: AuthEmailRequest) -> None:
-    if not _url_origin_allowed(request.url):
+    if request.url is not None and not _url_origin_allowed(request.url):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="url must point at a trusted frontend origin.",
         )
 
-    email = render_auth_email(request.type, request.url)
+    email = render_auth_email(
+        request.type,
+        request.url,
+        request.to,
+        request.new_email,
+        code=request.code,
+        provider=request.provider,
+    )
+    # The sign-in emails ask their reader to reply if it wasn't them, so a
+    # reply reaches the shared inbox, as the account-closed confirmation's does.
+    reply_to = (
+        {"reply_to": settings.config.billing_reply_to_email}
+        if request.type in get_args(AuthSignInEmailType)
+        else {}
+    )
 
     # The blocking RPC to the notification service runs off the event loop; a
     # delivery failure there surfaces as a 5xx so a misconfigured mailer fails
     # loudly instead of dropping the auth email.
-    await asyncio.to_thread(
-        get_notification_manager_client().send_email_or_raise,
-        request.to,
-        email.subject,
-        email.html,
-        email.text,
-    )
+    try:
+        await asyncio.to_thread(
+            get_notification_manager_client().send_email_or_raise,
+            request.to,
+            email.subject,
+            email.html,
+            email.text,
+            **reply_to,
+        )
+    except EmailUndeliverableError:
+        # The global ValueError handler would make this a 400 the frontend throws on.
+        logger.warning(f"Mail provider won't deliver {request.type} auth email")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="email_undeliverable",
+        )
     # Don't log the recipient address — auth emails go to arbitrary users and
     # the address is PII we don't want in application logs.
     logger.info(f"Sent {request.type} auth email")
+
+
+@auth_email_router.post(
+    "/suppression",
+    dependencies=[Security(requires_auth_email_service)],
+    summary="Check whether the mailer has suppressed an address",
+    operation_id="checkAuthEmailSuppression",
+    responses={
+        403: {"description": "Service token is missing the required scope"},
+        503: {"description": "Service-token verification is not configured"},
+    },
+)
+async def check_auth_email_suppression(
+    request: AuthEmailSuppressionRequest,
+) -> AuthEmailSuppressionResponse:
+    """Asked by sign-up and the resend button before they email an address, so
+    one Postmark won't deliver to is refused up front. Not suppressed when the
+    mailer can't tell."""
+    suppressed = await asyncio.to_thread(
+        get_notification_manager_client().is_email_suppressed, request.to
+    )
+    return AuthEmailSuppressionResponse(suppressed=suppressed)
+
+
+@auth_email_router.post(
+    "/ban-record",
+    dependencies=[Security(requires_sign_up_check_service)],
+    summary="Check whether an address belongs to an erased, banned account",
+    operation_id="checkAuthEmailBanRecord",
+    responses={
+        403: {"description": "Service token is missing the required scope"},
+        503: {"description": "Service-token verification is not configured"},
+    },
+)
+async def check_auth_email_ban_record(
+    request: AuthEmailBanRecordRequest,
+) -> AuthEmailBanRecordResponse:
+    """Asked by sign-up before it creates an account: an address whose banned
+    account was erased can't sign up again while its ban record lasts
+    (`account_erasure/ban_record.py`)."""
+    return AuthEmailBanRecordResponse(banned=await is_banned_address(request.email))
 
 
 def _url_origin_allowed(url: str) -> bool:

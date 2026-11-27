@@ -1,13 +1,14 @@
 import asyncio
 import contextvars
 import logging
+import os
 import re
 import shutil
 import tempfile
 import types
 import uuid as uuid_mod
 from collections import Counter
-from collections.abc import AsyncIterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from concurrent.futures import Future
 from enum import Enum
 from functools import partial
@@ -26,10 +27,17 @@ from backend.blocks._base import (
     BlockType,
 )
 from backend.blocks.agent import AgentExecutorBlock
+from backend.copilot.sdk.anthropic_key_relay import ANTHROPIC_API_URL, AnthropicKeyRelay
+from backend.copilot.sdk.cli_io import send_user_text
+from backend.copilot.sdk.cli_version import require_verbatim_prompts_cli
+from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG
 from backend.copilot.sdk.env import config as copilot_config
+from backend.copilot.sdk.env import without_url_credentials
+from backend.copilot.sdk.launch_env import launch_options
 from backend.data.dynamic_fields import (
     extract_base_field_name,
     get_dynamic_field_description,
+    get_dynamic_field_schema,
     is_dynamic_field,
     is_tool_pin,
 )
@@ -38,7 +46,9 @@ from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
 from backend.util.clients import get_database_manager_async_client
 from backend.util.exceptions import InsufficientBalanceError
-from backend.util.prompt import MAIN_OBJECTIVE_PREFIX
+from backend.util.llm.prompt_refusal import PromptRefusedError
+from backend.util.llm.request_too_large import RequestTooLargeError
+from backend.util.prompt import MAIN_OBJECTIVE_PREFIX, estimate_token_count
 from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.tool_call_loop import (
     LLMLoopResponse,
@@ -406,6 +416,31 @@ def _select_final_answer_parts(
     return current
 
 
+_SDK_CONVERSATION_LABELS = {
+    "user": "User",
+    "assistant": "You responded",
+    "tool": "Tool output",
+}
+
+
+def format_sdk_conversation(prompt: list[dict[str, Any]]) -> str:
+    """Render a multi-turn prompt as the text of one SDK user message.
+
+    The CLI takes no assistant or tool turn on stdin, so the turns go in as
+    text, laid out like the copilot's ``_format_conversation_context``; an
+    entry that is not a user, assistant or tool turn is dropped.
+    """
+    lines: list[str] = []
+    for p in prompt:
+        role, content = p.get("role"), p.get("content")
+        label = _SDK_CONVERSATION_LABELS.get(role) if isinstance(role, str) else None
+        if label and content:
+            if not isinstance(content, str):
+                content = json.dumps(content)
+            lines.append(f"{label}: {content}")
+    return "<conversation_history>\n" + "\n".join(lines) + "\n</conversation_history>"
+
+
 def sdk_disallowed_tools() -> list[str]:
     """Disable ALL known SDK built-in tools — only graph MCP tools available.
 
@@ -420,7 +455,7 @@ def sdk_disallowed_tools() -> list[str]:
     # which every block load should not have to pay for.
     from backend.copilot.sdk.tool_adapter import get_sdk_builtin_tools
 
-    return [*get_sdk_builtin_tools(), "NotebookEdit"]
+    return get_sdk_builtin_tools()
 
 
 class OrchestratorBlock(Block):
@@ -645,6 +680,26 @@ class OrchestratorBlock(Block):
         )
 
     @staticmethod
+    def _dynamic_pin_schema(input_schema: Any, field_name: str) -> dict[str, Any]:
+        """Tool parameter schema for a dynamic (`_#_`/`_$_`/`_@_`) sink pin."""
+        description = get_dynamic_field_description(field_name)
+        base_name = extract_base_field_name(field_name)
+        try:
+            base_schema = input_schema.jsonschema().get("properties", {}).get(base_name)
+        except (KeyError, AttributeError, ValueError):
+            base_schema = None
+        leaf = (
+            get_dynamic_field_schema(base_schema, field_name)
+            if isinstance(base_schema, dict)
+            else None
+        )
+        if leaf is None:
+            return {"type": "string", "description": description}
+        if leaf_description := leaf.get("description"):
+            description = f"{description}: {leaf_description}"
+        return {**leaf, "description": description}
+
+    @staticmethod
     async def _create_block_function_signature(
         sink_node: "Node", links: list["Link"]
     ) -> dict[str, Any]:
@@ -683,11 +738,12 @@ class OrchestratorBlock(Block):
             field_mapping[clean_field_name] = field_name
 
             if is_dynamic:
-                # For dynamic fields, use cleaned name but preserve original in description
-                properties[clean_field_name] = {
-                    "type": "string",
-                    "description": get_dynamic_field_description(field_name),
-                }
+                # For dynamic fields, use cleaned name but preserve original in
+                # description, and take the type from the base field's schema
+                # so the sink block gets the value type it expects.
+                properties[clean_field_name] = OrchestratorBlock._dynamic_pin_schema(
+                    sink_block_input_schema, field_name
+                )
             else:
                 # For regular fields, use the block's schema directly
                 try:
@@ -917,6 +973,7 @@ class OrchestratorBlock(Block):
             tools=tool_functions,
             ollama_host=input_data.ollama_host,
             parallel_tool_calls=input_data.multiple_tool_calls,
+            on_abandoned=self.merge_stats,
         )
 
         # Track LLM usage stats per call
@@ -1168,6 +1225,10 @@ class OrchestratorBlock(Block):
             block_id=target_node.block_id,
             inputs=final_input_data or {},
             execution_context=execution_params.execution_context,
+            # Nothing has been collected for this node yet. Without an explicit
+            # baseline, reconciliation re-derives the catalogue pre-flight and
+            # refunds it (minus actual usage) although it was never charged.
+            pre_flight_charge=0,
         )
 
         # Apply node input overrides (credential masks from Library/Otto).
@@ -1186,6 +1247,41 @@ class OrchestratorBlock(Block):
 
         # Use the execution manager to execute the tool node
         try:
+            # Charge the pre-flight cost BEFORE running the tool, as the main
+            # execution queue does. Tools spawned by the orchestrator bypass
+            # that queue, so we must charge here to avoid free tool execution.
+            # charge_node_usage pins node_exec_entry.pre_flight_charge to the
+            # amount spent, so the reconciliation inside on_node_execution
+            # settles against what was actually collected: a failed tool call
+            # is refunded down to its tracked usage, never below what was paid.
+            # Skipped for dry runs.
+            if not execution_params.execution_context.dry_run:
+                try:
+                    cost, _ = await execution_processor.charge_node_usage(
+                        node_exec_entry
+                    )
+                    # Count it in the run's cost, as the main queue does for
+                    # every node it charges: the tool node's own stats only
+                    # carry its reconciliation delta.
+                    with execution_processor.execution_stats_lock:
+                        execution_processor.execution_stats.cost += cost
+                except InsufficientBalanceError:
+                    # IBE must propagate — see OrchestratorBlock class docstring.
+                    logger.warning(
+                        "Insufficient balance charging for tool node %s; "
+                        "agent loop will be aborted",
+                        sink_node_id,
+                    )
+                    raise
+                except Exception:
+                    # Non-billing charge failures (DB outage, network, etc.)
+                    # are logged, not surfaced as a tool error. The baseline
+                    # holds only what was collected (0 if the spend never
+                    # landed), so reconciliation never refunds unpaid credit.
+                    logger.exception(
+                        "Unexpected error charging for tool node %s", sink_node_id
+                    )
+
             # Get NodeExecutionProgress from the execution manager's running nodes
             node_exec_progress = execution_processor.running_node_execution[
                 sink_node_id
@@ -1220,6 +1316,14 @@ class OrchestratorBlock(Block):
                     nodes_input_masks=nodes_input_masks,
                     graph_stats_pair=graph_stats_pair,
                 )
+                # A stop, or this block's time limit, ends in the tool node's
+                # own task, which takes the cancel and returns: end here too.
+                this_task = asyncio.current_task()
+                if node_exec_future.cancelled() or (
+                    this_task and this_task.cancelling()
+                ):
+                    node_exec_future.cancel()
+                    raise asyncio.CancelledError()
                 if tool_node_stats is None:
                     nil_err = RuntimeError(
                         f"on_node_execution returned None for node {sink_node_id} "
@@ -1237,54 +1341,6 @@ class OrchestratorBlock(Block):
             except Exception as exec_err:
                 node_exec_future.set_exception(exec_err)
                 raise
-
-            # Charge user credits AFTER successful tool execution. Tools
-            # spawned by the orchestrator bypass the main execution queue
-            # (where _charge_usage is called), so we must charge here to
-            # avoid free tool execution. Charging post-completion (vs.
-            # pre-execution) avoids billing users for failed tool calls.
-            # Skipped for dry runs.
-            #
-            # `error is None` intentionally excludes both Exception and
-            # BaseException subclasses (e.g. CancelledError) so cancelled
-            # or terminated tool runs are not billed.
-            #
-            # Billing errors (including non-balance exceptions) are kept
-            # in a separate try/except so they are never silently swallowed
-            # by the generic tool-error handler below.
-            if (
-                not execution_params.execution_context.dry_run
-                and tool_node_stats.error is None
-            ):
-                # Charge the sub-block for telemetry / wallet debit. The
-                # return value is intentionally discarded: on_node_execution
-                # above ran the sub-block against this graph's own
-                # graph_stats_pair (manager.py:659-668), so its cost already
-                # lands in graph_stats.cost on the sub-block's completion.
-                # Re-merging here would double-count in telemetry / UI / audit.
-                try:
-                    await execution_processor.charge_node_usage(node_exec_entry)
-                except InsufficientBalanceError:
-                    # IBE must propagate — see OrchestratorBlock class docstring.
-                    # Log the billing failure here so the discarded tool result
-                    # is traceable before the loop aborts.
-                    logger.warning(
-                        "Insufficient balance charging for tool node %s after "
-                        "successful execution; agent loop will be aborted",
-                        sink_node_id,
-                    )
-                    raise
-                except Exception:
-                    # Non-billing charge failures (DB outage, network, etc.)
-                    # must NOT propagate to the outer except handler because
-                    # the tool itself succeeded. Re-raising would mark the
-                    # tool as failed (_is_error=True), causing the LLM to
-                    # retry side-effectful operations. Log and continue.
-                    logger.exception(
-                        "Unexpected error charging for tool node %s; "
-                        "tool execution was successful",
-                        sink_node_id,
-                    )
 
             # Get outputs from database after execution completes using database manager client
             node_outputs = await db_client.get_execution_outputs_by_node_exec_id(
@@ -1709,44 +1765,26 @@ class OrchestratorBlock(Block):
             return
         provider = credentials.provider
         api_key = credentials.api_key.get_secret_value()
+        # The CLI never holds the user's key: a loopback relay puts it on the
+        # CLI's model calls.
         if provider == "open_router":
-            # Route through OpenRouter proxy: point ``ANTHROPIC_BASE_URL`` at
-            # OpenRouter's Anthropic-compat endpoint and set BOTH auth env
-            # vars to the OpenRouter key.  OpenRouter accepts either
-            # ``x-api-key`` (set by ``ANTHROPIC_API_KEY``) or
-            # ``Authorization: Bearer`` (set by ``ANTHROPIC_AUTH_TOKEN``);
-            # whichever the Claude Code CLI happens to send on the wire is
-            # a valid OR credential.
-            #
-            # We MUST explicitly set ``ANTHROPIC_API_KEY`` here rather than
-            # omit it or set it to an empty string.  The Claude Agent SDK
-            # merges ``options.env`` on top of ``os.environ``, so omitting
-            # the key lets any inherited platform ``ANTHROPIC_API_KEY``
-            # (e.g. a deployment's direct-Anthropic key) leak through to
-            # OpenRouter and 401.  Setting it to ``""`` was the previous
-            # approach to "force AUTH_TOKEN usage", but the CLI's HTTP
-            # layer treats the empty string as set and emits
-            # ``x-api-key:`` (empty value), which OpenRouter rejects with
-            # ``invalid x-api-key``.  Using the OR key for both vars
-            # avoids both failure modes.
-            #
-            # NOTE: We use the platform's global OpenRouter base URL from
-            # ChatConfig.  Per-credential base URLs are not yet supported;
-            # if the user's credential targets a custom proxy, the SDK will
-            # still route through the platform's configured endpoint.
+            # The platform's OpenRouter endpoint (per-credential base URLs are
+            # not supported), which takes the key as x-api-key or bearer token.
             or_base = (copilot_config.base_url or "https://openrouter.ai/api").rstrip(
                 "/"
             )
             if or_base.endswith("/v1"):
                 or_base = or_base[:-3]
-            sdk_env = {
-                "ANTHROPIC_BASE_URL": or_base,
-                "ANTHROPIC_AUTH_TOKEN": api_key,
-                "ANTHROPIC_API_KEY": api_key,
-            }
+            key_relay = AnthropicKeyRelay(or_base, api_key, as_bearer_too=True)
         else:
-            # Direct Anthropic key
-            sdk_env = {"ANTHROPIC_API_KEY": api_key}
+            # Wherever the deployment points Anthropic traffic, without a user
+            # name and password embedded in that URL.
+            key_relay = AnthropicKeyRelay(
+                without_url_credentials(
+                    os.environ.get("ANTHROPIC_BASE_URL") or ANTHROPIC_API_URL
+                ),
+                api_key,
+            )
 
         # Use an execution-specific working directory to prevent concurrent
         # SDK executions from colliding.  tempfile.mkdtemp() respects TMPDIR
@@ -1774,9 +1812,14 @@ class OrchestratorBlock(Block):
         total_prompt_tokens = 0
         total_completion_tokens = 0
         total_cost_usd: float | None = None
+        # A query cut off before its ResultMessage reports no usage at all.
+        query_sent = False
+        got_result = False
+        cancelled = False
 
         sdk_error: Exception | None = None
         try:
+            sdk_env = await key_relay.start()
             # Build SDK options
             options = ClaudeAgentOptions(
                 system_prompt=input_data.sys_prompt or "",
@@ -1786,26 +1829,27 @@ class OrchestratorBlock(Block):
                 cwd=sdk_cwd,
                 env=sdk_env,
                 model=input_data.model.value or None,
+                # No settings files or MCP servers from the CLI's config dir:
+                # every run on this host shares it.
+                setting_sources=[],
+                extra_args={
+                    "strict-mcp-config": None,
+                    DISABLE_SLASH_COMMANDS_FLAG: None,
+                },
+                # The CLI hands every prompt to the model exactly as written.
+                verbatim_prompts=True,
             )
 
             # Strip system messages from prompt — they're already passed via
             # ClaudeAgentOptions.system_prompt to avoid sending them twice.
             sdk_prompt = [p for p in prompt if p.get("role") != "system"]
 
-            # Build user message from prompt.
-            # The SDK's query() accepts a string or an async iterable of message dicts.
-            # For multi-turn conversations, pass the full history as an async iterable
-            # to preserve assistant replies, tool calls/results, and system messages.
+            # The user message is always one string, sent with ``send_user_text``.
             has_multi_turn = any(
                 p.get("role") in ("assistant", "tool") for p in sdk_prompt
             )
             if has_multi_turn:
-
-                async def _prompt_iter():
-                    for p in sdk_prompt:
-                        yield p
-
-                user_message: str | AsyncIterable[dict[str, Any]] = _prompt_iter()
+                user_message = format_sdk_conversation(sdk_prompt)
             else:
                 # Single-turn: collapse user content into one string
                 user_parts = []
@@ -1820,15 +1864,16 @@ class OrchestratorBlock(Block):
             # We must NOT cancel __anext__() mid-flight — doing so corrupts
             # the SDK's internal anyio memory stream (same pattern as
             # copilot/sdk/service.py:_iter_sdk_messages).  Every fetch task
-            # runs in one shared context: once configure_claude_agent_sdk()
-            # has wrapped the client, langsmith's tracing wrapper keeps the
-            # conversation run in a ContextVar set during the first fetch,
-            # and a fresh context per task would drop every later reply's
-            # span from the trace.
+            # runs in one shared context, so a ContextVar set while fetching
+            # one message is still set for the next.
 
             _HEARTBEAT_INTERVAL = 10.0  # seconds
-            async with ClaudeSDKClient(options=options) as client:
-                await client.query(user_message)
+            options.cli_path = await asyncio.to_thread(
+                require_verbatim_prompts_cli, options.cli_path
+            )
+            async with ClaudeSDKClient(options=launch_options(options)) as client:
+                query_sent = True
+                await send_user_text(client, user_message)
 
                 msg_iter = client.receive_response().__aiter__()
                 fetch_context = contextvars.copy_context()
@@ -1927,6 +1972,7 @@ class OrchestratorBlock(Block):
                                     }
                                 )
                         elif isinstance(sdk_msg, ResultMessage):
+                            got_result = True
                             if sdk_msg.usage:
                                 total_prompt_tokens += getattr(
                                     sdk_msg.usage, "input_tokens", 0
@@ -1947,6 +1993,9 @@ class OrchestratorBlock(Block):
             # IBE must propagate — see class docstring. The `finally`
             # block below still runs and records partial token usage.
             raise
+        except asyncio.CancelledError:
+            cancelled = True
+            raise
         except Exception as e:
             # Surface OTHER SDK errors as user-visible output instead
             # of crashing, consistent with _execute_tools_agent_mode
@@ -1954,6 +2003,7 @@ class OrchestratorBlock(Block):
             # merge_stats below so partial token usage is always recorded.
             sdk_error = e
         finally:
+            await key_relay.close()
             # Always record usage stats, even on error.  The SDK may have
             # made LLM calls (consuming tokens) before the failure; dropping
             # those stats would under-count resource usage.
@@ -1970,6 +2020,14 @@ class OrchestratorBlock(Block):
                         output_token_count=total_completion_tokens,
                         llm_call_count=1,
                         provider_cost=total_cost_usd,
+                    )
+                )
+            # A cancel after the query went out leaves no usage to read, so
+            # the prompt's estimated input tokens stand in for it.
+            if query_sent and not got_result and cancelled:
+                self.merge_stats(
+                    llm.abandoned_call_stats(
+                        estimate_token_count(prompt, model=input_data.model.value)
                     )
                 )
             # Clean up execution-specific working directory.
@@ -2062,8 +2120,8 @@ class OrchestratorBlock(Block):
             )
             prompt.extend(tool_output)
 
-        values = input_data.prompt_values
-        if values:
+        if input_data.prompt_values:
+            values = llm.strip_prompt_value_keys(input_data.prompt_values)
             input_data.prompt = await llm.fmt.format_string(input_data.prompt, values)
             input_data.sys_prompt = await llm.fmt.format_string(
                 input_data.sys_prompt, values
@@ -2174,6 +2232,9 @@ class OrchestratorBlock(Block):
                 )
                 break
 
+            except (PromptRefusedError, RequestTooLargeError):
+                # Not a tool-call mistake the model can fix on a retry.
+                raise
             except ValueError as e:
                 last_error = e
                 error_feedback = (

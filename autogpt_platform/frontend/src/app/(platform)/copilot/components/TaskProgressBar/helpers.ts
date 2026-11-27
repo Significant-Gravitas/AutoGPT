@@ -6,6 +6,10 @@ export interface TodoItem {
   activeForm?: string;
 }
 
+// Shared by every chat with no task list, so the bar's props keep their
+// identity from one streamed flush to the next.
+export const EMPTY_TODOS: TodoItem[] = [];
+
 function isTodoItem(value: unknown): value is TodoItem {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
@@ -17,9 +21,26 @@ function isTodoItem(value: unknown): value is TodoItem {
   );
 }
 
+function isAcceptedEmptyTodoWrite(output: unknown): boolean {
+  if (!output || typeof output !== "object") return false;
+  const result = output as Record<string, unknown>;
+  if ("type" in result) {
+    return (
+      result.type === "todo_write" &&
+      Array.isArray(result.todos) &&
+      result.todos.length === 0
+    );
+  }
+  return (
+    Array.isArray(result.oldTodos) &&
+    Array.isArray(result.newTodos) &&
+    result.newTodos.length === 0
+  );
+}
+
 // Walks the message history backwards for the most recent TodoWrite tool call
-// and returns its task list (the copilot's live plan).
-export function getLatestTaskList(messages: UIMessage[]): TodoItem[] | null {
+// and returns its task list (the copilot's live plan), or EMPTY_TODOS.
+export function getLatestTaskList(messages: UIMessage[]): TodoItem[] {
   for (let i = messages.length - 1; i >= 0; i--) {
     const parts = messages[i]?.parts;
     if (!parts) continue;
@@ -28,6 +49,8 @@ export function getLatestTaskList(messages: UIMessage[]): TodoItem[] | null {
         type: string;
         state?: string;
         input?: unknown;
+        output?: unknown;
+        preliminary?: boolean;
       };
       if (part.type !== "tool-TodoWrite") continue;
       // While a TodoWrite call's arguments are still streaming, the AI SDK
@@ -40,11 +63,33 @@ export function getLatestTaskList(messages: UIMessage[]): TodoItem[] | null {
       if (!input || typeof input !== "object") continue;
       const todos = (input as { todos?: unknown }).todos;
       if (!Array.isArray(todos)) continue;
+      if (
+        todos.length === 0 &&
+        part.state === "output-available" &&
+        !part.preliminary &&
+        isAcceptedEmptyTodoWrite(part.output)
+      ) {
+        return EMPTY_TODOS;
+      }
       const filtered = todos.filter(isTodoItem);
       if (filtered.length > 0) return filtered;
     }
   }
-  return null;
+  return EMPTY_TODOS;
+}
+
+// Same tasks in the same order and states: the bar would draw the same thing.
+export function haveSameTodos(a: TodoItem[], b: TodoItem[]): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((todo, i) => {
+    const other = b[i];
+    return (
+      todo.content === other.content &&
+      todo.status === other.status &&
+      todo.activeForm === other.activeForm
+    );
+  });
 }
 
 export function countCompleted(todos: TodoItem[]): number {

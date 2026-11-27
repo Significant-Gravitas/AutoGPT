@@ -19,13 +19,13 @@ transition:
    checkout joins it, and nobody else enters MailerLite through us: a signup
    alone does not create a subscriber. GTM segments it for outreach.
 
-Someone who opted out of marketing enters none of these. Every write below
-upserts the subscriber, a removal or a field update included, so nothing is
-queued for them at all (`consent.py`), the backfills leave them out, and the
-consumer re-reads the opt-out right before each write, which drops a change
-queued just before the refusal. The one exception is `unsubscribe`, which
-carries the refusal itself to someone MailerLite already has, and never
-creates a subscriber.
+Someone who opted out of marketing, or whom a signal places in Iran or Russia,
+enters none of these. Every write below upserts the subscriber, a removal or a
+field update included, so nothing is queued for them at all (`consent.py`) and
+the backfills leave them out. The consumer also re-reads the opt-out right
+before each write, which drops a change queued just before the refusal. The
+one exception is `unsubscribe`, which carries the refusal itself to someone
+MailerLite already has, and never creates a subscriber.
 
 Subscriber fields (`SubscriberField`) are the backend's alone: every write
 comes from here, and MailerLite automations only read them.
@@ -81,6 +81,8 @@ FIELD_TYPES: dict[SubscriberField, str] = {
     SubscriberField.CHECKOUT_OPENED: "date",
     SubscriberField.EMAIL_TYPE: "text",
     SubscriberField.SIGNIN_METHOD: "text",
+    SubscriberField.ROLE: "text",
+    SubscriberField.ROLE_OTHER: "text",
     SubscriberField.COUNTRY_CODE: "text",
     SubscriberField.COUNTRY_SOURCE: "text",
     SubscriberField.EXCLUDE_DE_AT: "text",
@@ -92,6 +94,15 @@ BUILT_IN_FIELD_TYPES: dict[SubscriberField, str] = {SubscriberField.COUNTRY: "te
 
 def field_type(field: SubscriberField) -> str:
     return FIELD_TYPES.get(field) or BUILT_IN_FIELD_TYPES[field]
+
+
+def held_value(field: SubscriberField, value: object) -> str | None:
+    """A field as MailerLite handed it back, in the form we write it: empty
+    is None, and a date loses the time part it may come back with."""
+    if value is None or value == "":
+        return None
+    text = str(value)
+    return text[:10] if field_type(field) == "date" else text
 
 
 Fields = Mapping[SubscriberField, str | None]
@@ -193,6 +204,53 @@ async def record_signup(email: str, fields: Fields | None = None) -> None:
     await update_fields(email, fields)
 
 
+async def record_onboarding_profile(email: str, fields: Fields | None = None) -> None:
+    """The onboarding answers, for someone who already opened checkout: they
+    fill in someone MailerLite already has and never create a subscriber,
+    since only checkout openers belong in MailerLite. The role is answered
+    before the paywall, so most people get it with the checkout event instead
+    (`checkout_audience`), and onboarding-role-backfill fills in anyone
+    missed."""
+    if not fields:
+        return
+    _require_token()
+    if await _find_subscriber(email) is None:
+        logger.info(
+            "No MailerLite subscriber for %s; onboarding profile not written",
+            pseudonym(email),
+        )
+        return
+    await update_fields(email, fields)
+    logger.info(f"Wrote the onboarding profile of {pseudonym(email)} to MailerLite")
+
+
+async def record_lifecycle(email: str, fields: Fields | None = None) -> None:
+    """The subscription status and its dates, from the lifecycle snapshot
+    (`lifecycle_audience`). They fill in someone MailerLite already has and
+    never create a subscriber: MailerLite holds checkout openers, and having
+    a subscription does not make someone one. Only the fields that differ
+    from MailerLite's are written, so a sync that changed nothing costs one
+    read. The audience queue is worked one message at a time, so nothing of
+    ours writes between the read and the write."""
+    if not fields:
+        return
+    _require_token()
+    subscriber = await _find_subscriber(email)
+    if subscriber is None:
+        logger.info(
+            f"No MailerLite subscriber for {pseudonym(email)}; "
+            "subscription status not written"
+        )
+        return
+    held = subscriber.get("fields") or {}
+    changed = {
+        field: value
+        for field, value in fields.items()
+        if held_value(field, held.get(field.value)) != value
+    }
+    await update_fields(email, changed)
+
+
 async def record_checkout_opened(email: str, fields: Fields | None = None) -> None:
     """Someone opened Stripe checkout: into the checkout openers group, with
     the fields GTM segments on. Whatever MailerLite already holds that is
@@ -249,6 +307,35 @@ async def unsubscribe(email: str, fields: Fields | None = None) -> None:
             f"{response.status}"
         )
     logger.info(f"Unsubscribed {pseudonym(email)} in MailerLite")
+
+
+async def find_subscriber_id(email: str) -> str | None:
+    """The subscriber's MailerLite ID, None when MailerLite has nobody by it."""
+    _require_token()
+    return await _find_subscriber_id(email, _erasure_client())
+
+
+async def forget_subscriber(email: str) -> bool:
+    """The account was deleted: have MailerLite forget the subscriber
+    (`POST /subscribers/{id}/forget`), which removes them at once and erases
+    their data within 30 days. A plain `DELETE` would keep their data in case
+    they re-subscribe. Consent and country gates do not apply to a deletion.
+    Returns whether anyone was forgotten; someone MailerLite does not have is
+    already gone."""
+    subscriber_id = await find_subscriber_id(email)
+    if subscriber_id is None:
+        return False
+    response = await _erasure_client().post(
+        f"{API_BASE}/subscribers/{subscriber_id}/forget", headers=_headers()
+    )
+    # 404: removed since the lookup, which is the state we want.
+    if response.status not in _OK_STATUSES and response.status != 404:
+        raise MailerLiteError(
+            f"Forgetting MailerLite subscriber {pseudonym(email)} failed with "
+            f"{response.status}"
+        )
+    logger.info(f"Asked MailerLite to forget {pseudonym(email)}")
+    return response.status != 404
 
 
 async def ensure_fields() -> list[SubscriberField]:
@@ -369,12 +456,12 @@ def _payload(fields: Fields) -> dict[str, str | None]:
     return {SubscriberField(key).value: value for key, value in fields.items()}
 
 
-async def _find_subscriber_id(email: str) -> str | None:
-    return (await _find_subscriber(email) or {}).get("id")
+async def _find_subscriber_id(email: str, client: Requests | None = None) -> str | None:
+    return (await _find_subscriber(email, client) or {}).get("id")
 
 
-async def _find_subscriber(email: str) -> dict | None:
-    response = await _client().get(
+async def _find_subscriber(email: str, client: Requests | None = None) -> dict | None:
+    response = await (client or _client()).get(
         f"{API_BASE}/subscribers/{email}", headers=_headers()
     )
     if response.status == 404:
@@ -387,10 +474,30 @@ async def _find_subscriber(email: str) -> dict | None:
     return (response.json() or {}).get("data") or {}
 
 
+# MailerLite answers 429 until its minute is up (120 calls a minute; see
+# mailerlite_backfill). With the transport's backoff the seventh attempt comes
+# 63-69 s after the first, so the shared client waits a rate limit out, and an
+# outage answering 5xx still fails the call inside the consumer's 300 s limit.
+RATE_LIMIT_RETRY_ATTEMPTS = 7
+
+
 def _client() -> Requests:
     # Statuses are inspected rather than raised on, because "already gone" is a
     # success for a removal.
-    return Requests(trusted_origins=[API_BASE], raise_for_status=False)
+    return Requests(
+        trusted_origins=[API_BASE],
+        raise_for_status=False,
+        retry_max_attempts=RATE_LIMIT_RETRY_ATTEMPTS,
+    )
+
+
+def _erasure_client() -> Requests:
+    # Account erasure gives up after three attempts, so an outage answering 5xx
+    # fails the step in seconds instead of holding the erasure. Everything else
+    # keeps the shared client, which waits out rate limits.
+    return Requests(
+        trusted_origins=[API_BASE], raise_for_status=False, retry_max_attempts=3
+    )
 
 
 def _headers() -> dict[str, str]:

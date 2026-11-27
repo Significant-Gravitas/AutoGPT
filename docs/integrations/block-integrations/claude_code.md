@@ -28,7 +28,7 @@ The block supports conversation continuation through three mechanisms:
 | Input | Description |
 |-------|-------------|
 | E2B Credentials | API key for the E2B platform to create the sandbox. Get one at [e2b.dev](https://e2b.dev/docs) |
-| Anthropic Credentials | API key for Anthropic to power Claude Code. Get one at [Anthropic's website](https://console.anthropic.com) |
+| Anthropic Credentials | Your own API key for Anthropic to power Claude Code. Platform credits can't be used here. Get one at [Anthropic's website](https://console.anthropic.com) |
 | Prompt | The task or instruction for Claude Code to execute. Claude Code can create files, install packages, run commands, and perform complex coding tasks |
 | Timeout | Sandbox timeout in seconds (default: 300). Set higher for complex tasks. Note: Only applies when creating a new sandbox |
 | Setup Commands | Optional shell commands to run before executing Claude Code (e.g., installing dependencies) |

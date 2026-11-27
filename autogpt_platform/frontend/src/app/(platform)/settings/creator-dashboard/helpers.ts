@@ -29,8 +29,6 @@ export function buildEditPayload(submission: StoreSubmission): EditPayload {
   };
 }
 
-export const EASE_OUT = [0.16, 1, 0.3, 1] as const;
-
 export type StatusFilterValue = "all" | SubmissionStatus;
 
 export type SortKey = "submitted" | "runs";
@@ -109,27 +107,30 @@ export const STATUS_VISUAL: Record<SubmissionStatus, StatusVisual> = {
   [SubmissionStatus.DRAFT]: {
     label: "Draft",
     Icon: Clock01Icon,
-    pillClass: "bg-zinc-100 text-zinc-700 ring-1 ring-inset ring-zinc-200",
-    dotClass: "bg-zinc-400",
+    pillClass:
+      "bg-surface-hover text-foreground-body ring-1 ring-inset ring-border-base",
+    dotClass: "bg-fill-subtle",
   },
   [SubmissionStatus.PENDING]: {
     label: "In review",
     Icon: Clock01Icon,
-    pillClass: "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200",
-    dotClass: "bg-amber-500",
+    pillClass:
+      "bg-warning-surface text-warning-foreground ring-1 ring-inset ring-warning-border",
+    dotClass: "bg-warning",
   },
   [SubmissionStatus.APPROVED]: {
     label: "Approved",
     Icon: CheckmarkCircle02Icon,
     pillClass:
-      "bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-200",
-    dotClass: "bg-emerald-500",
+      "bg-success-surface text-success-foreground ring-1 ring-inset ring-success/30",
+    dotClass: "bg-success",
   },
   [SubmissionStatus.REJECTED]: {
     label: "Needs changes",
     Icon: UnavailableIcon,
-    pillClass: "bg-rose-50 text-rose-800 ring-1 ring-inset ring-rose-200",
-    dotClass: "bg-rose-500",
+    pillClass:
+      "bg-error-surface text-error-foreground ring-1 ring-inset ring-error/20",
+    dotClass: "bg-error",
   },
 };
 

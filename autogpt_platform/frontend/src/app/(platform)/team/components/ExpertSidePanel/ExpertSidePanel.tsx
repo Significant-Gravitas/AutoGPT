@@ -5,17 +5,17 @@ import { FullscreenDialog } from "@/components/molecules/FullscreenDialog/Fullsc
 import { Text } from "@/components/atoms/Text/Text";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ReactNode, useEffect, useState } from "react";
+import { CSSProperties, ReactNode, useEffect, useState } from "react";
 import { PanelResizeHandle } from "@/app/(platform)/copilot/components/PanelResizeHandle";
 import { useIsMobile } from "@/app/(platform)/copilot/useIsMobile";
 import { IdentityAvatar, PanelIdentity } from "./IdentityAvatar";
 import { usePanelSidebarCollapse } from "./usePanelSidebarCollapse";
+import { duration, ease } from "@/components/styles/motion";
 
 const DEFAULT_PANEL_WIDTH = 520;
 const MIN_PANEL_WIDTH = 320;
 const MAX_PANEL_VIEWPORT_RATIO = 0.4;
-const PANEL_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
-const PANEL_DURATION = 0.3;
+const PANEL_DURATION = duration.slow;
 
 interface Props {
   identity: PanelIdentity | null;
@@ -60,6 +60,10 @@ export function ExpertSidePanel({
           closeLabel={closeLabel}
           actions={headerActions}
           showIdentity={showIdentity}
+          // The dialog focuses the close button on open. A hover tooltip on
+          // that button would open on focus and then swallow every Escape,
+          // so the phone layout keeps the label without the tooltip.
+          closeTooltip={false}
           onClose={onClose}
         />
         {children}
@@ -70,7 +74,7 @@ export function ExpertSidePanel({
   const transition =
     shouldReduceMotion || isResizing
       ? { duration: 0 }
-      : { duration: PANEL_DURATION, ease: PANEL_EASE };
+      : { duration: PANEL_DURATION, ease: ease.drawer };
   const panelSelector = `[data-expert-panel="${panelId}"]`;
 
   return (
@@ -83,7 +87,7 @@ export function ExpertSidePanel({
           animate={{ width: renderedWidth, opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
           transition={transition}
-          className="sticky top-0 h-svh shrink-0 self-start border-l border-l-sidebar-border bg-sidebar"
+          className="sticky top-0 h-svh shrink-0 self-start border-l border-l-border-base bg-surface-muted"
         >
           <PanelResizeHandle
             panelSelector={panelSelector}
@@ -94,8 +98,8 @@ export function ExpertSidePanel({
           />
           <div className="h-full overflow-hidden">
             <div
-              style={{ width: renderedWidth }}
-              className="flex h-full min-h-0 flex-col"
+              style={{ "--panel-width": `${renderedWidth}px` } as CSSProperties}
+              className="flex h-full min-h-0 w-[var(--panel-width)] flex-col"
             >
               <PanelHeader
                 identity={identity}
@@ -140,6 +144,7 @@ interface HeaderProps {
   closeLabel: string;
   actions?: ReactNode;
   showIdentity: boolean;
+  closeTooltip?: boolean;
   onClose: () => void;
 }
 
@@ -149,19 +154,21 @@ function PanelHeader({
   closeLabel,
   actions,
   showIdentity,
+  closeTooltip = true,
   onClose,
 }: HeaderProps) {
   return (
-    <div className="flex h-[53px] shrink-0 items-center gap-2 border-b border-b-sidebar-border px-3">
+    <div className="flex h-[53px] shrink-0 items-center gap-2 border-b border-b-border-base px-3">
       {showIdentity ? (
         <>
           <IdentityAvatar
             identity={identity}
             className="h-7 w-7"
-            imageSize={56}
+            imageSize={28}
           />
           <Text
-            variant="body-medium"
+            variant="body"
+            weight="medium"
             as="h2"
             tone="primary"
             className="min-w-0 flex-1 truncate"
@@ -177,8 +184,10 @@ function PanelHeader({
         type="button"
         variant="ghost"
         size="icon-xs"
+        shape="sharp"
         leadingIcon={Cancel01Icon}
         aria-label={closeLabel}
+        withTooltip={closeTooltip}
         onClick={onClose}
       />
     </div>

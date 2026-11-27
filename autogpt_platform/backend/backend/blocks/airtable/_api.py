@@ -27,8 +27,27 @@ def _convert_bools(
     return obj
 
 
+def _record_url(
+    base_id: str,
+    table_id_or_name: str,
+    record_id: str | None = None,
+) -> str:
+    """Build an Airtable Records API URL with a percent-encoded table segment."""
+    encoded_table = quote(table_id_or_name, safe="")
+    url = f"https://api.airtable.com/v0/{base_id}/{encoded_table}"
+    if record_id is not None:
+        url = f"{url}/{quote(record_id, safe='')}"
+    return url
+
+
+class AirtableWebhookEvent(str, Enum):
+    TABLE_DATA = "tableData"
+    TABLE_FIELDS = "tableFields"
+    TABLE_METADATA = "tableMetadata"
+
+
 class WebhookFilters(BaseModel):
-    dataTypes: list[str]
+    dataTypes: list[AirtableWebhookEvent]
     changeTypes: list[str] | None = None
     fromSources: list[str] | None = None
     sourceOptions: dict | None = None
@@ -610,26 +629,35 @@ async def create_field(
     field_type: TableFieldType,
     name: str,
     description: str | None = None,
-    options: dict[str, str] | None = None,
-) -> dict[str, str | dict[str, str]]:
+    options: dict[str, Any] | None = None,
+) -> dict[str, Any]:
 
     assert (
         field_type in TABLE_FIELD_TYPES
     ), f"Field type {field_type} is not valid. Valid types are {TABLE_FIELD_TYPES}."
-    params: dict[str, str | dict[str, str]] = {}
+    params: dict[str, Any] = {}
     params["type"] = field_type
     params["name"] = name
     if description:
         params["description"] = description
     if options:
-        params["options"] = options
+        params["options"] = _field_options(options)
 
     response = await Requests().post(
         f"https://api.airtable.com/v0/meta/bases/{base_id}/tables/{table_id}/fields",
         headers={"Authorization": credentials.auth_header()},
-        json=_convert_bools(params),
+        json=params,
     )
     return response.json()
+
+
+def _field_options(options: dict[str, Any]) -> dict[str, Any]:
+    """Option values may arrive as "true"/"false" strings; choice names are
+    text and stay as written, even "True"."""
+    return {
+        key: value if key == "choices" else _convert_bools(value)
+        for key, value in options.items()
+    }
 
 
 async def update_field(
@@ -868,7 +896,7 @@ async def list_records(
         params["recordMetadata"] = record_metadata
 
     response = await Requests().get(
-        f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}",
+        _record_url(base_id, table_id_or_name),
         headers={"Authorization": credentials.auth_header()},
         json=_convert_bools(params),
     )
@@ -883,7 +911,7 @@ async def get_record(
 ) -> dict[str, dict[str, dict[str, str]]]:
 
     response = await Requests().get(
-        f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}/{record_id}",
+        _record_url(base_id, table_id_or_name, record_id),
         headers={"Authorization": credentials.auth_header()},
     )
     return response.json()
@@ -912,7 +940,7 @@ async def update_multiple_records(
     params["records"] = [_convert_bools(record) for record in records]
 
     response = await Requests().patch(
-        f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}",
+        _record_url(base_id, table_id_or_name),
         headers={"Authorization": credentials.auth_header()},
         json=_convert_bools(params),
     )
@@ -939,7 +967,7 @@ async def update_record(
         params["fields"] = fields
 
     response = await Requests().patch(
-        f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}/{record_id}",
+        _record_url(base_id, table_id_or_name, record_id),
         headers={"Authorization": credentials.auth_header()},
         json=_convert_bools(params),
     )
@@ -973,7 +1001,7 @@ async def create_record(
         params["typecast"] = typecast
 
     response = await Requests().post(
-        f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}",
+        _record_url(base_id, table_id_or_name),
         headers={"Authorization": credentials.auth_header()},
         json=_convert_bools(params),
     )
@@ -990,7 +1018,7 @@ async def delete_multiple_records(
 
     query_string = "&".join([f"records[]={quote(record)}" for record in records])
     response = await Requests().delete(
-        f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}?{query_string}",
+        f"{_record_url(base_id, table_id_or_name)}?{query_string}",
         headers={"Authorization": credentials.auth_header()},
     )
     return response.json()
@@ -1004,7 +1032,7 @@ async def delete_record(
 ) -> dict[str, dict[str, dict[str, str]]]:
 
     response = await Requests().delete(
-        f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}/{record_id}",
+        _record_url(base_id, table_id_or_name, record_id),
         headers={"Authorization": credentials.auth_header()},
     )
     return response.json()
@@ -1085,18 +1113,6 @@ async def list_webhook_payloads(
         raise ValueError(
             f"Failed to validate webhook payloads response: {e}\nResponse: {response.json()}"
         )
-
-
-async def list_webhooks(
-    credentials: Credentials,
-    base_id: str,
-) -> Any:
-
-    response = await Requests().get(
-        f"https://api.airtable.com/v0/bases/{base_id}/webhooks",
-        headers={"Authorization": credentials.auth_header()},
-    )
-    return response.json()
 
 
 class OAuthAuthorizeRequest(BaseModel):

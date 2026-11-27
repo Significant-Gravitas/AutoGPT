@@ -16,6 +16,7 @@ import {
 } from "../helpers";
 import { STAGGER_CAP, STAGGER_STEP_S } from "../ArtifactsTable/row-layout";
 import { CardPreview } from "./CardPreview";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   file: WorkspaceFileItem;
@@ -34,8 +35,8 @@ const CARD_VARIANTS: Variants = {
     scale: 1,
     filter: "blur(0px)",
     transition: {
-      duration: 0.4,
-      ease: [0.16, 1, 0.3, 1],
+      duration: duration.slower,
+      ease: ease.emphasized,
       delay: Math.min(index, STAGGER_CAP) * STAGGER_STEP_S,
     },
   }),
@@ -43,7 +44,7 @@ const CARD_VARIANTS: Variants = {
 
 const REDUCED_CARD_VARIANTS: Variants = {
   hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { duration: 0.2 } },
+  show: { opacity: 1, transition: { duration: duration.base } },
 };
 
 export function ArtifactCard({ file, onOpen, index = 0 }: Props) {
@@ -57,37 +58,40 @@ export function ArtifactCard({ file, onOpen, index = 0 }: Props) {
       custom={index}
       initial={reduceMotion ? false : "hidden"}
       animate="show"
-      style={{ willChange: "transform, opacity, filter" }}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white transition-colors hover:border-zinc-300"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border-base bg-surface transition-colors will-change-[transform,opacity,filter] hover:border-border-strong"
       data-testid="artifacts-list-item"
       draggable
       onDragStartCapture={handleDragStart}
       onDragEndCapture={handleDragEnd}
     >
       {/* Full-card click target: opening the file is the primary action.
-          Sits behind the content (z-0); the content is pointer-events-none so
+          Sits behind the content (z-base); the content is pointer-events-none so
           clicks fall through, except the kebab menu which re-enables them. */}
       <button
         type="button"
         onClick={() => onOpen(file)}
         aria-label={`Open ${file.name}`}
-        className="absolute inset-0 z-0 cursor-pointer"
+        className="absolute inset-0 z-base cursor-pointer"
         data-testid="artifacts-card-open"
       />
-      <div className="pointer-events-none relative z-10">
+      <div className="pointer-events-none relative z-raised">
         <CardPreview file={file} />
         <div className="flex items-center gap-3 p-3">
-          <Icon icon={typeIcon} size={20} className="shrink-0 text-zinc-500" />
+          <span className="flex shrink-0 text-foreground-tertiary">
+            <Icon icon={typeIcon} size={20} />
+          </span>
           <div className="flex min-w-0 flex-1 flex-col">
             <Text
-              variant="body-medium"
-              className="truncate text-zinc-900"
+              variant="body"
+              weight="medium"
+              tone="primary"
+              className="truncate"
               title={file.name}
             >
               {file.name}
             </Text>
             <div className="flex min-w-0 items-center gap-2">
-              <Text variant="small" className="truncate text-zinc-500">
+              <Text variant="small" tone="muted" className="truncate">
                 {getFileTypeLabel(file.mime_type, file.name)} ·{" "}
                 {formatFileSize(file.size_bytes)} ·{" "}
                 {formatRelativeDate(file.created_at)}

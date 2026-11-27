@@ -41,8 +41,6 @@ interface DriftReport {
 
 type Invariant = keyof DriftReport;
 
-const ERROR_BOX_TEXT = "The assistant encountered an error";
-
 /** Every transcript the page paints, one sample per DOM mutation. */
 export function sampleTranscripts() {
   const samples: TranscriptEntry[][] = [];
@@ -100,7 +98,9 @@ export async function reportDrift({
       maxTimesPainted(painted.samples, block) > 0 && !shownText.includes(block),
   );
   const toasts = connectionToasts(toast);
-  const errorShown = document.body.textContent?.includes(ERROR_BOX_TEXT);
+  const errorBanner = document.querySelector(
+    '[data-testid="chat-error-banner"]',
+  );
   const reloaded = await renderReloaded(sim.finalRows());
   return {
     connectionToast: toasts.length ? toasts : null,
@@ -113,7 +113,7 @@ export async function reportDrift({
     missingWhileRunning: missingWhileRunning.length
       ? missingWhileRunning
       : null,
-    errorShown: errorShown ? ERROR_BOX_TEXT : null,
+    errorShown: errorBanner?.textContent ?? null,
   };
 }
 
@@ -186,18 +186,22 @@ async function renderReloaded(rows: Row[]) {
 }
 
 /**
- * One entry per rendered message, in order. The turn's "Thought for" label is
- * left out: the client counts it live and the server stamps its own figure.
+ * One entry per rendered message, in order. The turn-end line is left out:
+ * the client counts its time live and the server stamps its own figure, and
+ * it only says "Done" once the client has seen the stream settle.
  */
 function readTranscript(): TranscriptEntry[] {
   return Array.from(document.querySelectorAll("[data-message-id]")).map(
-    (el) => ({
-      role: el.classList.contains("is-user") ? "user" : "assistant",
-      text: (el.textContent ?? "")
-        .replace(/Thought for (\d+m )?\d+s/g, "")
-        .replace(/\s+/g, " ")
-        .trim(),
-    }),
+    (el) => {
+      const copy = el.cloneNode(true) as Element;
+      copy
+        .querySelectorAll("[data-testid='turn-end-line']")
+        .forEach((line) => line.remove());
+      return {
+        role: el.classList.contains("is-user") ? "user" : "assistant",
+        text: (copy.textContent ?? "").replace(/\s+/g, " ").trim(),
+      };
+    },
   );
 }
 

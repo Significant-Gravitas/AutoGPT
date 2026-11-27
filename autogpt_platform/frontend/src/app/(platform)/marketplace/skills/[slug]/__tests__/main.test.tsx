@@ -1,5 +1,7 @@
 import {
   getGetV2GetMarketplaceSkillMockHandler200,
+  getGetV2ListMarketplaceSkillsMockHandler200,
+  getGetV2ListMarketplaceSkillsResponseMock,
   getPostV2InstallMarketplaceSkillMockHandler200,
   getGetV2GetMarketplaceSkillMockHandler404,
   getPostV2InstallMarketplaceSkillMockHandler401,
@@ -26,7 +28,6 @@ configure({ asyncUtilTimeout: 10000 });
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
 const mockNotFound = vi.hoisted(() => vi.fn());
-const skillsHubFlag = vi.hoisted(() => ({ enabled: true, ready: true }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -44,14 +45,6 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({ useAuth: mockUseAuth }));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return { ...actual, useFlagStatus: () => skillsHubFlag };
-});
 
 const outreach: MarketplaceSkillDetails = {
   slug: "outreach-playbook",
@@ -109,20 +102,15 @@ describe("Marketplace skill page", () => {
   beforeEach(() => {
     mockUseAuth.mockReturnValue({ user: { id: "user-1" }, isLoggedIn: true });
     mockNotFound.mockClear();
-    skillsHubFlag.enabled = true;
-    skillsHubFlag.ready = true;
+
     userSkills.length = 0;
     server.use(userSkillsHandler());
   });
 
-  test("is not found when the skills-hub flag is off", async () => {
-    skillsHubFlag.enabled = false;
+  test("loads skill instructions without a rollout flag", async () => {
     renderPage([]);
-
-    // A bookmarked URL reaches this page without passing the marketplace
-    // shelf, so the shelf being hidden is not what keeps the feature dark.
-    expect(mockNotFound).toHaveBeenCalled();
-    expect(screen.queryByTestId("skill-install-button")).toBeNull();
+    expect(await screen.findByText(/Four sentences, no more/)).toBeDefined();
+    expect(mockNotFound).not.toHaveBeenCalled();
   });
 
   test("shows the instructions experts will follow", async () => {
@@ -162,6 +150,38 @@ describe("Marketplace skill page", () => {
       "https://github.com/coreyhaines31/marketingskills/tree/abc/skills/cold-email",
     );
     expect(await screen.findByText("License: MIT")).toBeDefined();
+  });
+
+  test("names the MCP services it works with as the catalog does, with the first one's logo", async () => {
+    // Added already, so the page also offers to connect them.
+    userSkills.push({ name: "outreach-playbook", description: "Installed" });
+    server.use(
+      getGetV2GetMarketplaceSkillMockHandler200({
+        ...outreach,
+        // The catalog calls mcp_apollo_io "Apollo.io", not "Apollo Io".
+        required_providers: ["mcp_amplitude", "mcp_apollo_io"],
+      }),
+      // No "More skills" shelf, whose cards say "Works with" too.
+      getGetV2ListMarketplaceSkillsMockHandler200(
+        getGetV2ListMarketplaceSkillsResponseMock({ skills: [] }),
+      ),
+      getGetV1ListCredentialsMockHandler200([]),
+      userSkillsHandler(),
+    );
+    render(<SkillPage slug="outreach-playbook" />);
+
+    const worksWith = await screen.findByText(/^Works with/);
+    expect(worksWith.textContent).toMatch(
+      /^Works with\s*Amplitude and Apollo\.io$/,
+    );
+    expect(
+      worksWith
+        .querySelector('[data-slot="integration-logo"]')
+        ?.getAttribute("src"),
+    ).toBe("/integrations/amplitude.png");
+    expect(
+      (await screen.findByTestId("skill-connect-step")).textContent,
+    ).toContain("Its steps use Amplitude and Apollo.io.");
   });
 
   test("shows a creator skill license without a source repo", async () => {
@@ -300,4 +320,69 @@ describe("Marketplace skill page", () => {
 
     expect(screen.queryByTestId("skill-connect-step")).toBeNull();
   });
+
+  test("stops offering an MCP service once the user has signed in to it", async () => {
+    userSkills.push({ name: "outreach-playbook", description: "Installed" });
+    server.use(
+      getGetV2GetMarketplaceSkillMockHandler200({
+        ...outreach,
+        required_providers: ["mcp_amplitude"],
+      }),
+      getGetV1ListCredentialsMockHandler200([]),
+    );
+    const firstVisit = render(<SkillPage slug="outreach-playbook" />);
+    expect(
+      (await screen.findByTestId("skill-connect-step")).textContent,
+    ).toMatch(/Amplitude/);
+    firstVisit.unmount();
+
+    // Signed in to Amplitude's EU server, one of its catalog entry's URLs.
+    server.use(
+      getGetV1ListCredentialsMockHandler200([
+        mcpSignIn("https://mcp.eu.amplitude.com/mcp", "mcp_amplitude"),
+      ]),
+    );
+    render(<SkillPage slug="outreach-playbook" />);
+
+    expect(await screen.findByText("Installed")).toBeDefined();
+    await waitFor(() =>
+      expect(screen.queryByTestId("skill-connect-step")).toBeNull(),
+    );
+  });
+
+  test("still offers an MCP service when the sign-in is to another server", async () => {
+    userSkills.push({ name: "outreach-playbook", description: "Installed" });
+    server.use(
+      getGetV2GetMarketplaceSkillMockHandler200({
+        ...outreach,
+        required_providers: ["mcp_amplitude", "mcp_linear"],
+      }),
+      getGetV1ListCredentialsMockHandler200([
+        mcpSignIn("https://mcp.linear.app/mcp", "mcp_linear"),
+      ]),
+    );
+    render(<SkillPage slug="outreach-playbook" />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("skill-connect-step").textContent).not.toMatch(
+        /Linear/,
+      ),
+    );
+    expect(screen.getByTestId("skill-connect-step").textContent).toMatch(
+      /Amplitude/,
+    );
+  });
 });
+
+/** An MCP sign-in as the credentials list returns it: provider "mcp", its
+ *  server as the host, and the catalog entry the backend matched it to. */
+function mcpSignIn(host: string, catalogEntry: string) {
+  return {
+    id: `cred-${catalogEntry}`,
+    provider: "mcp",
+    type: "oauth2",
+    title: `MCP: ${new URL(host).hostname}`,
+    host,
+    mcp_catalog_entry: catalogEntry,
+  } as CredentialsMetaResponse;
+}

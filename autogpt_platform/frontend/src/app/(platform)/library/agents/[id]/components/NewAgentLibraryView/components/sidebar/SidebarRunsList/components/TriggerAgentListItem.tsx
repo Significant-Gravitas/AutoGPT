@@ -1,12 +1,12 @@
 "use client";
 
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { formatDistanceToNow } from "date-fns";
 import { IconWrapper } from "./IconWrapper";
 import { SidebarItemCard } from "./SidebarItemCard";
 import { TriggerAgentActionsDropdown } from "./TriggerAgentActionsDropdown";
 import { Robot01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 
 interface Props {
   triggerAgent: LibraryAgent;
@@ -26,16 +26,19 @@ export function TriggerAgentListItem({
   return (
     <SidebarItemCard
       icon={
-        <IconWrapper className="border-blue-50 bg-blue-50">
-          <Icon icon={Robot01Icon} size={16} className="text-zinc-700" />
+        <IconWrapper className="border-info-surface bg-info-surface text-foreground-body">
+          <Icon icon={Robot01Icon} size={16} />
         </IconWrapper>
       }
       title={triggerAgent.name}
-      description={`Updated ${formatDistanceToNow(triggerAgent.updated_at, {
-        addSuffix: true,
-      })}`}
+      description={
+        <>
+          Updated <RelativeTime date={triggerAgent.updated_at} />
+        </>
+      }
       onClick={onClick}
       selected={selected}
+      testID={`library-trigger-agent-item-${triggerAgent.id}`}
       actions={
         <TriggerAgentActionsDropdown
           parentAgent={parentAgent}

@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 import { domAnimation, LazyMotion, m, useReducedMotion } from "framer-motion";
 import type { ChainRowState } from "./helpers";
+import { duration } from "@/components/styles/motion";
 
 interface Props {
   state: ChainRowState;
@@ -27,25 +28,24 @@ export function ToolStatusBadge({ state, label, children }: Props) {
             hiding is immediate. */}
         <m.span
           aria-hidden="true"
-          className="absolute -inset-[3px] rounded-full border border-zinc-200"
+          className="absolute -inset-[3px] rounded-full border border-border-base"
           initial={{ opacity: 0 }}
           animate={{ opacity: running ? 1 : 0 }}
           transition={{
-            duration: reducedMotion ? 0 : 0.16,
+            duration: reducedMotion ? 0 : duration.fast,
             delay: running && !reducedMotion ? 0.15 : 0,
           }}
         />
         <m.span
           aria-hidden="true"
           className={cn(
-            "absolute -inset-[3px] rounded-full border border-transparent border-t-zinc-500",
-            running &&
-              "animate-[spin_0.9s_linear_infinite] motion-reduce:animate-none",
+            "absolute -inset-[3px] rounded-full border border-transparent border-t-foreground-tertiary",
+            running && "animate-spin motion-reduce:animate-none",
           )}
           initial={{ opacity: 0 }}
           animate={{ opacity: running ? 1 : 0 }}
           transition={{
-            duration: reducedMotion ? 0 : 0.12,
+            duration: reducedMotion ? 0 : duration.instant,
             delay: running && !reducedMotion ? 0.15 : 0,
           }}
         />

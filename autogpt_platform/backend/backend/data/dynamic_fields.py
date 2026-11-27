@@ -7,6 +7,8 @@ Dynamic fields allow graphs to connect complex data structures using special del
 - _@_ for object attributes (e.g., "obj_@_attr" → obj.attr)
 """
 
+import copy
+import json
 from typing import Any
 
 from backend.util.mock import MockObject
@@ -65,31 +67,145 @@ def get_dynamic_field_description(field_name: str) -> str:
     Returns:
         A descriptive string explaining what this dynamic field represents
     """
-    base_name = extract_base_field_name(field_name)
+    try:
+        parsed = parse_dynamic_field(field_name)
+    except ValueError:
+        parsed = None
+    if not parsed or not parsed[1]:
+        return f"Value for {field_name}"
 
-    if DICT_SPLIT in field_name:
-        # Extract the key part after _#_
-        parts = field_name.split(DICT_SPLIT)
-        if len(parts) > 1:
-            key = parts[1].split("_")[0] if "_" in parts[1] else parts[1]
-            return f"Dictionary field '{key}' for base field '{base_name}' ({base_name}['{key}'])"
-    elif LIST_SPLIT in field_name:
-        # Extract the index part after _$_
-        parts = field_name.split(LIST_SPLIT)
-        if len(parts) > 1:
-            index = parts[1].split("_")[0] if "_" in parts[1] else parts[1]
-            return (
-                f"List item {index} for base field '{base_name}' ({base_name}[{index}])"
-            )
-    elif OBJC_SPLIT in field_name:
-        # Extract the attribute part after _@_
-        parts = field_name.split(OBJC_SPLIT)
-        if len(parts) > 1:
-            # Get the full attribute name (everything after _@_)
-            attr = parts[1]
-            return f"Object attribute '{attr}' for base field '{base_name}' ({base_name}.{attr})"
+    base_name, tokens = parsed
+    path = base_name
+    for delim, ident in tokens:
+        if delim == DICT_SPLIT:
+            path += f"['{ident}']"
+        elif delim == LIST_SPLIT:
+            path += f"[{ident}]"
+        else:
+            path += f".{ident}"
 
-    return f"Value for {field_name}"
+    delim, ident = tokens[-1]
+    if delim == DICT_SPLIT:
+        return f"Dictionary field '{ident}' for base field '{base_name}' ({path})"
+    if delim == LIST_SPLIT:
+        return f"List item {ident} for base field '{base_name}' ({path})"
+    return f"Object attribute '{ident}' for base field '{base_name}' ({path})"
+
+
+# Keys that make a JSON schema say something about the value it accepts.
+_SCHEMA_TYPE_KEYS = frozenset(
+    {"type", "anyOf", "oneOf", "allOf", "enum", "const", "properties", "items"}
+)
+
+
+def get_dynamic_field_schema(
+    base_field_schema: dict[str, Any], field_name: str
+) -> dict[str, Any] | None:
+    """
+    Find the JSON schema of the value a dynamic pin writes into its base field,
+    e.g. the `duration_minutes` schema for "timing_#_duration_minutes" when
+    `timing` is a union of models. A key found in several `anyOf`/`oneOf`
+    variants with different schemas gets an `anyOf` of them; one constrained by
+    several `allOf` members gets an `allOf`.
+
+    `base_field_schema` must have its `$ref`s resolved, as
+    `BlockSchema.jsonschema()` does; a `$ref` leaf counts as unconstrained.
+
+    Returns None when the path is invalid or leads to a value the base schema
+    leaves unconstrained (e.g. a `dict[str, Any]` value, or a union with an
+    untyped variant).
+    """
+    try:
+        parsed = parse_dynamic_field(field_name)
+    except ValueError:
+        return None
+    if not parsed or not parsed[1]:
+        return None
+
+    current: dict[str, Any] | None = base_field_schema
+    for delim, ident in parsed[1]:
+        current = _leaf_schema(current, delim, ident)
+        if current is None:
+            return None
+    if _is_unconstrained(current):
+        return None
+    return copy.deepcopy(current)
+
+
+def _leaf_schema(
+    schema: dict[str, Any], delim: str, ident: str
+) -> dict[str, Any] | None:
+    """The schema of `schema`'s child at one path step, or None if it has none."""
+    parts: list[dict[str, Any]] = []
+    if (own := _child_schema(schema, delim, ident)) is not None:
+        parts.append(own)
+    for member in schema.get("allOf") or []:
+        if isinstance(member, dict):
+            if (child := _leaf_schema(member, delim, ident)) is not None:
+                parts.append(child)
+    for key in ("anyOf", "oneOf"):
+        alternatives = [
+            child
+            for member in schema.get(key) or []
+            if isinstance(member, dict)
+            and (child := _leaf_schema(member, delim, ident)) is not None
+        ]
+        if alternatives:
+            parts.append(_combine("anyOf", alternatives))
+    if not parts:
+        return None
+    return _combine("allOf", parts)
+
+
+def _combine(keyword: str, schemas: list[dict[str, Any]]) -> dict[str, Any]:
+    """
+    One schema for `schemas` joined by `anyOf` (any may match: an unconstrained
+    one makes the whole unconstrained) or `allOf` (all must match: unconstrained
+    ones add nothing).
+    """
+    if keyword == "anyOf" and any(_is_unconstrained(s) for s in schemas):
+        return {}
+    unique: dict[str, dict[str, Any]] = {}
+    for schema in schemas:
+        if not _is_unconstrained(schema):
+            unique.setdefault(json.dumps(schema, sort_keys=True, default=str), schema)
+    if not unique:
+        return {}
+    if len(unique) == 1:
+        return next(iter(unique.values()))
+    return {keyword: list(unique.values())}
+
+
+def _is_unconstrained(schema: dict[str, Any]) -> bool:
+    return not (_SCHEMA_TYPE_KEYS & schema.keys())
+
+
+def _child_schema(
+    schema: dict[str, Any], delim: str, ident: str
+) -> dict[str, Any] | None:
+    if delim == LIST_SPLIT:
+        try:
+            index = _parse_list_index(ident)
+        except ValueError:
+            return None  # the executor can't merge this pin either
+        prefix_items = schema.get("prefixItems")
+        if isinstance(prefix_items, list) and index < len(prefix_items):
+            return _subschema(prefix_items[index])
+        return _subschema(schema.get("items"))
+
+    properties = schema.get("properties")
+    if isinstance(properties, dict) and isinstance(properties.get(ident), dict):
+        return properties[ident]
+    if delim == DICT_SPLIT:
+        return _subschema(schema.get("additionalProperties"))
+    return None
+
+
+def _subschema(value: Any) -> dict[str, Any] | None:
+    """`items`/`additionalProperties` as a schema: `true` accepts anything."""
+    if value is True:
+        return {}
+    return value if isinstance(value, dict) else None
 
 
 def is_tool_pin(name: str) -> bool:
@@ -107,6 +223,42 @@ def sanitize_pin_name(name: str) -> str:
 # --------------------------------------------------------------------------- #
 #  Dynamic field parsing and merging utilities
 # --------------------------------------------------------------------------- #
+
+
+def parse_dynamic_field(field_name: str) -> tuple[str, list[tuple[str, str]]] | None:
+    """
+    Split a field name into its base name and its `(delimiter, identifier)` path,
+    e.g. "items_$_0_#_name" → ("items", [("_$_", "0"), ("_#_", "name")]).
+
+    A plain name has an empty path; malformed syntax returns None, and a
+    path over the size caps raises ValueError.
+    """
+    delim, pos = _next_delim(field_name)
+    if delim is None:
+        return field_name, []
+    tokens = _tokenise_bounded(field_name[pos:])
+    if tokens is None:
+        return None
+    return field_name[:pos], tokens
+
+
+def assert_safe_pin_name(name: str) -> None:
+    """
+    Raise ValueError if a (possibly flattened) pin name encodes an unsafe
+    dynamic path. Called where a pin name is stored so one never persists, and
+    a backstop for the use-site guards in `_assign`/`parse_execution_output`.
+    """
+    delim, pos = _next_delim(name)
+    if delim is None:
+        return  # plain field name, nothing dynamic to check
+    tokens = _tokenise_bounded(name[pos:])
+    if tokens is None:
+        return  # not a valid dynamic path; stored/handled as a raw scalar key
+    for d, ident in tokens:
+        if d == OBJC_SPLIT and not is_safe_object_attribute(ident):
+            raise ValueError(f"unsafe object attribute in pin name {name!r}")
+        if d == LIST_SPLIT:
+            _parse_list_index(ident)
 
 
 def _next_delim(s: str) -> tuple[str | None, int]:
@@ -210,7 +362,10 @@ def parse_execution_output(
     if not path:
         return None  # nothing left to parse
 
-    tokens = _tokenise(path)
+    try:
+        tokens = _tokenise_bounded(path)
+    except ValueError:
+        return None
     if tokens is None:
         return None
 
@@ -222,7 +377,7 @@ def parse_execution_output(
                 idx = int(ident)
             except ValueError:
                 return None
-            if not isinstance(cur, list) or idx >= len(cur):
+            if idx < 0 or not isinstance(cur, list) or idx >= len(cur):
                 return None
             cur = cur[idx]
 
@@ -232,9 +387,11 @@ def parse_execution_output(
             cur = cur[ident]
 
         elif delim == OBJC_SPLIT:
-            if not hasattr(cur, ident):
+            # Instance data only: public names like `gi_frame` lead off the value.
+            attrs = getattr(cur, "__dict__", {})
+            if not is_safe_object_attribute(ident) or ident not in attrs:
                 return None
-            cur = getattr(cur, ident)
+            cur = attrs[ident]
 
         else:
             return None  # unreachable
@@ -242,7 +399,12 @@ def parse_execution_output(
     return cur
 
 
-def _assign(container: Any, tokens: list[tuple[str, str]], value: Any) -> Any:
+def _assign(
+    container: Any,
+    tokens: list[tuple[str, str]],
+    value: Any,
+    padding: "_PaddingBudget",
+) -> Any:
     """
     Recursive helper that *returns* the (possibly new) container with
     `value` assigned along the remaining `tokens` path.
@@ -255,19 +417,17 @@ def _assign(container: Any, tokens: list[tuple[str, str]], value: Any) -> Any:
 
     # ---------- list ----------
     if delim == LIST_SPLIT:
-        try:
-            idx = int(ident)
-        except ValueError:
-            raise ValueError("index must be an integer")
+        idx = _parse_list_index(ident)
 
         if container is None:
             container = []
         elif not isinstance(container, list):
             container = list(container) if hasattr(container, "__iter__") else []
 
+        padding.spend(idx + 1 - len(container))
         while len(container) <= idx:
             container.append(None)
-        container[idx] = _assign(container[idx], rest, value)
+        container[idx] = _assign(container[idx], rest, value, padding)
         return container
 
     # ---------- dict ----------
@@ -276,11 +436,13 @@ def _assign(container: Any, tokens: list[tuple[str, str]], value: Any) -> Any:
             container = {}
         elif not isinstance(container, dict):
             container = dict(container) if hasattr(container, "items") else {}
-        container[ident] = _assign(container.get(ident), rest, value)
+        container[ident] = _assign(container.get(ident), rest, value, padding)
         return container
 
     # ---------- object ----------
     if delim == OBJC_SPLIT:
+        if not is_safe_object_attribute(ident):
+            raise ValueError(f"unsafe object attribute {ident!r}")
         if container is None:
             container = MockObject()
         elif not hasattr(container, "__dict__"):
@@ -289,7 +451,7 @@ def _assign(container: Any, tokens: list[tuple[str, str]], value: Any) -> Any:
         setattr(
             container,
             ident,
-            _assign(getattr(container, ident, None), rest, value),
+            _assign(getattr(container, ident, None), rest, value, padding),
         )
         return container
 
@@ -300,7 +462,7 @@ def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
     """
     Reconstruct nested objects from a *flattened* dict of key → value.
 
-    Raises ValueError on syntactically invalid list indices.
+    Raises ValueError on an unsafe or oversized dynamic path.
 
     Args:
         data: Dictionary with potentially flattened dynamic field keys
@@ -309,22 +471,74 @@ def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
         Dictionary with nested objects reconstructed from flattened keys
     """
     merged: dict[str, Any] = {}
+    padding = _PaddingBudget()
 
     for key, value in data.items():
-        # Split off the base name (before the first delimiter, if any)
-        delim, pos = _next_delim(key)
-        if delim is None:
+        parsed = parse_dynamic_field(key)
+        if parsed is None or not parsed[1]:
+            # A plain key, or an invalid one kept as a scalar under the raw name
             merged[key] = value
             continue
 
-        base, path = key[:pos], key[pos:]
-        tokens = _tokenise(path)
-        if tokens is None:
-            # Invalid key; treat as scalar under the raw name
-            merged[key] = value
-            continue
-
-        merged[base] = _assign(merged.get(base), tokens, value)
+        base, tokens = parsed
+        merged[base] = _assign(merged.get(base), tokens, value, padding)
 
     data.update(merged)
     return data
+
+
+# An _@_ token is used directly as a setattr/getattr target, so it must be a
+# plain public identifier; a dunder or leading-underscore name would let a
+# flattened pin walk into an object's internals.
+def is_safe_object_attribute(ident: str) -> bool:
+    return ident.isidentifier() and not ident.startswith("_")
+
+
+# A _$_ token pads a list up to its index, so both one index and all the padding
+# one merge does are capped; no builder produces a legitimate pin near either.
+MAX_DYNAMIC_LIST_INDEX = 10_000
+MAX_DYNAMIC_LIST_PADDING = MAX_DYNAMIC_LIST_INDEX + 1
+
+# Tokenising is quadratic in the path's length and each token is a level of
+# recursion in _assign, so a path's size is capped before it is parsed.
+MAX_DYNAMIC_PATH_LENGTH = 1024
+MAX_DYNAMIC_PATH_TOKENS = 32
+
+
+def _parse_list_index(ident: str) -> int:
+    try:
+        idx = int(ident)
+    except ValueError:
+        raise ValueError("index must be an integer")
+    if idx < 0 or idx > MAX_DYNAMIC_LIST_INDEX:
+        raise ValueError(f"list index out of range (0..{MAX_DYNAMIC_LIST_INDEX})")
+    return idx
+
+
+def _tokenise_bounded(path: str) -> list[tuple[str, str]] | None:
+    if len(path) > MAX_DYNAMIC_PATH_LENGTH:
+        raise ValueError(
+            f"dynamic pin path longer than {MAX_DYNAMIC_PATH_LENGTH} characters"
+        )
+    tokens = _tokenise(path)
+    if tokens is not None and len(tokens) > MAX_DYNAMIC_PATH_TOKENS:
+        raise ValueError(
+            f"dynamic pin path deeper than {MAX_DYNAMIC_PATH_TOKENS} levels"
+        )
+    return tokens
+
+
+class _PaddingBudget:
+    """List slots one merge_execution_input call may still pad, across all keys."""
+
+    def __init__(self) -> None:
+        self.left = MAX_DYNAMIC_LIST_PADDING
+
+    def spend(self, slots: int) -> None:
+        if slots <= 0:
+            return
+        if slots > self.left:
+            raise ValueError(
+                f"dynamic list padding exceeds {MAX_DYNAMIC_LIST_PADDING} slots"
+            )
+        self.left -= slots

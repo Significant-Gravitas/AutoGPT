@@ -47,22 +47,41 @@ export interface ChainActionEntry {
   questions?: QuestionRequest;
 }
 
+/** A registration belongs to the component that made it (`owner`, its
+ *  `useId()`), not to the card's id, so one mounted copy of a card unmounting
+ *  can never remove an entry another copy still owns. */
 export interface ChainActions {
-  register: (entry: ChainActionEntry) => void;
-  unregister: (id: string) => void;
+  register: (owner: string, entry: ChainActionEntry) => void;
+  unregister: (owner: string) => void;
+  /** The chain can send its reply. False in a read-only chat, and in an
+   *  earlier answer, which sends nothing, so a card there saves what the user
+   *  picks on its own. */
+  canSend: boolean;
 }
 
 export const ChainActionsContext = createContext<ChainActions | null>(null);
 
+/** One entry per card id. Only the question card shares its id (the dock id)
+ *  between copies, and only for a moment; when two are mounted, the copy that
+ *  mounted last is shown. Setup and MCP cards use per-instance ids. */
+export function uniqueChainEntries(
+  registrations: ReadonlyMap<string, ChainActionEntry>,
+): ChainActionEntry[] {
+  const byId = new Map<string, ChainActionEntry>();
+  registrations.forEach((entry) => byId.set(entry.id, entry));
+  return [...byId.values()];
+}
+
 /** The chain's single reply. Every card contributes its line, except that
  *  cards which only confirm credentials share one confirmation: two cards
- *  asking for the same account used to say so twice in one message. */
+ *  asking for the same account used to say so twice in one message. A line
+ *  another card already said (two MCP servers connected) is said once. */
 export function buildChainReply(entries: ChainActionEntry[]): string {
   let confirmed = false;
   const lines: string[] = [];
   for (const entry of entries) {
     const line = entry.buildMessage();
-    if (!line) continue;
+    if (!line || lines.includes(line)) continue;
     if (entry.credentialsOnly) {
       if (confirmed) continue;
       confirmed = true;

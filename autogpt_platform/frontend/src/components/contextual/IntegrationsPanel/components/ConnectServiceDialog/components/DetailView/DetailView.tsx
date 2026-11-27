@@ -26,6 +26,9 @@ import { ProviderAvatar } from "./ProviderAvatar";
 import { UnsupportedNotice } from "./UnsupportedNotice";
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { MicrosoftConnectionPanel } from "@/components/contextual/MicrosoftConnection/MicrosoftConnectionPanel";
+import { MICROSOFT_PROVIDER } from "@/lib/microsoft-setup";
+import { duration, ease } from "@/components/styles/motion";
 
 const MCP_PROVIDER_ID = "mcp";
 
@@ -49,7 +52,7 @@ const TAB_PRIORITY: AuthMethod[] = [
 const lastTabByProvider = new Map<string, AuthMethod>();
 
 // Standard product-UI ease-out — keep transitions under Emil's 300ms ceiling.
-const PANEL_TRANSITION = { duration: 0.18, ease: [0, 0, 0.2, 1] as const };
+const PANEL_TRANSITION = { duration: duration.base, ease: ease.out };
 
 export function DetailView({
   provider,
@@ -88,18 +91,25 @@ export function DetailView({
           name={provider.name}
         />
         <div className="flex min-w-0 flex-col gap-1">
-          <Text variant="h4" as="h2" className="text-[#1F1F20]">
+          <Text variant="h4" as="h2">
             {provider.name}
           </Text>
           {description ? (
-            <Text variant="small" className="text-[#83838C]">
+            <Text variant="small" tone="muted">
               {description}
             </Text>
           ) : null}
         </div>
       </div>
 
-      {provider.mcpServer && !showNative ? (
+      {provider.id === MICROSOFT_PROVIDER ? (
+        <MicrosoftConnectionPanel
+          browserAvailable={provider.supportedAuthTypes.includes(
+            AuthType.oauth2,
+          )}
+          onDone={onSuccess}
+        />
+      ) : provider.mcpServer && !showNative ? (
         <McpFirstPanel
           server={provider.mcpServer}
           nativeMethods={tabs}

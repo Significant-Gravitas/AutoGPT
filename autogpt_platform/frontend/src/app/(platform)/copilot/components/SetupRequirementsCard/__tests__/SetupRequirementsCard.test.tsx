@@ -341,7 +341,7 @@ describe("SetupRequirementsCard (preview mode)", () => {
     expect(screen.queryByText(/url • string/i)).toBeNull();
   });
 
-  it("labels credentials section as 'Agent credentials' by default", () => {
+  it("labels credentials section as 'Workflow credentials' by default", () => {
     render(
       <SetupRequirementsCard
         inputsMode="preview"
@@ -352,7 +352,7 @@ describe("SetupRequirementsCard (preview mode)", () => {
         })}
       />,
     );
-    expect(screen.getByText("Agent credentials")).toBeDefined();
+    expect(screen.getByText("Workflow credentials")).toBeDefined();
   });
 
   it("does not render advanced toggle even when advanced inputs exist", () => {
@@ -407,7 +407,7 @@ describe("SetupRequirementsCard (preview mode)", () => {
     fireEvent.click(screen.getByText("Proceed"));
     await waitFor(() =>
       expect(mockOnSend).toHaveBeenCalledWith(
-        "Please proceed with running the agent.",
+        "Please proceed with running the workflow.",
       ),
     );
   });
@@ -457,7 +457,7 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
 
     await waitFor(() =>
       expect(mockOnSend).toHaveBeenCalledWith(
-        "I've configured the required credentials. Please check if everything is ready and proceed with running the agent.",
+        "I've configured the required credentials. Please check if everything is ready and proceed with running the workflow.",
       ),
     );
   });
@@ -765,8 +765,9 @@ describe("SetupRequirementsCard (rejected credential)", () => {
       render(
         <ChainActionsContext.Provider
           value={{
-            register: (entry) => entries.push(entry),
+            register: (_owner, entry) => entries.push(entry),
             unregister: vi.fn(),
+            canSend: true,
           }}
         >
           <SetupRequirementsCard
@@ -794,7 +795,9 @@ describe("SetupRequirementsCard (rejected credential)", () => {
     it("stays unready when the sign-in reported a different credential", () => {
       const latest = renderInChain();
 
-      act(() => latest().connectors!.onConnected("cred-someone-else"));
+      act(() =>
+        latest().connectors!.onConnected("api_key", "cred-someone-else"),
+      );
 
       expect(latest().justConnected).toBe(true);
       expect(latest().ready).toBe(false);
@@ -804,7 +807,7 @@ describe("SetupRequirementsCard (rejected credential)", () => {
       const latest = renderInChain();
       expect(latest().ready).toBe(false);
 
-      act(() => latest().connectors!.onConnected("cred-api_key"));
+      act(() => latest().connectors!.onConnected("api_key", "cred-api_key"));
 
       expect(latest().ready).toBe(true);
     });

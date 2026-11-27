@@ -1,12 +1,8 @@
 import { AnimatePresence, motion } from "framer-motion";
-import {
-  EASE_OUT,
-  ICON_ENTER,
-  ICON_EXIT,
-  LOADER_DELAY,
-} from "../../animations";
+import { ICON_ENTER, ICON_EXIT, LOADER_DELAY } from "../../animations";
 import { toDisplayStatus, type TodoItem } from "../../helpers";
 import { StatusIcon } from "../StatusIcon/StatusIcon";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   todo: TodoItem;
@@ -20,13 +16,13 @@ export function TaskRow({ todo, isStreaming, reduceMotion }: Props) {
   const completed = status === "completed";
   const label = active && todo.activeForm ? todo.activeForm : todo.content;
   const textClass = completed
-    ? `text-zinc-400 ${reduceMotion ? "line-through" : ""}`
+    ? `text-foreground-subtle ${reduceMotion ? "line-through" : ""}`
     : active
-      ? "font-medium text-zinc-900"
-      : "text-zinc-600";
+      ? "font-medium text-foreground-strong"
+      : "text-foreground-secondary";
 
   return (
-    <li className="flex items-start gap-2 text-sm">
+    <li className="flex items-start gap-2 text-body">
       <span className="mt-0.5 flex-shrink-0">
         <AnimatePresence mode="wait" initial={false}>
           <motion.span
@@ -42,14 +38,14 @@ export function TaskRow({ todo, isStreaming, reduceMotion }: Props) {
                     filter: "blur(6px)",
                     transition: {
                       duration: ICON_EXIT,
-                      ease: EASE_OUT,
+                      ease: ease.out,
                       // A pending circle only leaves when its task becomes active
                       // — hold it until the previous step's tick/strike finishes.
                       delay: status === "pending" ? LOADER_DELAY : 0,
                     },
                   }
             }
-            transition={{ duration: ICON_ENTER, ease: EASE_OUT }}
+            transition={{ duration: ICON_ENTER, ease: ease.out }}
           >
             <StatusIcon status={status} />
           </motion.span>
@@ -61,11 +57,14 @@ export function TaskRow({ todo, isStreaming, reduceMotion }: Props) {
           {completed && !reduceMotion && (
             <motion.span
               aria-hidden
-              className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-zinc-400"
+              className="pointer-events-none absolute inset-x-0 top-1/2 h-px origin-left -translate-y-1/2 bg-fill-subtle"
               initial={{ scaleX: 0 }}
               animate={{ scaleX: 1 }}
-              style={{ transformOrigin: "left" }}
-              transition={{ duration: 0.25, ease: EASE_OUT, delay: ICON_EXIT }}
+              transition={{
+                duration: duration.base,
+                ease: ease.out,
+                delay: ICON_EXIT,
+              }}
             />
           )}
         </span>

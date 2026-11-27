@@ -32,10 +32,10 @@ export function RunActions({
       {!isTrigger && onSimulate && (
         <Button
           variant="ghost"
+          tone="quiet-warning"
           onClick={onSimulate}
           disabled={isExecuting || isSettingUpTrigger}
           loading={isExecuting}
-          className="gap-1.5 text-amber-600 hover:bg-amber-50 hover:text-amber-700"
         >
           <Icon icon={FlaskConicalIcon} size={16} />
           Simulate

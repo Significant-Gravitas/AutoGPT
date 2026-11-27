@@ -6,6 +6,7 @@ import { useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { FavouriteIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { spring } from "@/components/styles/motion";
 
 interface FavoriteButtonProps {
   isFavorite: boolean;
@@ -39,9 +40,12 @@ export function FavoriteButton({
       ref={buttonRef}
       onClick={handleClick}
       className={cn(
-        "rounded-full p-2 transition-all duration-200",
+        "rounded-pill p-2 transition-all duration-200",
         "hover:scale-110 active:scale-95",
         !isFavorite && "opacity-0 group-hover:opacity-100",
+        isFavorite
+          ? "text-error"
+          : "text-foreground-secondary hover:text-error",
         className,
       )}
       aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
@@ -52,16 +56,9 @@ export function FavoriteButton({
           initial={{ scale: 0.5, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.5, opacity: 0 }}
-          transition={{ type: "spring", damping: 15, stiffness: 300 }}
+          transition={{ type: "spring", ...spring.bouncy }}
         >
-          <Icon
-            icon={FavouriteIcon}
-            size={20}
-            className={cn(
-              "transition-colors duration-200",
-              isFavorite ? "text-red-500" : "text-gray-600 hover:text-red-500",
-            )}
-          />
+          <Icon icon={FavouriteIcon} size={20} />
         </motion.div>
       </AnimatePresence>
     </button>

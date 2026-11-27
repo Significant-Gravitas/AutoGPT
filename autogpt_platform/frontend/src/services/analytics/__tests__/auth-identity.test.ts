@@ -1,6 +1,8 @@
+import { fetchUser, validateSession } from "@/lib/auth/hooks/helpers";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import type { User } from "@/lib/auth/types";
 import {
+  answerCookiebot,
   configureCookiebot,
   installCookiebot,
   removeCookiebot,
@@ -37,7 +39,7 @@ const userA = { id: "user-A", email: "a@example.com" } as User;
 const userB = { id: "user-B", email: "b@example.com" } as User;
 
 beforeEach(() => {
-  useAuthStore.setState({ user: null });
+  useAuthStore.setState({ user: null, isUserLoading: true });
   window.localStorage.clear();
   resetAnonymousIDForTests();
   vi.resetAllMocks();
@@ -124,6 +126,253 @@ describe("analytics identity on account transitions", () => {
 
     expect(getAnonymousID()).not.toBe(previous);
     expect(useAuthStore.getState().user).toBeNull();
+  });
+
+  describe("with the marketing site's PostHog cookie", () => {
+    const websiteCookie = `ph_phc_test_posthog=${encodeURIComponent(
+      JSON.stringify({ $device_id: "website-device" }),
+    )}; Path=/`;
+
+    beforeEach(() => {
+      document.cookie = websiteCookie;
+      configureCookiebot();
+      installCookiebot();
+    });
+
+    afterEach(() => {
+      document.cookie = "ph_phc_test_posthog=; Path=/; Max-Age=0";
+      document.cookie = "agpt_account_created=; Path=/; Max-Age=0; Secure";
+    });
+
+    function initializeAuth() {
+      return useAuthStore.getState().initialize({
+        api: {} as never,
+        router: {} as never,
+        path: "/",
+      });
+    }
+
+    it("adopts the website's id once the session shows nobody signed in", async () => {
+      vi.mocked(fetchUser).mockResolvedValue({
+        user: null,
+        hasLoadedUser: false,
+        isUserLoading: false,
+      });
+      vi.mocked(validateSession).mockResolvedValue({
+        isValid: true,
+        shouldUpdateUser: false,
+      });
+      answerCookiebot({ statistics: true });
+      expect(getAnonymousID()).not.toBe("website-device");
+      expect(window.localStorage.getItem("agpt_anonymous_id")).toBeNull();
+
+      await initializeAuth();
+
+      expect(getAnonymousID()).toBe("website-device");
+      expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(
+        "website-device",
+      );
+    });
+
+    it("leaves the session unknown when the auth requests fail", async () => {
+      vi.mocked(fetchUser).mockResolvedValue({
+        user: null,
+        hasLoadedUser: true,
+        isUserLoading: false,
+      });
+      vi.mocked(validateSession).mockResolvedValue({
+        isValid: false,
+        shouldUpdateUser: true,
+      });
+      answerCookiebot({ statistics: true });
+
+      await initializeAuth();
+
+      expect(getAnonymousID()).not.toBe("website-device");
+      expect(window.localStorage.getItem("agpt_anonymous_id")).toBeNull();
+    });
+
+    it("keeps it from an account the fallback validation finds", async () => {
+      // fetchUser can miss a session right after login; validation finds it.
+      vi.mocked(fetchUser).mockResolvedValue({
+        user: null,
+        hasLoadedUser: false,
+        isUserLoading: false,
+      });
+      vi.mocked(validateSession).mockResolvedValue({
+        isValid: true,
+        user: userA,
+        shouldUpdateUser: true,
+      });
+      answerCookiebot({ statistics: true });
+
+      await initializeAuth();
+
+      expect(useAuthStore.getState().user).toEqual(userA);
+      expect(getAnonymousID()).not.toBe("website-device");
+    });
+
+    it("adopts it for an account created here after the signup flag is gone", () => {
+      // The ads signup conversion clears the flag, which can be before the
+      // consent answer.
+      document.cookie = "agpt_account_created=email; Path=/; Secure";
+      useAuthStore.setState({ user: userA });
+      document.cookie = "agpt_account_created=; Path=/; Max-Age=0; Secure";
+
+      answerCookiebot({ statistics: true });
+
+      expect(getAnonymousID()).toBe("website-device");
+    });
+
+    it("keeps it from an older account signed in when the answer arrives", () => {
+      useAuthStore.setState({ user: userA });
+
+      answerCookiebot({ statistics: true });
+
+      expect(getAnonymousID()).not.toBe("website-device");
+    });
+
+    it("adopts it for an account created in this browser", () => {
+      document.cookie = "agpt_account_created=email; Path=/; Secure";
+      useAuthStore.setState({ user: userA });
+
+      answerCookiebot({ statistics: true });
+
+      expect(getAnonymousID()).toBe("website-device");
+    });
+  });
+
+  describe("with an id an earlier page merged into user A", () => {
+    beforeEach(() => {
+      configureCookiebot();
+      installCookiebot({ statistics: true });
+      window.localStorage.setItem("agpt_anonymous_id", "merged-id");
+      window.localStorage.setItem(
+        "ph_phc_test_posthog",
+        JSON.stringify({
+          distinct_id: "user-A",
+          $device_id: "merged-id",
+          $user_state: "identified",
+        }),
+      );
+      expect(getAnonymousID()).toBe("merged-id");
+    });
+
+    it("rotates it when the page turns out to be signed out", async () => {
+      vi.mocked(fetchUser).mockResolvedValue({
+        user: null,
+        hasLoadedUser: false,
+        isUserLoading: false,
+      });
+      vi.mocked(validateSession).mockResolvedValue({
+        isValid: true,
+        shouldUpdateUser: false,
+      });
+
+      await useAuthStore.getState().initialize({
+        api: {} as never,
+        router: {} as never,
+        path: "/signup",
+      });
+
+      expect(getAnonymousID()).not.toBe("merged-id");
+      expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(
+        getAnonymousID(),
+      );
+    });
+
+    it("rotates it, and PostHog's identity, before another account signs in", () => {
+      posthog.get_distinct_id.mockReturnValue("user-A");
+      posthog.reset.mockImplementation(() => {
+        posthog.get_distinct_id.mockReturnValue("fresh-device");
+      });
+
+      useAuthStore.setState({ user: userB });
+
+      expect(posthog.reset).toHaveBeenCalledOnce();
+      expect(getAnonymousID()).toBe("fresh-device");
+    });
+
+    it("resets once when user A switches to user B", () => {
+      posthog.get_distinct_id.mockReturnValue("user-A");
+      posthog.reset.mockImplementation(() => {
+        posthog.get_distinct_id.mockReturnValue("fresh-device");
+      });
+      useAuthStore.setState({ user: userA });
+
+      useAuthStore.setState({ user: userB });
+
+      expect(posthog.reset).toHaveBeenCalledOnce();
+    });
+
+    it("keeps it for user A", () => {
+      useAuthStore.setState({ user: userA });
+      useAuthStore.setState({ user: { ...userA } });
+
+      expect(getAnonymousID()).toBe("merged-id");
+    });
+
+    describe("and an earlier visitor's landing stored", () => {
+      const THIS_PAGE = "/signup?utm_source=new&utm_campaign=launch";
+
+      beforeEach(() => {
+        window.localStorage.setItem(
+          "agpt_first_landing",
+          JSON.stringify({
+            path: "/pricing?utm_source=earlier",
+            referrer: null,
+            utm_source: "earlier",
+            utm_medium: null,
+            utm_campaign: null,
+            at: "2026-01-01T00:00:00.000Z",
+          }),
+        );
+        window.history.replaceState(null, "", THIS_PAGE);
+        captureFirstLanding();
+      });
+
+      afterEach(() => {
+        window.history.replaceState(null, "", "/");
+      });
+
+      function expectThisPageLanding() {
+        expect(getAnonymousID()).not.toBe("merged-id");
+        expect(readFirstLanding()).toMatchObject({
+          path: THIS_PAGE,
+          utm_source: "new",
+          utm_campaign: "launch",
+        });
+        expect(
+          JSON.parse(window.localStorage.getItem("agpt_first_landing") ?? "{}"),
+        ).toMatchObject({ path: THIS_PAGE });
+      }
+
+      it("gives the new id this page's landing when the page turns out to be signed out", async () => {
+        vi.mocked(fetchUser).mockResolvedValue({
+          user: null,
+          hasLoadedUser: false,
+          isUserLoading: false,
+        });
+        vi.mocked(validateSession).mockResolvedValue({
+          isValid: true,
+          shouldUpdateUser: false,
+        });
+
+        await useAuthStore.getState().initialize({
+          api: {} as never,
+          router: {} as never,
+          path: "/signup",
+        });
+
+        expectThisPageLanding();
+      });
+
+      it("gives the new id this page's landing when another account signs in", () => {
+        useAuthStore.setState({ user: userB });
+
+        expectThisPageLanding();
+      });
+    });
   });
 
   it("preserves the anonymous identity through login and same-user refreshes", () => {

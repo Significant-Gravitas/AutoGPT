@@ -8,6 +8,7 @@ rows go through ``sanitize_json`` as Postgres's JSON column does.
 import asyncio
 import base64
 import json
+from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -17,16 +18,18 @@ import pytest
 from prisma.enums import ReviewStatus
 
 from backend.copilot.context import set_turn_unattended
-from backend.copilot.gate import held, reads
+from backend.copilot.gate import ALLOW, Decision, held, reads
 from backend.copilot.gate import review as review_store
 from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.gate.reads import read_review_id
+from backend.copilot.gate.spent_approval import UnconfirmedSpend
 from backend.copilot.model import (
     AutopilotMode,
     ChatMessage,
     ChatSession,
     ChatSessionMetadata,
 )
+from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.sdk.tool_adapter import (
     _consecutive_tool_failures,
@@ -36,7 +39,15 @@ from backend.copilot.sdk.tool_adapter import (
     set_execution_context,
 )
 from backend.copilot.tools.base import BaseTool
+from backend.copilot.tools.find_library_agent import FindLibraryAgentTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
+from backend.copilot.tools.workspace_files import ReadWorkspaceFileTool
+from backend.copilot.trial_cost_context import (
+    TrialCostContext,
+    capture_cost_context,
+    restore_cost_context,
+)
+from backend.data.graph import GraphModel, NodeModel
 from backend.util.json import sanitize_json
 
 _READS = "backend.copilot.gate.reads"
@@ -53,14 +64,35 @@ class _Rows:
         self.held: list[held.HeldCall] = []
 
     async def find_review(self, review_id, user_id, session_id):
-        return self.rows.get(review_id)
+        row = self.rows.get(review_id)
+        # A copy, as a read is: answering the card later leaves it as read.
+        return SimpleNamespace(**vars(row)) if row else None
 
-    async def consume(self, review_id, user_id):
-        return self.rows.pop(review_id, None) is not None
+    async def consume(self, review, user_id):
+        # The row as read: answered differently or replaced since, it stays.
+        stored = self.rows.get(review.node_exec_id)
+        if stored is None or (stored.status, stored.created_at) != (
+            review.status,
+            review.created_at,
+        ):
+            return False
+        del self.rows[review.node_exec_id]
+        return True
+
+    async def discard(self, review, user_id):
+        await self.consume(review, user_id)
 
     async def remember(self, session_id, call):
         self.held.append(call)
         return True
+
+    async def held_calls(self, session_id):
+        return {call.review_id: call for call in self.held}
+
+    async def claim(self, session_id, call):
+        kept = [held for held in self.held if held is not call]
+        claimed, self.held = len(kept) < len(self.held), kept
+        return claimed
 
     async def get_reviews_by_node_exec_ids(self, ids, user_id):
         return {i: self.rows[i] for i in ids if i in self.rows}
@@ -68,6 +100,7 @@ class _Rows:
     async def open_review_row(self, review_id, user_id, session, payload, instructions):
         self.rows[review_id] = SimpleNamespace(
             node_exec_id=review_id,
+            session_id=session.session_id,
             status=ReviewStatus.WAITING,
             created_at=datetime.now(UTC),
             updated_at=None,
@@ -132,14 +165,35 @@ def _session(mode: AutopilotMode | None = "auto") -> ChatSession:
 def rows():
     fake = _Rows()
     with (
-        patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)),
+        patch(
+            f"{_READS}.capture_cost_context",
+            AsyncMock(return_value=TrialCostContext(user_id="user-1", trial_id=None)),
+        ),
+        patch(
+            "backend.copilot.gate.reads.get_flag_variant", AsyncMock(return_value=True)
+        ),
         patch.object(review_store, "find_review", fake.find_review),
         patch.object(review_store, "consume", fake.consume),
+        patch.object(review_store, "discard", fake.discard),
         patch.object(held, "remember", fake.remember),
+        patch.object(held, "_held", fake.held_calls),
+        patch.object(held, "_claim", fake.claim),
         patch.object(held, "review_db", lambda: fake),
         patch.object(review_store, "open_review_row", fake.open_review_row),
     ):
         yield fake
+
+
+async def test_held_read_keeps_the_origin_of_its_request(rows):
+    origin = TrialCostContext(user_id="user-1", trial_id="trial-1")
+    with (
+        restore_cost_context("user-1", origin),
+        patch(f"{_READS}.capture_cost_context", capture_cost_context),
+        patch(f"{_READS}.judge_content", _judge(_HELD)),
+    ):
+        await _call(_Fetch(_MARKER), _session())
+    assert len(rows.held) == 1
+    assert rows.held[0].cost_context == origin
 
 
 def _experts(**by_name: str | None):
@@ -188,6 +242,32 @@ async def test_flagged_content_is_held_and_clean_content_is_not(rows, verdict):
     else:
         assert result.output == _plain_output(_MARKER)
         assert rows.rows == {}
+
+
+async def test_a_read_held_as_an_identical_read_opened_the_card_is_told_it_waits(
+    rows,
+):
+    """Two identical reads both found no card, and the first opened it. The
+    second's held copy would never be answered, so it is dropped and the read
+    is told the content is withheld, as a read a moment later would be."""
+    opened = rows.open_review_row
+
+    async def get_or_create(review_id, *args):
+        return review_id in rows.rows or await opened(review_id, *args)
+
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        await _call(_Fetch(_MARKER), _session())
+        (first,) = rows.held
+        with (
+            patch.object(review_store, "find_review", AsyncMock(return_value=None)),
+            patch.object(review_store, "open_review_row", get_or_create),
+        ):
+            result = await _call(_Fetch(_MARKER), _session())
+
+    assert "withheld while the user reviews it" in json.loads(result.output)["message"]
+    assert rows.held == [first]
+    (row,) = rows.rows.values()
+    assert row.payload[review_store.HELD_GENERATION] == first.generation
 
 
 async def test_a_judge_that_could_not_decide_holds(rows):
@@ -286,9 +366,42 @@ async def test_a_workspace_text_file_is_judged_decoded(rows, mime):
     assert _MARKER in judge.await_args.kwargs["text"]
 
 
+@pytest.mark.parametrize("window", [{}, {"offset": 0, "length": 1_000}])
+async def test_a_text_file_the_reader_returns_as_text_is_judged(rows, window):
+    """The reader hands a text file over as ``content``, whole or ranged."""
+    raw = f"# Notes\n\n{_MARKER}\n".encode()
+    manager = AsyncMock()
+    manager.get_file_info = AsyncMock(
+        return_value=SimpleNamespace(
+            id="f-1",
+            name="notes.md",
+            path="/notes.md",
+            mime_type="text/markdown",
+            size_bytes=len(raw),
+            metadata={},
+        )
+    )
+    manager.read_file_by_id = AsyncMock(return_value=raw)
+    manager.read_file_head_by_id = AsyncMock(side_effect=lambda _id, n: raw[:n])
+    judge = _judge(_HELD)
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        patch(
+            "backend.copilot.tools.workspace_files.get_workspace_manager",
+            AsyncMock(return_value=manager),
+        ),
+    ):
+        result = await ReadWorkspaceFileTool().execute(
+            "user-1", _session(), "call-1", file_id="f-1", **window
+        )
+
+    assert _MARKER in judge.await_args.kwargs["text"]
+    assert _MARKER not in result.output and len(rows.rows) == 1
+
+
 async def test_sdk_registry_tool_is_judged_on_the_text_the_model_receives(rows):
-    """Between the 70K MCP cap and the 80K persist threshold, only the cap
-    separates what ``execute`` built from what the model reads."""
+    """When the workspace copy fails, the output goes on whole and only the
+    70K MCP cap separates what ``execute`` built from what the model reads."""
     tool = _Fetch("x" * 75_000)
     session = _session()
     set_execution_context("user-1", session)
@@ -296,6 +409,10 @@ async def test_sdk_registry_tool_is_judged_on_the_text_the_model_receives(rows):
     judge = _judge(_CLEAN)
     with (
         patch(f"{_READS}.judge_content", judge),
+        patch(
+            "backend.copilot.tools.base._persist_and_summarize",
+            AsyncMock(side_effect=lambda raw, *_, **__: raw),
+        ),
         patch(
             "backend.copilot.sdk.tool_adapter.resolve_tool_dispatch", lambda *_: None
         ),
@@ -379,11 +496,18 @@ async def test_an_approved_held_read_arrives_as_its_late_result_byte_identical(r
     (call,) = rows.held
     assert call.tool_call_id == "call-7"
     rows.answer(ReviewStatus.APPROVED)
+    delivered: list[PendingMessage] = []
 
-    outcome, late = await held._outcome("user-1", session, call, tool)
+    with patch("backend.copilot.tools.get_tool", return_value=tool):
+        heard = [
+            s async for s in held.resolve_answered("user-1", session, delivered.append)
+        ]
 
-    assert (outcome, late) == ("approved", _plain_output(_MARKER))
+    [late] = delivered
+    assert late.metadata["held_call"]["outcome"] == "approved"
+    assert _late_body(late) == _plain_output(_MARKER)
     assert tool.runs == 1, "the late result must be the stored bytes, not a refetch"
+    assert heard == [], "a released read is not an action the chat hears run"
     assert rows.rows == {}
 
 
@@ -397,10 +521,10 @@ async def test_a_rejected_held_read_never_arrives_and_sets_no_chat_rule(rows):
 
     set_ask = AsyncMock()
     with patch.object(held.chat_rules, "set_ask", set_ask):
-        outcome, late = await held._outcome("user-1", session, call, tool)
+        [late] = await _resolved(session)
 
-    assert outcome == "rejected"
-    assert _MARKER not in late and "declined" in late
+    assert late.metadata["held_call"]["outcome"] == "rejected"
+    assert _MARKER not in late.content and "declined" in late.content
     set_ask.assert_not_awaited()
     assert tool.runs == 1
 
@@ -415,12 +539,16 @@ async def test_several_reads_hold_at_once(rows):
 
 @pytest.mark.parametrize("engine", ["sdk", "baseline"])
 async def test_a_large_released_read_arrives_late_exactly_as_a_direct_result(
-    rows, engine
+    rows, engine, monkeypatch
 ):
     """Above 30K, where a plain pending message would cut it, and on the SDK
     engine above the 70K cap, so the stored bytes are already capped."""
     from backend.copilot.sdk.tool_adapter import cap_late_tool_result
 
+    monkeypatch.setattr(
+        "backend.copilot.tools.base._persist_and_summarize",
+        AsyncMock(side_effect=lambda raw, *_, **__: raw),
+    )
     content = "y" * (75_000 if engine == "sdk" else 45_000)
     session = _session()
     set_execution_context("user-1", session)
@@ -443,11 +571,10 @@ async def test_a_large_released_read_arrives_late_exactly_as_a_direct_result(
             await _call(_Fetch(content), session)
         cap = str  # the baseline passes no cap: execute already capped
 
-    (call,) = rows.held
     rows.answer(ReviewStatus.APPROVED)
-    late = await held._deliver("user-1", session, call, cap)
+    [late] = await _resolved(session, cap=cap)
 
-    body = late.content.split(">\n", 1)[1].rsplit("\n</held_call_result>", 1)[0]
+    body = _late_body(late)
     assert body == direct
     assert len(body) > 30_000
 
@@ -555,12 +682,46 @@ async def test_a_released_read_a_re_read_already_took_is_not_reported_declined(r
         await tool.execute("user-1", _session(), "call-7", url="u")
     rows.answer(ReviewStatus.APPROVED)
     (review,) = rows.rows.values()
-    await rows.consume(review.node_exec_id, "user-1")
+    await rows.consume(review, "user-1")
 
     outcome, late = await reads.answered_read("user-1", review)
 
     assert outcome == "closed"
     assert "declined" not in late and _MARKER not in late
+
+
+async def test_a_late_read_whose_spend_fails_is_not_reported_as_delivered(rows):
+    """The spend raising leaves the bytes unreleased, so the fold must hear
+    that nothing was delivered, not that the read may have run."""
+    tool = _Fetch(_MARKER)
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        await tool.execute("user-1", _session(), "call-7", url="u")
+    rows.answer(ReviewStatus.APPROVED)
+    (review,) = rows.rows.values()
+
+    with patch.object(
+        review_store, "consume", AsyncMock(side_effect=ConnectionError("db"))
+    ):
+        with pytest.raises(UnconfirmedSpend):
+            await reads.answered_read("user-1", review)
+
+
+async def test_a_re_read_whose_spend_fails_refuses_and_releases_nothing(rows):
+    """The spend raising is no miss: the read refuses as unchecked, and the
+    approved bytes stay unreleased for the card's own answer."""
+    tool = _Fetch(_MARKER)
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        await tool.execute("user-1", _session(), "call-7", url="u")
+    rows.answer(ReviewStatus.APPROVED)
+
+    with patch.object(
+        review_store, "consume", AsyncMock(side_effect=ConnectionError("db"))
+    ):
+        again = await _call(tool, _session())
+
+    assert "could not be checked" in json.loads(again.output)["message"]
+    assert _MARKER not in again.output
+    assert len(rows.rows) == 1
 
 
 async def test_a_re_read_that_loses_the_race_is_not_told_the_user_declined(rows):
@@ -658,7 +819,7 @@ async def test_an_expired_release_already_delivered_reports_it_was_delivered(row
     rows.answer(ReviewStatus.APPROVED)
     (review,) = rows.rows.values()
     review.reviewed_at = datetime.now(UTC) - timedelta(hours=2)
-    await rows.consume(review.node_exec_id, "user-1")
+    await rows.consume(review, "user-1")
 
     outcome, _ = await reads.answered_read("user-1", review)
 
@@ -843,7 +1004,20 @@ async def test_a_blocks_own_output_is_still_judged(rows):
 
 
 def _no_action_gate():
-    return patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, False)))
+    return patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, ALLOW)))
+
+
+async def _resolved(session: ChatSession, **kwargs: Any) -> list[PendingMessage]:
+    delivered: list[PendingMessage] = []
+    async for _status in held.resolve_answered(
+        "user-1", session, delivered.append, **kwargs
+    ):
+        pass
+    return delivered
+
+
+def _late_body(late: PendingMessage) -> str:
+    return late.content.split(">\n", 1)[1].rsplit("\n</held_call_result>", 1)[0]
 
 
 # What a producer declares came from outside AutoGPT is all the judge reads.
@@ -959,7 +1133,13 @@ async def test_a_blocks_output_is_judged_without_the_platforms_message(rows):
     with (
         patch(f"{_READS}.judge_content", judge),
         # Approved, so the block runs without its own review pause.
-        patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, True))),
+        patch.object(
+            BaseTool,
+            "_gate",
+            AsyncMock(
+                return_value=(None, Decision(allowed=True, approved=True, decided=True))
+            ),
+        ),
         _resolves_to(_capability("block", _STORE_VALUE)),
         patch("backend.copilot.tools.helpers.workspace_db", lambda: workspace),
         patch("backend.copilot.tools.helpers.user_db", lambda: users),
@@ -1162,6 +1342,10 @@ async def test_a_declared_part_the_cap_cut_is_judged_as_cut(rows):
         patch(
             "backend.copilot.sdk.tool_adapter.resolve_tool_dispatch", lambda *_: None
         ),
+        patch(
+            "backend.copilot.tools.base._persist_and_summarize",
+            AsyncMock(side_effect=lambda raw_output, *args, **kwargs: raw_output),
+        ),
     ):
         to_model = _text_from_mcp_result(await wrapper({"url": "u"}))
 
@@ -1287,16 +1471,140 @@ async def test_a_sandbox_files_lines_are_judged_and_an_empty_grep_is_not(
     assert "No matches found." in _text_from_mcp_result(empty)
 
 
+@pytest.mark.parametrize("lookup", [{"agent_id": "graph-1"}, {"query": "digest"}])
+@pytest.mark.parametrize(
+    "owned, copied",
+    [(False, False), (True, True)],
+    ids=["another user's graph", "the user's copy of a graph"],
+)
+async def test_a_library_graph_is_judged_without_the_listing_around_it(
+    rows, lookup, owned, copied
+):
+    judge = _judge(_HELD)
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        _library_with_graph(owned=owned, copied=copied),
+    ):
+        result = await _call(
+            FindLibraryAgentTool(), _session(), {**lookup, "include_graph": True}
+        )
+
+    judged = judge.await_args.kwargs["text"]
+    assert _MARKER in judged and _STORE_VALUE in judged
+    assert "/library/agents/" not in judged
+    assert _MARKER not in result.output and len(rows.rows) == 1
+    # The card and the chain row are copy, which never says "agent".
+    (row,) = rows.rows.values()
+    assert "agent" not in json.dumps(row.payload["headline"])
+    assert "agent" not in json.loads(result.output)["ask"]
+
+
+@pytest.mark.parametrize(
+    "lookup, owned, listed",
+    [
+        ({"agent_id": "graph-1"}, False, ["lib-1"]),
+        ({"for_creation": True, "goal_summary": "a daily digest"}, False, ["lib-1"]),
+        ({"for_creation": True}, False, []),
+        ({"agent_id": "graph-1", "include_graph": True}, True, ["lib-1"]),
+    ],
+    ids=["no graph", "a create-time match", "no create-time goal", "the user's graph"],
+)
+async def test_a_library_lookup_without_someone_elses_graph_is_not_judged(
+    rows, lookup, owned, listed
+):
+    judge = _judge(_HELD)
+    with patch(f"{_READS}.judge_content", judge), _library_with_graph(owned):
+        result = await _call(FindLibraryAgentTool(), _session(), lookup)
+
+    judge.assert_not_awaited()
+    assert result.success and rows.rows == {}
+    agents = json.loads(result.output).get("agents", [])
+    assert [agent["id"] for agent in agents] == listed
+
+
+def _library_with_graph(owned: bool = False, copied: bool = False):
+    """One library entry whose graph, typed as ``get_graph`` returns it, carries
+    the marker; ``owned`` is whether the user holds that graph, ``copied``
+    whether it was copied from another, and the create-time search finds it."""
+    entry = SimpleNamespace(
+        id="lib-1",
+        name="Daily digest",
+        description="Sends a digest",
+        creator_name="creator",
+        status=SimpleNamespace(value="ready"),
+        can_access_graph=owned,
+        has_external_trigger=False,
+        new_output=False,
+        graph_id="graph-1",
+        graph_version=1,
+        input_schema={},
+        output_schema={},
+        trigger_setup_info=None,
+        organization_id=None,
+    )
+    node = NodeModel(
+        id="node-1",
+        block_id=_STORE_VALUE,
+        input_default={"input": _MARKER},
+        graph_id="graph-1",
+        graph_version=1,
+    )
+    graph = GraphModel(
+        id="graph-1",
+        name="Daily digest",
+        description="Sends a digest",
+        nodes=[node],
+        user_id="creator-1",
+        created_at=datetime.now(UTC),
+    )
+    library = SimpleNamespace(
+        get_library_agent=AsyncMock(return_value=entry),
+        get_library_agent_by_graph_id=AsyncMock(return_value=entry),
+        list_library_agents=AsyncMock(return_value=SimpleNamespace(agents=[entry])),
+    )
+    graphs = SimpleNamespace(
+        get_graph=AsyncMock(return_value=graph),
+        get_copied_graph_ids=AsyncMock(side_effect=lambda ids: ids if copied else []),
+    )
+    stack = ExitStack()
+    for name, db in (
+        ("agent_search.library_db", library),
+        ("agent_search.graph_db", graphs),
+        ("find_library_agent.graph_db", graphs),
+    ):
+        stack.enter_context(patch(f"backend.copilot.tools.{name}", lambda db=db: db))
+    stack.enter_context(
+        patch(
+            "backend.copilot.tools.agent_search.hybrid_search_library_agents",
+            AsyncMock(return_value=[{"content_id": "lib-1", "combined_score": 0.9}]),
+        )
+    )
+    stack.enter_context(
+        patch("backend.copilot.tools.agent_search.track_library_check_outcome")
+    )
+    return stack
+
+
 # A scheduled turn's step that could not run answers with the platform's own
 # instructions for the reply; held, the reply never says the step was skipped.
 
 
 async def _agent_without_credentials() -> ToolResponseBase | None:
+    from backend.copilot.tools.expert_scope import CredentialScopeSnapshot
     from backend.copilot.tools.run_agent import RunAgentInput, RunAgentTool
 
-    graph = MagicMock(id="graph-1", version=1, input_schema={})
+    graph = MagicMock(
+        id="graph-1",
+        version=1,
+        input_schema={},
+        regular_credentials_inputs={"credentials": MagicMock()},
+    )
     graph.name = "Daily Scraper"
     with (
+        patch(
+            "backend.copilot.tools.run_agent.resolve_credential_scope",
+            AsyncMock(return_value=CredentialScopeSnapshot([], None)),
+        ),
         patch(
             "backend.copilot.tools.run_agent.match_user_credentials_to_graph",
             AsyncMock(return_value=({}, ["credentials"])),

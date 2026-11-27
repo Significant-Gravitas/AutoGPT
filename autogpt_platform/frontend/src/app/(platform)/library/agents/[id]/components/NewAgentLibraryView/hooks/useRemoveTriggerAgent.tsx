@@ -44,7 +44,8 @@ export function useRemoveTriggerAgent({
       mutation: {
         onSuccess: async () => {
           toast({ title: "Trigger removed" });
-          queryClient.invalidateQueries({
+          // Before onDeleted, so the next trigger is picked from what's left.
+          await queryClient.refetchQueries({
             queryKey: getGetV2ListTriggerAgentsQueryKey(parentAgent.id),
           });
           setShowDialog(false);
@@ -75,7 +76,7 @@ export function useRemoveTriggerAgent({
     >
       <Dialog.Content>
         <Text variant="large">
-          Are you sure you want to remove this trigger? The trigger agent and
+          Are you sure you want to remove this trigger? The trigger workflow and
           its schedule will be deleted. This action cannot be undone.
         </Text>
         <Dialog.Footer>

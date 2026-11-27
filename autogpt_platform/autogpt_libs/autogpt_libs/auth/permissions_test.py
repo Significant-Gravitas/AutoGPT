@@ -117,7 +117,19 @@ _ORG_EXPECTED: dict[OrgAction, dict[str, bool]] = {
         "billing_manager": True,
         "member": True,
     },
+    OrgAction.VIEW_RESOURCES: {
+        "owner": True,
+        "admin": True,
+        "billing_manager": False,
+        "member": True,
+    },
     OrgAction.CREATE_RESOURCES: {
+        "owner": True,
+        "admin": True,
+        "billing_manager": False,
+        "member": True,
+    },
+    OrgAction.EXECUTE_RESOURCES: {
         "owner": True,
         "admin": True,
         "billing_manager": False,
@@ -214,6 +226,21 @@ _TEAM_EXPECTED: dict[TeamAction, dict[str, bool]] = {
         "team_billing_manager": False,
         "team_member": True,
     },
+    TeamAction.VIEW_AGENTS: {
+        "team_admin": True,
+        "team_billing_manager": False,
+        "team_member": True,
+    },
+    TeamAction.EXECUTE_AGENTS: {
+        "team_admin": True,
+        "team_billing_manager": False,
+        "team_member": True,
+    },
+    TeamAction.PUBLISH_AGENTS: {
+        "team_admin": True,
+        "team_billing_manager": False,
+        "team_member": True,
+    },
     TeamAction.DELETE_AGENTS: {
         "team_admin": True,
         "team_billing_manager": False,
@@ -260,3 +287,10 @@ class TestTeamPermissions:
         ctx = TEAM_BILLING_MGR
         assert check_team_permission(ctx, TeamAction.CREATE_AGENTS) is False
         assert check_team_permission(ctx, TeamAction.VIEW_SPEND) is True
+
+    def test_team_admin_who_is_also_billing_manager_keeps_member_actions(self):
+        ctx = _make_ctx(
+            team_id="ws-1", is_team_admin=True, is_team_billing_manager=True
+        )
+        assert check_team_permission(ctx, TeamAction.VIEW_EXECUTIONS) is True
+        assert check_team_permission(ctx, TeamAction.CREATE_AGENTS) is True

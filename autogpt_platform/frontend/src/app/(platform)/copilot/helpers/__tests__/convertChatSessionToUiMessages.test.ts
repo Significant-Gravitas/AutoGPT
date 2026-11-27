@@ -1,6 +1,10 @@
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { describe, expect, it } from "vitest";
 import {
+  EMPTY_TODOS,
+  getLatestTaskList,
+} from "../../components/TaskProgressBar/helpers";
+import {
   concatWithAssistantMerge,
   convertChatSessionMessagesToUiMessages,
 } from "../convertChatSessionToUiMessages";
@@ -31,6 +35,35 @@ describe("convertChatSessionMessagesToUiMessages", () => {
     // The run-post is not folded into the preceding assistant bubble.
     expect(result.messages).toHaveLength(2);
     expect(result.messages[1].metadata).toMatchObject({ kind: "expert_run" });
+  });
+
+  it("keeps a skipped-run note as its own bubble between two replies", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "assistant", content: "Here is your briefing.", sequence: 0 },
+        {
+          role: "assistant",
+          content: "Skipped: daily usage limit reached. It didn't run.",
+          sequence: 1,
+          metadata: {
+            kind: "scheduled_chat_notice",
+            hidden_from_model: true,
+            headline: "Skipped: daily usage limit reached",
+            body: "It didn't run.",
+          },
+        },
+        { role: "assistant", content: "Next briefing.", sequence: 2 },
+      ],
+      { isComplete: true },
+    );
+
+    // Folded either way, the card would vanish into a reply.
+    expect(result.messages).toHaveLength(3);
+    expect(result.messages[1].metadata).toMatchObject({
+      kind: "scheduled_chat_notice",
+    });
+    expect(result.messages[2].metadata).toBeUndefined();
   });
 
   it("does not attach metadata to legacy assistant messages", () => {
@@ -362,12 +395,12 @@ function uiUser(
 describe("concatWithAssistantMerge", () => {
   it("returns b unchanged when a is empty", () => {
     const b = [uiAssistant(SESSION_ID, 0, "hi")];
-    expect(concatWithAssistantMerge([], b)).toEqual(b);
+    expect(concatWithAssistantMerge([], b)).toBe(b);
   });
 
   it("returns a unchanged when b is empty", () => {
     const a = [uiAssistant(SESSION_ID, 0, "hi")];
-    expect(concatWithAssistantMerge(a, [])).toEqual(a);
+    expect(concatWithAssistantMerge(a, [])).toBe(a);
   });
 
   it("merges two ASSISTANT bubbles whose DB sequences are strictly adjacent", () => {
@@ -531,6 +564,37 @@ describe("convertChatSessionMessagesToUiMessages — latest user marker", () => 
       ).toHaveLength(2);
     });
 
+    it.each([
+      [{ type: "todo_write", todos: [] }, EMPTY_TODOS],
+      [{ todos: [] }, todos],
+      [{ oldTodos: todos, newTodos: [] }, todos],
+    ])(
+      "applies an orphan empty result only when it identifies TodoWrite (%j)",
+      (output, expected) => {
+        const result = convertChatSessionMessagesToUiMessages(
+          SESSION_ID,
+          [
+            { role: "assistant", content: "on it", sequence: 0 },
+            {
+              role: "tool",
+              content: JSON.stringify({ type: "todo_write", todos }),
+              tool_call_id: "call-1",
+              sequence: 1,
+            },
+            {
+              role: "tool",
+              content: JSON.stringify(output),
+              tool_call_id: "call-2",
+              sequence: 2,
+            },
+          ],
+          { isComplete: true },
+        );
+
+        expect(getLatestTaskList(result.messages)).toEqual(expected);
+      },
+    );
+
     it("ignores an orphan result missing a `todos` array", () => {
       const result = convertChatSessionMessagesToUiMessages(
         SESSION_ID,
@@ -689,6 +753,63 @@ describe("the [Attached files] block", () => {
   it("leaves a message with no block alone", () => {
     expect(userParts("just text")).toEqual([
       { type: "text", text: "just text", state: "done" },
+    ]);
+  });
+});
+
+describe("a pause marker row", () => {
+  const MARKER =
+    "[__COPILOT_SYSTEM_e3b0__] Paused: this task is out of today's budget.";
+  const PAUSE = {
+    reason: "daily",
+    resets_at: "2026-10-12T06:00:00.000Z",
+    steps: null,
+    checkpoint_saved: true,
+    started: true,
+  };
+
+  it("becomes the Paused card's part, riding the bubble it merges into", () => {
+    const { messages } = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "user", content: "Do the thing.", sequence: 0 },
+        { role: "assistant", content: "Saved where I got to.", sequence: 1 },
+        {
+          role: "assistant",
+          content: MARKER,
+          sequence: 2,
+          // The API client hands dates over as Date objects.
+          metadata: {
+            turn_paused: { ...PAUSE, resets_at: new Date(PAUSE.resets_at) },
+          },
+        },
+      ],
+      { isComplete: true },
+    );
+
+    expect(messages).toHaveLength(2);
+    expect(messages[1].parts).toEqual([
+      { type: "text", text: "Saved where I got to.", state: "done" },
+      { type: "data-turn-paused", id: "seq-2", data: PAUSE },
+    ]);
+  });
+
+  it("stays a system note when its pause can't be read", () => {
+    const { messages } = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        {
+          role: "assistant",
+          content: MARKER,
+          sequence: 0,
+          metadata: { turn_paused: { reason: "lunch" } },
+        },
+      ],
+      { isComplete: true },
+    );
+
+    expect(messages[0].parts).toEqual([
+      { type: "text", text: MARKER, state: "done" },
     ]);
   });
 });

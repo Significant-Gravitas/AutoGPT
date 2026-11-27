@@ -3,7 +3,7 @@
 Blocks for posting videos and image slideshows to TikTok using the Ayrshare social media management API.
 <!-- END MANUAL -->
 
-## Post To Tik Tok
+## Post To TikTok
 
 ### What it is
 Post to TikTok using Ayrshare

@@ -9,9 +9,9 @@ export function AgentPageLoading() {
           <Skeleton className="h-8 w-20 rounded-lg" />
           <div className="hidden items-center gap-2 md:flex">
             <Skeleton className="h-4 w-24" />
-            <span className="text-zinc-300">/</span>
+            <span className="text-foreground-disabled">/</span>
             <Skeleton className="h-4 w-28" />
-            <span className="text-zinc-300">/</span>
+            <span className="text-foreground-disabled">/</span>
             <Skeleton className="h-4 w-36" />
           </div>
         </div>
@@ -20,8 +20,8 @@ export function AgentPageLoading() {
         <div className="mt-0 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 lg:mt-8 lg:flex-row lg:gap-12">
           {/* Left: Agent info panel */}
           <div className="w-full lg:w-2/5">
-            <div className="rounded-2xl bg-gradient-to-r from-blue-100/50 to-indigo-100/50 p-[1px]">
-              <div className="flex flex-col rounded-[calc(1rem-2px)] bg-gray-50 p-4">
+            <div className="rounded-2xl bg-gradient-to-r from-info/10 to-indigo/10 p-px">
+              <div className="flex flex-col rounded-large bg-surface-muted p-4">
                 {/* Title */}
                 <Skeleton className="mb-3 h-9 w-3/4" />
 
@@ -38,8 +38,8 @@ export function AgentPageLoading() {
 
                 {/* Buttons */}
                 <div className="flex gap-3">
-                  <Skeleton className="h-12 w-36 rounded-full" />
-                  <Skeleton className="h-12 w-28 rounded-full" />
+                  <Skeleton className="h-12 w-36 rounded-pill" />
+                  <Skeleton className="h-12 w-28 rounded-pill" />
                 </div>
               </div>
             </div>
@@ -56,9 +56,9 @@ export function AgentPageLoading() {
             <div className="mt-6 space-y-3">
               <Skeleton className="h-6 w-24" />
               <div className="flex flex-wrap gap-2">
-                <Skeleton className="h-7 w-20 rounded-full" />
-                <Skeleton className="h-7 w-24 rounded-full" />
-                <Skeleton className="h-7 w-16 rounded-full" />
+                <Skeleton className="h-7 w-20 rounded-pill" />
+                <Skeleton className="h-7 w-24 rounded-pill" />
+                <Skeleton className="h-7 w-16 rounded-pill" />
               </div>
             </div>
           </div>

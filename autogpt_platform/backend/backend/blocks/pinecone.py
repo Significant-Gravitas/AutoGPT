@@ -11,6 +11,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.block import BlockInput
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -62,6 +63,7 @@ class PineconeInitBlock(Block):
             categories={BlockCategory.LOGIC},
             input_schema=PineconeInitBlock.Input,
             output_schema=PineconeInitBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -205,6 +207,17 @@ class PineconeInsertBlock(Block):
             categories={BlockCategory.LOGIC},
             input_schema=PineconeInsertBlock.Input,
             output_schema=PineconeInsertBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
+        )
+
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        # `run` pairs chunks with embeddings, so the shorter list counts.
+        vectors = min(
+            len(input_data.get("chunks") or []),
+            len(input_data.get("embeddings") or []),
+        )
+        return NodeExecutionStats(
+            provider_cost=float(vectors), provider_cost_type="items"
         )
 
     async def run(

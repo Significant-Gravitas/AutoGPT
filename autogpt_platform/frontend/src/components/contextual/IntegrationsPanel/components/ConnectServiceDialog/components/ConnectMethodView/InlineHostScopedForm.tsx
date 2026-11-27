@@ -94,7 +94,7 @@ export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
   }
 
   return (
-    <Form form={form} onSubmit={handleSubmit} className="space-y-2.5">
+    <Form form={form} onSubmit={handleSubmit} spacing="compact">
       <FormField
         control={form.control}
         name="host"
@@ -107,14 +107,14 @@ export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
                 autoComplete="off"
                 spellCheck={false}
                 label="Host"
-                labelVariant="small-medium"
+                labelVariant="small"
                 size="small"
                 readOnly={Boolean(host)}
                 placeholder="api.example.com"
                 wrapperClassName="!mb-0"
               />
             </FormControl>
-            <Text variant="small" className="!text-zinc-500">
+            <Text variant="small" tone="muted">
               {host
                 ? "Taken from the URL this block calls."
                 : "The host of the URL this block will call."}
@@ -125,10 +125,10 @@ export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
       />
 
       <div className="space-y-2">
-        <Text variant="small-medium" className="text-zinc-900">
+        <Text variant="small" weight="medium" tone="primary">
           Headers
         </Text>
-        <Text variant="small" className="!text-zinc-500">
+        <Text variant="small" tone="muted">
           Sent with every request to this host, such as Authorization.
         </Text>
 

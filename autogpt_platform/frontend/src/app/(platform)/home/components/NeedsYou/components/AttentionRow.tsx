@@ -52,23 +52,32 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
             size={48}
           />
         ) : (
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-500">
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-surface-hover text-foreground-tertiary">
             <Icon icon={ICONS[item.kind]} size={22} aria-hidden="true" />
           </span>
         )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Text variant="body-medium" tone="primary" className="text-pretty">
+            <Text
+              variant="body"
+              weight="medium"
+              tone="primary"
+              className="text-pretty"
+            >
               <AttentionTitle item={item} />
             </Text>
             {item.priority === "high" ? (
-              <Text
-                variant="small-medium"
-                as="span"
-                className="rounded bg-amber-50 px-1.5 py-px text-amber-700 ring-1 ring-inset ring-amber-600/10"
-              >
-                Waiting
-              </Text>
+              <span className="rounded bg-warning-surface px-1.5 py-px ring-1 ring-warning-foreground/10 ring-inset">
+                <Text
+                  variant="small"
+                  weight="medium"
+                  tone="warning"
+                  as="span"
+                  className="block"
+                >
+                  Waiting
+                </Text>
+              </span>
             ) : null}
           </div>
           <Text

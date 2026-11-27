@@ -1,3 +1,4 @@
+import { formatRelativeDuration } from "@/app/(platform)/library/hooks/executionHelpers";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { GraphExecutionMeta as GeneratedGraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import type { GraphExecution } from "@/lib/autogpt-server-api/types";
@@ -9,16 +10,21 @@ const MINUTES_PER_HOUR = 60;
 const MILLISECONDS_PER_MINUTE = SECONDS_PER_MINUTE * MILLISECONDS_PER_SECOND;
 const MILLISECONDS_PER_HOUR = MINUTES_PER_HOUR * MILLISECONDS_PER_MINUTE;
 const MILLISECONDS_PER_72_HOURS = 72 * MILLISECONDS_PER_HOUR;
-const SHORT_DURATION_THRESHOLD_SECONDS = 5;
 const MAX_EXECUTIONS_CAP = 1000;
 
 export function getExecutionDuration(
   execution: GeneratedGraphExecutionMeta,
+  now: Date = new Date(),
 ): string {
   if (!execution.started_at) return "Unknown";
 
   const start = new Date(execution.started_at);
-  const end = execution.ended_at ? new Date(execution.ended_at) : new Date();
+  // A live run counts to now and ignores a stale ended_at.
+  const isLive =
+    execution.status === AgentExecutionStatus.RUNNING ||
+    execution.status === AgentExecutionStatus.QUEUED;
+  const end =
+    !isLive && execution.ended_at ? new Date(execution.ended_at) : now;
 
   // Check if dates are valid
   if (isNaN(start.getTime()) || isNaN(end.getTime())) {
@@ -27,22 +33,10 @@ export function getExecutionDuration(
 
   const durationMs = end.getTime() - start.getTime();
 
-  // Handle negative durations (shouldn't happen but just in case)
-  if (durationMs < 0) return "Unknown";
+  // Live: useNowSecond is floored, so now can lag started_at mid-second.
+  if (durationMs < 0 && !isLive) return "Unknown";
 
-  const durationSec = Math.floor(durationMs / MILLISECONDS_PER_SECOND);
-
-  // For short durations (< 5 seconds), show "a few seconds"
-  if (durationSec < SHORT_DURATION_THRESHOLD_SECONDS) {
-    return "a few seconds";
-  }
-
-  if (durationSec < SECONDS_PER_MINUTE) return `${durationSec}s`;
-  const durationMin = Math.floor(durationSec / SECONDS_PER_MINUTE);
-  if (durationMin < MINUTES_PER_HOUR)
-    return `${durationMin}m ${durationSec % SECONDS_PER_MINUTE}s`;
-  const durationHr = Math.floor(durationMin / MINUTES_PER_HOUR);
-  return `${durationHr}h ${durationMin % MINUTES_PER_HOUR}m`;
+  return formatRelativeDuration(durationMs);
 }
 
 export function formatNotificationCount(count: number): string {
@@ -74,7 +68,7 @@ export function enrichExecutionWithAgentInfo(
 
   return {
     ...execution,
-    agent_name: agentInfo?.name ?? "Unknown Agent",
+    agent_name: agentInfo?.name ?? "Unknown Workflow",
     agent_description: agentInfo?.description ?? "",
     library_agent_id: agentInfo?.library_agent_id,
   };
@@ -171,6 +165,61 @@ export function categorizeExecutions(
   };
 }
 
+// GET /executions answers with the newest 250 runs (graph_executions/routes.py).
+const RUN_LIST_LIMIT = 250;
+
+/**
+ * The active runs already shown that a full run list leaves out: it holds
+ * the newest runs only, so an older one may still be going. A shorter list
+ * covers every run, so a run it omits is gone.
+ */
+/** Whether a run list holds every run, rather than only the newest. */
+export function listHasEveryRun(listed: GeneratedGraphExecutionMeta[]) {
+  return listed.length < RUN_LIST_LIMIT;
+}
+
+export function activeRunsTheListOmits(
+  shown: NotificationState,
+  listed: GeneratedGraphExecutionMeta[],
+): AgentExecutionWithInfo[] {
+  if (listHasEveryRun(listed)) return [];
+  const listedIDs = new Set(listed.map((execution) => execution.id));
+  return shown.activeExecutions.filter(
+    (execution) => !listedIDs.has(execution.id),
+  );
+}
+
+export function keepActiveRunsTheListOmits(
+  shown: NotificationState,
+  fromList: NotificationState,
+  listed: GeneratedGraphExecutionMeta[],
+): NotificationState {
+  const omitted = activeRunsTheListOmits(shown, listed);
+  if (omitted.length === 0) return fromList;
+  return calculateTotalCount({
+    ...fromList,
+    activeExecutions: [...fromList.activeExecutions, ...omitted],
+  });
+}
+
+export function relabelNotifications(
+  state: NotificationState,
+  agentInfoMap: Map<
+    string,
+    { name: string; description: string; library_agent_id?: string }
+  >,
+): NotificationState {
+  function relabel(execution: AgentExecutionWithInfo) {
+    return enrichExecutionWithAgentInfo(execution, agentInfoMap);
+  }
+  return {
+    ...state,
+    activeExecutions: state.activeExecutions.map(relabel),
+    recentCompletions: state.recentCompletions.map(relabel),
+    recentFailures: state.recentFailures.map(relabel),
+  };
+}
+
 export function removeExecutionFromAllCategories(
   state: NotificationState,
   executionId: string,
@@ -244,7 +293,7 @@ export function calculateTotalCount(
 
 export function handleExecutionUpdate(
   currentState: NotificationState,
-  execution: GraphExecution,
+  execution: GraphExecution | GeneratedGraphExecutionMeta,
   agentInfoMap: Map<
     string,
     { name: string; description: string; library_agent_id?: string }

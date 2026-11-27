@@ -1,3 +1,12 @@
+import {
+  Alert01Icon,
+  Calendar03Icon,
+  Calendar04Icon,
+  Clock01Icon,
+  PlayIcon,
+  Time04Icon,
+  WorkflowSquare01Icon,
+} from "@hugeicons/core-free-icons";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { getExpertTopicHex } from "@/components/molecules/ExpertAvatar/colors";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
@@ -5,7 +14,6 @@ import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflow
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { formatDistanceToNow } from "date-fns";
 
 /** Section headings sit outside the cards, so they need the cards' own content
  *  inset (1px border-box padding + p-4, matching AutopilotCard's p-5) to line
@@ -14,7 +22,8 @@ export const SECTION_INSET_CLASS = "px-4";
 
 /** The Button atom's `xs` size for components that style a raw trigger instead
  *  of taking Button props (schedule rows, the edit-schedule modal trigger). */
-export const ACTION_BUTTON_CLASS = "h-7 min-w-0 !rounded-md px-2.5 text-xs";
+export const ACTION_BUTTON_CLASS =
+  "h-7 min-w-0 !rounded-md px-2.5 text-caption";
 
 interface PodGroup {
   pod: ExpertPod;
@@ -40,7 +49,7 @@ export const AUTOPILOT_BLURB =
   "Your built-in generalist. It answers questions, runs workflows, and delegates work across your hired experts.";
 
 export const AUTOPILOT_PILL_CLASS =
-  "border border-zinc-200 bg-zinc-50 text-zinc-700";
+  "border border-border-base bg-surface-muted text-foreground-body";
 
 /** Otto owns whatever no hired expert does: every library workflow that
  *  is not installed on an expert, shaped like an expert workflow so the expert
@@ -140,15 +149,14 @@ export function groupExpertsByPods(
   };
 }
 
-export function getLastRunLabel(expert: Expert) {
+export function getLastRun(expert: Expert) {
   if (!expert.last_run_at) return null;
-  const when = formatDistanceToNow(new Date(expert.last_run_at), {
-    addSuffix: true,
-  });
+  const at = expert.last_run_at;
   if (expert.last_run_status === "COMPLETED")
-    return `Last run succeeded ${when}`;
-  if (expert.last_run_status === "FAILED") return `Last run failed ${when}`;
-  return `Last run ${when}`;
+    return { label: "Last run succeeded", at };
+  if (expert.last_run_status === "FAILED")
+    return { label: "Last run failed", at };
+  return { label: "Last run", at };
 }
 
 export function getWeeklySpend(expert: Expert) {
@@ -327,10 +335,10 @@ export function getAutopilotSummary({
 }
 
 export const WORKFLOW_FILTERS = [
-  { value: "all", label: "All workflows" },
-  { value: "scheduled", label: "Scheduled" },
-  { value: "manual", label: "Manual" },
-  { value: "needs-setup", label: "Needs setup" },
+  { value: "all", label: "All workflows", icon: WorkflowSquare01Icon },
+  { value: "scheduled", label: "Scheduled", icon: Calendar03Icon },
+  { value: "manual", label: "Manual", icon: PlayIcon },
+  { value: "needs-setup", label: "Needs setup", icon: Alert01Icon },
 ] as const;
 
 export type WorkflowFilter = (typeof WORKFLOW_FILTERS)[number]["value"];
@@ -356,10 +364,10 @@ export function filterExpertWorkflows(
 }
 
 export const SCHEDULE_FILTERS = [
-  { value: "all", label: "All schedules" },
-  { value: "today", label: "Next 24 hours" },
-  { value: "week", label: "Next 7 days" },
-  { value: "later", label: "Later" },
+  { value: "all", label: "All schedules", icon: Calendar03Icon },
+  { value: "today", label: "Next 24 hours", icon: Clock01Icon },
+  { value: "week", label: "Next 7 days", icon: Calendar04Icon },
+  { value: "later", label: "Later", icon: Time04Icon },
 ] as const;
 
 export type ScheduleFilter = (typeof SCHEDULE_FILTERS)[number]["value"];
@@ -393,3 +401,33 @@ export const SETUP_POLL_MS = 2_000;
 export function isSettingUp(experts: Expert[]) {
   return experts.some((expert) => expert.setup_status === "installing");
 }
+
+/** Matches the backend's per-request cap on `GET /library/agents/batch`. */
+const LIBRARY_AGENT_BATCH_SIZE = 50;
+
+/** Sorted so filtering or re-ordering the grid reuses the cached batches. */
+export function chunkLibraryAgentIDs(workflows: ExpertWorkflowRef[]) {
+  const ids = [
+    ...new Set(
+      workflows
+        .map((workflow) => workflow.library_agent_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ].sort();
+  const chunks: string[][] = [];
+  for (let start = 0; start < ids.length; start += LIBRARY_AGENT_BATCH_SIZE) {
+    chunks.push(ids.slice(start, start + LIBRARY_AGENT_BATCH_SIZE));
+  }
+  return chunks;
+}
+
+// The expert and Otto pages' tabs: a segmented control with a white pill
+// that slides to the active tab (TabsLine's indicator, restyled). The list
+// sets no z-index, so its grey track paints first, the pill (z-raised) over it
+// and the labels (z-sticky) on top.
+export const PROFILE_TABS_LIST_CLASS =
+  "relative w-full gap-0.5 overflow-x-auto rounded-pill border-b-0 bg-surface-hover/80 p-1 [&>button]:flex-1";
+export const PROFILE_TABS_INDICATOR_CLASS =
+  "pointer-events-none z-raised bottom-1 top-1 h-auto rounded-pill bg-surface shadow-sm ring-1 ring-border-base/70";
+export const PROFILE_TABS_TRIGGER_CLASS =
+  "z-sticky rounded-pill px-3.5 py-1.5 text-body-md leading-inherit max-sm:px-2 text-foreground-tertiary transition-colors hover:text-foreground-strong data-[state=active]:text-foreground-strong [&_svg]:!size-4";

@@ -2,8 +2,14 @@
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Iterator
+
+# What pinKnownFailure() (src/playwright/journeys/known-failure.ts) records:
+# the one check a known failure is allowed to fail on.
+KNOWN_FAILURE_ANNOTATION = "known-failure"
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def _require_mapping(value: object, name: str) -> dict[str, object]:
@@ -45,7 +51,35 @@ def _iter_tests(
         )
 
 
-def validate_report(report: object, min_tests: int = 1) -> int:
+def _pinned_check(test: dict[str, object], test_name: str) -> str:
+    """The check a known failure is pinned to fail on: its one
+    ``known-failure`` annotation, which pinKnownFailure() adds."""
+    pinned: list[str] = []
+    for index, raw in enumerate(
+        _require_list(test.get("annotations", []), f"{test_name}.annotations")
+    ):
+        annotation = _require_mapping(raw, f"{test_name}.annotations[{index}]")
+        if annotation.get("type") == KNOWN_FAILURE_ANNOTATION:
+            pinned.append(str(annotation.get("description") or "").strip())
+    if len(pinned) != 1 or not pinned[0]:
+        raise ValueError(
+            f"{test_name} is a known failure with {len(pinned)} pinned checks, "
+            "not one: pin it once, with pinKnownFailure() right before the "
+            "check it fails"
+        )
+    return pinned[0]
+
+
+def _failed_check(error: dict[str, object]) -> str:
+    """The check an error failed: the first line of its message, which is the
+    message `expect(value, message)` was given."""
+    lines = _ANSI_ESCAPE.sub("", str(error.get("message") or "")).strip().splitlines()
+    return lines[0].removeprefix("Error: ").strip() if lines else ""
+
+
+def validate_report(
+    report: object, min_tests: int = 1, allow_known_failures: bool = False
+) -> int:
     root = _require_mapping(report, "report")
     errors = _require_list(root.get("errors"), "errors")
     if errors:
@@ -92,7 +126,9 @@ def validate_report(report: object, min_tests: int = 1) -> int:
             raise ValueError(
                 f"{test_name}.status must be expected, got {test.get('status')!r}"
             )
-        if test.get("expectedStatus") != "passed":
+        # test.fail(): a known bug the test is pinned to. It still has to fail.
+        known_failure = allow_known_failures and test.get("expectedStatus") == "failed"
+        if test.get("expectedStatus") != "passed" and not known_failure:
             raise ValueError(
                 f"{test_name}.expectedStatus must be passed, got "
                 f"{test.get('expectedStatus')!r}"
@@ -106,6 +142,40 @@ def validate_report(report: object, min_tests: int = 1) -> int:
         retry = _require_count(result.get("retry"), f"{test_name}.results[0].retry")
         if retry != 0:
             raise ValueError(f"{test_name}.results[0].retry must be 0, got {retry}")
+        if known_failure:
+            if result.get("status") != "failed":
+                raise ValueError(
+                    f"{test_name}.results[0].status must be failed for a known "
+                    f"failure, got {result.get('status')!r}"
+                )
+            # Only on the pinned check: anything else that failed (a cleanup,
+            # the journey guard at teardown, an earlier soft check) is a new
+            # failure, not the known bug.
+            pinned = _pinned_check(test, test_name)
+            result_errors = _require_list(
+                result.get("errors"), f"{test_name}.results[0].errors"
+            )
+            if not result_errors:
+                raise ValueError(
+                    f"{test_name} is a known failure that reported no error"
+                )
+            for error_index, raw_error in enumerate(result_errors):
+                failed = _failed_check(
+                    _require_mapping(
+                        raw_error, f"{test_name}.results[0].errors[{error_index}]"
+                    )
+                )
+                if failed != pinned:
+                    raise ValueError(
+                        f"{test_name} is pinned to fail on {pinned!r}, but it "
+                        f"also failed on {failed!r}"
+                    )
+            if len(result_errors) != 1:
+                raise ValueError(
+                    f"{test_name} failed {len(result_errors)} times on its "
+                    f"pinned check {pinned!r}; a known failure fails once"
+                )
+            continue
         if result.get("status") != "passed":
             raise ValueError(
                 f"{test_name}.results[0].status must be passed, got "
@@ -161,6 +231,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=1,
         help="minimum number of discovered passing tests required",
     )
+    parser.add_argument(
+        "--allow-known-failures",
+        action="store_true",
+        help="accept tests marked test.fail() that failed as expected",
+    )
     parser.add_argument("report", type=Path)
     return parser.parse_args(argv)
 
@@ -183,7 +258,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     try:
-        test_count = validate_report(report, min_tests=args.min_tests)
+        test_count = validate_report(
+            report,
+            min_tests=args.min_tests,
+            allow_known_failures=args.allow_known_failures,
+        )
     except ValueError as exc:
         print(f"{args.report}: {exc}")
         return 1

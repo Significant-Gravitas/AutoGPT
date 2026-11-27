@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import enum
 import logging
+import time
 from collections import defaultdict
 from datetime import datetime, timezone
 from json import JSONDecodeError
@@ -20,6 +21,7 @@ from typing import (
     get_args,
 )
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from prisma.enums import BriefingFrequency, CreditTransactionType, SubscriptionTier
 from pydantic import (
@@ -41,9 +43,11 @@ from pydantic_core import (
 )
 from typing_extensions import TypedDict
 
+from backend.data.credential_scope import ServerTarget, scope_rule
 from backend.data.onboarding_steps import OnboardingStep
+from backend.data.onboarding_wizard import OnboardingWizardProgress
 from backend.integrations.providers import ProviderName
-from backend.util.exceptions import ExecutionFailureReason
+from backend.util.exceptions import CredentialsExpiredError, ExecutionFailureReason
 from backend.util.json import loads as json_loads
 from backend.util.request import parse_url
 from backend.util.settings import Secrets
@@ -339,6 +343,85 @@ def is_sdk_default(cred_id: str) -> bool:
     return cred_id.endswith(SDK_DEFAULT_SUFFIX)
 
 
+# An SDK default credential holds the operator's own key. Blocks may run on one
+# only for the providers listed here: stateless, metered APIs where the key keeps
+# no objects that belong to a user. Graph save, graph validation and credential
+# lookup refuse every other "{provider}-default".
+RUNNABLE_SDK_DEFAULT_PROVIDERS: frozenset[str] = frozenset(
+    {
+        "anysearch",
+        "bannerbear",
+        "dataforb2b",
+        "dataforseo",
+        "firecrawl",
+        "parallel",
+        "stagehand",
+        "tavily",
+        "wolfram",
+    }
+)
+
+
+def is_refused_sdk_default(cred_id: str) -> bool:
+    if not is_sdk_default(cred_id):
+        return False
+    return (
+        cred_id.removesuffix(SDK_DEFAULT_SUFFIX) not in RUNNABLE_SDK_DEFAULT_PROVIDERS
+    )
+
+
+def sdk_default_refused_message(cred_id: str) -> str:
+    provider = provider_label(cred_id.removesuffix(SDK_DEFAULT_SUFFIX))
+    return (
+        f"The platform's shared {provider} key can't be used here. "
+        f"Connect your own {provider} credentials and select them instead."
+    )
+
+
+# A managed credential the platform pays for, such as AgentMail's per-user pod
+# key, has an ID like "{provider}-managed-{uuid}". Billing reads the ID alone,
+# without loading the credential or trusting its provider string (legacy rows
+# can carry "ProviderName.AGENT_MAIL"), so these runs are priced like the
+# platform's own keys while a key the user connected stays free. Ayrshare's managed key is
+# not listed: its blocks charge per post whichever key they run on.
+PLATFORM_FUNDED_MANAGED_PROVIDERS: frozenset[str] = frozenset({"agent_mail"})
+_MANAGED_ID_INFIX = "-managed-"
+
+# Set on each credentials input before cost filters are matched (see
+# `backend.executor.utils`), from the credential ID, never from the input.
+PLATFORM_FUNDED_COST_KEY = "platform_funded"
+
+
+def platform_funded_managed_id(provider: str) -> str:
+    if provider not in PLATFORM_FUNDED_MANAGED_PROVIDERS:
+        raise ValueError(f"{provider} has no platform-funded managed credential")
+    return f"{provider}{_MANAGED_ID_INFIX}{uuid4()}"
+
+
+def is_platform_funded_managed(cred_id: str) -> bool:
+    return any(
+        cred_id.startswith(f"{provider}{_MANAGED_ID_INFIX}")
+        for provider in PLATFORM_FUNDED_MANAGED_PROVIDERS
+    )
+
+
+def provider_label(provider: str) -> str:
+    """The name people know a provider by, for messages about its shared key."""
+    return _PROVIDER_LABELS.get(provider, provider)
+
+
+_PROVIDER_LABELS: dict[str, str] = {
+    "agent_mail": "AgentMail",
+    "airtable": "Airtable",
+    "allquiet": "All Quiet",
+    "baas": "Meeting BaaS",
+    "exa": "Exa",
+    "linear": "Linear",
+    "rmfg": "RMFG",
+    "smartlead": "SmartLead",
+}
+
+
 class _BaseCredentials(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     provider: str
@@ -384,6 +467,26 @@ class APIKeyCredentials(_BaseCredentials):
     )
     """Unix timestamp (seconds) indicating when the API key expires (if at all)"""
 
+    def is_expired(self, now: int | None = None) -> bool:
+        """Whether ``expires_at`` is at or before *now* (default: the current time)."""
+        if self.expires_at is None:
+            return False
+        return self.expires_at <= (int(time.time()) if now is None else now)
+
+    def expired_error(self, user_timezone: str = "UTC") -> CredentialsExpiredError:
+        """Dated in *user_timezone* (an IANA name), so its owner reads the day
+        they picked; in UTC when that zone is unknown."""
+        try:
+            zone = ZoneInfo(user_timezone)
+        except (KeyError, ValueError):  # not a zone name, or not one we know
+            zone = ZoneInfo("UTC")
+        # Clamped: a key stored with a far-past expiry still gets this message.
+        expired_on = datetime.fromtimestamp(max(self.expires_at or 0, 0), zone)
+        name = f" '{self.title}'" if self.title else ""
+        return CredentialsExpiredError(
+            f"API key{name} expired on {expired_on:%Y-%m-%d %H:%M %Z}. Add a new key."
+        )
+
     def auth_header(self) -> str:
         # Linear API keys should not have Bearer prefix
         if self.provider == "linear":
@@ -395,12 +498,28 @@ class UserPasswordCredentials(_BaseCredentials):
     type: Literal["user_password"] = "user_password"
     username: SecretStr
     password: SecretStr
+    scope: str | None = Field(
+        default=None,
+        description="What this login may be used for, as a URI whose meaning "
+        "depends on the provider: smtp://host[:port] for SMTP, or the engine's "
+        "scheme (postgresql://, mysql://, mssql://) and host[:port] for a "
+        "database. None for a login saved before scopes existed.",
+    )
 
     def auth_header(self) -> str:
         # Converting the string to bytes using encode()
         # Base64 encoding it with base64.b64encode()
         # Converting the resulting bytes back to a string with decode()
         return f"Basic {base64.b64encode(f'{self.username.get_secret_value()}:{self.password.get_secret_value()}'.encode()).decode()}"
+
+    def matches_scope(self, target: ServerTarget) -> bool:
+        """Whether this login may be sent to `target`, the exact server a block
+        is about to connect to, by the rule of the login's provider. A login with
+        no scope, or for a provider with no scope rule, matches nothing."""
+        rule = scope_rule(self.provider)
+        if self.scope is None or rule is None:
+            return False
+        return rule.matches(self.scope, target)
 
 
 class HostScopedCredentials(_BaseCredentials):
@@ -421,7 +540,11 @@ class HostScopedCredentials(_BaseCredentials):
         return self._extract_headers(headers)
 
     def get_headers_dict(self) -> dict[str, str]:
-        """Get headers with secret values extracted."""
+        """Get headers with secret values extracted.
+
+        A caller sending them also passes their names to
+        ``Requests(sensitive_headers=...)``, so a cross-origin redirect drops them.
+        """
         return self._extract_headers(self.headers)
 
     def auth_header(self) -> str:
@@ -492,11 +615,6 @@ class OAuthState(BaseModel):
     """Metadata to echo back to external app on completion"""
     initiated_by_api_key_id: Optional[str] = None
     """ID of the API key that initiated this OAuth flow"""
-
-    @property
-    def is_external(self) -> bool:
-        """Whether this OAuth flow was initiated via external API."""
-        return self.callback_url is not None
 
 
 class UserMetadata(BaseModel):
@@ -783,7 +901,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
         except KeyError:
             raise ValueError(
                 f"Model '{discriminator_value}' is not supported. "
-                "It may have been deprecated. Please update your agent configuration."
+                "It may have been deprecated. Please update your workflow configuration."
             )
 
         supported_types = self.supported_types
@@ -873,19 +991,22 @@ class AutoTopUpConfig(BaseModel):
     """Threshold to trigger auto top up."""
 
 
-class UserTransaction(BaseModel):
+class UserCreditTransaction(BaseModel):
     transaction_key: str = ""
     transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
     transaction_type: CreditTransactionType = CreditTransactionType.USAGE
     amount: int = 0
-    running_balance: int = 0
-    current_balance: int = 0
     description: str | None = None
     usage_graph_id: str | None = None
     usage_execution_id: str | None = None
     usage_node_count: int = 0
     usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
     user_id: str
+
+
+class UserCreditTransactionAdminView(UserCreditTransaction):
+    running_balance: int = 0
+    current_balance: int = 0
     user_email: str | None = None
     reason: str | None = None
     admin_email: str | None = None
@@ -909,21 +1030,11 @@ class CreditHistoryRelatedExecution(BaseModel):
     amount: int | None = None
 
 
-class CreditTransactionItem(BaseModel):
+class CreditTransactionItem(UserCreditTransaction):
     id: str = ""
-    transaction_key: str = ""
-    transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
-    transaction_type: CreditTransactionType = CreditTransactionType.USAGE
-    amount: int = 0
-    description: str | None = None
-    usage_graph_id: str | None = None
-    usage_execution_id: str | None = None
     usage_chat_session_id: str | None = Field(
         default=None, description="The AutoPilot chat the usage came from"
     )
-    usage_node_count: int = 0
-    usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
-    user_id: str
     activity_type: Literal["agent_run", "copilot_tools", "block_usage", "other"] = (
         "other"
     )
@@ -999,6 +1110,10 @@ class NodeExecutionStats(BaseModel):
     output_token_count: int = 0
     cache_read_token_count: int = 0
     cache_creation_token_count: int = 0
+    # Estimated input tokens of LLM requests that reached the provider and
+    # were cancelled before a reply reported their usage. Billed only when a
+    # stop request ended the run (see billing.bills_stop_estimate).
+    abandoned_input_token_count: int = 0
     cost: int = 0
     # Post-flight adjustment to the pre-flight ``cost`` estimate. Three writers:
     # 1. charge_reconciled_usage — dynamic cost delta (TOKENS/SECOND/ITEMS/
@@ -1018,6 +1133,11 @@ class NodeExecutionStats(BaseModel):
     billing_mode: Optional[str] = None
     auth_provider: Optional[str] = None
     execution_path: Optional[str] = None
+    # The model the run ran. An LLM block records the model it resolved when
+    # the run started (Block._execute: a switched-off model's fallback from
+    # its shutdown date), and billing and the cost log price and name that
+    # model, whatever the date when they read it. Codex records the model its
+    # provider reports. A merge keeps the first one (__iadd__).
     resolved_model: Optional[str] = None
     # Moderation fields
     cleared_inputs: Optional[dict[str, list[str]]] = None
@@ -1041,6 +1161,10 @@ class NodeExecutionStats(BaseModel):
             if current is None:
                 # Field doesn't exist yet or is None, just set it
                 setattr(self, key, value)
+            elif key == "resolved_model":
+                # The run is billed for the model it started on: merging in
+                # stats that name another model can't change it.
+                continue
             elif isinstance(value, dict) and isinstance(current, dict):
                 current.update(value)
             elif isinstance(value, (int, float)) and isinstance(current, (int, float)):
@@ -1112,6 +1236,8 @@ class UserExecutionSummaryStats(BaseModel):
 
 class UserOnboarding(BaseModel):
     userId: str
+    wizardProgress: OnboardingWizardProgress | None = None
+    wizardRevision: int = 0
     # Steps are typed as ``OnboardingStep`` so the API exposes a typed enum to
     # the frontend (the DB stores plain strings). The rename migration keeps
     # existing rows within the enum, and writes are validated on the completion

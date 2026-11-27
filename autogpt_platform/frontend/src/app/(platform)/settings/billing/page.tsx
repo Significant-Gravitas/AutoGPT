@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { notFound, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { Text } from "@/components/atoms/Text/Text";
+import { Button } from "@/components/atoms/Button/Button";
+import { UsageCreditsDialog } from "@/components/organisms/UsageCreditsDialog/UsageCreditsDialog";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { useBillingStatus } from "@/hooks/useIsBillingEnabled";
 import {
   TabsLine,
   TabsLineContent,
@@ -12,10 +16,8 @@ import {
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import {
-  getGetSubscriptionStatusQueryKey,
-  usePatchV1FulfillCheckoutSession,
-} from "@/app/api/__generated__/endpoints/credits/credits";
+import { getGetSubscriptionStatusQueryKey } from "@/app/api/__generated__/endpoints/credits/credits";
+import { getGetTrialsGetTrialStatusQueryKey } from "@/app/api/__generated__/endpoints/trials/trials";
 
 import {
   trackCheckoutAbandoned,
@@ -23,13 +25,14 @@ import {
 } from "@/services/analytics/monetization-analytics";
 
 import { AutomationCreditsTab } from "./components/AutomationCreditsTab/AutomationCreditsTab";
+import { CheckoutAbandonedPrompt } from "./components/CheckoutAbandonedPrompt/CheckoutAbandonedPrompt";
+import {
+  readAbandonedPlan,
+  type AbandonedPlan,
+} from "./components/CheckoutAbandonedPrompt/helpers";
 import { SubscriptionTab } from "./components/SubscriptionTab/SubscriptionTab";
-
-type BillingTab = "subscription" | "automation-credits";
-
-function isBillingTab(value: string): value is BillingTab {
-  return value === "subscription" || value === "automation-credits";
-}
+import { billingTabURL, isBillingTab, type BillingTab } from "./helpers";
+import { useTopupCheckoutReturn } from "./useTopupCheckoutReturn";
 
 function resolveInitialTab(searchParams: URLSearchParams): BillingTab {
   const tabParam = searchParams.get("tab");
@@ -41,59 +44,46 @@ function resolveInitialTab(searchParams: URLSearchParams): BillingTab {
   return "subscription";
 }
 
-export default function SettingsBillingPage() {
+export default function SettingsBillingRoute() {
+  const { isBillingEnabled, isResolved } = useBillingStatus();
+  if (!isResolved) return null;
+  if (!isBillingEnabled) notFound();
+  return <SettingsBillingPage />;
+}
+
+function SettingsBillingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const topupStatus = searchParams.get("topup");
   const subscriptionStatus = searchParams.get("subscription");
   const trialStatus = searchParams.get("trial");
-  const { mutateAsync: fulfillCheckout } = usePatchV1FulfillCheckoutSession();
-  const handledTopupRef = useRef<string | null>(null);
   const handledSubscriptionRef = useRef<string | null>(null);
+  // Set on return from an upgrade checkout left unpaid; the plan is null when
+  // the cancel URL did not name one.
+  const [abandonedCheckout, setAbandonedCheckout] = useState<{
+    plan: AbandonedPlan | null;
+  } | null>(null);
+  const [isExplainerOpen, setIsExplainerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<BillingTab>(() =>
     resolveInitialTab(searchParams),
   );
+  // Read once: the redirect handler below drops the query string.
+  const [isPlanCheckoutReturn] = useState(
+    () => subscriptionStatus === "success",
+  );
 
   function handleTabChange(value: string) {
-    if (isBillingTab(value)) setActiveTab(value);
+    if (!isBillingTab(value)) return;
+    setActiveTab(value);
+    router.replace(billingTabURL(value, searchParams), { scroll: false });
   }
 
   useEffect(function setBillingDocumentTitle() {
     document.title = "Billing – AutoGPT Platform";
   }, []);
 
-  useEffect(
-    function handleTopupRedirect() {
-      if (!topupStatus) return;
-      // Stripe re-renders the page after redirect — guard so we don't
-      // fire fulfillCheckout twice or stack duplicate toasts.
-      if (handledTopupRef.current === topupStatus) return;
-      handledTopupRef.current = topupStatus;
-
-      if (topupStatus === "success") {
-        toast({
-          title: "Payment successful",
-          description:
-            "Your credits will appear shortly. Refresh if you don't see them.",
-        });
-        fulfillCheckout().catch(() => {
-          // Background fulfillment call — webhook is the source of truth,
-          // so a failure here is non-blocking.
-        });
-      } else if (topupStatus === "cancel") {
-        trackCheckoutAbandoned({ checkout_kind: "top_up", surface: "billing" });
-        toast({
-          title: "Payment cancelled",
-          description: "Your payment method was not charged.",
-          variant: "destructive",
-        });
-      }
-
-      router.replace("/settings/billing");
-    },
-    [topupStatus, fulfillCheckout, router],
-  );
+  useTopupCheckoutReturn({ topupStatus, activeTab });
 
   useEffect(
     function handleSubscriptionRedirect() {
@@ -103,28 +93,27 @@ export default function SettingsBillingPage() {
 
       if (subscriptionStatus === "success") {
         toast({
-          title: "Subscription updated",
+          title: "Confirming your subscription",
           description:
             "Your new plan is being applied. It may take a moment to reflect.",
         });
         queryClient.invalidateQueries({
           queryKey: getGetSubscriptionStatusQueryKey(),
         });
+        queryClient.invalidateQueries({
+          queryKey: getGetTrialsGetTrialStatusQueryKey(),
+        });
       } else if (subscriptionStatus === "cancelled") {
         trackCheckoutAbandoned({
           checkout_kind: "subscription",
           surface: "billing",
         });
-        toast({
-          title: "Checkout cancelled",
-          description: "Your plan was not changed.",
-          variant: "destructive",
-        });
+        setAbandonedCheckout({ plan: readAbandonedPlan(searchParams) });
       }
 
       router.replace("/settings/billing");
     },
-    [subscriptionStatus, queryClient, router],
+    [subscriptionStatus, queryClient, router, searchParams],
   );
 
   useEffect(
@@ -135,13 +124,30 @@ export default function SettingsBillingPage() {
   );
 
   return (
-    <div className="flex flex-col gap-4 pb-8 sm:gap-6">
-      <Text variant="h4" as="h1" className="pl-4 leading-[28px] text-textBlack">
-        Billing
-      </Text>
+    <div className="mx-auto flex w-full max-w-[900px] flex-col gap-5 px-4 pb-8 sm:px-6">
+      <header className="space-y-1">
+        <div className="flex items-center gap-1">
+          <Text variant="h3" tracking="tight" as="h1">
+            Billing &amp; usage
+          </Text>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            shape="soft"
+            leadingIcon={InformationCircleIcon}
+            aria-label="How usage and credits work"
+            tone="muted"
+            onClick={() => setIsExplainerOpen(true)}
+          />
+        </div>
+        <Text variant="body" tone="secondary">
+          Everything you need to manage your plan.
+        </Text>
+      </header>
 
       <TabsLine value={activeTab} onValueChange={handleTabChange}>
-        <TabsLineList flush className="ml-4 overflow-x-auto">
+        <TabsLineList flush className="overflow-x-auto">
           <TabsLineTrigger value="subscription">Subscription</TabsLineTrigger>
           <TabsLineTrigger value="automation-credits">
             Automation Credits
@@ -149,13 +155,22 @@ export default function SettingsBillingPage() {
         </TabsLineList>
 
         <TabsLineContent value="subscription">
-          <SubscriptionTab />
+          <SubscriptionTab isPlanCheckoutReturn={isPlanCheckoutReturn} />
         </TabsLineContent>
 
         <TabsLineContent value="automation-credits">
           <AutomationCreditsTab />
         </TabsLineContent>
       </TabsLine>
+
+      <UsageCreditsDialog
+        isOpen={isExplainerOpen}
+        onOpenChange={setIsExplainerOpen}
+        showBillingLink={false}
+      />
+      {abandonedCheckout ? (
+        <CheckoutAbandonedPrompt plan={abandonedCheckout.plan} />
+      ) : null}
     </div>
   );
 }

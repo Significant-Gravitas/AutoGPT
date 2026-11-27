@@ -9,17 +9,25 @@ import React from "react";
 import {
   BUTTON_ICON_SIZE,
   ButtonProps,
+  defaultButtonShape,
   extendedButtonVariants,
   ICON_ONLY_SIZES,
 } from "./helpers";
+import { CompactButtonProps, isCompactButton } from "./compact-variants";
+import { CompactButton } from "./CompactButton";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-export function Button(props: ButtonProps) {
+export function Button(props: ButtonProps | CompactButtonProps) {
+  if (isCompactButton(props)) return <CompactButton {...props} />;
+
   const {
-    className,
+    className: callerClassName,
+    textSize = "body",
     variant,
     size,
+    shape,
+    tone,
     loading = false,
     withTooltip = true,
     leadingIcon,
@@ -27,16 +35,18 @@ export function Button(props: ButtonProps) {
     rightIcon,
     children,
     as = "button",
-    unmask = true,
     asChild: _asChild, // Destructure to prevent passing to DOM
     ...restProps
   } = props;
+  const className =
+    textSize === "body-md"
+      ? cn(callerClassName, "text-body-md")
+      : callerClassName;
+
+  const resolvedShape = shape ?? defaultButtonShape(variant);
 
   const disabled = "disabled" in props ? props.disabled : false;
   const isDisabled = disabled;
-
-  const applyUnmask = (...classes: Array<string | false | null | undefined>) =>
-    cn(...classes, unmask && "sentry-unmask");
 
   // Extract aria-label for tooltip on icon variant
   const ariaLabel =
@@ -47,6 +57,7 @@ export function Button(props: ButtonProps) {
   const shouldShowTooltip = isIconOnly && ariaLabel && !loading && withTooltip;
   const resolvedLeftIcon = leadingIcon ? (
     <Icon
+      data-slot="button-icon"
       icon={leadingIcon}
       size={BUTTON_ICON_SIZE[size ?? "large"]}
       aria-hidden
@@ -61,7 +72,9 @@ export function Button(props: ButtonProps) {
       return (
         <Tooltip>
           <TooltipTrigger asChild>{buttonElement}</TooltipTrigger>
-          <TooltipContent>{ariaLabel}</TooltipContent>
+          <TooltipContent data-slot="button-tooltip">
+            {ariaLabel}
+          </TooltipContent>
         </Tooltip>
       );
     }
@@ -71,10 +84,17 @@ export function Button(props: ButtonProps) {
   const buttonContent = (
     <>
       {loading && (
-        <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
+        <Icon
+          data-slot="button-spinner"
+          icon={Loading03Icon}
+          spin
+          className="h-4 w-4"
+        />
       )}
       {!loading && resolvedLeftIcon}
-      {children}
+      <span data-slot="button-label" className="contents">
+        {children}
+      </span>
       {!loading && rightIcon}
     </>
   );
@@ -88,8 +108,15 @@ export function Button(props: ButtonProps) {
 
     const linkButton = (
       <button
-        className={applyUnmask(
-          extendedButtonVariants({ variant: "link", className }),
+        data-slot="button"
+        className={cn(
+          extendedButtonVariants({
+            variant: "link",
+            size,
+            shape: resolvedShape,
+            tone,
+            className,
+          }),
           loading && "pointer-events-none opacity-60",
           isDisabled && "pointer-events-none opacity-50",
         )}
@@ -106,24 +133,37 @@ export function Button(props: ButtonProps) {
   if (loading) {
     const loadingClassName =
       variant === "ghost"
-        ? applyUnmask(
-            extendedButtonVariants({ variant, size, className }),
+        ? cn(
+            extendedButtonVariants({
+              variant,
+              size,
+              shape: resolvedShape,
+              tone,
+              className,
+            }),
             "pointer-events-none",
           )
-        : applyUnmask(
-            extendedButtonVariants({ variant: "primary", size, className }),
-            "pointer-events-none border-zinc-500 bg-zinc-500 text-white",
+        : // Loading draws the primary look, so it takes primary's corner unless
+          // the call site sets a shape.
+          cn(
+            extendedButtonVariants({
+              variant: "primary",
+              size,
+              shape,
+              className,
+            }),
+            "pointer-events-none border-foreground-tertiary bg-fill-soft text-action-foreground",
           );
 
     if (as === "NextLink") {
       return (
         <NextLink
+          data-slot="button"
           {...(restProps as LinkProps)}
           className={loadingClassName}
           aria-disabled="true"
         >
-          <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
-          {children}
+          {buttonContent}
         </NextLink>
       );
     }
@@ -134,12 +174,12 @@ export function Button(props: ButtonProps) {
     // into loading, which is exactly when a click listener needs to read them.
     const loadingButton = (
       <button
+        data-slot="button"
         {...(restProps as React.ButtonHTMLAttributes<HTMLButtonElement>)}
         className={loadingClassName}
         disabled
       >
-        <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
-        {children}
+        {buttonContent}
       </button>
     );
 
@@ -149,9 +189,16 @@ export function Button(props: ButtonProps) {
   if (as === "NextLink") {
     const nextLinkButton = (
       <NextLink
+        data-slot="button"
         {...(restProps as LinkProps)}
-        className={applyUnmask(
-          extendedButtonVariants({ variant, size, className }),
+        className={cn(
+          extendedButtonVariants({
+            variant,
+            size,
+            shape: resolvedShape,
+            tone,
+            className,
+          }),
           loading && "pointer-events-none",
           isDisabled && "pointer-events-none opacity-50",
         )}
@@ -166,8 +213,15 @@ export function Button(props: ButtonProps) {
 
   const regularButton = (
     <button
-      className={applyUnmask(
-        extendedButtonVariants({ variant, size, className }),
+      data-slot="button"
+      className={cn(
+        extendedButtonVariants({
+          variant,
+          size,
+          shape: resolvedShape,
+          tone,
+          className,
+        }),
         loading && "pointer-events-none",
       )}
       disabled={isDisabled}

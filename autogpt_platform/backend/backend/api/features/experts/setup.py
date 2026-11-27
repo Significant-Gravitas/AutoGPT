@@ -18,6 +18,7 @@ from backend.api.features.experts.credentials import (
     expert_allowed_credential_ids,
     filter_credentials_for_expert,
 )
+from backend.api.features.experts.experts_db import LIVE_WORKFLOWS
 from backend.api.features.experts.models import ExpertSetupItem
 from backend.api.features.experts.scheduling import unsatisfied_required_inputs
 from backend.data.model import Credentials
@@ -26,10 +27,11 @@ logger = logging.getLogger(__name__)
 
 _INCLUDE: prisma.types.ExpertInclude = {
     "Workflows": {
+        "where": LIVE_WORKFLOWS,
         "include": {
             "LibraryAgent": {"include": {"AgentGraph": True}},
             "StoreListingVersion": True,
-        }
+        },
     }
 }
 

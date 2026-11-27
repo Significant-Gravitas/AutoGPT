@@ -46,6 +46,17 @@ describe("SettingsApiKeysPage - list rendering", () => {
     expect(createButtons.length).toBeGreaterThan(0);
   });
 
+  test("links the API docs", async () => {
+    server.use(getGetV1ListUserApiKeysMockHandler([]));
+
+    render(<SettingsApiKeysPage />);
+
+    const link = await screen.findByRole("link", { name: "API docs" });
+    expect(link.getAttribute("href")).toBe(
+      "https://agpt.co/docs/platform/api-and-integrations/api-guide",
+    );
+  });
+
   test("shows empty state when the user has no keys", async () => {
     server.use(getGetV1ListUserApiKeysMockHandler([]));
 
@@ -78,6 +89,22 @@ describe("SettingsApiKeysPage - list rendering", () => {
     expect(
       screen.getByRole("button", { name: /delete prod key/i }),
     ).toBeDefined();
+  });
+
+  test("says how long ago a key was last used", async () => {
+    server.use(
+      getGetV1ListUserApiKeysMockHandler([
+        makeKey({
+          id: "k1",
+          name: "Prod Key",
+          last_used_at: new Date(Date.now() - 2 * 60 * 60 * 1000),
+        }),
+      ]),
+    );
+
+    render(<SettingsApiKeysPage />);
+
+    expect(await screen.findByText("Used about 2 hours ago")).toBeDefined();
   });
 
   test("filters REVOKED keys out of the rendered list", async () => {

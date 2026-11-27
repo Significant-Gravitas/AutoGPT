@@ -1,3 +1,4 @@
+import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
 import useCredentials from "@/hooks/useCredentials";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
@@ -21,6 +22,8 @@ import {
   countSupportedTypes,
   filterSystemCredentials,
   getActionButtonText,
+  getMissingScopes,
+  getScopeShortfallMessage,
   getSupportedTypes,
   getSystemCredentials,
   processCredentialDeletion,
@@ -37,6 +40,7 @@ type Params = {
   onLoaded?: (loaded: boolean) => void;
   readOnly?: boolean;
   isOptional?: boolean;
+  autoSelect?: boolean;
 };
 
 export function useCredentialsInput({
@@ -47,6 +51,7 @@ export function useCredentialsInput({
   onLoaded,
   readOnly = false,
   isOptional = false,
+  autoSelect = true,
 }: Params) {
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
     useState(false);
@@ -151,11 +156,15 @@ export function useCredentialsInput({
   // Once a user has made a selection, we don't override it
   useEffect(
     function autoSelectCredential() {
-      if (readOnly) return;
+      if (readOnly || !autoSelect) return;
       if (!credentials) return;
       if (selectedCredential?.id) return;
 
-      const savedCreds = credentials.savedCredentials;
+      // A block that refuses the platform's shared keys would fail on a
+      // system credential, so only the user's own credentials are candidates.
+      const savedCreds = schema.refuses_platform_credentials
+        ? filterSystemCredentials(credentials.savedCredentials)
+        : credentials.savedCredentials;
       if (savedCreds.length === 0) return;
 
       if (hasAttemptedAutoSelect.current) return;
@@ -177,8 +186,10 @@ export function useCredentialsInput({
       credentials,
       selectedCredential?.id,
       readOnly,
+      autoSelect,
       isOptional,
       onSelectCredential,
+      schema.refuses_platform_credentials,
     ],
   );
 
@@ -214,6 +225,13 @@ export function useCredentialsInput({
   function handleCredentialChange(newValue?: CredentialsMetaInput) {
     setRemovedCredentialTitle(null);
     onSelectCredential(newValue);
+  }
+
+  // "None" is the user's choice: a field that started on a key must not
+  // pick its only saved key straight back.
+  function handleClearCredential() {
+    hasAttemptedAutoSelect.current = true;
+    handleCredentialChange(undefined);
   }
 
   async function executeOAuthFlow(credentialID?: string) {
@@ -279,6 +297,7 @@ export function useCredentialsInput({
           cancelUrl: cancel_url,
           preOpenedWindow,
           timeout: provider === "codex" ? 15 * 60 * 1000 : undefined,
+          sameOriginFlow: provider === "codex",
           // Always enable BroadcastChannel + localStorage listeners — they are
           // the only path that works when the popup is blocked and we fall back
           // to a new tab (window.opener can be severed by cross-origin COOP).
@@ -318,20 +337,17 @@ export function useCredentialsInput({
       if (!isMCP) {
         const requiredScopes = schema.credentials_scopes;
         if (requiredScopes && requiredScopes.length > 0) {
-          const grantedScopes = new Set(credentialResult.scopes || []);
-          const hasAllRequiredScopes = new Set(requiredScopes).isSubsetOf(
-            grantedScopes,
+          const missingScopes = getMissingScopes(
+            requiredScopes,
+            credentialResult.scopes,
           );
 
-          if (!hasAllRequiredScopes) {
+          if (missingScopes.length > 0) {
             trackCredentialConnectionFailure(
               "credential_scope_shortfall_blocked_selection",
               { provider },
             );
-            setOAuthError(
-              "Connection failed: the granted permissions don't match what's required. " +
-                "Please contact the application administrator.",
-            );
+            setOAuthError(getScopeShortfallMessage(missingScopes));
             return;
           }
         }
@@ -356,6 +372,10 @@ export function useCredentialsInput({
       }
       // A superseded flow must not surface its errors over the newer flow.
       if (flowId !== oauthFlowIdRef.current) return;
+      if (
+        toastIfPlanRequired(error, "Connecting a service needs an active plan")
+      )
+        return;
       const message = error instanceof Error ? error.message : String(error);
       if (
         message === OAUTH_ERROR_WINDOW_CLOSED ||
@@ -517,6 +537,9 @@ export function useCredentialsInput({
     userCredentials,
     systemCredentials,
     allCredentials: savedCredentials,
+    // Every key saved for the provider, including the ones the field's type,
+    // scope and host filters leave out
+    allProviderCredentials: credentials.allProviderCredentials,
     selectedCredential,
     removedCredentialTitle,
     oAuthError,
@@ -554,6 +577,7 @@ export function useCredentialsInput({
     handleScopeUpgrade,
     userUpgradeableCredentials,
     handleCredentialChange,
+    handleClearCredential,
     schema,
     siblingInputs,
   };

@@ -10,10 +10,10 @@ import { ArtifactPanelHeader } from "./components/ArtifactPanelHeader";
 import { ComputerPanelContent } from "./components/ComputerPanelContent";
 import { useArtifactPanel } from "./useArtifactPanel";
 import { useArtifactFullscreen } from "./useArtifactFullscreen";
+import { duration, ease } from "@/components/styles/motion";
 
 // Matched to the context panel so the two side rails move as one system.
-const PANEL_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
-const PANEL_DURATION = 0.3;
+const PANEL_DURATION = duration.slow;
 
 interface Props {
   mobile?: boolean;
@@ -54,13 +54,19 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
   // panel can keep rendering its contents while the close animation plays —
   // by then `activeArtifact` is already null, and unmounting outright would
   // snap the panel shut without animating.
-  const lastShownRef = useRef<{
-    artifact: NonNullable<typeof activeArtifact>;
-    classification: NonNullable<typeof classification>;
-  } | null>(null);
-  if (activeArtifact && classification) {
-    lastShownRef.current = { artifact: activeArtifact, classification };
+  const live =
+    activeArtifact && classification
+      ? { artifact: activeArtifact, classification }
+      : null;
+  const [lastShown, setLastShown] = useState(live);
+  if (
+    live &&
+    (lastShown?.artifact !== live.artifact ||
+      lastShown.classification !== live.classification)
+  ) {
+    setLastShown(live);
   }
+  const shown = live ?? lastShown;
 
   // The stored width is a preference, not a guarantee: the panel is shrink-0,
   // so on narrow viewports it would overflow the flex row and get clipped on
@@ -91,7 +97,6 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
   }, [showDesktopPanel]);
 
   if (mobile) {
-    const shown = lastShownRef.current;
     if (!shown) return null;
 
     return (
@@ -111,12 +116,13 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
               we render our own backdrop with click-to-close. */}
           <div
             onClick={clearArtifactPreview}
-            className="fixed inset-0 z-[60] bg-black/20 backdrop-blur-[2px]"
+            // oxlint-disable-next-line design-system/no-arbitrary-values -- a light 2px backdrop blur; backdrop-blur-sm is 4px
+            className="fixed inset-0 z-drawer-scrim bg-scrim/20 backdrop-blur-[2px]"
             aria-hidden="true"
           />
           <Drawer.Content
-            className="fixed right-0 top-0 z-[70] flex h-full w-full flex-col overflow-hidden bg-card shadow-xl outline-none"
-            style={{ userSelect: "text" }}
+            // !select-text beats the user-select:none vaul injects on its drawer.
+            className="fixed top-0 right-0 z-drawer flex h-full w-full flex-col overflow-hidden bg-surface shadow-xl !select-text outline-none"
             aria-describedby={undefined}
           >
             <Drawer.Title className="sr-only">
@@ -147,10 +153,6 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
     );
   }
 
-  // Keep painting the outgoing artifact through the close tween — by then
-  // `activeArtifact` is already null, same reason the mobile drawer holds it.
-  const shown = lastShownRef.current;
-
   // jsdom reports offsetWidth 0 — treat non-positive readings as "unknown"
   // and fall back to the stored width.
   const renderedWidth =
@@ -164,7 +166,7 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
   const transition =
     shouldReduceMotion || isResizing
       ? { duration: 0 }
-      : { duration: PANEL_DURATION, ease: PANEL_EASE };
+      : { duration: PANEL_DURATION, ease: ease.drawer };
 
   function closeDesktopPanel() {
     if (sessionId) {
@@ -202,8 +204,7 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
           animate={{ width: renderedWidth, opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
           transition={transition}
-          style={{ userSelect: "text" }}
-          className="relative h-full shrink-0 bg-sidebar"
+          className="relative h-full shrink-0 bg-surface-muted select-text"
         >
           {/* Sibling of the clip, not a child of it: the handle straddles the
               border, so clipping it here would halve the drag target. */}
@@ -223,7 +224,7 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
                   ? "100%"
                   : `calc(${renderedWidth}px - 0.75rem)`,
               }}
-              className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm [&:fullscreen]:rounded-none [&:fullscreen]:border-0"
+              className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border-base bg-surface shadow-sm [&:fullscreen]:rounded-none [&:fullscreen]:border-0"
             >
               <ArtifactPanelHeader
                 artifact={
