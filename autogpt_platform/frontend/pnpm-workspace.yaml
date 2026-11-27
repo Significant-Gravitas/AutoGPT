@@ -18,14 +18,15 @@ minimumReleaseAgeExclude:
   - better-call@1.4.5
 
 # pnpm refuses a version published with weaker trust evidence (provenance or a
-# trusted publisher) than an earlier version of the same package. It checks
-# versions as it resolves them (pnpm add/update, Dependabot), not on
-# --frozen-lockfile installs. Exclude a version only after checking why it lost
-# that evidence; the entries below were published that way and are in the lockfile.
-# A downgrade reported for a package that npm shows as trusted-publisher-built can
-# come from a metadata cache written by an older pnpm: delete the
-# metadata-ff-v1.3 folder in pnpm's cache (~/Library/Caches/pnpm on macOS,
-# ~/.cache/pnpm on Linux) and try again.
+# trusted publisher) than any version of the same package published before it,
+# by date and across major lines. It checks when it resolves: pnpm add/update,
+# Dependabot's runs (a failure shows in the Dependabot job log, not as a PR) and
+# the "Check dependency trust policy" step in frontend CI. Exclude a version only
+# after checking why it lost that evidence, and remove its entry once that
+# version has left pnpm-lock.yaml.
+# A downgrade reported locally for a package that npm shows as built by a trusted
+# publisher can come from metadata cached by an older pnpm: delete the
+# metadata-ff-v1.3 folder in pnpm's cache folder and try again.
 trustPolicy: no-downgrade
 trustPolicyExclude:
   - eslint-import-resolver-typescript@3.10.1
