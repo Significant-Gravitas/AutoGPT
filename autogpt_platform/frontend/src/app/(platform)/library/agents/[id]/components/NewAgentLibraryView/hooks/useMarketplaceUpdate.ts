@@ -79,7 +79,7 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
 
   // Check if marketplace has a newer version than user's current version
   const marketplaceUpdateInfo = React.useMemo(() => {
-    const storeAgent = okData(storeAgentData) as any;
+    const storeAgent = okData(storeAgentData);
 
     if (!agent || isSubmissionsLoading) {
       return {
@@ -120,12 +120,8 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
     }
 
     const latestMarketplaceVersion =
-      storeAgent.agentGraphVersions?.length > 0
-        ? Math.max(
-            ...storeAgent.agentGraphVersions.map((v: string) =>
-              parseInt(v, 10),
-            ),
-          )
+      storeAgent.graph_versions.length > 0
+        ? Math.max(...storeAgent.graph_versions.map((v) => parseInt(v, 10)))
         : undefined;
 
     const hasPublishUpdate =
