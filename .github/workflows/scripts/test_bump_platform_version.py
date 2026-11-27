@@ -61,7 +61,7 @@ class VersionFromTag(unittest.TestCase):
                 bump.version_from_tag(tag)
 
 
-class NewerRelease(unittest.TestCase):
+class NewestVersion(unittest.TestCase):
     TAGS = [
         "autogpt-platform-beta-v0.11.3",
         "autogpt-platform-beta-v0.12.0",
@@ -70,15 +70,14 @@ class NewerRelease(unittest.TestCase):
         "v99.0.0",
     ]
 
-    def test_the_newest_release_bumps(self) -> None:
-        self.assertIsNone(bump.newer_release("0.12.1", self.TAGS))
-        self.assertIsNone(bump.newer_release("0.13.0", self.TAGS))
+    def test_the_newest_release_keeps_its_version(self) -> None:
+        self.assertEqual(bump.newest_version("0.12.1", self.TAGS), "0.12.1")
+        self.assertEqual(bump.newest_version("0.13.0", self.TAGS), "0.13.0")
+        self.assertEqual(bump.newest_version("0.13.0", []), "0.13.0")
 
-    def test_an_older_lines_hotfix_does_not(self) -> None:
-        # Other products' tags and unprefixed ones don't count.
-        self.assertEqual(
-            bump.newer_release("0.11.4", self.TAGS), "autogpt-platform-beta-v0.12.1"
-        )
+    def test_an_older_lines_hotfix_sets_the_newest_release(self) -> None:
+        # Other products' tags and unprefixed ones (v99.0.0) don't count.
+        self.assertEqual(bump.newest_version("0.11.4", self.TAGS), "0.12.1")
 
 
 class BumpText(unittest.TestCase):
@@ -166,7 +165,7 @@ class BumpRepository(unittest.TestCase):
         for path in (bump.PYPROJECT, bump.PACKAGE_JSON):
             self.assertEqual((self.root / path).read_text(), (REPO / path).read_text())
 
-    def test_a_hotfix_older_than_the_newest_release_changes_nothing(self) -> None:
+    def test_a_hotfix_older_than_the_newest_release_sets_the_newest(self) -> None:
         # dev still has the old versions, but a newer release exists, so its
         # pending bump must not be replaced with the hotfix's version.
         tags = self.root / "tags"
@@ -185,9 +184,9 @@ class BumpRepository(unittest.TestCase):
                 ]
             )
         self.assertEqual(code, 0)
-        self.assertEqual(output.read_text(), "version=999.0.1\nchanged=false\n")
-        for path in (bump.PYPROJECT, bump.PACKAGE_JSON):
-            self.assertEqual((self.root / path).read_text(), (REPO / path).read_text())
+        self.assertEqual(output.read_text(), "version=999.1.0\nchanged=true\n")
+        package = json.loads((self.root / bump.PACKAGE_JSON).read_text())
+        self.assertEqual(package["version"], "999.1.0")
 
     def test_an_unreadable_file_fails_the_run(self) -> None:
         (self.root / bump.PACKAGE_JSON).write_text('{\n  "version": "0.3.4",\n')

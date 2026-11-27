@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Set the platform's package versions to a published release's version.
+"""Set the platform's package versions to the newest release's version.
 
     bump_platform_version.py <release tag> [--root <repository root>]
         [--tags <file with the repository's tag names, one per line>]
@@ -9,9 +9,11 @@ version is the part after the "v". It goes into the backend's pyproject.toml
 ([tool.poetry] version) and the frontend's package.json (top-level
 "version"). Only those lines change, so the rest of each file stays as it is.
 
-Only the newest platform release bumps: a hotfix release on an older line
-changes nothing, whether or not the newer release's bump has merged yet. A
-file whose version is already the same or newer is left alone too.
+The version set is the newest platform release's among the tag and those
+in --tags, not always the tag's: a hotfix on an older line must not replace
+a pending bump to a newer version, and whichever run is left after GitHub
+drops a queued one still sets the newest. A file whose version is already
+the same or newer is left alone.
 
 When GITHUB_OUTPUT is set, it gets version=<version> and changed=true|false.
 """
@@ -92,15 +94,14 @@ def bump_package_json(text: str, version: str) -> tuple[str, bool]:
     return new_text, changed
 
 
-def newer_release(version: str, tags: list[str]) -> str | None:
-    """A platform release tag among *tags* newer than *version*, if any."""
-    newer = [
-        tag
-        for tag in tags
-        if (match := TAG_RE.fullmatch(tag))
-        and _as_tuple(match.group(1)) > _as_tuple(version)
-    ]
-    return max(newer, key=lambda tag: _as_tuple(version_from_tag(tag)), default=None)
+def newest_version(version: str, tags: list[str]) -> str:
+    """The newest of *version* and the platform release versions in *tags*.
+
+    Other products' tags and unprefixed ones don't count.
+    """
+    versions = [version]
+    versions += [match.group(1) for tag in tags if (match := TAG_RE.fullmatch(tag))]
+    return max(versions, key=_as_tuple)
 
 
 def bump(root: pathlib.Path, version: str) -> bool:
@@ -133,11 +134,11 @@ def main(argv: list[str] | None = None) -> int:
             tags = args.tags.read_text(encoding="utf-8").split() if args.tags else []
         except OSError as error:
             raise BumpError(f"Can't read the tag list: {error}") from error
-        if newer := newer_release(version, tags):
-            print(f"{newer} is newer than {args.tag}; nothing to bump.")
-            changed = False
-        else:
-            changed = bump(args.root, version)
+        newest = newest_version(version, tags)
+        if newest != version:
+            print(f"A newer platform release than {args.tag} exists: using {newest}.")
+        version = newest
+        changed = bump(args.root, version)
     except BumpError as error:
         print(f"::error::{error}", file=sys.stderr)
         return 1
