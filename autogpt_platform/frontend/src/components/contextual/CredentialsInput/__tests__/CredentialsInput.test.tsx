@@ -563,11 +563,15 @@ function StatefulCredentialsInput({
   onSelectionChange,
   variant,
   schema = baseSchema,
+  isOptional,
+  autoSelect,
 }: {
   initial?: CredentialsMetaInput;
   onSelectionChange?: (credential?: CredentialsMetaInput) => void;
   variant?: "default" | "node";
   schema?: BlockIOCredentialsSubSchema;
+  isOptional?: boolean;
+  autoSelect?: boolean;
 }) {
   const [selected, setSelected] = React.useState<
     CredentialsMetaInput | undefined
@@ -585,9 +589,95 @@ function StatefulCredentialsInput({
       onSelectCredentials={handleSelectionChange}
       showTitle={false}
       variant={variant}
+      isOptional={isOptional}
+      autoSelect={autoSelect}
     />
   );
 }
+
+describe("CredentialsInput – None on an optional field", () => {
+  const ownCredential = {
+    id: "own-exa",
+    provider: "exa",
+    type: "api_key" as const,
+    title: "My Exa key",
+  };
+  const exaSchema: BlockIOCredentialsSubSchema = {
+    type: "object",
+    properties: {},
+    credentials_provider: ["exa"],
+    credentials_types: ["api_key"],
+  };
+
+  beforeEach(() => {
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        provider: "exa",
+        providerName: "Exa",
+        schema: exaSchema,
+        savedCredentials: [ownCredential],
+        allProviderCredentials: [ownCredential],
+        supportsApiKey: true,
+        supportsOAuth2: false,
+      }),
+    );
+  });
+
+  // Lets every pending effect run, so an auto-select would have happened
+  async function settle() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+
+  it("sticks on a field that started on its only key", async () => {
+    const onSelectionChange = vi.fn();
+    render(
+      <StatefulCredentialsInput
+        schema={exaSchema}
+        isOptional
+        initial={{
+          id: ownCredential.id,
+          provider: "exa",
+          type: "api_key",
+          title: ownCredential.title,
+        }}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Select Exa credential" }),
+      { target: { value: "__none__" } },
+    );
+    await settle();
+
+    expect(onSelectionChange.mock.calls).toEqual([[undefined]]);
+    expect(
+      (
+        screen.getByRole("combobox", {
+          name: "Select Exa credential",
+        }) as HTMLSelectElement
+      ).value,
+    ).toBe("__none__");
+  });
+
+  it("an input told not to pick a key leaves an empty field empty", async () => {
+    const onSelectionChange = vi.fn();
+    render(
+      <StatefulCredentialsInput
+        schema={exaSchema}
+        isOptional
+        autoSelect={false}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+
+    await settle();
+
+    expect(onSelectionChange).not.toHaveBeenCalled();
+  });
+});
 
 describe("CredentialsInput – blocks that refuse the platform's keys", () => {
   const systemCredential = {
@@ -996,6 +1086,53 @@ describe("CredentialsInput – a removed connection", () => {
     );
 
     await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
+  });
+});
+
+describe("CredentialsInput – a run's read-only inputs", () => {
+  const mcpSchema: BlockIOCredentialsSubSchema = {
+    type: "object",
+    properties: {},
+    credentials_provider: ["mcp"],
+    credentials_types: ["oauth2"],
+  };
+  const runKey = {
+    id: "mcp-key",
+    provider: "mcp",
+    type: "oauth2" as const,
+    title: "My MCP server",
+  };
+
+  it("names a key the field's filters leave out instead of calling it deleted", () => {
+    // A workflow whose server address comes from an upstream link: the field
+    // knows no host, so the picker's own list leaves the saved key out.
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        provider: "mcp",
+        providerName: "MCP",
+        schema: mcpSchema,
+        savedCredentials: [],
+        allProviderCredentials: [runKey],
+      }),
+    );
+
+    render(
+      <CredentialsInput
+        schema={mcpSchema}
+        selectedCredentials={{
+          id: runKey.id,
+          provider: "mcp",
+          type: "oauth2",
+          title: runKey.title,
+        }}
+        onSelectCredentials={vi.fn()}
+        readOnly
+        showTitle={false}
+      />,
+    );
+
+    expect(screen.getByText("My MCP server")).toBeDefined();
+    expect(screen.queryByText(/\(deleted\)/)).toBeNull();
   });
 });
 

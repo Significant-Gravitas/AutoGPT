@@ -88,10 +88,10 @@ function LiveCompaction({ phase, stats }: LiveProps) {
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={percent}
-        className="h-1 w-full overflow-hidden rounded-full bg-surface-hover"
+        className="h-1 w-full overflow-hidden rounded-pill bg-surface-hover"
       >
         <div
-          className="h-full rounded-full bg-foreground-base"
+          className="h-full rounded-pill bg-fill-strong"
           style={{ width: `${width}%` }}
         />
       </div>

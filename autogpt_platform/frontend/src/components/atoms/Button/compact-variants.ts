@@ -3,14 +3,15 @@ import { extendedButtonVariants } from "./helpers";
 
 // Pair a compact-* variant with a compact-* size. The classes merge with
 // twMerge in this order: the Button base (extendedButtonVariants with no
-// variant and no size), then the compact variant, then the compact size, then
-// className; on a conflict the later class wins, so COMPACT_BASE overrides the
-// base's radius, border and minimum width.
+// variant, size or shape), then the compact variant, then the compact size,
+// then className; on a conflict the later class wins, so COMPACT_BASE
+// overrides the base's border and minimum width. The base sets no disabled
+// opacity (each variant sets its own), so COMPACT_BASE sets it.
 const COMPACT_BASE =
-  "gap-2 rounded-md border-0 min-w-0 text-body leading-5 focus-visible:ring-focus [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0";
+  "gap-2 rounded-md border-0 min-w-0 text-body leading-5 focus-visible:ring-focus disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0";
 
 export const compactButtonVariants = cva(
-  extendedButtonVariants({ variant: null, size: null }),
+  extendedButtonVariants({ variant: null, size: null, shape: null }),
   {
     variants: {
       variant: {

@@ -33,7 +33,7 @@ export function DryRunToggleButton({ isDryRun, onToggle }: Props) {
           aria-pressed={isDryRun}
           onClick={onToggle}
           className={cn(
-            "inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-surface-hover",
+            "inline-flex h-8 w-8 items-center justify-center rounded-pill transition-colors hover:bg-surface-hover",
             isDryRun
               ? "text-warning-foreground/80 hover:text-warning-foreground"
               : "text-foreground-tertiary hover:text-foreground-body",

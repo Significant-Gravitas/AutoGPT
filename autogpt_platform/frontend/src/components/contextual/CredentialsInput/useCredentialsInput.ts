@@ -40,6 +40,7 @@ type Params = {
   onLoaded?: (loaded: boolean) => void;
   readOnly?: boolean;
   isOptional?: boolean;
+  autoSelect?: boolean;
 };
 
 export function useCredentialsInput({
@@ -50,6 +51,7 @@ export function useCredentialsInput({
   onLoaded,
   readOnly = false,
   isOptional = false,
+  autoSelect = true,
 }: Params) {
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
     useState(false);
@@ -154,7 +156,7 @@ export function useCredentialsInput({
   // Once a user has made a selection, we don't override it
   useEffect(
     function autoSelectCredential() {
-      if (readOnly) return;
+      if (readOnly || !autoSelect) return;
       if (!credentials) return;
       if (selectedCredential?.id) return;
 
@@ -184,6 +186,7 @@ export function useCredentialsInput({
       credentials,
       selectedCredential?.id,
       readOnly,
+      autoSelect,
       isOptional,
       onSelectCredential,
       schema.refuses_platform_credentials,
@@ -222,6 +225,13 @@ export function useCredentialsInput({
   function handleCredentialChange(newValue?: CredentialsMetaInput) {
     setRemovedCredentialTitle(null);
     onSelectCredential(newValue);
+  }
+
+  // "None" is the user's choice: a field that started on a key must not
+  // pick its only saved key straight back.
+  function handleClearCredential() {
+    hasAttemptedAutoSelect.current = true;
+    handleCredentialChange(undefined);
   }
 
   async function executeOAuthFlow(credentialID?: string) {
@@ -527,6 +537,9 @@ export function useCredentialsInput({
     userCredentials,
     systemCredentials,
     allCredentials: savedCredentials,
+    // Every key saved for the provider, including the ones the field's type,
+    // scope and host filters leave out
+    allProviderCredentials: credentials.allProviderCredentials,
     selectedCredential,
     removedCredentialTitle,
     oAuthError,
@@ -564,6 +577,7 @@ export function useCredentialsInput({
     handleScopeUpgrade,
     userUpgradeableCredentials,
     handleCredentialChange,
+    handleClearCredential,
     schema,
     siblingInputs,
   };

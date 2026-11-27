@@ -80,7 +80,7 @@ describe("suppressions", () => {
   it("never switch off the colour rules: an exemption goes in the list", () => {
     const found = SOURCE.filter((file) => /\.(tsx?|mdx)$/.test(file)).filter(
       (file) =>
-        /(?:eslint|oxlint)-disable[^\n]*design-system\/no-(?:alias|palette|hex)-colours/.test(
+        /(?:eslint|oxlint)-disable[^\n]*design-system\/no-(?:shadcn-alias-colours|raw-palette-classes|hex-colours|arbitrary-colour|colour-functions)/.test(
           read(file),
         ),
     );

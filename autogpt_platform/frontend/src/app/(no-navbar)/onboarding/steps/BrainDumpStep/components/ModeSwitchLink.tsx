@@ -56,8 +56,14 @@ function LinkButton({
   children: string;
 }) {
   return (
-    <Button variant="ghost" size="xs" onClick={onClick}>
-      <Text variant="small-medium-loose-underline" as="span">
+    <Button variant="ghost" size="xs" shape="sharp" onClick={onClick}>
+      <Text
+        variant="small"
+        weight="medium"
+        leading="5"
+        decoration="underline"
+        as="span"
+      >
         {children}
       </Text>
     </Button>

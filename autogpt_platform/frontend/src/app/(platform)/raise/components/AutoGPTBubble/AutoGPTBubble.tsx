@@ -35,7 +35,7 @@ export function AutoGPTBubble({
         {isTyping ? (
           <span
             aria-hidden
-            className="ml-0.5 inline-block h-[1.05em] w-px translate-y-[0.15em] animate-pulse bg-foreground-base/70"
+            className="ml-0.5 inline-block h-[1.05em] w-px translate-y-[0.15em] animate-pulse bg-fill-strong/70"
           />
         ) : null}
         {/* The visible text arrives a character at a time; the live region

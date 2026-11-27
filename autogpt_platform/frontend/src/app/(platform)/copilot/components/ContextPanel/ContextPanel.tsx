@@ -21,6 +21,7 @@ import { WorkspaceFileCards } from "../WorkspaceFileCards/WorkspaceFileCards";
 import { ArtifactsTab } from "./components/ArtifactsTab/ArtifactsTab";
 import { IntegrationsTab } from "./components/IntegrationsTab/IntegrationsTab";
 import { useContextPanel } from "./useContextPanel";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   sessionId: string | null;
@@ -29,8 +30,7 @@ interface Props {
 
 // iOS sheet curve — decelerates hard at the end so the chat column settles
 // instead of snapping when the panel pushes it aside.
-const PANEL_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
-const PANEL_DURATION = 0.3;
+const PANEL_DURATION = duration.slow;
 
 const TAB_TITLES: Record<ContextPanelTab, string> = {
   files: "Files",
@@ -64,7 +64,9 @@ export function ContextPanel({ sessionId, mobile }: Props) {
     <div className="flex min-h-0 flex-1 flex-col">
       {showTitle && (
         <Text
-          variant="large-semibold-tight"
+          variant="large"
+          weight="semibold"
+          leading="6"
           as="h2"
           tone="primary"
           className="mx-6 mt-6 mb-1 shrink-0"
@@ -98,7 +100,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
         >
           <SheetHeader className="mt-12 px-6 pt-2 pb-1 text-left">
             <SheetTitle>
-              <Text as="span" variant="lead-semibold" tone="primary">
+              <Text as="span" variant="lead" weight="semibold" tone="primary">
                 {TAB_TITLES[activeTab]}
               </Text>
             </SheetTitle>
@@ -118,7 +120,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   const transition =
     shouldReduceMotion || isResizing
       ? { duration: 0 }
-      : { duration: PANEL_DURATION, ease: PANEL_EASE };
+      : { duration: PANEL_DURATION, ease: ease.drawer };
 
   return (
     <AnimatePresence initial={false}>
@@ -147,8 +149,12 @@ export function ContextPanel({ sessionId, mobile }: Props) {
                 means the inner is wider than the shell for the whole tween,
                 so the clip above is what stops it spilling over the chat. */}
             <div
-              style={{ width: contextPanelWidth }}
-              className="flex h-full min-h-0 flex-col overflow-hidden"
+              style={
+                {
+                  "--panel-width": `${contextPanelWidth}px`,
+                } as React.CSSProperties
+              }
+              className="flex h-full min-h-0 w-(--panel-width) flex-col overflow-hidden"
             >
               {content}
             </div>

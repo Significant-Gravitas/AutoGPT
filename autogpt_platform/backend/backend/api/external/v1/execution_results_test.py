@@ -22,9 +22,11 @@ from prisma.models import (
 
 from backend.blocks.io import AgentOutputBlock
 from backend.blocks.maths import CalculatorBlock
+from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 
 GRAPH_ID = "graph-1"
+PERSONAL_ORG = "personal-org"
 RUN_ID = "run-1"
 STARTED = datetime(2026, 11, 19, 0, 51, tzinfo=UTC)
 CALCULATOR_INPUT = {"operation": "Add", "a": 5.5, "b": 6.5, "round_result": False}
@@ -44,7 +46,16 @@ async def test_a_completed_runs_outputs_keep_their_json_types(
     mocker, v1_client, v1_generated_keys, v1_key_rows
 ):
     owner = v1_key_rows[0].user_id
-    owners_query = {"id": RUN_ID, "isDeleted": False, "userId": owner}
+    mocker.patch(
+        "backend.api.external.middleware.get_user_default_team",
+        AsyncMock(return_value=(PERSONAL_ORG, None)),
+    )
+    mocker.patch.object(execution_db, "get_user_team_ids", AsyncMock(return_value=[]))
+    owners_query = {
+        "id": RUN_ID,
+        "isDeleted": False,
+        "AND": execution_db._execution_visibility_filters(owner, PERSONAL_ORG, []),
+    }
     runs = AsyncMock()
     runs.find_first.side_effect = lambda *, where, include: (
         _completed_run(owner) if where == owners_query else None

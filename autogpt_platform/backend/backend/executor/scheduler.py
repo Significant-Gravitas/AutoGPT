@@ -114,7 +114,7 @@ from backend.copilot.scheduled_chats.notices import (
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.transports import resolve_default_chat_route
 from backend.copilot.turn_queue import TurnRefusal, turn_refusal
-from backend.data.db_accessors import experts_db
+from backend.data.db_accessors import experts_db, orgs_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
 from backend.data.memory_schedule import ScopeRunKind
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -567,6 +567,7 @@ async def _execute_copilot_turn(**kwargs):
         args = args.model_copy(update={"session_id": routine.session_id})
     start_time = asyncio.get_event_loop().time()
     try:
+        args = await _in_current_membership(args)
         # Resolve the target session.  ``session_id=None`` means "fire into
         # a fresh chat" — create one now so the user has somewhere visible
         # for the scheduled message to land.  For an explicit session_id
@@ -794,6 +795,19 @@ async def _execute_copilot_turn(**kwargs):
             f"{_session_id_label(args)} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
         )
+
+
+async def _in_current_membership(args: "CopilotTurnJobArgs") -> "CopilotTurnJobArgs":
+    """A turn runs in the org and team it was scheduled in only while its owner
+    still belongs to them; otherwise in the owner's default, as a run does."""
+    if not args.organization_id or await orgs_db().is_active_member(
+        args.user_id, args.organization_id, args.team_id
+    ):
+        return args
+    organization_id, team_id = await orgs_db().resolve_default_tenancy(args.user_id)
+    return args.model_copy(
+        update={"organization_id": organization_id, "team_id": team_id}
+    )
 
 
 async def _skip_fire_without_slot(args: "CopilotTurnJobArgs", e: Exception) -> None:
@@ -1254,6 +1268,7 @@ async def _execute_at_reset_turn(args: "CopilotTurnJobArgs", kind: AtResetKind) 
             return
         _track_at_reset_verdict(args.user_id, verdict)
         if verdict.action == "fire":
+            args = await _in_current_membership(args)
             try:
                 await _dispatch_at_reset_turn(args, kind, chat.session)
             except ConcurrentTurnLimitError as cap:
@@ -3742,6 +3757,14 @@ class Scheduler(AppService):
                 graph_credentials_inputs=input_credentials,
             )
         )
+        if expert_id is not None:
+            # Each run would be refused for a key the expert was never
+            # granted, and a scheduled run's refusal is only logged.
+            run_async(
+                execution_utils._enforce_expert_credential_scope(
+                    user_id, expert_id, input_credentials
+                )
+            )
 
         try:
             job = self._persist_schedule(
@@ -4062,6 +4085,13 @@ class Scheduler(AppService):
                 graph_credentials_inputs=merged.input_credentials,
             )
         )
+        if merged.expert_id is not None:
+            # As at creation, on the keys each run will carry after the edit.
+            run_async(
+                execution_utils._enforce_expert_credential_scope(
+                    user_id, merged.expert_id, merged.input_credentials
+                )
+            )
 
     def _authorized_graph_job(
         self, schedule_id: str, user_id: str

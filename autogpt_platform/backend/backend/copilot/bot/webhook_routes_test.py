@@ -1,11 +1,16 @@
 """Tests for the webhook adapter route-mounting helper."""
 
-from unittest.mock import MagicMock, patch
+import logging
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
 
 from .adapters.base import WebhookAdapter
-from .webhook_routes import build_webhook_adapters, register_webhook_adapters
+from .webhook_routes import (
+    build_webhook_adapters,
+    register_webhook_adapters,
+    run_webhook_adapter_startup,
+)
 
 _SLACK_CFG = "backend.copilot.bot.webhook_routes.slack_config"
 _TELEGRAM_CFG = "backend.copilot.bot.webhook_routes.telegram_config"
@@ -80,7 +85,23 @@ def test_register_webhook_adapters_wires_each_adapter():
         "backend.copilot.bot.webhook_routes.build_webhook_adapters",
         return_value=[adapter],
     ):
-        register_webhook_adapters(app, api)
+        mounted = register_webhook_adapters(app, api)
 
     adapter.on_message.assert_called_once()
     adapter.register_routes.assert_called_once_with(app)
+    assert mounted == [adapter]
+
+
+async def test_one_failing_adapter_startup_never_stops_the_others(caplog):
+    failing = MagicMock(spec=WebhookAdapter, platform_name="telegram")
+    failing.on_startup = AsyncMock(side_effect=RuntimeError("down"))
+    healthy = MagicMock(spec=WebhookAdapter, platform_name="teams")
+    healthy.on_startup = AsyncMock()
+
+    with caplog.at_level(logging.WARNING):
+        await run_webhook_adapter_startup([failing, healthy])
+
+    healthy.on_startup.assert_awaited_once()
+    assert [r.getMessage() for r in caplog.records] == [
+        "Startup of the telegram webhook adapter failed"
+    ]

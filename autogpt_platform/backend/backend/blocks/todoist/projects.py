@@ -1,4 +1,3 @@
-from todoist_api_python.api import TodoistAPI
 from typing_extensions import Optional
 
 from backend.blocks._base import (
@@ -8,6 +7,12 @@ from backend.blocks._base import (
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
+)
+from backend.blocks.todoist._api import (
+    PAGE_SIZE,
+    flatten_pages,
+    get_api,
+    project_to_dict,
 )
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
@@ -82,25 +87,21 @@ class TodoistListProjectsBlock(Block):
 
     @staticmethod
     def get_project_lists(credentials: TodoistCredentials):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            projects = api.get_projects()
+        with get_api(credentials) as api:
+            projects = flatten_pages(api.get_projects(limit=PAGE_SIZE))
 
-            names = []
-            ids = []
-            urls = []
-            complete_data = []
+        names = []
+        ids = []
+        urls = []
+        complete_data = []
 
-            for project in projects:
-                names.append(project.name)
-                ids.append(project.id)
-                urls.append(project.url)
-                complete_data.append(project.__dict__)
+        for project in projects:
+            names.append(project.name)
+            ids.append(project.id)
+            urls.append(project.url)
+            complete_data.append(project_to_dict(project))
 
-            return names, ids, urls, complete_data, None
-
-        except Exception as e:
-            raise e
+        return names, ids, urls, complete_data, None
 
     async def run(
         self,
@@ -175,22 +176,15 @@ class TodoistCreateProjectBlock(Block):
         is_favorite: bool,
         view_style: Optional[str],
     ):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            params = {"name": name, "is_favorite": is_favorite}
-
-            if parent_id is not None:
-                params["parent_id"] = parent_id
-            if color is not None:
-                params["color"] = color.value
-            if view_style is not None:
-                params["view_style"] = view_style
-
-            api.add_project(**params)
+        with get_api(credentials) as api:
+            api.add_project(
+                name,
+                parent_id=parent_id,
+                color=color.value if color is not None else None,
+                is_favorite=is_favorite,
+                view_style=view_style,
+            )
             return True
-
-        except Exception as e:
-            raise e
 
     async def run(
         self,
@@ -275,14 +269,10 @@ class TodoistGetProjectBlock(Block):
 
     @staticmethod
     def get_project(credentials: TodoistCredentials, project_id: str):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
+        with get_api(credentials) as api:
             project = api.get_project(project_id=project_id)
 
-            return project.id, project.name, project.url, project.__dict__
-
-        except Exception as e:
-            raise e
+        return project.id, project.name, project.url, project_to_dict(project)
 
     async def run(
         self,
@@ -363,24 +353,15 @@ class TodoistUpdateProjectBlock(Block):
         is_favorite: Optional[bool],
         view_style: Optional[str],
     ):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            params = {}
-
-            if name is not None:
-                params["name"] = name
-            if color is not None:
-                params["color"] = color.value
-            if is_favorite is not None:
-                params["is_favorite"] = is_favorite
-            if view_style is not None:
-                params["view_style"] = view_style
-
-            api.update_project(project_id=project_id, **params)
+        with get_api(credentials) as api:
+            api.update_project(
+                project_id,
+                name=name,
+                color=color.value if color is not None else None,
+                is_favorite=is_favorite,
+                view_style=view_style,
+            )
             return True
-
-        except Exception as e:
-            raise e
 
     async def run(
         self,
@@ -438,13 +419,8 @@ class TodoistDeleteProjectBlock(Block):
 
     @staticmethod
     def delete_project(credentials: TodoistCredentials, project_id: str):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            success = api.delete_project(project_id=project_id)
-            return success
-
-        except Exception as e:
-            raise e
+        with get_api(credentials) as api:
+            return api.delete_project(project_id=project_id)
 
     async def run(
         self,
@@ -536,25 +512,23 @@ class TodoistListCollaboratorsBlock(Block):
 
     @staticmethod
     def get_collaborators(credentials: TodoistCredentials, project_id: str):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            collaborators = api.get_collaborators(project_id=project_id)
+        with get_api(credentials) as api:
+            collaborators = flatten_pages(
+                api.get_collaborators(project_id=project_id, limit=PAGE_SIZE)
+            )
 
-            ids = []
-            names = []
-            emails = []
-            complete_data = []
+        ids = []
+        names = []
+        emails = []
+        complete_data = []
 
-            for collaborator in collaborators:
-                ids.append(collaborator.id)
-                names.append(collaborator.name)
-                emails.append(collaborator.email)
-                complete_data.append(collaborator.__dict__)
+        for collaborator in collaborators:
+            ids.append(collaborator.id)
+            names.append(collaborator.name)
+            emails.append(collaborator.email)
+            complete_data.append(collaborator.to_dict())
 
-            return ids, names, emails, complete_data
-
-        except Exception as e:
-            raise e
+        return ids, names, emails, complete_data
 
     async def run(
         self,

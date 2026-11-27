@@ -15,11 +15,11 @@ const meta: Meta = {
 export default meta;
 
 // Border radius scale data based on Figma design tokens
-// Custom naming convention: xsmall, small, medium, large, xlarge, 2xlarge, full
+// Custom naming convention: xsmall, small, medium, large, xlarge, 2xlarge, pill, full
 const borderRadiusScale = [
   {
     name: "xsmall",
-    value: "0.25rem",
+    value: "var(--radius-xsmall)",
     rem: "0.25rem",
     px: "4px",
     class: "rounded-xsmall",
@@ -27,7 +27,7 @@ const borderRadiusScale = [
   },
   {
     name: "small",
-    value: "0.5rem",
+    value: "var(--radius-small)",
     rem: "0.5rem",
     px: "8px",
     class: "rounded-small",
@@ -35,7 +35,7 @@ const borderRadiusScale = [
   },
   {
     name: "medium",
-    value: "0.75rem",
+    value: "var(--radius-medium)",
     rem: "0.75rem",
     px: "12px",
     class: "rounded-medium",
@@ -43,7 +43,7 @@ const borderRadiusScale = [
   },
   {
     name: "large",
-    value: "1rem",
+    value: "var(--radius-large)",
     rem: "1rem",
     px: "16px",
     class: "rounded-large",
@@ -51,7 +51,7 @@ const borderRadiusScale = [
   },
   {
     name: "xlarge",
-    value: "1.25rem",
+    value: "var(--radius-xlarge)",
     rem: "1.25rem",
     px: "20px",
     class: "rounded-xlarge",
@@ -59,19 +59,27 @@ const borderRadiusScale = [
   },
   {
     name: "2xlarge",
-    value: "1.5rem",
+    value: "var(--radius-2xlarge)",
     rem: "1.5rem",
     px: "24px",
     class: "rounded-2xlarge",
     description: "2X large - for major containers",
   },
   {
+    name: "pill",
+    value: "var(--radius-pill)",
+    rem: "9999px",
+    px: "9999px",
+    class: "rounded-pill",
+    description: "Pill - for buttons, chips, badges, tabs and tracks",
+  },
+  {
     name: "full",
-    value: "9999px",
+    value: "var(--radius-full)",
     rem: "9999px",
     px: "9999px",
     class: "rounded-full",
-    description: "Full - for pill buttons and circular elements",
+    description: "Full - for circles only: avatars, dots, spinners, thumbs",
   },
 ];
 
@@ -86,8 +94,8 @@ export function AllVariants() {
           </Text>
           <Text variant="large" className="text-foreground-secondary">
             Our border radius system uses a descriptive naming convention
-            (xsmall, small, medium, large, xlarge, 2xlarge, full) based on our
-            Figma design tokens. This creates visual hierarchy and maintains
+            (xsmall, small, medium, large, xlarge, 2xlarge, pill, full) based on
+            our Figma design tokens. This creates visual hierarchy and maintains
             design consistency across all components while avoiding conflicts
             with Tailwind&apos;s built-in classes.
           </Text>
@@ -125,7 +133,8 @@ export function AllVariants() {
               </div>
               <div className="rounded-lg border border-border-base p-4">
                 <Text
-                  variant="body-medium"
+                  variant="body"
+                  weight="medium"
                   className="mb-2 font-semibold text-foreground-emphasis"
                 >
                   Directional Classes
@@ -196,7 +205,7 @@ export function AllVariants() {
             All border radius values from our Figma design tokens. Each value
             can be applied to all corners or specific corners/sides using our
             descriptive naming convention (xsmall, small, medium, large, xlarge,
-            2xlarge, full).
+            2xlarge, pill, full).
           </Text>
         </div>
 
@@ -208,7 +217,8 @@ export function AllVariants() {
             >
               <div className="flex w-32 flex-col">
                 <Text
-                  variant="body-medium"
+                  variant="body"
+                  weight="medium"
                   className="font-mono text-foreground-emphasis"
                 >
                   {radius.name}
@@ -256,7 +266,8 @@ export function AllVariants() {
 <div className="rounded-large">Large rounding (16px)</div>
 <div className="rounded-xlarge">Extra large rounding (20px)</div>
 <div className="rounded-2xlarge">2X large rounding (24px)</div>
-<div className="rounded-full">Pill buttons (circular)</div>
+<div className="rounded-pill">Pill buttons, chips and tracks</div>
+<div className="rounded-full">Circles: avatars, dots and spinners</div>
 
 // Directional rounding (works with all sizes)
 <div className="rounded-t-medium">Top corners only</div>
@@ -271,7 +282,8 @@ export function AllVariants() {
 <div className="rounded-br-medium">Bottom-right corner</div>
 
 // Usage recommendations
-<button className="rounded-full">Pill Button</button>
+<button className="rounded-pill">Pill Button</button>
+<img className="size-10 rounded-full" alt="" />
 <div className="rounded-medium">Card Container</div>
 <input className="rounded-small">Input Field</input>`}
         />

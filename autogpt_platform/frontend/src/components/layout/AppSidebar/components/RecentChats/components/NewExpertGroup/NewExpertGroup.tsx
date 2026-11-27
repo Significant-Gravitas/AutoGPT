@@ -49,7 +49,9 @@ export function NewExpertGroup({ expert }: Props) {
             >
               <Text
                 as="span"
-                variant="body-tight-touch"
+                variant="body"
+                leading="5"
+                narrowSize="large"
                 tone="inherit"
                 className="truncate"
               >

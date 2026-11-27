@@ -34,11 +34,17 @@ export function PendingChangeBanner({
       aria-live="polite"
       className="flex flex-col gap-2 rounded-md border border-brand bg-accent-surface px-3 py-2 text-accent-strong sm:flex-row sm:items-center sm:justify-between"
     >
-      <Text variant="body-tight" as="p" tone="inherit">
+      <Text variant="body" leading="5" as="p" tone="inherit">
         {isCancellation ? (
           <>
             Scheduled to cancel your subscription on{" "}
-            <Text variant="body-semibold-tight" as="span" tone="inherit">
+            <Text
+              variant="body"
+              weight="semibold"
+              leading="5"
+              as="span"
+              tone="inherit"
+            >
               {dateText}
             </Text>
             .
@@ -46,11 +52,23 @@ export function PendingChangeBanner({
         ) : (
           <>
             Scheduled to downgrade to{" "}
-            <Text variant="body-semibold-tight" as="span" tone="inherit">
+            <Text
+              variant="body"
+              weight="semibold"
+              leading="5"
+              as="span"
+              tone="inherit"
+            >
               {pendingLabel}
             </Text>{" "}
             on{" "}
-            <Text variant="body-semibold-tight" as="span" tone="inherit">
+            <Text
+              variant="body"
+              weight="semibold"
+              leading="5"
+              as="span"
+              tone="inherit"
+            >
               {dateText}
             </Text>
             .

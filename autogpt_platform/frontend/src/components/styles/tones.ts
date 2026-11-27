@@ -15,8 +15,10 @@ export const tones = {
   muted: "text-foreground-tertiary", // #83838C
   subtle: "text-foreground-subtle", // #ADADB3
   disabled: "text-foreground-disabled", // #C5C5C9
-  // Text and icons on a dark fill: the primary Button, a brand chip.
-  inverse: "text-action-foreground", // #FEFEFE
+  // Text and icons on the inverse surface: a toast, a tooltip, a dark tile.
+  inverse: "text-foreground-inverse", // #FEFEFE
+  // Text and icons on a saturated fill: a brand chip, a status badge.
+  "on-color": "text-foreground-on-color", // #FEFEFE
   brand: "text-brand", // #7733F5
   "brand-strong": "text-brand-hover", // #6C2EDF
   accent: "text-accent-strong", // #6D28D9
@@ -36,6 +38,14 @@ export const tones = {
   // Green on a dark fill (toast, terminal), where `success` would lose its
   // contrast.
   "success-light": "text-success-inverse",
+  // Red on a dark fill (a tooltip), as `success-light`.
+  "error-light": "text-error-inverse", // #F26969
+  // Accent hues that are not a status: a follow-up's yellow, a cost
+  // warning's orange.
+  yellow: "text-yellow-foreground", // #AE8800
+  orange: "text-orange-foreground", // #E77B00
+  // The builder's node handles.
+  handle: "text-handle", // #9CA3AF
 } as const;
 
 export type Tone = keyof typeof tones;

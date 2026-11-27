@@ -31,7 +31,7 @@ export function ReviewSidebar({ carousel, sheet = false }: Props) {
       className="flex min-h-0 w-full flex-col"
     >
       <div className="flex items-baseline gap-2 px-4 pt-4 pb-2">
-        <Text variant="body-medium" as="h2">
+        <Text variant="body" weight="medium" as="h2">
           To review
         </Text>
         <Text variant="small" as="span" tone="secondary" tabular>

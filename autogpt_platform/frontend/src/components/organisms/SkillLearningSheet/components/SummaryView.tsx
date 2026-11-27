@@ -83,7 +83,7 @@ export function SummaryView({
             data-slot="skill-learning-sheet-summary-evidence"
             aria-label="Evidence"
           >
-            <Text variant="small-medium" tone="primary">
+            <Text variant="small" weight="medium" tone="primary">
               Evidence
             </Text>
             <ul
@@ -116,7 +116,7 @@ export function SummaryView({
               data-slot="skill-learning-sheet-summary-limits"
               aria-label="Limits"
             >
-              <Text variant="small-medium" tone="primary">
+              <Text variant="small" weight="medium" tone="primary">
                 Limits
               </Text>
               <ul

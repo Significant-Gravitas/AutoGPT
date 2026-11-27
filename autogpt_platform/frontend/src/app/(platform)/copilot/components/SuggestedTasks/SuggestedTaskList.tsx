@@ -119,7 +119,7 @@ export function SuggestedTaskList({
             onClick={() => onMoreChoice(!isMoreOpen)}
             className="flex min-h-[3.25rem] w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-150 outline-none hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-inset"
           >
-            <Text variant="body-medium" as="span" tone="secondary">
+            <Text variant="body" weight="medium" as="span" tone="secondary">
               <span>{`${more.length} more ${more.length === 1 ? "task" : "tasks"}`}</span>
             </Text>
             <Icon

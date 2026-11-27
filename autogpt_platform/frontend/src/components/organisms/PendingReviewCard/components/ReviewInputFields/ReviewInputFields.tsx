@@ -104,9 +104,13 @@ function StaticField({
       data-slot="review-input-fields-static-field"
       className="flex flex-col gap-1"
     >
-      <Text variant="large-medium">{label}</Text>
+      <Text variant="large" weight="medium">
+        {label}
+      </Text>
       <Text
-        variant={mono ? "body-mono-tight" : "body"}
+        variant="body"
+        mono={mono}
+        leading={mono ? "5" : undefined}
         as="p"
         className={mono ? "whitespace-pre-wrap" : undefined}
       >
