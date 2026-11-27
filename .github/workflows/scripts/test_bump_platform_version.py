@@ -236,6 +236,8 @@ class Workflow(unittest.TestCase):
         )
         self.assertIn("gh pr merge", self.steps["auto-merge"]["run"])
         self.assertIn("--auto", self.steps["auto-merge"]["run"])
+        # No prompt for a merge method in a run without a terminal.
+        self.assertIn("--squash", self.steps["auto-merge"]["run"])
         # Opened as the App: CI doesn't run on a PR opened with GITHUB_TOKEN.
         self.assertEqual(pr["token"], "${{ steps.app-token.outputs.token }}")
         self.assertEqual(self.workflow["permissions"], {})
