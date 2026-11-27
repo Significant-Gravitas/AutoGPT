@@ -2,7 +2,7 @@
 """Set the platform's package versions to the newest release's version.
 
     bump_platform_version.py <release tag> [--root <repository root>]
-        [--tags <file with the repository's tag names, one per line>]
+        [--tags <file with the published releases' tag names, one per line>]
 
 The tag is a platform release tag, autogpt-platform-beta-v0.12.1, and the
 version is the part after the "v". It goes into the backend's pyproject.toml

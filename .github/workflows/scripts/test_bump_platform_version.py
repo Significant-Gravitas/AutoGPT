@@ -219,6 +219,15 @@ class Workflow(unittest.TestCase):
         self.assertNotIn("${{", step["run"])
         self.assertEqual(step["env"]["TAG"], "${{ github.event.release.tag_name }}")
 
+    def test_only_published_stable_releases_are_candidates(self) -> None:
+        # A pushed tag, draft or prerelease ahead of the stable line must not
+        # put an unreleased version on dev.
+        run = self.steps["bump"]["run"]
+        self.assertNotIn("ls-remote", run)
+        self.assertIn("/releases", run)
+        self.assertIn("--paginate", run)
+        self.assertIn("select(.draft == false and .prerelease == false)", run)
+
     def test_the_pr_goes_to_dev_with_auto_merge(self) -> None:
         pr = self.steps["pr"]["with"]
         self.assertEqual(pr["base"], "dev")

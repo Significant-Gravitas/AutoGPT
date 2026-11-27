@@ -47,13 +47,17 @@ jobs:
         shell: bash # pipefail: a failed tag listing fails the step
         env:
           TAG: ${{ github.event.release.tag_name }}
-        # The tags tell an older line's hotfix from the newest release: the
-        # script sets the newest release's version either way. Keep its
+          GH_TOKEN: ${{ github.token }}
+        # The published releases' tags tell an older line's hotfix from the
+        # newest release: the script sets the newest release's version either
+        # way. Drafts, prereleases and tags without a release don't count, so
+        # an unreleased version never lands on dev. Keep the script's
         # arguments stable: a release runs master's copy of this file against
         # dev's script.
         run: |
-          git ls-remote --tags --refs origin 'autogpt-platform-*' \
-            | sed 's|.*refs/tags/||' > "$RUNNER_TEMP/platform-tags"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' \
+            > "$RUNNER_TEMP/platform-tags"
           python3 .github/workflows/scripts/bump_platform_version.py "$TAG" \
             --tags "$RUNNER_TEMP/platform-tags"
 
