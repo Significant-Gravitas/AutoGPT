@@ -124,11 +124,19 @@ describe("WebSocket token issuance recovery", () => {
   );
 
   it.each([
-    { visibility: "hidden", handOff: reloadForNewDeployment },
-    { visibility: "visible", handOff: promptForNewDeployment },
+    {
+      visibility: "hidden",
+      handOff: reloadForNewDeployment,
+      notCalled: promptForNewDeployment,
+    },
+    {
+      visibility: "visible",
+      handOff: promptForNewDeployment,
+      notCalled: reloadForNewDeployment,
+    },
   ] as const)(
     "hands a $visibility tab left on a replaced deployment to the new build instead of retrying",
-    async ({ visibility, handOff }) => {
+    async ({ visibility, handOff, notCalled }) => {
       vi.spyOn(document, "visibilityState", "get").mockReturnValue(visibility);
       const warn = vi.spyOn(console, "warn");
       vi.mocked(getWebSocketToken).mockRejectedValue(
@@ -144,11 +152,7 @@ describe("WebSocket token issuance recovery", () => {
       expect(getWebSocketToken).toHaveBeenCalledTimes(1);
       expect(vi.getTimerCount()).toBe(0);
       expect(handOff).toHaveBeenCalledTimes(1);
-      const other =
-        handOff === reloadForNewDeployment
-          ? promptForNewDeployment
-          : reloadForNewDeployment;
-      expect(other).not.toHaveBeenCalled();
+      expect(notCalled).not.toHaveBeenCalled();
       expect(warn).not.toHaveBeenCalled();
       expect(await outcome).toBe("rejected");
       expect(FakeWebSocket.instances).toHaveLength(0);
