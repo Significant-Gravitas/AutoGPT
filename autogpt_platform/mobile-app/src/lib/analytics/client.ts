@@ -15,6 +15,7 @@ const HOST = process.env.EXPO_PUBLIC_POSTHOG_HOST || "https://eu.i.posthog.com";
 
 let client: PostHog | null = null;
 let consent: Consent = "unset";
+let unsavedChoice: boolean | null = null;
 let userID: string | null = null;
 let currentScreen: string | null = null;
 let lastScreen: string | null = null;
@@ -63,22 +64,29 @@ export function hasAnalyticsKey() {
 
 /** Usage analytics, in store and dev builds only, and only once the user allows it. */
 export function startAnalytics() {
-  consent = readConsent();
+  if (unsavedChoice === null) consent = readConsent();
   openClient();
   sendCurrentScreen();
 }
 
 export function setAnalyticsConsent(allowed: boolean) {
-  consent = allowed ? "allowed" : "declined";
-  saveConsent(consent);
-  // A screen sent before the change goes again once allowed.
-  lastScreen = null;
-  if (allowed) {
-    openClient();
-    sendCurrentScreen();
-  } else {
+  if (!allowed) {
+    consent = "declined";
+    lastScreen = null;
     void client?.optOut();
   }
+  const saved = saveConsent(allowed ? "allowed" : "declined");
+  unsavedChoice = saved ? null : allowed;
+  if (allowed && saved) {
+    consent = "allowed";
+    openClient();
+    sendCurrentScreen();
+  }
+  return saved;
+}
+
+export function analyticsConsentState() {
+  return { sharesUsage: consent === "allowed", unsavedChoice };
 }
 
 /** The platform user id only: the email and name never go to analytics. */

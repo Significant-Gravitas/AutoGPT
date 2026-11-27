@@ -10,6 +10,7 @@ import {
 import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { Button } from "@/components/Button";
 import { ExpertAvatar } from "@/components/ExpertAvatar";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { AppearancePicker } from "@/features/settings/components/AppearancePicker";
@@ -87,6 +88,19 @@ export default function SettingsScreen() {
               onValueChange={settings.changeSharesUsage}
             />
           ) : null}
+          {settings.canShareUsage && settings.unsavedChoice !== null ? (
+            <View style={styles.usageError}>
+              <Text accessibilityLiveRegion="polite" style={styles.error}>
+                {"Couldn't save your choice. Usage data is off for now."}
+              </Text>
+              <Button
+                label="Try again"
+                onPress={settings.retryUsageChoice}
+                variant="secondary"
+                size="small"
+              />
+            </View>
+          ) : null}
         </SettingsGroup>
         <SettingsGroup>
           <SettingsRow icon={HelpCircleIcon} label="Help" trailing="web" onPress={settings.openHelp} />
@@ -122,5 +136,7 @@ const useStyles = createStyles((colors) => ({
   personText: { flex: 1 },
   name: { ...type.heading, color: colors.text },
   email: { ...type.small, color: colors.textSecondary },
+  usageError: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, gap: spacing.sm },
+  error: { ...type.small, color: colors.error },
   version: { ...type.small, color: colors.textTertiary, textAlign: "center" },
 }));

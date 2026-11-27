@@ -2,7 +2,7 @@ import { track } from "@/lib/analytics/client";
 import { EVENTS } from "@/lib/analytics/rules";
 import { useMountEffect } from "@/lib/useMountEffect";
 
-/** Mounted once Home has its data; Home stays mounted, so this fires once per launch. */
+/** Sends a view when the signed-in Home screen mounts with data. */
 export function HomeViewed() {
   useMountEffect(() => {
     track(EVENTS.homeViewed);

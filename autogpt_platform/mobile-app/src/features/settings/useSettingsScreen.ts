@@ -6,8 +6,7 @@ import { Linking } from "react-native";
 
 import { planName } from "@/features/plan/helpers";
 import { usePlanCheck } from "@/features/plan/usePlanGate";
-import { hasAnalyticsKey, setAnalyticsConsent } from "@/lib/analytics/client";
-import { readConsent } from "@/lib/analytics/consent";
+import { analyticsConsentState, hasAnalyticsKey, setAnalyticsConsent } from "@/lib/analytics/client";
 import { billingKeys, getSubscription } from "@/lib/api/billing";
 import { useSession } from "@/lib/auth/nativeSession";
 import { signOut } from "@/lib/session";
@@ -25,7 +24,7 @@ export function useSettingsScreen() {
     enabled: isPaymentEnabled,
   });
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [sharesUsage, setSharesUsage] = useState(() => readConsent() === "allowed");
+  const [usage, setUsage] = useState(analyticsConsentState);
 
   function openWeb(url: string) {
     Linking.openURL(url).catch(() => undefined);
@@ -44,8 +43,12 @@ export function useSettingsScreen() {
   }
 
   function changeSharesUsage(allowed: boolean) {
-    setSharesUsage(allowed);
     setAnalyticsConsent(allowed);
+    setUsage(analyticsConsentState());
+  }
+
+  function retryUsageChoice() {
+    if (usage.unsavedChoice !== null) changeSharesUsage(usage.unsavedChoice);
   }
 
   function handleSignOut() {
@@ -61,8 +64,9 @@ export function useSettingsScreen() {
     version: Constants.expoConfig?.version ?? null,
     // A build with nowhere to send usage data has nothing to ask.
     canShareUsage: hasAnalyticsKey(),
-    sharesUsage,
+    ...usage,
     changeSharesUsage,
+    retryUsageChoice,
     isDeleteOpen,
     openDelete: () => setIsDeleteOpen(true),
     closeDelete: () => setIsDeleteOpen(false),

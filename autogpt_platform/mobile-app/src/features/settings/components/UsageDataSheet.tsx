@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Text, View } from "react-native";
 
 import { Button } from "@/components/Button";
@@ -12,14 +13,20 @@ interface Props {
 /** Asks once whether usage data may be sent. Closing it counts as "Not now". */
 export function UsageDataSheet({ onAnswer }: Props) {
   const styles = useStyles();
+  const [saveFailed, setSaveFailed] = useState(false);
 
   function answer(allowed: boolean) {
-    setAnalyticsConsent(allowed);
+    if (setAnalyticsConsent(allowed)) onAnswer();
+    else setSaveFailed(true);
+  }
+
+  function close() {
+    setAnalyticsConsent(false);
     onAnswer();
   }
 
   return (
-    <BottomSheet isOpen onClose={() => answer(false)}>
+    <BottomSheet isOpen onClose={close}>
       <View style={styles.body}>
         <Text accessibilityRole="header" style={styles.heading}>
           Help improve AutoGPT
@@ -28,6 +35,11 @@ export function UsageDataSheet({ onAnswer }: Props) {
           Share which screens you open and which buttons you tap. Never what you write or what
           your experts do.
         </Text>
+        {saveFailed ? (
+          <Text accessibilityLiveRegion="polite" style={styles.error}>
+            {"Couldn't save your choice. Try again."}
+          </Text>
+        ) : null}
         <View style={styles.buttons}>
           <Button label="Share usage data" onPress={() => answer(true)} fullWidth />
           <Button
@@ -46,5 +58,6 @@ const useStyles = createStyles((colors) => ({
   body: { gap: spacing.md },
   heading: { ...type.headline, color: colors.text },
   text: { ...type.body, color: colors.textSecondary },
+  error: { ...type.small, color: colors.error },
   buttons: { gap: spacing.md, marginTop: spacing.sm },
 }));

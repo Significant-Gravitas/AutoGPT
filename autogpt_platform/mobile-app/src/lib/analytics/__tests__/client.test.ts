@@ -2,6 +2,7 @@ import type * as ClientModule from "../client";
 import type { Consent } from "../rules";
 
 const mockReadConsent = jest.fn<Consent, []>();
+const mockSaveConsent = jest.fn<boolean, ["allowed" | "declined"]>();
 const mockClient = {
   register: jest.fn(() => Promise.resolve()),
   optIn: jest.fn(() => Promise.resolve()),
@@ -17,7 +18,7 @@ jest.mock("posthog-react-native", () => ({ __esModule: true, default: mockPostHo
 jest.mock("expo-constants", () => ({ expoConfig: { version: "0.2.0" } }));
 jest.mock("../consent", () => ({
   readConsent: () => mockReadConsent(),
-  saveConsent: jest.fn(),
+  saveConsent: (consent: "allowed" | "declined") => mockSaveConsent(consent),
 }));
 
 const globals = globalThis as { __DEV__?: boolean };
@@ -36,6 +37,7 @@ function loadClient(consent: Consent) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockSaveConsent.mockReturnValue(true);
   process.env.EXPO_PUBLIC_POSTHOG_KEY = "test-key";
   globals.__DEV__ = false;
 });
@@ -94,4 +96,27 @@ test("allowing again sends the screen in front again", () => {
   client.trackScreen("settings");
   expect(mockClient.optOut).toHaveBeenCalled();
   expect(mockClient.screen.mock.calls).toEqual([["settings"], ["settings"]]);
+});
+
+test("a failed revocation stops tracking until the user can save it", () => {
+  const client = loadClient("allowed");
+  client.startAnalytics();
+  mockSaveConsent.mockReturnValueOnce(false);
+  expect(client.setAnalyticsConsent(false)).toBe(false);
+  expect(client.analyticsConsentState()).toEqual({ sharesUsage: false, unsavedChoice: false });
+  client.startAnalytics();
+  client.track("home_viewed");
+  expect(mockClient.capture).not.toHaveBeenCalled();
+  expect(mockClient.optOut).toHaveBeenCalled();
+
+  expect(client.setAnalyticsConsent(false)).toBe(true);
+  expect(client.analyticsConsentState()).toEqual({ sharesUsage: false, unsavedChoice: null });
+});
+
+test("an opt-in that could not be saved does not start tracking", () => {
+  const client = loadClient("declined");
+  client.startAnalytics();
+  mockSaveConsent.mockReturnValueOnce(false);
+  expect(client.setAnalyticsConsent(true)).toBe(false);
+  expect(mockPostHog).not.toHaveBeenCalled();
 });

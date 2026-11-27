@@ -118,7 +118,9 @@ something else now use `hire_started.surface`,
   sign-in ("Share usage data" or "Not now"), and Settings changes the answer.
   Until the user allows it the app makes no PostHog client and sends nothing,
   `identify` included; after "Not now" it sends nothing either. The answer
-  belongs to the phone, so it outlasts a sign-out. It sends only
+  belongs to the phone, so it outlasts a sign-out. Both saved copies must
+  allow sharing before launch tracking starts. Either copy can record a
+  decline. The app sends only
   interactions (`$screen` with the route, never an id in it, and the
   [Engagement](#engagement) events marked as sent by the app): no lifecycle
   events, autocapture, session replay or error tracking.
@@ -430,7 +432,7 @@ merges the website pageviews into the new user:
 | `expert_thread_created` | browser, mobile app | live | `expert_id`, `thread_source` (`suggested_task` when a suggested task started it; unset otherwise) | A new expert chat is created. The mobile app sends it when a chat with an expert starts from Home. |
 | `writing_style_added` | backend | live | `expert_id` | A writing style is saved on an expert. |
 | `workflow_installed_on_expert` | backend | live | `expert_id`, `workflow_source` (`library`, `marketplace`), `library_agent_id` or `store_listing_version_id` | A workflow is attached to an expert. |
-| `home_viewed` | browser, mobile app | live | — | The home dashboard renders with data. Mobile sends this once per launch if consent is already on when the dashboard renders. |
+| `home_viewed` | browser, mobile app | live | — | The home dashboard renders with data. Mobile sends this when Home mounts with data and consent is already on. It can send again after signing out and back in. |
 | `home_attention_actioned` | browser | live | `kind`, `action` | A "needs you" item is approved or declined. |
 | `home_team_member_clicked` | browser, mobile app | live | `expert_id` | A team member row is clicked. In the mobile app, an expert is picked in Home's recipient menu. |
 | `home_suggestion_clicked` | browser | live | `position` (0-based among the rows shown), `surface` (`intro`, `home`), `remaining` (open rows after this one), `owner` (`expert`, `otto`: who it was sent to), `expert_template_id` (the planned owner, or null), `rank` (0-based in the stored, ranked order) | A suggested first task is clicked, on the greeting or under the Home composer. |
